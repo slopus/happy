@@ -69,7 +69,9 @@ Usage:
   after 30 minutes or more in the background. It carries only the
   notification permission, the app language and how many agents are
   connected.
-- `conversation_created`: a new conversation starts.
+- `conversation_created`: a new conversation exists. On iOS that is when
+  the Happy Agent has made the new work its first message asked for, or
+  when a Happy CLI session started; never when the message is only queued.
 - `message_sent`: the person sends a message. A new conversation is
   `source: new_session`; a send while the agent works is `is_steering`.
 - `bot_created` and `task_created`: a create ends, `ok` or `failed`.
@@ -88,7 +90,7 @@ Definitions:
   launches; mobile counts cold starts.
 - `agents_connected`: the Happy Agent connections the client has.
 - `message_sent` fires on send, even when the message is only queued
-  locally. Starting a conversation also sends `conversation_created`.
+  locally. `conversation_created` waits until the conversation exists.
 
 ## iOS (`packages/happy-ios`)
 
@@ -110,16 +112,105 @@ Definitions:
 - Sending stops when the Analytics switch in Settings is off, or when any
   signed-in Happy account has `analyticsOptOut` on. Each account's stored
   setting is read at launch before anything is sent. Turning analytics off
-  deletes the queue.
+  deletes the queue at once, without waiting for a request on its way.
+  Work handed to the engine before the opt-out is dropped unrun, and a
+  batch already on its way keeps nothing it sent.
+- The migration card's PostHog flag (`direct-connection-migration-note`)
+  is asked for by HappyAnalytics alone, with the same install UUID as
+  `distinct_id` and the same rules: a release build with a key, every
+  account allowing analytics. Flag targeting is per install, not per
+  account. HappyCore's `MigrationNoteFlag` only keeps the answer, and
+  without HappyAnalytics the card never shows.
 - Crashes and hangs come from MetricKit at the next launch. Only the
   exception type and signal are read, and they are mapped to `reason`.
 - A debug run can send to a capture endpoint on the same machine instead
   of PostHog: launch with `HAPPY_ANALYTICS_CAPTURE=http://127.0.0.1:<port>/batch/`.
+  It never asks for the flag.
 - Contract test: `Tests/HappyAnalyticsTests/AnalyticsCatalogContractTests.swift`.
-- To remove analytics: delete `Sources/HappyAnalytics`,
-  `Tests/HappyAnalyticsTests` and the target in `Package.swift`, then the
-  `import HappyAnalytics` lines and the `Analytics.shared` calls in HappyUI
-  and HappyApp, and `HappyUI/Navigation/AnalyticsBridge.swift`.
+
+### Removing analytics on iOS
+
+Everything that sends or asks PostHog is inside the module. Outside it,
+App and UI code makes only plain calls on `Analytics.shared` with the
+app's own types. Paths are under `packages/happy-ios`.
+
+1. Delete `Sources/HappyAnalytics` and `Tests/HappyAnalyticsTests`.
+2. In `Package.swift`, remove the six lines that name `HappyAnalytics`:
+   - in the `HappyKit` library's target list;
+   - the `.target(name: "HappyAnalytics", …)` block and the three comment
+     lines above it;
+   - in the `HappyUI` dependencies;
+   - in the `HappyApp` dependencies;
+   - the `.testTarget(name: "HappyAnalyticsTests", …)` block.
+
+   `project.yml` needs nothing: it links the `HappyKit` product.
+3. Remove these lines. Each file also has an `import HappyAnalytics`.
+   - `HappyApp/AppDelegate.swift`: `Analytics.shared.reportCrashes()`,
+     `Analytics.shared.appBecameActive()`, and the background task around
+     `Analytics.shared.appEnteredBackground { … }` (its comment, its
+     `beginBackgroundTask` line and the call with its closure).
+   - `HappyApp/CompositionRoot.swift`: `startAnalytics(…)` and its one call
+     in `makeContext`.
+   - `HappyUI/Navigation/AppCoordinator.swift`:
+     `Analytics.shared.follow(context.account)`, and
+     `Task { await Analytics.shared.accountsRestored() }` with its comment.
+   - `HappyUI/Navigation/HappyScan.swift`: `Analytics.shared.scanFailed`,
+     `Analytics.shared.relayPairingEnded`, `Analytics.shared.accountForComputerEnded`.
+   - `HappyUI/Screens/AgentPairingScreens.swift`: `Analytics.shared.directPairingFailed`
+     in `PairingFlow`. In `AgentPairingViewController`: the four
+     `report { Analytics.shared.… }` calls, `report(_:)` and its `reported`
+     flag.
+   - `HappyUI/Screens/LegacyLink.swift`: `report()` with its
+     `Analytics.shared.relayLinkChanged` and its two calls in
+     `receive(status:)` and `receive(network:)`.
+   - `HappyUI/Screens/OnboardingScreens.swift`: two `Analytics.shared.accountRestored()`
+     and two `Analytics.shared.accountRestoreFailed`.
+   - `HappyUI/Screens/ServerSignInScreen.swift`: `Analytics.shared.teamServerSignedIn()`
+     and `Analytics.shared.teamServerSignInFailed`.
+   - `HappyUI/Screens/SessionChangesScreen.swift` and
+     `HappyUI/Agents/WorkspaceChangesViewController.swift`: `Analytics.shared.diffLoadFailed`.
+   - `HappyUI/Screens/SessionListScreens.swift`: `Analytics.shared.refreshMigrationFlag`.
+     `refreshMigrationFlag()`, its `didBecomeActiveNotification` observer
+     and its call in `apply` then do nothing and can go too.
+   - `HappyUI/Agents/ChatViewController.swift`: `Analytics.shared.failureCardShown`
+     with `reportFailures()`, `reportFailure(_:)`, its `didBecomeActiveNotification`
+     observer, `ultra.onRowShown = …` and the `reportFailures()` call in
+     `viewDidAppear`; `Analytics.shared.failureActionClicked`; `let sent =
+     Analytics.shared.agentSend(…)` (three lines) and `sent()`;
+     `Analytics.shared.fileLoadFailed()`.
+   - `HappyUI/Agents/ArtifactViewController.swift`: two `Analytics.shared.artifactLoadFailed`.
+   - `HappyUI/Agents/SettingsAccountPages.swift`: `Analytics.shared.pushSetupFailed`.
+   - `HappyUI/Agents/SettingsViewController.swift`: `analyticsRow()`, which
+     holds `Analytics.shared.deviceOptOut` and `Analytics.shared.setDeviceOptOut`,
+     and its two `[analyticsRow()]` sections.
+   - `HappyUI/Agents/SupportViewController.swift`: the `viewDidAppear`
+     override with `Analytics.shared.paywallPresented()`.
+   - `HappyUI/Offers/Offers.swift`: `Analytics.shared.paywallPresented()`
+     in `ask`, `Analytics.shared.purchaseEnded`, `Analytics.shared.restoreEnded`.
+   - `HappyUI/Browser/BrowserViewController.swift`: `Analytics.shared.browserLoadFailed`.
+   - `HappyUI/Call/SessionCallTargets.swift`: `Analytics.shared.voiceSent`.
+
+After that, `grep -rnE 'HappyAnalytics|AnalyticsEvent|Analytics\.shared|ConnectionWatch|AnalyticsBridge'`
+over `Sources`, `Tests`, `App`, `Harness`, `project.yml` and `Package.swift`
+finds nothing. Before it, outside the module and its tests, it finds 64
+lines: the 6 in `Package.swift`, 19 `import HappyAnalytics` lines (one per
+file above), and the 39 `Analytics.shared` lines listed.
+
+These neutral pieces stay behind and do nothing without the module. They
+can stay or go:
+
+- `HappyCore/Observing/Happenings.swift` and what posts to it:
+  `NewTask.make`, `Conversation` (`errorShown`), `LegacySyncEngine`,
+  `OutboxSender`, `CallSession.state`, `AgentConnections.apply` (and its
+  `issue`), and `SessionStarter.start` (and `Run.failure`).
+- The consent reads: `AccountController.analyticsOptOuts()` and
+  `LocalStore.settingsSnapshot(at:)`.
+- `HappyCore/Home/MigrationNoteFlag.swift`, which keeps the answer and,
+  with nothing asking, hides the card; `LocalSettings.migrationNoteFlag`.
+- What the screens hand over: `PairingStart` and `LegacyPairingResult`
+  (HappyCore), `Failure`'s `kind`, `providerType`, `pool` and `createdAt`,
+  `Snapshot.botAgentIds`, and `ShownRows` with `AgentChatUltraList`'s
+  `onScreen`, `onRowShown` and `rowVisibility`.
 
 ## Android (`packages/happy-android`)
 
