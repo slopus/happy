@@ -17,8 +17,29 @@ interface AskUserQuestionInput {
     }>;
 }
 
+// Claude (the model) sometimes serializes the `questions` parameter — or the
+// whole input — as a JSON-encoded string rather than a native array/object.
+// Native Claude Code tolerates this; without this guard the view returns null
+// and ToolView falls back to the generic permission UI (slopus/happy#936,
+// also surfaces in slopus/happy#375 with multi-question forms).
+function normalizeAskUserQuestionInput(rawInput: unknown): AskUserQuestionInput | undefined {
+    let parsed: unknown = rawInput;
+    if (typeof parsed === 'string') {
+        try { parsed = JSON.parse(parsed); } catch { return undefined; }
+    }
+    if (!parsed || typeof parsed !== 'object') return undefined;
+    const obj = parsed as Record<string, unknown>;
+    let questions: unknown = obj.questions;
+    if (typeof questions === 'string') {
+        try { questions = JSON.parse(questions); } catch { return undefined; }
+    }
+    if (!Array.isArray(questions)) return undefined;
+    return { ...obj, questions: questions as AskUserQuestionInput['questions'] };
+}
+
 export const AskUserQuestionView = React.memo<ToolViewProps>(({ tool, sessionId }) => {
-    const input = tool.input as AskUserQuestionInput | undefined;
+    // Tolerate JSON-stringified shapes (see normalizeAskUserQuestionInput).
+    const input = normalizeAskUserQuestionInput(tool.input);
     const questions = React.useMemo<InlineQuestion[]>(() => (
         (input?.questions ?? []).map((question, index) => ({
             ...question,
