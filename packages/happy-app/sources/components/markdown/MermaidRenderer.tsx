@@ -17,13 +17,23 @@ const webStyle = (backgroundColor: string): any => ({
     overflow: 'auto',
 });
 
+// Rendered SVG per theme and source (web). FlashList unmounts rows that leave
+// its window, so a diagram scrolled back into view used to import mermaid,
+// initialize it and render all over again each time. Bounded by evicting the
+// oldest entry — a Map iterates in insertion order.
+const MAX_CACHED_DIAGRAMS = 200;
+const svgByThemeAndContent = new Map<string, string>();
+const svgCacheKey = (dark: boolean, content: string) => `${dark ? 'dark' : 'light'} ${content}`;
+
 // Mermaid render component that works on all platforms
 export const MermaidRenderer = React.memo((props: {
     content: string;
 }) => {
     const { theme } = useUnistyles();
     const [dimensions, setDimensions] = React.useState({ width: 0, height: 200 });
-    const [svgContent, setSvgContent] = React.useState<string | null>(null);
+    const [svgContent, setSvgContent] = React.useState<string | null>(
+        () => svgByThemeAndContent.get(svgCacheKey(theme.dark, props.content)) ?? null,
+    );
 
     const onLayout = React.useCallback((event: any) => {
         const { width } = event.nativeEvent.layout;
@@ -37,6 +47,13 @@ export const MermaidRenderer = React.memo((props: {
         React.useEffect(() => {
             let isMounted = true;
             setHasError(false);
+
+            const cacheKey = svgCacheKey(theme.dark, props.content);
+            const cached = svgByThemeAndContent.get(cacheKey);
+            if (cached !== undefined) {
+                setSvgContent(cached);
+                return;
+            }
 
             const renderMermaid = async () => {
                 try {
@@ -56,6 +73,11 @@ export const MermaidRenderer = React.memo((props: {
                             props.content
                         );
 
+                        if (svgByThemeAndContent.size >= MAX_CACHED_DIAGRAMS) {
+                            const oldest = svgByThemeAndContent.keys().next().value;
+                            if (oldest !== undefined) svgByThemeAndContent.delete(oldest);
+                        }
+                        svgByThemeAndContent.set(cacheKey, svg);
                         if (isMounted) {
                             setSvgContent(svg);
                         }
