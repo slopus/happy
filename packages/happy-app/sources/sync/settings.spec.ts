@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SettingsSchema, settingsParse, applySettings, settingsDefaults, settingsToSyncPayload, type Settings } from './settings';
+import { SettingsSchema, settingsParse, settingsParseFromServer, applySettings, settingsDefaults, settingsToSyncPayload, type Settings } from './settings';
 
 describe('settings', () => {
     describe('settingsParse', () => {
@@ -469,6 +469,26 @@ describe('settings', () => {
 
             expect(merged.experiments).toBe(true);
             expect(merged.dismissedCLIWarnings).toEqual(pendingChanges.dismissedCLIWarnings);
+        });
+    });
+
+    describe('settingsParseFromServer', () => {
+        it('parses a decrypted blob like settingsParse', () => {
+            const blob = { experiments: true, agentDefaultOverrides: { claude: { modelMode: 'opus' } } };
+            expect(settingsParseFromServer(blob)).toEqual(settingsParse(blob));
+        });
+
+        it('throws instead of returning defaults when the blob failed to decrypt', () => {
+            // `decryptRaw` returns null on any failure. Falling through to
+            // `settingsParse(null)` would yield a full set of defaults, which the
+            // caller applies over the real settings and then pushes to the server —
+            // silently resetting the account on every device.
+            expect(() => settingsParseFromServer(null)).toThrow(/Failed to decrypt/);
+            expect(() => settingsParseFromServer(undefined)).toThrow(/Failed to decrypt/);
+        });
+
+        it('throws on a non-object payload', () => {
+            expect(() => settingsParseFromServer('not settings')).toThrow(/Failed to decrypt/);
         });
     });
 });
