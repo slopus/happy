@@ -432,7 +432,7 @@ class AgentHomeLayoutTest {
         rule.node(AgentSearchTags.FIELD).performTextInput("number 3")
         rule.waitForIdle()
         // Home's rows, drawn as home draws them: the grouped list's 8 under the bar.
-        val found = rule.node(AgentSearchTags.result("agent-at3")).bounds
+        val found = rule.node(AgentSearchTags.result("agent:at3")).bounds
         assertBox("a found row", found, 0.dp, results.top + 8.dp, 411.dp, 48.dp)
         // Home stays composed under the results, rows and scroll as they were.
         assertEquals(row, rule.node(AgentHomeTags.row("agent-at20")).bounds)
@@ -445,11 +445,11 @@ class AgentHomeLayoutTest {
 
         // What a result opens leaves the search as it was, for coming back.
         rule.node(AgentSearchTags.FIELD).performTextReplacement("number 3")
-        rule.node(AgentSearchTags.result("agent-at3")).performClick()
+        rule.node(AgentSearchTags.result("agent:at3")).performClick()
         rule.waitForIdle()
         assertEquals(listOf("at3"), opened)
         rule.node(AgentSearchTags.FIELD).assertTextEquals("number 3")
-        rule.node(AgentSearchTags.result("agent-at3")).assertExists()
+        rule.node(AgentSearchTags.result("agent:at3")).assertExists()
         assertEquals(row, rule.node(AgentHomeTags.row("agent-at20")).bounds)
     }
 
@@ -509,17 +509,17 @@ class AgentHomeLayoutTest {
         rule.onAllNodesWithTag(AgentSearchTags.RESULTS, useUnmergedTree = true).assertCountEquals(0)
     }
 
-    /** Search.rows: a nested match keeps what it nests under, the project and the worktree over a worktree's chat. */
+    /** Quick search's one flat card: a worktree's chat stands at the card's edge, without its project and worktree over it. */
     @Test
-    fun aNestedMatchKeepsItsProjectAndWorktree() {
+    fun aNestedMatchStandsAlone() {
         show(feed())
         rule.node(AgentHomeTags.SEARCH).performClick()
         rule.node(AgentSearchTags.FIELD).performTextInput("jumps")
         rule.waitForIdle()
-        val project = rule.node(AgentSearchTags.result("folder-p1")).bounds
-        val chat = rule.node(AgentSearchTags.result("agent-aw1")).bounds
-        assertTrue("the project over its worktree's chat", project.bottom < chat.top)
-        rule.onAllNodesWithTag(AgentSearchTags.result("agent-ap1"), useUnmergedTree = true).assertCountEquals(0)
+        val chat = rule.node(AgentSearchTags.result("agent:aw1")).bounds
+        assertBox("the chat, the card's only row", chat, 0.dp, rule.node(AgentSearchTags.RESULTS).bounds.top + 8.dp, 411.dp, 48.dp)
+        rule.onAllNodesWithTag(AgentSearchTags.result("project:p1"), useUnmergedTree = true).assertCountEquals(0)
+        rule.onAllNodesWithTag(AgentSearchTags.result("agent:ap1"), useUnmergedTree = true).assertCountEquals(0)
     }
 
     @Test
@@ -555,9 +555,9 @@ class AgentHomeLayoutTest {
     }
 
     /**
-     * Desktop's ⌘K sources (28342477) after home's rows: a Surface not
-     * joined, an open todo and an artifact, each under its heading, read
-     * while search is open; a todo opens its list, an artifact itself.
+     * Quick search's phone half: a Surface not joined, an open todo and an
+     * artifact in the one card with home's rows, read while search is
+     * open; a todo opens its list, an artifact itself.
      */
     @Test
     fun searchFindsSurfacesTodosAndArtifactsAfterHomesRows() {
@@ -574,22 +574,65 @@ class AgentHomeLayoutTest {
         rule.node(AgentSearchTags.FIELD).performTextInput("plan")
         rule.waitForIdle()
         assertTrue(reads >= 1)
-        for (heading in listOf("Documents", "Todos", "Artifacts")) {
-            rule.onNode(androidx.compose.ui.test.hasText(heading) and androidx.compose.ui.test.hasAnyAncestor(androidx.compose.ui.test.hasTestTag(AgentSearchTags.RESULTS)), useUnmergedTree = true).assertExists()
-        }
-        val home = rule.node(AgentSearchTags.result("agent-at3")).bounds
-        val document = rule.node(AgentSearchTags.result("surface-d2")).bounds
-        val todo = rule.node(AgentSearchTags.result("todo-todo1")).bounds
-        val artifact = rule.node(AgentSearchTags.result("artifact-a1")).bounds
-        assertTrue(home.bottom < document.top && document.bottom < todo.top && todo.bottom < artifact.top)
+        // One card, first of each kind in the daemon's provider order: document, todo, artifact, conversation.
+        val document = rule.node(AgentSearchTags.result("document:d2")).bounds
+        val todo = rule.node(AgentSearchTags.result("todo:todo1")).bounds
+        val artifact = rule.node(AgentSearchTags.result("artifact:a1")).bounds
+        val home = rule.node(AgentSearchTags.result("agent:at3")).bounds
+        assertTrue(document.bottom <= todo.top && todo.bottom <= artifact.top && artifact.bottom <= home.top)
         // iOS's rows: 48 high, as home's.
         for (row in listOf(document, todo, artifact)) assertDp("result row height", 48, row.height)
-        rule.node(AgentSearchTags.result("todo-todo1")).performClick()
+        rule.node(AgentSearchTags.result("todo:todo1")).performClick()
         assertEquals(listOf(errands), surfaces)
-        rule.node(AgentSearchTags.result("artifact-a1")).performClick()
+        rule.node(AgentSearchTags.result("artifact:a1")).performClick()
         assertEquals(listOf("a1"), openedArtifacts)
         // What a result opens leaves the search for coming back.
         rule.node(AgentSearchTags.FIELD).assertExists()
+    }
+
+    /**
+     * Quick search's daemon half, asked once the typing rests: what it finds
+     * joins the card by key, a content match with its line under its name,
+     * and a vault file opens its vault's page. The phone's rows are there
+     * before it answers.
+     */
+    @Test
+    fun whatTheDaemonFindsJoinsTheCard() {
+        val asked = mutableListOf<String>()
+        val vaultItems = mutableListOf<String>()
+        val opening = AgentHomeActions(onOpenConversation = { opened += it }, onCompose = {}, onSettings = {}, onSettingsRow = {}, onSwitchAccount = {}, onAdd = {}, onOpenVaultItem = { surfaceId, id, folder, name -> vaultItems += "$surfaceId/$id/$folder/$name" })
+        val answer = { query: String ->
+            com.slopus.happy.search.QuickSearchAnswer(
+                query,
+                listOf(com.slopus.happy.search.QuickSearchHit.VaultFile("vault_file:f1", 1, "v1", "f1", "Number plan.md", "/Docs/Number plan.md", match = "content", line = 3, snippet = "the plan moves to Friday")),
+            )
+        }
+        // The daemon answers only when let.
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val search: suspend (String) -> com.slopus.happy.search.QuickSearchAnswer? = { query ->
+            asked += query
+            gate.await()
+            answer(query)
+        }
+        rule.setHappyContent { AgentHomeScreen("Studio", feed(), AgentLinkStatus.Connected, accounts, opening, quickSearch = search) }
+        rule.node(AgentHomeTags.SEARCH).performClick()
+        rule.node(AgentSearchTags.FIELD).performTextInput("plan")
+        rule.waitForIdle()
+        // The phone's own row at once, before the typing has rested long enough to ask.
+        rule.node(AgentSearchTags.result("agent:at3")).assertExists()
+        assertTrue(asked.isEmpty())
+        rule.mainClock.advanceTimeBy(200)
+        rule.waitForIdle()
+        // Asked once, for what was typed; until it answers, the phone's rows alone.
+        assertEquals(listOf("plan"), asked)
+        rule.onAllNodesWithTag(AgentSearchTags.result("vault_file:f1"), useUnmergedTree = true).assertCountEquals(0)
+        gate.complete(Unit)
+        rule.waitForIdle()
+        val file = rule.node(AgentSearchTags.result("vault_file:f1"))
+        rule.onNodeWithText("the plan moves to Friday").assertExists()
+        assertDp("a row with its line", 66, file.bounds.height)
+        file.performClick()
+        assertEquals(listOf("v1/f1/false/Number plan.md"), vaultItems)
     }
 
     /**

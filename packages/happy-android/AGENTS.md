@@ -349,23 +349,35 @@ win:
   `openAgentSettingsRow` opens the agent's Settings or Appearance page with
   `reveal`, or Chief of Staff with the ask for name and avatar.
 - **Agent home search** looks and moves as iOS's
-  (`HappyCore/Agents/Search.swift`, `ui/connection/AgentSearch.kt`) and
-  finds what desktop's ⌘K palette does (`commandPaletteResults.ts`,
-  28342477): the results fade in over home (200 ms ease-out) on its own
-  ground, drawn as home is, and home never moves under them. Nothing typed
-  shows the eight bots and tasks last active (`AgentSearch.recent`); a
-  query shows home's rows that answer it with what they nest under
-  (`AgentSearch.rows`), one card, then Documents, Todos (lists, and the
-  open todos of joined lists whose read the phone kept), Artifacts (the
-  kept catalog page) and Shared (calendars, monitors, chats), every
-  Surface in the catalog joined or not but none home's rows already show
-  (`AgentSearchSources`, read only while search is open), then quick
-  actions and settings: each under its heading, at most six, or "Nothing
-  found" in a capsule. Desktop's ranking (`AgentSearch.rank`): several
-  words in any order, a kind's name three below any title match, joined
-  before not joined; sections keep that order rather than desktop's
-  best-answer one. What a result opens leaves the search for coming back;
-  new work, Cancel or back, and a pull down from the results' top end it.
+  (`HappyCore/Agents/Search.swift`, `ui/connection/AgentSearch.kt`): the
+  results fade in over home (200 ms ease-out) on its own ground, drawn as
+  home is, and home never moves under them. Nothing typed shows the eight
+  bots and tasks last active (`AgentSearch.recent`). A query is quick
+  search (happy-agent API.md, "Quick search"): one flat card fusing the
+  phone's half with the daemon's, then quick actions and settings (local
+  only), each under its heading, at most six, or "Nothing found" in a
+  capsule.
+  - The phone's half (`localQuickSearch`), at keystroke speed, from what
+    it holds: home's conversations (`agent:`), projects and worktrees, the
+    catalog's documents (`document:`) and other Surfaces (`surface:`),
+    joined or not (`AgentSearchSources`, read only while search is open),
+    the open todos kept (`todo:`), the kept artifact page (`artifact:`),
+    and home's own pages (`home:`, phone only). Each kind is ranked by
+    desktop's `AgentSearch.rank` (words in any order, a kind's name three
+    below a title match, joined before not), then the kinds fused as the
+    daemon fuses its providers: by place, then provider order.
+  - The daemon's half: `GET /v0/quick-search` (`search/QuickSearch.kt`),
+    120 ms after the typing rests, cancelled by the next keystroke, only
+    where health says `capabilities.quickSearch`; offline or older, the
+    phone's alone. `QuickSearchFusion` is the shared RRF (k = 60) over
+    `key`, the client package's vectors in
+    `test/resources/quick-search/` (from happy-agent 2e72c045c). A
+    daemon's answer joins only the query it was for. A result found by
+    both keeps the phone's row unless the daemon has a content line for
+    it; vault items, events and content matches are the daemon's rows,
+    with a second line (66 high).
+  What a result opens leaves the search for coming back; new work, Cancel
+  or back, and a pull down from the results' top end it.
   The Happy CLI home has no search, as on iOS.
 - **Bot invitations** (happy-ios HappyGuest, docs/APP-CLIP.md; `guest/`,
   `ui/guest/`): `https://app.happy.engineering/bot/invite/<token>` opens a

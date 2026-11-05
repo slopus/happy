@@ -13,6 +13,7 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -161,6 +162,14 @@ object AgentHomeSpec {
     val title = happyTextStyle(fontSize = 17, lineHeight = TITLE_LINE)
     /** A time at a row's end, where a place lists one (home's rows show none). */
     val timestamp = happyTextStyle(fontSize = 13, lineHeight = TITLE_LINE).copy(fontFeatureSettings = "tnum")
+
+    const val DETAIL_LINE = 18
+    /** A search result's second line: what it was found by. */
+    val detail = happyTextStyle(fontSize = 13, lineHeight = DETAIL_LINE)
+
+    /** A row with [detail] under its title: 13 + 22 + 18 + 13. */
+    @Composable
+    fun detailRowHeight(): Dp = with(LocalDensity.current) { paddingVertical * 2 + (TITLE_LINE + DETAIL_LINE).sp.toDp() }
 
     /** 13 + a 22 line + 13: 48 at the default font scale, iOS's row. */
     @Composable
@@ -413,34 +422,42 @@ internal fun AgentHomeCardRow(
  * its title as a home row's.
  */
 @Composable
-internal fun AgentSearchEntryRow(title: String, glyph: Ionicon, place: HomeCardPlace, tag: String, onClick: () -> Unit) {
+internal fun AgentSearchEntryRow(title: String, glyph: Ionicon, place: HomeCardPlace, tag: String, detail: String? = null, onClick: (() -> Unit)?) {
     val colors = HappyTheme.colors
     HomeCardRow(
         place = place,
-        height = AgentHomeSpec.rowHeight(),
+        height = if (detail == null) AgentHomeSpec.rowHeight() else AgentHomeSpec.detailRowHeight(),
         dividerStart = AgentHomeSpec.markInset + AgentHomeSpec.mark + AgentHomeSpec.markGap,
         tag = tag,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .clickable(role = Role.Button, onClick = onClick)
+                .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
                 .padding(start = AgentHomeSpec.markInset, end = AgentHomeSpec.paddingEnd),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(modifier = Modifier.size(AgentHomeSpec.mark), contentAlignment = Alignment.Center) { Icon(glyph, 22.dp, colors.text) }
-            Text(
-                title,
-                style = AgentHomeSpec.title,
-                color = colors.text,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .padding(start = AgentHomeSpec.markGap)
-                    .weight(1f)
-                    .wrapContentHeight(unbounded = true)
-                    .agentTitleBaseline(),
-            )
+            if (detail == null) {
+                Text(
+                    title,
+                    style = AgentHomeSpec.title,
+                    color = colors.text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .padding(start = AgentHomeSpec.markGap)
+                        .weight(1f)
+                        .wrapContentHeight(unbounded = true)
+                        .agentTitleBaseline(),
+                )
+            } else {
+                // What the daemon found it by, a line under its name.
+                Column(Modifier.padding(start = AgentHomeSpec.markGap).weight(1f)) {
+                    Text(title, style = AgentHomeSpec.title, color = colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(detail, style = AgentHomeSpec.detail, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
         }
     }
 }

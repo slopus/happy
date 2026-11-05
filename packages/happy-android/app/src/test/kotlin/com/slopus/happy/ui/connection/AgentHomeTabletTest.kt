@@ -90,7 +90,7 @@ class AgentHomeTabletTest {
         rule.node(AgentHomeTags.SEARCH).performClick()
         rule.node(AgentSearchTags.FIELD).performTextInput("re")
         rule.waitForIdle()
-        val row = rule.node(AgentSearchTags.result("agent-as1")).bounds
+        val row = rule.node(AgentSearchTags.result("agent:as1")).bounds
         assertDp("a result is capped", cap, row.width)
         assertDp("a result is centred", inset, row.left)
         // The panel's own surface still spans the window, so home never shows through beside it.

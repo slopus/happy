@@ -178,6 +178,14 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                                 onOpenTodos = { go.open(MainPanelKey.TODOS) { nav.navigate(com.slopus.happy.ui.todos.TodoListsRoute(account.id)) } },
                                 onOpenArtifact = { go.open(null) { nav.openArtifact(account.id, it) } },
                                 onOpenFeed = { go.open(MainPanelKey.FEED) { nav.navigate(AgentFeedRoute(account.id)) } },
+                                onOpenVaultItem = { surfaceId, itemId, folder, name ->
+                                    go.open(null) {
+                                        nav.navigate(
+                                            if (folder) com.slopus.happy.ui.vaults.VaultFolderRoute(account.id, surfaceId, itemId, name)
+                                            else com.slopus.happy.ui.vaults.VaultFileRoute(account.id, surfaceId, itemId, name = com.slopus.happy.vaults.VaultNames.shown(name)),
+                                        )
+                                    }
+                                },
                                 onSignIn = { server -> go.open(null) { nav.signInToServerAgain(graph, server, replacing = account.id) } },
                             )
                             is OpenAccount.Happy -> LegacyHome(graph, nav, onOpenSession = openSession, onTroubleshoot = troubleshoot, go = go)

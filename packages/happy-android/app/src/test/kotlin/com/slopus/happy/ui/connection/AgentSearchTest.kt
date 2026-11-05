@@ -4,6 +4,8 @@ import androidx.compose.ui.unit.dp
 import com.slopus.happy.agent.AgentFeed
 import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.agent.Wire
+import com.slopus.happy.search.QuickSearchAnswer
+import com.slopus.happy.search.QuickSearchHit
 import com.slopus.happy.ui.connection.AgentHomeLayoutTest.Companion.NOW
 import com.slopus.happy.ui.connection.AgentHomeLayoutTest.Companion.big
 import com.slopus.happy.ui.connection.AgentHomeLayoutTest.Companion.catalog
@@ -14,9 +16,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * happy-ios HappyCore/Agents/Search.swift (SearchTests): what an empty
- * search shows, which of home's rows answer a query and what they keep
- * with them, and the pull that closes search.
+ * Home's search: what an empty search shows (happy-ios SearchTests), the
+ * phone's half of quick search ranked as the daemon ranks, its fusion with
+ * the daemon's, and the pull that closes search.
  */
 class AgentSearchTest {
     private val feed = AgentFeed.derive(catalog(sample))
@@ -36,10 +38,6 @@ class AgentSearchTest {
     private val words = AgentSearchWords(
         actions = "Quick actions",
         settings = "Settings",
-        documents = "Documents",
-        todos = "Todos",
-        artifacts = "Artifacts",
-        shared = "Shared",
         surfaceType = { if (it == "todo") "Todo list" else it.replaceFirstChar(Char::uppercase) },
         artifactType = { if (it == "html") "Web page" else it },
     )
@@ -69,32 +67,34 @@ class AgentSearchTest {
         assertEquals(listOf("agent-ab2"), keys(AgentSearch.recent(idle)))
     }
 
+    private fun found(query: String, sources: AgentSearchSources = AgentSearchSources.None, remote: QuickSearchAnswer? = null) =
+        agentSearchResults(feed, query, label, words, emptyList(), emptyList(), sources, remote).map { it.key }
+
     @Test
-    fun aNestedMatchKeepsWhatItNestsUnderInHomesOrder() {
-        // The subtask keeps its bot; the worktree's conversation keeps the project and the worktree.
-        assertEquals(listOf("agent-ab1", "agent-as1"), keys(AgentSearch.rows(feed, "review", label)))
-        val scroll = keys(AgentSearch.rows(feed, "scroll", label))
-        assertEquals(3, scroll.size)
-        assertEquals("folder-p1", scroll.first())
-        assertEquals("agent-aw1", scroll.last())
-        // Home's order, not the rank's: the document before the task that starts with the word.
-        assertEquals(listOf("surface-s1", "agent-at3"), keys(AgentSearch.rows(feed, "plan", label)))
-        assertEquals(listOf("artifacts"), keys(AgentSearch.rows(feed, "artif", label)))
-        assertTrue(AgentSearch.rows(feed, "zzzz", label).isEmpty())
+    fun aQueryFindsHomesThingsFlatUnderTheDaemonsKeys() {
+        // A subtask and a worktree's chat stand alone, without what they nest under on home.
+        assertEquals(listOf("agent:as1"), found("review"))
+        // The worktree named for it too, after the conversations in provider order.
+        assertEquals(listOf("agent:aw1", "workspace:w1"), found("scroll"))
+        // Each kind's best first, the kinds in the daemon's provider order: the document before the task.
+        assertEquals(listOf("document:s1", "agent:at3"), found("plan"))
+        // Home's own pages, which only the phone has.
+        assertEquals(listOf("home:artifacts"), found("artif"))
+        assertTrue(found("zzzz").isEmpty())
+        val subtask = agentSearchResults(feed, "review", label, words, emptyList(), emptyList()).single() as AgentSearchResult.Found
+        assertEquals(0, ((subtask.local as AgentSearchResult.Home).item.row as AgentFeedRow.Conversation).depth)
     }
 
     @Test
-    fun resultsAreHomesRowsInOneCardThenActionsAndSettingsUnderHeadings() {
+    fun resultsAreOneCardThenActionsAndSettingsUnderHeadings() {
         val action = AgentSearchEntry("new-work", "New task", com.slopus.happy.ui.components.Ionicon.CreateOutline) {}
         val setting = AgentSearchEntry("prefs", "Preferences", com.slopus.happy.ui.components.Ionicon.SettingsOutline) {}
         val found = agentSearchResults(feed, "re", label, words, listOf(action), listOf(setting))
-        val home = found.takeWhile { it is AgentSearchResult.Home }.map { (it as AgentSearchResult.Home).item }
-        assertTrue(home.first().first && home.drop(1).none { it.first })
-        assertTrue(home.last().last && home.dropLast(1).none { it.last })
-        assertEquals(
-            listOf("heading-Settings", "entry-prefs"),
-            found.drop(home.size).map { it.key },
-        )
+        val card = found.takeWhile { it is AgentSearchResult.Found }.map { (it as AgentSearchResult.Found).place }
+        assertTrue(card.size > 1)
+        assertTrue(card.first().first && card.drop(1).none { it.first })
+        assertTrue(card.last().last && card.dropLast(1).none { it.last })
+        assertEquals(listOf("heading-Settings", "entry-prefs"), found.drop(card.size).map { it.key })
         // Nothing typed: the recent ones alone, no heading, no action.
         val empty = agentSearchResults(feed, " ", label, words, listOf(action), listOf(setting))
         assertTrue(empty.all { it is AgentSearchResult.Home })
@@ -132,33 +132,59 @@ class AgentSearchTest {
     )
 
     @Test
-    fun aQueryFindsDocumentsTodosArtifactsAndSharedSurfacesAfterHomesRows() {
-        val found = agentSearchResults(feed, "plan", label, words, emptyList(), emptyList(), sources).map { it.key }
+    fun aQueryFindsDocumentsTodosArtifactsAndSurfacesRankedAsTheDaemonRanks() {
         assertEquals(
             listOf(
-                // Home's rows: the joined document is here, and not again below.
-                "surface-s1", "agent-at3",
-                // Equally good, joined before not; the list before its todos.
-                "heading-Documents", "surface-d1", "surface-d2",
-                "heading-Todos", "surface-l1", "todo-todo1",
-                "heading-Artifacts", "artifact-a1",
+                // First of each kind, in provider order: equally good, joined before not.
+                "document:d1", "todo:todo1", "artifact:a1", "surface:l1", "agent:at3",
+                // Then the second of each, and so on.
+                "document:d2", "document:s1",
             ),
-            found,
+            found("plan", sources),
         )
         // The kind's name finds a Surface; an artifact by its type too.
-        assertEquals(listOf("heading-Shared", "surface-c1"), agentSearchResults(feed, "calendar", label, words, emptyList(), emptyList(), sources).map { it.key })
-        assertEquals(listOf("heading-Artifacts", "artifact-a1"), agentSearchResults(feed, "web page", label, words, emptyList(), emptyList(), sources).map { it.key })
+        assertEquals(listOf("surface:c1"), found("calendar", sources))
+        assertEquals(listOf("artifact:a1"), found("web page", sources))
         // Nothing typed: none of it.
         assertTrue(agentSearchResults(feed, "", label, words, emptyList(), emptyList(), sources).all { it is AgentSearchResult.Home })
     }
 
     @Test
-    fun eachSectionShowsSix() {
+    fun theDaemonsResultsFuseWithThePhonesByKey() {
+        val remote = QuickSearchAnswer(
+            "plan",
+            listOf(
+                QuickSearchHit.VaultFile("vault_file:f1", 1, "v1", "f1", "Launch plan.md", "/Docs/Launch plan.md", match = "content", line = 4, snippet = "The launch   plan moves"),
+                QuickSearchHit.Document("document:d2", 2, "d2", "Plan for Q3", match = "content", line = 2, snippet = "Plan the quarter"),
+                QuickSearchHit.Agent("agent:at3", 3, "at3", "Plan the launch", "task"),
+            ),
+        )
+        val results = agentSearchResults(feed, "plan", label, words, emptyList(), emptyList(), sources, remote).map { it as AgentSearchResult.Found }
+        // document:d2 and agent:at3 are in both lists, their scores added: 1/62 + 1/66 over 1/63 + 1/65.
+        // Then 1/61 each, the daemon's before the phone's.
+        assertEquals(listOf("document:d2", "agent:at3", "vault_file:f1", "document:d1"), results.take(4).map { it.key })
+        val byKey = results.associateBy { it.key }
+        // A content match shows the daemon's row, with its line; the phone's row stays otherwise.
+        assertEquals(null, byKey.getValue("document:d2").drawn)
+        assertEquals("Plan the quarter", quickSearchDetail(byKey.getValue("document:d2").hit!!))
+        assertTrue(byKey.getValue("agent:at3").drawn is AgentSearchResult.Home)
+        assertEquals("The launch plan moves", quickSearchDetail(byKey.getValue("vault_file:f1").hit!!))
+        assertEquals("Launch plan", quickSearchTitle(QuickSearchHit.VaultFile("vault_file:f2", 1, "v1", "f2", "Launch plan.artifact", "/Apps/Launch plan.artifact", kind = "artifact")))
+        assertEquals("/Apps", quickSearchDetail(QuickSearchHit.VaultFolder("vault_folder:f3", 1, "v1", "f3", "Old", "/Apps/Old")))
+        // What the daemon found only for an earlier query isn't the caller's to fuse in: nothing else changes.
+        assertEquals(found("plan", sources), agentSearchResults(feed, "plan", label, words, emptyList(), emptyList(), sources).map { it.key })
+    }
+
+    @Test
+    fun theCardHoldsEveryMatchAndEachSectionSix() {
         val many = AgentSearchSources(artifacts = (0 until 9).map { com.slopus.happy.artifacts.ArtifactRef("a$it", 1, "html", "Chart $it", followsLatest = true) })
         val found = agentSearchResults(feed, "chart", label, words, emptyList(), emptyList(), many)
-        assertEquals(listOf("heading-Artifacts") + (0 until 6).map { "artifact-a$it" }, found.map { it.key })
-        val places = found.filterIsInstance<AgentSearchResult.Artifact>().map { it.place }
+        assertEquals((0 until 9).map { "artifact:a$it" }, found.map { it.key })
+        val places = found.filterIsInstance<AgentSearchResult.Found>().map { it.place }
         assertTrue(places.first().first && places.last().last && places.drop(1).dropLast(1).none { it.first || it.last })
+        val entries = (0 until 9).map { AgentSearchEntry("e$it", "Chart setting $it", com.slopus.happy.ui.components.Ionicon.SettingsOutline) {} }
+        val settings = agentSearchResults(feed, "chart setting", label, words, emptyList(), entries)
+        assertEquals(listOf("heading-Settings") + (0 until 6).map { "entry-e$it" }, settings.map { it.key })
     }
 
     @Test
