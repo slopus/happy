@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useConversation } from '@elevenlabs/react-native';
-import { registerVoiceSession } from './RealtimeSession';
+import { finishRealtimeSession, onRealtimeSessionConnected, registerVoiceSession } from './RealtimeSession';
 import { storage } from '@/sync/storage';
 import { realtimeClientTools } from './realtimeClientTools';
 import { getElevenLabsCodeFromPreference } from '@/constants/Languages';
@@ -106,15 +106,18 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
 }
 
 export const RealtimeVoiceSession: React.FC = () => {
+    const registeredSession = useRef<VoiceSession | null>(null);
     const conversation = useConversation({
         clientTools: realtimeClientTools,
         onConnect: (data) => {
             console.log('Realtime session connected:', data);
+            if (registeredSession.current) onRealtimeSessionConnected(registeredSession.current, data.conversationId);
             storage.getState().setRealtimeStatus('connected');
             storage.getState().setRealtimeMode('idle');
         },
         onDisconnect: () => {
             console.log('Realtime session disconnected');
+            if (registeredSession.current) finishRealtimeSession('disconnected', registeredSession.current);
             // Bump generation only when an active session ends — skipping the
             // initial 'disconnected' state avoids remounting on cold launch
             // (which previously caused a phantom keyboard).
@@ -193,18 +196,20 @@ export const RealtimeVoiceSession: React.FC = () => {
         // Register the voice session once
         if (!hasRegistered.current) {
             try {
-                registerVoiceSession(new RealtimeVoiceSessionImpl());
+                registeredSession.current = new RealtimeVoiceSessionImpl();
+                registerVoiceSession(registeredSession.current);
                 hasRegistered.current = true;
             } catch (error) {
                 console.error('Failed to register voice session:', error);
             }
         }
-
-        return () => {
-            // Clean up on unmount
-            conversationInstance = null;
-        };
     }, [conversation]);
+
+    useEffect(() => () => {
+        // Keep teardown separate from hook-instance updates on ordinary renders.
+        if (registeredSession.current) finishRealtimeSession('unmount', registeredSession.current);
+        conversationInstance = null;
+    }, []);
 
     // This component doesn't render anything visible
     return null;
