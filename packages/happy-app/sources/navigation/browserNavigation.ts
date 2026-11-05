@@ -13,6 +13,7 @@ interface KeyboardNavigationEvent {
     ctrlKey: boolean;
     metaKey: boolean;
     shiftKey: boolean;
+    target?: EventTarget | null;
 }
 
 interface MouseNavigationEvent {
@@ -88,6 +89,11 @@ export function getKeyboardNavigationDirection(event: KeyboardNavigationEvent): 
     if (event.defaultPrevented) return null;
     if (event.key !== 'Escape') return null;
     if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return null;
+
+    const target = event.target as HTMLElement | null | undefined;
+    // isContentEditable includes descendants inheriting an editable ancestor.
+    if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable) return null;
+
     return 'back';
 }
 
