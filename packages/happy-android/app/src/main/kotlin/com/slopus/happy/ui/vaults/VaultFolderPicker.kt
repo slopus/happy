@@ -112,7 +112,7 @@ fun VaultFolderPicker(session: AgentSession, surfaceId: String, moving: VaultIte
         BackHandler { up() }
         val title = path.lastOrNull()?.name ?: surface?.name.orEmpty()
         Box(Modifier.fillMaxSize().background(HappyTheme.colors.surface).testTag(VaultPickerTags.PICKER)) {
-            PlaceScaffold(title, onBack = up, tag = "vault.picker.screen", subtitle = stringResource(R.string.vaults_move_title, moving.name)) {
+            PlaceScaffold(title, onBack = up, tag = "vault.picker.screen", subtitle = stringResource(R.string.vaults_move_title, moving.shownName)) {
                 Column(Modifier.fillMaxSize()) {
                     Box(Modifier.weight(1f)) {
                         val shown = folders

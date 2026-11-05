@@ -18,6 +18,7 @@
     <string name="vaults_add_tier">新增階段</string>
     <string name="vaults_an_agent">一個代理</string>
     <string name="vaults_another_folder">另一個資料夾</string>
+    <string name="vaults_app">應用程式</string>
     <string name="vaults_bytes_of">%1$s / %2$s</string>
     <string name="vaults_changed_elsewhere">這段期間它已在別處被變更。請再試一次。</string>
     <string name="vaults_create">建立</string>
@@ -45,7 +46,6 @@
     <string name="vaults_keep_both">兩者都保留</string>
     <string name="vaults_kind">保險庫</string>
     <string name="vaults_line">第 %1$d 行</string>
-    <string name="vaults_markdown_site">Markdown 網站</string>
     <string name="vaults_max_age">刪除早於此時間的版本</string>
     <string name="vaults_max_versions">最多保留</string>
     <string name="vaults_more_actions">%1$s 的更多動作</string>
@@ -54,6 +54,7 @@
     <string name="vaults_move_title">正在移動「%1$s」</string>
     <string name="vaults_move_to_trash">移到垃圾桶</string>
     <string name="vaults_name">名稱</string>
+    <string name="vaults_name_reserved">名稱不能以「.artifact」結尾。</string>
     <string name="vaults_name_taken">該資料夾中已有名為「%1$s」的項目。</string>
     <string name="vaults_name_taken_message">要用你正在上傳的檔案取代它嗎？它先前的版本會保留在歷史記錄中。</string>
     <string name="vaults_name_taken_title">「%1$s」已存在</string>
@@ -130,7 +131,6 @@
     <string name="vaults_version_number">版本 %1$d</string>
     <string name="vaults_versions">版本</string>
     <string name="vaults_versions_footer">最新版本和已釘選的版本一律保留。變更會在一小時內生效。</string>
-    <string name="vaults_web_page">網頁</string>
     <plurals name="vaults_days">
         <item quantity="other">%1$d 天</item>
     </plurals>

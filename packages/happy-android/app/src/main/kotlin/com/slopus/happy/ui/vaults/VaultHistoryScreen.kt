@@ -56,6 +56,7 @@ import com.slopus.happy.ui.theme.happyTextStyle
 import com.slopus.happy.vaults.VaultActivity
 import com.slopus.happy.vaults.VaultEvent
 import com.slopus.happy.vaults.VaultLocation
+import com.slopus.happy.vaults.VaultNames
 import com.slopus.happy.vaults.VaultPreview
 import com.slopus.happy.vaults.VaultVersion
 import kotlinx.coroutines.CancellationException
@@ -196,7 +197,7 @@ fun VaultHistoryScreen(session: AgentSession, surfaceId: String, itemId: String,
     val actions = rememberVaultActions(session, surfaceId, open)
     val entry = state.location?.item
     var viewing by remember { mutableStateOf<Int?>(null) }
-    PlaceScaffold(stringResource(R.string.vaults_history), onBack, VaultHistoryTags.SCREEN, subtitle = entry?.name ?: name) {
+    PlaceScaffold(stringResource(R.string.vaults_history), onBack, VaultHistoryTags.SCREEN, subtitle = entry?.shownName ?: VaultNames.shown(name)) {
         val versions = state.versions
         val activity = state.activity
         when {
@@ -212,7 +213,7 @@ fun VaultHistoryScreen(session: AgentSession, surfaceId: String, itemId: String,
                             version, current, vaultActor(version.actor, state.people, state.agents),
                             onPreview = {
                                 if (VaultPreview.inViewer(entry)) viewing = version.number
-                                else open(VaultFileRoute(session.connectionId, surfaceId, itemId, if (current) null else version.number, entry.name))
+                                else open(VaultFileRoute(session.connectionId, surfaceId, itemId, if (current) null else version.number, entry.shownName))
                             },
                             onRestore = if (current || state.location?.inTrash == true) null else ({ actions.restoreVersion(entry, version.number) }),
                             onPin = { model.pin(version) },
@@ -305,9 +306,9 @@ internal fun ActivityRow(record: VaultActivity, actor: String, folders: Map<Stri
     val what = when (record.kind) {
         "created" -> stringResource(if (record.copiedFrom != null) R.string.vaults_activity_copied else R.string.vaults_activity_created)
         "moved" -> when {
-            record.fromParentId == record.toParentId -> stringResource(R.string.vaults_activity_renamed, record.fromName.orEmpty(), record.toName.orEmpty())
+            record.fromParentId == record.toParentId -> stringResource(R.string.vaults_activity_renamed, VaultNames.shown(record.fromName.orEmpty()), VaultNames.shown(record.toName.orEmpty()))
             record.fromName == record.toName -> stringResource(R.string.vaults_activity_moved, folder(record.fromParentId), folder(record.toParentId))
-            else -> stringResource(R.string.vaults_activity_moved_renamed, record.toName.orEmpty(), folder(record.toParentId))
+            else -> stringResource(R.string.vaults_activity_moved_renamed, VaultNames.shown(record.toName.orEmpty()), folder(record.toParentId))
         }
         "deleted" -> stringResource(R.string.vaults_activity_deleted)
         "restored" -> stringResource(R.string.vaults_activity_restored, folder(record.parentId))

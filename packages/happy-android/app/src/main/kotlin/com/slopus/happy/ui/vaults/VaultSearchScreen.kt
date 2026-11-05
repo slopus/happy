@@ -45,6 +45,7 @@ import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import com.slopus.happy.vaults.VaultItem
+import com.slopus.happy.vaults.VaultNames
 import com.slopus.happy.vaults.VaultEvent
 import com.slopus.happy.vaults.VaultPreview
 import com.slopus.happy.vaults.VaultSearchResult
@@ -67,7 +68,7 @@ private data class Found(val query: String, val names: List<VaultSearchResult>, 
 /**
  * Search across a vault: the bar becomes the field. Names match first
  * (a name equal to what is typed, then starting with it, then containing
- * it, then paths), then text inside files and sites, each with the line
+ * it, then paths), then text inside files and apps, each with the line
  * that matched and the words around it, the match in bold. It asks once
  * typing pauses, and again as the vault changes while it is open. A
  * result opens where its entry opens.
@@ -110,7 +111,7 @@ fun VaultSearchScreen(session: AgentSession, surfaceId: String, onBack: () -> Un
         when {
             entry.isFolder -> open(VaultFolderRoute(session.connectionId, surfaceId, entry.id, entry.name))
             VaultPreview.inViewer(entry) -> viewing = entry
-            else -> open(VaultFileRoute(session.connectionId, surfaceId, entry.id, name = entry.name))
+            else -> open(VaultFileRoute(session.connectionId, surfaceId, entry.id, name = entry.shownName))
         }
     }
     val placeholder = stringResource(R.string.vaults_search_placeholder)
@@ -146,7 +147,7 @@ fun VaultSearchScreen(session: AgentSession, surfaceId: String, onBack: () -> Un
                 if (shown.contents.isNotEmpty()) {
                     item(key = "contents") { Heading(stringResource(R.string.vaults_search_contents), VaultSearchTags.CONTENTS) }
                     items(shown.contents, key = { "c-${it.item.id}-${it.innerPath}" }) { result ->
-                        val place = listOfNotNull(result.path + (result.innerPath?.let { "/$it" } ?: ""), result.line?.let { stringResource(R.string.vaults_line, it) }).joinToString(" · ")
+                        val place = listOfNotNull(VaultNames.shownPath(result.path + (result.innerPath?.let { "/$it" } ?: "")), result.line?.let { stringResource(R.string.vaults_line, it) }).joinToString(" · ")
                         Column {
                             VaultItemRow(result.item, last = result === shown.contents.last(), actions = actions, detail = place, onClick = { openEntry(result) })
                             result.snippet?.let { Snippet(highlight(it, shown.query)) }
@@ -166,7 +167,7 @@ private const val TYPING_DELAY_MS = 250L
 private const val CHANGE_DELAY_MS = 400L
 
 /** The folder a result is in. */
-private fun where(path: String): String = path.substringBeforeLast('/').ifEmpty { "/" }
+private fun where(path: String): String = VaultNames.shownPath(path.substringBeforeLast('/')).ifEmpty { "/" }
 
 @Composable
 private fun Heading(text: String, tag: String) {

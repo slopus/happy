@@ -213,9 +213,9 @@ class VaultUploadsTest {
 
     @Test
     fun artifactsAreKnownByTheirSuffixInAnyCase() {
-        assertTrue(VaultUploads.isArtifact("Launch.ARTIFACT"))
-        assertEquals(false, VaultUploads.isArtifact("site.zip"))
-        assertEquals(false, VaultUploads.isArtifact(".artifact"))
+        assertTrue(VaultNames.isArtifact("Launch.ARTIFACT"))
+        assertEquals(false, VaultNames.isArtifact("site.zip"))
+        assertEquals(false, VaultNames.isArtifact(".artifact"))
         assertEquals("launch 2.artifact", VaultUploads.numbered("launch.artifact", 2))
     }
 

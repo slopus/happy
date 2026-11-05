@@ -9,8 +9,8 @@ enum class VaultPreviewKind {
     Pdf,
     /** Text or source with its syntax; Markdown rendered with its source a tab away. */
     Text,
-    /** An artifact entry, a live site. */
-    Site,
+    /** An artifact, a live app. */
+    App,
     /** Nothing here reads it: share it, open it in another app or save it. */
     Other,
 }
@@ -32,7 +32,7 @@ object VaultPreview {
     )
 
     fun kind(entry: VaultItem, size: Long? = entry.size): VaultPreviewKind {
-        if (entry.isArtifact) return VaultPreviewKind.Site
+        if (entry.isArtifact) return VaultPreviewKind.App
         if (!entry.isFile) return VaultPreviewKind.Other
         val type = entry.mediaType?.substringBefore(';')?.trim()?.lowercase().orEmpty()
         val extension = entry.name.substringAfterLast('.', "").lowercase()

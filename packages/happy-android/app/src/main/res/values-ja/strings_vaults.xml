@@ -18,6 +18,7 @@
     <string name="vaults_add_tier">段階を追加</string>
     <string name="vaults_an_agent">エージェント</string>
     <string name="vaults_another_folder">別のフォルダ</string>
+    <string name="vaults_app">アプリ</string>
     <string name="vaults_bytes_of">%1$s / %2$s</string>
     <string name="vaults_changed_elsewhere">その間に別の場所で変更されました。もう一度お試しください。</string>
     <string name="vaults_create">作成</string>
@@ -45,7 +46,6 @@
     <string name="vaults_keep_both">両方残す</string>
     <string name="vaults_kind">ボールト</string>
     <string name="vaults_line">%1$d 行目</string>
-    <string name="vaults_markdown_site">Markdown サイト</string>
     <string name="vaults_max_age">これより古いバージョンを削除</string>
     <string name="vaults_max_versions">保持する最大数</string>
     <string name="vaults_more_actions">%1$s のその他の操作</string>
@@ -54,6 +54,7 @@
     <string name="vaults_move_title">「%1$s」を移動</string>
     <string name="vaults_move_to_trash">ゴミ箱に移動</string>
     <string name="vaults_name">名前</string>
+    <string name="vaults_name_reserved">名前の末尾を「.artifact」にすることはできません。</string>
     <string name="vaults_name_taken">そのフォルダには「%1$s」という項目がすでにあります。</string>
     <string name="vaults_name_taken_message">アップロード中のファイルで置き換えますか？以前のバージョンは履歴に残ります。</string>
     <string name="vaults_name_taken_title">「%1$s」はすでに存在します</string>
@@ -130,7 +131,6 @@
     <string name="vaults_version_number">バージョン %1$d</string>
     <string name="vaults_versions">バージョン</string>
     <string name="vaults_versions_footer">最新のバージョンと固定したバージョンは常に保持されます。変更は 1 時間以内に適用されます。</string>
-    <string name="vaults_web_page">Web ページ</string>
     <plurals name="vaults_days">
         <item quantity="other">%1$d 日</item>
     </plurals>

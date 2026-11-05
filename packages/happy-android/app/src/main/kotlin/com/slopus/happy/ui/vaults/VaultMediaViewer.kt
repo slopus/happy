@@ -32,7 +32,7 @@ import java.io.File
 fun VaultMediaViewer(session: AgentSession, items: List<VaultItem>, index: Int, version: Int? = null, onClose: () -> Unit) {
     val routes = session.vaults.routes
     val pages = remember(items, version) {
-        items.map { entry -> ViewerItem(key(entry, version), entry.name, VaultPreview.kind(entry) == VaultPreviewKind.Video) }
+        items.map { entry -> ViewerItem(key(entry, version), entry.shownName, VaultPreview.kind(entry) == VaultPreviewKind.Video) }
     }
     val byKey = remember(items, version) { items.associateBy { key(it, version) } }
     val source = remember(routes, byKey) {

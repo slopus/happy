@@ -1756,13 +1756,19 @@ every locale, not happy-i18n.
   version) or Keep both ("name 2.ext"). A file named "*.artifact" (any
   case) becomes an artifact, and a ".zip" is always a plain file. An
   artifact's new version is a whole ".artifact" file. A refused one shows
-  the daemon's own reason on its row. Artifacts keep the ".artifact"
-  suffix in their names (renaming adds it back) and download or share as
-  that `.artifact` file (`/versions/:n/zip`).
+  the daemon's own reason on its row, with no retry.
+- **Apps**: people call an artifact an app, in every string. Its stored name
+  keeps the ".artifact" suffix (API calls, and the `.artifact` file a download
+  or share writes from `/versions/:n/zip`), but no screen shows it:
+  `VaultItem.shownName` and `VaultNames.shown`/`shownPath` drop it everywhere
+  a name or path is drawn. An app is told apart by its one icon
+  (`AppsOutline`) and its live preview. Rename edits the name without the
+  suffix and adds it back (`newName`), and a folder or plain file can't be
+  named "*.artifact" (`vaults_name_reserved`).
 - **Previews** (`VaultPreview.kind`): pictures and video go to
   `PictureViewer`, with video over a `RangedSource`. PDFs go to
   `PdfRenderer`. Text up to 2 MB, and Markdown, go to `FileScreen`.
-  Artifacts run as live sites through `BrowserProxy` with
+  HTML apps run live through `BrowserProxy` with
   `Scope.Artifact(vault = …)`: every path is a file of that version
   (`/versions/:n/artifact/*`), and there is no `/api`. Anything else gets
   share, open in another app, or Save to.

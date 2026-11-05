@@ -18,6 +18,7 @@
     <string name="vaults_add_tier">Добавить шаг</string>
     <string name="vaults_an_agent">Агент</string>
     <string name="vaults_another_folder">другая папка</string>
+    <string name="vaults_app">Приложение</string>
     <string name="vaults_bytes_of">%1$s из %2$s</string>
     <string name="vaults_changed_elsewhere">Тем временем это изменили в другом месте. Попробуйте ещё раз.</string>
     <string name="vaults_create">Создать</string>
@@ -45,7 +46,6 @@
     <string name="vaults_keep_both">Оставить оба</string>
     <string name="vaults_kind">Хранилище</string>
     <string name="vaults_line">строка %1$d</string>
-    <string name="vaults_markdown_site">Сайт Markdown</string>
     <string name="vaults_max_age">Удалять версии старше</string>
     <string name="vaults_max_versions">Хранить не более</string>
     <string name="vaults_more_actions">Другие действия для %1$s</string>
@@ -54,6 +54,7 @@
     <string name="vaults_move_title">Перемещение «%1$s»</string>
     <string name="vaults_move_to_trash">В корзину</string>
     <string name="vaults_name">Название</string>
+    <string name="vaults_name_reserved">Имя не может заканчиваться на «.artifact».</string>
     <string name="vaults_name_taken">В этой папке уже есть «%1$s».</string>
     <string name="vaults_name_taken_message">Заменить его загружаемым? Прежние версии останутся в истории.</string>
     <string name="vaults_name_taken_title">«%1$s» уже существует</string>
@@ -130,7 +131,6 @@
     <string name="vaults_version_number">Версия %1$d</string>
     <string name="vaults_versions">Версии</string>
     <string name="vaults_versions_footer">Новейшая и закреплённые версии хранятся всегда. Изменения вступают в силу в течение часа.</string>
-    <string name="vaults_web_page">Веб-страница</string>
     <plurals name="vaults_days">
         <item quantity="one">%1$d день</item>
         <item quantity="few">%1$d дня</item>

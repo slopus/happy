@@ -66,6 +66,7 @@ import com.slopus.happy.vaults.VaultItem
 import com.slopus.happy.vaults.VaultEvent
 import com.slopus.happy.vaults.VaultFolderFeed
 import com.slopus.happy.vaults.VaultLocation
+import com.slopus.happy.vaults.VaultNames
 import com.slopus.happy.vaults.VaultPreview
 import com.slopus.happy.vaults.VaultSort
 import com.slopus.happy.vaults.VaultSortField
@@ -174,7 +175,7 @@ fun VaultFolderScreen(session: AgentSession, surfaceId: String, folderId: String
     val actions = rememberVaultActions(session, surfaceId, open)
     var viewing by remember { mutableStateOf<Pair<List<VaultItem>, Int>?>(null) }
     val vaultName = surface?.name.orEmpty()
-    val title = if (folderId == null) surfaceTitle(session, vaultName.ifEmpty { name }) else place?.item?.name ?: name
+    val title = if (folderId == null) surfaceTitle(session, vaultName.ifEmpty { name }) else place?.item?.shownName ?: VaultNames.shown(name)
     val subtitle = when {
         folderId == null -> null
         place?.inTrash == true -> stringResource(R.string.vaults_in_trash)
@@ -187,7 +188,7 @@ fun VaultFolderScreen(session: AgentSession, surfaceId: String, folderId: String
                 val media = state.entries.filter(VaultPreview::inViewer)
                 viewing = media to media.indexOfFirst { it.id == entry.id }.coerceAtLeast(0)
             }
-            else -> open(VaultFileRoute(session.connectionId, surfaceId, entry.id, name = entry.name))
+            else -> open(VaultFileRoute(session.connectionId, surfaceId, entry.id, name = entry.shownName))
         }
     }
     PlaceScaffold(title, onBack, VaultFolderTags.SCREEN, subtitle = subtitle, actions = {
@@ -289,7 +290,7 @@ internal fun VaultItemRow(
                     .weight(1f)
                     .padding(vertical = 8.dp),
             ) {
-                Text(entry.name, style = VaultText.name, color = colors.text, maxLines = 1, overflow = TextOverflow.MiddleEllipsis, modifier = Modifier.testTag(VaultFolderTags.ROW_NAME))
+                Text(entry.shownName, style = VaultText.name, color = colors.text, maxLines = 1, overflow = TextOverflow.MiddleEllipsis, modifier = Modifier.testTag(VaultFolderTags.ROW_NAME))
                 Text(
                     detail ?: vaultItemDetail(entry),
                     style = VaultText.meta,
@@ -301,7 +302,7 @@ internal fun VaultItemRow(
             }
             if (actions != null) {
                 IconButton(onClick = { menu = true }, modifier = Modifier.size(VaultRowSpec.more).testTag(VaultFolderTags.ROW_MORE)) {
-                    Icon(Ionicon.EllipsisVertical, 20.dp, colors.textSecondary, contentDescription = stringResource(R.string.vaults_more_actions, entry.name))
+                    Icon(Ionicon.EllipsisVertical, 20.dp, colors.textSecondary, contentDescription = stringResource(R.string.vaults_more_actions, entry.shownName))
                 }
             }
         }
@@ -315,7 +316,7 @@ internal fun VaultItemRow(
     }
 }
 
-/** The 40 tile: a folder's, an artifact's site, or the file's own icon. */
+/** The 40 tile: a folder's, an app's, or the file's own icon. */
 @Composable
 internal fun VaultTile(entry: VaultItem, modifier: Modifier = Modifier) {
     val colors = HappyTheme.colors
@@ -329,7 +330,7 @@ internal fun VaultTile(entry: VaultItem, modifier: Modifier = Modifier) {
     ) {
         when {
             entry.isFolder -> Icon(Ionicon.Folder, VaultRowSpec.glyph, colors.textLink)
-            entry.isArtifact -> Icon(if (entry.artifact?.type == "markdown") Ionicon.DocumentTextOutline else Ionicon.GlobeOutline, VaultRowSpec.glyph, colors.textLink)
+            entry.isArtifact -> Icon(Ionicon.AppsOutline, VaultRowSpec.glyph, colors.textLink)
             else -> com.slopus.happy.ui.files.FileIcon(entry.name, VaultRowSpec.glyph)
         }
     }
@@ -359,7 +360,7 @@ internal fun VaultUploadRow(task: VaultUploads.Task, onCancel: () -> Unit, onRet
             }
         }
         Column(Modifier.padding(start = VaultRowSpec.textX - VaultRowSpec.tileX - VaultRowSpec.tile).weight(1f).padding(vertical = 8.dp)) {
-            Text(task.name, style = VaultText.name, color = colors.text, maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
+            Text(VaultNames.shown(task.name), style = VaultText.name, color = colors.text, maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
             Text(uploadDetail(task), style = VaultText.meta, color = if (task.status == VaultUploads.Status.Failed) colors.textDestructive else colors.textSecondary, maxLines = if (task.status == VaultUploads.Status.Failed) 3 else 1, modifier = Modifier.padding(top = 2.dp))
         }
         IconButton(onClick = onCancel, modifier = Modifier.size(VaultRowSpec.more).testTag(VaultFolderTags.UPLOAD_CANCEL)) {
@@ -394,7 +395,7 @@ private fun NameTakenAlert(session: AgentSession, task: VaultUploads.Task) {
     val uploads = session.vaults.uploads
     HappyAlert(
         Alert(
-            title = stringResource(R.string.vaults_name_taken_title, task.name),
+            title = stringResource(R.string.vaults_name_taken_title, VaultNames.shown(task.name)),
             message = stringResource(R.string.vaults_name_taken_message),
             buttons = listOf(
                 AlertButton(stringResource(R.string.common_cancel)) { uploads.cancel(task.id) },

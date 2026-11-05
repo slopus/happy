@@ -18,6 +18,7 @@
     <string name="vaults_add_tier">Dodaj krok</string>
     <string name="vaults_an_agent">Agent</string>
     <string name="vaults_another_folder">inny folder</string>
+    <string name="vaults_app">Aplikacja</string>
     <string name="vaults_bytes_of">%1$s z %2$s</string>
     <string name="vaults_changed_elsewhere">W międzyczasie zmieniono to gdzie indziej. Spróbuj ponownie.</string>
     <string name="vaults_create">Utwórz</string>
@@ -45,7 +46,6 @@
     <string name="vaults_keep_both">Zachowaj oba</string>
     <string name="vaults_kind">Sejf</string>
     <string name="vaults_line">wiersz %1$d</string>
-    <string name="vaults_markdown_site">Strona Markdown</string>
     <string name="vaults_max_age">Usuwaj wersje starsze niż</string>
     <string name="vaults_max_versions">Zachowuj najwyżej</string>
     <string name="vaults_more_actions">Więcej działań dla %1$s</string>
@@ -54,6 +54,7 @@
     <string name="vaults_move_title">Przenoszenie „%1$s”</string>
     <string name="vaults_move_to_trash">Przenieś do kosza</string>
     <string name="vaults_name">Nazwa</string>
+    <string name="vaults_name_reserved">Nazwa nie może kończyć się na „.artifact”.</string>
     <string name="vaults_name_taken">W tym folderze jest już „%1$s”.</string>
     <string name="vaults_name_taken_message">Zastąpić go przesyłanym plikiem? Wcześniejsze wersje zostaną w historii.</string>
     <string name="vaults_name_taken_title">„%1$s” już istnieje</string>
@@ -130,7 +131,6 @@
     <string name="vaults_version_number">Wersja %1$d</string>
     <string name="vaults_versions">Wersje</string>
     <string name="vaults_versions_footer">Najnowsza i przypięte wersje są zawsze zachowywane. Zmiany zaczynają działać w ciągu godziny.</string>
-    <string name="vaults_web_page">Strona internetowa</string>
     <plurals name="vaults_days">
         <item quantity="one">%1$d dzień</item>
         <item quantity="few">%1$d dni</item>

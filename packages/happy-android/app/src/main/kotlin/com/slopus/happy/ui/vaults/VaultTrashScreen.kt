@@ -37,6 +37,7 @@ import com.slopus.happy.ui.surfaces.SeedlingEmpty
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import com.slopus.happy.vaults.VaultItem
+import com.slopus.happy.vaults.VaultNames
 import com.slopus.happy.vaults.VaultEvent
 import com.slopus.happy.vaults.VaultPreview
 import com.slopus.happy.vaults.VaultTrashItem
@@ -127,13 +128,13 @@ fun VaultTrashScreen(session: AgentSession, surfaceId: String, onBack: () -> Uni
                 item(key = "note") { TrashNote(state.trashDays, state.known) }
                 items(items, key = { it.item.id }) { item ->
                     val entry = item.item
-                    val was = item.path.substringBeforeLast('/').ifEmpty { "/" }
+                    val was = VaultNames.shownPath(item.path.substringBeforeLast('/')).ifEmpty { "/" }
                     val detail = stringResource(R.string.vaults_deleted_from, vaultTime(entry.deletedAt ?: 0), was)
                     VaultItemRow(entry, last = item === items.last(), actions = actions, detail = detail, inTrash = true, onClick = {
                         when {
                             entry.isFolder -> open(VaultFolderRoute(session.connectionId, surfaceId, entry.id, entry.name))
                             VaultPreview.inViewer(entry) -> viewing = entry
-                            else -> open(VaultFileRoute(session.connectionId, surfaceId, entry.id, name = entry.name))
+                            else -> open(VaultFileRoute(session.connectionId, surfaceId, entry.id, name = entry.shownName))
                         }
                     })
                 }

@@ -80,7 +80,7 @@ class VaultUploads(
 
     /** Uploads [source] into [parentId]: an artifact when its name ends in ".artifact", otherwise a file. */
     fun add(surfaceId: String, parentId: String?, source: VaultUploadSource): String {
-        val kind = if (isArtifact(source.name)) VaultItem.ARTIFACT else VaultItem.FILE
+        val kind = if (VaultNames.isArtifact(source.name)) VaultItem.ARTIFACT else VaultItem.FILE
         return start(Task(AgentClient.newId(), surfaceId, parentId, source.name, source.size, kind), source)
     }
 
@@ -273,11 +273,6 @@ class VaultUploads(
 
         /** Refusals that may pass on another try: a timeout, a conflict, too many requests. */
         private val RETRYABLE = setOf(408, 409, 429)
-
-        const val ARTIFACT_SUFFIX = ".artifact"
-
-        /** Whether [name] is an artifact bundle's: it ends in ".artifact", in any case. */
-        fun isArtifact(name: String): Boolean = name.length > ARTIFACT_SUFFIX.length && name.endsWith(ARTIFACT_SUFFIX, ignoreCase = true)
 
         /** "report.pdf" as its [n]th copy: "report 2.pdf"; a name without an extension, or a dotfile, gets the number at the end. */
         fun numbered(name: String, n: Int): String {

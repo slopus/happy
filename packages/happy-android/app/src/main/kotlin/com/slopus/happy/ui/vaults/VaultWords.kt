@@ -50,14 +50,14 @@ internal fun vaultDateTime(at: Long): String {
     }
 }
 
-/** A row's line: "Folder", a site's kind and size, or a file's size and when it changed. */
+/** A row's line: "Folder", "App" and its size, or a file's size and when it changed. */
 @Composable
 internal fun vaultItemDetail(entry: VaultItem): String {
     val time = vaultTime(entry.updatedAt)
     val parts = when {
         entry.isFolder -> listOf(stringResource(R.string.vaults_folder))
         entry.isArtifact -> listOf(
-            stringResource(if (entry.artifact?.type == "markdown") R.string.vaults_markdown_site else R.string.vaults_web_page),
+            stringResource(R.string.vaults_app),
             vaultSize(entry.size ?: 0),
             time,
         )

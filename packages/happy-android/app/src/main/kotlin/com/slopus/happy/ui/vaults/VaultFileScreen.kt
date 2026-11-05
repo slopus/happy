@@ -55,6 +55,7 @@ import com.slopus.happy.vaults.VaultDownloads
 import com.slopus.happy.vaults.VaultItem
 import com.slopus.happy.vaults.VaultEvent
 import com.slopus.happy.vaults.VaultLocation
+import com.slopus.happy.vaults.VaultNames
 import com.slopus.happy.vaults.VaultPreview
 import com.slopus.happy.vaults.VaultPreviewKind
 import kotlinx.coroutines.CancellationException
@@ -80,7 +81,7 @@ internal class VaultFileModel(val session: AgentSession, val surfaceId: String, 
         data object Reading : Body
         data class Text(val load: FileLoad, val bytes: ByteArray?) : Body
         data class Pdf(val file: File) : Body
-        /** A site, a recording or anything else: drawn from the entry alone. */
+        /** An app, a recording or anything else: drawn from the entry alone. */
         data object Entry : Body
         data class Failed(val problem: com.slopus.happy.conversation.Problem) : Body
     }
@@ -145,7 +146,7 @@ internal class VaultFileModel(val session: AgentSession, val surfaceId: String, 
                 val bytes = routes.content(surfaceId, itemId, number).body
                 Body.Text(withContext(Dispatchers.Default) { fileLoadOf(entry.name, bytes) }, bytes)
             }
-            VaultPreviewKind.Site -> if (entry.artifact?.type == "markdown") {
+            VaultPreviewKind.App -> if (entry.artifact?.type == "markdown") {
                 val bytes = routes.artifactFile(surfaceId, itemId, number ?: 1, entry.artifact.entry)
                 Body.Text(withContext(Dispatchers.Default) { fileLoadOf("index.md", bytes) }, bytes)
             } else Body.Entry
@@ -171,8 +172,8 @@ internal class VaultFileModel(val session: AgentSession, val surfaceId: String, 
 }
 
 /**
- * A file or an artifact entry on its own page, by what it is: an
- * artifact as its live site (an HTML one through the in-app browser on an
+ * A file or an app on its own page, by what it is: an app live
+ * (an HTML one through the in-app browser on an
  * origin of its own, fed from the vault's routes; a Markdown one
  * rendered), text and source with their syntax and Markdown rendered
  * (the file viewer), a picture, a PDF's pages, a recording in the viewer,
@@ -188,7 +189,7 @@ fun VaultFileScreen(session: AgentSession, surfaceId: String, itemId: String, ve
     val state by model.state.collectAsStateWithLifecycle()
     val actions = rememberVaultActions(session, surfaceId, open)
     val entry = state.location?.item
-    val title = entry?.name ?: name
+    val title = entry?.shownName ?: VaultNames.shown(name)
     val subtitle = version?.let { stringResource(R.string.vaults_version_number, it) }
     var viewing by remember { mutableStateOf(false) }
     val bar: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {
@@ -225,7 +226,7 @@ fun VaultFileScreen(session: AgentSession, surfaceId: String, itemId: String, ve
                 body is VaultFileModel.Body.Pdf -> VaultPdfView(body.file) { actions.openElsewhere(entry, version) }
                 entry.isArtifact -> {
                     val number = version ?: entry.latestVersion ?: 1
-                    key(number) { VaultSite(session, entry, number, computer, open) }
+                    key(number) { VaultApp(session, entry, number, computer, open) }
                 }
                 VaultPreview.kind(entry) == VaultPreviewKind.Video -> Other(entry, version, actions, play = { viewing = true })
                 else -> Other(entry, version, actions)
@@ -236,9 +237,9 @@ fun VaultFileScreen(session: AgentSession, surfaceId: String, itemId: String, ve
     VaultActionsHost(actions)
 }
 
-/** An artifact entry's HTML site, live in the in-app browser on an origin of its own, its files read from the vault. */
+/** An HTML app, live in the in-app browser on an origin of its own, its files read from the vault. */
 @Composable
-private fun VaultSite(session: AgentSession, entry: VaultItem, number: Int, computer: String, open: (Any) -> Unit) {
+private fun VaultApp(session: AgentSession, entry: VaultItem, number: Int, computer: String, open: (Any) -> Unit) {
     val browser = rememberBrowserState()
     val client = session.client
     val base = session.vaults.routes.filePath(entry.surfaceId, entry.id)
@@ -269,7 +270,7 @@ private fun Other(entry: VaultItem, version: Int?, actions: VaultActions, play: 
     ) {
         com.slopus.happy.ui.files.FileIcon(entry.name, 56.dp)
         Spacer(Modifier.height(16.dp))
-        Text(entry.name, style = happyTextStyle(fontSize = 18, lineHeight = 24), color = colors.text, textAlign = TextAlign.Center)
+        Text(entry.shownName, style = happyTextStyle(fontSize = 18, lineHeight = 24), color = colors.text, textAlign = TextAlign.Center)
         Text(vaultItemDetail(entry), style = happyTextStyle(fontSize = 14, lineHeight = 20), color = colors.textSecondary, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
         Spacer(Modifier.height(24.dp))
         val buttons = Modifier.widthIn(max = 320.dp).fillMaxWidth()

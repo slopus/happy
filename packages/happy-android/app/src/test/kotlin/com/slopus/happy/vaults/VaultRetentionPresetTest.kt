@@ -66,18 +66,35 @@ class VaultPreviewTest {
         assertEquals(VaultPreviewKind.Text, kind("main.kt", "application/octet-stream"))
         assertEquals(VaultPreviewKind.Other, kind("big.log", "text/plain", size = VaultPreview.TEXT_LIMIT + 1))
         assertEquals(VaultPreviewKind.Other, kind("a.zip", "application/zip"))
-        assertEquals(VaultPreviewKind.Site, kind("site", null, kind = VaultItem.ARTIFACT))
+        assertEquals(VaultPreviewKind.App, kind("launch.artifact", null, kind = VaultItem.ARTIFACT))
         assertEquals(VaultPreviewKind.Other, kind("docs", null, kind = VaultItem.FOLDER))
     }
 }
 
 class VaultNamesTest {
     @Test
-    fun anArtifactKeepsItsSuffixThroughARename() {
-        val site = vaultItem("e", "v", "launch.artifact", kind = VaultItem.ARTIFACT)
-        assertEquals("landing.artifact", com.slopus.happy.ui.vaults.newName(site, " landing "))
-        assertEquals("Landing.Artifact", com.slopus.happy.ui.vaults.newName(site, "Landing.Artifact"))
+    fun anAppKeepsItsUnseenSuffixThroughARename() {
+        val app = vaultItem("e", "v", "Launch.ARTIFACT", kind = VaultItem.ARTIFACT)
+        assertEquals("Launch", app.shownName)
+        assertEquals("landing.artifact", com.slopus.happy.ui.vaults.newName(app, " landing "))
+        // Its name as shown, untouched, is no change at all.
+        assertEquals("Launch.ARTIFACT", com.slopus.happy.ui.vaults.newName(app, "Launch"))
         assertEquals("notes.txt", com.slopus.happy.ui.vaults.newName(vaultItem("f", "v", "a.txt"), "notes.txt"))
+    }
+
+    @Test
+    fun aFolderOrPlainFileCantTakeTheSuffix() {
+        assertNull(com.slopus.happy.ui.vaults.newName(vaultItem("f", "v", "a.txt"), "a.artifact"))
+        assertNull(com.slopus.happy.ui.vaults.newName(vaultItem("d", "v", "Docs", kind = VaultItem.FOLDER), "Docs.Artifact"))
+    }
+
+    @Test
+    fun noScreenShowsTheSuffix() {
+        assertEquals("launch", VaultNames.shown("launch.artifact"))
+        assertEquals("notes.txt", VaultNames.shown("notes.txt"))
+        assertEquals(".artifact", VaultNames.shown(".artifact"))
+        assertEquals("/Apps/launch/img/hero.png", VaultNames.shownPath("/Apps/launch.artifact/img/hero.png"))
+        assertEquals("/", VaultNames.shownPath("/"))
     }
 
     @Test

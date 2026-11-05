@@ -46,8 +46,8 @@ import com.slopus.happy.ui.conversation.problemText
 import com.slopus.happy.vaults.VaultClient
 import com.slopus.happy.vaults.VaultDownloads
 import com.slopus.happy.vaults.VaultItem
+import com.slopus.happy.vaults.VaultNames
 import com.slopus.happy.vaults.VaultUploadSource
-import com.slopus.happy.vaults.VaultUploads
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -105,7 +105,7 @@ class VaultActions internal constructor(
     fun uploadFiles(parentId: String?) = pickFiles(parentId)
     fun uploadMedia(parentId: String?) = pickMedia(parentId)
     fun replace(entry: VaultItem) = pickReplacement(entry)
-    fun history(entry: VaultItem) = open(VaultHistoryRoute(session.connectionId, surfaceId, entry.id, entry.isFolder, entry.name))
+    fun history(entry: VaultItem) = open(VaultHistoryRoute(session.connectionId, surfaceId, entry.id, entry.isFolder, entry.shownName))
 
     /** Saves [entry] (a file's [version], null the latest) where the person picks, through the system's Save to. */
     fun save(entry: VaultItem, version: Int? = null) = pickPlace(entry, version)
@@ -116,6 +116,10 @@ class VaultActions internal constructor(
     fun restoreVersion(entry: VaultItem, version: Int) = change(entry) { routes.newVersion(it, fromVersion = version).first }
 
     internal fun created(parentId: String?, name: String) {
+        if (VaultNames.isArtifact(name.trim())) {
+            failure = resources.getString(R.string.vaults_name_reserved)
+            return
+        }
         scope.launch {
             try {
                 session.vaults.known(routes.createFolder(surfaceId, parentId, name.trim()))
@@ -128,7 +132,10 @@ class VaultActions internal constructor(
     }
 
     internal fun renamed(entry: VaultItem, name: String) {
-        val next = newName(entry, name)
+        val next = newName(entry, name) ?: run {
+            failure = resources.getString(R.string.vaults_name_reserved)
+            return
+        }
         if (next == entry.name) return
         change(entry, next) { routes.update(it, name = next) }
     }
@@ -163,7 +170,7 @@ class VaultActions internal constructor(
     }
 
     private fun describe(e: Exception, name: String): String = when {
-        e is AgentApiException && e.code == "name_taken" -> resources.getString(R.string.vaults_name_taken, name)
+        e is AgentApiException && e.code == "name_taken" -> resources.getString(R.string.vaults_name_taken, VaultNames.shown(name))
         e is AgentApiException && e.status == 409 -> resources.getString(R.string.vaults_changed_elsewhere)
         else -> resources.problemText(Conversation.describe(e))
     }
@@ -192,7 +199,7 @@ class VaultActions internal constructor(
                     .putExtra(Intent.EXTRA_STREAM, uri)
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 transfer = null
-                context.startActivity(Intent.createChooser(send, name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                context.startActivity(Intent.createChooser(send, VaultNames.shown(name)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -299,10 +306,17 @@ class VaultActions internal constructor(
     }
 }
 
-/** [typed] as [entry]'s new name: an artifact's keeps its ".artifact" suffix even when it was typed without it. */
-internal fun newName(entry: VaultItem, typed: String): String {
+/**
+ * [typed] as [entry]'s new name. An app's is typed without its ".artifact",
+ * which it keeps unseen; a folder's or plain file's can't take one (null).
+ */
+internal fun newName(entry: VaultItem, typed: String): String? {
     val name = typed.trim()
-    return if (entry.isArtifact && !VaultUploads.isArtifact(name)) name + VaultUploads.ARTIFACT_SUFFIX else name
+    return when {
+        entry.isArtifact -> if (name == entry.shownName) entry.name else VaultNames.appName(name)
+        VaultNames.isArtifact(name) -> null
+        else -> name
+    }
 }
 
 /**
@@ -408,7 +422,7 @@ fun VaultActionsHost(actions: VaultActions) {
         PromptModal(
             Prompt(
                 title = stringResource(R.string.vaults_rename),
-                defaultValue = entry.name,
+                defaultValue = entry.shownName,
                 confirmText = stringResource(R.string.vaults_rename),
                 allowBlank = false,
             ) { name -> if (name != null) actions.renamed(entry, name) },
@@ -424,7 +438,7 @@ fun VaultActionsHost(actions: VaultActions) {
     actions.deleting?.let { entry ->
         HappyAlert(
             Alert(
-                title = stringResource(R.string.vaults_delete_title, entry.name),
+                title = stringResource(R.string.vaults_delete_title, entry.shownName),
                 message = stringResource(if (entry.isFolder) R.string.vaults_delete_folder_message else R.string.vaults_delete_message),
                 buttons = listOf(
                     AlertButton(stringResource(R.string.common_cancel)),
@@ -439,7 +453,7 @@ fun VaultActionsHost(actions: VaultActions) {
         AlertDialog(
             onDismissRequest = {},
             modifier = Modifier.testTag(VaultActionTags.TRANSFER),
-            title = { Text(stringResource(R.string.vaults_downloading, transfer.name)) },
+            title = { Text(stringResource(R.string.vaults_downloading, VaultNames.shown(transfer.name))) },
             text = {
                 Column {
                     val total = transfer.total

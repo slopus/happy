@@ -24,6 +24,7 @@
     <string name="vaults_add_tier">Add a step</string>
     <string name="vaults_an_agent">An agent</string>
     <string name="vaults_another_folder">another folder</string>
+    <string name="vaults_app">App</string>
     <string name="vaults_bytes_of">%1$s of %2$s</string>
     <string name="vaults_changed_elsewhere">It was changed somewhere else meanwhile. Try again.</string>
     <string name="vaults_create">Create</string>
@@ -51,7 +52,6 @@
     <string name="vaults_keep_both">Keep both</string>
     <string name="vaults_kind">Vault</string>
     <string name="vaults_line">line %1$d</string>
-    <string name="vaults_markdown_site">Markdown site</string>
     <string name="vaults_max_age">Remove versions older than</string>
     <string name="vaults_max_versions">Keep at most</string>
     <string name="vaults_more_actions">More actions for %1$s</string>
@@ -60,6 +60,7 @@
     <string name="vaults_move_title">Moving “%1$s”</string>
     <string name="vaults_move_to_trash">Move to Trash</string>
     <string name="vaults_name">Name</string>
+    <string name="vaults_name_reserved">Names can’t end in “.artifact”.</string>
     <string name="vaults_name_taken">There’s already something called “%1$s” in that folder.</string>
     <string name="vaults_name_taken_message">Replace it with the one you’re uploading? Its earlier versions stay in its history.</string>
     <string name="vaults_name_taken_title">“%1$s” already exists</string>
@@ -136,7 +137,6 @@
     <string name="vaults_version_number">Version %1$d</string>
     <string name="vaults_versions">Versions</string>
     <string name="vaults_versions_footer">The newest version and pinned versions are always kept. Changes apply within an hour.</string>
-    <string name="vaults_web_page">Web page</string>
     <plurals name="vaults_days">
         <item quantity="one">%1$d day</item>
         <item quantity="other">%1$d days</item>
