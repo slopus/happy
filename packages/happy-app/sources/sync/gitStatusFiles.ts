@@ -40,8 +40,10 @@ export async function getGitStatusFiles(sessionId: string): Promise<GitStatusFil
 
         // Get git status in porcelain v2 format (includes branch info and repo check)
         // --untracked-files=all ensures we get individual files, not directories
+        // --no-optional-locks keeps this read from taking .git/index.lock, which
+        // would fail the agent's own git commands in the same tree (see gitStatusSync).
         const statusResult = await sessionBash(sessionId, {
-            command: 'git -c core.quotepath=false status --porcelain=v2 --branch --untracked-files=all',
+            command: 'git --no-optional-locks -c core.quotepath=false status --porcelain=v2 --branch --untracked-files=all',
             cwd: session.metadata.path,
             timeout: 10000
         });
@@ -53,9 +55,10 @@ export async function getGitStatusFiles(sessionId: string): Promise<GitStatusFil
 
         // Get line stats separately for unstaged (working tree vs index) and
         // staged (index vs HEAD) so a file with both kinds of changes doesn't
-        // double-count staged lines in its unstaged row.
+        // double-count staged lines in its unstaged row. Unstaged uses the plumbing
+        // `diff-files`, which never writes the index; `git diff` would take the lock.
         const diffStatResult = await sessionBash(sessionId, {
-            command: 'git -c core.quotepath=false diff --numstat && echo "---STAGED---" && git -c core.quotepath=false diff --cached --numstat',
+            command: 'git -c core.quotepath=false diff-files --numstat && echo "---STAGED---" && git -c core.quotepath=false diff --cached --numstat',
             cwd: session.metadata.path,
             timeout: 10000
         });

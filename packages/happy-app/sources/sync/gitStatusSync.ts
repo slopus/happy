@@ -146,8 +146,12 @@ export class GitStatusSync {
 
             // Get git status in porcelain v2 format (includes branch info)
             // --untracked-files=all ensures we get individual files, not directories
+            // --no-optional-locks: this poll runs in the agent's working tree while the
+            // agent works, and a plain `git status` takes .git/index.lock to refresh the
+            // index, which makes the agent's own commit or rebase fail with
+            // "Unable to create '.git/index.lock': File exists".
             const statusResult = await sessionBash(sessionId, {
-                command: 'git -c core.quotepath=false status --porcelain=v2 --branch --show-stash --untracked-files=all',
+                command: 'git --no-optional-locks -c core.quotepath=false status --porcelain=v2 --branch --show-stash --untracked-files=all',
                 cwd: session.metadata.path,
                 timeout: 10000
             });
@@ -157,9 +161,11 @@ export class GitStatusSync {
                 return;
             }
 
-            // Get git diff statistics for unstaged changes
+            // Get git diff statistics for unstaged changes. `git diff` refreshes the
+            // index under the same lock and ignores --no-optional-locks, so use the
+            // plumbing `diff-files`, which never writes the index.
             const diffStatResult = await sessionBash(sessionId, {
-                command: 'git -c core.quotepath=false diff --numstat',
+                command: 'git -c core.quotepath=false diff-files --numstat',
                 cwd: session.metadata.path,
                 timeout: 10000
             });
