@@ -224,6 +224,12 @@ final class VaultSettingsViewController: UIViewController {
 
     private func show(_ output: Output) -> Bool {
         guard output.width == list.contentWidth else { return false }
+        // Custom picked over a preset holds until the policy changes; then
+        // the policy shows as the preset it matches, or as Custom.
+        if customShown, let before = settings, let after = output.settings, before.retention != after.retention {
+            customShown = false
+            DispatchQueue.main.async { [weak self] in self?.updateInput() }
+        }
         settings = output.settings
         list.apply(output.items, animated: true, replan: output.replan)
         return true

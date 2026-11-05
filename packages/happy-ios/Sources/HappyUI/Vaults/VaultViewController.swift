@@ -29,6 +29,7 @@ final class VaultViewController: UIViewController, UISearchResultsUpdating {
     private var following: Task<Void, Never>?
     private var followingFolder: Task<Void, Never>?
     private var searching: Task<Void, Never>?
+    private var followingChanges: Task<Void, Never>?
     private var locating: Task<Void, Never>?
     /// The folders over this one, outermost first.
     private var ancestors: [VaultLocation.Ancestor] = []
@@ -78,6 +79,7 @@ final class VaultViewController: UIViewController, UISearchResultsUpdating {
         following?.cancel()
         followingFolder?.cancel()
         searching?.cancel()
+        followingChanges?.cancel()
         locating?.cancel()
         pipeline?.cancel()
     }
@@ -109,6 +111,13 @@ final class VaultViewController: UIViewController, UISearchResultsUpdating {
                 guard input.state != state else { return false }
                 input.state = state
                 return true
+            }
+        }
+        // A search on screen is asked again as the vault changes.
+        followingChanges = Task { [weak self] in
+            for await _ in await library.changes(surfaceId) {
+                guard let self else { return }
+                if self.searchController.isActive, !(self.searchController.searchBar.text ?? "").isEmpty { self.search(after: .milliseconds(600)) }
             }
         }
         if let folder {
@@ -344,7 +353,10 @@ final class VaultViewController: UIViewController, UISearchResultsUpdating {
 
     // MARK: Search
 
-    func updateSearchResults(for searchController: UISearchController) {
+    func updateSearchResults(for searchController: UISearchController) { search(after: .milliseconds(250)) }
+
+    /// Asks the computer once typing (or a burst of changes) pauses.
+    private func search(after pause: Duration) {
         let query = (searchController.searchBar.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         searching?.cancel()
         guard searchController.isActive, !query.isEmpty else {
@@ -358,8 +370,7 @@ final class VaultViewController: UIViewController, UISearchResultsUpdating {
         }
         let library = library, surfaceId = surfaceId
         searching = Task { [weak self] in
-            // Asked once typing pauses.
-            try? await Task.sleep(for: .milliseconds(250))
+            try? await Task.sleep(for: pause)
             guard !Task.isCancelled else { return }
             let found = try? await library.search(surfaceId, query: query)
             guard !Task.isCancelled, let self else { return }

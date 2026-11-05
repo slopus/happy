@@ -308,17 +308,19 @@ final class VaultActions: NSObject, UIDocumentPickerDelegate, PHPickerViewContro
         let target = FileManager.default.temporaryDirectory.appendingPathComponent("VaultShare/\(UUID().uuidString)/\(name)")
         let client = session.client
         downloading = Task { [weak self, weak alert] in
-            let result: Result<Void, Error> = await Task.detached(priority: .userInitiated) {
-                do {
-                    try await client.download(path, to: target) { written, total in
-                        let text = total.map { "\(VaultListItems.size(written)) / \(VaultListItems.size($0))" } ?? VaultListItems.size(written)
-                        Task { @MainActor in alert?.message = "\(name)\n\(text)" }
-                    }
-                    return .success(())
-                } catch {
-                    return .failure(error)
+            // Off the main actor: the client's read hops away on its own.
+            let result: Result<Void, Error>
+            do {
+                try await client.download(path, to: target) { written, total in
+                    let text = total.map { "\(VaultListItems.size(written)) / \(VaultListItems.size($0))" } ?? VaultListItems.size(written)
+                    Task { @MainActor in alert?.message = "\(name)\n\(text)" }
                 }
-            }.value
+                try Task.checkCancellation()
+                result = .success(())
+            } catch {
+                try? FileManager.default.removeItem(at: target.deletingLastPathComponent())
+                result = .failure(error)
+            }
             guard let self else { return }
             let finish = {
                 switch result {

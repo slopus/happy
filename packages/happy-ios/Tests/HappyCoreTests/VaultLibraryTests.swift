@@ -409,6 +409,20 @@ final class VaultLibraryTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: file.path), "the library removes the file once the entry is made")
     }
 
+    func testAFileFoundBySearchInAFolderNeverOpenedCanBeChanged() async throws {
+        let server = FakeVaultServer(surfaceId: surfaceId)
+        await server.seed("f1", "Docs", kind: .folder)
+        await server.seed("e1", "plan.md", parent: "f1")
+        let library = library(server)
+        let root = await watch(library)
+        try await eventually { root.names == ["Docs"] && !root.state.kept }
+        let found = try await library.search(surfaceId, query: "plan")
+        XCTAssertEqual(found.results.map(\.entry.id), ["e1"])
+        try await library.rename(surfaceId, "e1", to: "roadmap.md")
+        let name = await server.entries["e1"]?.name
+        XCTAssertEqual(name, "roadmap.md")
+    }
+
     func testAnUploadOverAFileMakesANewVersionOfIt() async throws {
         let server = FakeVaultServer(surfaceId: surfaceId)
         await server.seed("e1", "notes.txt")

@@ -96,7 +96,13 @@ public actor VaultLibrary {
         var trash = VaultTrashState()
         var trashListeners: [UUID: AsyncStream<VaultTrashState>.Continuation] = [:]
         var trashReading: Task<Void, Never>?
+        /// The Trash changed while it was being read: read it once more.
+        var trashAgain = false
+        /// What the computer last said.
         var settings: VaultSettings?
+        /// The newest policy sent and not yet answered, shown over it.
+        var settingsEdit: (token: UUID, retention: VaultRetention)?
+        var changeListeners: [UUID: AsyncStream<Void>.Continuation] = [:]
         var settingsListeners: [UUID: AsyncStream<VaultSettings?>.Continuation] = [:]
         var entryListeners: [String: [UUID: AsyncStream<VaultEntryEvent>.Continuation]] = [:]
         var uploads: [VaultUploadState] = []
@@ -124,6 +130,9 @@ public actor VaultLibrary {
     private var uploadTasks: [String: Task<Void, Never>] = [:]
     private var uploadFiles: [String: URL] = [:]
     private var uploadPublish: Set<String> = []
+    /// The file each upload makes, named once, so a retry after a lost
+    /// answer finds the file it made instead of making another.
+    private var placements: [String: (id: String, mutationId: String)] = [:]
     private var names: [String: String] = [:]
     private var following: Task<Void, Never>?
 
@@ -173,6 +182,13 @@ public actor VaultLibrary {
             for (key, folder) in vault.folders where !folder.listeners.isEmpty { refresh(surfaceId, folder: key.isEmpty ? nil : key) }
             if !vault.trashListeners.isEmpty { refreshTrash(surfaceId) }
             if !vault.settingsListeners.isEmpty { Task { await readSettings(surfaceId) } }
+            // What a preview or a history shows, which may be in no open folder.
+            for id in vault.entryListeners.keys {
+                let folder = vault.entries[id]?.isFolder ?? false
+                Task { [routes] in
+                    if let location = try? await routes.vaultEntry(surfaceId, id, folder: folder) { self.take(location.entry) }
+                }
+            }
         }
     }
 
@@ -200,6 +216,11 @@ public actor VaultLibrary {
         default:
             break
         }
+        // The Trash hears of every deletion, restore and removal, wherever it was.
+        let type = event["type"]?.stringValue ?? ""
+        if type.hasSuffix(".removed") || payload?["changes"]?["deletedAt"] != nil, vault.trash.loaded {
+            refreshTrash(surfaceId)
+        }
         let outcome = VaultReducer.receive(event, surfaceId: surfaceId, into: &vault.entries,
                                            watched: { vault.entryListeners[$0]?.isEmpty == false },
                                            open: { vault.folders[$0 ?? ""] != nil })
@@ -218,10 +239,6 @@ public actor VaultLibrary {
             vaults[surfaceId] = vault
             notify(surfaceId, id, .removed)
             changed(surfaceId)
-        }
-        let changes = payload?["changes"]?.objectValue
-        if event["type"]?.stringValue?.hasSuffix(".removed") == true || changes?["deletedAt"] != nil, vaults[surfaceId]?.trash.loaded == true {
-            refreshTrash(surfaceId)
         }
     }
 
@@ -315,14 +332,17 @@ public actor VaultLibrary {
         for entry in VaultReducer.children(folder, in: vault.entries) where !read.contains(entry.id) && !touched.contains(entry.id) && !entry.version.isEmpty {
             vault.entries[entry.id] = nil
         }
+        var renewed: [VaultEntry] = []
         for entry in fetched {
             if touched.contains(entry.id), let held = vault.entries[entry.id], VaultReducer.newer(held.version, than: entry.version) { continue }
+            if vault.entries[entry.id] != entry, vault.entryListeners[entry.id] != nil { renewed.append(entry) }
             vault.entries[entry.id] = entry
         }
         vault.folders[key]?.touched = []
         vault.folders[key]?.status = .ready
         vault.folders[key]?.read = true
         vaults[surfaceId] = vault
+        for entry in renewed { notify(surfaceId, entry.id, .entry(entry)) }
         changed(surfaceId)
     }
 
@@ -362,6 +382,7 @@ public actor VaultLibrary {
     /// Publishes every open folder of the vault, and keeps the read ones.
     private func changed(_ surfaceId: String) {
         guard let vault = vaults[surfaceId] else { return }
+        for listener in vault.changeListeners.values { listener.yield() }
         for key in vault.folders.keys {
             publish(surfaceId, folder: key)
             scheduleKeep(surfaceId, folder: key)
@@ -528,7 +549,7 @@ public actor VaultLibrary {
     private func unlistenTrash(_ surfaceId: String, _ id: UUID) { vaults[surfaceId]?.trashListeners[id] = nil }
 
     private func refreshTrash(_ surfaceId: String) {
-        guard vaults[surfaceId]?.trashReading == nil else { return }
+        guard vaults[surfaceId]?.trashReading == nil else { vaults[surfaceId]?.trashAgain = true; return }
         vaults[surfaceId]?.trashReading = Task {
             // Changes in a burst read once.
             try? await Task.sleep(for: .milliseconds(150))
@@ -537,7 +558,13 @@ public actor VaultLibrary {
     }
 
     private func readTrash(_ surfaceId: String) async {
-        defer { vaults[surfaceId]?.trashReading = nil }
+        defer {
+            vaults[surfaceId]?.trashReading = nil
+            if vaults[surfaceId]?.trashAgain == true {
+                vaults[surfaceId]?.trashAgain = false
+                refreshTrash(surfaceId)
+            }
+        }
         var items: [VaultTrashItem] = []
         var cursor: String?
         do {
@@ -601,6 +628,11 @@ public actor VaultLibrary {
 
     private func readSettings(_ surfaceId: String) async {
         guard let settings = try? await routes.vaultSettings(surfaceId) else { return }
+        settle(surfaceId, settings)
+    }
+
+    /// Takes settings the computer answered with, unless newer ones are held.
+    private func settle(_ surfaceId: String, _ settings: VaultSettings) {
         guard vaults[surfaceId]?.settings.map({ !VaultReducer.newer($0.version, than: settings.version) }) ?? true else { return }
         vaults[surfaceId]?.settings = settings
         publishSettings(surfaceId)
@@ -608,39 +640,66 @@ public actor VaultLibrary {
 
     private func publishSettings(_ surfaceId: String) {
         guard let vault = vaults[surfaceId] else { return }
-        for listener in vault.settingsListeners.values { listener.yield(vault.settings) }
+        var shown = vault.settings
+        if let edit = vault.settingsEdit { shown?.retention = edit.retention }
+        for listener in vault.settingsListeners.values { listener.yield(shown) }
     }
 
-    /// Replaces the policy; shown at once, undone when refused.
+    /// Replaces the policy; shown at once, undone when refused. A later
+    /// edit shows over this one whatever answers first.
     public func setRetention(_ surfaceId: String, _ retention: VaultRetention) async throws {
-        let before = vaults[surfaceId]?.settings
-        if var shown = before {
-            shown.retention = retention
-            vaults[surfaceId]?.settings = shown
+        let token = UUID()
+        vaults[surfaceId]?.settingsEdit = (token, retention)
+        publishSettings(surfaceId)
+        defer {
+            if vaults[surfaceId]?.settingsEdit?.token == token { vaults[surfaceId]?.settingsEdit = nil }
             publishSettings(surfaceId)
         }
-        do {
-            let settings = try await routes.updateVaultSettings(surfaceId, retention: retention, mutationId: ClientID.make())
-            vaults[surfaceId]?.settings = settings
-            publishSettings(surfaceId)
-        } catch {
-            vaults[surfaceId]?.settings = before
-            publishSettings(surfaceId)
-            throw error
-        }
+        let settings = try await routes.updateVaultSettings(surfaceId, retention: retention, mutationId: ClientID.make())
+        settle(surfaceId, settings)
     }
 
     // MARK: Reads passed through
 
+    /// What matches `query`; its items are held, so they can be changed.
     public func search(_ surfaceId: String, query: String) async throws -> (results: [VaultSearchResult], truncated: Bool) {
-        try await routes.vaultSearch(surfaceId, query: query)
+        let found = try await routes.vaultSearch(surfaceId, query: query)
+        for result in found.results { take(result.entry) }
+        return found
     }
+
+    /// A signal each time anything in the vault changes here, for what
+    /// isn't a folder's state (a search on screen).
+    public func changes(_ surfaceId: String) -> AsyncStream<Void> {
+        start()
+        if vaults[surfaceId] == nil { vaults[surfaceId] = Vault() }
+        let id = UUID()
+        let (stream, continuation) = AsyncStream.makeStream(of: Void.self, bufferingPolicy: .bufferingNewest(1))
+        vaults[surfaceId]?.changeListeners[id] = continuation
+        continuation.onTermination = { [weak self] _ in Task { await self?.unlistenChanges(surfaceId, id) } }
+        return stream
+    }
+
+    private func unlistenChanges(_ surfaceId: String, _ id: UUID) { vaults[surfaceId]?.changeListeners[id] = nil }
 
     /// An entry's surviving versions, newest first, and its activity.
     public func history(_ surfaceId: String, _ entryId: String) async throws -> (versions: [VaultVersion], activity: [VaultActivity]) {
-        async let versions = routes.vaultVersions(surfaceId, entryId, pageCursor: nil)
-        async let activity = routes.vaultActivity(surfaceId, entryId, folder: false, pageCursor: nil)
-        return (try await versions.items, try await activity.items)
+        let routes = routes
+        async let versions = Self.all { try await routes.vaultVersions(surfaceId, entryId, pageCursor: $0) }
+        async let activity = Self.all { try await routes.vaultActivity(surfaceId, entryId, folder: false, pageCursor: $0) }
+        return (try await versions, try await activity)
+    }
+
+    /// Every page of a paged read.
+    private static func all<Item: Sendable>(_ page: @Sendable (String?) async throws -> VaultPage<Item>) async throws -> [Item] {
+        var items: [Item] = []
+        var cursor: String?
+        repeat {
+            let next = try await page(cursor)
+            items += next.items
+            cursor = next.next
+        } while cursor != nil && !Task.isCancelled
+        return items
     }
 
     public func version(_ surfaceId: String, _ entryId: String, number: Int?) async throws -> VaultVersion {
@@ -694,6 +753,7 @@ public actor VaultLibrary {
     }
 
     public func cancelUpload(_ surfaceId: String, _ id: String) {
+        placements[id] = nil
         uploadTasks[id]?.cancel()
         uploadTasks[id] = nil
         vaults[surfaceId]?.uploads.removeAll { $0.id == id }
@@ -722,10 +782,13 @@ public actor VaultLibrary {
                     try await routes.createVaultVersion(surfaceId, replacing, uploadId: upload.id, fromVersion: nil, ifMatch: ifMatch, mutationId: mutationId).entry
                 }
             } else {
-                let made = try await routes.createVaultEntry(surfaceId, id: TodoID.make(), parentId: item.parentId, name: item.name, folder: false, uploadId: upload.id, mutationId: ClientID.make())
+                let placement = placements[id] ?? (TodoID.make(), ClientID.make())
+                placements[id] = placement
+                let made = try await routes.createVaultEntry(surfaceId, id: placement.id, parentId: item.parentId, name: item.name, folder: false, uploadId: upload.id, mutationId: placement.mutationId)
                 take(made)
             }
             staged[id] = nil
+            placements[id] = nil
             vaults[surfaceId]?.uploads.removeAll { $0.id == id }
             if let file = uploadFiles.removeValue(forKey: id) { try? FileManager.default.removeItem(at: file) }
             changed(surfaceId)
