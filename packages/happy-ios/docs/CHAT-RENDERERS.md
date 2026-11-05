@@ -15,8 +15,9 @@ controller actions.
 
 `ChatUltraListAdapter` uses `UltraListView(engineMode: .keyframe)` standing
 the natural way up, oldest row at the top, with bottom gravity
-(`ListBottomGravity`): the list rests on its newest row and follows a reply
-growing there by two lines of body text (`ChatFollow`). `NodeRow` prepares
+(`ListBottomGravity`): the list rests on its newest row, follows a reply
+streaming there by two lines of body text (`ChatFollow`, `isStreaming`) and
+shows a message that arrives finished whole. `NodeRow` prepares
 and draws static boxes, text and icons in the library's bounded preparation
 window. TextKit drawing and link hit testing share a lock because they can
 run on different queues. Drawings resolve the captured appearance explicitly
