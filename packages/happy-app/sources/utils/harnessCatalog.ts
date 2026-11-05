@@ -10,6 +10,7 @@ export const HARNESS_NAMES: Record<NewSessionAgentType, string> = {
     codex: 'Codex',
     rig: 'Happy',
     agy: 'Antigravity',
+    copilot: 'GitHub Copilot',
     gemini: 'Gemini',
     openclaw: 'OpenClaw',
 };
@@ -33,6 +34,7 @@ export const HARNESS_ORDER: readonly NewSessionAgentType[] = [
     'claude',
     'codex',
     'agy',
+    'copilot',
     'rig',
 ];
 
@@ -62,9 +64,10 @@ export function isHarnessAvailable({
     key: NewSessionAgentType;
 }): boolean {
     if (key === 'rig') return happyAgentAvailable;
-    // Antigravity is niche enough that an old or incomplete capability report
-    // must not advertise it speculatively. Its daemon has to say it is installed.
+    // Antigravity and Copilot are niche enough that an old or incomplete capability report
+    // must not advertise them speculatively. Their daemon has to say they are installed.
     if (key === 'agy') return availability?.agy === true;
+    if (key === 'copilot') return availability?.copilot === true;
     return !availability || availability[key] === true;
 }
 
@@ -90,10 +93,10 @@ export function listAvailableHarnesses({
     selected?: NewSessionAgentType | null;
 }): HarnessOption[] {
     const keys = HARNESS_ORDER.filter((key) => (
-        (key === selected && key !== 'agy')
+        (key === selected && key !== 'agy' && key !== 'copilot')
         || isHarnessAvailable({ availability, happyAgentAvailable, key })
     ));
-    const fallback = HARNESS_ORDER.filter((key) => key !== 'agy');
+    const fallback = HARNESS_ORDER.filter((key) => key !== 'agy' && key !== 'copilot');
     return (keys.length > 0 ? keys : fallback).map((key) => ({
         key,
         name: HARNESS_NAMES[key],

@@ -10,6 +10,7 @@ export interface CLIAvailability {
   gemini: boolean;
   openclaw: boolean;
   agy: boolean;
+  copilot: boolean;
   detectedAt: number;
 }
 
@@ -47,7 +48,10 @@ function detectPosix(): CLIAvailability {
   const openclawEnv = !!process.env.OPENCLAW_GATEWAY_URL;
   const openclaw = openclawCommand || openclawConfig || openclawEnv;
 
-  return { claude, codex, gemini, openclaw, agy, detectedAt: Date.now() };
+  // Copilot: check for standalone copilot binary
+  const copilot = detectCopilotPosix();
+
+  return { claude, codex, gemini, openclaw, agy, copilot, detectedAt: Date.now() };
 }
 
 function detectWindows(): CLIAvailability {
@@ -71,5 +75,18 @@ function detectWindows(): CLIAvailability {
   const openclawEnv = !!process.env.OPENCLAW_GATEWAY_URL;
   const openclaw = openclawCommand || openclawConfig || openclawEnv;
 
-  return { claude, codex, gemini, openclaw, agy, detectedAt: Date.now() };
+  // Copilot: check for standalone copilot binary
+  const copilot = detectCopilotWindows(checkCommand);
+
+  return { claude, codex, gemini, openclaw, agy, copilot, detectedAt: Date.now() };
+}
+
+/** Check for standalone `copilot` CLI on POSIX systems */
+function detectCopilotPosix(): boolean {
+  return commandExists('copilot');
+}
+
+/** Check for standalone `copilot` CLI on Windows */
+function detectCopilotWindows(checkCommand: (name: string) => boolean): boolean {
+  return checkCommand('copilot');
 }

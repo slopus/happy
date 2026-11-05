@@ -40,6 +40,33 @@ export function parseResumeCommandArgs(args: string[]): { showHelp: boolean; ses
     };
 }
 
+/**
+ * Note on ACP / Copilot Session Resumption Architecture:
+ *
+ * Backends running over the Agent Client Protocol (ACP) — including GitHub Copilot
+ * (`copilot --acp`), Gemini (`gemini --experimental-acp`), and OpenCode (`opencode acp`) —
+ * operate as stateless stdio child processes managed by Happy's ACP harness (`runAcp.ts`).
+ *
+ * 1. Stateless Lifecycle:
+ *    When Happy spawns an ACP agent, `runAcp()` initiates a clean session turn loop via
+ *    `backend.startSession()`. The child process lifetime is bound to that execution context.
+ *
+ * 2. Protocol & CLI Constraints:
+ *    The standalone GitHub Copilot binary does not currently expose a `--resume <session-id>`
+ *    CLI parameter or an ACP protocol RPC method for reattaching to an existing or historical
+ *    session. ACP itself does not standardize persistent session reattachment across process boundaries.
+ *
+ * 3. Happy Resumption Scope:
+ *    In Happy's architecture (`happy resume` and `buildResumeLaunch`), session resumption is
+ *    strictly supported for backends providing native persistence primitives:
+ *    - Claude Code: via `claudeSessionId` (`claude --resume <uuid>`)
+ *    - Codex: via `codexThreadId` (`codex --resume <threadId>`)
+ *
+ * 4. Maintenance & Forward Compatibility:
+ *    When a Copilot session terminates or Happy exits, the session lifecycle moves to archived.
+ *    If upstream Copilot CLI or ACP later introduces persistent session identifiers and reattach
+ *    RPCs/CLI flags, those can be recorded in session metadata and wired into `buildResumeLaunch`.
+ */
 function resolveFlavor(metadata: Metadata): 'codex' | 'claude' | null {
     if (metadata.flavor === 'codex' || metadata.codexThreadId) {
         return 'codex';
