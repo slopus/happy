@@ -321,6 +321,12 @@ const ChatListInternal = React.memo((props: {
     // unchanged: without that, every background page would hand the list a new
     // array and re-render every mounted row for content that did not move.
     const messages = props.messages;
+    // Messages arrive newest-first, so the first match is the most recently
+    // received agent reply.
+    const latestAgentMessageId = React.useMemo(() => {
+        const found = messages.find((m) => m.kind === 'agent-text' && !m.isThinking);
+        return found?.id ?? null;
+    }, [messages]);
     const windowRef = React.useRef<Message[]>(EMPTY_MESSAGES);
     const windowedMessages = React.useMemo(() => {
         if (messages.length === 0) return EMPTY_MESSAGES;
@@ -603,10 +609,11 @@ const ChatListInternal = React.memo((props: {
                     message={item.message}
                     metadata={props.metadata}
                     sessionId={props.sessionId}
+                    isLatestAgentMessage={item.message.id === latestAgentMessageId}
                 />
             </DiffSyntaxCell>
         );
-    }, [props.metadata, props.sessionId, syntaxViewport, isGroupExpanded, handleToggleGroup]);
+    }, [props.metadata, props.sessionId, syntaxViewport, isGroupExpanded, handleToggleGroup, latestAgentMessageId]);
 
     // The list is inverted, so offset 0 is the newest message and growing
     // offsets walk back through history.
