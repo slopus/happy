@@ -51,6 +51,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import coil3.asImage
+import com.slopus.happy.artifacts.ArtifactCover
+import com.slopus.happy.feed.FeedCovers
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.ByteArrayOutputStream
@@ -133,12 +136,13 @@ class ArtifactsListTest {
         assertDp("the first heading is 36 tall", 36, heading.height)
         assertDp("its card starts under it", heading.bottom, row.top)
         assertDp("a row with a tile is at least 60", 60, row.height)
-        assertDp("the tile is 16 into a card 16 in", 32, tile.left)
-        assertDp("the tile is 40", 40, tile.width)
+        assertDp("the slot is 16 into a card 16 in", 32, tile.left)
+        assertDp("the slot is 16:9 at the tile's height", 72, tile.width)
+        assertDp("the slot is 40 tall", 40, tile.height)
         assertDp("centred in the row", (row.top + row.bottom) / 2, (tile.top + tile.bottom) / 2)
-        assertDp("the title 12 after it", 84, title.left)
+        assertDp("the title 12 after it", 116, title.left)
         assertDp("the time ends 16 inside the card", PHONE_WIDTH - 32, trailing.right)
-        assertDp("the hairline from the title's start", 84, divider.left)
+        assertDp("the hairline from the title's start", 116, divider.left)
         assertDp("to the card's edge", PHONE_WIDTH - 16, divider.right)
         assertDp("a hairline", (1f / 3f).dp, divider.height)
     }
@@ -221,8 +225,71 @@ class ArtifactsListTest {
         show(ArtifactCatalogFeed.State(pictures, loaded = true), thumbnails = ArtifactThumbnails(files, scope))
         rule.waitUntil(5_000) { rule.onAllNodesWithTag(ArtifactsTags.THUMBNAIL, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         val thumbnail = rule.node(ArtifactsTags.THUMBNAIL).bounds
-        assertDp("the picture covers the tile", 40, thumbnail.width)
+        assertDp("the picture covers the slot", 72, thumbnail.width)
         assertTrue(thumbnail.left.value > 0)
+    }
+
+    private val wide = ArtifactCover("cover.png", "image/png", ArtifactCover.Aspect.Wide)
+    private val square = ArtifactCover("chart.png", "image/png", ArtifactCover.Aspect.Square)
+    private val covered = listOf(
+        summary("c1", "Q3 revenue", "html", "2026-11-02T11:00").copy(cover = wide, background = "#0b1020"),
+        summary("c2", "Pipeline by stage", "html", "2026-11-02T10:30").copy(cover = square),
+        summary("c3", "Release notes", "markdown", "2026-11-02T09:41"),
+        // A shape this phone doesn't draw is the glyph.
+        summary("c4", "Funnel", "html", "2026-11-02T09:00").copy(cover = ArtifactCover("funnel.svg", "image/svg+xml", ArtifactCover.Aspect.Square)),
+    )
+
+    /** The covers drawn here: a blue card for the wide one, a warm chart for the square. */
+    private val coverLoader = coil3.ImageLoader.Builder(androidx.test.core.app.ApplicationProvider.getApplicationContext())
+        .components {
+            add(
+                coil3.test.FakeImageLoaderEngine.Builder()
+                    .intercept({ it is ByteArray && it.size == 1 }, chart(160, 90, 0xFF0B1020.toInt(), 0xFF5B8CFF.toInt()).asImage())
+                    .default(chart(120, 120, 0xFFF8F6F0.toInt(), 0xFFEB5757.toInt()).asImage())
+                    .build(),
+            )
+        }
+        .build()
+
+    private fun chart(width: Int, height: Int, ground: Int, ink: Int): Bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply {
+        val canvas = Canvas(this)
+        canvas.drawColor(ground)
+        val paint = android.graphics.Paint().apply { color = ink }
+        listOf(0.3f, 0.5f, 0.45f, 0.7f).forEachIndexed { index, value ->
+            val step = width / 5f
+            canvas.drawRect(step * (index + 0.6f), height * (0.9f - value), step * (index + 1.3f), height * 0.9f, paint)
+        }
+    }
+
+    private fun showCovered(dark: Boolean = false) {
+        // One byte for the wide cover, two for the square, so the fake engine tells them apart.
+        val covers = FeedCovers { cover -> if (cover.path == "cover.png") ByteArray(1) else ByteArray(2) }
+        rule.setHappyContent(dark) {
+            androidx.compose.runtime.CompositionLocalProvider(com.slopus.happy.ui.components.LocalImageLoader provides coverLoader) {
+                ArtifactsScreen(ArtifactCatalogFeed.State(covered, loaded = true), {}, {}, {}, clock = { now }, covers = covers)
+            }
+        }
+        rule.waitForIdle()
+    }
+
+    @Test fun coversStandInTheirSlotAndEveryRowKeepsItsHeight() {
+        showCovered()
+        val slots = rule.onAllNodesWithTag(CardListTags.LEADING, useUnmergedTree = true)
+        val rows = rule.onAllNodesWithTag(ArtifactsTags.ROW, useUnmergedTree = true)
+        for (index in covered.indices) {
+            assertDp("slot $index width", 72, slots[index].bounds.width)
+            assertDp("slot $index height", 40, slots[index].bounds.height)
+            assertDp("row $index height", 60, rows[index].bounds.height)
+        }
+        // Two covers; the markdown and the SVG ones keep their glyphs.
+        rule.onAllNodesWithTag(ArtifactsTags.COVER, useUnmergedTree = true).assertCountEquals(2)
+        rule.onAllNodesWithTag(ArtifactsTags.GLYPH, useUnmergedTree = true).assertCountEquals(2)
+        shot("artifacts-covers")
+    }
+
+    @Test fun coversInTheDark() {
+        showCovered(dark = true)
+        shot("artifacts-covers-dark")
     }
 
     @Test fun theListDark() {

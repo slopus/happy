@@ -114,6 +114,7 @@ private fun AgentArtifacts(graph: AppGraph, nav: NavHostController, route: Agent
         onRefresh = { feed?.refresh() },
         thumbnails = holder.thumbnails,
         link = link,
+        covers = session?.feedCovers,
     )
 }
 

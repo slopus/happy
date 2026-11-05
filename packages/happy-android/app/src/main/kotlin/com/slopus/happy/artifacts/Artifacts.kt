@@ -103,6 +103,11 @@ data class ArtifactCover(val path: String, val mimeType: String, val aspect: Asp
 
         /** The wire's `summary`: one line, or null for none. */
         fun summary(value: JsonElement?): String? = value.str?.replace(Regex("\\s+"), " ")?.trim()?.takeIf { it.isNotEmpty() }
+
+        private val BACKGROUND = Regex("^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
+
+        /** The wire's `background` (API.md "Backgrounds"): `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa` in lower case, and nothing else. */
+        fun background(value: JsonElement?): String? = value.str?.takeIf { BACKGROUND.matches(it) }?.lowercase()
     }
 }
 

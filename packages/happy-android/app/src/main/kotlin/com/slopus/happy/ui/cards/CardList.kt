@@ -27,6 +27,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.ui.components.HomeCardPlace
 import com.slopus.happy.ui.components.HomeCardSpec
@@ -137,7 +138,7 @@ fun CardHeading(text: String, afterCard: Boolean, modifier: Modifier = Modifier,
 
 /**
  * One row of a card (iOS's `CardRowLayout`): [leading] (a 40 tile or
- * picture) 16 in, the [title] (16/20, up to [titleLines]) 12 after it, or
+ * picture, [leadingWidth] wide where it is wider: the artifacts' 16:9) 16 in, the [title] (16/20, up to [titleLines]) 12 after it, or
  * 16 in without one, [subtitle] (13/16 secondary) 2 under it, [trailing]
  * (13/16 secondary) on the title's first line, ending 16 in. As tall as the
  * text and 10 above and below, never under 60 with a tile or 44 without;
@@ -156,6 +157,7 @@ fun CardRow(
     trailing: String? = null,
     leading: (@Composable BoxScope.() -> Unit)? = null,
     titleLines: Int = 2,
+    leadingWidth: Dp = CardListSpec.tile,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     /** Marks the whole slot. */
@@ -171,7 +173,7 @@ fun CardRow(
         bottomStart = if (place.last) radius else 0.dp,
         bottomEnd = if (place.last) radius else 0.dp,
     )
-    val textStart = CardListSpec.inset + if (leading != null) CardListSpec.tile + CardListSpec.tileGap else 0.dp
+    val textStart = CardListSpec.inset + if (leading != null) leadingWidth + CardListSpec.tileGap else 0.dp
     Box(
         modifier
             .contentMaxWidth(LocalWindowLayout.current)
@@ -199,7 +201,7 @@ fun CardRow(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (leading != null) {
-                    Box(Modifier.size(CardListSpec.tile).testTag(CardListTags.LEADING), contentAlignment = Alignment.Center, content = leading)
+                    Box(Modifier.size(leadingWidth, CardListSpec.tile).testTag(CardListTags.LEADING), contentAlignment = Alignment.Center, content = leading)
                     Spacer(Modifier.width(CardListSpec.tileGap))
                 }
                 Column(Modifier.weight(1f)) {

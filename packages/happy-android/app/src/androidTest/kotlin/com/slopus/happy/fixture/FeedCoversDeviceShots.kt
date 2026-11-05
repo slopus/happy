@@ -82,6 +82,30 @@ class FeedCoversDeviceShots {
 
     @Test fun captureDark() = show(dark = true)
 
+    @Test fun captureList() = list(dark = false)
+
+    @Test fun captureListDark() = list(dark = true)
+
+    /** The artifacts list over the same daemon: a wide cover, a square one, a picture without one, and a glyph. */
+    private fun list(dark: Boolean) {
+        rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
+        val files = ArtifactClient(AgentClient(daemon, "fixture"))
+        val catalog = com.slopus.happy.artifacts.ArtifactCatalogFeed(scope, { files.catalog(it) }, { files.artifact(it) }, kept = { null }, keep = {})
+        rule.runOnUiThread { catalog.start(kotlinx.coroutines.flow.emptyFlow()) }
+        val thumbnails = com.slopus.happy.ui.artifacts.ArtifactThumbnails(files, scope)
+        val covers = FeedCovers.of(files, null)
+        rule.setContent {
+            HappyTheme(preference = if (dark) com.slopus.happy.ui.theme.ThemePreference.Dark else com.slopus.happy.ui.theme.ThemePreference.Light) {
+                val state by catalog.state.collectAsState()
+                com.slopus.happy.ui.artifacts.ArtifactsScreen(state, {}, {}, {}, thumbnails, covers = covers)
+            }
+        }
+        rule.waitUntil(10_000) { daemon.requests.count { it.contains("/files/") } >= 3 }
+        rule.waitForIdle()
+        SystemClock.sleep(1500)
+        device.takeScreenshot(File(evidence, "artifacts-list-covers${if (dark) "-dark" else ""}.png"))
+    }
+
     private fun show(dark: Boolean) {
         val suffix = if (dark) "-dark" else ""
         rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
@@ -114,7 +138,8 @@ class FeedCoversDeviceShots {
         // Before the pictures land, each post already has its height, on its ground.
         device.takeScreenshot(File(evidence, "feed-covers-loading$suffix.png"))
         rule.waitUntil(10_000) { daemon.requests.count { it.endsWith("/files/cover.png") } >= 2 }
-        SystemClock.sleep(1500)
+        rule.waitForIdle()
+        SystemClock.sleep(3000)
         device.takeScreenshot(File(evidence, "feed-covers-all$suffix.png"))
         rule.onNodeWithTag(FeedTags.LIST).performScrollToNode(hasText("Release notes"))
         rule.waitForIdle()
@@ -144,11 +169,22 @@ class FeedCoversDeviceShots {
         val requests: MutableList<String> = Collections.synchronizedList(ArrayList())
         private val wide by lazy { wideCover() }
         private val square by lazy { squareCover() }
+        /** An older daemon's picture artifact: no cover, its own file as the row's thumbnail. */
+        private val photo by lazy {
+            val bitmap = Bitmap.createBitmap(640, 480, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            canvas.drawColor(Color.rgb(120, 190, 230))
+            canvas.drawRect(0f, 330f, 640f, 480f, Paint().apply { color = Color.rgb(70, 150, 90) })
+            canvas.drawCircle(480f, 130f, 70f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(255, 214, 90) })
+            png(bitmap)
+        }
 
         override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
             requests += "$method $path"
             val route = path.substringBefore('?')
             return when {
+                route == "/v0/artifacts" -> json(CATALOG.replace("NOW", now.toString()))
+                route == "/v0/artifacts/fx-photo/versions/1/files/team.png" -> TransportResponse(200, body = photo)
                 route == "/v0/health" -> json("""{"capabilities":{"feed":true,"feedSubjectFilter":true,"artifactCovers":true}}""")
                 route == "/v0/feed" && "subjects=artifact,task" in path -> json(page(highlights = true))
                 route == "/v0/feed" -> json(page(highlights = false))
@@ -236,6 +272,19 @@ class FeedCoversDeviceShots {
     }
 
     private companion object {
+        val CATALOG = """{"artifacts":[
+            {"id":"fx-q3","type":"html","title":"Q3 revenue","latestVersion":2,"createdAt":NOW,"updatedAt":NOW,"background":"#0b1020",
+                "entry":{"path":"index.html","mimeType":"text/html","size":10},
+                "cover":{"path":"cover.png","mimeType":"image/png","width":1600,"height":900,"aspect":"wide"}},
+            {"id":"fx-pipeline","type":"html","title":"Pipeline by stage","latestVersion":1,"createdAt":NOW,"updatedAt":NOW,
+                "entry":{"path":"index.html","mimeType":"text/html","size":10},
+                "cover":{"path":"cover.png","mimeType":"image/png","width":1200,"height":1200,"aspect":"square"}},
+            {"id":"fx-photo","type":"image","title":"Team offsite","latestVersion":1,"createdAt":NOW,"updatedAt":NOW,
+                "entry":{"path":"team.png","mimeType":"image/png","size":10}},
+            {"id":"fx-notes","type":"markdown","title":"Release notes","latestVersion":3,"createdAt":NOW,"updatedAt":NOW,
+                "entry":{"path":"index.md","mimeType":"text/markdown","size":10}}
+        ],"nextPageCursor":null}"""
+
         val BOOTSTRAP = """{
             "projects":[],"workspaces":[],"taskMemberships":[],"cursor":"c0","profile":{"userId":"u1"},
             "bots":[{"id":"b1","name":"Scout","version":"01","orderKey":"1","status":"active","archivedAt":null,

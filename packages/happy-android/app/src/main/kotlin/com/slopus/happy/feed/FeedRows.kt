@@ -146,8 +146,6 @@ class FeedLookups(
         val background: String? = null,
     ) {
         companion object {
-            private val BACKGROUND = Regex("^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
-
             /** An artifact object (`GET /v0/artifacts/:id`), a tombstone too; a missing `cover` or `summary` (an older daemon) is none. */
             fun parse(o: JsonObject) = Artifact(
                 title = o["title"].str.orEmpty(),
@@ -156,7 +154,7 @@ class FeedLookups(
                 deleted = o["status"].str == "deleted",
                 cover = ArtifactCover.parse(o["cover"]),
                 summary = ArtifactCover.summary(o["summary"]),
-                background = o["background"].str?.takeIf { BACKGROUND.matches(it) }?.lowercase(),
+                background = ArtifactCover.background(o["background"]),
             )
         }
     }

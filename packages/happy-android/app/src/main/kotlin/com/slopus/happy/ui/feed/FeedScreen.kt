@@ -36,7 +36,6 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -84,6 +83,7 @@ import com.slopus.happy.ui.artifacts.ArtifactListWords
 import com.slopus.happy.ui.artifacts.PlaceScaffold
 import com.slopus.happy.ui.artifacts.PlaceTags
 import com.slopus.happy.ui.artifacts.rememberArtifactListWords
+import com.slopus.happy.ui.artifacts.ArtifactCoverImage
 import com.slopus.happy.ui.artifacts.cssColor
 import com.slopus.happy.ui.cards.CardHeading
 import com.slopus.happy.ui.cards.CardBlock
@@ -99,7 +99,6 @@ import com.slopus.happy.ui.components.HomeCardPlace
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.Octicon
-import com.slopus.happy.ui.components.RemoteImage
 import com.slopus.happy.ui.connection.AgentTopBar
 import com.slopus.happy.ui.connection.BarIconButton
 import com.slopus.happy.ui.connection.ConversationMark
@@ -770,20 +769,15 @@ private fun FeedPost(summary: String?, cover: FeedCover, covers: FeedCovers?) {
 @Composable
 private fun FeedCoverView(cover: FeedCover, covers: FeedCovers?) {
     val ground = cover.background?.let(::cssColor) ?: HappyTheme.colors.surfaceHighest
-    key(cover.key) {
-        val bytes by produceState(covers?.kept(cover), covers) {
-            if (value == null) value = covers?.read(cover)
-        }
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .aspectRatio(cover.aspect.ratio)
-                .clip(RoundedCornerShape(FeedSpec.coverRadius))
-                .background(ground)
-                .testTag(FeedTags.COVER),
-        ) {
-            bytes?.let { RemoteImage(it, contentDescription = null, modifier = Modifier.matchParentSize(), contentScale = ContentScale.Crop, cacheKey = cover.key) }
-        }
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .aspectRatio(cover.aspect.ratio)
+            .clip(RoundedCornerShape(FeedSpec.coverRadius))
+            .background(ground)
+            .testTag(FeedTags.COVER),
+    ) {
+        ArtifactCoverImage(cover, covers, ContentScale.Crop, use = "post")
     }
 }
 

@@ -2,6 +2,15 @@ package com.slopus.happy.ui.artifacts
 
 import android.text.format.DateFormat
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.dp
+import com.slopus.happy.artifacts.ArtifactCover
+import com.slopus.happy.feed.FeedCovers
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -41,7 +50,6 @@ import com.slopus.happy.ui.chat.linkStatusWords
 import com.slopus.happy.ui.cards.CardListSpec
 import com.slopus.happy.ui.cards.CardNote
 import com.slopus.happy.ui.cards.CardRow
-import com.slopus.happy.ui.cards.CardTile
 import com.slopus.happy.ui.cards.cardPlaces
 import com.slopus.happy.ui.components.HappyDropdownMenu
 import com.slopus.happy.ui.components.HappyMenuItem
@@ -70,6 +78,8 @@ object ArtifactsTags {
     const val SEARCH = "artifacts.search"
     const val SEARCH_BAR = "artifacts.searchBar"
     const val THUMBNAIL = "artifacts.thumbnail"
+    const val COVER = "artifacts.cover"
+    const val GLYPH = "artifacts.glyph"
     const val MENU_OPEN = "artifacts.menu.open"
     const val MENU_COPY = "artifacts.menu.copy"
 }
@@ -77,6 +87,14 @@ object ArtifactsTags {
 object ArtifactListSpec {
     /** A row's picture fades in over its tile (iOS's `ArtifactThumbnailView.show`). */
     const val THUMBNAIL_FADE_MS = 200
+
+    /**
+     * Every row's leading slot, 16:9 at the tile's 40 height (spec "Covers
+     * in the artifact lists"): a wide cover fills it, a square one stands
+     * whole in its middle, and anything else is the kind's glyph centred
+     * on its tile colour. The row keeps its 60.
+     */
+    val slotWidth = 72.dp
 }
 
 /**
@@ -253,7 +271,8 @@ internal fun artifactTile(artifact: ArtifactSummary): Pair<Ionicon, RowTile> = w
  * it: every artifact of the agent connection in home's inset grouped cards
  * ([CardRow]), under a heading per date bucket (Today, Yesterday, the
  * previous seven and thirty days, then by month), newest change first. A
- * row is the kind's tile (or the picture itself, [ArtifactThumbnail]), the
+ * row is its 16:9 slot ([ArtifactSlot]: the cover, or the kind's glyph
+ * or an older daemon's picture itself, [ArtifactThumbnail]), the
  * title on up to two lines, the kind under it and when it changed beside
  * it. A tap opens the artifact on its latest version; a hold offers Open
  * and Copy Title. The bar's search filters by every word of the title or
@@ -271,6 +290,8 @@ fun ArtifactsScreen(
     onRefresh: () -> Unit,
     thumbnails: ArtifactThumbnails? = null,
     clock: () -> Long = System::currentTimeMillis,
+    /** Reads the rows' covers: the Feed's, so both keep one copy. */
+    covers: FeedCovers? = null,
     /** The connection's link, debounced: its status stands in the title while it is on its way (iOS `watchHeader`). */
     link: LinkState = LinkState.Online,
 ) {
@@ -336,7 +357,7 @@ fun ArtifactsScreen(
                     when (item) {
                         is ArtifactListItem.Heading -> CardHeading(item.text, item.afterCard)
                         is ArtifactListItem.Note -> CardNote(item.text)
-                        is ArtifactListItem.Row -> ArtifactRow(item, thumbnails, onOpen)
+                        is ArtifactListItem.Row -> ArtifactRow(item, thumbnails, covers, onOpen)
                     }
                 }
             }
@@ -345,22 +366,18 @@ fun ArtifactsScreen(
 }
 
 @Composable
-private fun ArtifactRow(item: ArtifactListItem.Row, thumbnails: ArtifactThumbnails?, onOpen: (ArtifactSummary) -> Unit) {
+private fun ArtifactRow(item: ArtifactListItem.Row, thumbnails: ArtifactThumbnails?, covers: FeedCovers?, onOpen: (ArtifactSummary) -> Unit) {
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
     val colors = HappyTheme.colors
     var menu by remember { mutableStateOf(false) }
-    val (glyph, tint) = artifactTile(item.artifact)
     CardRow(
         place = item.place,
         title = item.title,
         subtitle = item.subtitle,
         trailing = item.time,
-        leading = {
-            CardTile(glyph, tint)
-            // The picture lands over its kind's tile, which stays while it loads.
-            if (thumbnails != null && item.artifact.showsPicture) ArtifactThumbnail(item.artifact, thumbnails)
-        },
+        leadingWidth = ArtifactListSpec.slotWidth,
+        leading = { ArtifactSlot(item.artifact, thumbnails, covers) },
         onClick = { onOpen(item.artifact) },
         onLongClick = {
             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -390,4 +407,30 @@ private fun ArtifactRow(item: ArtifactListItem.Row, thumbnails: ArtifactThumbnai
             }
         },
     )
+}
+
+/**
+ * A row's 16:9 slot, rounded as the tile is: a wide cover filling it, a
+ * square one whole at its height in the middle, both on the artifact's
+ * background or the neutral fill, fading in. Without a cover, the kind's
+ * glyph centred on its tile colour, and an older daemon's picture or
+ * recording over it as before.
+ */
+@Composable
+private fun ArtifactSlot(artifact: ArtifactSummary, thumbnails: ArtifactThumbnails?, covers: FeedCovers?) {
+    val colors = HappyTheme.colors
+    val shape = RoundedCornerShape(CardListSpec.tileRadius)
+    val cover = artifact.drawnCover
+    if (cover != null) {
+        Box(Modifier.fillMaxSize().clip(shape).background(cover.background?.let(::cssColor) ?: colors.surfaceHighest).testTag(ArtifactsTags.COVER)) {
+            ArtifactCoverImage(cover, covers, if (cover.aspect == ArtifactCover.Aspect.Wide) ContentScale.Crop else ContentScale.Fit, use = "thumbnail")
+        }
+        return
+    }
+    val (glyph, tint) = artifactTile(artifact)
+    Box(Modifier.fillMaxSize().clip(shape).background(tint.fill(colors.dark)).testTag(ArtifactsTags.GLYPH), contentAlignment = Alignment.Center) {
+        Icon(glyph, CardListSpec.tileGlyph, tint.ink(colors.dark))
+    }
+    // The picture lands over its kind's tile, which stays while it loads.
+    if (thumbnails != null && artifact.showsPicture) ArtifactThumbnail(artifact, thumbnails)
 }
