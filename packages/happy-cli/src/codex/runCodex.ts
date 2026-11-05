@@ -9,7 +9,7 @@ import { DiffProcessor } from './utils/diffProcessor';
 import { randomUUID } from 'node:crypto';
 import { execSync } from 'node:child_process';
 import { logger } from '@/ui/logger';
-import { Credentials, readSettings } from '@/persistence';
+import { Credentials, readSettings, readPersistedSessions } from '@/persistence';
 import { initialMachineMetadata } from '@/daemon/run';
 import { configuration } from '@/configuration';
 import packageJson from '../../package.json';
@@ -189,6 +189,11 @@ export async function runCodex(opts: {
     let response: ApiSession | null;
     if (reconnectSessionId && reconnectKeyBase64 && reconnectVariant) {
         logger.debug(`[START] Reconnecting to existing session ${reconnectSessionId}`);
+        // Keep the provider identity and user metadata even if native resume fails.
+        Object.assign(metadata, {
+            ...readPersistedSessions()[reconnectSessionId]?.metadata, ...metadata,
+            ...(opts.resumeThreadId ? { codexThreadId: opts.resumeThreadId } : {}),
+        });
         response = {
             id: reconnectSessionId,
             seq: parseInt(reconnectSeq || '0', 10),
@@ -481,7 +486,7 @@ export async function runCodex(opts: {
             if (session) {
                 session.updateMetadata((currentMetadata) => ({
                     ...currentMetadata,
-                    lifecycleState: 'archived',
+                    lifecycleState: currentMetadata.codexArchived ? 'archived' : 'stopped',
                     lifecycleStateSince: Date.now(),
                     archivedBy: 'cli',
                     archiveReason: 'User terminated'
@@ -802,7 +807,8 @@ export async function runCodex(opts: {
             codexCollabReceiverThreadIdsByCall = mapped.collabReceiverThreadIdsByCall;
             codexCollabToolByCall = mapped.collabToolByCall;
             for (const envelope of mapped.envelopes) {
-                session.sendSessionProtocolMessage(envelope);
+                session.sendSessionProtocolMessage({ ...envelope,
+                    ...(typeof msg.native_thread_id === 'string' ? { codexThreadId: msg.native_thread_id } : {}) });
             }
         }
     });
@@ -829,16 +835,24 @@ export async function runCodex(opts: {
         logger.debug('[codex]: client.connect done');
 
         if (opts.resumeThreadId) {
-            await resumeExistingThread({
+            const resumed = await resumeExistingThread({
                 client,
                 session,
                 messageBuffer,
                 threadId: opts.resumeThreadId,
                 cwd: process.cwd(),
                 mcpServers,
+                model: opts.model,
                 // Side chats start empty — keep the resume notice out of the UI.
                 announce: !isSideChat,
             });
+            remoteModeState.currentModel = resumed.model;
+            remoteModeState.currentEffort = opts.effort;
+            session.updateMetadata(meta => ({
+                ...meta, currentModelCode: resumed.model, codexArchived: false,
+                models: meta.models?.some(model => model.code === resumed.model) ? meta.models
+                    : [...(meta.models ?? []), { code: resumed.model, value: resumed.model }],
+            }));
             first = false;
             appendSystemPromptInjected = true;
         }
@@ -963,6 +977,7 @@ export async function runCodex(opts: {
                     session.updateMetadata((currentMetadata) => ({
                         ...currentMetadata,
                         codexThreadId: startedThread.threadId,
+                        codexArchived: false,
                     }));
                 }
 

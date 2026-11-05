@@ -134,6 +134,15 @@ describe('buildCodexThreadBackfillEnvelopes', () => {
         ]);
     });
 
+    it('keeps a failed image upload retryable for strict history imports', async () => {
+        const path = await makePngFile('retry.png');
+        await expect(buildCodexThreadBackfillEnvelopes({
+            thread: { turns: [{ id: 'turn', items: [{ id: 'user', type: 'userMessage', content: [{ type: 'localImage', path }] }] }] },
+            strictImageUpload: true,
+            uploadLocalImage: vi.fn().mockRejectedValue(new Error('offline')),
+        })).rejects.toThrow('offline');
+    });
+
     it('skips missing local paths and URL images while preserving text', async () => {
         const uploadLocalImage = vi.fn();
 

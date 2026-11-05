@@ -125,6 +125,8 @@ export const sessionEnvelopeSchema = z
     // Codex app-server item id for this envelope. Used as the precise
     // rollback point for Codex thread duplicate/fork-from-message.
     codexItemId: z.string().min(1).optional(),
+    // Records the source thread, including validated child threads.
+    codexThreadId: z.string().min(1).optional(),
     // Optional model usage carried by the source agent message. Consumers use
     // this to update session context meters without rendering a separate row.
     usage: sessionUsageSchema.optional(),

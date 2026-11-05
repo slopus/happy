@@ -5,8 +5,30 @@ import { extractNoSandboxFlag } from '@/utils/sandboxFlags'
 import { ensureDaemonRunning } from '@/daemon/ensureDaemonRunning'
 import type { PermissionMode } from '@/api/types'
 import type { ReasoningEffort } from '@/codex/codexAppServerTypes'
+import { syncCodexHistory } from '@/codex/syncHistory'
+import { updateSettings } from '@/persistence'
 
 export async function handleCodexCommand(args: string[]): Promise<void> {
+  if (args[0] === 'history') {
+    if (args.slice(1).some(arg => !['--watch', '--stop', '--help', '-h'].includes(arg))) {
+      throw new Error('Usage: happy codex history [--watch | --stop]')
+    }
+    if (args.includes('--help') || args.includes('-h')) {
+      console.log('happy codex history: sync local Codex history into Happy without starting threads.\n--watch: also sync every five minutes; --stop: disable automatic sync.')
+      return
+    }
+    if (args.includes('--stop')) {
+      await updateSettings(settings => ({ ...settings, codexHistorySync: false }))
+      return
+    }
+    const { credentials, machineId } = await authAndSetupMachineIfNeeded()
+    console.log(JSON.stringify(await syncCodexHistory(credentials, machineId)))
+    if (args.includes('--watch')) {
+      await updateSettings(settings => ({ ...settings, codexHistorySync: true }))
+      await ensureDaemonRunning()
+    }
+    return
+  }
   let startedBy: 'daemon' | 'terminal' | undefined = undefined
   let permissionMode: PermissionMode | undefined = undefined
   let model: string | undefined = undefined

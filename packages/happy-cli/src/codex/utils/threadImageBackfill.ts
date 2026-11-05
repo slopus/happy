@@ -63,6 +63,7 @@ async function localImagePathToAttachment(
 export async function buildCodexThreadBackfillEnvelopes(opts: {
     thread: Pick<Thread, 'turns'>;
     uploadLocalImage: LocalImageUpload;
+    strictImageUpload?: boolean;
 }): Promise<SessionEnvelope[]> {
     const envelopes: SessionEnvelope[] = [];
     const providerSubagentToSessionSubagent = new Map<string, string>();
@@ -100,6 +101,7 @@ export async function buildCodexThreadBackfillEnvelopes(opts: {
                         codexItemId: item.id,
                     }));
                 } catch (error) {
+                    if (opts.strictImageUpload) throw error;
                     logger.debug('[Codex image backfill] Failed to upload local image input', {
                         errorName: error instanceof Error ? error.name : typeof error,
                     });

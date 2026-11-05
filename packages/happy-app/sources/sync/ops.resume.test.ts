@@ -1,16 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { machineRPC, getSessionDataKey, state } = vi.hoisted(() => ({
+const { machineRPC, sessionRPC, request, getSessionDataKey, state } = vi.hoisted(() => ({
     machineRPC: vi.fn(),
+    sessionRPC: vi.fn(), request: vi.fn(),
     getSessionDataKey: vi.fn(),
     state: { sessions: {} as Record<string, any> },
 }));
 
-vi.mock('./apiSocket', () => ({ apiSocket: { machineRPC } }));
+vi.mock('./apiSocket', () => ({ apiSocket: { machineRPC, sessionRPC, request } }));
 vi.mock('./sync', () => ({ sync: { encryption: { getSessionDataKey } } }));
 vi.mock('./storage', () => ({ storage: { getState: () => state } }));
 
-import { machineResumeSession } from './ops';
+import { machineResumeSession, sessionArchive } from './ops';
 
 describe('machine resume fallback', () => {
     beforeEach(() => {
@@ -59,5 +60,26 @@ describe('machine resume fallback', () => {
         await machineResumeSession({ machineId: 'machine-1', sessionId: 'missing' });
         expect(getSessionDataKey).not.toHaveBeenCalled();
         expect(machineRPC.mock.calls[0][2]).toMatchObject({ fallback: undefined, fallbackReason: 'client-has-no-session-row' });
+    });
+});
+
+describe('native Codex archive', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        state.sessions = { c: { active: true, metadata: { codexThreadId: 'native', machineId: 'machine' } } };
+        sessionRPC.mockResolvedValue({ success: true });
+        request.mockResolvedValue({ ok: true });
+    });
+    it('stops the Happy writer and archives Codex before deactivating the mirror', async () => {
+        machineRPC.mockResolvedValue({ success: true });
+        expect(await sessionArchive('c')).toEqual({ success: true });
+        expect(machineRPC).toHaveBeenCalledWith('machine', 'codex-set-archive', { sessionId: 'c', threadId: 'native', archived: true });
+        expect(sessionRPC.mock.invocationCallOrder[0]).toBeLessThan(machineRPC.mock.invocationCallOrder[0]);
+        expect(machineRPC.mock.invocationCallOrder[0]).toBeLessThan(request.mock.invocationCallOrder[0]);
+    });
+    it('does not create a Happy-only archive when Codex rejects the operation', async () => {
+        machineRPC.mockResolvedValue({ error: 'active writer' });
+        expect(await sessionArchive('c')).toEqual({ success: false, message: 'active writer' });
+        expect(request).not.toHaveBeenCalled();
     });
 });
