@@ -39,4 +39,18 @@ describe('suggestionCommands', () => {
             expect.objectContaining({ command: 'superpowers:brainstorming' }),
         ]));
     });
+
+    it('offers /btw in Claude sessions only', () => {
+        mockSessions['claude-session'] = {
+            metadata: { path: '/tmp/project', host: 'localhost', flavor: 'claude' },
+        } as Partial<Session>;
+        mockSessions['codex-only-session'] = {
+            metadata: { path: '/tmp/project', host: 'localhost', flavor: 'codex' },
+        } as Partial<Session>;
+
+        expect(getAllCommands('claude-session')).toEqual(expect.arrayContaining([
+            expect.objectContaining({ command: 'btw' }),
+        ]));
+        expect(getAllCommands('codex-only-session').map((c) => c.command)).not.toContain('btw');
+    });
 });

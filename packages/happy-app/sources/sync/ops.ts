@@ -21,6 +21,13 @@ import {
 import { rigComposerSetMode } from './rigComposer';
 import type { HappyAgentSpawnTarget } from './happyAgentSpawn';
 import { encodeBase64 } from '@/encryption/base64';
+import {
+    askSideQuestion,
+    type SideQuestionResult,
+    type SideQuestionRpcRequest,
+    type SideQuestionRpcResponse,
+    type SideQuestionTurn,
+} from './sideQuestion';
 
 export type { SessionAgentModesPatch };
 
@@ -980,6 +987,24 @@ export async function sessionGoalAction(
         action,
         ...(objective !== undefined ? { objective } : {}),
     } satisfies SessionGoalActionRequest);
+}
+
+/**
+ * Ask the session's running Claude a side question (/btw). Nothing is added to
+ * the conversation; see sideQuestion.ts.
+ */
+export function sessionSideQuestion(
+    sessionId: string,
+    question: string,
+    history: SideQuestionTurn[],
+    signal: AbortSignal,
+): Promise<SideQuestionResult> {
+    return askSideQuestion(
+        (request) => apiSocket.sessionRPC<SideQuestionRpcResponse, SideQuestionRpcRequest>(sessionId, 'side-question', request),
+        question,
+        history,
+        signal,
+    );
 }
 
 /**

@@ -461,6 +461,21 @@ class Sync {
         this.scheduleQueuedMessagesProcessing(sessionId);
     }
 
+    /**
+     * Shows `text` in the chat as a one-line notice that stays on this
+     * device: it never reaches the agent or the server, and a reload drops it.
+     */
+    showLocalNotice(sessionId: string, text: string) {
+        this.enqueueMessages(sessionId, [{
+            id: randomUUID(),
+            localId: null,
+            createdAt: Date.now(),
+            role: 'event',
+            isSidechain: false,
+            content: { type: 'message', message: text },
+        }]);
+    }
+
     private getSessionMessageLock(sessionId: string): AsyncLock {
         let lock = this.sessionMessageLocks.get(sessionId);
         if (!lock) {
