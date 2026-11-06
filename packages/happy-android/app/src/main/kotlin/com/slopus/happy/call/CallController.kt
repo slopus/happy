@@ -2,6 +2,7 @@ package com.slopus.happy.call
 
 import com.slopus.happy.analytics.Analytics
 import com.slopus.happy.analytics.AnalyticsEvent
+import com.slopus.happy.analytics.AnalyticsSpan
 import com.slopus.happy.analytics.DurationBucket
 import com.slopus.happy.analytics.VoiceError
 import android.content.Context
@@ -111,7 +112,8 @@ class CallController(
         this.targets = targets
         this.context = context
         session = call
-        val report = CallReport().also { this.report = it }
+        // Begun now: a call started while analytics is off, or on through an opt-out, is never told.
+        val report = CallReport(Analytics.span()).also { this.report = it }
         call.onLevel = { level -> if (session === call) mutableLevel.value = level }
         val drain = DirectoryDrain(calling, context, call)
         call.onOverflow = {
@@ -270,9 +272,10 @@ class CallController(
  * How one call ended, once: `voice_session_stopped` when it was closed
  * after it connected, `voice_session_error` when it failed to start or
  * dropped, with how long it was live (none if it never was). A call never
- * set up on this build, or closed before it connected, reports nothing.
+ * set up on this build, or closed before it connected, reports nothing;
+ * nor does one analytics was off for at any point ([span]).
  */
-private class CallReport {
+private class CallReport(private val span: AnalyticsSpan) {
     private var since: Long? = null
     private var done = false
 
@@ -294,13 +297,13 @@ private class CallReport {
         val live = since?.let { DurationBucket.of(SystemClock.elapsedRealtime() - it) }
         val error = when (problem) {
             // Ended as asked: only a call that connected counts.
-            null -> return live?.let { Analytics.record(AnalyticsEvent.VoiceSessionStopped(it)) } ?: Unit
+            null -> return live?.let { span.record(AnalyticsEvent.VoiceSessionStopped(it)) } ?: Unit
             CallProblem.MicrophonePermission -> VoiceError.MicDenied
             CallProblem.SubscriptionRequired, CallProblem.LimitReached -> VoiceError.QuotaExhausted
             CallProblem.Connection -> if (since != null) VoiceError.Dropped else VoiceError.ConnectFailed
             CallProblem.Authentication -> VoiceError.ConnectFailed
             CallProblem.NotSetUp -> VoiceError.Unknown
         }
-        Analytics.record(AnalyticsEvent.VoiceSessionError(error, live))
+        span.record(AnalyticsEvent.VoiceSessionError(error, live))
     }
 }

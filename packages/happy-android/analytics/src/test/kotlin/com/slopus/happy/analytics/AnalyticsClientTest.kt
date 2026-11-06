@@ -343,6 +343,27 @@ class AnalyticsClientTest {
         assertEquals(second, prefs.getString("install_id", null))
     }
 
+    /** Something lasting, such as a call: told only if analytics was on as it began and stayed on until it ended. */
+    @Test
+    fun aSpanBegunWhileOffOrRevokedSinceRecordsNothing() = runTest {
+        consent.value = false
+        val client = client()
+        val begunOff = client.span()
+        consent.value = true
+        runCurrent()
+        val revokedSince = client.span()
+        client.revoke()
+        client.allow()
+        runCurrent()
+        val whole = client.span()
+        begunOff.record(AnalyticsEvent.VoiceSessionStopped(DurationBucket.of(1_000)))
+        revokedSince.record(AnalyticsEvent.VoiceSessionError(VoiceError.Dropped, DurationBucket.of(1_000)))
+        whole.record(AnalyticsEvent.VoiceSessionStopped(DurationBucket.of(90_000)))
+        client.flush()
+        assertEquals(listOf("voice_session_stopped"), names())
+        assertEquals(1, posted.size)
+    }
+
     /** An install id that can't be deleted keeps analytics off: nothing may go under the id of before. */
     @Test
     fun anInstallIdThatCantBeDeletedKeepsAnalyticsOff() = runTest {

@@ -116,11 +116,7 @@ object Analytics {
      * For something that lasts, such as a call: its event goes only if
      * analytics was on as it began and stayed on until the event.
      */
-    fun span(): AnalyticsSpan = AnalyticsSpan(client?.live())
-
-    internal fun record(event: AnalyticsEvent, generation: Long) {
-        client?.record(event, generation)
-    }
+    fun span(): AnalyticsSpan = client?.span() ?: AnalyticsSpan(null, null)
 
     /** An error a person saw; at most once per (area, code) every ten minutes. */
     fun errorShown(area: ErrorArea, code: ErrorCode) {
@@ -200,9 +196,9 @@ internal data class AnalyticsDevice(val appVersion: String?, val flavor: String,
 data class AnalyticsAgent(val location: String? = null, val os: String? = null, val version: String? = null)
 
 /** Something that lasts ([Analytics.span]): [record] does nothing if analytics was off as it began, or went off since. */
-class AnalyticsSpan internal constructor(private val generation: Long?) {
+class AnalyticsSpan internal constructor(private val client: AnalyticsClient?, private val generation: Long?) {
     fun record(event: AnalyticsEvent) {
-        generation?.let { Analytics.record(event, it) }
+        if (client != null && generation != null) client.record(event, generation)
     }
 }
 
@@ -327,6 +323,8 @@ internal class AnalyticsClient(
 
     /** The generation analytics is on in, or null while it is off. */
     fun live(): Long? = synchronized(lock) { if (on) generation else null }
+
+    fun span() = AnalyticsSpan(this, live())
 
     private fun isLive(generation: Long): Boolean = synchronized(lock) { on && this.generation == generation }
 
