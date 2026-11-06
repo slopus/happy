@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.ui.connect.LocalAddFlow
+import com.slopus.happy.ui.connection.LocalCloudConnect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slopus.happy.ui.components.Avatar
 import com.slopus.happy.ui.components.avatar.AvatarPlaceholder
@@ -112,6 +113,7 @@ object AccountMenuTags {
     const val BUTTON = "accountMenu.button"
     const val MENU = "accountMenu.menu"
     const val ADD = "accountMenu.add"
+    const val CLOUD = "accountMenu.cloud"
     fun entry(id: String) = "accountMenu.entry.$id"
 }
 
@@ -139,7 +141,9 @@ object AccountMenuSpec {
  * of every Happy account and agent connection on the phone (avatar, name,
  * the server or kind under it; the open one checked, one needing attention
  * flagged), then Add, which scans a code and adds the Happy account or
- * agent connection it is for ([LocalAddFlow]). Picking one switches.
+ * agent connection it is for ([LocalAddFlow]), and a + for Happy Cloud
+ * ([LocalCloudConnect], left out where the build has none). Picking one
+ * switches.
  * Outside a top app bar, where the slot is not already 4 in, pass a 0 [inset].
  */
 @Composable
@@ -147,6 +151,7 @@ fun AccountMenuButton(
     menu: AccountMenu,
     onSwitch: (String) -> Unit,
     onAdd: () -> Unit = LocalAddFlow.current?.let { it::scan } ?: {},
+    onCloud: (() -> Unit)? = LocalCloudConnect.current,
     inset: Dp = AccountMenuSpec.buttonInset,
 ) {
     val colors = HappyTheme.colors
@@ -220,6 +225,21 @@ fun AccountMenuButton(
                 },
                 modifier = Modifier.testTag(AccountMenuTags.ADD),
             )
+            if (onCloud != null) {
+                HappyMenuItem(
+                    label = stringResource(R.string.cloud_connect_row),
+                    leading = {
+                        Box(Modifier.size(AccountMenuSpec.rowAvatar), contentAlignment = Alignment.Center) {
+                            Icon(Ionicon.Add, AccountMenuSpec.addIcon, colors.text)
+                        }
+                    },
+                    onClick = {
+                        open = false
+                        onCloud()
+                    },
+                    modifier = Modifier.testTag(AccountMenuTags.CLOUD),
+                )
+            }
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.start
 
+import com.slopus.happy.ui.connection.LocalCloudConnect
 import androidx.activity.compose.ReportDrawn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -21,7 +22,7 @@ import kotlinx.serialization.Serializable
  * The first screen with its flows: Start opens [InstallDesktopRoute], and
  * "Enter link manually" asks for the link through the app's Add flow
  * ([add]). The ⋮ menu also restores a legacy account and picks the legacy
- * server.
+ * server, and connects to Happy Cloud.
  */
 @Composable
 fun Start(graph: AppGraph, nav: NavHostController, add: ConnectFlow) {
@@ -36,6 +37,7 @@ fun Start(graph: AppGraph, nav: NavHostController, add: ConnectFlow) {
         onEnterLink = { add.enteringLink = true },
         onRestore = { nav.navigate(RestoreRoute) },
         onServer = { nav.navigate(ServerRoute) },
+        onCloud = LocalCloudConnect.current,
     )
 }
 
@@ -58,6 +60,7 @@ fun InstallDesktop(graph: AppGraph, nav: NavHostController, add: ConnectFlow) {
         onEnterLink = { add.enteringLink = true },
         onRestore = { nav.navigate(RestoreRoute) },
         onServer = { nav.navigate(ServerRoute) },
+        onCloud = LocalCloudConnect.current,
     )
 }
 

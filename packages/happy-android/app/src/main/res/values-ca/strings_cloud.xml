@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_cloud.xml in ca: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="cloud_connect_row">Connecta a Happy Cloud</string>
+    <string name="cloud_connect_title">Vols connectar a Happy Cloud?</string>
+    <string name="cloud_connect_message">Inicia la sessió o crea un compte per afegir un equip al núvol. Els agents s\'executen al núvol; no cal cap ordinador.</string>
+    <string name="cloud_connect_confirm">Connecta</string>
+    <string name="cloud_needs_computer">Happy Cloud només executa agents. Això necessita un ordinador.</string>
+</resources>

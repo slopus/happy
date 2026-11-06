@@ -986,6 +986,21 @@ change its wire behaviour on Android alone.
   the code's (`ServerSignInFlow.verify`; a new member's health behind the
   profile gate is checked after the name); a mismatch, or none, drops the
   credential and reads "This code doesn't match the server it points to."
+- **Happy Cloud, the one exception** (`connection/HappyCloud.kt`,
+  `ui/connection/CloudConnect.kt`): the account menu's last row, a + reading
+  "Connect to Happy Cloud", adds the team server at `BuildConfig.HAPPY_CLOUD_URL`
+  (compiled in; `HAPPY_CLOUD_URL` or `-Phappy.cloudUrl` points a build
+  elsewhere, and an address that isn't an `https:` origin leaves the row out).
+  A phone with no account reaches it from the first screen's ⋮ and Add's
+  scanner ⋮ (`ScannerWay.Cloud`).
+  The address is the app's own, never typed or pasted, so it skips the code.
+  With a cloud team already here the + just opens it. Otherwise it asks
+  "Connect to Happy Cloud?" (Cancel / Connect), and Connect runs the sign-in
+  below on that origin with no `instanceId` to check: health's is kept as it
+  comes. The cloud's sign-in page offers Create account, which makes a new
+  cloud team. A cloud team has agents and no compute (no nodes, workspaces,
+  terminals or projects): `HappyCloud.isCloud` tells it apart, and screens
+  that need a computer say so (`cloud_needs_computer`) instead of failing.
 - **Sign-in** (`connection/ServerSignInFlow.kt`, `ServerAuth.kt`): `GET
   /v0/authentication` lists the methods, then OAuth authorization code + PKCE
   S256 in a Custom Tab (never a WebView), with RFC 8707 `resource` on

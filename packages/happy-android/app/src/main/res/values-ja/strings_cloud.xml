@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_cloud.xml in ja: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="cloud_connect_row">Happy Cloud に接続</string>
+    <string name="cloud_connect_title">Happy Cloud に接続しますか？</string>
+    <string name="cloud_connect_message">サインインするかアカウントを作成して、クラウドチームを追加します。エージェントはクラウドで動くので、コンピューターは不要です。</string>
+    <string name="cloud_connect_confirm">接続</string>
+    <string name="cloud_needs_computer">Happy Cloud ではエージェントのみ動きます。これにはコンピューターが必要です。</string>
+</resources>

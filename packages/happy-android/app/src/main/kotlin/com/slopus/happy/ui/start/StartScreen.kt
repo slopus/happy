@@ -61,6 +61,7 @@ object StartTags {
     const val ENTER_LINK = "start.enterLink"
     const val RESTORE = "start.restore"
     const val SERVER = "start.server"
+    const val CLOUD = "start.cloud"
 }
 
 /**
@@ -125,6 +126,7 @@ fun StartScreen(
     onEnterLink: () -> Unit,
     onRestore: () -> Unit,
     onServer: () -> Unit,
+    onCloud: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val dark = HappyTheme.colors.dark
@@ -197,6 +199,7 @@ fun StartScreen(
                         onEnterLink = onEnterLink,
                         onRestore = onRestore,
                         onServer = onServer,
+                        onCloud = onCloud,
                     )
                 }
             }
@@ -232,6 +235,7 @@ internal fun StartMenu(
     onEnterLink: () -> Unit,
     onRestore: () -> Unit,
     onServer: () -> Unit,
+    onCloud: (() -> Unit)? = null,
 ) {
     HappyDropdownMenu(
         expanded = open,
@@ -262,5 +266,9 @@ internal fun StartMenu(
             detail = customServerLabel,
             onClick = onServer,
         )
+        if (onCloud != null) {
+            HappyMenuDivider()
+            item(stringResource(R.string.cloud_connect_row), Ionicon.Add, StartTags.CLOUD, onClick = onCloud)
+        }
     }
 }

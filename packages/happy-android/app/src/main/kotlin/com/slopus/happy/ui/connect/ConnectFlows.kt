@@ -343,16 +343,18 @@ private fun rememberConnectFlow(
  * Without a scanner, or from the first screen's menu, it asks for the link
  * instead ([ConnectFlow.enteringLink]). A failure is an alert. The
  * scanner's ⋮ has the other ways in (iOS's `AccountAdding.otherWays`): the
- * link, [onRestore] and [onServer], whose custom host [serverLabel] names.
+ * link, [onRestore], [onServer], whose custom host [serverLabel] names, and
+ * [onCloud] (Happy Cloud) where the build has one.
  */
 @Composable
-fun rememberAddFlow(graph: AppGraph, onRestore: () -> Unit, onServer: () -> Unit, serverLabel: String?): ConnectFlow = rememberAddConnect(
+fun rememberAddFlow(graph: AppGraph, onRestore: () -> Unit, onServer: () -> Unit, serverLabel: String?, onCloud: (() -> Unit)? = null): ConnectFlow = rememberAddConnect(
     approve = { url ->
         graph.auth.createAccount { account -> approveTerminal(graph.authApi, account.credentials, account.encryption, url) }
     },
     onRestore = onRestore,
     onServer = onServer,
     serverLabel = serverLabel,
+    onCloud = onCloud,
 )
 
 /** [rememberAddFlow] with the approval passed in, for tests. */
@@ -362,6 +364,7 @@ fun rememberAddConnect(
     onRestore: () -> Unit = {},
     onServer: () -> Unit = {},
     serverLabel: String? = null,
+    onCloud: (() -> Unit)? = null,
 ): ConnectFlow {
     val haptics = LocalHapticFeedback.current
     val failed = stringResource(R.string.modals_failed_to_connect_terminal)
@@ -371,8 +374,15 @@ fun rememberAddConnect(
     flow.onUnavailable = { flow.enteringLink = true }
     val currentOnRestore by rememberUpdatedState(onRestore)
     val currentOnServer by rememberUpdatedState(onServer)
-    flow.request = ScanRequest(listOf(ScannerWay.EnterLink, ScannerWay.Restore, ScannerWay.Server), serverLabel)
-    flow.onWay = { way -> if (way == ScannerWay.Server) currentOnServer() else currentOnRestore() }
+    val currentOnCloud by rememberUpdatedState(onCloud)
+    flow.request = ScanRequest(listOfNotNull(ScannerWay.EnterLink, ScannerWay.Restore, ScannerWay.Server, ScannerWay.Cloud.takeIf { onCloud != null }), serverLabel)
+    flow.onWay = { way ->
+        when (way) {
+            ScannerWay.Server -> currentOnServer()
+            ScannerWay.Cloud -> currentOnCloud?.invoke()
+            else -> currentOnRestore()
+        }
+    }
     if (flow.enteringLink) {
         PromptModal(
             prompt = Prompt(

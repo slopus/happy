@@ -243,6 +243,7 @@ private fun ScannerWaysMenu(open: Boolean, ways: List<ScannerWay>, serverLabel: 
                 ScannerWay.EnterLink -> stringResource(R.string.start_enter_link) to Ionicon.LinkOutline
                 ScannerWay.Restore -> stringResource(R.string.account_kind_restore_cli_account) to Ionicon.KeyOutline
                 ScannerWay.Server -> stringResource(R.string.account_kind_cli_server) to Ionicon.ServerOutline
+                ScannerWay.Cloud -> stringResource(R.string.cloud_connect_row) to Ionicon.Add
             }
             HappyMenuItem(
                 label = label,
