@@ -21,6 +21,7 @@ import com.slopus.happy.AppGraph
 import com.slopus.happy.connection.PairingStart
 import com.slopus.happy.connection.PairingFlow
 import com.slopus.happy.connection.PairingState
+import com.slopus.happy.connection.HappyCloud
 import com.slopus.happy.connection.ServerInvite
 import com.slopus.happy.connection.ServerSignInFlow
 import com.slopus.happy.connection.ServerSignInState
@@ -110,6 +111,23 @@ fun NavHostController.signInToServer(graph: AppGraph, invite: ServerInvite): Boo
     }
     val origin = invite.origin ?: return false
     graph.startServerSignIn(origin.value, instanceId = invite.instanceId)
+    navigate(ServerSignInRoute) { launchSingleTop = true }
+    return true
+}
+
+/**
+ * Happy Cloud ([HappyCloud]): opens the cloud team already here, adding
+ * nothing; otherwise starts signing in to the compiled-in origin, with no
+ * code and so no `instanceId` to check (health's is kept as it comes), and
+ * shows that. False when this build has no usable cloud address.
+ */
+fun NavHostController.connectToCloud(graph: AppGraph): Boolean {
+    HappyCloud.connection(graph.agentConnections.accounts.value, graph.openAgentId.value)?.let {
+        graph.open(it.id)
+        return true
+    }
+    val origin = HappyCloud.origin ?: return false
+    graph.startServerSignIn(origin.value)
     navigate(ServerSignInRoute) { launchSingleTop = true }
     return true
 }

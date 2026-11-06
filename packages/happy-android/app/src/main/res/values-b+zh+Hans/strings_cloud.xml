@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_cloud.xml in b+zh+Hans: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="cloud_connect_row">连接到 Happy Cloud</string>
+    <string name="cloud_connect_title">连接到 Happy Cloud？</string>
+    <string name="cloud_connect_message">登录或创建账户以添加云端团队。智能体在云端运行，无需电脑。</string>
+    <string name="cloud_connect_confirm">连接</string>
+    <string name="cloud_needs_computer">Happy Cloud 只运行智能体。此功能需要电脑。</string>
+</resources>

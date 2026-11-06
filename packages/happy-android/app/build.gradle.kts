@@ -40,6 +40,13 @@ val revenueCatGoogleKey = providers.environmentVariable("EXPO_PUBLIC_REVENUE_CAT
     ?.takeIf { it.isNotBlank() }
     ?: providers.gradleProperty("happy.revenueCatGoogleKey").orNull.orEmpty()
 
+// Happy Cloud (the account menu's "Connect to Happy Cloud"): the one team
+// server the app adds without a scanned code, because it is compiled in.
+// HAPPY_CLOUD_URL or -Phappy.cloudUrl points a build at another one.
+val happyCloudUrl = providers.environmentVariable("HAPPY_CLOUD_URL").orNull?.takeIf { it.isNotBlank() }
+    ?: providers.gradleProperty("happy.cloudUrl").orNull?.takeIf { it.isNotBlank() }
+    ?: "https://209-38-182-152.sslip.io/"
+
 // The agent connection voice call's public ElevenLabs agent
 // (docs/agent-voice-call.md): never in the repository, so from the
 // environment, -Phappy.callAgentId or the ignored local.properties. Without
@@ -105,6 +112,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "DEFAULT_SERVER_URL", "\"https://api.cluster-fluster.com\"")
+        buildConfigField("String", "HAPPY_CLOUD_URL", groovy.json.JsonOutput.toJson(happyCloudUrl))
         buildConfigField("String", "REVENUE_CAT_GOOGLE_KEY", groovy.json.JsonOutput.toJson(revenueCatGoogleKey))
         buildConfigField("String", "POSTHOG_KEY", groovy.json.JsonOutput.toJson(postHogKey))
         // Existing relay voice agent, retained for compatibility with installed clients.

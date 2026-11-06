@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_cloud.xml in pl: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="cloud_connect_row">Połącz z Happy Cloud</string>
+    <string name="cloud_connect_title">Połączyć z Happy Cloud?</string>
+    <string name="cloud_connect_message">Zaloguj się lub utwórz konto, aby dodać zespół w chmurze. Agenci działają w chmurze; komputer nie jest potrzebny.</string>
+    <string name="cloud_connect_confirm">Połącz</string>
+    <string name="cloud_needs_computer">Happy Cloud uruchamia tylko agentów. To wymaga komputera.</string>
+</resources>

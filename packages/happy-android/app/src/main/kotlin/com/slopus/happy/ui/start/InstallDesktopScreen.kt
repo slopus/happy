@@ -112,6 +112,7 @@ fun InstallDesktopScreen(
     onEnterLink: () -> Unit,
     onRestore: () -> Unit,
     onServer: () -> Unit,
+    onCloud: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val dark = HappyTheme.colors.dark
@@ -213,6 +214,7 @@ fun InstallDesktopScreen(
                             onEnterLink = onEnterLink,
                             onRestore = onRestore,
                             onServer = onServer,
+                            onCloud = onCloud,
                         )
                     }
                 }

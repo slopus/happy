@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_cloud.xml in ru: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="cloud_connect_row">Подключиться к Happy Cloud</string>
+    <string name="cloud_connect_title">Подключиться к Happy Cloud?</string>
+    <string name="cloud_connect_message">Войдите или создайте аккаунт, чтобы добавить облачную команду. Агенты работают в облаке, компьютер не нужен.</string>
+    <string name="cloud_connect_confirm">Подключиться</string>
+    <string name="cloud_needs_computer">В Happy Cloud работают только агенты. Для этого нужен компьютер.</string>
+</resources>

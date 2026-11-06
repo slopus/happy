@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Happy Cloud (connection/HappyCloud.kt): the account menu's + and what a cloud
+  team, which has no compute, says instead. Not in happy-app's catalogs.
+  Translated in values-*/ (AndroidStringsTranslatedTest).
+-->
+<resources>
+    <string name="cloud_connect_row">Connect to Happy Cloud</string>
+    <string name="cloud_connect_title">Connect to Happy Cloud?</string>
+    <string name="cloud_connect_message">Sign in or create an account to add a cloud team. Agents run in the cloud; no computer needed.</string>
+    <string name="cloud_connect_confirm">Connect</string>
+    <string name="cloud_needs_computer">Happy Cloud runs agents only. This needs a computer.</string>
+</resources>
