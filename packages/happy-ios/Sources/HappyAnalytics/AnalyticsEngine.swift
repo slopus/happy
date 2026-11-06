@@ -2,11 +2,10 @@ import Foundation
 import HappyCore
 import HappyWire
 
-/// Everything analytics keeps on this phone, in one file it alone writes
-/// (`Application Support/Happy/analytics.json`): the install's random id,
-/// the queue waiting to go, and the local state the catalog's rules need
-/// (the launch count, the error throttle, the failures already reported).
-/// Nothing in it is sent except the queue's events.
+/// The queue waiting to go and the little the catalog's rules need (the
+/// error throttle, the failures already reported), in memory only: unsent
+/// events are lost when the app quits. The one thing kept on the phone is
+/// the install's random id, and opting out deletes it.
 public actor AnalyticsEngine {
     public static let lib = "happy-ios"
     public static let maxQueued = 500
@@ -14,6 +13,7 @@ public actor AnalyticsEngine {
     /// A failure card older than this when first seen is history, not news.
     public static let failureFreshness: TimeInterval = 5 * 60
     public static let seenFailureLimit = 500
+    static let installKey = "analytics.installID"
 
     public struct Destination: Sendable, Equatable {
         public var apiKey: String
@@ -25,7 +25,7 @@ public actor AnalyticsEngine {
         }
     }
 
-    struct Queued: Codable, Equatable, Sendable {
+    struct Queued: Equatable, Sendable {
         var event: String
         var timestamp: Date
         /// Everything sent, `$insert_id` included, so a retry is the same event.
@@ -33,129 +33,95 @@ public actor AnalyticsEngine {
         var insertID: String { properties["$insert_id"]?.stringValue ?? "" }
     }
 
-    struct State: Codable, Equatable {
-        var installID = UUID().uuidString.lowercased()
-        var launchCount = 0
-        var queue: [Queued] = []
-        var throttle = ErrorThrottle()
-        /// Failure messages already counted, oldest first.
-        var seenFailures: [String] = []
-    }
-
     private let destination: Destination
-    private let file: URL?
     private let transport: HTTPTransport
-    private var state = State()
-    private var loaded = false
-    private var saving: Task<Void, Never>?
+    /// Where the install id is kept, and nothing else.
+    private let storage: KeyValueStore
+    private var id: String?
+    private(set) var queue: [Queued] = []
+    private var throttle = ErrorThrottle()
+    private(set) var seenFailures: [String] = []
     private var flushing = false
     /// Opted out: nothing is recorded or sent until `resume`.
     private var paused = false
-    /// Bumped by each `clear`, so a request on its way when it came keeps
-    /// nothing of what it sent.
-    private var epoch = 0
 
-    public init(destination: Destination, file: URL?, transport: HTTPTransport) {
+    public init(destination: Destination, transport: HTTPTransport, storage: KeyValueStore) {
         self.destination = destination
-        self.file = file
         self.transport = transport
+        self.storage = storage
+    }
+
+    /// The random id every event carries as `distinct_id`, made the first
+    /// time it is needed after the app is installed or analytics is turned
+    /// back on. Nil while it is off, when there is none.
+    public var installID: String? {
+        guard !paused else { return nil }
+        if let id { return id }
+        let stored = storage.string(forKey: Self.installKey)
+        let id = stored.flatMap(UUID.init(uuidString:)).map { $0.uuidString.lowercased() } ?? UUID().uuidString.lowercased()
+        if stored != id { storage.set(id, forKey: Self.installKey) }
+        self.id = id
+        return id
     }
 
     // MARK: Recording
 
-    /// The random id every event carries as `distinct_id`, made at the
-    /// first launch and kept until the app is deleted.
-    public var installID: String {
-        load()
-        return state.installID
-    }
-
     public func record(_ event: AnalyticsEvent, common: [String: JSONValue], at now: Date) {
-        guard !paused else { return }
-        load()
-        enqueue(event, common: common, at: now)
+        guard !paused, let installID else { return }
+        guard let properties = AnalyticsSchema.admit(event.name, event.properties, common: common) else { return }
+        // Whole seconds only.
+        let at = Date(timeIntervalSince1970: now.timeIntervalSince1970.rounded(.down))
+        queue.append(Queued(event: event.name, timestamp: at, properties: Self.envelope(properties, installID: installID)))
+        prune(now: now)
     }
 
-    /// `error_shown`, at most once per area and code every ten minutes; the
-    /// ones held back ride on the next as `repeat_count`.
+    /// `error_shown`, at most once per area and code every ten minutes;
+    /// the ones in between are dropped.
     public func recordError(area: AnalyticsEvent.ErrorArea, code: AnalyticsEvent.ErrorCode, common: [String: JSONValue], at now: Date) {
-        guard !paused else { return }
-        load()
-        guard let repeats = state.throttle.admit(area: area, code: code, at: now) else { return save() }
-        enqueue(.errorShown(area: area, code: code, repeatCount: repeats), common: common, at: now)
+        guard !paused, throttle.admit(area: area, code: code, at: now) else { return }
+        record(.errorShown(area: area, code: code), common: common, at: now)
     }
 
     /// `chat_failure_shown`, once per failure message, and only while it is
-    /// news. The message's id stays here.
+    /// news. The message's id stays here, in memory.
     public func recordFailureShown(messageID: String, createdAt: Date, _ event: AnalyticsEvent, common: [String: JSONValue], at now: Date) {
-        guard !paused else { return }
-        load()
-        guard now.timeIntervalSince(createdAt) <= Self.failureFreshness, !state.seenFailures.contains(messageID) else { return }
-        state.seenFailures.append(messageID)
-        if state.seenFailures.count > Self.seenFailureLimit { state.seenFailures.removeFirst(state.seenFailures.count - Self.seenFailureLimit) }
-        enqueue(event, common: common, at: now)
+        guard !paused, now.timeIntervalSince(createdAt) <= Self.failureFreshness, !seenFailures.contains(messageID) else { return }
+        seenFailures.append(messageID)
+        if seenFailures.count > Self.seenFailureLimit { seenFailures.removeFirst(seenFailures.count - Self.seenFailureLimit) }
+        record(event, common: common, at: now)
     }
 
-    /// `app_opened` with the configuration snapshot; a cold start counts
-    /// as a launch.
-    public func appOpened(cold: Bool, common: [String: JSONValue], config: AnalyticsEvent.AppConfig, at now: Date) {
-        guard !paused else { return }
-        load()
-        if cold { state.launchCount += 1 }
-        enqueue(.appOpened(launchCount: state.launchCount, isColdStart: cold, config: config), common: common, at: now)
-    }
-
-    /// Analytics turned off: what was waiting goes, written down at once,
-    /// and nothing is recorded or sent until `resume`. A request already
-    /// on its way keeps nothing it sent. The install id stays.
+    /// Analytics turned off: the queue, the throttle, the failures seen and
+    /// the install id go, and nothing is recorded or sent until `resume`.
     public func clear() {
         paused = true
-        epoch += 1
-        load()
-        let id = state.installID
-        state = State()
-        state.installID = id
-        saveNow()
+        queue = []
+        throttle = ErrorThrottle()
+        seenFailures = []
+        id = nil
+        storage.set(nil, forKey: Self.installKey)
     }
 
-    /// Analytics allowed again, after a `clear`.
+    /// Analytics allowed again: the next event makes a new install id.
     public func resume() {
         paused = false
     }
 
-    private func enqueue(_ event: AnalyticsEvent, common: [String: JSONValue], at now: Date) {
-        guard let properties = AnalyticsSchema.admit(event.name, event.properties, common: common) else { return save() }
-        state.queue.append(Queued(event: event.name, timestamp: now, properties: envelope(properties, insertID: UUID())))
-        prune(now: now)
-        save()
-    }
-
     /// The catalog's properties with the fixed privacy envelope around them.
-    private func envelope(_ properties: [String: JSONValue], insertID: UUID) -> [String: JSONValue] {
+    private static func envelope(_ properties: [String: JSONValue], installID: String) -> [String: JSONValue] {
         var properties = properties
-        properties["distinct_id"] = .string(state.installID)
-        properties["$insert_id"] = .string(insertID.uuidString.lowercased())
-        properties["$lib"] = .string(Self.lib)
+        properties["distinct_id"] = .string(installID)
+        properties["$insert_id"] = .string(UUID().uuidString.lowercased())
+        properties["$lib"] = .string(lib)
         properties["$process_person_profile"] = .bool(false)
         properties["$ip"] = .null
         properties["$geoip_disable"] = .bool(true)
         return properties
     }
 
-    /// A queued record as it may go now: checked against today's catalog
-    /// again, since the file may be from an older build. An event the
-    /// catalog no longer has, a value it doesn't allow or a malformed
-    /// `$insert_id` drops it; properties it doesn't know are left out; the
-    /// envelope is made again.
-    private func rechecked(_ queued: Queued) -> Queued? {
-        guard let id = queued.properties["$insert_id"]?.stringValue.flatMap(UUID.init(uuidString:)),
-              let properties = AnalyticsSchema.admit(queued.event, queued.properties, common: queued.properties) else { return nil }
-        return Queued(event: queued.event, timestamp: queued.timestamp, properties: envelope(properties, insertID: id))
-    }
-
     private func prune(now: Date) {
-        state.queue.removeAll { now.timeIntervalSince($0.timestamp) > Self.maxAge }
-        if state.queue.count > Self.maxQueued { state.queue.removeFirst(state.queue.count - Self.maxQueued) }
+        queue.removeAll { now.timeIntervalSince($0.timestamp) > Self.maxAge }
+        if queue.count > Self.maxQueued { queue.removeFirst(queue.count - Self.maxQueued) }
     }
 
     // MARK: Sending
@@ -163,33 +129,24 @@ public actor AnalyticsEngine {
     /// One `POST /batch/` with everything queued. Sent events leave the
     /// queue; on a network failure or a server error they stay for the
     /// next flush, and a request PostHog refuses outright is dropped rather
-    /// than retried forever.
+    /// than retried forever. A clear while it is on its way leaves nothing
+    /// of it to keep.
     public func flush(now: Date = Date()) async {
-        load()
         prune(now: now)
-        let checked = state.queue.compactMap(rechecked)
-        if checked != state.queue {
-            state.queue = checked
-            save()
-        }
-        // Consent is checked again right before anything leaves.
-        guard !paused, !flushing, !state.queue.isEmpty else { return }
+        guard !paused, !flushing, !queue.isEmpty else { return }
         flushing = true
         defer { flushing = false }
-        let batch = state.queue, sending = epoch
+        let batch = queue
         let status: Int
         do { status = try await transport.send(Self.request(batch, destination: destination)).status }
         catch { return }
-        // Cleared while it was on its way: there is nothing of it to keep.
-        guard epoch == sending, !paused else { return }
         guard (200..<300).contains(status) || ((400..<500).contains(status) && status != 408 && status != 429) else { return }
         let sent = Set(batch.map(\.insertID))
-        state.queue.removeAll { sent.contains($0.insertID) }
-        save()
+        queue.removeAll { sent.contains($0.insertID) }
     }
 
     static func request(_ batch: [Queued], destination: Destination) -> HTTPRequest {
-        let stamp = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+        let stamp = Date.ISO8601FormatStyle()
         let body: JSONValue = .object([
             "api_key": .string(destination.apiKey),
             "batch": .array(batch.map { .object(["event": .string($0.event), "timestamp": .string($0.timestamp.formatted(stamp)), "properties": .object($0.properties)]) }),
@@ -198,66 +155,22 @@ public actor AnalyticsEngine {
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         return HTTPRequest(method: "POST", url: destination.url, headers: ["Content-Type": "application/json"], body: try? encoder.encode(body))
     }
-
-    // MARK: Disk
-
-    private func load() {
-        guard !loaded else { return }
-        loaded = true
-        guard let file, let data = try? Data(contentsOf: file), let stored = try? JSONDecoder().decode(State.self, from: data) else { return }
-        state = stored
-        // Only a random UUID is ever sent as the install; anything else in
-        // the file is replaced, and the queue goes out under the new one.
-        if UUID(uuidString: state.installID) == nil { state.installID = UUID().uuidString.lowercased() }
-    }
-
-    private func save() {
-        guard file != nil, saving == nil else { return }
-        saving = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1))
-            await self?.saveNow()
-        }
-    }
-
-    /// Written at once, as the app goes to the background.
-    public func saveNow() {
-        saving?.cancel()
-        saving = nil
-        guard let file, let data = try? JSONEncoder().encode(state) else { return }
-        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? data.write(to: file, options: .atomic)
-    }
-
-    // MARK: Tests
-
-    var snapshot: State { load(); return state }
 }
 
 /// `error_shown`'s rule: at most one per area and code every ten minutes
-/// per device, with the occurrences held back in between counted onto the
-/// next one sent.
-struct ErrorThrottle: Codable, Equatable, Sendable {
+/// per device; the rest are dropped, not counted.
+struct ErrorThrottle: Equatable, Sendable {
     static let window: TimeInterval = 10 * 60
 
-    struct Entry: Codable, Equatable, Sendable {
-        var sentAt: Date
-        var held: Int
-    }
+    var sentAt: [String: Date] = [:]
 
-    var entries: [String: Entry] = [:]
-
-    /// The `repeat_count` to send now, or nil when this one is held back.
-    mutating func admit(area: AnalyticsEvent.ErrorArea, code: AnalyticsEvent.ErrorCode, at now: Date) -> Int? {
+    /// Whether this one goes.
+    mutating func admit(area: AnalyticsEvent.ErrorArea, code: AnalyticsEvent.ErrorCode, at now: Date) -> Bool {
         let key = "\(area.rawValue)/\(code.rawValue)"
-        if var entry = entries[key], now.timeIntervalSince(entry.sentAt) < Self.window {
-            entry.held += 1
-            entries[key] = entry
-            return nil
-        }
-        let held = entries[key]?.held ?? 0
-        entries[key] = Entry(sentAt: now, held: 0)
+        if let last = sentAt[key], now.timeIntervalSince(last) < Self.window { return false }
         // Old windows are let go of, so the table stays as small as the errors seen lately.
-        entries = entries.filter { $0.key == key || now.timeIntervalSince($0.value.sentAt) < Self.window || $0.value.held > 0 }
-        return held
+        sentAt = sentAt.filter { now.timeIntervalSince($0.value) < Self.window }
+        sentAt[key] = now
+        return true
     }
 }
