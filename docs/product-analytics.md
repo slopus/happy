@@ -13,9 +13,11 @@ The rules every client follows:
 
 - **Fewer events, more privacy.** An event earns its place only if it
   answers a question no other event answers. Anything that can be read off
-  `message_sent` (the model, the effort, the provider) is not its own event.
+  `message_sent` (the model family, the effort, the provider) is not its own event.
 - **No private data.** A property holds a closed enum value, a count, a
-  coarse duration bucket, a boolean, a version, or an allowlisted model ID.
+  coarse duration bucket, a boolean or a version (numbers only; any
+  `-`/`+` suffix is cut, anything else is null). A model is sent as its
+  family from the catalog's `model_family_rule`, never as its id.
   It never holds text, IDs, names, paths, URLs, hosts, error messages, stack
   traces, device model, timezone or screen size. Each client enforces this
   twice. A typed catalog means an unknown event or property does not
@@ -23,7 +25,15 @@ The rules every client follows:
 - **Identity** is a random install UUID, used as `distinct_id`. It is never
   derived from or aliased to an account, agent or `anonId`. There are no
   person profiles: `$process_person_profile: false`, `$ip: null` and
-  `$geoip_disable: true` are set on every event.
+  `$geoip_disable: true` are set on every event. Timestamps are whole
+  seconds.
+- **Nothing on disk but the install id.** The queue, the dedupe set and
+  the throttle times live in memory; unsent events are lost when the app
+  quits. Opting out deletes the install id with everything else, and
+  opting back in makes a new one. A stored switch that can't be read is
+  off.
+- **Requests** never follow a redirect, and go only to an https host (or
+  a loopback capture host in a debug run).
 - **Errors come first.** An error is recorded when a person saw it, not
   when it was thrown.
 - **One event per step, named `<object>_<past-tense verb>`.** Each is sent
@@ -33,7 +43,8 @@ The rules every client follows:
 - **Its own module, easy to switch off.** Analytics lives in its own
   package or module on every platform behind one small facade. Deleting the
   module and its call sites removes it. Every client has an Analytics switch
-  in Settings that stops sending at once and deletes the queue.
+  in Settings that stops sending at once and deletes everything analytics
+  had.
 - **Nothing is sent** from debug builds, tests, UI automation, or a build
   without a PostHog key (Info.plist `HappyPostHogKey` on iOS).
 
@@ -52,11 +63,12 @@ Errors and results:
 - `agent_connection_lost`: the connection to the agent or relay was down
   for 10 seconds or more in the foreground. Sent once, when it ends.
 - `error_shown`: any other error a person saw. At most one per area and
-  code every 10 minutes per device; the ones held back go in
-  `repeat_count`. A failed create is not one: it is its `*_created` event
+  code every 10 minutes per device; the ones in between are dropped, not
+  counted. A failed create is not one: it is its `*_created` event
   with `result: failed`.
 - `app_crashed`: the app died abnormally. Reported at the next launch from
-  the OS's exit records.
+  the OS's exit records, of which only the exception type or signal and the
+  app version are read.
 - `mobile_pairing_failed`: a phone pairing ended unlinked, with why.
 - `sign_in_failed`: creating, restoring or signing in to an account failed.
   Leaving the flow sends nothing.
@@ -67,8 +79,7 @@ Usage:
 
 - `app_opened`: desktop, once per launch. Mobile, a cold start or a return
   after 30 minutes or more in the background. It carries only the
-  notification permission, the app language and how many agents are
-  connected.
+  notification permission and how many agents are connected.
 - `conversation_created`: a new conversation exists. On iOS that is when
   the Happy Agent has made the new work its first message asked for, or
   when a Happy CLI session started; never when the message is only queued.
@@ -77,8 +88,8 @@ Usage:
 - `bot_created` and `task_created`: a create ends, `ok` or `failed`.
 - `mobile_pairing_completed` and `mobile_pairing_cancelled`: a phone
   pairing linked, or was left.
-- `account_created`, `account_restored`, `team_server_signed_in`: an
-  account flow succeeded.
+- `team_server_signed_in`: signing in to a team server succeeded. The
+  Happy CLI relay's account flows send only their `sign_in_failed`.
 - `voice_session_stopped`: a connected voice session ended normally. It is
   also the voice usage event; there is no start event.
 - `paywall_presented`, `paywall_purchased`, `paywall_restored`,
@@ -86,8 +97,6 @@ Usage:
 
 Definitions:
 
-- `launch_count`: launches on this install. Desktop counts renderer
-  launches; mobile counts cold starts.
 - `agents_connected`: the Happy Agent connections the client has.
 - `message_sent` fires on send, even when the message is only queued
   locally. `conversation_created` waits until the conversation exists.
@@ -97,32 +106,44 @@ Definitions:
 - The SwiftPM target `HappyAnalytics` holds the whole client. HappyCore
   never imports it. `AnalyticsEvent` is the typed catalog.
   `AnalyticsSchema` is the allowlist, built from the same Swift enums.
-  `AnalyticsEngine` keeps the queue (500 events, 7 days), the launch
-  count, the `error_shown` throttle and the failure dedupe set in
-  `Application Support/Happy/analytics.json`. `Analytics.shared` is the
-  facade HappyUI and HappyApp call.
+  `AnalyticsEngine` keeps the queue (500 events, 7 days), the
+  `error_shown` throttle and the failure dedupe set in memory, and the
+  install id in the `happy-analytics` defaults suite, next to the
+  Settings switch: the only two things analytics stores.
+  `Analytics.shared` is the facade HappyUI and HappyApp call.
 - What happens inside HappyCore (a send queued, a create, a start, a shown
   error, a call, an agent connection) is posted on `Happenings`, a hook with
-  no analytics in it. HappyAnalytics is its only listener.
+  no analytics in it. Each post carries closed words and counts only: a
+  failure is a `Problem` (its error's type and status), never the error.
+  HappyAnalytics is its only listener, and only while analytics is on.
 - Events are posted to `https://us.i.posthog.com/batch/` in one batch
   every 30 seconds while the app is active and once when it goes to the
-  background. There is no PostHog SDK. A failed batch stays queued and is
-  sent again later with the same `$insert_id`. Every queued event is
-  checked against the catalog again before it is sent.
+  background, over a session that never follows a redirect. There is no
+  PostHog SDK. A failed batch stays queued and is sent again later with
+  the same `$insert_id`.
+- Nothing is recorded until every signed-in Happy account's stored
+  `analyticsOptOut` has been read this launch, and nothing from before is
+  kept: only the launch's `app_opened` goes once they allow it. A setting
+  changed while they are read wins over what the read found. Accounts'
+  settings are never stored by analytics.
 - Sending stops when the Analytics switch in Settings is off, or when any
-  signed-in Happy account has `analyticsOptOut` on. Each account's stored
-  setting is read at launch before anything is sent. Turning analytics off
-  deletes the queue at once, without waiting for a request on its way.
-  Work handed to the engine before the opt-out is dropped unrun, and a
-  batch already on its way keeps nothing it sent.
+  signed-in Happy account has `analyticsOptOut` on. Turning analytics off
+  stops the `Happenings` listener and the connection watch, drops work
+  handed on before (an `app_opened` reading its settings included), and
+  deletes the queue, the throttle, the dedupe set and the install id at
+  once, without waiting for a request on its way. If the switch can't be
+  written down, Settings says so.
 - The migration card's PostHog flag (`direct-connection-migration-note`)
   is asked for by HappyAnalytics alone, with the same install UUID as
   `distinct_id` and the same rules: a release build with a key, every
   account allowing analytics. Flag targeting is per install, not per
-  account. HappyCore's `MigrationNoteFlag` only keeps the answer, and
-  without HappyAnalytics the card never shows.
-- Crashes and hangs come from MetricKit at the next launch. Only the
-  exception type and signal are read, and they are mapped to `reason`.
+  account. The answer is kept in memory for the launch;
+  HappyCore's `MigrationNoteFlag` only holds it, and without
+  HappyAnalytics the card never shows.
+- Crashes and hangs come from MetricKit at the next launch. Of each, only
+  the exception type and signal (mapped to `reason`) and the build that
+  crashed are read; never the call stack, the termination text or memory
+  regions.
 - A debug run can send to a capture endpoint on the same machine instead
   of PostHog: launch with `HAPPY_ANALYTICS_CAPTURE=http://127.0.0.1:<port>/batch/`.
   It never asks for the flag.
@@ -163,8 +184,7 @@ app's own types. Paths are under `packages/happy-ios`.
    - `HappyUI/Screens/LegacyLink.swift`: `report()` with its
      `Analytics.shared.relayLinkChanged` and its two calls in
      `receive(status:)` and `receive(network:)`.
-   - `HappyUI/Screens/OnboardingScreens.swift`: two `Analytics.shared.accountRestored()`
-     and two `Analytics.shared.accountRestoreFailed`.
+   - `HappyUI/Screens/OnboardingScreens.swift`: two `Analytics.shared.accountRestoreFailed`.
    - `HappyUI/Screens/ServerSignInScreen.swift`: `Analytics.shared.teamServerSignedIn()`
      and `Analytics.shared.teamServerSignInFailed`.
    - `HappyUI/Screens/SessionChangesScreen.swift` and
@@ -181,8 +201,9 @@ app's own types. Paths are under `packages/happy-ios`.
    - `HappyUI/Agents/ArtifactViewController.swift`: two `Analytics.shared.artifactLoadFailed`.
    - `HappyUI/Agents/SettingsAccountPages.swift`: `Analytics.shared.pushSetupFailed`.
    - `HappyUI/Agents/SettingsViewController.swift`: `analyticsRow()`, which
-     holds `Analytics.shared.deviceOptOut` and `Analytics.shared.setDeviceOptOut`,
-     and its two `[analyticsRow()]` sections.
+     holds `Analytics.shared.deviceOptOut`, `Analytics.shared.setDeviceOptOut`
+     and the alert for a switch that couldn't be saved, and its two
+     `[analyticsRow()]` sections.
    - `HappyUI/Agents/SupportViewController.swift`: the `viewDidAppear`
      override with `Analytics.shared.paywallPresented()`.
    - `HappyUI/Offers/Offers.swift`: `Analytics.shared.paywallPresented()`
@@ -192,21 +213,24 @@ app's own types. Paths are under `packages/happy-ios`.
 
 After that, `grep -rnE 'HappyAnalytics|AnalyticsEvent|Analytics\.shared|ConnectionWatch|AnalyticsBridge'`
 over `Sources`, `Tests`, `App`, `Harness`, `project.yml` and `Package.swift`
-finds nothing. Before it, outside the module and its tests, it finds 64
+finds nothing. Before it, outside the module and its tests, it finds 62
 lines: the 6 in `Package.swift`, 19 `import HappyAnalytics` lines (one per
-file above), and the 39 `Analytics.shared` lines listed.
+file above), and the 37 `Analytics.shared` lines listed.
 
 These neutral pieces stay behind and do nothing without the module. They
 can stay or go:
 
-- `HappyCore/Observing/Happenings.swift` and what posts to it:
+- `HappyCore/Observing/Happenings.swift` (with `Problem` and
+  `Happening.Start`) and what posts to it:
   `NewTask.make`, `Conversation` (`errorShown`), `LegacySyncEngine`,
   `OutboxSender`, `CallSession.state`, `AgentConnections.apply` (and its
   `issue`), and `SessionStarter.start` (and `Run.failure`).
 - The consent reads: `AccountController.analyticsOptOuts()` and
   `LocalStore.settingsSnapshot(at:)`.
-- `HappyCore/Home/MigrationNoteFlag.swift`, which keeps the answer and,
-  with nothing asking, hides the card; `LocalSettings.migrationNoteFlag`.
+- `HappyCore/Home/MigrationNoteFlag.swift`, which holds the answer and,
+  with nothing asking, hides the card; and the retired
+  `posthog.direct-connection-migration-note` key in `LocalSettings`, which
+  deletes what older builds kept.
 - What the screens hand over: `PairingStart` and `LegacyPairingResult`
   (HappyCore), `Failure`'s `kind`, `providerType`, `pool` and `createdAt`,
   `Snapshot.botAgentIds`, and `ShownRows` with `AgentChatUltraList`'s
