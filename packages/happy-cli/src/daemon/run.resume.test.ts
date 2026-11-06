@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   spawn: vi.fn(),
   access: vi.fn(),
+  missingClaudeTranscriptReason: vi.fn(() => null),
   persistSession: vi.fn(),
   logger: { debug: vi.fn(), debugLargeJson: vi.fn(), warn: vi.fn() },
 }));
@@ -31,6 +32,13 @@ vi.mock('@/utils/detectCLI', () => ({ detectCLIAvailability: () => ({}) }));
 vi.mock('@/utils/spawnHappyCLI', () => ({ spawnHappyCLI: mocks.spawn }));
 vi.mock('@/utils/tmux', () => ({ isTmuxAvailable: async () => false }));
 vi.mock('@/resume/localHappyAgentAuth', () => ({ detectResumeSupport: () => ({}), hasLocalHappyAgentAuth: () => false }));
+// These fixtures use synthetic paths with no Claude transcript on disk. The
+// resume guard is exercised on its own in src/resume/missingClaudeTranscript.test.ts
+// and once below; here it would reject every fixture for the wrong reason.
+vi.mock('@/resume/handleResumeCommand', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/resume/handleResumeCommand')>(),
+  missingClaudeTranscriptReason: mocks.missingClaudeTranscriptReason,
+}));
 vi.mock('./happyTerminalBoot', () => ({ startHappyTerminalDaemon: vi.fn() }));
 vi.mock('@/persistence', () => ({
   readPersistedSessions: () => mocks.persisted,
