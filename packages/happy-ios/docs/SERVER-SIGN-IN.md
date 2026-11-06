@@ -145,6 +145,14 @@ accounts and servers v1, with v4's token lifetimes.
   sign-in, the server is asked who signed in, its installation is
   recorded, and the connection is added. The account token goes only to
   the accounts service.
+- **Sign-in methods.** Apple natively and GitHub on the browser page
+  (Other Ways); no Google or email anywhere in the app.
+- **Sign Out of Happy Cloud**, in the account switcher's menu while the
+  pass is held, forgets the pass. The servers stay connected.
+- **Removing a cloud server** drops it on the phone and revokes its
+  session at the accounts service: `POST /revoke` (RFC 7009) with its
+  refresh token and `client_id`, best effort
+  (`AgentConnections.revokeIfCloud`).
 - **No scanned code.** The scan-only rule exists so that no one can send a
   person's sign-in to a server by a link or a pasted address. Cloud
   addresses come from the app's base, so the rule doesn't apply to them,

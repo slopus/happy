@@ -496,6 +496,21 @@ final class SignInRequiredTests: XCTestCase {
         XCTAssertNil(keychain.stored(item))
     }
 
+    /// Removing a cloud server revokes its refresh token's family at the
+    /// accounts service; a grant without one sends nothing.
+    func testHappyCloudRevokesARemovedServersSession() async throws {
+        let http = ScriptedHTTP()
+        http.json(HappyCloud.accounts + "/revoke", "{}")
+        let server = HappyCloud.server(named: "acme") + "/"
+        await CloudAccount.revoke(OAuthGrant(refreshToken: "sr9", refreshUrl: HappyCloud.accounts + "/token", clientId: "happy", resource: server, audience: server), http: http)
+        XCTAssertEqual(http.requests.count, 1)
+        XCTAssertEqual(http.requests[0].method, "POST")
+        XCTAssertNil(http.requests[0].headers["Authorization"])
+        XCTAssertEqual(http.form(0), ["token": "sr9", "client_id": "happy"])
+        await CloudAccount.revoke(OAuthGrant(clientId: "happy", audience: server), http: http)
+        XCTAssertEqual(http.requests.count, 1)
+    }
+
     /// A cloud server signs in from tokens the accounts API issued, for it
     /// only, then reads who signed in and its installation.
     func testHappyCloudServerSignsInFromIssuedTokens() async throws {

@@ -45,6 +45,7 @@ extension Strings {
         }
 
         static let otherWays = "Other Ways to Sign In"
+        static let signOut = "Sign Out of Happy Cloud"
 
         /// A name as typed, with the `@` people see in front of it dropped.
         static func bareName(_ text: String) -> String {

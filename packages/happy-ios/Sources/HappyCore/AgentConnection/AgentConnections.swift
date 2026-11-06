@@ -235,11 +235,18 @@ public final class AgentConnections {
         }
         do { try await storage.remove(id) }
         catch { startConnections(); throw error }
-        credentials.removeValue(forKey: id); accounts.removeAll { $0.id == id }; meters.removeValue(forKey: id)
+        revokeIfCloud(credentials.removeValue(forKey: id)); accounts.removeAll { $0.id == id }; meters.removeValue(forKey: id)
         // What V2 kept to open on it offline goes with it.
         OfflineFile.remove(id)
         if activeID == id { activeID = nil }
         onChange?()
+    }
+
+    /// A removed cloud server's session is revoked at the accounts service,
+    /// not just forgotten here.
+    private func revokeIfCloud(_ removed: AgentConnectionCredentials?) {
+        guard let removed, HappyCloud.isCloud(removed.publicUrl), let grant = removed.signIn?.grant else { return }
+        Task.detached { await CloudAccount.revoke(grant) }
     }
 
     /// What `forget` took away, for its owner to stop off screen.
@@ -257,7 +264,7 @@ public final class AgentConnections {
         let job = jobs.removeValue(forKey: id)
         job?.cancel()
         let engine = engines.removeValue(forKey: id)
-        credentials.removeValue(forKey: id)
+        revokeIfCloud(credentials.removeValue(forKey: id))
         if let endpoint = endpoints.removeValue(forKey: id) { Task { await endpoint.retire() } }
         if let authorization = authorizations.removeValue(forKey: id) { Task { await authorization.signInRequired() } }
         meters.removeValue(forKey: id)
