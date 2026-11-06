@@ -43,6 +43,33 @@ final class HappyCloudUITests: XCTestCase {
         return !element.exists
     }
 
+    /// Signs in to the accounts service as the test account, the way the
+    /// app does, and deletes its servers with these names.
+    private nonisolated static func deleteServers(named names: Set<String>, login: String, password: String) async {
+        let accounts = "https://auth.happy.engineering"
+        func send(_ method: String, _ path: String, token: String? = nil, body: [String: String]? = nil) async -> (Int, Data) {
+            var request = URLRequest(url: URL(string: accounts + path)!)
+            request.httpMethod = method
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            if let token { request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization") }
+            if let body {
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = try? JSONEncoder().encode(body)
+            }
+            guard let (data, response) = try? await URLSession.shared.data(for: request) else { return (0, Data()) }
+            return ((response as? HTTPURLResponse)?.statusCode ?? 0, data)
+        }
+        struct Pass: Decodable { let access_token: String }
+        struct Servers: Decodable { struct Server: Decodable { let id: String; let name: String }; let servers: [Server] }
+        let (_, passData) = await send("POST", "/v1/auth/password", body: ["login": login, "password": password])
+        guard let token = (try? JSONDecoder().decode(Pass.self, from: passData))?.access_token else { return print("cleanup: no pass") }
+        let (_, list) = await send("GET", "/v1/servers", token: token)
+        for server in (try? JSONDecoder().decode(Servers.self, from: list))?.servers ?? [] where names.contains(server.name) {
+            let (status, _) = await send("DELETE", "/v1/servers/\(server.id)", token: token)
+            print("cleanup: deleted @\(server.name): \(status)")
+        }
+    }
+
     private func first(_ candidates: [XCUIElement], timeout: TimeInterval) -> XCUIElement? {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -109,8 +136,8 @@ final class HappyCloudUITests: XCTestCase {
 
     /// The whole flow with a test account, no person needed: ten taps on
     /// the logo, its login and password, a new server, its home, a task
-    /// and a message (with no provider set up, the answer is the card
-    /// asking to connect one), another server, and signing out. Runs only
+    /// and a message (with no provider set up, the answer is a card
+    /// saying so), another server, and signing out. Runs only
     /// with `TEST_RUNNER_QA_LOGIN` and `TEST_RUNNER_QA_PASSWORD`; the
     /// password is pasted, never typed or written down.
     func testATestAccountRunsTheWholeFlow() throws {
@@ -159,6 +186,9 @@ final class HappyCloudUITests: XCTestCase {
         require(name.waitForExistence(timeout: 10), "no name field")
         name.tap()
         let server = "qa-ios-\(Int(Date().timeIntervalSince1970) % 1_000_000)"
+        // Whatever happens, the servers this run made go (owner DELETE; the
+        // accounts service keeps them seven days before purging).
+        addTeardownBlock { await Self.deleteServers(named: [server, server + "-b"], login: login, password: password) }
         name.typeText(server)
         Thread.sleep(forTimeInterval: 1.5)
         capture("06-name")
@@ -222,13 +252,15 @@ final class HappyCloudUITests: XCTestCase {
         require(accounts.count >= 2, "the switcher has \(accounts.count) accounts, not both servers")
         // The switcher names a server from its handle: qa-ios-123456 is "Qa Ios 123456".
         let number = String(server.split(separator: "-").last ?? "")
-        let first = (0..<accounts.count).map { accounts.element(boundBy: $0) }.first { $0.label.contains(" \(number)") }
+        // Exactly: its "-b" sibling is "Qa Ios 123456 B".
+        let title = "Qa Ios \(number)"
+        let first = (0..<accounts.count).map { accounts.element(boundBy: $0) }.first { $0.label.hasPrefix(title + ",") }
         require(first != nil, "@\(server) isn't in the switcher")
         first?.tap()
         Thread.sleep(forTimeInterval: 4)
         capture("13-switched")
         let current = switcher.value as? String ?? ""
-        require(current.contains(number), "switching opened \(current), not @\(server)")
+        require(current == title, "switching opened \(current), not @\(server)")
 
         // Sign out of Happy Cloud: the pass goes, the servers stay.
         switcher.tap()
@@ -258,13 +290,13 @@ final class HappyCloudUITests: XCTestCase {
         capture("16-sign-out-server")
         confirm.tap()
         // Settings stays, on the next account; this server's row is gone.
-        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'settings:account:' AND label BEGINSWITH %@", "Qa Ios \(number)")).firstMatch
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'settings:account:' AND (label == %@ OR label BEGINSWITH %@)", title, title + ",")).firstMatch
         require(waitGone(row, 10), "@\(server) is still in settings after signing out")
         capture("17-after-sign-out")
         app.buttons["BackButton"].firstMatch.tap()
         require(switcher.waitForExistence(timeout: 10), "no home after signing out of the server")
         Thread.sleep(forTimeInterval: 2)
-        XCTAssertFalse((switcher.value as? String ?? "").contains(number), "the home is still @\(server)")
+        XCTAssertNotEqual(switcher.value as? String, title, "the home is still @\(server)")
         capture("18-home-after")
     }
 }
