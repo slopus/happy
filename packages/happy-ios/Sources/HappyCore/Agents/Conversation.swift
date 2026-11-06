@@ -911,30 +911,34 @@ public actor Conversation {
     }
 
     /// `message.delta` applied exactly as the API says, or nil where the
-    /// message must be read again.
+    /// message must be read again. Only the block's UTF-16 view is walked,
+    /// from the offset: copied out whole on every word, a long answer cost
+    /// its length again per word, a third of the iPhone 12's time as a
+    /// reconnect replayed the words it missed.
     static func grow(_ message: AgentWire.Message, block index: Int, offset: Int, append: String) -> AgentWire.Message? {
         var message = message
-        guard message.content.indices.contains(index) else { return nil }
-        let current: String
+        guard message.content.indices.contains(index), offset >= 0 else { return nil }
+        var text: String
         switch message.content[index] {
-        case .text(let text), .reasoning(let text): current = text
+        case .text(let current), .reasoning(let current): text = current
         default: return nil
         }
-        let units = Array(current.utf16)
-        let added = Array(append.utf16)
-        guard units.count >= offset else { return nil }
-        let after = Array(units[offset...])
-        let grown: [UInt16]
-        if after.isEmpty {
-            grown = units + added
-        } else if after.count >= added.count {
-            guard Array(after.prefix(added.count)) == added else { return nil }
-            return message
+        let units = text.utf16
+        let count = units.count
+        guard count >= offset else { return nil }
+        let added = append.utf16
+        let after = count - offset
+        if after == 0 {
+            text += append
         } else {
-            guard Array(added.prefix(after.count)) == after else { return nil }
-            grown = units + added[after.count...]
+            let start = units.index(units.startIndex, offsetBy: offset)
+            if after >= added.count {
+                guard units[start...].starts(with: added) else { return nil }
+                return message
+            }
+            guard added.starts(with: units[start...]) else { return nil }
+            text += String(decoding: added.dropFirst(after), as: UTF16.self)
         }
-        let text = String(decoding: grown, as: UTF16.self)
         if case .reasoning = message.content[index] { message.content[index] = .reasoning(text) } else { message.content[index] = .text(text) }
         return message
     }
