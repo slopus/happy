@@ -32,4 +32,11 @@
     <string name="cloud_failed">Something went wrong. Try again.</string>
     <string name="cloud_connecting">Connecting to %1$s…</string>
     <string name="cloud_session_expired">Your Happy Cloud sign-in lasts an hour, and it\'s up. Sign in again to open, create or join a server. Servers already on this phone stay signed in.</string>
+    <string name="cloud_sign_out">Sign out of Happy Cloud</string>
+    <string name="cloud_members">Members</string>
+    <string name="cloud_members_sign_in">Sign in to Happy Cloud to see who is on this server.</string>
+    <string name="cloud_leave">Leave server</string>
+    <string name="cloud_leave_confirm_title">Leave %1$s?</string>
+    <string name="cloud_leave_confirm_message">You\'ll lose its agents and tasks on every device. You can come back with a new invite code.</string>
+    <string name="cloud_leave_last_owner">You\'re its only owner, so you can\'t leave it.</string>
 </resources>

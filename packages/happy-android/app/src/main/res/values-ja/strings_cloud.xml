@@ -30,4 +30,11 @@
     <string name="cloud_failed">問題が発生しました。もう一度お試しください。</string>
     <string name="cloud_connecting">%1$s に接続中…</string>
     <string name="cloud_session_expired">Happy Cloud のサインインは 1 時間で切れます。サーバーを開く・作成する・参加するには、もう一度サインインしてください。この端末にあるサーバーはサインインしたままです。</string>
+    <string name="cloud_sign_out">Happy Cloud からサインアウト</string>
+    <string name="cloud_members">メンバー</string>
+    <string name="cloud_members_sign_in">このサーバーのメンバーを見るには Happy Cloud にサインインしてください。</string>
+    <string name="cloud_leave">サーバーから退出</string>
+    <string name="cloud_leave_confirm_title">%1$s から退出しますか？</string>
+    <string name="cloud_leave_confirm_message">すべての端末でこのサーバーのエージェントとタスクにアクセスできなくなります。新しい招待コードで戻れます。</string>
+    <string name="cloud_leave_last_owner">唯一のオーナーなので退出できません。</string>
 </resources>

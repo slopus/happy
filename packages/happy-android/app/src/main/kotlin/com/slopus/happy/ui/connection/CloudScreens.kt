@@ -37,6 +37,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
+import com.slopus.happy.ui.start.StartControl
+import com.slopus.happy.ui.components.HappyMenuItem
+import com.slopus.happy.ui.components.HappyDropdownMenu
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -98,6 +104,9 @@ object CloudTags {
     const val SECONDARY = "cloud.secondary"
     const val NAME = "cloud.name"
     const val CODE = "cloud.code"
+    const val MENU = "cloud.menu"
+    const val MEMBERS = "cloud.members"
+    const val LEAVE = "cloud.leave"
     fun server(name: String) = "cloud.server.$name"
 }
 
@@ -137,6 +146,8 @@ private fun CloudFrame(
     @RawRes art: Int? = null,
     primary: CloudAction? = null,
     secondary: CloudAction? = null,
+    /** The bar's ⋮: what is done rarely, out of the way of the one action. */
+    menu: List<CloudAction> = emptyList(),
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
     val dark = HappyTheme.colors.dark
@@ -210,7 +221,26 @@ private fun CloudFrame(
         // Clear: the gradient shows through the bar, as on the first screen's next one.
         Box(Modifier.windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))) {
             CompositionLocalProvider(LocalBarOnGlass provides true) {
-                StackHeader(title = "", onBack = onBack, fullWidth = true)
+                StackHeader(title = "", onBack = onBack, fullWidth = true) {
+                    if (menu.isNotEmpty()) {
+                        Box {
+                            var open by remember { mutableStateOf(false) }
+                            StartControl(Ionicon.EllipsisVertical, stringResource(R.string.start_more), text, { open = true }, Modifier.testTag(CloudTags.MENU))
+                            HappyDropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.widthIn(min = StartSpec.menuMinWidth)) {
+                                menu.forEach { item ->
+                                    HappyMenuItem(
+                                        label = item.title,
+                                        leading = { Icon(Ionicon.LogOutOutline, StartSpec.menuIcon, LocalContentColor.current) },
+                                        onClick = {
+                                            open = false
+                                            item.onClick()
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -245,6 +275,7 @@ fun CloudScreen(
     onPick: (CloudServer) -> Unit,
     onCreate: () -> Unit,
     onJoin: () -> Unit,
+    onSignOut: () -> Unit,
     onBack: () -> Unit,
 ) {
     when (state) {
@@ -278,6 +309,7 @@ fun CloudScreen(
             art = if (servers.isNullOrEmpty()) R.raw.state_robot else null,
             primary = if (failure != null) CloudAction(stringResource(R.string.team_server_try_again), onReload) else CloudAction(stringResource(R.string.cloud_create), onCreate),
             secondary = CloudAction(stringResource(R.string.cloud_join), onJoin),
+            menu = listOf(CloudAction(stringResource(R.string.cloud_sign_out), onSignOut)),
             onBack = onBack,
         ) {
             when {
@@ -479,11 +511,12 @@ private object AtPrefix : VisualTransformation {
     }
 }
 
-private fun cloudFailureText(reason: CloudException.Reason): Int = when (reason) {
+internal fun cloudFailureText(reason: CloudException.Reason): Int = when (reason) {
     // Create shows a taken name as its availability, with the name; join never hears it.
     CloudException.Reason.Taken -> R.string.cloud_failed
     CloudException.Reason.Invalid -> R.string.cloud_name_rules
     CloudException.Reason.NotFound -> R.string.cloud_join_not_found
+    CloudException.Reason.LastOwner -> R.string.cloud_leave_last_owner
     CloudException.Reason.SignInRequired -> R.string.team_server_error_sign_in_required
     CloudException.Reason.Unreachable -> R.string.team_server_error_unreachable
     CloudException.Reason.Failed -> R.string.cloud_failed

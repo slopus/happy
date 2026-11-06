@@ -30,4 +30,11 @@
     <string name="cloud_failed">Alguna cosa ha anat malament. Torna-ho a provar.</string>
     <string name="cloud_connecting">S\'està connectant a %1$s…</string>
     <string name="cloud_session_expired">La sessió de Happy Cloud dura una hora i ja s\'ha acabat. Torna a iniciar la sessió per obrir, crear o unir-te a un servidor. Els servidors que ja són en aquest telèfon continuen connectats.</string>
+    <string name="cloud_sign_out">Tanca la sessió de Happy Cloud</string>
+    <string name="cloud_members">Membres</string>
+    <string name="cloud_members_sign_in">Inicia la sessió a Happy Cloud per veure qui hi ha en aquest servidor.</string>
+    <string name="cloud_leave">Surt del servidor</string>
+    <string name="cloud_leave_confirm_title">Vols sortir de %1$s?</string>
+    <string name="cloud_leave_confirm_message">Perdràs els seus agents i tasques a tots els dispositius. Pots tornar amb un codi d\'invitació nou.</string>
+    <string name="cloud_leave_last_owner">N\'ets l\'únic propietari, així que no en pots sortir.</string>
 </resources>

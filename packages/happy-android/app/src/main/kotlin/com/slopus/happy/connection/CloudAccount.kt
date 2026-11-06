@@ -45,12 +45,18 @@ data class CloudServer(
 @Serializable
 data class CloudServerImage(val thumbhash: String? = null, val width: Int? = null, val height: Int? = null, val url: String)
 
+/** Someone on a server (`GET /v1/servers/:id/members`). */
+@Serializable
+data class CloudMember(val accountId: String, val name: String? = null, val role: String, val joinedAt: String? = null) {
+    val owner: Boolean get() = role == "owner"
+}
+
 /** What `GET /v1/servers/availability` says of a name. */
 enum class CloudName { Available, Taken, Reserved, Invalid }
 
 /** Why an accounts API call failed, from its `code` where it gave one. */
 class CloudException(val reason: Reason) : Exception(reason.name) {
-    enum class Reason { Taken, Invalid, NotFound, SignInRequired, Unreachable, Failed }
+    enum class Reason { Taken, Invalid, NotFound, LastOwner, SignInRequired, Unreachable, Failed }
 }
 
 /** Where the Happy Cloud account stands. */
@@ -153,6 +159,13 @@ class CloudAccount(
         return false
     }
 
+    /** "Sign out of Happy Cloud": the pass is forgotten; servers already on the phone stay signed in. */
+    fun signOut() {
+        access = null
+        pending = null
+        mutableState.value = CloudAccountState.SignedOut()
+    }
+
     /** The pass is over: its hour is up, or the service refused it. */
     private fun expire() {
         access = null
@@ -214,6 +227,41 @@ class CloudAccount(
             OAuthCredential(methodId = method.id, clientId = method.clientId, refreshUrl = method.tokenUrl, refreshToken = refresh, resource = "${origin.value}/")
     }
 
+    /** Who is on server [id]: the account must be a member. */
+    suspend fun members(id: String): List<CloudMember> =
+        json.decodeFromJsonElement(MemberList.serializer(), call("GET", "/v1/servers/${segment(id)}/members").second).members
+
+    /** Leaves server [id]; its only owner can't (LastOwner). The server's sessions for this account are revoked by the service. */
+    suspend fun leave(id: String) {
+        call("POST", "/v1/servers/${segment(id)}/leave", JsonObject(emptyMap()))
+    }
+
+    /** The account's server at [origin], by the servers it lists; NotFound when it isn't one of them. */
+    suspend fun serverAt(origin: String): CloudServer =
+        servers().firstOrNull { it.origin == origin } ?: throw CloudException(CloudException.Reason.NotFound)
+
+    /**
+     * Revokes a cloud server's session (RFC 7009 `POST /revoke`, the refresh
+     * token and `client_id`, no account token) as the person removes it from
+     * the phone. Only a credential refreshed at this accounts origin is sent
+     * here; any other is no business of this service. Best effort, in the
+     * account's scope, so the removal never waits on it.
+     */
+    fun revoke(credential: OAuthCredential) {
+        val token = credential.refreshToken ?: return
+        if (credential.refreshUrl != method.tokenUrl) return
+        scope.launch(Dispatchers.IO) {
+            val form = okhttp3.FormBody.Builder().add("token", token).add("token_type_hint", "refresh_token").add("client_id", credential.clientId).build()
+            try {
+                http.newCall(Request.Builder().url("${origin.value}/revoke").post(form).build()).execute().close()
+            } catch (_: IOException) {
+                // Offline: the refresh token still runs out in its 30 days, and the person can sign out everywhere.
+            }
+        }
+    }
+
+    private fun segment(id: String) = java.net.URLEncoder.encode(id, "UTF-8")
+
     /**
      * A server picture's bytes, kept in memory: its URL names its digest, so
      * it never changes. Null when it can't be had. The account token goes
@@ -262,6 +310,7 @@ class CloudAccount(
                 "taken" -> CloudException.Reason.Taken
                 "invalid" -> CloudException.Reason.Invalid
                 "not_found" -> CloudException.Reason.NotFound
+                "last_owner" -> CloudException.Reason.LastOwner
                 else -> if (status >= 500) CloudException.Reason.Unreachable else CloudException.Reason.Failed
             },
         )
@@ -291,6 +340,8 @@ class CloudAccount(
     private fun fresh(token: AccessToken) = token.expiresAtMillis == null || token.expiresAtMillis - now() > EXPIRY_MARGIN_MILLIS
 
     @Serializable private class ServerList(val servers: List<CloudServer>)
+
+    @Serializable private class MemberList(val members: List<CloudMember>)
 
     companion object {
         private const val MAX_BODY = 1024L * 1024

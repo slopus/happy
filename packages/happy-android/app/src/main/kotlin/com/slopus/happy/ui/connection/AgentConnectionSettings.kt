@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.connection
 
+import com.slopus.happy.connection.HappyCloud
 import com.slopus.happy.ui.tablet.BackOrSidebarToggle
 import com.slopus.happy.ui.settings.SettingsTags
 import com.slopus.happy.call.CallAllowance
@@ -173,6 +174,8 @@ class AgentSettingsActions(
     val onSharing: (() -> Unit)? = null,
     /** Agents: what a new chat starts on (desktop's New sessions); null where it isn't offered. */
     val onAgents: (() -> Unit)? = null,
+    /** Members: who is on this Happy Cloud server, and leaving it; null for any other connection. */
+    val onMembers: (() -> Unit)? = null,
     /** Disconnects this connection; asked for only after the person confirmed. */
     val onRemove: () -> Unit = {},
     /** Opens this connection's Chief of Staff with [prefix] typed, unsent. */
@@ -272,6 +275,14 @@ fun AgentConnectionSettingsScreen(
                         onClick = open,
                     )
                 },
+                actions.onMembers?.let { open ->
+                    SettingsEntry(
+                        id = CloudTags.MEMBERS,
+                        title = stringResource(R.string.cloud_members),
+                        icon = { SettingsTile(Ionicon.PeopleOutline, SettingsTiles.indigo) },
+                        onClick = open,
+                    )
+                },
             ),
         ),
         SettingsSection(
@@ -360,14 +371,18 @@ internal fun statusText(status: AgentLinkStatus): String = stringResource(
 )
 
 /**
- * Forgets the agent connection [id] on this phone. When it was open, the
- * next account opens: a Happy account first, else another agent; none, the
- * first screen.
+ * Forgets the agent connection [id] on this phone; a Happy Cloud server's
+ * session is revoked at the accounts service first (`POST /revoke`), without
+ * waiting on it. When it was open, the next account opens: a Happy account
+ * first, else another agent; none, the first screen.
  */
 internal suspend fun removeAgentConnection(graph: AppGraph, id: String) = graph.whileSwitching {
     val open = graph.openAgentId.value == id
     val next = graph.accountStore.registry.value.ordered.firstOrNull()?.id
         ?: graph.agentConnections.accounts.value.filter { it.id != id }.minByOrNull { it.addedAt }?.id
+    if (HappyCloud.isServer(graph.agentConnections.accounts.value.firstOrNull { it.id == id }?.server)) {
+        graph.agentConnections.credentials(id)?.oauth?.let { graph.cloudAccount?.revoke(it) }
+    }
     graph.agentConnections.remove(id)
     if (!open) return@whileSwitching
     if (next != null) {
@@ -426,7 +441,8 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
     val scope = rememberCoroutineScope()
     val accounts = rememberAccountMenu(graph).shownAs(connectionId)
     val switcher = LocalAccountSwitcher.current
-    val actions = remember(graph, nav, connectionId, switcher) {
+    val cloud = graph.cloudAccount != null && HappyCloud.isServer(agent.server)
+    val actions = remember(graph, nav, connectionId, switcher, cloud) {
         AgentSettingsActions(
             onBack = { nav.popBackStack() },
             onProfile = { nav.navigate(AgentProfileRoute(connectionId)) },
@@ -435,6 +451,7 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
             onDataStorage = { nav.navigate(AgentDataStorageRoute(connectionId)) },
             onSharing = { nav.navigate(AgentSharingRoute(connectionId)) },
             onAgents = { nav.navigate(AgentAgentsRoute(connectionId)) },
+            onMembers = if (cloud) ({ nav.navigate(CloudMembersRoute(connectionId)) }) else null,
             onAskChief = { prefix -> nav.openChiefOfStaff(connectionId, prefix) },
             onRemove = {
                 if (switcher != null) switcher.removingFromSettings { removeAgentConnection(graph, connectionId) }

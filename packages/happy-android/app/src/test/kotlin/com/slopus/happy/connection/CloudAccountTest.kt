@@ -221,6 +221,55 @@ class CloudAccountTest {
     }
 
     @Test
+    fun removingAServerRevokesItsRefreshTokenWithNoAccountToken() = runBlocking {
+        val account = account()
+        server.enqueue(json("{}"))
+        account.revoke(OAuthCredential("happy-accounts", "happy", "${origin.value}/token", "server-refresh", "https://acme.happy.computer/"))
+        val revoke = server.takeRequest()
+        assertEquals("POST /revoke", "${revoke.method} ${revoke.target}")
+        assertEquals(null, revoke.headers["Authorization"])
+        assertEquals("token=server-refresh&token_type_hint=refresh_token&client_id=happy", revoke.body?.utf8())
+        // A session refreshed elsewhere (another service, or none) is never sent here.
+        account.revoke(OAuthCredential("jwt", "happy", "https://sso.acme.example/token", "theirs", null))
+        account.revoke(OAuthCredential("happy-accounts", "happy", "${origin.value}/token", null, null))
+        kotlinx.coroutines.delay(200)
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun signingOutForgetsThePassOnly() = runBlocking {
+        val account = account()
+        signIn(account, jwt(audience, tag = "a1"))
+        account.signOut()
+        assertEquals(CloudAccountState.SignedOut(expired = false), account.state.value)
+        assertFails(CloudException.Reason.SignInRequired) { account.servers() }
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun membersAndLeavingReadTheContractsAnswers() = runBlocking {
+        val account = account()
+        signIn(account, jwt(audience, tag = "a1"))
+        server.enqueue(json("""{"servers":[{"id":"s1","name":"acme","url":"https://acme.happy.computer/","role":"member"}]}"""))
+        assertEquals("s1", account.serverAt("https://acme.happy.computer").id)
+        server.enqueue(json("""{"servers":[]}"""))
+        assertFails(CloudException.Reason.NotFound) { account.serverAt("https://acme.happy.computer") }
+        server.enqueue(json("""{"members":[{"accountId":"a1","name":"Ada","role":"owner","joinedAt":"2026-11-06T00:00:00Z"},{"accountId":"a2","name":null,"role":"member"}]}"""))
+        assertEquals(
+            listOf(CloudMember("a1", "Ada", "owner", "2026-11-06T00:00:00Z"), CloudMember("a2", null, "member")),
+            account.members("s1"),
+        )
+        server.enqueue(json("""{"ok":true}"""))
+        account.leave("s1")
+        server.enqueue(json("""{"code":"last_owner","error":"The last owner can't leave."}""", 409))
+        assertFails(CloudException.Reason.LastOwner) { account.leave("s1") }
+        // The two server lists asked for by serverAt.
+        repeat(2) { server.takeRequest() }
+        assertEquals("GET /v1/servers/s1/members", server.takeRequest().let { "${it.method} ${it.target}" })
+        assertEquals("POST /v1/servers/s1/leave", server.takeRequest().let { "${it.method} ${it.target}" })
+    }
+
+    @Test
     fun availabilityCreateAndJoinReadTheContractsAnswers() = runBlocking {
         val account = account()
         signIn(account, jwt(audience, tag = "a1"))

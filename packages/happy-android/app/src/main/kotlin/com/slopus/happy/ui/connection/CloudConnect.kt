@@ -17,6 +17,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
+import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.connection.CloudAccount
@@ -67,6 +68,7 @@ fun NavGraphBuilder.cloudRoutes(graph: AppGraph, nav: NavHostController) {
     page<CloudRoute> { Cloud(graph, account, nav) }
     page<CloudCreateRoute> { CloudCreate(graph, account, nav) }
     page<CloudJoinRoute> { CloudJoin(graph, account, nav) }
+    page<CloudMembersRoute> { entry -> CloudMembers(graph, account, nav, entry.toRoute<CloudMembersRoute>().connectionId) }
 }
 
 /**
@@ -111,6 +113,7 @@ private fun Cloud(graph: AppGraph, account: CloudAccount, nav: NavHostController
         onPick = { nav.openCloudServer(graph, it) },
         onCreate = { nav.navigate(CloudCreateRoute) },
         onJoin = { nav.navigate(CloudJoinRoute) },
+        onSignOut = account::signOut,
         onBack = { nav.popBackStack() },
     )
 }
