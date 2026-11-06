@@ -947,7 +947,7 @@ final class HostedComposeTargetTests: XCTestCase {
     }
 
     private func until(_ condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {
-        let deadline = ContinuousClock.now + .seconds(10)
+        let deadline = ContinuousClock.now + .seconds(HostedTime.budget(10))
         while !condition(), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertTrue(condition(), "timed out", file: file, line: line)
     }

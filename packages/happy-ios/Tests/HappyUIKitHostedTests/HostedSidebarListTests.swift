@@ -248,10 +248,11 @@ final class HostedSidebarListTests: XCTestCase {
         list.setContentOffsetY(1300)
         // The rows at the new place load over the next frames.
         let deadline = CACurrentMediaTime() + HostedTime.budget(1)
-        while list.visibleRows.count < 3 || list.visibleRows.prefix(3).contains(where: { list.view(for: $0.id) == nil }), CACurrentMediaTime() < deadline {
+        while abs(list.contentOffsetY - 1300) > 0.5 || list.visibleRows.prefix(3).contains(where: { list.view(for: $0.id) == nil }), CACurrentMediaTime() < deadline {
             try await Task.sleep(for: .milliseconds(16))
         }
         await list.settle()
+        print("SIDEBAR_DEBUG offset=\(list.contentOffsetY) visible=\(list.visibleRows.prefix(4).map(\.id)) prepared=\(list.shownRows.count)")
         return (window, list, rows)
     }
 

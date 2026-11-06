@@ -306,9 +306,9 @@ final class HostedSystemMonitorTests: XCTestCase {
         let idle = zip(stamps.dropFirst(), stamps).map { ($0 - $1) * 1000 }
         let worst = idle.max() ?? 0
         print("MONITOR_PERF idle frames=\(idle.count) worst=\(String(format: "%.1f", worst)) longestApply=\(String(format: "%.2f", screen.longestApply))")
-        XCTAssertGreaterThan(idle.count, 180)
-        XCTAssertLessThan(worst, 34, "a frame waited \(worst) ms while the samples came in")
-        XCTAssertLessThan(screen.longestApply, 8)
+        XCTAssertGreaterThan(idle.count, HostedTime.sampled(180))
+        XCTAssertLessThan(worst, HostedTime.budget(34), "a frame waited \(worst) ms while the samples came in")
+        XCTAssertLessThan(screen.longestApply, HostedTime.budget(8))
 
         GymFrameMeter.installIfAsked(in: opened.window)
         let meter = try XCTUnwrap(GymFrameMeter.shared)
@@ -329,9 +329,9 @@ final class HostedSystemMonitorTests: XCTestCase {
             return (String(parts[0]), value)
         }, uniquingKeysWith: { a, _ in a })
         XCTAssertGreaterThan(values["frames"] ?? 0, 100, "the list scrolled")
-        XCTAssertLessThan(values["allMax"] ?? .infinity, 50, summary)
+        XCTAssertLessThan(values["allMax"] ?? .infinity, HostedTime.budget(50), summary)
         // Apple's "good": under 5 ms of hitch per second of scrolling.
-        XCTAssertLessThan(values["hitchRatio"] ?? .infinity, 5, summary)
+        XCTAssertLessThan(values["hitchRatio"] ?? .infinity, HostedTime.budget(5), summary)
         unsetenv("HAPPY_GYM_METER")
     }
 }

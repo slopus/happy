@@ -405,6 +405,8 @@ final class HostedSettingsSwitchTests: XCTestCase {
     /// What one frame of the way back shows of the home being returned to.
     private struct Frame: CustomStringConvertible {
         var time: CFTimeInterval
+        /// The pop's motion is set up: Settings has left its place.
+        var begun: Bool
         /// The home's own switcher, in the bar, naming `name`.
         var switcher: Bool
         var name: String?
@@ -414,7 +416,7 @@ final class HostedSettingsSwitchTests: XCTestCase {
         var search: Bool
         var content: Bool
         var description: String {
-            String(format: "%.3fs", time) + " switcher \(switcher) \(name ?? "-") picture \(picture) settings \(settings) search \(search) content \(content)"
+            String(format: "%.3fs", time) + " begun \(begun) switcher \(switcher) \(name ?? "-") picture \(picture) settings \(settings) search \(search) content \(content)"
         }
         var whole: Bool { switcher && picture && settings && search && content }
     }
@@ -423,7 +425,7 @@ final class HostedSettingsSwitchTests: XCTestCase {
         view.subviews + view.subviews.flatMap(descendants)
     }
 
-    private func frame(_ app: App, home: UIViewController, at time: CFTimeInterval) -> Frame {
+    private func frame(_ app: App, home: UIViewController, leaving: UIView, at time: CFTimeInterval) -> Frame {
         let bar = app.navigation.navigationBar
         let own = home.navigationItem.leftBarButtonItem?.customView
         let button = Self.descendants(of: bar).first { $0 === own && $0.window != nil && !$0.isHidden } as? AccountSwitcherButton
@@ -437,7 +439,8 @@ final class HostedSettingsSwitchTests: XCTestCase {
         if home is LegacyHomeViewController {
             content = content && (Mirror(reflecting: home).children.first { $0.label == "content" }?.value as? UIViewController)?.view.window != nil
         }
-        return Frame(time: time, switcher: button != nil, name: button?.title, picture: picture != nil && picture !== pending, settings: settings, search: search, content: content)
+        let begun = leaving.window == nil || leaving.convert(leaving.bounds, to: nil).minX != 0
+        return Frame(time: time, begun: begun, switcher: button != nil, name: button?.title, picture: picture != nil && picture !== pending, settings: settings, search: search, content: content)
     }
 
     private func name(_ app: App, _ id: String) -> String? {
@@ -483,7 +486,7 @@ final class HostedSettingsSwitchTests: XCTestCase {
             let start = CACurrentMediaTime()
             let recorder = TickRecorder { [unowned self] _ in
                 let time = CACurrentMediaTime() - start
-                frames.append(frame(app, home: home, at: time))
+                frames.append(frame(app, home: home, leaving: settings.view, at: time))
                 if !captured, time > 0.15 {
                     captured = true
                     capture(app.window, "back-\(leg)-mid")
@@ -495,9 +498,11 @@ final class HostedSettingsSwitchTests: XCTestCase {
             recorder.stop()
             XCTAssertTrue(landed, "\(leg): back didn't land on the new home")
             XCTAssertGreaterThan(frames.count, HostedTime.sampled(5), leg)
-            let broken = frames.filter { !$0.whole || $0.name != expected }
+            // iOS 27 sets a pop's motion up a frame after it is asked
+            // for; until then Settings fills the screen where it was.
+            let broken = frames.filter { $0.begun && (!$0.whole || $0.name != expected) }
             XCTAssertTrue(broken.isEmpty, "\(leg): \(broken.count) of \(frames.count) frames lack part of home:\n\(broken.prefix(6).map(\.description).joined(separator: "\n"))")
-            pops.append("\(leg): \(frames.count) frames")
+            pops.append("\(leg): \(frames.count) frames, \(frames.filter { !$0.begun }.count) before the pop began")
         }
         print("pops: \(pops)")
         withExtendedLifetime(app.coordinator) {}

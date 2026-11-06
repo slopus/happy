@@ -74,6 +74,11 @@ final class HostedListResizeTests: XCTestCase {
     override func setUp() {
         super.setUp()
         LegacyFonts.registerBundledFonts()
+        // The windows earlier tests hid stay on the scene and turn with it,
+        // half a second or more a turn after a few dozen; let them go.
+        for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+            for window in scene.windows where window.isHidden { window.windowScene = nil }
+        }
         // A test that failed on its side leaves the phone upright again.
         addTeardownBlock { @MainActor in
             guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene, scene.interfaceOrientation != .portrait else { return }
@@ -205,7 +210,6 @@ final class HostedListResizeTests: XCTestCase {
     private func resize(_ window: UIWindow, to change: Change, _ label: String, check: @escaping () -> [String]) async throws {
         var frames: [[String]] = []
         var ticks: [CFTimeInterval] = [CACurrentMediaTime()]
-        print("RESIZE_WINDOWS \(window.windowScene?.windows.count ?? -1) visible \(window.windowScene?.windows.filter { !$0.isHidden }.count ?? -1)")
         switch change {
         case .size(let size):
             UIView.animate(withDuration: Self.animation) {

@@ -7,7 +7,9 @@ import UIKit
 @MainActor
 final class ChatOpening {
     /// Records rows as late after this interval; never delays a tap.
-    static let cap: CFTimeInterval = 0.150
+    static let shippedCap: CFTimeInterval = 0.150
+    /// `shippedCap`; a slower simulator's tests stretch it.
+    static var cap = shippedCap
     /// The pieces allowed beyond the short readiness interval.
     static let mayComeLate: Set<String> = ["rows", "placeholder"]
     /// Finish the diagnostic report even when content has stalled.

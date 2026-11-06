@@ -171,6 +171,7 @@ final class HostedLegacyTerminalCodeTests: XCTestCase {
 
         // The window is the new account's home, the person is told, and
         // settings, still on top, shows the new account ticked.
+        _ = try await until { navigation.viewControllers.first is LegacyHomeViewController }
         let home = navigation.viewControllers.first as? LegacyHomeViewController
         XCTAssertNotNil(home, "\(here): the root is \(String(describing: navigation.viewControllers.first))")
         let told = try await until { (window.rootViewController?.presentedViewController as? UIAlertController)?.message == Strings.Modals.terminalConnectedSuccessfully }

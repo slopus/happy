@@ -28,6 +28,13 @@ private struct NoSockets: WebSocketConnector {
 /// content is ready, its geometry remains stable.
 @MainActor
 final class HostedChatNavigationTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        // A slower simulator gets its chats' rows in later.
+        ChatOpening.cap = HostedTime.budget(ChatOpening.shippedCap)
+        addTeardownBlock { @MainActor in ChatOpening.cap = ChatOpening.shippedCap }
+    }
+
     func testPushInstallsOnlyTheShellBeforeReturning() async throws {
         let (controller, _) = try await signedIn()
         let context = AppContext(account: controller, variant: .preview, version: "test")
@@ -362,7 +369,7 @@ final class HostedChatNavigationTests: XCTestCase {
         lines.append(Self.summary("switch", times))
         lines.append("cap hit \(capHits) of \(tries)")
         for line in lines { print("OPENING \(line)") }
-        XCTAssertLessThan(Double(capHits), HostedTime.budget(Double(tries) / 4), lines.joined(separator: "\n"))
+        XCTAssertLessThan(capHits, tries / 4, lines.joined(separator: "\n"))
         await controller.signOut()
     }
 
