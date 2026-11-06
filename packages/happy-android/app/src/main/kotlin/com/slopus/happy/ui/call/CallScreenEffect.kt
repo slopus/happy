@@ -1,5 +1,7 @@
 package com.slopus.happy.ui.call
 
+import com.slopus.happy.call.CallControl
+import android.provider.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -66,5 +68,11 @@ internal fun callScreen(nav: NavHostController, connectionId: String?, panel: Ma
 
     override fun home() {
         if (!atHome) nav.popBackStack<HomeRoute>(inclusive = false)
+    }
+
+    override suspend fun press(control: CallControl) {
+        // Animations off (the animator duration scale at 0): the light shows still.
+        val still = Settings.Global.getFloat(nav.context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+        VoiceTouch.play(control, still)
     }
 }

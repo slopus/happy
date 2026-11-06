@@ -1,5 +1,16 @@
 package com.slopus.happy.ui.connection
 
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.DisposableEffect
+import com.slopus.happy.ui.call.voiceTouch
+import com.slopus.happy.ui.call.rememberVoiceTouchSource
+import com.slopus.happy.ui.call.VoiceTouch
+import com.slopus.happy.call.CallControl
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.indication
 import com.slopus.happy.ui.tablet.MainPanelKey
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -499,10 +510,14 @@ private fun ConversationRow(row: AgentFeedRow.Conversation, onOpen: (String) -> 
     val marked = AgentHomeSpec.hasMark(row.kind)
     val title = row.title ?: stringResource(R.string.session_new_chat)
     val working = stringResource(R.string.agent_home_working)
+    // The call's press of this row ([VoiceTouch]): its light in the card's shape, which clips it, and the ripple.
+    val voice = rememberVoiceTouchSource()
     Row(
         modifier = Modifier
             .fillMaxSize()
             .onPlaced { placed[0] = it }
+            .voiceTouch(CallControl.Row(row.agentId), RectangleShape, voice)
+            .indication(voice, LocalIndication.current)
             .combinedClickable(
                 role = Role.Button,
                 onLongClick = onHold?.let { hold ->
@@ -713,6 +728,17 @@ fun AgentHomeList(
     onOpenTodos: () -> Unit = {},
 ) {
     val reduceMotion = rememberReduceMotion()
+    // The call brings a conversation's row on screen here before it presses it ([VoiceTouch.rows]).
+    val currentItems by rememberUpdatedState(items)
+    // Scrolled on the list's own frame clock, whoever asks.
+    val scrolling = rememberCoroutineScope()
+    DisposableEffect(state) {
+        val reveal: suspend (String, Boolean) -> Unit = { agentId, glides ->
+            scrolling.launch { revealRow(state, currentItems, agentId, glides) }.join()
+        }
+        VoiceTouch.rows = reveal
+        onDispose { if (VoiceTouch.rows === reveal) VoiceTouch.rows = null }
+    }
     LazyColumn(
         state = state,
         modifier = modifier.fillMaxSize().background(HappyTheme.colors.surface).testTag(AgentHomeTags.LIST),
@@ -723,3 +749,28 @@ fun AgentHomeList(
         item(key = "bottom", contentType = "bottom") { bottom() }
     }
 }
+
+/**
+ * Scrolls [agentId]'s row of [items] to the middle of [state]'s list unless it is wholly on screen already, clear
+ * of the glass bar and the compose button: gliding as a finger's fling would ([LazyListState.animateScrollToItem]),
+ * at once when [glides] is false. Returns once the list stands still.
+ */
+private suspend fun revealRow(state: LazyListState, items: List<AgentHomeItem>, agentId: String, glides: Boolean) {
+    val at = items.indexOfFirst { item -> ((item as? AgentHomeItem.Row)?.row as? AgentFeedRow.Conversation)?.agentId == agentId }
+    if (at < 0) return
+    val info = state.layoutInfo
+    // The list's own rows come after its header (the search field, a banner) and before its bottom spacer.
+    val index = info.totalItemsCount - 1 - items.size + at
+    if (index < 0) return
+    // Item offsets start under the bar's padding; the compose button stands over the foot.
+    val clearBottom = info.viewportEndOffset - bottomClearancePx(info.viewportSize.height)
+    val shown = info.visibleItemsInfo.firstOrNull { it.index == index }
+    if (shown != null && shown.offset >= 0 && shown.offset + shown.size <= clearBottom) return
+    val size = shown?.size ?: info.visibleItemsInfo.firstOrNull { it.index > 0 }?.size ?: 0
+    val middle = clearBottom / 2 - size / 2
+    // A negative offset leaves the row that far down from the top.
+    if (glides) state.animateScrollToItem(index, -middle) else state.scrollToItem(index, -middle)
+}
+
+/** Room the compose button takes at the foot of the list's viewport: a rough eighth, at least. */
+private fun bottomClearancePx(viewport: Int): Int = viewport / 8

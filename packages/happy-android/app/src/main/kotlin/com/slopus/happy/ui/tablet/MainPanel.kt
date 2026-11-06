@@ -1,5 +1,14 @@
 package com.slopus.happy.ui.tablet
 
+import com.slopus.happy.ui.call.voiceTouch
+import com.slopus.happy.ui.call.rememberVoiceTouchSource
+import com.slopus.happy.call.CallControl
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.foundation.shape.GenericShape
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.material3.ripple
+import androidx.compose.foundation.indication
 import com.slopus.happy.ui.backStackEntries
 
 import androidx.compose.foundation.background
@@ -234,7 +243,16 @@ fun rememberMainPanelRoot(): Boolean {
  */
 @Composable
 fun BackOrSidebarToggle(tint: Color = LocalContentColor.current, back: @Composable () -> Unit) {
-    if (rememberMainPanelRoot()) SidebarToggle(tint) else back()
+    if (rememberMainPanelRoot()) return SidebarToggle(tint)
+    // The call's back, pressed as a finger would ([VoiceTouch]): lit and rippled as the icon button's own state layer.
+    val source = rememberVoiceTouchSource()
+    Box(Modifier.voiceTouch(CallControl.Back, IconButtonStateLayer, source).indication(source, ripple(bounded = false, radius = 20.dp))) { back() }
+}
+
+/** An icon button's state layer, the 40 circle in the middle of its 48 target. */
+private val IconButtonStateLayer: Shape = GenericShape { size, _ ->
+    val radius = minOf(size.width, size.height) * 20f / 48f
+    addOval(Rect(Offset(size.width / 2, size.height / 2), radius))
 }
 
 /** The sidebar's button, as iPadOS names it: Hide Sidebar, or Show Sidebar while it is hidden. A 48 target, its 24 glyph [tint]. */

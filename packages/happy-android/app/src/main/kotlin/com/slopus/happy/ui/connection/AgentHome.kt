@@ -2,6 +2,10 @@ package com.slopus.happy.ui.connection
 
 import com.slopus.happy.ui.conversation.refusalText
 import androidx.compose.ui.platform.LocalResources
+import com.slopus.happy.ui.call.voiceTouch
+import com.slopus.happy.ui.call.rememberVoiceTouchSource
+import com.slopus.happy.call.CallControl
+import androidx.compose.material3.FloatingActionButtonDefaults
 import com.slopus.happy.BuildConfig
 import androidx.compose.ui.platform.LocalContext
 import com.slopus.happy.ui.voice.rememberMicrophonePermission
@@ -699,8 +703,13 @@ internal fun BoxScope.ComposeFab(onClick: () -> Unit, tag: String, label: String
                     VoiceGlyph(24.dp, LocalContentColor.current)
                 }
             }
-            FloatingActionButton(onClick = onClick, modifier = Modifier.testTag(tag)) {
-                Icon(Ionicon.CreateOutline, 24.dp, LocalContentColor.current, contentDescription = label)
+            // The call's press of compose ([VoiceTouch]): its light inside the button, and the button's own press.
+            val voice = rememberVoiceTouchSource()
+            val shape = FloatingActionButtonDefaults.shape
+            FloatingActionButton(onClick = onClick, modifier = Modifier.testTag(tag), shape = shape, interactionSource = voice) {
+                Box(Modifier.size(56.dp).voiceTouch(CallControl.Compose, shape, voice), contentAlignment = Alignment.Center) {
+                    Icon(Ionicon.CreateOutline, 24.dp, LocalContentColor.current, contentDescription = label)
+                }
             }
         }
     }

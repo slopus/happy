@@ -317,7 +317,7 @@ final class SplitAppHarness {
         }
         #endif
         if arguments.contains("-composeMachine") { SplitComposeMachine.install() }
-        let computer = DemoComputer(rounds: arguments.contains("-long") ? 60 : 0, live: option("-callLive") != nil)
+        let computer = DemoComputer(rounds: arguments.contains("-long") ? 60 : 0, live: option("-callLive") != nil || arguments.contains("-voiceTouch"))
         let controller = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/split-harness",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
@@ -431,6 +431,48 @@ final class SplitAppHarness {
                 _ = await step("goBack", "{\"focusRevision\":\(revision)}")
                 _ = await step("getSessionContext", "{\"targetRef\":\"s1\"}")
                 print("[call-nav] done")
+                await call.close()
+                targets.close()
+            }
+            // What the call presses, as the person would (`VoiceTouch`): compose for new work, a row off
+            // screen and one on it, back, a sheet's close and home, each logged with when it began and
+            // ended (`[voice-touch]`), a pause between for the recording.
+            if arguments.contains("-voiceTouch"), let id = context.account.agentConnections.activeID, let session = Session.session(for: id, context: context) {
+                // Less motion, as the system's setting asks for it.
+                if arguments.contains("-reduceMotion") { ShimmerClock.shared.reduceMotionOverride = true }
+                try? await Task.sleep(for: .seconds(3))
+                let targets = SessionCallTargets(session: session, shell: shell)
+                let call = CallContext(targets: targets)
+                var revision = 0
+                let began = Date()
+                @MainActor func step(_ name: String, _ json: String) async -> [String: Any] {
+                    print("[voice-touch] \(String(format: "%.2f", Date().timeIntervalSince(began))) start \(name) \(json)")
+                    let result = await call.handle(CallToolCall(id: UUID().uuidString, name: name, parameters: Data(json.utf8)))
+                    let value = (try? JSONSerialization.jsonObject(with: Data(result.text.utf8))) as? [String: Any] ?? [:]
+                    if let next = value["focusRevision"] as? Int { revision = next }
+                    print("[voice-touch] \(String(format: "%.2f", Date().timeIntervalSince(began))) end \(name) \(result.isError ? "refused" : "ok") \(result.text.prefix(200))")
+                    try? await Task.sleep(for: .seconds(2))
+                    return value
+                }
+                _ = await call.initial()
+                let listed = await step("listSessions", "{}")
+                let sessions = listed["sessions"] as? [[String: Any]] ?? []
+                func ref(_ title: String) -> String { (sessions.first { $0["title"] as? String == title }?["targetRef"] as? String) ?? "" }
+                let far = (sessions.last { ($0["title"] as? String)?.hasPrefix("Fixture task") == true }?["title"] as? String) ?? ""
+                _ = await step("sendMessage", "{\"targetRef\":\"new-task\",\"text\":\"Draft the release notes\",\"focusRevision\":\(revision)}")
+                _ = await step("openSession", "{\"targetRef\":\"\(ref(far))\",\"focusRevision\":\(revision)}")
+                _ = await step("goBack", "{\"focusRevision\":\(revision)}")
+                _ = await step("openSession", "{\"targetRef\":\"\(ref("Research Assistant"))\",\"focusRevision\":\(revision)}")
+                _ = await step("goHome", "{}")
+                // A sheet with its close at the leading end, as the app's sheets have it.
+                let settings = SettingsViewController(context: context, computer: id)
+                let sheet = UINavigationController(rootViewController: settings)
+                settings.navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .close, primaryAction: UIAction { [weak sheet] _ in sheet?.dismiss(animated: true) })
+                AppCoordinator.applyAppearance(to: sheet.navigationBar)
+                shell.present(sheet, animated: true)
+                try? await Task.sleep(for: .seconds(2))
+                _ = await step("goBack", "{\"focusRevision\":\(revision)}")
+                print("[voice-touch] done")
                 await call.close()
                 targets.close()
             }

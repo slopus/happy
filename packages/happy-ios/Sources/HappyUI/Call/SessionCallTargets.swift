@@ -204,6 +204,9 @@ final class SessionCallTargets: CallTargets {
         if focusedNow == agentId { return true }
         // Past the tool's deadline: nothing moves on screen.
         guard !Task.isCancelled else { return false }
+        // Its row, where the person sees home, is pressed as they would.
+        if let row = await homeInSight?.voiceTouchRow(agentId) { await VoiceTouch.play(row) }
+        guard !Task.isCancelled, !closed else { return false }
         let chat = ChatViewController(session: session, agentId: agentId, title: row.label, spaceId: row.spaceId, intro: nil)
         await place(chat, in: shell)
         #if DEBUG
@@ -263,6 +266,7 @@ final class SessionCallTargets: CallTargets {
         guard !Task.isCancelled else { return .refused("No answer in time.") }
         if let presented = Self.presented(over: shell) {
             if presented is UIAlertController { return .refused("An alert is open; the person answers it in the app.") }
+            if let control = Self.backControl(in: shell) { await VoiceTouch.play(control) }
             if let sheet = presented as? UINavigationController, sheet.viewControllers.count > 1 {
                 sheet.popViewController(animated: true)
                 await Self.settle(sheet.transitionCoordinator)
@@ -273,7 +277,8 @@ final class SessionCallTargets: CallTargets {
         }
         let stack = shell.stack
         guard stack.count > 1 else { return .refused("This is home; there is nothing to go back to.") }
-        shell.setStack(Array(stack.dropLast()), animated: true)
+        if let control = Self.backControl(in: shell) { await VoiceTouch.play(control) }
+        shell.setStack(Array(shell.stack.dropLast()), animated: true)
         await Self.settle(shell.stackTransition)
         return .moved(atHome: shell.stack.count == 1)
     }
@@ -285,7 +290,10 @@ final class SessionCallTargets: CallTargets {
         guard !Task.isCancelled else { return .refused("No answer in time.") }
         if let presented = Self.presented(over: shell) {
             if presented is UIAlertController { return .refused("An alert is open; the person answers it in the app.") }
+            if let control = Self.backControl(in: shell) { await VoiceTouch.play(control) }
             await withCheckedContinuation { done in shell.dismiss(animated: true) { done.resume() } }
+        } else if shell.stack.count > 1, let control = Self.backControl(in: shell) {
+            await VoiceTouch.play(control)
         }
         let stack = shell.stack
         if stack.count > 1, let root = stack.first {
@@ -293,6 +301,34 @@ final class SessionCallTargets: CallTargets {
             await Self.settle(shell.stackTransition)
         }
         return .moved(atHome: true)
+    }
+
+    // MARK: Voice touch
+
+    /// Home, where the person sees it now: nothing presented over it.
+    private var homeInSight: AgentHomeViewController? {
+        guard let shell, Self.presented(over: shell) == nil,
+              let home = shell.stack.first as? AgentHomeViewController, home.isInSight else { return nil }
+        return home
+    }
+
+    /// What the person taps to go back (`VoiceTouch`): a sheet's own back
+    /// button, else its close, at the leading end where the app puts it;
+    /// else the top screen's back button. Nil where there is none to see.
+    private static func backControl(in shell: ShellViewController) -> VoiceTouch.Mark? {
+        let isBack: (UIView) -> Bool = { VoiceTouch.holds($0, "BackButton") }
+        if let presented = presented(over: shell) {
+            guard let sheet = presented as? UINavigationController ?? presented.navigationController, !sheet.isNavigationBarHidden else { return nil }
+            if sheet.viewControllers.count > 1 { return VoiceTouch.glass(in: sheet.navigationBar, where: isBack).map(VoiceTouch.glassMark) }
+            guard sheet.topViewController?.navigationItem.leftBarButtonItem != nil else { return nil }
+            let leftToRight = sheet.view.effectiveUserInterfaceLayoutDirection == .leftToRight
+            let buttons = VoiceTouch.glassButtons(in: sheet.navigationBar).map { ($0, $0.convert($0.bounds, to: nil).midX) }
+            let leading = leftToRight ? buttons.min { $0.1 < $1.1 } : buttons.max { $0.1 < $1.1 }
+            return leading.map { VoiceTouch.glassMark($0.0) }
+        }
+        let navigation: UINavigationController = shell.isExpanded ? shell.main : shell.phone
+        guard navigation.viewControllers.count > 1 else { return nil }
+        return VoiceTouch.glass(in: navigation.navigationBar, where: isBack).map(VoiceTouch.glassMark)
     }
 
     /// The topmost screen presented over the app, if any. The call's own
@@ -315,6 +351,9 @@ final class SessionCallTargets: CallTargets {
             if let started = started[agentId] {
                 if started.snapshot.items.contains(where: { $0.id == id }) { return .queued }
                 if let change, let next = await switched(started.snapshot.mode, by: change) { await started.conversation.setMode(next) }
+                guard !Task.isCancelled, !closed else { return .refused("No answer in time.") }
+                // Compose, where the person sees home, is pressed as they would.
+                if !started.sent, let compose = homeInSight?.voiceTouchCompose() { await VoiceTouch.play(compose) }
                 guard !Task.isCancelled, !closed else { return .refused("No answer in time.") }
                 guard await started.conversation.send(id: id, text: text) else { return .refused("It couldn't be kept on this phone.") }
                 started.sent = true

@@ -333,6 +333,42 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
     }
 }
 
+// MARK: Voice touch
+
+extension AgentHomeViewController {
+    /// Home as the person sees it now: on screen, its list in the window.
+    var isInSight: Bool {
+        guard let window = view.window, !view.isHidden else { return false }
+        let list = v2.homeList
+        return !list.isHidden && list.window != nil && list.convert(list.bounds, to: window).intersects(window.bounds)
+    }
+
+    /// The row of home's list that opens `agentId` (`VoiceTouch`), scrolled
+    /// to the middle first if it isn't wholly on screen: gliding 0.3 to
+    /// 0.6 s by the distance, at once if asked for less motion.
+    func voiceTouchRow(_ agentId: String) async -> VoiceTouch.Mark? {
+        guard isInSight, !isSearching else { return nil }
+        return await v2.homeList.reveal(agentId: agentId, glides: !VoiceTouch.reducesMotion)?.view.voiceTouch
+    }
+
+    /// Compose as home shows it: the sidebar's foot on an iPad, else the
+    /// toolbar's last glass button.
+    func voiceTouchCompose() -> VoiceTouch.Mark? {
+        guard isInSight else { return nil }
+        if traitCollection.isSidebarColumn {
+            let button = bottomBar.compose
+            guard button.window != nil, !button.isHidden else { return nil }
+            return VoiceTouch.glassMark(button)
+        }
+        guard let bar = navigationController?.view else { return nil }
+        let bottom = VoiceTouch.glassButtons(in: bar).filter { VoiceTouch.inFloatingBar($0) }
+        let leftToRight = view.effectiveUserInterfaceLayoutDirection == .leftToRight
+        let last = leftToRight ? bottom.max { $0.convert($0.bounds, to: nil).midX < $1.convert($1.bounds, to: nil).midX }
+            : bottom.min { $0.convert($0.bounds, to: nil).midX < $1.convert($1.bounds, to: nil).midX }
+        return last.map(VoiceTouch.glassMark)
+    }
+}
+
 extension AgentHomeViewController: MainPanelFollowing {
     func mainPanelDidShow(_ root: UIViewController?) {
         v2.shownBeside = root

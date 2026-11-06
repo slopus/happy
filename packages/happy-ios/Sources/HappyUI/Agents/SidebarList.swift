@@ -453,6 +453,10 @@ final class SidebarList: UIView {
     /// Moves the list to `offset` (a scroll view's `contentOffset.y`), at
     /// once or gliding there.
     func setContentOffsetY(_ offset: CGFloat, animated: Bool = false) {
+        setContentOffsetY(offset, transition: animated ? .uiKitScroll() : .immediate)
+    }
+
+    private func setContentOffsetY(_ offset: CGFloat, transition: ListTransition) {
         guard let prepared else { return }
         let ids = prepared.identities
         guard !ids.isEmpty else { return }
@@ -460,8 +464,41 @@ final class SidebarList: UIView {
         // place, less where the screen starts in the content.
         let index = ids.indices.last { (prepared.top(at: $0) ?? 0) <= max(0, offset + contentInsets.top) } ?? 0
         let distance = (prepared.top(at: index) ?? 0) - offset - contentInsets.top
-        list.scrollTo(ListScrollTarget(index: index, identity: ids[index], pointOffset: distance), transition: animated ? .uiKitScroll() : .immediate)
+        list.scrollTo(ListScrollTarget(index: index, identity: ids[index], pointOffset: distance), transition: transition)
         mirror()
+    }
+
+    /// Brings the row that opens `agentId` to the middle of the list,
+    /// gliding as a finger's scroll would (at once when `glides` is
+    /// false), and returns its view once the list stands still, with how
+    /// long the glide took. A row wholly on screen leaves the list where
+    /// it is; nil for one the list doesn't have.
+    func reveal(agentId: String, glides: Bool) async -> (view: SidebarItemView, scrolled: Double)? {
+        guard let prepared, let row = prepared.entries.firstIndex(where: { $0.row.agentId == agentId && $0.row.kind != .section }) else { return nil }
+        let entry = prepared.entries[row]
+        let box = entry.box.offsetBy(dx: 0, dy: entry.top)
+        let offset = contentOffsetY
+        let margin: CGFloat = 12
+        let shown = bounds.height - contentInsets.top - contentInsets.bottom
+        var scrolled = 0.0
+        if box.minY < offset + contentInsets.top + margin || box.maxY > offset + contentInsets.top + shown - margin {
+            let lowest = -contentInsets.top
+            let highest = max(lowest, prepared.contentHeight - bounds.height + contentInsets.bottom)
+            let wanted = box.midY - contentInsets.top - shown / 2
+            let target = min(max(wanted, lowest), highest)
+            let distance = abs(target - offset)
+            if distance > 0.5 {
+                // A short way is quick; a long one takes a little longer, never past 0.6 s.
+                scrolled = glides ? min(0.6, 0.3 + Double(distance) / 4000) : 0
+                list.haltScrolling()
+                setContentOffsetY(target, transition: glides ? .uiKitScroll(scrolled) : .immediate)
+                if glides { try? await Task.sleep(for: .seconds(scrolled + 0.03)) }
+                layoutIfNeeded()
+            }
+        }
+        // Its view is mounted within a frame or two of the list stopping.
+        for _ in 0..<12 where view(for: entry.row.id) == nil { try? await Task.sleep(for: .milliseconds(16)) }
+        return view(for: entry.row.id).map { ($0, scrolled) }
     }
 
     private func scrolled() {

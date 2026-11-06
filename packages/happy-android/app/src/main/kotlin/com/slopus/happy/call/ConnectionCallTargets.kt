@@ -20,8 +20,24 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
+/** A control the call presses as the person would ([CallScreen.press]). */
+sealed interface CallControl {
+    /** The top page's back button. */
+    data object Back : CallControl
+    /** Home's compose. */
+    data object Compose : CallControl
+    /** Home's row that opens [agentId]. */
+    data class Row(val agentId: String) : CallControl
+}
+
 /** What a call needs of the screen: which conversation is on top, a way to open another, and back and home. */
 interface CallScreen {
+    /**
+     * Shows [control] pressed, as a finger would press it, without pressing it (iOS's `VoiceTouch`): scrolled on
+     * screen first if it is a row, lit in the call's colours, pressed; returns when the action is due. Nothing
+     * shows, and it returns at once, where the person can't see that control.
+     */
+    suspend fun press(control: CallControl) {}
     /** The conversation on top of the stack, if one is: new work's too, once its screen holds it. */
     val focused: String?
     fun open(agentId: String)
@@ -175,12 +191,17 @@ class ConnectionCallTargets(
     override suspend fun back(): CallScreenMove = onMain {
         val screen = screen() ?: return@onMain CallScreenMove.Refused("The call has ended.")
         if (closed) return@onMain CallScreenMove.Refused("The call has ended.")
+        if (screen.atHome) return@onMain CallScreenMove.Refused("This is home; there is nothing to go back to.")
+        screen.press(CallControl.Back)
+        if (closed) return@onMain CallScreenMove.Refused("The call has ended.")
         if (!screen.back()) return@onMain CallScreenMove.Refused("This is home; there is nothing to go back to.")
         CallScreenMove.Moved(screen.atHome)
     }
 
     override suspend fun home(): CallScreenMove = onMain {
         val screen = screen() ?: return@onMain CallScreenMove.Refused("The call has ended.")
+        if (closed) return@onMain CallScreenMove.Refused("The call has ended.")
+        if (!screen.atHome) screen.press(CallControl.Back)
         if (closed) return@onMain CallScreenMove.Refused("The call has ended.")
         screen.home()
         CallScreenMove.Moved(true)
@@ -193,7 +214,12 @@ class ConnectionCallTargets(
         // New work the call started: shown as it is being made, the screen sharing its conversation.
         if (target(agentId) == null && started[agentId] == null) return@onMain false
         val screen = screen() ?: return@onMain false
-        if (screen.focused != agentId) screen.open(agentId)
+        if (screen.focused != agentId) {
+            // Its row, where the person sees home, is pressed as they would.
+            screen.press(CallControl.Row(agentId))
+            if (closed) return@onMain false
+            screen.open(agentId)
+        }
         true
     }
 
@@ -204,6 +230,9 @@ class ConnectionCallTargets(
             val draft = unmade(agentId) ?: return@onMain CallSendOutcome.Refused("That new work was closed before anything was sent.")
             if (draft.has(id)) return@onMain CallSendOutcome.Queued
             switch(draft, change)
+            // Compose, where the person sees home, is pressed as they would.
+            if (started[agentId]?.conversation === draft) screen()?.press(CallControl.Compose)
+            if (closed) return@onMain CallSendOutcome.Refused("The call has ended.")
             return@onMain if (draft.sendAs(id, text)) CallSendOutcome.Queued else CallSendOutcome.Refused("It couldn't be kept on this phone.")
         }
         // A conversation the call doesn't hear from is read for the send alone, and let go after it.

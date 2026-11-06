@@ -44,6 +44,13 @@ final class SidebarItemView: ListRowView {
     var pressed = false {
         didSet { if pressed != oldValue { applyFill() } }
     }
+    /// A voice touch on the row (`VoiceTouch`): lit in its fill's shape,
+    /// under its words, and pressed as a finger presses it.
+    var voiceTouch: VoiceTouch.Mark {
+        VoiceTouch.Mark(host: self, frame: fill.frame, radius: fill.layer.cornerRadius, corners: fill.layer.maskedCorners, above: fill) { [weak self] down, _ in
+            self?.pressed = down
+        }
+    }
     /// What the row wears as its mark.
     var markImage: UIImage? { picture.isHidden ? nil : picture.image }
 

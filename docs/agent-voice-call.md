@@ -844,6 +844,50 @@ reads while any holder wants it, and is closed once the last lets go, after
 any send still in hand. A send by voice shows on the open screen at once.
 The call never marks a conversation read; only a screen that shows it does.
 
+## Voice touch: the call's moves, pressed as a finger would
+
+When a tool moves the screen, the control a person would tap shows the tap
+before the move happens. The control is never triggered: the light and the
+press are drawn, then the call does the move itself (`VoiceTouch` on both
+platforms).
+
+| Tool | What is pressed |
+|------|-----------------|
+| openSession | the conversation's row on home's list (iPhone's home in front, the iPad's or tablet's sidebar) |
+| goBack | the top screen's back button; on iOS, a sheet's own back button, else its close (leading end) |
+| goHome | the same back button, or a sheet's close |
+| sendMessage to `new-task`/`new-bot` | home's compose (iPhone's toolbar, the iPad's sidebar foot; Android's compose button) |
+
+The light is the call bar's listening colours (#4338CA into #7C3AED),
+faint over the control's own shape (its card's corners, the glass button's
+circle, the FAB's 16 dp corners), and one band of them that crosses it
+once, as a working row's title shimmers (`Shimmer`'s ramp: three widths,
+the band its middle fifth). On a row it lies over the fill and under the
+words. The press is the platform's: the row's highlight and iOS 26 glass's
+swell (1.12) on iOS; the ripple, through the control's interaction source,
+on Android.
+
+Timing, from when the light starts: ramp in 150 ms, the band across by
+550 ms, pressed at 600 ms, the move at 750 ms, then the light fades over
+250 ms and the press lets go at 900 ms. A row not wholly on screen is first
+scrolled to the middle of the list: on iOS a glide of 0.3 to 0.6 s by
+distance; on Android `animateScrollToItem` (about 0.35 s). The light starts
+once the list stands still. With Reduce Motion (iOS) or animations off
+(Android's animator duration scale at 0), the row is moved at once, no band
+sweeps and nothing swells: the light shows still and the platform
+highlight presses. A move takes 0.8 to 2 s in all, well inside the 10 s
+tool timeout. A sendMessage to a conversation that exists isn't delayed.
+
+Nothing is drawn where the person can't see that control: a row while a
+conversation covers home on a phone, compose away from home, a sheet
+without a close of its own (iOS), or the tablet main panel's root, whose
+back is the sidebar's toggle. The move still happens.
+
+To see it: iOS `-screen split -agent -voiceTouch` (add `-reduceMotion`)
+runs compose, a row far down, back, a row on screen, home and a sheet's
+close, logging each (`[voice-touch]`). Android `VoiceTouchDeviceShots`
+does the same over home's real list (`-e dark true` for dark).
+
 ## Checking a real call
 
 iOS, on a simulator, against the harness's fixture computer: real provider
