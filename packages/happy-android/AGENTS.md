@@ -991,6 +991,8 @@ change its wire behaviour on Android alone.
   "Connect to Happy Cloud", adds the team server at `BuildConfig.HAPPY_CLOUD_URL`
   (compiled in; `HAPPY_CLOUD_URL` or `-Phappy.cloudUrl` points a build
   elsewhere, and an address that isn't an `https:` origin leaves the row out).
+  Only `debug` and `preview` builds offer it (`HappyCloud.offeredIn`, by
+  `BuildConfig.BUILD_TYPE`); `release` and `bench` have no way in at all.
   A phone with no account reaches it from the first screen's ⋮ and Add's
   scanner ⋮ (`ScannerWay.Cloud`).
   The address is the app's own, never typed or pasted, so it skips the code.

@@ -22,6 +22,14 @@ class HappyCloudTest {
     }
 
     @Test
+    fun onlyDevAndPreviewBuildsOfferIt() {
+        assertTrue(HappyCloud.offeredIn("debug"))
+        assertTrue(HappyCloud.offeredIn("preview"))
+        assertFalse(HappyCloud.offeredIn("release"))
+        assertFalse(HappyCloud.offeredIn("bench"))
+    }
+
+    @Test
     fun onlyTheCloudsOriginIsTheCloud() {
         assertTrue(HappyCloud.isCloud(connection("a", cloud)))
         assertFalse(HappyCloud.isCloud(connection("b", "https://happy.acme.example")))
