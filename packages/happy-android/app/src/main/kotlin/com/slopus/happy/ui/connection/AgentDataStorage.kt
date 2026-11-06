@@ -88,7 +88,8 @@ private fun MediaStoragePage(graph: AppGraph, nav: NavHostController, library: M
     val analytics by graph.analyticsSwitch.on.collectAsStateWithLifecycle()
     var usage by remember(library) { mutableStateOf<Long?>(null) }
     var clearing by remember(library) { mutableStateOf(false) }
-    var analyticsNotSaved by remember { mutableStateOf(false) }
+    /** What Settings says when the switch couldn't be set: a string, or nothing. */
+    var analyticsNotSaved by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(library) { usage = library?.let { withContext(Dispatchers.IO) { it.usage() } } }
     DataStorageScreen(
@@ -111,16 +112,21 @@ private fun MediaStoragePage(graph: AppGraph, nav: NavHostController, library: M
         onConnection = connectionId?.let { id -> { nav.navigate(ConnectionDiagnosticsRoute(id)) } },
         analytics = analytics,
         // Off takes effect at once even when it can't be written down; then the next start would turn it on again, which Settings says.
-        onAnalytics = { on -> scope.launch { if (!graph.analyticsSwitch.set(on) && !on) analyticsNotSaved = true } },
+        // On is refused while the last install id can't be deleted, or when it can't be written down: it stays off, and Settings says so.
+        onAnalytics = { on ->
+            scope.launch {
+                if (!graph.analyticsSwitch.set(on)) analyticsNotSaved = if (on) R.string.settings_analytics_not_turned_on else R.string.settings_analytics_not_saved
+            }
+        },
     )
-    if (analyticsNotSaved) {
+    analyticsNotSaved?.let { message ->
         HappyAlert(
             Alert(
                 title = stringResource(R.string.common_error),
-                message = stringResource(R.string.settings_analytics_not_saved),
+                message = stringResource(message),
                 buttons = listOf(AlertButton(stringResource(R.string.common_ok))),
             ),
-            onDismiss = { analyticsNotSaved = false },
+            onDismiss = { analyticsNotSaved = null },
         )
     }
 }

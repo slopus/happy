@@ -56,4 +56,5 @@
     <string name="agent_settings_default_access_description">新会话无需询问即可执行的操作。保存在你的账户中，因此在你的所有设备上都生效。</string>
     <string name="agent_settings_new_sessions_unreadable">无法读取模型。请检查连接后重新打开此页面。</string>
     <string name="settings_analytics_not_saved">分析暂时已关闭，但无法保存此设置。下次启动 Happy 时将重新开启。</string>
+    <string name="settings_analytics_not_turned_on">无法开启分析。请稍后重试。</string>
 </resources>

@@ -66,4 +66,5 @@
     <string name="agent_settings_default_access_description">What a new session may do without asking. Saved to your account, so they follow you across devices.</string>
     <string name="agent_settings_new_sessions_unreadable">Couldn’t read the models. Check the connection and open this page again.</string>
     <string name="settings_analytics_not_saved">Analytics is off for now, but the setting couldn’t be saved. It will be on again the next time Happy starts.</string>
+    <string name="settings_analytics_not_turned_on">Analytics couldn’t be turned on. Try again later.</string>
 </resources>

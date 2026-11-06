@@ -87,7 +87,8 @@ object Analytics {
             flags = flags.takeIf { target.asksFlags },
         )
         this.client = client
-        switch.turned = { on -> if (on) client.allow() else client.revoke() }
+        switch.onOff = client::revoke
+        switch.onOn = client::allow
         client.start()
         scope.launch(Dispatchers.IO) { Retired.delete(context, switch.prefs) }
     }
@@ -107,10 +108,13 @@ object Analytics {
         client?.revoke()
     }
 
-    /** The person turned analytics back on (an account's opt-out off): a [revoke] no longer holds it off. */
-    fun allow() {
-        client?.allow()
-    }
+    /**
+     * The person is turning analytics back on (an account's opt-out off):
+     * a [revoke] no longer holds it off. False while the last install id
+     * can't be deleted: then the setting must not be turned on, so a
+     * restart can't bring that id back.
+     */
+    suspend fun allow(): Boolean = client?.allow() ?: true
 
     /**
      * For something that lasts, such as a call: its event goes only if
@@ -121,6 +125,14 @@ object Analytics {
     /** An error a person saw; at most once per (area, code) every ten minutes. */
     fun errorShown(area: ErrorArea, code: ErrorCode) {
         client?.errorShown(area, code)
+    }
+
+    /**
+     * A failure that stays on screen, [key] (a send's failed row), seen by
+     * the person: its `error_shown`, the first time only ([SeenErrors]).
+     */
+    fun errorSeen(key: String, area: ErrorArea, code: ErrorCode) {
+        client?.errorSeen(key, area, code)
     }
 
     /** A failure card on screen in the conversation; counted once per message while fresh. */
@@ -213,23 +225,35 @@ class AnalyticsSwitch(internal val prefs: SharedPreferences) {
     private val state = MutableStateFlow(read(prefs))
     val on: StateFlow<Boolean> = state.asStateFlow()
 
-    /** Told the moment the switch turns ([AnalyticsClient.revoke], [AnalyticsClient.allow]), not once [on] is collected. */
-    internal var turned: (Boolean) -> Unit = {}
+    /** Told the moment the switch goes off ([AnalyticsClient.revoke]), not once [on] is collected. */
+    internal var onOff: () -> Unit = {}
+    /** Asked before the switch goes on ([AnalyticsClient.allow]). */
+    internal var onOn: suspend () -> Boolean = { true }
 
     /**
-     * Turns analytics on or off at once, then writes it down off the main
-     * thread: false when that write failed, for Settings to say so.
+     * Off: analytics is off at once, then that is written down off the main
+     * thread; false when the write failed (off until the app starts again).
+     * On: only once allowed and written down; false, and still off, when the
+     * last install id can't be deleted or the write failed. Either false is
+     * for Settings to say so.
      */
     suspend fun set(on: Boolean): Boolean {
-        state.value = on
-        turned(on)
-        return withContext(Dispatchers.IO) {
-            try {
-                prefs.edit().putBoolean(KEY_ON, on).commit()
-            } catch (e: Exception) {
-                Log.w("Analytics", "Switch not written: ${e.javaClass.simpleName}")
-                false
-            }
+        if (on) {
+            if (!onOn() || !write(true)) return false
+            state.value = true
+            return true
+        }
+        state.value = false
+        onOff()
+        return write(false)
+    }
+
+    private suspend fun write(on: Boolean): Boolean = withContext(Dispatchers.IO) {
+        try {
+            prefs.edit().putBoolean(KEY_ON, on).commit()
+        } catch (e: Exception) {
+            Log.w("Analytics", "Switch not written: ${e.javaClass.simpleName}")
+            false
         }
     }
 
@@ -276,9 +300,11 @@ internal object Retired {
  * had (the queue, the throttle, the cards seen, the crash mark, the flags
  * and the install id) is deleted without waiting for that request. If
  * [consent] is still or again true, a new generation starts with a new
- * install id, and none starts while the old id couldn't be deleted. A
- * [revoke] holds analytics off until [consent] is read as false or [allow]:
- * the setting behind it may not have reached [consent] yet.
+ * install id, and none starts while the old id couldn't be deleted; nor
+ * may analytics be turned back on then ([allow]). A [revoke] holds
+ * analytics off until [consent] is read as false or [allow]: the setting
+ * behind it may not have reached [consent] yet. Every check also reads
+ * [consent] as it is, in case its collector hasn't run.
  * Nothing is recorded while [consent] is null (the accounts not read yet).
  * Its state changes on one [lane].
  */
@@ -308,6 +334,7 @@ internal class AnalyticsClient(
     private val queue = AnalyticsQueue(clock)
     private var throttle = ErrorThrottle()
     private var exposures = FailureExposures()
+    private var seenErrors = SeenErrors()
     private val opens = AppOpens()
     private val sending = Mutex()
     private var installId: String? = null
@@ -322,11 +349,11 @@ internal class AnalyticsClient(
     private var idToDelete = false
 
     /** The generation analytics is on in, or null while it is off. */
-    fun live(): Long? = synchronized(lock) { if (on) generation else null }
+    fun live(): Long? = synchronized(lock) { if (on && consent.value == true) generation else null }
 
     fun span() = AnalyticsSpan(this, live())
 
-    private fun isLive(generation: Long): Boolean = synchronized(lock) { on && this.generation == generation }
+    private fun isLive(generation: Long): Boolean = synchronized(lock) { on && this.generation == generation && consent.value == true }
 
     fun start() {
         scope.launch {
@@ -364,10 +391,23 @@ internal class AnalyticsClient(
     /** Analytics is off from now: see the class. Safe from any thread, and again when already off. */
     fun revoke() = end(hold = true)
 
-    /** Lifts a [revoke]'s hold: analytics is on again if [consent] is. */
-    fun allow() {
+    /**
+     * Lifts a [revoke]'s hold: analytics is on again if [consent] is. While
+     * off, the last install id is deleted first (again, if that failed, or
+     * one a process before left); false, and the hold kept, when it can't be.
+     */
+    suspend fun allow(): Boolean {
+        val gone = withContext(lane) {
+            if (live() == null && (idToDelete || prefs.contains(KEY_INSTALL_ID))) idToDelete = !deleteId()
+            !idToDelete
+        }
+        if (!gone) {
+            Log.w(TAG, "Analytics stays off: the last install id couldn't be deleted")
+            return false
+        }
         val lifted = synchronized(lock) { held.also { held = false } }
         if (lifted) turns.update { it + 1 }
+        return true
     }
 
     private fun end(hold: Boolean) {
@@ -401,6 +441,7 @@ internal class AnalyticsClient(
         queue.clear()
         throttle = ErrorThrottle()
         exposures = FailureExposures()
+        seenErrors = SeenErrors()
         opens.pause()
         installId = null
         idToDelete = !deleteId()
@@ -440,18 +481,27 @@ internal class AnalyticsClient(
     fun errorShown(area: ErrorArea, code: ErrorCode) {
         val at = clock()
         val generation = live() ?: return
-        scope.launch(lane) {
-            if (!isLive(generation)) return@launch
-            val same = queue.pending().lastOrNull {
-                it.event == "error_shown" && it.properties["area"] == JsonPrimitive(area.wire) && at - it.at < ErrorThrottle.BURST_MILLIS
-            }
-            if (same == null) {
-                if (throttle.occur(area, code, at)) enqueue(AnalyticsEvent.ErrorShown(area, code), at, generation)
-                return@launch
-            }
-            if (same.properties["code"] == JsonPrimitive(ErrorCode.Unknown.wire) && code != ErrorCode.Unknown && throttle.occur(area, code, at)) {
-                queue.replace(same, same.copy(properties = JsonObject(same.properties + ("code" to JsonPrimitive(code.wire)))))
-            }
+        scope.launch(lane) { if (isLive(generation)) shown(area, code, at, generation) }
+    }
+
+    /** [errorShown] for a failure that stays on screen, [key]: the first time it is seen in this generation. */
+    fun errorSeen(key: String, area: ErrorArea, code: ErrorCode) {
+        val at = clock()
+        val generation = live() ?: return
+        scope.launch(lane) { if (isLive(generation) && seenErrors.first(key)) shown(area, code, at, generation) }
+    }
+
+    /** On the lane. */
+    private fun shown(area: ErrorArea, code: ErrorCode, at: Long, generation: Long) {
+        val same = queue.pending().lastOrNull {
+            it.event == "error_shown" && it.properties["area"] == JsonPrimitive(area.wire) && at - it.at < ErrorThrottle.BURST_MILLIS
+        }
+        if (same == null) {
+            if (throttle.occur(area, code, at)) enqueue(AnalyticsEvent.ErrorShown(area, code), at, generation)
+            return
+        }
+        if (same.properties["code"] == JsonPrimitive(ErrorCode.Unknown.wire) && code != ErrorCode.Unknown && throttle.occur(area, code, at)) {
+            queue.replace(same, same.copy(properties = JsonObject(same.properties + ("code" to JsonPrimitive(code.wire)))))
         }
     }
 

@@ -56,4 +56,5 @@
     <string name="agent_settings_default_access_description">Cosa può fare una nuova sessione senza chiedere. Salvato nel tuo account, quindi ti segue su tutti i dispositivi.</string>
     <string name="agent_settings_new_sessions_unreadable">Impossibile leggere i modelli. Controlla la connessione e riapri questa pagina.</string>
     <string name="settings_analytics_not_saved">Analytics è disattivato per ora, ma non è stato possibile salvare l’impostazione. Si riattiverà al prossimo avvio di Happy.</string>
+    <string name="settings_analytics_not_turned_on">Non è stato possibile attivare Analytics. Riprova più tardi.</string>
 </resources>

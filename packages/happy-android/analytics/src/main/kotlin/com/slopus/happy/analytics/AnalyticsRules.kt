@@ -53,6 +53,27 @@ internal class FailureExposures {
 }
 
 /**
+ * A failure that stays on screen until dealt with (a send's failed row):
+ * its `error_shown` goes the first time it is seen, not each time it comes
+ * back into view. Remembers the last [MAX_SEEN] keys, oldest out first, in
+ * memory only; the keys never leave the phone.
+ */
+internal class SeenErrors {
+    private val keys = LinkedHashSet<String>()
+
+    /** True the first time [key] is seen. */
+    fun first(key: String): Boolean {
+        if (!keys.add(key)) return false
+        while (keys.size > MAX_SEEN) keys.remove(keys.first())
+        return true
+    }
+
+    companion object {
+        const val MAX_SEEN = 500
+    }
+}
+
+/**
  * `agent_connection_lost`: one event per incident, sent when it ends, and only
  * when the link was down [MIN_MILLIS] or more while the app was in front.
  * An incident ends when the link is back (recovered), the app goes behind

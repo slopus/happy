@@ -5,6 +5,8 @@ import com.slopus.happy.data.MessageRecord
 import com.slopus.happy.data.OutboxKind
 import com.slopus.happy.data.OutboxState
 import com.slopus.happy.model.SessionState
+import com.slopus.happy.sync.MessageSender
+import com.slopus.happy.sync.SendFailure
 import com.slopus.happy.chat.markdown.MarkdownBlock
 import com.slopus.happy.chat.markdown.parseMarkdown
 import kotlinx.coroutines.Dispatchers
@@ -39,12 +41,14 @@ sealed interface ChatRow {
 
     /**
      * A user bubble. [display] is what the wrapper parsing left to show;
-     * [failedLocalId] names a send that failed, for retry and discard.
+     * [failedLocalId] names a send that failed, for retry and discard, and
+     * [failure] why, where that is known.
      */
     data class User(
         override val message: ChatMessage.UserText,
         val display: UserDisplay,
         val failedLocalId: String? = null,
+        val failure: SendFailure? = null,
         /** An own message's mark; null for another participant's. */
         val delivery: MessageDelivery? = null,
         /** The time the bubble shows: the first it showed, so an echo's later stamp never narrows it. */
@@ -156,10 +160,11 @@ class ChatReduction(private val now: () -> Long = System::currentTimeMillis) {
                 if (row !is ChatRow.User) return@mapNotNull row
                 val user = row.message
                 val failed = user.localId?.takeIf { delivery[it]?.first == OutboxState.FAILED }
+                val failure = failed?.let { MessageSender.failure(delivery[it]?.second) }
                 val mark = outgoing(user, user.localId?.let(delivery::get)?.first, receipts, answered)
                 val time = times.getOrPut(user.id) { user.createdAt }
-                val shownRow = if (failed == row.failedLocalId && mark == row.delivery && time == row.time) row
-                    else row.copy(failedLocalId = failed, delivery = mark, time = time)
+                val shownRow = if (failed == row.failedLocalId && failure == row.failure && mark == row.delivery && time == row.time) row
+                    else row.copy(failedLocalId = failed, failure = failure, delivery = mark, time = time)
                 // The same row as last time stays the same instance, so its item doesn't recompose.
                 before[shownRow.key]?.takeIf { it == shownRow } ?: shownRow
             }

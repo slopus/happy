@@ -141,8 +141,8 @@ class MessageCallbacks(
     /** A failed send, by its localId. */
     val onRetry: (String) -> Unit = {},
     val onDiscard: (String) -> Unit = {},
-    /** A failed send is in front of the person ([onSeen]), by its localId. */
-    val onSendFailureShown: (String) -> Unit = {},
+    /** A failed send's row is in front of the person ([onSeen]). */
+    val onSendFailureShown: (ChatRow.User) -> Unit = {},
     /** Answers / dismisses an agent communication; throws on failure. */
     val onAnswerQuestion: suspend (communicationId: String, answers: Map<String, AgentQuestionAnswer>, kind: String) -> Unit = { _, _, _ -> },
     val onCancelQuestion: suspend (communicationId: String, kind: String) -> Unit = { _, _ -> },
@@ -374,7 +374,7 @@ fun UserMessage(
             StatusLine(statusText, if (message.sendError != null) colors.textDestructive else chat.agentEventText)
         } else {
             Row(
-                modifier = Modifier.testTag(MessageTags.USER_FAILED).onSeen(failed) { callbacks.onSendFailureShown(failed) },
+                modifier = Modifier.testTag(MessageTags.USER_FAILED).onSeen(failed) { callbacks.onSendFailureShown(row) },
                 horizontalArrangement = Arrangement.spacedBy(MessageSpec.failedGap),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

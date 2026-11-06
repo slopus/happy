@@ -920,8 +920,9 @@ picker change, stop, approval or todo is sent; model and effort ride on
 `message_sent` goes as the person sends (queued only, too), with the mode
 then, and never again on a retry; a create that fails is only its
 `task_created`/`bot_created`, not also the send's `error_shown`. A failure
-card's `chat_failure_shown` and a failed Happy CLI send's `error_shown` go
-once the card or row is seen (`Modifier.onSeen`: half on screen, the page
+card's `chat_failure_shown` and a failed Happy CLI send's `error_shown`
+(`Analytics.errorSeen`, with the `SendFailure` its row carries, once per
+row and opt-in) go once the card or row is seen (`Modifier.onSeen`: half on screen, the page
 resumed, no overlay up, as a `PageDialog` leaves the page resumed). A call
 is reported only if analytics was on from its start to its end
 (`Analytics.span`).
@@ -939,10 +940,12 @@ at once, outside every flow, which ends the generation, cancels the
 requests on their way, and deletes the queue, the throttle, the cards seen,
 the crash mark, the flags and the install id on the client's lane without
 waiting for them. Every record, error, exposure, incident, open, flag
-answer and send checks the generation it was made in. It stays off until
-the setting reads as off or is turned back on (`Analytics.allow()`), and
-while the old install id can't be deleted; on again starts a new install
-id. PostHog's `/flags` is asked only by the module, with the install id,
+answer and send checks the generation it was made in, and consent as it
+is then. It stays off until the setting reads as off or is turned back on
+(`Analytics.allow()`); on again starts a new install id. While the old
+install id can't be deleted, analytics stays off and `allow()` refuses
+either switch going back on, which then isn't written down, so a restart
+can't bring that id back. PostHog's `/flags` is asked only by the module, with the install id,
 under the same consent; `FeatureFlags` holds the answer in memory for the
 migration card. If either switch can't be written down, its screen says
 so. Each account's switch on the Account screen toggles from its switch

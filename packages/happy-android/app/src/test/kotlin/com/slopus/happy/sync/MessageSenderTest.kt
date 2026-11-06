@@ -1,7 +1,6 @@
 package com.slopus.happy.sync
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.slopus.happy.analytics.ErrorCode
 import com.slopus.happy.crypto.DataKeyCipher
 import com.slopus.happy.crypto.RandomSource
 import com.slopus.happy.data.OutboxKind
@@ -291,11 +290,10 @@ class MessageSenderTest {
         h.foreground.value = true
         eventually(message = "failed") { outbox().singleOrNull()?.state == OutboxState.FAILED }
         assertEquals(MessageSender.BACKGROUND_FAILURE, outbox().single().error)
-        // Its error_shown waits for the failed row to be seen in the chat, and goes once.
-        val failed = outbox().single().localId
-        assertNull(sender.failureSeen("another"))
-        assertEquals(ErrorCode.Timeout, sender.failureSeen(failed))
-        assertNull(sender.failureSeen(failed))
+        // The row carries why, typed, for its error_shown when it is seen.
+        assertEquals(SendFailure.TimedOut, MessageSender.failure(outbox().single().error))
+        assertEquals(SendFailure.Refused(403), MessageSender.failure("Server error: 403"))
+        assertNull(MessageSender.failure("HTTP 500"))
     }
 
     /** sync.send.test.ts: the synced Happy Agent draft is spent once its text is accepted. */

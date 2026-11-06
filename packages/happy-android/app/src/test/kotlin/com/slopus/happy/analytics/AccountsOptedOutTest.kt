@@ -193,4 +193,23 @@ class AccountsOptedOutTest {
         assertEquals("written this time", 1, notSaved)
         assertTrue(read("open"))
     }
+
+    /** Turning the Account screen's switch back on while analytics can't delete its last install id: refused, said, and the setting stays off. */
+    @Test
+    fun turningBackOnIsRefusedWhileTheLastIdCantBeDeleted() = runTest {
+        stored(open, true)
+        val settings = SettingsRepository(open, backgroundScope, onChanged = {}, io = StandardTestDispatcher(testScheduler))
+        runCurrent()
+        val said = mutableListOf<Boolean>()
+        backgroundScope.setAnalyticsOptOut(settings, optOut = false, allow = { false }) { said += it }
+        runCurrent()
+        assertEquals("the turning on was refused", listOf(false), said)
+        assertTrue(settings.settings.value.analyticsOptOut)
+        assertTrue("nothing written for a restart to read", read("open"))
+
+        backgroundScope.setAnalyticsOptOut(settings, optOut = false, allow = { true }) { said += it }
+        runCurrent()
+        assertEquals(listOf(false), said)
+        assertFalse(read("open"))
+    }
 }

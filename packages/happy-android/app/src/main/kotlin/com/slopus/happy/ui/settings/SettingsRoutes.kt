@@ -449,7 +449,9 @@ private fun Account(graph: AppGraph, nav: NavHostController) {
         publicId = account.publicId,
         analyticsOptOut = settings.analyticsOptOut,
         onAnalyticsOptOutChange = { optOut ->
-            scope.setAnalyticsOptOut(graph.settings, optOut) { showError(resources.getString(R.string.settings_analytics_not_saved)) }
+            scope.setAnalyticsOptOut(graph.settings, optOut) { off ->
+                showError(resources.getString(if (off) R.string.settings_analytics_not_saved else R.string.settings_analytics_not_turned_on))
+            }
         },
         onBack = { nav.popBackStack() },
         displayName = profile.displayName,

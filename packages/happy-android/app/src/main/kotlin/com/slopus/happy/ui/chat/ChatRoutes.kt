@@ -25,6 +25,7 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
+import com.slopus.happy.analytics.AnalyticsReasons
 import com.slopus.happy.R
 import com.slopus.happy.model.ComposeKind
 import com.slopus.happy.chat.ChatActions
@@ -266,7 +267,7 @@ private fun ChatRoute(
             },
             onRetry = { localId -> scope.launch { runCatching { actions.retry(sessionId, localId) } } },
             onDiscard = { localId -> scope.launch { runCatching { actions.discard(sessionId, localId) } } },
-            onSendFailureShown = { localId -> actions.failureSeen(localId) },
+            onSendFailureShown = { row -> row.failedLocalId?.let { AnalyticsReasons.sendFailureSeen(it, row.failure) } },
             onAnswerQuestion = { id, answers, kind -> actions.answerQuestion(sessionId, id, answers, kind) },
             onCancelQuestion = { id, kind -> actions.cancelQuestion(sessionId, id, kind) },
             onDismissCliWarning = {

@@ -43,13 +43,25 @@ fun accountsOptedOut(
     }
 
 /**
- * The Account screen's Analytics switch ([optOut] is it turned off):
+ * The Account screen's Analytics switch ([optOut] is it turned off). Off:
  * analytics goes off at once, before the setting reaches [accountsOptedOut],
- * then the setting is written. [notSaved] is told when an opt-out couldn't
- * be written, for the screen to say so as Data and Storage's switch does.
+ * then the setting is written. On: only once [allow]ed, so never while the
+ * last install id can't be deleted; until then the setting stays off, even
+ * after a restart. [notSaved] is told an opt-out that couldn't be written
+ * (true) or a turning on that was refused (false), for the screen to say so
+ * as Data and Storage's switch does.
  */
-fun CoroutineScope.setAnalyticsOptOut(settings: SettingsRepository, optOut: Boolean, notSaved: () -> Unit) {
-    if (optOut) Analytics.revoke() else Analytics.allow()
-    val saved = settings.change { it.copy(analyticsOptOut = optOut) }
-    launch { if (!saved.await() && optOut) notSaved() }
+fun CoroutineScope.setAnalyticsOptOut(
+    settings: SettingsRepository,
+    optOut: Boolean,
+    allow: suspend () -> Boolean = Analytics::allow,
+    notSaved: (optOut: Boolean) -> Unit,
+) {
+    if (!optOut) {
+        launch { if (allow()) settings.change { it.copy(analyticsOptOut = false) } else notSaved(false) }
+        return
+    }
+    Analytics.revoke()
+    val saved = settings.change { it.copy(analyticsOptOut = true) }
+    launch { if (!saved.await()) notSaved(true) }
 }

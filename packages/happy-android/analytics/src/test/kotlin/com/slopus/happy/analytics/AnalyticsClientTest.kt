@@ -396,6 +396,93 @@ class AnalyticsClientTest {
         assertNotEquals(first, batch().single().distinctId())
     }
 
+    /** Consent read as off, before its collector has run: nothing more is kept or sent. */
+    @Test
+    fun consentOffStopsEverythingBeforeItsCollectorRuns() = runTest {
+        val client = client(lane = StandardTestDispatcher(testScheduler))
+        client.record(AnalyticsEvent.TaskCreated(null))
+        runCurrent()
+        client.record(AnalyticsEvent.TaskCreated(CreateError.Offline))
+        consent.value = false
+        assertNull(client.live())
+        client.record(AnalyticsEvent.TaskCreated(CreateError.Refused))
+        client.errorShown(ErrorArea.ConversationLoad, ErrorCode.Offline)
+        client.errorSeen("send:a", ErrorArea.MessageSend, ErrorCode.Timeout)
+        client.flush()
+        assertEquals(emptyList<String>(), urls)
+    }
+
+    /**
+     * The account's switch off went through but the install id can't be
+     * deleted: turning analytics back on is refused, so the setting stays
+     * off, and a restart (a new client on the same prefs) stays off too and
+     * never sends under that id. Once the id can go, it goes first.
+     */
+    @Test
+    fun turningBackOnIsRefusedWhileTheLastIdCantBeDeleted() = runTest {
+        val stuck = Stuck(prefs)
+        val client = client(prefs = stuck)
+        client.record(AnalyticsEvent.TaskCreated(null))
+        client.flush()
+        val first = batch().single().distinctId()
+
+        stuck.failing = true
+        client.revoke()
+        consent.value = false
+        runCurrent()
+        assertEquals(first, prefs.getString("install_id", null))
+        assertFalse(client.allow())
+        val switchPrefs = context.getSharedPreferences("analytics-switch-refused", Context.MODE_PRIVATE).also { it.edit().clear().putBoolean("device_on", false).commit() }
+        val switch = AnalyticsSwitch(switchPrefs).apply { onOn = client::allow }
+        assertFalse("the device switch is refused too", switch.set(true))
+        assertFalse(switch.on.value)
+        assertFalse("and stays off written down", AnalyticsSwitch(switchPrefs).on.value)
+
+        val restarted = client(prefs = stuck)
+        assertNull(restarted.live())
+        restarted.record(AnalyticsEvent.TaskCreated(CreateError.Offline))
+        restarted.flush()
+        assertFalse(restarted.allow())
+        assertEquals(1, posted.size)
+
+        stuck.failing = false
+        assertTrue(restarted.allow())
+        assertNull(prefs.getString("install_id", null))
+        consent.value = true
+        runCurrent()
+        restarted.record(AnalyticsEvent.TaskCreated(null))
+        restarted.flush()
+        assertNotEquals(first, batch().single().distinctId())
+    }
+
+    /** A send's failed row: its error_shown the first time it is seen, not each time it comes back into view; forgotten with the rest on an opt-out. */
+    @Test
+    fun aFailureThatStaysOnScreenIsToldTheFirstTimeItIsSeen() = runTest {
+        val client = client()
+        client.errorSeen("send:a", ErrorArea.MessageSend, ErrorCode.Timeout)
+        client.errorSeen("send:a", ErrorArea.MessageSend, ErrorCode.Timeout)
+        now += 11 * 60_000
+        client.errorSeen("send:a", ErrorArea.MessageSend, ErrorCode.Timeout)
+        client.errorSeen("send:b", ErrorArea.MessageSend, ErrorCode.Refused)
+        client.flush()
+        assertEquals(
+            listOf("timeout", "refused"),
+            batch().map { it["properties"]!!.jsonObject["code"]!!.jsonPrimitive.content },
+        )
+
+        client.revoke()
+        assertTrue(client.allow())
+        runCurrent()
+        client.errorSeen("send:a", ErrorArea.MessageSend, ErrorCode.Timeout)
+        client.flush()
+        assertEquals(listOf("error_shown"), names())
+
+        val seen = SeenErrors()
+        repeat(SeenErrors.MAX_SEEN + 1) { assertTrue(seen.first("k$it")) }
+        assertTrue("the oldest goes first", seen.first("k0"))
+        assertFalse(seen.first("k${SeenErrors.MAX_SEEN}"))
+    }
+
     /** Prefs whose writes fail while [failing]. */
     private class Stuck(private val real: SharedPreferences) : SharedPreferences by real {
         var failing = false

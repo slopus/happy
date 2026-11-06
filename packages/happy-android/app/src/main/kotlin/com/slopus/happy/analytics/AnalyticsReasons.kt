@@ -8,6 +8,7 @@ import com.slopus.happy.connection.ServerAuthException
 import com.slopus.happy.conversation.ConversationApiException
 import com.slopus.happy.net.ConnectionStatus
 import com.slopus.happy.net.HttpStatusException
+import com.slopus.happy.sync.SendFailure
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.SerializationException
 import java.io.IOException
@@ -73,6 +74,20 @@ object AnalyticsReasons {
     fun link(status: ConnectionStatus): ConnectionCode? = when (status) {
         ConnectionStatus.CONNECTED -> null
         ConnectionStatus.DISCONNECTED, ConnectionStatus.CONNECTING, ConnectionStatus.ERROR -> ConnectionCode.Unreachable
+    }
+
+    /**
+     * A Happy CLI send's failed row in front of the person: `error_shown`
+     * with why it failed, the first time that row is seen ([Analytics.errorSeen]).
+     * A row failed for a reason the catalog doesn't tell tells nothing.
+     */
+    fun sendFailureSeen(localId: String, failure: SendFailure?) {
+        val code = when (failure) {
+            SendFailure.TimedOut -> ErrorCode.Timeout
+            is SendFailure.Refused -> ErrorCode.ofStatus(failure.status)
+            null -> return
+        }
+        Analytics.errorSeen("send:$localId", ErrorArea.MessageSend, code)
     }
 
     /** What failed a request, as `error_shown`'s code. */

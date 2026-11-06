@@ -268,7 +268,9 @@ can stay or go:
   `task_created`/`bot_created` failing, not also `error_shown`. A failure
   card's `chat_failure_shown`, and a failed Happy CLI send's `error_shown`,
   go once the card or row is seen: half of it on the screen, the page
-  resumed, and no dialog or sheet over it. A call's voice event goes only
+  resumed, and no dialog or sheet over it. A failed row carries why it
+  failed, and the client tells each row once per opt-in (the last 500 rows
+  remembered, in memory, forgotten on an opt-out). A call's voice event goes only
   if analytics was on from the call's start to its end.
 - Nothing is recorded until this phone's switch and every signed-in Happy
   account's `analyticsOptOut` have been read: the open account's setting as
@@ -283,7 +285,10 @@ can stay or go:
   made before is kept or sent, and the queue, the throttle, the dedupe set,
   the crash mark, the flags and the install id are deleted without waiting
   for those requests. It stays off until the setting reads as off or is
-  turned back on, and while the old install id can't be deleted. If either
+  turned back on. Every check also reads consent as it is at that moment.
+  While the old install id can't be deleted, analytics stays off and
+  turning either switch back on is refused, and said, so the stored
+  setting stays off and a restart can't bring the old id back. If either
   switch can't be written down, its screen says so.
 - The migration card's PostHog flag (`direct-connection-migration-note`)
   is asked for by `:analytics` alone, with the same install UUID as
@@ -317,8 +322,8 @@ app code calls `Analytics` and its typed events, and maps its own types in
 2. In `settings.gradle.kts`, remove `include(":analytics")` and its
    comment. In `app/build.gradle.kts`, remove
    `implementation(project(":analytics"))` and its comment.
-3. Remove these lines, and the `import com.slopus.happy.analytics.…`
-   lines of each file (all but `chat/ChatSeams.kt` have some).
+3. Remove these lines, and each file's `import com.slopus.happy.analytics.…`
+   lines.
    - `AppGraph.kt`: `analyticsTarget`, `analyticsSwitch`,
      `analyticsOptOuts()`, the `init` block that calls `startAnalytics`,
      `startAnalytics`, `analyticsAgent` and `analyticsConfiguration`
@@ -341,10 +346,8 @@ app code calls `Analytics` and its typed events, and maps its own types in
      `recordCreated(null)`; in `queue`, the `newWork`, `steering` and
      `recordSent(…)` lines (it keeps `outgoing += send`); and
      `recordCreated`, `recordStarted`, `providerKind` and `recordSent`.
-   - `sync/MessageSender.kt`: `recordSent(…)` with its call,
-     `unseenFailures` and `failureSeen`, and the `unseenFailures` lines in
-     `failPending`, `flushBatch`, `retry` and `discard`.
-   - `chat/ChatSeams.kt`: `SyncChatActions.failureSeen`.
+   - `sync/MessageSender.kt`: `recordSent(…)` with its call.
+   - `ui/chat/ChatRoutes.kt`: the `onSendFailureShown = …` line.
    - `payments/Offers.kt`: `Analytics.record(…Presented…)` and its comment.
    - `payments/Subscription.kt`: the `.also { … }` on `restore`'s result,
      `val sheet` and the `when (update)` block in `bought`, the
@@ -359,9 +362,9 @@ app code calls `Analytics` and its typed events, and maps its own types in
    - `ui/conversation/ConversationRowViews.kt`:
      `Analytics.record(…ChatFailureActionClicked…)` in Retry's click.
    - `ui/connection/AgentDataStorage.kt`: in `MediaStoragePage`,
-     `analytics`, `analyticsNotSaved`, `analytics = analytics`,
-     `onAnalytics = …` with its comment, and the `HappyAlert` for
-     `analyticsNotSaved`.
+     `analytics`, `analyticsNotSaved` with its comment, `analytics =
+     analytics`, `onAnalytics = …` with its two comments, and the
+     `HappyAlert` for `analyticsNotSaved`.
    - `ui/settings/SettingsRoutes.kt`: replace
      `scope.setAnalyticsOptOut(graph.settings, optOut) { … }` with
      `graph.settings.change { it.copy(analyticsOptOut = optOut) }`. The
@@ -373,9 +376,7 @@ app code calls `Analytics` and its typed events, and maps its own types in
      `connection/TeamServerTest.kt`; in `conversation/ConversationTest.kt`,
      `recorded`, the `record = …` and `errorShown = …` lines in
      `conversation(…)`, and the tests `a message is counted once…` and
-     `a refused new work is counted as the create that failed…`; and in
-     `sync/MessageSenderTest.kt`, the `failureSeen` lines with their comment
-     at the end of `aMessageStillUnsentThirtySecondsIntoTheBackgroundFails`.
+     `a refused new work is counted as the create that failed…`.
 
 After that,
 
@@ -384,7 +385,7 @@ grep -rnE 'com\.slopus\.happy\.analytics|":analytics"|graph\.analyticsSwitch|val
 ```
 
 finds nothing. Before it, outside the module and the deleted folders, it
-finds 94 lines in 21 files: the 2 Gradle lines, the
+finds 92 lines in 21 files: the 2 Gradle lines, the
 `import com.slopus.happy.analytics.…` lines of the files above, the 4
 expected events in `AgentConnectionsTest`, and the 3 `analyticsSwitch`
 lines in `AppGraph.kt` and `AgentDataStorage.kt`. It leaves out the
@@ -399,12 +400,12 @@ can stay or go:
   `connectAgent`, `AppGraph.startAgentPairing`).
 - `ConversationRow.Failure`'s `kind`, `providerType`, `pool` and
   `createdAt`; `Conversation.Outgoing`'s `voice` and `Conversation.queue`;
-  `MessageSender`'s `thinking` and `failPending`'s `failed`; the
-  `onFailureShown` hooks on `ConversationRowActions` and
-  `ConversationScreenActions`; the `onSendFailureShown` hooks on
-  `MessageCallbacks` and `ChatScreenActions`, with `ChatActions.failureSeen`
-  and its wiring in `ui/chat/ChatRoutes.kt`; and `Modifier.onSeen`
-  (`ui/components/Seen.kt`).
+  `MessageSender`'s `thinking`; the `onFailureShown` hooks on
+  `ConversationRowActions` and `ConversationScreenActions`; the
+  `onSendFailureShown` hooks on
+  `MessageCallbacks` and `ChatScreenActions`; `SendFailure`,
+  `MessageSender.failure` and `ChatRow.User.failure`; and
+  `Modifier.onSeen` (`ui/components/Seen.kt`).
 - `Settings.analyticsOptOut(element)`, `HappyStore.effectiveSettingsOrThrow`
   and `strictDocument`, `SettingsRepository.document`, and the result
   `SettingsRepository.change` returns.
@@ -413,4 +414,4 @@ can stay or go:
   `feature-flags` prefs in `AppGraph`.
 - `DataStorageScreen`'s `analytics` and `onAnalytics` parameters, its
   `DataStorageTags.ANALYTICS*` tags, and the `settings_analytics_not_saved`
-  string in every language.
+  and `settings_analytics_not_turned_on` strings in every language.
