@@ -1,0 +1,510 @@
+#if canImport(UIKit)
+import HappyCore
+import HappyIcons
+import HappyLayout
+import UIKit
+
+/// Where the clock and "Slide to cancel" show while recording: a part of
+/// the host's screen, in the window's space, and its corners.
+struct RecordBar: Equatable {
+    var frame: CGRect
+    var cornerRadius: CGFloat
+}
+
+/// Telegram's recording screen over everything, the keyboard included, in
+/// a window of its own (`TGModernConversationInputMicWindow`): the blue
+/// circle under the finger, the ring the voice swells, the lock pill above
+/// and the bar with the dot, the clock and "Slide to cancel".
+///
+/// Adapted from Telegram-iOS `TGModernConversationInputMicButton.m`
+/// (`animateIn`, `animateLock`, `animateOut`, `displayLinkUpdate`) and
+/// `ChatTextInputPanelNode`'s recording state. Every frame comes from
+/// `RecordOverlayLayout`; the circles, the drag and the appearing spring
+/// are stepped once a frame (`RecordMotion`), so nothing animates over
+/// what the finger is doing.
+@MainActor
+final class RecordOverlay {
+    var onSend: (() -> Void)?
+    var onStop: (() -> Void)?
+    var onCancel: (() -> Void)?
+
+    private let window: RecordOverlayWindow
+    private let root = UIView()
+    private let bar = UIView()
+    private let barGlass = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
+    private let barFill = UIView()
+    private let dot = UIView()
+    private let clock = UILabel()
+    private let cancelLine = UIView()
+    private let cancelArrow = IconView(.ionicons("chevron-back"), size: 14, tint: Palette.textSecondary)
+    private let cancelLabel = StyledLabel(style: TextStyles.recordCancel, color: Palette.textSecondary, lines: 1)
+    private let cancelButton = UIButton(type: .system)
+    private let outer = UIView()
+    private let inner = UIControl()
+    private let micGlyph = IconView(.ionicons("mic"), size: 30, tint: Palette.Record.glyph)
+    private let sendGlyph = IconView(.ionicons("arrow-up"), size: 30, tint: Palette.Record.glyph)
+    private let lockWrapper = UIView()
+    private let lockPanel = UIControl()
+    private let lockGlass = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
+    private let lockGlyph = RecordLockView()
+    private let lockArrow = IconView(.ionicons("chevron-up"), size: RecordOverlayLayout.Metrics.arrowSize, tint: Palette.Record.lock)
+    private let stopGlyph = StopGlyphView(glyphSize: 16)
+
+    private var button: CGRect = .zero
+    private var barShape = RecordBar(frame: .zero, cornerRadius: 0)
+    private var gesture = RecordGesture()
+    private var level: CGFloat = 0
+    private var motion = RecordMotion()
+    private var started: CFTimeInterval = 0
+    private var lastTick: CFTimeInterval = 0
+    private var displayLink: CADisplayLink?
+    private var lockStart: (time: CFTimeInterval, from: CGFloat)?
+    private(set) var isLocked = false
+    private var isDismissing = false
+    private var shownClock = ""
+    private var measured: (clock: CGSize, arrow: CGSize, label: CGSize, cancel: CGSize) = (.zero, .zero, .zero, .zero)
+
+    init(scene: UIWindowScene) {
+        window = RecordOverlayWindow(windowScene: scene)
+        window.windowLevel = UIWindow.Level(rawValue: 1_000_000_000)
+        window.backgroundColor = .clear
+        let controller = RecordOverlayController()
+        controller.view = root
+        window.rootViewController = controller
+        root.backgroundColor = .clear
+        build()
+    }
+
+    private func build() {
+        bar.clipsToBounds = true
+        bar.layer.cornerCurve = .continuous
+        bar.addSubview(barGlass)
+        barFill.backgroundColor = UIColor(Palette.Record.barFill)
+        bar.addSubview(barFill)
+        dot.backgroundColor = UIColor(Palette.Record.dot)
+        dot.layer.cornerRadius = RecordOverlayLayout.Metrics.dotSize / 2
+        bar.addSubview(dot)
+        clock.font = .monospacedDigitSystemFont(ofSize: 15, weight: .regular)
+        clock.textColor = UIColor(Palette.text)
+        bar.addSubview(clock)
+        cancelLabel.string = Strings.Record.slideToCancel
+        cancelLine.addSubview(cancelArrow)
+        cancelLine.addSubview(cancelLabel)
+        cancelLine.isUserInteractionEnabled = false
+        bar.addSubview(cancelLine)
+        cancelButton.setTitle(Strings.Record.cancel, for: .normal)
+        cancelButton.titleLabel?.font = TextStyles.recordCancelButton.font
+        cancelButton.tintColor = UIColor(Palette.Record.circle)
+        cancelButton.accessibilityIdentifier = "record-cancel"
+        cancelButton.alpha = 0
+        cancelButton.addAction(UIAction { [weak self] _ in self?.onCancel?() }, for: .touchUpInside)
+        bar.addSubview(cancelButton)
+        root.addSubview(bar)
+
+        lockGlass.clipsToBounds = true
+        lockGlass.isUserInteractionEnabled = false
+        lockPanel.addSubview(lockGlass)
+        lockGlyph.isUserInteractionEnabled = false
+        lockPanel.addSubview(lockGlyph)
+        lockPanel.addSubview(lockArrow)
+        stopGlyph.tintColor = UIColor(Palette.Record.dot)
+        stopGlyph.alpha = 0
+        lockPanel.addSubview(stopGlyph)
+        lockPanel.accessibilityLabel = Strings.Record.lock
+        lockPanel.accessibilityIdentifier = "record-stop"
+        lockPanel.isAccessibilityElement = true
+        lockPanel.addAction(UIAction { [weak self] _ in
+            guard let self, self.isLocked else { return }
+            self.onStop?()
+        }, for: .touchUpInside)
+        lockWrapper.addSubview(lockPanel)
+        root.addSubview(lockWrapper)
+
+        let ring = UIColor(Palette.Record.circle)
+        outer.backgroundColor = ring.withAlphaComponent(Palette.Record.ringAlpha)
+        outer.isUserInteractionEnabled = false
+        root.addSubview(outer)
+        inner.backgroundColor = ring
+        inner.accessibilityLabel = Strings.Record.send
+        inner.accessibilityIdentifier = "record-send"
+        inner.isAccessibilityElement = true
+        inner.addAction(UIAction { [weak self] _ in
+            guard let self, self.isLocked else { return }
+            self.onSend?()
+        }, for: .touchUpInside)
+        sendGlyph.alpha = 0
+        inner.addSubview(micGlyph)
+        inner.addSubview(sendGlyph)
+        root.addSubview(inner)
+
+        window.interactive = { [weak self] in
+            guard let self, self.isLocked, !self.isDismissing else { return [] }
+            return [self.inner, self.lockPanel, self.cancelButton]
+        }
+    }
+
+    // MARK: Presenting
+
+    /// Comes in over `button` (in the window's space), the clock in `bar`:
+    /// the circles spring up from a fifth, the pill rises 100 into place
+    /// and the bar's line slides in from the right edge.
+    func present(button: CGRect, bar barShape: RecordBar, mode: RecordMode) {
+        self.button = button
+        self.barShape = barShape
+        started = CACurrentMediaTime()
+        lastTick = started
+        motion = RecordMotion()
+        level = 0
+        isLocked = false
+        isDismissing = false
+        lockStart = nil
+        shownClock = ""
+        measure()
+        window.isHidden = false
+        root.frame = window.bounds
+        UIView.performWithoutAnimation { apply(at: started) }
+
+        // The bar's pieces, as `ChatTextInputPanelNode` brings them: the
+        // bar under them, the dot popping in and then blinking, the clock
+        // fading in and the line springing in from the right.
+        bar.alpha = 0
+        UIView.animate(withDuration: 0.15, delay: 0, options: [.curveEaseOut, .allowUserInteraction]) { self.bar.alpha = 1 }
+        dot.alpha = 0
+        dot.transform = CGAffineTransform(scaleX: 0.3, y: 0.3)
+        UIView.animate(withDuration: 0.15, delay: 0, options: [.allowUserInteraction]) {
+            self.dot.alpha = 1
+            self.dot.transform = .identity
+        } completion: { [weak self] _ in
+            self?.blink()
+        }
+        clock.alpha = 0
+        UIView.animate(withDuration: 0.5, delay: 0, options: [.curveEaseOut, .allowUserInteraction]) { self.clock.alpha = 1 }
+        let from = window.bounds.width + cancelLine.bounds.width - cancelLine.center.x
+        let slide = CASpringAnimation(keyPath: "position.x")
+        slide.fromValue = from
+        slide.toValue = 0
+        slide.isAdditive = true
+        slide.damping = 22
+        slide.stiffness = 220
+        slide.mass = 1
+        slide.duration = slide.settlingDuration
+        cancelLine.layer.add(slide, forKey: "slide-in")
+        juggle()
+        cancelButton.alpha = 0
+        cancelLine.alpha = 1
+        micGlyph.alpha = 1
+        micGlyph.transform = .identity
+        sendGlyph.alpha = 0
+        stopGlyph.alpha = 0
+        lockGlyph.alpha = 1
+        startDisplayLink()
+    }
+
+    func update(_ gesture: RecordGesture) {
+        self.gesture = gesture
+    }
+
+    func setLevel(_ level: CGFloat) {
+        self.level = level
+    }
+
+    /// Hands-free (`animateLock`): the lock shuts, the pill becomes a
+    /// circle with stop in it, the glyph on the circle turns to send and
+    /// "Slide to cancel" gives way to Cancel.
+    func lock() {
+        guard !isLocked, !isDismissing else { return }
+        isLocked = true
+        lockStart = (CACurrentMediaTime(), gesture.lockness)
+        var settled = gesture
+        _ = settled.move(.zero)
+        gesture = settled
+
+        let keyboardCurve = UIView.AnimationOptions(rawValue: 7 << 16)
+        sendGlyph.transform = CGAffineTransform(scaleX: 0.3, y: 0.3)
+        UIView.animate(withDuration: 0.3, delay: 0, options: [keyboardCurve, .allowUserInteraction]) {
+            self.sendGlyph.transform = .identity
+            self.micGlyph.transform = CGAffineTransform(scaleX: 0.001, y: 0.001)
+        }
+        UIView.animate(withDuration: 0.2, delay: 0, options: [.allowUserInteraction]) {
+            self.sendGlyph.alpha = 1
+            self.micGlyph.alpha = 0
+        }
+        UIView.animate(withDuration: 0.25, delay: 0.2, options: [.allowUserInteraction]) {
+            self.lockGlyph.alpha = 0
+            self.stopGlyph.alpha = 1
+        }
+        lockPanel.accessibilityLabel = Strings.Record.stop
+
+        // `updateIsDisplayingCancel`: the line rises and shrinks away as
+        // Cancel comes up from under it.
+        cancelLine.layer.removeAnimation(forKey: "juggle")
+        cancelButton.transform = CGAffineTransform(translationX: 0, y: 22).scaledBy(x: 0.25, y: 0.25)
+        UIView.animate(withDuration: 0.25, delay: 0, options: [.allowUserInteraction]) {
+            self.cancelLine.transform = CGAffineTransform(translationX: 0, y: -22).scaledBy(x: 0.25, y: 0.25)
+            self.cancelLine.alpha = 0
+            self.cancelButton.transform = .identity
+            self.cancelButton.alpha = 1
+        }
+    }
+
+    /// Goes (`animateOut`): the circles shrink back into the button in
+    /// 0.18 s, the pill drops away and the bar fades. A cancel throws the
+    /// dot away first.
+    func dismiss(cancelled: Bool, completion: (() -> Void)? = nil) {
+        guard !isDismissing else { return }
+        isDismissing = true
+        stopDisplayLink()
+        let small = CGAffineTransform(scaleX: RecordMotion.Metrics.appearScale, y: RecordMotion.Metrics.appearScale)
+        let drop = CGAffineTransform(translationX: 0, y: RecordMotion.Metrics.lockRise).scaledBy(x: 0.2, y: 0.2)
+        UIView.animate(withDuration: RecordMotion.Metrics.disappearDuration, delay: 0, options: [.beginFromCurrentState]) {
+            self.inner.transform = small
+            self.outer.transform = small
+            self.inner.alpha = 0
+            self.outer.alpha = 0
+            self.lockWrapper.transform = drop
+            self.lockWrapper.alpha = 0
+        }
+        if cancelled {
+            UIView.animate(withDuration: 0.15, delay: 0, options: [.beginFromCurrentState]) {
+                self.dot.transform = CGAffineTransform(scaleX: 0.3, y: 0.3)
+            }
+        }
+        UIView.animate(withDuration: 0.2, delay: 0.05, options: [.beginFromCurrentState]) {
+            self.bar.alpha = 0
+        } completion: { [weak self] _ in
+            guard let self, self.isDismissing else { return }
+            self.dot.layer.removeAllAnimations()
+            self.cancelLine.layer.removeAllAnimations()
+            self.cancelLine.transform = .identity
+            self.window.isHidden = true
+            completion?()
+        }
+    }
+
+    // MARK: Frames
+
+    private func measure() {
+        clock.text = RecordClock.widest
+        let clockSize = clock.sizeThatFits(CGSize(width: 200, height: 100))
+        cancelLabel.string = Strings.Record.slideToCancel
+        let label = cancelLabel.sizeThatFits(CGSize(width: 240, height: 100))
+        let cancel = cancelButton.sizeThatFits(CGSize(width: 240, height: 100))
+        measured = (clockSize, CGSize(width: 14, height: 14), label, cancel)
+        clock.text = RecordClock.text(0)
+    }
+
+    private func layout(lockness: CGFloat) -> RecordOverlayLayout {
+        RecordOverlayLayout(.init(
+            button: button,
+            bar: barShape.frame,
+            clock: measured.clock,
+            arrow: measured.arrow,
+            label: measured.label,
+            cancel: measured.cancel,
+            cancelTranslation: isLocked ? 0 : gesture.cancelTranslation,
+            lockness: lockness
+        ))
+    }
+
+    /// One frame: the level and the drag followed, the spring's place,
+    /// the clock, and every frame and transform from them.
+    private func apply(at now: CFTimeInterval) {
+        let frames = CGFloat(max(0, now - lastTick) * 60)
+        lastTick = now
+        motion.step(level: level, lift: isLocked ? 0 : gesture.translation.y, slide: isLocked ? 0 : gesture.translation.x, frames: frames)
+        let elapsed = now - started
+        let lockness = lockStart.map { RecordMotion.lockness(from: $0.from, at: now - $0.time) } ?? gesture.lockness
+        let layout = layout(lockness: lockness)
+
+        bar.frame = barShape.frame
+        bar.layer.cornerRadius = barShape.cornerRadius
+        barGlass.frame = bar.bounds
+        barFill.frame = bar.bounds
+        let origin = barShape.frame.origin
+        func local(_ rect: CGRect) -> CGRect { rect.offsetBy(dx: -origin.x, dy: -origin.y) }
+        place(dot, local(layout.dot))
+        clock.frame = local(layout.clock)
+        let line = local(layout.cancelLine)
+        place(cancelLine, line)
+        cancelArrow.frame = layout.cancelArrow.offsetBy(dx: -layout.cancelLine.minX, dy: -layout.cancelLine.minY)
+        cancelLabel.frame = layout.cancelLabel.offsetBy(dx: -layout.cancelLine.minX, dy: -layout.cancelLine.minY)
+        if !isLocked { cancelLine.alpha = layout.cancelLineAlpha }
+        place(cancelButton, local(layout.cancelButton))
+        let text = RecordClock.text(elapsed)
+        if text != shownClock {
+            shownClock = text
+            clock.text = text
+        }
+
+        let appear = RecordMotion.appear(at: elapsed)
+        let alpha = RecordMotion.appearAlpha(at: elapsed)
+        let start = RecordMotion.Metrics.appearScale
+        let lift = CGAffineTransform(translationX: 0, y: motion.lift)
+
+        place(outer, layout.outer)
+        outer.layer.cornerRadius = layout.outer.width / 2
+        let outerScale = start + (motion.outerScale - start) * appear
+        outer.transform = lift.scaledBy(x: outerScale, y: outerScale)
+        outer.alpha = alpha
+
+        place(inner, layout.inner)
+        inner.layer.cornerRadius = layout.inner.width / 2
+        let innerScale = (start + (1 - start) * appear) * (isLocked ? 1 : gesture.scale)
+        inner.transform = lift.scaledBy(x: innerScale, y: innerScale).translatedBy(x: motion.slide, y: 0)
+        inner.alpha = alpha
+        for glyph in [micGlyph, sendGlyph] {
+            glyph.bounds = CGRect(origin: .zero, size: layout.inner.size)
+            glyph.center = CGPoint(x: layout.inner.width / 2, y: layout.inner.height / 2)
+        }
+
+        place(lockWrapper, layout.lockWrapper)
+        lockWrapper.transform = CGAffineTransform(translationX: 0, y: RecordMotion.Metrics.lockRise * (1 - appear)).concatenating(lift)
+        lockWrapper.alpha = min(1, alpha)
+        lockPanel.frame = layout.lockPanel
+        lockGlass.frame = lockPanel.bounds
+        lockGlass.layer.cornerRadius = lockPanel.bounds.width / 2
+        lockGlyph.frame = layout.lockGlyph
+        lockGlyph.lockness = lockness
+        lockArrow.frame = layout.arrow
+        lockArrow.alpha = layout.arrowAlpha
+        stopGlyph.frame = lockPanel.bounds
+    }
+
+    /// Bounds and centre, so a transform on it stays about its middle.
+    private func place(_ view: UIView, _ frame: CGRect) {
+        view.bounds = CGRect(origin: .zero, size: frame.size)
+        view.center = CGPoint(x: frame.midX, y: frame.midY)
+    }
+
+    // MARK: Loops
+
+    /// Telegram's dot: on, then fading, back and forth twice a second.
+    private func blink() {
+        guard !isDismissing else { return }
+        let animation = CAKeyframeAnimation(keyPath: "opacity")
+        animation.values = [1, 1, 0]
+        animation.keyTimes = [0, 0.5, 1]
+        animation.duration = 0.5
+        animation.autoreverses = true
+        animation.repeatCount = .infinity
+        dot.layer.add(animation, forKey: "blink")
+    }
+
+    /// "Slide to cancel" nudging left and back while the finger rests.
+    private func juggle() {
+        let animation = CABasicAnimation(keyPath: "transform")
+        animation.toValue = CATransform3DMakeTranslation(6, 0, 0)
+        animation.duration = 1
+        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        animation.autoreverses = true
+        animation.repeatCount = .infinity
+        cancelLine.layer.add(animation, forKey: "juggle")
+    }
+
+    private func startDisplayLink() {
+        stopDisplayLink()
+        let link = CADisplayLink(target: RecordDisplayTarget(self), selector: #selector(RecordDisplayTarget.tick))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+        link.add(to: .main, forMode: .common)
+        displayLink = link
+    }
+
+    private func stopDisplayLink() {
+        displayLink?.invalidate()
+        displayLink = nil
+    }
+
+    fileprivate func tick() {
+        let now = CACurrentMediaTime()
+        // The finger leaving "Slide to cancel" behind stops its nudge.
+        if gesture.cancelTranslation > RecordOverlayLayout.Metrics.cancelThreshold {
+            cancelLine.layer.removeAnimation(forKey: "juggle")
+        } else if !isLocked, cancelLine.layer.animation(forKey: "juggle") == nil {
+            juggle()
+        }
+        UIView.performWithoutAnimation { apply(at: now) }
+    }
+}
+
+/// The display link holds its target strongly; this keeps it from holding
+/// the overlay.
+@MainActor
+private final class RecordDisplayTarget: NSObject {
+    weak var overlay: RecordOverlay?
+    init(_ overlay: RecordOverlay) { self.overlay = overlay }
+    @objc func tick() { overlay?.tick() }
+}
+
+private final class RecordOverlayController: UIViewController {
+    override var preferredStatusBarStyle: UIStatusBarStyle { .default }
+    override var prefersStatusBarHidden: Bool { false }
+}
+
+/// Takes only its controls' touches once the recording is locked, and
+/// every other touch then too, so a tap elsewhere can't leave the screen
+/// the recording is for; while the finger holds the button, nothing.
+final class RecordOverlayWindow: UIWindow {
+    var interactive: () -> [UIView] = { [] }
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        let controls = interactive()
+        guard !controls.isEmpty else { return nil }
+        for control in controls where control.alpha > 0.01 && !control.isHidden {
+            let local = control.convert(point, from: self)
+            if control.bounds.insetBy(dx: -8, dy: -8).contains(local) { return control }
+        }
+        return rootViewController?.view
+    }
+}
+
+/// Telegram's drawn lock (`RecordLockGlyph`), stroked in the lock colour.
+final class RecordLockView: UIView {
+    var lockness: CGFloat = 0 {
+        didSet { if lockness != oldValue { redraw() } }
+    }
+
+    private let shape = CAShapeLayer()
+    private let keyhole = CAShapeLayer()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        shape.fillColor = nil
+        shape.lineCap = .round
+        layer.addSublayer(shape)
+        layer.addSublayer(keyhole)
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.redraw() }
+        redraw()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        redraw()
+    }
+
+    private func redraw() {
+        let glyph = RecordLockGlyph(side: max(bounds.width, 1), lockness: lockness, scale: traitCollection.displayScale)
+        let color = UIColor(Palette.Record.lock).resolvedColor(with: traitCollection).cgColor
+        let path = CGMutablePath()
+        let box = glyph.shackle
+        let radius = box.width / 2
+        path.move(to: CGPoint(x: box.minX, y: glyph.leftLegEnd))
+        path.addArc(tangent1End: CGPoint(x: box.minX, y: box.minY), tangent2End: CGPoint(x: box.midX, y: box.minY), radius: radius)
+        path.addArc(tangent1End: CGPoint(x: box.maxX, y: box.minY), tangent2End: CGPoint(x: box.maxX, y: glyph.leftLegEnd), radius: radius)
+        path.addLine(to: CGPoint(x: box.maxX, y: glyph.rightLegEnd))
+        path.addEllipse(in: glyph.body)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        shape.frame = bounds
+        shape.path = path
+        shape.strokeColor = color
+        shape.lineWidth = glyph.lineWidth
+        keyhole.frame = bounds
+        keyhole.path = CGPath(ellipseIn: glyph.keyhole, transform: nil)
+        keyhole.fillColor = color
+        CATransaction.commit()
+    }
+}
+#endif

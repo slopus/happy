@@ -747,7 +747,11 @@ final class HomeViewController: UIViewController {
     /// on the computer and no row shows until its first message is sent,
     /// so leaving it leaves nothing behind; compose again before then opens
     /// the same one, with what was typed in it.
-    func makeNewWork(library: Bool = false) {
+    ///
+    /// Dictated on home's microphone, the words are its first message,
+    /// sent as it comes in, so the task starts at once; to look over, they
+    /// wait in its composer instead.
+    func makeNewWork(library: Bool = false, dictated: RecordButton.Result? = nil) {
         guard let session, !opening, navigationController?.topViewController === parent || navigationController?.topViewController === self else { return }
         opening = true
         let store = session.store
@@ -757,12 +761,23 @@ final class HomeViewController: UIViewController {
             // Gone from the screen meanwhile: nothing is pushed over another.
             guard navigationController?.topViewController === parent || navigationController?.topViewController === self else { return }
             Haptics.play(.newWork)
-            let chat = NewWork.chat(session, task: task, library: library)
+            let chat: ChatViewController
+            switch dictated {
+            case .send(let words)?:
+                chat = NewWork.chat(session, task: task, dictated: words)
+            case .review(let words)?:
+                chat = NewWork.chat(session, task: task, prefill: ChatPrefill(prefix: words))
+            case nil:
+                chat = NewWork.chat(session, task: task, library: library)
+            }
             guard let navigation = navigationController else { return }
             if library {
                 navigation.pushViewController(chat, animated: true)
                 // Over the screen it goes to, as that screen comes in.
                 chat.presentAttach(from: navigation)
+            } else if case .send? = dictated {
+                // Nothing to type: no keyboard, the words go as it comes in.
+                navigation.pushViewController(chat, animated: true)
             } else {
                 // The keyboard first, then the push in its frame (`KeyboardPush`).
                 KeyboardPush.push(chat, on: navigation, traits: chat.card.textView)

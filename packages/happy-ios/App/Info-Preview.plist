@@ -53,7 +53,9 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Allow Happy (preview) to access your camera to scan QR codes and share photos with AI.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Allow Happy to use your microphone to talk with your coding agents.</string>
+	<string>Allow Happy to use your microphone to talk with your coding agents and to dictate messages.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Allow Happy to turn what you say into text on this iPhone, so you can dictate messages to your agents.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Allow Happy (preview) to find and connect to local devices on your network.</string>
 	<key>UIApplicationSceneManifest</key>

@@ -23,6 +23,8 @@ final class CallController {
     private weak var shell: ShellViewController?
     private var clock: Timer?
     private var state: CallState = .idle
+    /// A call has the microphone: dictation waits for it to end.
+    var holdsMicrophone: Bool { state.isLive }
     private var focus: String?
     private var observers: [NSObjectProtocol] = []
     #if DEBUG

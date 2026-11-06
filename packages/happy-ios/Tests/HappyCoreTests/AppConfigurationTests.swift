@@ -31,6 +31,9 @@ final class AppConfigurationTests: XCTestCase {
                 info["NSCameraUsageDescription"] as? String,
                 "Allow \(variant.displayName) to access your camera to scan QR codes and share photos with AI."
             )
+            // The microphone's dictation (`RecordButton`) asks for both.
+            XCTAssertNotNil(info["NSMicrophoneUsageDescription"] as? String)
+            XCTAssertNotNil(info["NSSpeechRecognitionUsageDescription"] as? String)
             let ats = try XCTUnwrap(info["NSAppTransportSecurity"] as? [String: Bool])
             XCTAssertEqual(ats["NSAllowsLocalNetworking"], true)
             // Plain HTTP to any host only in dev and preview, as in app.config.js.

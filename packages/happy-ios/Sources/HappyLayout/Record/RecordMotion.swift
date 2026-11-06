@@ -1,0 +1,125 @@
+import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
+
+/// What the recording circles do each frame (Telegram's
+/// `displayLinkUpdate`): the voice's level and the finger's drag are
+/// followed with a lag, so the pulse breathes rather than flickers and the
+/// circle trails the finger a little.
+///
+/// Telegram steps once per 60 Hz frame; `frames` is how many of those a
+/// tick spans, so a 120 Hz screen moves the same over the same time.
+public struct RecordMotion: Equatable, Sendable {
+    public enum Metrics {
+        /// The blue circle under the finger.
+        public static let innerDiameter: CGFloat = 110
+        /// The pale ring the voice swells.
+        public static let outerDiameter: CGFloat = innerDiameter + 50
+        /// The ring at silence: the circle's own size.
+        public static let outerMinScale: CGFloat = innerDiameter / outerDiameter
+        /// How much of the last level each 60 Hz frame keeps.
+        public static let levelKeep: CGFloat = 0.9
+        /// How much of the last drag each 60 Hz frame keeps.
+        public static let dragKeep: CGFloat = 0.7
+        /// The ring's appearing spring (`animateIn`): 0.5 s, damping 0.55.
+        public static let springDuration: Double = 0.5
+        public static let springDamping: CGFloat = 0.55
+        /// The circles start this small and this faint, and grow in.
+        public static let appearScale: CGFloat = 0.2
+        /// Their fade in, and the button's glyph out.
+        public static let appearFade: Double = 0.1
+        /// Going away (`animateOut`).
+        public static let disappearDuration: Double = 0.18
+        /// The lock panel rises this far into place.
+        public static let lockRise: CGFloat = 100
+    }
+
+    /// The level shown, 0 to 1.
+    public private(set) var level: CGFloat = 0
+    /// The circle's lift, zero or less (up).
+    public private(set) var lift: CGFloat = 0
+    /// The circle's slide, zero or less (left).
+    public private(set) var slide: CGFloat = 0
+
+    public init() {}
+
+    /// One tick toward the targets.
+    public mutating func step(level target: CGFloat, lift liftTarget: CGFloat, slide slideTarget: CGFloat, frames: CGFloat = 1) {
+        let frames = max(0, frames)
+        let levelKeep = pow(Metrics.levelKeep, frames)
+        let dragKeep = pow(Metrics.dragKeep, frames)
+        level = level * levelKeep + min(1, max(0, target)) * (1 - levelKeep)
+        lift = min(0, lift * dragKeep + liftTarget * (1 - dragKeep))
+        slide = min(0, slide * dragKeep + slideTarget * (1 - dragKeep))
+    }
+
+    /// The ring's scale against `outerDiameter`: the circle's size at
+    /// silence, the whole ring at full voice.
+    public var outerScale: CGFloat {
+        Metrics.outerMinScale + level * (1 - Metrics.outerMinScale)
+    }
+
+    /// The appearing spring `elapsed` seconds in: UIKit's spring of
+    /// `springDuration` and `springDamping` (natural frequency 2π over the
+    /// duration), from 0 to 1 with Telegram's overshoot. Driven per frame
+    /// with the drag rather than as a UIView animation, so a finger moving
+    /// during the spring never makes the circle jump when it ends.
+    public static func appear(at elapsed: Double) -> CGFloat {
+        guard elapsed > 0 else { return 0 }
+        let omega = 2 * Double.pi / Metrics.springDuration
+        let zeta = Double(Metrics.springDamping)
+        let damped = omega * (1 - zeta * zeta).squareRoot()
+        let envelope = exp(-zeta * omega * elapsed)
+        return CGFloat(1 - envelope * (cos(damped * elapsed) + zeta * omega / damped * sin(damped * elapsed)))
+    }
+
+    /// Whether the spring has settled, to within a hundredth for good.
+    public static func appearSettled(at elapsed: Double) -> Bool {
+        let omega = 2 * Double.pi / Metrics.springDuration
+        return exp(-Double(Metrics.springDamping) * omega * elapsed) * 1.5 < 0.01
+    }
+
+    /// The circles' and the glyph's fade in, linear over `appearFade`
+    /// from Telegram's 0.2.
+    public static func appearAlpha(at elapsed: Double) -> CGFloat {
+        let t = min(1, max(0, elapsed / Metrics.appearFade))
+        return Metrics.appearScale + (1 - Metrics.appearScale) * CGFloat(t)
+    }
+
+    /// The lock closing on its own (`animateLock`): 0.2 s ease in and out
+    /// from wherever the finger left it.
+    public static let lockDuration: Double = 0.2
+
+    public static func lockness(from start: CGFloat, at elapsed: Double) -> CGFloat {
+        let t = min(1, max(0, elapsed / lockDuration))
+        let eased = t < 0.5 ? 2 * t * t : 1 - pow(-2 * t + 2, 2) / 2
+        return start + (1 - start) * CGFloat(eased)
+    }
+
+    /// A microphone buffer's loudness, as its RMS amplitude, on the 0 to 1
+    /// the ring reads: -50 dB is silence and 0 dB the loudest.
+    public static func level(rms: Float) -> CGFloat {
+        guard rms > 0 else { return 0 }
+        let decibels = 20 * log10(Double(rms))
+        return CGFloat(min(1, max(0, (decibels + 50) / 50)))
+    }
+}
+
+/// The recording's clock as Telegram shows it: minutes, seconds and
+/// hundredths, "0:02,54", with hours in front past the hour.
+public enum RecordClock {
+    public static func text(_ seconds: Double) -> String {
+        let seconds = max(0, seconds)
+        let whole = Int(seconds)
+        let hundredths = Int(seconds * 100) % 100
+        if whole >= 3600 {
+            return String(format: "%d:%02d:%02d,%02d", whole / 3600, whole / 60 % 60, whole % 60, hundredths)
+        }
+        return String(format: "%d:%02d,%02d", whole / 60, whole % 60, hundredths)
+    }
+
+    /// The widest the clock gets under an hour, to measure once: its
+    /// digits are tabular, so the line never jitters as it runs.
+    public static let widest = "00:00,00"
+}

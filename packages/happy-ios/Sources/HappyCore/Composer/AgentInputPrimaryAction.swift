@@ -9,6 +9,9 @@ public enum AgentInputPrimaryAction: String, Equatable, Sendable {
     case blocked
     /// Starts or reopens the foreground voice conversation.
     case voice
+    /// Telegram's microphone in send's place while there is nothing to
+    /// send: hold to dictate (`RecordButton`).
+    case record
     case idle
 
     /// `resolveAgentInputPrimaryAction`.
@@ -23,7 +26,8 @@ public enum AgentInputPrimaryAction: String, Equatable, Sendable {
         isSendDisabled: Bool,
         showAbortButton: Bool,
         canAbort: Bool,
-        canVoice: Bool = false
+        canVoice: Bool = false,
+        canRecord: Bool = false
     ) -> AgentInputPrimaryAction {
         if showAbortButton && canAbort && !hasComposerContent {
             return .stop
@@ -33,6 +37,9 @@ public enum AgentInputPrimaryAction: String, Equatable, Sendable {
         }
         if !isSendDisabled && hasComposerContent {
             return .send
+        }
+        if !isSendDisabled && canRecord {
+            return .record
         }
         if !isSendDisabled && canVoice {
             return .voice

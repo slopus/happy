@@ -7,8 +7,8 @@ import UIKit
 /// list running under it with iOS 26's soft scroll edge as the bar's shade.
 /// At the left, alone, the account switcher (`AccountSwitcher`): the active
 /// account's picture and name, the name giving way to the link's status
-/// while the computer isn't live. Settings stays at the right. Search and compose are in UIKit's
-/// bottom toolbar; what search finds
+/// while the computer isn't live. Settings stays at the right. Search, the
+/// call, compose and the microphone are in UIKit's bottom toolbar; what search finds
 /// shows over home, which stays where it was.
 ///
 /// As the iPad's sidebar (`SidebarColumnTrait`) the header keeps the
@@ -38,6 +38,28 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         let item = UIBarButtonItem(image: .voiceIcon(), primaryAction: UIAction { [weak self] _ in self?.startCall() })
         item.accessibilityLabel = Strings.Call.start
         item.accessibilityIdentifier = "voice-call"
+        item.sharesBackground = false
+        return item
+    }()
+    /// Telegram's microphone, the toolbar's last and primary button: hold
+    /// to say what a new task should do, and it starts with those words.
+    private lazy var record: RecordButton = {
+        let button = RecordButton(style: .toolbar)
+        button.bar = { [weak self, weak button] in
+            guard let self, let button, button.window != nil else { return nil }
+            let frame = button.convert(button.bounds, to: nil)
+            let field = search.bar.searchTextField
+            let leading = field.window == button.window && field.bounds.height > 0 ? field.convert(field.bounds, to: nil).minX : view.convert(CGPoint(x: view.safeAreaInsets.left + 16, y: 0), to: nil).x
+            return RecordBar(frame: RecordOverlayLayout.capsule(button: frame, leading: leading), cornerRadius: frame.height / 2)
+        }
+        button.onResult = { [weak self] result in
+            self?.endSearch()
+            self?.v2.makeNewWork(dictated: result)
+        }
+        return button
+    }()
+    private lazy var recordItem: UIBarButtonItem = {
+        let item = UIBarButtonItem(customView: record)
         item.sharesBackground = false
         return item
     }()
@@ -127,7 +149,7 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
             bottomBar.follow(v2.list)
         } else {
             search.install()
-            toolbarItems = [navigationItem.searchBarPlacementBarButtonItem, .flexibleSpace(), voiceItem, composeItem]
+            toolbarItems = [navigationItem.searchBarPlacementBarButtonItem, .flexibleSpace(), voiceItem, composeItem, recordItem]
             bottomBar.follow(nil)
         }
         updateBar()

@@ -416,6 +416,22 @@ public final class AgentInputCardView: UIView {
     private var menuPresenter: ComposerMenuPresenter?
     private let primaryHost = PassthroughView()
     private let primaryButton = ComposerPrimaryButton()
+    /// The microphone in send's place while there is nothing to send
+    /// (`.record`): the owner's `RecordButton`, the one home's toolbar has
+    /// too. Send and it change places as Telegram's do.
+    var recordButton: RecordButton? {
+        didSet {
+            guard recordButton !== oldValue else { return }
+            oldValue?.removeFromSuperview()
+            if let recordButton {
+                primaryHost.addSubview(recordButton)
+                recordButton.frame = primaryHost.bounds
+            }
+            showsRecord = nil
+            updateRecord(animated: false)
+        }
+    }
+    private var showsRecord: Bool?
     private var installedDesktopControls: AgentInputDesktopControlsView?
     /// A phone's compact card never mounts the hidden desktop button tree.
     /// Keep it after the first wide layout so resizing preserves its controls.
@@ -1244,6 +1260,7 @@ public final class AgentInputCardView: UIView {
         primaryHost.bounds = CGRect(origin: .zero, size: primary.size)
         primaryHost.center = CGPoint(x: primary.midX, y: primary.midY)
         primaryButton.frame = primaryHost.bounds
+        recordButton?.frame = primaryHost.bounds
     }
 
     /// The flat panel: the strip and text where `AgentInputDesktopLayout`
@@ -1366,6 +1383,7 @@ public final class AgentInputCardView: UIView {
             busy: config.isPrimaryBusy,
             accessibilityLabel: config.primaryAccessibilityLabel
         )
+        updateRecord(animated: previous != nil && window != nil)
         if let desktop = config.desktop {
             desktopControls.configure(
                 desktop,
@@ -1398,6 +1416,31 @@ public final class AgentInputCardView: UIView {
             reportHeightChange(animated: picturesOnly && window != nil)
             setNeedsLayout()
         }
+    }
+
+    /// Send or the microphone (`ChatTextInputPanelNode`'s swap): one fades
+    /// out as the other fades in, 0.2 s, and send's arrow flies in as it
+    /// comes back. A recording under way keeps its button.
+    private func updateRecord(animated: Bool) {
+        guard let recordButton else { return }
+        let shows = configuration.primaryAction == .record || recordButton.isRecording
+        guard shows != showsRecord else { return }
+        let first = showsRecord == nil
+        showsRecord = shows
+        primaryButton.isUserInteractionEnabled = !shows
+        recordButton.isUserInteractionEnabled = shows
+        let apply = {
+            self.primaryButton.alpha = shows ? 0 : 1
+            recordButton.alpha = shows ? 1 : 0
+        }
+        guard animated, !first else {
+            primaryButton.layer.removeAllAnimations()
+            recordButton.layer.removeAllAnimations()
+            apply()
+            return
+        }
+        if !shows { primaryButton.slideArrowIn(duration: 0.2) }
+        UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseInOut, .beginFromCurrentState, .allowUserInteraction], animations: apply)
     }
 
     /// What of the flat panel moves its frames: whether it is there, the
@@ -1864,7 +1907,7 @@ final class ComposerPrimaryButton: ComposerPressableButton {
         case .blocked:
             iconView.icon = .ionicons("lock-closed")
             iconView.size = AgentInputCardLayout.Metrics.lockIconSize
-        case .voice:
+        case .voice, .record:
             iconView.icon = .ionicons("mic-outline")
             iconView.size = AgentInputCardLayout.Metrics.primaryIconSize
         case .send, .idle:
@@ -1887,6 +1930,20 @@ final class ComposerPrimaryButton: ComposerPressableButton {
             showGlyph(from: nil)
             applyColors()
         }
+    }
+
+    /// Send coming back in place of the microphone: its arrow flies in
+    /// from the lower left as the button fades in (Telegram's
+    /// `animatePositionAdditive`, offset -22, 18).
+    func slideArrowIn(duration: Double) {
+        guard !UIAccessibility.isReduceMotionEnabled else { return }
+        let slide = CABasicAnimation(keyPath: "position")
+        slide.fromValue = NSValue(cgPoint: CGPoint(x: -22, y: 18))
+        slide.toValue = NSValue(cgPoint: .zero)
+        slide.isAdditive = true
+        slide.duration = duration
+        slide.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        iconView.layer.add(slide, forKey: "arrow-in")
     }
 
     /// The icon, or stop's square: whichever the action draws. `from`, the
@@ -1948,7 +2005,7 @@ final class ComposerPrimaryButton: ComposerPressableButton {
             layer.borderWidth = 1
             layer.borderColor = UIColor(Palette.legacyDivider).resolvedColor(with: traitCollection).cgColor
             iconView.tintColor = UIColor(Palette.textSecondary)
-        case .send, .voice:
+        case .send, .voice, .record:
             backgroundColor = UIColor(Palette.surfaceHighest)
             iconView.tintColor = UIColor(Palette.text)
         case .idle:
