@@ -59,6 +59,8 @@ import com.slopus.happy.connection.AgentConnections
 import com.slopus.happy.connection.PairingFlow
 import com.slopus.happy.connection.ServerAuthClient
 import com.slopus.happy.connection.ServerSignInFlow
+import com.slopus.happy.connection.CloudAccount
+import com.slopus.happy.connection.HappyCloud
 import com.slopus.happy.connection.TailcatTransport
 import com.slopus.happy.connection.networkPath
 import com.slopus.happy.sync.AccountSync
@@ -360,6 +362,21 @@ class AppGraph(
         pictures = File(context.filesDir, "agent-avatars"),
     )
 
+    /** The Happy Cloud account, where the build offers it: signed in once, then its servers are picked, created or joined. */
+    val cloudAccount: CloudAccount? = HappyCloud.accounts?.let { origin ->
+        CloudAccount(
+            scope = scope,
+            origin = origin,
+            auth = serverAuth,
+            http = okHttp,
+            secrets = ExpoSecureStore(
+                prefs = context.getSharedPreferences(AgentConnections.SECRETS_PREFS, Context.MODE_PRIVATE),
+                keys = secureStoreKeys,
+                keychainService = CloudAccount.KEYCHAIN_SERVICE,
+            ),
+        )
+    }
+
     /**
      * The open agent connection's id, or null when a Happy account (or
      * nothing) is open. Only one account of either kind is open at a time.
@@ -477,6 +494,7 @@ class AppGraph(
         // Any app can send the redirect URI: nothing it holds takes the app down.
         try {
             serverSignInState.value?.callback(uri)
+            cloudAccount?.callback(uri)
         } catch (e: RuntimeException) {
             // Only the kind: the callback may carry a code.
             android.util.Log.w("ServerSignIn", "Ignored a callback that couldn't be read: ${e.javaClass.simpleName}")

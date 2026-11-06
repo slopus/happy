@@ -6,7 +6,29 @@
 <resources>
     <string name="cloud_connect_row">Connetti a Happy Cloud</string>
     <string name="cloud_connect_title">Connettersi a Happy Cloud?</string>
-    <string name="cloud_connect_message">Accedi o crea un account per aggiungere un team nel cloud. Gli agenti girano nel cloud; non serve un computer.</string>
+    <string name="cloud_connect_message">Accedi o crea un account Happy Cloud, poi apri uno dei tuoi server, creane uno o unisciti a uno. Gli agenti funzionano nel cloud; non serve un computer.</string>
     <string name="cloud_connect_confirm">Connetti</string>
     <string name="cloud_needs_computer">Happy Cloud esegue solo agenti. Per questo serve un computer.</string>
+    <string name="cloud_title">Happy Cloud</string>
+    <string name="cloud_sign_in">Accedi a Happy Cloud</string>
+    <string name="cloud_your_servers">I tuoi server</string>
+    <string name="cloud_loading">Caricamento…</string>
+    <string name="cloud_no_servers">Ancora nessun server. Creane uno o unisciti a uno qui sotto.</string>
+    <string name="cloud_role_owner">Proprietario</string>
+    <string name="cloud_role_member">Membro</string>
+    <string name="cloud_create">Crea un nuovo server</string>
+    <string name="cloud_create_detail">Scegli un nome. Diventerà l\'indirizzo del tuo server.</string>
+    <string name="cloud_create_button">Crea server</string>
+    <string name="cloud_join">Unisciti a un server</string>
+    <string name="cloud_join_detail">Inserisci il nome del server e il codice di invito ricevuto dal proprietario.</string>
+    <string name="cloud_join_button">Unisciti</string>
+    <string name="cloud_invite_code">Codice di invito</string>
+    <string name="cloud_join_not_found">Nessun server con questo nome e codice di invito.</string>
+    <string name="cloud_name_placeholder">nome</string>
+    <string name="cloud_name_rules">Da 3 a 32 lettere minuscole, cifre o trattini, senza trattino all\'inizio o alla fine.</string>
+    <string name="cloud_name_checking">Verifica…</string>
+    <string name="cloud_name_available">%1$s è disponibile.</string>
+    <string name="cloud_name_taken">Questo nome è già in uso.</string>
+    <string name="cloud_name_reserved">Questo nome è riservato.</string>
+    <string name="cloud_failed">Qualcosa è andato storto. Riprova.</string>
 </resources>

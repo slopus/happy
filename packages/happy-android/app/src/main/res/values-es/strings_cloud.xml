@@ -6,7 +6,29 @@
 <resources>
     <string name="cloud_connect_row">Conectar a Happy Cloud</string>
     <string name="cloud_connect_title">¿Conectar a Happy Cloud?</string>
-    <string name="cloud_connect_message">Inicia sesión o crea una cuenta para añadir un equipo en la nube. Los agentes se ejecutan en la nube; no necesitas un ordenador.</string>
+    <string name="cloud_connect_message">Inicia sesión o crea una cuenta de Happy Cloud y luego abre uno de tus servidores, crea uno o únete a uno. Los agentes se ejecutan en la nube; no necesitas un ordenador.</string>
     <string name="cloud_connect_confirm">Conectar</string>
     <string name="cloud_needs_computer">Happy Cloud solo ejecuta agentes. Esto necesita un ordenador.</string>
+    <string name="cloud_title">Happy Cloud</string>
+    <string name="cloud_sign_in">Iniciar sesión en Happy Cloud</string>
+    <string name="cloud_your_servers">Tus servidores</string>
+    <string name="cloud_loading">Cargando…</string>
+    <string name="cloud_no_servers">Aún no hay servidores. Crea uno o únete a uno abajo.</string>
+    <string name="cloud_role_owner">Propietario</string>
+    <string name="cloud_role_member">Miembro</string>
+    <string name="cloud_create">Crear un servidor nuevo</string>
+    <string name="cloud_create_detail">Elige un nombre. Será la dirección de tu servidor.</string>
+    <string name="cloud_create_button">Crear servidor</string>
+    <string name="cloud_join">Unirse a un servidor</string>
+    <string name="cloud_join_detail">Introduce el nombre del servidor y el código de invitación que te dio su propietario.</string>
+    <string name="cloud_join_button">Unirse</string>
+    <string name="cloud_invite_code">Código de invitación</string>
+    <string name="cloud_join_not_found">Ningún servidor tiene ese nombre y código de invitación.</string>
+    <string name="cloud_name_placeholder">nombre</string>
+    <string name="cloud_name_rules">De 3 a 32 letras minúsculas, dígitos o guiones, sin guion al principio ni al final.</string>
+    <string name="cloud_name_checking">Comprobando…</string>
+    <string name="cloud_name_available">%1$s está disponible.</string>
+    <string name="cloud_name_taken">Ese nombre ya está en uso.</string>
+    <string name="cloud_name_reserved">Ese nombre está reservado.</string>
+    <string name="cloud_failed">Algo salió mal. Inténtalo de nuevo.</string>
 </resources>

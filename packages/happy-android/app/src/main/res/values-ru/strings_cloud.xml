@@ -6,7 +6,29 @@
 <resources>
     <string name="cloud_connect_row">Подключиться к Happy Cloud</string>
     <string name="cloud_connect_title">Подключиться к Happy Cloud?</string>
-    <string name="cloud_connect_message">Войдите или создайте аккаунт, чтобы добавить облачную команду. Агенты работают в облаке, компьютер не нужен.</string>
+    <string name="cloud_connect_message">Войдите или создайте аккаунт Happy Cloud, затем откройте один из своих серверов, создайте новый или присоединитесь к существующему. Агенты работают в облаке, компьютер не нужен.</string>
     <string name="cloud_connect_confirm">Подключиться</string>
     <string name="cloud_needs_computer">В Happy Cloud работают только агенты. Для этого нужен компьютер.</string>
+    <string name="cloud_title">Happy Cloud</string>
+    <string name="cloud_sign_in">Войти в Happy Cloud</string>
+    <string name="cloud_your_servers">Ваши серверы</string>
+    <string name="cloud_loading">Загрузка…</string>
+    <string name="cloud_no_servers">Серверов пока нет. Создайте сервер или присоединитесь к нему ниже.</string>
+    <string name="cloud_role_owner">Владелец</string>
+    <string name="cloud_role_member">Участник</string>
+    <string name="cloud_create">Создать сервер</string>
+    <string name="cloud_create_detail">Выберите имя. Оно станет адресом сервера.</string>
+    <string name="cloud_create_button">Создать сервер</string>
+    <string name="cloud_join">Присоединиться к серверу</string>
+    <string name="cloud_join_detail">Введите имя сервера и код приглашения от его владельца.</string>
+    <string name="cloud_join_button">Присоединиться</string>
+    <string name="cloud_invite_code">Код приглашения</string>
+    <string name="cloud_join_not_found">Нет сервера с таким именем и кодом приглашения.</string>
+    <string name="cloud_name_placeholder">имя</string>
+    <string name="cloud_name_rules">От 3 до 32 строчных латинских букв, цифр или дефисов; не начинается и не заканчивается дефисом.</string>
+    <string name="cloud_name_checking">Проверка…</string>
+    <string name="cloud_name_available">%1$s свободно.</string>
+    <string name="cloud_name_taken">Это имя занято.</string>
+    <string name="cloud_name_reserved">Это имя зарезервировано.</string>
+    <string name="cloud_failed">Что-то пошло не так. Попробуйте ещё раз.</string>
 </resources>
