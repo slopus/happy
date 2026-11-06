@@ -27,9 +27,6 @@ import com.slopus.happy.connection.CloudServer
 import com.slopus.happy.connection.HappyCloud
 import com.slopus.happy.ui.HomeRoute
 import com.slopus.happy.ui.page
-import com.slopus.happy.ui.components.Alert
-import com.slopus.happy.ui.components.AlertButton
-import com.slopus.happy.ui.components.HappyAlert
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -49,31 +46,14 @@ import kotlinx.serialization.Serializable
 val LocalCloudConnect: ProvidableCompositionLocal<(() -> Unit)?> = compositionLocalOf { null }
 
 /**
- * Connecting to Happy Cloud: with the account signed in it shows its
- * servers at once; otherwise it asks first ("Connect to Happy Cloud?",
- * Cancel / Connect), and Connect opens the account's sign-in. Composes its
- * own alert while it asks.
+ * Connecting to Happy Cloud: full screen, on the first screen's gradient.
+ * Signed out, it opens on a welcome whose Connect starts the account's
+ * sign-in; signed in, on the account's servers.
  */
 @Composable
 fun rememberCloudConnect(graph: AppGraph, nav: NavHostController): (() -> Unit)? {
     val account = graph.cloudAccount ?: return null
-    var asking by remember { mutableStateOf(false) }
-    if (asking) {
-        HappyAlert(
-            Alert(
-                title = stringResource(R.string.cloud_connect_title),
-                message = stringResource(R.string.cloud_connect_message),
-                buttons = listOf(
-                    AlertButton(stringResource(R.string.common_cancel)),
-                    AlertButton(stringResource(R.string.cloud_connect_confirm)) { nav.navigate(CloudRoute) { launchSingleTop = true } },
-                ),
-            ),
-            onDismiss = { asking = false },
-        )
-    }
-    return remember(account, nav) {
-        { if (account.state.value == CloudAccountState.SignedIn) nav.navigate(CloudRoute) { launchSingleTop = true } else asking = true }
-    }
+    return remember(account, nav) { { nav.navigate(CloudRoute) { launchSingleTop = true } } }
 }
 
 fun NavGraphBuilder.cloudRoutes(graph: AppGraph, nav: NavHostController) {
@@ -113,8 +93,6 @@ private fun Cloud(graph: AppGraph, account: CloudAccount, nav: NavHostController
     val context = LocalContext.current
     val dark = com.slopus.happy.ui.theme.HappyTheme.colors.dark
     val openBrowser = { openSignInPage(context, account.browserUrl(), dark) }
-    // Connect was the person's go-ahead: the sign-in page opens without another tap.
-    LaunchedEffect(Unit) { if (account.state.value == CloudAccountState.SignedOut) openBrowser() }
     LaunchedEffect(state) { if (state == CloudAccountState.SignedIn) picker.load() }
     CloudScreen(
         state = state,

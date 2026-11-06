@@ -25,6 +25,7 @@ import com.slopus.happy.connection.HappyCloud
 import com.slopus.happy.connection.ServerInvite
 import com.slopus.happy.connection.ServerSignInFlow
 import com.slopus.happy.connection.ServerSignInState
+import com.slopus.happy.connection.server
 import com.slopus.happy.ui.artifacts.artifactRoutes
 import com.slopus.happy.ui.feed.feedRoutes
 import com.slopus.happy.ui.surfaces.surfaceRoutes
@@ -144,9 +145,24 @@ private fun ServerSignIn(graph: AppGraph, nav: NavHostController) {
             flow?.browserUrl()?.let { url -> openSignInPage(context, url, dark) }
         }
     }
+    val openBrowser = { flow?.browserUrl()?.let { url -> openSignInPage(context, url, dark) }; Unit }
+    // Kept once known: Done no longer names the server, and the screen must not change look as it leaves.
+    state.server?.let { holder.cloud = HappyCloud.handle(it) }
+    val cloud = holder.cloud
+    if (cloud != null && state !is ServerSignInState.NeedsName) {
+        CloudConnectingScreen(
+            handle = cloud,
+            failed = (state as? ServerSignInState.Failed)?.reason,
+            inBrowser = state is ServerSignInState.InBrowser,
+            onOpenBrowser = openBrowser,
+            onRetry = { flow?.retry() },
+            onBack = { nav.popBackStack() },
+        )
+        return
+    }
     ServerSignInScreen(
         state = state,
-        onOpenBrowser = { flow?.browserUrl()?.let { url -> openSignInPage(context, url, dark) } },
+        onOpenBrowser = openBrowser,
         onSubmitName = { flow?.submitName(it) },
         onRetry = { flow?.retry() },
         onBack = { nav.popBackStack() },
@@ -176,6 +192,9 @@ private class ServerSignInHolder(private val graph: AppGraph) : ViewModel() {
 
     /** The browser was opened without a tap once (a Happy Cloud server); after that, as any sign-in. */
     var opened = false
+
+    /** A Happy Cloud server's `@name`, drawn as [CloudConnectingScreen]; null for any other server. */
+    var cloud: String? = null
 
     override fun onCleared() {
         flow?.let(graph::endServerSignIn)

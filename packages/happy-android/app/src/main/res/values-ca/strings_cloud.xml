@@ -5,14 +5,11 @@
 -->
 <resources>
     <string name="cloud_connect_row">Connecta a Happy Cloud</string>
-    <string name="cloud_connect_title">Vols connectar a Happy Cloud?</string>
     <string name="cloud_connect_message">Inicia la sessió o crea un compte de Happy Cloud i després obre un dels teus servidors, crea\'n un o uneix-te a un. Els agents s\'executen al núvol; no cal cap ordinador.</string>
     <string name="cloud_connect_confirm">Connecta</string>
     <string name="cloud_needs_computer">Happy Cloud només executa agents. Això necessita un ordinador.</string>
     <string name="cloud_title">Happy Cloud</string>
-    <string name="cloud_sign_in">Inicia la sessió a Happy Cloud</string>
     <string name="cloud_your_servers">Els teus servidors</string>
-    <string name="cloud_loading">S\'està carregant…</string>
     <string name="cloud_no_servers">Encara no hi ha servidors. Crea\'n un o uneix-te a un a sota.</string>
     <string name="cloud_role_owner">Propietari</string>
     <string name="cloud_role_member">Membre</string>
@@ -31,4 +28,5 @@
     <string name="cloud_name_taken">%1$s ja està agafat.</string>
     <string name="cloud_name_reserved">%1$s està reservat.</string>
     <string name="cloud_failed">Alguna cosa ha anat malament. Torna-ho a provar.</string>
+    <string name="cloud_connecting">S\'està connectant a %1$s…</string>
 </resources>

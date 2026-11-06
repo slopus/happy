@@ -5,14 +5,11 @@
 -->
 <resources>
     <string name="cloud_connect_row">Подключиться к Happy Cloud</string>
-    <string name="cloud_connect_title">Подключиться к Happy Cloud?</string>
     <string name="cloud_connect_message">Войдите или создайте аккаунт Happy Cloud, затем откройте один из своих серверов, создайте новый или присоединитесь к существующему. Агенты работают в облаке, компьютер не нужен.</string>
     <string name="cloud_connect_confirm">Подключиться</string>
     <string name="cloud_needs_computer">В Happy Cloud работают только агенты. Для этого нужен компьютер.</string>
     <string name="cloud_title">Happy Cloud</string>
-    <string name="cloud_sign_in">Войти в Happy Cloud</string>
     <string name="cloud_your_servers">Ваши серверы</string>
-    <string name="cloud_loading">Загрузка…</string>
     <string name="cloud_no_servers">Серверов пока нет. Создайте сервер или присоединитесь к нему ниже.</string>
     <string name="cloud_role_owner">Владелец</string>
     <string name="cloud_role_member">Участник</string>
@@ -31,4 +28,5 @@
     <string name="cloud_name_taken">%1$s занято.</string>
     <string name="cloud_name_reserved">%1$s зарезервировано.</string>
     <string name="cloud_failed">Что-то пошло не так. Попробуйте ещё раз.</string>
+    <string name="cloud_connecting">Подключение к %1$s…</string>
 </resources>

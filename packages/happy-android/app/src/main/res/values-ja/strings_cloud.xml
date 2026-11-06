@@ -5,14 +5,11 @@
 -->
 <resources>
     <string name="cloud_connect_row">Happy Cloud に接続</string>
-    <string name="cloud_connect_title">Happy Cloud に接続しますか？</string>
     <string name="cloud_connect_message">Happy Cloud アカウントにサインインまたは作成してから、サーバーを開くか、作成するか、参加してください。エージェントはクラウドで動くので、コンピューターは不要です。</string>
     <string name="cloud_connect_confirm">接続</string>
     <string name="cloud_needs_computer">Happy Cloud ではエージェントのみ動きます。これにはコンピューターが必要です。</string>
     <string name="cloud_title">Happy Cloud</string>
-    <string name="cloud_sign_in">Happy Cloud にサインイン</string>
     <string name="cloud_your_servers">あなたのサーバー</string>
-    <string name="cloud_loading">読み込み中…</string>
     <string name="cloud_no_servers">サーバーはまだありません。下から作成するか参加してください。</string>
     <string name="cloud_role_owner">オーナー</string>
     <string name="cloud_role_member">メンバー</string>
@@ -31,4 +28,5 @@
     <string name="cloud_name_taken">%1$s は使われています。</string>
     <string name="cloud_name_reserved">%1$s は予約されています。</string>
     <string name="cloud_failed">問題が発生しました。もう一度お試しください。</string>
+    <string name="cloud_connecting">%1$s に接続中…</string>
 </resources>

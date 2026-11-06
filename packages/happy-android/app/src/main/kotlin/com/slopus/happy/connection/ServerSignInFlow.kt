@@ -33,6 +33,17 @@ sealed interface ServerSignInState {
     data class Failed(val server: String?, val reason: ServerAuthException.Reason) : ServerSignInState
 }
 
+/** The server this sign-in is for; null once done, or when it failed before it had one. */
+val ServerSignInState.server: String? get() = when (this) {
+    is ServerSignInState.Checking -> server.takeIf { it.isNotEmpty() }
+    is ServerSignInState.Ready -> server
+    is ServerSignInState.InBrowser -> server
+    is ServerSignInState.Finishing -> server
+    is ServerSignInState.NeedsName -> server
+    is ServerSignInState.Done -> null
+    is ServerSignInState.Failed -> server
+}
+
 /**
  * Signing in to a team server behind an SSO load balancer (edge SSO
  * contract): from a server QR code desktop shows ([ServerInvite]), the

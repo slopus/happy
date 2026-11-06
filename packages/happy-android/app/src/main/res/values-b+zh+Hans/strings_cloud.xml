@@ -5,14 +5,11 @@
 -->
 <resources>
     <string name="cloud_connect_row">连接到 Happy Cloud</string>
-    <string name="cloud_connect_title">连接到 Happy Cloud？</string>
     <string name="cloud_connect_message">登录或创建 Happy Cloud 账户，然后打开你的服务器、新建服务器或加入服务器。智能体在云端运行，无需电脑。</string>
     <string name="cloud_connect_confirm">连接</string>
     <string name="cloud_needs_computer">Happy Cloud 只运行智能体。此功能需要电脑。</string>
     <string name="cloud_title">Happy Cloud</string>
-    <string name="cloud_sign_in">登录 Happy Cloud</string>
     <string name="cloud_your_servers">你的服务器</string>
-    <string name="cloud_loading">正在加载…</string>
     <string name="cloud_no_servers">还没有服务器。在下方新建或加入一个。</string>
     <string name="cloud_role_owner">所有者</string>
     <string name="cloud_role_member">成员</string>
@@ -31,4 +28,5 @@
     <string name="cloud_name_taken">%1$s 已被占用。</string>
     <string name="cloud_name_reserved">%1$s 已被保留。</string>
     <string name="cloud_failed">出了点问题，请重试。</string>
+    <string name="cloud_connecting">正在连接到 %1$s…</string>
 </resources>
