@@ -3,14 +3,30 @@ import Foundation
 /// A server the Happy Cloud account belongs to (`GET /v1/servers`).
 public struct CloudServer: Codable, Equatable, Sendable {
     public enum Role: String, Codable, Sendable { case owner, member }
+    /// The server's picture (its node avatar), served by the accounts
+    /// service under the account's token.
+    public struct Image: Codable, Equatable, Sendable {
+        public var thumbhash: String?
+        public var width: Int?
+        public var height: Int?
+        public var url: String
+        public init(thumbhash: String?, width: Int?, height: Int?, url: String) {
+            self.thumbhash = thumbhash; self.width = width; self.height = height; self.url = url
+        }
+    }
     public var id: String
     public var name: String
     public var url: String
     public var role: Role?
+    /// The server's own name for itself (its node name), when it has one.
+    public var displayName: String?
+    public var image: Image?
 
-    public init(id: String, name: String, url: String, role: Role?) {
-        self.id = id; self.name = name; self.url = url; self.role = role
+    public init(id: String, name: String, url: String, role: Role?, displayName: String? = nil, image: Image? = nil) {
+        self.id = id; self.name = name; self.url = url; self.role = role; self.displayName = displayName; self.image = image
     }
+
+    public var title: String { displayName.flatMap { $0.isEmpty ? nil : $0 } ?? name }
 
     /// The origin the app signs in to: built from the name and the app's
     /// own base, never taken from `url`, so the accounts service can't
@@ -94,6 +110,14 @@ public actor CloudAccount {
         return try await call("POST", "/v1/servers/join", body: ["name": name, "code": code], as: Response.self).server
     }
 
+    /// A server image's bytes. Only from the accounts origin: the account
+    /// token goes nowhere else.
+    public func image(_ image: CloudServer.Image) async throws -> Data {
+        guard let url = URL(string: image.url), OAuthOrigin(image.url) == OAuthOrigin(HappyCloud.accounts) else { throw CloudAccountError.invalidResponse }
+        let response = try await send("GET", url: url, accept: "image/*")
+        return response.body
+    }
+
     /// Forgets the account on this phone.
     public func signOut() async {
         await authorization.signInRequired()
@@ -101,13 +125,19 @@ public actor CloudAccount {
     }
 
     private func call<T: Decodable>(_ method: String, _ path: String, body: [String: String]? = nil, as: T.Type) async throws -> T {
+        let response = try await send(method, url: URL(string: HappyCloud.accounts + path)!, body: try body.map { try JSONEncoder().encode($0) })
+        guard let value = try? JSONDecoder().decode(T.self, from: response.body) else { throw CloudAccountError.invalidResponse }
+        return value
+    }
+
+    /// One request under the account's token, refreshed once after a 401.
+    private func send(_ method: String, url: URL, body: Data? = nil, accept: String = "application/json") async throws -> HTTPResponse {
         var token: String
         do { token = try await authorization.bearer() } catch { throw CloudAccountError.signInRequired }
         for attempt in 0..<2 {
-            var headers = ["Accept": "application/json", "Authorization": "Bearer \(token)"]
-            var data: Data?
-            if let body { headers["Content-Type"] = "application/json"; data = try JSONEncoder().encode(body) }
-            let response = try await http.send(HTTPRequest(method: method, url: URL(string: HappyCloud.accounts + path)!, headers: headers, body: data))
+            var headers = ["Accept": accept, "Authorization": "Bearer \(token)"]
+            if body != nil { headers["Content-Type"] = "application/json" }
+            let response = try await http.send(HTTPRequest(method: method, url: url, headers: headers, body: body))
             if response.status == 401, attempt == 0 {
                 switch await authorization.renew(after: token) {
                 case .token(let next): token = next; continue
@@ -120,8 +150,7 @@ public actor CloudAccount {
                 let failure = try? JSONDecoder().decode(Failure.self, from: response.body)
                 throw CloudAccountError.refused(status: response.status, code: failure?.code, message: failure?.error)
             }
-            guard let value = try? JSONDecoder().decode(T.self, from: response.body) else { throw CloudAccountError.invalidResponse }
-            return value
+            return response
         }
         throw CloudAccountError.signInRequired
     }
