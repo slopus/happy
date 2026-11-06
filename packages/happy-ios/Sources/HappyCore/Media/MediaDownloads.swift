@@ -334,7 +334,10 @@ public actor MediaDownloads {
     }
 
     private func serveReaders(_ job: Job, partial: PartialFile) {
-        let ready = job.readers.filter { satisfied($0, job: job) }
+        // A loop, not `filter` with a closure: Xcode 26.2 reads the job
+        // captured in it as sent across isolation.
+        var ready: [Reader] = []
+        for reader in job.readers where satisfied(reader, job: job) { ready.append(reader) }
         guard !ready.isEmpty else { return }
         let tokens = Set(ready.map(\.token))
         job.readers.removeAll { tokens.contains($0.token) }
