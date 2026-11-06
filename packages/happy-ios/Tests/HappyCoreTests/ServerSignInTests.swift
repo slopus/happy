@@ -314,13 +314,14 @@ final class SignInRequiredTests: XCTestCase {
         let instance = "k3x9q2m7p0a4b8c1d5e6f7g2"
         func signIn(_ instanceId: String?) async throws -> ServerSignInFlow.SignedIn {
             let request = try flow.request(redirectUri: "happy://oauth/callback")
-            return try await flow.complete(request, callback: URL(string: "happy://oauth/callback?code=xyz&state=\(request.state)")!, instanceId: instanceId)
+            return try await flow.complete(request, callback: URL(string: "happy://oauth/callback?code=xyz&state=\(request.state)")!, installation: instanceId.map { .expected($0) } ?? .unchecked)
         }
         func health(_ body: String) async { await daemon.answer("/v0/health", HTTP1Response(status: 200, body: Data(body.utf8))) }
 
         await health(#"{"ready":true,"instanceId":"\#(instance)"}"#)
         let signedIn = try await signIn(instance)
         XCTAssertEqual(signedIn.record.grant.refreshToken, "r1")
+        XCTAssertEqual(signedIn.instanceId, instance)
         let checked = await daemon.seen
         XCTAssertEqual(checked.map(\.path), ["/v0/health"])
         XCTAssertEqual(checked.map(\.credential), [a1])
@@ -336,6 +337,39 @@ final class SignInRequiredTests: XCTestCase {
         _ = try await signIn(nil)
         let after = await daemon.seen.count
         XCTAssertEqual(after, before)
+    }
+
+    /// Happy Cloud has no code to compare with: whatever installation
+    /// health reports is kept, and one that reports none still signs in.
+    func testHappyCloudRecordsItsInstallationWithoutComparing() async throws {
+        let http = ScriptedHTTP()
+        http.json(acme.tokenUrl, #"{"access_token":"\#(a1)","token_type":"Bearer","refresh_token":"r1"}"#)
+        http.json("https://happy.acme.example/v0/authentication", #"{"authenticated":true,"userId":"u1","methods":[]}"#)
+        let daemon = Daemon()
+        let flow = ServerSignInFlow(origin: try ServerURL.normalize("https://happy.acme.example"), method: acme, tokens: OAuthTokenClient(http: http),
+                                    discovery: ServerDiscovery(http: http), makeTransport: { _ in daemon })
+        func signIn() async throws -> ServerSignInFlow.SignedIn {
+            let request = try flow.request(redirectUri: "happy://oauth/callback")
+            return try await flow.complete(request, callback: URL(string: "happy://oauth/callback?code=xyz&state=\(request.state)")!, installation: .recorded)
+        }
+        await daemon.answer("/v0/health", HTTP1Response(status: 200, body: Data(#"{"ready":true,"instanceId":"c0ud9q2m7p0a4b8c1d5e6f7g"}"#.utf8)))
+        let first = try await signIn()
+        XCTAssertEqual(first.instanceId, "c0ud9q2m7p0a4b8c1d5e6f7g")
+        await daemon.answer("/v0/health", HTTP1Response(status: 200, body: Data(#"{"ready":true}"#.utf8)))
+        let second = try await signIn()
+        XCTAssertNil(second.instanceId)
+        XCTAssertEqual(second.record.userId, "u1")
+    }
+
+    func testHappyCloudIsFoundAmongConnections() throws {
+        XCTAssertNoThrow(try ServerURL.normalize(HappyCloud.server))
+        XCTAssertEqual(try ServerURL.normalize(HappyCloud.server).value, HappyCloud.server)
+        var cloud = AgentConnection(id: "server-1", name: "Happy Cloud")
+        cloud.server = HappyCloud.server
+        var team = AgentConnection(id: "server-2", name: "Acme")
+        team.server = "https://happy.acme.example"
+        XCTAssertEqual(HappyCloud.connection(in: [team, cloud])?.id, "server-1")
+        XCTAssertNil(HappyCloud.connection(in: [team]))
     }
 }
 

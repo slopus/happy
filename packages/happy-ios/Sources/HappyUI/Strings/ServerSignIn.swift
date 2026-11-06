@@ -24,6 +24,10 @@ extension Strings {
         static let nameTitle = "What’s your name?"
         static let nameMessage = "This is the first time you’re signing in to this server. Your name shows to your team."
         static let namePlaceholder = "Name"
+        static let cloudAction = "Connect to Happy Cloud"
+        static let cloudTitle = "Connect to Happy Cloud?"
+        static let cloudMessage = "Sign in or create an account to add a cloud team. Agents run in the cloud; no computer needed."
+        static let cloudConnect = "Connect"
 
         static func failure(_ error: any Error) -> String {
             switch error {

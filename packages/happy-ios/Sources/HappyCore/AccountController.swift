@@ -1069,8 +1069,8 @@ public final class AccountController {
         guard !busy else { throw AccountSwitchError.operationInProgress }
         busy = true; defer { finishOperation() }
         _ = await prepareStorageDirectory()
-        let name = URLComponents(string: signedIn.origin.value)?.host ?? signedIn.origin.value
-        let account = try await agentConnections.addServer(signedIn.origin, signIn: signedIn.record, access: signedIn.access, name: name)
+        let name = HappyCloud.isCloud(signedIn.origin.value) ? HappyCloud.name : URLComponents(string: signedIn.origin.value)?.host ?? signedIn.origin.value
+        let account = try await agentConnections.addServer(signedIn.origin, signIn: signedIn.record, access: signedIn.access, name: name, instanceId: signedIn.instanceId)
         isAddingAccount = false
         try await activateAgentConnection(account.id)
     }
