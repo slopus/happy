@@ -1079,7 +1079,7 @@ change its wire behaviour on Android alone.
   is its own origin, `BuildConfig.HAPPY_CLOUD_ACCOUNTS`
   (`https://auth.happy.engineering`; `HAPPY_CLOUD_ACCOUNTS` or
   `-Phappy.cloudAccounts` points a build elsewhere), and servers live under
-  one domain, `BuildConfig.HAPPY_CLOUD_BASE` (`HAPPY_CLOUD_BASE` or
+  one domain, `BuildConfig.HAPPY_CLOUD_BASE` (`happy-clusters.com`; `HAPPY_CLOUD_BASE` or
   `-Phappy.cloudBase`): the server named `acme` is `https://acme.BASE`.
   Only `debug` and `preview` builds offer it (`HappyCloud.offeredIn`, by
   `BuildConfig.BUILD_TYPE`); `release` and `bench` have no way in at all.
