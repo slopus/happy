@@ -40,14 +40,13 @@ final class AgentChatUltraListTests: XCTestCase {
     }
 
     /// The screen hands its rows over oldest first, as it plans them; the
-    /// list holds them newest first, since it is upside down, which reads
-    /// as the newest at the foot.
-    func testRowsGoInNewestFirstAndKeepTheirIdentities() {
+    /// list keeps that natural order, with the newest at the foot.
+    func testRowsGoInOldestFirstAndKeepTheirIdentities() {
         let screen = Screen()
         let transcript = list(screen)
         defer { transcript.deactivate() }
         transcript.apply([plan("first"), plan("second"), plan("third")])
-        XCTAssertEqual(transcript.list.items.map(\.identity), ["chat:row:third", "chat:row:second", "chat:row:first"])
+        XCTAssertEqual(transcript.list.items.map(\.identity), ["chat:row:first", "chat:row:second", "chat:row:third"])
     }
 
     /// A plan that has not changed keeps its row, so the view it drew with
@@ -59,13 +58,14 @@ final class AgentChatUltraListTests: XCTestCase {
         defer { transcript.deactivate() }
         let settled = plan("settled")
         transcript.apply([settled, plan("streaming")])
-        let first = try XCTUnwrap(transcript.list.items.last as? AgentChatRow)
+        let first = try XCTUnwrap(transcript.list.items.first { $0.identity == "chat:row:settled" } as? AgentChatRow)
+        let previousStreaming = try XCTUnwrap(transcript.list.items.first { $0.identity == "chat:row:streaming" } as? AgentChatRow)
         transcript.apply([settled, plan("streaming", height: 90)])
-        let again = try XCTUnwrap(transcript.list.items.last as? AgentChatRow)
+        let again = try XCTUnwrap(transcript.list.items.first { $0.identity == "chat:row:settled" } as? AgentChatRow)
         XCTAssertTrue(first === again, "the settled row was made again")
-        let streaming = transcript.list.items.compactMap { $0 as? AgentChatRow }.first { $0.identity == "chat:row:streaming" }
-        XCTAssertEqual(streaming?.plan.size.height, 90)
-        XCTAssertNotEqual(streaming?.revision, 0)
+        let streaming = try XCTUnwrap(transcript.list.items.first { $0.identity == "chat:row:streaming" } as? AgentChatRow)
+        XCTAssertEqual(streaming.plan.size.height, 90)
+        XCTAssertGreaterThan(streaming.revision, previousStreaming.revision)
     }
 
     /// A row's view is the `ChatPlanView` the mounted transcript draws
@@ -84,12 +84,12 @@ final class AgentChatUltraListTests: XCTestCase {
         XCTAssertTrue(view.canvas.drawsTextOffMain)
         XCTAssertEqual(view.canvas.accessibilityIdentifier, "message")
         XCTAssertEqual(view.update(width: 390, transition: .none), 60, "as tall as its plan")
-        // The part on screen is the part with views in it, turned over:
-        // the list runs the other way up from the row.
+        // The list and row share natural coordinates: the visible part
+        // is the part with views in it.
         view.visibleRectUpdated(CGRect(x: 0, y: 10, width: 390, height: 40))
         XCTAssertEqual(view.canvas.band, CGRect(x: 0, y: 10, width: 390, height: 40))
         view.visibleRectUpdated(CGRect(x: 0, y: 0, width: 390, height: 20))
-        XCTAssertEqual(view.canvas.band, CGRect(x: 0, y: 40, width: 390, height: 20))
+        XCTAssertEqual(view.canvas.band, CGRect(x: 0, y: 0, width: 390, height: 20))
         view.visibleRectUpdated(nil)
         XCTAssertEqual(view.canvas.band, .null, "off screen: none of it")
     }
