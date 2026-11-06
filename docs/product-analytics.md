@@ -227,6 +227,9 @@ can stay or go:
   `issue`), and `SessionStarter.start` (and `Run.failure`).
 - The consent reads: `AccountController.analyticsOptOuts()` and
   `LocalStore.settingsSnapshot(at:)`.
+- The alert's words: `Strings.SettingsAccount.analyticsNotSaved` and its
+  `native.settingsAccount.analyticsNotSaved` key in every language in
+  `HappyCore/Localization/NativeTranslations.swift`.
 - `HappyCore/Home/MigrationNoteFlag.swift`, which holds the answer and,
   with nothing asking, hides the card; and the retired
   `posthog.direct-connection-migration-note` key in `LocalSettings`, which
@@ -238,11 +241,9 @@ can stay or go:
 
 ## Android (`packages/happy-android`)
 
-- Android uses the same design as iOS. It posts directly to PostHog's
-  `/batch/` with OkHttp, next to `PostHogFlags`, and keeps a bounded
-  on-disk queue (500 events, 7 days).
-- Crashes come from `ActivityManager.getHistoricalProcessExitReasons`
-  (API 30+), using its `REASON_*` enum.
-- It lives in its own Gradle module, `:analytics`, behind one facade.
-- Opt-out works as on iOS. Any signed-in account's `analyticsOptOut` or the
-  Analytics switch in Settings stops sending and deletes the queue.
+Android analytics is not shipped. Its branch was stopped before v5. Before
+it ships, it must:
+
+- adopt v5, including memory-only storage, with no on-disk queue;
+- fix the account opt-out bug: an account's `analyticsOptOut` did not stop
+  `message_sent`.

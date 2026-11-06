@@ -707,7 +707,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             let kept = Analytics.shared.setDeviceOptOut(!on)
             self?.rebuild()
             if !kept, !on, let self {
-                Alerts.show(Strings.Common.error, "Analytics is off for now, but the setting couldn't be saved. It will be on again the next time Happy starts.", on: self)
+                Alerts.show(Strings.Common.error, Strings.SettingsAccount.analyticsNotSaved, on: self)
             }
         }, footer: Strings.SettingsAccount.privacyDescription)
     }

@@ -268,6 +268,9 @@ public enum Strings {
         public static var name: String { localized("settingsAccount.name", "Name") }
         public static var privacyDescription: String { localized("settingsAccount.privacyDescription", "Shares usage data, like which features you use and your device type, to help us improve Happy. Never your messages or code.") }
         public static var analytics: String { localized("settingsAccount.analytics", "Analytics") }
+        /// Turning analytics off held for this run but wasn't saved. Not in
+        /// happy-app's catalogs: every language's are in `TranslationCatalog.nativeSources`.
+        public static var analyticsNotSaved: String { localized("native.settingsAccount.analyticsNotSaved", "Analytics is off for now, but the setting couldn’t be saved. It will be on again the next time Happy starts.") }
         public static var backupDescription: String { localized("settingsAccount.backupDescription", "Your secret key is the only way to recover your account. Save it in a secure place like a password manager.") }
         public static var secretKey: String { localized("settingsAccount.secretKey", "Secret Key") }
         public static var secretKeyLabel: String { localized("settingsAccount.secretKeyLabel", "SECRET KEY (TAP TO COPY)") }

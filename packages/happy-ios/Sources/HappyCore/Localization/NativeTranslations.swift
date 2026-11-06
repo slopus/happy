@@ -32,6 +32,7 @@ extension TranslationCatalog {
             "native.slashCommands.notSaved": "/${name} could not be saved on this phone. Your text is still here.",
             "native.slashCommands.kindSkill": "Skill",
             "native.slashCommands.kindCompaction": "Compaction",
+            "native.settingsAccount.analyticsNotSaved": "Analytics is off for now, but the setting couldn’t be saved. It will be on again the next time Happy starts.",
         ],
         "ru": [
             "native.accountKind.addCLIAccount": "Добавить аккаунт Happy CLI",
@@ -53,6 +54,7 @@ extension TranslationCatalog {
             "native.slashCommands.notSaved": "Не удалось сохранить /${name} на этом телефоне. Ваш текст остался здесь.",
             "native.slashCommands.kindSkill": "Навык",
             "native.slashCommands.kindCompaction": "Сжатие",
+            "native.settingsAccount.analyticsNotSaved": "Аналитика пока выключена, но настройку не удалось сохранить. Она снова включится при следующем запуске Happy.",
         ],
         "pl": [
             "native.accountKind.addCLIAccount": "Dodaj konto Happy CLI",
@@ -74,6 +76,7 @@ extension TranslationCatalog {
             "native.slashCommands.notSaved": "Nie udało się zapisać /${name} na tym telefonie. Twój tekst nadal tu jest.",
             "native.slashCommands.kindSkill": "Umiejętność",
             "native.slashCommands.kindCompaction": "Kompaktowanie",
+            "native.settingsAccount.analyticsNotSaved": "Analityka jest na razie wyłączona, ale nie udało się zapisać ustawienia. Włączy się ponownie przy następnym uruchomieniu Happy.",
         ],
         "es": [
             "native.accountKind.addCLIAccount": "Añadir cuenta de Happy CLI",
@@ -95,6 +98,7 @@ extension TranslationCatalog {
             "native.slashCommands.notSaved": "No se pudo guardar /${name} en este teléfono. Tu texto sigue aquí.",
             "native.slashCommands.kindSkill": "Habilidad",
             "native.slashCommands.kindCompaction": "Compactación",
+            "native.settingsAccount.analyticsNotSaved": "Las analíticas están desactivadas por ahora, pero no se pudo guardar el ajuste. Se volverán a activar la próxima vez que se inicie Happy.",
         ],
         "it": [
             "native.accountKind.addCLIAccount": "Aggiungi account Happy CLI",
@@ -116,6 +120,7 @@ extension TranslationCatalog {
             "native.slashCommands.notSaved": "Impossibile salvare /${name} su questo telefono. Il tuo testo è ancora qui.",
             "native.slashCommands.kindSkill": "Abilità",
             "native.slashCommands.kindCompaction": "Compattazione",
+            "native.settingsAccount.analyticsNotSaved": "Analytics è disattivato per ora, ma non è stato possibile salvare l’impostazione. Si riattiverà al prossimo avvio di Happy.",
         ],
         "pt": [
             "native.accountKind.addCLIAccount": "Adicionar conta do Happy CLI",
@@ -137,6 +142,7 @@ extension TranslationCatalog {
             "native.slashCommands.notSaved": "Não foi possível salvar /${name} neste telefone. Seu texto continua aqui.",
             "native.slashCommands.kindSkill": "Habilidade",
             "native.slashCommands.kindCompaction": "Compactação",
+            "native.settingsAccount.analyticsNotSaved": "As análises estão desativadas por enquanto, mas não foi possível salvar a configuração. Elas serão ativadas novamente na próxima vez que o Happy for iniciado.",
         ],
         "ca": [
             "native.accountKind.addCLIAccount": "Afegeix un compte de Happy CLI",
@@ -158,6 +164,7 @@ extension TranslationCatalog {
             "native.slashCommands.notSaved": "No s’ha pogut desar /${name} en aquest telèfon. El text encara és aquí.",
             "native.slashCommands.kindSkill": "Habilitat",
             "native.slashCommands.kindCompaction": "Compactació",
+            "native.settingsAccount.analyticsNotSaved": "Les analítiques estan desactivades de moment, però no s’ha pogut desar el paràmetre. Es tornaran a activar la propera vegada que s’iniciï Happy.",
         ],
         "zh-Hans": [
             "native.accountKind.addCLIAccount": "添加 Happy CLI 账户",
@@ -179,6 +186,7 @@ extension TranslationCatalog {
             "native.slashCommands.notSaved": "无法在此手机上保存 /${name}。你的文字仍在这里。",
             "native.slashCommands.kindSkill": "技能",
             "native.slashCommands.kindCompaction": "压缩",
+            "native.settingsAccount.analyticsNotSaved": "分析暂时已关闭，但无法保存此设置。下次启动 Happy 时将重新开启。",
         ],
         "zh-Hant": [
             "native.accountKind.addCLIAccount": "新增 Happy CLI 帳戶",
@@ -200,6 +208,7 @@ extension TranslationCatalog {
             "native.slashCommands.notSaved": "無法在這支手機上儲存 /${name}。你的文字仍在這裡。",
             "native.slashCommands.kindSkill": "技能",
             "native.slashCommands.kindCompaction": "壓縮",
+            "native.settingsAccount.analyticsNotSaved": "分析暫時已關閉，但無法儲存此設定。下次啟動 Happy 時將重新開啟。",
         ],
         "ja": [
             "native.accountKind.addCLIAccount": "Happy CLI アカウントを追加",
@@ -221,6 +230,7 @@ extension TranslationCatalog {
             "native.slashCommands.notSaved": "/${name} をこのスマートフォンに保存できませんでした。テキストはそのまま残っています。",
             "native.slashCommands.kindSkill": "スキル",
             "native.slashCommands.kindCompaction": "コンパクション",
+            "native.settingsAccount.analyticsNotSaved": "アナリティクスは一時的にオフになっていますが、設定を保存できませんでした。次回 Happy を起動すると再びオンになります。",
         ],
     ]
 }
