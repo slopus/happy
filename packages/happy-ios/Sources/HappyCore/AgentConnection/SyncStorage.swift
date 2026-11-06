@@ -85,11 +85,29 @@ public actor SyncStorage {
         conversationOwners[name] = owner
     }
 
-    func commitConversation(_ checkpoint: Checkpoint, named name: String, owner: ConversationOwner) throws -> Bool {
+    /// A checkpoint's value as it was written, undecoded: a conversation
+    /// decodes it into its own type at once.
+    func checkpointData(_ name: String) throws -> Data? {
+        try checkOpen()
+        return try database.read { db in
+            try Data.fetchOne(db, sql: "SELECT value FROM checkpoint WHERE name = ?", arguments: [name])
+        }
+    }
+
+    /// `value` is the conversation's JSON as it encoded it, written as it
+    /// is: built as a `JSONValue` first, it was encoded, decoded and encoded
+    /// again, a sixth of the app's time while agents worked.
+    func commitConversation(_ value: Data, named name: String, owner: ConversationOwner) throws -> Bool {
         try checkOpen()
         guard conversationOwners[name] == owner else { return false }
         // No suspension separates ownership validation and the SQLite write.
-        try commit(checkpoint, named: name)
+        try database.write { db in
+            try db.execute(sql: """
+                INSERT INTO checkpoint(name, value, cursor) VALUES (?, ?, NULL)
+                ON CONFLICT(name) DO UPDATE SET value = excluded.value, cursor = NULL
+                WHERE value != excluded.value OR cursor IS NOT NULL
+                """, arguments: [name, value])
+        }
         return true
     }
 

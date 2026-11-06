@@ -123,6 +123,9 @@ public actor Store {
     private var places = Places()
     private var placesReload: Task<Void, Never>?
     private var placesDirty = false
+    /// An `agent.updated` the sidebar follows, drawn with the others that
+    /// come within 250 ms (`followAgentsSoon`).
+    private var followingAgents: Task<Void, Never>?
     /// Names given here whose rename no read has carried yet.
     private var titleIntents: [String: (title: String, base: String?)] = [:]
 
@@ -203,6 +206,7 @@ public actor Store {
         following?.cancel(); following = nil
         loading?.cancel(); loading = nil
         placesReload?.cancel(); placesReload = nil
+        followingAgents?.cancel(); followingAgents = nil
         attentionIdle?.cancel(); attentionIdle = nil
         keeping?.cancel(); keeping = nil
         continuation.finish()
@@ -217,7 +221,7 @@ public actor Store {
                 for try await frame in frames {
                     if frame.event == "hello" {
                         attempt = 0
-                        let hello = try? JSONDecoder().decode(JSONValue.self, from: Data(frame.data.utf8))
+                        let hello = try? JSONValue.decode(Data(frame.data.utf8))
                         let resumed = hello?["resumed"]?.boolValue == true && hello?["gap"]?.boolValue != true
                         if let next = hello?["cursor"]?.stringValue, !resumed || cursor == nil { cursor = next }
                         snapshot.live = true
@@ -229,7 +233,7 @@ public actor Store {
                         continue
                     }
                     if let id = frame.id { cursor = id }
-                    guard let envelope = try? JSONDecoder().decode(JSONValue.self, from: Data(frame.data.utf8)) else { continue }
+                    guard let envelope = try? JSONValue.decode(Data(frame.data.utf8)) else { continue }
                     let payload = envelope["payload"]
                     if let key = payload?["agentId"]?.stringValue ?? payload?["surfaceId"]?.stringValue ?? payload?["todo"]?["surfaceId"]?.stringValue {
                         for listener in listeners.values where listener.key == key { listener.continuation.yield(.event(envelope)) }
@@ -533,6 +537,22 @@ public actor Store {
     }
 
 
+    /// A working agent's `agent.updated` comes with every word, and each
+    /// rebuilt the bots' and tasks' places through JSON and redrew the
+    /// sidebar: drawn together 250 ms on, as `SyncEngine` draws home, the
+    /// rows still move within a quarter of a second. Any other change
+    /// draws them at once with it.
+    private func followAgentsSoon() {
+        guard followingAgents == nil else { return }
+        followingAgents = Task {
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            followingAgents = nil
+            rebuildPlaces()
+            publish()
+        }
+    }
+
     // MARK: Events
 
     private func receive(_ event: JSONValue) {
@@ -552,7 +572,8 @@ public actor Store {
         case "agent.updated":
             guard let id = payload["agentId"]?.stringValue else { return }
             let followed = agents.update(agentId: id, previousVersion: payload["previousVersion"]?.stringValue, version: payload["version"]?.stringValue, changes: payload["changes"]?.objectValue ?? [:])
-            if followed { rebuildPlaces() } else { schedulePlacesReload() }
+            if followed { return followAgentsSoon() }
+            schedulePlacesReload()
         case "agent.created":
             if let agent = payload["agent"] { agents.created(agent); rebuildPlaces() }
         case "bot.created", "bot.updated", "task.created", "task.updated", "task.joined", "task.left":

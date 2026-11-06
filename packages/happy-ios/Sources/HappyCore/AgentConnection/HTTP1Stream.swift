@@ -165,20 +165,38 @@ public struct ServerSentEventParser: Sendable {
 
     public init() {}
 
+    /// Lines are found by scanning the bytes and taken whole: appended to
+    /// `Data` a byte at a time, the stream's every byte cost a call, about
+    /// a twentieth of the phone's time while agents wrote.
     public mutating func append(_ bytes: Data) -> [ServerSentEvent] {
         var frames: [ServerSentEvent] = []
-        for byte in bytes {
-            if sawCR {
+        bytes.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
+            let all = raw.bindMemory(to: UInt8.self)
+            var index = 0
+            // A CR that ended the last chunk: an LF starting this one is its pair.
+            if sawCR, !all.isEmpty {
                 sawCR = false
-                if byte == 0x0A { continue }
+                if all[0] == 0x0A { index = 1 }
             }
-            if byte == 0x0A || byte == 0x0D {
-                sawCR = byte == 0x0D
-                line(String(decoding: buffer, as: UTF8.self), into: &frames)
-                buffer.removeAll(keepingCapacity: true)
-            } else {
-                buffer.append(byte)
+            var start = index
+            while index < all.count {
+                let byte = all[index]
+                guard byte == 0x0A || byte == 0x0D else { index += 1; continue }
+                let piece = UnsafeBufferPointer(rebasing: all[start..<index])
+                if buffer.isEmpty {
+                    line(String(decoding: piece, as: UTF8.self), into: &frames)
+                } else {
+                    buffer.append(contentsOf: piece)
+                    line(String(decoding: buffer, as: UTF8.self), into: &frames)
+                    buffer.removeAll(keepingCapacity: true)
+                }
+                index += 1
+                if byte == 0x0D {
+                    if index == all.count { sawCR = true } else if all[index] == 0x0A { index += 1 }
+                }
+                start = index
             }
+            if start < all.count { buffer.append(contentsOf: UnsafeBufferPointer(rebasing: all[start..<all.count])) }
         }
         return frames
     }

@@ -72,6 +72,10 @@ public final class AgentClient: Sendable {
 
     func decode<T: Decodable>(_ type: T.Type, _ method: String, _ path: String, json: JSONValue? = nil) async throws -> T {
         let response = try await send(method, path, json: json)
+        if T.self == JSONValue.self {
+            guard let value = try? JSONValue.decode(response.body) as? T else { throw AgentClientError.invalidResponse }
+            return value
+        }
         do { return try JSONDecoder().decode(T.self, from: response.body) }
         catch { throw AgentClientError.invalidResponse }
     }

@@ -88,8 +88,11 @@ extension JSONValue: Codable {
 }
 
 extension JSONValue {
+    /// JSON text read in one pass (`JSONValueParser`); what it refuses
+    /// goes to `JSONDecoder`, which decides.
     public static func decode(_ data: Data) throws -> JSONValue {
-        try JSONDecoder().decode(JSONValue.self, from: data)
+        if let value = try? JSONValueParser.parse(data) { return value }
+        return try JSONDecoder().decode(JSONValue.self, from: data)
     }
 
     /// Compact JSON with sorted keys, so equal values encode to equal bytes.

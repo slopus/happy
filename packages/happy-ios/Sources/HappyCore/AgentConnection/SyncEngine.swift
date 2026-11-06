@@ -329,7 +329,7 @@ public actor SyncEngine {
                         publish()
                         // The bootstrap cursor precedes its reads. Opening from
                         // it is safe even after a crash, replay or daemon replacement.
-                        let hello = try JSONDecoder().decode(JSONValue.self, from: Data(frame.data.utf8))
+                        let hello = try JSONValue.decode(Data(frame.data.utf8))
                         let gap = hello["gap"] == .bool(true)
                         let daemon = hello["daemonId"]?.stringValue
                         // Everything since the cursor follows, from the same process.
@@ -365,7 +365,7 @@ public actor SyncEngine {
                         await documents.frame(frame.event, data: frame.data)
                         continue
                     }
-                    guard let event = try? JSONDecoder().decode(JSONValue.self, from: Data(frame.data.utf8)) else { continue }
+                    guard let event = try? JSONValue.decode(Data(frame.data.utf8)) else { continue }
                     await spaces.externalEvent(event)
                     guard current(generation) else { return }
                     if event["type"]?.stringValue?.hasPrefix("feed.") == true { await feed.receive(event) }
@@ -611,10 +611,12 @@ public actor SyncEngine {
         try await database().claimConversation(key, owner: owner)
     }
 
-    func keepConversation(_ key: String, value: JSONValue, owner: SyncStorage.ConversationOwner) async throws -> Bool {
+    func keepConversation(_ key: String, value: Data, owner: SyncStorage.ConversationOwner) async throws -> Bool {
         guard !stopped else { throw CancellationError() }
-        return try await database().commitConversation(.init(value: value, cursor: nil), named: key, owner: owner)
+        return try await database().commitConversation(value, named: key, owner: owner)
     }
+
+    func keptConversation(_ key: String) async throws -> Data? { try await database().checkpointData(key) }
 
     public func setSetting(_ key: String, value: JSONValue) async throws {
         guard !stopped else { throw CancellationError() }

@@ -309,6 +309,8 @@ public actor Conversation {
     private let store: Store
     private let persistence: SyncEngine?
     private var keeping: Task<Void, Never>?
+    /// `keeping` waits out a working agent's long pause.
+    private var keepingLong = false
     private var delivering: [String: Task<Void, Never>] = [:]
     private var conversationDirty = false
     private var deliveryWatch: Task<Void, Never>?
@@ -430,8 +432,8 @@ public actor Conversation {
     /// Off screen, words drawn together (`publishSoon`).
     private var publishing: Task<Void, Never>?
     /// `cachedPieces`: what this publish drew, and what the last one did.
-    private var drawnPieces: [PiecesKey: [ChatItem.Piece]] = [:]
-    private var lastPieces: [PiecesKey: [ChatItem.Piece]] = [:]
+    private var drawnPieces: [PiecesKey: PiecesEntry] = [:]
+    private var lastPieces: [PiecesKey: PiecesEntry] = [:]
     /// On screen, the reader at the newest message and at rest.
     private var readsNewest = false
 
@@ -1208,8 +1210,8 @@ public actor Conversation {
     }
 
     private func restoreConversation() async {
-        guard let persistence, let value = try? await persistence.cachedResource("conversation:\(agentId)"),
-              let kept = try? JSONDecoder().decode(KeptConversation.self, from: JSONEncoder().encode(value)) else { return }
+        guard let persistence, let value = try? await persistence.keptConversation("conversation:\(agentId)"),
+              let kept = try? JSONDecoder().decode(KeptConversation.self, from: value) else { return }
         runs = kept.runs.map { ($0.id, $0.messageIds) }
         times = Dictionary(kept.runs.compactMap { run in run.time.map { (run.id, $0) } }, uniquingKeysWith: { _, last in last })
         messages = kept.messages
@@ -1230,16 +1232,26 @@ public actor Conversation {
 
     private func keepConversation() {
         conversationDirty = true
-        guard persistence != nil, keeping == nil else { return }
+        guard persistence != nil else { return }
+        // The run ended during a working wait: what it wrote is kept soon.
+        if keeping != nil, keepingLong, !snapshot.working {
+            keeping?.cancel()
+            keeping = nil
+        }
+        guard keeping == nil else { return }
         keeping = Task {
             while conversationDirty {
                 // While the agent works its words change it many times a
                 // second, and each save writes the whole conversation: then
-                // it is kept every few seconds. A send is saved at once
-                // (`saveConversationNow`), and what streamed since the last
+                // it is kept every 20 s (at 5 s, saves of the warm chats were
+                // an eighth of the phone's time while agents wrote). A send
+                // is saved at once (`saveConversationNow`), the end of a run
+                // half a second after it, and what streamed since the last
                 // save is read again from the computer.
-                let pause: Duration = snapshot.working ? .seconds(5) : .milliseconds(500)
+                keepingLong = snapshot.working
+                let pause: Duration = keepingLong ? .seconds(20) : .milliseconds(500)
                 do { try await Task.sleep(for: pause) } catch { return }
+                keepingLong = false
                 conversationDirty = false
                 _ = await persistConversation()
             }
@@ -1284,7 +1296,7 @@ public actor Conversation {
         let owner = checkpointOwner
         let cleanedIDs = attachmentCleanup.subtracting(kept.outgoing.map(\.id))
         do {
-            let value = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(kept))
+            let value = try JSONEncoder().encode(kept)
             // A forced save can enter while a debounced save is suspended.
             // Chain writes so an older snapshot cannot follow this checkpoint
             // and restore a reference after its files have been removed.
@@ -1742,22 +1754,36 @@ public actor Conversation {
         return (pieces, layouts)
     }
 
+    /// An agent's text block, by its message and place in it.
     private struct PiecesKey: Hashable {
-        var text: String
-        var streaming: Bool
+        var message: String
+        var block: Int
     }
 
-    /// `pieces` as the last publish made them, for text with no layout
+    /// The block's text as it was split, and what it was split into.
+    private struct PiecesEntry {
+        var text: String
+        var streaming: Bool
+        var pieces: [ChatItem.Piece]
+    }
+
+    /// An agent's text block split into pieces, as the last publish made
+    /// them while the block's text is the same, for text with no layout
     /// block: a streaming conversation's earlier words aren't split again
-    /// with each new one. Holds only what that publish drew.
-    private func cachedPieces(_ text: String, shown: [String: Media], streaming: Bool) -> [ChatItem.Piece] {
-        let key = PiecesKey(text: text, streaming: streaming)
-        if let pieces = drawnPieces[key] ?? lastPieces[key] {
-            drawnPieces[key] = pieces
-            return pieces
+    /// with each new one. Found by the block, not its text: keyed by its
+    /// text, every block was hashed whole and trimmed into a new string on
+    /// every publish, and an unchanged block, still the same string, now
+    /// compares equal at once. Holds only what that publish drew.
+    private func cachedPieces(_ text: String, message: String, block: Int, shown: [String: Media], streaming: Bool) -> [ChatItem.Piece] {
+        let key = PiecesKey(message: message, block: block)
+        if let entry = drawnPieces[key] ?? lastPieces[key], entry.streaming == streaming, entry.text == text {
+            drawnPieces[key] = entry
+            return entry.pieces
         }
-        let made = Self.made(text, shown: shown, streaming: streaming)
-        if !made.layout { drawnPieces[key] = made.pieces }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        let made = Self.made(trimmed, shown: shown, streaming: streaming)
+        if !made.layout { drawnPieces[key] = PiecesEntry(text: text, streaming: streaming, pieces: made.pieces) }
         return made.pieces
     }
 
@@ -1958,9 +1984,13 @@ public actor Conversation {
         for (index, block) in message.content.enumerated() {
             switch block {
             case .text(let text):
+                if role == .agent {
+                    pieces += cachedPieces(text, message: message.id, block: index, shown: shown, streaming: streaming || message.status == "streaming")
+                    continue
+                }
                 let trimmed = (manager.map { Self.inboundText(text, agentId: $0) } ?? text).trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else { continue }
-                pieces += role == .agent ? cachedPieces(trimmed, shown: shown, streaming: streaming || message.status == "streaming") : [.text(trimmed)]
+                pieces.append(.text(trimmed))
             case .image(let mimeType, let data):
                 let key = "\(message.id):\(index)"
                 if pictures[key] == nil { pictures[key] = Data(base64Encoded: data) }
