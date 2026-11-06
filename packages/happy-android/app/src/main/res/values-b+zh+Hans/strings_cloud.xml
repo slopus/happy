@@ -30,4 +30,11 @@
     <string name="cloud_failed">出了点问题，请重试。</string>
     <string name="cloud_connecting">正在连接到 %1$s…</string>
     <string name="cloud_session_expired">Happy Cloud 登录有效期为一小时，现已过期。请重新登录以打开、新建或加入服务器。已在此手机上的服务器仍保持登录。</string>
+    <string name="cloud_sign_out">退出 Happy Cloud</string>
+    <string name="cloud_members">成员</string>
+    <string name="cloud_members_sign_in">登录 Happy Cloud 以查看此服务器上的成员。</string>
+    <string name="cloud_leave">离开服务器</string>
+    <string name="cloud_leave_confirm_title">离开 %1$s？</string>
+    <string name="cloud_leave_confirm_message">你将在所有设备上失去它的智能体和任务。可以用新的邀请码重新加入。</string>
+    <string name="cloud_leave_last_owner">你是它唯一的所有者，因此不能离开。</string>
 </resources>

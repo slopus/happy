@@ -30,4 +30,11 @@
     <string name="cloud_failed">Algo salió mal. Inténtalo de nuevo.</string>
     <string name="cloud_connecting">Conectando con %1$s…</string>
     <string name="cloud_session_expired">Tu sesión de Happy Cloud dura una hora y ya terminó. Vuelve a iniciar sesión para abrir, crear o unirte a un servidor. Los servidores que ya están en este teléfono siguen conectados.</string>
+    <string name="cloud_sign_out">Cerrar sesión en Happy Cloud</string>
+    <string name="cloud_members">Miembros</string>
+    <string name="cloud_members_sign_in">Inicia sesión en Happy Cloud para ver quién está en este servidor.</string>
+    <string name="cloud_leave">Salir del servidor</string>
+    <string name="cloud_leave_confirm_title">¿Salir de %1$s?</string>
+    <string name="cloud_leave_confirm_message">Perderás sus agentes y tareas en todos tus dispositivos. Puedes volver con un nuevo código de invitación.</string>
+    <string name="cloud_leave_last_owner">Eres su único propietario, así que no puedes salir.</string>
 </resources>

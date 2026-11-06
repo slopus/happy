@@ -1031,6 +1031,16 @@ change its wire behaviour on Android alone.
   first screen's Grain Gradient (`StartSpec` palettes, onboarding's 28/34
   title, a scene above it) with one primary action at the bottom
   (`CloudScreens.kt`, `CloudFrame`); servers are cards on it.
+  Sign-in methods are the accounts page's (Apple and GitHub now); the app
+  shows none of its own. Your servers' ⋮ has "Sign out of Happy Cloud", which
+  forgets the pass; servers on the phone stay signed in. Removing a cloud
+  server (`removeAgentConnection`) first revokes its session at the accounts
+  service (`POST /revoke`, its refresh token and `client_id`, no account
+  token; `CloudAccount.revoke`, best effort, not waited on). A cloud server's
+  Settings has Members (`CloudMembers.kt`: `GET /v1/servers/:id/members`, and
+  Leave server, `POST /v1/servers/:id/leave`, confirmed, then the server is
+  removed here too; its only owner gets `last_owner`), asking for the sign-in
+  when the pass is gone.
   People read a cloud server's address as `@name`, like a username, until
   Happy Cloud has its own domain (`HappyCloud.handle`: the picker, create,
   join, the server sign-in screen, the account menu); the URL is used as

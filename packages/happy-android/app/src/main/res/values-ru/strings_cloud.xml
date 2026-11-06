@@ -30,4 +30,11 @@
     <string name="cloud_failed">Что-то пошло не так. Попробуйте ещё раз.</string>
     <string name="cloud_connecting">Подключение к %1$s…</string>
     <string name="cloud_session_expired">Вход в Happy Cloud действует час, и он истёк. Войдите снова, чтобы открыть, создать сервер или присоединиться к нему. Серверы, уже добавленные на этот телефон, остаются подключены.</string>
+    <string name="cloud_sign_out">Выйти из Happy Cloud</string>
+    <string name="cloud_members">Участники</string>
+    <string name="cloud_members_sign_in">Войдите в Happy Cloud, чтобы увидеть, кто на этом сервере.</string>
+    <string name="cloud_leave">Покинуть сервер</string>
+    <string name="cloud_leave_confirm_title">Покинуть %1$s?</string>
+    <string name="cloud_leave_confirm_message">Вы потеряете доступ к его агентам и задачам на всех устройствах. Вернуться можно по новому коду приглашения.</string>
+    <string name="cloud_leave_last_owner">Вы его единственный владелец, поэтому не можете его покинуть.</string>
 </resources>
