@@ -400,7 +400,7 @@ final class SplitAppHarness {
                 _ = await targets.open("cache-agent")
                 targets.close()
             }
-            // The call's newWork, sendMessage to it, goBack and goHome through its own context, with no provider:
+            // The call's newWork off screen, sendMessage to it, openSession, goBack and goHome through its own context, with no provider:
             // each logs its result and the stack it left (`[call-nav]`), a pause between for screenshots.
             if arguments.contains("-callNav"), let id = context.account.agentConnections.activeID, let session = Session.session(for: id, context: context) {
                 try? await Task.sleep(for: .seconds(2))
@@ -418,12 +418,15 @@ final class SplitAppHarness {
                     return value
                 }
                 _ = await step("openSession", "{\"targetRef\":\"s1\",\"focusRevision\":\(revision)}")
-                let made = await step("newWork", "{\"kind\":\"bot\",\"name\":\"Voice bot\",\"focusRevision\":\(revision)}")
-                _ = await step("getSessionContext", "{\"targetRef\":\"\((made["targetRef"] as? String) ?? "")\"}")
-                _ = await step("goBack", "{\"focusRevision\":\(revision)}")
-                let task = await step("newWork", "{\"kind\":\"task\",\"focusRevision\":\(revision)}")
+                // Started off screen: what is in front stays.
+                let bot = await step("newWork", "{\"kind\":\"bot\"}")
+                _ = await step("getSessionContext", "{\"targetRef\":\"\((bot["targetRef"] as? String) ?? "")\"}")
+                let task = await step("newWork", "{\"kind\":\"task\"}")
                 _ = await step("sendMessage", "{\"targetRef\":\"\((task["targetRef"] as? String) ?? "")\",\"text\":\"Draft the release notes\",\"focusRevision\":\(revision)}")
                 _ = await step("listSessions", "{}")
+                // Shown only when asked: the bot, unsent, on compose's own screen.
+                _ = await step("openSession", "{\"targetRef\":\"\((bot["targetRef"] as? String) ?? "")\",\"focusRevision\":\(revision)}")
+                _ = await step("goBack", "{\"focusRevision\":\(revision)}")
                 _ = await step("goHome", "{}")
                 _ = await step("goBack", "{\"focusRevision\":\(revision)}")
                 _ = await step("getSessionContext", "{\"targetRef\":\"s1\"}")

@@ -146,6 +146,9 @@ data class CallMessage(
     val delivery: Delivery? = null,
     /** The agent's run it is of, once that run has ended ([ConversationRow.TurnEnd.turn]); null in the run still going. */
     val turn: String? = null,
+    /** On a team's computer, the member who wrote a person's message, by user ID ([ConversationRow.User.author]), and as the call names them ([CallTargetState.named]). */
+    val author: String? = null,
+    val by: String? = null,
 ) {
     enum class Role(val wire: String) { User("user"), Assistant("assistant") }
 
@@ -172,6 +175,9 @@ data class CallTurn(
     val error: String? = null,
     /** When it ended (ms); null where that isn't known. */
     val endedAt: Long? = null,
+    /** Who wrote [user], as [CallMessage.author] and [CallMessage.by] have it. */
+    val userAuthor: String? = null,
+    val userBy: String? = null,
 )
 
 /**
@@ -212,7 +218,7 @@ data class CallTargetState(
         fun from(state: ConversationState, target: CallTarget, failureText: (FailureReason) -> String = { "" }): CallTargetState {
             val messages = ArrayList<CallMessage>()
             val turns = ArrayList<CallTurn>()
-            var asked: String? = null
+            var asked: ConversationRow.User? = null
             var failure: String? = null
             var pending: CallMessage? = null
             var needsInput = state.question != null
@@ -228,9 +234,9 @@ data class CallTargetState(
                             Delivery.Pending, Delivery.Sent -> CallMessage.Delivery.Accepted
                             is Delivery.Failed -> CallMessage.Delivery.Failed
                         }
-                        val message = CallMessage(row.messageId, CallMessage.Role.User, row.text, row.createdAt.takeIf { it > 0 }, delivery = delivery)
+                        val message = CallMessage(row.messageId, CallMessage.Role.User, row.text, row.createdAt.takeIf { it > 0 }, delivery = delivery, author = row.author)
                         messages += message
-                        if (asked == null) asked = row.text
+                        if (asked == null) asked = row
                         pending = message
                     }
                     is ConversationRow.Text -> {
@@ -241,7 +247,7 @@ data class CallTargetState(
                     }
                     is ConversationRow.Failure -> failure = failureText(row.reason)
                     is ConversationRow.TurnEnd -> {
-                        turns += CallTurn(row.turn, asked, row.copyText, row.reason, failure.takeIf { row.reason == "error" }, row.endedAt)
+                        turns += CallTurn(row.turn, asked?.text, row.copyText, row.reason, failure.takeIf { row.reason == "error" }, row.endedAt, asked?.author)
                         for (index in running) messages[index] = messages[index].copy(turn = row.turn)
                         running.clear()
                         asked = null
@@ -277,6 +283,26 @@ data class CallTargetState(
                 hasMore = state.hasMore,
             )
         }
+    }
+
+    /** The members who wrote its messages, by user ID, for [named]. */
+    val authors: Set<String> get() = (messages.mapNotNull { it.author } + turns.mapNotNull { it.userAuthor }).toSet()
+
+    /**
+     * With who wrote each of the person's messages said: "the person" for [me] (the one on the call), a member by
+     * the name in [names], else "a teammate". Outside a team nothing has an author, and nothing changes.
+     */
+    fun named(names: Map<String, String>, me: String?): CallTargetState {
+        fun name(id: String?): String? = when {
+            id == null -> null
+            id == me -> "the person"
+            else -> names[id]?.takeIf { it.isNotEmpty() }?.let(CallTarget::clean) ?: "a teammate"
+        }
+        return copy(
+            messages = messages.map { it.copy(by = name(it.author)) },
+            turns = turns.map { it.copy(userBy = name(it.userAuthor)) },
+            unanswered = unanswered?.let { it.copy(by = name(it.author)) },
+        )
     }
 }
 

@@ -532,31 +532,34 @@ class CallContextTest {
     // New work and the way back
 
     @Test
-    fun newWorkOpensComposeAndItsFirstMessageGoesOnlyWhenSent() = runBlocking {
+    fun newWorkStartsOffScreenAndItsFirstMessageGoesOnlyWhenSent() = runBlocking {
         val targets = backend()
         val context = CallContext(targets)
         context.initial()
-        assertTrue(context.tool("newWork", """{"kind":"task","focusRevision":4}""").isError)
-        assertTrue(context.tool("newWork", """{"kind":"board","focusRevision":0}""").isError)
-        val opened = obj(context.tool("newWork", """{"kind":"bot","name":" Researcher ","focusRevision":0}""").text)
-        assertEquals(true, opened["opened"]!!.jsonPrimitive.boolean)
-        assertEquals(false, opened["sent"]!!.jsonPrimitive.boolean)
-        assertEquals("bot", opened.str("kind"))
-        assertEquals("Researcher", opened.str("title"))
-        assertEquals(1, opened["focusRevision"]!!.jsonPrimitive.int)
+        assertTrue(context.tool("newWork", """{"kind":"board"}""").isError)
+        val started = obj(context.tool("newWork", """{"kind":"bot","name":" Researcher "}""").text)
+        assertEquals(true, started["started"]!!.jsonPrimitive.boolean)
+        assertEquals(false, started["sent"]!!.jsonPrimitive.boolean)
+        assertEquals("bot", started.str("kind"))
+        assertEquals("Researcher", started.str("title"))
+        // Nothing moved: the screen and its focus are as they were.
+        assertNull(started["focusRevision"])
+        assertEquals(0, targets.screens)
         assertEquals(listOf("Researcher"), targets.made.map { it.second })
-        // Opening sends nothing.
+        // Starting sends nothing.
         assertTrue(targets.sends.isEmpty())
-        // Unlisted, it is reached by the reference newWork gave, and the screen saying so later says nothing.
-        val ref = opened.str("targetRef")!!
-        assertTrue(context.focusChanged("new-1").isEmpty)
-        val sent = obj(context.tool("sendMessage", """{"targetRef":"$ref","text":"Find papers on caching","focusRevision":1}""").text)
+        // Unlisted, it is reached by the reference newWork gave, with the focus's revision as it was.
+        val ref = started.str("targetRef")!!
+        assertEquals("Researcher", obj(context.tool("getSessionContext", """{"targetRef":"$ref"}""").text).str("title"))
+        val sent = obj(context.tool("sendMessage", """{"targetRef":"$ref","text":"Find papers on caching","focusRevision":0}""").text)
         assertEquals("queued", sent.str("status"))
         assertEquals(listOf("new-1"), targets.sends.map { it.agentId })
         // Made, it is home's under the same reference.
         targets.setDirectory(listOf(backendTarget, docsTarget, CallTarget("new-1", "Researcher", CallTarget.Kind.Bot, CallTarget.Status.Running)))
         val listed = obj(context.tool("listSessions", """{"query":"research"}""").text)
         assertEquals(ref, listed["sessions"]!!.jsonArray[0].jsonObject.str("targetRef"))
+        // Shown only when asked: openSession takes it like any other.
+        assertEquals(true, obj(context.tool("openSession", """{"targetRef":"$ref","focusRevision":0}""").text)["opened"]!!.jsonPrimitive.boolean)
     }
 
     @Test
@@ -564,7 +567,7 @@ class CallContextTest {
         val targets = backend(focus = null)
         val context = CallContext(targets)
         context.initial()
-        targets.newWork(CallTarget.Kind.Task, "")
+        targets.composeByHand()
         val focus = events(context.focusChanged("new-1")).last()
         assertEquals("New Task", focus.str("title"))
         val ref = focus.str("ref")!!
@@ -669,6 +672,42 @@ class CallContextTest {
     }
 
     @Test
+    fun aTeamsMessagesSayWhoWroteThem() = runBlocking {
+        val now = 1_762_430_400_000L
+        val chat = CallTarget("c", "Auth", CallTarget.Kind.Task, CallTarget.Status.Idle)
+        val pending = CallMessage("m3", CallMessage.Role.User, "Now the signup", now - 60_000, author = "me")
+        val read = CallTargetState(
+            chat,
+            messages = listOf(CallMessage("m1", CallMessage.Role.User, "Fix the login", now - 600_000, author = "ada"), CallMessage("m2", CallMessage.Role.Assistant, "Fixed"), pending),
+            turns = listOf(CallTurn("r1", "Fix the login", "Fixed", endedAt = now - 500_000, userAuthor = "ada")),
+            unanswered = pending,
+        )
+        assertEquals(setOf("ada", "me"), read.authors)
+        // The one on the call is "the person"; a member the computer didn't name, "a teammate".
+        val named = read.named(mapOf("ada" to "Ada Lovelace"), "me")
+        assertEquals("Ada Lovelace", named.turns[0].userBy)
+        assertEquals("the person", named.unanswered?.by)
+        assertEquals("a teammate", read.named(emptyMap(), null).turns[0].userBy)
+        val context = CallContext(FakeCallTargets(listOf(chat), mutableMapOf("c" to named), null), now = { now }, zone = java.time.ZoneOffset.UTC)
+        context.initial()
+        val body = obj(context.tool("getSessionContext", """{"targetRef":"s1"}""").text)
+        assertEquals("Ada Lovelace", body["turns"]!!.jsonArray[0].jsonObject.str("userBy"))
+        assertEquals("the person", body["pendingUserMessage"]!!.jsonObject.str("by"))
+        assertEquals("the person", body["lastUserMessage"]!!.jsonObject.str("by"))
+        // Outside a team nothing has an author, and nothing says who.
+        assertTrue(CallTargetState(chat, messages = listOf(CallMessage("m", CallMessage.Role.User, "hi"))).named(emptyMap(), null).messages.all { it.by == null })
+    }
+
+    @Test
+    fun messagesCarryTheirAuthorFromTheWire() {
+        val message = com.slopus.happy.conversation.Message.parse(Json.parseToJsonElement("""{"id":"m","role":"user","createdAt":1,"content":[{"type":"text","text":"hi"}],"metadata":{"userId":"ada"}}"""))!!
+        assertEquals("ada", message.userId)
+        // Kept on the phone, it keeps its author.
+        val kept = com.slopus.happy.conversation.KeptConversation.messageJson(message)
+        assertEquals("ada", com.slopus.happy.conversation.Message.parse(kept)!!.userId)
+    }
+
+    @Test
     fun agoIsSaidAsAPersonWould() {
         assertEquals("just now", CallContext.ago(-30))
         assertEquals("just now", CallContext.ago(59))
@@ -697,7 +736,8 @@ class CallContextTest {
     @Test
     fun theToolsAreDescribedForTheDashboard() {
         assertEquals(listOf("listSessions", "getSessionContext", "openSession", "sendMessage", "newWork", "goBack", "goHome"), CallTool.entries.map { it.wire })
-        assertEquals(listOf("kind", "focusRevision"), CallTool.NewWork.parameters.strings("required"))
+        assertEquals(listOf("kind"), CallTool.NewWork.parameters.strings("required"))
+        assertNull(CallTool.NewWork.parameters["properties"]!!.jsonObject["focusRevision"])
         assertEquals(listOf("task", "bot"), CallTool.NewWork.parameters["properties"]!!.jsonObject["kind"]!!.jsonObject.strings("enum"))
         assertEquals(listOf("focusRevision"), CallTool.GoBack.parameters.strings("required"))
         assertEquals(JsonArray(emptyList()), CallTool.GoHome.parameters["required"])
@@ -1049,7 +1089,7 @@ class FakeCallTargets(
     }
     override suspend fun follow(agentId: String, following: Boolean) { follows += agentId to following }
 
-    /** New work opened, as the screen would put it: unlisted until its first message. */
+    /** New work started off screen: unlisted until its first message. */
     val made = java.util.Collections.synchronizedList(ArrayList<Pair<CallTarget.Kind, String>>())
     private val unlistedWork = java.util.concurrent.ConcurrentHashMap<String, CallTarget>()
     /** Screens over home, the top last: what `back` and `home` take away. */
@@ -1059,8 +1099,15 @@ class FakeCallTargets(
         val draft = CallTarget("new-${made.size}", name.ifEmpty { if (kind == CallTarget.Kind.Bot) "New Bot" else "New Task" }, kind, CallTarget.Status.Idle)
         unlistedWork[draft.agentId] = draft
         lock.withLock { states[draft.agentId] = CallTargetState(draft) }
-        screens++
         return draft
+    }
+    /** Compose opened by the person: new work on a screen of its own. */
+    suspend fun composeByHand() {
+        made += CallTarget.Kind.Task to ""
+        val draft = CallTarget("new-${made.size}", "New Task", CallTarget.Kind.Task, CallTarget.Status.Idle)
+        unlistedWork[draft.agentId] = draft
+        lock.withLock { states[draft.agentId] = CallTargetState(draft) }
+        screens++
     }
     override suspend fun unlisted(agentId: String): CallTarget? = unlistedWork[agentId]
     override suspend fun back(): CallScreenMove {

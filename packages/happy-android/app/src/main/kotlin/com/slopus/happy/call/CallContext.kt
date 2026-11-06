@@ -105,7 +105,7 @@ class CallContext(
     /** Home's conversations as last seen, in order and by ID. */
     private var entries: List<CallTarget> = emptyList()
     private var directory: Map<String, CallTarget> = emptyMap()
-    /** New work on screen that home doesn't list until its first message makes it: `newWork`'s, or compose's in front. */
+    /** New work home doesn't list until its first message makes it: `newWork`'s, off screen, or compose's in front. */
     private val drafts = HashMap<String, CallTarget>()
     /** The directory the agent last had whole: the first snapshot's, or the last `directory` event's. */
     private var listed: List<Listing> = emptyList()
@@ -637,14 +637,13 @@ class CallContext(
                     else -> return CallToolResult.refused("kind must be \"task\" or \"bot\".")
                 }
                 val name = optionalString(arguments["name"]) ?: return CallToolResult.refused("name must be a string.")
-                if (revisionOf(arguments["focusRevision"]) != focusRevision) return STALE
                 if (closed) return CallToolResult.refused("No answer in time.")
-                val draft = targets.newWork(kind, name.trim()) ?: return CallToolResult.refused("New work didn't open.")
+                // Off screen: what is in front stays, and so does the focus.
+                val draft = targets.newWork(kind, name.trim()) ?: return CallToolResult.refused("New work couldn't be started.")
                 drafts[draft.agentId] = draft
-                moveFocus(draft.agentId, telling = false)
                 CallToolResult.json(JsonObject(linkedMapOf(
-                    "opened" to JsonPrimitive(true), "targetRef" to JsonPrimitive(ref(draft.agentId)), "kind" to JsonPrimitive(draft.kind.wire),
-                    "title" to JsonPrimitive(draft.title), "focusRevision" to JsonPrimitive(focusRevision), "sent" to JsonPrimitive(false),
+                    "started" to JsonPrimitive(true), "targetRef" to JsonPrimitive(ref(draft.agentId)), "kind" to JsonPrimitive(draft.kind.wire),
+                    "title" to JsonPrimitive(draft.title), "sent" to JsonPrimitive(false),
                 )))
             }
 
@@ -772,7 +771,10 @@ class CallContext(
         val value = LinkedHashMap(name)
         value["working"] = JsonPrimitive(state.working)
         value["needsInput"] = JsonPrimitive(state.needsInput)
-        state.messages.lastOrNull { it.role == CallMessage.Role.User && (it.time ?: 0L) > 0 }?.time?.let { value["lastUserMessage"] = moment(it) }
+        state.messages.lastOrNull { it.role == CallMessage.Role.User && (it.time ?: 0L) > 0 }?.let { last ->
+            val said = moment(last.time!!)
+            value["lastUserMessage"] = last.by?.let { JsonObject(said + ("by" to JsonPrimitive(it))) } ?: said
+        }
         state.turns.filter { !it.reply.isNullOrEmpty() }.mapNotNull { it.endedAt }.filter { it > 0 }.maxOrNull()?.let { value["lastAgentReply"] = moment(it) }
         if (state.target.workspace.isNotEmpty()) value["workspace"] = JsonPrimitive(state.target.workspace.joinToString(" / "))
         state.mode?.let { value["model"] = JsonObject(mapOf("id" to JsonPrimitive(it.modelId), "name" to JsonPrimitive(it.model), "effort" to JsonPrimitive(it.effort))) }
@@ -784,6 +786,7 @@ class CallContext(
             val message = linkedMapOf<String, JsonElement>("text" to JsonPrimitive(text))
             if (text.length < pending.text.length) message["truncated"] = JsonPrimitive(true)
             pending.delivery?.let { message["delivery"] = JsonPrimitive(it.wire) }
+            pending.by?.let { message["by"] = JsonPrimitive(it) }
             value["pendingUserMessage"] = JsonObject(message)
         }
         return JsonObject(value)
@@ -819,6 +822,7 @@ class CallContext(
                 if (kept.length < words.length) cut = true
             }
             text(turn.user, "user")
+            if (!turn.user.isNullOrEmpty()) turn.userBy?.let { value["userBy"] = JsonPrimitive(it) }
             text(turn.reply, "assistant")
             if (turn.ended == "error") turn.error?.takeIf { it.isNotEmpty() }?.let { value["error"] = JsonPrimitive(truncated(it, Limits.ERROR_BYTES)) }
             if (cut) value["truncated"] = JsonPrimitive(true)

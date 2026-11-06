@@ -30,10 +30,10 @@ enum class CallTool(val wire: String) {
     /** The client tool's description, as the hosted agent shows it to the model. */
     val summary: String get() = when (this) {
         ListSessions -> "List the conversations the person sees in the app (bots, tasks, subtasks and project conversations), in the sidebar's order, with their targetRef, title, kind, status and parents (the titles of what each sits under). query keeps those whose title contains it as a case-insensitive substring. Page with nextCursor."
-        GetSessionContext -> "Read one conversation: whether it is working or needs the person, and its last five turns, each the person's message and the agent's last words, or as much of the pair as there is; the person's latest message, if nothing has answered it yet, is the fifth (pendingUserMessage). It doesn't open the conversation or change what you hear from."
+        GetSessionContext -> "Read one conversation: whether it is working or needs the person, and its last five turns, each the person's message and the agent's last words, or as much of the pair as there is; the person's latest message, if nothing has answered it yet, is the fifth (pendingUserMessage). On a team, who wrote each message (userBy, by). It doesn't open the conversation or change what you hear from."
         OpenSession -> "Show a conversation on the person's screen. Like any conversation they open, it joins the four most recently visited, whose new replies you hear."
         SendMessage -> "Send the person's message to a conversation's agent, exactly as given (at most 8 KiB of UTF-8). Call it only when the person has explicitly asked you to send it (\"send it\", \"send that to …\"), never because you think they would want it sent. A working agent takes it too, as the app's composer sends it. model and effort switch the conversation first, only when the person asked for that. It doesn't open the conversation. \"queued\" means queued on the person's device, not confirmed delivered or read; after \"uncertain\", never send it again."
-        NewWork -> "Open new work on the person's screen, as the app's compose button does: an empty conversation that its first message makes a task (what a new session or conversation is) or a bot. Nothing is made on the computer and nothing is sent: send its first message with sendMessage to the targetRef this returns, and only when the person asks you to send it."
+        NewWork -> "Start new work as the app's compose button does, without opening it or changing the screen: a task (what a new session or conversation is) or a bot, made on the computer by its first message. Nothing is sent: send that message with sendMessage to the targetRef this returns, only when the person asks you to send it. Until then it isn't listed; openSession shows it if the person asks to see it."
         GoBack -> "Go back one screen, as the back button does: close what is open over the app, or leave the screen on top for the one under it. Refused at home, where there is nothing to go back to."
         GoHome -> "Go to the home screen, the list of the person's bots, tasks and projects, closing every screen over it."
     }
@@ -62,8 +62,7 @@ enum class CallTool(val wire: String) {
                 put("description", "task, unless the person asked for a bot.")
             },
             "name" to string("The name the person gave it; omit for its first message to name it."),
-            "focusRevision" to REVISION,
-            required = listOf("kind", "focusRevision"),
+            required = listOf("kind"),
         )
         GoBack -> schema("focusRevision" to REVISION, required = listOf("focusRevision"))
         GoHome -> schema(required = emptyList())
@@ -100,9 +99,9 @@ object CallPrompt {
 
         Tools:
         - listSessions: find conversations, with when each last did something; query is a case-insensitive substring of the title.
-        - getSessionContext: read a conversation before you summarise it: its last five turns (a message still waiting for an answer among them), when the person last wrote and the agent last replied, the workspace it runs in, its model and effort, and the models and efforts it can switch to.
+        - getSessionContext: read a conversation before you summarise it: its last five turns (a message still waiting for an answer among them), when the person last wrote and the agent last replied, the workspace it runs in, its model and effort, and the models and efforts it can switch to. On a team, several people may write in one conversation: userBy and by say who wrote each message, "the person" being the one on this call.
         - openSession: show a conversation on the person's screen.
-        - newWork: open a new task or a new bot on the screen, as the compose button does. A new session or conversation is a task unless the person asks for a bot. It is empty until its first message, which makes it.
+        - newWork: start a new task or a new bot, as the compose button does, without opening it: the screen stays as it is. A new session or conversation is a task unless the person asks for a bot. It is made on the computer by its first message; open it with openSession only if the person asks to see it.
         - goBack: go back one screen. goHome: go to the home screen.
         - sendMessage: send words to a conversation's agent.
 
@@ -117,8 +116,8 @@ object CallPrompt {
 
         Rules:
         - Only say something happened if its tool said so. A result with "ok": false, "isError", "status": "uncertain" or no result means it did not happen, or might not have: say that plainly. Never claim success after an error.
-        - Change the screen (openSession, newWork, goBack, goHome) only when the person asks to.
-        - openSession, newWork, goBack and sendMessage take the latest focusRevision you have seen: from the context, the newest focus event or the last tool result. If a tool says the screen changed, use the newest focusRevision before you retry.
+        - Change the screen (openSession, goBack, goHome) only when the person asks to.
+        - openSession, goBack and sendMessage take the latest focusRevision you have seen: from the context, the newest focus event or the last tool result. If a tool says the screen changed, use the newest focusRevision before you retry.
         - Updates need no answer of their own. Use what they say when the person asks, or when it bears on what you are saying.
         - Times come as "ago" (say that) and "at" (the person's local time, for when they ask exactly).
         - You cannot approve permissions or answer an agent's questions. When a conversation needs input, tell the person to answer it in the app.

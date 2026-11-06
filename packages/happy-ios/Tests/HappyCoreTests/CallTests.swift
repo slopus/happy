@@ -582,30 +582,31 @@ final class CallContextTests: XCTestCase {
 
     // MARK: New work and the way back
 
-    func testNewWorkOpensComposeAndItsFirstMessageGoesOnlyWhenSent() async throws {
+    func testNewWorkStartsOffScreenAndItsFirstMessageGoesOnlyWhenSent() async throws {
         let targets = backend()
         let context = CallContext(targets: targets)
         _ = await context.initial()
-        let stale = await tool(context, "newWork", #"{"kind":"task","focusRevision":4}"#)
-        XCTAssertTrue(stale.isError)
-        let wrongKind = await tool(context, "newWork", #"{"kind":"board","focusRevision":0}"#)
+        let wrongKind = await tool(context, "newWork", #"{"kind":"board"}"#)
         XCTAssertTrue(wrongKind.isError)
-        let opened = try object(await tool(context, "newWork", #"{"kind":"bot","name":" Researcher ","focusRevision":0}"#).text)
-        XCTAssertEqual(opened["opened"] as? Bool, true)
-        XCTAssertEqual(opened["sent"] as? Bool, false)
-        XCTAssertEqual(opened["kind"] as? String, "bot")
-        XCTAssertEqual(opened["title"] as? String, "Researcher")
-        XCTAssertEqual(opened["focusRevision"] as? Int, 1)
+        let started = try object(await tool(context, "newWork", #"{"kind":"bot","name":" Researcher "}"#).text)
+        XCTAssertEqual(started["started"] as? Bool, true)
+        XCTAssertEqual(started["sent"] as? Bool, false)
+        XCTAssertEqual(started["kind"] as? String, "bot")
+        XCTAssertEqual(started["title"] as? String, "Researcher")
+        // Nothing moved: the screen and its focus are as they were.
+        XCTAssertNil(started["focusRevision"])
+        let screens = await targets.screens
+        XCTAssertEqual(screens, 0)
         let made = await targets.made
         XCTAssertEqual(made.map(\.name), ["Researcher"])
-        // Opening sends nothing.
+        // Starting sends nothing.
         var sends = await targets.sends
         XCTAssertTrue(sends.isEmpty)
-        // Unlisted, it is reached by the reference newWork gave, and the screen saying so later says nothing.
-        let ref = try XCTUnwrap(opened["targetRef"] as? String)
-        let echo = await context.focusChanged(to: "new-1")
-        XCTAssertTrue(echo.isEmpty)
-        let sent = await tool(context, "sendMessage", "{\"targetRef\":\"\(ref)\",\"text\":\"Find papers on caching\",\"focusRevision\":1}")
+        // Unlisted, it is reached by the reference newWork gave, with the focus's revision as it was.
+        let ref = try XCTUnwrap(started["targetRef"] as? String)
+        let read = try object(await tool(context, "getSessionContext", "{\"targetRef\":\"\(ref)\"}").text)
+        XCTAssertEqual(read["title"] as? String, "Researcher")
+        let sent = await tool(context, "sendMessage", "{\"targetRef\":\"\(ref)\",\"text\":\"Find papers on caching\",\"focusRevision\":0}")
         XCTAssertEqual(try object(sent.text)["status"] as? String, "queued")
         sends = await targets.sends
         XCTAssertEqual(sends.map(\.agentId), ["new-1"])
@@ -613,13 +614,16 @@ final class CallContextTests: XCTestCase {
         await targets.setDirectory([backendTarget, docsTarget, CallTarget(agentId: "new-1", title: "Researcher", kind: .bot, status: .running)])
         let listed = try object(await tool(context, "listSessions", #"{"query":"research"}"#).text)
         XCTAssertEqual((listed["sessions"] as? [[String: Any]])?.first?["targetRef"] as? String, ref)
+        // Shown only when asked: openSession takes it like any other.
+        let opened = try object(await tool(context, "openSession", "{\"targetRef\":\"\(ref)\",\"focusRevision\":0}").text)
+        XCTAssertEqual(opened["opened"] as? Bool, true)
     }
 
     func testComposeOpenedByHandIsReachedThroughTheFocus() async throws {
         let targets = backend(focus: nil)
         let context = CallContext(targets: targets)
         _ = await context.initial()
-        _ = await targets.newWork(.task, name: "")
+        await targets.composeByHand()
         let focus = try events(await context.focusChanged(to: "new-1"))
         XCTAssertEqual(focus.last?["title"] as? String, "New Task")
         let ref = try XCTUnwrap(focus.last?["ref"] as? String)
@@ -743,6 +747,41 @@ final class CallContextTests: XCTestCase {
         XCTAssertEqual(CallContext.ago(4 * 86400), "4 days ago")
     }
 
+    func testATeamsMessagesSayWhoWroteThem() async throws {
+        let now = 1_762_430_400.0
+        var snapshot = ChatSnapshot()
+        snapshot.loaded = true
+        snapshot.items = [
+            ChatItem(id: "m1", role: .user, pieces: [.text("Fix the login")], delivery: .sent, turn: "r1", time: (now - 600) * 1000, author: "ada"),
+            ChatItem(id: "m2", role: .agent, pieces: [.text("Fixed")], delivery: .sent, turn: "r1"),
+            ChatItem(id: "r1:status", role: .turnEnd(.init(reason: "completed", durationMs: 1000, tools: 0, copyText: "Fixed", endedAt: (now - 500) * 1000)), pieces: [], delivery: .sent, turn: "r1"),
+            ChatItem(id: "m3", role: .user, pieces: [.text("Now the signup")], delivery: .pending, turn: "r2", time: (now - 60) * 1000, author: "me"),
+        ]
+        let chat = CallTarget(agentId: "c", title: "Auth", kind: .task, status: .idle)
+        let read = CallTargetState.from(snapshot, target: chat)
+        XCTAssertEqual(read.authors, ["ada", "me"])
+        // The one on the call is "the person"; a member the computer didn't name, "a teammate".
+        let named = read.named(["ada": "Ada Lovelace"], me: "me")
+        XCTAssertEqual(named.turns.first?.userBy, "Ada Lovelace")
+        XCTAssertEqual(named.unanswered?.by, "the person")
+        XCTAssertEqual(read.named([:], me: nil).turns.first?.userBy, "a teammate")
+        let context = CallContext(targets: FakeCallTargets(directory: [chat], states: ["c": named], focus: nil), now: { now }, timeZone: TimeZone(identifier: "UTC")!)
+        _ = await context.initial()
+        let body = try object(await tool(context, "getSessionContext", #"{"targetRef":"s1"}"#).text)
+        XCTAssertEqual((body["turns"] as? [[String: Any]])?.first?["userBy"] as? String, "Ada Lovelace")
+        XCTAssertEqual((body["pendingUserMessage"] as? [String: Any])?["by"] as? String, "the person")
+        XCTAssertEqual((body["lastUserMessage"] as? [String: String])?["by"], "the person")
+        // Outside a team nothing has an author, and nothing says who.
+        let alone = CallTargetState.from(ChatSnapshot(), target: chat).named([:], me: nil)
+        XCTAssertTrue(alone.authors.isEmpty)
+    }
+
+    func testMessagesCarryTheirAuthorFromTheWire() throws {
+        let json = #"{"id":"m","role":"user","createdAt":1,"content":[{"type":"text","text":"hi"}],"metadata":{"userId":"ada"}}"#
+        let message = try JSONDecoder().decode(AgentWire.Message.self, from: Data(json.utf8))
+        XCTAssertEqual(message.metadata?.userId, "ada")
+    }
+
     // MARK: The prompt
 
     func testThePromptGoesFromThePhoneAsTheDocsHoldIt() throws {
@@ -757,7 +796,8 @@ final class CallContextTests: XCTestCase {
 
     func testTheToolsAreDescribedForTheDashboard() {
         XCTAssertEqual(CallTool.allCases.map(\.rawValue), ["listSessions", "getSessionContext", "openSession", "sendMessage", "newWork", "goBack", "goHome"])
-        XCTAssertEqual(CallTool.newWork.parameters["required"], .array([.string("kind"), .string("focusRevision")]))
+        XCTAssertEqual(CallTool.newWork.parameters["required"], .array([.string("kind")]))
+        XCTAssertNil(CallTool.newWork.parameters["properties"]?["focusRevision"])
         XCTAssertEqual(CallTool.newWork.parameters["properties"]?["kind"]?["enum"], .array([.string("task"), .string("bot")]))
         XCTAssertEqual(CallTool.goBack.parameters["required"], .array([.string("focusRevision")]))
         XCTAssertEqual(CallTool.goHome.parameters["required"], .array([]))
@@ -1763,7 +1803,7 @@ actor FakeCallTargets: CallTargets {
     }
     func follow(_ agentId: String, _ following: Bool) async { follows.append((agentId, following)) }
 
-    /// New work opened, as the screen would put it: unlisted until its first message.
+    /// New work started off screen: unlisted until its first message.
     private(set) var made: [(kind: CallTarget.Kind, name: String)] = []
     private(set) var changes: [CallModeChange?] = []
     private var unlistedWork: [String: CallTarget] = [:]
@@ -1775,8 +1815,15 @@ actor FakeCallTargets: CallTargets {
         let draft = CallTarget(agentId: "new-\(made.count)", title: name.isEmpty ? (kind == .bot ? "New Bot" : "New Task") : name, kind: kind, status: .idle)
         unlistedWork[draft.agentId] = draft
         states[draft.agentId] = CallTargetState(target: draft)
-        screens += 1
         return draft
+    }
+    /// Compose opened by the person: new work on a screen of its own.
+    func composeByHand() {
+        made.append((.task, ""))
+        let draft = CallTarget(agentId: "new-\(made.count)", title: "New Task", kind: .task, status: .idle)
+        unlistedWork[draft.agentId] = draft
+        states[draft.agentId] = CallTargetState(target: draft)
+        screens += 1
     }
     func unlisted(_ agentId: String) async -> CallTarget? { unlistedWork[agentId] }
     func back() async -> CallScreenMove {

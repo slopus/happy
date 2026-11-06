@@ -76,8 +76,8 @@ public actor CallContext {
     /// The sidebar's conversations as last seen, in order and by ID.
     private var entries: [CallTarget] = []
     private var directory: [String: CallTarget] = [:]
-    /// New work on screen that the sidebar doesn't list until its first
-    /// message makes it: `newWork`'s, or compose's in front.
+    /// New work the sidebar doesn't list until its first message makes
+    /// it: `newWork`'s, off screen, or compose's in front.
     private var drafts: [String: CallTarget] = [:]
     /// The directory the agent last had whole: the first snapshot's, or
     /// the last `directory` event's.
@@ -635,17 +635,13 @@ public actor CallContext {
                 return .refused("kind must be \"task\" or \"bot\".")
             }
             guard let name = Self.optionalString(arguments["name"]) else { return .refused("name must be a string.") }
-            guard Self.revision(arguments["focusRevision"]) == focusRevision else { return Self.stale }
             guard !Task.isCancelled, !closed else { return .refused("No answer in time.") }
+            // Off screen: what is in front stays, and so does the focus.
             guard let draft = await targets.newWork(kind, name: name.trimmingCharacters(in: .whitespacesAndNewlines)) else {
-                return .refused("New work didn't open.")
+                return .refused("New work couldn't be started.")
             }
             drafts[draft.agentId] = draft
-            _ = moveFocus(to: draft.agentId, telling: false)
-            return .json([
-                "opened": true, "targetRef": ref(draft.agentId), "kind": draft.kind.rawValue, "title": draft.title,
-                "focusRevision": focusRevision, "sent": false,
-            ])
+            return .json(["started": true, "targetRef": ref(draft.agentId), "kind": draft.kind.rawValue, "title": draft.title, "sent": false])
 
         case .goBack, .goHome:
             if tool == .goBack, Self.revision(arguments["focusRevision"]) != focusRevision { return Self.stale }
@@ -806,7 +802,11 @@ public actor CallContext {
         var value = name
         value["working"] = state.working
         value["needsInput"] = state.needsInput
-        if let at = state.messages.last(where: { $0.role == .user && ($0.time ?? 0) > 0 })?.time { value["lastUserMessage"] = when(at) }
+        if let last = state.messages.last(where: { $0.role == .user && ($0.time ?? 0) > 0 }), let at = last.time {
+            var said = when(at)
+            if let by = last.by { said["by"] = by }
+            value["lastUserMessage"] = said
+        }
         if let at = state.turns.filter({ $0.reply?.isEmpty == false }).compactMap(\.endedAt).filter({ $0 > 0 }).max() { value["lastAgentReply"] = when(at) }
         if !state.target.workspace.isEmpty { value["workspace"] = state.target.workspace.joined(separator: " / ") }
         if let mode = state.mode { value["model"] = ["id": mode.modelId, "name": mode.model, "effort": mode.effort] }
@@ -818,6 +818,7 @@ public actor CallContext {
             var message: [String: Any] = ["text": text]
             if text.utf8.count < pending.text.utf8.count { message["truncated"] = true }
             if let delivery = pending.delivery { message["delivery"] = delivery.rawValue }
+            if let by = pending.by { message["by"] = by }
             value["pendingUserMessage"] = message
         }
         return value
@@ -833,6 +834,7 @@ public actor CallContext {
             if kept.utf8.count < words.utf8.count { cut = true }
         }
         text(turn.user, as: "user")
+        if turn.user?.isEmpty == false, let by = turn.userBy { value["userBy"] = by }
         text(turn.reply, as: "assistant")
         if turn.ended == "error", let reason = turn.error, !reason.isEmpty { value["error"] = truncated(reason, bytes: Limits.errorBytes) }
         if cut { value["truncated"] = true }

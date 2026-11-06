@@ -24,8 +24,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
 import com.slopus.happy.call.CallScreen
-import com.slopus.happy.conversation.WorkChoice
-import com.slopus.happy.conversation.WorkKind
 import com.slopus.happy.ui.HomeRoute
 import com.slopus.happy.ui.SettingsRoute
 import com.slopus.happy.ui.call.callScreen
@@ -42,10 +40,10 @@ import java.io.File
 
 /**
  * The call's screen moves ([callScreen], what `CallScreenEffect` hands the
- * call) on a device, over the app's own routes: home, a conversation, new
- * work as compose opens it and a page that is neither. The pages are plain
- * labels naming their route; nothing reaches a computer. Shots go to the
- * app's external files under `call-nav/`. Run on an assigned emulator.
+ * call) on a device, over the app's own routes: home, conversations and a
+ * page that is neither. The pages are plain labels naming their route;
+ * nothing reaches a computer. Shots go to the app's external files under
+ * `call-nav/`. Run on an assigned emulator.
  */
 @RunWith(AndroidJUnit4::class)
 class CallNavDeviceShots {
@@ -64,13 +62,7 @@ class CallNavDeviceShots {
                 nav = rememberNavController()
                 NavHost(nav, startDestination = HomeRoute) {
                     composable<HomeRoute> { Page("Home", "Studio Mac's bots, tasks and projects") }
-                    composable<ConversationRoute> { entry ->
-                        val route = entry.toRoute<ConversationRoute>()
-                        when {
-                            route.agentId != null -> Page("Conversation", route.agentId)
-                            else -> Page("New ${if (route.kind == "bot") "bot" else "task"}", route.name?.takeIf { it.isNotEmpty() } ?: "Name (optional)")
-                        }
-                    }
+                    composable<ConversationRoute> { entry -> Page("Conversation", entry.toRoute<ConversationRoute>().agentId ?: "New") }
                     composable<SettingsRoute> { Page("Settings", "a page that is no conversation") }
                 }
             }
@@ -85,7 +77,7 @@ class CallNavDeviceShots {
             when {
                 entry.destination.route?.contains("HomeRoute") == true -> "home"
                 entry.destination.route?.contains("SettingsRoute") == true -> "settings"
-                else -> entry.toRoute<ConversationRoute>().let { it.agentId ?: "new ${it.kind}" }
+                else -> entry.toRoute<ConversationRoute>().agentId ?: "new"
             }
         }
     }
@@ -104,15 +96,15 @@ class CallNavDeviceShots {
         android.util.Log.i("CallNav", "$name stack=${stack()} focused=${onMain { screen.focused }} atHome=${onMain { screen.atHome }}")
     }
 
-    @Test fun newWorkBackAndHomeMoveTheAppsOwnStack() {
+    @Test fun openBackAndHomeMoveTheAppsOwnStack() {
         show()
         step("01-open") { screen.open("research-agent") }
         assertEquals(listOf("home", "research-agent"), stack())
         assertEquals("research-agent", onMain { screen.focused })
 
-        // New work takes the conversation's place, as compose does from a chat.
-        step("02-new-bot") { screen.compose(WorkChoice(WorkKind.Bot, "Voice bot")) }
-        assertEquals(listOf("home", "new bot"), stack())
+        // Another conversation takes the one on top's place.
+        step("02-open-another") { screen.open("release-notes") }
+        assertEquals(listOf("home", "release-notes"), stack())
 
         var went = false
         step("03-back") { went = screen.back() }
@@ -128,9 +120,9 @@ class CallNavDeviceShots {
         step("05-open-again") { screen.open("research-agent") }
         step("06-settings") { nav.navigate(SettingsRoute()) }
         assertEquals(null, onMain { screen.focused })
-        // Over a page that is no conversation, new work goes on top of it.
-        step("07-new-task") { screen.compose(WorkChoice()) }
-        assertEquals(listOf("home", "research-agent", "settings", "new task"), stack())
+        // Over a page that is no conversation, a conversation goes on top of it.
+        step("07-open-over-settings") { screen.open("release-notes") }
+        assertEquals(listOf("home", "research-agent", "settings", "release-notes"), stack())
 
         step("08-home") { screen.home() }
         assertEquals(listOf("home"), stack())

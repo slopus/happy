@@ -7,8 +7,11 @@ import UIKit
 /// the directory, its kept conversations (`WarmChats`) for what they say,
 /// and the conversation's own send, which the composer uses too but which
 /// here leaves the composer's draft and attachments alone. New work is
-/// compose's own screen (`NewWork`), and the model and effort the
-/// composer's pickers' (`ModelCatalog.select`, `Conversation.setMode`).
+/// compose's own (`NewTask`), started off screen with a conversation of
+/// its own that its first message makes, or compose's screen in front; the
+/// model and effort the composer's pickers' (`ModelCatalog.select`,
+/// `Conversation.setMode`). On a team, who wrote each message is named as
+/// the computer names its members (`TeamUser`).
 @MainActor
 final class SessionCallTargets: CallTargets {
     private let session: Session
@@ -18,6 +21,25 @@ final class SessionCallTargets: CallTargets {
     /// New work's screens the call has seen, until their first message makes them.
     private var drafts: [String: Weak] = [:]
     private struct Weak { weak var chat: ChatViewController? }
+    /// New work the call started, off screen: its conversation, which its
+    /// first message makes, as a screen's would.
+    private var started: [String: Started] = [:]
+    @MainActor private final class Started {
+        let task: NewTask
+        let conversation: Conversation
+        var snapshot = ChatSnapshot()
+        var sent = false
+        var reading: Task<Void, Never>?
+
+        init(task: NewTask, conversation: Conversation) {
+            self.task = task
+            self.conversation = conversation
+        }
+    }
+    /// Team members' names by user ID, once the computer has given them;
+    /// those asked for already, named or not.
+    private var names: [String: String] = [:]
+    private var asked: Set<String> = []
     /// A followed conversation changed.
     var onChange: ((CallTargetState) -> Void)?
     /// Ended with its call: nothing is held, opened or sent after.
@@ -32,6 +54,20 @@ final class SessionCallTargets: CallTargets {
         closed = true
         for (_, hold) in held { session.warm.release(hold.chat, token: hold.token, opened: false) }
         held.removeAll()
+        for started in started.values {
+            started.reading?.cancel()
+            let task = started.task, conversation = started.conversation, sent = started.sent
+            Task.detached {
+                // A first message on its way makes its task and is handed
+                // to the account's outbox before the conversation stops.
+                if sent {
+                    for _ in 0..<100 where !(await task.isMade) { try? await Task.sleep(for: .milliseconds(100)) }
+                    try? await Task.sleep(for: .seconds(1))
+                }
+                await conversation.stop()
+            }
+        }
+        started.removeAll()
         onChange = nil
     }
 
@@ -49,6 +85,12 @@ final class SessionCallTargets: CallTargets {
 
     func state(of agentId: String) async -> CallTargetState? {
         guard let target = target(agentId) else {
+            if let started = started[agentId] {
+                var state = CallTargetState.from(started.snapshot, target: Self.target(agentId, started.task.choice))
+                // Empty until its first message: nothing to read, and it takes one.
+                state.writable = started.snapshot.error == nil
+                return await named(await withModels(state, mode: started.snapshot.mode))
+            }
             guard let draft = draftChat(agentId), let choice = draft.unmadeChoice else { return nil }
             var state = CallTargetState.from(draft.callSnapshot, target: Self.target(agentId, choice))
             // Empty until its first message: nothing to read, and it takes one.
@@ -65,7 +107,25 @@ final class SessionCallTargets: CallTargets {
             return (.from(chat.snapshot, target: target), chat.snapshot.mode)
         }
         guard let read else { return nil }
-        return await withModels(read.0, mode: read.1)
+        return await named(await withModels(read.0, mode: read.1))
+    }
+
+    /// `state` with who wrote each message said, the members it doesn't
+    /// know yet asked for once (`GET /v0/users`). Outside a team no
+    /// message has an author, and nothing is asked.
+    private func named(_ state: CallTargetState) async -> CallTargetState {
+        let me = session.home.userId
+        let missing = state.authors.subtracting(names.keys).subtracting(asked).filter { $0 != me }
+        if !missing.isEmpty {
+            asked.formUnion(missing)
+            if let users = try? await session.client.teamUsers(Array(missing)) {
+                for user in users { names[user.id] = user.name }
+            } else {
+                // Asked again next time: until then they are "a teammate".
+                asked.subtract(missing)
+            }
+        }
+        return state.named(names, me: me)
     }
 
     /// `state` with the model its next message goes with (the
@@ -106,7 +166,9 @@ final class SessionCallTargets: CallTargets {
     }
 
     func unlisted(_ agentId: String) async -> CallTarget? {
-        guard target(agentId) == nil, let chat = draftChat(agentId), let choice = chat.unmadeChoice else { return nil }
+        guard target(agentId) == nil else { return nil }
+        if let started = started[agentId] { return Self.target(agentId, started.task.choice) }
+        guard let chat = draftChat(agentId), let choice = chat.unmadeChoice else { return nil }
         return Self.target(agentId, choice)
     }
 
@@ -129,7 +191,25 @@ final class SessionCallTargets: CallTargets {
     }
 
     func open(_ agentId: String) async -> Bool {
-        guard !closed, let shell, let row = allRows.first(where: { $0.agentId == agentId && CallTarget.from($0) != nil }) else { return false }
+        guard !closed, let shell else { return false }
+        if target(agentId) == nil, let started = started[agentId] {
+            guard started.sent else {
+                // Nothing sent yet: compose's own screen takes it over, as
+                // compose would have opened it.
+                self.started[agentId] = nil
+                started.reading?.cancel()
+                await started.conversation.stop()
+                guard !closed, !Task.isCancelled else { return false }
+                let chat = NewWork.chat(session, task: started.task)
+                chat.focusesOnOpen = false
+                drafts[agentId] = Weak(chat: chat)
+                await place(chat, in: shell)
+                return true
+            }
+            // Its first message is making it: its row comes once the computer has it.
+            for _ in 0..<60 where target(agentId) == nil && !Task.isCancelled { try? await Task.sleep(for: .milliseconds(50)) }
+        }
+        guard let row = allRows.first(where: { $0.agentId == agentId && CallTarget.from($0) != nil }) else { return false }
         if focusedNow == agentId { return true }
         // Past the tool's deadline: nothing moves on screen.
         guard !Task.isCancelled else { return false }
@@ -141,29 +221,24 @@ final class SessionCallTargets: CallTargets {
         return true
     }
 
-    /// Compose's new work, chosen as the call asks, on screen as `open`
-    /// puts a conversation there. The same unsent work compose would open
-    /// (`Store.newTask`): already in front, it only takes the choice.
+    /// New work as compose starts it (`NewTask`), chosen as the call asks,
+    /// off screen: what is in front stays. Its conversation is the call's
+    /// until its first message makes it, or `open` hands it to a screen.
     func newWork(_ kind: CallTarget.Kind, name: String) async -> CallTarget? {
-        guard !closed, let shell else { return nil }
-        let task = await session.store.newTask()
-        guard !closed, !Task.isCancelled else { return nil }
-        let choice = NewTask.Choice(kind: kind == .bot ? .bot : .task, name: name)
-        if let shown = shell.topViewController as? ChatViewController, shown.shownAgentId == task.agentId, shown.unmadeChoice != nil {
-            shown.choose(newWork: choice)
-            drafts[task.agentId] = Weak(chat: shown)
-            return Self.target(task.agentId, choice)
+        guard !closed else { return nil }
+        let task = NewTask(client: session.client)
+        task.choice = NewTask.Choice(kind: kind == .bot ? .bot : .task, name: name)
+        let conversation = Conversation(client: session.client, store: session.store, agentId: task.agentId, newTask: task, mode: session.newWorkMode, persistence: session.engine)
+        let started = Started(task: task, conversation: conversation)
+        self.started[task.agentId] = started
+        started.reading = Task { [weak started] in
+            for await snapshot in conversation.updates { started?.snapshot = snapshot }
         }
-        task.choice = choice
-        let chat = NewWork.chat(session, task: task)
-        // The person is talking, not typing: no keyboard.
-        chat.focusesOnOpen = false
-        drafts[task.agentId] = Weak(chat: chat)
-        await place(chat, in: shell)
-        return Self.target(task.agentId, choice)
+        await conversation.start()
+        return Self.target(task.agentId, task.choice)
     }
 
-    /// Where `open` and `newWork` put a screen: the main panel's root beside
+    /// Where `open` puts a screen: the main panel's root beside
     /// an empty panel, else in place of a conversation on top and over
     /// anything else. Returns once it has slid in, so the screen saying so
     /// comes before the next step does, never after it.
@@ -237,7 +312,16 @@ final class SessionCallTargets: CallTargets {
     func send(_ agentId: String, text: String, id: String, change: CallModeChange?) async -> CallSendOutcome {
         guard !closed else { return .refused("The call has ended.") }
         guard let target = target(agentId) else {
-            // New work: its own screen sends, and its first message makes it.
+            // New work the call started: its conversation sends, and its first message makes it.
+            if let started = started[agentId] {
+                if started.snapshot.items.contains(where: { $0.id == id }) { return .queued }
+                if let change, let next = await switched(started.snapshot.mode, by: change) { await started.conversation.setMode(next) }
+                guard !Task.isCancelled, !closed else { return .refused("No answer in time.") }
+                guard await started.conversation.send(id: id, text: text) else { return .refused("It couldn't be kept on this phone.") }
+                started.sent = true
+                return .queued
+            }
+            // New work on screen: its own screen sends, and its first message makes it.
             guard let draft = draftChat(agentId) else { return .refused("That new work was closed before anything was sent.") }
             if draft.callSnapshot.items.contains(where: { $0.id == id }) { return .queued }
             if let change, let next = await switched(draft.callMode, by: change) { await draft.pickFromCall(next) }
@@ -280,6 +364,16 @@ final class SessionCallTargets: CallTargets {
         return change.applied(to: current, catalog: catalog)
     }
 
+    /// `named` with the names known now, for an update that can't wait:
+    /// the ones it lacks are asked for, for the next.
+    private func namedNow(_ state: CallTargetState) -> CallTargetState {
+        let me = session.home.userId
+        if !state.authors.subtracting(names.keys).subtracting(asked).filter({ $0 != me }).isEmpty {
+            Task { _ = await self.named(state) }
+        }
+        return state.named(names, me: me)
+    }
+
     /// The conversations held for the call.
     var following: [String] { Array(held.keys) }
 
@@ -291,10 +385,10 @@ final class SessionCallTargets: CallTargets {
             session.warm.watch(hold.chat, token: hold.token) { [weak self] snapshot in
                 // Gone from the sidebar: nothing about it goes, under its old name or any.
                 guard snapshot.loaded, let self, let now = self.target(agentId) else { return }
-                self.onChange?(.from(snapshot, target: now))
+                self.onChange?(self.namedNow(.from(snapshot, target: now)))
             }
             // What it says now is the call's first sight of it: what was there already.
-            if hold.chat.snapshot.loaded { onChange?(.from(hold.chat.snapshot, target: target)) }
+            if hold.chat.snapshot.loaded { onChange?(namedNow(.from(hold.chat.snapshot, target: target))) }
         } else if let hold = held.removeValue(forKey: agentId) {
             session.warm.release(hold.chat, token: hold.token, opened: false)
         }

@@ -8,10 +8,8 @@ import androidx.navigation.toRoute
 import androidx.navigation.NavDestination.Companion.hasRoute
 import com.slopus.happy.call.CallController
 import com.slopus.happy.call.CallScreen
-import com.slopus.happy.conversation.WorkChoice
 import com.slopus.happy.ui.HomeRoute
 import com.slopus.happy.ui.conversation.ConversationRoute
-import com.slopus.happy.ui.conversation.composeConversation
 import com.slopus.happy.ui.conversation.openConversationInPlace
 import com.slopus.happy.ui.conversation.shownConversation
 import com.slopus.happy.ui.tablet.LocalMainPanel
@@ -25,9 +23,8 @@ import com.slopus.happy.ui.tablet.MainPanelOpener
  * whenever the top changes, and its tools open a conversation of
  * [connectionId] in place of one on top, or over anything else
  * ([openConversationInPlace]); on a tablet's split, as the sidebar opens
- * one, the main panel's new root ([MainPanel.opener]). New work opens as
- * compose opens it ([composeConversation]); back pops one page and home
- * pops to [HomeRoute], as the system's back and the sidebar do.
+ * one, the main panel's new root ([MainPanel.opener]). Back pops one page
+ * and home pops to [HomeRoute], as the system's back and the sidebar do.
  */
 @Composable
 fun CallScreenEffect(calls: CallController, nav: NavHostController, connectionId: String?) {
@@ -57,12 +54,6 @@ internal fun callScreen(nav: NavHostController, connectionId: String?, panel: Ma
         val connection = connectionId ?: return
         val go = panel?.opener ?: MainPanelOpener.Push
         go.open(MainPanelKey.conversation(agentId)) { nav.openConversationInPlace(connection, agentId) }
-    }
-
-    override fun compose(choice: WorkChoice) {
-        val connection = connectionId ?: return
-        val go = panel?.opener ?: MainPanelOpener.Push
-        go.open(null) { nav.composeConversation(connection, choice = choice) }
     }
 
     override fun back(): Boolean {

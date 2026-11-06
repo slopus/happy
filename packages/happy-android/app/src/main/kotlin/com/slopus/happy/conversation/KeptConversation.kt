@@ -81,7 +81,10 @@ data class KeptConversation(
             put("content", JsonArray(message.content.map(::blockJson)))
             message.status?.let { put("status", it) }
             message.runId?.let { put("runId", it) }
-            putJsonObject("metadata") { message.senderAgentId?.let { put("senderAgentId", it) } }
+            putJsonObject("metadata") {
+                message.senderAgentId?.let { put("senderAgentId", it) }
+                message.userId?.let { put("userId", it) }
+            }
             message.failure?.let { put("failure", it) }
             message.error?.let { put("error", it) }
         }

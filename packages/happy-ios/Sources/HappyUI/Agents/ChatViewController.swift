@@ -2328,13 +2328,6 @@ extension ChatViewController {
     /// The model, account and effort its next message goes with.
     var callMode: AgentWire.Mode? { mode }
 
-    /// New work as the call chose it: its panel shows the choice.
-    func choose(newWork choice: NewTask.Choice) {
-        guard creating, let newTask else { return }
-        newTask.choice = choice
-        newWorkPanel?.choice = choice
-    }
-
     /// The model picker's pick, made by the call: the chips show it
     /// at once, and the conversation's next message goes with it.
     func pickFromCall(_ next: AgentWire.Mode) async {

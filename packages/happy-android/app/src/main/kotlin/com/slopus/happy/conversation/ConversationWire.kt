@@ -354,6 +354,8 @@ data class Message(
     val status: String? = null,
     val runId: String? = null,
     val senderAgentId: String? = null,
+    /** On a team's computer, the member who wrote a person's message (`metadata.userId`, named by `GET /v0/users`). */
+    val userId: String? = null,
     /** An error service message's typed failure, kept as sent. */
     val failure: JsonObject? = null,
     val error: JsonObject? = null,
@@ -371,6 +373,7 @@ data class Message(
                 status = o["status"].str,
                 runId = o["runId"].str,
                 senderAgentId = o["metadata"].obj?.get("senderAgentId").str,
+                userId = o["metadata"].obj?.get("userId").str,
                 failure = o["failure"].obj,
                 error = o["error"].obj,
             )

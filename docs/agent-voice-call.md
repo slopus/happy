@@ -483,9 +483,9 @@ What you know comes from {{initialConversationContext}} (JSON) and from contextu
 
 Tools:
 - listSessions: find conversations, with when each last did something; query is a case-insensitive substring of the title.
-- getSessionContext: read a conversation before you summarise it: its last five turns (a message still waiting for an answer among them), when the person last wrote and the agent last replied, the workspace it runs in, its model and effort, and the models and efforts it can switch to.
+- getSessionContext: read a conversation before you summarise it: its last five turns (a message still waiting for an answer among them), when the person last wrote and the agent last replied, the workspace it runs in, its model and effort, and the models and efforts it can switch to. On a team, several people may write in one conversation: userBy and by say who wrote each message, "the person" being the one on this call.
 - openSession: show a conversation on the person's screen.
-- newWork: open a new task or a new bot on the screen, as the compose button does. A new session or conversation is a task unless the person asks for a bot. It is empty until its first message, which makes it.
+- newWork: start a new task or a new bot, as the compose button does, without opening it: the screen stays as it is. A new session or conversation is a task unless the person asks for a bot. It is made on the computer by its first message; open it with openSession only if the person asks to see it.
 - goBack: go back one screen. goHome: go to the home screen.
 - sendMessage: send words to a conversation's agent.
 
@@ -500,8 +500,8 @@ Sending:
 
 Rules:
 - Only say something happened if its tool said so. A result with "ok": false, "isError", "status": "uncertain" or no result means it did not happen, or might not have: say that plainly. Never claim success after an error.
-- Change the screen (openSession, newWork, goBack, goHome) only when the person asks to.
-- openSession, newWork, goBack and sendMessage take the latest focusRevision you have seen: from the context, the newest focus event or the last tool result. If a tool says the screen changed, use the newest focusRevision before you retry.
+- Change the screen (openSession, goBack, goHome) only when the person asks to.
+- openSession, goBack and sendMessage take the latest focusRevision you have seen: from the context, the newest focus event or the last tool result. If a tool says the screen changed, use the newest focusRevision before you retry.
 - Updates need no answer of their own. Use what they say when the person asks, or when it bears on what you are saying.
 - Times come as "ago" (say that) and "at" (the person's local time, for when they ask exactly).
 - You cannot approve permissions or answer an agent's questions. When a conversation needs input, tell the person to answer it in the app.
@@ -546,7 +546,7 @@ the code differ.
 {
   "type": "client",
   "name": "getSessionContext",
-  "description": "Read one conversation: whether it is working or needs the person, and its last five turns, each the person's message and the agent's last words, or as much of the pair as there is; the person's latest message, if nothing has answered it yet, is the fifth (pendingUserMessage). It doesn't open the conversation or change what you hear from.",
+  "description": "Read one conversation: whether it is working or needs the person, and its last five turns, each the person's message and the agent's last words, or as much of the pair as there is; the person's latest message, if nothing has answered it yet, is the fifth (pendingUserMessage). On a team, who wrote each message (userBy, by). It doesn't open the conversation or change what you hear from.",
   "expects_response": true,
   "response_timeout_secs": 10,
   "parameters": {
@@ -635,7 +635,7 @@ the code differ.
 {
   "type": "client",
   "name": "newWork",
-  "description": "Open new work on the person's screen, as the app's compose button does: an empty conversation that its first message makes a task (what a new session or conversation is) or a bot. Nothing is made on the computer and nothing is sent: send its first message with sendMessage to the targetRef this returns, and only when the person asks you to send it.",
+  "description": "Start new work as the app's compose button does, without opening it or changing the screen: a task (what a new session or conversation is) or a bot, made on the computer by its first message. Nothing is sent: send that message with sendMessage to the targetRef this returns, only when the person asks you to send it. Until then it isn't listed; openSession shows it if the person asks to see it.",
   "expects_response": true,
   "response_timeout_secs": 10,
   "parameters": {
@@ -652,15 +652,10 @@ the code differ.
       "name": {
         "type": "string",
         "description": "The name the person gave it; omit for its first message to name it."
-      },
-      "focusRevision": {
-        "type": "integer",
-        "description": "The latest focusRevision you have seen."
       }
     },
     "required": [
-      "kind",
-      "focusRevision"
+      "kind"
     ]
   }
 }
@@ -708,12 +703,12 @@ What the phone answers (JSON in the tool result):
 | Tool | Success | Refusal (`isError`) |
 | --- | --- | --- |
 | listSessions | `{"sessions":[{targetRef,title,kind,status,parents?}],"nextCursor"?}`; `kind` is `bot`, `task`, `subtask` or `conversation` | query or cursor not a string, a cursor it didn't give |
-| getSessionContext | `{title,parents,working,needsInput,turns:[{user?,assistant?,ended,error?,truncated?}],olderTurns,pendingUserMessage?:{text,delivery?,truncated?}}` | no such conversation (or not listed now), can't be read now |
+| getSessionContext | `{title,parents,working,needsInput,turns:[{user?,userBy?,assistant?,ended,error?,truncated?}],olderTurns,pendingUserMessage?:{text,by?,delivery?,truncated?}}` | no such conversation (or not listed now), can't be read now |
 | openSession | `{"opened":true,"targetRef":…,"focusRevision":…}`, the revision the next step takes | stale focus, no such conversation, didn't open |
 | listSessions (rows) | each row also `workspace?` and `lastActivity?:{ago,at}`, and the page `now` | |
-| getSessionContext (more) | also `lastUserMessage?`, `lastAgentReply?`, `workspace?`, `model?:{id,name,effort}`, `models?:[{id,name,efforts}]` | |
+| getSessionContext (more) | also `lastUserMessage?:{ago,at,by?}`, `lastAgentReply?`, `workspace?`, `model?:{id,name,effort}`, `models?:[{id,name,efforts}]` | |
 | sendMessage | `{"status":"queued","targetRef":…,"delivery":"on the person's device, not confirmed delivered or read"}`, with `model` and `effort` when it switched them | `{"status":"uncertain",…}` after 8 s; stale focus; can't take a message; waits for the person; empty; over 8 KiB; call ended; a model or effort it doesn't offer, with the `models` it does (nothing is sent) |
-| newWork | `{"opened":true,"targetRef":…,"kind":"task"\|"bot","title":…,"focusRevision":…,"sent":false}` | stale focus; kind not `task` or `bot`; didn't open |
+| newWork | `{"started":true,"targetRef":…,"kind":"task"\|"bot","title":…,"sent":false}`; the screen and focus stay as they were | kind not `task` or `bot`; call ended |
 | goBack | `{"home":…,"focusRevision":…,"title":…\|null,"parents"?,"targetRef"?}`: where it landed | stale focus; at home, nothing to go back to; an alert is open |
 | goHome | `{"home":true,"focusRevision":…,"title":null}` | an alert is open (iOS) |
 
@@ -736,14 +731,29 @@ shown account that offers it, at the effort asked for or the model's own
 default, and its screen's chips show it at once. The switch stays for the
 conversation's next messages, as a pick does.
 
-**New work** (`newWork`) is compose's own screen (iOS `NewWork.chat` over
-`Store.newTask`, Android `composeConversation`), chosen as a task or a bot
-and named, put where `openSession` puts a conversation; the keyboard stays
-down. Nothing is made and nothing sent: the sidebar lists it once its first
-message makes it, the same way the composer's first send does. Until then
-the call reaches it by the `targetRef` `newWork` gave, or that a `focus`
-gives (compose opened by hand counts too), and `sendMessage` to it sends its
-first message through its own screen. "A new session" is a task.
+**New work** (`newWork`) is compose's own (iOS `NewTask`, Android
+`NewTask`), chosen as a task or a bot and named, started off screen: no
+screen opens and the focus stays where it was. Its conversation is the
+call's (on Android the connection's one of its agent, held by the call).
+Nothing is made and nothing sent: its first message, sent with
+`sendMessage` to the `targetRef` `newWork` gave, makes it on the computer
+the way the composer's first send does, and the sidebar lists it from then
+on under the same reference. Compose's own unsent work is left alone.
+`openSession` shows it only when the person asks: before its first message
+on compose's own screen, which takes it over (iOS) or shares its
+conversation (Android). Compose opened by hand is reached too, by the ref a
+`focus` gives. "A new session" is a task. Left unsent, it ends with the
+call and never existed anywhere but the phone; a first message on its way
+when the call ends is still made and delivered.
+
+**Who wrote it.** On a team's computer several people may write in one
+conversation. The computer records the member who wrote each of the
+person's messages (`metadata.userId`, happy-agent 154d9b570) and names them
+through `GET /v0/users`. Reads say who: `userBy` on a turn, `by` on
+`pendingUserMessage` and on `lastUserMessage`. The one on the call is "the
+person"; a member the computer doesn't name is "a teammate". Outside a team
+nothing has an author and none of these appear. The phone asks for each
+member's name once per call, in the read itself.
 
 **Back and home** are the system's: `goBack` closes what is presented over
 the app (iOS: a sheet's own stack goes back first; an alert is never

@@ -70,6 +70,8 @@ sealed interface ConversationRow {
         val createdAt: Long = 0,
         /** Shown whole: a long one is cut at its first lines until tapped open ([com.slopus.happy.ui.conversation.UserFold]). */
         val opened: Boolean = false,
+        /** On a team's computer, the member who wrote it, by user ID; null for one still on its way and outside a team. */
+        val author: String? = null,
     ) : ConversationRow
 
     /**
@@ -336,7 +338,7 @@ class ConversationRowBuilder(
                 val pictures = message.content.filterIsInstance<Block.Image>()
                 if (text.isEmpty() && pictures.isEmpty()) return emptyList()
                 val delivery = if (message.status == "pending") Delivery.Pending else Delivery.Sent
-                return listOf(ConversationRow.User("$id:user", id, text, parseMarkdown(text, hasPage), pictures, delivery, message.createdAt))
+                return listOf(ConversationRow.User("$id:user", id, text, parseMarkdown(text, hasPage), pictures, delivery, message.createdAt, author = message.userId))
             }
             val rows = ArrayList<ConversationRow>()
             message.content.forEachIndexed { index, block ->

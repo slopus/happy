@@ -92,14 +92,18 @@ public struct ChatItem: Equatable, Sendable, Identifiable {
     /// every word that arrives. Zero for an item not stamped, or changed
     /// since (any change clears it): compared field by field.
     public private(set) var revision: UInt64 = 0
+    /// On a team's computer, the member who wrote a person's message, by
+    /// their user ID; nil for one still on its way and outside a team.
+    public var author: String? { didSet { revision = 0 } }
 
-    public init(id: String, role: Role, pieces: [Piece], delivery: Delivery, turn: String? = nil, time: Double? = nil) {
+    public init(id: String, role: Role, pieces: [Piece], delivery: Delivery, turn: String? = nil, time: Double? = nil, author: String? = nil) {
         self.id = id
         self.role = role
         self.pieces = pieces
         self.delivery = delivery
         self.turn = turn
         self.time = time
+        self.author = author
     }
 
     /// This item stamped as a making of its own.
@@ -122,7 +126,7 @@ public struct ChatItem: Equatable, Sendable, Identifiable {
 
     public static func == (lhs: ChatItem, rhs: ChatItem) -> Bool {
         if lhs.revision != 0, lhs.revision == rhs.revision { return true }
-        return lhs.id == rhs.id && lhs.role == rhs.role && lhs.pieces == rhs.pieces && lhs.delivery == rhs.delivery && lhs.turn == rhs.turn && lhs.time == rhs.time
+        return lhs.id == rhs.id && lhs.role == rhs.role && lhs.pieces == rhs.pieces && lhs.delivery == rhs.delivery && lhs.turn == rhs.turn && lhs.time == rhs.time && lhs.author == rhs.author
     }
 
     /// Stamps unique across the app, so items of two conversations are never
@@ -1852,6 +1856,7 @@ public actor Conversation {
         var role: ChatItem.Role
         var delivery: ChatItem.Delivery
         var time: Double?
+        var author: String?
         var turn: String?
     }
 
@@ -2094,6 +2099,7 @@ public actor Conversation {
         let agentRole = role == .agent
         let delivery: ChatItem.Delivery = role == .user && message.status == "pending" ? .pending : .sent
         let time = role == .user ? message.createdAt : nil
+        let author = message.role == "user" ? message.metadata?.userId : nil
         let streaming = made.streaming || message.status == "streaming"
         var pieces: [ChatItem.Piece] = []
         // The words before the first call keep the message's ID; each run
@@ -2105,12 +2111,12 @@ public actor Conversation {
         var proposedBefore: Set<String> = []
         func flush(next: String) {
             if !pieces.isEmpty {
-                let key = SegmentKey(blocks: segmentBlocks, proposed: proposedBefore, manager: manager, streaming: streaming, role: role, delivery: delivery, time: time, turn: turn)
+                let key = SegmentKey(blocks: segmentBlocks, proposed: proposedBefore, manager: manager, streaming: streaming, role: role, delivery: delivery, time: time, author: author, turn: turn)
                 let item: ChatItem
                 if !segmentLayout, let kept = old?.segments[segment], kept.key == key {
                     item = kept.item
                 } else {
-                    item = ChatItem(id: segment, role: role, pieces: pieces, delivery: delivery, turn: turn, time: time).stamped()
+                    item = ChatItem(id: segment, role: role, pieces: pieces, delivery: delivery, turn: turn, time: time, author: author).stamped()
                 }
                 // Made from shown media, which may move: made again each time.
                 if !segmentLayout { made.segments[segment] = (key, item) }

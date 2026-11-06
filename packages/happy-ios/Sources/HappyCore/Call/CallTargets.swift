@@ -144,8 +144,13 @@ public struct CallMessage: Equatable, Sendable {
     public var delivery: Delivery?
     /// The agent's run it is of (`ChatItem.turn`), for the agent's words.
     public var turn: String?
+    /// On a team's computer, the member who wrote a person's message, by
+    /// user ID (`ChatItem.author`), and as the call names them (`named`).
+    public var author: String?
+    public var by: String?
 
-    public init(id: String, role: Role, text: String, time: Double? = nil, final: Bool = true, delivery: Delivery? = nil, turn: String? = nil) {
+    public init(id: String, role: Role, text: String, time: Double? = nil, final: Bool = true, delivery: Delivery? = nil, turn: String? = nil,
+                author: String? = nil, by: String? = nil) {
         self.id = id
         self.role = role
         self.text = text
@@ -153,6 +158,8 @@ public struct CallMessage: Equatable, Sendable {
         self.final = final
         self.delivery = delivery
         self.turn = turn
+        self.author = author
+        self.by = by
     }
 }
 
@@ -169,14 +176,20 @@ public struct CallTurn: Equatable, Sendable {
     public var error: String?
     /// When it ended, in ms; nil where that isn't known.
     public var endedAt: Double?
+    /// Who wrote `user`, as `CallMessage.author` and `by` have it.
+    public var userAuthor: String?
+    public var userBy: String?
 
-    public init(id: String, user: String? = nil, reply: String? = nil, ended: String = "completed", error: String? = nil, endedAt: Double? = nil) {
+    public init(id: String, user: String? = nil, reply: String? = nil, ended: String = "completed", error: String? = nil, endedAt: Double? = nil,
+                userAuthor: String? = nil, userBy: String? = nil) {
         self.id = id
         self.user = user
         self.reply = reply
         self.ended = ended
         self.error = error
         self.endedAt = endedAt
+        self.userAuthor = userAuthor
+        self.userBy = userBy
     }
 }
 
@@ -231,7 +244,7 @@ public struct CallTargetState: Equatable, Sendable {
     public static func from(_ snapshot: ChatSnapshot, target: CallTarget) -> CallTargetState {
         var messages: [CallMessage] = []
         var turns: [CallTurn] = []
-        var users: [String: String] = [:]
+        var users: [String: (text: String, author: String?)] = [:]
         var failures: [String: String] = [:]
         var lastUser: CallMessage?
         var lastUserTurn: String?
@@ -246,9 +259,9 @@ public struct CallTargetState: Equatable, Sendable {
                 case .pending, .sent: .accepted
                 case .failed: .failed
                 }
-                let message = CallMessage(id: item.id, role: .user, text: text, time: item.time, delivery: delivery)
+                let message = CallMessage(id: item.id, role: .user, text: text, time: item.time, delivery: delivery, author: item.author)
                 messages.append(message)
-                if let turn = item.turn, users[turn] == nil { users[turn] = text }
+                if let turn = item.turn, users[turn] == nil { users[turn] = (text, item.author) }
                 lastUser = message
                 lastUserTurn = item.turn
             case .agent:
@@ -259,8 +272,8 @@ public struct CallTargetState: Equatable, Sendable {
                 if let turn = item.turn { failures[turn] = failure.reason }
             case .turnEnd(let end):
                 guard let turn = item.turn else { continue }
-                turns.append(CallTurn(id: turn, user: users[turn], reply: end.copyText, ended: end.reason,
-                                      error: end.reason == "error" ? failures[turn] : nil, endedAt: end.endedAt))
+                turns.append(CallTurn(id: turn, user: users[turn]?.text, reply: end.copyText, ended: end.reason,
+                                      error: end.reason == "error" ? failures[turn] : nil, endedAt: end.endedAt, userAuthor: users[turn]?.author))
             case .question(let ask):
                 if ask.phase != .answered { needsInput = true }
             default:
@@ -293,6 +306,30 @@ public struct CallTargetState: Equatable, Sendable {
 }
 
 extension CallTargetState {
+    /// The members who wrote its messages, by user ID, for `named`.
+    public var authors: Set<String> {
+        Set(messages.compactMap(\.author) + turns.compactMap(\.userAuthor))
+    }
+
+    /// With who wrote each of the person's messages said: "the person" for
+    /// `me` (the one on the call), a member by the name in `names`, else
+    /// "a teammate". Outside a team nothing has an author, and nothing changes.
+    public func named(_ names: [String: String], me: String?) -> CallTargetState {
+        func name(_ id: String?) -> String? {
+            guard let id else { return nil }
+            if id == me { return "the person" }
+            return names[id].flatMap { $0.isEmpty ? nil : CallTarget.clean($0) } ?? "a teammate"
+        }
+        var state = self
+        for index in state.messages.indices { state.messages[index].by = name(state.messages[index].author) }
+        for index in state.turns.indices { state.turns[index].userBy = name(state.turns[index].userAuthor) }
+        if var pending = state.unanswered {
+            pending.by = name(pending.author)
+            state.unanswered = pending
+        }
+        return state
+    }
+
     /// What the agent itself does in a run: its words, a tool call, the
     /// run's end or failure.
     static func isStep(_ item: ChatItem) -> Bool {

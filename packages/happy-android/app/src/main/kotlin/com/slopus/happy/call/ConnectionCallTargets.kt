@@ -1,6 +1,8 @@
 package com.slopus.happy.call
 
 import com.slopus.happy.agent.AgentSession
+import com.slopus.happy.agent.teamUsers
+import com.slopus.happy.conversation.NewTask
 import com.slopus.happy.conversation.Conversation
 import com.slopus.happy.conversation.FailureReason
 import com.slopus.happy.conversation.HeldConversations
@@ -8,7 +10,6 @@ import com.slopus.happy.conversation.RowTypesetter
 import com.slopus.happy.conversation.ConversationState
 import com.slopus.happy.conversation.WorkChoice
 import com.slopus.happy.conversation.WorkKind
-import kotlinx.coroutines.delay
 import com.slopus.happy.ui.conversation.makeConversation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,13 +20,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
-/** What a call needs of the screen: which conversation is on top, ways to open another or new work, and back and home. */
+/** What a call needs of the screen: which conversation is on top, a way to open another, and back and home. */
 interface CallScreen {
     /** The conversation on top of the stack, if one is: new work's too, once its screen holds it. */
     val focused: String?
     fun open(agentId: String)
-    /** New work, as compose opens it, with [choice] made. */
-    fun compose(choice: WorkChoice)
     /** Pops the page on top; false at home, with nothing to go back to. */
     fun back(): Boolean
     val atHome: Boolean
@@ -39,9 +38,12 @@ interface CallScreen {
  * followed ones say, the connection's one conversation of each
  * ([AgentSession.conversations]), the same one its screen shows. A send
  * made here shows there at once, goes once and is kept once; the
- * composer's draft is never touched ([Conversation.sendAs]). A call reads
- * what comes, but never marks it read: that is the screen's. Runs on the
- * main thread.
+ * composer's draft is never touched ([Conversation.sendAs]). New work the
+ * call starts is compose's ([NewTask]), off screen, held by the call as that
+ * one conversation until its first message makes it; a screen that opens it
+ * shares it. A call reads what comes, but never marks it read: that is the
+ * screen's. On a team, who wrote each message is named as the computer names
+ * its members. Runs on the main thread.
  */
 class ConnectionCallTargets(
     private val session: AgentSession,
@@ -56,6 +58,11 @@ class ConnectionCallTargets(
     }
 
     private val held = HashMap<String, Held>()
+    /** New work the call started, off screen, until it is let go with the call. */
+    private val started = HashMap<String, Held>()
+    /** Team members' names by user ID, once the computer has given them; those asked for already, named or not. */
+    private val names = HashMap<String, String>()
+    private val asked = HashSet<String>()
     private val watching = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     /** A followed conversation changed. */
     var onChange: ((CallTargetState) -> Unit)? = null
@@ -66,6 +73,9 @@ class ConnectionCallTargets(
         closed = true
         for (hold in held.values) release(hold)
         held.clear()
+        // Let go of, they close once their first message, if any, has gone ([HeldConversations]).
+        for (hold in started.values) release(hold)
+        started.clear()
         watching.coroutineContext[Job]?.cancel()
         onChange = null
     }
@@ -78,21 +88,45 @@ class ConnectionCallTargets(
 
     override suspend fun state(agentId: String): CallTargetState? = onMain {
         val target = target(agentId) ?: run {
-            // New work its screen holds: empty until its first message, which it takes.
+            // New work the call started or its screen holds: empty until its first message, which it takes.
             val draft = unmade(agentId) ?: return@onMain null
             val state = draft.state.value
-            return@onMain withModels(CallTargetState.from(state, draftTarget(agentId, state), failureText).copy(writable = state.error == null), state)
+            return@onMain named(withModels(CallTargetState.from(state, draftTarget(agentId, state), failureText).copy(writable = state.error == null), state))
         }
         // Held by the call, its screen or anyone: as it is now.
-        session.conversations.peek(agentId)?.state?.value?.takeIf { it.loaded }?.let { return@onMain withModels(CallTargetState.from(it, target, failureText), it) }
+        session.conversations.peek(agentId)?.state?.value?.takeIf { it.loaded }?.let { return@onMain named(withModels(CallTargetState.from(it, target, failureText), it)) }
         // One bounded read: about three seconds for its first page.
         val hold = make(agentId)
         try {
             val state = withTimeoutOrNull(READ_MILLIS) { hold.conversation.state.first { it.loaded } } ?: return@onMain null
-            withModels(CallTargetState.from(state, target, failureText), state)
+            named(withModels(CallTargetState.from(state, target, failureText), state))
         } finally {
             release(hold)
         }
+    }
+
+    /**
+     * [state] with who wrote each message said, the members it doesn't know yet asked for once
+     * (`GET /v0/users`). Outside a team no message has an author, and nothing is asked.
+     */
+    private suspend fun named(state: CallTargetState): CallTargetState {
+        val me = session.catalog.value.userId
+        val missing = state.authors - names.keys - asked - setOfNotNull(me)
+        if (missing.isNotEmpty()) {
+            asked += missing
+            // Asked again next time when it fails: until then they are "a teammate".
+            runCatching { session.client.teamUsers(missing.toList()) }
+                .onSuccess { users -> for (user in users) names[user.id] = user.name }
+                .onFailure { asked -= missing }
+        }
+        return state.named(names, me)
+    }
+
+    /** [named] with the names known now, for an update that can't wait: the ones it lacks are asked for, for the next. */
+    private fun namedNow(state: CallTargetState): CallTargetState {
+        val me = session.catalog.value.userId
+        if ((state.authors - names.keys - asked - setOfNotNull(me)).isNotEmpty()) watching.launch { named(state) }
+        return state.named(names, me)
     }
 
     /** [read] with the model its next message goes with and the models the pickers offer, once the computer's are read. */
@@ -102,9 +136,9 @@ class ConnectionCallTargets(
         return read.copy(models = CallModel.options(catalog), mode = mode?.let { CallMode.of(it, catalog) })
     }
 
-    /** New work under [agentId] whose screen holds it, not made yet. */
+    /** New work under [agentId] the call started or a screen holds, not made yet. */
     private fun unmade(agentId: String): Conversation? =
-        session.conversations.peek(agentId)?.takeIf { it.state.value.newWork != null && target(agentId) == null }
+        (started[agentId]?.conversation ?: session.conversations.peek(agentId))?.takeIf { it.state.value.newWork != null && target(agentId) == null }
 
     /** New work as the call names it: its name, else home's "New Task" or "New Bot" until its first message names it. */
     private fun draftTarget(agentId: String, state: ConversationState): CallTarget {
@@ -119,28 +153,16 @@ class ConnectionCallTargets(
     }
 
     /**
-     * Compose's new work, chosen as the call asks, on screen as compose puts it; its conversation once the screen
-     * holds it. Already in front, unmade, it only takes the choice, as compose's own does.
+     * New work as compose starts it ([NewTask]), chosen as the call asks, off screen: what is in front stays. Its
+     * conversation is the connection's one of its agent, held by the call, which a screen opening it shares.
      */
     override suspend fun newWork(kind: CallTarget.Kind, name: String): CallTarget? = onMain {
         if (closed) return@onMain null
-        val screen = screen() ?: return@onMain null
+        val task = NewTask.make()
         val choice = WorkChoice(if (kind == CallTarget.Kind.Bot) WorkKind.Bot else WorkKind.Task, name)
-        screen.focused?.let(::unmade)?.let { shown ->
-            shown.setChoice(choice)
-            return@onMain draftTarget(shown.agentId, shown.state.value.copy(newWork = shown.state.value.newWork?.copy(choice = choice)))
-        }
-        val before = screen.focused
-        screen.compose(choice)
-        val agentId = withTimeoutOrNull<String>(OPEN_MILLIS) {
-            var shown = screen.focused
-            while (shown == null || shown == before || unmade(shown) == null) {
-                delay(50)
-                shown = screen.focused
-            }
-            shown
-        } ?: return@onMain null
-        unlisted(agentId)
+        val hold = Held(session.conversations.hold(task.agentId) { session.makeConversation(task.agentId, typesetter, newTask = task, initialChoice = choice) })
+        started[task.agentId] = hold
+        draftTarget(task.agentId, hold.conversation.state.value)
     }
 
     override suspend fun back(): CallScreenMove = onMain {
@@ -160,7 +182,9 @@ class ConnectionCallTargets(
     override suspend fun focused(): String? = onMain { focusedNow }
 
     override suspend fun open(agentId: String): Boolean = onMain {
-        if (closed || target(agentId) == null) return@onMain false
+        if (closed) return@onMain false
+        // New work the call started: shown as it is, unsent or being made, the screen sharing its conversation.
+        if (target(agentId) == null && started[agentId] == null) return@onMain false
         val screen = screen() ?: return@onMain false
         if (screen.focused != agentId) screen.open(agentId)
         true
@@ -169,7 +193,7 @@ class ConnectionCallTargets(
     override suspend fun send(agentId: String, text: String, id: String, change: CallModeChange?): CallSendOutcome = onMain {
         if (closed) return@onMain CallSendOutcome.Refused("The call has ended.")
         val target = target(agentId) ?: run {
-            // New work: its first message makes it, in the conversation its screen holds.
+            // New work: its first message makes it, in the conversation the call or its screen holds.
             val draft = unmade(agentId) ?: return@onMain CallSendOutcome.Refused("That new work was closed before anything was sent.")
             if (draft.has(id)) return@onMain CallSendOutcome.Queued
             switch(draft, change)
@@ -223,7 +247,7 @@ class ConnectionCallTargets(
             hold.watch = watching.launch {
                 hold.conversation.state.collect { state ->
                     val target = target(agentId) ?: return@collect
-                    if (state.loaded) onChange?.invoke(CallTargetState.from(state, target, failureText))
+                    if (state.loaded) onChange?.invoke(namedNow(CallTargetState.from(state, target, failureText)))
                 }
             }
         } else {
@@ -244,7 +268,5 @@ class ConnectionCallTargets(
 
     private companion object {
         const val READ_MILLIS = 3_000L
-        /** How long new work's screen has to come up and hold its conversation. */
-        const val OPEN_MILLIS = 3_000L
     }
 }

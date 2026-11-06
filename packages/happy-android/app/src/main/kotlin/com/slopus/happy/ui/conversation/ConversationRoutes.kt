@@ -97,9 +97,6 @@ import kotlinx.serialization.Serializable
     val prefill: String? = null,
     /** New work opens with "+"'s sheet up (search's "New task with a picture", happy-ios 7a605f6ce). */
     val attach: Boolean = false,
-    /** New work chosen already, as a voice call's `newWork` opens it: `task` or `bot`, and its name. */
-    val kind: String? = null,
-    val name: String? = null,
 )
 
 /** The connection's Chief of Staff chat, found when opened, with [prefix] waiting in its composer. */
@@ -173,15 +170,14 @@ fun NavHostController.openChiefOfStaff(connectionId: String, prefix: String) {
  * A new, empty chat: pushed from home; from a chat it replaces that chat
  * (animated by the NavHost's transition), so Back goes home.
  */
-fun NavHostController.composeConversation(connectionId: String, attach: Boolean = false, choice: WorkChoice? = null) {
+fun NavHostController.composeConversation(connectionId: String, attach: Boolean = false) {
     val current = currentBackStackEntry
-    val route = ConversationRoute(connectionId, attach = attach, kind = choice?.kind?.let { if (it == WorkKind.Bot) "bot" else "task" }, name = choice?.name)
     if (current?.destination?.hasRoute<ConversationRoute>() == true) {
-        navigate(route) {
+        navigate(ConversationRoute(connectionId, attach = attach)) {
             popUpTo(current.destination.id) { inclusive = true }
         }
     } else {
-        navigate(route)
+        navigate(ConversationRoute(connectionId, attach = attach))
     }
 }
 
@@ -325,13 +321,11 @@ internal class ConversationHolder(
             saved.get<String>(AGENT) ?: (unsent?.task?.agentId ?: ConversationApi.clientId()).also { saved[AGENT] = it },
             saved.get<String>(MUTATION) ?: (unsent?.task?.mutationId ?: ConversationApi.clientId()).also { saved[MUTATION] = it },
         )
-        // What a voice call chose wins over the work left unsent, whose words it keeps.
-        val asked = route.kind?.takeIf { saved.get<String>(KIND) == null }?.let { WorkChoice(if (it == "bot") WorkKind.Bot else WorkKind.Task, route.name.orEmpty()) }
-        val choice = asked ?: unsent?.choice ?: WorkChoice(
+        val choice = unsent?.choice ?: WorkChoice(
             if (saved.get<String>(KIND) == WorkKind.Bot.name) WorkKind.Bot else WorkKind.Task,
             saved.get<String>(NAME).orEmpty(),
         )
-        (asked ?: unsent?.choice)?.let(::setChoiceSaved)
+        unsent?.let { setChoiceSaved(it.choice) }
         val agentId = route.agentId ?: task!!.agentId
         // The one a call holds, or a send still on its way when this chat was last left (new work's first message
         // too): the same conversation, so it shows and never goes twice.
