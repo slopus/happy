@@ -1,8 +1,9 @@
 import XCTest
 
 /// Happy Cloud end to end on a phone, against the live cloud: Connect to
-/// Happy Cloud, confirm, create an account in the browser, land on the
-/// cloud team's home, start a task and see its answer. Runs only with
+/// Happy Cloud, confirm, create an account in the browser, create a server
+/// in the picker, sign in to it without a page, land on its home, start a
+/// task and see its answer. Runs only with
 /// `TEST_RUNNER_HAPPY_CLOUD_E2E=1`; `TEST_RUNNER_HAPPY_CLOUD_EMAIL` and
 /// `TEST_RUNNER_HAPPY_CLOUD_PASSWORD` name the account it creates.
 @MainActor
@@ -77,7 +78,7 @@ final class HappyCloudUITests: XCTestCase {
         tree("4-auth-page", browser)
 
         // The auth server's page: Create account, then the form.
-        if let create = first([browser.links["Create an account"], app.links["Create an account"]], timeout: 20) {
+        if let create = first([browser.links["Create an account"], app.links["Create an account"], browser.links["Create account"], app.links["Create account"]], timeout: 20) {
             create.tap()
             Thread.sleep(forTimeInterval: 2)
         }
@@ -89,7 +90,7 @@ final class HappyCloudUITests: XCTestCase {
         for field in fields {
             let label = (field.label + " " + ((field.placeholderValue) ?? "")).lowercased()
             field.tap()
-            field.typeText(label.contains("name") && !label.contains("user") ? "iPhone Cloud" : email)
+            field.typeText(label.contains("mail") || label.contains("user") ? email : "iPhone Cloud")
         }
         for field in secure {
             field.tap()
@@ -101,34 +102,42 @@ final class HappyCloudUITests: XCTestCase {
         require(submit != nil, "no submit")
         submit?.tap()
 
-        // A team server meeting the person for the first time asks their name.
-        let named = app.alerts.textFields.firstMatch
-        if named.waitForExistence(timeout: 30) {
-            capture("7-name")
-            named.typeText("iPhone Cloud")
-            app.alerts.buttons["Continue"].tap()
-        }
+        let create = element("cloud-create")
+        require(create.waitForExistence(timeout: 30), "no picker after the account's sign-in")
+        capture("7-picker")
+        create.tap()
+        let name = element("cloud-create-name")
+        require(name.waitForExistence(timeout: 10), "no name field")
+        name.tap()
+        name.typeText("ios\(Int(Date().timeIntervalSince1970) % 1_000_000)")
+        Thread.sleep(forTimeInterval: 1.5)
+        capture("8-name")
+        element("cloud-create-save").tap()
+        // The server's own sign-in: iOS asks again, then no page.
+        let again = springboard.alerts.buttons["Continue"]
+        require(again.waitForExistence(timeout: 60), "no server sign-in consent")
+        again.tap()
 
         require(switcher.waitForExistence(timeout: 60), "no home after sign-in")
         Thread.sleep(forTimeInterval: 5)
-        capture("8-cloud-home")
-        tree("8-cloud-home", app)
+        capture("9-cloud-home")
+        tree("9-cloud-home", app)
 
         let compose = element("compose")
         require(compose.waitForExistence(timeout: 20), "no compose")
         compose.tap()
         let composer = app.textViews["composer"]
         require(composer.waitForExistence(timeout: 10), "no composer")
-        capture("9-new-task")
+        capture("10-new-task")
         composer.tap()
         composer.typeText("Reply with one short sentence: hello from Happy Cloud.")
         app.buttons["Send"].tap()
         Thread.sleep(forTimeInterval: 45)
-        capture("10-reply")
-        tree("10-reply", app)
+        capture("11-reply")
+        tree("11-reply", app)
         app.terminate()
         app.launch()
         Thread.sleep(forTimeInterval: 10)
-        capture("11-relaunch")
+        capture("12-relaunch")
     }
 }
