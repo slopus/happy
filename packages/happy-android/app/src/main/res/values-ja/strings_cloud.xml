@@ -17,7 +17,7 @@
     <string name="cloud_role_owner">オーナー</string>
     <string name="cloud_role_member">メンバー</string>
     <string name="cloud_create">新しいサーバーを作成</string>
-    <string name="cloud_create_detail">名前を選んでください。それがサーバーのアドレスになります。</string>
+    <string name="cloud_create_detail">名前を選んでください。サーバーはユーザー名のように @名前 で表示されます。</string>
     <string name="cloud_create_button">サーバーを作成</string>
     <string name="cloud_join">サーバーに参加</string>
     <string name="cloud_join_detail">サーバー名と、オーナーから受け取った招待コードを入力してください。</string>
@@ -28,7 +28,7 @@
     <string name="cloud_name_rules">3〜32 文字の英小文字・数字・ハイフン（先頭と末尾にハイフンは不可）。</string>
     <string name="cloud_name_checking">確認中…</string>
     <string name="cloud_name_available">%1$s は使用できます。</string>
-    <string name="cloud_name_taken">その名前は使われています。</string>
-    <string name="cloud_name_reserved">その名前は予約されています。</string>
+    <string name="cloud_name_taken">%1$s は使われています。</string>
+    <string name="cloud_name_reserved">%1$s は予約されています。</string>
     <string name="cloud_failed">問題が発生しました。もう一度お試しください。</string>
 </resources>

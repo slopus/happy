@@ -38,6 +38,14 @@ object HappyCloud {
         return origin.port == 443 && name.isNotEmpty() && '.' !in name && name != "accounts"
     }
 
+    /**
+     * How a person reads a Happy Cloud server's address: `@name`, like a
+     * username, until Happy Cloud has its own domain (accounts contract,
+     * Display). Null for any other server, which shows its host.
+     */
+    fun handle(server: String?, base: String? = this.base): String? =
+        if (isServer(server, base)) "@" + AgentOrigin.parse(server!!).host.removeSuffix(".$base") else null
+
     /** This person's connection to [server] already on the phone, if any: the open one first, else the oldest. */
     fun connection(accounts: List<AgentConnection>, server: String, open: String? = null): AgentConnection? =
         accounts.filter { it.server == server }.let { here -> here.firstOrNull { it.id == open } ?: here.minByOrNull { it.addedAt } }

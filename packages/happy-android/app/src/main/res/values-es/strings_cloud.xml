@@ -17,7 +17,7 @@
     <string name="cloud_role_owner">Propietario</string>
     <string name="cloud_role_member">Miembro</string>
     <string name="cloud_create">Crear un servidor nuevo</string>
-    <string name="cloud_create_detail">Elige un nombre. Será la dirección de tu servidor.</string>
+    <string name="cloud_create_detail">Elige un nombre. Tu servidor se verá como @nombre, como un nombre de usuario.</string>
     <string name="cloud_create_button">Crear servidor</string>
     <string name="cloud_join">Unirse a un servidor</string>
     <string name="cloud_join_detail">Introduce el nombre del servidor y el código de invitación que te dio su propietario.</string>
@@ -28,7 +28,7 @@
     <string name="cloud_name_rules">De 3 a 32 letras minúsculas, dígitos o guiones, sin guion al principio ni al final.</string>
     <string name="cloud_name_checking">Comprobando…</string>
     <string name="cloud_name_available">%1$s está disponible.</string>
-    <string name="cloud_name_taken">Ese nombre ya está en uso.</string>
-    <string name="cloud_name_reserved">Ese nombre está reservado.</string>
+    <string name="cloud_name_taken">%1$s ya está en uso.</string>
+    <string name="cloud_name_reserved">%1$s está reservado.</string>
     <string name="cloud_failed">Algo salió mal. Inténtalo de nuevo.</string>
 </resources>

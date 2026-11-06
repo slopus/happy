@@ -1090,10 +1090,10 @@ change its wire behaviour on Android alone.
   the servers' (same prefs file, keychain service `happy-cloud-account`); the
   account token only ever goes to the accounts API. Signed in, the + skips the
   question and shows the picker: "Your servers" (`GET /v1/servers`, the ones on
-  the phone checked; each titled by its `displayName` over `name.BASE`, with its
+  the phone checked; each titled by its `displayName` over `@name`, with its
   picture: the ThumbHash painted first, then the bytes from its `url`, which
   `CloudAccount.image` fetches with the account token only from the accounts
-  origin; no picture, the generated avatar its connection will have), "Create a new server" (a name with `.BASE` beside it,
+  origin; no picture, the generated avatar its connection will have), "Create a new server" (a name typed after an `@`,
   checked with `GET /v1/servers/availability` as the person pauses, then
   `POST /v1/servers`) and "Join a server" (name and invite code, `POST
   /v1/servers/join`). Picking, creating or joining one runs the team server
@@ -1102,6 +1102,10 @@ change its wire behaviour on Android alone.
   comes straight back. Each server is its own connection; one already here
   just opens. The addresses are the app's own, never typed or pasted, so no
   code and no `instanceId` check them.
+  People read a cloud server's address as `@name`, like a username, until
+  Happy Cloud has its own domain (`HappyCloud.handle`: the picker, create,
+  join, the server sign-in screen, the account menu); the URL is used as
+  before, only not shown. Connection diagnostics keep the real host.
 - **Sign-in** (`connection/ServerSignInFlow.kt`, `ServerAuth.kt`): `GET
   /v0/authentication` lists the methods, then OAuth authorization code + PKCE
   S256 in a Custom Tab (never a WebView), with RFC 8707 `resource` on

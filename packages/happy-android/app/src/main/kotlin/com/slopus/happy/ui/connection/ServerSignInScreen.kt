@@ -28,6 +28,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
+import com.slopus.happy.connection.HappyCloud
 import com.slopus.happy.connection.ServerAuthException
 import com.slopus.happy.connection.ServerSignInState
 import com.slopus.happy.ui.components.HappyTextField
@@ -188,8 +189,8 @@ fun ServerSignInScreen(
     }
 }
 
-/** An origin as people read it: its host, and port when not 443. */
-internal fun host(origin: String): String = origin.removePrefix("https://")
+/** An origin as people read it: a Happy Cloud server's `@name`, else its host, and port when not 443. */
+internal fun host(origin: String): String = HappyCloud.handle(origin) ?: origin.removePrefix("https://")
 
 internal fun failureText(reason: ServerAuthException.Reason): Int = when (reason) {
     ServerAuthException.Reason.InvalidAddress -> R.string.team_server_error_invalid_address

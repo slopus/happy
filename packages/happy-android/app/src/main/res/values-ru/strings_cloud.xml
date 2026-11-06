@@ -17,7 +17,7 @@
     <string name="cloud_role_owner">Владелец</string>
     <string name="cloud_role_member">Участник</string>
     <string name="cloud_create">Создать сервер</string>
-    <string name="cloud_create_detail">Выберите имя. Оно станет адресом сервера.</string>
+    <string name="cloud_create_detail">Выберите имя. Сервер будет виден как @имя, как имя пользователя.</string>
     <string name="cloud_create_button">Создать сервер</string>
     <string name="cloud_join">Присоединиться к серверу</string>
     <string name="cloud_join_detail">Введите имя сервера и код приглашения от его владельца.</string>
@@ -28,7 +28,7 @@
     <string name="cloud_name_rules">От 3 до 32 строчных латинских букв, цифр или дефисов; не начинается и не заканчивается дефисом.</string>
     <string name="cloud_name_checking">Проверка…</string>
     <string name="cloud_name_available">%1$s свободно.</string>
-    <string name="cloud_name_taken">Это имя занято.</string>
-    <string name="cloud_name_reserved">Это имя зарезервировано.</string>
+    <string name="cloud_name_taken">%1$s занято.</string>
+    <string name="cloud_name_reserved">%1$s зарезервировано.</string>
     <string name="cloud_failed">Что-то пошло не так. Попробуйте ещё раз.</string>
 </resources>

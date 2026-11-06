@@ -229,7 +229,7 @@ class ServerSignInFlow(
         // Kept as this member's: another's connection on this server is never reused.
         val userId = member ?: auth.check(origin, granted.access.value).let { (authenticated, userId) -> userId.takeIf { authenticated } }
             ?: throw ServerAuthException(ServerAuthException.Reason.Rejected)
-        val account = connections.addServer(origin, credential.copy(userId = userId), granted.access, fallbackName = origin.host, replacing = replacing)
+        val account = connections.addServer(origin, credential.copy(userId = userId), granted.access, fallbackName = HappyCloud.handle(origin.value) ?: origin.host, replacing = replacing)
         grant = null
         mutableState.value = ServerSignInState.Done(account)
         if (replacing != null && account.id != replacing) onReplaced(account.id)

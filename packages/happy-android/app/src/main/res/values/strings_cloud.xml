@@ -19,7 +19,7 @@
     <string name="cloud_role_owner">Owner</string>
     <string name="cloud_role_member">Member</string>
     <string name="cloud_create">Create a new server</string>
-    <string name="cloud_create_detail">Pick a name. It becomes your server\'s address.</string>
+    <string name="cloud_create_detail">Pick a name. People see your server as @name, like a username.</string>
     <string name="cloud_create_button">Create server</string>
     <string name="cloud_join">Join a server</string>
     <string name="cloud_join_detail">Enter the server\'s name and the invite code its owner gave you.</string>
@@ -30,7 +30,7 @@
     <string name="cloud_name_rules">3 to 32 lowercase letters, digits or hyphens, not starting or ending with a hyphen.</string>
     <string name="cloud_name_checking">Checking…</string>
     <string name="cloud_name_available">%1$s is available.</string>
-    <string name="cloud_name_taken">That name is taken.</string>
-    <string name="cloud_name_reserved">That name is reserved.</string>
+    <string name="cloud_name_taken">%1$s is taken.</string>
+    <string name="cloud_name_reserved">%1$s is reserved.</string>
     <string name="cloud_failed">Something went wrong. Try again.</string>
 </resources>

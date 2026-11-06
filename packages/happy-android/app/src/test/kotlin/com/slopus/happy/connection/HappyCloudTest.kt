@@ -43,6 +43,15 @@ class HappyCloudTest {
     }
 
     @Test
+    fun aServerReadsLikeAUsername() {
+        val base = "happy.computer"
+        assertEquals("@acme", HappyCloud.handle("https://acme.happy.computer", base))
+        assertNull(HappyCloud.handle("https://accounts.happy.computer", base))
+        assertNull(HappyCloud.handle("https://happy.acme.example", base))
+        assertNull(HappyCloud.handle(null, base))
+    }
+
+    @Test
     fun theOpenConnectionToAServerFirstThenTheOldest() {
         val acme = "https://acme.happy.computer"
         val accounts = listOf(connection("other", "https://beta.happy.computer"), connection("new", acme, 2), connection("old", acme, 1))
