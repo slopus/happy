@@ -80,7 +80,6 @@ final class AccountsBridge {
         let notifications: AnalyticsEvent.NotificationsState? = nil
         #endif
         return AnalyticsEvent.AppConfig(
-            appLanguage: .init(code: AppLocalization.language),
             notifications: notifications,
             agentsConnected: .init(account.agentConnections.accounts.filter { !$0.revoked }.count)
         )

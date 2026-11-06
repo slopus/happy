@@ -4,7 +4,7 @@ import HappyWire
 
 /// The events happy-ios may send, as `docs/analytics-catalog.json` lists
 /// them for `ios`. Every value is one of the catalog's closed words, a
-/// count, a bool, a version or a model id the schema checks; nothing here
+/// count, a bool or a version the schema checks; nothing here
 /// can carry text, an id, a name or an address. `AnalyticsCatalogContractTests`
 /// holds these enums to the JSON.
 public enum AnalyticsEvent: Equatable, Sendable {
@@ -12,8 +12,7 @@ public enum AnalyticsEvent: Equatable, Sendable {
     case chatFailureShown(kind: FailureKind, providerKind: ProviderKind?, isPool: Bool, target: ChatTarget, sessionClient: SessionClient)
     case chatFailureActionClicked(kind: FailureKind, action: FailureAction)
     case agentConnectionLost(transport: ConnectionTransport, code: ConnectionCode, outcome: ConnectionOutcome, duration: DurationBucket)
-    /// `repeatCount` is filled in by the throttle (`ErrorThrottle`).
-    case errorShown(area: ErrorArea, code: ErrorCode, repeatCount: Int = 0)
+    case errorShown(area: ErrorArea, code: ErrorCode)
     case appCrashed(process: CrashProcess, reason: CrashReason, crashedVersion: String?)
     case mobilePairingFailed(method: PairingMethod, start: PairingStart?, errorCode: PairingErrorCode)
     case signInFailed(method: SignInMethod, errorCode: SignInErrorCode)
@@ -21,15 +20,13 @@ public enum AnalyticsEvent: Equatable, Sendable {
     case paywallError(product: Product, errorCode: PaywallErrorCode)
 
     // MARK: Usage
-    case appOpened(launchCount: Int, isColdStart: Bool, config: AppConfig)
+    case appOpened(isColdStart: Bool, config: AppConfig)
     case messageSent(MessageSent)
-    case conversationCreated(source: ConversationSource, model: String?, modelProviderKind: ProviderKind?, effort: Effort?)
+    case conversationCreated(source: ConversationSource, modelFamily: ModelFamily?, modelProviderKind: ProviderKind?, effort: Effort?)
     case botCreated(source: BotSource, result: CreateResult, errorCode: CreateErrorCode?)
     case taskCreated(result: CreateResult, errorCode: CreateErrorCode?)
     case mobilePairingCompleted(method: PairingMethod, start: PairingStart?)
     case mobilePairingCancelled(method: PairingMethod, start: PairingStart?)
-    case accountCreated
-    case accountRestored
     case teamServerSignedIn
     case voiceSessionStopped(duration: DurationBucket)
     case paywallPresented(product: Product)
@@ -55,8 +52,6 @@ public enum AnalyticsEvent: Equatable, Sendable {
         case .taskCreated: "task_created"
         case .mobilePairingCompleted: "mobile_pairing_completed"
         case .mobilePairingCancelled: "mobile_pairing_cancelled"
-        case .accountCreated: "account_created"
-        case .accountRestored: "account_restored"
         case .teamServerSignedIn: "team_server_signed_in"
         case .voiceSessionStopped: "voice_session_stopped"
         case .paywallPresented: "paywall_presented"
@@ -75,10 +70,10 @@ public enum AnalyticsEvent: Equatable, Sendable {
         case .agentConnectionLost(let transport, let code, let outcome, let duration):
             // The full-window recovery screen is desktop's; a phone has none.
             ["transport": .word(transport), "code": .word(code), "outcome": .word(outcome), "duration": .word(duration), "is_recovery_screen_shown": .bool(false)]
-        case .errorShown(let area, let code, let repeatCount):
-            ["area": .word(area), "code": .word(code), "repeat_count": .count(repeatCount)]
+        case .errorShown(let area, let code):
+            ["area": .word(area), "code": .word(code)]
         case .appCrashed(let process, let reason, let crashedVersion):
-            ["process": .word(process), "reason": .word(reason), "crashed_version": crashedVersion.map(JSONValue.string) ?? .null]
+            ["process": .word(process), "reason": .word(reason), "crashed_version": AnalyticsSchema.version(crashedVersion).map(JSONValue.string) ?? .null]
         case .mobilePairingFailed(let method, let start, let errorCode):
             Self.pairing(method, start).merging(["error_code": .word(errorCode)]) { $1 }
         case .signInFailed(let method, let errorCode):
@@ -87,12 +82,12 @@ public enum AnalyticsEvent: Equatable, Sendable {
             ["error_code": .word(errorCode), "duration": .word(duration)]
         case .paywallError(let product, let errorCode):
             ["product": .word(product), "error_code": .word(errorCode)]
-        case .appOpened(let launchCount, let isColdStart, let config):
-            config.properties.merging(["launch_count": .count(launchCount), "is_cold_start": .bool(isColdStart)]) { $1 }
+        case .appOpened(let isColdStart, let config):
+            config.properties.merging(["is_cold_start": .bool(isColdStart)]) { $1 }
         case .messageSent(let message):
             message.properties
-        case .conversationCreated(let source, let model, let modelProviderKind, let effort):
-            ["source": .word(source), "model": Self.model(model), "model_provider_kind": .word(modelProviderKind), "effort": .word(effort)]
+        case .conversationCreated(let source, let modelFamily, let modelProviderKind, let effort):
+            ["source": .word(source), "model_family": .word(modelFamily), "model_provider_kind": .word(modelProviderKind), "effort": .word(effort)]
         case .botCreated(let source, let result, let errorCode):
             Self.created(result, errorCode).merging(["source": .word(source)]) { $1 }
         case .taskCreated(let result, let errorCode):
@@ -103,7 +98,7 @@ public enum AnalyticsEvent: Equatable, Sendable {
             ["duration": .word(duration)]
         case .paywallPresented(let product), .paywallPurchased(let product), .paywallRestored(let product), .paywallCancelled(let product):
             ["product": .word(product)]
-        case .accountCreated, .accountRestored, .teamServerSignedIn:
+        case .teamServerSignedIn:
             [:]
         }
     }
@@ -120,10 +115,6 @@ public enum AnalyticsEvent: Equatable, Sendable {
         var out: [String: JSONValue] = ["result": .word(result)]
         if result == .failed { out["error_code"] = .word(errorCode ?? .unknown) }
         return out
-    }
-
-    static func model(_ id: String?) -> JSONValue {
-        id.map { .string(AnalyticsSchema.model($0)) } ?? .null
     }
 }
 
@@ -216,6 +207,27 @@ extension AnalyticsEvent {
         case off, on, minimal, low, medium, high, xhigh, max, ultra
     }
 
+    /// The catalog's `model_family_rule`: the raw model id is never sent.
+    public enum ModelFamily: String, AnalyticsWord {
+        case claudeOpus = "claude_opus", claudeSonnet = "claude_sonnet", claudeHaiku = "claude_haiku", claudeFable = "claude_fable"
+        case gpt, grok, gemini, glm, kimi, other
+
+        static let rules: [(String, ModelFamily)] = [
+            ("anthropic/opus", .claudeOpus), ("anthropic/claude-opus", .claudeOpus),
+            ("anthropic/sonnet", .claudeSonnet), ("anthropic/claude-sonnet", .claudeSonnet),
+            ("anthropic/haiku", .claudeHaiku), ("anthropic/claude-haiku", .claudeHaiku),
+            ("anthropic/fable", .claudeFable), ("openai/gpt", .gpt), ("xai/grok", .grok),
+            ("google/gemini", .gemini), ("zai/glm", .glm), ("moonshotai/kimi", .kimi),
+        ]
+
+        /// Any `providerId:` prefix stripped, the first rule the id starts
+        /// with; anything else, a custom or self-hosted model included, is `other`.
+        public init(model id: String) {
+            let bare = id.firstIndex(of: ":").map { id[id.index(after: $0)...] } ?? id[...]
+            self = Self.rules.first { bare.hasPrefix($0.0) }?.1 ?? .other
+        }
+    }
+
     /// 0, 1, 2 or 3 and more.
     public enum Bucket123: String, AnalyticsWord {
         case zero = "0", one = "1", two = "2", threeOrMore = "3+"
@@ -246,7 +258,6 @@ extension AnalyticsEvent {
     }
     public enum AnalyticsOS: String, AnalyticsWord { case mac, win, linux, ios, android }
     public enum DeviceClass: String, AnalyticsWord { case desktop, phone, tablet }
-    public enum AnalyticsArch: String, AnalyticsWord { case arm64, x64, other }
     public enum AgentLocation: String, AnalyticsWord { case local, remote, relay }
     public enum AgentOS: String, AnalyticsWord {
         case mac, win, linux, other
@@ -342,9 +353,7 @@ extension AnalyticsEvent {
         public var source: MessageSource
         public var target: ChatTarget?
         public var sessionClient: SessionClient?
-        /// The model as sent: `AnalyticsSchema.model` keeps a first-party
-        /// vendor-qualified id and makes anything else `other`.
-        public var model: String?
+        public var modelFamily: ModelFamily?
         public var modelProviderKind: ProviderKind?
         public var effort: Effort?
         public var botSystemKey: BotSystemKey?
@@ -353,10 +362,10 @@ extension AnalyticsEvent {
         /// Sent while the agent was still working.
         public var isSteering: Bool
 
-        public init(source: MessageSource, target: ChatTarget? = nil, sessionClient: SessionClient? = nil, model: String? = nil,
+        public init(source: MessageSource, target: ChatTarget? = nil, sessionClient: SessionClient? = nil, modelFamily: ModelFamily? = nil,
                     modelProviderKind: ProviderKind? = nil, effort: Effort? = nil, botSystemKey: BotSystemKey? = nil,
                     taskDepth: Int? = nil, hasAttachment: Bool, isSteering: Bool = false) {
-            self.source = source; self.target = target; self.sessionClient = sessionClient; self.model = model
+            self.source = source; self.target = target; self.sessionClient = sessionClient; self.modelFamily = modelFamily
             self.modelProviderKind = modelProviderKind; self.effort = effort; self.botSystemKey = botSystemKey
             self.taskDepth = taskDepth; self.hasAttachment = hasAttachment; self.isSteering = isSteering
         }
@@ -364,7 +373,7 @@ extension AnalyticsEvent {
         var properties: [String: JSONValue] {
             [
                 "source": .word(source), "target": .word(target), "session_client": .word(sessionClient),
-                "model": AnalyticsEvent.model(model),
+                "model_family": .word(modelFamily),
                 "model_provider_kind": .word(modelProviderKind), "effort": .word(effort), "bot_system_key": .word(botSystemKey),
                 "task_depth": taskDepth.map(JSONValue.count) ?? .null, "has_attachment": .bool(hasAttachment),
                 "is_steering": .bool(isSteering),
@@ -378,28 +387,19 @@ extension AnalyticsEvent {
     }
     public enum BotSource: String, AnalyticsWord { case sidebar, voice, home }
 
-    public enum AppLanguage: String, AnalyticsWord {
-        case en, ru, pl, es, it, pt, ca, zhHans = "zh-Hans", zhHant = "zh-Hant", ja, other
-
-        public init(code: String?) {
-            self = code.flatMap(AppLanguage.init(rawValue:)) ?? .other
-        }
-    }
     public enum NotificationsState: String, AnalyticsWord { case granted, denied, notAsked = "not_asked" }
 
     /// The little `app_opened` carries; nil leaves a field out.
     public struct AppConfig: Equatable, Sendable {
-        public var appLanguage: AppLanguage?
         public var notifications: NotificationsState?
         public var agentsConnected: Bucket123?
 
-        public init(appLanguage: AppLanguage? = nil, notifications: NotificationsState? = nil, agentsConnected: Bucket123? = nil) {
-            self.appLanguage = appLanguage; self.notifications = notifications; self.agentsConnected = agentsConnected
+        public init(notifications: NotificationsState? = nil, agentsConnected: Bucket123? = nil) {
+            self.notifications = notifications; self.agentsConnected = agentsConnected
         }
 
         var properties: [String: JSONValue] {
             var out: [String: JSONValue] = [:]
-            if let appLanguage { out["app_language"] = .word(appLanguage) }
             if let notifications { out["notifications"] = .word(notifications) }
             if let agentsConnected { out["agents_connected"] = .word(agentsConnected) }
             return out

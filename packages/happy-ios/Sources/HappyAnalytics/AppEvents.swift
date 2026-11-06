@@ -47,11 +47,6 @@ extension Analytics {
 
     // MARK: Signing in
 
-    /// A Happy account restored from another device or its secret key.
-    public func accountRestored() {
-        log(.accountRestored)
-    }
-
     /// A restore that failed: by QR code, or by the secret key typed in
     /// (`secretKey`), which a refusal means was wrong.
     public func accountRestoreFailed(_ error: Error, secretKey: Bool) {

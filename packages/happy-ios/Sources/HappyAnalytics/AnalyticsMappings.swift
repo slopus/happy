@@ -26,17 +26,13 @@ extension AnalyticsEvent.ConnectionCode {
 }
 
 extension AnalyticsEvent.CrashReason {
-    /// A MetricKit crash's Mach exception type and signal, read only for
-    /// which of the catalog's reasons it is. The termination reason is
-    /// looked at for the watchdog's and code signing's marks and never kept.
-    public init(exceptionType: Int?, signal: Int?, termination: String?) {
-        let termination = termination ?? ""
-        if termination.localizedCaseInsensitiveContains("8badf00d") { self = .hang; return }
-        if termination.localizedCaseInsensitiveContains("CODESIGNING") { self = .integrity; return }
+    /// A MetricKit crash's Mach exception type and signal, the only things
+    /// read of it, as one of the catalog's reasons.
+    public init(exceptionType: Int?, signal: Int?) {
         switch exceptionType {
         case 1?, 2?, 12?: self = .nativeCrash // EXC_BAD_ACCESS, EXC_BAD_INSTRUCTION, EXC_GUARD
         case 6?: self = .crash // EXC_BREAKPOINT: a Swift runtime trap
-        case 11?: self = termination.localizedCaseInsensitiveContains("MEMORY") ? .oom : .killed // EXC_RESOURCE
+        case 11?: self = .killed // EXC_RESOURCE
         default:
             switch signal {
             case 6?, 5?: self = .crash // SIGABRT, SIGTRAP

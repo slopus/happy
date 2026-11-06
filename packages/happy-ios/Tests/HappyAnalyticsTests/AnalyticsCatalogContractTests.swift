@@ -23,9 +23,7 @@ final class AnalyticsCatalogContractTests: XCTestCase {
             return try XCTUnwrap(list?.arrayValue?.compactMap(\.stringValue), "\(spec)")
         }
         let kind: AnalyticsSchema.Property.Kind
-        if let list = spec["enum[]"] {
-            kind = .wordList(try words(list))
-        } else if let list = spec["enum"] {
+        if let list = spec["enum"] {
             kind = .words(try words(list))
         } else {
             switch spec["type"]?.stringValue {
@@ -33,7 +31,6 @@ final class AnalyticsCatalogContractTests: XCTestCase {
             case "bool": kind = .bool
             case "version": kind = .version
             case "os_version": kind = .osVersion
-            case "model": kind = .model
             default: throw XCTSkip("unknown property type \(spec)")
             }
         }
@@ -43,11 +40,7 @@ final class AnalyticsCatalogContractTests: XCTestCase {
     /// Word lists compare as sets; their order means nothing.
     private func normalized(_ property: AnalyticsSchema.Property) -> AnalyticsSchema.Property {
         var property = property
-        switch property.kind {
-        case .words(let words): property.kind = .words(words.sorted())
-        case .wordList(let words): property.kind = .wordList(words.sorted())
-        default: break
-        }
+        if case .words(let words) = property.kind { property.kind = .words(words.sorted()) }
         return property
     }
 
@@ -83,6 +76,28 @@ final class AnalyticsCatalogContractTests: XCTestCase {
         }
     }
 
+    /// The catalog's prefix table, row by row, is the Swift one.
+    func testTheModelFamilyRuleMatchesTheSharedCatalog() throws {
+        let rules = try XCTUnwrap(catalog()["model_family_rule"]?["rules"]?.arrayValue)
+        let shared = rules.compactMap { rule -> [String]? in rule.arrayValue?.compactMap(\.stringValue) }
+        XCTAssertEqual(shared, AnalyticsEvent.ModelFamily.rules.map { [$0.0, $0.1.rawValue] })
+        XCTAssertEqual(AnalyticsEvent.ModelFamily(model: "claude_work:anthropic/claude-opus-4-5"), .claudeOpus)
+        XCTAssertEqual(AnalyticsEvent.ModelFamily(model: "openai/gpt-5.1-codex"), .gpt)
+        XCTAssertEqual(AnalyticsEvent.ModelFamily(model: "claude-opus-4-5"), .other)
+        XCTAssertEqual(AnalyticsEvent.ModelFamily(model: "acme/secret-project-model"), .other)
+        XCTAssertEqual(AnalyticsEvent.ModelFamily(model: "Anthropic/Opus"), .other)
+    }
+
+    /// Versions go as numbers only: a suffix is cut, anything else is null.
+    func testVersionsAreNumbersOnly() {
+        XCTAssertEqual(AnalyticsSchema.version("2.1.0-preview.3+abc"), "2.1.0")
+        XCTAssertEqual(AnalyticsSchema.version("0.14.2+build.7"), "0.14.2")
+        XCTAssertNil(AnalyticsSchema.version("v2.1"))
+        XCTAssertNil(AnalyticsSchema.version("1.2.3.4.5"))
+        XCTAssertNil(AnalyticsSchema.version(nil))
+        XCTAssertEqual(AnalyticsEvent.appCrashed(process: .app, reason: .crash, crashedVersion: "2.0.0-rc1").properties["crashed_version"], .string("2.0.0"))
+    }
+
     /// Each typed event makes properties the schema admits whole: the enums
     /// and the allowlist say the same thing.
     func testEveryTypedEventPassesTheAllowlistUnchanged() throws {
@@ -90,23 +105,21 @@ final class AnalyticsCatalogContractTests: XCTestCase {
             .chatFailureShown(kind: .usageLimit, providerKind: .claude, isPool: false, target: .session, sessionClient: .happyAgent),
             .chatFailureActionClicked(kind: .rateLimited, action: .switchModel),
             .agentConnectionLost(transport: .direct, code: .unreachable, outcome: .recovered, duration: .from10sTo30s),
-            .errorShown(area: .messageSend, code: .offline, repeatCount: 2),
+            .errorShown(area: .messageSend, code: .offline),
             .appCrashed(process: .app, reason: .hang, crashedVersion: "2.0.0"),
             .mobilePairingFailed(method: .direct, start: .scan, errorCode: .emojiMismatch),
             .signInFailed(method: .teamServer, errorCode: .wrongServer),
             .voiceSessionError(errorCode: .connectFailed, duration: nil),
             .paywallError(product: .pro, errorCode: .nothingToRestore),
-            .appOpened(launchCount: 3, isColdStart: true, config: .init(appLanguage: .en, notifications: .granted, agentsConnected: .one)),
-            .messageSent(.init(source: .chat, target: .bot, sessionClient: .happyAgent, model: "anthropic/claude-opus-4-5",
+            .appOpened(isColdStart: true, config: .init(notifications: .granted, agentsConnected: .one)),
+            .messageSent(.init(source: .chat, target: .bot, sessionClient: .happyAgent, modelFamily: .claudeOpus,
                                modelProviderKind: .claude, effort: .high, botSystemKey: .chiefOfStaff, taskDepth: 1, hasAttachment: true,
                                isSteering: true)),
-            .conversationCreated(source: .home, model: "openai/gpt-5", modelProviderKind: .codex, effort: .medium),
+            .conversationCreated(source: .home, modelFamily: .gpt, modelProviderKind: .codex, effort: .medium),
             .botCreated(source: .home, result: .failed, errorCode: .offline),
             .taskCreated(result: .ok, errorCode: nil),
             .mobilePairingCompleted(method: .relay, start: nil),
             .mobilePairingCancelled(method: .direct, start: .openedLink),
-            .accountCreated,
-            .accountRestored,
             .teamServerSignedIn,
             .voiceSessionStopped(duration: .from2mTo5m),
             .paywallPresented(product: .pro),

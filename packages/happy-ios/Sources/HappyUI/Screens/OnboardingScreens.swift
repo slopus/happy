@@ -104,7 +104,6 @@ public final class RestoreQRViewController: UIViewController {
                 self?.showsCode = true
                 let credentials = try await login.waitForApproval()
                 try await account.signIn(credentials)
-                Analytics.shared.accountRestored()
             } catch is CancellationError {
                 return
             } catch {
@@ -247,7 +246,6 @@ public final class RestoreSecretKeyViewController: UIViewController, UITextViewD
         do {
             let credentials = try await context.account.authService.restore(secretKey: key)
             try await context.account.signIn(credentials)
-            Analytics.shared.accountRestored()
         } catch {
             Analytics.shared.accountRestoreFailed(error, secretKey: true)
             Alerts.show(Strings.Common.error, Strings.Connect.invalidSecretKey, on: self)

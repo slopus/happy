@@ -60,7 +60,7 @@ extension Analytics {
         // Happy Agent's provider is its catalog's, which the launch doesn't carry.
         case .rig: nil
         }
-        events.append(.conversationCreated(source: .home, model: launch.modelMode == "default" ? nil : launch.modelMode,
+        events.append(.conversationCreated(source: .home, modelFamily: launch.modelMode == "default" ? nil : .init(model: launch.modelMode),
                                            modelProviderKind: provider, effort: launch.effortLevel.flatMap(AnalyticsEvent.Effort.init(rawValue:))))
         return events
     }

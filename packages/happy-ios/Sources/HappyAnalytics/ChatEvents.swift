@@ -17,13 +17,13 @@ extension Analytics {
         let target = AnalyticsEvent.ChatTarget(agentId, in: spaces)
         let provider = mode.flatMap { catalog?.provider($0.providerId)?.type }
         let event = AnalyticsEvent.MessageSent(
-            source: newWork != nil ? .newSession : .chat, target: target, sessionClient: .happyAgent, model: mode?.modelId,
+            source: newWork != nil ? .newSession : .chat, target: target, sessionClient: .happyAgent, modelFamily: mode.map { .init(model: $0.modelId) },
             modelProviderKind: mode == nil ? nil : .init(type: provider), effort: mode.flatMap { .init(rawValue: $0.effort) },
             botSystemKey: target == .chiefOfStaff ? .chiefOfStaff : nil, hasAttachment: attachments > 0, isSteering: steering)
         if let newWork {
             // Kept before the send starts, so the made task can't come first.
             if opening.count >= Self.openingLimit { opening.removeAll() }
-            opening[newWork] = .conversationCreated(source: .home, model: event.model, modelProviderKind: event.modelProviderKind, effort: event.effort)
+            opening[newWork] = .conversationCreated(source: .home, modelFamily: event.modelFamily, modelProviderKind: event.modelProviderKind, effort: event.effort)
         }
         return { [weak self] in self?.log(.messageSent(event)) }
     }

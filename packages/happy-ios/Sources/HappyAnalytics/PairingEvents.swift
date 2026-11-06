@@ -16,11 +16,11 @@ extension Analytics {
         log(Self.event(result, start: start))
     }
 
-    /// The computer's code made a Happy account: the pairing, and the
-    /// account's creation, which ends with it.
+    /// The computer's code made a Happy account: the pairing, and if the
+    /// account's creation failed with it, why.
     public func accountForComputerEnded(_ result: LegacyPairingResult, start: PairingStart) {
         log(Self.event(result, start: start))
-        log(Self.accountCreated(result))
+        if let failed = Self.accountCreateFailed(result) { log(failed) }
     }
 
     /// A direct pairing with a Happy Agent that ended paired.
@@ -63,8 +63,8 @@ extension Analytics {
         return .mobilePairingFailed(method: .relay, start: start, errorCode: error)
     }
 
-    static func accountCreated(_ result: LegacyPairingResult) -> AnalyticsEvent {
-        guard result != .approved else { return .accountCreated }
+    static func accountCreateFailed(_ result: LegacyPairingResult) -> AnalyticsEvent? {
+        guard result != .approved else { return nil }
         let error: AnalyticsEvent.SignInErrorCode = switch result {
         case .alreadyHandled: .expired
         case .invalidLink, .terminalNeedsUpdate: .rejected

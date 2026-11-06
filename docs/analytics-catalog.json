@@ -1,11 +1,10 @@
 {
-  "version": 4,
+  "version": 5,
   "about": "Happy product analytics catalog shared by Happy Desktop, happy-ios and happy-android. Every event and property a client may send. Values are closed enums, counts, booleans, versions, or the model rule; nothing else may leave a client. Clients send only the events listed for them. Optional properties may be omitted; nullable properties may be null.",
   "types": {
     "count": "integer 0..1000000",
-    "version": "string matching ^[0-9]+(\\.[0-9]+){0,3}([-+][0-9A-Za-z.]+)?$, at most 64 characters",
-    "os_version": "string matching ^[0-9]+(\\.[0-9]+)?$ (major.minor only)",
-    "model": "string matching ^(anthropic|openai|xai|google|zai|moonshotai)/[a-z0-9][a-z0-9.-]{0,63}$, or \"other\"; any providerId: prefix is stripped first"
+    "version": "string matching ^[0-9]+(\\.[0-9]+){0,3}$, at most 32 characters. Clients strip any prerelease or build suffix (everything from the first '-' or '+') before sending; a value that still does not match is sent as null.",
+    "os_version": "string matching ^[0-9]+(\\.[0-9]+)?$ (major.minor only)"
   },
   "shared_enums": {
     "provider_kind": [
@@ -100,6 +99,18 @@
       "refused",
       "offline",
       "unknown"
+    ],
+    "model_family": [
+      "claude_opus",
+      "claude_sonnet",
+      "claude_haiku",
+      "claude_fable",
+      "gpt",
+      "grok",
+      "gemini",
+      "glm",
+      "kimi",
+      "other"
     ]
   },
   "common": {
@@ -287,7 +298,7 @@
         "ios",
         "android"
       ],
-      "fires": "Any other error state a person saw. At most one per (area, code) per 10 minutes per device; suppressed occurrences are added to repeat_count of the next one sent. Failed creates are not error_shown: they are the *_created / project_added events with result failed.",
+      "fires": "Any other error state a person saw. At most one per (area, code) per 10 minutes per device; repeats inside that window are dropped, not counted. Failed creates are not error_shown: they are the *_created / project_added events with result failed.",
       "properties": {
         "area": {
           "enum": [
@@ -309,9 +320,6 @@
         },
         "code": {
           "enum": "error_code"
-        },
-        "repeat_count": {
-          "type": "count"
         }
       }
     },
@@ -322,7 +330,7 @@
         "ios",
         "android"
       ],
-      "fires": "A process of the app died abnormally. Reported at the next launch from OS exit records (MetricKit, ApplicationExitInfo) or a marker the desktop main process wrote. No stack, message, or symbol is ever sent.",
+      "fires": "A process of the app died abnormally. Mobile: read at the next launch from the OS's own exit records (MetricKit, ApplicationExitInfo); only the exception type or signal (mapped to reason) and the app version are read, never the stack, symbols, termination text or memory regions. Desktop: a renderer or child process that dies is reported by the main process to the reloaded window in memory; a main-process crash is not reported. Nothing is written to disk.",
       "properties": {
         "process": {
           "enum": [
@@ -407,8 +415,8 @@
           ],
           "optional": true
         },
-        "duration_ms": {
-          "type": "count"
+        "duration": {
+          "enum": "duration"
         }
       }
     },
@@ -593,25 +601,6 @@
       ],
       "fires": "Desktop: once per launch. Mobile: a cold start, or returning to the foreground after 30 minutes or more in the background. Carries only notifications permission, app language, and how many agents are connected.",
       "properties": {
-        "launch_count": {
-          "type": "count"
-        },
-        "app_language": {
-          "enum": [
-            "en",
-            "ru",
-            "pl",
-            "es",
-            "it",
-            "pt",
-            "ca",
-            "zh-Hans",
-            "zh-Hant",
-            "ja",
-            "other"
-          ],
-          "optional": true
-        },
         "notifications": {
           "enum": [
             "granted",
@@ -647,12 +636,29 @@
             "share"
           ]
         },
-        "target": {
+        "bot_system_key": {
           "enum": [
-            "chief_of_staff",
-            "bot",
-            "session"
+            "chief_of_staff"
           ],
+          "nullable": true
+        },
+        "effort": {
+          "enum": "effort",
+          "nullable": true
+        },
+        "has_attachment": {
+          "type": "bool"
+        },
+        "is_steering": {
+          "type": "bool",
+          "note": "sent while the agent was still working"
+        },
+        "model_family": {
+          "enum": "model_family",
+          "nullable": true
+        },
+        "model_provider_kind": {
+          "enum": "provider_kind",
           "nullable": true
         },
         "session_client": {
@@ -662,34 +668,17 @@
           ],
           "nullable": true
         },
-        "model": {
-          "type": "model",
-          "nullable": true
-        },
-        "model_provider_kind": {
-          "enum": "provider_kind",
-          "nullable": true
-        },
-        "effort": {
-          "enum": "effort",
-          "nullable": true
-        },
-        "bot_system_key": {
+        "target": {
           "enum": [
-            "chief_of_staff"
+            "chief_of_staff",
+            "bot",
+            "session"
           ],
           "nullable": true
         },
         "task_depth": {
           "type": "count",
           "nullable": true
-        },
-        "has_attachment": {
-          "type": "bool"
-        },
-        "is_steering": {
-          "type": "bool",
-          "note": "sent while the agent was still working"
         }
       }
     },
@@ -711,16 +700,16 @@
             "home"
           ]
         },
-        "model": {
-          "type": "model",
+        "effort": {
+          "enum": "effort",
+          "nullable": true
+        },
+        "model_family": {
+          "enum": "model_family",
           "nullable": true
         },
         "model_provider_kind": {
           "enum": "provider_kind",
-          "nullable": true
-        },
-        "effort": {
-          "enum": "effort",
           "nullable": true
         }
       }
@@ -817,24 +806,6 @@
           "optional": true
         }
       }
-    },
-    "account_created": {
-      "tier": "usage",
-      "clients": [
-        "ios",
-        "android"
-      ],
-      "fires": "A new Happy (relay) account was created on the phone. Name kept from the earlier app.",
-      "properties": {}
-    },
-    "account_restored": {
-      "tier": "usage",
-      "clients": [
-        "ios",
-        "android"
-      ],
-      "fires": "An existing Happy account was restored on the phone (on success; the earlier app sent it at restore start).",
-      "properties": {}
     },
     "team_server_signed_in": {
       "tier": "usage",
@@ -989,106 +960,6 @@
         }
       }
     },
-    "onboarding_command_copied": {
-      "tier": "usage",
-      "clients": [
-        "desktop"
-      ],
-      "fires": "Unchanged from the existing desktop catalog.",
-      "properties": {
-        "assistant": {
-          "enum": [
-            "claude",
-            "codex",
-            "grok",
-            "custom"
-          ]
-        },
-        "kind": {
-          "enum": [
-            "install",
-            "sign_in",
-            "agent_prompt"
-          ]
-        },
-        "shell": {
-          "enum": [
-            "powershell",
-            "posix"
-          ]
-        }
-      }
-    },
-    "onboarding_local_apps": {
-      "tier": "usage",
-      "clients": [
-        "desktop"
-      ],
-      "fires": "Unchanged from the existing desktop catalog.",
-      "properties": {
-        "claude_desktop_app": {
-          "type": "bool",
-          "nullable": true
-        },
-        "codex_desktop_app": {
-          "type": "bool",
-          "nullable": true
-        },
-        "antigravity_app": {
-          "type": "bool",
-          "nullable": true
-        },
-        "agy_cli": {
-          "type": "bool",
-          "nullable": true
-        }
-      }
-    },
-    "onboarding_subscriptions_exit": {
-      "tier": "usage",
-      "clients": [
-        "desktop"
-      ],
-      "fires": "Unchanged from the existing desktop catalog.",
-      "properties": {
-        "claude_status": {
-          "enum": [
-            "signed_in",
-            "not_signed_in",
-            "not_installed",
-            "check_failed"
-          ],
-          "nullable": true
-        },
-        "codex_status": {
-          "enum": [
-            "signed_in",
-            "not_signed_in",
-            "not_installed",
-            "check_failed"
-          ],
-          "nullable": true
-        },
-        "grok_status": {
-          "enum": [
-            "signed_in",
-            "not_signed_in",
-            "not_installed",
-            "check_failed"
-          ],
-          "nullable": true
-        },
-        "custom_status": {
-          "enum": [
-            "signed_in",
-            "not_signed_in",
-            "not_installed",
-            "check_failed"
-          ],
-          "nullable": true
-        }
-      }
-    },
     "onboarding_mobile": {
       "tier": "usage",
       "clients": [
@@ -1144,10 +1015,9 @@
     }
   },
   "definitions": {
-    "launch_count": "Launches on this install: desktop renderer launches, mobile cold starts.",
     "agents_connected": "Happy Agent connections the client has (paired agents on a phone, configured agents on desktop).",
     "message_sent": "Fires when the person presses send, including when an offline-first client only queues it locally. Conversation creation also sends conversation_created; steering is message_sent with is_steering.",
-    "model use": "Which model, provider kind and effort people use comes from message_sent, which carries all three on every send. There are no picker events."
+    "model use": "Which model family, provider kind and effort people use comes from message_sent. There are no picker events and no raw model ids."
   },
   "naming": {
     "events": "snake_case `<object>_<past-tense verb>`, as PostHog's capture docs recommend ('project created', 'user signed up', 'invite sent') and as the existing events already are (message_sent, bot_created, app_opened). One event per step in how a person uses Happy. Static names; variable parts go in properties. No category: prefix.",
@@ -1186,5 +1056,66 @@
     "ios": "a separate SwiftPM target HappyAnalytics, depended on by HappyApp and HappyUI only for the facade",
     "android": "a separate Gradle module :analytics",
     "settings": "Every client has an Analytics switch in Settings that stops sending and deletes the queue. Mobile also honours each account's synced analyticsOptOut."
-  }
+  },
+  "model_family_rule": {
+    "about": "Strip any providerId: prefix, then take the first rule whose prefix the model id starts with. Anything else, including every custom or self-hosted model, is other. The raw model id is never sent.",
+    "rules": [
+      [
+        "anthropic/opus",
+        "claude_opus"
+      ],
+      [
+        "anthropic/claude-opus",
+        "claude_opus"
+      ],
+      [
+        "anthropic/sonnet",
+        "claude_sonnet"
+      ],
+      [
+        "anthropic/claude-sonnet",
+        "claude_sonnet"
+      ],
+      [
+        "anthropic/haiku",
+        "claude_haiku"
+      ],
+      [
+        "anthropic/claude-haiku",
+        "claude_haiku"
+      ],
+      [
+        "anthropic/fable",
+        "claude_fable"
+      ],
+      [
+        "openai/gpt",
+        "gpt"
+      ],
+      [
+        "xai/grok",
+        "grok"
+      ],
+      [
+        "google/gemini",
+        "gemini"
+      ],
+      [
+        "zai/glm",
+        "glm"
+      ],
+      [
+        "moonshotai/kimi",
+        "kimi"
+      ]
+    ]
+  },
+  "timestamps": "Event timestamps are truncated to whole seconds.",
+  "consent": {
+    "default": "On for a new install, with the Settings switch to turn it off (and DO_NOT_TRACK=1 on desktop once wired, account analyticsOptOut on mobile).",
+    "fail_closed": "If the stored preference cannot be read or parsed, analytics is off. A failed write of an opt-out is shown to the person.",
+    "opt_out": "Turning analytics off stops sending at once, stops analytics-only observers, and deletes all analytics-only stored state: the install id, queue, dedupe set and throttle times. Turning it back on starts with a new install id.",
+    "transport": "Every request uses credentials omit, no referrer, redirect error, and only an https host (or a loopback http capture host in debug)."
+  },
+  "storage": "Nothing is saved to disk except the random install id, which is deleted on opt-out. Queues, dedupe sets and throttle times live in memory only; unsent events are lost when the app quits."
 }

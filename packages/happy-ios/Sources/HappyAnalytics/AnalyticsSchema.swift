@@ -10,8 +10,7 @@ public enum AnalyticsSchema {
     public struct Property: Equatable, Sendable {
         public enum Kind: Equatable, Sendable {
             case words([String])
-            case wordList([String])
-            case count, bool, version, osVersion, model
+            case count, bool, version, osVersion
         }
 
         public var kind: Kind
@@ -24,7 +23,7 @@ public enum AnalyticsSchema {
     }
 
     public static let maxCount = 1_000_000
-    static let maxVersionLength = 64
+    static let maxVersionLength = 32
 
     typealias E = AnalyticsEvent
 
@@ -58,7 +57,7 @@ public enum AnalyticsSchema {
                 "transport": .words(E.ConnectionTransport.self), "code": .words(E.ConnectionCode.self),
                 "outcome": .words(E.ConnectionOutcome.self), "duration": .words(E.DurationBucket.self), "is_recovery_screen_shown": bool,
             ],
-            "error_shown": ["area": .words(E.ErrorArea.self), "code": .words(E.ErrorCode.self), "repeat_count": Property(kind: .count)],
+            "error_shown": ["area": .words(E.ErrorArea.self), "code": .words(E.ErrorCode.self)],
             "app_crashed": [
                 "process": .words(E.CrashProcess.self), "reason": .words(E.CrashReason.self),
                 "crashed_version": Property(kind: .version, nullable: true),
@@ -69,28 +68,25 @@ public enum AnalyticsSchema {
             "paywall_error": product.merging(["error_code": .words(E.PaywallErrorCode.self)]) { $1 },
             // Usage
             "app_opened": [
-                "launch_count": Property(kind: .count), "is_cold_start": bool,
-                "app_language": .words(E.AppLanguage.self, optional: true),
+                "is_cold_start": bool,
                 "notifications": .words(E.NotificationsState.self, optional: true),
                 "agents_connected": .words(E.Bucket123.self, optional: true),
             ],
             "message_sent": [
                 "source": .words(E.MessageSource.self), "target": .words(E.ChatTarget.self, nullable: true),
-                "session_client": .words(E.SessionClient.self, nullable: true), "model": Property(kind: .model, nullable: true),
+                "session_client": .words(E.SessionClient.self, nullable: true), "model_family": .words(E.ModelFamily.self, nullable: true),
                 "model_provider_kind": .words(E.ProviderKind.self, nullable: true), "effort": .words(E.Effort.self, nullable: true),
                 "bot_system_key": .words(E.BotSystemKey.self, nullable: true), "task_depth": Property(kind: .count, nullable: true),
                 "has_attachment": bool, "is_steering": bool,
             ],
             "conversation_created": [
-                "source": .words(E.ConversationSource.self), "model": Property(kind: .model, nullable: true),
+                "source": .words(E.ConversationSource.self), "model_family": .words(E.ModelFamily.self, nullable: true),
                 "model_provider_kind": .words(E.ProviderKind.self, nullable: true), "effort": .words(E.Effort.self, nullable: true),
             ],
             "bot_created": created.merging(["source": .words(E.BotSource.self)]) { $1 },
             "task_created": created,
             "mobile_pairing_completed": ["method": .words(E.PairingMethod.self), "start": start],
             "mobile_pairing_cancelled": ["method": .words(E.PairingMethod.self), "start": start],
-            "account_created": [:],
-            "account_restored": [:],
             "team_server_signed_in": [:],
             "voice_session_stopped": ["duration": .words(E.DurationBucket.self)],
             "paywall_presented": product,
@@ -128,30 +124,24 @@ public enum AnalyticsSchema {
         if value == .null { return property.nullable }
         switch (property.kind, value) {
         case (.words(let words), .string(let word)): return words.contains(word)
-        case (.wordList(let words), .array(let list)): return list.allSatisfy { $0.stringValue.map(words.contains) == true }
         case (.count, .number(let number)): return number == number.rounded() && (0...Double(maxCount)).contains(number)
         case (.bool, .bool): return true
         case (.version, .string(let text)): return isVersion(text)
         case (.osVersion, .string(let text)): return text.wholeMatch(of: /[0-9]+(\.[0-9]+)?/) != nil
-        case (.model, .string(let text)): return model(text) == text
         default: return false
         }
     }
 
     static func isVersion(_ text: String) -> Bool {
-        text.count <= maxVersionLength && text.wholeMatch(of: /[0-9]+(\.[0-9]+){0,3}([-+][0-9A-Za-z.]+)?/) != nil
+        text.count <= maxVersionLength && text.wholeMatch(of: /[0-9]+(\.[0-9]+){0,3}/) != nil
     }
 
-    /// The catalog's model rule: a first-party vendor-qualified id, after
-    /// any `providerId:` prefix, else `other`.
-    public static func model(_ id: String) -> String {
-        let bare = id.firstIndex(of: ":").map { String(id[id.index(after: $0)...]) } ?? id
-        return bare.wholeMatch(of: /(anthropic|openai|xai|google|zai|moonshotai)\/[a-z0-9][a-z0-9.\-]{0,63}/) != nil ? bare : "other"
-    }
-
-    /// `version` when it is one the catalog allows, else nil.
+    /// `version` with any prerelease or build suffix (from the first `-` or
+    /// `+`) cut off, when what is left is numbers only; else nil.
     public static func version(_ version: String?) -> String? {
-        version.flatMap { isVersion($0) ? $0 : nil }
+        guard let version else { return nil }
+        let numbers = String(version.prefix { $0 != "-" && $0 != "+" })
+        return isVersion(numbers) ? numbers : nil
     }
 
     /// Major and minor only.
