@@ -31,18 +31,19 @@ public protocol CallGrantSource: Sendable {
     func grant() async throws -> CallGrantResult
 }
 
-/// The hosted agent these calls use: a new, versioned ElevenLabs agent
-/// with its own prompt and the five tools of `CallTool`, apart from the
+/// The hosted agent these calls use: a versioned ElevenLabs agent with
+/// its own prompt and the four tools of `CallTool` (v3), apart from the
 /// relay's (`HappyAPI.voiceAgentID`, which stays as it is).
 public enum CallAgent {
-    /// The build's `HappyCallAgentID`, from `HAPPY_CALL_AGENT_ID`: set only
-    /// in an ignored `Config/Call.local.xcconfig` or on the build's command
-    /// line, never in the repository. Without it every call ends as
-    /// `.notSetUp`.
+    /// The build's `HappyCallAgentID`, from `HAPPY_CALL_AGENT_V3_ID`: set
+    /// only in an ignored `Config/Call.local.xcconfig` or on the build's
+    /// command line, never in the repository. The setting is named for the
+    /// tools, so an older agent's ID (`HAPPY_CALL_AGENT_ID`, v2's) never
+    /// reaches this code. Without it every call ends as `.notSetUp`.
     public static let hostedAgentId: String? = id(Bundle.main.object(forInfoDictionaryKey: "HappyCallAgentID"))
 
     /// An ElevenLabs agent ID, or nil for anything else: an empty or
-    /// unexpanded build setting (`$(HAPPY_CALL_AGENT_ID)`).
+    /// unexpanded build setting (`$(HAPPY_CALL_AGENT_V3_ID)`).
     public static func id(_ value: Any?) -> String? {
         guard let text = (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
               text.hasPrefix("agent_"), text.count > 6,

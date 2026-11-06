@@ -26,7 +26,7 @@ public struct CallUpdate: Equatable, Sendable {
 /// The call starts with the directory: the sidebar's bots, tasks, subtasks
 /// and project conversations, in its order and nesting, as plain lines
 /// that give each its reference, in the first context only. It never goes
-/// again: `listSessions` finds what came or changed since. Updates name a
+/// again: `listConversations` finds what came or changed since. Updates name a
 /// conversation by its title and what it sits under, and by its reference
 /// too when that alone leaves it unclear or the agent hasn't had it yet.
 public actor CallContext {
@@ -52,10 +52,16 @@ public actor CallContext {
         public static let models = 30
     }
 
-    /// The references `sendMessage` starts new work with, as the first
+    /// The references `message` starts new work with, as the first
     /// context lists them; a name after a colon names it.
     public static let newTaskRef = "new-task"
     public static let newBotRef = "new-bot"
+
+    /// Where `navigate` goes, as the first context lists them.
+    public static let homeURL = "happy://home"
+    public static let backURL = "happy://back"
+    public static let conversationURL = "happy://conversation/"
+    static let destinations = [homeURL, backURL, conversationURL + "<ref>"]
 
     private let targets: any CallTargets
     private let now: @Sendable () -> Double
@@ -72,12 +78,12 @@ public actor CallContext {
     private var entries: [CallTarget] = []
     private var directory: [String: CallTarget] = [:]
     /// Work the sidebar doesn't list until its first message makes it:
-    /// what `sendMessage` started, or compose's in front.
+    /// what `message` started, or compose's in front.
     private var drafts: [String: CallTarget] = [:]
     /// The conversations whose reference the agent has: from the first
-    /// context, `listSessions`, a tool's answer or an update.
+    /// context, `listConversations`, a tool's answer or an update.
     private var told: Set<String> = []
-    /// New work `sendMessage` started, by the ID its first message went
+    /// New work `message` started, by the ID its first message went
     /// under: the same words again reach it, never a second one.
     private var startedBy: [String: String] = [:]
     private var heard: [String: Heard] = [:]
@@ -124,7 +130,8 @@ public actor CallContext {
 
     /// `initialConversationContext`, the hosted prompt's one variable, as
     /// plain text: the time and focusRevision, the conversation on screen
-    /// with its last five turns, the directory, and how new work starts.
+    /// with its last five turns and the models it can switch to, the
+    /// directory, how new work starts and where `navigate` goes.
     /// Within `Limits.totalBytes`: the older turns give way first, then the
     /// directory's tail.
     public func initial() async -> String {
@@ -143,7 +150,7 @@ public actor CallContext {
         var turns = focused.map(Self.recent) ?? []
         var budget = Limits.directoryBytes
         func text(telling: Bool = false) -> String {
-            [header, screen(focused, turns: turns), directoryText(bytes: budget, telling: telling), Self.newWorkText].joined(separator: "\n\n")
+            [header, screen(focused, turns: turns), directoryText(bytes: budget, telling: telling), Self.newWorkText, Self.destinationsText].joined(separator: "\n\n")
         }
         while text().utf8.count > Limits.totalBytes, !turns.isEmpty { turns.removeFirst() }
         while text().utf8.count > Limits.totalBytes, budget > 512 { budget /= 2 }
@@ -151,16 +158,24 @@ public actor CallContext {
         return text(telling: true)
     }
 
-    /// How the first context starts new work, as `sendMessage` takes it.
+    /// How the first context starts new work, as `message` takes it.
     static let newWorkText = """
-    New work (only through sendMessage; listed nowhere until its first message makes it):
+    New work (message's to; listed nowhere until its first message makes it):
     - \(newTaskRef) — a new task, the message its first
     - \(newBotRef) — a new bot, the message its first
     A name after a colon names it: \(newBotRef):Release helper.
     """
 
+    /// Where the first context says `navigate` goes.
+    static let destinationsText = """
+    Destinations (navigate's to):
+    - \(homeURL) — the home list
+    - \(backURL) — one screen back; refused at home
+    - \(conversationURL)<ref> — that conversation on screen, such as \(conversationURL)s1
+    """
+
     /// The conversation on screen as the first context tells it: what
-    /// `getSessionContext` reads of it, as lines.
+    /// `readConversation` reads of it, as lines.
     private func screen(_ state: CallTargetState?, turns: [CallTurn]) -> String {
         guard let state, let focus else { return "On screen: no conversation (home, Settings or another screen)." }
         let target = state.target
@@ -175,6 +190,12 @@ public actor CallContext {
         }
         if !target.workspace.isEmpty { lines.append("Workspace: \(target.workspace.joined(separator: " / "))") }
         if let mode = state.mode { lines.append("Model: \(mode.model)" + (mode.effort.isEmpty ? "" : ", effort \(mode.effort)")) }
+        if !state.models.isEmpty {
+            lines.append("Models it can switch to:")
+            for model in state.models.prefix(Limits.models) {
+                lines.append("- \(model.name) — id \(model.id)" + (model.efforts.isEmpty ? "" : ", efforts \(model.efforts.joined(separator: ", "))"))
+            }
+        }
         if turns.isEmpty {
             lines.append("No turns yet.")
         } else {
@@ -307,7 +328,7 @@ public actor CallContext {
     /// then the errors this call told of and each message it told, as it
     /// told it, the most recent kept first, within half of
     /// `Limits.totalBytes`. What doesn't fit is counted in `omitted`; a
-    /// read (`getSessionContext`) has it. The first context is the
+    /// read (`readConversation`) has it. The first context is the
     /// prompt's, never lost.
     public func resync() -> CallUpdate {
         guard !closed else { return CallUpdate() }
@@ -356,7 +377,7 @@ public actor CallContext {
         var (text, shown, taken) = lines(entries, header: "Conversations in the app, in the sidebar's order:", bytes: bytes - marker, count: Limits.directory)
         let omitted = entries.count - taken
         if entries.isEmpty { text += "\nNone yet." }
-        if omitted > 0 { text += "\n… and \(omitted) more; listSessions finds them by title." }
+        if omitted > 0 { text += "\n… and \(omitted) more; listConversations finds them by title." }
         if telling { told.formUnion(shown) }
         return text
     }
@@ -443,7 +464,7 @@ public actor CallContext {
         guard !closed else { return .refused("The call has ended.") }
         guard let tool = CallTool(rawValue: call.name) else { return .refused("Unknown tool.") }
         let parameters = call.parameters
-        let timeout: CallToolResult = tool == .sendMessage
+        let timeout: CallToolResult = tool == .message
             ? .json(["status": "uncertain", "reason": "No answer in time. Don't send it again; say it may not have gone."], isError: true)
             : .refused("No answer in time.")
         let (result, answered) = await Self.timed(toolDeadline, otherwise: timeout) {
@@ -460,23 +481,23 @@ public actor CallContext {
             return .refused("The arguments aren't a JSON object.")
         }
         switch tool {
-        case .listSessions:
+        case .listConversations:
             guard let query = Self.optionalString(arguments["query"]) else { return .refused("query must be a string.") }
             guard let cursor = Self.optionalString(arguments["cursor"]) else { return .refused("cursor must be a string.") }
             let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            guard let start = cursor.isEmpty ? 0 : Int(cursor), start >= 0 else { return .refused("That isn't a cursor listSessions gave.") }
+            guard let start = cursor.isEmpty ? 0 : Int(cursor), start >= 0 else { return .refused("That isn't a cursor listConversations gave.") }
             see(await targets.directory())
             let matching = needle.isEmpty ? entries : entries.filter { $0.title.lowercased().contains(needle) }
             let page = matching.dropFirst(start).prefix(Limits.page)
             // A directory query: what it gives, the agent has.
             told.formUnion(page.map(\.agentId))
-            var value: [String: Any] = ["sessions": page.map { row($0) }, "now": Self.local(now(), in: timeZone)]
+            var value: [String: Any] = ["conversations": page.map { row($0) }, "now": Self.local(now(), in: timeZone)]
             if start + page.count < matching.count { value["nextCursor"] = String(start + page.count) }
             return .json(value)
 
-        case .getSessionContext:
-            if let unmade = Self.unmade(arguments["targetRef"]) { return unmade }
-            guard let id = await resolve(arguments["targetRef"]) else { return .refused("No such conversation.") }
+        case .readConversation:
+            if let unmade = Self.unmade(arguments["ref"]) { return unmade }
+            guard let id = await resolve(arguments["ref"]) else { return .refused("No such conversation.") }
             guard let state = await targets.state(of: id) else { return .refused("That conversation can't be read now.") }
             // Within the snapshot's budget too: the oldest turns give way.
             // Asked for by its reference, it is named by its title alone.
@@ -489,102 +510,129 @@ public actor CallContext {
             }
             return .json(value)
 
-        case .openSession:
-            if let unmade = Self.unmade(arguments["targetRef"]) { return unmade }
-            guard let id = await resolve(arguments["targetRef"]) else { return .refused("No such conversation.") }
-            let asOf = Self.revision(arguments["focusRevision"])
-            guard asOf == focusRevision else { return Self.stale }
-            // Past its deadline the answer is gone: nothing moves on screen after it.
-            guard !Task.isCancelled, !closed else { return .refused("No answer in time.") }
-            guard await targets.open(id) else { return .refused("It didn't open.") }
-            // In front now as far as the call goes, with the revision the
-            // next step takes. The screen says so too; whichever of the two
-            // comes second says nothing.
-            _ = moveFocus(to: id)
-            return .json(["opened": true, "targetRef": ref(id), "focusRevision": focusRevision])
+        case .message:
+            return await message(arguments, call: call)
 
-        case .sendMessage:
-            let fresh = (arguments["targetRef"] as? String).flatMap(Self.newWork)
-            var resolved: String?
-            if fresh == nil {
-                guard let id = await resolve(arguments["targetRef"]) else { return .refused("No such conversation.") }
-                resolved = id
+        case .navigate:
+            guard let url = arguments["to"] as? String, let destination = Self.destination(url) else {
+                let named = (arguments["to"] as? String).map { "\"\($0)\"" } ?? "That"
+                let reason = "\(named) isn't a destination. to is one of: \(Self.destinations.joined(separator: ", "))."
+                return .json(["ok": false, "reason": reason, "destinations": Self.destinations], isError: true)
             }
-            guard let text = arguments["text"] as? String, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                return .refused("There's nothing to send.")
-            }
-            guard text.utf8.count <= Limits.textBytes else { return .refused("That message is too long to send by voice.") }
-            guard let model = Self.optionalString(arguments["model"]) else { return .refused("model must be a string.") }
-            guard let effort = Self.optionalString(arguments["effort"]) else { return .refused("effort must be a string.") }
-            let asOf = Self.revision(arguments["focusRevision"])
-            guard asOf == focusRevision else { return Self.stale }
-            if let fresh { return await start(fresh.kind, name: fresh.name, text: text, model: model, effort: effort, asOf: asOf, call: call) }
-            guard let id = resolved else { return .refused("No such conversation.") }
-            guard let state = await targets.state(of: id) else { return .refused("That conversation can't be read now.") }
-            guard state.writable else { return .refused("That conversation can't take a message now.") }
-            // A working agent takes it as the composer's send would (it steers or
-            // waits its turn); only a question waiting for the person stops it.
-            guard !state.needsInput else { return .refused("It's waiting for the person in the app; answer there first.") }
-            let asked = Self.change(model: model, effort: effort, state: state)
-            if let refusal = asked.refusal { return refusal }
-            // Reading it was a wait: the screen, or the call, may have moved
-            // on, or the answer's time run out. Nothing goes after that.
-            guard !closed else { return .refused("The call has ended.") }
-            guard !Task.isCancelled else { return .refused("No answer in time.") }
-            guard asOf == focusRevision else { return Self.stale }
-            let key = "\(id)\u{0}\(text)"
-            let messageId = unsettled[key] ?? ClientID.make()
-            unsettled[key] = messageId
-            settling[call] = key
-            switch await targets.send(id, text: text, id: messageId, change: asked.change) {
-            case .queued:
-                var value: [String: Any] = ["status": "queued", "targetRef": ref(id), "delivery": Self.queued]
-                if let switched = asked.switched {
-                    value["model"] = switched.model
-                    if !switched.effort.isEmpty { value["effort"] = switched.effort }
+            // Home is home from wherever the screen is; the others are moves
+            // from the screen the agent last saw, refused once it changed.
+            switch destination {
+            case .conversation(let wanted):
+                if let unmade = Self.unmade(wanted) { return unmade }
+                guard let id = await resolve(wanted) else { return .refused("No such conversation.") }
+                guard Self.revision(arguments["focusRevision"]) == focusRevision else { return Self.stale }
+                // Past its deadline the answer is gone: nothing moves on screen after it.
+                guard !Task.isCancelled, !closed else { return .refused("No answer in time.") }
+                guard await targets.open(id) else { return .refused("It didn't open.") }
+                // In front now as far as the call goes, with the revision the
+                // next step takes. The screen says so too; whichever of the two
+                // comes second says nothing.
+                _ = moveFocus(to: id)
+                return .json(["opened": true, "ref": ref(id), "focusRevision": focusRevision])
+            case .back, .home:
+                if destination == .back, Self.revision(arguments["focusRevision"]) != focusRevision { return Self.stale }
+                guard !Task.isCancelled, !closed else { return .refused("No answer in time.") }
+                switch destination == .back ? await targets.back() : await targets.home() {
+                case .refused(let reason):
+                    return .refused(reason)
+                case .moved(let atHome):
+                    // Where it landed is the focus now; the screen says so too, and
+                    // whichever of the two comes second says nothing.
+                    let landed = await shown()
+                    _ = moveFocus(to: landed)
+                    var value: [String: Any] = ["home": atHome, "focusRevision": focusRevision, "title": NSNull()]
+                    if let landed, let entry = directory[landed] ?? drafts[landed] {
+                        value.merge(address(entry)) { _, new in new }
+                        value["ref"] = ref(landed)
+                        told.insert(landed)
+                    }
+                    return .json(value)
                 }
-                return .json(value)
-            case .refused(let reason):
-                return .refused(reason)
-            }
-
-        case .newWork:
-            // Retired: still on the hosted agent until it is detached there.
-            return .refused("newWork is retired. Use sendMessage with targetRef new-task or new-bot.")
-
-        case .goBack, .goHome:
-            if tool == .goBack, Self.revision(arguments["focusRevision"]) != focusRevision { return Self.stale }
-            guard !Task.isCancelled, !closed else { return .refused("No answer in time.") }
-            switch tool == .goBack ? await targets.back() : await targets.home() {
-            case .refused(let reason):
-                return .refused(reason)
-            case .moved(let atHome):
-                // Where it landed is the focus now; the screen says so too, and
-                // whichever of the two comes second says nothing.
-                let shown = await targets.focused()
-                if let shown, directory[shown] == nil, drafts[shown] == nil {
-                    see(await targets.directory())
-                    if directory[shown] == nil, let draft = await targets.unlisted(shown) { drafts[shown] = draft }
-                }
-                _ = moveFocus(to: shown)
-                var value: [String: Any] = ["home": atHome, "focusRevision": focusRevision, "title": NSNull()]
-                if let shown, let entry = directory[shown] ?? drafts[shown] {
-                    value.merge(address(entry)) { _, new in new }
-                    value["targetRef"] = ref(shown)
-                    told.insert(shown)
-                }
-                return .json(value)
             }
         }
     }
 
-    /// `sendMessage` to `new-task` or `new-bot`: new work made as compose's
+    /// The conversation on screen as the app has it now, known to the
+    /// call: a draft compose made since is one of its drafts.
+    private func shown() async -> String? {
+        let shown = await targets.focused()
+        if let shown, directory[shown] == nil, drafts[shown] == nil {
+            see(await targets.directory())
+            if directory[shown] == nil, let draft = await targets.unlisted(shown) { drafts[shown] = draft }
+        }
+        return shown
+    }
+
+    /// `message`: `text` to the conversation `to` names, to new work for
+    /// `new-task` or `new-bot`, or, with no `to`, to the conversation on
+    /// screen as it runs; refused when none is.
+    private func message(_ arguments: [String: Any], call: String) async -> CallToolResult {
+        guard let to = Self.optionalString(arguments["to"]) else { return .refused("to must be a string.") }
+        let target = to.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fresh = Self.newWork(target)
+        var resolved: String?
+        if fresh == nil {
+            if target.isEmpty {
+                guard let id = await shown(), directory[id] != nil || drafts[id] != nil else {
+                    return .refused("No conversation is on screen. Ask which one, then send with its ref as to.")
+                }
+                resolved = id
+            } else {
+                guard let id = await resolve(target) else { return .refused("No such conversation.") }
+                resolved = id
+            }
+        }
+        guard let text = arguments["text"] as? String, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return .refused("There's nothing to send.")
+        }
+        guard text.utf8.count <= Limits.textBytes else { return .refused("That message is too long to send by voice.") }
+        guard let model = Self.optionalString(arguments["model"]) else { return .refused("model must be a string.") }
+        guard let effort = Self.optionalString(arguments["effort"]) else { return .refused("effort must be a string.") }
+        if let fresh { return await start(fresh.kind, name: fresh.name, text: text, model: model, effort: effort, call: call) }
+        guard let id = resolved else { return .refused("No such conversation.") }
+        guard let state = await targets.state(of: id) else { return .refused("That conversation can't be read now.") }
+        guard state.writable else { return .refused("That conversation can't take a message now.") }
+        // A working agent takes it as the composer's send would (it steers or
+        // waits its turn); only a question waiting for the person stops it.
+        guard !state.needsInput else { return .refused("It's waiting for the person in the app; answer there first.") }
+        let asked = Self.change(model: model, effort: effort, state: state)
+        if let refusal = asked.refusal { return refusal }
+        // Reading it was a wait: the call may have ended, or the answer's
+        // time run out. Nothing goes after that.
+        guard !closed else { return .refused("The call has ended.") }
+        guard !Task.isCancelled else { return .refused("No answer in time.") }
+        let key = "\(id)\u{0}\(text)"
+        let messageId = unsettled[key] ?? ClientID.make()
+        unsettled[key] = messageId
+        settling[call] = key
+        switch await targets.send(id, text: text, id: messageId, change: asked.change) {
+        case .queued:
+            var value: [String: Any] = ["status": "queued", "ref": ref(id), "delivery": Self.queued]
+            // Sent to what was on screen: named, so the agent can say where it went.
+            if target.isEmpty { value["title"] = state.target.title }
+            told.insert(id)
+            if let switched = asked.switched {
+                value["model"] = switched.model
+                if !switched.effort.isEmpty { value["effort"] = switched.effort }
+            }
+            return .json(value)
+        case .refused(let reason):
+            return .refused(reason)
+        }
+    }
+
+    /// `message` to `new-task` or `new-bot`: new work made as compose's
     /// send makes it, `text` its first message, on the model and effort
     /// asked for, else compose's own default. Nothing exists of it until
     /// then, and nothing stays of it when it is refused. The same words
     /// again, their answer unheard, reach the same new work under the same
     /// message ID, never a second one.
-    private func start(_ kind: CallTarget.Kind, name: String, text: String, model: String, effort: String, asOf: Int?, call: String) async -> CallToolResult {
+    private func start(_ kind: CallTarget.Kind, name: String, text: String, model: String, effort: String, call: String) async -> CallToolResult {
         let key = "\(kind.rawValue):\(name)\u{0}\(text)"
         let messageId = unsettled[key] ?? ClientID.make()
         let earlier = startedBy[messageId].flatMap { drafts[$0] ?? directory[$0] }
@@ -600,7 +648,6 @@ public actor CallContext {
         if let refusal = asked.refusal { return await refused(refusal) }
         guard !closed else { return await refused(.refused("The call has ended.")) }
         guard !Task.isCancelled else { return await refused(.refused("No answer in time.")) }
-        guard asOf == focusRevision else { return await refused(Self.stale) }
         unsettled[key] = messageId
         settling[call] = key
         if directory[work.agentId] == nil { drafts[work.agentId] = work }
@@ -610,7 +657,7 @@ public actor CallContext {
         case .queued:
             told.insert(work.agentId)
             var value: [String: Any] = [
-                "status": "queued", "targetRef": ref(work.agentId), "started": kind.rawValue, "title": work.title, "delivery": Self.queued,
+                "status": "queued", "ref": ref(work.agentId), "started": kind.rawValue, "title": work.title, "delivery": Self.queued,
             ]
             if let named = asked.switched ?? state.mode.map({ ($0.model, $0.effort) }) {
                 value["model"] = named.0
@@ -626,6 +673,25 @@ public actor CallContext {
         }
     }
 
+    /// Where `navigate` goes.
+    enum Destination: Equatable {
+        case home, back
+        case conversation(String)
+    }
+
+    /// One of the first context's destinations, any case in the scheme and
+    /// the place, a trailing slash allowed; nil for anything else.
+    static func destination(_ url: String) -> Destination? {
+        var text = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.hasSuffix("/") { text.removeLast() }
+        let lower = text.lowercased()
+        if lower == homeURL { return .home }
+        if lower == backURL { return .back }
+        guard lower.hasPrefix(conversationURL) else { return nil }
+        let ref = String(text.dropFirst(conversationURL.count))
+        return ref.isEmpty || ref.contains("/") ? nil : .conversation(ref)
+    }
+
     /// `new-task` or `new-bot`, any case, with the name after a colon if
     /// one is given; nil for any other reference.
     static func newWork(_ ref: String) -> (kind: CallTarget.Kind, name: String)? {
@@ -637,10 +703,10 @@ public actor CallContext {
         return nil
     }
 
-    /// A refusal for new work named where only `sendMessage` takes it.
+    /// A refusal for new work named where only `message` takes it.
     private static func unmade(_ value: Any?) -> CallToolResult? {
         guard let ref = value as? String, newWork(ref) != nil else { return nil }
-        return .refused("Nothing exists of new work until its first message: start it with sendMessage to \(newTaskRef) or \(newBotRef).")
+        return .refused("Nothing exists of new work until its first message: start it with message to \(newTaskRef) or \(newBotRef).")
     }
 
     /// The model and effort a send asks for, as the conversation's
@@ -748,9 +814,9 @@ public actor CallContext {
         heard[state.target.agentId] = known
     }
 
-    /// One of `listSessions`' answers.
+    /// One of `listConversations`' answers.
     private func row(_ target: CallTarget) -> [String: Any] {
-        var value: [String: Any] = ["targetRef": ref(target.agentId), "title": target.title, "kind": target.kind.rawValue, "status": target.status.rawValue]
+        var value: [String: Any] = ["ref": ref(target.agentId), "title": target.title, "kind": target.kind.rawValue, "status": target.status.rawValue]
         if !target.parents.isEmpty { value["parents"] = target.parents.map(\.title) }
         if !target.workspace.isEmpty { value["workspace"] = target.workspace.joined(separator: " / ") }
         if let at = target.activityAt, at > 0 { value["lastActivity"] = when(at) }

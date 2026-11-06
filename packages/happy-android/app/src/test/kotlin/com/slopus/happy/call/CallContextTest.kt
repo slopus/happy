@@ -93,7 +93,14 @@ class CallContextTest {
             |- Backend — bot, ref s1
             |- Docs — task, ref s2
             |
-            """.trimMargin() + "\n" + CallContext.NEW_WORK_TEXT,
+            """.trimMargin() + "\n" + CallContext.NEW_WORK_TEXT + """
+            |
+            |
+            |Destinations (navigate's to):
+            |- happy://home — the home list
+            |- happy://back — one screen back; refused at home
+            |- happy://conversation/<ref> — that conversation on screen, such as happy://conversation/s1
+            """.trimMargin(),
             text,
         )
         assertFalse("no JSON", text.contains("{"))
@@ -113,13 +120,29 @@ class CallContextTest {
         assertTrue(text.utf8Size() <= CallContext.Limits.TOTAL_BYTES)
         val parts = text.split("\n\n")
         val directory = parts.first { it.startsWith("Conversations in the app") }
-        assertTrue(directory, directory.endsWith("more; listSessions finds them by title."))
+        assertTrue(directory, directory.endsWith("more; listConversations finds them by title."))
         assertTrue(directory.utf8Size() <= CallContext.Limits.DIRECTORY_BYTES)
         val screen = parts.first { it.startsWith("On screen:") }
         assertTrue(screen.lines().count { it.firstOrNull()?.isDigit() == true } <= CallContext.Limits.TURNS)
         assertTrue(screen.contains("[cut short]"))
         assertTrue(screen.contains("Older turns aren't shown."))
-        assertTrue(text.endsWith(CallContext.NEW_WORK_TEXT))
+        assertTrue(text.endsWith(CallContext.NEW_WORK_TEXT + "\n\n" + CallContext.DESTINATIONS_TEXT))
+    }
+
+    /** The models the message tool's description sends the agent to: the conversation on screen's, as a read lists them. */
+    @Test
+    fun theFirstContextListsTheModelsTheScreensConversationCanSwitchTo() = runBlocking {
+        val targets = backend()
+        targets.states["a"] = CallTargetState(backendTarget, mode = CallMode(opus.id, opus.name, "high"), models = listOf(opus, CallModel("plain", "Plain", emptyList(), "")))
+        val text = CallContext(targets).initial()
+        assertTrue(text, text.contains(
+            """
+            Model: Claude Opus 4.5, effort high
+            Models it can switch to:
+            - Claude Opus 4.5 — id claude-opus-4-5, efforts low, medium, high, max
+            - Plain — id plain
+            """.trimIndent(),
+        ))
     }
 
     @Test
@@ -132,12 +155,12 @@ class CallContextTest {
     fun readingAConversationGivesItsLastFiveTurnsAndChangesNothingHeard() = runBlocking {
         val context = CallContext(backend(focus = null))
         context.initial()
-        val read = obj(context.tool("getSessionContext", """{"targetRef":"s1"}""").text)
+        val read = obj(context.tool("readConversation", """{"ref":"s1"}""").text)
         assertEquals(listOf("first answer", "second answer", null, "third answer"), read.turns().map { it.str("assistant") })
         assertEquals("still waiting", read["pendingUserMessage"]!!.jsonObject.str("text"))
         assertFalse(read["working"]!!.jsonPrimitive.boolean)
         assertFalse(read["needsInput"]!!.jsonPrimitive.boolean)
-        context.tool("listSessions", "{}")
+        context.tool("listConversations", "{}")
         assertTrue(context.followed().isEmpty())
         // Not visited, so its new words say nothing.
         assertTrue(context.targetChanged(CallTargetState(backendTarget, listOf(CallMessage("n", CallMessage.Role.Assistant, "new")))).isEmpty)
@@ -154,17 +177,17 @@ class CallContextTest {
         val targets = FakeCallTargets(listOf(backendTarget), mutableMapOf("a" to CallTargetState(backendTarget, turns = turns)), null)
         val context = CallContext(targets)
         context.initial()
-        var read = obj(context.tool("getSessionContext", """{"targetRef":"s1"}""").text)
+        var read = obj(context.tool("readConversation", """{"ref":"s1"}""").text)
         assertEquals(listOf("answer 4", "answer 5", "answer 6", "answer 7", "done on its own"), read.turns().map { it.str("assistant") })
         assertNull(read.turns().last()["user"])
         assertTrue(read["olderTurns"]!!.jsonPrimitive.boolean)
         targets.states["a"] = CallTargetState(backendTarget, turns = turns, unanswered = CallMessage("p", CallMessage.Role.User, "and now?"))
-        read = obj(context.tool("getSessionContext", """{"targetRef":"s1"}""").text)
+        read = obj(context.tool("readConversation", """{"ref":"s1"}""").text)
         assertEquals(4, read.turns().size)
         assertEquals("and now?", read["pendingUserMessage"]!!.jsonObject.str("text"))
         val long = "é".repeat(5000)
         targets.states["a"] = CallTargetState(backendTarget, turns = (0 until 6).map { CallTurn("l$it", long, long) })
-        val big = context.tool("getSessionContext", """{"targetRef":"s1"}""")
+        val big = context.tool("readConversation", """{"ref":"s1"}""")
         assertTrue(big.text.utf8Size() <= CallContext.Limits.TOTAL_BYTES)
         val shown = obj(big.text).turns()
         assertTrue(shown.size in 1 until 5)
@@ -175,7 +198,7 @@ class CallContextTest {
         val turns = listOf(CallTurn("r1", "ask", "fine"), CallTurn("r2", "again", ended = "error", error = "Rate limited"))
         val context = CallContext(FakeCallTargets(listOf(backendTarget), mutableMapOf("a" to CallTargetState(backendTarget, turns = turns)), null))
         context.initial()
-        val read = obj(context.tool("getSessionContext", """{"targetRef":"s1"}""").text)
+        val read = obj(context.tool("readConversation", """{"ref":"s1"}""").text)
         val last = read.turns().last()
         assertEquals("error", last.str("ended"))
         assertEquals("Rate limited", last.str("error"))
@@ -211,7 +234,7 @@ class CallContextTest {
     fun settingsOrHomeInFrontKeepTheVisited() = runBlocking {
         val context = CallContext(backend())
         context.initial()
-        assertFalse(context.tool("openSession", """{"targetRef":"s2","focusRevision":0}""").isError)
+        assertFalse(context.tool("navigate", """{"to":"happy://conversation/s2","focusRevision":0}""").isError)
         context.focusChanged("b")
         val settings = events(context.focusChanged(null))
         assertEquals("focus", settings.single().str("event"))
@@ -233,7 +256,7 @@ class CallContextTest {
         assertEquals("Backend", focus.str("title"))
         assertEquals(emptyList<String>(), focus.strings("parents"))
         assertNull(focus["ref"])
-        assertNull(focus["targetRef"])
+        assertNull(focus["ref"])
         assertNull(focus["turns"])
         assertFalse(focus.toString().contains("answer"))
     }
@@ -244,12 +267,12 @@ class CallContextTest {
         val targets = backend()
         val context = CallContext(targets)
         context.initial()
-        assertEquals("queued", obj(context.tool("sendMessage", """{"targetRef":"s1","text":"run it","focusRevision":0}""").text).str("status"))
+        assertEquals("queued", obj(context.tool("message", """{"to":"s1","text":"run it"}""").text).str("status"))
         val failed = CallMessage("run", CallMessage.Role.User, "run it", delivery = CallMessage.Delivery.Failed)
         val state = targets.states.getValue("a").let { it.copy(messages = it.messages + failed, unanswered = failed) }
         targets.states["a"] = state
         assertTrue(context.targetChanged(state).isEmpty)
-        val pending = obj(context.tool("getSessionContext", """{"targetRef":"s1"}""").text)["pendingUserMessage"]!!.jsonObject
+        val pending = obj(context.tool("readConversation", """{"ref":"s1"}""").text)["pendingUserMessage"]!!.jsonObject
         assertEquals("run it", pending.str("text"))
         assertEquals("failed", pending.str("delivery"))
     }
@@ -258,16 +281,16 @@ class CallContextTest {
     fun openingGivesTheRevisionTheNextStepTakes() = runBlocking {
         val context = CallContext(backend(focus = null))
         context.initial()
-        val opened = obj(context.tool("openSession", """{"targetRef":"s2","focusRevision":0}""").text)
+        val opened = obj(context.tool("navigate", """{"to":"happy://conversation/s2","focusRevision":0}""").text)
         assertEquals(1, opened["focusRevision"]!!.jsonPrimitive.int)
         // The screen saying the same afterwards tells the agent nothing new.
         assertTrue(context.focusChanged("b").isEmpty)
         // Chained on what the open gave, the next open goes.
-        val next = context.tool("openSession", """{"targetRef":"s1","focusRevision":1}""")
+        val next = context.tool("navigate", """{"to":"happy://conversation/s1","focusRevision":1}""")
         assertFalse(next.isError)
         assertEquals(2, obj(next.text)["focusRevision"]!!.jsonPrimitive.int)
         assertEquals(listOf("a", "b"), context.followed())
-        val send = obj(context.tool("sendMessage", """{"targetRef":"s2","text":"go","focusRevision":2}""").text)
+        val send = obj(context.tool("message", """{"to":"s2","text":"go"}""").text)
         assertEquals("queued", send.str("status"))
         assertEquals("on the person's device, not confirmed delivered or read", send.str("delivery"))
     }
@@ -419,11 +442,11 @@ class CallContextTest {
     // Tools
 
     @Test
-    fun sendMessageQueuesTheExactTextOnceAndHearsNothingMore() = runBlocking {
+    fun messageQueuesTheExactTextOnceAndHearsNothingMore() = runBlocking {
         val targets = backend()
         val context = CallContext(targets)
         context.initial()
-        val send = call("t1", "sendMessage", """{"targetRef":"s2","text":"  run the checks ","focusRevision":0}""")
+        val send = call("t1", "message", """{"to":"s2","text":"  run the checks "}""")
         val first = context.handle(send)
         assertFalse(first.isError)
         assertEquals("queued", obj(first.text).str("status"))
@@ -439,25 +462,27 @@ class CallContextTest {
     }
 
     @Test
-    fun sendMessageRefusesWhatItMustNotSend() = runBlocking {
+    fun messageRefusesWhatItMustNotSend() = runBlocking {
         val targets = backend()
         targets.states["a"] = CallTargetState(backendTarget.copy(status = CallTarget.Status.NeedsInput), needsInput = true)
         val context = CallContext(targets)
         context.initial()
         val refusals = listOf(
-            """{"targetRef":"s1","text":"yes","focusRevision":0}""",
-            """{"targetRef":"s2","text":"go","focusRevision":3}""",
-            """{"targetRef":"s9","text":"go","focusRevision":0}""",
-            """{"targetRef":"s2","text":"  ","focusRevision":0}""",
-            """{"targetRef":"s2","text":7,"focusRevision":0}""",
-            """{"targetRef":"s2","text":"${"é".repeat(4097)}","focusRevision":0}""",
+            """{"to":"s1","text":"yes"}""",
+            """{"text":"yes"}""",
+            """{"to":"s9","text":"go"}""",
+            """{"to":"Docs","text":"go"}""",
+            """{"to":2,"text":"go"}""",
+            """{"to":"s2","text":"  "}""",
+            """{"to":"s2","text":7}""",
+            """{"to":"s2","text":"${"é".repeat(4097)}"}""",
         )
-        for (json in refusals) assertTrue(json, context.tool("sendMessage", json).isError)
+        for (json in refusals) assertTrue(json, context.tool("message", json).isError)
         assertTrue(context.tool("processPermissionRequest", "{}").isError)
-        assertEquals("Unknown tool.", obj(context.tool("setSessionWatch", """{"targetRef":"s2","enabled":true}""").text).str("reason"))
+        assertEquals("Unknown tool.", obj(context.tool("setSessionWatch", """{"ref":"s2","enabled":true}""").text).str("reason"))
         assertTrue(targets.sends.isEmpty())
         // 8 KiB exactly is fine.
-        assertFalse(context.tool("sendMessage", """{"targetRef":"s2","text":"${"é".repeat(4096)}","focusRevision":0}""").isError)
+        assertFalse(context.tool("message", """{"to":"s2","text":"${"é".repeat(4096)}"}""").isError)
     }
 
     @Test
@@ -466,7 +491,7 @@ class CallContextTest {
         targets.sendDelay = 30_000
         val context = CallContext(targets, toolDeadlineMillis = 50)
         context.initial()
-        suspend fun send(id: String) = context.handle(call(id, "sendMessage", """{"targetRef":"s2","text":"go","focusRevision":0}"""))
+        suspend fun send(id: String) = context.handle(call(id, "message", """{"to":"s2","text":"go"}"""))
         val started = System.nanoTime()
         val first = send("t1")
         assertTrue((System.nanoTime() - started) / 1_000_000 < 5_000)
@@ -484,31 +509,78 @@ class CallContextTest {
     }
 
     @Test
-    fun movingTheScreenRefusesWhatWasAskedUnderTheOldFocus() = runBlocking {
+    fun movingTheScreenRefusesANavigationAskedUnderTheOldFocus() = runBlocking {
         val targets = backend()
+        targets.screens = 1
         val context = CallContext(targets)
         context.initial()
         val moved = context.focusChanged("b")
         assertTrue(moved.context[0].contains(""""focusRevision":1"""))
-        for (name in listOf("openSession", "sendMessage")) {
-            val stale = context.handle(call(name, name, """{"targetRef":"s1","text":"go","focusRevision":0}"""))
-            assertTrue(name, stale.isError)
-            assertTrue(name, stale.text.contains("screen changed"))
+        for (to in listOf("happy://conversation/s1", "happy://back")) {
+            val stale = context.tool("navigate", """{"to":"$to","focusRevision":0}""")
+            assertTrue(to, stale.isError)
+            assertTrue(to, stale.text.contains("screen changed"))
         }
-        assertTrue(targets.sends.isEmpty())
         assertTrue(targets.opened.isEmpty())
-        assertFalse(context.handle(call("f", "sendMessage", """{"targetRef":"s1","text":"go","focusRevision":1}""")).isError)
+        assertEquals(1, targets.screens)
+        // A message names where it goes: a move on screen doesn't stop it.
+        assertFalse(context.handle(call("m", "message", """{"to":"s1","text":"go"}""")).isError)
+        assertFalse(context.tool("navigate", """{"to":"happy://conversation/s1","focusRevision":1}""").isError)
     }
 
+    /** No `to`: the conversation on screen as the tool runs, named in the answer; with none on screen, nothing goes and the agent is told to ask. */
     @Test
-    fun theFocusMovingWhileTheTargetIsReadStopsTheSend() = runBlocking {
+    fun aMessageWithNoToGoesToTheConversationOnScreen() = runBlocking {
         val targets = backend()
         val context = CallContext(targets)
         context.initial()
+        val sent = obj(context.tool("message", """{"text":"run the checks"}""").text)
+        assertEquals("queued", sent.str("status"))
+        assertEquals("s1", sent.str("ref"))
+        assertEquals("Backend", sent.str("title"))
+        assertEquals("s1", obj(context.tool("message", """{"to":" ","text":"and the lint"}""").text).str("ref"))
+        assertEquals(listOf("a", "a"), targets.sends.map { it.agentId })
+        // A named one says no title: the agent named it.
+        assertNull(obj(context.tool("message", """{"to":"s2","text":"go"}""").text)["title"])
+        // The screen moving while it is read doesn't send it elsewhere.
         targets.onRead = { context.focusChanged("b") }
-        val raced = context.handle(call("r", "sendMessage", """{"targetRef":"s1","text":"go","focusRevision":0}"""))
-        assertTrue(raced.text.contains("screen changed"))
-        assertTrue(targets.sends.isEmpty())
+        assertFalse(context.tool("message", """{"text":"once more"}""").isError)
+        assertEquals("a", targets.sends.last().agentId)
+
+        val none = backend(focus = null)
+        val away = CallContext(none)
+        away.initial()
+        val refused = away.tool("message", """{"text":"run the checks"}""")
+        assertTrue(refused.isError)
+        assertEquals("No conversation is on screen. Ask which one, then send with its ref as to.", obj(refused.text).str("reason"))
+        assertTrue(none.sends.isEmpty())
+    }
+
+    /** navigate takes the destinations the context lists and nothing else, answering anything else with them. */
+    @Test
+    fun navigateTakesOnlyTheContextsDestinations() = runBlocking {
+        val targets = backend()
+        targets.screens = 2
+        val context = CallContext(targets)
+        context.initial()
+        for (bad in listOf("\"happy://settings\"", "\"s2\"", "\"https://example.com\"", "\"happy://conversation/\"", "\"happy://conversation/s2/x\"", "3", "null")) {
+            val result = context.tool("navigate", """{"to":$bad,"focusRevision":0}""")
+            assertTrue(bad, result.isError)
+            val value = obj(result.text)
+            assertEquals(bad, false, value["ok"]!!.jsonPrimitive.boolean)
+            assertEquals(bad, listOf("happy://home", "happy://back", "happy://conversation/<ref>"), value.strings("destinations"))
+        }
+        assertEquals(
+            "\"happy://settings\" isn't a destination. to is one of: happy://home, happy://back, happy://conversation/<ref>.",
+            obj(context.tool("navigate", """{"to":"happy://settings","focusRevision":0}""").text).str("reason"),
+        )
+        assertTrue(targets.opened.isEmpty())
+        assertEquals(2, targets.screens)
+        // The scheme and place in any case, a trailing slash too; home whatever focusRevision says.
+        assertEquals(true, obj(context.tool("navigate", """{"to":" HAPPY://Home/ ","focusRevision":7}""").text)["home"]!!.jsonPrimitive.boolean)
+        assertEquals(0, targets.screens)
+        assertEquals(CallContext.Destination.Conversation("s12"), CallContext.destination("happy://conversation/s12"))
+        assertEquals(CallContext.Destination.Back, CallContext.destination("Happy://Back"))
     }
 
     @Test
@@ -517,7 +589,7 @@ class CallContextTest {
         val context = CallContext(targets)
         context.initial()
         context.close()
-        assertTrue(context.handle(call("late", "sendMessage", """{"targetRef":"s2","text":"go","focusRevision":0}""")).isError)
+        assertTrue(context.handle(call("late", "message", """{"to":"s2","text":"go"}""")).isError)
         assertTrue(context.targetChanged(CallTargetState(backendTarget, listOf(CallMessage("n", CallMessage.Role.Assistant, "new")))).isEmpty)
         assertTrue(targets.sends.isEmpty())
     }
@@ -529,26 +601,30 @@ class CallContextTest {
         val context = CallContext(targets)
         context.initial()
         for (bad in listOf("\"0\"", "true", "0.5", "null")) {
-            assertTrue(bad, context.tool("openSession", """{"targetRef":"s1","focusRevision":$bad}""").isError)
+            assertTrue(bad, context.tool("navigate", """{"to":"happy://conversation/s1","focusRevision":$bad}""").isError)
         }
         assertTrue(targets.opened.isEmpty())
-        assertFalse(context.tool("openSession", """{"targetRef":"s1","focusRevision":0}""").isError)
+        assertFalse(context.tool("navigate", """{"to":"happy://conversation/s1","focusRevision":0}""").isError)
         for (bad in listOf("""{"query":3}""", """{"cursor":5}""", """{"cursor":"-1"}""", """{"cursor":"x"}""")) {
-            assertTrue(bad, context.tool("listSessions", bad).isError)
+            assertTrue(bad, context.tool("listConversations", bad).isError)
         }
-        assertTrue(context.tool("getSessionContext", """{"targetRef":1}""").isError)
+        assertTrue(context.tool("readConversation", """{"ref":1}""").isError)
     }
 
     // New work and the way back
 
+    /** v2's tools are the shipped build's: this one calls v3, and knows none of them. */
     @Test
-    fun newWorkIsRetiredAndSaysWhatToUse() = runBlocking {
+    fun v2sToolsAreUnknown() = runBlocking {
         val targets = backend()
         val context = CallContext(targets)
         context.initial()
-        val retired = context.tool("newWork", """{"kind":"bot","name":"Researcher"}""")
-        assertTrue(retired.isError)
-        assertTrue(obj(retired.text).str("reason")!!.contains("Use sendMessage with targetRef new-task or new-bot."))
+        for (name in listOf("sendMessage", "listSessions", "getSessionContext", "openSession", "newWork", "goBack", "goHome")) {
+            val result = context.tool(name, """{"targetRef":"s2","text":"go","focusRevision":0,"kind":"bot"}""")
+            assertEquals(name, "Unknown tool.", obj(result.text).str("reason"))
+        }
+        assertTrue(targets.sends.isEmpty())
+        assertTrue(targets.opened.isEmpty())
         assertTrue(targets.made.isEmpty())
     }
 
@@ -558,11 +634,11 @@ class CallContextTest {
         val targets = backend()
         val context = CallContext(targets)
         context.initial()
-        val started = obj(context.tool("sendMessage", """{"targetRef":"new-task","text":"Find papers on caching","focusRevision":0}""").text)
+        val started = obj(context.tool("message", """{"to":"new-task","text":"Find papers on caching"}""").text)
         assertEquals("queued", started.str("status"))
         assertEquals("task", started.str("started"))
         assertEquals("New Task", started.str("title"))
-        val ref = started.str("targetRef")!!
+        val ref = started.str("ref")!!
         assertEquals("s3", ref)
         // Nothing moved: the screen and its focus are as they were.
         assertNull(started["focusRevision"])
@@ -571,14 +647,18 @@ class CallContextTest {
         assertEquals(listOf("new-1"), targets.sends.map { it.agentId })
         assertEquals(listOf("Find papers on caching"), targets.sends.map { it.text })
         // Unlisted until the computer has it, it is read and sent to by that reference.
-        assertEquals("New Task", obj(context.tool("getSessionContext", """{"targetRef":"$ref"}""").text).str("title"))
+        assertEquals("New Task", obj(context.tool("readConversation", """{"ref":"$ref"}""").text).str("title"))
         // Made, it is home's under the same reference.
         targets.setDirectory(listOf(backendTarget, docsTarget, CallTarget("new-1", "Caching papers", CallTarget.Kind.Task, CallTarget.Status.Running)))
-        val listed = obj(context.tool("listSessions", """{"query":"caching"}""").text)
-        assertEquals(ref, listed["sessions"]!!.jsonArray[0].jsonObject.str("targetRef"))
-        assertEquals(true, obj(context.tool("openSession", """{"targetRef":"$ref","focusRevision":0}""").text)["opened"]!!.jsonPrimitive.boolean)
+        val listed = obj(context.tool("listConversations", """{"query":"caching"}""").text)
+        assertEquals(ref, listed["conversations"]!!.jsonArray[0].jsonObject.str("ref"))
+        assertEquals(true, obj(context.tool("navigate", """{"to":"happy://conversation/$ref","focusRevision":0}""").text)["opened"]!!.jsonPrimitive.boolean)
         // Only a send takes the new-work references.
-        for (name in listOf("getSessionContext", "openSession")) assertTrue(name, context.tool(name, """{"targetRef":"new-task","focusRevision":1}""").isError)
+        for ((name, json) in listOf("readConversation" to """{"ref":"new-task"}""", "navigate" to """{"to":"happy://conversation/new-task","focusRevision":1}""")) {
+            val refused = context.tool(name, json)
+            assertTrue(name, refused.isError)
+            assertTrue(name, refused.text.contains("start it with message to new-task or new-bot"))
+        }
     }
 
     @Test
@@ -586,11 +666,11 @@ class CallContextTest {
         val targets = backend()
         val context = CallContext(targets)
         context.initial()
-        val started = obj(context.tool("sendMessage", """{"targetRef":"New-Bot: Release helper ","text":"Watch the release","focusRevision":0}""").text)
+        val started = obj(context.tool("message", """{"to":"New-Bot: Release helper ","text":"Watch the release"}""").text)
         assertEquals("bot", started.str("started"))
         assertEquals("Release helper", started.str("title"))
         assertEquals(listOf(CallTarget.Kind.Bot to "Release helper"), targets.made.toList())
-        assertEquals("New Bot", obj(context.tool("sendMessage", """{"targetRef":"new-bot","text":"Watch the docs","focusRevision":0}""").text).str("title"))
+        assertEquals("New Bot", obj(context.tool("message", """{"to":"new-bot","text":"Watch the docs"}""").text).str("title"))
     }
 
     /** The model and effort go as compose's pickers would set them before its first send; without them, compose's default, said in the answer. */
@@ -601,16 +681,16 @@ class CallContextTest {
         targets.newWorkModels = listOf(opus, sonnet, gpt)
         val context = CallContext(targets)
         context.initial()
-        val asked = obj(context.tool("sendMessage", """{"targetRef":"new-task","text":"go","focusRevision":0,"model":"sonnet","effort":"low"}""").text)
+        val asked = obj(context.tool("message", """{"to":"new-task","text":"go","model":"sonnet","effort":"low"}""").text)
         assertEquals("Claude Sonnet 4.5", asked.str("model"))
         assertEquals("low", asked.str("effort"))
-        val plain = obj(context.tool("sendMessage", """{"targetRef":"new-task","text":"also","focusRevision":0}""").text)
+        val plain = obj(context.tool("message", """{"to":"new-task","text":"also"}""").text)
         assertEquals("Claude Opus 4.5", plain.str("model"))
         assertEquals("high", plain.str("effort"))
         assertEquals(listOf(CallModeChange("claude-sonnet-4-5", "low"), null), targets.sends.map { it.change })
     }
 
-    /** Refused for its model, or stale: nothing goes and nothing stays. */
+    /** Refused for its model or its effort: nothing goes and nothing stays. */
     @Test
     fun aRefusedStartLeavesNothing() = runBlocking {
         val targets = backend()
@@ -618,13 +698,12 @@ class CallContextTest {
         targets.newWorkModels = listOf(opus, sonnet)
         val context = CallContext(targets)
         context.initial()
-        val unknown = context.tool("sendMessage", """{"targetRef":"new-task","text":"go","focusRevision":0,"model":"gemini"}""")
+        val unknown = context.tool("message", """{"to":"new-task","text":"go","model":"gemini"}""")
         assertTrue(unknown.isError)
         assertEquals(2, obj(unknown.text)["models"]!!.jsonArray.size)
-        assertTrue(context.tool("sendMessage", """{"targetRef":"new-task","text":"go","focusRevision":4}""").isError)
+        assertTrue(context.tool("message", """{"to":"new-task","text":"go","model":"sonnet","effort":"max"}""").isError)
         assertTrue(targets.sends.isEmpty())
-        assertEquals(listOf("new-1"), targets.discarded.toList())
-        assertEquals("a stale send starts nothing", 1, targets.made.size)
+        assertEquals(listOf("new-1", "new-2"), targets.discarded.toList())
     }
 
     /** The provider asking again, its answer lost: the same new work, never a second. */
@@ -634,11 +713,11 @@ class CallContextTest {
         targets.sendDelay = 300
         val context = CallContext(targets, toolDeadlineMillis = 100)
         context.initial()
-        val first = context.tool("sendMessage", """{"targetRef":"new-task","text":"Fix the build","focusRevision":0}""")
+        val first = context.tool("message", """{"to":"new-task","text":"Fix the build"}""")
         assertEquals("uncertain", obj(first.text).str("status"))
         targets.sendDelay = 0
         delay(300)
-        val second = obj(context.tool("sendMessage", """{"targetRef":"new-task","text":"Fix the build","focusRevision":0}""").text)
+        val second = obj(context.tool("message", """{"to":"new-task","text":"Fix the build"}""").text)
         assertEquals("queued", second.str("status"))
         assertEquals(1, targets.made.size)
         assertEquals(1, targets.sends.map { it.id }.toSet().size)
@@ -654,23 +733,23 @@ class CallContextTest {
         val focus = events(context.focusChanged("new-1")).last()
         assertEquals("New Task", focus.str("title"))
         val ref = focus.str("ref")!!
-        assertFalse(context.tool("sendMessage", """{"targetRef":"$ref","text":"Fix the flaky test","focusRevision":1}""").isError)
+        assertFalse(context.tool("message", """{"to":"$ref","text":"Fix the flaky test"}""").isError)
     }
 
     @Test
-    fun goBackPopsOneScreenAndGoHomeClearsThem() = runBlocking {
+    fun backPopsOneScreenAndHomeClearsThem() = runBlocking {
         val targets = backend(focus = null)
         targets.screens = 3
         val context = CallContext(targets)
         context.initial()
-        assertTrue(context.tool("goBack", """{"focusRevision":2}""").isError)
+        assertTrue(context.tool("navigate", """{"to":"happy://back","focusRevision":2}""").isError)
         assertEquals(3, targets.screens)
-        val back = obj(context.tool("goBack", """{"focusRevision":0}""").text)
+        val back = obj(context.tool("navigate", """{"to":"happy://back","focusRevision":0}""").text)
         assertEquals(false, back["home"]!!.jsonPrimitive.boolean)
         assertEquals(JsonNull, back["title"])
         assertEquals(2, targets.screens)
-        assertEquals(true, obj(context.tool("goHome", "{}").text)["home"]!!.jsonPrimitive.boolean)
-        val nowhere = context.tool("goBack", """{"focusRevision":0}""")
+        assertEquals(true, obj(context.tool("navigate", """{"to":"happy://home","focusRevision":0}""").text)["home"]!!.jsonPrimitive.boolean)
+        val nowhere = context.tool("navigate", """{"to":"happy://back","focusRevision":0}""")
         assertTrue(nowhere.isError)
         assertEquals("This is home; there is nothing to go back to.", obj(nowhere.text).str("reason"))
     }
@@ -687,21 +766,21 @@ class CallContextTest {
     }
 
     @Test
-    fun sendMessageSwitchesTheModelAndEffortTheComputerOffers() = runBlocking {
+    fun messageSwitchesTheModelAndEffortTheComputerOffers() = runBlocking {
         val targets = modelled()
         val context = CallContext(targets)
         context.initial()
         // Working, it still takes the message, as the composer's send does.
-        val both = obj(context.tool("sendMessage", """{"targetRef":"s2","text":"go","focusRevision":0,"model":"sonnet","effort":"Low"}""").text)
+        val both = obj(context.tool("message", """{"to":"s2","text":"go","model":"sonnet","effort":"Low"}""").text)
         assertEquals("queued", both.str("status"))
         assertEquals("Claude Sonnet 4.5", both.str("model"))
         assertEquals("low", both.str("effort"))
-        val effortOnly = obj(context.tool("sendMessage", """{"targetRef":"s2","text":"again","focusRevision":0,"effort":"max"}""").text)
+        val effortOnly = obj(context.tool("message", """{"to":"s2","text":"again","effort":"max"}""").text)
         assertEquals("Claude Opus 4.5", effortOnly.str("model"))
         assertEquals("max", effortOnly.str("effort"))
-        val modelOnly = obj(context.tool("sendMessage", """{"targetRef":"s2","text":"third","focusRevision":0,"model":"GPT 5.2 codex"}""").text)
+        val modelOnly = obj(context.tool("message", """{"to":"s2","text":"third","model":"GPT 5.2 codex"}""").text)
         assertEquals("medium", modelOnly.str("effort"))
-        assertNull(obj(context.tool("sendMessage", """{"targetRef":"s2","text":"fourth","focusRevision":0}""").text)["model"])
+        assertNull(obj(context.tool("message", """{"to":"s2","text":"fourth"}""").text)["model"])
         assertEquals(
             listOf(CallModeChange("claude-sonnet-4-5", "low"), CallModeChange(effort = "max"), CallModeChange("gpt-5.2-codex"), null),
             targets.sends.map { it.change },
@@ -713,17 +792,17 @@ class CallContextTest {
         val targets = modelled()
         val context = CallContext(targets)
         context.initial()
-        val unknown = context.tool("sendMessage", """{"targetRef":"s2","text":"go","focusRevision":0,"model":"gemini"}""")
+        val unknown = context.tool("message", """{"to":"s2","text":"go","model":"gemini"}""")
         assertTrue(unknown.isError)
         val listed = obj(unknown.text)
         assertEquals(listOf("Claude Opus 4.5", "Claude Sonnet 4.5", "GPT-5.2 Codex"), listed["models"]!!.jsonArray.map { it.jsonObject.str("name") })
         assertTrue(listed.str("reason")!!.endsWith("Nothing was sent."))
-        assertEquals(2, obj(context.tool("sendMessage", """{"targetRef":"s2","text":"go","focusRevision":0,"model":"claude"}""").text)["models"]!!.jsonArray.size)
-        val effort = obj(context.tool("sendMessage", """{"targetRef":"s2","text":"go","focusRevision":0,"model":"sonnet","effort":"max"}""").text)
+        assertEquals(2, obj(context.tool("message", """{"to":"s2","text":"go","model":"claude"}""").text)["models"]!!.jsonArray.size)
+        val effort = obj(context.tool("message", """{"to":"s2","text":"go","model":"sonnet","effort":"max"}""").text)
         assertEquals("Claude Sonnet 4.5 takes effort low, medium, high, not \"max\". Nothing was sent.", effort.str("reason"))
-        assertTrue(context.tool("sendMessage", """{"targetRef":"s2","text":"go","focusRevision":0,"model":4}""").isError)
+        assertTrue(context.tool("message", """{"to":"s2","text":"go","model":4}""").isError)
         // Without the computer's models, nothing changes and nothing goes.
-        assertTrue(context.tool("sendMessage", """{"targetRef":"s1","text":"go","focusRevision":0,"effort":"high"}""").isError)
+        assertTrue(context.tool("message", """{"to":"s1","text":"go","effort":"high"}""").isError)
         assertTrue(targets.sends.isEmpty())
     }
 
@@ -741,14 +820,14 @@ class CallContextTest {
         )
         val context = CallContext(FakeCallTargets(listOf(chat), mutableMapOf("c" to state), null), now = { now }, zone = java.time.ZoneId.of("Europe/Berlin"))
         context.initial()
-        val read = obj(context.tool("getSessionContext", """{"targetRef":"s1"}""").text)
+        val read = obj(context.tool("readConversation", """{"ref":"s1"}""").text)
         assertEquals(obj("""{"ago":"2 hours ago","at":"2025-11-06T11:00:00+01:00"}"""), read["lastUserMessage"])
         assertEquals(obj("""{"ago":"5 minutes ago","at":"2025-11-06T12:55:00+01:00"}"""), read["lastAgentReply"])
         assertEquals("App / Feature", read.str("workspace"))
         assertEquals(obj("""{"id":"claude-opus-4-5","name":"Claude Opus 4.5","effort":"high"}"""), read["model"])
         assertEquals(listOf("low", "medium", "high", "max"), read["models"]!!.jsonArray[0].jsonObject.strings("efforts"))
-        val listed = obj(context.tool("listSessions", "{}").text)
-        val row = listed["sessions"]!!.jsonArray[0].jsonObject
+        val listed = obj(context.tool("listConversations", "{}").text)
+        val row = listed["conversations"]!!.jsonArray[0].jsonObject
         assertEquals(obj("""{"ago":"5 minutes ago","at":"2025-11-06T12:55:00+01:00"}"""), row["lastActivity"])
         assertEquals("App / Feature", row.str("workspace"))
         assertEquals("2025-11-06T13:00:00+01:00", listed.str("now"))
@@ -773,7 +852,7 @@ class CallContextTest {
         assertEquals("a teammate", read.named(emptyMap(), null).turns[0].userBy)
         val context = CallContext(FakeCallTargets(listOf(chat), mutableMapOf("c" to named), null), now = { now }, zone = java.time.ZoneOffset.UTC)
         context.initial()
-        val body = obj(context.tool("getSessionContext", """{"targetRef":"s1"}""").text)
+        val body = obj(context.tool("readConversation", """{"ref":"s1"}""").text)
         assertEquals("Ada Lovelace", body["turns"]!!.jsonArray[0].jsonObject.str("userBy"))
         assertEquals("the person", body["pendingUserMessage"]!!.jsonObject.str("by"))
         assertEquals("the person", body["lastUserMessage"]!!.jsonObject.str("by"))
@@ -818,21 +897,19 @@ class CallContextTest {
 
     @Test
     fun theToolsAreDescribedForTheDashboard() {
-        assertEquals(listOf("listSessions", "getSessionContext", "openSession", "sendMessage", "newWork", "goBack", "goHome"), CallTool.entries.map { it.wire })
-        assertEquals(listOf("kind"), CallTool.NewWork.parameters.strings("required"))
-        assertNull(CallTool.NewWork.parameters["properties"]!!.jsonObject["focusRevision"])
-        assertEquals(listOf("task", "bot"), CallTool.NewWork.parameters["properties"]!!.jsonObject["kind"]!!.jsonObject.strings("enum"))
-        assertEquals(listOf("focusRevision"), CallTool.GoBack.parameters.strings("required"))
-        assertEquals(JsonArray(emptyList()), CallTool.GoHome.parameters["required"])
-        assertEquals("string", CallTool.SendMessage.parameters["properties"]!!.jsonObject["model"]!!.jsonObject.str("type"))
-        assertTrue(CallTool.SendMessage.summary.contains("only when the person has explicitly asked you to send"))
-        assertEquals("integer", CallTool.OpenSession.parameters["properties"]!!.jsonObject["focusRevision"]!!.jsonObject.str("type"))
-        assertEquals(listOf("targetRef", "text", "focusRevision"), CallTool.SendMessage.parameters.strings("required"))
-        assertEquals(listOf("targetRef"), CallTool.GetSessionContext.parameters.strings("required"))
-        assertEquals(JsonArray(emptyList()), CallTool.ListSessions.parameters["required"])
-        assertTrue(CallTool.ListSessions.summary.contains("case-insensitive substring"))
-        assertTrue(CallTool.SendMessage.summary.contains("queued on the person's device, not confirmed delivered or read"))
-        assertTrue(CallTool.SendMessage.summary.contains("8 KiB"))
+        assertEquals(listOf("listConversations", "readConversation", "message", "navigate"), CallTool.entries.map { it.wire })
+        assertEquals(JsonArray(emptyList()), CallTool.ListConversations.parameters["required"])
+        assertEquals(listOf("ref"), CallTool.ReadConversation.parameters.strings("required"))
+        assertEquals(listOf("text"), CallTool.Message.parameters.strings("required"))
+        assertNull(CallTool.Message.parameters["properties"]!!.jsonObject["focusRevision"])
+        assertEquals("string", CallTool.Message.parameters["properties"]!!.jsonObject["to"]!!.jsonObject.str("type"))
+        assertEquals("string", CallTool.Message.parameters["properties"]!!.jsonObject["model"]!!.jsonObject.str("type"))
+        assertEquals(listOf("to", "focusRevision"), CallTool.Navigate.parameters.strings("required"))
+        assertEquals("integer", CallTool.Navigate.parameters["properties"]!!.jsonObject["focusRevision"]!!.jsonObject.str("type"))
+        assertTrue(CallTool.Message.summary.contains("only when the person has explicitly asked you to send"))
+        assertTrue(CallTool.Message.summary.contains("queued on the person's device, not confirmed delivered"))
+        assertTrue(CallTool.ListConversations.summary.contains("case-insensitive substring"))
+        for (destination in CallContext.DESTINATIONS) assertTrue(destination, CallTool.Navigate.summary.contains(destination))
     }
 
     /** docs/agent-voice-call.md's client tools are what the phone answers, word for word. */
@@ -849,16 +926,16 @@ class CallContextTest {
     }
 
     @Test
-    fun listSessionsPagesAndFiltersBySubstring() = runBlocking {
+    fun listConversationsPagesAndFiltersBySubstring() = runBlocking {
         val many = (0 until 120).map { CallTarget("x$it", if (it % 2 == 0) "Even $it" else "Odd $it", CallTarget.Kind.Task, CallTarget.Status.Idle) }
         val context = CallContext(FakeCallTargets(many, mutableMapOf(), null))
         context.initial()
-        val first = obj(context.tool("listSessions", "{}").text)
-        assertEquals(50, first["sessions"]!!.jsonArray.size)
+        val first = obj(context.tool("listConversations", "{}").text)
+        assertEquals(50, first["conversations"]!!.jsonArray.size)
         assertEquals("50", first.str("nextCursor"))
-        assertEquals(16, obj(context.tool("listSessions", """{"query":"DD 1","cursor":null}""").text)["sessions"]!!.jsonArray.size)
-        val paged = obj(context.tool("listSessions", """{"query":"odd","cursor":"50"}""").text)
-        assertEquals(10, paged["sessions"]!!.jsonArray.size)
+        assertEquals(16, obj(context.tool("listConversations", """{"query":"DD 1","cursor":null}""").text)["conversations"]!!.jsonArray.size)
+        val paged = obj(context.tool("listConversations", """{"query":"odd","cursor":"50"}""").text)
+        assertEquals(10, paged["conversations"]!!.jsonArray.size)
         assertNull(paged["nextCursor"])
     }
 
@@ -885,8 +962,8 @@ class CallContextTest {
         ))
         // No IDs of the computer's in what the agent reads.
         for (id in list.map { it.agentId }) assertFalse(id, initial.contains(id))
-        val found = obj(context.tool("listSessions", """{"query":"lock"}""").text)["sessions"]!!.jsonArray.first().jsonObject
-        assertEquals("s4", found.str("targetRef"))
+        val found = obj(context.tool("listConversations", """{"query":"lock"}""").text)["conversations"]!!.jsonArray.first().jsonObject
+        assertEquals("s4", found.str("ref"))
         assertEquals("subtask", found.str("kind"))
         assertEquals(listOf("Release notes", "Fix cache race"), found.strings("parents"))
     }
@@ -900,17 +977,17 @@ class CallContextTest {
         ), null)
         val context = CallContext(targets)
         context.initial()
-        val read = obj(context.tool("getSessionContext", """{"targetRef":"s2"}""").text)
+        val read = obj(context.tool("readConversation", """{"ref":"s2"}""").text)
         assertEquals("Fix cache race", read.str("title"))
         assertEquals(listOf("Release notes"), read.strings("parents"))
-        assertNull(read["targetRef"])
+        assertNull(read["ref"])
         assertNull(read["ref"])
         assertEquals("sub answer", read.turns().first().str("assistant"))
-        assertTrue(obj(context.tool("openSession", """{"targetRef":"s2","focusRevision":0}""").text)["opened"]!!.jsonPrimitive.boolean)
-        assertEquals("queued", obj(context.tool("sendMessage", """{"targetRef":"s2","text":"go on","focusRevision":1}""").text).str("status"))
+        assertTrue(obj(context.tool("navigate", """{"to":"happy://conversation/s2","focusRevision":0}""").text)["opened"]!!.jsonPrimitive.boolean)
+        assertEquals("queued", obj(context.tool("message", """{"to":"s2","text":"go on"}""").text).str("status"))
         assertEquals(listOf("c"), targets.sends.map { it.agentId })
         // A reference no one gave reaches nothing.
-        assertTrue(context.tool("getSessionContext", """{"targetRef":"s9"}""").isError)
+        assertTrue(context.tool("readConversation", """{"ref":"s9"}""").isError)
     }
 
     /** A reference reaches a conversation while home lists it; gone, it reaches nothing; back, it reaches it again. */
@@ -922,11 +999,15 @@ class CallContextTest {
         val context = CallContext(targets)
         context.initial()
         targets.setDirectory(listOf(backendTarget))
-        for (name in listOf("getSessionContext", "openSession", "sendMessage")) {
-            assertTrue(name, context.tool(name, """{"targetRef":"s1","text":"hi","focusRevision":0}""").isError)
+        for ((name, json) in listOf(
+            "readConversation" to """{"ref":"s1"}""",
+            "navigate" to """{"to":"happy://conversation/s1","focusRevision":0}""",
+            "message" to """{"to":"s1","text":"hi"}""",
+        )) {
+            assertTrue(name, context.tool(name, json).isError)
         }
         targets.setDirectory(listOf(backendTarget, docsTarget))
-        assertFalse(context.tool("getSessionContext", """{"targetRef":"s1"}""").isError)
+        assertFalse(context.tool("readConversation", """{"ref":"s1"}""").isError)
     }
 
     /** The directory goes once, at the start: what came since gives its reference with the first update about it, and only then. */
@@ -946,10 +1027,10 @@ class CallContextTest {
         val words = events(context.targetChanged(CallTargetState(fixTarget, listOf(CallMessage("m", CallMessage.Role.Assistant, "Fixed.")))))
         assertEquals(listOf("assistant_text"), words.map { it.str("event") })
         assertNull(words[0]["ref"])
-        // listSessions gives references too: what it listed comes without one.
+        // listConversations gives references too: what it listed comes without one.
         val other = CallTarget("o", "Other", CallTarget.Kind.Task, CallTarget.Status.Idle)
         targets.setDirectory(listOf(releaseTarget, fixTarget, other))
-        context.tool("listSessions", """{"query":"other"}""")
+        context.tool("listConversations", """{"query":"other"}""")
         assertNull(events(context.focusChanged("o"))[0]["ref"])
     }
 
@@ -961,7 +1042,7 @@ class CallContextTest {
         context.initial()
         context.targetChanged(CallTargetState(docsTarget, working = true))
         targets.setDirectory(listOf(backendTarget))
-        context.tool("listSessions", "{}")
+        context.tool("listConversations", "{}")
         val late = context.targetChanged(CallTargetState(docsTarget, listOf(CallMessage("w", CallMessage.Role.Assistant, "Done.")),
             listOf(CallTurn("x", ended = "error", error = "Boom"))))
         assertTrue(late.isEmpty)
@@ -976,8 +1057,8 @@ class CallContextTest {
         val text = CallContext(FakeCallTargets(listOf(deep, after), mutableMapOf(), null)).initial()
         assertTrue(text, text.contains("\n(under Parent 0 "))
         assertTrue(text, text.contains("\n- Deep one — subtask, ref "))
-        // What comes after it is counted, for listSessions to find.
-        assertTrue(text, text.contains("\n… and 1 more; listSessions finds them by title."))
+        // What comes after it is counted, for listConversations to find.
+        assertTrue(text, text.contains("\n… and 1 more; listConversations finds them by title."))
         assertTrue(text.utf8Size() <= CallContext.Limits.TOTAL_BYTES)
     }
 

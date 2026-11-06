@@ -31,7 +31,7 @@ Preserve credential and push compatibility on upgrades.
 - **An agent connection's voice call** (`call/`, `ui/call/`), iOS's
   `HappyCore/Call` ported: apart from the relay's voice above, its own new
   hosted ElevenLabs agent, its system prompt sent from the phone
-  (`CallPrompt`) and seven client tools (`CallTool`), no permission
+  (`CallPrompt`) and v3's four client tools (`CallTool`), no permission
   or question tool, hearing only new words and stopping errors from the last
   four conversations visited. Home's three-bar button sits immediately left of compose
   (`ComposeFab(onVoice)`); the call's bar (`CallFrame`, after Telegram-iOS's
@@ -42,9 +42,9 @@ Preserve credential and push compatibility on upgrades.
   It ends when the app leaves the foreground, another account opens or the
   relay's voice starts. For launch it connects to a public agent by its ID
   (`PublicAgentCallGrants`), a connection mechanism and not authentication;
-  the ID comes from `HAPPY_CALL_AGENT_ID`, `-Phappy.callAgentId` or the
-  ignored `local.properties` into `BuildConfig.CALL_AGENT_ID`, and is never
-  committed. Without it the tap says "Voice isn't set up for this
+  the ID comes from `HAPPY_CALL_AGENT_V3_ID`, `-Phappy.callAgentV3Id` or the
+  ignored `local.properties` (`happy.callAgentV3Id`) into
+  `BuildConfig.CALL_AGENT_ID`, and is never committed. Without it the tap says "Voice isn't set up for this
   connection yet". Each device gets 20 free connected minutes in any
   rolling 30 days, 5 hours a month with the subscription (`CallAllowance`,
   local). The app's own sheet (`CallSheet`, no vendor UI) is the welcome,
@@ -53,7 +53,7 @@ Preserve credential and push compatibility on upgrades.
   what the store and RevenueCat say is on sale (`Offer.OnSale`), never a
   made-up price (`Preview` is a debug-only test screen). A `ModalBottomSheet` calls
   `SheetStatusIcons()` so the bar under its scrim keeps light icons.
-  `openSession` replaces a conversation on top and goes over anything else
+  `navigate` to a conversation replaces one on top and goes over anything else
   (`openConversationInPlace`). See
   `docs/agent-voice-call.md` at the repository root. The `happy.call.*`
   intent extras (`CallFixtures`), `CallProbe` and `CallLiveDeviceCheck`

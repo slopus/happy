@@ -400,7 +400,7 @@ final class SplitAppHarness {
                 _ = await targets.open("cache-agent")
                 targets.close()
             }
-            // The call's new work off screen by sendMessage, openSession, goBack and goHome through its own context, with no provider:
+            // The call's new work off screen by message, and navigate's destinations, through its own context, with no provider:
             // each logs its result and the stack it left (`[call-nav]`), a pause between for screenshots.
             if arguments.contains("-callNav"), let id = context.account.agentConnections.activeID, let session = Session.session(for: id, context: context) {
                 try? await Task.sleep(for: .seconds(2))
@@ -418,18 +418,23 @@ final class SplitAppHarness {
                 }
                 let initial = await call.initial()
                 print("[call-nav] initial\n\(initial)")
-                _ = await step("openSession", "{\"targetRef\":\"s1\",\"focusRevision\":\(revision)}")
-                // Retired: it says what to use instead.
-                _ = await step("newWork", "{\"kind\":\"bot\"}")
+                _ = await step("navigate", "{\"to\":\"happy://conversation/s1\",\"focusRevision\":\(revision)}")
+                // No such place: it says which there are.
+                _ = await step("navigate", "{\"to\":\"happy://settings\",\"focusRevision\":\(revision)}")
                 // Started off screen with its first message: what is in front stays.
-                let task = await step("sendMessage", "{\"targetRef\":\"new-task\",\"text\":\"Draft the release notes\",\"focusRevision\":\(revision)}")
-                _ = await step("getSessionContext", "{\"targetRef\":\"\((task["targetRef"] as? String) ?? "")\"}")
-                _ = await step("listSessions", "{}")
-                _ = await step("openSession", "{\"targetRef\":\"\((task["targetRef"] as? String) ?? "")\",\"focusRevision\":\(revision)}")
-                _ = await step("goBack", "{\"focusRevision\":\(revision)}")
-                _ = await step("goHome", "{}")
-                _ = await step("goBack", "{\"focusRevision\":\(revision)}")
-                _ = await step("getSessionContext", "{\"targetRef\":\"s1\"}")
+                let task = await step("message", "{\"to\":\"new-task\",\"text\":\"Draft the release notes\"}")
+                let made = (task["ref"] as? String) ?? ""
+                _ = await step("readConversation", "{\"ref\":\"\(made)\"}")
+                _ = await step("listConversations", "{}")
+                _ = await step("navigate", "{\"to\":\"happy://conversation/\(made)\",\"focusRevision\":\(revision)}")
+                // No to: the conversation on screen.
+                _ = await step("message", "{\"text\":\"And the changelog\"}")
+                _ = await step("navigate", "{\"to\":\"happy://back\",\"focusRevision\":\(revision)}")
+                _ = await step("navigate", "{\"to\":\"happy://home\",\"focusRevision\":\(revision)}")
+                _ = await step("navigate", "{\"to\":\"happy://back\",\"focusRevision\":\(revision)}")
+                // Nothing on screen: the agent is told to ask which.
+                _ = await step("message", "{\"text\":\"Anyone?\"}")
+                _ = await step("readConversation", "{\"ref\":\"s1\"}")
                 print("[call-nav] done")
                 await call.close()
                 targets.close()
@@ -455,15 +460,15 @@ final class SplitAppHarness {
                     return value
                 }
                 _ = await call.initial()
-                let listed = await step("listSessions", "{}")
-                let sessions = listed["sessions"] as? [[String: Any]] ?? []
-                func ref(_ title: String) -> String { (sessions.first { $0["title"] as? String == title }?["targetRef"] as? String) ?? "" }
-                let far = (sessions.last { ($0["title"] as? String)?.hasPrefix("Fixture task") == true }?["title"] as? String) ?? ""
-                _ = await step("sendMessage", "{\"targetRef\":\"new-task\",\"text\":\"Draft the release notes\",\"focusRevision\":\(revision)}")
-                _ = await step("openSession", "{\"targetRef\":\"\(ref(far))\",\"focusRevision\":\(revision)}")
-                _ = await step("goBack", "{\"focusRevision\":\(revision)}")
-                _ = await step("openSession", "{\"targetRef\":\"\(ref("Research Assistant"))\",\"focusRevision\":\(revision)}")
-                _ = await step("goHome", "{}")
+                let listed = await step("listConversations", "{}")
+                let conversations = listed["conversations"] as? [[String: Any]] ?? []
+                func ref(_ title: String) -> String { (conversations.first { $0["title"] as? String == title }?["ref"] as? String) ?? "" }
+                let far = (conversations.last { ($0["title"] as? String)?.hasPrefix("Fixture task") == true }?["title"] as? String) ?? ""
+                _ = await step("message", "{\"to\":\"new-task\",\"text\":\"Draft the release notes\"}")
+                _ = await step("navigate", "{\"to\":\"happy://conversation/\(ref(far))\",\"focusRevision\":\(revision)}")
+                _ = await step("navigate", "{\"to\":\"happy://back\",\"focusRevision\":\(revision)}")
+                _ = await step("navigate", "{\"to\":\"happy://conversation/\(ref("Research Assistant"))\",\"focusRevision\":\(revision)}")
+                _ = await step("navigate", "{\"to\":\"happy://home\",\"focusRevision\":\(revision)}")
                 // A sheet with its close at the leading end, as the app's sheets have it.
                 let settings = SettingsViewController(context: context, computer: id)
                 let sheet = UINavigationController(rootViewController: settings)
@@ -471,7 +476,7 @@ final class SplitAppHarness {
                 AppCoordinator.applyAppearance(to: sheet.navigationBar)
                 shell.present(sheet, animated: true)
                 try? await Task.sleep(for: .seconds(2))
-                _ = await step("goBack", "{\"focusRevision\":\(revision)}")
+                _ = await step("navigate", "{\"to\":\"happy://back\",\"focusRevision\":\(revision)}")
                 print("[voice-touch] done")
                 await call.close()
                 targets.close()

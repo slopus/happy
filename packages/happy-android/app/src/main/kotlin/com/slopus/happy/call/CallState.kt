@@ -63,12 +63,13 @@ interface CallGrants {
     suspend fun grant(): CallGrantResult
 }
 
-/** The hosted agent: new, versioned, its own prompt and the five [CallTool]s; not the relay's. */
+/** The hosted agent: versioned, its own prompt and the four [CallTool]s (v3); not the relay's. */
 object CallAgent {
     /**
-     * The build's `CALL_AGENT_ID`, from `HAPPY_CALL_AGENT_ID`, `-Phappy.callAgentId`
-     * or `local.properties`, never the repository (docs/agent-voice-call.md).
-     * Without it every call ends as [CallProblem.NotSetUp].
+     * The build's `CALL_AGENT_ID`, from `HAPPY_CALL_AGENT_V3_ID`, `-Phappy.callAgentV3Id`
+     * or `local.properties`, never the repository (docs/agent-voice-call.md). Named for
+     * the tools, so an older agent's ID (`HAPPY_CALL_AGENT_ID`, v2's) never reaches this
+     * code. Without it every call ends as [CallProblem.NotSetUp].
      */
     val hostedAgentId: String? = id(com.slopus.happy.BuildConfig.CALL_AGENT_ID)
 

@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 @testable import HappyCore
+import HappyWire
 
 /// The agent connection's voice call: its context, its four tools and its
 /// life, with the provider faked. Nothing here opens a microphone.
@@ -75,6 +76,11 @@ final class CallContextTests: XCTestCase {
         - Docs — task, ref s2
 
         \(CallContext.newWorkText)
+
+        Destinations (navigate's to):
+        - happy://home — the home list
+        - happy://back — one screen back; refused at home
+        - happy://conversation/<ref> — that conversation on screen, such as happy://conversation/s1
         """)
         XCTAssertFalse(text.contains("{"), "no JSON")
         let followed = await context.followed
@@ -95,14 +101,28 @@ final class CallContextTests: XCTestCase {
         XCTAssertLessThanOrEqual(text.utf8.count, CallContext.Limits.totalBytes)
         let parts = text.components(separatedBy: "\n\n")
         let directory = try XCTUnwrap(parts.first { $0.hasPrefix("Conversations in the app") })
-        XCTAssertTrue(directory.hasSuffix("more; listSessions finds them by title."), directory)
+        XCTAssertTrue(directory.hasSuffix("more; listConversations finds them by title."), directory)
         XCTAssertLessThanOrEqual(directory.utf8.count, CallContext.Limits.directoryBytes)
         let screen = try XCTUnwrap(parts.first { $0.hasPrefix("On screen:") })
         let shown = screen.components(separatedBy: "\n").filter { $0.first?.isNumber == true }
         XCTAssertLessThanOrEqual(shown.count, CallContext.Limits.turns)
         XCTAssertTrue(screen.contains("[cut short]"))
         XCTAssertTrue(screen.contains("Older turns aren't shown."))
-        XCTAssertTrue(text.hasSuffix(CallContext.newWorkText))
+        XCTAssertTrue(text.hasSuffix(CallContext.newWorkText + "\n\n" + CallContext.destinationsText))
+    }
+
+    /// The models the message tool's description sends the agent to: the
+    /// conversation on screen's, as a read lists them.
+    func testTheFirstContextListsTheModelsTheScreensConversationCanSwitchTo() async throws {
+        let targets = backend()
+        await targets.set("a", CallTargetState(target: backendTarget, mode: CallMode(modelId: opus.id, model: opus.name, effort: "high"), models: [opus, CallModel(id: "plain", name: "Plain", efforts: [], defaultEffort: "")]))
+        let text = await CallContext(targets: targets).initial()
+        XCTAssertTrue(text.contains("""
+        Model: Claude Opus 4.5, effort high
+        Models it can switch to:
+        - Claude Opus 4.5 — id claude-opus-4-5, efforts low, medium, high, max
+        - Plain — id plain
+        """), text)
     }
 
     func testTruncationKeepsWholeCharacters() {
@@ -113,12 +133,12 @@ final class CallContextTests: XCTestCase {
     func testReadingAConversationGivesItsLastFiveTurnsAndChangesNothingHeard() async throws {
         let context = CallContext(targets: backend(focus: nil))
         _ = await context.initial()
-        let read = try object(await tool(context, "getSessionContext", #"{"targetRef":"s1"}"#).text)
+        let read = try object(await tool(context, "readConversation", #"{"ref":"s1"}"#).text)
         XCTAssertEqual((read["turns"] as? [[String: Any]])?.map { $0["assistant"] as? String }, ["first answer", "second answer", nil, "third answer"])
         XCTAssertEqual((read["pendingUserMessage"] as? [String: Any])?["text"] as? String, "still waiting")
         XCTAssertEqual(read["working"] as? Bool, false)
         XCTAssertEqual(read["needsInput"] as? Bool, false)
-        _ = await tool(context, "listSessions", "{}")
+        _ = await tool(context, "listConversations", "{}")
         let followed = await context.followed
         XCTAssertTrue(followed.isEmpty)
         // Not visited, so its new words say nothing.
@@ -135,18 +155,18 @@ final class CallContextTests: XCTestCase {
         let targets = FakeCallTargets(directory: [backendTarget], states: ["a": CallTargetState(target: backendTarget, turns: turns)], focus: nil)
         let context = CallContext(targets: targets)
         _ = await context.initial()
-        var read = try object(await tool(context, "getSessionContext", #"{"targetRef":"s1"}"#).text)
+        var read = try object(await tool(context, "readConversation", #"{"ref":"s1"}"#).text)
         XCTAssertEqual((read["turns"] as? [[String: Any]])?.map { $0["assistant"] as? String }, ["answer 4", "answer 5", "answer 6", "answer 7", "done on its own"])
         XCTAssertNil((read["turns"] as? [[String: Any]])?.last?["user"])
         XCTAssertEqual(read["olderTurns"] as? Bool, true)
         let waiting = CallMessage(id: "p", role: .user, text: "and now?")
         await targets.set("a", CallTargetState(target: backendTarget, turns: turns, unanswered: waiting))
-        read = try object(await tool(context, "getSessionContext", #"{"targetRef":"s1"}"#).text)
+        read = try object(await tool(context, "readConversation", #"{"ref":"s1"}"#).text)
         XCTAssertEqual((read["turns"] as? [[String: Any]])?.count, 4)
         XCTAssertEqual((read["pendingUserMessage"] as? [String: Any])?["text"] as? String, "and now?")
         let long = String(repeating: "é", count: 5000)
         await targets.set("a", CallTargetState(target: backendTarget, turns: (0..<6).map { CallTurn(id: "l\($0)", user: long, reply: long) }))
-        let big = await tool(context, "getSessionContext", #"{"targetRef":"s1"}"#)
+        let big = await tool(context, "readConversation", #"{"ref":"s1"}"#)
         XCTAssertLessThanOrEqual(big.text.utf8.count, CallContext.Limits.totalBytes)
         let shown = try XCTUnwrap(try object(big.text)["turns"] as? [[String: Any]])
         XCTAssertLessThan(shown.count, 5)
@@ -157,7 +177,7 @@ final class CallContextTests: XCTestCase {
         let turns = [CallTurn(id: "r1", user: "ask", reply: "fine"), CallTurn(id: "r2", user: "again", ended: "error", error: "Rate limited")]
         let context = CallContext(targets: FakeCallTargets(directory: [backendTarget], states: ["a": CallTargetState(target: backendTarget, turns: turns)], focus: nil))
         _ = await context.initial()
-        let read = try object(await tool(context, "getSessionContext", #"{"targetRef":"s1"}"#).text)
+        let read = try object(await tool(context, "readConversation", #"{"ref":"s1"}"#).text)
         let shown = try XCTUnwrap(read["turns"] as? [[String: Any]])
         XCTAssertEqual(shown.last?["ended"] as? String, "error")
         XCTAssertEqual(shown.last?["error"] as? String, "Rate limited")
@@ -196,7 +216,7 @@ final class CallContextTests: XCTestCase {
     func testSettingsOrHomeInFrontKeepTheVisited() async throws {
         let context = CallContext(targets: backend())
         _ = await context.initial()
-        _ = await context.handle(CallToolCall(id: "o", name: "openSession", parameters: Data(#"{"targetRef":"s2","focusRevision":0}"#.utf8)))
+        _ = await context.handle(CallToolCall(id: "o", name: "navigate", parameters: Data(#"{"to":"happy://conversation/s2","focusRevision":0}"#.utf8)))
         _ = await context.focusChanged(to: "b")
         let settings = try events(await context.focusChanged(to: nil))
         XCTAssertEqual(settings.first?["event"] as? String, "focus")
@@ -221,7 +241,6 @@ final class CallContextTests: XCTestCase {
         XCTAssertEqual(focus[0]["title"] as? String, "Backend")
         XCTAssertEqual(focus[0]["parents"] as? [String], [])
         XCTAssertNil(focus[0]["ref"])
-        XCTAssertNil(focus[0]["targetRef"])
         XCTAssertNil(focus[0]["turns"])
         XCTAssertFalse(focus.description.contains("answer"))
     }
@@ -232,7 +251,7 @@ final class CallContextTests: XCTestCase {
         let targets = backend()
         let context = CallContext(targets: targets)
         _ = await context.initial()
-        let sent = try object(await tool(context, "sendMessage", #"{"targetRef":"s1","text":"run it","focusRevision":0}"#).text)
+        let sent = try object(await tool(context, "message", #"{"to":"s1","text":"run it"}"#).text)
         XCTAssertEqual(sent["status"] as? String, "queued")
         let before = await targets.state(of: "a")
         var state = try XCTUnwrap(before)
@@ -242,7 +261,7 @@ final class CallContextTests: XCTestCase {
         await targets.set("a", state)
         let quiet = await context.targetChanged(state)
         XCTAssertTrue(quiet.isEmpty)
-        let read = try object(await tool(context, "getSessionContext", #"{"targetRef":"s1"}"#).text)
+        let read = try object(await tool(context, "readConversation", #"{"ref":"s1"}"#).text)
         let pending = try XCTUnwrap(read["pendingUserMessage"] as? [String: Any])
         XCTAssertEqual(pending["text"] as? String, "run it")
         XCTAssertEqual(pending["delivery"] as? String, "failed")
@@ -268,18 +287,18 @@ final class CallContextTests: XCTestCase {
     func testOpeningGivesTheRevisionTheNextStepTakes() async throws {
         let context = CallContext(targets: backend(focus: nil))
         _ = await context.initial()
-        let opened = try object(await tool(context, "openSession", #"{"targetRef":"s2","focusRevision":0}"#).text)
+        let opened = try object(await tool(context, "navigate", #"{"to":"happy://conversation/s2","focusRevision":0}"#).text)
         XCTAssertEqual(opened["focusRevision"] as? Int, 1)
         // The screen saying the same afterwards tells the agent nothing new.
         let screen = await context.focusChanged(to: "b")
         XCTAssertTrue(screen.isEmpty)
         // Chained on what the open gave, the next open goes.
-        let next = await tool(context, "openSession", #"{"targetRef":"s1","focusRevision":1}"#)
+        let next = await tool(context, "navigate", #"{"to":"happy://conversation/s1","focusRevision":1}"#)
         XCTAssertFalse(next.isError)
         XCTAssertEqual(try object(next.text)["focusRevision"] as? Int, 2)
         let followed = await context.followed
         XCTAssertEqual(followed, ["a", "b"])
-        let send = try object(await tool(context, "sendMessage", #"{"targetRef":"s2","text":"go","focusRevision":2}"#).text)
+        let send = try object(await tool(context, "message", #"{"to":"s2","text":"go"}"#).text)
         XCTAssertEqual(send["status"] as? String, "queued")
         XCTAssertEqual(send["delivery"] as? String, "on the person's device, not confirmed delivered or read")
     }
@@ -462,7 +481,7 @@ final class CallContextTests: XCTestCase {
         let targets = backend()
         let context = CallContext(targets: targets)
         _ = await context.initial()
-        let call = CallToolCall(id: "t1", name: "sendMessage", parameters: Data(#"{"targetRef":"s2","text":"  run the checks ","focusRevision":0}"#.utf8))
+        let call = CallToolCall(id: "t1", name: "message", parameters: Data(#"{"to":"s2","text":"  run the checks "}"#.utf8))
         let first = await context.handle(call)
         XCTAssertFalse(first.isError)
         XCTAssertEqual(try object(first.text)["status"] as? String, "queued")
@@ -482,31 +501,33 @@ final class CallContextTests: XCTestCase {
         XCTAssertTrue(reply.isEmpty)
     }
 
-    func testSendMessageRefusesWhatItMustNotSend() async throws {
+    func testMessageRefusesWhatItMustNotSend() async throws {
         let targets = backend()
         await targets.set("a", CallTargetState(target: CallTarget(agentId: "a", title: "Backend", kind: .bot, status: .needsInput), needsInput: true))
         let context = CallContext(targets: targets)
         _ = await context.initial()
         let refusals = [
-            #"{"targetRef":"s1","text":"yes","focusRevision":0}"#,
-            #"{"targetRef":"s2","text":"go","focusRevision":3}"#,
-            #"{"targetRef":"s9","text":"go","focusRevision":0}"#,
-            #"{"targetRef":"s2","text":"  ","focusRevision":0}"#,
-            #"{"targetRef":"s2","text":7,"focusRevision":0}"#,
-            "{\"targetRef\":\"s2\",\"text\":\"\(String(repeating: "é", count: 4097))\",\"focusRevision\":0}",
+            #"{"to":"s1","text":"yes"}"#,
+            #"{"text":"yes"}"#,
+            #"{"to":"s9","text":"go"}"#,
+            #"{"to":"Docs","text":"go"}"#,
+            #"{"to":2,"text":"go"}"#,
+            #"{"to":"s2","text":"  "}"#,
+            #"{"to":"s2","text":7}"#,
+            "{\"to\":\"s2\",\"text\":\"\(String(repeating: "é", count: 4097))\"}",
         ]
         for json in refusals {
-            let result = await tool(context, "sendMessage", json)
+            let result = await tool(context, "message", json)
             XCTAssertTrue(result.isError, json)
         }
         let unknown = await tool(context, "processPermissionRequest", "{}")
         XCTAssertTrue(unknown.isError)
-        let watch = await tool(context, "setSessionWatch", #"{"targetRef":"s2","enabled":true}"#)
+        let watch = await tool(context, "setSessionWatch", #"{"ref":"s2","enabled":true}"#)
         XCTAssertEqual(try object(watch.text)["reason"] as? String, "Unknown tool.")
         let sends = await targets.sends
         XCTAssertTrue(sends.isEmpty)
         // 8 KiB exactly is fine.
-        let most = await tool(context, "sendMessage", "{\"targetRef\":\"s2\",\"text\":\"\(String(repeating: "é", count: 4096))\",\"focusRevision\":0}")
+        let most = await tool(context, "message", "{\"to\":\"s2\",\"text\":\"\(String(repeating: "é", count: 4096))\"}")
         XCTAssertFalse(most.isError)
     }
 
@@ -516,7 +537,7 @@ final class CallContextTests: XCTestCase {
         let context = CallContext(targets: targets, toolDeadline: .milliseconds(50))
         _ = await context.initial()
         func send(_ call: String, _ text: String) async -> CallToolResult {
-            await tool(context, "sendMessage", "{\"targetRef\":\"s2\",\"text\":\"\(text)\",\"focusRevision\":0}", id: call)
+            await tool(context, "message", "{\"to\":\"s2\",\"text\":\"\(text)\"}", id: call)
         }
         let started = ContinuousClock.now
         let first = await send("t1", "go")
@@ -536,21 +557,84 @@ final class CallContextTests: XCTestCase {
         XCTAssertEqual(Dictionary(grouping: ids) { $0 }.values.map(\.count).sorted(), [1, 2])
     }
 
-    func testMovingTheScreenRefusesWhatWasAskedUnderTheOldFocus() async throws {
+    func testMovingTheScreenRefusesANavigationAskedUnderTheOldFocus() async throws {
         let targets = backend()
+        await targets.setScreens(1)
         let context = CallContext(targets: targets)
         _ = await context.initial()
         let moved = await context.focusChanged(to: "b")
         XCTAssertTrue(moved.context[0].contains(#""focusRevision":1"#))
-        for name in ["openSession", "sendMessage"] {
-            let stale = await tool(context, name, #"{"targetRef":"s1","text":"go","focusRevision":0}"#)
-            XCTAssertTrue(stale.isError, name)
-            XCTAssertTrue(stale.text.contains("screen changed"), name)
+        for to in ["happy://conversation/s1", "happy://back"] {
+            let stale = await tool(context, "navigate", "{\"to\":\"\(to)\",\"focusRevision\":0}")
+            XCTAssertTrue(stale.isError, to)
+            XCTAssertTrue(stale.text.contains("screen changed"), to)
         }
-        let sends = await targets.sends
-        XCTAssertTrue(sends.isEmpty)
-        let fresh = await tool(context, "sendMessage", #"{"targetRef":"s1","text":"go","focusRevision":1}"#)
+        let opens = await targets.opens
+        XCTAssertTrue(opens.isEmpty)
+        let screens = await targets.screens
+        XCTAssertEqual(screens, 1)
+        // A message names where it goes: a move on screen doesn't stop it.
+        let sent = await tool(context, "message", #"{"to":"s1","text":"go"}"#)
+        XCTAssertFalse(sent.isError)
+        let fresh = await tool(context, "navigate", #"{"to":"happy://conversation/s1","focusRevision":1}"#)
         XCTAssertFalse(fresh.isError)
+    }
+
+    /// No `to`: the conversation on screen as the tool runs, named in the
+    /// answer; with none on screen, nothing goes and the agent is told to ask.
+    func testAMessageWithNoToGoesToTheConversationOnScreen() async throws {
+        let targets = backend()
+        let context = CallContext(targets: targets)
+        _ = await context.initial()
+        let sent = try object(await tool(context, "message", #"{"text":"run the checks"}"#).text)
+        XCTAssertEqual(sent["status"] as? String, "queued")
+        XCTAssertEqual(sent["ref"] as? String, "s1")
+        XCTAssertEqual(sent["title"] as? String, "Backend")
+        let blank = try object(await tool(context, "message", #"{"to":" ","text":"and the lint"}"#).text)
+        XCTAssertEqual(blank["ref"] as? String, "s1")
+        let sends = await targets.sends
+        XCTAssertEqual(sends.map(\.agentId), ["a", "a"])
+        // A named one says no title: the agent named it.
+        let named = try object(await tool(context, "message", #"{"to":"s2","text":"go"}"#).text)
+        XCTAssertNil(named["title"])
+
+        let none = backend(focus: nil)
+        let away = CallContext(targets: none)
+        _ = await away.initial()
+        let refused = await tool(away, "message", #"{"text":"run the checks"}"#)
+        XCTAssertTrue(refused.isError)
+        XCTAssertEqual(try object(refused.text)["reason"] as? String, "No conversation is on screen. Ask which one, then send with its ref as to.")
+        let nothing = await none.sends
+        XCTAssertTrue(nothing.isEmpty)
+    }
+
+    /// navigate takes the destinations the context lists and nothing else,
+    /// answering anything else with them.
+    func testNavigateTakesOnlyTheContextsDestinations() async throws {
+        let targets = backend()
+        await targets.setScreens(2)
+        let context = CallContext(targets: targets)
+        _ = await context.initial()
+        for bad in [#""happy://settings""#, #""s2""#, #""https://example.com""#, #""happy://conversation/""#, #""happy://conversation/s2/x""#, "3", "null"] {
+            let result = await tool(context, "navigate", "{\"to\":\(bad),\"focusRevision\":0}")
+            XCTAssertTrue(result.isError, bad)
+            let value = try object(result.text)
+            XCTAssertEqual(value["ok"] as? Bool, false, bad)
+            XCTAssertEqual(value["destinations"] as? [String], ["happy://home", "happy://back", "happy://conversation/<ref>"], bad)
+        }
+        let settings = try object(await tool(context, "navigate", #"{"to":"happy://settings","focusRevision":0}"#).text)
+        XCTAssertEqual(settings["reason"] as? String, #""happy://settings" isn't a destination. to is one of: happy://home, happy://back, happy://conversation/<ref>."#)
+        let opens = await targets.opens
+        XCTAssertTrue(opens.isEmpty)
+        var screens = await targets.screens
+        XCTAssertEqual(screens, 2)
+        // The scheme and place in any case, a trailing slash too; home whatever focusRevision says.
+        let home = try object(await tool(context, "navigate", #"{"to":" HAPPY://Home/ ","focusRevision":7}"#).text)
+        XCTAssertEqual(home["home"] as? Bool, true)
+        screens = await targets.screens
+        XCTAssertEqual(screens, 0)
+        XCTAssertEqual(CallContext.destination("happy://conversation/s12"), .conversation("s12"))
+        XCTAssertEqual(CallContext.destination("Happy://Back"), .back)
     }
 
     func testAnEndedCallRunsNoTools() async throws {
@@ -558,7 +642,7 @@ final class CallContextTests: XCTestCase {
         let context = CallContext(targets: targets)
         _ = await context.initial()
         await context.close()
-        let late = await tool(context, "sendMessage", #"{"targetRef":"s2","text":"go","focusRevision":0}"#)
+        let late = await tool(context, "message", #"{"to":"s2","text":"go"}"#)
         XCTAssertTrue(late.isError)
         let update = await context.targetChanged(CallTargetState(target: backendTarget, messages: [CallMessage(id: "n", role: .assistant, text: "new")]))
         XCTAssertTrue(update.isEmpty)
@@ -572,30 +656,36 @@ final class CallContextTests: XCTestCase {
         let context = CallContext(targets: targets)
         _ = await context.initial()
         for bad in [#""0""#, "true", "0.5", "null"] {
-            let result = await tool(context, "openSession", "{\"targetRef\":\"s1\",\"focusRevision\":\(bad)}")
+            let result = await tool(context, "navigate", "{\"to\":\"happy://conversation/s1\",\"focusRevision\":\(bad)}")
             XCTAssertTrue(result.isError, bad)
         }
         let opens = await targets.opens
         XCTAssertTrue(opens.isEmpty)
-        let fine = await tool(context, "openSession", #"{"targetRef":"s1","focusRevision":0}"#)
+        let fine = await tool(context, "navigate", #"{"to":"happy://conversation/s1","focusRevision":0}"#)
         XCTAssertFalse(fine.isError)
         for bad in [#"{"query":3}"#, #"{"cursor":5}"#, #"{"cursor":"-1"}"#, #"{"cursor":"x"}"#, "[]"] {
-            let result = await tool(context, "listSessions", bad)
+            let result = await tool(context, "listConversations", bad)
             XCTAssertTrue(result.isError, bad)
         }
-        let unref = await tool(context, "getSessionContext", #"{"targetRef":1}"#)
+        let unref = await tool(context, "readConversation", #"{"ref":1}"#)
         XCTAssertTrue(unref.isError)
     }
 
     // MARK: New work and the way back
 
-    func testNewWorkIsRetiredAndSaysWhatToUse() async throws {
+    /// v2's tools are the shipped build's: this one calls v3, and knows none of them.
+    func testV2sToolsAreUnknown() async throws {
         let targets = backend()
         let context = CallContext(targets: targets)
         _ = await context.initial()
-        let retired = await tool(context, "newWork", #"{"kind":"bot","name":"Researcher"}"#)
-        XCTAssertTrue(retired.isError)
-        XCTAssertTrue((try object(retired.text)["reason"] as? String ?? "").contains("Use sendMessage with targetRef new-task or new-bot."))
+        for name in ["sendMessage", "listSessions", "getSessionContext", "openSession", "newWork", "goBack", "goHome"] {
+            let result = await tool(context, name, #"{"targetRef":"s2","text":"go","focusRevision":0,"kind":"bot"}"#)
+            XCTAssertEqual(try object(result.text)["reason"] as? String, "Unknown tool.", name)
+        }
+        let sends = await targets.sends
+        XCTAssertTrue(sends.isEmpty)
+        let opens = await targets.opens
+        XCTAssertTrue(opens.isEmpty)
         let made = await targets.made
         XCTAssertTrue(made.isEmpty)
     }
@@ -606,11 +696,11 @@ final class CallContextTests: XCTestCase {
         let targets = backend()
         let context = CallContext(targets: targets)
         _ = await context.initial()
-        let started = try object(await tool(context, "sendMessage", #"{"targetRef":"new-task","text":"Find papers on caching","focusRevision":0}"#).text)
+        let started = try object(await tool(context, "message", #"{"to":"new-task","text":"Find papers on caching"}"#).text)
         XCTAssertEqual(started["status"] as? String, "queued")
         XCTAssertEqual(started["started"] as? String, "task")
         XCTAssertEqual(started["title"] as? String, "New Task")
-        let ref = try XCTUnwrap(started["targetRef"] as? String)
+        let ref = try XCTUnwrap(started["ref"] as? String)
         XCTAssertEqual(ref, "s3")
         // Nothing moved: the screen and its focus are as they were.
         XCTAssertNil(started["focusRevision"])
@@ -622,18 +712,19 @@ final class CallContextTests: XCTestCase {
         XCTAssertEqual(sends.map(\.agentId), ["new-1"])
         XCTAssertEqual(sends.map(\.text), ["Find papers on caching"])
         // Unlisted until the computer has it, it is read and sent to by that reference.
-        let read = try object(await tool(context, "getSessionContext", "{\"targetRef\":\"\(ref)\"}").text)
+        let read = try object(await tool(context, "readConversation", "{\"ref\":\"\(ref)\"}").text)
         XCTAssertEqual(read["title"] as? String, "New Task")
         // Made, it is the sidebar's under the same reference.
         await targets.setDirectory([backendTarget, docsTarget, CallTarget(agentId: "new-1", title: "Caching papers", kind: .task, status: .running)])
-        let listed = try object(await tool(context, "listSessions", #"{"query":"caching"}"#).text)
-        XCTAssertEqual((listed["sessions"] as? [[String: Any]])?.first?["targetRef"] as? String, ref)
-        let opened = try object(await tool(context, "openSession", "{\"targetRef\":\"\(ref)\",\"focusRevision\":0}").text)
+        let listed = try object(await tool(context, "listConversations", #"{"query":"caching"}"#).text)
+        XCTAssertEqual((listed["conversations"] as? [[String: Any]])?.first?["ref"] as? String, ref)
+        let opened = try object(await tool(context, "navigate", "{\"to\":\"happy://conversation/\(ref)\",\"focusRevision\":0}").text)
         XCTAssertEqual(opened["opened"] as? Bool, true)
         // Only a send takes the new-work references.
-        for name in ["getSessionContext", "openSession"] {
-            let refused = await tool(context, name, #"{"targetRef":"new-task","focusRevision":1}"#)
+        for (name, json) in [("readConversation", #"{"ref":"new-task"}"#), ("navigate", #"{"to":"happy://conversation/new-task","focusRevision":1}"#)] {
+            let refused = await tool(context, name, json)
             XCTAssertTrue(refused.isError, name)
+            XCTAssertTrue(refused.text.contains("start it with message to new-task or new-bot"), name)
         }
     }
 
@@ -641,13 +732,13 @@ final class CallContextTests: XCTestCase {
         let targets = backend()
         let context = CallContext(targets: targets)
         _ = await context.initial()
-        let started = try object(await tool(context, "sendMessage", #"{"targetRef":"New-Bot: Release helper ","text":"Watch the release","focusRevision":0}"#).text)
+        let started = try object(await tool(context, "message", #"{"to":"New-Bot: Release helper ","text":"Watch the release"}"#).text)
         XCTAssertEqual(started["started"] as? String, "bot")
         XCTAssertEqual(started["title"] as? String, "Release helper")
         let made = await targets.made
         XCTAssertEqual(made.map(\.kind), [.bot])
         XCTAssertEqual(made.map(\.name), ["Release helper"])
-        let unnamed = try object(await tool(context, "sendMessage", #"{"targetRef":"new-bot","text":"Watch the docs","focusRevision":0}"#).text)
+        let unnamed = try object(await tool(context, "message", #"{"to":"new-bot","text":"Watch the docs"}"#).text)
         XCTAssertEqual(unnamed["title"] as? String, "New Bot")
     }
 
@@ -658,33 +749,31 @@ final class CallContextTests: XCTestCase {
         await targets.setNewWork(mode: CallMode(modelId: opus.id, model: opus.name, effort: "high"), models: [opus, sonnet, gpt])
         let context = CallContext(targets: targets)
         _ = await context.initial()
-        let asked = try object(await tool(context, "sendMessage", #"{"targetRef":"new-task","text":"go","focusRevision":0,"model":"sonnet","effort":"low"}"#).text)
+        let asked = try object(await tool(context, "message", #"{"to":"new-task","text":"go","model":"sonnet","effort":"low"}"#).text)
         XCTAssertEqual(asked["model"] as? String, "Claude Sonnet 4.5")
         XCTAssertEqual(asked["effort"] as? String, "low")
-        let plain = try object(await tool(context, "sendMessage", #"{"targetRef":"new-task","text":"also","focusRevision":0}"#).text)
+        let plain = try object(await tool(context, "message", #"{"to":"new-task","text":"also"}"#).text)
         XCTAssertEqual(plain["model"] as? String, "Claude Opus 4.5")
         XCTAssertEqual(plain["effort"] as? String, "high")
         let changes = await targets.changes
         XCTAssertEqual(changes, [CallModeChange(modelId: "claude-sonnet-4-5", effort: "low"), nil])
     }
 
-    /// Refused for its model, or stale: nothing goes and nothing stays.
+    /// Refused for its model or its effort: nothing goes and nothing stays.
     func testARefusedStartLeavesNothing() async throws {
         let targets = backend()
         await targets.setNewWork(mode: CallMode(modelId: opus.id, model: opus.name, effort: "high"), models: [opus, sonnet])
         let context = CallContext(targets: targets)
         _ = await context.initial()
-        let unknown = await tool(context, "sendMessage", #"{"targetRef":"new-task","text":"go","focusRevision":0,"model":"gemini"}"#)
+        let unknown = await tool(context, "message", #"{"to":"new-task","text":"go","model":"gemini"}"#)
         XCTAssertTrue(unknown.isError)
         XCTAssertEqual((try object(unknown.text)["models"] as? [Any])?.count, 2)
-        let stale = await tool(context, "sendMessage", #"{"targetRef":"new-task","text":"go","focusRevision":4}"#)
-        XCTAssertTrue(stale.isError)
+        let effort = await tool(context, "message", #"{"to":"new-task","text":"go","model":"sonnet","effort":"max"}"#)
+        XCTAssertTrue(effort.isError)
         let sends = await targets.sends
         XCTAssertTrue(sends.isEmpty)
         let discarded = await targets.discarded
-        XCTAssertEqual(discarded, ["new-1"])
-        let made = await targets.made
-        XCTAssertEqual(made.count, 1, "a stale send starts nothing")
+        XCTAssertEqual(discarded, ["new-1", "new-2"])
     }
 
     /// The provider asking again, its answer lost: the same new work, never a second.
@@ -693,11 +782,11 @@ final class CallContextTests: XCTestCase {
         await targets.setSendDelay(.milliseconds(300))
         let context = CallContext(targets: targets, toolDeadline: .milliseconds(100))
         _ = await context.initial()
-        let first = await tool(context, "sendMessage", #"{"targetRef":"new-task","text":"Fix the build","focusRevision":0}"#)
+        let first = await tool(context, "message", #"{"to":"new-task","text":"Fix the build"}"#)
         XCTAssertEqual(try object(first.text)["status"] as? String, "uncertain")
         await targets.setSendDelay(nil)
         try await Task.sleep(for: .milliseconds(300))
-        let second = try object(await tool(context, "sendMessage", #"{"targetRef":"new-task","text":"Fix the build","focusRevision":0}"#).text)
+        let second = try object(await tool(context, "message", #"{"to":"new-task","text":"Fix the build"}"#).text)
         XCTAssertEqual(second["status"] as? String, "queued")
         let made = await targets.made
         XCTAssertEqual(made.count, 1)
@@ -714,27 +803,27 @@ final class CallContextTests: XCTestCase {
         let focus = try events(await context.focusChanged(to: "new-1"))
         XCTAssertEqual(focus.last?["title"] as? String, "New Task")
         let ref = try XCTUnwrap(focus.last?["ref"] as? String)
-        let sent = await tool(context, "sendMessage", "{\"targetRef\":\"\(ref)\",\"text\":\"Fix the flaky test\",\"focusRevision\":1}")
+        let sent = await tool(context, "message", "{\"to\":\"\(ref)\",\"text\":\"Fix the flaky test\"}")
         XCTAssertFalse(sent.isError)
     }
 
-    func testGoBackPopsOneScreenAndGoHomeClearsThem() async throws {
+    func testBackPopsOneScreenAndHomeClearsThem() async throws {
         let targets = backend(focus: nil)
         await targets.setScreens(3)
         let context = CallContext(targets: targets)
         _ = await context.initial()
-        let stale = await tool(context, "goBack", #"{"focusRevision":2}"#)
+        let stale = await tool(context, "navigate", #"{"to":"happy://back","focusRevision":2}"#)
         XCTAssertTrue(stale.isError)
         var screens = await targets.screens
         XCTAssertEqual(screens, 3)
-        let back = try object(await tool(context, "goBack", #"{"focusRevision":0}"#).text)
+        let back = try object(await tool(context, "navigate", #"{"to":"happy://back","focusRevision":0}"#).text)
         XCTAssertEqual(back["home"] as? Bool, false)
         XCTAssertTrue(back["title"] is NSNull)
         screens = await targets.screens
         XCTAssertEqual(screens, 2)
-        let home = try object(await tool(context, "goHome", "{}").text)
+        let home = try object(await tool(context, "navigate", #"{"to":"happy://home","focusRevision":0}"#).text)
         XCTAssertEqual(home["home"] as? Bool, true)
-        let nowhere = await tool(context, "goBack", #"{"focusRevision":0}"#)
+        let nowhere = await tool(context, "navigate", #"{"to":"happy://back","focusRevision":0}"#)
         XCTAssertTrue(nowhere.isError)
         XCTAssertEqual(try object(nowhere.text)["reason"] as? String, "This is home; there is nothing to go back to.")
     }
@@ -752,21 +841,21 @@ final class CallContextTests: XCTestCase {
         return targets
     }
 
-    func testSendMessageSwitchesTheModelAndEffortTheComputerOffers() async throws {
+    func testMessageSwitchesTheModelAndEffortTheComputerOffers() async throws {
         let targets = await modelled()
         let context = CallContext(targets: targets)
         _ = await context.initial()
         // Working, it still takes the message, as the composer's send does.
-        let both = try object(await tool(context, "sendMessage", #"{"targetRef":"s2","text":"go","focusRevision":0,"model":"sonnet","effort":"Low"}"#).text)
+        let both = try object(await tool(context, "message", #"{"to":"s2","text":"go","model":"sonnet","effort":"Low"}"#).text)
         XCTAssertEqual(both["status"] as? String, "queued")
         XCTAssertEqual(both["model"] as? String, "Claude Sonnet 4.5")
         XCTAssertEqual(both["effort"] as? String, "low")
-        let effortOnly = try object(await tool(context, "sendMessage", #"{"targetRef":"s2","text":"again","focusRevision":0,"effort":"max"}"#).text)
+        let effortOnly = try object(await tool(context, "message", #"{"to":"s2","text":"again","effort":"max"}"#).text)
         XCTAssertEqual(effortOnly["model"] as? String, "Claude Opus 4.5")
         XCTAssertEqual(effortOnly["effort"] as? String, "max")
-        let modelOnly = try object(await tool(context, "sendMessage", #"{"targetRef":"s2","text":"third","focusRevision":0,"model":"GPT 5.2 codex"}"#).text)
+        let modelOnly = try object(await tool(context, "message", #"{"to":"s2","text":"third","model":"GPT 5.2 codex"}"#).text)
         XCTAssertEqual(modelOnly["effort"] as? String, "medium")
-        let plain = try object(await tool(context, "sendMessage", #"{"targetRef":"s2","text":"fourth","focusRevision":0}"#).text)
+        let plain = try object(await tool(context, "message", #"{"to":"s2","text":"fourth"}"#).text)
         XCTAssertNil(plain["model"])
         let changes = await targets.changes
         XCTAssertEqual(changes, [
@@ -779,19 +868,19 @@ final class CallContextTests: XCTestCase {
         let targets = await modelled()
         let context = CallContext(targets: targets)
         _ = await context.initial()
-        let unknown = await tool(context, "sendMessage", #"{"targetRef":"s2","text":"go","focusRevision":0,"model":"gemini"}"#)
+        let unknown = await tool(context, "message", #"{"to":"s2","text":"go","model":"gemini"}"#)
         XCTAssertTrue(unknown.isError)
         let listed = try object(unknown.text)
         XCTAssertEqual((listed["models"] as? [[String: Any]])?.compactMap { $0["name"] as? String }, ["Claude Opus 4.5", "Claude Sonnet 4.5", "GPT-5.2 Codex"])
         XCTAssertTrue((listed["reason"] as? String)?.hasSuffix("Nothing was sent.") == true)
-        let ambiguous = try object(await tool(context, "sendMessage", #"{"targetRef":"s2","text":"go","focusRevision":0,"model":"claude"}"#).text)
+        let ambiguous = try object(await tool(context, "message", #"{"to":"s2","text":"go","model":"claude"}"#).text)
         XCTAssertEqual((ambiguous["models"] as? [Any])?.count, 2)
-        let effort = try object(await tool(context, "sendMessage", #"{"targetRef":"s2","text":"go","focusRevision":0,"model":"sonnet","effort":"max"}"#).text)
+        let effort = try object(await tool(context, "message", #"{"to":"s2","text":"go","model":"sonnet","effort":"max"}"#).text)
         XCTAssertEqual(effort["reason"] as? String, "Claude Sonnet 4.5 takes effort low, medium, high, not \"max\". Nothing was sent.")
-        let wrongType = await tool(context, "sendMessage", #"{"targetRef":"s2","text":"go","focusRevision":0,"model":4}"#)
+        let wrongType = await tool(context, "message", #"{"to":"s2","text":"go","model":4}"#)
         XCTAssertTrue(wrongType.isError)
         // Without the computer's models, nothing changes and nothing goes.
-        let unread = await tool(context, "sendMessage", #"{"targetRef":"s1","text":"go","focusRevision":0,"effort":"high"}"#)
+        let unread = await tool(context, "message", #"{"to":"s1","text":"go","effort":"high"}"#)
         XCTAssertTrue(unread.isError)
         let sends = await targets.sends
         XCTAssertTrue(sends.isEmpty)
@@ -810,14 +899,14 @@ final class CallContextTests: XCTestCase {
         )
         let context = CallContext(targets: FakeCallTargets(directory: [chat], states: ["c": state], focus: nil), now: { now }, timeZone: TimeZone(identifier: "Europe/Berlin")!)
         _ = await context.initial()
-        let read = try object(await tool(context, "getSessionContext", #"{"targetRef":"s1"}"#).text)
+        let read = try object(await tool(context, "readConversation", #"{"ref":"s1"}"#).text)
         XCTAssertEqual(read["lastUserMessage"] as? [String: String], ["ago": "2 hours ago", "at": "2025-11-06T11:00:00+01:00"])
         XCTAssertEqual(read["lastAgentReply"] as? [String: String], ["ago": "5 minutes ago", "at": "2025-11-06T12:55:00+01:00"])
         XCTAssertEqual(read["workspace"] as? String, "App / Feature")
         XCTAssertEqual(read["model"] as? [String: String], ["id": "claude-opus-4-5", "name": "Claude Opus 4.5", "effort": "high"])
         XCTAssertEqual((read["models"] as? [[String: Any]])?.first?["efforts"] as? [String], ["low", "medium", "high", "max"])
-        let listed = try object(await tool(context, "listSessions", "{}").text)
-        let row = try XCTUnwrap((listed["sessions"] as? [[String: Any]])?.first)
+        let listed = try object(await tool(context, "listConversations", "{}").text)
+        let row = try XCTUnwrap((listed["conversations"] as? [[String: Any]])?.first)
         XCTAssertEqual(row["lastActivity"] as? [String: String], ["ago": "5 minutes ago", "at": "2025-11-06T12:55:00+01:00"])
         XCTAssertEqual(row["workspace"] as? String, "App / Feature")
         XCTAssertEqual(listed["now"] as? String, "2025-11-06T13:00:00+01:00")
@@ -854,7 +943,7 @@ final class CallContextTests: XCTestCase {
         XCTAssertEqual(read.named([:], me: nil).turns.first?.userBy, "a teammate")
         let context = CallContext(targets: FakeCallTargets(directory: [chat], states: ["c": named], focus: nil), now: { now }, timeZone: TimeZone(identifier: "UTC")!)
         _ = await context.initial()
-        let body = try object(await tool(context, "getSessionContext", #"{"targetRef":"s1"}"#).text)
+        let body = try object(await tool(context, "readConversation", #"{"ref":"s1"}"#).text)
         XCTAssertEqual((body["turns"] as? [[String: Any]])?.first?["userBy"] as? String, "Ada Lovelace")
         XCTAssertEqual((body["pendingUserMessage"] as? [String: Any])?["by"] as? String, "the person")
         XCTAssertEqual((body["lastUserMessage"] as? [String: String])?["by"], "the person")
@@ -882,35 +971,47 @@ final class CallContextTests: XCTestCase {
     }
 
     func testTheToolsAreDescribedForTheDashboard() {
-        XCTAssertEqual(CallTool.allCases.map(\.rawValue), ["listSessions", "getSessionContext", "openSession", "sendMessage", "newWork", "goBack", "goHome"])
-        XCTAssertEqual(CallTool.newWork.parameters["required"], .array([.string("kind")]))
-        XCTAssertNil(CallTool.newWork.parameters["properties"]?["focusRevision"])
-        XCTAssertEqual(CallTool.newWork.parameters["properties"]?["kind"]?["enum"], .array([.string("task"), .string("bot")]))
-        XCTAssertEqual(CallTool.goBack.parameters["required"], .array([.string("focusRevision")]))
-        XCTAssertEqual(CallTool.goHome.parameters["required"], .array([]))
-        XCTAssertEqual(CallTool.sendMessage.parameters["properties"]?["model"]?["type"], .string("string"))
-        XCTAssertEqual(CallTool.sendMessage.parameters["properties"]?["effort"]?["type"], .string("string"))
-        XCTAssertTrue(CallTool.sendMessage.summary.contains("only when the person has explicitly asked you to send"))
-        XCTAssertEqual(CallTool.openSession.parameters["properties"]?["focusRevision"]?["type"], .string("integer"))
-        XCTAssertEqual(CallTool.sendMessage.parameters["required"], .array([.string("targetRef"), .string("text"), .string("focusRevision")]))
-        XCTAssertEqual(CallTool.getSessionContext.parameters["required"], .array([.string("targetRef")]))
-        XCTAssertEqual(CallTool.listSessions.parameters["required"], .array([]))
-        XCTAssertTrue(CallTool.listSessions.summary.contains("case-insensitive substring"))
-        XCTAssertTrue(CallTool.sendMessage.summary.contains("queued on the person's device, not confirmed delivered or read"))
-        XCTAssertTrue(CallTool.sendMessage.summary.contains("8 KiB"))
+        XCTAssertEqual(CallTool.allCases.map(\.rawValue), ["listConversations", "readConversation", "message", "navigate"])
+        XCTAssertEqual(CallTool.listConversations.parameters["required"], .array([]))
+        XCTAssertEqual(CallTool.readConversation.parameters["required"], .array([.string("ref")]))
+        XCTAssertEqual(CallTool.message.parameters["required"], .array([.string("text")]))
+        XCTAssertNil(CallTool.message.parameters["properties"]?["focusRevision"])
+        XCTAssertEqual(CallTool.message.parameters["properties"]?["to"]?["type"], .string("string"))
+        XCTAssertEqual(CallTool.message.parameters["properties"]?["model"]?["type"], .string("string"))
+        XCTAssertEqual(CallTool.message.parameters["properties"]?["effort"]?["type"], .string("string"))
+        XCTAssertEqual(CallTool.navigate.parameters["required"], .array([.string("to"), .string("focusRevision")]))
+        XCTAssertEqual(CallTool.navigate.parameters["properties"]?["focusRevision"]?["type"], .string("integer"))
+        XCTAssertTrue(CallTool.message.summary.contains("only when the person has explicitly asked you to send"))
+        XCTAssertTrue(CallTool.message.summary.contains("queued on the person's device, not confirmed delivered"))
+        XCTAssertTrue(CallTool.listConversations.summary.contains("case-insensitive substring"))
+        for destination in CallContext.destinations { XCTAssertTrue(CallTool.navigate.summary.contains(destination), destination) }
     }
 
-    func testListSessionsPagesAndFiltersBySubstring() async throws {
+    /// docs/agent-voice-call.md's client tools are what the phone answers, word for word.
+    func testTheDocsHoldTheseToolsExactly() throws {
+        var root = URL(fileURLWithPath: #filePath)
+        while !FileManager.default.fileExists(atPath: root.appendingPathComponent("docs/agent-voice-call.md").path) { root.deleteLastPathComponent() }
+        let doc = try String(contentsOf: root.appendingPathComponent("docs/agent-voice-call.md"), encoding: .utf8)
+        let blocks = doc.components(separatedBy: "```json\n").dropFirst().compactMap { $0.components(separatedBy: "\n```").first }
+        let tools = try blocks.map { try JSONDecoder().decode(JSONValue.self, from: Data($0.utf8)) }.filter { $0["type"] == .string("client") }
+        XCTAssertEqual(tools.map { $0["name"] }, CallTool.allCases.map { .string($0.rawValue) })
+        for (tool, documented) in zip(CallTool.allCases, tools) {
+            XCTAssertEqual(documented["description"], .string(tool.summary), tool.rawValue)
+            XCTAssertEqual(documented["parameters"], tool.parameters, tool.rawValue)
+        }
+    }
+
+    func testListConversationsPagesAndFiltersBySubstring() async throws {
         let many = (0..<120).map { CallTarget(agentId: "x\($0)", title: $0 % 2 == 0 ? "Even \($0)" : "Odd \($0)", kind: .task, status: .idle) }
         let context = CallContext(targets: FakeCallTargets(directory: many, states: [:], focus: nil))
         _ = await context.initial()
-        let first = try object(await tool(context, "listSessions", "{}").text)
-        XCTAssertEqual((first["sessions"] as? [Any])?.count, 50)
+        let first = try object(await tool(context, "listConversations", "{}").text)
+        XCTAssertEqual((first["conversations"] as? [Any])?.count, 50)
         XCTAssertEqual(first["nextCursor"] as? String, "50")
-        let odd = try object(await tool(context, "listSessions", #"{"query":"DD 1","cursor":null}"#).text)
-        XCTAssertEqual((odd["sessions"] as? [[String: Any]])?.count, 16)
-        let paged = try object(await tool(context, "listSessions", #"{"query":"odd","cursor":"50"}"#).text)
-        XCTAssertEqual((paged["sessions"] as? [Any])?.count, 10)
+        let odd = try object(await tool(context, "listConversations", #"{"query":"DD 1","cursor":null}"#).text)
+        XCTAssertEqual((odd["conversations"] as? [[String: Any]])?.count, 16)
+        let paged = try object(await tool(context, "listConversations", #"{"query":"odd","cursor":"50"}"#).text)
+        XCTAssertEqual((paged["conversations"] as? [Any])?.count, 10)
         XCTAssertNil(paged["nextCursor"])
     }
 
@@ -971,9 +1072,9 @@ final class CallContextTests: XCTestCase {
         """), initial)
         // No IDs of the computer's in what the agent reads.
         for id in ["arch-agent", "t1-agent", "sub1", "subsub", "root", "wchat"] { XCTAssertFalse(initial.contains(id), id) }
-        let listed = try object(await tool(context, "listSessions", #"{"query":"lock"}"#).text)
-        let found = try XCTUnwrap((listed["sessions"] as? [[String: Any]])?.first)
-        XCTAssertEqual(found["targetRef"] as? String, "s4")
+        let listed = try object(await tool(context, "listConversations", #"{"query":"lock"}"#).text)
+        let found = try XCTUnwrap((listed["conversations"] as? [[String: Any]])?.first)
+        XCTAssertEqual(found["ref"] as? String, "s4")
         XCTAssertEqual(found["kind"] as? String, "subtask")
         XCTAssertEqual(found["parents"] as? [String], ["Release notes", "Fix cache race"])
     }
@@ -992,20 +1093,19 @@ final class CallContextTests: XCTestCase {
         ], focus: nil)
         let context = CallContext(targets: targets)
         _ = await context.initial()
-        let read = try object(await tool(context, "getSessionContext", #"{"targetRef":"s2"}"#).text)
+        let read = try object(await tool(context, "readConversation", #"{"ref":"s2"}"#).text)
         XCTAssertEqual(read["title"] as? String, "Fix cache race")
         XCTAssertEqual(read["parents"] as? [String], ["Release notes"])
-        XCTAssertNil(read["targetRef"])
         XCTAssertNil(read["ref"])
         XCTAssertEqual((read["turns"] as? [[String: Any]])?.first?["assistant"] as? String, "sub answer")
-        let opened = try object(await tool(context, "openSession", #"{"targetRef":"s2","focusRevision":0}"#).text)
+        let opened = try object(await tool(context, "navigate", #"{"to":"happy://conversation/s2","focusRevision":0}"#).text)
         XCTAssertEqual(opened["opened"] as? Bool, true)
-        let sent = try object(await tool(context, "sendMessage", #"{"targetRef":"s2","text":"go on","focusRevision":1}"#).text)
+        let sent = try object(await tool(context, "message", #"{"to":"s2","text":"go on"}"#).text)
         XCTAssertEqual(sent["status"] as? String, "queued")
         let sends = await targets.sends
         XCTAssertEqual(sends.map(\.agentId), ["c"])
         // A reference no one gave reaches nothing.
-        let forged = await tool(context, "getSessionContext", #"{"targetRef":"s9"}"#)
+        let forged = await tool(context, "readConversation", #"{"ref":"s9"}"#)
         XCTAssertTrue(forged.isError)
     }
 
@@ -1019,12 +1119,16 @@ final class CallContextTests: XCTestCase {
         let context = CallContext(targets: targets)
         _ = await context.initial()
         await targets.setDirectory([backendTarget])
-        for name in ["getSessionContext", "openSession", "sendMessage"] {
-            let refused = await tool(context, name, #"{"targetRef":"s1","text":"hi","focusRevision":0}"#)
+        for (name, json) in [
+            ("readConversation", #"{"ref":"s1"}"#),
+            ("navigate", #"{"to":"happy://conversation/s1","focusRevision":0}"#),
+            ("message", #"{"to":"s1","text":"hi"}"#),
+        ] {
+            let refused = await tool(context, name, json)
             XCTAssertTrue(refused.isError, name)
         }
         await targets.setDirectory([backendTarget, docs])
-        let read = await tool(context, "getSessionContext", #"{"targetRef":"s1"}"#)
+        let read = await tool(context, "readConversation", #"{"ref":"s1"}"#)
         XCTAssertFalse(read.isError)
     }
 
@@ -1046,10 +1150,10 @@ final class CallContextTests: XCTestCase {
         let words = try events(await context.targetChanged(CallTargetState(target: fresh, messages: [CallMessage(id: "m", role: .assistant, text: "Fixed.")])))
         XCTAssertEqual(words.map { $0["event"] as? String }, ["assistant_text"])
         XCTAssertNil(words[0]["ref"])
-        // listSessions gives references too: what it listed comes without one.
+        // listConversations gives references too: what it listed comes without one.
         let other = CallTarget(agentId: "o", title: "Other", kind: .task, status: .idle)
         await targets.setDirectory([releaseTarget, fresh, other])
-        _ = await tool(context, "listSessions", #"{"query":"other"}"#)
+        _ = await tool(context, "listConversations", #"{"query":"other"}"#)
         let listed = try events(await context.focusChanged(to: "o"))
         XCTAssertNil(listed[0]["ref"])
     }
@@ -1062,7 +1166,7 @@ final class CallContextTests: XCTestCase {
         _ = await context.initial()
         _ = await context.targetChanged(CallTargetState(target: docsTarget, working: true))
         await targets.setDirectory([backendTarget])
-        _ = await tool(context, "listSessions", "{}")
+        _ = await tool(context, "listConversations", "{}")
         let late = await context.targetChanged(CallTargetState(target: docsTarget, messages: [CallMessage(id: "w", role: .assistant, text: "Done.")],
                                                                turns: [CallTurn(id: "x", ended: "error", error: "Boom")]))
         XCTAssertTrue(late.isEmpty)
@@ -1077,8 +1181,8 @@ final class CallContextTests: XCTestCase {
         let text = await CallContext(targets: FakeCallTargets(directory: [deep, after], states: [:], focus: nil)).initial()
         XCTAssertTrue(text.contains("\n(under Parent 0 "), text)
         XCTAssertTrue(text.contains("\n- Deep one — subtask, ref "), text)
-        // What comes after it is counted, for listSessions to find.
-        XCTAssertTrue(text.contains("\n… and 1 more; listSessions finds them by title."), text)
+        // What comes after it is counted, for listConversations to find.
+        XCTAssertTrue(text.contains("\n… and 1 more; listConversations finds them by title."), text)
         XCTAssertLessThanOrEqual(text.utf8.count, CallContext.Limits.totalBytes)
     }
 
@@ -1441,7 +1545,7 @@ final class CallSessionTests: XCTestCase {
 
     func testOnlyAnAgentIDFromTheBuildIsTaken() {
         XCTAssertEqual(CallAgent.id(" agent_01abc \n"), "agent_01abc")
-        XCTAssertNil(CallAgent.id("$(HAPPY_CALL_AGENT_ID)"))
+        XCTAssertNil(CallAgent.id("$(HAPPY_CALL_AGENT_V3_ID)"))
         XCTAssertNil(CallAgent.id(""))
         XCTAssertNil(CallAgent.id("agent_"))
         XCTAssertNil(CallAgent.id("sk_live"))

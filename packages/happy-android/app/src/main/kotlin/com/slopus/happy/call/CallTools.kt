@@ -10,69 +10,54 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 
 /**
- * The hosted agent's client tools (iOS `CallTool`). Their schemas and
- * descriptions live here, the one place both the hosted agent's
- * configuration and this phone read them from; the relay's tools
- * (`sendMessageToSession`, `processPermissionRequest`) are not among them and
- * never run for this agent. There is no tool for permissions or questions,
- * and none to choose what the call hears: it hears the last conversations
- * the person visited.
+ * The hosted agent's client tools (iOS `CallTool`), as "Happy Agent v3public"
+ * has them. Their schemas and descriptions live here, the one place both the
+ * hosted agent's configuration and this phone read them from; the relay's
+ * tools (`sendMessageToSession`, `processPermissionRequest`) are not among
+ * them and never run for this agent. There is no tool for permissions or
+ * questions, and none to choose what the call hears: it hears the last
+ * conversations the person visited.
  */
 enum class CallTool(val wire: String) {
-    ListSessions("listSessions"),
-    GetSessionContext("getSessionContext"),
-    OpenSession("openSession"),
-    SendMessage("sendMessage"),
-    /** Retired: its first message goes to [SendMessage]'s `new-task` or `new-bot` instead. Still on the hosted agent until it is detached there, so it is described as the dashboard has it, and refused. */
-    NewWork("newWork"),
-    GoBack("goBack"),
-    GoHome("goHome");
+    ListConversations("listConversations"),
+    ReadConversation("readConversation"),
+    Message("message"),
+    Navigate("navigate");
 
     /** The client tool's description, as the hosted agent shows it to the model. */
     val summary: String get() = when (this) {
-        ListSessions -> "List the conversations the person sees in the app (bots, tasks, subtasks and project conversations), in the sidebar's order, with their targetRef, title, kind, status and parents (the titles of what each sits under). query keeps those whose title contains it as a case-insensitive substring. Page with nextCursor."
-        GetSessionContext -> "Read one conversation: whether it is working or needs the person, and its last five turns, each the person's message and the agent's last words, or as much of the pair as there is; the person's latest message, if nothing has answered it yet, is the fifth (pendingUserMessage). On a team, who wrote each message (userBy, by). It doesn't open the conversation or change what you hear from."
-        OpenSession -> "Show a conversation on the person's screen. Like any conversation they open, it joins the four most recently visited, whose new replies you hear."
-        SendMessage -> "Send the person's message to a conversation's agent, exactly as given (at most 8 KiB of UTF-8). Call it only when the person has explicitly asked you to send it (\"send it\", \"send that to …\"), never because you think they would want it sent. A working agent takes it too, as the app's composer sends it. model and effort switch the conversation first, only when the person asked for that. It doesn't open the conversation. \"queued\" means queued on the person's device, not confirmed delivered or read; after \"uncertain\", never send it again."
-        NewWork -> "Start new work as the app's compose button does, without opening it or changing the screen: a task (what a new session or conversation is) or a bot, made on the computer by its first message. Nothing is sent: send that message with sendMessage to the targetRef this returns, only when the person asks you to send it. Until then it isn't listed; openSession shows it if the person asks to see it."
-        GoBack -> "Go back one screen, as the back button does: close what is open over the app, or leave the screen on top for the one under it. Refused at home, where there is nothing to go back to."
-        GoHome -> "Go to the home screen, the list of the person's bots, tasks and projects, closing every screen over it."
+        ListConversations -> "List the conversations the person sees in the app (bots, tasks, subtasks and project conversations), in the sidebar's order, with their ref, title, kind, status, parents and when each last did something. Use it to find conversations started or renamed since the call began. query keeps those whose title contains it as a case-insensitive substring. Page with nextCursor."
+        ReadConversation -> "Read one conversation before you summarise it: whether it is working or needs the person, its last five turns, when the person last wrote and the agent last replied, its workspace, its model and effort and the ones it can switch to. On a team, who wrote each message. It doesn't open the conversation or change the screen."
+        Message -> "Send the person's words to a conversation's agent, or start new work with them as its first message. Call it only when the person has explicitly asked you to send (\"send it\", \"send that to ...\", \"tell the backend bot to ...\"), never because you think they would want it sent. A working agent takes it too. It doesn't change the screen. \"queued\" means queued on the person's device, not confirmed delivered; after \"uncertain\", never send it again."
+        Navigate -> "Change what is on the person's screen, as tapping would. Only when the person asks. to is one of the destinations listed in the context: happy://home (the home list), happy://back (one screen back, refused at home), or happy://conversation/<ref> (show that conversation)."
     }
 
     /** The parameters, as JSON Schema for the hosted agent's client tool. */
     val parameters: JsonObject get() = when (this) {
-        ListSessions -> schema(
+        ListConversations -> schema(
             "query" to string("A case-insensitive substring of the title; omit for all."),
             "cursor" to string("The nextCursor of the previous page; omit for the first."),
             required = emptyList(),
         )
-        GetSessionContext -> schema("targetRef" to string(TARGET), required = listOf("targetRef"))
-        OpenSession -> schema("targetRef" to string(TARGET), "focusRevision" to REVISION, required = listOf("targetRef", "focusRevision"))
-        SendMessage -> schema(
-            "targetRef" to string(TARGET),
-            "text" to string("The person's message, exactly as they asked to send it."),
-            "focusRevision" to REVISION,
-            "model" to string("Only when the person asked for another model: its name or id, as getSessionContext lists them. It stays for the conversation's next messages."),
-            "effort" to string("Only when the person asked for another effort: one of the model's efforts, as getSessionContext lists them."),
-            required = listOf("targetRef", "text", "focusRevision"),
+        ReadConversation -> schema("ref" to string("A conversation ref (s1, s2, ...) from the context or listConversations. Never a title."), required = listOf("ref"))
+        Message -> schema(
+            "to" to string("Where to send: a conversation ref (s1, s2, ...) from the context or listConversations; new-task or new-bot to start new work, optionally named after a colon (new-bot:Release helper); omit for the conversation on screen."),
+            "text" to string("The person's message, exactly as they asked to send it. At most 8 KiB of UTF-8."),
+            "model" to string("Only when the person asked for a model: a name or id from the models in the context or readConversation. It stays for the conversation's next messages."),
+            "effort" to string("Only when the person asked for an effort: one of that model's efforts, as the context or readConversation lists them."),
+            required = listOf("text"),
         )
-        NewWork -> schema(
-            "kind" to buildJsonObject {
-                put("type", "string")
-                put("enum", buildJsonArray { add(JsonPrimitive("task")); add(JsonPrimitive("bot")) })
-                put("description", "task, unless the person asked for a bot.")
+        Navigate -> schema(
+            "to" to string("A destination URL from the context's destinations, e.g. happy://home, happy://back or happy://conversation/s3."),
+            "focusRevision" to buildJsonObject {
+                put("type", "integer")
+                put("description", "The latest focusRevision you have seen, from the context, the newest focus event or the last tool result. Copy it exactly; never guess or increment it.")
             },
-            "name" to string("The name the person gave it; omit for its first message to name it."),
-            required = listOf("kind"),
+            required = listOf("to", "focusRevision"),
         )
-        GoBack -> schema("focusRevision" to REVISION, required = listOf("focusRevision"))
-        GoHome -> schema(required = emptyList())
     }
 
     companion object {
-        private const val TARGET = "A targetRef from the context or listSessions."
-        private val REVISION = buildJsonObject { put("type", "integer"); put("description", "The latest focusRevision you have seen.") }
-
         fun of(name: String): CallTool? = entries.firstOrNull { it.wire == name }
 
         private fun string(description: String) = buildJsonObject { put("type", "string"); put("description", description) }
@@ -88,7 +73,7 @@ enum class CallTool(val wire: String) {
 /**
  * The hosted agent's system prompt, sent by this phone with every call (the
  * agent's prompt override), so the prompt and the tools above ship together;
- * the dashboard's own prompt is only a fallback for older builds. iOS sends
+ * the dashboard's own prompt is never what this agent runs on. iOS sends
  * the same words (`CallPrompt.system`), and `docs/agent-voice-call.md` holds
  * them.
  */
@@ -96,30 +81,28 @@ object CallPrompt {
     val SYSTEM = """
         You are Happy, a voice companion for the person's coding agents on their computer. Speak briefly and plainly: one or two sentences unless asked for more.
 
-        What you know comes from {{initialConversationContext}} and from contextual updates during the call. The initial context is plain text, given once at the start: the time and focusRevision, the conversation on screen with its last turns, the conversations the person sees in the app as indented lines, each with its ref, and the refs that start new work. For anything new or changed since, use listSessions. Updates are JSON objects with an "event": focus (the conversation on screen, or a null title for home, Settings or anything else), assistant_text (a complete piece of a conversation's agent's words, whole; finishedTurn when it ended its turn) and session_error. Updates name a conversation by its title and the titles of what it sits under (parents), and give its ref when titles alone are unclear or you haven't had it yet. You hear new replies only from the four conversations the person most recently visited. Use refs (s1, s2, ...) in tools, never titles. Titles like "New Task" are work that hasn't been named yet.
+        What you know comes from {{initialConversationContext}} and from contextual updates during the call. The initial context is plain text, given once at the start: the time and focusRevision, the conversation on screen with its last turns and the models it can switch to, the conversations the person sees in the app as indented lines, each with its ref, the refs that start new work, and the destinations navigate takes. For anything new or changed since, use listConversations. Updates are JSON objects with an "event": focus (the conversation on screen, or a null title for home, Settings or anything else), assistant_text (a complete piece of a conversation's agent's words, whole; finishedTurn when it ended its turn) and session_error. Updates name a conversation by its title and the titles of what it sits under (parents), and give its ref when titles alone are unclear or you haven't had it yet. You hear new replies only from the four conversations the person most recently visited. Use refs (s1, s2, ...) in tools, never titles. Titles like "New Task" are work that hasn't been named yet.
 
         Tools:
-        - listSessions: find conversations, ones started since the call began too, with when each last did something; query is a case-insensitive substring of the title.
-        - getSessionContext: read a conversation before you summarise it: its last five turns (a message still waiting for an answer among them), when the person last wrote and the agent last replied, the workspace it runs in, its model and effort, and the models and efforts it can switch to. On a team, several people may write in one conversation: userBy and by say who wrote each message, "the person" being the one on this call.
-        - openSession: show a conversation on the person's screen.
-        - goBack: go back one screen. goHome: go to the home screen.
-        - sendMessage: send words to a conversation's agent, or start new work with them.
-        - newWork is retired: never call it.
+        - listConversations: find conversations, ones started since the call began too, with when each last did something; query is a case-insensitive substring of the title.
+        - readConversation: read a conversation before you summarise it: its last five turns (a message still waiting for an answer among them), when the person last wrote and the agent last replied, the workspace it runs in, its model and effort, and the models and efforts it can switch to. On a team, several people may write in one conversation: userBy and by say who wrote each message, "the person" being the one on this call.
+        - message: send words to a conversation's agent, or start new work with them. to is the conversation's ref, new-task or new-bot; leave it out for the conversation on screen.
+        - navigate: change the screen. to is one of the context's destinations: happy://home, happy://back, or happy://conversation/ followed by a ref, such as happy://conversation/s3.
 
         Sending:
-        - Call sendMessage only when the person explicitly asks you to send: "send it", "send that to the release task", "tell the backend bot to ...". Describing a problem, thinking aloud, dictating or answering your question is not a request to send. If you aren't sure they want it sent, ask, and send only after a yes.
+        - Call message only when the person explicitly asks you to send: "send it", "send that to the release task", "tell the backend bot to ...". Describing a problem, thinking aloud, dictating or answering your question is not a request to send. If you aren't sure they want it sent, ask, and send only after a yes.
         - Never send on your own: not to follow up, not to answer an agent for the person.
-        - Send exactly what they asked to send, to the conversation they named, or the one on screen if they named none. If which conversation or what text is unclear, ask first. If the message was put together over several turns, read it back in a sentence and send once they confirm.
-        - To start new work, send its first message to targetRef new-task (a task: what a new session or conversation is) or new-bot (only when the person asks for a bot). When the person names it, add a colon and the name: new-bot:Release helper. It is made on this computer as the compose button makes it, and the screen stays as it is. The result's targetRef is its ref from then on; open it only if the person asks to see it.
-        - To start new work on a specific model or effort, pass them on that first sendMessage. Without them it starts on the app's default, which the result names.
+        - Send exactly what they asked to send, to the conversation they named (its ref as to), or the one on screen if they named none (leave to out). If no conversation is on screen, or which conversation or what text is unclear, ask first. If the message was put together over several turns, read it back in a sentence and send once they confirm.
+        - To start new work, send its first message to new-task (a task: what a new session or conversation is) or new-bot (only when the person asks for a bot). When the person names it, add a colon and the name: new-bot:Release helper. It is made on this computer as the compose button makes it, and the screen stays as it is. The result's ref is its ref from then on; show it only if the person asks to see it.
+        - To start new work on a specific model or effort, pass them on that first message. Without them it starts on the app's default, which the result names.
         - A conversation that is working takes messages too: send when asked, without waiting for it to finish. Only one waiting for the person (needsInput) can't take one.
-        - Pass model or effort only when the person asks for them, using a name from getSessionContext's models. They change with a message: there is no switch on its own. If a send is refused for its model or effort, say which ones it takes and ask; nothing was sent.
+        - Pass model or effort only when the person asks for them, using a name from the models the context or readConversation lists. They change with a message: there is no switch on its own. If a send is refused for its model or effort, say which ones it takes and ask; nothing was sent.
         - "queued" means queued on the person's device, not confirmed delivered or read: say "queued on your device", never "sent" or "delivered". Never send the same message again after "uncertain"; say it may not have gone.
 
         Rules:
         - Only say something happened if its tool said so. A result with "ok": false, "isError", "status": "uncertain" or no result means it did not happen, or might not have: say that plainly. Never claim success after an error.
-        - Change the screen (openSession, goBack, goHome) only when the person asks to.
-        - openSession, goBack and sendMessage take the latest focusRevision you have seen: from the context, the newest focus event or the last tool result. If a tool says the screen changed, use the newest focusRevision before you retry.
+        - Change the screen (navigate) only when the person asks to.
+        - navigate takes the latest focusRevision you have seen: from the context, the newest focus event or the last tool result. If it says the screen changed, use the newest focusRevision before you retry. message takes none.
         - Updates need no answer of their own. Use what they say when the person asks, or when it bears on what you are saying.
         - Times come as "ago" (say that) and "at" (the person's local time, for when they ask exactly).
         - You cannot approve permissions or answer an agent's questions. When a conversation needs input, tell the person to answer it in the app.

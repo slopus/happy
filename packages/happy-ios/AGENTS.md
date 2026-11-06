@@ -165,14 +165,17 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
   apart from that relay voice: home's three-bar button beside compose starts
   it, and Telegram's in-call bar (`CallBarLayout`, `CallWaves`, adapted with
   Steve's permission) sits above the navigation bar and pushes the window
-  down by its height. It talks to a new hosted ElevenLabs agent of its own
-  with seven client tools (`CallTool`: listSessions, getSessionContext,
-  openSession, sendMessage, newWork, goBack, goHome) and no permission or
-  question tool, and the phone sends its system prompt (`CallPrompt`, the
+  down by its height. It talks to a hosted ElevenLabs agent of its own
+  ("Happy Agent v3public") with four client tools (`CallTool`:
+  listConversations, readConversation, message, navigate) and no permission
+  or question tool, and the phone sends its system prompt (`CallPrompt`, the
   agent's prompt override); a conversation waiting on the person is a
-  `needsInput` flag on a read only. newWork is compose's own screen, goBack
-  and goHome the stack's own back and root, and sendMessage's model and
-  effort the composer's pickers'.
+  `needsInput` flag on a read only. message's new-task and new-bot are
+  compose's own, navigate's happy://back and happy://home the stack's own
+  back and root, and message's model and effort the composer's pickers'.
+  v2 ("Happy Agent v2public" and its sendMessage, listSessions,
+  getSessionContext and openSession) is what the shipped App Store build
+  calls: frozen, never edited.
   The call hears from the last four conversations visited (`CallContext`):
   only their agents' new words, each piece once and whole when complete
   (the agent went on past it in its run, or the run is no longer the
@@ -189,7 +192,7 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
   It ends on background, interruption, lost route, account change and when
   the relay's voice starts. For launch it connects to a public agent by its
   ID (`PublicAgentCallGrants`): a connection mechanism, not authentication.
-  The ID is injected at build time (`HAPPY_CALL_AGENT_ID`, from the ignored
+  The ID is injected at build time (`HAPPY_CALL_AGENT_V3_ID`, from the ignored
   `Config/Call.local.xcconfig` or the command line) and is never committed
   in code, docs or tests. Without it the tap ends at once as "Voice isn't
   set up for this connection yet"; never fake a live call. Each device gets
@@ -222,7 +225,7 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
   account's Support us) is the same subscription on its own pushed page
   (`SupportViewController`), without a voice session: Subscribe always
   there (greyed out while nothing is on sale), then Restore Purchases and
-  Manage Subscriptions as quiet links. `openSession` replaces a conversation on top
+  Manage Subscriptions as quiet links. `navigate` to a conversation replaces one on top
   and goes over anything else (`CallNavigation`). Contract, prompt, tool schemas and rationale:
   `docs/agent-voice-call.md` at the repository root. Harness hooks
   (`HAPPY_CALL_FIXTURE`, `HAPPY_CALL_TAP`, `-callLive`, `CallProbe`) are

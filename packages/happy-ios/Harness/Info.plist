@@ -5,7 +5,7 @@
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>HappyCallAgentID</key>
-	<string>$(HAPPY_CALL_AGENT_ID)</string>
+	<string>$(HAPPY_CALL_AGENT_V3_ID)</string>
 	<key>HappyRevenueCatAppleKey</key>
 	<string>$(HAPPY_REVENUE_CAT_APPLE_KEY)</string>
 	<key>NSAppTransportSecurity</key>

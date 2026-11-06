@@ -63,13 +63,15 @@ val happyCloudWeb = providers.environmentVariable("HAPPY_CLOUD_WEB").orNull?.tak
 
 // The agent connection voice call's public ElevenLabs agent
 // (docs/agent-voice-call.md): never in the repository, so from the
-// environment, -Phappy.callAgentId or the ignored local.properties. Without
-// it the voice button says voice isn't set up.
-val callAgentId = providers.environmentVariable("HAPPY_CALL_AGENT_ID").orNull?.takeIf { it.isNotBlank() }
-    ?: providers.gradleProperty("happy.callAgentId").orNull?.takeIf { it.isNotBlank() }
+// environment, -Phappy.callAgentV3Id or the ignored local.properties. Named
+// for the tools this code calls (v3), so an older agent's ID, set under the
+// old HAPPY_CALL_AGENT_ID or happy.callAgentId, never reaches it. Without it
+// the voice button says voice isn't set up.
+val callAgentId = providers.environmentVariable("HAPPY_CALL_AGENT_V3_ID").orNull?.takeIf { it.isNotBlank() }
+    ?: providers.gradleProperty("happy.callAgentV3Id").orNull?.takeIf { it.isNotBlank() }
     ?: Properties().apply {
         providers.fileContents(rootProject.layout.projectDirectory.file("local.properties")).asText.orNull?.let { load(it.reader()) }
-    }.getProperty("happy.callAgentId")?.takeIf { it.isNotBlank() }
+    }.getProperty("happy.callAgentV3Id")?.takeIf { it.isNotBlank() }
 
 // PostHog's public project key (the existing environment variable is retained):
 // :analytics sends its events and asks this install's feature flags with it,

@@ -43,7 +43,7 @@ data class CallUpdate(val context: List<String> = emptyList()) {
  * The call starts with the directory: home's bots, tasks, subtasks and
  * project conversations, in its order and nesting, as plain lines that give
  * each its reference, in the first context only. It never goes again:
- * `listSessions` finds what came or changed since. Updates name a
+ * `listConversations` finds what came or changed since. Updates name a
  * conversation by its title and what it sits under, and by its reference too
  * when that alone leaves it unclear or the agent hasn't had it yet.
  *
@@ -95,11 +95,11 @@ class CallContext(
     /** Home's conversations as last seen, in order and by ID. */
     private var entries: List<CallTarget> = emptyList()
     private var directory: Map<String, CallTarget> = emptyMap()
-    /** Work home doesn't list until its first message makes it: what `sendMessage` started, or compose's in front. */
+    /** Work home doesn't list until its first message makes it: what `message` started, or compose's in front. */
     private val drafts = HashMap<String, CallTarget>()
-    /** The conversations whose reference the agent has: from the first context, `listSessions`, a tool's answer or an update. */
+    /** The conversations whose reference the agent has: from the first context, `listConversations`, a tool's answer or an update. */
     private val told = HashSet<String>()
-    /** New work `sendMessage` started, by the ID its first message went under: the same words again reach it, never a second one. */
+    /** New work `message` started, by the ID its first message went under: the same words again reach it, never a second one. */
     private val startedBy = HashMap<String, String>()
     private val heard = HashMap<String, Heard>()
     private var spoken = 0
@@ -142,7 +142,8 @@ class CallContext(
     /**
      * `initialConversationContext`, the hosted prompt's one variable, as plain
      * text: the time and focusRevision, the conversation on screen with its
-     * last five turns, the directory, and how new work starts. Within
+     * last five turns and the models it can switch to, the directory, how new
+     * work starts and where `navigate` goes. Within
      * [Limits.TOTAL_BYTES]: the older turns give way first, then the
      * directory's tail.
      */
@@ -160,14 +161,14 @@ class CallContext(
         val turns = state?.let(::recent)?.toMutableList() ?: mutableListOf()
         var budget = Limits.DIRECTORY_BYTES
         fun text(telling: Boolean = false): String =
-            listOf(header, screen(state, turns), directoryText(budget, telling), NEW_WORK_TEXT).joinToString("\n\n")
+            listOf(header, screen(state, turns), directoryText(budget, telling), NEW_WORK_TEXT, DESTINATIONS_TEXT).joinToString("\n\n")
         while (text().utf8Size() > Limits.TOTAL_BYTES && turns.isNotEmpty()) turns.removeAt(0)
         while (text().utf8Size() > Limits.TOTAL_BYTES && budget > 512) budget /= 2
         focused?.let { told += it }
         text(telling = true)
     }
 
-    /** The conversation on screen as the first context tells it: what `getSessionContext` reads of it, as lines. */
+    /** The conversation on screen as the first context tells it: what `readConversation` reads of it, as lines. */
     private fun screen(state: CallTargetState?, turns: List<CallTurn>): String {
         val focused = focus
         if (state == null || focused == null) return "On screen: no conversation (home, Settings or another screen)."
@@ -182,6 +183,12 @@ class CallContext(
         state.turns.filter { !it.reply.isNullOrEmpty() }.mapNotNull { it.endedAt }.filter { it > 0 }.maxOrNull()?.let { lines += "Last reply: ${said(it)}" }
         if (target.workspace.isNotEmpty()) lines += "Workspace: ${target.workspace.joinToString(" / ")}"
         state.mode?.let { lines += "Model: ${it.model}" + if (it.effort.isEmpty()) "" else ", effort ${it.effort}" }
+        if (state.models.isNotEmpty()) {
+            lines += "Models it can switch to:"
+            for (model in state.models.take(Limits.MODELS)) {
+                lines += "- ${model.name} — id ${model.id}" + if (model.efforts.isEmpty()) "" else ", efforts ${model.efforts.joinToString(", ")}"
+            }
+        }
         if (turns.isEmpty()) {
             lines += "No turns yet."
         } else {
@@ -296,7 +303,7 @@ class CallContext(
      * in one go. The focus, marked `resync`, with its reference, then the
      * errors this call told of and each message it told, as it told it, the
      * most recent kept first, within half of [Limits.TOTAL_BYTES]. What
-     * doesn't fit is counted in `omitted`; a read (`getSessionContext`) has
+     * doesn't fit is counted in `omitted`; a read (`readConversation`) has
      * it. The first context is the prompt's, never lost.
      */
     suspend fun resync(): CallUpdate = withContext(lane) {
@@ -357,7 +364,7 @@ class CallContext(
         var text = all.text
         val omitted = entries.size - all.taken
         if (entries.isEmpty()) text += "\nNone yet."
-        if (omitted > 0) text += "\n… and $omitted more; listSessions finds them by title."
+        if (omitted > 0) text += "\n… and $omitted more; listConversations finds them by title."
         if (telling) told += all.shown
         return text
     }
@@ -458,7 +465,7 @@ class CallContext(
     private suspend fun run(call: CallToolCall): CallToolResult {
         if (closed) return CallToolResult.refused("The call has ended.")
         val tool = CallTool.of(call.name) ?: return CallToolResult.refused("Unknown tool.")
-        val timeout = if (tool == CallTool.SendMessage) {
+        val timeout = if (tool == CallTool.Message) {
             CallToolResult.json(JsonObject(mapOf(
                 "status" to JsonPrimitive("uncertain"),
                 "reason" to JsonPrimitive("No answer in time. Don't send it again; say it may not have gone."),
@@ -477,25 +484,25 @@ class CallContext(
 
     private suspend fun execute(tool: CallTool, arguments: JsonObject, call: String): CallToolResult {
         return when (tool) {
-            CallTool.ListSessions -> {
+            CallTool.ListConversations -> {
                 val query = optionalString(arguments["query"]) ?: return CallToolResult.refused("query must be a string.")
                 val cursor = optionalString(arguments["cursor"]) ?: return CallToolResult.refused("cursor must be a string.")
                 val needle = query.trim().lowercase()
                 val start = (if (cursor.isEmpty()) 0 else cursor.toIntOrNull())?.takeIf { it >= 0 }
-                    ?: return CallToolResult.refused("That isn't a cursor listSessions gave.")
+                    ?: return CallToolResult.refused("That isn't a cursor listConversations gave.")
                 see(targets.directory())
                 val matching = if (needle.isEmpty()) entries else entries.filter { needle in it.title.lowercase() }
                 val page = matching.drop(start).take(Limits.PAGE)
                 // A directory query: what it gives, the agent has.
                 told += page.map { it.agentId }
-                val value = linkedMapOf<String, JsonElement>("sessions" to JsonArray(page.map(::row)), "now" to JsonPrimitive(local(now(), zone)))
+                val value = linkedMapOf<String, JsonElement>("conversations" to JsonArray(page.map(::row)), "now" to JsonPrimitive(local(now(), zone)))
                 if (start + page.size < matching.size) value["nextCursor"] = JsonPrimitive((start + page.size).toString())
                 CallToolResult.json(JsonObject(value))
             }
 
-            CallTool.GetSessionContext -> {
-                unmade(arguments["targetRef"])?.let { return it }
-                val id = resolve(arguments["targetRef"]) ?: return CallToolResult.refused("No such conversation.")
+            CallTool.ReadConversation -> {
+                unmade(arguments["ref"])?.let { return it }
+                val id = resolve(arguments["ref"]) ?: return CallToolResult.refused("No such conversation.")
                 val state = targets.state(id) ?: return CallToolResult.refused("That conversation can't be read now.")
                 // Within the snapshot's budget too: the oldest turns give way. Asked for by its reference, it is named by its title alone.
                 val name = linkedMapOf<String, JsonElement>(
@@ -511,66 +518,88 @@ class CallContext(
                 CallToolResult.json(value)
             }
 
-            CallTool.OpenSession -> {
-                unmade(arguments["targetRef"])?.let { return it }
-                val id = resolve(arguments["targetRef"]) ?: return CallToolResult.refused("No such conversation.")
-                if (revisionOf(arguments["focusRevision"]) != focusRevision) return STALE
-                // Past its deadline the answer is gone: nothing moves on screen after it.
-                if (closed) return CallToolResult.refused("No answer in time.")
-                if (!targets.open(id)) return CallToolResult.refused("It didn't open.")
-                // In front now as far as the call goes, with the revision the next step takes. The screen says so
-                // too; whichever of the two comes second says nothing.
-                moveFocus(id)
-                CallToolResult.json(JsonObject(mapOf(
-                    "opened" to JsonPrimitive(true), "targetRef" to JsonPrimitive(ref(id)), "focusRevision" to JsonPrimitive(focusRevision),
-                )))
-            }
+            CallTool.Message -> message(arguments, call)
 
-            CallTool.SendMessage -> send(arguments, call)
-
-            // Retired: still on the hosted agent until it is detached there.
-            CallTool.NewWork -> CallToolResult.refused("newWork is retired. Use sendMessage with targetRef new-task or new-bot.")
-
-            CallTool.GoBack, CallTool.GoHome -> {
-                if (tool == CallTool.GoBack && revisionOf(arguments["focusRevision"]) != focusRevision) return STALE
-                if (closed) return CallToolResult.refused("No answer in time.")
-                when (val moved = if (tool == CallTool.GoBack) targets.back() else targets.home()) {
-                    is CallScreenMove.Refused -> CallToolResult.refused(moved.reason)
-                    is CallScreenMove.Moved -> {
-                        // Where it landed is the focus now; the screen says so too, and whichever of the two comes second says nothing.
-                        val shown = targets.focused()
-                        if (shown != null && directory[shown] == null && drafts[shown] == null) {
-                            see(targets.directory())
-                            if (directory[shown] == null) targets.unlisted(shown)?.let { drafts[shown] = it }
+            CallTool.Navigate -> {
+                val url = arguments.string("to")
+                val destination = url?.let { CallContext.destination(it) } ?: return CallToolResult.json(JsonObject(mapOf(
+                    "ok" to JsonPrimitive(false),
+                    "reason" to JsonPrimitive("${url?.let { "\"$it\"" } ?: "That"} isn't a destination. to is one of: ${DESTINATIONS.joinToString(", ")}."),
+                    "destinations" to JsonArray(DESTINATIONS.map { JsonPrimitive(it) }),
+                )), isError = true)
+                // Home is home from wherever the screen is; the others are moves from the screen the agent last saw,
+                // refused once it changed.
+                when (destination) {
+                    is Destination.Conversation -> {
+                        unmade(JsonPrimitive(destination.ref))?.let { return it }
+                        val id = resolve(destination.ref) ?: return CallToolResult.refused("No such conversation.")
+                        if (revisionOf(arguments["focusRevision"]) != focusRevision) return STALE
+                        // Past its deadline the answer is gone: nothing moves on screen after it.
+                        if (closed) return CallToolResult.refused("No answer in time.")
+                        if (!targets.open(id)) return CallToolResult.refused("It didn't open.")
+                        // In front now as far as the call goes, with the revision the next step takes. The screen says so
+                        // too; whichever of the two comes second says nothing.
+                        moveFocus(id)
+                        CallToolResult.json(JsonObject(mapOf(
+                            "opened" to JsonPrimitive(true), "ref" to JsonPrimitive(ref(id)), "focusRevision" to JsonPrimitive(focusRevision),
+                        )))
+                    }
+                    Destination.Back, Destination.Home -> {
+                        if (destination == Destination.Back && revisionOf(arguments["focusRevision"]) != focusRevision) return STALE
+                        if (closed) return CallToolResult.refused("No answer in time.")
+                        when (val moved = if (destination == Destination.Back) targets.back() else targets.home()) {
+                            is CallScreenMove.Refused -> CallToolResult.refused(moved.reason)
+                            is CallScreenMove.Moved -> {
+                                // Where it landed is the focus now; the screen says so too, and whichever of the two comes second says nothing.
+                                val landed = shown()
+                                moveFocus(landed)
+                                val value = linkedMapOf<String, JsonElement>(
+                                    "home" to JsonPrimitive(moved.atHome), "focusRevision" to JsonPrimitive(focusRevision), "title" to JsonNull,
+                                )
+                                val entry = landed?.let { directory[it] ?: drafts[it] }
+                                if (entry != null) {
+                                    value.putAll(address(entry))
+                                    value["ref"] = JsonPrimitive(ref(entry.agentId))
+                                    told += entry.agentId
+                                }
+                                CallToolResult.json(JsonObject(value))
+                            }
                         }
-                        moveFocus(shown)
-                        val value = linkedMapOf<String, JsonElement>(
-                            "home" to JsonPrimitive(moved.atHome), "focusRevision" to JsonPrimitive(focusRevision), "title" to JsonNull,
-                        )
-                        val entry = shown?.let { directory[it] ?: drafts[it] }
-                        if (entry != null) {
-                            value.putAll(address(entry))
-                            value["targetRef"] = JsonPrimitive(ref(entry.agentId))
-                            told += entry.agentId
-                        }
-                        CallToolResult.json(JsonObject(value))
                     }
                 }
             }
         }
     }
 
-    private suspend fun send(arguments: JsonObject, call: String): CallToolResult {
-        val fresh = arguments.string("targetRef")?.let(::newWork)
-        val id = if (fresh == null) resolve(arguments["targetRef"]) ?: return CallToolResult.refused("No such conversation.") else ""
+    /** The conversation on screen as the app has it now, known to the call: a draft compose made since is one of its drafts. */
+    private suspend fun shown(): String? {
+        val shown = targets.focused()
+        if (shown != null && directory[shown] == null && drafts[shown] == null) {
+            see(targets.directory())
+            if (directory[shown] == null) targets.unlisted(shown)?.let { drafts[shown] = it }
+        }
+        return shown
+    }
+
+    /**
+     * `message`: `text` to the conversation `to` names, to new work for `new-task` or `new-bot`, or, with no `to`, to
+     * the conversation on screen as it runs; refused when none is.
+     */
+    private suspend fun message(arguments: JsonObject, call: String): CallToolResult {
+        val to = optionalString(arguments["to"])?.trim() ?: return CallToolResult.refused("to must be a string.")
+        val fresh = newWork(to)
+        val id = when {
+            fresh != null -> ""
+            to.isEmpty() -> shown()?.takeIf { directory[it] != null || drafts[it] != null }
+                ?: return CallToolResult.refused("No conversation is on screen. Ask which one, then send with its ref as to.")
+            else -> resolve(to) ?: return CallToolResult.refused("No such conversation.")
+        }
         val text = arguments.string("text")
         if (text == null || text.isBlank()) return CallToolResult.refused("There's nothing to send.")
         if (text.utf8Size() > Limits.TEXT_BYTES) return CallToolResult.refused("That message is too long to send by voice.")
         val model = optionalString(arguments["model"]) ?: return CallToolResult.refused("model must be a string.")
         val effort = optionalString(arguments["effort"]) ?: return CallToolResult.refused("effort must be a string.")
-        val asOf = revisionOf(arguments["focusRevision"])
-        if (asOf != focusRevision) return STALE
-        if (fresh != null) return start(fresh.first, fresh.second, text, model, effort, asOf, call)
+        if (fresh != null) return start(fresh.first, fresh.second, text, model, effort, call)
         val state = targets.state(id) ?: return CallToolResult.refused("That conversation can't be read now.")
         if (!state.writable) return CallToolResult.refused("That conversation can't take a message now.")
         // A working agent takes it as the composer's send would (it steers or waits its turn); only a question
@@ -578,33 +607,37 @@ class CallContext(
         if (state.needsInput) return CallToolResult.refused("It's waiting for the person in the app; answer there first.")
         val asked = change(model, effort, state)
         asked.refusal?.let { return it }
-        // Reading it was a wait: the screen, or the call, may have moved on.
+        // Reading it was a wait: the call may have ended.
         if (closed) return CallToolResult.refused("The call has ended.")
-        if (asOf != focusRevision) return STALE
         val key = "$id\u0000$text"
         val messageId = unsettled[key] ?: ConversationApi.clientId()
         unsettled[key] = messageId
         settling[call] = key
         return when (val outcome = targets.send(id, text, messageId, asked.change)) {
-            CallSendOutcome.Queued -> CallToolResult.json(JsonObject(linkedMapOf<String, JsonElement>(
-                "status" to JsonPrimitive("queued"), "targetRef" to JsonPrimitive(ref(id)), "delivery" to JsonPrimitive(QUEUED),
-            ).apply {
-                asked.switched?.let { (name, level) ->
-                    put("model", JsonPrimitive(name))
-                    if (level.isNotEmpty()) put("effort", JsonPrimitive(level))
-                }
-            }))
+            CallSendOutcome.Queued -> {
+                told += id
+                CallToolResult.json(JsonObject(linkedMapOf<String, JsonElement>(
+                    "status" to JsonPrimitive("queued"), "ref" to JsonPrimitive(ref(id)), "delivery" to JsonPrimitive(QUEUED),
+                ).apply {
+                    // Sent to what was on screen: named, so the agent can say where it went.
+                    if (to.isEmpty()) put("title", JsonPrimitive(state.target.title))
+                    asked.switched?.let { (name, level) ->
+                        put("model", JsonPrimitive(name))
+                        if (level.isNotEmpty()) put("effort", JsonPrimitive(level))
+                    }
+                }))
+            }
             is CallSendOutcome.Refused -> CallToolResult.refused(outcome.reason)
         }
     }
 
     /**
-     * `sendMessage` to `new-task` or `new-bot`: new work made as compose's send makes it, [text] its first message, on
+     * `message` to `new-task` or `new-bot`: new work made as compose's send makes it, [text] its first message, on
      * the model and effort asked for, else compose's own default. Nothing exists of it until then, and nothing stays
      * of it when it is refused. The same words again, their answer unheard, reach the same new work under the same
      * message ID, never a second one.
      */
-    private suspend fun start(kind: CallTarget.Kind, name: String, text: String, model: String, effort: String, asOf: Int?, call: String): CallToolResult {
+    private suspend fun start(kind: CallTarget.Kind, name: String, text: String, model: String, effort: String, call: String): CallToolResult {
         val key = "${kind.wire}:$name\u0000$text"
         val messageId = unsettled[key] ?: ConversationApi.clientId()
         val earlier = startedBy[messageId]?.let { drafts[it] ?: directory[it] }
@@ -617,7 +650,6 @@ class CallContext(
         val asked = change(model, effort, state)
         asked.refusal?.let { return refused(it) }
         if (closed) return refused(CallToolResult.refused("The call has ended."))
-        if (asOf != focusRevision) return refused(STALE)
         unsettled[key] = messageId
         settling[call] = key
         if (directory[work.agentId] == null) drafts[work.agentId] = work
@@ -627,7 +659,7 @@ class CallContext(
             CallSendOutcome.Queued -> {
                 told += work.agentId
                 val value = linkedMapOf<String, JsonElement>(
-                    "status" to JsonPrimitive("queued"), "targetRef" to JsonPrimitive(ref(work.agentId)), "started" to JsonPrimitive(kind.wire),
+                    "status" to JsonPrimitive("queued"), "ref" to JsonPrimitive(ref(work.agentId)), "started" to JsonPrimitive(kind.wire),
                     "title" to JsonPrimitive(work.title), "delivery" to JsonPrimitive(QUEUED),
                 )
                 (asked.switched ?: state.mode?.let { it.model to it.effort })?.let { (named, level) ->
@@ -653,8 +685,10 @@ class CallContext(
     }
 
     /** The conversation a reference names, while home lists it: one that went away isn't reached, and is again if it comes back, under the same reference. */
-    private suspend fun resolve(value: JsonElement?): String? {
-        val ref = (value as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
+    private suspend fun resolve(value: JsonElement?): String? =
+        (value as? JsonPrimitive)?.takeIf { it.isString }?.content?.let { resolve(it) }
+
+    private suspend fun resolve(ref: String): String? {
         val id = agents[ref] ?: return null
         see(targets.directory())
         return id.takeIf { directory[it] != null || drafts[it] != null }
@@ -679,10 +713,10 @@ class CallContext(
         )
     }
 
-    /** One of `listSessions`' answers. */
+    /** One of `listConversations`' answers. */
     private fun row(target: CallTarget): JsonObject {
         val value = linkedMapOf<String, JsonElement>(
-            "targetRef" to JsonPrimitive(ref(target.agentId)),
+            "ref" to JsonPrimitive(ref(target.agentId)),
             "title" to JsonPrimitive(target.title),
             "kind" to JsonPrimitive(target.kind.wire),
             "status" to JsonPrimitive(target.status.wire),
@@ -727,20 +761,52 @@ class CallContext(
         return JsonObject(value)
     }
 
+    /** Where `navigate` goes. */
+    sealed interface Destination {
+        data object Home : Destination
+        data object Back : Destination
+        data class Conversation(val ref: String) : Destination
+    }
+
     companion object {
         private val STALE = CallToolResult.refused("The screen changed since; check the focus again.")
 
-        /** The references `sendMessage` starts new work with, as the first context lists them; a name after a colon names it. */
+        /** The references `message` starts new work with, as the first context lists them; a name after a colon names it. */
         const val NEW_TASK_REF = "new-task"
         const val NEW_BOT_REF = "new-bot"
 
-        /** How the first context starts new work, as `sendMessage` takes it. */
+        /** Where `navigate` goes, as the first context lists them. */
+        const val HOME_URL = "happy://home"
+        const val BACK_URL = "happy://back"
+        const val CONVERSATION_URL = "happy://conversation/"
+        val DESTINATIONS = listOf(HOME_URL, BACK_URL, "$CONVERSATION_URL<ref>")
+
+        /** How the first context starts new work, as `message` takes it. */
         val NEW_WORK_TEXT = """
-            New work (only through sendMessage; listed nowhere until its first message makes it):
+            New work (message's to; listed nowhere until its first message makes it):
             - $NEW_TASK_REF — a new task, the message its first
             - $NEW_BOT_REF — a new bot, the message its first
             A name after a colon names it: $NEW_BOT_REF:Release helper.
         """.trimIndent()
+
+        /** Where the first context says `navigate` goes. */
+        val DESTINATIONS_TEXT = """
+            Destinations (navigate's to):
+            - $HOME_URL — the home list
+            - $BACK_URL — one screen back; refused at home
+            - $CONVERSATION_URL<ref> — that conversation on screen, such as ${CONVERSATION_URL}s1
+        """.trimIndent()
+
+        /** One of the first context's destinations, any case in the scheme and the place, a trailing slash allowed; null for anything else. */
+        fun destination(url: String): Destination? {
+            val text = url.trim().removeSuffix("/")
+            val lower = text.lowercase()
+            if (lower == HOME_URL) return Destination.Home
+            if (lower == BACK_URL) return Destination.Back
+            if (!lower.startsWith(CONVERSATION_URL)) return null
+            val ref = text.substring(CONVERSATION_URL.length)
+            return if (ref.isEmpty() || '/' in ref) null else Destination.Conversation(ref)
+        }
 
         /** `new-task` or `new-bot`, any case, with the name after a colon if one is given; null for any other reference. */
         fun newWork(ref: String): Pair<CallTarget.Kind, String>? {
@@ -752,11 +818,11 @@ class CallContext(
             return null
         }
 
-        /** A refusal for new work named where only `sendMessage` takes it. */
+        /** A refusal for new work named where only `message` takes it. */
         private fun unmade(value: JsonElement?): CallToolResult? {
             val ref = (value as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
             if (newWork(ref) == null) return null
-            return CallToolResult.refused("Nothing exists of new work until its first message: start it with sendMessage to $NEW_TASK_REF or $NEW_BOT_REF.")
+            return CallToolResult.refused("Nothing exists of new work until its first message: start it with message to $NEW_TASK_REF or $NEW_BOT_REF.")
         }
 
         /** One turn of the first context: who asked, the agent's last words, and how it ended when that wasn't plain. */
