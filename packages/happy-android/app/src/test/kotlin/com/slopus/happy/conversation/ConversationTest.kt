@@ -1,5 +1,10 @@
 package com.slopus.happy.conversation
 
+import com.slopus.happy.analytics.AnalyticsEvent
+import com.slopus.happy.analytics.Effort
+import com.slopus.happy.analytics.ErrorArea
+import com.slopus.happy.analytics.ErrorCode
+import com.slopus.happy.analytics.MessageSource
 import com.slopus.happy.connection.AgentConnectionException
 import com.slopus.happy.connection.TransportResponse
 import kotlinx.coroutines.CoroutineScope
@@ -125,6 +130,8 @@ private class FakeAgent {
 class ConversationTest {
     private val signals = MutableSharedFlow<ConversationSignal>(extraBufferCapacity = 64)
     private val jobs = ArrayList<Job>()
+    /** What the conversations record for analytics, `error_shown` included. */
+    private val recorded = ArrayList<AnalyticsEvent>()
 
     @After fun cancel() = jobs.forEach { it.cancel() }
 
@@ -155,6 +162,8 @@ class ConversationTest {
         typesetter = typesetter,
         preferences = preferences,
         onStarted = started,
+        record = { recorded += it },
+        errorShown = { area, code -> recorded += AnalyticsEvent.ErrorShown(area, code) },
     ).also { it.start() }
 
     private fun event(type: String, payload: String) = ConversationSignal.Event(type, Json.parseToJsonElement(payload).jsonObject)
@@ -596,6 +605,34 @@ class ConversationTest {
         assertTrue(chat.state.value.created)
         assertEquals(listOf("/v0/agents/a9/send"), agent.paths("POST").filter { it.endsWith("/send") })
         assertEquals(listOf("Hello"), chat.state.value.rows.map { (it as ConversationRow.User).text })
+    }
+
+    @Test fun `a message is counted once as it is sent, with its mode then, whether or not the computer takes it`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        val gate = CompletableDeferred<Unit>()
+        agent.gate = gate
+        agent.failSends = 3
+        assertTrue(chat.send("Hello"))
+        advanceUntilIdle()
+        chat.setMode(Mode("claude", "anthropic/opus-5", "high", null, "auto"))
+        advanceUntilIdle()
+        val sent = recorded.filterIsInstance<AnalyticsEvent.MessageSent>().single()
+        assertEquals("before it reaches the computer, with the mode it was sent with", "openai/gpt-5.6-sol", sent.model)
+        assertEquals(Effort.Medium, sent.effort)
+        assertEquals(MessageSource.Chat, sent.source)
+        assertFalse(sent.isSteering)
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+        val row = chat.state.value.rows.single() as ConversationRow.User
+        assertTrue(row.delivery is Delivery.Failed)
+        assertEquals(listOf(AnalyticsEvent.ErrorShown(ErrorArea.MessageSend, ErrorCode.ServerError)), recorded.filterIsInstance<AnalyticsEvent.ErrorShown>())
+        chat.retrySend(row.messageId)
+        advanceUntilIdle()
+        assertEquals(4, agent.paths("POST").count { it.endsWith("/send") })
+        assertEquals("not again on a retry", 1, recorded.count { it is AnalyticsEvent.MessageSent })
     }
 
     @Test fun `while new work is being made its choice is fixed`() = runTest {

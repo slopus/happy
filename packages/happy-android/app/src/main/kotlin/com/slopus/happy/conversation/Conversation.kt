@@ -7,6 +7,7 @@ import com.slopus.happy.analytics.ChatAddress
 import com.slopus.happy.analytics.CreateError
 import com.slopus.happy.analytics.Effort
 import com.slopus.happy.analytics.ErrorArea
+import com.slopus.happy.analytics.ErrorCode
 import com.slopus.happy.analytics.MessageSource
 import com.slopus.happy.analytics.ProviderKind
 import com.slopus.happy.analytics.SessionClient
@@ -175,6 +176,9 @@ class Conversation(
     private val onStarted: (Mode) -> Unit = {},
     /** Who this conversation is with, for `message_sent`; null where that isn't known. */
     private val address: () -> ChatAddress? = { null },
+    /** Where its analytics go: [Analytics], or a test's list. */
+    private val record: (AnalyticsEvent) -> Unit = Analytics::record,
+    private val errorShown: (ErrorArea, ErrorCode) -> Unit = Analytics::errorShown,
 ) {
     /**
      * A send on its way: the person's [text], its pictures inline and its
@@ -408,7 +412,7 @@ class Conversation(
                 held = null
                 events.forEach(::receive)
                 // Kept rows show over a failed read; only an empty chat says it.
-                if (_state.value.rows.isEmpty()) Analytics.errorShown(ErrorArea.ConversationLoad, AnalyticsReasons.error(e))
+                if (_state.value.rows.isEmpty()) errorShown(ErrorArea.ConversationLoad, AnalyticsReasons.error(e))
                 publish { it.copy(loaded = true, syncing = false, error = describe(e)) }
             }
         }
@@ -788,7 +792,7 @@ class Conversation(
         val id = ConversationApi.clientId()
         scope.launch(lane) {
             if (!created) locked = true
-            outgoing += Outgoing(id, trimmed, images, sentAt = now())
+            queue(Outgoing(id, trimmed, images, sentAt = now()))
             setDraftNow("")
             publish()
             pump()
@@ -805,7 +809,7 @@ class Conversation(
     suspend fun sendAs(id: String, text: String): Boolean = withContext(lane) {
         if (!created || closed || text.isBlank()) return@withContext false
         if (outgoing.any { it.id == id } || id in messages) return@withContext false
-        outgoing += Outgoing(id, text, emptyList(), voice = true, sentAt = now())
+        queue(Outgoing(id, text, emptyList(), voice = true, sentAt = now()))
         publish()
         pump()
         true
@@ -847,7 +851,7 @@ class Conversation(
                 return@launch
             }
             if (!created) locked = true
-            outgoing += Outgoing(id, trimmed, images, files, sentAt = now(), waiting = pending.takeIf { it.isNotEmpty() })
+            queue(Outgoing(id, trimmed, images, files, sentAt = now(), waiting = pending.takeIf { it.isNotEmpty() }))
             setDraftNow("")
             publish()
             if (pending.isEmpty()) pump() else read(id, attachments.size, pending, readPictures)
@@ -933,7 +937,7 @@ class Conversation(
             setDraftNow("")
             if (command.isSkill) {
                 val text = if (given == null) "/$name" else "/$name $given"
-                outgoing += Outgoing(ConversationApi.clientId(), text, emptyList(), toolRequest = ToolRequest(READ_SKILL, mapOf("name" to name)), sentAt = now())
+                queue(Outgoing(ConversationApi.clientId(), text, emptyList(), toolRequest = ToolRequest(READ_SKILL, mapOf("name" to name)), sentAt = now()))
                 publish()
                 pump()
                 return@launch
@@ -1036,8 +1040,6 @@ class Conversation(
                     ensureCreated()
                     val mode = sendingMode() ?: throw IllegalStateException("No model is set up on this computer.")
                     upload(next.files)
-                    // Before it goes: a run it starts doesn't make it steering.
-                    val steering = !starting && (running || agent?.isWorking == true || outgoing.any { it !== next && it.accepted })
                     val images = next.images
                     val message = withRetries {
                         // The bytes of each picture's base64 written say how far it is.
@@ -1053,10 +1055,10 @@ class Conversation(
                     // All there, whatever the transport told on the way; the echo clears them.
                     images.indices.forEach { uploads.set(UploadBoard.pictureKey(next.id, it), UploadPhase.Done) }
                     next.accepted = true
-                    recordSent(next, mode, newWork = starting, steering = steering)
                     // The first message of new work is its start: the person's next new chat opens on it.
                     if (starting) {
                         starting = false
+                        recordStarted(mode)
                         onStarted(mode)
                     }
                     if (message != null && message.id !in messages) {
@@ -1071,7 +1073,7 @@ class Conversation(
                 } catch (e: Exception) {
                     uploads.clear(next.id)
                     next.failure = describe(e)
-                    Analytics.errorShown(ErrorArea.MessageSend, AnalyticsReasons.error(e))
+                    errorShown(ErrorArea.MessageSend, AnalyticsReasons.error(e))
                 } finally {
                     writing = null
                 }
@@ -1172,21 +1174,34 @@ class Conversation(
 
     /** `task_created` or `bot_created` as the attempt ended; [error] null when it worked. */
     private fun recordCreated(error: CreateError?) {
-        Analytics.record(if (choice.kind == WorkKind.Bot) AnalyticsEvent.BotCreated(error) else AnalyticsEvent.TaskCreated(error))
+        record(if (choice.kind == WorkKind.Bot) AnalyticsEvent.BotCreated(error) else AnalyticsEvent.TaskCreated(error))
     }
 
     /**
-     * `message_sent`, once the computer has taken the message, and for new
-     * work's first `conversation_created`. [steering]: the agent was still
-     * working when it went.
+     * Takes [send] to deliver ([pump]). The person sent it: its
+     * `message_sent` goes now, once, with the mode it goes with as things
+     * stand, whether or not it ever reaches the computer, and not again on
+     * a retry. Steering: something before it is still running or on its way.
      */
-    private fun recordSent(sent: Outgoing, mode: Mode, newWork: Boolean, steering: Boolean) {
+    private fun queue(send: Outgoing) {
+        val newWork = starting && outgoing.isEmpty()
+        val steering = !newWork && (running || agent?.isWorking == true || outgoing.any { it.failure == null })
+        outgoing += send
+        recordSent(send, mode ?: catalog?.let(::defaultMode), newWork, steering)
+    }
+
+    /** New work's first message went with [mode]: its `conversation_created`. */
+    private fun recordStarted(mode: Mode) {
+        record(AnalyticsEvent.ConversationCreated(mode.modelId, providerKind(mode), Effort.of(mode.effort)))
+    }
+
+    private fun providerKind(mode: Mode) =
+        ProviderKind.of(catalog?.provider(mode.providerId)?.type ?: catalog?.model(mode.providerId, mode.modelId)?.providerType)
+
+    private fun recordSent(sent: Outgoing, mode: Mode?, newWork: Boolean, steering: Boolean) {
         val address = address()
-        val attachments = sent.images.size + sent.files.size
-        val providerKind = ProviderKind.of(catalog?.provider(mode.providerId)?.type ?: catalog?.model(mode.providerId, mode.modelId)?.providerType)
-        val effort = Effort.of(mode.effort)
-        if (newWork) Analytics.record(AnalyticsEvent.ConversationCreated(mode.modelId, providerKind, effort))
-        Analytics.record(
+        val attachments = sent.images.size + sent.files.size + (sent.waiting?.size ?: 0)
+        record(
             AnalyticsEvent.MessageSent(
                 source = when {
                     sent.voice -> MessageSource.Voice
@@ -1195,9 +1210,9 @@ class Conversation(
                 },
                 target = address?.target,
                 sessionClient = SessionClient.HappyAgent,
-                model = mode.modelId,
-                modelProviderKind = providerKind,
-                effort = effort,
+                model = mode?.modelId,
+                modelProviderKind = mode?.let(::providerKind),
+                effort = mode?.let { Effort.of(it.effort) },
                 chiefOfStaff = address?.chiefOfStaff == true,
                 taskDepth = address?.taskDepth,
                 hasAttachment = attachments > 0,
