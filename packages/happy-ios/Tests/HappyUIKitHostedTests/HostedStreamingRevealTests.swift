@@ -995,7 +995,7 @@ extension HostedStreamingRevealTests {
         let paced = after.first { done($0.rows[older], \.paced) }.map { $0.time - at }
         let shown = after.first { done($0.rows[older], \.shown) }.map { $0.time - at }
         print("HostedStreamingRevealTests \(label): the older row was out \(paced ?? -1) s after the newer came, shown \(shown ?? -1) s")
-        XCTAssertLessThanOrEqual(paced ?? .infinity, HostedTime.budget(TextReveal.finishTime + 2.0 / 60), "\(label): the older row took \(paced ?? -1) s to finish", file: file, line: line)
+        XCTAssertLessThanOrEqual(paced ?? .infinity, TestTime.budget(TextReveal.finishTime + 2.0 / 60), "\(label): the older row took \(paced ?? -1) s to finish", file: file, line: line)
         XCTAssertLessThanOrEqual(shown ?? .infinity, TextReveal.finishTime + 0.1 + 2.0 / 60, "\(label): the older row showed whole \(shown ?? -1) s after", file: file, line: line)
         XCTAssertFalse(after.contains { $0.target == older }, "\(label): the older row went on at the stream's pace", file: file, line: line)
         let pacing = after.filter { $0.target == newer }

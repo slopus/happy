@@ -67,7 +67,7 @@ private actor FlightComputer: AgentTransport {
 ///
 /// With `HAPPY_FLIGHT_SLOW` set (a factor, 6 for six times), the flights
 /// run that much slower, for a screen recording; on a slow simulator they
-/// run `HostedTime.scale` slower, so it draws as many of their frames. With `HAPPY_PREVIEW_DIR`
+/// run `TestTime.scale` slower, so it draws as many of their frames. With `HAPPY_PREVIEW_DIR`
 /// set, each delivery state is kept there, light and dark.
 @MainActor
 final class HostedSendFlightTests: XCTestCase {
@@ -91,7 +91,7 @@ final class HostedSendFlightTests: XCTestCase {
     }
 
     private var slow: Float {
-        ProcessInfo.processInfo.environment["HAPPY_FLIGHT_SLOW"].flatMap(Float.init) ?? Float(HostedTime.scale)
+        ProcessInfo.processInfo.environment["HAPPY_FLIGHT_SLOW"].flatMap(Float.init) ?? Float(TestTime.scale)
     }
 
     // MARK: Opening the chats

@@ -168,6 +168,8 @@ targets:
     platform: iOS
     sources:
       - path: Tests/HappyUIKitHostedTests
+      # The time scale both UIKit bundles read.
+      - path: Tests/HappyUIKitTests/TestTime.swift
     dependencies:
       - target: HappyUIKitTestHost
       - package: HappyIOS

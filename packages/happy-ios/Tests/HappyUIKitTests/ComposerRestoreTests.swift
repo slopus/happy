@@ -159,6 +159,11 @@ final class ComposerRestoreTests: XCTestCase {
                 if stored != key { try await Task.sleep(for: .milliseconds(10)) }
             }
             XCTAssertEqual(stored, key, "the profile's pick uses the existing session mode writer")
+            // The composer hears the stored pick a moment after the store has it.
+            let deadline = Date().addingTimeInterval(TestTime.budget(2))
+            while composer.permissionChoice?.current != action.title, Date() < deadline {
+                try await Task.sleep(for: .milliseconds(10))
+            }
             let selected = try permissions().filter { $0.state == .on }.compactMap(\.accessibilityIdentifier)
             XCTAssertEqual(selected, [key], "the deferred native menu gets fresh selection state")
             XCTAssertEqual(composer.permissionChoice?.current, actions.first { $0.accessibilityIdentifier == key }?.title, "the profile row shows the pick")

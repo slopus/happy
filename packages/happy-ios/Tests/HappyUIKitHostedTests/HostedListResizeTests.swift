@@ -230,7 +230,7 @@ final class HostedListResizeTests: XCTestCase {
         print(String(format: "RESIZE_FRAMES %@ first=%.1fms longest=%.1fms frames=%d", label, gaps.first ?? 0, gaps.max() ?? 0, gaps.count))
         let problems = frames.enumerated().flatMap { frame, problems in problems.map { "frame \(frame): \($0)" } }
         XCTAssertEqual(problems.prefix(12), [], "\(label): \(problems.count) problems over \(frames.count) frames")
-        XCTAssertGreaterThan(frames.count, HostedTime.sampled(10), "\(label): too few frames sampled")
+        XCTAssertGreaterThan(frames.count, TestTime.sampled(10), "\(label): too few frames sampled")
     }
 
     /// What the first frame at `width` showed: the frame of the change. A

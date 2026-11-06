@@ -135,7 +135,7 @@ final class HostedSearchResultsListTests: XCTestCase {
         let list = results.list
         XCTAssertEqual(list.contentOffsetY, -100, accuracy: 0.5, "the results start under the bar")
         list.setContentOffsetY(900)
-        let deadline = CACurrentMediaTime() + HostedTime.budget(1)
+        let deadline = CACurrentMediaTime() + TestTime.budget(1)
         while abs(list.contentOffsetY - 900) > 1, CACurrentMediaTime() < deadline {
             try await Task.sleep(for: .milliseconds(16))
         }

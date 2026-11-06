@@ -31,7 +31,7 @@ final class HostedChatNavigationTests: XCTestCase {
     override func setUp() {
         super.setUp()
         // A slower simulator gets its chats' rows in later.
-        ChatOpening.cap = HostedTime.budget(ChatOpening.shippedCap)
+        ChatOpening.cap = TestTime.budget(ChatOpening.shippedCap)
         addTeardownBlock { @MainActor in ChatOpening.cap = ChatOpening.shippedCap }
     }
 
@@ -397,7 +397,7 @@ final class HostedChatNavigationTests: XCTestCase {
             XCTFail("\(label): the chat was never in the window", file: file, line: line)
             return
         }
-        XCTAssertGreaterThan(shown.count, HostedTime.sampled(10), "\(label): too few frames sampled", file: file, line: line)
+        XCTAssertGreaterThan(shown.count, TestTime.sampled(10), "\(label): too few frames sampled", file: file, line: line)
         for frame in shown {
             let at = String(format: "%@ at %.0f ms", label, (frame.time - first.time) * 1000)
             XCTAssertEqual(frame.animating, [], "\(at): animating", file: file, line: line)
