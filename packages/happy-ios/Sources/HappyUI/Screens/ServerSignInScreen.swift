@@ -48,7 +48,7 @@ final class ServerSignInViewController: UIViewController, ASWebAuthenticationPre
     override func viewDidLoad() {
         super.viewDidLoad()
         let again = context.account.agentConnections.accounts.contains { $0.server == server }
-        title = again ? Strings.ServerSignIn.signInAgain : HappyCloud.isCloud(server) ? HappyCloud.name : Strings.ServerSignIn.title
+        title = again ? Strings.ServerSignIn.signInAgain : HappyCloud.serverName(server) ?? Strings.ServerSignIn.title
         view.accessibilityIdentifier = "server-sign-in"
         list.sections = [ItemGroupView(footer: footer, rows: [form])]
         serverRow.detail = URLComponents(string: server).map { ($0.host ?? server) + ($0.port.map { ":\($0)" } ?? "") }
@@ -115,7 +115,7 @@ final class ServerSignInViewController: UIViewController, ASWebAuthenticationPre
             Analytics.shared.teamServerSignedIn()
             // The window's root becomes the server's home; a sheet this
             // was shown in goes with the adding.
-            if presentingViewController != nil, navigationController?.viewControllers.first === self { dismiss(animated: true) }
+            if navigationController?.presentingViewController != nil { dismiss(animated: true) }
         } catch is CancellationError {
         } catch OAuthError.cancelled {
         } catch {
