@@ -35,7 +35,9 @@ public struct ConnectionIncidents: Equatable, Sendable {
     private(set) var foreground = true
     private(set) var incident: Incident?
 
-    public init() {}
+    public init(foreground: Bool = true) {
+        self.foreground = foreground
+    }
 
     /// The link changed; the incident that ended, if one did.
     public mutating func update(_ next: Link?, at now: Date) -> AnalyticsEvent? {
@@ -100,6 +102,13 @@ public final class ConnectionWatch {
 
     public func setForeground(_ active: Bool) {
         if let event = incidents.setForeground(active, at: now()) { log(event) }
+    }
+
+    /// Analytics turned off: what was being timed, and every link reported
+    /// so far, go. Timing starts again from what is reported after.
+    func reset() {
+        incidents = ConnectionIncidents(foreground: incidents.foreground)
+        links = [:]
     }
 
     private func apply() {

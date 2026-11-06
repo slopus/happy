@@ -34,8 +34,10 @@ final class AccountsBridge {
     /// is read, and only then may anything go.
     func restored() async {
         guard let account else { return }
+        // A setting changed while the stores are read wins over what they said.
+        let since = Analytics.shared.consent.revisions
         let optOuts = await account.analyticsOptOuts()
-        Analytics.shared.consent.settle(optOuts)
+        Analytics.shared.consent.settle(optOuts, since: since)
     }
 
     private func accountsChanged(_ summaries: [AccountSummary]) {

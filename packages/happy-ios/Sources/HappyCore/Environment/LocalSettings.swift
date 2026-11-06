@@ -62,13 +62,6 @@ public final class LocalSettings: Sendable {
         }
     }
 
-    /// PostHog's last answer for `direct-connection-migration-note`
-    /// (`MigrationNoteFlag`); nil before one, or once nothing may ask.
-    public var migrationNoteFlag: Bool? {
-        get { storage.string(forKey: Keys.migrationNoteFlag).map { $0 == "true" } }
-        set { storage.set(newValue.map { $0 ? "true" : "false" }, forKey: Keys.migrationNoteFlag) }
-    }
-
     public var linkComputerChecklist: LinkChecklist {
         get {
             guard let json = storage.string(forKey: Keys.linkComputerChecklist),
@@ -172,7 +165,8 @@ public final class LocalSettings: Sendable {
         static let themePreference = "themePreference"
         /// The chat's and Home's renderer picks, from when Appearance
         /// offered UICollectionView and UITableView beside UltraList.
-        static let retired = ["chatListRenderer", "homeListRenderer"]
+        /// The migration card's flag answer, kept per account before; now in memory only.
+        static let retired = ["chatListRenderer", "homeListRenderer", "posthog.direct-connection-migration-note"]
 
         static let devModeEnabled = "devModeEnabled"
         static let markdownCopyV2 = "markdownCopyV2"
@@ -180,6 +174,5 @@ public final class LocalSettings: Sendable {
         static let acknowledgedCliVersions = "acknowledgedCliVersions"
         static let registeredPushToken = "registered-push-token-v1"
         static let zenMode = "zenMode"
-        static let migrationNoteFlag = "posthog.direct-connection-migration-note"
     }
 }

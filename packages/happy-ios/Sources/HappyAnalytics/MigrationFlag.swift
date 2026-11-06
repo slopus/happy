@@ -81,34 +81,30 @@ extension Analytics {
         return key.isEmpty || key.hasPrefix("$(") ? nil : key
     }
 
-    /// Asks PostHog for this install and stores the answer in `settings`,
-    /// the open account's, one ask per account at a time; each time the app
-    /// comes back. While the accounts' settings are unread nothing is asked;
-    /// opted out, here or anywhere on this phone, nothing is asked and a
-    /// stored answer goes. A failed ask keeps the last answer, and one that
-    /// returns after an opt-out is dropped.
+    /// Asks PostHog for this install, one ask at a time, each time the app
+    /// comes back. The answer is kept in memory for this launch, for every
+    /// account. Nothing is asked before the accounts' settings are read, nor
+    /// for an account that opted out (`accountOptedOut`), nor while anyone
+    /// here has; an answer that comes back after an opt-out is dropped.
     @discardableResult
-    public func refreshMigrationFlag(settings: LocalSettings, accountOptedOut: Bool) -> Task<Void, Never>? {
-        guard let ask = flagAsk, let engine, flag.fixedAnswer == nil, consent.isSettled else { return nil }
-        guard !accountOptedOut, !consent.isOptedOut else {
-            flag.store(nil, in: settings)
-            return nil
-        }
-        let asking = ObjectIdentifier(settings)
-        guard flagsAsking.insert(asking).inserted else { return nil }
+    public func refreshMigrationFlag(accountOptedOut: Bool) -> Task<Void, Never>? {
+        guard let ask = flagAsk, let engine, flag.fixedAnswer == nil, flagAsking == nil, !accountOptedOut,
+              consent.isSettled, !consent.isOptedOut else { return nil }
         let generation = generation
-        return Task { @MainActor [weak self] in
-            defer { self?.flagsAsking.remove(asking) }
-            let install = await engine.installID
+        let asking = Task { @MainActor [weak self] in
+            // An opt-out let go of it already, and a newer ask may be on its way.
+            defer { if self?.generation == generation { self?.flagAsking = nil } }
             // Consent is checked again right before anything leaves.
-            guard let self, self.generation == generation, !consent.isOptedOut else { return }
+            guard let install = await engine.installID, self?.isCurrent(generation) == true else { return }
             let answer = await ask.fetch(distinctID: install)
-            guard let answer, self.generation == generation, !consent.isOptedOut else { return }
-            flag.store(answer, in: settings)
+            guard let self, let answer, isCurrent(generation) else { return }
+            flag.store(answer)
         }
+        flagAsking = asking
+        return asking
     }
 
-    /// The card counts a stored answer only while this build may ask.
+    /// The card counts the answer only while this build may ask.
     func updateFlag() {
         flag.isAnswering = flagAsk != nil && engine != nil && consent.isSettled && !consent.isOptedOut
     }

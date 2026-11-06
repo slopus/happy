@@ -704,8 +704,11 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     private func analyticsRow() -> SettingsRow {
         SettingsRow(id: "device-analytics", title: Strings.SettingsAccount.analytics, icon: ("analytics-outline", .blue), accessory: .toggle,
                     isOn: !Analytics.shared.deviceOptOut, toggled: { [weak self] on in
-            Analytics.shared.setDeviceOptOut(!on)
+            let kept = Analytics.shared.setDeviceOptOut(!on)
             self?.rebuild()
+            if !kept, !on, let self {
+                Alerts.show(Strings.Common.error, "Analytics is off for now, but the setting couldn't be saved. It will be on again the next time Happy starts.", on: self)
+            }
         }, footer: Strings.SettingsAccount.privacyDescription)
     }
 

@@ -40,7 +40,6 @@ enum CompositionRoot {
         let debug = false
         #endif
         Analytics.shared.launch(bundle: bundle, debug: debug, variant: variant, appVersion: version,
-                                file: storeDirectory()?.appendingPathComponent("analytics.json"),
                                 tablet: UIDevice.current.userInterfaceIdiom == .pad)
     }
 

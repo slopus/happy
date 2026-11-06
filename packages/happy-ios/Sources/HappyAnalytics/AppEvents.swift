@@ -11,8 +11,10 @@ extension Analytics {
     /// This phone's own switch, as Settings shows it.
     public var deviceOptOut: Bool { consent.deviceOptOut }
 
-    /// Settings' switch; off deletes what was waiting.
-    public func setDeviceOptOut(_ optedOut: Bool) {
+    /// Settings' switch; off deletes everything analytics had, the install
+    /// id included. False when off couldn't be written down, to tell the person.
+    @discardableResult
+    public func setDeviceOptOut(_ optedOut: Bool) -> Bool {
         consent.setDeviceOptOut(optedOut)
     }
 
