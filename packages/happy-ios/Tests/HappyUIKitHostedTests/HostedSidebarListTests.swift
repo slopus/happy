@@ -252,7 +252,6 @@ final class HostedSidebarListTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(16))
         }
         await list.settle()
-        print("SIDEBAR_DEBUG offset=\(list.contentOffsetY) visible=\(list.visibleRows.prefix(4).map(\.id)) prepared=\(list.shownRows.count)")
         return (window, list, rows)
     }
 
