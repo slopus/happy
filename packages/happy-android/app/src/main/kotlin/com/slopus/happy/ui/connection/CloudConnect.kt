@@ -108,6 +108,7 @@ private fun Cloud(graph: AppGraph, account: CloudAccount, nav: NavHostController
         here = graph.agentConnections.accounts.collectAsStateWithLifecycle().value.mapNotNull { it.server }.toSet(),
         image = account::image,
         onOpenBrowser = openBrowser,
+        signInWithPassword = account::signInWithPassword,
         onRetrySignIn = account::reset,
         onReload = picker::load,
         onPick = { nav.openCloudServer(graph, it) },

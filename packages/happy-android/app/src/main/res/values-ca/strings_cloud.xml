@@ -37,4 +37,10 @@
     <string name="cloud_leave_confirm_title">Vols sortir de %1$s?</string>
     <string name="cloud_leave_confirm_message">Perdràs els seus agents i tasques a tots els dispositius. Pots tornar amb un codi d\'invitació nou.</string>
     <string name="cloud_leave_last_owner">N\'ets l\'únic propietari, així que no en pots sortir.</string>
+    <string name="cloud_test_title">Inicia la sessió amb un compte de prova.</string>
+    <string name="cloud_test_login">Usuari</string>
+    <string name="cloud_test_password">Contrasenya</string>
+    <string name="cloud_test_sign_in">Inicia la sessió</string>
+    <string name="cloud_test_wrong">L\'usuari o la contrasenya no són correctes.</string>
+    <string name="cloud_test_locked">Massa intents. Torna-ho a provar d\'aquí a %1$d min.</string>
 </resources>

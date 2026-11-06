@@ -37,4 +37,10 @@
     <string name="cloud_leave_confirm_title">%1$s から退出しますか？</string>
     <string name="cloud_leave_confirm_message">すべての端末でこのサーバーのエージェントとタスクにアクセスできなくなります。新しい招待コードで戻れます。</string>
     <string name="cloud_leave_last_owner">唯一のオーナーなので退出できません。</string>
+    <string name="cloud_test_title">テストアカウントでサインインします。</string>
+    <string name="cloud_test_login">ログイン</string>
+    <string name="cloud_test_password">パスワード</string>
+    <string name="cloud_test_sign_in">サインイン</string>
+    <string name="cloud_test_wrong">ログインまたはパスワードが正しくありません。</string>
+    <string name="cloud_test_locked">試行回数が多すぎます。%1$d 分後にもう一度お試しください。</string>
 </resources>

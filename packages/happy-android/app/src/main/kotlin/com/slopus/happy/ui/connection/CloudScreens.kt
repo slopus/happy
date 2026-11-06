@@ -53,6 +53,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -78,6 +85,7 @@ import com.slopus.happy.connection.CloudAccountState
 import com.slopus.happy.connection.CloudException
 import com.slopus.happy.connection.CloudName
 import com.slopus.happy.connection.CloudServer
+import com.slopus.happy.connection.PasswordSignIn
 import com.slopus.happy.connection.ServerAuthException
 import com.slopus.happy.ui.components.HappyTextField
 import com.slopus.happy.ui.components.Icon
@@ -107,6 +115,8 @@ object CloudTags {
     const val MENU = "cloud.menu"
     const val MEMBERS = "cloud.members"
     const val LEAVE = "cloud.leave"
+    const val LOGIN = "cloud.login"
+    const val PASSWORD = "cloud.password"
     fun server(name: String) = "cloud.server.$name"
 }
 
@@ -144,6 +154,8 @@ private fun CloudFrame(
     onBack: () -> Unit,
     body: String? = null,
     @RawRes art: Int? = null,
+    /** Every press on [art], with its time: the welcome counts them. */
+    onArtPress: ((Long) -> Unit)? = null,
     primary: CloudAction? = null,
     secondary: CloudAction? = null,
     /** The bar's ⋮: what is done rarely, out of the way of the one action. */
@@ -174,7 +186,16 @@ private fun CloudFrame(
                     // The keyboard up: the scene gives its room to the field and the action, which must stay in view.
                     if (art != null && !WindowInsets.isImeVisible) {
                         var plays by rememberSaveable { mutableIntStateOf(1) }
-                        SceneAnimation(art, plays, { plays = it + 1 }, size = CloudSpec.art)
+                        SceneAnimation(
+                            art,
+                            plays,
+                            { plays = it + 1 },
+                            // Watched before the replay's own click sees it, and never consumed: the scene still replays, and nothing new is announced.
+                            modifier = if (onArtPress == null) Modifier else Modifier.pointerInput(onArtPress) {
+                                awaitEachGesture { onArtPress(awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial).uptimeMillis) }
+                            },
+                            size = CloudSpec.art,
+                        )
                         Spacer(Modifier.height(CloudSpec.artGap - CloudSpec.gap))
                     }
                     Text(
@@ -270,6 +291,8 @@ fun CloudScreen(
     /** A server picture's bytes, fetched with the account token. */
     image: suspend (String) -> ByteArray?,
     onOpenBrowser: () -> Unit,
+    /** A test account's sign-in, for the welcome's hidden form. */
+    signInWithPassword: suspend (login: String, password: String) -> PasswordSignIn,
     onRetrySignIn: () -> Unit,
     onReload: () -> Unit,
     onPick: (CloudServer) -> Unit,
@@ -279,13 +302,7 @@ fun CloudScreen(
     onBack: () -> Unit,
 ) {
     when (state) {
-        is CloudAccountState.SignedOut -> CloudFrame(
-            title = stringResource(R.string.cloud_title),
-            body = stringResource(if (state.expired) R.string.cloud_session_expired else R.string.cloud_connect_message),
-            art = R.raw.state_sparkles,
-            primary = CloudAction(stringResource(R.string.cloud_connect_confirm), onOpenBrowser),
-            onBack = onBack,
-        )
+        is CloudAccountState.SignedOut -> CloudWelcome(state.expired, onOpenBrowser, signInWithPassword, onBack)
         CloudAccountState.InBrowser -> CloudFrame(
             title = stringResource(R.string.team_server_waiting),
             art = R.raw.state_sparkles,
@@ -322,6 +339,84 @@ fun CloudScreen(
         }
     }
 }
+
+/**
+ * Signed out: the welcome, whose Connect opens the account's sign-in in the
+ * browser. Its sparkles pressed [UNLOCK_TAPS] times within [UNLOCK_MILLIS]
+ * reveal a test account's sign-in, login and password, for people and
+ * agents testing without Apple or GitHub. Until then nothing of it is
+ * composed, so nothing hints at it. The password lives only in this
+ * composition: not saved with the screen, and gone once it leaves.
+ */
+@Composable
+private fun CloudWelcome(
+    expired: Boolean,
+    onOpenBrowser: () -> Unit,
+    signInWithPassword: suspend (login: String, password: String) -> PasswordSignIn,
+    onBack: () -> Unit,
+) {
+    var unlocked by remember { mutableStateOf(false) }
+    val presses = remember { ArrayDeque<Long>() }
+    val connect = CloudAction(stringResource(R.string.cloud_connect_confirm), onOpenBrowser)
+    val body = stringResource(if (expired) R.string.cloud_session_expired else R.string.cloud_connect_message)
+    if (!unlocked) {
+        CloudFrame(
+            title = stringResource(R.string.cloud_title),
+            body = body,
+            art = R.raw.state_sparkles,
+            onArtPress = remember {
+                { at: Long ->
+                    presses.addLast(at)
+                    if (presses.size > UNLOCK_TAPS) presses.removeFirst()
+                    if (presses.size == UNLOCK_TAPS && at - presses.first() <= UNLOCK_MILLIS) unlocked = true
+                }
+            },
+            primary = connect,
+            onBack = onBack,
+        )
+        return
+    }
+    var login by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var outcome by remember { mutableStateOf<PasswordSignIn?>(null) }
+    val scope = rememberCoroutineScope()
+    CloudFrame(
+        title = stringResource(R.string.cloud_title),
+        body = stringResource(R.string.cloud_test_title),
+        art = R.raw.state_sparkles,
+        primary = CloudAction(
+            stringResource(R.string.cloud_test_sign_in),
+            {
+                busy = true
+                outcome = null
+                scope.launch {
+                    try {
+                        outcome = signInWithPassword(login.trim(), password)
+                    } finally {
+                        busy = false
+                    }
+                }
+            },
+            enabled = login.isNotBlank() && password.isNotEmpty() && !busy,
+            loading = busy,
+        ),
+        secondary = connect,
+        onBack = onBack,
+    ) {
+        CloudField(login, { login = it; outcome = null }, stringResource(R.string.cloud_test_login), CloudTags.LOGIN, !busy, KeyboardType.Ascii, ImeAction.Next)
+        CloudField(password, { password = it; outcome = null }, stringResource(R.string.cloud_test_password), CloudTags.PASSWORD, !busy, KeyboardType.Password, ImeAction.Done, PasswordVisualTransformation())
+        when (val failed = outcome) {
+            PasswordSignIn.Wrong -> NotePill(stringResource(R.string.cloud_test_wrong), HappyTheme.colors.textDestructive)
+            is PasswordSignIn.Locked -> NotePill(stringResource(R.string.cloud_test_locked, failed.minutes), HappyTheme.colors.textDestructive)
+            is PasswordSignIn.Failed -> NotePill(stringResource(cloudFailureText(failed.reason)), HappyTheme.colors.textDestructive)
+            PasswordSignIn.SignedIn, null -> Unit
+        }
+    }
+}
+
+private const val UNLOCK_TAPS = 10
+private const val UNLOCK_MILLIS = 4_000L
 
 /** A server on the gradient: its picture, display name, `@name`, the person's role, and a check when it is on the phone already. */
 @Composable

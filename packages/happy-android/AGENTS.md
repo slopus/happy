@@ -1119,7 +1119,15 @@ change its wire behaviour on Android alone.
   title, a scene above it) with one primary action at the bottom
   (`CloudScreens.kt`, `CloudFrame`); servers are cards on it.
   Sign-in methods are the accounts page's (Apple and GitHub now); the app
-  shows none of its own. Your servers' ⋮ has "Sign out of Happy Cloud", which
+  shows none of its own, but one hidden: the welcome's sparkles pressed ten
+  times within four seconds (`CloudWelcome`) reveal a test account's login
+  and password, for people and agents testing without Apple or GitHub.
+  Nothing of it is composed before then. It posts `POST /v1/auth/password`
+  (`CloudAccount.signInWithPassword`) for the same hour's pass, then goes on
+  as after the browser; a wrong login or password, or a lockout, shows under
+  the fields. The password stays in that composition only: never saved with
+  the screen, stored or logged. Test accounts exist only when an operator
+  creates one. Your servers' ⋮ has "Sign out of Happy Cloud", which
   forgets the pass; servers on the phone stay signed in. Removing a cloud
   server (`removeAgentConnection`) first revokes its session at the accounts
   service (`POST /revoke`, its refresh token and `client_id`, no account

@@ -37,4 +37,10 @@
     <string name="cloud_leave_confirm_title">Sair de %1$s?</string>
     <string name="cloud_leave_confirm_message">Você perde os agentes e as tarefas dele em todos os dispositivos. Pode voltar com um novo código de convite.</string>
     <string name="cloud_leave_last_owner">Você é o único proprietário, então não pode sair.</string>
+    <string name="cloud_test_title">Entre com uma conta de teste.</string>
+    <string name="cloud_test_login">Login</string>
+    <string name="cloud_test_password">Senha</string>
+    <string name="cloud_test_sign_in">Entrar</string>
+    <string name="cloud_test_wrong">Login ou senha incorretos.</string>
+    <string name="cloud_test_locked">Muitas tentativas. Tente de novo em %1$d min.</string>
 </resources>
