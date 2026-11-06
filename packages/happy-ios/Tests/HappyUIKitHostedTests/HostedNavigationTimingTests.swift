@@ -22,6 +22,13 @@ private struct NavigationNoSockets: WebSocketConnector {
 /// or prove when pixels reach the physical display.
 @MainActor
 final class HostedNavigationTimingTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        // A slower simulator gets its chats' rows in later.
+        ChatOpening.cap = HostedTime.budget(ChatOpening.shippedCap)
+        addTeardownBlock { @MainActor in ChatOpening.cap = ChatOpening.shippedCap }
+    }
+
     private func until(_ condition: () -> Bool) async throws {
         let deadline = ContinuousClock.now + .seconds(5)
         while !condition(), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }

@@ -74,6 +74,11 @@ final class HostedListResizeTests: XCTestCase {
     override func setUp() {
         super.setUp()
         LegacyFonts.registerBundledFonts()
+        // The windows earlier tests hid stay on the scene and turn with it,
+        // half a second or more a turn after a few dozen; let them go.
+        for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+            for window in scene.windows where window.isHidden { window.windowScene = nil }
+        }
         // A test that failed on its side leaves the phone upright again.
         addTeardownBlock { @MainActor in
             guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene, scene.interfaceOrientation != .portrait else { return }
@@ -144,6 +149,9 @@ final class HostedListResizeTests: XCTestCase {
         var found: [String] = []
         func walk(_ view: UIView) {
             guard !view.isHidden, view.alpha > 0.01, !(view is UINavigationBar), !(view is UIToolbar) else { return }
+            // iOS 27 draws a navigation controller's toolbar, its search
+            // field and buttons, in a floating bar of its own.
+            guard !NSStringFromClass(type(of: view)).hasPrefix("_UIFloatingBar") else { return }
             let frame = view.convert(view.bounds, to: window)
             let reads = view is UILabel || view is UITextView || view is UITextField || view is UIControl || view is UIImageView || view is ListRowView
             if reads, frame.width > 1, frame.height > 1, frame.intersects(window.bounds), frame.minX < minX || frame.maxX > maxX {
@@ -222,7 +230,7 @@ final class HostedListResizeTests: XCTestCase {
         print(String(format: "RESIZE_FRAMES %@ first=%.1fms longest=%.1fms frames=%d", label, gaps.first ?? 0, gaps.max() ?? 0, gaps.count))
         let problems = frames.enumerated().flatMap { frame, problems in problems.map { "frame \(frame): \($0)" } }
         XCTAssertEqual(problems.prefix(12), [], "\(label): \(problems.count) problems over \(frames.count) frames")
-        XCTAssertGreaterThan(frames.count, 10, "\(label): too few frames sampled")
+        XCTAssertGreaterThan(frames.count, HostedTime.sampled(10), "\(label): too few frames sampled")
     }
 
     /// What the first frame at `width` showed: the frame of the change. A

@@ -246,7 +246,12 @@ final class HostedSidebarListTests: XCTestCase {
         let list = await list(in: root, rows: rows, frame: window.bounds)
         list.setInsets(UIEdgeInsets(top: 100, left: 0, bottom: 34, right: 0), indicator: .zero, keepsTop: true)
         list.setContentOffsetY(1300)
-        try await Task.sleep(for: .milliseconds(150))
+        // The rows at the new place load over the next frames.
+        let deadline = CACurrentMediaTime() + HostedTime.budget(1)
+        while abs(list.contentOffsetY - 1300) > 0.5 || list.visibleRows.prefix(3).contains(where: { list.view(for: $0.id) == nil }), CACurrentMediaTime() < deadline {
+            try await Task.sleep(for: .milliseconds(16))
+        }
+        await list.settle()
         return (window, list, rows)
     }
 
@@ -297,7 +302,7 @@ final class HostedSidebarListTests: XCTestCase {
         for offset in [-list.contentInsets.top, 1300, bottom] {
             list.setContentOffsetY(offset)
             // A far place loads its rows before the list reads it.
-            let deadline = CACurrentMediaTime() + 1
+            let deadline = CACurrentMediaTime() + HostedTime.budget(1)
             while abs(list.contentOffsetY - offset) > 0.5, CACurrentMediaTime() < deadline {
                 try await Task.sleep(for: .milliseconds(16))
             }

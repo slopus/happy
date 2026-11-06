@@ -146,6 +146,7 @@ final class HostedSettingsUnifiedTests: XCTestCase {
             ["appearance", "language", "voice", "agents", "data-storage"],
             ["scan-terminal", "enter-terminal"],
             ["support-us"],
+            [SettingsIndex.analytics.id],
             SettingsIndex.aboutRows.map(\.id),
             ["sign-out"],
         ])
@@ -184,6 +185,7 @@ final class HostedSettingsUnifiedTests: XCTestCase {
             ["profile"],
             ["support-boba"],
             ["appearance", "agent-voice", "agents", "data-storage"],
+            [SettingsIndex.analytics.id],
             SettingsIndex.aboutRows.map(\.id),
             ["disconnect"],
         ])

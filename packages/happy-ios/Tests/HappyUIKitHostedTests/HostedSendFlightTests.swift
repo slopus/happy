@@ -66,7 +66,8 @@ private actor FlightComputer: AgentTransport {
 /// to two keeps its frame to the point, in both chats.
 ///
 /// With `HAPPY_FLIGHT_SLOW` set (a factor, 6 for six times), the flights
-/// run that much slower, for a screen recording. With `HAPPY_PREVIEW_DIR`
+/// run that much slower, for a screen recording; on a slow simulator they
+/// run `HostedTime.scale` slower, so it draws as many of their frames. With `HAPPY_PREVIEW_DIR`
 /// set, each delivery state is kept there, light and dark.
 @MainActor
 final class HostedSendFlightTests: XCTestCase {
@@ -90,7 +91,7 @@ final class HostedSendFlightTests: XCTestCase {
     }
 
     private var slow: Float {
-        ProcessInfo.processInfo.environment["HAPPY_FLIGHT_SLOW"].flatMap(Float.init) ?? 1
+        ProcessInfo.processInfo.environment["HAPPY_FLIGHT_SLOW"].flatMap(Float.init) ?? Float(HostedTime.scale)
     }
 
     // MARK: Opening the chats
@@ -418,6 +419,9 @@ final class HostedSendFlightTests: XCTestCase {
         try await flySend(screen, "legacy")
     }
 
+    /// Flaky on iOS 27.0 (about one run in three on a Mac's simulator; the
+    /// rows above move by more than the new row, or no flight arms), never
+    /// on iOS 26.5. No commit of ours found to blame yet.
     func testTheLegacyChatFliesASendInOverTheKeyboard() async throws {
         let (screen, _) = try await legacyChat()
         try await keyboardUp(screen)

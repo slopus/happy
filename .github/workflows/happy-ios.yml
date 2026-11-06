@@ -40,42 +40,11 @@ jobs:
           brew install xcodegen
           xcodegen generate --spec project.yml
           mkdir -p build/ci
-      - name: Select and boot an available iPhone simulator
+      - name: Select an available iPhone simulator
         run: |
           set -euo pipefail
           xcrun simctl list devices available --json > build/ci/simulators.json
-          python3 - <<'PY' >> "$GITHUB_ENV"
-          import json
-          import re
-          from pathlib import Path
-
-          devices = json.loads(Path('build/ci/simulators.json').read_text())['devices']
-          candidates = []
-          for runtime, entries in devices.items():
-              version = re.fullmatch(r'com\.apple\.CoreSimulator\.SimRuntime\.iOS-(\d+)-(\d+)(?:-(\d+))?', runtime)
-              if not version:
-                  continue
-              numbers = tuple(int(part or 0) for part in version.groups())
-              if numbers < (17, 0, 0):
-                  continue
-              for entry in entries:
-                  if entry.get('isAvailable') and entry['name'].startswith('iPhone'):
-                      candidates.append((numbers, entry['name'], entry['udid']))
-          if not candidates:
-              raise SystemExit('No available iPhone simulator with iOS 17 or later')
-          # The device and iOS the tests are checked on locally: an iPhone
-          # 17-class phone (3x, 402 points wide) on iOS 27.0; otherwise the
-          # newest iPhone there is.
-          preferred = ['iPhone 17 Pro', 'iPhone 17', 'iPhone 18 Pro']
-          local = [c for c in candidates if c[0][:2] == (27, 0) and c[1] in preferred]
-          if local:
-              _, _, device_id = min(local, key=lambda c: preferred.index(c[1]))
-          else:
-              _, _, device_id = max(candidates)
-          if not re.fullmatch(r'[0-9A-Fa-f-]{36}', device_id):
-              raise SystemExit('Invalid simulator UUID')
-          print(f'HAPPY_IOS_SIMULATOR_ID={device_id}')
-          PY
+          python3 scripts/ci-simulator.py build/ci/simulators.json >> "$GITHUB_ENV"
       - name: Run UIKit tests on the simulator
         run: |
           set -euo pipefail
@@ -92,9 +61,92 @@ jobs:
             -jobs 4 \
             CODE_SIGNING_ALLOWED=NO \
             | tee build/ci/xcodebuild.log
+      - name: Export readable test results and diagnostics
+        if: always()
+        run: |
+          set -euo pipefail
+          if [[ ! -d build/ci/HappyUIKitTests.xcresult ]]; then
+            exit 0
+          fi
+          export_json() {
+            local kind="$1" output="$2"
+            if xcrun xcresulttool get test-results "$kind" --help >> build/ci/diagnostics-export.log 2>&1 \
+              && xcrun xcresulttool get test-results "$kind" \
+                --path build/ci/HappyUIKitTests.xcresult > "$output.tmp" 2>> build/ci/diagnostics-export.log \
+              && mv "$output.tmp" "$output"; then
+              :
+            else
+              echo "::warning::Could not export native test $kind; see diagnostics-export.log"
+            fi
+          }
+          export_json summary build/ci/test-summary.json
+          export_json tests build/ci/test-results.json
+          if xcrun xcresulttool export diagnostics --help >> build/ci/diagnostics-export.log 2>&1 \
+            && xcrun xcresulttool export diagnostics \
+              --path build/ci/HappyUIKitTests.xcresult \
+              --output-path build/ci/diagnostics >> build/ci/diagnostics-export.log 2>&1; then
+            :
+          else
+            echo "::warning::Could not export native test diagnostics; see diagnostics-export.log"
+          fi
+      - name: Upload test results and build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: happy-ios-uikit-${{ github.sha }}
+          path: |
+            packages/happy-ios/build/ci/HappyUIKitTests.xcresult
+            packages/happy-ios/build/ci/xcodebuild.log
+            packages/happy-ios/build/ci/simulators.json
+            packages/happy-ios/build/ci/test-summary.json
+            packages/happy-ios/build/ci/test-results.json
+            packages/happy-ios/build/ci/diagnostics
+            packages/happy-ios/build/ci/diagnostics-export.log
+          if-no-files-found: warn
+          retention-days: 7
+  hosted:
+    # The hosted UIKit tests, in shards so each runs to its end; each
+    # shard builds the host itself. `scripts/hosted-test-shard.py` says
+    # which classes are whose.
+    runs-on: xcode-27
+    timeout-minutes: 60
+    # Reports without blocking: on the hosted VMs a different handful of
+    # frame-timing tests fails each run, however their budgets stretch,
+    # while they pass on a Mac. `uikit` is the required check.
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+      SHARDS: 3
+      # The hosted runners' simulators run about twice as slow as a Mac's:
+      # the tests' time budgets stretch by this (`HostedTime`), and what
+      # each frame shows is checked as on a Mac.
+      TEST_RUNNER_HAPPY_TEST_TIME_SCALE: '2.5'
+    defaults:
+      run:
+        working-directory: packages/happy-ios
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare Xcode and generate the project
+        run: |
+          set -euo pipefail
+          test -d "$DEVELOPER_DIR"
+          xcodebuild -version
+          brew install xcodegen
+          xcodegen generate --spec project.yml
+          mkdir -p build/ci
+      - name: Select an available iPhone simulator
+        run: |
+          set -euo pipefail
+          xcrun simctl list devices available --json > build/ci/simulators.json
+          python3 scripts/ci-simulator.py build/ci/simulators.json >> "$GITHUB_ENV"
       - name: Build hosted UIKit tests and verify host isolation
-        id: hosted_build
-        if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
           xcodebuild build-for-testing \
@@ -130,11 +182,13 @@ jobs:
           if dylibs or host_count != 0 or bundle_count == 0:
               raise SystemExit('Hosted UIKit app isolation check failed')
           PY
-      - name: Run hosted UIKit tests on the simulator
-        if: ${{ !cancelled() && steps.hosted_build.outcome == 'success' }}
+      - name: Run this shard's hosted UIKit tests on the simulator
         run: |
           set -euo pipefail
-          xcodebuild test \
+          python3 scripts/hosted-test-shard.py "${{ matrix.shard }}" "$SHARDS" > build/ci/hosted-shard.txt
+          echo "Shard ${{ matrix.shard }} of $SHARDS: $(wc -l < build/ci/hosted-shard.txt) classes"
+          xcrun simctl bootstatus "$HAPPY_IOS_SIMULATOR_ID" -b
+          xargs xcodebuild test-without-building \
             -project Happy.xcodeproj \
             -scheme HappyUIKitHosted \
             -configuration Debug \
@@ -143,37 +197,9 @@ jobs:
             -derivedDataPath build/ci/DerivedData \
             -resultBundlePath build/ci/HappyUIKitHostedTests.xcresult \
             -parallel-testing-enabled NO \
-            -jobs 4 \
             CODE_SIGNING_ALLOWED=NO \
+            < build/ci/hosted-shard.txt \
             | tee build/ci/hosted-xcodebuild.log
-      - name: Export readable test results and diagnostics
-        if: always()
-        run: |
-          set -euo pipefail
-          if [[ ! -d build/ci/HappyUIKitTests.xcresult ]]; then
-            exit 0
-          fi
-          export_json() {
-            local kind="$1" output="$2"
-            if xcrun xcresulttool get test-results "$kind" --help >> build/ci/diagnostics-export.log 2>&1 \
-              && xcrun xcresulttool get test-results "$kind" \
-                --path build/ci/HappyUIKitTests.xcresult > "$output.tmp" 2>> build/ci/diagnostics-export.log \
-              && mv "$output.tmp" "$output"; then
-              :
-            else
-              echo "::warning::Could not export native test $kind; see diagnostics-export.log"
-            fi
-          }
-          export_json summary build/ci/test-summary.json
-          export_json tests build/ci/test-results.json
-          if xcrun xcresulttool export diagnostics --help >> build/ci/diagnostics-export.log 2>&1 \
-            && xcrun xcresulttool export diagnostics \
-              --path build/ci/HappyUIKitTests.xcresult \
-              --output-path build/ci/diagnostics >> build/ci/diagnostics-export.log 2>&1; then
-            :
-          else
-            echo "::warning::Could not export native test diagnostics; see diagnostics-export.log"
-          fi
       - name: Export hosted test results and diagnostics
         if: always()
         run: |
@@ -202,20 +228,15 @@ jobs:
           else
             echo "::warning::Could not export hosted test diagnostics; see hosted-diagnostics-export.log"
           fi
-      - name: Upload test results and build log
+      - name: Upload hosted test results and build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: happy-ios-uikit-${{ github.sha }}
+          name: happy-ios-hosted-${{ matrix.shard }}-${{ github.sha }}
           path: |
-            packages/happy-ios/build/ci/HappyUIKitTests.xcresult
-            packages/happy-ios/build/ci/xcodebuild.log
-            packages/happy-ios/build/ci/simulators.json
-            packages/happy-ios/build/ci/test-summary.json
-            packages/happy-ios/build/ci/test-results.json
-            packages/happy-ios/build/ci/diagnostics
-            packages/happy-ios/build/ci/diagnostics-export.log
             packages/happy-ios/build/ci/HappyUIKitHostedTests.xcresult
+            packages/happy-ios/build/ci/simulators.json
+            packages/happy-ios/build/ci/hosted-shard.txt
             packages/happy-ios/build/ci/hosted-build.log
             packages/happy-ios/build/ci/hosted-link-check.log
             packages/happy-ios/build/ci/hosted-xcodebuild.log

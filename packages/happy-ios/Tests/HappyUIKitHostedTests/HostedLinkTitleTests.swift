@@ -284,8 +284,11 @@ final class HostedLinkTitleTests: XCTestCase {
         session.receive(status: .retrying)
         session.receive(home: snapshot)
         XCTAssertEqual(session.headerState, .connecting)
+        let blip = ContinuousClock.now
         for _ in 0..<6 {
             try await Task.sleep(for: .milliseconds(100))
+            // Only inside the 0.8 s: a slow machine's sleeps run long.
+            guard ContinuousClock.now - blip < .milliseconds(700) else { break }
             XCTAssertEqual(home.headerState, .online, "a blip showed")
         }
         snapshot.live = true
