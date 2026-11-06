@@ -440,13 +440,15 @@ public protocol CallTargets: Sendable {
     func send(_ agentId: String, text: String, id: String, change: CallModeChange?) async -> CallSendOutcome
     /// Keeps a conversation read (or lets it go) while the call follows it.
     func follow(_ agentId: String, _ following: Bool) async
-    /// New work on screen, as compose opens it, chosen as `kind` and
+    /// New work as compose starts it, off screen, chosen as `kind` and
     /// named `name` (blank for its first message to name it): the empty
-    /// conversation, which the sidebar lists only once its first message
-    /// has made it. Nil if it didn't open.
-    func newWork(_ kind: CallTarget.Kind, name: String) async -> CallTarget?
-    /// New work on screen under `agentId` that the sidebar doesn't list
-    /// yet (compose's, opened by hand or by `newWork`); nil for anything else.
+    /// conversation, on this computer, which `send` makes with its first
+    /// message and the sidebar lists from then on. Nil if it can't start.
+    func draft(_ kind: CallTarget.Kind, name: String) async -> CallTarget?
+    /// A `draft` nothing was sent to, let go: nothing of it stays.
+    func discard(_ agentId: String) async
+    /// New work under `agentId` that the sidebar doesn't list yet: a
+    /// `draft` on its way, or compose's on screen; nil for anything else.
     func unlisted(_ agentId: String) async -> CallTarget?
     /// Back one screen: what is presented over the app closes, else the
     /// screen on top goes.

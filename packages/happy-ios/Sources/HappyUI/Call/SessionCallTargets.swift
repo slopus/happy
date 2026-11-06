@@ -8,7 +8,8 @@ import UIKit
 /// and the conversation's own send, which the composer uses too but which
 /// here leaves the composer's draft and attachments alone. New work is
 /// compose's own (`NewTask`), started off screen with a conversation of
-/// its own that its first message makes, or compose's screen in front; the
+/// its own that the call's first message makes, or compose's screen in
+/// front; the
 /// model and effort the composer's pickers' (`ModelCatalog.select`,
 /// `Conversation.setMode`). On a team, who wrote each message is named as
 /// the computer names its members (`TeamUser`).
@@ -22,7 +23,8 @@ final class SessionCallTargets: CallTargets {
     private var drafts: [String: Weak] = [:]
     private struct Weak { weak var chat: ChatViewController? }
     /// New work the call started, off screen: its conversation, which its
-    /// first message makes, as a screen's would.
+    /// first message makes, as a screen's would. Unsent only while that
+    /// message is on its way; refused, it is discarded.
     private var started: [String: Started] = [:]
     @MainActor private final class Started {
         let task: NewTask
@@ -193,19 +195,8 @@ final class SessionCallTargets: CallTargets {
     func open(_ agentId: String) async -> Bool {
         guard !closed, let shell else { return false }
         if target(agentId) == nil, let started = started[agentId] {
-            guard started.sent else {
-                // Nothing sent yet: compose's own screen takes it over, as
-                // compose would have opened it.
-                self.started[agentId] = nil
-                started.reading?.cancel()
-                await started.conversation.stop()
-                guard !closed, !Task.isCancelled else { return false }
-                let chat = NewWork.chat(session, task: started.task)
-                chat.focusesOnOpen = false
-                drafts[agentId] = Weak(chat: chat)
-                await place(chat, in: shell)
-                return true
-            }
+            // Nothing sent to it: there is nothing to show.
+            guard started.sent else { return false }
             // Its first message is making it: its row comes once the computer has it.
             for _ in 0..<60 where target(agentId) == nil && !Task.isCancelled { try? await Task.sleep(for: .milliseconds(50)) }
         }
@@ -222,9 +213,10 @@ final class SessionCallTargets: CallTargets {
     }
 
     /// New work as compose starts it (`NewTask`), chosen as the call asks,
-    /// off screen: what is in front stays. Its conversation is the call's
-    /// until its first message makes it, or `open` hands it to a screen.
-    func newWork(_ kind: CallTarget.Kind, name: String) async -> CallTarget? {
+    /// off screen: what is in front stays. Its conversation is the call's,
+    /// for `send` to make it with its first message; on this computer and
+    /// in no project, as compose makes it from any screen.
+    func draft(_ kind: CallTarget.Kind, name: String) async -> CallTarget? {
         guard !closed else { return nil }
         let task = NewTask(client: session.client)
         task.choice = NewTask.Choice(kind: kind == .bot ? .bot : .task, name: name)
@@ -236,6 +228,13 @@ final class SessionCallTargets: CallTargets {
         }
         await conversation.start()
         return Self.target(task.agentId, task.choice)
+    }
+
+    func discard(_ agentId: String) async {
+        guard let started = started[agentId], !started.sent else { return }
+        self.started[agentId] = nil
+        started.reading?.cancel()
+        await started.conversation.stop()
     }
 
     /// Where `open` puts a screen: the main panel's root beside
@@ -392,18 +391,6 @@ final class SessionCallTargets: CallTargets {
         } else if let hold = held.removeValue(forKey: agentId) {
             session.warm.release(hold.chat, token: hold.token, opened: false)
         }
-    }
-
-    func watchDirectory(_ changed: @escaping ([CallTarget]) -> Void) -> Watch {
-        let home = session.watchHome { [weak self] _ in
-            guard let self else { return }
-            changed(self.rows)
-        }
-        let spaces = session.watch { [weak self] _ in
-            guard let self else { return }
-            changed(self.rows)
-        }
-        return Watch { home.invalidate(); spaces.invalidate() }
     }
 }
 #endif

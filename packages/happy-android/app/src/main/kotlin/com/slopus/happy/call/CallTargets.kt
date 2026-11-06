@@ -392,11 +392,14 @@ interface CallTargets {
     /** Keeps a conversation read (or lets it go) while the call follows it. */
     suspend fun follow(agentId: String, following: Boolean)
     /**
-     * New work on screen, as compose opens it, chosen as [kind] and named [name] (blank for its first message to
-     * name it): the empty conversation, which home lists only once its first message has made it. Null if it didn't open.
+     * New work as compose starts it, off screen, chosen as [kind] and named [name] (blank for its first message to
+     * name it): the empty conversation, on this computer, which [send] makes with its first message and home lists
+     * from then on. Null if it can't start.
      */
-    suspend fun newWork(kind: CallTarget.Kind, name: String): CallTarget?
-    /** New work on screen under [agentId] that home doesn't list yet (compose's, opened by hand or by `newWork`); null for anything else. */
+    suspend fun draft(kind: CallTarget.Kind, name: String): CallTarget?
+    /** A [draft] nothing was sent to, let go: nothing of it stays. */
+    suspend fun discard(agentId: String)
+    /** New work under [agentId] that home doesn't list yet: a [draft] on its way, or compose's on screen; null for anything else. */
     suspend fun unlisted(agentId: String): CallTarget?
     /** Back one screen, as the system's back does. */
     suspend fun back(): CallScreenMove

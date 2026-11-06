@@ -115,14 +115,10 @@ class CallController(
         // Begun now: a call started while analytics is off, or on through an opt-out, is never told.
         val report = CallReport(Analytics.span()).also { this.report = it }
         call.onLevel = { level -> if (session === call) mutableLevel.value = level }
-        val drain = DirectoryDrain(calling, context, call)
         call.onOverflow = {
             calling.launch {
                 val update = context.resync()
-                if (session === call) {
-                    call.deliver(update)
-                    drain.start()
-                }
+                if (session === call) call.deliver(update)
             }
         }
         // Each callback belongs to this call: once it ends, or another one starts, what it still says goes nowhere.
@@ -132,24 +128,10 @@ class CallController(
                 if (session === call) call.deliver(update)
             }
         }
-        // A change to home settles for a second from the first one, never longer, then goes as one update: as home is then.
-        val settle = DirectorySettle(calling) {
-            if (session !== call) return@DirectorySettle
-            val update = context.flushDirectory()
-            if (session !== call) return@DirectorySettle
-            call.deliver(update)
-            hold(context.followed(), targets)
-            drain.start()
-        }
-        account.feed.onEach { feed ->
-            if (session === call && context.directoryChanged(CallTarget.from(feed)) && session === call) settle.changed()
-        }.launchIn(calling)
         call.state.onEach { state ->
             if (session !== call) return@onEach
             report.observe(state)
             show(state)
-            // Connected: whatever the directory still owes goes now.
-            if (state is CallState.Active) drain.start()
         }.launchIn(calling)
         focus = targets.focusedNow
         call.start(language = null, context = {

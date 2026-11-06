@@ -89,7 +89,8 @@ class CallLiveDeviceCheck {
             return CallSendOutcome.Queued
         }
         override suspend fun follow(agentId: String, following: Boolean) {}
-        override suspend fun newWork(kind: CallTarget.Kind, name: String): CallTarget? = null
+        override suspend fun draft(kind: CallTarget.Kind, name: String): CallTarget? = null
+        override suspend fun discard(agentId: String) {}
         override suspend fun unlisted(agentId: String): CallTarget? = null
         override suspend fun back(): CallScreenMove = CallScreenMove.Refused("No screens here.")
         override suspend fun home(): CallScreenMove = CallScreenMove.Moved(true)
@@ -198,7 +199,8 @@ class CallLiveDeviceCheck {
             override suspend fun open(agentId: String) = agentId in states
             override suspend fun send(agentId: String, text: String, id: String, change: CallModeChange?) = CallSendOutcome.Queued
             override suspend fun follow(agentId: String, following: Boolean) {}
-            override suspend fun newWork(kind: CallTarget.Kind, name: String): CallTarget? = null
+            override suspend fun draft(kind: CallTarget.Kind, name: String): CallTarget? = null
+            override suspend fun discard(agentId: String) {}
             override suspend fun unlisted(agentId: String): CallTarget? = null
             override suspend fun back(): CallScreenMove = CallScreenMove.Refused("No screens here.")
             override suspend fun home(): CallScreenMove = CallScreenMove.Moved(true)

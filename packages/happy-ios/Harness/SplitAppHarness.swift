@@ -400,13 +400,12 @@ final class SplitAppHarness {
                 _ = await targets.open("cache-agent")
                 targets.close()
             }
-            // The call's newWork off screen, sendMessage to it, openSession, goBack and goHome through its own context, with no provider:
+            // The call's new work off screen by sendMessage, openSession, goBack and goHome through its own context, with no provider:
             // each logs its result and the stack it left (`[call-nav]`), a pause between for screenshots.
             if arguments.contains("-callNav"), let id = context.account.agentConnections.activeID, let session = Session.session(for: id, context: context) {
                 try? await Task.sleep(for: .seconds(2))
                 let targets = SessionCallTargets(session: session, shell: shell)
                 let call = CallContext(targets: targets)
-                _ = await call.initial()
                 var revision = 0
                 @MainActor func step(_ name: String, _ json: String) async -> [String: Any] {
                     let result = await call.handle(CallToolCall(id: UUID().uuidString, name: name, parameters: Data(json.utf8)))
@@ -417,15 +416,16 @@ final class SplitAppHarness {
                     try? await Task.sleep(for: .seconds(2.5))
                     return value
                 }
+                let initial = await call.initial()
+                print("[call-nav] initial\n\(initial)")
                 _ = await step("openSession", "{\"targetRef\":\"s1\",\"focusRevision\":\(revision)}")
-                // Started off screen: what is in front stays.
-                let bot = await step("newWork", "{\"kind\":\"bot\"}")
-                _ = await step("getSessionContext", "{\"targetRef\":\"\((bot["targetRef"] as? String) ?? "")\"}")
-                let task = await step("newWork", "{\"kind\":\"task\"}")
-                _ = await step("sendMessage", "{\"targetRef\":\"\((task["targetRef"] as? String) ?? "")\",\"text\":\"Draft the release notes\",\"focusRevision\":\(revision)}")
+                // Retired: it says what to use instead.
+                _ = await step("newWork", "{\"kind\":\"bot\"}")
+                // Started off screen with its first message: what is in front stays.
+                let task = await step("sendMessage", "{\"targetRef\":\"new-task\",\"text\":\"Draft the release notes\",\"focusRevision\":\(revision)}")
+                _ = await step("getSessionContext", "{\"targetRef\":\"\((task["targetRef"] as? String) ?? "")\"}")
                 _ = await step("listSessions", "{}")
-                // Shown only when asked: the bot, unsent, on compose's own screen.
-                _ = await step("openSession", "{\"targetRef\":\"\((bot["targetRef"] as? String) ?? "")\",\"focusRevision\":\(revision)}")
+                _ = await step("openSession", "{\"targetRef\":\"\((task["targetRef"] as? String) ?? "")\",\"focusRevision\":\(revision)}")
                 _ = await step("goBack", "{\"focusRevision\":\(revision)}")
                 _ = await step("goHome", "{}")
                 _ = await step("goBack", "{\"focusRevision\":\(revision)}")

@@ -65,28 +65,42 @@ class CallContextTest {
 
     @Test
     fun theFirstSnapshotHoldsTheFocusWithItsLastFiveTurnsThePendingMessageOneOfThem() = runBlocking {
-        val context = CallContext(backend(), now = { 1_700_000_000_000 })
-        val snapshot = obj(context.initial())
-        assertEquals(2, snapshot["schema"]!!.jsonPrimitive.int)
-        assertEquals(0, snapshot["focusRevision"]!!.jsonPrimitive.int)
-        assertEquals(listOf("listSessions", "getSessionContext", "openSession", "sendMessage", "newWork", "goBack", "goHome"), snapshot.strings("tools"))
-        assertEquals("2023-11-14T22:13:20Z", snapshot.str("at"))
-        val focus = snapshot["focus"]!!.jsonObject
-        // Named as the directory names it, which alone gives its reference.
-        assertEquals("Backend", focus.str("title"))
-        assertEquals(emptyList<String>(), focus.strings("parents"))
-        for (key in listOf("ref", "targetRef", "kind", "status", "hasDraft", "messages")) assertNull(key, focus[key])
-        // Four finished turns and the message waiting: five. The steered one has the person's half only.
-        val turns = focus.turns()
-        assertEquals(listOf("first ask", "second ask", "steer", "third ask"), turns.map { it.str("user") })
-        assertEquals(listOf("first answer", "second answer", null, "third answer"), turns.map { it.str("assistant") })
-        assertEquals(listOf("completed", "completed", "steering", "completed"), turns.map { it.str("ended") })
-        assertFalse(focus["olderTurns"]!!.jsonPrimitive.boolean)
-        val pending = focus["pendingUserMessage"]!!.jsonObject
-        assertEquals("still waiting", pending.str("text"))
-        assertEquals("accepted", pending.str("delivery"))
-        assertEquals("Conversation directory:\nBackend [bot; ref=s1]\nDocs [task; ref=s2]", snapshot.str("directory"))
+        val utc = java.time.ZoneOffset.UTC
+        val context = CallContext(backend(), now = { 1_700_000_000_000 }, zone = utc)
+        val text = context.initial()
+        // Plain lines, as Happy Agent's own tools write them: the focus, its turns (four finished and the message
+        // waiting: five), the directory once.
+        assertEquals(
+            """
+            |Now: 2023-11-14T22:13:00Z (the person's local time)
+            |focusRevision: 0
+            |
+            |On screen: Backend — bot, ref s1
+            |Working: no. Needs the person: no.
+            |Last turns, oldest first:
+            |1. The person: first ask
+            |   Agent: first answer
+            |2. The person: second ask
+            |   Agent: second answer
+            |3. The person: steer
+            |   Ended: steering
+            |4. The person: third ask
+            |   Agent: third answer
+            |Waiting for an answer, from the person:
+            |   still waiting
+            |
+            |Conversations in the app, in the sidebar's order:
+            |- Backend — bot, ref s1
+            |- Docs — task, ref s2
+            |
+            """.trimMargin() + "\n" + CallContext.NEW_WORK_TEXT,
+            text,
+        )
+        assertFalse("no JSON", text.contains("{"))
         assertEquals(listOf("a"), context.followed())
+        // Told once: the screen, the person going back to it, says nothing of its ref again.
+        context.focusChanged("b")
+        assertNull(events(context.focusChanged("a")).first()["ref"])
     }
 
     @Test
@@ -97,18 +111,15 @@ class CallContextTest {
         val state = CallTargetState(backendTarget, turns = turns, unanswered = CallMessage("p", CallMessage.Role.User, long))
         val text = CallContext(FakeCallTargets(listOf(backendTarget) + many, mutableMapOf("a" to state), "a")).initial()
         assertTrue(text.utf8Size() <= CallContext.Limits.TOTAL_BYTES)
-        val snapshot = obj(text)
-        val directory = snapshot.str("directory")!!
+        val parts = text.split("\n\n")
+        val directory = parts.first { it.startsWith("Conversations in the app") }
         assertTrue(directory, directory.endsWith("more; listSessions finds them by title."))
         assertTrue(directory.utf8Size() <= CallContext.Limits.DIRECTORY_BYTES)
-        val focus = snapshot["focus"]!!.jsonObject
-        val shown = focus.turns()
-        assertTrue(shown.size <= CallContext.Limits.TURNS)
-        for (turn in shown) {
-            assertTrue((turn.str("assistant")?.utf8Size() ?: 0) <= CallContext.Limits.MESSAGE_BYTES)
-            assertTrue(turn["truncated"]!!.jsonPrimitive.boolean)
-        }
-        assertTrue(focus["pendingUserMessage"]!!.jsonObject["truncated"]!!.jsonPrimitive.boolean)
+        val screen = parts.first { it.startsWith("On screen:") }
+        assertTrue(screen.lines().count { it.firstOrNull()?.isDigit() == true } <= CallContext.Limits.TURNS)
+        assertTrue(screen.contains("[cut short]"))
+        assertTrue(screen.contains("Older turns aren't shown."))
+        assertTrue(text.endsWith(CallContext.NEW_WORK_TEXT))
     }
 
     @Test
@@ -333,16 +344,15 @@ class CallContextTest {
         context.targetChanged(CallTargetState(backendTarget, listOf(CallMessage("r", CallMessage.Role.Assistant, "Half", final = false)), working = true))
         context.targetChanged(CallTargetState(backendTarget, listOf(CallMessage("r", CallMessage.Role.Assistant, "Half way")),
             listOf(CallTurn("x", ended = "error", error = "Boom"))))
-        // Say every one of those was lost: the directory as it is, the focus, then what was told.
+        // Say every one of those was lost: the focus with its reference, then what was told; the directory never again.
         val update = context.resync()
         val fixed = events(update)
-        assertEquals("directory", fixed[0].str("event"))
-        assertEquals("Conversation directory:\nBackend [bot; ref=s1]\nDocs [task; ref=s2]", fixed[0].str("text"))
-        assertEquals("focus", fixed[1].str("event"))
-        assertTrue(fixed[1]["resync"]!!.jsonPrimitive.boolean)
-        assertEquals(2, fixed[1]["focusRevision"]!!.jsonPrimitive.int)
-        assertEquals("Backend", fixed[1].str("title"))
-        assertEquals(listOf("session_error", "assistant_text"), fixed.drop(2).map { it.str("event") })
+        assertEquals("focus", fixed[0].str("event"))
+        assertTrue(fixed[0]["resync"]!!.jsonPrimitive.boolean)
+        assertEquals(2, fixed[0]["focusRevision"]!!.jsonPrimitive.int)
+        assertEquals("Backend", fixed[0].str("title"))
+        assertEquals("s1", fixed[0].str("ref"))
+        assertEquals(listOf("session_error", "assistant_text"), fixed.drop(1).map { it.str("event") })
         assertEquals("Half way", fixed.last().str("text"))
         assertTrue(size(update) <= 32 * 1024)
         // What was there at first sight was never told, so none of it comes back.
@@ -532,34 +542,107 @@ class CallContextTest {
     // New work and the way back
 
     @Test
-    fun newWorkStartsOffScreenAndItsFirstMessageGoesOnlyWhenSent() = runBlocking {
+    fun newWorkIsRetiredAndSaysWhatToUse() = runBlocking {
         val targets = backend()
         val context = CallContext(targets)
         context.initial()
-        assertTrue(context.tool("newWork", """{"kind":"board"}""").isError)
-        val started = obj(context.tool("newWork", """{"kind":"bot","name":" Researcher "}""").text)
-        assertEquals(true, started["started"]!!.jsonPrimitive.boolean)
-        assertEquals(false, started["sent"]!!.jsonPrimitive.boolean)
-        assertEquals("bot", started.str("kind"))
-        assertEquals("Researcher", started.str("title"))
+        val retired = context.tool("newWork", """{"kind":"bot","name":"Researcher"}""")
+        assertTrue(retired.isError)
+        assertTrue(obj(retired.text).str("reason")!!.contains("Use sendMessage with targetRef new-task or new-bot."))
+        assertTrue(targets.made.isEmpty())
+    }
+
+    /** One call: compose's new work with this message its first, off screen, reached by the reference the answer gives from then on. */
+    @Test
+    fun sendingToNewTaskStartsItOffScreenWithThatMessageFirst() = runBlocking {
+        val targets = backend()
+        val context = CallContext(targets)
+        context.initial()
+        val started = obj(context.tool("sendMessage", """{"targetRef":"new-task","text":"Find papers on caching","focusRevision":0}""").text)
+        assertEquals("queued", started.str("status"))
+        assertEquals("task", started.str("started"))
+        assertEquals("New Task", started.str("title"))
+        val ref = started.str("targetRef")!!
+        assertEquals("s3", ref)
         // Nothing moved: the screen and its focus are as they were.
         assertNull(started["focusRevision"])
         assertEquals(0, targets.screens)
-        assertEquals(listOf("Researcher"), targets.made.map { it.second })
-        // Starting sends nothing.
-        assertTrue(targets.sends.isEmpty())
-        // Unlisted, it is reached by the reference newWork gave, with the focus's revision as it was.
-        val ref = started.str("targetRef")!!
-        assertEquals("Researcher", obj(context.tool("getSessionContext", """{"targetRef":"$ref"}""").text).str("title"))
-        val sent = obj(context.tool("sendMessage", """{"targetRef":"$ref","text":"Find papers on caching","focusRevision":0}""").text)
-        assertEquals("queued", sent.str("status"))
+        assertEquals(listOf(CallTarget.Kind.Task), targets.made.map { it.first })
         assertEquals(listOf("new-1"), targets.sends.map { it.agentId })
+        assertEquals(listOf("Find papers on caching"), targets.sends.map { it.text })
+        // Unlisted until the computer has it, it is read and sent to by that reference.
+        assertEquals("New Task", obj(context.tool("getSessionContext", """{"targetRef":"$ref"}""").text).str("title"))
         // Made, it is home's under the same reference.
-        targets.setDirectory(listOf(backendTarget, docsTarget, CallTarget("new-1", "Researcher", CallTarget.Kind.Bot, CallTarget.Status.Running)))
-        val listed = obj(context.tool("listSessions", """{"query":"research"}""").text)
+        targets.setDirectory(listOf(backendTarget, docsTarget, CallTarget("new-1", "Caching papers", CallTarget.Kind.Task, CallTarget.Status.Running)))
+        val listed = obj(context.tool("listSessions", """{"query":"caching"}""").text)
         assertEquals(ref, listed["sessions"]!!.jsonArray[0].jsonObject.str("targetRef"))
-        // Shown only when asked: openSession takes it like any other.
         assertEquals(true, obj(context.tool("openSession", """{"targetRef":"$ref","focusRevision":0}""").text)["opened"]!!.jsonPrimitive.boolean)
+        // Only a send takes the new-work references.
+        for (name in listOf("getSessionContext", "openSession")) assertTrue(name, context.tool(name, """{"targetRef":"new-task","focusRevision":1}""").isError)
+    }
+
+    @Test
+    fun aNewBotIsNamedAfterAColon() = runBlocking {
+        val targets = backend()
+        val context = CallContext(targets)
+        context.initial()
+        val started = obj(context.tool("sendMessage", """{"targetRef":"New-Bot: Release helper ","text":"Watch the release","focusRevision":0}""").text)
+        assertEquals("bot", started.str("started"))
+        assertEquals("Release helper", started.str("title"))
+        assertEquals(listOf(CallTarget.Kind.Bot to "Release helper"), targets.made.toList())
+        assertEquals("New Bot", obj(context.tool("sendMessage", """{"targetRef":"new-bot","text":"Watch the docs","focusRevision":0}""").text).str("title"))
+    }
+
+    /** The model and effort go as compose's pickers would set them before its first send; without them, compose's default, said in the answer. */
+    @Test
+    fun newWorkStartsOnTheModelAskedForOrComposesDefault() = runBlocking {
+        val targets = backend()
+        targets.newWorkMode = CallMode(opus.id, opus.name, "high")
+        targets.newWorkModels = listOf(opus, sonnet, gpt)
+        val context = CallContext(targets)
+        context.initial()
+        val asked = obj(context.tool("sendMessage", """{"targetRef":"new-task","text":"go","focusRevision":0,"model":"sonnet","effort":"low"}""").text)
+        assertEquals("Claude Sonnet 4.5", asked.str("model"))
+        assertEquals("low", asked.str("effort"))
+        val plain = obj(context.tool("sendMessage", """{"targetRef":"new-task","text":"also","focusRevision":0}""").text)
+        assertEquals("Claude Opus 4.5", plain.str("model"))
+        assertEquals("high", plain.str("effort"))
+        assertEquals(listOf(CallModeChange("claude-sonnet-4-5", "low"), null), targets.sends.map { it.change })
+    }
+
+    /** Refused for its model, or stale: nothing goes and nothing stays. */
+    @Test
+    fun aRefusedStartLeavesNothing() = runBlocking {
+        val targets = backend()
+        targets.newWorkMode = CallMode(opus.id, opus.name, "high")
+        targets.newWorkModels = listOf(opus, sonnet)
+        val context = CallContext(targets)
+        context.initial()
+        val unknown = context.tool("sendMessage", """{"targetRef":"new-task","text":"go","focusRevision":0,"model":"gemini"}""")
+        assertTrue(unknown.isError)
+        assertEquals(2, obj(unknown.text)["models"]!!.jsonArray.size)
+        assertTrue(context.tool("sendMessage", """{"targetRef":"new-task","text":"go","focusRevision":4}""").isError)
+        assertTrue(targets.sends.isEmpty())
+        assertEquals(listOf("new-1"), targets.discarded.toList())
+        assertEquals("a stale send starts nothing", 1, targets.made.size)
+    }
+
+    /** The provider asking again, its answer lost: the same new work, never a second. */
+    @Test
+    fun theSameWordsAgainStartNothingNew() = runBlocking {
+        val targets = backend()
+        targets.sendDelay = 300
+        val context = CallContext(targets, toolDeadlineMillis = 100)
+        context.initial()
+        val first = context.tool("sendMessage", """{"targetRef":"new-task","text":"Fix the build","focusRevision":0}""")
+        assertEquals("uncertain", obj(first.text).str("status"))
+        targets.sendDelay = 0
+        delay(300)
+        val second = obj(context.tool("sendMessage", """{"targetRef":"new-task","text":"Fix the build","focusRevision":0}""").text)
+        assertEquals("queued", second.str("status"))
+        assertEquals(1, targets.made.size)
+        assertEquals(1, targets.sends.map { it.id }.toSet().size)
+        assertEquals(setOf("new-1"), targets.sends.map { it.agentId }.toSet())
     }
 
     @Test
@@ -785,24 +868,23 @@ class CallContextTest {
     fun theDirectoryIsHomesConversationsNestedAsItShowsThem() = runBlocking {
         val list = CallTarget.from(CallTargetsTest.sidebar())
         val context = CallContext(FakeCallTargets(list, mutableMapOf(), null))
-        val initial = obj(context.initial())
-        assertEquals(
+        val initial = context.initial()
+        assertTrue(initial, initial.contains(
             """
-            Conversation directory:
-            Architect [bot; ref=s1]
-            Release notes [task; ref=s2]
-              Fix cache race [subtask; ref=s3]
-                Check the lock [subtask; ref=s4]
-            New Task [task; ref=s5]
-            App [project]
-              Root chat [conversation; ref=s6]
-              Feature [workspace]
-                Feature chat [conversation; ref=s7]
+            Conversations in the app, in the sidebar's order:
+            - Architect — bot, ref s1
+            - Release notes — task, ref s2
+              - Fix cache race — subtask, ref s3
+                - Check the lock — subtask, ref s4
+            - New Task — task, ref s5
+            - App — project
+              - Root chat — conversation, ref s6
+              - Feature — workspace
+                - Feature chat — conversation, ref s7
             """.trimIndent(),
-            initial.str("directory"),
-        )
+        ))
         // No IDs of the computer's in what the agent reads.
-        for (id in list.map { it.agentId }) assertFalse(id, initial.str("directory")!!.contains(id))
+        for (id in list.map { it.agentId }) assertFalse(id, initial.contains(id))
         val found = obj(context.tool("listSessions", """{"query":"lock"}""").text)["sessions"]!!.jsonArray.first().jsonObject
         assertEquals("s4", found.str("targetRef"))
         assertEquals("subtask", found.str("kind"))
@@ -831,83 +913,7 @@ class CallContextTest {
         assertTrue(context.tool("getSessionContext", """{"targetRef":"s9"}""").isError)
     }
 
-    /** New work settles for a second, then goes as the whole directory, by home's label whatever it is then; a status alone is no change. */
-    @Test
-    fun aNewEntryGoesOnceSettledAsTheWholeDirectory() = runBlocking {
-        val targets = FakeCallTargets(listOf(releaseTarget), mutableMapOf(), null)
-        val context = CallContext(targets)
-        // Its watch answering ahead of the first snapshot: nothing due.
-        assertFalse(context.directoryChanged(listOf(releaseTarget)))
-        context.initial()
-        assertFalse(context.directoryChanged(listOf(releaseTarget.copy(status = CallTarget.Status.Running))))
-        // New, and nobody named it yet: due, and goes as the label is at the flush.
-        val fresh = CallTarget("n", "New Task", CallTarget.Kind.Task, CallTarget.Status.Idle)
-        assertTrue(context.directoryChanged(listOf(releaseTarget, fresh)))
-        targets.setDirectory(listOf(releaseTarget, fresh))
-        val flushed = events(context.flushDirectory())
-        assertEquals(listOf("directory"), flushed.map { it.str("event") })
-        assertEquals("Conversation directory:\nRelease notes [task; ref=s1]\nNew Task [task; ref=s2]", flushed.single().str("text"))
-        // Told: the same again is nothing.
-        assertFalse(context.directoryChanged(listOf(releaseTarget, fresh)))
-        assertTrue(context.flushDirectory().isEmpty)
-        // Named later: the same reference, the new title.
-        val named = fresh.copy(title = "Ship 2.0")
-        assertTrue(context.directoryChanged(listOf(releaseTarget, named)))
-        targets.setDirectory(listOf(releaseTarget, named))
-        assertEquals("Conversation directory:\nRelease notes [task; ref=s1]\nShip 2.0 [task; ref=s2]", events(context.flushDirectory()).first().str("text"))
-    }
-
-    /** The flush reads home as it is then: a name that came in the second goes, work that went away in it never does. */
-    @Test
-    fun theFlushTellsHomeAsItIsThen() = runBlocking {
-        val targets = FakeCallTargets(listOf(releaseTarget), mutableMapOf(), null)
-        val context = CallContext(targets)
-        context.initial()
-        val fresh = CallTarget("n", "New Task", CallTarget.Kind.Task, CallTarget.Status.Idle)
-        context.directoryChanged(listOf(releaseTarget, fresh))
-        val named = fresh.copy(title = "Fix the login redirect")
-        targets.setDirectory(listOf(releaseTarget, named))
-        val titled = events(context.flushDirectory())
-        assertEquals("Conversation directory:\nRelease notes [task; ref=s1]\nFix the login redirect [task; ref=s2]", titled.first().str("text"))
-        assertFalse(titled.toString().contains("New Task"))
-        // Came and went within the second: nothing at all.
-        val brief = CallTarget("b", "Brief", CallTarget.Kind.Task, CallTarget.Status.Idle)
-        assertTrue(context.directoryChanged(listOf(releaseTarget, named, brief)))
-        targets.setDirectory(listOf(releaseTarget, named))
-        assertTrue(context.flushDirectory().isEmpty)
-    }
-
-    /** A snapshot within its size shows what it can and counts the rest; whatever is new or changed among the rest still goes, in as many `directory_entries` as it takes, each with what it sits under. */
-    @Test
-    fun whatTheSnapshotCantShowThatIsNewStillGoes() = runBlocking {
-        val many = (0 until 150).map { CallTarget("x$it", "Task $it", CallTarget.Kind.Task, CallTarget.Status.Idle) }
-        val targets = FakeCallTargets(many, mutableMapOf(), null)
-        val context = CallContext(targets)
-        assertTrue(obj(context.initial()).str("directory")!!.endsWith("… and 50 more; listSessions finds them by title."))
-        val late = late(40)
-        targets.setDirectory(many + late)
-        context.directoryChanged(many + late)
-        val update = context.flushDirectory()
-        val flushed = events(update)
-        assertEquals("directory", flushed.first().str("event"))
-        val pages = flushed.drop(1)
-        assertTrue(pages.size > 1)
-        var told = ""
-        for (page in pages) {
-            assertEquals("directory_entries", page.str("event"))
-            val text = page.str("text")!!
-            assertTrue(text.utf8Size() <= CallContext.Limits.ENTRIES_BYTES)
-            // Each page says what its entries sit under.
-            assertTrue(text, text.contains("\nTask 149 [task; ref="))
-            told += text
-        }
-        for (index in 0 until 40) assertTrue("Late $index", told.contains("  Late $index "))
-        // What was cut and hasn't changed isn't paged out.
-        assertFalse(told.contains("Task 120 ["))
-        assertTrue(size(update) <= 32 * 1024)
-    }
-
-    /** A reference reaches a conversation while home lists it; gone, it reaches nothing and isn't heard from; back, it reaches it again. */
+    /** A reference reaches a conversation while home lists it; gone, it reaches nothing; back, it reaches it again. */
     @Test
     fun aReferenceReachesWhatIsListedNow() = runBlocking {
         val targets = FakeCallTargets(listOf(backendTarget, docsTarget), mutableMapOf(
@@ -916,49 +922,38 @@ class CallContextTest {
         val context = CallContext(targets)
         context.initial()
         targets.setDirectory(listOf(backendTarget))
-        context.directoryChanged(listOf(backendTarget))
-        assertEquals("Conversation directory:\nBackend [bot; ref=s1]", events(context.flushDirectory()).first().str("text"))
-        assertTrue(context.followed().isEmpty())
         for (name in listOf("getSessionContext", "openSession", "sendMessage")) {
-            assertTrue(name, context.tool(name, """{"targetRef":"s2","text":"hi","focusRevision":0}""").isError)
+            assertTrue(name, context.tool(name, """{"targetRef":"s1","text":"hi","focusRevision":0}""").isError)
         }
         targets.setDirectory(listOf(backendTarget, docsTarget))
-        context.directoryChanged(listOf(backendTarget, docsTarget))
-        assertEquals("Conversation directory:\nBackend [bot; ref=s1]\nDocs [task; ref=s2]", events(context.flushDirectory()).first().str("text"))
-        assertFalse(context.tool("getSessionContext", """{"targetRef":"s2"}""").isError)
+        assertFalse(context.tool("getSessionContext", """{"targetRef":"s1"}""").isError)
     }
 
-    /** The agent has a conversation's line before any update about it: new work the person opens before the directory settles, a rename before its words. */
+    /** The directory goes once, at the start: what came since gives its reference with the first update about it, and only then. */
     @Test
-    fun aConversationIsToldBeforeItsFocusOrItsWords() = runBlocking {
+    fun whatCameSinceTheStartComesWithItsReference() = runBlocking {
         val targets = FakeCallTargets(listOf(releaseTarget), mutableMapOf("t" to CallTargetState(releaseTarget)), null)
         val context = CallContext(targets)
         context.initial()
         targets.setDirectory(listOf(releaseTarget, fixTarget))
-        assertTrue(context.directoryChanged(listOf(releaseTarget, fixTarget)))
-        // Opened before the second is out.
         val focus = events(context.focusChanged("c"))
-        assertEquals(listOf("directory_entries", "focus"), focus.map { it.str("event") })
-        assertEquals("More of the conversation directory:\nRelease notes [task; ref=s1]\n  Fix cache race [subtask; ref=s2]", focus[0].str("text"))
-        assertEquals("Fix cache race", focus[1].str("title"))
-        assertEquals(listOf("Release notes"), focus[1].strings("parents"))
-        // The flush still goes, whole.
-        assertEquals(listOf("directory"), events(context.flushDirectory()).map { it.str("event") })
-        // Renamed, then its words: the new name first.
+        assertEquals(listOf("focus"), focus.map { it.str("event") })
+        assertEquals("Fix cache race", focus[0].str("title"))
+        assertEquals(listOf("Release notes"), focus[0].strings("parents"))
+        assertEquals("s2", focus[0].str("ref"))
+        // Its words after that: by name alone.
         context.targetChanged(CallTargetState(fixTarget, working = true))
-        val renamed = fixTarget.copy(title = "Fix the cache race")
-        val words = events(context.targetChanged(CallTargetState(renamed, listOf(CallMessage("m", CallMessage.Role.Assistant, "Fixed.")))))
-        assertEquals(listOf("directory_entries", "assistant_text"), words.map { it.str("event") })
-        assertTrue(words[0].str("text")!!.endsWith("  Fix the cache race [subtask; ref=s2]"))
-        assertEquals("Fix the cache race", words[1].str("title"))
-        // Told once: its next words come alone.
-        val next = events(context.targetChanged(CallTargetState(renamed, listOf(
-            CallMessage("m", CallMessage.Role.Assistant, "Fixed."), CallMessage("m2", CallMessage.Role.Assistant, "And tested."),
-        ))))
-        assertEquals(listOf("assistant_text"), next.map { it.str("event") })
+        val words = events(context.targetChanged(CallTargetState(fixTarget, listOf(CallMessage("m", CallMessage.Role.Assistant, "Fixed.")))))
+        assertEquals(listOf("assistant_text"), words.map { it.str("event") })
+        assertNull(words[0]["ref"])
+        // listSessions gives references too: what it listed comes without one.
+        val other = CallTarget("o", "Other", CallTarget.Kind.Task, CallTarget.Status.Idle)
+        targets.setDirectory(listOf(releaseTarget, fixTarget, other))
+        context.tool("listSessions", """{"query":"other"}""")
+        assertNull(events(context.focusChanged("o"))[0]["ref"])
     }
 
-    /** Work deleted while the directory settles: a reply that comes late from it says nothing, under its old name or any, and no line of it goes. */
+    /** Work deleted since: a reply that comes late from it says nothing, under its old name or any. */
     @Test
     fun aLateReplyFromWorkThatWentAwaySaysNothing() = runBlocking {
         val targets = backend(focus = "b")
@@ -966,36 +961,24 @@ class CallContextTest {
         context.initial()
         context.targetChanged(CallTargetState(docsTarget, working = true))
         targets.setDirectory(listOf(backendTarget))
-        assertTrue(context.directoryChanged(listOf(backendTarget)))
+        context.tool("listSessions", "{}")
         val late = context.targetChanged(CallTargetState(docsTarget, listOf(CallMessage("w", CallMessage.Role.Assistant, "Done.")),
             listOf(CallTurn("x", ended = "error", error = "Boom"))))
         assertTrue(late.isEmpty)
-        val flushed = events(context.flushDirectory())
-        assertEquals(listOf("directory"), flushed.map { it.str("event") })
-        assertFalse(flushed.toString().contains("Docs"))
-        assertTrue(context.followed().isEmpty())
     }
 
-    /** A conversation under more than a page can show: still told, with what it sits under on one line cut to fit, and the ones after it too. */
+    /** A conversation under more than the directory can show: still listed, with what it sits under on one line cut to fit, and the ones after it too. */
     @Test
-    fun anEntryTooDeepForAPageStillGoes() = runBlocking {
+    fun anEntryTooDeepForTheDirectoryStillGoes() = runBlocking {
         val chain = (0 until 80).map { CallTarget.Parent("session:p$it", "Parent $it " + "y".repeat(180), "subtask", "p$it") }
         val deep = CallTarget("deep", "Deep one", CallTarget.Kind.Subtask, CallTarget.Status.Idle, chain)
         val after = CallTarget("after", "After it", CallTarget.Kind.Task, CallTarget.Status.Idle)
-        val targets = FakeCallTargets(listOf(releaseTarget), mutableMapOf(), null)
-        val context = CallContext(targets)
-        context.initial()
-        targets.setDirectory(listOf(releaseTarget, deep, after))
-        context.directoryChanged(listOf(releaseTarget, deep, after))
-        val flushed = events(context.flushDirectory())
-        val told = flushed.mapNotNull { it.str("text") }.joinToString("\n")
-        assertTrue(told, told.contains("Deep one [subtask; ref="))
-        assertTrue(told, told.contains("(under Parent 0 "))
-        assertTrue(told, told.contains("After it [task; ref="))
-        for (event in flushed.filter { it.str("event") == "directory_entries" }) {
-            assertTrue(event.str("text")!!.utf8Size() <= CallContext.Limits.ENTRIES_BYTES)
-        }
-        assertFalse(context.owesDirectory())
+        val text = CallContext(FakeCallTargets(listOf(deep, after), mutableMapOf(), null)).initial()
+        assertTrue(text, text.contains("\n(under Parent 0 "))
+        assertTrue(text, text.contains("\n- Deep one — subtask, ref "))
+        // What comes after it is counted, for listSessions to find.
+        assertTrue(text, text.contains("\n… and 1 more; listSessions finds them by title."))
+        assertTrue(text.utf8Size() <= CallContext.Limits.TOTAL_BYTES)
     }
 
     /** Title and what it sits under name it; a reference only when that leaves it unclear, or it has no name of its own yet. */
@@ -1019,41 +1002,24 @@ class CallContextTest {
         assertNull(focus("t")["ref"])
     }
 
-    /** Sizes are counted as the JSON that carries them: names full of quotes, backslashes, slashes and control characters keep every update within its budget. */
+    /** Names full of quotes, backslashes, slashes and control characters keep a resync within what a call keeps waiting. */
     @Test
     fun budgetsHoldInEncodedJson() = runBlocking {
         val nasty = "\"q\" \\b\\ /s/ \u0001\u0002\u0007\u001B"
         val many = (0 until 400).map { CallTarget("x$it", "$it " + nasty.repeat(8), CallTarget.Kind.Task, CallTarget.Status.Idle) }
         val visits = many.take(4)
-        val targets = FakeCallTargets(many.take(200), visits.associateTo(HashMap()) { it.agentId to CallTargetState(it) }, null)
+        val targets = FakeCallTargets(many, visits.associateTo(HashMap()) { it.agentId to CallTargetState(it) }, null)
         val context = CallContext(targets)
-        context.initial()
+        assertTrue(context.initial().utf8Size() <= CallContext.Limits.TOTAL_BYTES)
         for (target in visits) {
             context.focusChanged(target.agentId)
             context.targetChanged(CallTargetState(target))
             val words = (0 until 6).map { CallMessage("${target.agentId}m$it", CallMessage.Role.Assistant, nasty.repeat(200)) }
             context.targetChanged(CallTargetState(target, words))
         }
-        targets.setDirectory(many)
-        context.directoryChanged(many)
-        val flush = context.flushDirectory()
-        assertTrue(size(flush) <= CallSession.PENDING_BYTES)
-        for (line in flush.context) {
-            val limit = if (obj(line).str("event") == "directory") CallContext.Limits.DIRECTORY_BYTES else CallContext.Limits.ENTRIES_BYTES
-            assertTrue(line.utf8Size() <= limit + 64)
-        }
         assertTrue(size(context.resync()) <= CallSession.PENDING_BYTES)
-        while (context.owesDirectory()) assertTrue(size(context.moreDirectory()) <= CallSession.PENDING_BYTES / 2)
         // Titles from home carry no control characters at all.
         assertEquals("a b c\u200Dd", CallTarget.clean("a\u0001b\nc\u200Dd"))
-    }
-
-    companion object {
-        /** [count] new subtasks under "Task 149", each a long line. */
-        fun late(count: Int): List<CallTarget> {
-            val parent = CallTarget.Parent("task:x149", "Task 149", "task", "x149")
-            return (0 until count).map { CallTarget("n$it", "Late $it " + "z".repeat(150), CallTarget.Kind.Subtask, CallTarget.Status.Idle, listOf(parent)) }
-        }
     }
 }
 
@@ -1091,15 +1057,24 @@ class FakeCallTargets(
 
     /** New work started off screen: unlisted until its first message. */
     val made = java.util.Collections.synchronizedList(ArrayList<Pair<CallTarget.Kind, String>>())
+    val discarded = java.util.Collections.synchronizedList(ArrayList<String>())
     private val unlistedWork = java.util.concurrent.ConcurrentHashMap<String, CallTarget>()
+    /** What new work starts on, and may switch to, as compose's pickers have them. */
+    @Volatile var newWorkMode: CallMode? = null
+    @Volatile var newWorkModels: List<CallModel> = emptyList()
     /** Screens over home, the top last: what `back` and `home` take away. */
     @Volatile var screens = 0
-    override suspend fun newWork(kind: CallTarget.Kind, name: String): CallTarget {
+    override suspend fun draft(kind: CallTarget.Kind, name: String): CallTarget {
         made += kind to name
         val draft = CallTarget("new-${made.size}", name.ifEmpty { if (kind == CallTarget.Kind.Bot) "New Bot" else "New Task" }, kind, CallTarget.Status.Idle)
         unlistedWork[draft.agentId] = draft
-        lock.withLock { states[draft.agentId] = CallTargetState(draft) }
+        lock.withLock { states[draft.agentId] = CallTargetState(draft, mode = newWorkMode, models = newWorkModels) }
         return draft
+    }
+    override suspend fun discard(agentId: String) {
+        discarded += agentId
+        unlistedWork.remove(agentId)
+        lock.withLock { states.remove(agentId) }
     }
     /** Compose opened by the person: new work on a screen of its own. */
     suspend fun composeByHand() {

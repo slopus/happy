@@ -40,8 +40,8 @@ interface CallScreen {
  * made here shows there at once, goes once and is kept once; the
  * composer's draft is never touched ([Conversation.sendAs]). New work the
  * call starts is compose's ([NewTask]), off screen, held by the call as that
- * one conversation until its first message makes it; a screen that opens it
- * shares it. A call reads what comes, but never marks it read: that is the
+ * one conversation, which the call's first message to it makes; a screen that
+ * opens it shares it. A call reads what comes, but never marks it read: that is the
  * screen's. On a team, who wrote each message is named as the computer names
  * its members. Runs on the main thread.
  */
@@ -154,15 +154,22 @@ class ConnectionCallTargets(
 
     /**
      * New work as compose starts it ([NewTask]), chosen as the call asks, off screen: what is in front stays. Its
-     * conversation is the connection's one of its agent, held by the call, which a screen opening it shares.
+     * conversation is the connection's one of its agent, held by the call, for [send] to make it with its first
+     * message; on this computer and in no project, as compose makes it from any screen.
      */
-    override suspend fun newWork(kind: CallTarget.Kind, name: String): CallTarget? = onMain {
+    override suspend fun draft(kind: CallTarget.Kind, name: String): CallTarget? = onMain {
         if (closed) return@onMain null
         val task = NewTask.make()
         val choice = WorkChoice(if (kind == CallTarget.Kind.Bot) WorkKind.Bot else WorkKind.Task, name)
         val hold = Held(session.conversations.hold(task.agentId) { session.makeConversation(task.agentId, typesetter, newTask = task, initialChoice = choice) })
         started[task.agentId] = hold
         draftTarget(task.agentId, hold.conversation.state.value)
+    }
+
+    override suspend fun discard(agentId: String) = onMain {
+        // Nothing was sent to it: let go of, it closes with nothing made.
+        started.remove(agentId)?.let(::release)
+        Unit
     }
 
     override suspend fun back(): CallScreenMove = onMain {
@@ -183,7 +190,7 @@ class ConnectionCallTargets(
 
     override suspend fun open(agentId: String): Boolean = onMain {
         if (closed) return@onMain false
-        // New work the call started: shown as it is, unsent or being made, the screen sharing its conversation.
+        // New work the call started: shown as it is being made, the screen sharing its conversation.
         if (target(agentId) == null && started[agentId] == null) return@onMain false
         val screen = screen() ?: return@onMain false
         if (screen.focused != agentId) screen.open(agentId)

@@ -278,62 +278,39 @@ project's conversation. Android reads home's rows the same way
 heading, Surfaces, Artifacts and todos are skipped. Each is named by the sidebar's own label, whatever
 it is: "New Task", "New Bot" or "Untitled" too. The tools reach any of
 them, by reference, whether or not the person opened it; there is no list
-of the call's own. The agent reads it as indented lines:
+of the call's own. The agent reads it once, in the first context, as
+indented lines in the style Happy Agent's own tools list bots, tasks and
+projects to its agents (`- name — details`):
 
 ```text
-Conversation directory:
-Architect [bot; ref=s1]
-Release notes [task; ref=s2]
-  Fix cache race [subtask; ref=s3]
-App [project]
-  Root chat [conversation; ref=s4]
-  Feature [workspace]
-    Feature chat [conversation; ref=s5]
+Conversations in the app, in the sidebar's order:
+- Architect — bot, ref s1
+- Release notes — task, ref s2
+  - Fix cache race — subtask, ref s3
+- App — project
+  - Root chat — conversation, ref s4
+  - Feature — workspace
+    - Feature chat — conversation, ref s5
 ```
 
-A project or a worktree is a heading without a reference. A reference
+A project or a worktree is a line without a reference. A reference
 (`s1`, `s2`, …) stays the conversation's for the whole call, through
 renames and moves. It reaches the conversation while the sidebar lists it:
-one that went away (deleted, archived, left) reaches nothing and is no
-longer heard from, and reaches it again, under the same reference, if it
-comes back. The lines are where titles meet references: nothing else in
-the context pairs them (`listSessions` aside, which is a directory query).
+one that went away (deleted, archived, left) reaches nothing, and reaches
+it again, under the same reference, if it comes back. Within 12 KB and 100
+conversations; the rest are counted on its last line ("… and 40 more;
+listSessions finds them by title."). One too deep for the lines goes with
+what it sits under on a single line, cut to fit: `(under A > B > …)`.
 
-**How the directory changes.** A change to the sidebar (something came,
-went, moved or was renamed; a status alone is none) is due one second
-after the first such change (`CallContext.Limits.settle`,
-`DirectorySettle` on both); later changes never put that off. Then the sidebar is
-read again, as it is then, and if that isn't what the agent last had, it
-goes whole:
-
-- `{"event":"directory","text":"Conversation directory:\n…"}`: the
-  directory, as above, within 12 KB and 100 conversations; the rest are
-  counted on its last line ("… and 40 more; listSessions finds them by
-  title.").
-- `{"event":"directory_entries","text":"More of the conversation directory:\n…"}`:
-  any that the snapshot couldn't show and that are new or changed since the
-  last one, each with the lines it sits under (one too deep for a page goes
-  with what it sits under on a single line, cut to fit: `(under A > B > …)`),
-  in as many events of up to 4 KB as they take. Two go with the snapshot;
-  the rest follow two per update (`CallContext.moreDirectory`), sent by the
-  call's one `DirectoryDrain`, each once the one before has reached the
-  provider and only while the call is connected, so no update nears the
-  32 KB wait. Every size here counts the JSON that carries it (a quote,
-  backslash or slash two bytes, a control character up to six), and
-  titles carry no control characters. If waiting context
-  overflows anyway, the resync owes again every change since the first
-  snapshot that its directory can't show, and those follow the same way.
-  None is lost to a size. What was cut and hasn't changed isn't sent again.
-
-So work that came and went within the second says nothing, and work
-deleted, archived or left says nothing more from the moment the sidebar
-drops it, before the second is out (a late reply from it included); new work that
-got its name in it goes by that name; new work that never got one goes as
-"New Task" and, named later, goes again under the same reference. Before
-any update about a conversation the agent doesn't have as it is now (new
-work the person opens before the second is out, a rename before its next
-words), the conversation's own lines go first, in a `directory_entries`
-in the same update.
+**The directory goes once.** It is in the first context only, never sent
+again during the call: no update follows the sidebar's changes.
+`listSessions` is how the agent finds what came, went or was renamed since
+(the prompt says so). A conversation the agent has no reference for yet
+(new since the call began, or past the directory's 100) comes with its
+`ref` in the first update about it, usually the `focus` when the person
+opens it; once the agent has a conversation's reference (from the first
+context, `listSessions`, a tool's answer or an update), updates name it by
+title alone again.
 
 **What a visited conversation says**, as contextual updates (JSON, one per
 line, keys sorted):
@@ -349,10 +326,11 @@ line, keys sorted):
 
 Updates name a conversation by its `title` and the titles of what it sits
 under (`parents`, outermost first, headings included), never by an ID.
-Only when that leaves it unclear (another conversation has the same title
-under the same parents, or it has no name of its own yet: "New Task", "New
-Bot", "Untitled") does it carry its reference too (`"ref":"s3"`). No
-message IDs, block indexes or the computer's IDs reach the agent.
+They carry its reference too (`"ref":"s3"`) when that leaves it unclear
+(another conversation has the same title under the same parents, or it has
+no name of its own yet: "New Task", "New Bot", "Untitled"), or the agent
+has no reference for it yet. No message IDs, block indexes or the
+computer's IDs reach the agent.
 
 A piece is the agent's words between two of its steps: the words before a
 tool call, or after the last one (on iOS a `ChatItem` of role `.agent`;
@@ -393,28 +371,64 @@ over the same way.
 or `"title":null` for home, Settings or anything else that isn't a
 conversation: the screen in front changed. No history comes with it.
 
-**History** (the first snapshot's `focus` and `getSessionContext`): the
-conversation's `title` and `parents` (and in the first snapshot its `ref`
-when unclear, as above), `working`, `needsInput`, when the person last wrote
-there (`lastUserMessage`, the newest message of theirs in what was read) and
-when the agent last answered (`lastAgentReply`, the end of the newest run
-with words), its `workspace` (the project and worktree headings it sits
-under, `App / Feature`; a bot or task has a workspace of its own and none is
+**The first context** (`initialConversationContext`) is plain text, no
+JSON, in four parts separated by blank lines:
+
+```text
+Now: 2026-11-06T09:15:00+01:00 (the person's local time)
+focusRevision: 0
+
+On screen: Fix cache race — subtask, ref s3, under Release notes
+Working: yes. Needs the person: no.
+Last message from the person: 5 minutes ago (2026-11-06T09:10:00+01:00)
+Last reply: 3 minutes ago (2026-11-06T09:12:00+01:00)
+Model: Claude Opus 4.5, effort high
+Last turns, oldest first:
+1. The person: Why does the cache race?
+   Agent: Two writers share the lock …
+2. Ada Lovelace: Fix it
+   Ended in an error: …
+Waiting for an answer, from the person:
+   And add a test
+
+Conversations in the app, in the sidebar's order:
+- …
+
+New work (only through sendMessage; listed nowhere until its first message makes it):
+- new-task — a new task, the message its first
+- new-bot — a new bot, the message its first
+A name after a colon names it: new-bot:Release helper.
+```
+
+"On screen" is the conversation in front with its reference (or `On
+screen: no conversation (home, Settings or another screen).`), and what
+`getSessionContext` reads of it, as lines; nothing in the context repeats
+the directory, and the tools' list is the prompt's alone. A turn says who
+wrote it on a team, its non-plain end (`Ended: steering`, `Ended in an
+error: …`), and `[cut short]` after a text cut at 4 KB; "Older turns aren't
+shown." when there are more.
+
+**History** (`getSessionContext`, JSON): the conversation's `title` and
+`parents`, `working`, `needsInput`, when the person last wrote there
+(`lastUserMessage`, the newest message of theirs in what was read) and when
+the agent last answered (`lastAgentReply`, the end of the newest run with
+words), its `workspace` (the project and worktree headings it sits under,
+`App / Feature`; a bot or task has a workspace of its own and none is
 given, and the computer gives the phone no folder paths), its `model`
-(`{id,name,effort}`, what its next message goes with), then the last five turns,
-five in all. Never its reference, kind or status: the directory has those.
-Each turn is the person's message that started it and the agent's last
-words (the turn's copy text, never its commentary between steps, tool
+(`{id,name,effort}`, what its next message goes with), then the last five
+turns, five in all. Never its reference, kind or status: the directory has
+those. Each turn is the person's message that started it and the agent's
+last words (the turn's copy text, never its commentary between steps, tool
 output or words still streaming), or as much of that pair as there is: a
 turn steered or stopped before an answer has only the person's message, one
 with no message of the person's only the agent's words, one an error ended
 its `error`. The person's latest message, when no finished turn answers it
 yet, is the fifth, labelled `pendingUserMessage`, so then four finished
 turns come with it. Each text is cut at 4 KB, and the whole within 32 KB
-(the oldest turns give way, `olderTurns` says more exist).
-`getSessionContext` also lists the `models` the conversation can switch to
-(`[{id,name,efforts}]`, at most 30: the composer's model picker's, each
-shown account's switched-on models less those it hides).
+(the oldest turns give way, `olderTurns` says more exist). It also lists
+the `models` the conversation can switch to (`[{id,name,efforts}]`, at most
+30: the composer's model picker's, each shown account's switched-on models
+less those it hides).
 
 **Times** are a pair, `{"ago":"5 minutes ago","at":"2026-11-06T09:15:00+01:00"}`:
 how long ago, as said aloud (`just now`, `a minute ago`, `N minutes ago`,
@@ -429,15 +443,15 @@ reach the computer shows as `pendingUserMessage.delivery: "failed"` on the
 next `getSessionContext`, and in the chat as any failed message does.
 No update announces it.
 
-**Sizes:** the first snapshot is capped at 32 KB (the older turn gives way,
-then the directory's tail; the conversation on screen is always among its
-lines). Context that arrives before the call is live
-waits, up to 32 KB. Past that it is let go whole rather than cut,
-and replaced by one resync (`CallContext.resync`): the directory as it is
-(12 KB at most), then a `focus` event with the current `focusRevision` and
-`"resync":true`, the errors the call told of, and each piece it told, as
-told, the most recent first, those within 16 KB (`omitted` counts any that
-didn't fit). Per call, words are bounded by 4 KB per piece of the
+**Sizes:** the first context is capped at 32 KB of UTF-8 (the older turns
+give way first, then the directory's tail). Context that arrives before
+the call is live waits, up to 32 KB. Past that it is let go whole rather
+than cut, and replaced by one resync (`CallContext.resync`): a `focus`
+event with the current `focusRevision`, its `ref` and `"resync":true`, the
+errors the call told of, and each piece it told, as told, the most recent
+first, those within 16 KB (`omitted` counts any that didn't fit). The first
+context is the prompt's variable and is never lost, so the resync doesn't
+repeat the directory. Per call, words are bounded by 4 KB per piece of the
 four visited conversations, but not in total: a long call over busy
 conversations still grows the agent's context.
 Debug builds count every update and tool result by size
@@ -458,14 +472,21 @@ client tools, each its own workspace tool used by this agent alone:
 | getSessionContext | `tool_6501m6ggnh3afqgtx048kjn9mkcw` |
 | openSession | `tool_3101m6ggnqjeepx920r2a7z972a5` |
 | sendMessage | `tool_8201m6ggny4mef9b9y7m65ex4t4z` |
-| newWork | `tool_3001m6rcrfv2fkya66v4pkj9f55d` |
+| newWork (retired) | `tool_3001m6rcrfv2fkya66v4pkj9f55d` |
 | goBack | `tool_1501m6rcrg9pex190mnpp2r3xm3j` |
 | goHome | `tool_1901m6rcrggffd3bkcxdhhtywbm3` |
 
 A tool is edited in place (`PATCH /v1/convai/tools/{id}`, the
 `convai_write` scope) and the change reaches every build at once; a new one
 is created (`POST /v1/convai/tools`) and attached through the agent's
-`conversation_config.agent.prompt.tool_ids`, which lists them all. As of
+`conversation_config.agent.prompt.tool_ids`, which lists them all.
+
+`newWork` is retired: new work starts with `sendMessage` to `new-task` or
+`new-bot`, and the prompt tells the agent never to call it. It stays
+attached, unchanged, so nothing had to be edited there; the phone answers
+it with `newWork is retired. Use sendMessage with targetRef new-task or
+new-bot.` It can be detached from the agent (taken out of `tool_ids`) once
+no build that uses it is left. As of
 2026-11-06 the descriptions are the ones below; the parameters'
 descriptions are the dashboard's own wording, which says the same as these.
 
@@ -477,11 +498,9 @@ descriptions are the dashboard's own wording, which says the same as these.
   as the agent's prompt override on every call (`CallPrompt`), with the one
   dynamic variable; it sends no first message. ElevenLabs refuses a
   conversation whose override the agent doesn't allow.
-- Dynamic variable: `initialConversationContext` (a string). It holds a JSON
-  snapshot (`schema` 2): the directory as text, the conversation on
-  screen with its last five turns, and `focusRevision`. It is limited to
-  32 KB.
-- Client tools: exactly the seven below, each with "Wait for response" on and
+- Dynamic variable: `initialConversationContext` (a string): the first
+  context as plain text, above. It is limited to 32 KB.
+- Client tools: the seven below, each with "Wait for response" on and
   a response timeout of 10 s or more. The phone answers within 8 s and says
   `uncertain` if a send is still in doubt at that point.
 - System tools: `end_call` is fine. Don't add tools for permissions or
@@ -502,23 +521,24 @@ prompt's rules don't fit them either: leave it until they are gone.
 ```text
 You are Happy, a voice companion for the person's coding agents on their computer. Speak briefly and plainly: one or two sentences unless asked for more.
 
-What you know comes from {{initialConversationContext}} (JSON) and from contextual updates during the call, each a JSON object with an "event": directory (the conversations the person sees in the app, as indented lines, each with its ref), directory_entries (more of them), focus (the conversation on screen, or a null title for home, Settings or anything else), assistant_text (a complete piece of a conversation's agent's words, whole; finishedTurn when it ended its turn) and session_error. Updates name a conversation by its title and the titles of what it sits under (parents); find its ref in the directory lines, or use the ref an update gives when titles alone are unclear. You hear new replies only from the four conversations the person most recently visited. Use refs (s1, s2, ...) in tools, never titles. Titles like "New Task" are work that hasn't been named yet.
+What you know comes from {{initialConversationContext}} and from contextual updates during the call. The initial context is plain text, given once at the start: the time and focusRevision, the conversation on screen with its last turns, the conversations the person sees in the app as indented lines, each with its ref, and the refs that start new work. For anything new or changed since, use listSessions. Updates are JSON objects with an "event": focus (the conversation on screen, or a null title for home, Settings or anything else), assistant_text (a complete piece of a conversation's agent's words, whole; finishedTurn when it ended its turn) and session_error. Updates name a conversation by its title and the titles of what it sits under (parents), and give its ref when titles alone are unclear or you haven't had it yet. You hear new replies only from the four conversations the person most recently visited. Use refs (s1, s2, ...) in tools, never titles. Titles like "New Task" are work that hasn't been named yet.
 
 Tools:
-- listSessions: find conversations, with when each last did something; query is a case-insensitive substring of the title.
+- listSessions: find conversations, ones started since the call began too, with when each last did something; query is a case-insensitive substring of the title.
 - getSessionContext: read a conversation before you summarise it: its last five turns (a message still waiting for an answer among them), when the person last wrote and the agent last replied, the workspace it runs in, its model and effort, and the models and efforts it can switch to. On a team, several people may write in one conversation: userBy and by say who wrote each message, "the person" being the one on this call.
 - openSession: show a conversation on the person's screen.
-- newWork: start a new task or a new bot, as the compose button does, without opening it: the screen stays as it is. A new session or conversation is a task unless the person asks for a bot. It is made on the computer by its first message; open it with openSession only if the person asks to see it.
 - goBack: go back one screen. goHome: go to the home screen.
-- sendMessage: send words to a conversation's agent.
+- sendMessage: send words to a conversation's agent, or start new work with them.
+- newWork is retired: never call it.
 
 Sending:
 - Call sendMessage only when the person explicitly asks you to send: "send it", "send that to the release task", "tell the backend bot to ...". Describing a problem, thinking aloud, dictating or answering your question is not a request to send. If you aren't sure they want it sent, ask, and send only after a yes.
-- Never send on your own: not to follow up, not to answer an agent for the person, not right after newWork.
+- Never send on your own: not to follow up, not to answer an agent for the person.
 - Send exactly what they asked to send, to the conversation they named, or the one on screen if they named none. If which conversation or what text is unclear, ask first. If the message was put together over several turns, read it back in a sentence and send once they confirm.
-- To start new work with a message, call newWork, then sendMessage to the targetRef it returns once the person asks you to send.
+- To start new work, send its first message to targetRef new-task (a task: what a new session or conversation is) or new-bot (only when the person asks for a bot). When the person names it, add a colon and the name: new-bot:Release helper. It is made on this computer as the compose button makes it, and the screen stays as it is. The result's targetRef is its ref from then on; open it only if the person asks to see it.
+- To start new work on a specific model or effort, pass them on that first sendMessage. Without them it starts on the app's default, which the result names.
 - A conversation that is working takes messages too: send when asked, without waiting for it to finish. Only one waiting for the person (needsInput) can't take one.
-- Pass model or effort only when the person asks to change them, using a name from getSessionContext's models. They change with a message: there is no switch on its own. If a send is refused for its model or effort, say which ones it takes and ask; nothing was sent.
+- Pass model or effort only when the person asks for them, using a name from getSessionContext's models. They change with a message: there is no switch on its own. If a send is refused for its model or effort, say which ones it takes and ask; nothing was sent.
 - "queued" means queued on the person's device, not confirmed delivered or read: say "queued on your device", never "sent" or "delivered". Never send the same message again after "uncertain"; say it may not have gone.
 
 Rules:
@@ -730,8 +750,8 @@ What the phone answers (JSON in the tool result):
 | openSession | `{"opened":true,"targetRef":…,"focusRevision":…}`, the revision the next step takes | stale focus, no such conversation, didn't open |
 | listSessions (rows) | each row also `workspace?` and `lastActivity?:{ago,at}`, and the page `now` | |
 | getSessionContext (more) | also `lastUserMessage?:{ago,at,by?}`, `lastAgentReply?`, `workspace?`, `model?:{id,name,effort}`, `models?:[{id,name,efforts}]` | |
-| sendMessage | `{"status":"queued","targetRef":…,"delivery":"on the person's device, not confirmed delivered or read"}`, with `model` and `effort` when it switched them | `{"status":"uncertain",…}` after 8 s; stale focus; can't take a message; waits for the person; empty; over 8 KiB; call ended; a model or effort it doesn't offer, with the `models` it does (nothing is sent) |
-| newWork | `{"started":true,"targetRef":…,"kind":"task"\|"bot","title":…,"sent":false}`; the screen and focus stay as they were | kind not `task` or `bot`; call ended |
+| sendMessage | `{"status":"queued","targetRef":…,"delivery":"on the person's device, not confirmed delivered or read"}`, with `model` and `effort` when it switched them; to `new-task` or `new-bot` also `"started":"task"\|"bot"`, the `title`, the new work's own `targetRef`, and always the `model` and `effort` it starts on | `{"status":"uncertain",…}` after 8 s; stale focus; can't take a message; waits for the person; empty; over 8 KiB; call ended; a model or effort it doesn't offer, with the `models` it does (nothing is sent) |
+| newWork (retired) | never | always: use `sendMessage` to `new-task` or `new-bot` |
 | goBack | `{"home":…,"focusRevision":…,"title":…\|null,"parents"?,"targetRef"?}`: where it landed | stale focus; at home, nothing to go back to; an alert is open |
 | goHome | `{"home":true,"focusRevision":…,"title":null}` | an alert is open (iOS) |
 
@@ -754,20 +774,40 @@ shown account that offers it, at the effort asked for or the model's own
 default, and its screen's chips show it at once. The switch stays for the
 conversation's next messages, as a pick does.
 
-**New work** (`newWork`) is compose's own (iOS `NewTask`, Android
-`NewTask`), chosen as a task or a bot and named, started off screen: no
-screen opens and the focus stays where it was. Its conversation is the
-call's (on Android the connection's one of its agent, held by the call).
-Nothing is made and nothing sent: its first message, sent with
-`sendMessage` to the `targetRef` `newWork` gave, makes it on the computer
-the way the composer's first send does, and the sidebar lists it from then
-on under the same reference. Compose's own unsent work is left alone.
-`openSession` shows it only when the person asks: before its first message
-on compose's own screen, which takes it over (iOS) or shares its
-conversation (Android). Compose opened by hand is reached too, by the ref a
-`focus` gives. "A new session" is a task. Left unsent, it ends with the
-call and never existed anywhere but the phone; a first message on its way
-when the call ends is still made and delivered.
+**New work** starts with one `sendMessage` to `new-task` or `new-bot`
+(any case; `new-bot:Release helper` names it, the name compose's panel
+takes, else the computer names it from its first message). The first
+context lists both, so the tool's "a targetRef from the context" holds
+without a schema change; `getSessionContext` and `openSession` refuse
+them, since nothing exists yet. It is compose's own (iOS `NewTask`, Android
+`NewTask`), started off screen: no screen opens and the focus stays where
+it was. The phone makes its conversation, checks `model` and `effort`
+against the computer's models as for any send, sets them on it the way
+compose's pickers would before a first send (or leaves compose's default,
+`ModelPreferences.startMode`), and sends the message, which makes the task
+or bot on the computer the way the composer's first send does. On a model
+or effort it doesn't offer, a stale focus or a refused send, nothing is
+sent and nothing stays. The answer is the new work's own `targetRef`, the
+one the sidebar lists it under once made; until then it is read and sent
+to by it all the same, and `openSession` shows it once the computer has
+it. Where it goes is where compose puts it from any screen: a top-level
+task or bot on the call's computer, in no project, beside nothing. The
+call is bound to the one connection its voice button was pressed on, so
+with several computers there is nothing to choose: it is that one.
+Compose's own unsent work is left alone. The same words to the same
+new-work reference again, their answer unheard, reach the same new work
+under the same message ID. Compose opened by hand is reached too, by the
+ref a `focus` gives.
+
+**Models and efforts, and where they live.** What new work starts on is
+the person's model preferences on that computer (`happy-desktop.model.*`
+user settings, shared by every device on it): the default model, the
+default effort, the account picked last, and each model's effort and speed
+as last used per account. Efforts are a model's own, so they differ by
+model and by the account (provider) serving it; the call lists them per
+model as the pickers do. Starting work, by voice too, records what it
+started on as compose does (`sessionStarted`), so the next new session
+follows it unless Settings say to start on the default.
 
 **Who wrote it.** On a team's computer several people may write in one
 conversation. The computer records the member who wrote each of the
@@ -824,8 +864,8 @@ With `-callLive`, the fixture computer has 60 extra "Fixture task N" rows
 commentary before its answer), and a reply streamed in pieces to each
 message sent. For Release notes it sends a failure that ends the turn
 instead. Ship the cache's first answer makes new work: a "New Task" that
-is named "Benchmark the cache" 0.4 s later, so the directory's settling
-shows (the agent should only ever hear the name). Every contextual update and tool call goes into `live.json` with its
+is named "Benchmark the cache" 0.4 s later (the agent finds it, by
+that name, with listSessions). Every contextual update and tool call goes into `live.json` with its
 text, size and time.
 
 Android: `CallLiveDeviceCheck` on an emulator, with the ID passed to the
