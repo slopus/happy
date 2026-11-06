@@ -1,6 +1,7 @@
 package com.slopus.happy.analytics
 
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.sun.net.httpserver.HttpServer
@@ -8,7 +9,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
@@ -32,6 +35,7 @@ import okio.Buffer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -39,7 +43,11 @@ import org.junit.runner.RunWith
 import java.io.File
 import java.net.InetSocketAddress
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.coroutines.CoroutineContext
 
 /** The send client: the envelope as posted, memory-only state, consent, the install id, opens, crashes and flags. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -72,10 +80,15 @@ class AnalyticsClientTest {
     private val marks = mutableListOf<String?>()
     private val flags = mutableListOf<Set<String>>()
 
-    private fun TestScope.client(asksFlags: Boolean = false) = AnalyticsClient(
+    private fun TestScope.client(
+        asksFlags: Boolean = false,
+        prefs: SharedPreferences = this@AnalyticsClientTest.prefs,
+        posthog: PostHog = PostHog(http, "phc_test", "http://127.0.0.1:9"),
+        lane: CoroutineContext = UnconfinedTestDispatcher(testScheduler),
+    ) = AnalyticsClient(
         scope = backgroundScope,
         prefs = prefs,
-        posthog = PostHog(http, "phc_test", "http://127.0.0.1:9"),
+        posthog = posthog,
         consent = consent,
         foreground = foreground,
         device = AnalyticsDevice(appVersion = "1.8.0", flavor = "standard", osVersion = "15", tablet = false),
@@ -85,7 +98,7 @@ class AnalyticsClientTest {
         mark = { marks += it },
         flags = if (asksFlags) ({ synchronized(flags) { flags += it } }) else null,
         clock = { now },
-        lane = UnconfinedTestDispatcher(testScheduler),
+        lane = lane,
     ).also {
         it.start()
         runCurrent()
@@ -249,6 +262,129 @@ class AnalyticsClientTest {
         val second = batch().single().distinctId()
         assertNotEquals(first, second)
         assertEquals(second, prefs.getString("install_id", null))
+    }
+
+    /**
+     * Opting out while a batch is on its way: the request is cancelled, and
+     * everything is deleted at once rather than after it. Analytics stays off
+     * though [consent] hasn't caught up, until it is turned back on.
+     */
+    @Test
+    fun anOptOutCancelsARequestOnItsWayAndDoesntWaitForIt() = runTest {
+        val arrived = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val requests = AtomicInteger()
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
+            executor = Executors.newCachedThreadPool()
+            createContext("/batch/") { exchange ->
+                requests.incrementAndGet()
+                arrived.countDown()
+                release.await(10, TimeUnit.SECONDS)
+                exchange.sendResponseHeaders(200, -1)
+                exchange.close()
+            }
+            start()
+        }
+        try {
+            val client = client(asksFlags = true, posthog = PostHog(OkHttpClient(), "phc_test", "http://127.0.0.1:${server.address.port}"))
+            client.record(AnalyticsEvent.TaskCreated(null))
+            val sending = backgroundScope.launch(Dispatchers.Default) { client.flush() }
+            withContext(Dispatchers.Default) { assertTrue(arrived.await(5, TimeUnit.SECONDS)) }
+
+            client.revoke()
+            assertNull("off before the request is answered", client.live())
+            assertEquals("deleted before the request is answered", emptySet<String>(), prefs.all.keys)
+            assertEquals(listOf("1.8.0", null), marks)
+            assertEquals(listOf(emptySet<String>()), flags)
+            waitFor { sending.isCompleted }
+
+            // [consent] is still true, as the setting behind the opt-out may not have reached it: still off.
+            runCurrent()
+            assertNull(client.live())
+            client.record(AnalyticsEvent.TaskCreated(CreateError.Offline))
+            client.flush()
+            assertEquals(1, requests.get())
+            assertEquals(emptySet<String>(), prefs.all.keys)
+
+            client.allow()
+            runCurrent()
+            assertNotNull(client.live())
+        } finally {
+            release.countDown()
+            server.stop(0)
+        }
+    }
+
+    /** Off and on again before the lane has run anything: nothing from before goes, and the new id is new. */
+    @Test
+    fun offAndOnBeforeTheLaneRunsStartsOverWithANewId() = runTest {
+        val client = client(lane = StandardTestDispatcher(testScheduler))
+        client.record(AnalyticsEvent.TaskCreated(null))
+        runCurrent()
+        val before = client.live()!!
+        val first = prefs.getString("install_id", null)!!
+
+        client.record(AnalyticsEvent.TaskCreated(CreateError.Offline))
+        client.errorShown(ErrorArea.ConversationLoad, ErrorCode.Offline)
+        client.failureShown("m1", now, AnalyticsEvent.ChatFailureShown(FailureKind.Network, null, isPool = false, ChatTarget.Session, SessionClient.Cli))
+        client.revoke()
+        client.record(AnalyticsEvent.TaskCreated(CreateError.Refused))
+        client.allow()
+        // Something lasting from before (a call) ends after.
+        client.record(AnalyticsEvent.TaskCreated(CreateError.Unknown), before)
+        runCurrent()
+
+        client.record(AnalyticsEvent.ErrorShown(ErrorArea.MessageSend, ErrorCode.Timeout))
+        runCurrent()
+        client.flush()
+        assertEquals(listOf("error_shown"), names())
+        val second = batch().single().distinctId()
+        assertNotEquals(first, second)
+        assertEquals(second, prefs.getString("install_id", null))
+    }
+
+    /** An install id that can't be deleted keeps analytics off: nothing may go under the id of before. */
+    @Test
+    fun anInstallIdThatCantBeDeletedKeepsAnalyticsOff() = runTest {
+        val stuck = Stuck(prefs)
+        val client = client(prefs = stuck)
+        client.record(AnalyticsEvent.TaskCreated(null))
+        client.flush()
+        val first = batch().single().distinctId()
+
+        stuck.failing = true
+        consent.value = false
+        runCurrent()
+        assertEquals(first, prefs.getString("install_id", null))
+        consent.value = true
+        runCurrent()
+        assertNull(client.live())
+        client.record(AnalyticsEvent.TaskCreated(null))
+        client.flush()
+        assertEquals(1, posted.size)
+
+        // Deleting works again by the next time analytics would start: it deletes the id first.
+        consent.value = false
+        runCurrent()
+        stuck.failing = false
+        consent.value = true
+        runCurrent()
+        assertNull(prefs.getString("install_id", null))
+        client.record(AnalyticsEvent.TaskCreated(null))
+        client.flush()
+        assertNotEquals(first, batch().single().distinctId())
+    }
+
+    /** Prefs whose writes fail while [failing]. */
+    private class Stuck(private val real: SharedPreferences) : SharedPreferences by real {
+        var failing = false
+
+        override fun edit(): SharedPreferences.Editor = if (!failing) real.edit() else object : SharedPreferences.Editor by real.edit() {
+            override fun remove(key: String?) = this
+            override fun putString(key: String?, value: String?) = this
+            override fun commit() = false
+            override fun apply() = Unit
+        }
     }
 
     @Test

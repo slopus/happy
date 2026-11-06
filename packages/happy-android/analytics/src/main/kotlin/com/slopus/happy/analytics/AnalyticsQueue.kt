@@ -3,8 +3,12 @@ package com.slopus.happy.analytics
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
-/** One event as it will be posted: [properties] are final (common, its own, PostHog's), [at] is its timestamp. */
-internal data class QueuedEvent(val event: String, val at: Long, val properties: JsonObject) {
+/**
+ * One event as it will be posted: [properties] are final (common, its own,
+ * PostHog's), [at] is its timestamp, [generation] the one analytics was on
+ * in when it was made ([AnalyticsClient]).
+ */
+internal data class QueuedEvent(val event: String, val at: Long, val properties: JsonObject, val generation: Long = 0) {
     val insertId: String? get() = (properties["\$insert_id"] as? JsonPrimitive)?.content
 }
 

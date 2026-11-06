@@ -9,13 +9,16 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.Call
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
 import java.time.temporal.ChronoUnit
 
 /**
@@ -26,6 +29,7 @@ import java.time.temporal.ChronoUnit
  */
 internal class PostHog(http: OkHttpClient, private val apiKey: String, private val host: String = HOST) {
     private val http = http.newBuilder().followRedirects(false).followSslRedirects(false).build()
+    private val calls: MutableSet<Call> = ConcurrentHashMap.newKeySet()
 
     init {
         require(allowedHost(host)) { "not a host analytics may use" }
@@ -39,10 +43,14 @@ internal class PostHog(http: OkHttpClient, private val apiKey: String, private v
         Failed,
     }
 
-    /** `{api_key, batch: [{event, timestamp, properties}]}`, timestamps in whole seconds. */
-    suspend fun send(events: List<QueuedEvent>): Outcome = withContext(Dispatchers.IO) {
+    /**
+     * `{api_key, batch: [{event, timestamp, properties}]}`, timestamps in
+     * whole seconds. Not sent once [valid] is false, nor when [cancelAll]
+     * comes while it is on its way.
+     */
+    suspend fun send(events: List<QueuedEvent>, valid: () -> Boolean = { true }): Outcome = withContext(Dispatchers.IO) {
         try {
-            http.newCall(post("batch/", body(apiKey, events))).execute().use { response ->
+            call(post("batch/", body(apiKey, events)), valid) { response ->
                 when {
                     response.isSuccessful -> Outcome.Sent
                     response.code in 400..499 && response.code != 408 && response.code != 429 -> Outcome.Refused
@@ -54,14 +62,34 @@ internal class PostHog(http: OkHttpClient, private val apiKey: String, private v
         }
     }
 
-    /** `/flags?v=2` for [distinctId]: the flags that are on. Throws when PostHog didn't answer. */
-    suspend fun flags(distinctId: String): Set<String> = withContext(Dispatchers.IO) {
+    /** `/flags?v=2` for [distinctId]: the flags that are on. Throws when PostHog didn't answer, or the ask was called off. */
+    suspend fun flags(distinctId: String, valid: () -> Boolean = { true }): Set<String> = withContext(Dispatchers.IO) {
         val body = JsonObject(mapOf("api_key" to JsonPrimitive(apiKey), "distinct_id" to JsonPrimitive(distinctId)))
-        val text = http.newCall(post("flags/?v=2", body)).execute().use { response ->
+        val text = call(post("flags/?v=2", body), valid) { response ->
             if (!response.isSuccessful) throw IOException("PostHog flags: HTTP ${response.code}")
             response.body.string()
         }
         parseFlags(Json.parseToJsonElement(text).jsonObject)
+    }
+
+    /** Cancels every request on its way: each fails at once rather than finishing. */
+    fun cancelAll() {
+        calls.forEach(Call::cancel)
+    }
+
+    /**
+     * Runs [request] where [cancelAll] can reach it. [valid] is checked once
+     * it can, so a revocation either cancels it or is seen by it.
+     */
+    private fun <T> call(request: Request, valid: () -> Boolean, read: (Response) -> T): T {
+        val call = http.newCall(request)
+        calls += call
+        try {
+            if (!valid()) call.cancel()
+            return call.execute().use(read)
+        } finally {
+            calls -= call
+        }
     }
 
     private fun post(path: String, body: JsonObject) = Request.Builder()

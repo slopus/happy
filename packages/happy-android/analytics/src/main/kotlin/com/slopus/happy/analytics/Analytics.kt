@@ -7,7 +7,9 @@ import android.os.Build
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -18,6 +20,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -84,12 +87,39 @@ object Analytics {
             flags = flags.takeIf { target.asksFlags },
         )
         this.client = client
+        switch.turned = { on -> if (on) client.allow() else client.revoke() }
         client.start()
         scope.launch(Dispatchers.IO) { Retired.delete(context, switch.prefs) }
     }
 
     fun record(event: AnalyticsEvent) {
         client?.record(event)
+    }
+
+    /**
+     * Analytics is off from this moment, before the setting that turned it
+     * off is written down or read back: nothing under way records or sends,
+     * and what it had is deleted. It stays off until that setting is read as
+     * off, or [allow]. The device switch calls it itself; the app calls it as
+     * an account's opt-out is turned on.
+     */
+    fun revoke() {
+        client?.revoke()
+    }
+
+    /** The person turned analytics back on (an account's opt-out off): a [revoke] no longer holds it off. */
+    fun allow() {
+        client?.allow()
+    }
+
+    /**
+     * For something that lasts, such as a call: its event goes only if
+     * analytics was on as it began and stayed on until the event.
+     */
+    fun span(): AnalyticsSpan = AnalyticsSpan(client?.live())
+
+    internal fun record(event: AnalyticsEvent, generation: Long) {
+        client?.record(event, generation)
     }
 
     /** An error a person saw; at most once per (area, code) every ten minutes. */
@@ -169,6 +199,13 @@ internal data class AnalyticsDevice(val appVersion: String?, val flavor: String,
 /** The common properties that come from the open account: where its agent is, and which Happy Agent ([version] as the agent says it). */
 data class AnalyticsAgent(val location: String? = null, val os: String? = null, val version: String? = null)
 
+/** Something that lasts ([Analytics.span]): [record] does nothing if analytics was off as it began, or went off since. */
+class AnalyticsSpan internal constructor(private val generation: Long?) {
+    fun record(event: AnalyticsEvent) {
+        generation?.let { Analytics.record(event, it) }
+    }
+}
+
 /**
  * The device's own Analytics switch, beside each Happy account's
  * `analyticsOptOut`: a phone with only agent connections has no account
@@ -180,12 +217,16 @@ class AnalyticsSwitch(internal val prefs: SharedPreferences) {
     private val state = MutableStateFlow(read(prefs))
     val on: StateFlow<Boolean> = state.asStateFlow()
 
+    /** Told the moment the switch turns ([AnalyticsClient.revoke], [AnalyticsClient.allow]), not once [on] is collected. */
+    internal var turned: (Boolean) -> Unit = {}
+
     /**
      * Turns analytics on or off at once, then writes it down off the main
      * thread: false when that write failed, for Settings to say so.
      */
     suspend fun set(on: Boolean): Boolean {
         state.value = on
+        turned(on)
         return withContext(Dispatchers.IO) {
             try {
                 prefs.edit().putBoolean(KEY_ON, on).commit()
@@ -230,11 +271,20 @@ internal object Retired {
  * checked against [AnalyticsSchema] with the common properties and
  * PostHog's own fields added, kept in memory, and posted in one batch every
  * [flushMillis] while the app is in front and once as it goes behind.
- * Nothing is counted on the phone: each event goes as it happens. Nothing
- * is recorded while [consent] is null (the accounts not read yet) or
- * false; false also stops every observer, forgets the queue, the throttle
- * and the failures seen, and deletes the install id, so turning it back on
- * starts a new one. Its state changes on one [lane].
+ * Nothing is counted on the phone: each event goes as it happens.
+ *
+ * Analytics is on in one generation at a time. [revoke] ends it at once,
+ * outside any flow: every record, error, exposure, incident, open, flag
+ * answer and send made in it checks it is still the one on before it
+ * keeps or sends anything, a request on its way is cancelled, and what it
+ * had (the queue, the throttle, the cards seen, the crash mark, the flags
+ * and the install id) is deleted without waiting for that request. If
+ * [consent] is still or again true, a new generation starts with a new
+ * install id, and none starts while the old id couldn't be deleted. A
+ * [revoke] holds analytics off until [consent] is read as false or [allow]:
+ * the setting behind it may not have reached [consent] yet.
+ * Nothing is recorded while [consent] is null (the accounts not read yet).
+ * Its state changes on one [lane].
  */
 internal class AnalyticsClient(
     private val scope: CoroutineScope,
@@ -266,32 +316,120 @@ internal class AnalyticsClient(
     private val sending = Mutex()
     private var installId: String? = null
 
+    private val lock = Any()
+    private var generation = 0L
+    private var on = false
+    private var held = false
+    /** Bumped by each [revoke] and [allow], so one that comes and goes before anything reads [consent] still starts over. */
+    private val turns = MutableStateFlow(0L)
+    /** The old install id is still on the phone: no generation starts until it is gone. Lane only. */
+    private var idToDelete = false
+
+    /** The generation analytics is on in, or null while it is off. */
+    fun live(): Long? = synchronized(lock) { if (on) generation else null }
+
+    private fun isLive(generation: Long): Boolean = synchronized(lock) { on && this.generation == generation }
+
     fun start() {
         scope.launch {
+            // Apart from the generations below, so a request blocking one never holds up its end.
+            consent.collect { if (it == false) end(hold = false) }
+        }
+        scope.launch {
             var first = true
-            consent.collectLatest { allowed ->
+            combine(consent, turns, ::Pair).collectLatest { (allowed, _) ->
                 if (allowed == null) return@collectLatest
-                if (first) {
-                    first = false
+                if (!allowed) {
                     // A launch read as opted out has no launch of its own to tell later, nor a crash from before.
-                    if (allowed) withContext(lane) { crash()?.let { enqueue(it, clock()) } } else opens.skip()
+                    if (first) opens.skip()
+                    first = false
+                    return@collectLatest
                 }
-                if (!allowed) return@collectLatest off()
-                mark(device.appVersion ?: "-")
+                val generation = withContext(lane) {
+                    val generation = begin() ?: return@withContext null
+                    if (first) crash()?.let { if (isLive(generation)) enqueue(it, clock(), generation) }
+                    first = false
+                    // On the lane, so a [forget] after always clears it.
+                    if (isLive(generation)) mark(device.appVersion ?: "-")
+                    generation
+                } ?: return@collectLatest
                 coroutineScope {
-                    launch { followOpens() }
-                    launch { followFlushes() }
-                    launch { followIncidents() }
-                    flags?.let { tell -> launch { followFlags(tell) } }
+                    launch { followOpens(generation) }
+                    launch { followFlushes(generation) }
+                    launch { followIncidents(generation) }
+                    flags?.let { tell -> launch { followFlags(generation, tell) } }
                 }
             }
         }
     }
 
+    /** Analytics is off from now: see the class. Safe from any thread, and again when already off. */
+    fun revoke() = end(hold = true)
+
+    /** Lifts a [revoke]'s hold: analytics is on again if [consent] is. */
+    fun allow() {
+        val lifted = synchronized(lock) { held.also { held = false } }
+        if (lifted) turns.update { it + 1 }
+    }
+
+    private fun end(hold: Boolean) {
+        synchronized(lock) {
+            generation++
+            on = false
+            held = hold
+        }
+        posthog.cancelAll()
+        // Started even if [scope] is going away, and not cancelled once started.
+        scope.launch(lane, CoroutineStart.ATOMIC) { withContext(NonCancellable) { forget() } }
+        turns.update { it + 1 }
+    }
+
+    /** A new generation, when [consent] is on and the last one's install id is gone; on the lane, after any [forget]. */
+    private fun begin(): Long? {
+        if (idToDelete) idToDelete = !deleteId()
+        if (idToDelete) {
+            Log.w(TAG, "Analytics stays off: the last install id couldn't be deleted")
+            return null
+        }
+        return synchronized(lock) {
+            if (held || consent.value != true) return null
+            on = true
+            generation
+        }
+    }
+
+    /** Everything a generation had goes, the install id included. On the lane. */
+    private fun forget() {
+        queue.clear()
+        throttle = ErrorThrottle()
+        exposures = FailureExposures()
+        opens.pause()
+        installId = null
+        idToDelete = !deleteId()
+        try {
+            mark(null)
+        } catch (e: Exception) {
+            Log.w(TAG, "Crash mark not cleared: ${e.javaClass.simpleName}")
+        }
+        flags?.invoke(emptySet())
+    }
+
+    private fun deleteId(): Boolean = try {
+        prefs.edit().remove(KEY_INSTALL_ID).commit()
+    } catch (e: Exception) {
+        Log.w(TAG, "Install id not deleted: ${e.javaClass.simpleName}")
+        false
+    }
+
     fun record(event: AnalyticsEvent) {
+        record(event, live() ?: return)
+    }
+
+    /** [event], made in [generation]: kept only if that is still the one on. */
+    fun record(event: AnalyticsEvent, generation: Long) {
         val at = clock()
-        if (consent.value != true) return
-        scope.launch(lane) { if (consent.value == true) enqueue(event, at) }
+        if (!isLive(generation)) return
+        scope.launch(lane) { if (isLive(generation)) enqueue(event, at, generation) }
     }
 
     /**
@@ -303,14 +441,14 @@ internal class AnalyticsClient(
      */
     fun errorShown(area: ErrorArea, code: ErrorCode) {
         val at = clock()
-        if (consent.value != true) return
+        val generation = live() ?: return
         scope.launch(lane) {
-            if (consent.value != true) return@launch
+            if (!isLive(generation)) return@launch
             val same = queue.pending().lastOrNull {
                 it.event == "error_shown" && it.properties["area"] == JsonPrimitive(area.wire) && at - it.at < ErrorThrottle.BURST_MILLIS
             }
             if (same == null) {
-                if (throttle.occur(area, code, at)) enqueue(AnalyticsEvent.ErrorShown(area, code), at)
+                if (throttle.occur(area, code, at)) enqueue(AnalyticsEvent.ErrorShown(area, code), at, generation)
                 return@launch
             }
             if (same.properties["code"] == JsonPrimitive(ErrorCode.Unknown.wire) && code != ErrorCode.Unknown && throttle.occur(area, code, at)) {
@@ -321,41 +459,24 @@ internal class AnalyticsClient(
 
     fun failureShown(messageId: String, createdAt: Long, event: AnalyticsEvent.ChatFailureShown) {
         val at = clock()
-        if (consent.value != true) return
+        val generation = live() ?: return
         scope.launch(lane) {
-            if (consent.value == true && exposures.shown(messageId, createdAt, at)) enqueue(event, at)
+            if (isLive(generation) && exposures.shown(messageId, createdAt, at)) enqueue(event, at, generation)
         }
     }
 
-    /** Sends what is kept now, in one batch; what doesn't go stays for the next. */
+    /** Sends what the generation on now kept, in one batch; what doesn't go stays for the next. */
     suspend fun flush() = sending.withLock {
-        val batch = withContext(lane) { if (consent.value == true) queue.pending() else emptyList() }
+        val generation = live() ?: return@withLock
+        val batch = withContext(lane) { if (isLive(generation)) queue.pending().filter { it.generation == generation } else emptyList() }
         if (batch.isEmpty()) return@withLock
-        when (posthog.send(batch)) {
+        when (posthog.send(batch) { isLive(generation) }) {
             PostHog.Outcome.Sent, PostHog.Outcome.Refused -> withContext(lane) { queue.remove(batch) }
             PostHog.Outcome.Failed -> Unit
         }
     }
 
-    /** Analytics went off: everything it had goes, the install id included, without waiting for a request on its way. */
-    private suspend fun off() {
-        withContext(lane) {
-            queue.clear()
-            throttle = ErrorThrottle()
-            exposures = FailureExposures()
-            opens.pause()
-            installId = null
-            try {
-                prefs.edit().remove(KEY_INSTALL_ID).commit()
-            } catch (e: Exception) {
-                Log.w(TAG, "Install id not deleted: ${e.javaClass.simpleName}")
-            }
-        }
-        mark(null)
-        flags?.invoke(emptySet())
-    }
-
-    private suspend fun followOpens() {
+    private suspend fun followOpens(generation: Long) {
         foreground.collect { front ->
             withContext(lane) {
                 val now = clock()
@@ -367,16 +488,16 @@ internal class AnalyticsClient(
                     Log.w(TAG, "Configuration unreadable: ${e.javaClass.simpleName}")
                     AnalyticsEvent.AppOpened.Configuration()
                 }
-                enqueue(AnalyticsEvent.AppOpened(cold, setup), now)
+                if (isLive(generation)) enqueue(AnalyticsEvent.AppOpened(cold, setup), now, generation)
             }
         }
     }
 
-    private suspend fun followFlushes() {
+    private suspend fun followFlushes(generation: Long) {
         foreground.collectLatest { front ->
             // Coming back doesn't call off the send made as the app went behind.
             if (!front) {
-                scope.launch { flush() }
+                scope.launch { if (isLive(generation)) flush() }
                 return@collectLatest
             }
             while (true) {
@@ -386,19 +507,21 @@ internal class AnalyticsClient(
         }
     }
 
-    private suspend fun followIncidents() {
-        val incidents = ConnectionIncidents { scope.launch(lane) { if (consent.value == true) enqueue(it, clock()) } }
+    private suspend fun followIncidents(generation: Long) {
+        val incidents = ConnectionIncidents { record(it, generation) }
         combine(links, foreground, network) { link, front, online -> Triple(link, front, online) }
             .collect { (link, front, online) -> incidents.update(link, front, online, clock()) }
     }
 
     /** The flags for this install, asked each time the app comes to the front; a failed ask keeps the last answer. */
-    private suspend fun followFlags(tell: (Set<String>) -> Unit) {
+    private suspend fun followFlags(generation: Long, tell: (Set<String>) -> Unit) {
         foreground.collect { front ->
             if (!front) return@collect
-            val id = withContext(lane) { id() }
+            val id = withContext(lane) { if (isLive(generation)) id() else null } ?: return@collect
             try {
-                tell(posthog.flags(id))
+                val on = posthog.flags(id) { isLive(generation) }
+                // On the lane, where [forget] empties them: an answer never lands after.
+                withContext(lane) { if (isLive(generation)) tell(on) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -407,7 +530,7 @@ internal class AnalyticsClient(
         }
     }
 
-    private fun enqueue(event: AnalyticsEvent, at: Long) {
+    private fun enqueue(event: AnalyticsEvent, at: Long, generation: Long) {
         val own = AnalyticsSchema.check(event.name, event.properties)
         val common = AnalyticsSchema.checkCommon(commonProperties())
         if (own == null || common == null) {
@@ -422,7 +545,7 @@ internal class AnalyticsClient(
         properties["\$process_person_profile"] = JsonPrimitive(false)
         properties["\$ip"] = JsonNull
         properties["\$geoip_disable"] = JsonPrimitive(true)
-        queue.add(QueuedEvent(event.name, at, JsonObject(properties)))
+        queue.add(QueuedEvent(event.name, at, JsonObject(properties), generation))
     }
 
     private fun commonProperties(): Map<String, Any?> {

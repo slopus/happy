@@ -32,6 +32,7 @@ import androidx.navigation.toRoute
 import com.slopus.happy.ui.components.ProvideRowReveal
 import com.slopus.happy.ui.voice.voicePageEntries
 import com.slopus.happy.AppGraph
+import com.slopus.happy.analytics.Analytics
 import com.slopus.happy.BuildConfig
 import com.slopus.happy.R
 import com.slopus.happy.auth.AuthState
@@ -447,7 +448,11 @@ private fun Account(graph: AppGraph, nav: NavHostController) {
         anonId = account.encryption.anonId,
         publicId = account.publicId,
         analyticsOptOut = settings.analyticsOptOut,
-        onAnalyticsOptOutChange = { optOut -> graph.settings.change { it.copy(analyticsOptOut = optOut) } },
+        onAnalyticsOptOutChange = { optOut ->
+            // Off at once, before the setting reaches the accounts' consent.
+            if (optOut) Analytics.revoke() else Analytics.allow()
+            graph.settings.change { it.copy(analyticsOptOut = optOut) }
+        },
         onBack = { nav.popBackStack() },
         displayName = profile.displayName,
         username = profile.github?.login,
