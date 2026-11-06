@@ -849,10 +849,10 @@ ANDROID_SERIAL=<device> ./gradlew :benchmark:connectedBenchmarkBenchAndroidTest 
 - PostHog's public project key comes from `EXPO_PUBLIC_POSTHOG_API_KEY` or
   `-Phappy.postHogKey`, as happy-app's and Happy Desktop's do; nothing is
   checked in. A build without it reads every feature flag as off and sends
-  no events. Flags (`config/FeatureFlags.kt`): one `POST /flags/?v=2` per
-  open Happy account with its `anonId` as the distinct id (happy-app's
-  `identify`), each foreground, only from a build that sends analytics to
-  PostHog and only while analytics may go (see "Analytics"). The answer is kept per account in `feature-flags` prefs; a failed
+  no events. Flags (`config/FeatureFlags.kt`): asked by the `:analytics`
+  module alone, `POST /flags/?v=2` with the install id as the distinct id,
+  each foreground, only from a build that sends analytics to PostHog and
+  only while analytics may go; the answer is held in memory, and a failed
   ask keeps the last one. Events: see "Analytics".
 - A signed release or preview build without an explicit versionCode fails in
   `pre<Variant>Build`, before R8, rather than at the Play console.
@@ -915,24 +915,38 @@ answers. Nothing is counted on the phone, and no screen, view, navigation,
 picker change, stop, approval or todo is sent; model and effort ride on
 `message_sent`. Each event goes once its step worked (or failed, for the
 `*_failed`/`_error` ones). The "fires" rules are `AnalyticsRules.kt`:
-`error_shown`'s throttle, `chat_failure_shown`'s fresh-and-unseen check
-(and only for a card at least half on screen in a resumed page),
+`error_shown`'s throttle, `chat_failure_shown`'s fresh-and-unseen check,
 `agent_connection_lost`'s incidents, `app_opened`'s cold and warm opens.
+`message_sent` goes as the person sends (queued only, too), with the mode
+then, and never again on a retry; a create that fails is only its
+`task_created`/`bot_created`, not also the send's `error_shown`. A failure
+card's `chat_failure_shown` and a failed Happy CLI send's `error_shown` go
+once the card or row is seen (`Modifier.onSeen`: half on screen, the page
+resumed, no overlay up, as a `PageDialog` leaves the page resumed). A call
+is reported only if analytics was on from its start to its end
+(`Analytics.span`).
 
 Only release and preview builds with a key send, never debug, bench, a test
 harness, an instrumented run or Robolectric (`AnalyticsTarget`). Consent is
 this phone's switch (Data and Storage › Analytics, `AnalyticsSwitch`; a
 stored value that can't be read is off) and every Happy account signed in
 here allowing it (`accountsOptedOut`: the open account's setting as it is
-now, the others from their own databases). Nothing is recorded until both
-are read. Off stops every observer, forgets the queue, the throttle and the
-cards seen, deletes the install id and the crash mark, and empties the
-flags; on again starts a new install id. PostHog's `/flags` is asked only
-by the module, with the install id, under the same consent; `FeatureFlags`
-holds the answer in memory for the migration card. If the switch can't be
-written down, Data and Storage says so. Each account's switch on the Account
-screen toggles from its switch only, not its title, like the app's other
-switch rows.
+now, the others from their own databases; settings that can't be read, or
+an `analyticsOptOut` that isn't a boolean, are opted out, a missing one is
+not). Nothing is recorded until both are read. Analytics is on in one
+generation at a time: either switch turned off calls `Analytics.revoke()`
+at once, outside every flow, which ends the generation, cancels the
+requests on their way, and deletes the queue, the throttle, the cards seen,
+the crash mark, the flags and the install id on the client's lane without
+waiting for them. Every record, error, exposure, incident, open, flag
+answer and send checks the generation it was made in. It stays off until
+the setting reads as off or is turned back on (`Analytics.allow()`), and
+while the old install id can't be deleted; on again starts a new install
+id. PostHog's `/flags` is asked only by the module, with the install id,
+under the same consent; `FeatureFlags` holds the answer in memory for the
+migration card. If either switch can't be written down, its screen says
+so. Each account's switch on the Account screen toggles from its switch
+only, not its title, like the app's other switch rows.
 
 To see the payloads, a debug build sends to a local endpoint only:
 `adb reverse tcp:8787 tcp:8787` to a listener, then
