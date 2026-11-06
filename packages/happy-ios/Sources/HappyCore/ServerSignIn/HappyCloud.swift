@@ -16,5 +16,9 @@ public enum HappyCloud {
         connections.first { $0.server == server }
     }
 
+    /// Offered in development and preview builds only, not yet in the
+    /// App Store app.
+    public static func isOffered(in variant: AppVariant) -> Bool { variant != .production }
+
     public static func isCloud(_ server: String?) -> Bool { server == Self.server }
 }

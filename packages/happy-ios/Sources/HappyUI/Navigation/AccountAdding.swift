@@ -23,11 +23,12 @@ enum AccountAdding {
     /// server. Any other team server is added by scanning the code Happy
     /// Desktop shows.
     static func otherWays(context: AppContext, from controller: UIViewController, intent: ScanIntent = .addAccount, busy: @escaping (Bool) -> Void = { _ in }) -> [ScannerWay] {
-        [
+        (HappyCloud.isOffered(in: context.variant) ? [
             ScannerWay(title: Strings.ServerSignIn.cloudAction, symbol: "cloud") { [weak controller] in
                 guard let controller else { return }
                 connectToCloud(context: context, from: controller)
             },
+        ] : []) + [
             ScannerWay(title: Strings.Start.enterLink, symbol: "link") { [weak controller] in
                 guard let controller else { return }
                 enterLink(context: context, from: controller, intent: intent, busy: busy)
@@ -57,6 +58,7 @@ enum AccountAdding {
     /// address is the app's own, so it needs no scanned code; its
     /// installation is kept as health reports it.
     static func connectToCloud(context: AppContext, from controller: UIViewController) {
+        guard HappyCloud.isOffered(in: context.variant) else { return }
         let account = context.account
         if let cloud = HappyCloud.connection(in: account.agentConnections.accounts) {
             Task {

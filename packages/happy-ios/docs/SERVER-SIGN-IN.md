@@ -89,7 +89,9 @@ adding this server and signing in.
 
 - **Where.** "Connect to Happy Cloud" in the account switcher's menu (the
   list of accounts and servers, under Add) and in the scanner's and first
-  screen's ⋯ (`AccountAdding.connectToCloud`).
+  screen's ⋯ (`AccountAdding.connectToCloud`). Development and preview
+  builds only (`HappyCloud.isOffered`, from `AppVariant`): production shows
+  neither entry and `connectToCloud` does nothing there.
 - **Already connected.** A connection whose server is the cloud's address
   is switched to, and nothing is asked or added.
 - **Otherwise** "Connect to Happy Cloud?" asks first ("Sign in or create

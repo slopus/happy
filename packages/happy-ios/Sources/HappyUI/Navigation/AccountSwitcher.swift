@@ -200,7 +200,7 @@ final class AccountSwitcher: NSObject {
         cloud.accessibilityIdentifier = "account-cloud"
         return [
             UIMenu(options: .displayInline, children: choices),
-            UIMenu(options: .displayInline, children: [add, cloud]),
+            UIMenu(options: .displayInline, children: HappyCloud.isOffered(in: context.variant) ? [add, cloud] : [add]),
         ]
     }
 

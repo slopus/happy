@@ -370,6 +370,7 @@ final class SignInRequiredTests: XCTestCase {
         team.server = "https://happy.acme.example"
         XCTAssertEqual(HappyCloud.connection(in: [team, cloud])?.id, "server-1")
         XCTAssertNil(HappyCloud.connection(in: [team]))
+        XCTAssertEqual(AppVariant.allCases.filter(HappyCloud.isOffered), [.development, .preview])
     }
 }
 
