@@ -14,15 +14,11 @@ public struct RecordMotion: Equatable, Sendable {
     public enum Metrics {
         /// The blue circle under the finger.
         public static let innerDiameter: CGFloat = 110
-        /// The pale ring the voice swells.
-        public static let outerDiameter: CGFloat = innerDiameter + 50
-        /// The ring at silence: the circle's own size.
-        public static let outerMinScale: CGFloat = innerDiameter / outerDiameter
         /// How much of the last level each 60 Hz frame keeps.
         public static let levelKeep: CGFloat = 0.9
         /// How much of the last drag each 60 Hz frame keeps.
         public static let dragKeep: CGFloat = 0.7
-        /// The ring's appearing spring (`animateIn`): 0.5 s, damping 0.55.
+        /// The circles' appearing spring (`animateIn`): 0.5 s, damping 0.55.
         public static let springDuration: Double = 0.5
         public static let springDamping: CGFloat = 0.55
         /// The circles start this small and this faint, and grow in.
@@ -52,12 +48,6 @@ public struct RecordMotion: Equatable, Sendable {
         level = level * levelKeep + min(1, max(0, target)) * (1 - levelKeep)
         lift = min(0, lift * dragKeep + liftTarget * (1 - dragKeep))
         slide = min(0, slide * dragKeep + slideTarget * (1 - dragKeep))
-    }
-
-    /// The ring's scale against `outerDiameter`: the circle's size at
-    /// silence, the whole ring at full voice.
-    public var outerScale: CGFloat {
-        Metrics.outerMinScale + level * (1 - Metrics.outerMinScale)
     }
 
     /// The appearing spring `elapsed` seconds in: UIKit's spring of
@@ -98,7 +88,7 @@ public struct RecordMotion: Equatable, Sendable {
     }
 
     /// A microphone buffer's loudness, as its RMS amplitude, on the 0 to 1
-    /// the ring reads: -50 dB is silence and 0 dB the loudest.
+    /// the waves read: -50 dB is silence and 0 dB the loudest.
     public static func level(rms: Float) -> CGFloat {
         guard rms > 0 else { return 0 }
         let decibels = 20 * log10(Double(rms))

@@ -66,18 +66,24 @@ final class Dictation {
             _ = await AVAudioApplication.requestRecordPermission()
         }
         if SFSpeechRecognizer.authorizationStatus() == .notDetermined {
-            _ = await withCheckedContinuation { (done: CheckedContinuation<SFSpeechRecognizerAuthorizationStatus, Never>) in
-                SFSpeechRecognizer.requestAuthorization { done.resume(returning: $0) }
-            }
+            _ = await askSpeech()
         }
         return access()
+    }
+
+    /// Speech answers on a queue of its own: the callback is made outside
+    /// the main actor, or Swift traps when it runs there.
+    nonisolated private static func askSpeech() async -> SFSpeechRecognizerAuthorizationStatus {
+        await withCheckedContinuation { done in
+            SFSpeechRecognizer.requestAuthorization { done.resume(returning: $0) }
+        }
     }
 
     /// The recognizer for the person's language, else English; nil when
     /// neither runs on the device.
     private static func recognizer() -> SFSpeechRecognizer? {
         for locale in [Locale.current, Locale(identifier: "en-US")] {
-            if let recognizer = SFSpeechRecognizer(locale: locale), recognizer.supportsOnDeviceRecognition {
+            if let recognizer = SFSpeechRecognizer(locale: locale), recognizer.supportsOnDeviceRecognition || simulatorScript != nil {
                 return recognizer
             }
         }
@@ -95,11 +101,9 @@ final class Dictation {
         request.addsPunctuation = true
         request.taskHint = .dictation
         self.request = request
-        task = recognizer.recognitionTask(with: request) { [weak self] result, error in
-            let text = result?.bestTranscription.formattedString
-            let final = result?.isFinal ?? false
-            Task { @MainActor in self?.recognized(text, final: final || error != nil) }
-        }
+        task = recognizer.recognitionTask(with: request, resultHandler: Self.results { [weak self] text, final in
+            self?.recognized(text, final: final)
+        })
         let level: @Sendable (CGFloat) -> Void = { [weak self] value in
             Task { @MainActor in self?.onLevel?(value) }
         }
@@ -144,6 +148,9 @@ final class Dictation {
         }
         task = nil
         request = nil
+        if heard.isEmpty, let script = Self.simulatorScript, let words = try? String(contentsOf: script, encoding: .utf8) {
+            heard = words
+        }
         return heard.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -179,6 +186,16 @@ final class Dictation {
         if engine.isRunning { engine.stop() }
         engine.inputNode.removeTap(onBus: 0)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    /// Speech's results handler, made outside the main actor: it runs on
+    /// Speech's queue and hands each reading to the main actor.
+    nonisolated private static func results(_ deliver: @escaping @MainActor @Sendable (String?, Bool) -> Void) -> (SFSpeechRecognitionResult?, (any Error)?) -> Void {
+        { result, error in
+            let text = result?.bestTranscription.formattedString
+            let final = (result?.isFinal ?? false) || error != nil
+            Task { @MainActor in deliver(text, final) }
+        }
     }
 
     /// The microphone's tap, made outside the main actor: it runs on the
@@ -219,10 +236,25 @@ final class Dictation {
         #endif
     }
 
+    /// The simulator's recognizer can't load its model, so a simulator
+    /// run playing a file takes the file's words from a text file beside
+    /// it (`dictation.wav.txt`), when Speech heard nothing.
+    private static var simulatorScript: URL? {
+        #if targetEnvironment(simulator)
+        return fileSource?.appendingPathExtension("txt")
+        #else
+        return nil
+        #endif
+    }
+
     nonisolated private static func feed(_ url: URL, into request: SFSpeechAudioBufferRecognitionRequest, level: @escaping @Sendable (CGFloat) -> Void) -> Task<Void, Never> {
         nonisolated(unsafe) let request = request
         return Task.detached {
             guard let file = try? AVAudioFile(forReading: url) else { return }
+            // When it played, beside the file, so a film of the run can be
+            // given the sound it heard.
+            mark("start", for: url)
+            defer { mark("stop", for: url) }
             let chunk = AVAudioFrameCount(file.processingFormat.sampleRate / 20)
             while !Task.isCancelled {
                 guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: chunk),
@@ -236,6 +268,18 @@ final class Dictation {
                 level(0)
                 try? await Task.sleep(for: .milliseconds(100))
             }
+        }
+    }
+
+    nonisolated private static func mark(_ event: String, for url: URL) {
+        let log = url.appendingPathExtension("times")
+        let line = Data("\(event) \(Date().timeIntervalSince1970)\n".utf8)
+        if let handle = try? FileHandle(forWritingTo: log) {
+            handle.seekToEndOfFile()
+            handle.write(line)
+            try? handle.close()
+        } else {
+            try? line.write(to: log)
         }
     }
 }

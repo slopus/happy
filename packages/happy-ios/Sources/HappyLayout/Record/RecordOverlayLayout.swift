@@ -12,7 +12,7 @@ import CoreGraphics
 ///
 ///     ( ● 0:02,54     ‹ Slide to cancel        (  ◉  ) )
 ///       ↑ the bar the host gives            ↑ the 110 circle on the button,
-///                                             the 160 ring around it
+///                                             the waves' 244 square round it
 ///
 /// Every frame is in the overlay's space, the window's. The bar's line
 /// runs through the button's middle; "Slide to cancel" is centred in the
@@ -78,7 +78,7 @@ public struct RecordOverlayLayout: Equatable, Sendable {
         }
     }
 
-    /// The blue circle and the ring, before their transforms.
+    /// The blue circle and the waves' square, before their transforms.
     public var inner: CGRect
     public var outer: CGRect
     /// The pill's full height, which moves as one with the finger.
@@ -105,7 +105,7 @@ public struct RecordOverlayLayout: Equatable, Sendable {
         let lockness = min(1, max(0, input.lockness))
 
         let innerSide = RecordMotion.Metrics.innerDiameter
-        let outerSide = RecordMotion.Metrics.outerDiameter
+        let outerSide = RecordBlob.Metrics.side
         inner = CGRect(x: center.x - innerSide / 2, y: center.y - innerSide / 2, width: innerSide, height: innerSide)
         outer = CGRect(x: center.x - outerSide / 2, y: center.y - outerSide / 2, width: outerSide, height: outerSide)
 

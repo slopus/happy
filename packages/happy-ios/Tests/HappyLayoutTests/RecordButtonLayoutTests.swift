@@ -104,15 +104,6 @@ final class RecordGestureTests: XCTestCase {
 }
 
 final class RecordMotionTests: XCTestCase {
-    func testTheRingIsTheCircleAtSilenceAndWholeAtFullVoice() {
-        XCTAssertEqual(RecordMotion.Metrics.innerDiameter, 110)
-        XCTAssertEqual(RecordMotion.Metrics.outerDiameter, 160)
-        var motion = RecordMotion()
-        XCTAssertEqual(motion.outerScale, 110.0 / 160, accuracy: 1e-9)
-        for _ in 0..<400 { motion.step(level: 1, lift: 0, slide: 0) }
-        XCTAssertEqual(motion.outerScale, 1, accuracy: 1e-6)
-    }
-
     func testTheLevelKeepsNineTenthsAFrame() {
         var motion = RecordMotion()
         motion.step(level: 1, lift: 0, slide: 0)
@@ -207,7 +198,7 @@ final class RecordOverlayLayoutTests: XCTestCase {
     func testTheCirclesSitOnTheButton() {
         let layout = layout()
         XCTAssertEqual(layout.inner, CGRect(x: 297, y: 747, width: 110, height: 110))
-        XCTAssertEqual(layout.outer, CGRect(x: 272, y: 722, width: 160, height: 160))
+        XCTAssertEqual(layout.outer, CGRect(x: 230, y: 680, width: 244, height: 244))
     }
 
     func testTheLockPillIs122AboveTheButton() {
@@ -275,5 +266,121 @@ final class RecordLockGlyphTests: XCTestCase {
         XCTAssertEqual(glyph.shackle.minY, 12)
         XCTAssertEqual(glyph.rightLegEnd, glyph.leftLegEnd)
         XCTAssertEqual(glyph.lineWidth, 5.0 / 3.0)
+    }
+}
+
+final class RecordBlobTests: XCTestCase {
+    func testTheCircleIsTheBlobsMiddle045() {
+        XCTAssertEqual(RecordMotion.Metrics.innerDiameter, 110)
+        XCTAssertEqual(RecordBlob.Metrics.side, 244)
+        XCTAssertEqual(RecordBlob.Metrics.centreScale * 244, 110, accuracy: 1e-9)
+    }
+
+    func testTheOuterWaveGrowsFromTelegramsRestToTheCircleTimesPhiSquared() {
+        let silent = RecordBlob.scales(level: 0, presence: 1)
+        XCTAssertEqual(silent.outer, 0.627, accuracy: 1e-9)
+        XCTAssertEqual(silent.middle, (0.627 * 110.0 / 244).squareRoot(), accuracy: 1e-9)
+        let loud = RecordBlob.scales(level: 1, presence: 1)
+        let phi = (1 + 5.0.squareRoot()) / 2
+        XCTAssertEqual(loud.outer, 110.0 / 244 * phi * phi, accuracy: 1e-9)
+        // The three circles grow by φ each at full voice.
+        XCTAssertEqual(loud.middle / (110.0 / 244), phi, accuracy: 1e-9)
+        XCTAssertEqual(loud.outer / loud.middle, phi, accuracy: 1e-9)
+        XCTAssertEqual(RecordBlob.scales(level: 2, presence: 1).outer, loud.outer, "the level is clamped")
+        XCTAssertEqual(RecordBlob.scales(level: 0, presence: 0.75).outer, 0.627 * 0.75, accuracy: 1e-9)
+    }
+
+    func testSpeechSwellsTheWavesAsTelegramsDo() {
+        XCTAssertEqual(RecordBlob.swell(0), 0)
+        // -30 dB, speech held at the phone: about a tenth.
+        XCTAssertEqual(RecordBlob.swell(0.4), 0.08, accuracy: 1e-9)
+        XCTAssertEqual(RecordBlob.swell(1), 0.5)
+        XCTAssertEqual(RecordBlob.swell(3), 0.5)
+    }
+
+    func testThePresenceEasesFromRestingInAThirdOfASecond() {
+        XCTAssertEqual(RecordBlob.presence(at: 0), 0.75)
+        XCTAssertEqual(RecordBlob.presence(at: 0.175), 0.875, accuracy: 1e-6)
+        XCTAssertEqual(RecordBlob.presence(at: 0.35), 1)
+        XCTAssertEqual(RecordBlob.presence(at: 9), 1)
+    }
+
+    func testTheSameSeedMakesTheSameShapes() {
+        var a = RecordBlob(seed: 7)
+        var b = RecordBlob(seed: 7)
+        XCTAssertEqual(a, b)
+        a.advance(by: 3)
+        b.advance(by: 3)
+        XCTAssertEqual(a.outline(scale: 1, center: .zero), b.outline(scale: 1, center: .zero))
+        XCTAssertNotEqual(RecordBlob(seed: 8).from, a.from)
+    }
+
+    func testEightPointsBetweenAboutTenEleventhsAndTheEdge() {
+        var blob = RecordBlob(seed: 1)
+        for _ in 0..<50 {
+            XCTAssertEqual(blob.to.count, 8)
+            for point in blob.to {
+                let radius = (point.x * point.x + point.y * point.y).squareRoot()
+                XCTAssertGreaterThanOrEqual(radius, 0.5 / 1.1 - 1e-9)
+                XCTAssertLessThanOrEqual(radius, 0.5 + 1e-9)
+            }
+            blob.advance(by: blob.duration)
+        }
+    }
+
+    func testSilenceMorphsAShapeIn1Over09SecondsAndALoudVoice4ASecond() {
+        var blob = RecordBlob(seed: 3)
+        XCTAssertEqual(blob.duration, 1 / 0.9, accuracy: 1e-9)
+        blob.hear(1)
+        blob.hear(0.2)
+        // The loudest heard counts, from the next shape.
+        XCTAssertEqual(blob.duration, 1 / 0.9, accuracy: 1e-9)
+        blob.advance(by: 1 / 0.9)
+        XCTAssertEqual(blob.duration, 0.25, accuracy: 1e-9)
+        blob.advance(by: 0.25)
+        XCTAssertEqual(blob.duration, 1 / 0.9, accuracy: 1e-9)
+    }
+
+    func testAMorphEndsWhereTheNextBegins() {
+        var blob = RecordBlob(seed: 5)
+        let target = blob.to
+        blob.advance(by: blob.duration - 1e-6)
+        XCTAssertEqual(blob.progress, 1, accuracy: 1e-4)
+        blob.advance(by: 2e-6)
+        XCTAssertEqual(blob.from, target)
+        XCTAssertEqual(blob.progress, 0, accuracy: 1e-4)
+    }
+
+    func testTheOutlineOfACircleIsTheCircle() {
+        // Eight points on a circle of radius 100: the curves pass through
+        // them and their handles are the circle's tangents, 4/3·tan(π/16)
+        // of the radius long.
+        let points = (0..<8).map { index -> CGPoint in
+            let angle = CGFloat(index) * .pi / 4
+            return CGPoint(x: 100 * sin(angle), y: 100 * cos(angle))
+        }
+        let curves = RecordBlob.smooth(points)
+        XCTAssertEqual(curves.count, 8)
+        let handle = 4.0 / 3.0 * tan(Double.pi / 16) * 100
+        for (index, curve) in curves.enumerated() {
+            let next = points[(index + 1) % 8]
+            XCTAssertEqual(curve.to, next)
+            let from = points[index]
+            let dx: CGFloat = curve.control1.x - from.x
+            let dy: CGFloat = curve.control1.y - from.y
+            XCTAssertEqual(Double((dx * dx + dy * dy).squareRoot()), handle, accuracy: 1e-9)
+            // Tangent: square to the radius.
+            let dot: CGFloat = dx * from.x + dy * from.y
+            XCTAssertEqual(Double(dot), 0, accuracy: 1e-9)
+        }
+    }
+
+    func testTheOutlineIsScaledToTheSquareRoundTheCentre() {
+        let blob = RecordBlob(seed: 2)
+        let curves = blob.outline(scale: 0.5, side: 200, center: CGPoint(x: 10, y: 20))
+        for (curve, point) in zip(curves, blob.from.dropFirst() + [blob.from[0]]) {
+            XCTAssertEqual(curve.to.x, 10 + point.x * 100, accuracy: 1e-9)
+            XCTAssertEqual(curve.to.y, 20 + point.y * 100, accuracy: 1e-9)
+        }
     }
 }

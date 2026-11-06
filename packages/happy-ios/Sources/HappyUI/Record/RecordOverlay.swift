@@ -13,7 +13,7 @@ struct RecordBar: Equatable {
 
 /// Telegram's recording screen over everything, the keyboard included, in
 /// a window of its own (`TGModernConversationInputMicWindow`): the blue
-/// circle under the finger, the ring the voice swells, the lock pill above
+/// circle under the finger, the waves the voice swells, the lock pill above
 /// and the bar with the dot, the clock and "Slide to cancel".
 ///
 /// Adapted from Telegram-iOS `TGModernConversationInputMicButton.m`
@@ -39,7 +39,12 @@ final class RecordOverlay {
     private let cancelArrow = IconView(.ionicons("chevron-back"), size: 14, tint: Palette.textSecondary)
     private let cancelLabel = StyledLabel(style: TextStyles.recordCancel, color: Palette.textSecondary, lines: 1)
     private let cancelButton = UIButton(type: .system)
-    private let outer = UIView()
+    /// The waves round the circle (`RecordBlob`).
+    private let waves = UIView()
+    private let outerWave = CAShapeLayer()
+    private let middleWave = CAShapeLayer()
+    private var outerBlob = RecordBlob(seed: 1)
+    private var middleBlob = RecordBlob(seed: 2)
     private let inner = UIControl()
     private let micGlyph = IconView(.ionicons("mic"), size: 30, tint: Palette.Record.glyph)
     private let sendGlyph = IconView(.ionicons("arrow-up"), size: 30, tint: Palette.Record.glyph)
@@ -113,6 +118,7 @@ final class RecordOverlay {
         lockPanel.accessibilityLabel = Strings.Record.lock
         lockPanel.accessibilityIdentifier = "record-stop"
         lockPanel.isAccessibilityElement = true
+        lockPanel.accessibilityTraits = .button
         lockPanel.addAction(UIAction { [weak self] _ in
             guard let self, self.isLocked else { return }
             self.onStop?()
@@ -121,13 +127,18 @@ final class RecordOverlay {
         root.addSubview(lockWrapper)
 
         let ring = UIColor(Palette.Record.circle)
-        outer.backgroundColor = ring.withAlphaComponent(Palette.Record.ringAlpha)
-        outer.isUserInteractionEnabled = false
-        root.addSubview(outer)
+        waves.isUserInteractionEnabled = false
+        for wave in [outerWave, middleWave] {
+            wave.actions = ["path": NSNull(), "fillColor": NSNull()]
+            waves.layer.addSublayer(wave)
+        }
+        // Under the lock pill: the waves never cover it.
+        root.insertSubview(waves, belowSubview: lockWrapper)
         inner.backgroundColor = ring
         inner.accessibilityLabel = Strings.Record.send
         inner.accessibilityIdentifier = "record-send"
         inner.isAccessibilityElement = true
+        inner.accessibilityTraits = .button
         inner.addAction(UIAction { [weak self] _ in
             guard let self, self.isLocked else { return }
             self.onSend?()
@@ -154,6 +165,8 @@ final class RecordOverlay {
         started = CACurrentMediaTime()
         lastTick = started
         motion = RecordMotion()
+        outerBlob = RecordBlob(seed: .random(in: 0...UInt64.max))
+        middleBlob = RecordBlob(seed: .random(in: 0...UInt64.max))
         level = 0
         isLocked = false
         isDismissing = false
@@ -206,6 +219,8 @@ final class RecordOverlay {
 
     func setLevel(_ level: CGFloat) {
         self.level = level
+        outerBlob.hear(level)
+        middleBlob.hear(level)
     }
 
     /// Hands-free (`animateLock`): the lock shuts, the pill becomes a
@@ -258,9 +273,9 @@ final class RecordOverlay {
         let drop = CGAffineTransform(translationX: 0, y: RecordMotion.Metrics.lockRise).scaledBy(x: 0.2, y: 0.2)
         UIView.animate(withDuration: RecordMotion.Metrics.disappearDuration, delay: 0, options: [.beginFromCurrentState]) {
             self.inner.transform = small
-            self.outer.transform = small
+            self.waves.transform = small
             self.inner.alpha = 0
-            self.outer.alpha = 0
+            self.waves.alpha = 0
             self.lockWrapper.transform = drop
             self.lockWrapper.alpha = 0
         }
@@ -341,11 +356,19 @@ final class RecordOverlay {
         let start = RecordMotion.Metrics.appearScale
         let lift = CGAffineTransform(translationX: 0, y: motion.lift)
 
-        place(outer, layout.outer)
-        outer.layer.cornerRadius = layout.outer.width / 2
-        let outerScale = start + (motion.outerScale - start) * appear
-        outer.transform = lift.scaledBy(x: outerScale, y: outerScale)
-        outer.alpha = alpha
+        place(waves, layout.outer)
+        let grown = start + (1 - start) * appear
+        waves.transform = lift.scaledBy(x: grown, y: grown)
+        waves.alpha = alpha
+        outerBlob.advance(by: frames / 60)
+        middleBlob.advance(by: frames / 60)
+        let scales = RecordBlob.scales(level: RecordBlob.swell(motion.level), presence: RecordBlob.presence(at: elapsed))
+        let middle = CGPoint(x: layout.outer.width / 2, y: layout.outer.height / 2)
+        outerWave.path = Self.path(outerBlob.outline(scale: scales.outer, center: middle))
+        middleWave.path = Self.path(middleBlob.outline(scale: scales.middle, center: middle))
+        let ring = UIColor(Palette.Record.circle).resolvedColor(with: root.traitCollection)
+        outerWave.fillColor = ring.withAlphaComponent(Palette.Record.outerWaveAlpha).cgColor
+        middleWave.fillColor = ring.withAlphaComponent(Palette.Record.middleWaveAlpha).cgColor
 
         place(inner, layout.inner)
         inner.layer.cornerRadius = layout.inner.width / 2
@@ -368,6 +391,17 @@ final class RecordOverlay {
         lockArrow.frame = layout.arrow
         lockArrow.alpha = layout.arrowAlpha
         stopGlyph.frame = lockPanel.bounds
+    }
+
+    private static func path(_ curves: [RecordBlob.Curve]) -> CGPath {
+        let path = CGMutablePath()
+        guard let last = curves.last else { return path }
+        path.move(to: last.to)
+        for curve in curves {
+            path.addCurve(to: curve.to, control1: curve.control1, control2: curve.control2)
+        }
+        path.closeSubpath()
+        return path
     }
 
     /// Bounds and centre, so a transform on it stays about its middle.

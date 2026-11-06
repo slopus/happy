@@ -7,12 +7,13 @@ extension Strings {
     enum Record {
         /// VoiceOver for the button.
         static var dictate: String { "Dictate" }
-        static var dictateHint: String { "Hold to talk, let go to send. Slide left to cancel, up to keep talking hands-free." }
+        static var dictateHint: String { "Hold to talk, let go to type what you said. Slide left to cancel, up to keep talking hands-free." }
         static var slideToCancel: String { "Slide to cancel" }
         static var cancel: String { "Cancel" }
-        static var send: String { "Send" }
-        /// The locked pill: stop and look over what was heard.
-        static var stop: String { "Stop and review" }
+        /// The locked circle: done, the words go in the input box.
+        static var send: String { "Done" }
+        /// The locked pill: stop, the same.
+        static var stop: String { "Stop" }
         static var lock: String { "Slide up to lock" }
         static var microphoneTitle: String { "Microphone access is off" }
         static var microphoneMessage: String { "Allow Happy to use the microphone in Settings to dictate." }
