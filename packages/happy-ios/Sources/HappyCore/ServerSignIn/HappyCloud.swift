@@ -8,7 +8,7 @@ import HappyWire
 /// against nothing (docs/SERVER-SIGN-IN.md, "Happy Cloud").
 public enum HappyCloud {
     /// The cloud's API origin. Change it here only.
-    public static let server = "https://cloud.happy.engineering"
+    public static let server = "https://209-38-182-152.sslip.io"
     public static let name = "Happy Cloud"
 
     /// The connection already signed in to the cloud, if there is one.
