@@ -370,7 +370,7 @@ final class HostedSettingsSwitchTests: XCTestCase {
             finger.progress = progress
             swipe.state = .changed
             try await Task.sleep(for: .milliseconds(34))
-            swiping.append(frame(app, home: home, at: Double(progress)))
+            swiping.append(frame(app, home: home, leaving: settings.view, at: Double(progress)))
             if progress == 0.35 { capture(app.window, "swipe-\(leg)-mid") }
         }
         let missing = swiping.filter { !($0.settings && $0.search && $0.content) }
