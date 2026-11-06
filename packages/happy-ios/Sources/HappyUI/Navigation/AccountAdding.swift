@@ -53,18 +53,27 @@ enum AccountAdding {
         show(ServerSignInViewController(context: context, server: server, installation: instanceId.map { .expected($0) } ?? .unchecked), context: context, from: controller)
     }
 
-    /// Happy Cloud: its servers, after a confirm the first time, while the
-    /// account isn't signed in on this phone (`CloudServersViewController`).
+    /// Happy Cloud, full screen: Welcome while the account isn't signed in
+    /// on this phone, its servers once it is (`CloudScreens`).
     /// Cloud servers need no scanned code: their addresses are built from
     /// the app's own base.
     static func connectToCloud(context: AppContext, from controller: UIViewController) {
         guard HappyCloud.isOffered(in: context.variant) else { return }
-        Task {
-            if CloudAccount.restore(keychain: CloudAccountKeychain(backend: SecurityKeychainBackend())) == nil {
-                guard await Alerts.confirm(Strings.ServerSignIn.cloudTitle, Strings.ServerSignIn.cloudMessage, confirmTitle: Strings.ServerSignIn.cloudConnect, on: controller) else { return }
-            }
-            show(CloudServersViewController(context: context), context: context, from: controller)
+        let first = CloudScreens.first(context: context)
+        if context.account.accounts.isEmpty, let navigation = controller.navigationController {
+            navigation.pushViewController(first, animated: true)
+            return
         }
+        context.account.beginAddingAccount()
+        first.navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .close, primaryAction: UIAction { [weak first] _ in
+            context.account.cancelAddingAccount()
+            first?.dismiss(animated: true)
+        })
+        first.navigationItem.leftBarButtonItem?.accessibilityIdentifier = "cloud-close"
+        let navigation = UINavigationController(rootViewController: first)
+        AppCoordinator.applyAppearance(to: navigation.navigationBar)
+        navigation.modalPresentationStyle = .fullScreen
+        controller.present(navigation, animated: true)
     }
 
     /// Restore: the code another phone scans, with a secret key under it.

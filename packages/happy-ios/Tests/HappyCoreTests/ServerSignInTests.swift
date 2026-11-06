@@ -366,6 +366,8 @@ final class SignInRequiredTests: XCTestCase {
         XCTAssertEqual(acme, "https://acme.\(HappyCloud.base)")
         XCTAssertEqual(try ServerURL.normalize(acme).value, acme)
         XCTAssertEqual(HappyCloud.serverName(acme), "acme")
+        XCTAssertEqual(HappyCloud.handle(server: acme), "@acme")
+        XCTAssertNil(HappyCloud.handle(server: "https://happy.acme.example"))
         XCTAssertNil(HappyCloud.serverName("https://happy.acme.example"))
         XCTAssertNil(HappyCloud.serverName(HappyCloud.accounts))
         for bad in ["ab", "-acme", "acme-", "Acme", "ac_me", "api", "accounts", String(repeating: "a", count: 33)] { XCTAssertFalse(HappyCloud.isValidName(bad), bad) }

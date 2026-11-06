@@ -74,6 +74,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
     private var avatarSpeeds: AvatarSpeedHarness?
     private var agentChat: AgentChatHarness?
     private var agentFeed: AgentFeedHarness?
+    private var cloud: CloudHarness?
     private var realFeed: RealFeedHarness?
     private var realVault: RealVaultHarness?
     private var agentTools: AgentToolsHarness?
@@ -151,6 +152,10 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "agentFeed" {
             agentFeed = AgentFeedHarness(window: window, arguments: arguments)
+            return
+        }
+        if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "cloud" {
+            cloud = CloudHarness(window: window, arguments: arguments)
             return
         }
         if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "appMode" {

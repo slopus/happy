@@ -65,8 +65,8 @@ final class HappyCloudUITests: XCTestCase {
         capture("2-menu")
         cloud?.tap()
 
-        let connect = app.alerts.buttons["Connect"]
-        require(connect.waitForExistence(timeout: 10), "no confirm")
+        let connect = element("cloud-connect")
+        require(connect.waitForExistence(timeout: 10), "no welcome")
         capture("3-confirm")
         connect.tap()
 
