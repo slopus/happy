@@ -70,7 +70,7 @@ enum AccountAdding {
             first?.dismiss(animated: true)
         })
         first.navigationItem.leftBarButtonItem?.accessibilityIdentifier = "cloud-close"
-        let navigation = UINavigationController(rootViewController: first)
+        let navigation = CloudNavigationController(rootViewController: first)
         AppCoordinator.applyAppearance(to: navigation.navigationBar)
         navigation.modalPresentationStyle = .fullScreen
         controller.present(navigation, animated: true)
