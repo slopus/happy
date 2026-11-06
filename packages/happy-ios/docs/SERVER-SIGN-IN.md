@@ -120,6 +120,15 @@ accounts and servers v1, with v4's token lifetimes.
     `ASWebAuthenticationSession` with
     `prefersEphemeralWebBrowserSession = false`. A refresh token, if one
     came, is dropped.
+  - *A test account* (`CloudTestSignIn`), for testing every surface without
+    Apple or GitHub: ten taps on Welcome's logo within four seconds make a
+    login and password form, which isn't there before. `POST
+    /v1/auth/password` with `{ login, password }` answers the same pass;
+    401 `invalid_credentials` and 429 `locked` (`retryAfter` seconds) are
+    said under it. The password is only in its secure field and that
+    request, cleared once signed in. Development and preview builds only,
+    as Happy Cloud is. Operators make these accounts; see the cloud's
+    TESTAUTH.md.
   - The pass is held in memory only, with its expiry, and never refreshed.
     Opening the flow after it ends, a minute early, or a 401 from any
     accounts call goes straight back to Welcome, with no retry. Earlier

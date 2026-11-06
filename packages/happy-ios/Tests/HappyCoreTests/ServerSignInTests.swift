@@ -496,6 +496,33 @@ final class SignInRequiredTests: XCTestCase {
         XCTAssertNil(keychain.stored(item))
     }
 
+    /// A test account signs in with its login and password and gets the
+    /// same one-hour pass; a wrong password and a lockout say which.
+    func testHappyCloudTestAccountSignsInWithAPassword() async throws {
+        let accounts = HappyCloud.accounts
+        let http = ScriptedHTTP()
+        let pass = jwt("acc-qa", aud: accounts + "/")
+        http.on(accounts + "/v1/auth/password") { request in
+            XCTAssertEqual(request.method, "POST")
+            XCTAssertNil(request.headers["Authorization"])
+            let body = try JSONSerialization.jsonObject(with: request.body ?? Data()) as? [String: String]
+            XCTAssertEqual(body, ["login": "qa-ios", "password": "pw"])
+            return HTTPResponse(status: 200, body: Data(#"{"access_token":"\#(pass)","token_type":"Bearer","expires_in":3600}"#.utf8))
+        }
+        let account = try await CloudAccount.signIn(login: "qa-ios", password: "pw", http: http)
+        XCTAssertTrue(account.isLive())
+        XCTAssertEqual(account.expiresAt.timeIntervalSinceNow, 3600, accuracy: 5)
+
+        http.json(accounts + "/v1/auth/password", status: 401, #"{"code":"invalid_credentials"}"#)
+        await XCTAssertThrowsAsync(try await CloudAccount.signIn(login: "qa-ios", password: "no", http: http)) {
+            XCTAssertEqual($0 as? CloudAccountError, .refused(status: 401, code: "invalid_credentials", message: nil))
+        }
+        http.json(accounts + "/v1/auth/password", status: 429, #"{"code":"locked","retryAfter":840}"#)
+        await XCTAssertThrowsAsync(try await CloudAccount.signIn(login: "qa-ios", password: "no", http: http)) {
+            XCTAssertEqual($0 as? CloudAccountError, .locked(retryAfter: 840))
+        }
+    }
+
     /// Removing a cloud server revokes its refresh token's family at the
     /// accounts service; a grant without one sends nothing.
     func testHappyCloudRevokesARemovedServersSession() async throws {

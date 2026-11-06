@@ -186,7 +186,13 @@ public final class StateSceneView: UIView {
         start()
     }
 
+    /// Hears every tap, motion reduced or not.
+    public var onTap: (() -> Void)? {
+        didSet { applyAccessibility() }
+    }
+
     @objc private func tapped() {
+        onTap?()
         replay()
     }
 
@@ -280,7 +286,7 @@ public final class StateSceneView: UIView {
         let offered = !UIAccessibility.isReduceMotionEnabled
         isAccessibilityElement = offered
         accessibilityTraits = offered ? .button : .none
-        isUserInteractionEnabled = offered
+        isUserInteractionEnabled = offered || onTap != nil
     }
 }
 #endif

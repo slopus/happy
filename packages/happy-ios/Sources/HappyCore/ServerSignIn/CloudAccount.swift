@@ -40,6 +40,9 @@ public enum CloudAccountError: Error, Equatable, Sendable {
     case signInRequired
     /// `{ code, error }` from the accounts API.
     case refused(status: Int, code: String?, message: String?)
+    /// A test account's password tried too often; it opens again after
+    /// `retryAfter` seconds.
+    case locked(retryAfter: TimeInterval?)
     case invalidResponse
 }
 
@@ -106,6 +109,24 @@ public actor CloudAccount {
         let response = try await http.send(HTTPRequest(method: "POST", url: URL(string: HappyCloud.accounts + "/v1/auth/native")!,
                                                        headers: ["Accept": "application/json", "Content-Type": "application/json"], body: try JSONEncoder().encode(body)))
         // A 401 here is the identity token refused, not a pass ending.
+        guard (200..<300).contains(response.status) else { throw refusal(response, endsPass: false) }
+        let (access, _) = try OAuthTokenClient(http: http, now: now).accept(response.body, previous: grant, typed: false)
+        return CloudAccount(access: access, http: http, now: now)
+    }
+
+    /// A test account's sign-in, by the login and password an operator made
+    /// for it. The password goes only into this one request.
+    public static func signIn(login: String, password: String,
+                              http: any HTTPTransport = NoRedirectURLSessionTransport(), now: @escaping @Sendable () -> Date = Date.init) async throws -> CloudAccount {
+        let response = try await http.send(HTTPRequest(method: "POST", url: URL(string: HappyCloud.accounts + "/v1/auth/password")!,
+                                                       headers: ["Accept": "application/json", "Content-Type": "application/json"],
+                                                       body: try JSONEncoder().encode(["login": login, "password": password])))
+        if response.status == 429 {
+            struct Locked: Decodable { let retryAfter: TimeInterval? }
+            let retryAfter = (try? JSONDecoder().decode(Locked.self, from: response.body))?.retryAfter
+                ?? response.headers.first { $0.key.lowercased() == "retry-after" }.flatMap { TimeInterval($0.value) }
+            throw CloudAccountError.locked(retryAfter: retryAfter)
+        }
         guard (200..<300).contains(response.status) else { throw refusal(response, endsPass: false) }
         let (access, _) = try OAuthTokenClient(http: http, now: now).accept(response.body, previous: grant, typed: false)
         return CloudAccount(access: access, http: http, now: now)
