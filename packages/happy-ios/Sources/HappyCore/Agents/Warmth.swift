@@ -117,7 +117,7 @@ public enum Warmth {
         let left = kept.filter { $0.left != nil && !$0.held }.sorted { $0.left! > $1.left! }.map(\.agentId)
         var seen = Set<String>()
         var order: [String] = []
-        for id in reached + left.prefix(1) + ranked + left where known.contains(id) && seen.insert(id).inserted {
+        for id in reached + Array(left.prefix(1)) + ranked + left where known.contains(id) && seen.insert(id).inserted {
             if kept.first(where: { $0.agentId == id })?.held == true { continue }
             order.append(id)
         }
