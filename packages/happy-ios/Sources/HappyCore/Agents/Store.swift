@@ -296,14 +296,10 @@ public actor Store {
     private func read() async {
         sidebarReadSucceeded = false
         do {
-            async let health = client.health()
-            async let sidebar = client.sidebar(widgets: true)
-            async let bots = client.bots()
-            async let tasks = client.tasks()
-            async let setting = client.userSetting(Self.settingKey)
-            async let surfaceList = client.surfaces()
-            async let profile = client.profileUser()
-            let capabilities = (try? await health)?.capabilities ?? AgentWire.Health.Capabilities()
+            // Spaces were removed from happy-agent (API.md): a daemon
+            // without `sidebarOperations` answers 404 there, so nothing of
+            // the sidebar document is asked before health says it exists.
+            let capabilities = (try? await client.health())?.capabilities ?? AgentWire.Health.Capabilities()
             self.capabilities = capabilities
             guard capabilities.sidebarOperations == true else {
                 snapshot.availability = .unsupported
@@ -311,6 +307,12 @@ public actor Store {
                 publish()
                 return
             }
+            async let sidebar = client.sidebar(widgets: true)
+            async let bots = client.bots()
+            async let tasks = client.tasks()
+            async let setting = client.userSetting(Self.settingKey)
+            async let surfaceList = client.surfaces()
+            async let profile = client.profileUser()
             let answer = try await sidebar
             let (botList, taskList) = try await (bots, tasks)
             snapshot.prioritizing = (try? await setting) == .bool(true)
