@@ -198,9 +198,21 @@ final class AccountSwitcher: NSObject {
             AccountAdding.connectToCloud(context: context, from: controller)
         }
         cloud.accessibilityIdentifier = "account-cloud"
+        // Only while the account's pass is held; it forgets the pass, and
+        // the servers stay.
+        let cloudSignOut = UIDeferredMenuElement.uncached { completion in
+            MainActor.assumeIsolated {
+                guard CloudScreens.account?.isLive() == true else { return completion([]) }
+                let signOut = UIAction(title: Strings.HappyCloud.signOut, image: UIImage(systemName: "rectangle.portrait.and.arrow.right")) { _ in
+                    CloudScreens.account = nil
+                }
+                signOut.accessibilityIdentifier = "account-cloud-sign-out"
+                completion([signOut])
+            }
+        }
         return [
             UIMenu(options: .displayInline, children: choices),
-            UIMenu(options: .displayInline, children: HappyCloud.isOffered(in: context.variant) ? [add, cloud] : [add]),
+            UIMenu(options: .displayInline, children: HappyCloud.isOffered(in: context.variant) ? [add, cloud, cloudSignOut] : [add]),
         ]
     }
 
