@@ -18,7 +18,7 @@ xcodegen && open Happy.xcodeproj   # macOS
 ## Production continuation
 
 The native iOS app continues the existing `com.ex3ndr.happy` App Store Connect
-listing with **2.0.0 (156)**, following the React Native app's 1.8.0 (154).
+listing with **2.0.0 (157)**, following the React Native app's 1.8.0 (154).
 Development and preview keep their separate bundle identities and share the
 same version. The version is set once in `project.yml` (see
 [Versioning](AGENTS.md#versioning)); production's build number is set in
@@ -28,12 +28,13 @@ default Keychain access group so the RN credentials and Expo installation ID
 survive an in-place upgrade.
 
 Follow [the release skill](../../.agents/skills/release/SKILL.md) from a clean
-local `main` matching freshly fetched `origin/main`. This release is for
-**TestFlight only**: upload to App Store Connect without submitting for App
-Store review or public release. After successful submission, tag the exact
-source commit `native-ios-2.0.0-build156`; future iOS tags follow
+local `main` matching freshly fetched `origin/main`. Upload to App Store
+Connect and submit **2.0.0 (157) for App Review**, with release set to
+**Manual**. Approval must not publish the app automatically; public release
+requires separate user authorization. After successful upload, tag the exact
+source commit `native-ios-2.0.0-build157`; future iOS tags follow
 `native-ios-<version>-build<build>`. Never move an existing tag. No GitHub
-Release is needed for this TestFlight build.
+Release is needed for this native build.
 
 ## Native Mac app
 
