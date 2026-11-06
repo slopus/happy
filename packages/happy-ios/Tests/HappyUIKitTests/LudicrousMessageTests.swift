@@ -84,8 +84,8 @@ final class LudicrousMessageTests: XCTestCase {
         }
         print("LudicrousMessageTests: planned off main \(closedTook) closed, \(openTook) open; main thread \(worst["closed"]!) closed, \(worst["open"]!) open")
         // Half a 60 Hz frame for either, measured and drawn.
-        XCTAssertLessThan(worst["closed"]!, .milliseconds(8))
-        XCTAssertLessThan(worst["open"]!, .milliseconds(8))
+        XCTAssertLessThan(worst["closed"]!, .milliseconds(TestTime.budget(8)))
+        XCTAssertLessThan(worst["open"]!, .milliseconds(TestTime.budget(8)))
     }
 }
 #endif

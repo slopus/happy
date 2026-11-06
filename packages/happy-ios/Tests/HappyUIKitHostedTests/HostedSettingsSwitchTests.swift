@@ -497,7 +497,7 @@ final class HostedSettingsSwitchTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(100))
             recorder.stop()
             XCTAssertTrue(landed, "\(leg): back didn't land on the new home")
-            XCTAssertGreaterThan(frames.count, HostedTime.sampled(5), leg)
+            XCTAssertGreaterThan(frames.count, TestTime.sampled(5), leg)
             // iOS 27 sets a pop's motion up a frame after it is asked
             // for; until then Settings fills the screen where it was.
             let broken = frames.filter { $0.begun && (!$0.whole || $0.name != expected) }

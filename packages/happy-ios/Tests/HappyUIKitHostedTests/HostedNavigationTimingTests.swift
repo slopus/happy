@@ -25,7 +25,7 @@ final class HostedNavigationTimingTests: XCTestCase {
     override func setUp() {
         super.setUp()
         // A slower simulator gets its chats' rows in later.
-        ChatOpening.cap = HostedTime.budget(ChatOpening.shippedCap)
+        ChatOpening.cap = TestTime.budget(ChatOpening.shippedCap)
         addTeardownBlock { @MainActor in ChatOpening.cap = ChatOpening.shippedCap }
     }
 

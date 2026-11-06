@@ -473,8 +473,8 @@ final class HostedDocumentEditorTests: XCTestCase {
         """
         if let folder = Self.evidence { try? report.write(to: folder.appendingPathComponent("latency.txt"), atomically: true, encoding: .utf8) }
         print(report)
-        XCTAssertLessThan(keystrokes.sorted()[keystrokes.count / 2], HostedTime.budget(8.3), "a keystroke within a 120 Hz frame")
-        XCTAssertLessThan(remotes.sorted()[remotes.count / 2], HostedTime.budget(4.2))
+        XCTAssertLessThan(keystrokes.sorted()[keystrokes.count / 2], TestTime.budget(8.3), "a keystroke within a 120 Hz frame")
+        XCTAssertLessThan(remotes.sorted()[remotes.count / 2], TestTime.budget(4.2))
         textView.resignFirstResponder()
     }
 

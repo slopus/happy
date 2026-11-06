@@ -53,7 +53,7 @@ final class SessionInfoCodeBlockTests: XCTestCase {
         let view = CodeBlockView(code: code)
         let started = CACurrentMediaTime()
         let empty = view.layout(width: 393)
-        XCTAssertLessThan(CACurrentMediaTime() - started, 0.05)
+        XCTAssertLessThan(CACurrentMediaTime() - started, TestTime.budget(0.05))
         // An empty box until its layout is in.
         XCTAssertEqual(empty.size.height, 36)
         await view.measured()

@@ -218,7 +218,7 @@ final class HostedMediaDownloadTests: XCTestCase {
         // Bigger than the limit, as the tool presented it.
         XCTAssertGreaterThan(photo.count, 1024 * 1024)
         let size = photo.count
-        let daemon = SlowMediaDaemon(files: [0: photo], pace: .milliseconds(Int(HostedTime.budget(60))))
+        let daemon = SlowMediaDaemon(files: [0: photo], pace: .milliseconds(Int(TestTime.budget(60))))
         let client = AgentClient(transport: daemon, token: "t")
         let library = MediaLibrary(namespace: "hosted-\(UUID().uuidString)", directory: directory)
         let loader = MediaLoader(client: client, agentId: "agent1", library: library)

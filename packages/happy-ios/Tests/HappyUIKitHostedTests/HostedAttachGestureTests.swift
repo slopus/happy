@@ -535,10 +535,10 @@ final class HostedAttachGestureTests: XCTestCase {
         let sorted = passes.sorted()
         let p99 = sorted.isEmpty ? 0 : sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.99))]
         print("attach-fling: frames \(frame), passes \(passes.count), worst \(String(format: "%.2f", worst * 1000)) ms, p99 \(String(format: "%.2f", p99 * 1000)) ms, grid work \(AttachMenuSignpost.longestByName.mapValues { Int($0 * 1_000_000) }) us, batches \(sheet.feed.batches), scroll worst \(String(format: "%.2f", scrollWorst * 1000)) ms, over budget \(passes.filter { $0 > 0.0042 }.map { Int($0 * 1_000_000) }) us")
-        XCTAssertLessThanOrEqual(AttachMenuSignpost.longest, HostedTime.budget(0.0042), "a grid batch or cell took \(AttachMenuSignpost.longest * 1000) ms")
-        XCTAssertLessThanOrEqual(scrollWorst, HostedTime.budget(0.0042), "a scroll step took \(scrollWorst * 1000) ms")
-        XCTAssertLessThanOrEqual(p99, HostedTime.budget(0.0042), "1% of run loop passes took over \(p99 * 1000) ms")
-        XCTAssertLessThanOrEqual(worst, HostedTime.budget(1.0 / 120), "a run loop pass took \(worst * 1000) ms")
+        XCTAssertLessThanOrEqual(AttachMenuSignpost.longest, TestTime.budget(0.0042), "a grid batch or cell took \(AttachMenuSignpost.longest * 1000) ms")
+        XCTAssertLessThanOrEqual(scrollWorst, TestTime.budget(0.0042), "a scroll step took \(scrollWorst * 1000) ms")
+        XCTAssertLessThanOrEqual(p99, TestTime.budget(0.0042), "1% of run loop passes took over \(p99 * 1000) ms")
+        XCTAssertLessThanOrEqual(worst, TestTime.budget(1.0 / 120), "a run loop pass took \(worst * 1000) ms")
     }
 }
 #endif

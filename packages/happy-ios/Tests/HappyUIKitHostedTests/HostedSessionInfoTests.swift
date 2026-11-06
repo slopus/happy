@@ -616,7 +616,7 @@ final class HostedSessionInfoTests: XCTestCase {
             format: "SESSIONINFO groups after %.0f ms; longest main-thread frame gap %.0f ms; %d late frames, %.0f ms late in all, over %d frames",
             openedAfter * 1000, longest * 1000, late.count, late.map { $0 - 1.0 / 60 }.reduce(0, +) * 1000, ticks.count
         ))
-        XCTAssertLessThan(longest, HostedTime.budget(0.25), "the main thread was held \(longest) s")
+        XCTAssertLessThan(longest, TestTime.budget(0.25), "the main thread was held \(longest) s")
         await controller.signOut()
     }
 

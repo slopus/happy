@@ -24,6 +24,10 @@ jobs:
     timeout-minutes: 45
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+      # The hosted runners' simulators run about twice as slow as a Mac's:
+      # the tests' time budgets stretch by this (`TestTime`), and what
+      # each frame shows is checked as on a Mac.
+      TEST_RUNNER_HAPPY_TEST_TIME_SCALE: '2.5'
     defaults:
       run:
         working-directory: packages/happy-ios
@@ -122,7 +126,7 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
       SHARDS: 3
       # The hosted runners' simulators run about twice as slow as a Mac's:
-      # the tests' time budgets stretch by this (`HostedTime`), and what
+      # the tests' time budgets stretch by this (`TestTime`), and what
       # each frame shows is checked as on a Mac.
       TEST_RUNNER_HAPPY_TEST_TIME_SCALE: '2.5'
     defaults:
