@@ -1,16 +1,13 @@
 import XCTest
 
 /// Happy Cloud end to end on a phone, against the live cloud: Connect to
-/// Happy Cloud, confirm, create an account in the browser, create a server
-/// in the picker, sign in to it without a page, land on its home, start a
-/// task and see its answer. Runs only with
-/// `TEST_RUNNER_HAPPY_CLOUD_E2E=1`; `TEST_RUNNER_HAPPY_CLOUD_EMAIL` and
-/// `TEST_RUNNER_HAPPY_CLOUD_PASSWORD` name the account it creates.
+/// Happy Cloud, Sign in with Apple (a person at the phone finishes Apple's
+/// sheet), create a server in the picker, connect to it with no browser,
+/// land on its home, start a task and see its answer. Runs only with
+/// `TEST_RUNNER_HAPPY_CLOUD_E2E=1`.
 @MainActor
 final class HappyCloudUITests: XCTestCase {
     private let app = XCUIApplication()
-    private let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-    private let browser = XCUIApplication(bundleIdentifier: "com.apple.SafariViewService")
     private var env: [String: String] { ProcessInfo.processInfo.environment }
 
     override func setUp() { continueAfterFailure = false }
@@ -35,7 +32,6 @@ final class HappyCloudUITests: XCTestCase {
         guard !found else { return }
         capture("failed")
         tree("failed-app", app)
-        tree("failed-browser", browser)
         XCTFail(message)
     }
 
@@ -51,8 +47,6 @@ final class HappyCloudUITests: XCTestCase {
 
     func testConnectSignUpAndTalkToAnAgent() throws {
         try XCTSkipUnless(env["HAPPY_CLOUD_E2E"] == "1")
-        let email = env["HAPPY_CLOUD_EMAIL"] ?? "ios-\(Int(Date().timeIntervalSince1970))@example.com"
-        let password = env["HAPPY_CLOUD_PASSWORD"] ?? "Happy-cloud-\(Int(Date().timeIntervalSince1970))"
         app.launch()
 
         let switcher = element("account-switcher")
@@ -65,45 +59,13 @@ final class HappyCloudUITests: XCTestCase {
         capture("2-menu")
         cloud?.tap()
 
-        let connect = element("cloud-connect")
-        require(connect.waitForExistence(timeout: 10), "no welcome")
-        capture("3-confirm")
-        connect.tap()
-
-        let consent = springboard.alerts.buttons["Continue"]
-        require(consent.waitForExistence(timeout: 30), "no sign-in consent")
-        consent.tap()
-        Thread.sleep(forTimeInterval: 4)
-        capture("4-auth-page")
-        tree("4-auth-page", browser)
-
-        // The auth server's page: Create account, then the form.
-        if let create = first([browser.links["Create an account"], app.links["Create an account"], browser.links["Create account"], app.links["Create account"]], timeout: 20) {
-            create.tap()
-            Thread.sleep(forTimeInterval: 2)
-        }
-        capture("5-sign-up")
-        tree("5-sign-up", browser)
-        let web = browser.textFields.count > 0 ? browser : app
-        let fields = web.textFields.allElementsBoundByIndex.filter(\.isHittable)
-        let secure = web.secureTextFields.allElementsBoundByIndex.filter(\.isHittable)
-        for field in fields {
-            let label = (field.label + " " + ((field.placeholderValue) ?? "")).lowercased()
-            field.tap()
-            field.typeText(label.contains("mail") || label.contains("user") ? email : "iPhone Cloud")
-        }
-        for field in secure {
-            field.tap()
-            for own in [browser.buttons["Choose My Own Password"], app.buttons["Choose My Own Password"], springboard.buttons["Choose My Own Password"]] where own.waitForExistence(timeout: 2) { own.tap(); break }
-            field.typeText(password)
-        }
-        capture("6-filled")
-        let submit = first([web.buttons["Create account"]], timeout: 5)
-        require(submit != nil, "no submit")
-        submit?.tap()
-
+        let apple = element("cloud-apple")
+        require(apple.waitForExistence(timeout: 10), "no welcome")
+        capture("3-welcome")
+        apple.tap()
+        // Apple's sheet needs the person: Face ID or the passcode.
         let create = element("cloud-create")
-        require(create.waitForExistence(timeout: 30), "no picker after the account's sign-in")
+        require(create.waitForExistence(timeout: 180), "no picker after the account's sign-in")
         capture("7-picker")
         create.tap()
         let name = element("cloud-create-name")
@@ -113,10 +75,7 @@ final class HappyCloudUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 1.5)
         capture("8-name")
         element("cloud-create-save").tap()
-        // The server's own sign-in: iOS asks again, then no page.
-        let again = springboard.alerts.buttons["Continue"]
-        require(again.waitForExistence(timeout: 60), "no server sign-in consent")
-        again.tap()
+        // The server's token comes from the accounts API: no browser.
 
         require(switcher.waitForExistence(timeout: 60), "no home after sign-in")
         Thread.sleep(forTimeInterval: 5)

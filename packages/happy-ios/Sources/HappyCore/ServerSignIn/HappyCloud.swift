@@ -1,20 +1,30 @@
 import Foundation
 import HappyWire
 
-/// Happy Cloud: one Happy Cloud account (at `accounts.<base>`) and the
-/// servers it belongs to, each a team server at `<name>.<base>`. The base
-/// is compiled into the app. Cloud servers are the only ones added without
+/// Happy Cloud: one Happy Cloud account (at `auth.happy.engineering`) and
+/// the servers it belongs to, each a team server at `<name>.<base>`. Both
+/// are compiled into the app. Cloud servers are the only ones added without
 /// a scanned code: the app builds their addresses from its own base and a
 /// name the accounts service listed, never from anything typed, pasted or
 /// opened from a link. A server's installation is recorded from health
 /// after sign-in, without a comparison (docs/SERVER-SIGN-IN.md, "Happy
 /// Cloud").
 public enum HappyCloud {
-    /// The domain every cloud host is under. Change it here only.
+    /// The domain every cloud server is under. Change it here only.
     public static let base = "24-144-71-103.sslip.io"
     public static let name = "Happy Cloud"
-    /// The accounts service: account sign-in and the servers API.
-    public static var accounts: String { "https://accounts.\(base)" }
+    /// The accounts service, on its own domain: account sign-in, the
+    /// servers API, and every token. Change it here only.
+    public static let accounts = "https://auth.happy.engineering"
+
+    /// How a cloud server's own sign-in is described: on the accounts
+    /// service, for the server (what `/v0/authentication` advertises). The
+    /// app gets its tokens from the accounts API instead of the browser,
+    /// and refreshes them here.
+    public static func method(server: String) -> OAuthMethod {
+        OAuthMethod(id: "jwt", name: name, authorizationUrl: accounts + "/authorize", tokenUrl: accounts + "/token",
+                    refreshUrl: accounts + "/token", clientId: "happy", scope: "happy", resource: server + "/")
+    }
 
     /// Offered in development and preview builds only, not yet in the
     /// App Store app.

@@ -44,6 +44,8 @@ extension Strings {
             }
         }
 
+        static let otherWays = "Other Ways to Sign In"
+
         /// A name as typed, with the `@` people see in front of it dropped.
         static func bareName(_ text: String) -> String {
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()

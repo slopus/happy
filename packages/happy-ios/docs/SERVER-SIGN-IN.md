@@ -81,12 +81,12 @@ checked.
 
 ## Happy Cloud
 
-Happy Cloud has one account service, `https://accounts.<base>/`, and any
-number of servers, each a team server at `https://<name>.<base>/`. The base
-is compiled into the app (`HappyCloud.base`,
+Happy Cloud has one account service, `https://auth.happy.engineering/`,
+and any number of servers, each a team server at `https://<name>.<base>/`.
+Both are compiled into the app (`HappyCloud.accounts`, `HappyCloud.base`,
 `Sources/HappyCore/ServerSignIn/HappyCloud.swift`) and can't be edited.
 The contract shared with Android, desktop and the backend is Happy Cloud
-accounts and servers v1.
+accounts and servers v1, with v4's token lifetimes.
 
 - **Where.** "Connect to Happy Cloud" in the account switcher's menu (the
   list of accounts and servers, under Add) and in the scanner's and first
@@ -99,20 +99,31 @@ accounts and servers v1.
   Your Servers, Name Your Server, Join a Server, Connecting. With no
   account yet it's pushed on the first screen; otherwise it's presented
   full screen with a Close button.
-- **Welcome.** While no Happy Cloud account is signed in on the phone,
-  "Connect to Happy Cloud?" ("Sign in or create an account to add a cloud
-  team. Agents run in the cloud; no computer needed.", Connect) comes
-  first. With an account kept, the flow opens on Your Servers.
-- **Account sign-in** (`CloudAccount`). Authorization code + PKCE S256 at
-  `accounts.<base>/authorize`, `client_id` `happy`, the usual redirect, and
-  `resource` the accounts origin, in `ASWebAuthenticationSession` with
-  `prefersEphemeralWebBrowserSession = false`. The cookie that leaves on
-  the accounts origin is what lets each server's sign-in finish without a
-  page. The token's `aud` must be the accounts origin. The access token is
-  in memory only. The grant is in its own Keychain item
-  (`happy-ios:cloud-account`), protected as a team server's below, so the
-  picker opens again without the browser; a refresh the accounts service
-  refuses signs the account in again.
+- **Welcome.** "Connect to Happy Cloud?" ("Sign in or create an account
+  to add a cloud team. Agents run in the cloud; no computer needed.") with
+  Sign in with Apple's own button as the primary action and Other Ways to
+  Sign In under it. While the account's pass lasts, the flow opens on Your
+  Servers instead.
+- **Account sign-in** (`CloudAccount`). Either way it ends in a pass: an
+  account token whose `aud` must be the accounts origin, good for an hour,
+  with no refresh token.
+  - *Sign in with Apple* (`CloudApple`): `ASAuthorizationAppleIDProvider`
+    asking for the name and email, its `nonce` the SHA-256 of a fresh
+    random one. `POST /v1/auth/native` gets `provider` `apple`, the
+    identity token, the raw nonce, the authorization code and, when Apple
+    gives it (the first time only), the person's full name. The
+    `com.apple.developer.applesignin` entitlement is on the development
+    and preview apps.
+  - *Other ways*: authorization code + PKCE S256 at
+    `auth.happy.engineering/authorize`, `client_id` `happy`, the usual
+    redirect, and `resource` the accounts origin, in
+    `ASWebAuthenticationSession` with
+    `prefersEphemeralWebBrowserSession = false`. A refresh token, if one
+    came, is dropped.
+  - The pass is held in memory only, with its expiry, and never refreshed.
+    Opening the flow after it ends, a minute early, or a 401 from any
+    accounts call goes straight back to Welcome, with no retry. Earlier
+    builds' Keychain item (`happy-ios:cloud-account`) is deleted.
 - **The picker** (`CloudServersViewController`). Your servers
   (`GET /v1/servers`) as cards; Create a New Server opens Name Your Server
   (a name under `.<base>`, checked as it's typed with
@@ -124,16 +135,23 @@ accounts and servers v1.
   then the bytes from the listed image `url` under the account token (only
   ever on the accounts origin), or the generated avatar seeded by the
   server's id when it has none.
-- **Connecting** runs the sign-in below on `https://<name>.<base>`, built
-  from the listed name and the app's own base, never from the listed `url`.
-  The account token goes only to the accounts service.
+- **Connecting** asks the accounts service for the server's own tokens,
+  `POST /v1/servers/:id/token` under the pass: no browser. The access
+  token's `aud` must be `https://<name>.<base>/`, built from the listed
+  name and the app's own base, never from the listed `url`. Its refresh
+  token is the lasting session, kept as any server's below and refreshed
+  at `auth.happy.engineering/token` (`refresh_token` grant, `client_id`
+  `happy`, `resource` the server) without the account. Then, as after any
+  sign-in, the server is asked who signed in, its installation is
+  recorded, and the connection is added. The account token goes only to
+  the accounts service.
 - **No scanned code.** The scan-only rule exists so that no one can send a
   person's sign-in to a server by a link or a pasted address. Cloud
   addresses come from the app's base, so the rule doesn't apply to them,
   and only to them: `HappyScan` still refuses every other server not
   scanned.
-- **Installation.** There is no code to compare with. After the code
-  exchange, health's `instanceId` is read and kept on the connection as
+- **Installation.** There is no code to compare with. After the tokens
+  come, health's `instanceId` is read and kept on the connection as
   reported (`ServerSignInFlow.Installation.recorded`); a server reporting
   none still signs in. "Sign In Again" then checks the one kept, as for
   any server.

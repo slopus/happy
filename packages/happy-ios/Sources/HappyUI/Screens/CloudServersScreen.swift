@@ -1,29 +1,39 @@
 #if canImport(UIKit)
 import AuthenticationServices
+import CryptoKit
 import HappyCore
 import HappyLayout
 import UIKit
 
 /// Happy Cloud's screens, full screen on the first screen's Grain Gradient
-/// with its large type and one primary action each: Welcome (the account's
-/// sign-in in the system browser), Your Servers, Create, Join, and
-/// Connecting (the team-server sign-in on the server, which the account's
-/// browser session finishes without a page). A server shows as `@name`.
-/// docs/SERVER-SIGN-IN.md, "Happy Cloud".
+/// with its large type and one primary action each: Welcome (Sign in with
+/// Apple, or the account's sign-in in the system browser), Your Servers,
+/// Create, Join, and Connecting (a token for the server from the accounts
+/// API, no browser). A server shows as `@name`. docs/SERVER-SIGN-IN.md,
+/// "Happy Cloud".
 @MainActor
 enum CloudScreens {
-    static let keychain = CloudAccountKeychain(backend: SecurityKeychainBackend())
+    /// The account's one-hour pass, in memory only, while it lasts.
+    static var account: CloudAccount?
 
-    /// The first screen of the flow: the servers when the account is
-    /// signed in on this phone, Welcome otherwise.
+    /// The first screen of the flow: the servers while the account's pass
+    /// lasts, Welcome otherwise.
     static func first(context: AppContext) -> UIViewController {
-        if let account = CloudAccount.restore(keychain: keychain) { return CloudServersViewController(context: context, account: account) }
+        CloudAccount.forgetKeptGrant(backend: SecurityKeychainBackend())
+        if let account, account.isLive() { return CloudServersViewController(context: context, account: account) }
+        account = nil
         return CloudWelcomeViewController(context: context)
     }
 
-    /// Back to Welcome when the account's sign-in has ended.
-    static func signedOut(_ account: CloudAccount, context: AppContext, from controller: UIViewController) {
-        Task { await account.signOut() }
+    /// Signed in: the servers.
+    static func signedIn(_ account: CloudAccount, context: AppContext, from controller: UIViewController) {
+        self.account = account
+        controller.navigationController?.pushViewController(CloudServersViewController(context: context, account: account), animated: true)
+    }
+
+    /// Back to Welcome when the account's pass has ended: no retry.
+    static func signedOut(context: AppContext, from controller: UIViewController) {
+        account = nil
         guard let navigation = controller.navigationController else { return }
         var stack = Array(navigation.viewControllers.prefix { !($0 is CloudStageViewController) })
         stack.append(CloudWelcomeViewController(context: context))
@@ -50,6 +60,16 @@ class CloudStageViewController: UIViewController {
     let bodyLabel: StyledLabel
     let content = UIView()
     let primary: RoundButton
+    /// Shown in the primary action's place instead of it, such as Sign in
+    /// with Apple's own button.
+    var primaryReplacement: UIView? {
+        didSet {
+            oldValue?.removeFromSuperview()
+            primary.isHidden = primaryReplacement != nil
+            if let primaryReplacement { scroll.addSubview(primaryReplacement) }
+            relayout()
+        }
+    }
     let secondary: RoundButton?
     private let keyboardProbe = UIView()
 
@@ -123,36 +143,47 @@ class CloudStageViewController: UIViewController {
         content.frame = CGRect(x: x, y: y, width: width, height: contentHeight)
         layoutContent()
         y += contentHeight + 24
-        let primaryHeight = primary.isHidden ? 0 : primary.layout(width: width).size.height
+        let primaryHeight = primary.isHidden && primaryReplacement == nil ? 0 : primary.layout(width: width).size.height
         let secondaryHeight = secondary.map { $0.isHidden ? 0 : $0.layout(width: width).size.height } ?? 0
         let actions = primaryHeight + (secondaryHeight > 0 ? secondaryHeight + 4 : 0)
         let bottom = min(bounds.height - max(safe.bottom, 16) - 16, keyboardProbe.frame.maxY - 16)
         let top = max(y, bottom - actions)
         primary.frame = CGRect(x: x, y: top, width: width, height: primaryHeight)
+        primaryReplacement?.frame = primary.frame
         secondary?.frame = CGRect(x: x, y: top + primaryHeight + 4, width: width, height: secondaryHeight)
         scroll.frame = bounds
         scroll.contentSize = CGSize(width: bounds.width, height: top + actions + max(safe.bottom, 16) + 16)
     }
 }
 
-/// "Connect to Happy Cloud?": the account signs in, or makes itself, in
-/// the system browser, whose cookie lets each server's sign-in finish
-/// without a page.
+/// "Connect to Happy Cloud?": Sign in with Apple, or other ways in the
+/// system browser.
 final class CloudWelcomeViewController: CloudStageViewController, ASWebAuthenticationPresentationContextProviding {
     private var browser: ASWebAuthenticationSession?
+    private var apple: CloudApple?
+    private let appleButton = ASAuthorizationAppleIDButton(authorizationButtonType: .continue, authorizationButtonStyle: .black)
     private let problem = StartGalleryView.bodyLabel("")
 
     init(context: AppContext) {
-        super.init(context: context, scene: .sparkles, title: Strings.ServerSignIn.cloudTitle, body: Strings.ServerSignIn.cloudMessage, primary: Strings.ServerSignIn.cloudConnect)
+        super.init(context: context, scene: .sparkles, title: Strings.ServerSignIn.cloudTitle, body: Strings.ServerSignIn.cloudMessage,
+                   primary: Strings.ServerSignIn.cloudConnect, secondary: Strings.HappyCloud.otherWays)
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.accessibilityIdentifier = "cloud-welcome"
-        primary.accessibilityIdentifier = "cloud-connect"
-        primary.action = { [weak self] in await self?.signIn() }
+        appleButton.accessibilityIdentifier = "cloud-apple"
+        appleButton.addAction(UIAction { [weak self] _ in Task { await self?.signInWithApple() } }, for: .touchUpInside)
+        primaryReplacement = appleButton
+        secondary?.accessibilityIdentifier = "cloud-connect"
+        secondary?.action = { [weak self] in await self?.signInInBrowser() }
         problem.textColor = UIColor(Palette.textDestructive)
         content.addSubview(problem)
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        appleButton.cornerRadius = appleButton.bounds.height / 2
     }
 
     override func contentHeight(width: CGFloat) -> CGFloat {
@@ -161,22 +192,101 @@ final class CloudWelcomeViewController: CloudStageViewController, ASWebAuthentic
 
     override func layoutContent() { problem.frame = content.bounds }
 
-    private func signIn() async {
-        problem.string = ""
-        relayout()
+    private func signInWithApple() async {
+        guard apple == nil else { return }
+        say(nil)
+        let apple = CloudApple(anchor: view)
+        self.apple = apple
+        defer { self.apple = nil }
         do {
-            let request = try CloudAccount.request()
-            let callback = try await CloudBrowser.authenticate(request.url, anchor: self) { self.browser = $0 }
-            let account = try await CloudAccount.signIn(request, callback: callback, keychain: CloudScreens.keychain)
-            navigationController?.pushViewController(CloudServersViewController(context: context, account: account), animated: true)
+            let identity = try await apple.signIn()
+            let account = try await CloudAccount.signIn(provider: "apple", idToken: identity.idToken, nonce: identity.nonce,
+                                                        authorizationCode: identity.authorizationCode, name: identity.name)
+            CloudScreens.signedIn(account, context: context, from: self)
         } catch OAuthError.cancelled {
         } catch {
-            problem.string = Strings.ServerSignIn.failure(error)
-            relayout()
+            say(Strings.HappyCloud.failure(error))
         }
     }
 
+    private func signInInBrowser() async {
+        say(nil)
+        do {
+            let request = try CloudAccount.request()
+            let callback = try await CloudBrowser.authenticate(request.url, anchor: self) { self.browser = $0 }
+            let account = try await CloudAccount.signIn(request, callback: callback)
+            CloudScreens.signedIn(account, context: context, from: self)
+        } catch OAuthError.cancelled {
+        } catch {
+            say(Strings.ServerSignIn.failure(error))
+        }
+    }
+
+    private func say(_ text: String?) {
+        problem.string = text ?? ""
+        relayout()
+    }
+
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor { CloudBrowser.anchor(view) }
+}
+
+/// One Sign in with Apple: the name and email asked for, the request
+/// bound to a fresh nonce by its SHA-256, and what the accounts service
+/// needs back, the raw nonce among it.
+@MainActor
+final class CloudApple: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
+    struct Identity { let idToken: String; let nonce: String; let authorizationCode: String?; let name: String? }
+    private let anchor: UIView
+    private var continuation: CheckedContinuation<Identity, any Error>?
+    private var nonce = ""
+
+    init(anchor: UIView) { self.anchor = anchor }
+
+    func signIn() async throws -> Identity {
+        nonce = Self.nonce()
+        let request = ASAuthorizationAppleIDProvider().createRequest()
+        request.requestedScopes = [.fullName, .email]
+        request.nonce = SHA256.hash(data: Data(nonce.utf8)).map { String(format: "%02x", $0) }.joined()
+        let controller = ASAuthorizationController(authorizationRequests: [request])
+        controller.delegate = self
+        controller.presentationContextProvider = self
+        return try await withCheckedThrowingContinuation { continuation in
+            self.continuation = continuation
+            controller.performRequests()
+        }
+    }
+
+    private static func nonce() -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        return bytes.map { String(format: "%02x", $0) }.joined()
+    }
+
+    nonisolated func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
+        let credential = authorization.credential as? ASAuthorizationAppleIDCredential
+        let idToken = credential?.identityToken.flatMap { String(data: $0, encoding: .utf8) }
+        let code = credential?.authorizationCode.flatMap { String(data: $0, encoding: .utf8) }
+        // Apple gives the name only the first time; it goes with that sign-in.
+        let name = credential?.fullName.map { PersonNameComponentsFormatter().string(from: $0) }.flatMap { $0.isEmpty ? nil : $0 }
+        MainActor.assumeIsolated {
+            guard let idToken else { return finish(.failure(OAuthError.invalidResponse)) }
+            finish(.success(Identity(idToken: idToken, nonce: nonce, authorizationCode: code, name: name)))
+        }
+    }
+
+    nonisolated func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: any Error) {
+        let cancelled = (error as? ASAuthorizationError)?.code == .canceled
+        MainActor.assumeIsolated { finish(.failure(cancelled ? OAuthError.cancelled : error)) }
+    }
+
+    nonisolated func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        MainActor.assumeIsolated { CloudBrowser.anchor(anchor) }
+    }
+
+    private func finish(_ result: Result<Identity, any Error>) {
+        continuation?.resume(with: result)
+        continuation = nil
+    }
 }
 
 /// The servers the account belongs to, each a card; Create a New Server,
@@ -223,7 +333,7 @@ final class CloudServersViewController: CloudStageViewController {
             servers = try await account.servers()
             bodyLabel.string = servers?.isEmpty == true ? Strings.HappyCloud.noServers : Strings.HappyCloud.pickServer
         } catch CloudAccountError.signInRequired {
-            CloudScreens.signedOut(account, context: context, from: self)
+            CloudScreens.signedOut(context: context, from: self)
             return
         } catch {
             bodyLabel.string = Strings.HappyCloud.failure(error)
@@ -288,16 +398,16 @@ final class CloudServersViewController: CloudStageViewController {
 
     /// A server here already comes forward; another is connected to.
     private func connect(_ server: CloudServer, origin: String) {
-        let account = context.account
-        if let existing = HappyCloud.connection(to: origin, in: account.agentConnections.accounts), !existing.revoked {
+        let accounts = context.account
+        if let existing = HappyCloud.connection(to: origin, in: accounts.agentConnections.accounts), !existing.revoked {
             Task { [weak self] in
-                if !account.showsAgentConnections { await account.setShowsAgentConnections(true) }
-                guard (try? await account.switchAccount(to: existing.id)) != nil, let self else { return }
+                if !accounts.showsAgentConnections { await accounts.setShowsAgentConnections(true) }
+                guard (try? await accounts.switchAccount(to: existing.id)) != nil, let self else { return }
                 CloudScreens.finish(from: self)
             }
             return
         }
-        navigationController?.pushViewController(CloudConnectingViewController(context: context, server: server), animated: true)
+        navigationController?.pushViewController(CloudConnectingViewController(context: context, account: account, server: server), animated: true)
     }
 }
 
@@ -381,9 +491,9 @@ final class CloudCreateViewController: CloudStageViewController, UITextFieldDele
         defer { primary.isLoading = false }
         do {
             let server = try await account.create(name)
-            navigationController?.pushViewController(CloudConnectingViewController(context: context, server: server), animated: true)
+            navigationController?.pushViewController(CloudConnectingViewController(context: context, account: account, server: server), animated: true)
         } catch CloudAccountError.signInRequired {
-            CloudScreens.signedOut(account, context: context, from: self)
+            CloudScreens.signedOut(context: context, from: self)
         } catch {
             say(Strings.HappyCloud.failure(error), problem: true)
         }
@@ -448,9 +558,9 @@ final class CloudJoinViewController: CloudStageViewController, UITextFieldDelega
         status.string = ""
         do {
             let server = try await account.join(name, code: code)
-            navigationController?.pushViewController(CloudConnectingViewController(context: context, server: server), animated: true)
+            navigationController?.pushViewController(CloudConnectingViewController(context: context, account: account, server: server), animated: true)
         } catch CloudAccountError.signInRequired {
-            CloudScreens.signedOut(account, context: context, from: self)
+            CloudScreens.signedOut(context: context, from: self)
         } catch {
             status.string = Strings.HappyCloud.failure(error)
         }
@@ -458,16 +568,17 @@ final class CloudJoinViewController: CloudStageViewController, UITextFieldDelega
     }
 }
 
-/// Signing in to one server: its own sign-in, which the account's browser
-/// session finishes without a page (iOS still asks first), then its home.
-final class CloudConnectingViewController: CloudStageViewController, ASWebAuthenticationPresentationContextProviding {
+/// Signing in to one server: a token for it from the accounts API, no
+/// browser, then its home.
+final class CloudConnectingViewController: CloudStageViewController {
+    private let account: CloudAccount
     private let server: CloudServer
     private let startsAtOnce: Bool
     private let spinner = UIActivityIndicatorView(style: .large)
-    private var browser: ASWebAuthenticationSession?
     private var started = false
 
-    init(context: AppContext, server: CloudServer, startsAtOnce: Bool = true) {
+    init(context: AppContext, account: CloudAccount, server: CloudServer, startsAtOnce: Bool = true) {
+        self.account = account
         self.server = server
         self.startsAtOnce = startsAtOnce
         super.init(context: context, scene: .robot, title: Strings.HappyCloud.connecting(HappyCloud.handle(server.name)), body: Strings.HappyCloud.connectingBody, primary: Strings.HappyCloud.tryAgain)
@@ -506,28 +617,27 @@ final class CloudConnectingViewController: CloudStageViewController, ASWebAuthen
         guard let origin = server.origin else { return show(problem: Strings.ServerSignIn.failure(ServerSignInError.invalidURL)) }
         show(problem: nil)
         do {
-            let flow = try await ServerSignInFlow.start(origin)
-            let request = try flow.request(redirectUri: OAuthRedirect.uri)
-            let callback = try await CloudBrowser.authenticate(request.url, anchor: self) { self.browser = $0 }
-            var signedIn = try await flow.complete(request, callback: callback, installation: .recorded)
+            let (access, grant) = try await account.serverToken(for: server)
+            let flow = try ServerSignInFlow.cloud(origin)
+            var signedIn = try await flow.signedIn(access: access, grant: grant, installation: .recorded)
             // The cloud names every member from the account; this only
             // answers the team profile gate on a server that hasn't.
             if signedIn.needsProfile { signedIn = try await flow.saveProfile(HappyCloud.handle(server.name), for: signedIn) }
             try await context.account.addServer(signedIn)
             CloudScreens.finish(from: self)
-        } catch OAuthError.cancelled {
-            show(problem: Strings.HappyCloud.cancelled)
+        } catch CloudAccountError.signInRequired {
+            CloudScreens.signedOut(context: context, from: self)
+        } catch let error as CloudAccountError {
+            show(problem: Strings.HappyCloud.failure(error))
         } catch {
             show(problem: Strings.ServerSignIn.failure(error))
         }
     }
-
-    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor { CloudBrowser.anchor(view) }
 }
 
 /// The system browser, until it comes back to Happy's redirect URI. Not
-/// ephemeral: the account's session cookie is what lets each server's
-/// sign-in finish without a page.
+/// ephemeral, so the accounts service's own session spares a second
+/// sign-in there.
 @MainActor
 enum CloudBrowser {
     static func authenticate(_ url: URL, anchor: ASWebAuthenticationPresentationContextProviding, keep: (ASWebAuthenticationSession) -> Void) async throws -> URL {
@@ -651,11 +761,13 @@ final class CloudField: UIView {
 public enum CloudScreensPreview {
     @MainActor
     public static func make(context: AppContext, token: String, screen: String, name: String?) -> UINavigationController {
-        let account = CloudAccount.preview(token: token, keychain: CloudScreens.keychain)
+        let account = CloudAccount.preview(token: token, expiresAt: screen == "expired" ? Date(timeIntervalSinceNow: -60) : nil)
+        CloudScreens.account = account
         let navigation = UINavigationController(rootViewController: CloudWelcomeViewController(context: context))
         let server = CloudServer(id: "preview", name: name ?? "acme", url: "", role: .owner, displayName: "Acme")
         switch screen {
-        case "servers": navigation.pushViewController(CloudServersViewController(context: context, account: account), animated: false)
+        // An expired pass goes straight back to Welcome.
+        case "servers", "expired": navigation.pushViewController(CloudServersViewController(context: context, account: account), animated: false)
         case "create":
             let create = CloudCreateViewController(context: context, account: account)
             navigation.pushViewController(create, animated: false)
@@ -664,7 +776,7 @@ public enum CloudScreensPreview {
             let join = CloudJoinViewController(context: context, account: account)
             navigation.pushViewController(join, animated: false)
             if let name { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { join.nameField.text.text = name; join.codeField.text.text = "pcmurcvd" } }
-        case "connecting": navigation.pushViewController(CloudConnectingViewController(context: context, server: server, startsAtOnce: false), animated: false)
+        case "connecting": navigation.pushViewController(CloudConnectingViewController(context: context, account: account, server: server, startsAtOnce: false), animated: false)
         default: break
         }
         AppCoordinator.applyAppearance(to: navigation.navigationBar)

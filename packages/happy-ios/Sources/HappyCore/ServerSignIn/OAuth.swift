@@ -359,7 +359,6 @@ public struct OAuthTokenClient: Sendable {
         do { response = try await http.send(request) }
         catch is CancellationError { throw CancellationError() }
         catch { throw OAuthError.network }
-        struct Tokens: Decodable { let access_token: String; let token_type: String; let expires_in: Double?; let refresh_token: String? }
         struct Failure: Decodable { let error: String; let error_description: String? }
         guard (200..<300).contains(response.status) else {
             if let failure = try? JSONDecoder().decode(Failure.self, from: response.body), !failure.error.isEmpty {
@@ -367,8 +366,17 @@ public struct OAuthTokenClient: Sendable {
             }
             throw OAuthError.invalidResponse
         }
-        guard let tokens = try? JSONDecoder().decode(Tokens.self, from: response.body),
-              !tokens.access_token.isEmpty, tokens.access_token.count <= 16384, tokens.token_type.lowercased() == "bearer",
+        return try accept(response.body, previous: previous, typed: true)
+    }
+
+    /// The tokens in a successful answer, held to the same rules wherever
+    /// they were issued (the token endpoint, or the accounts API's native
+    /// sign-in and server tokens, which may leave `token_type` out unless
+    /// `typed`).
+    func accept(_ body: Data, previous: OAuthGrant, typed: Bool) throws -> (OAuthAccess, OAuthGrant) {
+        struct Tokens: Decodable { let access_token: String; let token_type: String?; let expires_in: Double?; let refresh_token: String? }
+        guard let tokens = try? JSONDecoder().decode(Tokens.self, from: body),
+              !tokens.access_token.isEmpty, tokens.access_token.count <= 16384, tokens.token_type.map({ $0.lowercased() == "bearer" }) ?? !typed,
               tokens.refresh_token.map({ !$0.isEmpty && $0.count <= 16384 }) ?? true,
               tokens.expires_in.map({ $0 >= 0 }) ?? true else { throw OAuthError.invalidResponse }
         // A token for another server is dropped with its refresh token,
