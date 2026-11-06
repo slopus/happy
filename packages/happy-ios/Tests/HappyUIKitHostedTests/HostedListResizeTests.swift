@@ -144,6 +144,9 @@ final class HostedListResizeTests: XCTestCase {
         var found: [String] = []
         func walk(_ view: UIView) {
             guard !view.isHidden, view.alpha > 0.01, !(view is UINavigationBar), !(view is UIToolbar) else { return }
+            // iOS 27 draws a navigation controller's toolbar, its search
+            // field and buttons, in a floating bar of its own.
+            guard !NSStringFromClass(type(of: view)).hasPrefix("_UIFloatingBar") else { return }
             let frame = view.convert(view.bounds, to: window)
             let reads = view is UILabel || view is UITextView || view is UITextField || view is UIControl || view is UIImageView || view is ListRowView
             if reads, frame.width > 1, frame.height > 1, frame.intersects(window.bounds), frame.minX < minX || frame.maxX > maxX {
@@ -202,6 +205,7 @@ final class HostedListResizeTests: XCTestCase {
     private func resize(_ window: UIWindow, to change: Change, _ label: String, check: @escaping () -> [String]) async throws {
         var frames: [[String]] = []
         var ticks: [CFTimeInterval] = [CACurrentMediaTime()]
+        print("RESIZE_WINDOWS \(window.windowScene?.windows.count ?? -1) visible \(window.windowScene?.windows.filter { !$0.isHidden }.count ?? -1)")
         switch change {
         case .size(let size):
             UIView.animate(withDuration: Self.animation) {
@@ -222,7 +226,7 @@ final class HostedListResizeTests: XCTestCase {
         print(String(format: "RESIZE_FRAMES %@ first=%.1fms longest=%.1fms frames=%d", label, gaps.first ?? 0, gaps.max() ?? 0, gaps.count))
         let problems = frames.enumerated().flatMap { frame, problems in problems.map { "frame \(frame): \($0)" } }
         XCTAssertEqual(problems.prefix(12), [], "\(label): \(problems.count) problems over \(frames.count) frames")
-        XCTAssertGreaterThan(frames.count, 10, "\(label): too few frames sampled")
+        XCTAssertGreaterThan(frames.count, HostedTime.sampled(10), "\(label): too few frames sampled")
     }
 
     /// What the first frame at `width` showed: the frame of the change. A

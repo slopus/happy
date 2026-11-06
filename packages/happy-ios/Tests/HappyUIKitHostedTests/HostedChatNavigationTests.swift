@@ -362,7 +362,7 @@ final class HostedChatNavigationTests: XCTestCase {
         lines.append(Self.summary("switch", times))
         lines.append("cap hit \(capHits) of \(tries)")
         for line in lines { print("OPENING \(line)") }
-        XCTAssertLessThan(capHits, tries / 4, lines.joined(separator: "\n"))
+        XCTAssertLessThan(Double(capHits), HostedTime.budget(Double(tries) / 4), lines.joined(separator: "\n"))
         await controller.signOut()
     }
 
@@ -390,7 +390,7 @@ final class HostedChatNavigationTests: XCTestCase {
             XCTFail("\(label): the chat was never in the window", file: file, line: line)
             return
         }
-        XCTAssertGreaterThan(shown.count, 10, "\(label): too few frames sampled", file: file, line: line)
+        XCTAssertGreaterThan(shown.count, HostedTime.sampled(10), "\(label): too few frames sampled", file: file, line: line)
         for frame in shown {
             let at = String(format: "%@ at %.0f ms", label, (frame.time - first.time) * 1000)
             XCTAssertEqual(frame.animating, [], "\(at): animating", file: file, line: line)

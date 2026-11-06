@@ -90,9 +90,9 @@ private struct TargetSessionOps: HomeSessionOps {
 /// computer runs Happy CLI with Happy Agent beside it, and a server runs
 /// Happy Agent alone; both make bots and tasks.
 ///
-/// Laid out at the size of the phone it was reported on (an iPhone 14 Pro,
-/// 393 × 852) with the software keyboard up, which the other hosted tests
-/// never have. With `HAPPY_PREVIEW_DIR` set it writes what each step showed.
+/// Laid out on a phone (it was reported on an iPhone 14 Pro, 393 × 852;
+/// CI runs an iPhone 17, 402 × 874) with the software keyboard up, which
+/// the other hosted tests never have. With `HAPPY_PREVIEW_DIR` set it writes what each step showed.
 @MainActor
 final class HostedComposeTargetTests: XCTestCase {
     nonisolated static let newSessionId = "compose-target-new-session"
@@ -256,7 +256,7 @@ final class HostedComposeTargetTests: XCTestCase {
         let log = TargetSpawns()
         let (home, navigation, window, account) = try await reportedAccount(log: log)
         defer { window.isHidden = true }
-        XCTAssertEqual(window.bounds.size, CGSize(width: 393, height: 852), "run on an iPhone 14 Pro")
+        XCTAssertEqual(window.traitCollection.horizontalSizeClass, .compact, "run on a phone")
         let (chat, card, panel, start) = try await emptyChat(home, navigation)
         keep(window, "target-0-empty-chat-old-offline-mac")
         XCTAssertEqual(start.kinds, [.session, .bot, .task], "Happy Agent on this account makes both")

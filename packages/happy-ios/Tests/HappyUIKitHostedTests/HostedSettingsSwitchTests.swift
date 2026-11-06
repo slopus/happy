@@ -494,7 +494,7 @@ final class HostedSettingsSwitchTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(100))
             recorder.stop()
             XCTAssertTrue(landed, "\(leg): back didn't land on the new home")
-            XCTAssertGreaterThan(frames.count, 5, leg)
+            XCTAssertGreaterThan(frames.count, HostedTime.sampled(5), leg)
             let broken = frames.filter { !$0.whole || $0.name != expected }
             XCTAssertTrue(broken.isEmpty, "\(leg): \(broken.count) of \(frames.count) frames lack part of home:\n\(broken.prefix(6).map(\.description).joined(separator: "\n"))")
             pops.append("\(leg): \(frames.count) frames")
