@@ -93,10 +93,16 @@ accounts and servers v1.
   screen's ⋯ (`AccountAdding.connectToCloud`). Development and preview
   builds only (`HappyCloud.isOffered`, from `AppVariant`): production shows
   neither entry and `connectToCloud` does nothing there.
-- **Confirm.** While no Happy Cloud account is signed in on the phone,
-  "Connect to Happy Cloud?" asks first ("Sign in or create an account to
-  add a cloud team. Agents run in the cloud; no computer needed.", Cancel /
-  Connect).
+- **Screens.** Every Happy Cloud step is a full-screen page in the
+  onboarding's look (`CloudStageViewController`: the grain gradient, large
+  title, one primary button at the bottom, no tables or alerts): Welcome,
+  Your Servers, Name Your Server, Join a Server, Connecting. With no
+  account yet it's pushed on the first screen; otherwise it's presented
+  full screen with a Close button.
+- **Welcome.** While no Happy Cloud account is signed in on the phone,
+  "Connect to Happy Cloud?" ("Sign in or create an account to add a cloud
+  team. Agents run in the cloud; no computer needed.", Connect) comes
+  first. With an account kept, the flow opens on Your Servers.
 - **Account sign-in** (`CloudAccount`). Authorization code + PKCE S256 at
   `accounts.<base>/authorize`, `client_id` `happy`, the usual redirect, and
   `resource` the accounts origin, in `ASWebAuthenticationSession` with
@@ -108,12 +114,13 @@ accounts and servers v1.
   picker opens again without the browser; a refresh the accounts service
   refuses signs the account in again.
 - **The picker** (`CloudServersViewController`). Your servers
-  (`GET /v1/servers`), Create a New Server (a name under `.<base>`,
-  checked as it's typed with `GET /v1/servers/availability`, then
-  `POST /v1/servers`), and Join a Server (name and invite code,
+  (`GET /v1/servers`) as cards; Create a New Server opens Name Your Server
+  (a name under `.<base>`, checked as it's typed with
+  `GET /v1/servers/availability`, then `POST /v1/servers`); Join with an
+  Invite opens Join a Server (name and invite code,
   `POST /v1/servers/join`). A server already connected is switched to.
   Each row is titled with the server's `displayName` (its node name), with
-  `<name>.<base>` under it, and shows its picture: the ThumbHash at once,
+  `@name` under it, and shows its picture: the ThumbHash at once,
   then the bytes from the listed image `url` under the account token (only
   ever on the accounts origin), or the generated avatar seeded by the
   server's id when it has none.
@@ -131,6 +138,11 @@ accounts and servers v1.
   none still signs in. "Sign In Again" then checks the one kept, as for
   any server.
 - The connection is named after the server until `/v0/config` names it.
+- **Display.** A cloud server's address is never shown: it reads like a
+  username, `@acme` (`HappyCloud.handle`), in the picker, the create field
+  (an `@` in front, no domain), the availability and join messages, the
+  sign-in screen and Settings. The domain isn't final; the URL is used
+  internally as before.
 - Same-origin and audience binding apply unchanged: a server's token must
   name its address.
 

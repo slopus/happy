@@ -15,19 +15,39 @@ extension Strings {
         static let joinAction = "Join"
         static let joinMessage = "Enter the server’s name and the invite code its owner gave you."
         static let joinFailedTitle = "Couldn’t Join"
-        static let namePlaceholder = "server-name"
+        static let namePlaceholder = "name"
+        static let nameLabel = "Name"
         static let codePlaceholder = "Invite code"
         static let footer = "Each server is a team in Happy Cloud, with its own agents."
         static let nameFooter = "3 to 32 lowercase letters, digits or hyphens. You’ll be its owner."
         static let invalidName = "Use 3 to 32 lowercase letters, digits or hyphens, not starting or ending with a hyphen."
 
-        static func unavailable(_ availability: CloudAccount.Availability) -> String? {
+        static let joinNamePlaceholder = "@name"
+        static let createTitle = "Name Your Server"
+        static let joinWithInvite = "Join with an Invite"
+        static let noServers = "Create a server for your team, or join one with an invite."
+        static let pickServer = "Pick a server to open it on this phone."
+        static let connectingBody = "Signing you in…"
+        static let tryAgain = "Try Again"
+        static let cancelled = "Sign-in was cancelled."
+
+        static func connecting(_ handle: String) -> String { "Connecting to \(handle)" }
+
+        static func available(_ name: String) -> String { "\(HappyCore.HappyCloud.handle(name)) is available." }
+
+        static func unavailable(_ availability: CloudAccount.Availability, name: String) -> String? {
             switch availability {
             case .available: return nil
-            case .taken: return "That name is taken."
-            case .reserved: return "That name is reserved."
+            case .taken: return "\(HappyCore.HappyCloud.handle(name)) is taken."
+            case .reserved: return "\(HappyCore.HappyCloud.handle(name)) is reserved."
             case .invalid: return invalidName
             }
+        }
+
+        /// A name as typed, with the `@` people see in front of it dropped.
+        static func bareName(_ text: String) -> String {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return trimmed.hasPrefix("@") ? String(trimmed.dropFirst()) : trimmed
         }
 
         static func failure(_ error: any Error) -> String {

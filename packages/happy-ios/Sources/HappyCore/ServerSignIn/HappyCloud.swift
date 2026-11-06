@@ -30,6 +30,13 @@ public enum HappyCloud {
         return isValidName(name) ? name : nil
     }
 
+    /// How a cloud server's address is shown: like a username, `@acme`.
+    /// The domain isn't final, so people never see it.
+    public static func handle(_ name: String) -> String { "@" + name }
+
+    /// `server`'s handle when it is a cloud server.
+    public static func handle(server: String?) -> String? { serverName(server).map(handle) }
+
     public static func isCloud(_ server: String?) -> Bool { serverName(server) != nil }
 
     /// The connection already signed in to `server`, if there is one.

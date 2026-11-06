@@ -475,7 +475,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             let revoked = context.account.agentConnections.accounts.first { $0.id == id }?.revoked == true
             let serverRows: [[SettingsRow]] = server.map { origin in
                 [[
-                    Row(id: "server", title: Strings.ServerSignIn.server, value: URLComponents(string: origin)?.host ?? origin, accessory: .none),
+                    Row(id: "server", title: Strings.ServerSignIn.server, value: HappyCloud.handle(server: origin) ?? URLComponents(string: origin)?.host ?? origin, accessory: .none),
                     Row(id: "server-sign-in", title: revoked ? Strings.ServerSignIn.needsSignIn : Strings.ServerSignIn.signInAgain, accessory: .none, action: { [weak self] in
                         guard let self else { return }
                         let instanceId = context.account.agentConnections.accounts.first { $0.id == id }?.instanceId

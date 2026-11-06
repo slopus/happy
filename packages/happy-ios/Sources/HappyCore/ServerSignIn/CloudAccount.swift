@@ -79,6 +79,15 @@ public actor CloudAccount {
         return CloudAccount(grant: grant, access: access, keychain: keychain, http: http, tokens: tokens)
     }
 
+    #if DEBUG
+    /// An account from an access token alone, for the harness's screenshots.
+    public static func preview(token: String, keychain: CloudAccountKeychain) -> CloudAccount {
+        let http = NoRedirectURLSessionTransport()
+        return CloudAccount(grant: OAuthGrant(clientId: "happy", audience: HappyCloud.accounts + "/"), access: OAuthAccess(token: token, expiresAt: nil),
+                            keychain: keychain, http: http, tokens: OAuthTokenClient(http: http))
+    }
+    #endif
+
     /// The account signed in before, from its kept grant.
     public static func restore(keychain: CloudAccountKeychain, http: any HTTPTransport = NoRedirectURLSessionTransport()) -> CloudAccount? {
         guard let grant = try? keychain.load(), grant.canRefresh else { return nil }

@@ -48,10 +48,10 @@ final class ServerSignInViewController: UIViewController, ASWebAuthenticationPre
     override func viewDidLoad() {
         super.viewDidLoad()
         let again = context.account.agentConnections.accounts.contains { $0.server == server }
-        title = again ? Strings.ServerSignIn.signInAgain : HappyCloud.serverName(server) ?? Strings.ServerSignIn.title
+        title = again ? Strings.ServerSignIn.signInAgain : HappyCloud.handle(server: server) ?? Strings.ServerSignIn.title
         view.accessibilityIdentifier = "server-sign-in"
         list.sections = [ItemGroupView(footer: footer, rows: [form])]
-        serverRow.detail = URLComponents(string: server).map { ($0.host ?? server) + ($0.port.map { ":\($0)" } ?? "") }
+        serverRow.detail = HappyCloud.handle(server: server) ?? URLComponents(string: server).map { ($0.host ?? server) + ($0.port.map { ":\($0)" } ?? "") }
         serverRow.accessibilityIdentifier = "server-sign-in-host"
         authorizationRow.accessibilityIdentifier = "server-sign-in-authorization-host"
         form.saveTitle = Strings.ServerSignIn.continueAction
@@ -93,7 +93,7 @@ final class ServerSignInViewController: UIViewController, ASWebAuthenticationPre
 
     /// The server's host, and beside it the host the browser will open.
     private func show(_ flow: ServerSignInFlow) {
-        authorizationRow.detail = flow.method.authorizationHost
+        authorizationRow.detail = HappyCloud.isCloud(server) ? HappyCloud.name : flow.method.authorizationHost
         list.sections = [ItemGroupView(footer: footer, rows: [form]), ItemGroupView(rows: [serverRow, authorizationRow])]
     }
 
