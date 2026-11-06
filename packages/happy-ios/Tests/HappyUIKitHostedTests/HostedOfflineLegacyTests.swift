@@ -262,8 +262,19 @@ final class HostedOfflineLegacyTests: XCTestCase {
         navigation.pushViewController(chat, animated: false)
         try await until("the chat from disk") { chat.contentInstalled && self.shows("SQLite, one local file.", in: chat) }
         try await until("the two waiting") { self.shows("First, offline", in: chat) && self.shows("Second, offline", in: chat) }
-        try await until("each says it waits", 6) {
-            self.views(chat.view).compactMap { ($0 as? ChatPlanView)?.plan?.accessibilityLabel }.filter { $0.contains("offline") && $0.contains("Sending") }.count == 2
+        func deliveryMarks() -> [ChatDeliveryMark] {
+            ["First, offline", "Second, offline"].compactMap { text in
+                guard let row = self.views(chat.view).compactMap({ $0 as? ChatPlanView }).first(where: {
+                    !$0.isHidden && $0.window != nil && $0.plan?.accessibilityLabel?.contains(text) == true
+                }) else { return nil }
+                return self.views(row).compactMap { $0 as? ChatDeliveryView }.first {
+                    $0.window != nil && !$0.isHidden && $0.mark?.message == row.plan?.id
+                }?.mark
+            }
+        }
+        try await until("each has a waiting clock", 6) {
+            let marks = deliveryMarks()
+            return marks.count == 2 && marks.allSatisfy { $0.state == .sending }
         }
         XCTAssertEqual(chat.headerStatusText, "waiting for network…")
         try await Task.sleep(for: .milliseconds(500))
@@ -282,7 +293,8 @@ final class HostedOfflineLegacyTests: XCTestCase {
         XCTAssertEqual(left, [])
         XCTAssertNotEqual(chat.headerStatusText, "waiting for network…")
         try await until("sent, quiet") {
-            !self.views(chat.view).contains { ($0 as? ChatPlanView)?.plan?.accessibilityLabel?.contains("Sending") == true }
+            let marks = deliveryMarks()
+            return marks.count == 2 && marks.allSatisfy { $0.state == .received || $0.state == .accepted }
         }
         func top(_ text: String) -> CGFloat? {
             views(chat.view).first { ($0 as? ChatPlanView)?.plan?.accessibilityLabel?.contains(text) == true }.map { $0.convert($0.bounds, to: nil).minY }

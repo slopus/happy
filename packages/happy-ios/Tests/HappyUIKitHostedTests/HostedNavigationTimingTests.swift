@@ -82,7 +82,17 @@ final class HostedNavigationTimingTests: XCTestCase {
         defer { window.isHidden = true; hostWindow?.makeKey() }
         window.layoutIfNeeded()
         if fromHome {
-            try await until { root.view.subviews.contains { $0 is HomeDockView && !$0.isHidden } }
+            try await until {
+                guard let home = root as? LegacyHomeViewController,
+                      home.children.contains(where: { $0 is SessionListViewController && $0.viewIfLoaded?.window === window }),
+                      home.navigationItem.leftBarButtonItem?.customView?.window === window else { return false }
+                if home.traitCollection.isSidebarColumn {
+                    return home.bottomBar.window === window && !home.bottomBar.isHidden
+                }
+                return home.bottomBar.isHidden && !navigation.isToolbarHidden
+                    && home.navigationItem.rightBarButtonItems?.contains { $0.accessibilityIdentifier == "settings" } == true
+                    && home.toolbarItems?.contains { $0.accessibilityIdentifier == "compose" } == true
+            }
             window.layoutIfNeeded()
         }
         let homeTurns = homeWatch.stop()

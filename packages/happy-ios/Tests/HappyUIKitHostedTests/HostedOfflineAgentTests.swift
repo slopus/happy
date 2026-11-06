@@ -37,8 +37,12 @@ private actor AirplaneComputer: AgentTransport {
 
     private var value = try! JSONDecoder().decode(JSONValue.self, from: Data(home.utf8))
     var online = true
-    /// What the computer heard the phone do: `read:<agent>`, `archive:<task>`.
-    private(set) var acts: [String] = []
+    enum Act: Equatable, Sendable {
+        case read(String)
+        case archive(String)
+    }
+    /// What the computer heard the phone do.
+    private(set) var acts: [Act] = []
     private var streams: [AsyncThrowingStream<Data, Error>.Continuation] = []
 
     func set(online: Bool) {
@@ -53,12 +57,12 @@ private actor AirplaneComputer: AgentTransport {
             return .init(status: 200, body: try JSONEncoder().encode(self.value))
         } else if method == "POST", path.hasSuffix("/read") {
             let agentId = String(path.split(separator: "/")[2])
-            acts.append("read:" + agentId)
+            acts.append(.read(agentId))
             edit { $0["agent"]?["id"]?.stringValue == agentId ? Self.read($0) : $0 }
             value = .object([:])
         } else if method == "POST", path.hasSuffix("/archive") {
             let taskId = String(path.split(separator: "/")[2])
-            acts.append("archive:" + taskId)
+            acts.append(.archive(taskId))
             edit { $0["id"]?.stringValue == taskId ? nil : $0 }
             value = .object([:])
         } else if path.contains("/agents/old-agent/messages?") {
@@ -218,8 +222,8 @@ final class HostedOfflineAgentTests: XCTestCase {
         await sidebar.settle()
         try await Task.sleep(for: .milliseconds(600))
         capture(window, "offline-agent-home")
-        let pending = await relaunched.engine.intents.pending().map(\.kind)
-        XCTAssertEqual(pending, [.read, .archive])
+        let pending = await relaunched.engine.intents.pending()
+        XCTAssertEqual(pending.map(\.kind), [.read, .archive])
         let heardOffline = await computer.acts
         XCTAssertEqual(heardOffline, heardOnline)
 
@@ -234,11 +238,19 @@ final class HostedOfflineAgentTests: XCTestCase {
         // The network is back: the header says so and what waited goes, once.
         await computer.set(online: true)
         NetworkPath.shared.force(true)
-        try await until("the read and the archive, sent", 10) { await computer.acts.count >= heardOnline.count + 2 }
-        let heard = Array(await computer.acts.dropFirst(heardOnline.count))
-        XCTAssertEqual(heard.filter { $0 == "read:ship-agent" }.count, 1)
-        XCTAssertEqual(heard.filter { $0 == "archive:old" }.count, 1)
+        try await until("the read and the archive, sent", 10) {
+            let heard = Array(await computer.acts.dropFirst(heardOnline.count))
+            return heard.contains(.read("ship-agent")) && heard.contains(.archive("old"))
+        }
         try await until("nothing waits") { await relaunched.engine.intents.pending().isEmpty }
+        let heard = Array(await computer.acts.dropFirst(heardOnline.count))
+        XCTAssertEqual(heard.filter { $0 == .read("ship-agent") }.count, 1)
+        XCTAssertEqual(heard.filter { $0 == .archive("old") }.count, 1)
+        // A refused intent also leaves the queue; only success enters delivered.
+        let delivered = await relaunched.engine.intents.delivered
+        for intent in pending {
+            XCTAssertTrue(delivered.contains { $0.id == intent.id }, "\(intent.kind) was removed without successful delivery")
+        }
         try await until("live again") { relaunched.home.live }
         XCTAssertEqual(sidebar.rows.first { $0.label == "Ship the cache" }?.unread, false, "the computer's stale unread came back")
         capture(window, "online-agent-home")
