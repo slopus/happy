@@ -419,6 +419,20 @@ final class SignInRequiredTests: XCTestCase {
         http.json(accounts + "/v1/servers/availability?name=acme", #"{"name":"acme","available":false,"reason":"taken"}"#)
         let taken = try await account.availability("acme")
         XCTAssertEqual(taken, .taken)
+        // v1.1: the server's own name and picture; its bytes come from the accounts origin only.
+        http.json(accounts + "/v1/servers", #"{"servers":[{"id":"s2","name":"acme","url":"https://acme.example/","role":"member","displayName":"Acme Corp","image":{"thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI","width":64,"height":64,"url":"\#(accounts)/v1/servers/s2/image?v=abc"}}]}"#)
+        let pictured = try await account.servers()
+        XCTAssertEqual(pictured.first?.title, "Acme Corp")
+        http.on(accounts + "/v1/servers/s2/image?v=abc") { request in
+            XCTAssertEqual(request.headers["Authorization"], "Bearer \(account2)")
+            return HTTPResponse(status: 200, body: Data([1, 2, 3]))
+        }
+        let bytes = try await account.image(pictured[0].image!)
+        XCTAssertEqual(bytes, Data([1, 2, 3]))
+        let before = http.requests.count
+        await XCTAssertThrowsAsync(try await account.image(.init(thumbhash: nil, width: nil, height: nil, url: "https://evil.example/x.png"))) { _ in }
+        XCTAssertEqual(http.requests.count, before)
+        XCTAssertEqual(CloudServer(id: "s1", name: "acme", url: "", role: nil, displayName: "").title, "acme")
         await account.signOut()
         XCTAssertNil(CloudAccount.restore(keychain: store, http: http))
     }

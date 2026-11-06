@@ -19,6 +19,11 @@ final class CloudServersViewController: UIViewController, ASWebAuthenticationPre
     private var problem: String?
     private var browser: ASWebAuthenticationSession?
     private var signingIn = false
+    /// Each server's picture once its bytes or placeholder are decoded.
+    private var pictures: [String: UIImage] = [:]
+    private var pictureRows: [String: ItemRowView] = [:]
+    private var loadingPictures: Set<String> = []
+    static let pictureSide = ItemRowLayout.Metrics.iconSize
 
     init(context: AppContext) {
         self.context = context
@@ -92,11 +97,13 @@ final class CloudServersViewController: UIViewController, ASWebAuthenticationPre
         let connected = Set(context.account.agentConnections.accounts.compactMap(\.server))
         let rows: [UIView] = (servers ?? []).compactMap { server in
             guard let origin = server.origin else { return nil }
-            let row = ItemRowView(title: server.name, subtitle: "\(server.name).\(HappyCloud.base)",
-                                  detail: connected.contains(origin) ? Strings.HappyCloud.connected : server.role == .owner ? Strings.HappyCloud.owner : nil) { [weak self] in
+            let row = ItemRowView(title: server.title, subtitle: "\(server.name).\(HappyCloud.base)",
+                                  detail: connected.contains(origin) ? Strings.HappyCloud.connected : server.role == .owner ? Strings.HappyCloud.owner : nil,
+                                  icon: picture(server)) { [weak self] in
                 self?.connect(origin)
             }
             row.accessibilityIdentifier = "cloud-server-\(server.name)"
+            pictureRows[server.id] = row
             return row
         }
         let create = ItemRowView(title: Strings.HappyCloud.create, icon: ItemIcon("plus", tint: Palette.textLink)) { [weak self] in
@@ -118,6 +125,36 @@ final class CloudServersViewController: UIViewController, ASWebAuthenticationPre
         }
         sections.append(ItemGroupView(footer: Strings.HappyCloud.footer, rows: [create, join]))
         list.sections = sections
+    }
+
+    /// What a server's row shows now: its picture, else its ThumbHash, else
+    /// the generated avatar once decoded; the rest is fetched once.
+    private func picture(_ server: CloudServer) -> ItemIcon {
+        load(server)
+        let image = pictures[server.id] ?? ThumbHashImages.image(server.image?.thumbhash)
+            ?? AvatarPlaceholderImages.cached(seed: server.id, side: Self.pictureSide) ?? AvatarPlaceholderImages.pending(side: Self.pictureSide)
+        var icon = ItemIcon(.image(image), round: true)
+        icon.size = Self.pictureSide
+        return icon
+    }
+
+    private func load(_ server: CloudServer) {
+        guard pictures[server.id] == nil, !loadingPictures.contains(server.id), let account else { return }
+        loadingPictures.insert(server.id)
+        Task { [weak self] in
+            var image: UIImage?
+            if let picture = server.image, let data = try? await account.image(picture) {
+                image = await Task.detached { AccountPictureImages.decode(data)?.picture as? UIImage }.value
+            }
+            if image == nil { image = await AvatarPlaceholderImages.image(seed: server.id, side: Self.pictureSide) }
+            guard let self else { return }
+            loadingPictures.remove(server.id)
+            guard let image else { return }
+            pictures[server.id] = image
+            var icon = ItemIcon(.image(image), round: true)
+            icon.size = Self.pictureSide
+            pictureRows[server.id]?.icon = icon
+        }
     }
 
     /// A server: the one here already comes forward; otherwise its sign-in,

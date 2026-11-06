@@ -112,6 +112,11 @@ accounts and servers v1.
   checked as it's typed with `GET /v1/servers/availability`, then
   `POST /v1/servers`), and Join a Server (name and invite code,
   `POST /v1/servers/join`). A server already connected is switched to.
+  Each row is titled with the server's `displayName` (its node name), with
+  `<name>.<base>` under it, and shows its picture: the ThumbHash at once,
+  then the bytes from the listed image `url` under the account token (only
+  ever on the accounts origin), or the generated avatar seeded by the
+  server's id when it has none.
 - **Connecting** runs the sign-in below on `https://<name>.<base>`, built
   from the listed name and the app's own base, never from the listed `url`.
   The account token goes only to the accounts service.
