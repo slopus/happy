@@ -61,6 +61,31 @@ extension HTTPRequest {
     }
 }
 
+/// `FakeHTTP` with one route held on its way: a request to it opens
+/// `requested`, then waits for `release` before the answer is read, so a
+/// test can land something in between.
+struct HeldRouteHTTP: HTTPTransport {
+    let http: FakeHTTP
+    let route: String
+    let requested: Gate
+    let release: Gate
+
+    init(_ http: FakeHTTP, route: String, requested: Gate, release: Gate) {
+        self.http = http
+        self.route = route
+        self.requested = requested
+        self.release = release
+    }
+
+    func send(_ request: HTTPRequest) async throws -> HTTPResponse {
+        if "\(request.method) \(request.url.path)" == route {
+            await requested.open()
+            await release.wait()
+        }
+        return try await http.send(request)
+    }
+}
+
 /// A WebSocket whose server side is scripted by the test.
 final class FakeWebSocket: WebSocketConnection, @unchecked Sendable {
     private let lock = NSLock()

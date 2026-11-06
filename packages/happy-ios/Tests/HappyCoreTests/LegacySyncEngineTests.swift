@@ -229,6 +229,44 @@ final class LegacySyncEngineTests: XCTestCase {
         XCTAssertEqual(try store.machines().first?.active, true)
     }
 
+    /// A computer linked by a scan registers its machine about when the
+    /// new socket's catch-up asks for the list: the list, read before the
+    /// machine existed, lands after the machine's `new-machine`. Home
+    /// must not go back to Link Your Computer with the computer linked.
+    func testMachineRegisteredWhileTheListIsOnItsWayIsKept() async throws {
+        let fixture = self.fixture!
+        let clock = self.clock!
+        let requested = Gate()
+        let release = Gate()
+        let held = HeldRouteHTTP(http, route: "GET /v1/machines", requested: requested, release: release)
+        let engine = LegacySyncEngine(
+            api: HappyAPI(serverURL: testServer, clientID: "ios/9.9.9", transport: held).authenticated(token: "token-1"),
+            store: store, keys: fixture.keys, now: { clock.now }
+        )
+        // What the server listed before the computer registered.
+        http.onRaw("GET /v1/machines", "[]")
+
+        let pull = Task { await engine.run(.machines) }
+        await requested.wait()
+        let registered = try JSONDecoder().decode(UpdateContainer.self, from: Data("""
+        {"id":"u","seq":1,"createdAt":0,"body":{"t":"new-machine","machineId":"m1","seq":0,
+         "metadata":"\(fixture.seal(.object(["host": .string("mac")])))","metadataVersion":1,
+         "daemonState":null,"daemonStateVersion":0,"dataEncryptionKey":"\(fixture.wrappedKey)",
+         "active":true,"activeAt":10,"createdAt":1,"updatedAt":1}}
+        """.utf8))
+        await engine.handle(registered)
+        await release.open()
+        await pull.value
+
+        XCTAssertEqual(try store.machines().map(\.id), ["m1"])
+        XCTAssertEqual(HomeState(try store.homeSnapshot()), .noSessions, "a reachable computer with nothing on it, not Link Your Computer")
+
+        // Only that pull keeps it: a later list without it says it is gone.
+        await engine.run(.machines)
+        XCTAssertEqual(try store.machines().map(\.id), [])
+        await engine.stop()
+    }
+
     func testOutboxSendsEncryptedIdempotentMessages() async throws {
         let fixture = self.fixture!
         try store.upsertSessions([RecordDecoder(keyRing: KeyRing(keys: fixture.keys)).session(fixture.session("s", updatedAt: 1))])

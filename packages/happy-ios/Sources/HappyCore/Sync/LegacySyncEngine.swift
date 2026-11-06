@@ -98,6 +98,9 @@ public actor LegacySyncEngine {
     private let now: @Sendable () -> Int64
     private let sleep: InvalidateSync.Sleep
     private var jobs: [Job: InvalidateSync] = [:]
+    /// While `pullMachines` waits on the server: the machines live
+    /// `new-machine` updates stored meanwhile, which its list may predate.
+    private var machinesArrivedDuringPull: Set<String>?
     private var stopped = false
     private var backgrounded = false
     private var filesDirectory: URL?
@@ -303,11 +306,16 @@ public actor LegacySyncEngine {
 
     func pullMachines() async throws {
         ThreadRules.assertOffMain()
+        machinesArrivedDuringPull = []
+        defer { machinesArrivedDuringPull = nil }
         let rows = try await api.machines()
         let previous = Dictionary(uniqueKeysWithValues: try store.machines().map { ($0.id, $0) })
         let records = rows.map { decoder.machine($0, previous: previous[$0.id]) }
         await presence.prepareMachines(records)
-        try store.replaceMachines(records)
+        // A computer registered while the list was on its way is in the
+        // store from its `new-machine`, not in the list: kept, or home goes
+        // back to Link Your Computer with the computer linked.
+        try store.replaceMachines(records, keeping: machinesArrivedDuringPull ?? [])
         await presence.reconcileStoredRows()
         try store.setCursor(.machinesLastSync, now())
     }
@@ -985,6 +993,7 @@ public actor LegacySyncEngine {
             let record = decoder.machine(body.asMachine)
             await presence.prepareMachines([record])
             try store.upsertMachine(record)
+            machinesArrivedDuringPull?.insert(record.id)
             return nil
 
         case .updateMachine(let body):

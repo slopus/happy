@@ -434,9 +434,11 @@ public final class LocalStore: Sendable {
 
     /// Replaces the machine list with a full `GET /v1/machines` response,
     /// keeping newer versioned state already stored from live updates.
-    public func replaceMachines(_ incoming: [MachineRecord]) throws {
+    /// `keeping` are machines a live `new-machine` stored after the request
+    /// went out: a list read before they existed doesn't remove them.
+    public func replaceMachines(_ incoming: [MachineRecord], keeping: Set<String> = []) throws {
         let removed = try performWrite { db in
-            let ids = Set(incoming.map(\.id))
+            let ids = Set(incoming.map(\.id)).union(keeping)
             var removed = Set<String>()
             for id in try String.fetchAll(db, sql: "SELECT id FROM machine") where !ids.contains(id) {
                 if try MachineRecord.deleteOne(db, key: id) { removed.insert(id) }
