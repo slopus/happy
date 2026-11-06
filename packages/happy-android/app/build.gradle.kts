@@ -48,6 +48,13 @@ val happyCloudBase = providers.environmentVariable("HAPPY_CLOUD_BASE").orNull?.t
     ?: providers.gradleProperty("happy.cloudBase").orNull?.takeIf { it.isNotBlank() }
     ?: "24-144-71-103.sslip.io"
 
+// Happy Cloud's accounts service, where the person signs in and their servers
+// are listed: its own origin, apart from HAPPY_CLOUD_BASE. HAPPY_CLOUD_ACCOUNTS
+// or -Phappy.cloudAccounts points a build at another one.
+val happyCloudAccounts = providers.environmentVariable("HAPPY_CLOUD_ACCOUNTS").orNull?.takeIf { it.isNotBlank() }
+    ?: providers.gradleProperty("happy.cloudAccounts").orNull?.takeIf { it.isNotBlank() }
+    ?: "https://auth.happy.engineering"
+
 // The agent connection voice call's public ElevenLabs agent
 // (docs/agent-voice-call.md): never in the repository, so from the
 // environment, -Phappy.callAgentId or the ignored local.properties. Without
@@ -113,6 +120,7 @@ android {
 
         buildConfigField("String", "DEFAULT_SERVER_URL", "\"https://api.cluster-fluster.com\"")
         buildConfigField("String", "HAPPY_CLOUD_BASE", groovy.json.JsonOutput.toJson(happyCloudBase))
+        buildConfigField("String", "HAPPY_CLOUD_ACCOUNTS", groovy.json.JsonOutput.toJson(happyCloudAccounts))
         buildConfigField("String", "REVENUE_CAT_GOOGLE_KEY", groovy.json.JsonOutput.toJson(revenueCatGoogleKey))
         buildConfigField("String", "POSTHOG_KEY", groovy.json.JsonOutput.toJson(postHogKey))
         // Existing relay voice agent, retained for compatibility with installed clients.

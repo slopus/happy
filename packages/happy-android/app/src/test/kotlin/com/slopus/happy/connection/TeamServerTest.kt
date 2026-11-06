@@ -477,6 +477,47 @@ class TeamServerTest {
         assertEquals(listOf("Bearer $access1"), requests.filter { it.target == "/v0/health" }.map { it.headers["Authorization"] })
     }
 
+    @Test
+    fun aSignInWithATokenFromElsewhereSkipsTheBrowser() = runBlocking {
+        val connections = connections()
+        val server = "https://localhost:${sso.port}"
+        val flow = ServerSignInFlow(scope, connections, auth)
+        val access = jwt(server, tag = "cloud-1")
+        sso.enqueue(json("""{"authenticated":true,"userId":"u-cloud","methods":[]}"""))
+        daemon.valid += access
+        flow.startWith(server) { origin ->
+            assertEquals(server, origin.value)
+            OAuthGrant(AccessToken(access, now + 600_000), "cloud-refresh") to
+                OAuthCredential("happy-accounts", "happy", "https://auth.example/token", "cloud-refresh", "$server/")
+        }
+        val done = withTimeout(5_000) { flow.state.first { it is ServerSignInState.Done || it is ServerSignInState.Failed } }
+        assertTrue(done.toString(), done is ServerSignInState.Done)
+        done as ServerSignInState.Done
+        assertEquals("u-cloud", done.account.userId)
+        val kept = connections.credentials(done.account.id)?.oauth
+        assertEquals("https://auth.example/token", kept?.refreshUrl)
+        assertEquals("cloud-refresh", kept?.refreshToken)
+        // Only the server's check: no discovery, no token endpoint.
+        assertEquals(listOf("GET /v0/authentication"), (0 until sso.requestCount).map { sso.takeRequest().let { r -> "${r.method} ${r.target}" } })
+    }
+
+    @Test
+    fun aTokenThatCannotBeHadFailsAndRetriesTheSameWay() = runBlocking {
+        val connections = connections()
+        val server = "https://localhost:${sso.port}"
+        val flow = ServerSignInFlow(scope, connections, auth)
+        var asked = 0
+        flow.startWith(server) {
+            asked++
+            throw ServerAuthException(ServerAuthException.Reason.Denied)
+        }
+        val failed = withTimeout(5_000) { flow.state.first { it is ServerSignInState.Failed } } as ServerSignInState.Failed
+        assertEquals(ServerAuthException.Reason.Denied, failed.reason)
+        flow.retry()
+        withTimeout(5_000) { while (asked < 2) delay(10) }
+        assertEquals(0, sso.requestCount)
+    }
+
     private fun discovery(server: String) =
         json("""{"authenticated":false,"userId":null,"methods":[{"type":"oauth","id":"jwt","name":"Acme SSO","authorizationUrl":"$server/authorize","tokenUrl":"$server/token","refreshUrl":"$server/token","clientId":"happy","resource":"https://happy.acme.example"}]}""")
 

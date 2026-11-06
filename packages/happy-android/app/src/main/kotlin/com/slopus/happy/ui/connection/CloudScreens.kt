@@ -226,8 +226,9 @@ private fun Spinner() {
 }
 
 /**
- * Happy Cloud. Signed out: a welcome in place of a question, whose Connect
- * opens the account's sign-in in the browser; then waiting for the browser,
+ * Happy Cloud. Signed out: a welcome in place of a question (or, its hour
+ * up, saying the account must sign in again), whose Connect opens the
+ * account's sign-in in the browser; then waiting for the browser,
  * finishing, or why it failed. Signed in: the account's servers.
  */
 @Composable
@@ -247,9 +248,9 @@ fun CloudScreen(
     onBack: () -> Unit,
 ) {
     when (state) {
-        CloudAccountState.SignedOut -> CloudFrame(
+        is CloudAccountState.SignedOut -> CloudFrame(
             title = stringResource(R.string.cloud_title),
-            body = stringResource(R.string.cloud_connect_message),
+            body = stringResource(if (state.expired) R.string.cloud_session_expired else R.string.cloud_connect_message),
             art = R.raw.state_sparkles,
             primary = CloudAction(stringResource(R.string.cloud_connect_confirm), onOpenBrowser),
             onBack = onBack,

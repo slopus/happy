@@ -29,4 +29,5 @@
     <string name="cloud_name_reserved">%1$s está reservado.</string>
     <string name="cloud_failed">Algo deu errado. Tente de novo.</string>
     <string name="cloud_connecting">Conectando a %1$s…</string>
+    <string name="cloud_session_expired">Seu acesso ao Happy Cloud dura uma hora e já acabou. Entre de novo para abrir, criar ou entrar em um servidor. Os servidores que já estão neste telefone continuam conectados.</string>
 </resources>

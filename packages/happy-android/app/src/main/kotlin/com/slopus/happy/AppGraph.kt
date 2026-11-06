@@ -343,11 +343,6 @@ class AppGraph(
             origin = origin,
             auth = serverAuth,
             http = okHttp,
-            secrets = ExpoSecureStore(
-                prefs = context.getSharedPreferences(AgentConnections.SECRETS_PREFS, Context.MODE_PRIVATE),
-                keys = secureStoreKeys,
-                keychainService = CloudAccount.KEYCHAIN_SERVICE,
-            ),
         )
     }
 
@@ -448,13 +443,21 @@ class AppGraph(
      * kept only as [instanceId]'s installation: the code's, or the one
      * [replacing] was.
      */
-    fun startServerSignIn(address: String, replacing: String? = null, instanceId: String? = null) {
+    fun startServerSignIn(address: String, replacing: String? = null, instanceId: String? = null, cloudId: String? = null) {
         serverSignInState.value?.close()
         val existing = agentConnections.accounts.value.firstOrNull { it.id == replacing }
         val onboarding = existing?.takeIf { it.profileRequired }?.server
+        // A Happy Cloud server with the account signed in: its token comes from the account, no browser.
+        val cloud = cloudAccount?.takeIf { HappyCloud.isServer(address) && it.signedIn() }
         // Another member signing in again on [replacing]: their own connection takes its place, and opens.
         serverSignInState.value = ServerSignInFlow(scope, agentConnections, serverAuth, replacing, instanceId ?: existing?.instanceId, onReplaced = { open(it) })
-            .also { flow -> if (onboarding != null) flow.onboard(onboarding) else flow.start(address) }
+            .also { flow ->
+                when {
+                    onboarding != null -> flow.onboard(onboarding)
+                    cloud != null -> flow.startWith(address) { origin -> cloud.serverToken(origin, cloudId) }
+                    else -> flow.start(address)
+                }
+            }
     }
 
     /** The sign-in screen left. */

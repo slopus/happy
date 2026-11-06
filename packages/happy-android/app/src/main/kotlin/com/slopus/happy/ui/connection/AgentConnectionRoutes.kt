@@ -136,7 +136,7 @@ private fun ServerSignIn(graph: AppGraph, nav: NavHostController) {
         // does another member's connection, which took the place of the one signed in again on.
         if (flow?.replacing == done.account.id) nav.popBackStack() else graph.open(done.account.id)
     }
-    // A Happy Cloud server's sign-in has no page: the browser holds the account's session and comes straight back.
+    // A Happy Cloud server signed in to without the account (signed out of it) goes through the browser, opened without a tap.
     LaunchedEffect(state) {
         val ready = state as? ServerSignInState.Ready ?: return@LaunchedEffect
         if (HappyCloud.isServer(ready.server) && !holder.opened) {
@@ -154,7 +154,15 @@ private fun ServerSignIn(graph: AppGraph, nav: NavHostController) {
             failed = (state as? ServerSignInState.Failed)?.reason,
             inBrowser = state is ServerSignInState.InBrowser,
             onOpenBrowser = openBrowser,
-            onRetry = { flow?.retry() },
+            onRetry = {
+                // The account's hour ran out on the way: its sign-in, not the same refusal again.
+                val account = graph.cloudAccount
+                if (account != null && (state as? ServerSignInState.Failed)?.reason == com.slopus.happy.connection.ServerAuthException.Reason.SignInRequired && !account.signedIn()) {
+                    nav.navigate(CloudRoute) { popUpTo<ServerSignInRoute> { inclusive = true }; launchSingleTop = true }
+                } else {
+                    flow?.retry()
+                }
+            },
             onBack = { nav.popBackStack() },
         )
         return
@@ -189,7 +197,7 @@ internal fun openSignInPage(context: android.content.Context, url: String, dark:
 private class ServerSignInHolder(private val graph: AppGraph) : ViewModel() {
     var flow: ServerSignInFlow? = graph.serverSignIn.value
 
-    /** The browser was opened without a tap once (a Happy Cloud server); after that, as any sign-in. */
+    /** The browser was opened without a tap once (a Happy Cloud server, the account signed out); after that, as any sign-in. */
     var opened = false
 
     /** A Happy Cloud server's `@name`, drawn as [CloudConnectingScreen]; null for any other server. */

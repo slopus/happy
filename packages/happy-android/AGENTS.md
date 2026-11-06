@@ -988,10 +988,12 @@ change its wire behaviour on Android alone.
   credential and reads "This code doesn't match the server it points to."
 - **Happy Cloud, the one exception** (accounts contract v1;
   `connection/HappyCloud.kt`, `connection/CloudAccount.kt`,
-  `ui/connection/CloudConnect.kt`, `CloudScreens.kt`): everything lives under
-  one domain, `BuildConfig.HAPPY_CLOUD_BASE` (compiled in; `HAPPY_CLOUD_BASE`
-  or `-Phappy.cloudBase` points a build elsewhere): the accounts service at
-  `https://accounts.BASE` and the server named `acme` at `https://acme.BASE`.
+  `ui/connection/CloudConnect.kt`, `CloudScreens.kt`): the accounts service
+  is its own origin, `BuildConfig.HAPPY_CLOUD_ACCOUNTS`
+  (`https://auth.happy.engineering`; `HAPPY_CLOUD_ACCOUNTS` or
+  `-Phappy.cloudAccounts` points a build elsewhere), and servers live under
+  one domain, `BuildConfig.HAPPY_CLOUD_BASE` (`HAPPY_CLOUD_BASE` or
+  `-Phappy.cloudBase`): the server named `acme` is `https://acme.BASE`.
   Only `debug` and `preview` builds offer it (`HappyCloud.offeredIn`, by
   `BuildConfig.BUILD_TYPE`); `release` and `bench` have no way in at all.
   The account menu's last row, a + reading "Connect to Happy Cloud" (with no
@@ -999,20 +1001,29 @@ change its wire behaviour on Android alone.
   opens a full-screen welcome (no dialog); its Connect opens the
   **account** sign-in in a Custom Tab: PKCE against the accounts origin's
   `/authorize` and `/token`, `client_id` `happy`, `resource` the accounts
-  origin, nothing discovered. Its refresh token is Keystore-encrypted beside
-  the servers' (same prefs file, keychain service `happy-cloud-account`); the
-  account token only ever goes to the accounts API. Signed in, the + skips the
-  welcome and shows the picker: "Your servers" (`GET /v1/servers`, the ones on
+  origin, nothing discovered (the page offers Apple for now). The account
+  token is a pass of about an hour with no refresh (token lifetimes v4): held
+  in memory only, never stored, never refreshed, and only ever sent to the
+  accounts API. Past its hour (two minutes' margin), or on any 401 from the
+  accounts API, the account is signed out with nothing retried, and the +
+  opens on the welcome saying the hour is up (`CloudAccountState.SignedOut`
+  `expired`). Signed in, the + skips the welcome and shows the picker: "Your servers" (`GET /v1/servers`, the ones on
   the phone checked; each titled by its `displayName` over `@name`, with its
   picture: the ThumbHash painted first, then the bytes from its `url`, which
   `CloudAccount.image` fetches with the account token only from the accounts
   origin; no picture, the generated avatar its connection will have), "Create a new server" (a name typed after an `@`,
   checked with `GET /v1/servers/availability` as the person pauses, then
   `POST /v1/servers`) and "Join a server" (name and invite code, `POST
-  /v1/servers/join`). Picking, creating or joining one runs the team server
-  sign-in below on its origin, which opens the browser by itself
-  (`HappyCloud.isServer`): the Custom Tab holds the account's session, so it
-  comes straight back. Each server is its own connection; one already here
+  /v1/servers/join`). Picking, creating or joining one signs in to it with no
+  browser: `POST /v1/servers/:id/token` with the account token
+  (`CloudAccount.serverToken`, `ServerSignInFlow.startWith`) gives the server's
+  access and refresh tokens, its `aud` checked as any; then as the sign-in
+  below (checked with the server, a name if new, kept). That server token is
+  the long-lived session: refreshed at the accounts origin's `/token` with the
+  `refresh_token` grant, `resource` the server, and no account token, so a
+  server stays signed in long after the account's hour. Signing in
+  again on a cloud server does the same while the account is signed in; signed
+  out of it, the server's own browser sign-in opens by itself. Each server is its own connection; one already here
   just opens. The addresses are the app's own, never typed or pasted, so no
   code and no `instanceId` check them.
   Every Happy Cloud screen (welcome, Your servers, Create, Join, and the

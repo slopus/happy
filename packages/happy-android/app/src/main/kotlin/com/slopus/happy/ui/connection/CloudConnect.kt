@@ -47,13 +47,19 @@ val LocalCloudConnect: ProvidableCompositionLocal<(() -> Unit)?> = compositionLo
 
 /**
  * Connecting to Happy Cloud: full screen, on the first screen's gradient.
- * Signed out, it opens on a welcome whose Connect starts the account's
- * sign-in; signed in, on the account's servers.
+ * Signed out, or the account's hour up, it opens on a welcome whose Connect
+ * starts the account's sign-in; signed in, on the account's servers.
  */
 @Composable
 fun rememberCloudConnect(graph: AppGraph, nav: NavHostController): (() -> Unit)? {
     val account = graph.cloudAccount ?: return null
-    return remember(account, nav) { { nav.navigate(CloudRoute) { launchSingleTop = true } } }
+    return remember(account, nav) {
+        {
+            // A pass whose hour is up signs out here: the + opens on the sign-in, not a picker that would refuse.
+            account.signedIn()
+            nav.navigate(CloudRoute) { launchSingleTop = true }
+        }
+    }
 }
 
 fun NavGraphBuilder.cloudRoutes(graph: AppGraph, nav: NavHostController) {
@@ -65,19 +71,18 @@ fun NavGraphBuilder.cloudRoutes(graph: AppGraph, nav: NavHostController) {
 
 /**
  * Opens [server]: this person's connection to it if the phone has one,
- * else the team server sign-in on its origin, which for a Happy Cloud
- * server needs no page (the browser holds the account's session).
+ * else signs in to it with a token from the account, no browser.
  */
 fun NavHostController.openCloudServer(graph: AppGraph, server: CloudServer) {
     val origin = server.origin ?: return
     val existing = HappyCloud.connection(graph.agentConnections.accounts.value, origin, graph.openAgentId.value)
     when {
         existing == null -> {
-            graph.startServerSignIn(origin)
+            graph.startServerSignIn(origin, cloudId = server.id)
             navigate(ServerSignInRoute) { popUpTo(CloudRoute); launchSingleTop = true }
         }
         existing.signInRequired -> {
-            graph.startServerSignIn(origin, replacing = existing.id)
+            graph.startServerSignIn(origin, replacing = existing.id, cloudId = server.id)
             navigate(ServerSignInRoute) { popUpTo(CloudRoute); launchSingleTop = true }
         }
         // Already open: opening it changes nothing, so back to its home.
@@ -143,7 +148,8 @@ private fun CloudCreate(graph: AppGraph, account: CloudAccount, nav: NavHostCont
         delay(300)
         availability = try {
             account.availability(name)
-        } catch (_: CloudException) {
+        } catch (e: CloudException) {
+            if (e.reason == CloudException.Reason.SignInRequired) nav.popBackStack(CloudRoute, inclusive = false)
             null
         }
     }
@@ -161,6 +167,7 @@ private fun CloudCreate(graph: AppGraph, account: CloudAccount, nav: NavHostCont
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: CloudException) {
+                    if (e.reason == CloudException.Reason.SignInRequired) nav.popBackStack(CloudRoute, inclusive = false)
                     failure = e.reason
                     if (e.reason == CloudException.Reason.Taken) availability = CloudName.Taken
                 } finally {
@@ -194,6 +201,7 @@ private fun CloudJoin(graph: AppGraph, account: CloudAccount, nav: NavHostContro
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: CloudException) {
+                    if (e.reason == CloudException.Reason.SignInRequired) nav.popBackStack(CloudRoute, inclusive = false)
                     failure = e.reason
                 } finally {
                     busy = false

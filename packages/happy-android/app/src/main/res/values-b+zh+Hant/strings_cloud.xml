@@ -29,4 +29,5 @@
     <string name="cloud_name_reserved">%1$s 已被保留。</string>
     <string name="cloud_failed">發生問題，請再試一次。</string>
     <string name="cloud_connecting">正在連線到 %1$s…</string>
+    <string name="cloud_session_expired">Happy Cloud 登入有效期為一小時，現已到期。請重新登入以開啟、建立或加入伺服器。已在此手機上的伺服器仍保持登入。</string>
 </resources>

@@ -1,10 +1,6 @@
 package com.slopus.happy.connection
 
-import android.content.Context
-import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.slopus.happy.auth.ExpoSecureStore
-import com.slopus.happy.testing.SoftwareKeys
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -27,13 +23,13 @@ import org.junit.runner.RunWith
 
 /**
  * The Happy Cloud account against a fake accounts service: signed in with
- * PKCE for the accounts origin, kept across restarts, its token refreshed
- * after a 401, and the accounts API's answers as the picker reads them.
+ * PKCE for the accounts origin, a pass for its hour held in memory only and
+ * never refreshed (a 401 or the hour up signs it out), the accounts API's
+ * answers as the picker reads them, and each server's own token.
  */
 @RunWith(AndroidJUnit4::class)
 class CloudAccountTest {
-    private val context = ApplicationProvider.getApplicationContext<Context>()
-    private val keys = SoftwareKeys()
+    private var now = 1_000_000L
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val certificate = HeldCertificate.Builder().commonName("localhost").addSubjectAlternativeName("localhost").build()
     private val server = MockWebServer().apply {
@@ -45,26 +41,18 @@ class CloudAccountTest {
     private val http = OkHttpClient.Builder().sslSocketFactory(roots.sslSocketFactory(), roots.trustManager).build()
     private val origin = AgentOrigin.parse("https://localhost:${server.port}")
     private val audience = "${origin.value}/"
-    private val prefs get() = context.getSharedPreferences(AgentConnections.SECRETS_PREFS, Context.MODE_PRIVATE)
 
-    private fun account() = CloudAccount(
-        scope,
-        origin,
-        ServerAuthClient(http),
-        http,
-        ExpoSecureStore(prefs, keys, keychainService = CloudAccount.KEYCHAIN_SERVICE),
-    )
+    private fun account() = CloudAccount(scope, origin, ServerAuthClient(http, now = { now }), http, now = { now })
 
     private fun json(body: String, code: Int = 200) = MockResponse.Builder().code(code).addHeader("Content-Type", "application/json").body(body).build()
 
-    private fun token(access: String, refresh: String = "refresh-1") =
-        json("""{"access_token":"$access","token_type":"Bearer","expires_in":900,"refresh_token":"$refresh"}""")
+    /** The account's pass, as v4's token endpoint answers: an hour, no refresh token. */
+    private fun token(access: String) = json("""{"access_token":"$access","token_type":"Bearer","expires_in":3600}""")
 
     @After
     fun tearDown() {
         scope.cancel()
         server.close()
-        prefs.edit().clear().commit()
     }
 
     /** Opens the page, comes back with a code, and waits until signed in. */
@@ -83,13 +71,29 @@ class CloudAccountTest {
     }
 
     @Test
-    fun signsInForTheAccountsOriginAndStaysSignedIn() = runBlocking {
+    fun signsInForAnHourAndKeepsNothing() = runBlocking {
         val account = account()
-        assertEquals(CloudAccountState.SignedOut, account.state.value)
+        assertEquals(CloudAccountState.SignedOut(), account.state.value)
         signIn(account, jwt(audience, tag = "a1"))
         assertEquals(CloudAccountState.SignedIn, account.state.value)
-        // A restart reads the kept refresh token: still signed in, with no page.
-        assertEquals(CloudAccountState.SignedIn, account().state.value)
+        assertEquals(true, account.signedIn())
+        // Nothing is kept: a restart is signed out.
+        assertEquals(CloudAccountState.SignedOut(), account().state.value)
+        // Within two minutes of its hour, the + opens on the sign-in, saying why.
+        now += 3_600_000L - 119_000L
+        assertEquals(false, account.signedIn())
+        assertEquals(CloudAccountState.SignedOut(expired = true), account.state.value)
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun aPassPastItsHourIsNeverSent() = runBlocking {
+        val account = account()
+        signIn(account, jwt(audience, tag = "a1"))
+        now += 3_600_000L
+        assertFails(CloudException.Reason.SignInRequired) { account.servers() }
+        assertEquals(CloudAccountState.SignedOut(expired = true), account.state.value)
+        assertEquals(1, server.requestCount)
     }
 
     @Test
@@ -97,7 +101,7 @@ class CloudAccountTest {
         val account = account()
         signIn(account, jwt("https://acme.example/", tag = "a1"))
         assertEquals(CloudAccountState.Failed(ServerAuthException.Reason.WrongAudience), account.state.value)
-        assertEquals(CloudAccountState.SignedOut, account().state.value)
+        assertEquals(false, account.signedIn())
     }
 
     @Test
@@ -162,6 +166,61 @@ class CloudAccountTest {
     }
 
     @Test
+    fun aServersTokenComesFromTheAccountWithNoBrowser() = runBlocking {
+        val access = jwt(audience, tag = "a1")
+        val account = account()
+        signIn(account, access)
+        val acme = AgentOrigin.parse("https://acme.happy.computer")
+        val serverAccess = jwt("https://acme.happy.computer/", "https://api.happy.computer/", tag = "s1")
+        server.enqueue(json("""{"access_token":"$serverAccess","refresh_token":"server-refresh","expires_in":900}"""))
+        val (grant, credential) = account.serverToken(acme, id = "s1")
+        val request = server.takeRequest()
+        assertEquals("POST /v1/servers/s1/token", "${request.method} ${request.target}")
+        assertEquals("Bearer $access", request.headers["Authorization"])
+        assertEquals(serverAccess, grant.access.value)
+        assertEquals("server-refresh", grant.refreshToken)
+        assertEquals(OAuthCredential("happy-accounts", "happy", "${origin.value}/token", "server-refresh", "https://acme.happy.computer/"), credential)
+        // The server's session lives on without the account: refreshed at /token with its own refresh token, even past the account's hour.
+        now += 2 * 3_600_000L
+        val renewed = jwt("https://acme.happy.computer/", tag = "s2")
+        server.enqueue(json("""{"access_token":"$renewed","token_type":"Bearer","expires_in":900,"refresh_token":"server-refresh-2"}"""))
+        val (next, kept) = ServerAuthClient(http, now = { now }).refresh(credential, acme)
+        assertEquals(renewed, next.value)
+        assertEquals("server-refresh-2", kept.refreshToken)
+        val refresh = server.takeRequest()
+        assertEquals("/token", refresh.target)
+        assertEquals(null, refresh.headers["Authorization"])
+        val form = refresh.body?.utf8().orEmpty()
+        assertEquals(true, "grant_type=refresh_token" in form && "refresh_token=server-refresh" in form && "resource=https%3A%2F%2Facme.happy.computer%2F" in form)
+    }
+
+    @Test
+    fun aServersTokenIsFoundByItsOriginAndCheckedToBeItsOwn() = runBlocking {
+        val account = account()
+        signIn(account, jwt(audience, tag = "a1"))
+        val acme = AgentOrigin.parse("https://acme.happy.computer")
+        server.enqueue(json("""{"servers":[{"id":"s9","name":"acme","url":"https://acme.happy.computer/","role":"member"}]}"""))
+        server.enqueue(json("""{"access_token":"${jwt("https://beta.happy.computer/", tag = "s1")}","refresh_token":"r","expires_in":900}"""))
+        try {
+            account.serverToken(acme)
+            fail("a token for another server")
+        } catch (e: ServerAuthException) {
+            assertEquals(ServerAuthException.Reason.WrongAudience, e.reason)
+        }
+        server.takeRequest()
+        assertEquals("/v1/servers/s9/token", server.takeRequest().target)
+        // Not one of the account's servers: refused before any token is asked for.
+        server.enqueue(json("""{"servers":[]}"""))
+        try {
+            account.serverToken(acme)
+            fail("not the account's server")
+        } catch (e: ServerAuthException) {
+            assertEquals(ServerAuthException.Reason.Denied, e.reason)
+        }
+        assertEquals(3 + 1, server.requestCount)
+    }
+
+    @Test
     fun availabilityCreateAndJoinReadTheContractsAnswers() = runBlocking {
         val account = account()
         signIn(account, jwt(audience, tag = "a1"))
@@ -198,30 +257,16 @@ class CloudAccountTest {
     }
 
     @Test
-    fun a401RefreshesOnceAndRetries() = runBlocking {
+    fun a401SignsTheAccountOutWithNoRetry() = runBlocking {
         val account = account()
         signIn(account, jwt(audience, tag = "a1"))
-        val fresh = jwt(audience, tag = "a2")
-        server.enqueue(json("""{"code":"unauthorized","error":"expired"}""", 401))
-        server.enqueue(token(fresh, refresh = "refresh-2"))
-        server.enqueue(json("""{"servers":[]}"""))
-        assertEquals(emptyList<CloudServer>(), account.servers())
-        server.takeRequest()
-        val refresh = server.takeRequest()
-        assertEquals("/token", refresh.target)
-        assertEquals(true, refresh.body?.utf8()?.contains("grant_type=refresh_token"))
-        assertEquals("Bearer $fresh", server.takeRequest().headers["Authorization"])
-    }
-
-    @Test
-    fun aRefusedRefreshSignsTheAccountOut() = runBlocking {
-        val account = account()
-        signIn(account, jwt(audience, tag = "a1"))
-        server.enqueue(json("""{"code":"unauthorized","error":"expired"}""", 401))
-        server.enqueue(json("""{"error":"invalid_grant"}""", 400))
+        server.enqueue(json("""{"code":"unauthorized","error":"A valid account token is required."}""", 401))
         assertFails(CloudException.Reason.SignInRequired) { account.servers() }
-        assertEquals(CloudAccountState.SignedOut, account.state.value)
-        assertEquals(CloudAccountState.SignedOut, account().state.value)
+        assertEquals(CloudAccountState.SignedOut(expired = true), account.state.value)
+        // The sign-in's exchange and the one refused call: no refresh, no second try.
+        assertEquals(2, server.requestCount)
+        assertFails(CloudException.Reason.SignInRequired) { account.servers() }
+        assertEquals(2, server.requestCount)
     }
 
     private suspend fun assertFails(reason: CloudException.Reason, block: suspend () -> Unit) {

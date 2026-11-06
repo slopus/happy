@@ -1,6 +1,5 @@
 package com.slopus.happy.connection
 
-import com.slopus.happy.auth.ExpoSecureStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -8,8 +7,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -58,7 +55,8 @@ class CloudException(val reason: Reason) : Exception(reason.name) {
 
 /** Where the Happy Cloud account stands. */
 sealed interface CloudAccountState {
-    data object SignedOut : CloudAccountState
+    /** [expired]: it was signed in, and its hour is up (or the service said its token is no good). */
+    data class SignedOut(val expired: Boolean = false) : CloudAccountState
 
     /** The account's sign-in page is open; the app waits for it to come back. */
     data object InBrowser : CloudAccountState
@@ -71,20 +69,21 @@ sealed interface CloudAccountState {
 }
 
 /**
- * The person's Happy Cloud account (accounts contract v1) at [origin], the
- * accounts service: signed in with the authorization code flow and PKCE in
- * the system browser, `resource` the accounts origin, so the browser keeps
- * the account's session for the servers' sign-ins after it. Its refresh
- * token is kept Keystore-encrypted in [secrets], beside the servers'; the
- * access token stays in memory. The account token goes only to [origin],
- * never to a server.
+ * The person's Happy Cloud account (accounts contract, token lifetimes v4)
+ * at [origin], the accounts service: signed in with the authorization code
+ * flow and PKCE in the system browser, `resource` the accounts origin. Its
+ * token is a pass of about an hour, with no refresh: held in memory only,
+ * for picking, creating or joining servers, each of which then gets a
+ * server token of its own ([serverToken]), the long-lived session. Past its
+ * hour, or on any 401, the account is signed out ([CloudAccountState.SignedOut]
+ * `expired`) and the person signs in again; nothing retries. The account
+ * token goes only to [origin], never to a server.
  */
 class CloudAccount(
     private val scope: CoroutineScope,
     val origin: AgentOrigin,
     private val auth: ServerAuthClient,
     http: OkHttpClient,
-    private val secrets: ExpoSecureStore,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
     private val http = http.newBuilder()
@@ -94,12 +93,11 @@ class CloudAccount(
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    private val mutableState = MutableStateFlow(if (KEY in secrets.keys()) CloudAccountState.SignedIn else CloudAccountState.SignedOut)
+    private val mutableState = MutableStateFlow<CloudAccountState>(CloudAccountState.SignedOut())
     val state: StateFlow<CloudAccountState> = mutableState.asStateFlow()
 
     private var pending: PendingOAuth? = null
-    private var access: AccessToken? = null
-    private val refreshing = Mutex()
+    @Volatile private var access: AccessToken? = null
 
     /** The accounts service's own sign-in: the contract fixes its endpoints, so nothing is discovered. */
     private val method = OAuthMethod(
@@ -107,7 +105,6 @@ class CloudAccount(
         name = "Happy Cloud",
         authorizationUrl = "${origin.value}/authorize",
         tokenUrl = "${origin.value}/token",
-        refreshUrl = "${origin.value}/token",
         clientId = "happy",
         resource = "${origin.value}/",
     )
@@ -128,9 +125,9 @@ class CloudAccount(
         mutableState.value = CloudAccountState.Finishing
         scope.launch {
             mutableState.value = try {
-                val (grant, credential) = auth.complete(pending, uri)
-                withContext(Dispatchers.IO) { secrets.setItem(KEY, json.encodeToString(OAuthCredential.serializer(), credential)) }
-                access = grant.access
+                val (grant, _) = auth.complete(pending, uri)
+                // No refresh token is kept, or expected: the pass is the access token, for its hour.
+                access = AccessToken(grant.access.value, grant.access.expiresAtMillis ?: (now() + PASS_MILLIS))
                 CloudAccountState.SignedIn
             } catch (e: CancellationException) {
                 throw e
@@ -145,14 +142,22 @@ class CloudAccount(
     /** After a failure, or the page closed: back to signed out, to sign in again. */
     fun reset() {
         pending = null
-        if (mutableState.value != CloudAccountState.SignedIn) mutableState.value = CloudAccountState.SignedOut
+        if (mutableState.value != CloudAccountState.SignedIn) mutableState.value = CloudAccountState.SignedOut()
     }
 
-    fun signOut() {
+    /** Whether the pass is still good; one whose hour is (nearly) up signs the account out now, as the picker opens. */
+    fun signedIn(): Boolean {
+        if (mutableState.value != CloudAccountState.SignedIn) return false
+        if (access?.let(::fresh) == true) return true
+        expire()
+        return false
+    }
+
+    /** The pass is over: its hour is up, or the service refused it. */
+    private fun expire() {
         access = null
         pending = null
-        secrets.deleteItem(KEY)
-        mutableState.value = CloudAccountState.SignedOut
+        mutableState.value = CloudAccountState.SignedOut(expired = true)
     }
 
     suspend fun servers(): List<CloudServer> {
@@ -178,6 +183,38 @@ class CloudAccount(
         server(call("POST", "/v1/servers/join", JsonObject(mapOf("name" to JsonPrimitive(name), "code" to JsonPrimitive(code)))).second)
 
     /**
+     * A token for the Happy Cloud server at [origin] (`POST
+     * /v1/servers/:id/token` with the account token, no browser), and the
+     * credential its connection keeps, the long-lived session: refreshed with
+     * the accounts service's `refresh_token` grant, `resource` the server, and
+     * no account token. [id] is the
+     * server's when known; otherwise it is found in the account's servers.
+     * Throws [ServerAuthException], as a browser sign-in would.
+     */
+    suspend fun serverToken(origin: AgentOrigin, id: String? = null): Pair<OAuthGrant, OAuthCredential> {
+        val body = try {
+            val server = id ?: servers().firstOrNull { it.origin == origin.value }?.id ?: throw CloudException(CloudException.Reason.NotFound)
+            call("POST", "/v1/servers/${java.net.URLEncoder.encode(server, "UTF-8")}/token", JsonObject(emptyMap())).second
+        } catch (e: CloudException) {
+            throw ServerAuthException(
+                when (e.reason) {
+                    CloudException.Reason.SignInRequired -> ServerAuthException.Reason.SignInRequired
+                    CloudException.Reason.Unreachable -> ServerAuthException.Reason.Unreachable
+                    else -> ServerAuthException.Reason.Denied
+                },
+                e,
+            )
+        }
+        fun text(key: String) = (body[key] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotEmpty() }
+        val access = text("access_token") ?: throw ServerAuthException(ServerAuthException.Reason.InvalidToken)
+        val expiresIn = (body["expires_in"] as? JsonPrimitive)?.contentOrNull?.toLongOrNull()?.takeIf { it > 0 }
+        if (!ServerAuthClient.audienceIs(access, origin)) throw ServerAuthException(ServerAuthException.Reason.WrongAudience)
+        val refresh = text("refresh_token")
+        return OAuthGrant(AccessToken(access, expiresIn?.let { now() + it * 1000 }), refresh) to
+            OAuthCredential(methodId = method.id, clientId = method.clientId, refreshUrl = method.tokenUrl, refreshToken = refresh, resource = "${origin.value}/")
+    }
+
+    /**
      * A server picture's bytes, kept in memory: its URL names its digest, so
      * it never changes. Null when it can't be had. The account token goes
      * only to the accounts origin, so a URL anywhere else isn't asked.
@@ -186,12 +223,8 @@ class CloudAccount(
         synchronized(images) { images.get(url) }?.let { return it }
         val target = url.toHttpUrlOrNull()?.takeIf { it.scheme == "https" && it.host == origin.host && it.port == origin.port } ?: return null
         val bytes = try {
-            var token = bearer()
-            var answer = fetch(target.toString(), token)
-            if (answer.first == 401) {
-                token = refresh(stale = token)
-                answer = fetch(target.toString(), token)
-            }
+            val answer = fetch(target.toString(), bearer())
+            if (answer.first == 401) expire()
             answer.second.takeIf { answer.first == 200 }
         } catch (_: CloudException) {
             null
@@ -215,13 +248,11 @@ class CloudAccount(
     private fun server(body: JsonObject): CloudServer =
         json.decodeFromJsonElement(CloudServer.serializer(), body["server"]?.jsonObject ?: throw CloudException(CloudException.Reason.Failed))
 
-    /** One accounts API request; a 401 refreshes the token once and asks again, and a second signs the account out. */
+    /** One accounts API request. A 401 is the pass over: signed out, never retried. */
     private suspend fun call(verb: String, path: String, body: JsonObject? = null): Pair<Int, JsonObject> {
-        val token = bearer()
-        var answer = send(verb, path, body, token)
-        if (answer.first == 401) answer = send(verb, path, body, refresh(stale = token))
+        val answer = send(verb, path, body, bearer())
         if (answer.first == 401) {
-            signOut()
+            expire()
             throw CloudException(CloudException.Reason.SignInRequired)
         }
         val (status, root) = answer
@@ -251,45 +282,22 @@ class CloudAccount(
         }
     }
 
-    private suspend fun bearer(): String = access?.takeIf(::fresh)?.value ?: refresh(stale = null)
-
-    private fun fresh(token: AccessToken) = token.expiresAtMillis == null || token.expiresAtMillis - now() > REFRESH_MARGIN_MILLIS
-
-    /** A new access token, unless another request already got one newer than [stale]. Signs out when the refresh token is refused. */
-    private suspend fun refresh(stale: String?): String = refreshing.withLock {
-        access?.takeIf { it.value != stale && fresh(it) }?.let { return@withLock it.value }
-        val credential = withContext(Dispatchers.IO) { readCredential() } ?: run {
-            signOut()
-            throw CloudException(CloudException.Reason.SignInRequired)
-        }
-        val (token, next) = try {
-            auth.refresh(credential, origin)
-        } catch (e: ServerAuthException) {
-            if (e.reason == ServerAuthException.Reason.Unreachable) throw CloudException(CloudException.Reason.Unreachable).initCause(e)
-            signOut()
-            throw CloudException(CloudException.Reason.SignInRequired).initCause(e)
-        }
-        // A rotated refresh token: the old one may already be spent.
-        if (next != credential) withContext(Dispatchers.IO) { secrets.setItem(KEY, json.encodeToString(OAuthCredential.serializer(), next)) }
-        access = token
-        token.value
+    private fun bearer(): String = access?.takeIf(::fresh)?.value ?: run {
+        expire()
+        throw CloudException(CloudException.Reason.SignInRequired)
     }
 
-    private fun readCredential(): OAuthCredential? = try {
-        secrets.getItem(KEY)?.let { json.decodeFromString(OAuthCredential.serializer(), it) }
-    } catch (_: Exception) {
-        null
-    }
+    /** Good for a while yet: a pass with under two minutes left won't see a create or join through. */
+    private fun fresh(token: AccessToken) = token.expiresAtMillis == null || token.expiresAtMillis - now() > EXPIRY_MARGIN_MILLIS
 
     @Serializable private class ServerList(val servers: List<CloudServer>)
 
     companion object {
-        /** The account's keychain service, in the servers' prefs file ([AgentConnections.SECRETS_PREFS]) under its own prefix. */
-        const val KEYCHAIN_SERVICE = "happy-cloud-account"
-        private const val KEY = "account"
         private const val MAX_BODY = 1024L * 1024
         private const val MAX_IMAGE = 8 * 1024 * 1024
-        private const val REFRESH_MARGIN_MILLIS = 60_000L
+        private const val EXPIRY_MARGIN_MILLIS = 120_000L
+        /** The pass's life when the token endpoint doesn't say (contract v4: an hour). */
+        private const val PASS_MILLIS = 3_600_000L
         private val json = Json { ignoreUnknownKeys = true }
     }
 }
