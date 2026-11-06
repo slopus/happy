@@ -144,9 +144,15 @@ fun CloudScreen(
                         Item(
                             title = server.title,
                             subtitle = host(server.origin ?: server.url),
-                            detail = stringResource(if (server.owner) R.string.cloud_role_owner else R.string.cloud_role_member),
+                            subtitleLines = 1,
                             icon = { ServerAvatar(server, image, avatar) },
-                            rightElement = if (server.origin in here) ({ Icon(Ionicon.CheckmarkCircle, 20.dp, colors.success) }) else null,
+                            // The role, and a check for a server already on the phone: Item drops its detail beside a right element.
+                            rightElement = {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(stringResource(if (server.owner) R.string.cloud_role_owner else R.string.cloud_role_member), style = CloudText.field, color = colors.textSecondary)
+                                    if (server.origin in here) Icon(Ionicon.CheckmarkCircle, 20.dp, colors.success)
+                                }
+                            },
                             onClick = { onPick(server) },
                             modifier = Modifier.testTag(CloudTags.server(server.name)),
                         )
