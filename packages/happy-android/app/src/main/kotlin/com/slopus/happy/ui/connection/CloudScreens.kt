@@ -1,5 +1,17 @@
 package com.slopus.happy.ui.connection
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.Dp
+import com.slopus.happy.ui.components.RemoteImage
+import com.slopus.happy.ui.components.avatar.PlaceholderAvatar
+import com.slopus.happy.ui.components.rememberThumbHash
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -62,8 +74,9 @@ object CloudTags {
  * Happy Cloud: until the account is signed in, the sign-in in the browser
  * as [ServerSignInScreen] draws a team server's (waiting with Open browser
  * again, finishing, or why it failed); then the account's servers ("Your
- * servers", each with its host and the person's role, the ones already on
- * the phone checked), and "Create a new server" and "Join a server".
+ * servers": each one's picture, display name, host and the person's role,
+ * the ones already on the phone checked), and "Create a new server" and
+ * "Join a server".
  */
 @Composable
 fun CloudScreen(
@@ -71,6 +84,8 @@ fun CloudScreen(
     servers: List<CloudServer>?,
     failure: CloudException.Reason?,
     here: Set<String>,
+    /** A server picture's bytes, fetched with the account token. */
+    image: suspend (String) -> ByteArray?,
     onOpenBrowser: () -> Unit,
     onRetrySignIn: () -> Unit,
     onReload: () -> Unit,
@@ -81,6 +96,7 @@ fun CloudScreen(
 ) {
     val colors = HappyTheme.colors
     val icon = 29.dp
+    val avatar = 32.dp
     Screen(header = { StackHeader(stringResource(R.string.cloud_title), onBack) }) {
         if (state != CloudAccountState.SignedIn) {
             CloudColumn {
@@ -126,10 +142,11 @@ fun CloudScreen(
                     servers.isEmpty() -> Item(title = stringResource(R.string.cloud_no_servers), showChevron = false)
                     else -> servers.forEach { server ->
                         Item(
-                            title = server.name,
+                            title = server.title,
                             subtitle = host(server.origin ?: server.url),
                             detail = stringResource(if (server.owner) R.string.cloud_role_owner else R.string.cloud_role_member),
-                            icon = { Icon(if (server.origin in here) Ionicon.CheckmarkCircle else Ionicon.ServerOutline, icon, if (server.origin in here) colors.success else colors.textSecondary) },
+                            icon = { ServerAvatar(server, image, avatar) },
+                            rightElement = if (server.origin in here) ({ Icon(Ionicon.CheckmarkCircle, 20.dp, colors.success) }) else null,
                             onClick = { onPick(server) },
                             modifier = Modifier.testTag(CloudTags.server(server.name)),
                         )
@@ -236,6 +253,28 @@ fun CloudJoinScreen(
                 enabled = name.length >= 3 && code.isNotEmpty() && !busy,
                 loading = busy,
             )
+        }
+    }
+}
+
+/**
+ * A server's picture: its ThumbHash at once, the bytes dissolving in over it
+ * once fetched. Without a picture, the generated avatar its connection will
+ * have (seeded by its host, as [com.slopus.happy.connection.AgentConnections.placeholderSeed]).
+ */
+@Composable
+private fun ServerAvatar(server: CloudServer, image: suspend (String) -> ByteArray?, size: Dp) {
+    val picture = server.image
+    if (picture == null) {
+        PlaceholderAvatar("agent:${host(server.origin ?: server.url)}", size, animated = false)
+        return
+    }
+    val bytes by produceState<ByteArray?>(null, picture.url) { value = image(picture.url) }
+    val placeholder = rememberThumbHash(picture.thumbhash)
+    Box(Modifier.size(size).clip(CircleShape).background(HappyTheme.colors.surfaceHigh)) {
+        when {
+            bytes != null -> RemoteImage(bytes, null, Modifier.matchParentSize(), cacheKey = picture.url, placeholder = placeholder)
+            placeholder != null -> Image(placeholder, null, Modifier.matchParentSize(), contentScale = ContentScale.Crop)
         }
     }
 }

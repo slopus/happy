@@ -121,6 +121,7 @@ private fun Cloud(graph: AppGraph, account: CloudAccount, nav: NavHostController
         servers = picker.servers,
         failure = picker.failure,
         here = graph.agentConnections.accounts.collectAsStateWithLifecycle().value.mapNotNull { it.server }.toSet(),
+        image = account::image,
         onOpenBrowser = openBrowser,
         onRetrySignIn = account::reset,
         onReload = picker::load,
