@@ -15,6 +15,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 
 /** Diff view style (`split` is web-only). */
 enum class DiffStyle(val wire: String) { Unified("unified"), Split("split") }
@@ -131,6 +132,19 @@ data class Settings(
             }
             val language = if (parsed.preferredLanguage == "zh") "zh-Hans" else parsed.preferredLanguage
             return parsed.copy(preferredLanguage = language, unknown = unknown)
+        }
+
+        /**
+         * The account's analytics opt-out, read on its own: [parse] gives
+         * every field its default when any one is malformed, which would
+         * turn analytics on. Missing is not opted out; a value that isn't a
+         * boolean, or a document that isn't an object, is.
+         */
+        fun analyticsOptOut(element: JsonElement?): Boolean {
+            if (element == null) return false
+            val json = element as? JsonObject ?: return true
+            val value = json["analyticsOptOut"] ?: return false
+            return (value as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull ?: true
         }
 
         /**

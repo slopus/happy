@@ -276,9 +276,9 @@ class AppGraph(
     /** Every Happy account here, the open one as it is now ([accountsOptedOut]). */
     private fun analyticsOptOuts(): Flow<Boolean> = accountsOptedOut(
         ids = accountStore.registry.map { registry -> registry.entries.map { it.id } },
-        open = settings.settings.map { it.analyticsOptOut },
+        open = settings.document.map(Settings::analyticsOptOut),
         changes = store.changes,
-        optedOut = { id -> Settings.parse(HappyStore(database(id)).effectiveSettings()).analyticsOptOut },
+        optedOut = { id -> Settings.analyticsOptOut(HappyStore(database(id)).effectiveSettingsOrThrow()) },
     )
     private val accountLock = Mutex()
     /** Selection and removal publish atomically without waiting for another account's sync startup. */

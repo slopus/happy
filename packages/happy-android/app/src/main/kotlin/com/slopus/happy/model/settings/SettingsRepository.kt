@@ -28,6 +28,9 @@ class SettingsRepository(
 ) {
     private val state = MutableStateFlow(Settings.Defaults)
     val settings: StateFlow<Settings> = state.asStateFlow()
+    private val raw = MutableStateFlow(EmptyJson)
+    /** What [settings] is parsed from, for a reader that checks one key on its own ([Settings.analyticsOptOut]). */
+    val document: StateFlow<JsonObject> = raw.asStateFlow()
 
     private val lock = Any()
     private var stored = EmptyJson
@@ -71,6 +74,7 @@ class SettingsRepository(
     }
 
     private fun publish() {
-        state.value = Settings.parse(JsonObject(stored + unwritten))
+        raw.value = JsonObject(stored + unwritten)
+        state.value = Settings.parse(raw.value)
     }
 }

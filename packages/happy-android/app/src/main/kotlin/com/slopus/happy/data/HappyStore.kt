@@ -668,6 +668,19 @@ class HappyStore(@Volatile private var helper: SQLiteOpenHelper) {
     /** What the app should act on: server settings with pending changes on top (applySettings). */
     fun effectiveSettings(): JsonObject = JsonObject((settings()?.value ?: EMPTY) + pendingSettings())
 
+    /**
+     * [effectiveSettings] for a reader that must not take a broken document
+     * for a missing one (analytics' consent): throws when the stored
+     * settings or pending changes are there but can't be read.
+     */
+    fun effectiveSettingsOrThrow(): JsonObject =
+        JsonObject((strictDocument(KEY_SETTINGS) ?: EMPTY) + (strictDocument(KEY_PENDING_SETTINGS) ?: EMPTY))
+
+    private fun strictDocument(key: String): JsonObject? =
+        query("SELECT value FROM account WHERE key = ?", arrayOf(key)) { c ->
+            if (!c.moveToFirst()) null else HappyJson.parseToJsonElement(c.getString(0)).jsonObject
+        }
+
     /** Records a local settings change: it applies at once and is uploaded by the next sync. */
     fun changeSettings(delta: JsonObject) = transaction {
         savePendingSettings(JsonObject(pendingSettings() + delta))

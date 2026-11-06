@@ -43,16 +43,38 @@ class AccountsOptedOutTest {
         otherDatabase.close()
     }
 
-    private fun stored(store: HappyStore, optOut: Boolean) =
-        store.saveSettings(HappyJson.parseToJsonElement("""{"analyticsOptOut":$optOut}""").jsonObject, version = 1)
+    private fun stored(store: HappyStore, optOut: Boolean) = stored(store, """{"analyticsOptOut":$optOut}""")
 
-    private fun read(id: String): Boolean = Settings.parse(
+    private fun stored(store: HappyStore, text: String) = store.saveSettings(HappyJson.parseToJsonElement(text).jsonObject, version = 1)
+
+    /** Settings stored as they came, readable or not. */
+    private fun storedRaw(database: HappyDatabase, text: String) = database.writableDatabase.execSQL(
+        "INSERT OR REPLACE INTO account(key, value, version) VALUES('settings', ?, 1)",
+        arrayOf(text),
+    )
+
+    /** What AppGraph reads for each account. */
+    private fun read(id: String): Boolean = Settings.analyticsOptOut(
         when (id) {
             "open" -> open
             "other" -> other
             else -> error("unreadable")
-        }.effectiveSettings(),
-    ).analyticsOptOut
+        }.effectiveSettingsOrThrow(),
+    )
+
+    /** The consent for the open account and [ids], as AppGraph wires it, once settled. */
+    private fun kotlinx.coroutines.test.TestScope.settled(ids: List<String>): Boolean {
+        val io = StandardTestDispatcher(testScheduler)
+        val settings = SettingsRepository(open, backgroundScope, onChanged = {}, io = io)
+        val seen = mutableListOf<Boolean>()
+        backgroundScope.launch {
+            accountsOptedOut(MutableStateFlow(ids), settings.document.map(Settings::analyticsOptOut), open.changes, ::read, io)
+                .collect { seen += it }
+        }
+        advanceTimeBy(1_000)
+        runCurrent()
+        return seen.last()
+    }
 
     @Test
     fun turningTheOpenAccountsSwitchOffCountsAtOnce() = runTest {
@@ -62,7 +84,7 @@ class AccountsOptedOutTest {
         val settings = SettingsRepository(open, backgroundScope, onChanged = {}, io = io)
         val seen = mutableListOf<Boolean>()
         backgroundScope.launch {
-            accountsOptedOut(MutableStateFlow(listOf("open", "other")), settings.settings.map { it.analyticsOptOut }, open.changes, ::read, io)
+            accountsOptedOut(MutableStateFlow(listOf("open", "other")), settings.document.map(Settings::analyticsOptOut), open.changes, ::read, io)
                 .collect { seen += it }
         }
         runCurrent()
@@ -108,5 +130,42 @@ class AccountsOptedOutTest {
         ids.value = listOf("open", "other")
         runCurrent()
         assertEquals(false, seen.last())
+    }
+
+    @Test
+    fun aMalformedFieldBesideItDoesNotHideAnOptOut() = runTest {
+        // Settings.parse takes every field's default when one is malformed: the opt-out is read on its own.
+        val malformed = """{"viewInline":"yes","analyticsOptOut":true}"""
+        assertEquals(false, Settings.parse(HappyJson.parseToJsonElement(malformed)).analyticsOptOut)
+        stored(open, malformed)
+        stored(other, false)
+        assertEquals("the open account", true, settled(listOf("open", "other")))
+        stored(open, false)
+        stored(other, malformed)
+        assertEquals("another account", true, settled(listOf("open", "other")))
+    }
+
+    @Test
+    fun aMalformedOptOutIsOptedOut() = runTest {
+        stored(open, """{"analyticsOptOut":"no"}""")
+        stored(other, false)
+        assertEquals("the open account", true, settled(listOf("open", "other")))
+        stored(open, false)
+        stored(other, """{"analyticsOptOut":null}""")
+        assertEquals("another account", true, settled(listOf("open", "other")))
+        stored(other, """{"viewInline":true}""")
+        assertEquals("missing is not opted out", false, settled(listOf("open", "other")))
+    }
+
+    @Test
+    fun unreadableSettingsAreOptedOut() = runTest {
+        storedRaw(openDatabase, "{not json")
+        stored(other, false)
+        // The lenient read takes it for missing; analytics doesn't.
+        assertEquals(emptyMap<String, Any>(), open.effectiveSettings())
+        assertEquals("the open account", true, settled(listOf("open", "other")))
+        stored(open, false)
+        storedRaw(otherDatabase, "[1, 2]")
+        assertEquals("another account", true, settled(listOf("open", "other")))
     }
 }
