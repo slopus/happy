@@ -283,6 +283,29 @@ describe('claudeLocal --continue handling', () => {
         expect(mockSandboxCleanup).toHaveBeenCalledTimes(1);
     });
 
+    it('should place claudeArgs after --settings so positional prompts are last (regression #663)', async () => {
+        mockClaudeFindLastSession.mockReturnValue(null);
+
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs: ['/review https://example.com/pr/123'],
+            hookSettingsPath: '/tmp/hook-settings.json',
+        });
+
+        const spawnArgs: string[] = mockSpawn.mock.calls[0][1];
+
+        const settingsIdx = spawnArgs.indexOf('--settings');
+        const promptIdx = spawnArgs.indexOf('/review https://example.com/pr/123');
+
+        expect(settingsIdx).toBeGreaterThan(-1);
+        expect(promptIdx).toBeGreaterThan(-1);
+        // Positional prompt must come AFTER --settings and its value
+        expect(promptIdx).toBeGreaterThan(settingsIdx + 1);
+    });
+
     it('should continue without sandbox when initialization fails', async () => {
         mockInitializeSandbox.mockRejectedValue(new Error('sandbox failed'));
 
