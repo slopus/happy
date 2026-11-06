@@ -7,6 +7,7 @@ import io.elevenlabs.ConversationConfig
 import io.elevenlabs.ConversationSession
 import io.elevenlabs.Language
 import io.elevenlabs.Overrides
+import io.elevenlabs.PromptOverrides
 import io.elevenlabs.models.ConversationMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -17,11 +18,12 @@ import kotlinx.coroutines.withContext
 
 /**
  * The hosted call agent over the official SDK (iOS `ElevenLabsCallConnection`).
- * Apart from the relay's `ElevenLabsTransport` on purpose: no prompt,
- * greeting or relay tools are sent; the hosted agent has its own, and its
- * one variable is `initialConversationContext`. Tool calls are answered one
- * at a time, by their provider ID, and an ID seen before is never run again.
- * Everything the SDK reports comes back on [scope]'s thread.
+ * Apart from the relay's `ElevenLabsTransport` on purpose: the call's own
+ * prompt goes as the agent's prompt override, with its one variable,
+ * `initialConversationContext`; no greeting or relay tools are sent. Tool
+ * calls are answered one at a time, by their provider ID, and an ID seen
+ * before is never run again. Everything the SDK reports comes back on
+ * [scope]'s thread.
  */
 class ElevenLabsCallConnection private constructor(
     private val session: ConversationSession,
@@ -108,7 +110,8 @@ class ElevenLabsCallConnection private constructor(
                 conversationToken = grant.conversationToken,
                 userId = grant.userId,
                 dynamicVariables = mapOf("initialConversationContext" to request.context),
-                overrides = request.language?.let(Language::fromCode)?.let { Overrides(agent = AgentOverrides(language = it)) },
+                // The hosted agent must allow the prompt override (its Security settings), or the call is refused.
+                overrides = Overrides(agent = AgentOverrides(prompt = PromptOverrides(request.prompt), language = request.language?.let(Language::fromCode))),
                 onUnhandledClientToolCall = { call ->
                     val parameters = call.parameters.toJson() as? kotlinx.serialization.json.JsonObject ?: kotlinx.serialization.json.JsonObject(emptyMap())
                     val request = CallToolCall(call.toolCallId, call.toolName, parameters, call.expectsResponse)

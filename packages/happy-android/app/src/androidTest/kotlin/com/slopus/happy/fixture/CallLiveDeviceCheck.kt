@@ -19,6 +19,8 @@ import com.slopus.happy.agent.ConversationKind
 import com.slopus.happy.call.CallAgent
 import com.slopus.happy.call.CallContext
 import com.slopus.happy.call.CallMessage
+import com.slopus.happy.call.CallModeChange
+import com.slopus.happy.call.CallScreenMove
 import com.slopus.happy.call.CallProbe
 import com.slopus.happy.call.CallSendOutcome
 import com.slopus.happy.call.CallSession
@@ -82,11 +84,15 @@ class CallLiveDeviceCheck {
         }
         override suspend fun focused(): String? = null
         override suspend fun open(agentId: String) = conversations.any { it.agentId == agentId }
-        override suspend fun send(agentId: String, text: String, id: String): CallSendOutcome {
+        override suspend fun send(agentId: String, text: String, id: String, change: CallModeChange?): CallSendOutcome {
             sent += agentId to text
             return CallSendOutcome.Queued
         }
         override suspend fun follow(agentId: String, following: Boolean) {}
+        override suspend fun newWork(kind: CallTarget.Kind, name: String): CallTarget? = null
+        override suspend fun unlisted(agentId: String): CallTarget? = null
+        override suspend fun back(): CallScreenMove = CallScreenMove.Refused("No screens here.")
+        override suspend fun home(): CallScreenMove = CallScreenMove.Moved(true)
     }
 
     private fun feed() = AgentFeed(loaded = true, rows = buildList {
@@ -190,8 +196,12 @@ class CallLiveDeviceCheck {
             override suspend fun state(agentId: String): CallTargetState? = states[agentId]
             override suspend fun focused(): String? = null
             override suspend fun open(agentId: String) = agentId in states
-            override suspend fun send(agentId: String, text: String, id: String) = CallSendOutcome.Queued
+            override suspend fun send(agentId: String, text: String, id: String, change: CallModeChange?) = CallSendOutcome.Queued
             override suspend fun follow(agentId: String, following: Boolean) {}
+            override suspend fun newWork(kind: CallTarget.Kind, name: String): CallTarget? = null
+            override suspend fun unlisted(agentId: String): CallTarget? = null
+            override suspend fun back(): CallScreenMove = CallScreenMove.Refused("No screens here.")
+            override suspend fun home(): CallScreenMove = CallScreenMove.Moved(true)
         }
         val context = CallContext(targets)
         val level = MutableStateFlow(0f)

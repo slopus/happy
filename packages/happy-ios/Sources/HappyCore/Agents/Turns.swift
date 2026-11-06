@@ -49,12 +49,15 @@ extension ChatItem {
         /// It follows a step of the turn, which it keeps 4 more from
         /// (`happy-turn-status--after-trace`); `TurnFold` says.
         public var afterStep = false
+        /// When the run ended, in ms; nil where it isn't known.
+        public var endedAt: Double?
 
-        public init(reason: String, durationMs: Double?, tools: Int, copyText: String?) {
+        public init(reason: String, durationMs: Double?, tools: Int, copyText: String?, endedAt: Double? = nil) {
             self.reason = reason
             self.durationMs = durationMs
             self.tools = tools
             self.copyText = copyText
+            self.endedAt = endedAt
         }
 
         /// Desktop's `TurnSummary` status: a steered turn, one that failed

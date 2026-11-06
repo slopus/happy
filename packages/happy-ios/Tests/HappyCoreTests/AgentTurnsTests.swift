@@ -157,7 +157,7 @@ final class AgentTurnsTests: XCTestCase {
         let snapshot = try await next(&updates) { $0.items.count >= 4 }
         XCTAssertEqual(snapshot.items.map(\.id), ["u-r", "m-r", "t1", "m-r/2", "r:status"])
         XCTAssertEqual(snapshot.items[2].role, .tool(.init(name: "exec_command", status: "completed", presentation: AgentWire.Presentation(type: "exec_command", command: "ls"), callId: "t1")))
-        XCTAssertEqual(snapshot.items[4].role, .turnEnd(.init(reason: "completed", durationMs: 12_000, tools: 1, copyText: "Done.")))
+        XCTAssertEqual(snapshot.items[4].role, .turnEnd(.init(reason: "completed", durationMs: 12_000, tools: 1, copyText: "Done.", endedAt: 13_000)))
         XCTAssertEqual(Set(snapshot.items.map(\.turn)), ["r"])
         await conversation.stop()
     }
@@ -177,7 +177,7 @@ final class AgentTurnsTests: XCTestCase {
         XCTAssertEqual(tool.presentation?.operations?.first?.name, "a.swift")
         await engine.spaces.externalEvent(TurnServer.event("run.finished", ["run": .object(["id": .string("live"), "status": .string("completed"), "reason": .string("completed"), "startedAt": .number(1_000), "endedAt": .number(64_000)])]))
         let ended = try await next(&updates) { $0.items.contains { $0.id == "live:status" } }
-        XCTAssertEqual(ended.items.last?.role, .turnEnd(.init(reason: "completed", durationMs: 63_000, tools: 1, copyText: nil)))
+        XCTAssertEqual(ended.items.last?.role, .turnEnd(.init(reason: "completed", durationMs: 63_000, tools: 1, copyText: nil, endedAt: 64_000)))
         await conversation.stop()
     }
 

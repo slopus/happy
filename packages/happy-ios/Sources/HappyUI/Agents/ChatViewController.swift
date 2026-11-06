@@ -2311,6 +2311,51 @@ extension ChatViewController: ComposeTraced {
 }
 #endif
 
+/// What the voice call (`SessionCallTargets`) reaches of this screen: new
+/// work's choice before its first message makes it, and the composer's
+/// own model pick and send, which leave what is typed here alone.
+extension ChatViewController {
+    /// New work not made yet: what it will be, as its panel has it; nil
+    /// for any other conversation.
+    var unmadeChoice: NewTask.Choice? {
+        guard creating, let newTask else { return nil }
+        return newTask.choice
+    }
+
+    /// What the conversation shows now.
+    var callSnapshot: ChatSnapshot { chat }
+
+    /// The model, account and effort its next message goes with.
+    var callMode: AgentWire.Mode? { mode }
+
+    /// New work as the call chose it: its panel shows the choice.
+    func choose(newWork choice: NewTask.Choice) {
+        guard creating, let newTask else { return }
+        newTask.choice = choice
+        newWorkPanel?.choice = choice
+    }
+
+    /// The model picker's pick, made by the call: the chips show it
+    /// at once, and the conversation's next message goes with it.
+    func pickFromCall(_ next: AgentWire.Mode) async {
+        guard next != mode else { return }
+        picked = next
+        updateChips()
+        replan()
+        await conversation.setMode(next)
+    }
+
+    /// A message the call sends here, as the composer's send does, its
+    /// draft and pictures left as they are: new work's first one makes
+    /// its task or bot.
+    func sendFromCall(id: String, text: String) async -> Bool {
+        newWorkPanel?.isLocked = true
+        let accepted = await conversation.send(id: id, text: text)
+        if !accepted, !newWorkPanelGone { newWorkPanel?.isLocked = false }
+        return accepted
+    }
+}
+
 /// The preview card's own ground, whole and then none of it: the same
 /// colour to its own clear, so it draws nothing but the messages going.
 final class PreviewFadeView: UIView {

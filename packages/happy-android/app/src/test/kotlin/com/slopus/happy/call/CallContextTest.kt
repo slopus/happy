@@ -23,7 +23,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
-/** The agent connection's voice call: its context and its four tools, with the conversations faked (iOS `CallContextTests`). */
+/** The agent connection's voice call: its context and its tools, with the conversations faked (iOS `CallContextTests`). */
 class CallContextTest {
     private val backendTarget = CallTarget("a", "Backend", CallTarget.Kind.Bot, CallTarget.Status.Idle)
     private val docsTarget = CallTarget("b", "Docs", CallTarget.Kind.Task, CallTarget.Status.Running)
@@ -69,7 +69,7 @@ class CallContextTest {
         val snapshot = obj(context.initial())
         assertEquals(2, snapshot["schema"]!!.jsonPrimitive.int)
         assertEquals(0, snapshot["focusRevision"]!!.jsonPrimitive.int)
-        assertEquals(listOf("listSessions", "getSessionContext", "openSession", "sendMessage"), snapshot.strings("tools"))
+        assertEquals(listOf("listSessions", "getSessionContext", "openSession", "sendMessage", "newWork", "goBack", "goHome"), snapshot.strings("tools"))
         assertEquals("2023-11-14T22:13:20Z", snapshot.str("at"))
         val focus = snapshot["focus"]!!.jsonObject
         // Named as the directory names it, which alone gives its reference.
@@ -529,9 +529,180 @@ class CallContextTest {
         assertTrue(context.tool("getSessionContext", """{"targetRef":1}""").isError)
     }
 
+    // New work and the way back
+
     @Test
-    fun theFourToolsAreDescribedForTheDashboard() {
-        assertEquals(listOf("listSessions", "getSessionContext", "openSession", "sendMessage"), CallTool.entries.map { it.wire })
+    fun newWorkOpensComposeAndItsFirstMessageGoesOnlyWhenSent() = runBlocking {
+        val targets = backend()
+        val context = CallContext(targets)
+        context.initial()
+        assertTrue(context.tool("newWork", """{"kind":"task","focusRevision":4}""").isError)
+        assertTrue(context.tool("newWork", """{"kind":"board","focusRevision":0}""").isError)
+        val opened = obj(context.tool("newWork", """{"kind":"bot","name":" Researcher ","focusRevision":0}""").text)
+        assertEquals(true, opened["opened"]!!.jsonPrimitive.boolean)
+        assertEquals(false, opened["sent"]!!.jsonPrimitive.boolean)
+        assertEquals("bot", opened.str("kind"))
+        assertEquals("Researcher", opened.str("title"))
+        assertEquals(1, opened["focusRevision"]!!.jsonPrimitive.int)
+        assertEquals(listOf("Researcher"), targets.made.map { it.second })
+        // Opening sends nothing.
+        assertTrue(targets.sends.isEmpty())
+        // Unlisted, it is reached by the reference newWork gave, and the screen saying so later says nothing.
+        val ref = opened.str("targetRef")!!
+        assertTrue(context.focusChanged("new-1").isEmpty)
+        val sent = obj(context.tool("sendMessage", """{"targetRef":"$ref","text":"Find papers on caching","focusRevision":1}""").text)
+        assertEquals("queued", sent.str("status"))
+        assertEquals(listOf("new-1"), targets.sends.map { it.agentId })
+        // Made, it is home's under the same reference.
+        targets.setDirectory(listOf(backendTarget, docsTarget, CallTarget("new-1", "Researcher", CallTarget.Kind.Bot, CallTarget.Status.Running)))
+        val listed = obj(context.tool("listSessions", """{"query":"research"}""").text)
+        assertEquals(ref, listed["sessions"]!!.jsonArray[0].jsonObject.str("targetRef"))
+    }
+
+    @Test
+    fun composeOpenedByHandIsReachedThroughTheFocus() = runBlocking {
+        val targets = backend(focus = null)
+        val context = CallContext(targets)
+        context.initial()
+        targets.newWork(CallTarget.Kind.Task, "")
+        val focus = events(context.focusChanged("new-1")).last()
+        assertEquals("New Task", focus.str("title"))
+        val ref = focus.str("ref")!!
+        assertFalse(context.tool("sendMessage", """{"targetRef":"$ref","text":"Fix the flaky test","focusRevision":1}""").isError)
+    }
+
+    @Test
+    fun goBackPopsOneScreenAndGoHomeClearsThem() = runBlocking {
+        val targets = backend(focus = null)
+        targets.screens = 3
+        val context = CallContext(targets)
+        context.initial()
+        assertTrue(context.tool("goBack", """{"focusRevision":2}""").isError)
+        assertEquals(3, targets.screens)
+        val back = obj(context.tool("goBack", """{"focusRevision":0}""").text)
+        assertEquals(false, back["home"]!!.jsonPrimitive.boolean)
+        assertEquals(JsonNull, back["title"])
+        assertEquals(2, targets.screens)
+        assertEquals(true, obj(context.tool("goHome", "{}").text)["home"]!!.jsonPrimitive.boolean)
+        val nowhere = context.tool("goBack", """{"focusRevision":0}""")
+        assertTrue(nowhere.isError)
+        assertEquals("This is home; there is nothing to go back to.", obj(nowhere.text).str("reason"))
+    }
+
+    // Model, effort and times
+
+    private val opus = CallModel("claude-opus-4-5", "Claude Opus 4.5", listOf("low", "medium", "high", "max"), "high")
+    private val sonnet = CallModel("claude-sonnet-4-5", "Claude Sonnet 4.5", listOf("low", "medium", "high"), "medium")
+    private val gpt = CallModel("gpt-5.2-codex", "GPT-5.2 Codex", listOf("low", "medium", "high", "xhigh"), "medium")
+
+    /** Docs works on Opus at high effort, and the computer offers three models. */
+    private fun modelled() = backend().also {
+        it.states["b"] = CallTargetState(docsTarget, working = true, mode = CallMode(opus.id, opus.name, "high"), models = listOf(opus, sonnet, gpt))
+    }
+
+    @Test
+    fun sendMessageSwitchesTheModelAndEffortTheComputerOffers() = runBlocking {
+        val targets = modelled()
+        val context = CallContext(targets)
+        context.initial()
+        // Working, it still takes the message, as the composer's send does.
+        val both = obj(context.tool("sendMessage", """{"targetRef":"s2","text":"go","focusRevision":0,"model":"sonnet","effort":"Low"}""").text)
+        assertEquals("queued", both.str("status"))
+        assertEquals("Claude Sonnet 4.5", both.str("model"))
+        assertEquals("low", both.str("effort"))
+        val effortOnly = obj(context.tool("sendMessage", """{"targetRef":"s2","text":"again","focusRevision":0,"effort":"max"}""").text)
+        assertEquals("Claude Opus 4.5", effortOnly.str("model"))
+        assertEquals("max", effortOnly.str("effort"))
+        val modelOnly = obj(context.tool("sendMessage", """{"targetRef":"s2","text":"third","focusRevision":0,"model":"GPT 5.2 codex"}""").text)
+        assertEquals("medium", modelOnly.str("effort"))
+        assertNull(obj(context.tool("sendMessage", """{"targetRef":"s2","text":"fourth","focusRevision":0}""").text)["model"])
+        assertEquals(
+            listOf(CallModeChange("claude-sonnet-4-5", "low"), CallModeChange(effort = "max"), CallModeChange("gpt-5.2-codex"), null),
+            targets.sends.map { it.change },
+        )
+    }
+
+    @Test
+    fun aModelOrEffortItDoesntOfferIsRefusedWithWhatItDoes() = runBlocking {
+        val targets = modelled()
+        val context = CallContext(targets)
+        context.initial()
+        val unknown = context.tool("sendMessage", """{"targetRef":"s2","text":"go","focusRevision":0,"model":"gemini"}""")
+        assertTrue(unknown.isError)
+        val listed = obj(unknown.text)
+        assertEquals(listOf("Claude Opus 4.5", "Claude Sonnet 4.5", "GPT-5.2 Codex"), listed["models"]!!.jsonArray.map { it.jsonObject.str("name") })
+        assertTrue(listed.str("reason")!!.endsWith("Nothing was sent."))
+        assertEquals(2, obj(context.tool("sendMessage", """{"targetRef":"s2","text":"go","focusRevision":0,"model":"claude"}""").text)["models"]!!.jsonArray.size)
+        val effort = obj(context.tool("sendMessage", """{"targetRef":"s2","text":"go","focusRevision":0,"model":"sonnet","effort":"max"}""").text)
+        assertEquals("Claude Sonnet 4.5 takes effort low, medium, high, not \"max\". Nothing was sent.", effort.str("reason"))
+        assertTrue(context.tool("sendMessage", """{"targetRef":"s2","text":"go","focusRevision":0,"model":4}""").isError)
+        // Without the computer's models, nothing changes and nothing goes.
+        assertTrue(context.tool("sendMessage", """{"targetRef":"s1","text":"go","focusRevision":0,"effort":"high"}""").isError)
+        assertTrue(targets.sends.isEmpty())
+    }
+
+    @Test
+    fun readsSayWhenItLastHeardFromEachSideWhereItRunsAndOnWhat() = runBlocking {
+        val now = 1_762_430_400_000L // 2025-11-06 12:00 UTC
+        val app = CallTarget.Parent("p", "App", "project")
+        val feature = CallTarget.Parent("w", "Feature", "workspace")
+        val chat = CallTarget("c", "Feature chat", CallTarget.Kind.Conversation, CallTarget.Status.Idle, listOf(app, feature), activityAt = now - 300_000)
+        val state = CallTargetState(
+            chat,
+            messages = listOf(CallMessage("u", CallMessage.Role.User, "ship it", now - 7_200_000), CallMessage("x", CallMessage.Role.Assistant, "Shipped")),
+            turns = listOf(CallTurn("r", "ship it", "Shipped", endedAt = now - 300_000)),
+            mode = CallMode(opus.id, opus.name, "high"), models = listOf(opus, sonnet),
+        )
+        val context = CallContext(FakeCallTargets(listOf(chat), mutableMapOf("c" to state), null), now = { now }, zone = java.time.ZoneId.of("Europe/Berlin"))
+        context.initial()
+        val read = obj(context.tool("getSessionContext", """{"targetRef":"s1"}""").text)
+        assertEquals(obj("""{"ago":"2 hours ago","at":"2025-11-06T11:00:00+01:00"}"""), read["lastUserMessage"])
+        assertEquals(obj("""{"ago":"5 minutes ago","at":"2025-11-06T12:55:00+01:00"}"""), read["lastAgentReply"])
+        assertEquals("App / Feature", read.str("workspace"))
+        assertEquals(obj("""{"id":"claude-opus-4-5","name":"Claude Opus 4.5","effort":"high"}"""), read["model"])
+        assertEquals(listOf("low", "medium", "high", "max"), read["models"]!!.jsonArray[0].jsonObject.strings("efforts"))
+        val listed = obj(context.tool("listSessions", "{}").text)
+        val row = listed["sessions"]!!.jsonArray[0].jsonObject
+        assertEquals(obj("""{"ago":"5 minutes ago","at":"2025-11-06T12:55:00+01:00"}"""), row["lastActivity"])
+        assertEquals("App / Feature", row.str("workspace"))
+        assertEquals("2025-11-06T13:00:00+01:00", listed.str("now"))
+    }
+
+    @Test
+    fun agoIsSaidAsAPersonWould() {
+        assertEquals("just now", CallContext.ago(-30))
+        assertEquals("just now", CallContext.ago(59))
+        assertEquals("a minute ago", CallContext.ago(60))
+        assertEquals("5 minutes ago", CallContext.ago(5 * 60 + 20))
+        assertEquals("an hour ago", CallContext.ago(90 * 60))
+        assertEquals("5 hours ago", CallContext.ago(5 * 3600))
+        assertEquals("yesterday", CallContext.ago(30 * 3600))
+        assertEquals("4 days ago", CallContext.ago(4 * 86400))
+    }
+
+    /** The phone sends the prompt docs/agent-voice-call.md holds, the same words iOS sends. */
+    @Test
+    fun thePromptGoesFromThePhoneAsTheDocsHoldIt() {
+        assertEquals(CallPrompt.SYSTEM, CallStart("{}").prompt)
+        assertTrue(CallPrompt.SYSTEM.contains("{{initialConversationContext}}"))
+        for (tool in CallTool.entries) assertTrue(tool.wire, CallPrompt.SYSTEM.contains(tool.wire))
+        val root = generateSequence(File("").absoluteFile) { it.parentFile }.first { File(it, "docs/agent-voice-call.md").exists() }
+        assertTrue(File(root, "docs/agent-voice-call.md").readText().contains("```text\n" + CallPrompt.SYSTEM + "\n```"))
+        val swift = File(root, "packages/happy-ios/Sources/HappyCore/Call/CallTools.swift").readText()
+        val ios = Regex("public static let system = \"\"\"\n(.*?)\n    \"\"\"", RegexOption.DOT_MATCHES_ALL).find(swift)!!.groupValues[1]
+            .lines().joinToString("\n") { it.removePrefix("    ") }
+        assertEquals(ios, CallPrompt.SYSTEM)
+    }
+
+    @Test
+    fun theToolsAreDescribedForTheDashboard() {
+        assertEquals(listOf("listSessions", "getSessionContext", "openSession", "sendMessage", "newWork", "goBack", "goHome"), CallTool.entries.map { it.wire })
+        assertEquals(listOf("kind", "focusRevision"), CallTool.NewWork.parameters.strings("required"))
+        assertEquals(listOf("task", "bot"), CallTool.NewWork.parameters["properties"]!!.jsonObject["kind"]!!.jsonObject.strings("enum"))
+        assertEquals(listOf("focusRevision"), CallTool.GoBack.parameters.strings("required"))
+        assertEquals(JsonArray(emptyList()), CallTool.GoHome.parameters["required"])
+        assertEquals("string", CallTool.SendMessage.parameters["properties"]!!.jsonObject["model"]!!.jsonObject.str("type"))
+        assertTrue(CallTool.SendMessage.summary.contains("only when the person has explicitly asked you to send"))
         assertEquals("integer", CallTool.OpenSession.parameters["properties"]!!.jsonObject["focusRevision"]!!.jsonObject.str("type"))
         assertEquals(listOf("targetRef", "text", "focusRevision"), CallTool.SendMessage.parameters.strings("required"))
         assertEquals(listOf("targetRef"), CallTool.GetSessionContext.parameters.strings("required"))
@@ -852,7 +1023,7 @@ class FakeCallTargets(
     val states: MutableMap<String, CallTargetState>,
     private val focus: String?,
 ) : CallTargets {
-    data class Sent(val agentId: String, val text: String, val id: String)
+    data class Sent(val agentId: String, val text: String, val id: String, val change: CallModeChange? = null)
 
     private val lock = Mutex()
     @Volatile var sendDelay = 0L
@@ -871,10 +1042,34 @@ class FakeCallTargets(
     }
     override suspend fun focused() = focus
     override suspend fun open(agentId: String): Boolean { opened += agentId; return states[agentId] != null }
-    override suspend fun send(agentId: String, text: String, id: String): CallSendOutcome {
-        if (sendDelay > 0) try { delay(sendDelay) } catch (e: kotlinx.coroutines.CancellationException) { sends += Sent(agentId, text, id); throw e }
-        sends += Sent(agentId, text, id)
+    override suspend fun send(agentId: String, text: String, id: String, change: CallModeChange?): CallSendOutcome {
+        if (sendDelay > 0) try { delay(sendDelay) } catch (e: kotlinx.coroutines.CancellationException) { sends += Sent(agentId, text, id, change); throw e }
+        sends += Sent(agentId, text, id, change)
         return CallSendOutcome.Queued
     }
     override suspend fun follow(agentId: String, following: Boolean) { follows += agentId to following }
+
+    /** New work opened, as the screen would put it: unlisted until its first message. */
+    val made = java.util.Collections.synchronizedList(ArrayList<Pair<CallTarget.Kind, String>>())
+    private val unlistedWork = java.util.concurrent.ConcurrentHashMap<String, CallTarget>()
+    /** Screens over home, the top last: what `back` and `home` take away. */
+    @Volatile var screens = 0
+    override suspend fun newWork(kind: CallTarget.Kind, name: String): CallTarget {
+        made += kind to name
+        val draft = CallTarget("new-${made.size}", name.ifEmpty { if (kind == CallTarget.Kind.Bot) "New Bot" else "New Task" }, kind, CallTarget.Status.Idle)
+        unlistedWork[draft.agentId] = draft
+        lock.withLock { states[draft.agentId] = CallTargetState(draft) }
+        screens++
+        return draft
+    }
+    override suspend fun unlisted(agentId: String): CallTarget? = unlistedWork[agentId]
+    override suspend fun back(): CallScreenMove {
+        if (screens == 0) return CallScreenMove.Refused("This is home; there is nothing to go back to.")
+        screens--
+        return CallScreenMove.Moved(screens == 0)
+    }
+    override suspend fun home(): CallScreenMove {
+        screens = 0
+        return CallScreenMove.Moved(true)
+    }
 }

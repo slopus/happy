@@ -11,8 +11,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** What a call is started with: the hosted prompt's one variable, and the person's language if they chose one. */
-data class CallStart(val context: String, val language: String? = null)
+/**
+ * What a call is started with: the system prompt ([CallPrompt], the hosted agent's prompt override), its one
+ * variable, and the person's language if they chose one. The tools are the hosted agent's ([CallTool]); no greeting
+ * is sent.
+ */
+data class CallStart(val context: String, val language: String? = null, val prompt: String = CallPrompt.SYSTEM)
 
 /** What the connection reports back while it runs; called on the session's thread. */
 class CallEvents(

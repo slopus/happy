@@ -51,7 +51,7 @@ final class CallContextTests: XCTestCase {
         let snapshot = try object(await context.initial())
         XCTAssertEqual(snapshot["schema"] as? Int, 2)
         XCTAssertEqual(snapshot["focusRevision"] as? Int, 0)
-        XCTAssertEqual(snapshot["tools"] as? [String], ["listSessions", "getSessionContext", "openSession", "sendMessage"])
+        XCTAssertEqual(snapshot["tools"] as? [String], ["listSessions", "getSessionContext", "openSession", "sendMessage", "newWork", "goBack", "goHome"])
         let focus = try XCTUnwrap(snapshot["focus"] as? [String: Any])
         // Named as the directory names it, which alone gives its reference.
         XCTAssertEqual(focus["title"] as? String, "Backend")
@@ -580,8 +580,190 @@ final class CallContextTests: XCTestCase {
         XCTAssertTrue(unref.isError)
     }
 
-    func testTheFourToolsAreDescribedForTheDashboard() {
-        XCTAssertEqual(CallTool.allCases.map(\.rawValue), ["listSessions", "getSessionContext", "openSession", "sendMessage"])
+    // MARK: New work and the way back
+
+    func testNewWorkOpensComposeAndItsFirstMessageGoesOnlyWhenSent() async throws {
+        let targets = backend()
+        let context = CallContext(targets: targets)
+        _ = await context.initial()
+        let stale = await tool(context, "newWork", #"{"kind":"task","focusRevision":4}"#)
+        XCTAssertTrue(stale.isError)
+        let wrongKind = await tool(context, "newWork", #"{"kind":"board","focusRevision":0}"#)
+        XCTAssertTrue(wrongKind.isError)
+        let opened = try object(await tool(context, "newWork", #"{"kind":"bot","name":" Researcher ","focusRevision":0}"#).text)
+        XCTAssertEqual(opened["opened"] as? Bool, true)
+        XCTAssertEqual(opened["sent"] as? Bool, false)
+        XCTAssertEqual(opened["kind"] as? String, "bot")
+        XCTAssertEqual(opened["title"] as? String, "Researcher")
+        XCTAssertEqual(opened["focusRevision"] as? Int, 1)
+        let made = await targets.made
+        XCTAssertEqual(made.map(\.name), ["Researcher"])
+        // Opening sends nothing.
+        var sends = await targets.sends
+        XCTAssertTrue(sends.isEmpty)
+        // Unlisted, it is reached by the reference newWork gave, and the screen saying so later says nothing.
+        let ref = try XCTUnwrap(opened["targetRef"] as? String)
+        let echo = await context.focusChanged(to: "new-1")
+        XCTAssertTrue(echo.isEmpty)
+        let sent = await tool(context, "sendMessage", "{\"targetRef\":\"\(ref)\",\"text\":\"Find papers on caching\",\"focusRevision\":1}")
+        XCTAssertEqual(try object(sent.text)["status"] as? String, "queued")
+        sends = await targets.sends
+        XCTAssertEqual(sends.map(\.agentId), ["new-1"])
+        // Made, it is the sidebar's under the same reference.
+        await targets.setDirectory([backendTarget, docsTarget, CallTarget(agentId: "new-1", title: "Researcher", kind: .bot, status: .running)])
+        let listed = try object(await tool(context, "listSessions", #"{"query":"research"}"#).text)
+        XCTAssertEqual((listed["sessions"] as? [[String: Any]])?.first?["targetRef"] as? String, ref)
+    }
+
+    func testComposeOpenedByHandIsReachedThroughTheFocus() async throws {
+        let targets = backend(focus: nil)
+        let context = CallContext(targets: targets)
+        _ = await context.initial()
+        _ = await targets.newWork(.task, name: "")
+        let focus = try events(await context.focusChanged(to: "new-1"))
+        XCTAssertEqual(focus.last?["title"] as? String, "New Task")
+        let ref = try XCTUnwrap(focus.last?["ref"] as? String)
+        let sent = await tool(context, "sendMessage", "{\"targetRef\":\"\(ref)\",\"text\":\"Fix the flaky test\",\"focusRevision\":1}")
+        XCTAssertFalse(sent.isError)
+    }
+
+    func testGoBackPopsOneScreenAndGoHomeClearsThem() async throws {
+        let targets = backend(focus: nil)
+        await targets.setScreens(3)
+        let context = CallContext(targets: targets)
+        _ = await context.initial()
+        let stale = await tool(context, "goBack", #"{"focusRevision":2}"#)
+        XCTAssertTrue(stale.isError)
+        var screens = await targets.screens
+        XCTAssertEqual(screens, 3)
+        let back = try object(await tool(context, "goBack", #"{"focusRevision":0}"#).text)
+        XCTAssertEqual(back["home"] as? Bool, false)
+        XCTAssertTrue(back["title"] is NSNull)
+        screens = await targets.screens
+        XCTAssertEqual(screens, 2)
+        let home = try object(await tool(context, "goHome", "{}").text)
+        XCTAssertEqual(home["home"] as? Bool, true)
+        let nowhere = await tool(context, "goBack", #"{"focusRevision":0}"#)
+        XCTAssertTrue(nowhere.isError)
+        XCTAssertEqual(try object(nowhere.text)["reason"] as? String, "This is home; there is nothing to go back to.")
+    }
+
+    // MARK: Model, effort and times
+
+    private let opus = CallModel(id: "claude-opus-4-5", name: "Claude Opus 4.5", efforts: ["low", "medium", "high", "max"], defaultEffort: "high")
+    private let sonnet = CallModel(id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5", efforts: ["low", "medium", "high"], defaultEffort: "medium")
+    private let gpt = CallModel(id: "gpt-5.2-codex", name: "GPT-5.2 Codex", efforts: ["low", "medium", "high", "xhigh"], defaultEffort: "medium")
+
+    /// Docs works on Opus at high effort, and the computer offers three models.
+    private func modelled() async -> FakeCallTargets {
+        let targets = backend()
+        await targets.set("b", CallTargetState(target: docsTarget, working: true, mode: CallMode(modelId: opus.id, model: opus.name, effort: "high"), models: [opus, sonnet, gpt]))
+        return targets
+    }
+
+    func testSendMessageSwitchesTheModelAndEffortTheComputerOffers() async throws {
+        let targets = await modelled()
+        let context = CallContext(targets: targets)
+        _ = await context.initial()
+        // Working, it still takes the message, as the composer's send does.
+        let both = try object(await tool(context, "sendMessage", #"{"targetRef":"s2","text":"go","focusRevision":0,"model":"sonnet","effort":"Low"}"#).text)
+        XCTAssertEqual(both["status"] as? String, "queued")
+        XCTAssertEqual(both["model"] as? String, "Claude Sonnet 4.5")
+        XCTAssertEqual(both["effort"] as? String, "low")
+        let effortOnly = try object(await tool(context, "sendMessage", #"{"targetRef":"s2","text":"again","focusRevision":0,"effort":"max"}"#).text)
+        XCTAssertEqual(effortOnly["model"] as? String, "Claude Opus 4.5")
+        XCTAssertEqual(effortOnly["effort"] as? String, "max")
+        let modelOnly = try object(await tool(context, "sendMessage", #"{"targetRef":"s2","text":"third","focusRevision":0,"model":"GPT 5.2 codex"}"#).text)
+        XCTAssertEqual(modelOnly["effort"] as? String, "medium")
+        let plain = try object(await tool(context, "sendMessage", #"{"targetRef":"s2","text":"fourth","focusRevision":0}"#).text)
+        XCTAssertNil(plain["model"])
+        let changes = await targets.changes
+        XCTAssertEqual(changes, [
+            CallModeChange(modelId: "claude-sonnet-4-5", effort: "low"), CallModeChange(effort: "max"),
+            CallModeChange(modelId: "gpt-5.2-codex"), nil,
+        ])
+    }
+
+    func testAModelOrEffortItDoesntOfferIsRefusedWithWhatItDoes() async throws {
+        let targets = await modelled()
+        let context = CallContext(targets: targets)
+        _ = await context.initial()
+        let unknown = await tool(context, "sendMessage", #"{"targetRef":"s2","text":"go","focusRevision":0,"model":"gemini"}"#)
+        XCTAssertTrue(unknown.isError)
+        let listed = try object(unknown.text)
+        XCTAssertEqual((listed["models"] as? [[String: Any]])?.compactMap { $0["name"] as? String }, ["Claude Opus 4.5", "Claude Sonnet 4.5", "GPT-5.2 Codex"])
+        XCTAssertTrue((listed["reason"] as? String)?.hasSuffix("Nothing was sent.") == true)
+        let ambiguous = try object(await tool(context, "sendMessage", #"{"targetRef":"s2","text":"go","focusRevision":0,"model":"claude"}"#).text)
+        XCTAssertEqual((ambiguous["models"] as? [Any])?.count, 2)
+        let effort = try object(await tool(context, "sendMessage", #"{"targetRef":"s2","text":"go","focusRevision":0,"model":"sonnet","effort":"max"}"#).text)
+        XCTAssertEqual(effort["reason"] as? String, "Claude Sonnet 4.5 takes effort low, medium, high, not \"max\". Nothing was sent.")
+        let wrongType = await tool(context, "sendMessage", #"{"targetRef":"s2","text":"go","focusRevision":0,"model":4}"#)
+        XCTAssertTrue(wrongType.isError)
+        // Without the computer's models, nothing changes and nothing goes.
+        let unread = await tool(context, "sendMessage", #"{"targetRef":"s1","text":"go","focusRevision":0,"effort":"high"}"#)
+        XCTAssertTrue(unread.isError)
+        let sends = await targets.sends
+        XCTAssertTrue(sends.isEmpty)
+    }
+
+    func testReadsSayWhenItLastHeardFromEachSideWhereItRunsAndOnWhat() async throws {
+        let now = 1_762_430_400.0 // 2025-11-06 12:00 UTC
+        let app = CallTarget.Parent(id: "p", title: "App", kind: "project")
+        let feature = CallTarget.Parent(id: "w", title: "Feature", kind: "workspace")
+        let chat = CallTarget(agentId: "c", title: "Feature chat", kind: .conversation, status: .idle, parents: [app, feature], activityAt: (now - 300) * 1000)
+        let state = CallTargetState(
+            target: chat,
+            messages: [CallMessage(id: "u", role: .user, text: "ship it", time: (now - 7200) * 1000), CallMessage(id: "x", role: .assistant, text: "Shipped")],
+            turns: [CallTurn(id: "r", user: "ship it", reply: "Shipped", endedAt: (now - 300) * 1000)],
+            mode: CallMode(modelId: opus.id, model: opus.name, effort: "high"), models: [opus, sonnet]
+        )
+        let context = CallContext(targets: FakeCallTargets(directory: [chat], states: ["c": state], focus: nil), now: { now }, timeZone: TimeZone(identifier: "Europe/Berlin")!)
+        _ = await context.initial()
+        let read = try object(await tool(context, "getSessionContext", #"{"targetRef":"s1"}"#).text)
+        XCTAssertEqual(read["lastUserMessage"] as? [String: String], ["ago": "2 hours ago", "at": "2025-11-06T11:00:00+01:00"])
+        XCTAssertEqual(read["lastAgentReply"] as? [String: String], ["ago": "5 minutes ago", "at": "2025-11-06T12:55:00+01:00"])
+        XCTAssertEqual(read["workspace"] as? String, "App / Feature")
+        XCTAssertEqual(read["model"] as? [String: String], ["id": "claude-opus-4-5", "name": "Claude Opus 4.5", "effort": "high"])
+        XCTAssertEqual((read["models"] as? [[String: Any]])?.first?["efforts"] as? [String], ["low", "medium", "high", "max"])
+        let listed = try object(await tool(context, "listSessions", "{}").text)
+        let row = try XCTUnwrap((listed["sessions"] as? [[String: Any]])?.first)
+        XCTAssertEqual(row["lastActivity"] as? [String: String], ["ago": "5 minutes ago", "at": "2025-11-06T12:55:00+01:00"])
+        XCTAssertEqual(row["workspace"] as? String, "App / Feature")
+        XCTAssertEqual(listed["now"] as? String, "2025-11-06T13:00:00+01:00")
+    }
+
+    func testAgoIsSaidAsAPersonWould() {
+        XCTAssertEqual(CallContext.ago(-30), "just now")
+        XCTAssertEqual(CallContext.ago(59), "just now")
+        XCTAssertEqual(CallContext.ago(60), "a minute ago")
+        XCTAssertEqual(CallContext.ago(5 * 60 + 20), "5 minutes ago")
+        XCTAssertEqual(CallContext.ago(90 * 60), "an hour ago")
+        XCTAssertEqual(CallContext.ago(5 * 3600), "5 hours ago")
+        XCTAssertEqual(CallContext.ago(30 * 3600), "yesterday")
+        XCTAssertEqual(CallContext.ago(4 * 86400), "4 days ago")
+    }
+
+    // MARK: The prompt
+
+    func testThePromptGoesFromThePhoneAsTheDocsHoldIt() throws {
+        XCTAssertEqual(CallStart(context: "{}").prompt, CallPrompt.system)
+        XCTAssertTrue(CallPrompt.system.contains("{{initialConversationContext}}"))
+        for tool in CallTool.allCases { XCTAssertTrue(CallPrompt.system.contains(tool.rawValue), tool.rawValue) }
+        var root = URL(fileURLWithPath: #filePath)
+        while !FileManager.default.fileExists(atPath: root.appendingPathComponent("docs/agent-voice-call.md").path) { root.deleteLastPathComponent() }
+        let doc = try String(contentsOf: root.appendingPathComponent("docs/agent-voice-call.md"), encoding: .utf8)
+        XCTAssertTrue(doc.contains("```text\n" + CallPrompt.system + "\n```"), "docs/agent-voice-call.md holds the prompt the phone sends")
+    }
+
+    func testTheToolsAreDescribedForTheDashboard() {
+        XCTAssertEqual(CallTool.allCases.map(\.rawValue), ["listSessions", "getSessionContext", "openSession", "sendMessage", "newWork", "goBack", "goHome"])
+        XCTAssertEqual(CallTool.newWork.parameters["required"], .array([.string("kind"), .string("focusRevision")]))
+        XCTAssertEqual(CallTool.newWork.parameters["properties"]?["kind"]?["enum"], .array([.string("task"), .string("bot")]))
+        XCTAssertEqual(CallTool.goBack.parameters["required"], .array([.string("focusRevision")]))
+        XCTAssertEqual(CallTool.goHome.parameters["required"], .array([]))
+        XCTAssertEqual(CallTool.sendMessage.parameters["properties"]?["model"]?["type"], .string("string"))
+        XCTAssertEqual(CallTool.sendMessage.parameters["properties"]?["effort"]?["type"], .string("string"))
+        XCTAssertTrue(CallTool.sendMessage.summary.contains("only when the person has explicitly asked you to send"))
         XCTAssertEqual(CallTool.openSession.parameters["properties"]?["focusRevision"]?["type"], .string("integer"))
         XCTAssertEqual(CallTool.sendMessage.parameters["required"], .array([.string("targetRef"), .string("text"), .string("focusRevision")]))
         XCTAssertEqual(CallTool.getSessionContext.parameters["required"], .array([.string("targetRef")]))
@@ -991,6 +1173,10 @@ final class CallContextTests: XCTestCase {
         XCTAssertEqual(finals(chat(first + [said("a2", "On it", run: "r2")])), ["a1": true, "a2": false])
         let state = CallTargetState.from(chat(first + [end, said("a2", "On it", run: "r2")]), target: CallTarget(agentId: "a", title: "A", kind: .task, status: .idle))
         XCTAssertEqual(state.messages.first { $0.id == "a1" }?.turn, "r1")
+        // When the run ended is the turn's: what lastAgentReply says.
+        let timed = ChatItem.TurnEnd(reason: "completed", durationMs: 5, tools: 0, copyText: "Done.", endedAt: 1_700_000_000_000)
+        let ended = CallTargetState.from(chat(first + [ChatItem(id: "r1:status", role: .turnEnd(timed), pieces: [], delivery: .sent, turn: "r1")]), target: CallTarget(agentId: "a", title: "A", kind: .task, status: .idle))
+        XCTAssertEqual(ended.turns.map(\.endedAt), [1_700_000_000_000])
     }
 
     /// Anything that isn't the agent's own next step in that run (another
@@ -1569,12 +1755,39 @@ actor FakeCallTargets: CallTargets {
     func state(of agentId: String) async -> CallTargetState? { states[agentId] }
     func focused() async -> String? { focus }
     func open(_ agentId: String) async -> Bool { opens.append(agentId); return states[agentId] != nil }
-    func send(_ agentId: String, text: String, id: String) async -> CallSendOutcome {
+    func send(_ agentId: String, text: String, id: String, change: CallModeChange?) async -> CallSendOutcome {
         if let delay { try? await Task.sleep(for: delay) }
         sends.append((agentId, text, id))
+        changes.append(change)
         return .queued
     }
     func follow(_ agentId: String, _ following: Bool) async { follows.append((agentId, following)) }
+
+    /// New work opened, as the screen would put it: unlisted until its first message.
+    private(set) var made: [(kind: CallTarget.Kind, name: String)] = []
+    private(set) var changes: [CallModeChange?] = []
+    private var unlistedWork: [String: CallTarget] = [:]
+    /// Screens over home, the top last: what `back` and `home` take away.
+    var screens = 0
+    func setScreens(_ count: Int) { screens = count }
+    func newWork(_ kind: CallTarget.Kind, name: String) async -> CallTarget? {
+        made.append((kind, name))
+        let draft = CallTarget(agentId: "new-\(made.count)", title: name.isEmpty ? (kind == .bot ? "New Bot" : "New Task") : name, kind: kind, status: .idle)
+        unlistedWork[draft.agentId] = draft
+        states[draft.agentId] = CallTargetState(target: draft)
+        screens += 1
+        return draft
+    }
+    func unlisted(_ agentId: String) async -> CallTarget? { unlistedWork[agentId] }
+    func back() async -> CallScreenMove {
+        guard screens > 0 else { return .refused("This is home; there is nothing to go back to.") }
+        screens -= 1
+        return .moved(atHome: screens == 0)
+    }
+    func home() async -> CallScreenMove {
+        screens = 0
+        return .moved(atHome: true)
+    }
 }
 
 struct FakeGrants: CallGrantSource {

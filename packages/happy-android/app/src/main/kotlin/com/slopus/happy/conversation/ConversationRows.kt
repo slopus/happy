@@ -172,6 +172,8 @@ sealed interface ConversationRow {
         val tools: Int,
         val copyText: String?,
         val afterStep: Boolean = false,
+        /** When the run ended (ms); null where it isn't known. */
+        val endedAt: Long? = null,
     ) : ConversationRow {
         /** A steered, stopped or failed turn says so and offers no copy. */
         val complete: Boolean get() = reason == "completed" || reason == "compaction"

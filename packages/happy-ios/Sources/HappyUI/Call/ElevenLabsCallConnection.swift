@@ -5,10 +5,11 @@ import HappyCore
 import UIKit
 
 /// The hosted call agent over the official SDK. Apart from the relay's
-/// `ElevenLabsVoiceConnection` on purpose: no prompt, greeting or relay
-/// tools are sent; the hosted agent has its own, and its one variable is
-/// `initialConversationContext`. Tool calls are answered one at a time, by
-/// their provider ID, and an ID seen before is never run again.
+/// `ElevenLabsVoiceConnection` on purpose: the call's own prompt goes as
+/// the agent's prompt override, with its one variable,
+/// `initialConversationContext`; no greeting or relay tools are sent. Tool
+/// calls are answered one at a time, by their provider ID, and an ID seen
+/// before is never run again.
 @MainActor
 final class ElevenLabsCallConnection: CallConnection {
     private let conversation: ElevenLabsConversation
@@ -25,7 +26,8 @@ final class ElevenLabsCallConnection: CallConnection {
     static func connect(grant: CallGrant, request: CallStart, events: CallEvents) async throws -> ElevenLabsCallConnection {
         let tracker = Tracker(events.activity)
         let config = ConversationConfig(
-            agentOverrides: request.language.flatMap(Language.init(rawValue:)).map { AgentOverrides(language: $0) },
+            // The hosted agent must allow the prompt override (its Security settings), or the call is refused.
+            agentOverrides: AgentOverrides(prompt: request.prompt, language: request.language.flatMap(Language.init(rawValue:))),
             dynamicVariables: ["initialConversationContext": request.context],
             userId: grant.userId,
             // Foreground only: recording is let go when the call ends.

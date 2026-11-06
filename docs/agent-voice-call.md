@@ -1,8 +1,8 @@
 # Agent connection voice calls
 
 The voice button on a Happy Agent connection's home (iOS, Android) starts a
-call with a hosted ElevenLabs agent. The audio, the context the agent reads
-and its four client tools all live on the phone. This is separate from the
+call with a hosted ElevenLabs agent. The audio, the system prompt, the
+context the agent reads and its seven client tools all live on the phone. This is separate from the
 relay's voice (`docs/voice-architecture.md`) and from GPT-Live on desktop:
 there is no shared voice engine, prompt or tool between them.
 
@@ -395,7 +395,13 @@ conversation: the screen in front changed. No history comes with it.
 
 **History** (the first snapshot's `focus` and `getSessionContext`): the
 conversation's `title` and `parents` (and in the first snapshot its `ref`
-when unclear, as above), `working`, `needsInput`, then the last five turns,
+when unclear, as above), `working`, `needsInput`, when the person last wrote
+there (`lastUserMessage`, the newest message of theirs in what was read) and
+when the agent last answered (`lastAgentReply`, the end of the newest run
+with words), its `workspace` (the project and worktree headings it sits
+under, `App / Feature`; a bot or task has a workspace of its own and none is
+given, and the computer gives the phone no folder paths), its `model`
+(`{id,name,effort}`, what its next message goes with), then the last five turns,
 five in all. Never its reference, kind or status: the directory has those.
 Each turn is the person's message that started it and the agent's last
 words (the turn's copy text, never its commentary between steps, tool
@@ -406,6 +412,17 @@ its `error`. The person's latest message, when no finished turn answers it
 yet, is the fifth, labelled `pendingUserMessage`, so then four finished
 turns come with it. Each text is cut at 4 KB, and the whole within 32 KB
 (the oldest turns give way, `olderTurns` says more exist).
+`getSessionContext` also lists the `models` the conversation can switch to
+(`[{id,name,efforts}]`, at most 30: the composer's model picker's, each
+shown account's switched-on models less those it hides).
+
+**Times** are a pair, `{"ago":"5 minutes ago","at":"2026-11-06T09:15:00+01:00"}`:
+how long ago, as said aloud (`just now`, `a minute ago`, `N minutes ago`,
+`an hour ago`, `N hours ago`, `yesterday`, `N days ago`), and when on the
+phone's clock, with its offset, to the minute. `listSessions` gives each row
+the sidebar's own time (`lastActivity`, when the row says it last did
+something; the exact pair needs the transcript, so it is
+`getSessionContext`'s), and `now` on the same clock.
 
 `queued` is not a receipt. A message the call sent that later fails to
 reach the computer shows as `pendingUserMessage.delivery: "failed"` on the
@@ -434,13 +451,17 @@ Use a new, versioned agent. Leave the relay's agent (`sendMessageToSession`,
 ### Settings
 
 - Authentication: off (public), for the reasons above.
-- Overrides: none needed. The app sends no prompt, first message or
-  language, only the one dynamic variable.
+- Overrides: **System prompt** on (Security → Overrides), and Language on
+  if a language is ever chosen. The app sends the prompt below as the
+  agent's prompt override on every call (`CallPrompt`), with the one dynamic
+  variable; it sends no first message. ElevenLabs refuses a conversation
+  whose override the agent doesn't allow, so this is switched on before a
+  build that sends the prompt ships.
 - Dynamic variable: `initialConversationContext` (a string). It holds a JSON
   snapshot (`schema` 2): the directory as text, the conversation on
   screen with its last five turns, and `focusRevision`. It is limited to
   32 KB.
-- Client tools: exactly the four below, each with "Wait for response" on and
+- Client tools: exactly the seven below, each with "Wait for response" on and
   a response timeout of 10 s or more. The phone answers within 8 s and says
   `uncertain` if a send is still in doubt at that point.
 - System tools: `end_call` is fine. Don't add tools for permissions or
@@ -448,54 +469,42 @@ Use a new, versioned agent. Leave the relay's agent (`sendMessageToSession`,
 
 ### System prompt
 
-This is the prompt for the agent's next version, written for the
-updates as above (iOS and Android send the same). The hosted agent is not changed from the app or this
-repo; until someone puts this in its dashboard, it runs the prompt it has.
-The live check below ran against that, unchanged.
+The phones send this prompt themselves, as the agent's prompt override
+(`CallPrompt.system` on iOS, `CallPrompt.SYSTEM` on Android, the same
+words; unit tests on both fail if this block and the code differ). The
+dashboard's own prompt is then only what older builds run on: set it to the
+same text, so an old build that is offered the new tools hears the same
+rules (it answers `newWork`, `goBack` and `goHome` with `Unknown tool.`).
 
 ```text
-You are Happy, a voice companion for the person's coding agents on their
-computer. You speak briefly and plainly: one or two sentences unless asked
-for more.
+You are Happy, a voice companion for the person's coding agents on their computer. Speak briefly and plainly: one or two sentences unless asked for more.
 
-What you know comes from {{initialConversationContext}} (JSON) and from
-contextual updates during the call, each a JSON object with an "event":
-directory (the conversations the person sees in the app, as indented
-lines, each with its ref), directory_entries (more of them), focus (the
-conversation on screen), assistant_text (a complete piece of a
-conversation's agent's words, whole; finishedTurn when it ended its turn)
-and session_error. Updates name a conversation by its title and the titles
-of what it sits under (parents); find its ref in the directory lines, or
-use the ref an update gives when titles alone are unclear. You hear new
-replies only from the four conversations the person most recently visited.
-Use refs (s1, s2, ...) in tools, never titles. Titles like "New Task" are
-work that hasn't been named yet.
+What you know comes from {{initialConversationContext}} (JSON) and from contextual updates during the call, each a JSON object with an "event": directory (the conversations the person sees in the app, as indented lines, each with its ref), directory_entries (more of them), focus (the conversation on screen, or a null title for home, Settings or anything else), assistant_text (a complete piece of a conversation's agent's words, whole; finishedTurn when it ended its turn) and session_error. Updates name a conversation by its title and the titles of what it sits under (parents); find its ref in the directory lines, or use the ref an update gives when titles alone are unclear. You hear new replies only from the four conversations the person most recently visited. Use refs (s1, s2, ...) in tools, never titles. Titles like "New Task" are work that hasn't been named yet.
 
 Tools:
-- listSessions: find conversations; query is a case-insensitive substring of
-  the title.
-- getSessionContext: read a conversation (its last five turns, a message
-  still waiting for an answer among them) before you summarise it.
+- listSessions: find conversations, with when each last did something; query is a case-insensitive substring of the title.
+- getSessionContext: read a conversation before you summarise it: its last five turns (a message still waiting for an answer among them), when the person last wrote and the agent last replied, the workspace it runs in, its model and effort, and the models and efforts it can switch to.
 - openSession: show a conversation on the person's screen.
-- sendMessage: send the person's words to a conversation's agent.
+- newWork: open a new task or a new bot on the screen, as the compose button does. A new session or conversation is a task unless the person asks for a bot. It is empty until its first message, which makes it.
+- goBack: go back one screen. goHome: go to the home screen.
+- sendMessage: send words to a conversation's agent.
+
+Sending:
+- Call sendMessage only when the person explicitly asks you to send: "send it", "send that to the release task", "tell the backend bot to ...". Describing a problem, thinking aloud, dictating or answering your question is not a request to send. If you aren't sure they want it sent, ask, and send only after a yes.
+- Never send on your own: not to follow up, not to answer an agent for the person, not right after newWork.
+- Send exactly what they asked to send, to the conversation they named, or the one on screen if they named none. If which conversation or what text is unclear, ask first. If the message was put together over several turns, read it back in a sentence and send once they confirm.
+- To start new work with a message, call newWork, then sendMessage to the targetRef it returns once the person asks you to send.
+- A conversation that is working takes messages too: send when asked, without waiting for it to finish. Only one waiting for the person (needsInput) can't take one.
+- Pass model or effort only when the person asks to change them, using a name from getSessionContext's models. They change with a message: there is no switch on its own. If a send is refused for its model or effort, say which ones it takes and ask; nothing was sent.
+- "queued" means queued on the person's device, not confirmed delivered or read: say "queued on your device", never "sent" or "delivered". Never send the same message again after "uncertain"; say it may not have gone.
 
 Rules:
-- Only say something happened if its tool said so. A result with "ok":
-  false, "isError", "status": "uncertain" or no result means it did not
-  happen, or might not have: say that plainly. Never claim success after an
-  error.
-- sendMessage: send exactly what the person asked to send. If which
-  conversation or what text is unclear, ask first. "queued" means queued on
-  the person's device, not confirmed delivered or read: tell them "queued on
-  your device", never "sent" or "delivered". Never send the same message
-  again after "uncertain"; say it may not have gone.
-- openSession and sendMessage take the latest focusRevision you have seen,
-  from the context or the newest focus event. If a tool says the screen
-  changed, use the newest focusRevision before you retry.
-- Updates need no answer of their own. Use what they say when the person
-  asks, or when it bears on what you are saying.
-- You cannot approve permissions or answer an agent's questions. When a
-  conversation needs input, tell the person to answer it in the app.
+- Only say something happened if its tool said so. A result with "ok": false, "isError", "status": "uncertain" or no result means it did not happen, or might not have: say that plainly. Never claim success after an error.
+- Change the screen (openSession, newWork, goBack, goHome) only when the person asks to.
+- openSession, newWork, goBack and sendMessage take the latest focusRevision you have seen: from the context, the newest focus event or the last tool result. If a tool says the screen changed, use the newest focusRevision before you retry.
+- Updates need no answer of their own. Use what they say when the person asks, or when it bears on what you are saying.
+- Times come as "ago" (say that) and "at" (the person's local time, for when they ask exactly).
+- You cannot approve permissions or answer an agent's questions. When a conversation needs input, tell the person to answer it in the app.
 - Don't read code, paths or long logs aloud. Summarise them.
 ```
 
@@ -586,7 +595,7 @@ the code differ.
 {
   "type": "client",
   "name": "sendMessage",
-  "description": "Send the person's message to a conversation's agent, exactly as given (at most 8 KiB of UTF-8). It doesn't open the conversation. \"queued\" means queued on the person's device, not confirmed delivered or read; after \"uncertain\", never send it again.",
+  "description": "Send the person's message to a conversation's agent, exactly as given (at most 8 KiB of UTF-8). Call it only when the person has explicitly asked you to send it (\"send it\", \"send that to …\"), never because you think they would want it sent. A working agent takes it too, as the app's composer sends it. model and effort switch the conversation first, only when the person asked for that. It doesn't open the conversation. \"queued\" means queued on the person's device, not confirmed delivered or read; after \"uncertain\", never send it again.",
   "expects_response": true,
   "response_timeout_secs": 10,
   "parameters": {
@@ -603,6 +612,14 @@ the code differ.
       "focusRevision": {
         "type": "integer",
         "description": "The latest focusRevision you have seen."
+      },
+      "model": {
+        "type": "string",
+        "description": "Only when the person asked for another model: its name or id, as getSessionContext lists them. It stays for the conversation's next messages."
+      },
+      "effort": {
+        "type": "string",
+        "description": "Only when the person asked for another effort: one of the model's efforts, as getSessionContext lists them."
       }
     },
     "required": [
@@ -614,6 +631,78 @@ the code differ.
 }
 ```
 
+```json
+{
+  "type": "client",
+  "name": "newWork",
+  "description": "Open new work on the person's screen, as the app's compose button does: an empty conversation that its first message makes a task (what a new session or conversation is) or a bot. Nothing is made on the computer and nothing is sent: send its first message with sendMessage to the targetRef this returns, and only when the person asks you to send it.",
+  "expects_response": true,
+  "response_timeout_secs": 10,
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "task",
+          "bot"
+        ],
+        "description": "task, unless the person asked for a bot."
+      },
+      "name": {
+        "type": "string",
+        "description": "The name the person gave it; omit for its first message to name it."
+      },
+      "focusRevision": {
+        "type": "integer",
+        "description": "The latest focusRevision you have seen."
+      }
+    },
+    "required": [
+      "kind",
+      "focusRevision"
+    ]
+  }
+}
+```
+
+```json
+{
+  "type": "client",
+  "name": "goBack",
+  "description": "Go back one screen, as the back button does: close what is open over the app, or leave the screen on top for the one under it. Refused at home, where there is nothing to go back to.",
+  "expects_response": true,
+  "response_timeout_secs": 10,
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "focusRevision": {
+        "type": "integer",
+        "description": "The latest focusRevision you have seen."
+      }
+    },
+    "required": [
+      "focusRevision"
+    ]
+  }
+}
+```
+
+```json
+{
+  "type": "client",
+  "name": "goHome",
+  "description": "Go to the home screen, the list of the person's bots, tasks and projects, closing every screen over it.",
+  "expects_response": true,
+  "response_timeout_secs": 10,
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  }
+}
+```
+
 What the phone answers (JSON in the tool result):
 
 | Tool | Success | Refusal (`isError`) |
@@ -621,14 +710,49 @@ What the phone answers (JSON in the tool result):
 | listSessions | `{"sessions":[{targetRef,title,kind,status,parents?}],"nextCursor"?}`; `kind` is `bot`, `task`, `subtask` or `conversation` | query or cursor not a string, a cursor it didn't give |
 | getSessionContext | `{title,parents,working,needsInput,turns:[{user?,assistant?,ended,error?,truncated?}],olderTurns,pendingUserMessage?:{text,delivery?,truncated?}}` | no such conversation (or not listed now), can't be read now |
 | openSession | `{"opened":true,"targetRef":…,"focusRevision":…}`, the revision the next step takes | stale focus, no such conversation, didn't open |
-| sendMessage | `{"status":"queued","targetRef":…,"delivery":"on the person's device, not confirmed delivered or read"}` | `{"status":"uncertain",…}` after 8 s; stale focus; can't take a message; waits for the person; empty; over 8 KiB; call ended |
+| listSessions (rows) | each row also `workspace?` and `lastActivity?:{ago,at}`, and the page `now` | |
+| getSessionContext (more) | also `lastUserMessage?`, `lastAgentReply?`, `workspace?`, `model?:{id,name,effort}`, `models?:[{id,name,efforts}]` | |
+| sendMessage | `{"status":"queued","targetRef":…,"delivery":"on the person's device, not confirmed delivered or read"}`, with `model` and `effort` when it switched them | `{"status":"uncertain",…}` after 8 s; stale focus; can't take a message; waits for the person; empty; over 8 KiB; call ended; a model or effort it doesn't offer, with the `models` it does (nothing is sent) |
+| newWork | `{"opened":true,"targetRef":…,"kind":"task"\|"bot","title":…,"focusRevision":…,"sent":false}` | stale focus; kind not `task` or `bot`; didn't open |
+| goBack | `{"home":…,"focusRevision":…,"title":…\|null,"parents"?,"targetRef"?}`: where it landed | stale focus; at home, nothing to go back to; an alert is open |
+| goHome | `{"home":true,"focusRevision":…,"title":null}` | an alert is open (iOS) |
 
 Refusals are `{"ok":false,"reason":…}`. An unknown tool name (the old
 `setSessionWatch` included) is refused with `Unknown tool.` and nothing runs.
 Arguments are checked against the schema: `focusRevision` must be a JSON
 integer (a string, fraction, boolean or null is a stale refusal), `text` and
 `targetRef` strings. `sendMessage` leaves the conversation's draft alone,
-doesn't open it, and doesn't make the call hear from it. A send that got no
+doesn't open it, and doesn't make the call hear from it. A conversation that
+is working takes it as the composer's send does (the agent steers or takes
+it next); only one waiting for the person (a question or a review) refuses
+it, because there the composer's words would answer the question.
+
+`model` and `effort` are matched as said aloud (any case, letters and digits
+only: "gpt 5.2 codex" is `gpt-5.2-codex`), by id or name, and a name part
+that fits one model alone ("sonnet") will do. They switch the conversation
+the way the composer's pickers do (iOS `ModelCatalog.select`, Android
+`ModeCatalog.pick`, then `Conversation.setMode`): another model on the first
+shown account that offers it, at the effort asked for or the model's own
+default, and its screen's chips show it at once. The switch stays for the
+conversation's next messages, as a pick does.
+
+**New work** (`newWork`) is compose's own screen (iOS `NewWork.chat` over
+`Store.newTask`, Android `composeConversation`), chosen as a task or a bot
+and named, put where `openSession` puts a conversation; the keyboard stays
+down. Nothing is made and nothing sent: the sidebar lists it once its first
+message makes it, the same way the composer's first send does. Until then
+the call reaches it by the `targetRef` `newWork` gave, or that a `focus`
+gives (compose opened by hand counts too), and `sendMessage` to it sends its
+first message through its own screen. "A new session" is a task.
+
+**Back and home** are the system's: `goBack` closes what is presented over
+the app (iOS: a sheet's own stack goes back first; an alert is never
+answered for the person) or pops the screen on top, and `goHome` closes
+everything and pops to home's root (on a tablet, the sidebar with the
+empty main panel). Both answer once the move is done, with the screen they
+left as the new focus. The call's bar is a window of its own (iOS) or wraps
+the navigation (Android), so it stays usable over every screen they lead
+to. A send that got no
 answer in time is `uncertain`; the same words to the same conversation again
 go under the same message ID, so the conversation takes them once.
 

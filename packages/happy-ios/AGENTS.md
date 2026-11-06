@@ -166,9 +166,13 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
   it, and Telegram's in-call bar (`CallBarLayout`, `CallWaves`, adapted with
   Steve's permission) sits above the navigation bar and pushes the window
   down by its height. It talks to a new hosted ElevenLabs agent of its own
-  with four client tools (`CallTool`: listSessions, getSessionContext,
-  openSession, sendMessage) and no permission or question tool; a
-  conversation waiting on the person is a `needsInput` flag on a read only.
+  with seven client tools (`CallTool`: listSessions, getSessionContext,
+  openSession, sendMessage, newWork, goBack, goHome) and no permission or
+  question tool, and the phone sends its system prompt (`CallPrompt`, the
+  agent's prompt override); a conversation waiting on the person is a
+  `needsInput` flag on a read only. newWork is compose's own screen, goBack
+  and goHome the stack's own back and root, and sendMessage's model and
+  effort the composer's pickers'.
   The call hears from the last four conversations visited (`CallContext`):
   only their agents' new words, each piece once and whole when complete
   (the agent went on past it in its run, or the run is no longer the

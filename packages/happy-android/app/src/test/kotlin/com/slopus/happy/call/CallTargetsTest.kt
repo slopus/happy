@@ -96,6 +96,9 @@ class CallTargetsTest {
     fun aRunThatStartsTheNextCompletesTheLastOnesWords() {
         val first = listOf(user("u1", "fix it"), said("a1:0", "Done."), end("r1", "Done."))
         assertEquals(mapOf("a1:0" to true), finals(first + user("u2", "next")))
+        // When the run ended is the turn's: what lastAgentReply says.
+        val timed = (first.last() as ConversationRow.TurnEnd).copy(endedAt = 1_700_000_000_000)
+        assertEquals(listOf(1_700_000_000_000L), read(first.dropLast(1) + timed).turns.map { it.endedAt })
         assertEquals(mapOf("a1:0" to true, "a2:0" to false), finals(first + said("a2:0", "On it")))
         val state = read(first + said("a2:0", "On it"))
         assertEquals("r1", state.messages.first { it.id == "a1:0" }.turn)

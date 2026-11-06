@@ -1,13 +1,16 @@
 import Foundation
 
-/// What a call is started with: the hosted prompt's one variable, and the
-/// person's language if they chose one. No prompt, greeting or tools are
-/// sent from here: the hosted agent has its own.
+/// What a call is started with: the system prompt (`CallPrompt`, the
+/// hosted agent's prompt override), its one variable, and the person's
+/// language if they chose one. The tools are the hosted agent's
+/// (`CallTool`); no greeting is sent.
 public struct CallStart: Equatable, Sendable {
+    public var prompt: String
     public var context: String
     public var language: String?
 
-    public init(context: String, language: String? = nil) {
+    public init(prompt: String = CallPrompt.system, context: String, language: String? = nil) {
+        self.prompt = prompt
         self.context = context
         self.language = language
     }

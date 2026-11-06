@@ -23,6 +23,9 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import kotlin.coroutines.CoroutineContext
 
 /** What a call adds to the hosted agent's context as things change: JSON lines it reads without answering. Nothing here asks it to speak. */
@@ -34,7 +37,7 @@ data class CallUpdate(val context: List<String> = emptyList()) {
  * Lives only during one call, bound to one connection (iOS `CallContext`).
  * It owns the opaque references the hosted agent knows conversations by, the
  * focus, and the last four conversations the person visited during the
- * call, which are the ones it hears from; it runs the four tools one at a
+ * call, which are the ones it hears from; it runs the tools one at a
  * time. A visited conversation says only what its agent writes from then on,
  * each piece once it is complete and whole, and an error that stopped it:
  * never its words as they stream, its tools, its state or the person's
@@ -56,6 +59,8 @@ class CallContext(
     private val targets: CallTargets,
     private val now: () -> Long = System::currentTimeMillis,
     private val toolDeadlineMillis: Long = Limits.TOOL_DEADLINE_MS,
+    /** The person's clock, which times are said in. */
+    private val zone: ZoneId = ZoneId.systemDefault(),
     private val lane: CoroutineContext = Dispatchers.Default.limitedParallelism(1),
 ) {
     object Limits {
@@ -83,6 +88,8 @@ class CallContext(
         const val TOOL_DEADLINE_MS = 8_000L
         /** From the first change to the directory to the one update that tells it; later changes never put that off. */
         const val SETTLE_MS = 1_000L
+        /** Models a read or a refusal lists. */
+        const val MODELS = 30
     }
 
     private val scope = CoroutineScope(SupervisorJob() + lane)
@@ -98,6 +105,8 @@ class CallContext(
     /** Home's conversations as last seen, in order and by ID. */
     private var entries: List<CallTarget> = emptyList()
     private var directory: Map<String, CallTarget> = emptyMap()
+    /** New work on screen that home doesn't list until its first message makes it: `newWork`'s, or compose's in front. */
+    private val drafts = HashMap<String, CallTarget>()
     /** The directory the agent last had whole: the first snapshot's, or the last `directory` event's. */
     private var listed: List<Listing> = emptyList()
     /** What the agent has been told each conversation is: by a directory snapshot, an entry or `listSessions`. */
@@ -254,6 +263,7 @@ class CallContext(
         // Newer than the directory as last seen: as home has it now.
         if (agentId != null && directory[agentId] == null) {
             see(targets.directory())
+            if (directory[agentId] == null && drafts[agentId] == null) targets.unlisted(agentId)?.let { drafts[agentId] = it }
             if (closed || agentId == focus) return@withContext CallUpdate()
         }
         moveFocus(agentId)
@@ -268,9 +278,15 @@ class CallContext(
         val event = linkedMapOf<String, JsonElement>("event" to JsonPrimitive("focus"), "focusRevision" to JsonPrimitive(focusRevision), "title" to JsonNull)
         if (agentId != null) {
             visit(agentId)
-            directory[agentId]?.let { entry ->
+            val entry = directory[agentId]
+            val draft = drafts[agentId]
+            if (entry != null) {
                 if (telling) context += tell(entry)
                 event.putAll(address(entry))
+            } else if (draft != null) {
+                // No directory line gives new work its reference: the focus does.
+                event.putAll(address(draft))
+                event["ref"] = JsonPrimitive(ref(agentId))
             }
         }
         return CallUpdate(context + CallJson.encode(JsonObject(event)))
@@ -388,6 +404,8 @@ class CallContext(
         val byId = LinkedHashMap<String, CallTarget>()
         for (entry in now) byId.putIfAbsent(entry.agentId, entry)
         directory = byId
+        // Made by its first message: home's from now on.
+        drafts.keys.removeAll { it in byId }
     }
 
     /**
@@ -573,7 +591,7 @@ class CallContext(
                 val page = matching.drop(start).take(Limits.PAGE)
                 // A directory query: what it gives, the agent has.
                 for (entry in page) told[entry.agentId] = Listing(entry)
-                val value = linkedMapOf<String, JsonElement>("sessions" to JsonArray(page.map(::row)))
+                val value = linkedMapOf<String, JsonElement>("sessions" to JsonArray(page.map(::row)), "now" to JsonPrimitive(local(now(), zone)))
                 if (start + page.size < matching.size) value["nextCursor"] = JsonPrimitive((start + page.size).toString())
                 CallToolResult.json(JsonObject(value))
             }
@@ -587,10 +605,10 @@ class CallContext(
                     "parents" to JsonArray(state.target.parents.map { JsonPrimitive(it.title) }),
                 )
                 val turns = recent(state).toMutableList()
-                var value = body(state, turns, name)
+                var value = body(state, turns, name, options = true)
                 while (CallJson.encode(value).utf8Size() > Limits.TOTAL_BYTES && turns.isNotEmpty()) {
                     turns.removeAt(0)
-                    value = body(state, turns, name)
+                    value = body(state, turns, name, options = true)
                 }
                 CallToolResult.json(value)
             }
@@ -611,6 +629,50 @@ class CallContext(
             }
 
             CallTool.SendMessage -> send(arguments, call)
+
+            CallTool.NewWork -> {
+                val kind = when (arguments.string("kind")) {
+                    "task" -> CallTarget.Kind.Task
+                    "bot" -> CallTarget.Kind.Bot
+                    else -> return CallToolResult.refused("kind must be \"task\" or \"bot\".")
+                }
+                val name = optionalString(arguments["name"]) ?: return CallToolResult.refused("name must be a string.")
+                if (revisionOf(arguments["focusRevision"]) != focusRevision) return STALE
+                if (closed) return CallToolResult.refused("No answer in time.")
+                val draft = targets.newWork(kind, name.trim()) ?: return CallToolResult.refused("New work didn't open.")
+                drafts[draft.agentId] = draft
+                moveFocus(draft.agentId, telling = false)
+                CallToolResult.json(JsonObject(linkedMapOf(
+                    "opened" to JsonPrimitive(true), "targetRef" to JsonPrimitive(ref(draft.agentId)), "kind" to JsonPrimitive(draft.kind.wire),
+                    "title" to JsonPrimitive(draft.title), "focusRevision" to JsonPrimitive(focusRevision), "sent" to JsonPrimitive(false),
+                )))
+            }
+
+            CallTool.GoBack, CallTool.GoHome -> {
+                if (tool == CallTool.GoBack && revisionOf(arguments["focusRevision"]) != focusRevision) return STALE
+                if (closed) return CallToolResult.refused("No answer in time.")
+                when (val moved = if (tool == CallTool.GoBack) targets.back() else targets.home()) {
+                    is CallScreenMove.Refused -> CallToolResult.refused(moved.reason)
+                    is CallScreenMove.Moved -> {
+                        // Where it landed is the focus now; the screen says so too, and whichever of the two comes second says nothing.
+                        val shown = targets.focused()
+                        if (shown != null && directory[shown] == null && drafts[shown] == null) {
+                            see(targets.directory())
+                            if (directory[shown] == null) targets.unlisted(shown)?.let { drafts[shown] = it }
+                        }
+                        moveFocus(shown, telling = false)
+                        val value = linkedMapOf<String, JsonElement>(
+                            "home" to JsonPrimitive(moved.atHome), "focusRevision" to JsonPrimitive(focusRevision), "title" to JsonNull,
+                        )
+                        val entry = shown?.let { directory[it] ?: drafts[it] }
+                        if (entry != null) {
+                            value.putAll(address(entry))
+                            value["targetRef"] = JsonPrimitive(ref(entry.agentId))
+                        }
+                        CallToolResult.json(JsonObject(value))
+                    }
+                }
+            }
         }
     }
 
@@ -619,11 +681,17 @@ class CallContext(
         val text = arguments.string("text")
         if (text == null || text.isBlank()) return CallToolResult.refused("There's nothing to send.")
         if (text.utf8Size() > Limits.TEXT_BYTES) return CallToolResult.refused("That message is too long to send by voice.")
+        val model = optionalString(arguments["model"]) ?: return CallToolResult.refused("model must be a string.")
+        val effort = optionalString(arguments["effort"]) ?: return CallToolResult.refused("effort must be a string.")
         val asOf = revisionOf(arguments["focusRevision"])
         if (asOf != focusRevision) return STALE
         val state = targets.state(id) ?: return CallToolResult.refused("That conversation can't be read now.")
         if (!state.writable) return CallToolResult.refused("That conversation can't take a message now.")
+        // A working agent takes it as the composer's send would (it steers or waits its turn); only a question
+        // waiting for the person stops it.
         if (state.needsInput) return CallToolResult.refused("It's waiting for the person in the app; answer there first.")
+        val asked = change(model, effort, state)
+        asked.refusal?.let { return it }
         // Reading it was a wait: the screen, or the call, may have moved on.
         if (closed) return CallToolResult.refused("The call has ended.")
         if (asOf != focusRevision) return STALE
@@ -631,10 +699,15 @@ class CallContext(
         val messageId = unsettled[key] ?: ConversationApi.clientId()
         unsettled[key] = messageId
         settling[call] = key
-        return when (val outcome = targets.send(id, text, messageId)) {
-            CallSendOutcome.Queued -> CallToolResult.json(JsonObject(mapOf(
+        return when (val outcome = targets.send(id, text, messageId, asked.change)) {
+            CallSendOutcome.Queued -> CallToolResult.json(JsonObject(linkedMapOf<String, JsonElement>(
                 "status" to JsonPrimitive("queued"), "targetRef" to JsonPrimitive(ref(id)), "delivery" to JsonPrimitive(QUEUED),
-            )))
+            ).apply {
+                asked.switched?.let { (name, level) ->
+                    put("model", JsonPrimitive(name))
+                    if (level.isNotEmpty()) put("effort", JsonPrimitive(level))
+                }
+            }))
             is CallSendOutcome.Refused -> CallToolResult.refused(outcome.reason)
         }
     }
@@ -650,7 +723,7 @@ class CallContext(
         val ref = (value as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
         val id = agents[ref] ?: return null
         see(targets.directory())
-        return id.takeIf { directory[it] != null }
+        return id.takeIf { directory[it] != null || drafts[it] != null }
     }
 
     /** [agentId] becomes the latest visited; the oldest past the limit is forgotten, so visiting it again starts from what is there then. */
@@ -681,18 +754,29 @@ class CallContext(
             "status" to JsonPrimitive(target.status.wire),
         )
         if (target.parents.isNotEmpty()) value["parents"] = JsonArray(target.parents.map { JsonPrimitive(it.title) })
+        if (target.workspace.isNotEmpty()) value["workspace"] = JsonPrimitive(target.workspace.joinToString(" / "))
+        target.activityAt?.takeIf { it > 0 }?.let { value["lastActivity"] = moment(it) }
         return JsonObject(value)
     }
+
+    /** A moment as the agent says it: how long ago, and when on the person's clock, to the minute. */
+    private fun moment(millis: Long): JsonObject =
+        JsonObject(mapOf("ago" to JsonPrimitive(ago((now() - millis) / 1000)), "at" to JsonPrimitive(local(millis, zone))))
 
     /**
      * A conversation as read: [name], then whether it works or waits for the
      * person, and its turns. Never its kind, status or reference beyond what
      * [name] holds: the directory has those.
      */
-    private fun body(state: CallTargetState, turns: List<CallTurn>, name: Map<String, JsonElement>): JsonObject {
+    private fun body(state: CallTargetState, turns: List<CallTurn>, name: Map<String, JsonElement>, options: Boolean = false): JsonObject {
         val value = LinkedHashMap(name)
         value["working"] = JsonPrimitive(state.working)
         value["needsInput"] = JsonPrimitive(state.needsInput)
+        state.messages.lastOrNull { it.role == CallMessage.Role.User && (it.time ?: 0L) > 0 }?.time?.let { value["lastUserMessage"] = moment(it) }
+        state.turns.filter { !it.reply.isNullOrEmpty() }.mapNotNull { it.endedAt }.filter { it > 0 }.maxOrNull()?.let { value["lastAgentReply"] = moment(it) }
+        if (state.target.workspace.isNotEmpty()) value["workspace"] = JsonPrimitive(state.target.workspace.joinToString(" / "))
+        state.mode?.let { value["model"] = JsonObject(mapOf("id" to JsonPrimitive(it.modelId), "name" to JsonPrimitive(it.model), "effort" to JsonPrimitive(it.effort))) }
+        if (options && state.models.isNotEmpty()) value["models"] = models(state.models)
         value["turns"] = JsonArray(turns.map(::turn))
         value["olderTurns"] = JsonPrimitive(state.hasMore || answering(state).size > turns.size)
         state.unanswered?.let { pending ->
@@ -777,6 +861,78 @@ class CallContext(
         }
 
         fun timestamp(millis: Long): String = Instant.ofEpochSecond(millis / 1000).toString()
+
+        /** "just now", "5 minutes ago", "2 hours ago", "yesterday", "3 days ago" (iOS `CallContext.ago`). */
+        fun ago(seconds: Long): String {
+            val minutes = Math.floorDiv(seconds, 60L)
+            return when {
+                minutes < 1 -> "just now"
+                minutes == 1L -> "a minute ago"
+                minutes < 60 -> "$minutes minutes ago"
+                minutes < 120 -> "an hour ago"
+                minutes < 24 * 60 -> "${minutes / 60} hours ago"
+                minutes < 48 * 60 -> "yesterday"
+                else -> "${minutes / (24 * 60)} days ago"
+            }
+        }
+
+        /** ISO 8601 in [zone], with its offset, to the minute: 2026-11-06T09:15:00+01:00. */
+        fun local(millis: Long, zone: ZoneId): String =
+            Instant.ofEpochMilli(millis).truncatedTo(ChronoUnit.MINUTES).atZone(zone).format(LOCAL)
+
+        private val LOCAL = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX")
+
+        fun models(list: List<CallModel>): JsonArray = JsonArray(list.take(Limits.MODELS).map {
+            JsonObject(mapOf("id" to JsonPrimitive(it.id), "name" to JsonPrimitive(it.name), "efforts" to JsonArray(it.efforts.map(::JsonPrimitive))))
+        })
+
+        /** What [change] made of a send's model and effort. */
+        class AskedMode(val change: CallModeChange? = null, val switched: Pair<String, String>? = null, val refusal: CallToolResult? = null)
+
+        /**
+         * The model and effort a send asks for, as the conversation's computer offers them ([CallTargetState.models]):
+         * what to switch to, and how it is named, or a refusal that lists what it takes. Blank asks for no change.
+         */
+        fun change(model: String, effort: String, state: CallTargetState): AskedMode {
+            val asked = model.trim()
+            val level = effort.trim()
+            if (asked.isEmpty() && level.isEmpty()) return AskedMode()
+            fun refused(reason: String, listed: List<CallModel>): AskedMode {
+                val value = linkedMapOf<String, JsonElement>("ok" to JsonPrimitive(false), "reason" to JsonPrimitive("$reason Nothing was sent."))
+                if (listed.isNotEmpty()) value["models"] = models(listed)
+                return AskedMode(refusal = CallToolResult.json(JsonObject(value), isError = true))
+            }
+            if (state.models.isEmpty()) return refused("This computer's models can't be read now, so the model and effort can't change.", emptyList())
+            var chosen = state.mode?.let { mode -> state.models.firstOrNull { it.id == mode.modelId } }
+            if (asked.isNotEmpty()) {
+                val key = spoken(asked)
+                val exact = state.models.filter { spoken(it.id) == key || spoken(it.name) == key }
+                val matching = exact.ifEmpty { state.models.filter { key in spoken(it.id) || key in spoken(it.name) } }
+                if (matching.size != 1) {
+                    val reason = if (matching.isEmpty()) {
+                        "There is no model called \"$asked\". It takes one of: ${state.models.joinToString(", ") { it.name }}."
+                    } else {
+                        "\"$asked\" could be ${matching.joinToString(" or ") { it.name }}; ask which."
+                    }
+                    return refused(reason, matching.ifEmpty { state.models })
+                }
+                chosen = matching[0]
+            }
+            val model = chosen ?: return refused("It runs on a model this computer doesn't list now; name the model as well.", state.models)
+            var picked: String? = null
+            if (level.isNotEmpty()) {
+                if (model.efforts.isEmpty()) return refused("${model.name} takes no effort level.", listOf(model))
+                picked = model.efforts.firstOrNull { spoken(it) == spoken(level) }
+                    ?: return refused("${model.name} takes effort ${model.efforts.joinToString(", ")}, not \"$level\".", listOf(model))
+            }
+            val changesModel = model.id != state.mode?.modelId
+            // As the picker does: a model's own default effort unless one was asked for.
+            val named = picked ?: if (changesModel) model.defaultEffort else state.mode?.effort ?: model.defaultEffort
+            return AskedMode(CallModeChange(model.id.takeIf { asked.isNotEmpty() }, picked), model.name to named)
+        }
+
+        /** A name as said aloud: letters and digits only, any case. */
+        private fun spoken(text: String): String = text.lowercase().filter { it.isLetterOrDigit() }
 
         /** A JSON integer, as the schema says: never a string, a fraction or a boolean. */
         private fun revisionOf(value: JsonElement?): Int? {

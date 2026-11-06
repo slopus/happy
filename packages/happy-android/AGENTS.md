@@ -30,7 +30,8 @@ Preserve credential and push compatibility on upgrades.
   `vendor/elevenlabs` fixes audio focus, teardown and call-local mute.
 - **An agent connection's voice call** (`call/`, `ui/call/`), iOS's
   `HappyCore/Call` ported: apart from the relay's voice above, its own new
-  hosted ElevenLabs agent and four client tools (`CallTool`), no permission
+  hosted ElevenLabs agent, its system prompt sent from the phone
+  (`CallPrompt`) and seven client tools (`CallTool`), no permission
   or question tool, hearing only new words and stopping errors from the last
   four conversations visited. Home's three-bar button sits immediately left of compose
   (`ComposeFab(onVoice)`); the call's bar (`CallFrame`, after Telegram-iOS's

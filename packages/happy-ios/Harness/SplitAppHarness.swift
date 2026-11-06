@@ -400,6 +400,37 @@ final class SplitAppHarness {
                 _ = await targets.open("cache-agent")
                 targets.close()
             }
+            // The call's newWork, sendMessage to it, goBack and goHome through its own context, with no provider:
+            // each logs its result and the stack it left (`[call-nav]`), a pause between for screenshots.
+            if arguments.contains("-callNav"), let id = context.account.agentConnections.activeID, let session = Session.session(for: id, context: context) {
+                try? await Task.sleep(for: .seconds(2))
+                let targets = SessionCallTargets(session: session, shell: shell)
+                let call = CallContext(targets: targets)
+                _ = await call.initial()
+                var revision = 0
+                @MainActor func step(_ name: String, _ json: String) async -> [String: Any] {
+                    let result = await call.handle(CallToolCall(id: UUID().uuidString, name: name, parameters: Data(json.utf8)))
+                    let value = (try? JSONSerialization.jsonObject(with: Data(result.text.utf8))) as? [String: Any] ?? [:]
+                    if let next = value["focusRevision"] as? Int { revision = next }
+                    print("[call-nav] \(name) \(result.isError ? "refused" : "ok") \(result.text)")
+                    print("[call-nav] stack \(shell.stack.map { ($0 as? ChatViewController)?.shownAgentId ?? String(describing: type(of: $0)) })")
+                    try? await Task.sleep(for: .seconds(2.5))
+                    return value
+                }
+                _ = await step("openSession", "{\"targetRef\":\"s1\",\"focusRevision\":\(revision)}")
+                let made = await step("newWork", "{\"kind\":\"bot\",\"name\":\"Voice bot\",\"focusRevision\":\(revision)}")
+                _ = await step("getSessionContext", "{\"targetRef\":\"\((made["targetRef"] as? String) ?? "")\"}")
+                _ = await step("goBack", "{\"focusRevision\":\(revision)}")
+                let task = await step("newWork", "{\"kind\":\"task\",\"focusRevision\":\(revision)}")
+                _ = await step("sendMessage", "{\"targetRef\":\"\((task["targetRef"] as? String) ?? "")\",\"text\":\"Draft the release notes\",\"focusRevision\":\(revision)}")
+                _ = await step("listSessions", "{}")
+                _ = await step("goHome", "{}")
+                _ = await step("goBack", "{\"focusRevision\":\(revision)}")
+                _ = await step("getSessionContext", "{\"targetRef\":\"s1\"}")
+                print("[call-nav] done")
+                await call.close()
+                targets.close()
+            }
             // A sheet of the app's over home, left up, for the UI test that reads the bar through it.
             if arguments.contains("-callSheet") {
                 try? await Task.sleep(for: .seconds(1.5))

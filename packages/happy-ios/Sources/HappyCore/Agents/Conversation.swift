@@ -1891,7 +1891,7 @@ public actor Conversation {
         // Ended: how, after how long, and the answer to copy (desktop's `turnStatus`).
         if let time = transcript.times[run.id], let ended = time.endedAt {
             let answer = lastAgent.map(\.text).flatMap { $0.isEmpty ? nil : $0 }
-            let turnEnd = ChatItem.TurnEnd(reason: time.reason ?? "completed", durationMs: time.startedAt.map { max(0, ended - $0) }, tools: tools, copyText: answer)
+            let turnEnd = ChatItem.TurnEnd(reason: time.reason ?? "completed", durationMs: time.startedAt.map { max(0, ended - $0) }, tools: tools, copyText: answer, endedAt: ended)
             let item = ChatItem(id: "\(run.id):status", role: .turnEnd(turnEnd), pieces: [], delivery: .sent, turn: run.id)
             if let kept = madeRuns[run.id]?.items.last, kept == item { made.items.append(kept) } else { made.items.append(item.stamped()) }
         }

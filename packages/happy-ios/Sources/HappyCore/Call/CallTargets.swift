@@ -44,13 +44,24 @@ public struct CallTarget: Equatable, Sendable {
     public var kind: Kind
     public var status: Status
     public var parents: [Parent]
+    /// When the sidebar says it last did something (ms since 1970, to the
+    /// minute), what it orders by; nil when it doesn't say.
+    public var activityAt: Double?
 
-    public init(agentId: String, title: String, kind: Kind, status: Status, parents: [Parent] = []) {
+    public init(agentId: String, title: String, kind: Kind, status: Status, parents: [Parent] = [], activityAt: Double? = nil) {
         self.agentId = agentId
         self.title = title
         self.kind = kind
         self.status = status
         self.parents = parents
+        self.activityAt = activityAt
+    }
+
+    /// The project and worktree it runs in, outermost first: the headings
+    /// it sits under. Empty for a bot or a task, which run in a workspace
+    /// of their own. The computer tells the phone no folder paths.
+    public var workspace: [String] {
+        parents.filter { $0.agentId == nil }.map(\.title)
     }
 
     /// The labels the sidebar shows for work nobody has named yet: the
@@ -100,11 +111,11 @@ public struct CallTarget: Equatable, Sendable {
         case .awaitingInput: .needsInput
         case .none: .idle
         }
-        return CallTarget(agentId: agentId, title: clean(row.label), kind: kind, status: status)
+        return CallTarget(agentId: agentId, title: clean(row.label), kind: kind, status: status, activityAt: row.activityTime)
     }
 
     /// A label on one line, without control characters, cut at `titleBytes`.
-    static func clean(_ label: String) -> String {
+    public static func clean(_ label: String) -> String {
         // A line break, a tab or any other control character is a space.
         let plain = String(String.UnicodeScalarView(label.unicodeScalars.map { $0.properties.generalCategory == .control ? " " : $0 }))
         let line = plain.trimmingCharacters(in: .whitespaces)
@@ -156,13 +167,16 @@ public struct CallTurn: Equatable, Sendable {
     public var ended: String
     /// Why it stopped, for one that ended in an error.
     public var error: String?
+    /// When it ended, in ms; nil where that isn't known.
+    public var endedAt: Double?
 
-    public init(id: String, user: String? = nil, reply: String? = nil, ended: String = "completed", error: String? = nil) {
+    public init(id: String, user: String? = nil, reply: String? = nil, ended: String = "completed", error: String? = nil, endedAt: Double? = nil) {
         self.id = id
         self.user = user
         self.reply = reply
         self.ended = ended
         self.error = error
+        self.endedAt = endedAt
     }
 }
 
@@ -187,9 +201,16 @@ public struct CallTargetState: Equatable, Sendable {
     /// The person has typed something there (never what).
     public var hasDraft: Bool
     public var hasMore: Bool
+    /// The model and effort its next message goes with, if the computer's
+    /// models are known.
+    public var mode: CallMode?
+    /// What it may switch to (`CallModel.options`); empty while the
+    /// computer's models aren't known.
+    public var models: [CallModel]
 
     public init(target: CallTarget, messages: [CallMessage] = [], turns: [CallTurn] = [], unanswered: CallMessage? = nil,
-                working: Bool = false, needsInput: Bool = false, writable: Bool = true, hasDraft: Bool = false, hasMore: Bool = false) {
+                working: Bool = false, needsInput: Bool = false, writable: Bool = true, hasDraft: Bool = false, hasMore: Bool = false,
+                mode: CallMode? = nil, models: [CallModel] = []) {
         self.target = target
         self.messages = messages
         self.turns = turns
@@ -199,6 +220,8 @@ public struct CallTargetState: Equatable, Sendable {
         self.writable = writable
         self.hasDraft = hasDraft
         self.hasMore = hasMore
+        self.mode = mode
+        self.models = models
     }
 
     /// A conversation's snapshot, as the call reads it. Turns are the
@@ -237,7 +260,7 @@ public struct CallTargetState: Equatable, Sendable {
             case .turnEnd(let end):
                 guard let turn = item.turn else { continue }
                 turns.append(CallTurn(id: turn, user: users[turn], reply: end.copyText, ended: end.reason,
-                                      error: end.reason == "error" ? failures[turn] : nil))
+                                      error: end.reason == "error" ? failures[turn] : nil, endedAt: end.endedAt))
             case .question(let ask):
                 if ask.phase != .answered { needsInput = true }
             default:
@@ -280,6 +303,80 @@ extension CallTargetState {
     }
 }
 
+/// A model the call may switch a conversation to: one the composer's model
+/// picker offers.
+public struct CallModel: Equatable, Sendable {
+    public var id: String
+    public var name: String
+    /// Least to most; empty for a model that takes no effort.
+    public var efforts: [String]
+    /// What switching to it runs at unless an effort is asked for.
+    public var defaultEffort: String
+
+    public init(id: String, name: String, efforts: [String], defaultEffort: String? = nil) {
+        self.id = id
+        self.name = name
+        self.efforts = efforts
+        self.defaultEffort = defaultEffort ?? efforts.first ?? ""
+    }
+
+    /// Every model the pickers list: each switched-on, shown account's
+    /// models, less those it keeps out of the pickers, once each in the
+    /// catalog's order.
+    public static func options(_ catalog: ModelCatalog) -> [CallModel] {
+        var seen = Set<String>()
+        var result: [CallModel] = []
+        for provider in catalog.providers where !provider.isDisabled && !provider.hidden {
+            for model in provider.models where !provider.hiddenModels.contains(model.id) && seen.insert(model.id).inserted {
+                result.append(CallModel(id: model.id, name: model.name, efforts: model.efforts, defaultEffort: model.defaultEffort))
+            }
+        }
+        return result
+    }
+}
+
+/// The model and effort a conversation's next message goes with.
+public struct CallMode: Equatable, Sendable {
+    public var modelId: String
+    /// As the picker names it.
+    public var model: String
+    public var effort: String
+
+    public init(modelId: String, model: String, effort: String) {
+        self.modelId = modelId
+        self.model = model
+        self.effort = effort
+    }
+
+    public init(_ mode: AgentWire.Mode, catalog: ModelCatalog) {
+        self.init(modelId: mode.modelId, model: catalog.model(mode)?.name ?? mode.modelId, effort: mode.effort)
+    }
+}
+
+/// What a send by voice changes first, checked against the conversation's
+/// `CallTargetState.models`: another model, another effort, or both.
+public struct CallModeChange: Equatable, Sendable {
+    public var modelId: String?
+    public var effort: String?
+
+    public init(modelId: String? = nil, effort: String? = nil) {
+        self.modelId = modelId
+        self.effort = effort
+    }
+
+    /// `current` with this change, as the composer's pickers make it
+    /// (`ModelCatalog.select`): another model on the first account that
+    /// offers it, with the effort asked for or the model's own default.
+    public func applied(to current: AgentWire.Mode, catalog: ModelCatalog) -> AgentWire.Mode {
+        if let modelId, modelId != current.modelId {
+            return catalog.select(providerId: nil, modelId: modelId, effort: effort, from: current)
+        }
+        var next = current
+        if let effort { next.effort = effort }
+        return next
+    }
+}
+
 public enum CallSendOutcome: Equatable, Sendable {
     /// Kept on this phone and on its way; the computer's answer comes later
     /// as a delivery update.
@@ -301,10 +398,30 @@ public protocol CallTargets: Sendable {
     /// Opens it on screen; true once it shows.
     func open(_ agentId: String) async -> Bool
     /// Sends `text` exactly as given, under `id`, the way the composer's
-    /// send does but without touching its draft or attachments.
-    func send(_ agentId: String, text: String, id: String) async -> CallSendOutcome
+    /// send does but without touching its draft or attachments; with
+    /// `change`, as the composer's pickers would have switched it first.
+    func send(_ agentId: String, text: String, id: String, change: CallModeChange?) async -> CallSendOutcome
     /// Keeps a conversation read (or lets it go) while the call follows it.
     func follow(_ agentId: String, _ following: Bool) async
+    /// New work on screen, as compose opens it, chosen as `kind` and
+    /// named `name` (blank for its first message to name it): the empty
+    /// conversation, which the sidebar lists only once its first message
+    /// has made it. Nil if it didn't open.
+    func newWork(_ kind: CallTarget.Kind, name: String) async -> CallTarget?
+    /// New work on screen under `agentId` that the sidebar doesn't list
+    /// yet (compose's, opened by hand or by `newWork`); nil for anything else.
+    func unlisted(_ agentId: String) async -> CallTarget?
+    /// Back one screen: what is presented over the app closes, else the
+    /// screen on top goes.
+    func back() async -> CallScreenMove
+    /// Home, with nothing over it.
+    func home() async -> CallScreenMove
+}
+
+/// Where going back or home left the screen.
+public enum CallScreenMove: Equatable, Sendable {
+    case moved(atHome: Bool)
+    case refused(String)
 }
 
 

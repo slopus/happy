@@ -688,6 +688,22 @@ class ConversationTest {
         assertEquals(0, agent.requests.count { it.second == "/v0/bots" })
     }
 
+    /** A voice call's send into new work is its first message, as the composer's is: it makes the bot chosen, and the draft stays. */
+    @Test fun `a call's send makes new work and leaves the composer's draft`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent, newTask = NewTask("t1", "w1", "a9", "m1"), choice = WorkChoice(WorkKind.Bot, "Researcher"))
+        advanceUntilIdle()
+        chat.setDraft("half typed")
+        assertTrue(chat.sendAs("voice-1", "Find papers on caching"))
+        advanceUntilIdle()
+        assertTrue(chat.state.value.created)
+        assertEquals(1, agent.requests.count { it.second == "/v0/bots" })
+        assertEquals(0, agent.requests.count { it.second == "/v0/tasks" })
+        assertEquals(listOf("Find papers on caching"), chat.state.value.rows.filterIsInstance<ConversationRow.User>().map { it.text })
+        assertEquals("half typed", chat.state.value.draft)
+        assertFalse("the same id again is the same send", chat.sendAs("voice-1", "Find papers on caching"))
+    }
+
     @Test fun `a prefix goes above the agent's draft once, unsaved, with the cursor after it`() = runTest {
         val agent = FakeAgent()
         agent.bootstrap = agent.bootstrap.replace(
@@ -1679,7 +1695,7 @@ class ConversationTest {
         // Folded: the person's words, the file it edited, the control, the answer and how it ended.
         assertEquals(listOf("r1:status", "m2:3", "r1:trace", "m2:2", "m1:user"), chat.state.value.rows.map { it.key })
         val ended = chat.state.value.rows[0] as ConversationRow.TurnEnd
-        assertEquals(ConversationRow.TurnEnd("r1:status", "r1", "completed", 12_000, 2, "Done"), ended)
+        assertEquals(ConversationRow.TurnEnd("r1:status", "r1", "completed", 12_000, 2, "Done", endedAt = 13_000), ended)
         assertTrue(ended.complete)
         // Its copy is the turn's: the answer has none of its own.
         assertFalse((chat.state.value.rows[1] as ConversationRow.Text).copies)
@@ -1727,7 +1743,7 @@ class ConversationTest {
         signals.emit(event("run.finished", """{"agentId":"a1","run":{"id":"r2","status":"completed","startedAt":4000,"endedAt":9000,"reason":"error"}}"""))
         advanceUntilIdle()
         val failed = chat.state.value.rows[0] as ConversationRow.TurnEnd
-        assertEquals(ConversationRow.TurnEnd("r2:status", "r2", "error", 5_000, 0, "Again"), failed)
+        assertEquals(ConversationRow.TurnEnd("r2:status", "r2", "error", 5_000, 0, "Again", endedAt = 9_000), failed)
     }
 
     @Test fun `another agent's steering joins the run going and its turn stays one`() = runTest {

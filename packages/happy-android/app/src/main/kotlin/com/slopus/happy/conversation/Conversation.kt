@@ -806,12 +806,14 @@ class Conversation(
     /**
      * A voice call's send (iOS's `send(id:text:)`): [text] exactly as given,
      * under the caller's [id], delivered in order with the composer's. The
-     * composer's draft is left as it is. False on a chat not made yet, and
-     * for an [id] this conversation already has, which goes only once.
+     * composer's draft is left as it is. A new chat's first message makes its
+     * task or bot, as the composer's does. False for an [id] this
+     * conversation already has, which goes only once.
      */
     suspend fun sendAs(id: String, text: String): Boolean = withContext(lane) {
-        if (!created || closed || text.isBlank()) return@withContext false
+        if (closed || text.isBlank()) return@withContext false
         if (outgoing.any { it.id == id } || id in messages) return@withContext false
+        if (!created) locked = true
         queue(Outgoing(id, text, emptyList(), voice = true, sentAt = now()))
         publish()
         pump()
@@ -1540,6 +1542,7 @@ class Conversation(
                     durationMs = info.startedAt?.let { maxOf(0, endedAt - it) },
                     tools = tools,
                     copyText = answer,
+                    endedAt = endedAt,
                 )
                 // Its copy is how the turn ended, as desktop's: the answer keeps no button of its own.
                 if (ended.complete && answer != null) turn[at] = (turn[at] as ConversationRow.Text).copy(copies = false)

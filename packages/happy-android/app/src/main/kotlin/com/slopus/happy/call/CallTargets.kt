@@ -8,6 +8,8 @@ import com.slopus.happy.conversation.ConversationRow
 import com.slopus.happy.conversation.ConversationState
 import com.slopus.happy.conversation.Delivery
 import com.slopus.happy.conversation.FailureReason
+import com.slopus.happy.conversation.Mode
+import com.slopus.happy.conversation.ModeCatalog
 
 /**
  * One conversation a call can talk about, as home lists it (iOS's
@@ -22,7 +24,16 @@ data class CallTarget(
     val kind: Kind,
     val status: Status,
     val parents: List<Parent> = emptyList(),
+    /** When home says it last did something (ms since 1970), what it orders by; null when it doesn't say. */
+    val activityAt: Long? = null,
 ) {
+    /**
+     * The project and worktree it runs in, outermost first: the headings it
+     * sits under. Empty for a bot or a task, which run in a workspace of their
+     * own. The computer tells the phone no folder paths.
+     */
+    val workspace: List<String> get() = parents.filter { it.agentId == null }.map { it.title }
+
     enum class Kind(val wire: String) {
         Bot("bot"),
         Task("task"),
@@ -103,6 +114,7 @@ data class CallTarget(
                         else -> Status.Idle
                     },
                     parents = path.map { it.second },
+                    activityAt = row.activityAt.takeIf { it > 0 },
                 )
                 path += depth to Parent(row.key, target.title, target.kind.wire, target.agentId)
                 if (seen.add(target.agentId)) result += target
@@ -158,6 +170,8 @@ data class CallTurn(
     val ended: String = "completed",
     /** Why it stopped, for one that ended in an error. */
     val error: String? = null,
+    /** When it ended (ms); null where that isn't known. */
+    val endedAt: Long? = null,
 )
 
 /**
@@ -180,6 +194,10 @@ data class CallTargetState(
     /** The person has typed something there (never what). */
     val hasDraft: Boolean = false,
     val hasMore: Boolean = false,
+    /** The model and effort its next message goes with, if the computer's models are known. */
+    val mode: CallMode? = null,
+    /** What it may switch to ([CallModel.options]); empty while the computer's models aren't known. */
+    val models: List<CallModel> = emptyList(),
 ) {
     companion object {
         /**
@@ -223,7 +241,7 @@ data class CallTargetState(
                     }
                     is ConversationRow.Failure -> failure = failureText(row.reason)
                     is ConversationRow.TurnEnd -> {
-                        turns += CallTurn(row.turn, asked, row.copyText, row.reason, failure.takeIf { row.reason == "error" })
+                        turns += CallTurn(row.turn, asked, row.copyText, row.reason, failure.takeIf { row.reason == "error" }, row.endedAt)
                         for (index in running) messages[index] = messages[index].copy(turn = row.turn)
                         running.clear()
                         asked = null
@@ -269,6 +287,57 @@ private val ConversationRow.isStep: Boolean get() = when (this) {
     else -> false
 }
 
+/** A model the call may switch a conversation to: one the composer's model picker offers. */
+data class CallModel(
+    val id: String,
+    val name: String,
+    /** Least to most; empty for a model that takes no effort. */
+    val efforts: List<String>,
+    /** What switching to it runs at unless an effort is asked for. */
+    val defaultEffort: String = efforts.firstOrNull().orEmpty(),
+) {
+    companion object {
+        /** Every model the pickers list: each switched-on, shown account's models, less those it keeps out of the pickers, once each in the catalog's order. */
+        fun options(catalog: ModeCatalog): List<CallModel> {
+            val seen = HashSet<String>()
+            return catalog.providers.filter { !it.isDisabled && !it.hidden }.flatMap { provider ->
+                provider.models.filter { it.modelId !in provider.hiddenModels && seen.add(it.modelId) }.map {
+                    CallModel(it.modelId, it.name, it.efforts, it.defaultEffort ?: it.efforts.firstOrNull().orEmpty())
+                }
+            }
+        }
+    }
+}
+
+/** The model and effort a conversation's next message goes with. */
+data class CallMode(val modelId: String, /** As the picker names it. */ val model: String, val effort: String) {
+    companion object {
+        fun of(mode: Mode, catalog: ModeCatalog) = CallMode(mode.modelId, catalog.model(mode.providerId, mode.modelId)?.name ?: mode.modelId, mode.effort)
+    }
+}
+
+/** What a send by voice changes first, checked against the conversation's [CallTargetState.models]: another model, another effort, or both. */
+data class CallModeChange(val modelId: String? = null, val effort: String? = null) {
+    /**
+     * [current] with this change, as the composer's pickers make it
+     * ([ModeCatalog.pick]): another model on the first shown account that
+     * offers it, with the effort asked for or the model's own default.
+     */
+    fun applied(current: Mode, catalog: ModeCatalog): Mode {
+        if (modelId != null && modelId != current.modelId) {
+            val provider = catalog.providers.firstOrNull { !it.isDisabled && !it.hidden && it.models.any { model -> model.modelId == modelId } } ?: return current
+            return catalog.pick(current, provider.id, modelId, effort)
+        }
+        return if (effort != null) current.copy(effort = effort) else current
+    }
+}
+
+/** Where going back or home left the screen. */
+sealed interface CallScreenMove {
+    data class Moved(val atHome: Boolean) : CallScreenMove
+    data class Refused(val reason: String) : CallScreenMove
+}
+
 sealed interface CallSendOutcome {
     /** Kept on this phone and on its way; the computer's answer comes later as a delivery update. */
     data object Queued : CallSendOutcome
@@ -289,8 +358,22 @@ interface CallTargets {
     suspend fun focused(): String?
     /** Opens it on screen; true once it shows. */
     suspend fun open(agentId: String): Boolean
-    /** Sends [text] exactly as given, under [id], the way the composer's send does but without touching its draft. */
-    suspend fun send(agentId: String, text: String, id: String): CallSendOutcome
+    /**
+     * Sends [text] exactly as given, under [id], the way the composer's send does but without touching its draft;
+     * with [change], as the composer's pickers would have switched it first.
+     */
+    suspend fun send(agentId: String, text: String, id: String, change: CallModeChange? = null): CallSendOutcome
     /** Keeps a conversation read (or lets it go) while the call follows it. */
     suspend fun follow(agentId: String, following: Boolean)
+    /**
+     * New work on screen, as compose opens it, chosen as [kind] and named [name] (blank for its first message to
+     * name it): the empty conversation, which home lists only once its first message has made it. Null if it didn't open.
+     */
+    suspend fun newWork(kind: CallTarget.Kind, name: String): CallTarget?
+    /** New work on screen under [agentId] that home doesn't list yet (compose's, opened by hand or by `newWork`); null for anything else. */
+    suspend fun unlisted(agentId: String): CallTarget?
+    /** Back one screen, as the system's back does. */
+    suspend fun back(): CallScreenMove
+    /** Home, with nothing over it. */
+    suspend fun home(): CallScreenMove
 }

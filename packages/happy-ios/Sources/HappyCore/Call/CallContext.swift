@@ -55,10 +55,13 @@ public actor CallContext {
         /// From the first change to the directory to the one update that
         /// tells it; later changes never put that off.
         public static let settle: Duration = .seconds(1)
+        /// Models a read or a refusal lists.
+        public static let models = 30
     }
 
     private let targets: any CallTargets
     private let now: @Sendable () -> Double
+    private let timeZone: TimeZone
     private let toolDeadline: Duration
     private var refs: [String: String] = [:]
     private var agents: [String: String] = [:]
@@ -73,6 +76,9 @@ public actor CallContext {
     /// The sidebar's conversations as last seen, in order and by ID.
     private var entries: [CallTarget] = []
     private var directory: [String: CallTarget] = [:]
+    /// New work on screen that the sidebar doesn't list until its first
+    /// message makes it: `newWork`'s, or compose's in front.
+    private var drafts: [String: CallTarget] = [:]
     /// The directory the agent last had whole: the first snapshot's, or
     /// the last `directory` event's.
     private var listed: [Listing] = []
@@ -125,9 +131,10 @@ public actor CallContext {
     }
 
     public init(targets: any CallTargets, now: @escaping @Sendable () -> Double = { Date().timeIntervalSince1970 },
-                toolDeadline: Duration = Limits.toolDeadline) {
+                timeZone: TimeZone = .current, toolDeadline: Duration = Limits.toolDeadline) {
         self.targets = targets
         self.now = now
+        self.timeZone = timeZone
         self.toolDeadline = toolDeadline
     }
 
@@ -260,6 +267,7 @@ public actor CallContext {
         // Newer than the directory as last seen: as the sidebar has it now.
         if let agentId, directory[agentId] == nil {
             see(await targets.directory())
+            if directory[agentId] == nil, drafts[agentId] == nil, let draft = await targets.unlisted(agentId) { drafts[agentId] = draft }
             guard !closed, agentId != focus else { return CallUpdate() }
         }
         return moveFocus(to: agentId)
@@ -278,6 +286,10 @@ public actor CallContext {
             if let entry = directory[agentId] {
                 if telling { context += tell(entry) }
                 event.merge(address(entry)) { _, new in new }
+            } else if let draft = drafts[agentId] {
+                // No directory line gives new work its reference: the focus does.
+                event.merge(address(draft)) { _, new in new }
+                event["ref"] = ref(agentId)
             }
         }
         return CallUpdate(context: context + [Self.string(event)])
@@ -381,6 +393,8 @@ public actor CallContext {
     private func see(_ now: [CallTarget]) {
         entries = now
         directory = Dictionary(now.map { ($0.agentId, $0) }, uniquingKeysWith: { first, _ in first })
+        // Made by its first message: the sidebar's from now on.
+        for id in drafts.keys where directory[id] != nil { drafts[id] = nil }
     }
 
     /// The directory as the agent reads it: a line for each conversation,
@@ -546,7 +560,7 @@ public actor CallContext {
             let page = matching.dropFirst(start).prefix(Limits.page)
             // A directory query: what it gives, the agent has.
             for entry in page { told[entry.agentId] = Listing(entry) }
-            var value: [String: Any] = ["sessions": page.map { row($0) }]
+            var value: [String: Any] = ["sessions": page.map { row($0) }, "now": Self.local(now(), in: timeZone)]
             if start + page.count < matching.count { value["nextCursor"] = String(start + page.count) }
             return .json(value)
 
@@ -557,10 +571,10 @@ public actor CallContext {
             // Asked for by its reference, it is named by its title alone.
             let name: [String: Any] = ["title": state.target.title, "parents": state.target.parents.map(\.title)]
             var turns = Self.recent(state)
-            var value = body(state, turns: turns, as: name)
+            var value = body(state, turns: turns, as: name, options: true)
             while Self.data(value).count > Limits.totalBytes, !turns.isEmpty {
                 turns.removeFirst()
-                value = body(state, turns: turns, as: name)
+                value = body(state, turns: turns, as: name, options: true)
             }
             return .json(value)
 
@@ -584,11 +598,17 @@ public actor CallContext {
                 return .refused("There's nothing to send.")
             }
             guard text.utf8.count <= Limits.textBytes else { return .refused("That message is too long to send by voice.") }
+            guard let model = Self.optionalString(arguments["model"]) else { return .refused("model must be a string.") }
+            guard let effort = Self.optionalString(arguments["effort"]) else { return .refused("effort must be a string.") }
             let asOf = Self.revision(arguments["focusRevision"])
             guard asOf == focusRevision else { return Self.stale }
             guard let state = await targets.state(of: id) else { return .refused("That conversation can't be read now.") }
             guard state.writable else { return .refused("That conversation can't take a message now.") }
+            // A working agent takes it as the composer's send would (it steers or
+            // waits its turn); only a question waiting for the person stops it.
             guard !state.needsInput else { return .refused("It's waiting for the person in the app; answer there first.") }
+            let asked = Self.change(model: model, effort: effort, state: state)
+            if let refusal = asked.refusal { return refusal }
             // Reading it was a wait: the screen, or the call, may have moved
             // on, or the answer's time run out. Nothing goes after that.
             guard !closed else { return .refused("The call has ended.") }
@@ -598,13 +618,122 @@ public actor CallContext {
             let messageId = unsettled[key] ?? ClientID.make()
             unsettled[key] = messageId
             settling[call] = key
-            switch await targets.send(id, text: text, id: messageId) {
+            switch await targets.send(id, text: text, id: messageId, change: asked.change) {
             case .queued:
-                return .json(["status": "queued", "targetRef": ref(id), "delivery": Self.queued])
+                var value: [String: Any] = ["status": "queued", "targetRef": ref(id), "delivery": Self.queued]
+                if let switched = asked.switched {
+                    value["model"] = switched.model
+                    if !switched.effort.isEmpty { value["effort"] = switched.effort }
+                }
+                return .json(value)
             case .refused(let reason):
                 return .refused(reason)
             }
+
+        case .newWork:
+            guard let kind = (arguments["kind"] as? String).flatMap({ ["task": CallTarget.Kind.task, "bot": .bot][$0] }) else {
+                return .refused("kind must be \"task\" or \"bot\".")
+            }
+            guard let name = Self.optionalString(arguments["name"]) else { return .refused("name must be a string.") }
+            guard Self.revision(arguments["focusRevision"]) == focusRevision else { return Self.stale }
+            guard !Task.isCancelled, !closed else { return .refused("No answer in time.") }
+            guard let draft = await targets.newWork(kind, name: name.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+                return .refused("New work didn't open.")
+            }
+            drafts[draft.agentId] = draft
+            _ = moveFocus(to: draft.agentId, telling: false)
+            return .json([
+                "opened": true, "targetRef": ref(draft.agentId), "kind": draft.kind.rawValue, "title": draft.title,
+                "focusRevision": focusRevision, "sent": false,
+            ])
+
+        case .goBack, .goHome:
+            if tool == .goBack, Self.revision(arguments["focusRevision"]) != focusRevision { return Self.stale }
+            guard !Task.isCancelled, !closed else { return .refused("No answer in time.") }
+            switch tool == .goBack ? await targets.back() : await targets.home() {
+            case .refused(let reason):
+                return .refused(reason)
+            case .moved(let atHome):
+                // Where it landed is the focus now; the screen says so too, and
+                // whichever of the two comes second says nothing.
+                let shown = await targets.focused()
+                if let shown, directory[shown] == nil, drafts[shown] == nil {
+                    see(await targets.directory())
+                    if directory[shown] == nil, let draft = await targets.unlisted(shown) { drafts[shown] = draft }
+                }
+                _ = moveFocus(to: shown, telling: false)
+                var value: [String: Any] = ["home": atHome, "focusRevision": focusRevision, "title": NSNull()]
+                if let shown, let entry = directory[shown] ?? drafts[shown] {
+                    value.merge(address(entry)) { _, new in new }
+                    value["targetRef"] = ref(shown)
+                }
+                return .json(value)
+            }
         }
+    }
+
+    /// The model and effort a send asks for, as the conversation's
+    /// computer offers them (`CallTargetState.models`): what to switch to,
+    /// and how it is named, or a refusal that lists what it takes.
+    /// Blank asks for no change.
+    static func change(model: String, effort: String, state: CallTargetState) -> AskedMode {
+        let model = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        let effort = effort.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !model.isEmpty || !effort.isEmpty else { return AskedMode() }
+        func refused(_ reason: String, _ listed: [CallModel]) -> AskedMode {
+            var value: [String: Any] = ["ok": false, "reason": reason + " Nothing was sent."]
+            if !listed.isEmpty { value["models"] = Self.models(listed) }
+            return AskedMode(refusal: .json(value, isError: true))
+        }
+        guard !state.models.isEmpty else {
+            return refused("This computer's models can't be read now, so the model and effort can't change.", [])
+        }
+        let current = state.mode.flatMap { mode in state.models.first { $0.id == mode.modelId } }
+        var chosen = current
+        if !model.isEmpty {
+            let key = Self.spoken(model)
+            let exact = state.models.filter { Self.spoken($0.id) == key || Self.spoken($0.name) == key }
+            let matching = exact.isEmpty ? state.models.filter { Self.spoken($0.id).contains(key) || Self.spoken($0.name).contains(key) } : exact
+            guard matching.count == 1 else {
+                let reason = matching.isEmpty
+                    ? "There is no model called \"\(model)\". It takes one of: \(state.models.map(\.name).joined(separator: ", "))."
+                    : "\"\(model)\" could be \(matching.map(\.name).joined(separator: " or ")); ask which."
+                return refused(reason, matching.isEmpty ? state.models : matching)
+            }
+            chosen = matching[0]
+        }
+        guard let chosen else {
+            return refused("It runs on a model this computer doesn't list now; name the model as well.", state.models)
+        }
+        var level: String?
+        if !effort.isEmpty {
+            guard !chosen.efforts.isEmpty else { return refused("\(chosen.name) takes no effort level.", [chosen]) }
+            guard let match = chosen.efforts.first(where: { Self.spoken($0) == Self.spoken(effort) }) else {
+                return refused("\(chosen.name) takes effort \(chosen.efforts.joined(separator: ", ")), not \"\(effort)\".", [chosen])
+            }
+            level = match
+        }
+        let changesModel = chosen.id != state.mode?.modelId
+        // As the picker does: a model's own default effort unless one was asked for.
+        let named = level ?? (changesModel ? chosen.defaultEffort : state.mode?.effort ?? chosen.defaultEffort)
+        return AskedMode(change: CallModeChange(modelId: model.isEmpty ? nil : chosen.id, effort: level), switched: (chosen.name, named))
+    }
+
+    /// What `change` made of a send's model and effort.
+    struct AskedMode {
+        var change: CallModeChange?
+        /// The model and effort it goes with, as named to the agent.
+        var switched: (model: String, effort: String)?
+        var refusal: CallToolResult?
+    }
+
+    /// A name as said aloud: letters and digits only, any case.
+    private static func spoken(_ text: String) -> String {
+        String(text.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }.map(Character.init))
+    }
+
+    static func models(_ list: [CallModel]) -> [[String: Any]] {
+        list.prefix(Limits.models).map { ["id": $0.id, "name": $0.name, "efforts": $0.efforts] }
     }
 
     // MARK: References and bodies
@@ -624,7 +753,7 @@ public actor CallContext {
     private func resolve(_ value: Any?) async -> String? {
         guard let ref = value as? String, let id = agents[ref] else { return nil }
         see(await targets.directory())
-        return directory[id] == nil ? nil : id
+        return directory[id] == nil && drafts[id] == nil ? nil : id
     }
 
     /// `agentId` becomes the latest visited; the oldest past the limit is
@@ -652,6 +781,8 @@ public actor CallContext {
     private func row(_ target: CallTarget) -> [String: Any] {
         var value: [String: Any] = ["targetRef": ref(target.agentId), "title": target.title, "kind": target.kind.rawValue, "status": target.status.rawValue]
         if !target.parents.isEmpty { value["parents"] = target.parents.map(\.title) }
+        if !target.workspace.isEmpty { value["workspace"] = target.workspace.joined(separator: " / ") }
+        if let at = target.activityAt, at > 0 { value["lastActivity"] = when(at) }
         return value
     }
 
@@ -671,10 +802,15 @@ public actor CallContext {
     /// A conversation as read: `name`, then whether it works or waits for
     /// the person, and its turns. Never its kind, status or reference
     /// beyond what `name` holds: the directory has those.
-    private func body(_ state: CallTargetState, turns: [CallTurn], as name: [String: Any]) -> [String: Any] {
+    private func body(_ state: CallTargetState, turns: [CallTurn], as name: [String: Any], options: Bool = false) -> [String: Any] {
         var value = name
         value["working"] = state.working
         value["needsInput"] = state.needsInput
+        if let at = state.messages.last(where: { $0.role == .user && ($0.time ?? 0) > 0 })?.time { value["lastUserMessage"] = when(at) }
+        if let at = state.turns.filter({ $0.reply?.isEmpty == false }).compactMap(\.endedAt).filter({ $0 > 0 }).max() { value["lastAgentReply"] = when(at) }
+        if !state.target.workspace.isEmpty { value["workspace"] = state.target.workspace.joined(separator: " / ") }
+        if let mode = state.mode { value["model"] = ["id": mode.modelId, "name": mode.model, "effort": mode.effort] }
+        if options, !state.models.isEmpty { value["models"] = Self.models(state.models) }
         value["turns"] = turns.map(Self.turn)
         value["olderTurns"] = state.hasMore || Self.answering(state).count > turns.count
         if let pending = state.unanswered {
@@ -760,6 +896,34 @@ public actor CallContext {
     static func timestamp(_ seconds: Double) -> String {
         let formatter = ISO8601DateFormatter()
         return formatter.string(from: Date(timeIntervalSince1970: seconds))
+    }
+
+    /// A moment as the agent says it: how long ago, and when on the
+    /// person's clock, to the minute.
+    private func when(_ ms: Double) -> [String: Any] {
+        ["ago": Self.ago(now() - ms / 1000), "at": Self.local(ms / 1000, in: timeZone)]
+    }
+
+    /// "just now", "5 minutes ago", "2 hours ago", "yesterday", "3 days ago".
+    static func ago(_ seconds: Double) -> String {
+        let minutes = Int((seconds / 60).rounded(.down))
+        switch minutes {
+        case ..<1: return "just now"
+        case 1: return "a minute ago"
+        case ..<60: return "\(minutes) minutes ago"
+        case ..<120: return "an hour ago"
+        case ..<(24 * 60): return "\(minutes / 60) hours ago"
+        case ..<(48 * 60): return "yesterday"
+        default: return "\(minutes / (24 * 60)) days ago"
+        }
+    }
+
+    /// ISO 8601 in `zone`, with its offset, to the minute: 2026-11-06T09:15:00+01:00.
+    static func local(_ seconds: Double, in zone: TimeZone) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.timeZone = zone
+        formatter.formatOptions = [.withFullDate, .withTime, .withColonSeparatorInTime, .withDashSeparatorInDate, .withTimeZone, .withColonSeparatorInTimeZone]
+        return formatter.string(from: Date(timeIntervalSince1970: (seconds / 60).rounded(.down) * 60))
     }
 
     static func data(_ value: [String: Any]) -> Data {
