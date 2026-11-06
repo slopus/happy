@@ -227,8 +227,8 @@ public final class SessionStarter {
         guard activeRun == nil else { return nil }
         let run = Run()
         let sessionId = await start(launch, run: run, isCurrentTarget: isCurrentTarget)
-        if sessionId != nil { Happenings.post(.sessionStartEnded(launch, .made)) }
-        else if let failure = run.failure { Happenings.post(.sessionStartEnded(launch, failure)) }
+        if sessionId != nil { Happenings.post(.sessionStartEnded(.init(launch), .made)) }
+        else if let failure = run.failure { Happenings.post(.sessionStartEnded(.init(launch), failure)) }
         return sessionId
     }
 
@@ -269,7 +269,7 @@ public final class SessionStarter {
                 case .success(let worktree):
                     directory = worktree.path
                 case .failure(let failure):
-                    run.failure = .failed(failure)
+                    run.failure = .failure(failure)
                     presenter?.showStartError(failure.errorDescription ?? Message.worktreeFailed)
                     return nil
                 }
@@ -411,7 +411,7 @@ public final class SessionStarter {
                 case .success:
                     run.accepted = true
                 case .failure(let error):
-                    run.failure = .failed(error)
+                    run.failure = .failure(error)
                     presenter?.showStartError(Self.describe(error))
                     if !isCurrent() {
                         requests.complete(clientRequestId)
@@ -425,7 +425,7 @@ public final class SessionStarter {
         } catch {
             // A failure the person already walked away from is not news.
             if !run.canceled {
-                run.failure = .failed(error)
+                run.failure = .failure(error)
                 presenter?.showStartError(Self.describe(error))
             }
             return nil
@@ -450,7 +450,7 @@ public final class SessionStarter {
                 ).options(machineId: launch.machineId, target: launch.target)
             } catch {
                 if !run.canceled {
-                    run.failure = .failed(error)
+                    run.failure = .failure(error)
                     presenter?.showStartError(Self.describe(error))
                 }
                 return nil

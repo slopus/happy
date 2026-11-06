@@ -372,7 +372,9 @@ public final class AgentConnections {
     private func apply(_ account: AgentConnection, generation: UInt64, issue: (any Error)? = nil) async {
         guard !Task.isCancelled, self.generation == generation,
               let index = accounts.firstIndex(where: { $0.id == account.id }) else { return }
-        Happenings.post(.agentConnectionChanged(account, problem: issue))
+        Happenings.post(.agentConnectionChanged(id: account.id, direct: account.server == nil,
+                                                 down: account.status == .retrying || account.status == .revoked,
+                                                 problem: issue.flatMap(Problem.init)))
         let previous = accounts[index]
         guard previous != account else { return }
         accounts[index] = account

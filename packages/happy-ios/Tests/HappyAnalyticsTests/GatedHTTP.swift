@@ -10,6 +10,7 @@ final class GatedHTTP: HTTPTransport, @unchecked Sendable {
     private var open = false
     private var waiting: [CheckedContinuation<Void, Never>] = []
     private var _requests: [HTTPRequest] = []
+    private var answered = 0
 
     init(status: Int, body: String = "") {
         self.status = status
@@ -27,6 +28,7 @@ final class GatedHTTP: HTTPTransport, @unchecked Sendable {
             }
             if go { next.resume() }
         }
+        lock.withLock { answered += 1 }
         return HTTPResponse(status: status, body: body)
     }
 
@@ -43,5 +45,42 @@ final class GatedHTTP: HTTPTransport, @unchecked Sendable {
     /// Returns once `count` requests are waiting or through.
     func started(_ count: Int) async {
         while requests.count < count { await Task.yield() }
+    }
+
+    /// Returns once `count` requests have been answered.
+    func finished(_ count: Int) async {
+        while lock.withLock({ answered }) < count { await Task.yield() }
+    }
+}
+
+/// A wait the test opens: whatever waits on it is held until `open`.
+final class Gate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isOpen = false
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+    private var arrivals = 0
+
+    func wait() async {
+        await withCheckedContinuation { (next: CheckedContinuation<Void, Never>) in
+            let go = lock.withLock {
+                arrivals += 1
+                if !isOpen { waiting.append(next) }
+                return isOpen
+            }
+            if go { next.resume() }
+        }
+    }
+
+    func open() {
+        let waiting = lock.withLock {
+            isOpen = true
+            defer { self.waiting = [] }
+            return self.waiting
+        }
+        for next in waiting { next.resume() }
+    }
+
+    func arrived(_ count: Int) async {
+        while lock.withLock({ arrivals }) < count { await Task.yield() }
     }
 }

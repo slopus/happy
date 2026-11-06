@@ -91,7 +91,7 @@ public actor NewTask {
             return agentId
         } catch {
             making = nil
-            if !(error is CancellationError) { Happenings.post(.newWorkMade(choice.kind, agentId: identity.agentId, .failed(error))) }
+            if !(error is CancellationError) { Happenings.post(.newWorkMade(choice.kind, agentId: identity.agentId, .failure(error))) }
             throw error
         }
     }

@@ -6,21 +6,16 @@ import HappyWire
 // type, a status or a closed enum is read; never a message.
 
 extension AnalyticsEvent.ConnectionCode {
-    /// A failed attempt's error, by its type alone.
-    public init(_ error: Error) {
-        if let error = error as? PairingError {
-            self = switch error {
-            case .revoked: .revoked
-            case .updateRequired: .versionMismatch
-            // The transport's word for no way through, and health that isn't ready.
-            case .unavailable: .unreachable
-            case .invalidResponse: .serverError
-            default: .unknown
-            }
-        } else if let error = error as? URLError {
-            self = error.code == .timedOut ? .timeout : .unreachable
-        } else {
-            self = error is POSIXError ? .unreachable : .unknown
+    /// A failed attempt, by its error's type alone.
+    init(_ problem: Problem) {
+        self = switch problem {
+        case .timeout: .timeout
+        case .offline, .unreachable, .network: .unreachable
+        case .revoked: .revoked
+        case .versionMismatch: .versionMismatch
+        case .invalidResponse: .serverError
+        case .status(let status): status >= 500 ? .serverError : .unknown
+        case .unauthorized, .unknown: .unknown
         }
     }
 }
@@ -48,37 +43,20 @@ extension AnalyticsEvent.ErrorCode {
     /// An error a screen showed, by its type and HTTP status alone; nil for
     /// a cancellation, which nobody saw as an error.
     public init?(_ error: Error) {
-        if error is CancellationError { return nil }
-        if let error = error as? URLError {
-            switch error.code {
-            case .cancelled: return nil
-            case .timedOut: self = .timeout
-            case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed, .internationalRoamingOff: self = .offline
-            case .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed: self = .refused
-            default: self = .unknown
-            }
-        } else if let error = error as? APIError {
-            self = switch error {
-            case .unauthenticated, .unauthorized: .unauthorized
-            case .http(let status, _): .init(status: status)
-            case .decoding: .invalidResponse
-            }
-        } else if let error = error as? AgentClientError {
-            self = switch error {
-            case .status(let status, _, _): .init(status: status)
-            case .revoked: .unauthorized
-            case .invalidResponse: .invalidResponse
-            }
-        } else if let error = error as? PairingError {
-            self = switch error {
-            case .unavailable: .offline
-            case .updateRequired: .versionMismatch
-            case .revoked: .unauthorized
-            case .invalidResponse: .invalidResponse
-            default: .unknown
-            }
-        } else {
-            self = error is POSIXError ? .offline : .unknown
+        guard let problem = Problem(error) else { return nil }
+        self.init(problem)
+    }
+
+    init(_ problem: Problem) {
+        self = switch problem {
+        case .offline: .offline
+        case .unreachable: .refused
+        case .timeout: .timeout
+        case .unauthorized, .revoked: .unauthorized
+        case .versionMismatch: .versionMismatch
+        case .invalidResponse: .invalidResponse
+        case .status(let status): .init(status: status)
+        case .network, .unknown: .unknown
         }
     }
 }
@@ -194,16 +172,14 @@ extension Subscription.RestoreResult {
     }
 }
 
-extension AnalyticsEvent {
-    /// A create that ended in `error`: the computer or server said no, it
-    /// couldn't be reached, or something else.
-    public static func createErrorCode(_ error: Error) -> CreateErrorCode {
-        switch error {
-        case is URLError, is POSIXError: .offline
-        case AgentClientError.status(let status, _, _) where status < 500: .refused
-        case AgentClientError.revoked: .refused
-        case APIError.unauthenticated, APIError.unauthorized: .refused
-        case APIError.http(let status, _) where status < 500: .refused
+extension AnalyticsEvent.CreateErrorCode {
+    /// A create that failed: the computer or server said no, it couldn't
+    /// be reached, or something else.
+    init(_ problem: Problem) {
+        self = switch problem {
+        case .offline, .unreachable, .network, .timeout: .offline
+        case .unauthorized, .revoked: .refused
+        case .status(let status) where status < 500: .refused
         default: .unknown
         }
     }

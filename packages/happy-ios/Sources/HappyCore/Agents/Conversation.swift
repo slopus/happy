@@ -548,7 +548,7 @@ public actor Conversation {
                     case .accepted(let id): sent(id)
                     case .failed(let id, let reason):
                         failed(id, reason)
-                        Happenings.post(.errorShown(.messageSend, nil))
+                        Happenings.errorShown(.messageSend, nil)
                     }
                 }
             }
@@ -617,7 +617,7 @@ public actor Conversation {
             } catch {
                 if Task.isCancelled { return }
                 snapshot.error = Store.describe(error)
-                Happenings.post(.errorShown(.conversationLoad, error))
+                Happenings.errorShown(.conversationLoad, error)
                 snapshot.loaded = true
                 let held = heldEvents ?? []
                 heldEvents = nil
@@ -913,7 +913,7 @@ public actor Conversation {
             try stage(attachments, id: id, inline: &inline, files: &files)
         } catch {
             snapshot.error = Store.describe(error)
-            Happenings.post(.errorShown(.attachmentUpload, error))
+            Happenings.errorShown(.attachmentUpload, error)
             publish()
             return false
         }
@@ -1144,7 +1144,7 @@ public actor Conversation {
                     publish()
                 } else {
                     failed(id, Store.describe(error))
-                    Happenings.post(.errorShown(.messageSend, error))
+                    Happenings.errorShown(.messageSend, error)
                 }
             }
         }

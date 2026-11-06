@@ -4,9 +4,22 @@ import XCTest
 @testable import HappyCore
 import HappyWire
 
-/// The app's side of analytics: which builds send at all, opting out,
-/// `app_opened`'s rule, the common properties, connection incidents and
-/// crash reasons.
+extension Analytics {
+    /// Waits for everything handed to the engine so far.
+    func settle() async {
+        await pending?.value
+    }
+}
+
+/// A store that keeps nothing it is given, as a failed write would.
+private final class ForgetfulStore: KeyValueStore, @unchecked Sendable {
+    func string(forKey key: String) -> String? { nil }
+    func set(_ value: String?, forKey key: String) {}
+}
+
+/// The app's side of analytics: which builds send at all, consent and
+/// opting out, `app_opened`'s rule, the common properties, connection
+/// incidents and crash reasons.
 @MainActor
 final class AnalyticsTests: XCTestCase {
     private var clock = Date(timeIntervalSince1970: 1_762_344_000)
@@ -14,13 +27,13 @@ final class AnalyticsTests: XCTestCase {
     /// Started, with the accounts' settings read as `accounts` says; nil
     /// leaves them unread, as at launch before the accounts are restored.
     private func started(_ http: HTTPTransport, consent: AnalyticsConsent = AnalyticsConsent(storage: InMemoryKeyValueStore()),
-                         accounts: [String: Bool]? = [:]) -> Analytics {
+                         storage: KeyValueStore = InMemoryKeyValueStore(), accounts: [String: Bool]? = [:]) -> Analytics {
         let analytics = Analytics()
         analytics.now = { [unowned self] in clock }
-        analytics.start(.init(destination: .init(apiKey: "phc_test"), file: nil, transport: http, variant: .production,
+        analytics.start(.init(destination: .init(apiKey: "phc_test"), transport: http, storage: storage, variant: .production,
                               appVersion: "2.0.0", osVersion: OperatingSystemVersion(majorVersion: 26, minorVersion: 1, patchVersion: 3),
                               deviceClass: .phone), consent: consent)
-        if let accounts { consent.settle(accounts) }
+        if let accounts { consent.settle(accounts, since: consent.revisions) }
         return analytics
     }
 
@@ -54,16 +67,17 @@ final class AnalyticsTests: XCTestCase {
 
     func testNothingIsRecordedBeforeTheAppStartsIt() async {
         let analytics = Analytics()
-        XCTAssertFalse(analytics.isRecording)
-        analytics.log(.accountCreated)
+        analytics.log(.teamServerSignedIn)
         await analytics.settle()
+        XCTAssertNil(analytics.engine)
+        XCTAssertNil(analytics.pending)
     }
 
     func testCommonPropertiesSayOnlyTheClientItsVersionsAndTheAgentsKind() async throws {
         let http = http()
         let analytics = started(http)
-        analytics.agent = { .init(location: .remote, os: .mac, version: "0.14.2") }
-        analytics.log(.accountCreated)
+        analytics.agent = { .init(location: .remote, os: .mac, version: "0.14.2-dev.3") }
+        analytics.log(.teamServerSignedIn)
         let events = try await sent(analytics, http)
         let properties = try XCTUnwrap(events.first?["properties"]?.objectValue)
         XCTAssertEqual(properties.filter { !$0.key.hasPrefix("$") && $0.key != "distinct_id" }, [
@@ -87,21 +101,72 @@ final class AnalyticsTests: XCTestCase {
         XCTAssertEqual(opened, [.bool(true), .bool(false)])
     }
 
+    /// Until every account's setting is read, nothing is recorded and
+    /// nothing is kept for later; the launch's `app_opened` goes once they
+    /// allow it.
+    func testBeforeTheAccountsAreReadNothingIsKeptButTheLaunchIsOpened() async throws {
+        let http = http()
+        let consent = AnalyticsConsent(storage: InMemoryKeyValueStore())
+        let analytics = started(http, consent: consent, accounts: nil)
+        analytics.appBecameActive()
+        analytics.log(.teamServerSignedIn)
+        analytics.errorShown(.messageSend, .offline)
+        analytics.appEnteredBackground()
+        await analytics.settle()
+        XCTAssertTrue(http.requests.isEmpty, "the accounts aren't read yet")
+        consent.settle(["a": false], since: [:])
+        let events = try await sent(analytics, http)
+        XCTAssertEqual(events.map { $0["event"]?.stringValue }, ["app_opened"])
+        XCTAssertEqual(events.first?["properties"]?["is_cold_start"], .bool(true))
+    }
+
+    /// An account read as opted out: the launch's `app_opened` never goes.
+    func testAnOptedOutAccountReadAtLaunchSendsNothing() async throws {
+        let http = http()
+        let consent = AnalyticsConsent(storage: InMemoryKeyValueStore())
+        let analytics = started(http, consent: consent, accounts: nil)
+        analytics.appBecameActive()
+        consent.settle(["a": true, "b": false], since: [:])
+        analytics.log(.teamServerSignedIn)
+        let events = try await sent(analytics, http)
+        XCTAssertTrue(events.isEmpty)
+        XCTAssertTrue(http.requests.isEmpty)
+    }
+
     func testTheDeviceSwitchStopsEverythingAndDeletesTheQueue() async throws {
         let failing = FakeHTTP()
         failing.on("POST /batch") { _ in throw URLError(.notConnectedToInternet) }
         let storage = InMemoryKeyValueStore()
         let consent = AnalyticsConsent(storage: storage)
         let analytics = started(failing, consent: consent)
-        analytics.log(.accountCreated)
+        analytics.log(.teamServerSignedIn)
         consent.setDeviceOptOut(true)
-        analytics.log(.accountRestored)
+        analytics.log(.paywallPresented(product: .pro))
         consent.setDeviceOptOut(false)
         failing.on("POST /batch") { _ in (200, Data()) }
-        analytics.log(.teamServerSignedIn)
+        analytics.log(.paywallCancelled(product: .pro))
         let events = try await sent(analytics, failing).map { $0["event"]?.stringValue }
-        XCTAssertEqual(events, ["team_server_signed_in"], "only what came after opting back in")
+        XCTAssertEqual(events, ["paywall_cancelled"], "only what came after opting back in")
         XCTAssertFalse(AnalyticsConsent(storage: storage).isOptedOut)
+    }
+
+    /// Opting out deletes the install id; opting back in is a new install.
+    func testOptingOutDeletesTheInstallIDAndOptingInMakesANewOne() async throws {
+        let http = http()
+        let storage = InMemoryKeyValueStore()
+        let consent = AnalyticsConsent(storage: storage)
+        let analytics = started(http, consent: consent, storage: storage)
+        analytics.log(.teamServerSignedIn)
+        let before = try await sent(analytics, http).last?["properties"]?["distinct_id"]
+        XCTAssertNotNil(before)
+        consent.setDeviceOptOut(true)
+        await analytics.settle()
+        XCTAssertNil(storage.string(forKey: AnalyticsEngine.installKey))
+        consent.setDeviceOptOut(false)
+        analytics.log(.teamServerSignedIn)
+        let after = try await sent(analytics, http).last?["properties"]?["distinct_id"]
+        XCTAssertNotNil(after)
+        XCTAssertNotEqual(after, before)
     }
 
     /// Opting out while a batch is on its way: the queue goes at once, not
@@ -111,85 +176,93 @@ final class AnalyticsTests: XCTestCase {
         let gated = GatedHTTP(status: 503)
         let consent = AnalyticsConsent(storage: InMemoryKeyValueStore())
         let analytics = started(gated, consent: consent)
-        analytics.log(.accountCreated)
+        analytics.log(.teamServerSignedIn)
         analytics.appEnteredBackground()
         await gated.started(1)
-        analytics.log(.accountRestored)
+        analytics.log(.paywallPresented(product: .pro))
         analytics.appEnteredBackground()
         consent.setDeviceOptOut(true)
 
         let engine = try XCTUnwrap(analytics.engine)
-        let deadline = ContinuousClock.now + .seconds(3)
-        while await engine.snapshot.queue.isEmpty == false, ContinuousClock.now < deadline { await Task.yield() }
-        let queue = await engine.snapshot.queue
+        await analytics.settle()
+        let queue = await engine.queue
         XCTAssertEqual(queue, [], "cleared while the first request is still out")
         XCTAssertEqual(gated.requests.count, 1)
 
         gated.release()
-        await analytics.settle()
+        await gated.finished(1)
+        for _ in 0..<20 { await Task.yield() }
         XCTAssertEqual(gated.requests.count, 1, "the flush handed on before the opt-out never ran")
-        let afterRelease = await engine.snapshot.queue
+        let afterRelease = await engine.queue
         XCTAssertEqual(afterRelease, [], "the failed batch didn't come back")
 
         consent.setDeviceOptOut(false)
-        analytics.log(.teamServerSignedIn)
+        analytics.log(.paywallCancelled(product: .pro))
         analytics.appEnteredBackground()
         await analytics.settle()
         XCTAssertEqual(gated.requests.count, 2)
         let last = try JSONDecoder().decode(JSONValue.self, from: XCTUnwrap(gated.requests.last?.body))
-        XCTAssertEqual(last["batch"]?.arrayValue?.map { $0["event"]?.stringValue }, ["team_server_signed_in"])
+        XCTAssertEqual(last["batch"]?.arrayValue?.map { $0["event"]?.stringValue }, ["paywall_cancelled"])
     }
 
+    /// Opted out while `app_opened` waited for what it carries: it is
+    /// dropped, even though analytics is back on by the time it is read.
+    func testAnAppOpenedReadAcrossAnOptOutIsDropped() async throws {
+        let http = http()
+        let consent = AnalyticsConsent(storage: InMemoryKeyValueStore())
+        let analytics = started(http, consent: consent)
+        let gate = Gate()
+        analytics.appConfig = { await gate.wait(); return .init() }
+        analytics.appBecameActive()
+        await gate.arrived(1)
+        consent.setDeviceOptOut(true)
+        consent.setDeviceOptOut(false)
+        gate.open()
+        for _ in 0..<20 { await Task.yield() }
+        analytics.log(.teamServerSignedIn)
+        let events = try await sent(analytics, http).map { $0["event"]?.stringValue }
+        XCTAssertEqual(events, ["team_server_signed_in"])
+    }
+
+    /// Any signed-in account that opted out stops everything. Accounts'
+    /// settings are never stored here: each launch is off until they are read.
     func testAnySignedInAccountThatOptedOutStopsSending() async {
         let storage = InMemoryKeyValueStore()
         let consent = AnalyticsConsent(storage: storage)
-        consent.settle(["a": false, "b": true])
+        consent.settle(["a": false, "b": true], since: [:])
         XCTAssertTrue(consent.isOptedOut)
-        XCTAssertTrue(AnalyticsConsent(storage: storage).isOptedOut, "remembered across launches")
+        let relaunched = AnalyticsConsent(storage: storage)
+        XCTAssertFalse(relaunched.isSettled, "off until the accounts are read again")
+        XCTAssertFalse(relaunched.isOptedOut, "nothing of the accounts was stored")
         consent.keepAccounts(["a"])
         XCTAssertFalse(consent.isOptedOut, "b signed out")
         consent.setDeviceOptOut(true)
-        XCTAssertTrue(AnalyticsConsent(storage: storage).isOptedOut)
+        XCTAssertTrue(AnalyticsConsent(storage: storage).isOptedOut, "the switch is kept")
     }
 
-    /// At launch the accounts aren't read yet: what happens waits in
-    /// memory, and goes only once every signed-in account's stored setting
-    /// says it may. An empty account list before then erases nothing.
-    func testAnInactiveAccountsOptOutHoldsAcrossARelaunch() async throws {
-        let storage = InMemoryKeyValueStore()
-        let http = http()
-        // First launch: A opted out, B is the account in front.
-        let first = started(http, consent: AnalyticsConsent(storage: storage), accounts: ["a": true, "b": false])
-        first.appBecameActive()
-        first.log(.accountCreated)
-        _ = try await sent(first, http)
-
-        // Relaunch: B's store opens first; A's is read with the rest.
-        let consent = AnalyticsConsent(storage: storage)
-        let second = started(http, consent: consent, accounts: nil)
-        consent.keepAccounts([])
-        consent.setAccount("b", optedOut: false)
-        second.appBecameActive()
-        second.log(.teamServerSignedIn)
-        second.errorShown(.messageSend, .offline)
-        consent.settle(["a": true, "b": false])
-        let events = try await sent(second, http)
-        XCTAssertTrue(events.isEmpty)
-        XCTAssertTrue(http.requests.isEmpty, "nothing on either launch")
-    }
-
-    func testWhatWaitedForTheAccountsGoesOnceTheyAllow() async throws {
-        let http = http()
+    /// A setting changed live while the stores were being read wins over
+    /// what the read found.
+    func testALiveChangeDuringTheLaunchReadWins() async {
         let consent = AnalyticsConsent(storage: InMemoryKeyValueStore())
-        let analytics = started(http, consent: consent, accounts: nil)
-        analytics.appBecameActive()
-        analytics.log(.accountCreated)
-        analytics.appEnteredBackground()
-        await analytics.settle()
-        XCTAssertTrue(http.requests.isEmpty, "the accounts aren't read yet")
-        consent.settle(["a": false])
-        let events = try await sent(analytics, http).map { $0["event"]?.stringValue }
-        XCTAssertEqual(events, ["app_opened", "account_created"])
+        let since = consent.revisions
+        // While the stores are read, b turns analytics off and a turns it back on.
+        consent.setAccount("b", optedOut: true)
+        consent.setAccount("a", optedOut: false)
+        consent.settle(["a": true, "b": false], since: since)
+        XCTAssertTrue(consent.isOptedOut, "b's live off")
+        consent.setAccount("b", optedOut: false)
+        XCTAssertFalse(consent.isOptedOut, "a's live on beat its stored off")
+    }
+
+    /// A stored switch that can't be read is off; an off that couldn't be
+    /// written down says so.
+    func testUnreadableConsentIsOffAndAFailedWriteIsTold() async {
+        let storage = InMemoryKeyValueStore()
+        storage.set("garbled", forKey: AnalyticsConsent.deviceKey)
+        XCTAssertTrue(AnalyticsConsent(storage: storage).isOptedOut)
+        let forgetful = AnalyticsConsent(storage: ForgetfulStore())
+        XCTAssertFalse(forgetful.setDeviceOptOut(true))
+        XCTAssertTrue(forgetful.isOptedOut, "off for now all the same")
     }
 
     /// Opting back in while the app is in front starts the flushes again.
@@ -201,7 +274,7 @@ final class AnalyticsTests: XCTestCase {
         analytics.appBecameActive()
         consent.setDeviceOptOut(true)
         consent.setDeviceOptOut(false)
-        analytics.log(.accountCreated)
+        analytics.log(.teamServerSignedIn)
         let deadline = ContinuousClock.now + .seconds(3)
         while http.requests("POST /batch").isEmpty, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertFalse(http.requests("POST /batch").isEmpty, "flushed without going to the background")
@@ -245,13 +318,40 @@ final class AnalyticsTests: XCTestCase {
         XCTAssertEqual(logged, [.agentConnectionLost(transport: .direct, code: .unreachable, outcome: .recovered, duration: .from10sTo30s)])
     }
 
-    func testAConnectionsErrorIsReadByItsTypeAlone() async {
+    /// Opting out forgets what was being timed and every link reported:
+    /// timing starts again from what is reported after.
+    func testAnOptOutForgetsTheIncidentAndTheLinks() async {
+        let watch = ConnectionWatch()
+        var logged: [AnalyticsEvent] = []
+        watch.log = { logged.append($0) }
+        watch.now = { [unowned self] in clock }
+        watch.setActive("agent:a")
+        watch.report(.init(id: "agent:a", transport: .direct, down: true))
+        watch.report(.init(id: "agent:b", transport: .direct, down: true))
+        clock += 60
+        watch.reset()
+        watch.report(.init(id: "agent:a", transport: .direct, down: false))
+        watch.setActive("agent:b")
+        clock += 60
+        watch.setActive("agent:a")
+        XCTAssertEqual(logged, [], "neither the incident nor b's link from before")
+        watch.report(.init(id: "agent:a", transport: .direct, down: true))
+        clock += 15
+        watch.report(.init(id: "agent:a", transport: .direct, down: false))
+        XCTAssertEqual(logged, [.agentConnectionLost(transport: .direct, code: .unknown, outcome: .recovered, duration: .from10sTo30s)])
+    }
+
+    /// The core says why a connection failed by its error's type alone.
+    func testAConnectionsProblemIsReadByItsTypeAlone() async {
         typealias Code = AnalyticsEvent.ConnectionCode
-        XCTAssertEqual(Code(URLError(.timedOut)), .timeout)
-        XCTAssertEqual(Code(URLError(.cannotFindHost)), .unreachable)
-        XCTAssertEqual(Code(PairingError.updateRequired), .versionMismatch)
-        XCTAssertEqual(Code(PairingError.unavailable), .unreachable)
-        XCTAssertEqual(Code(CancellationError()), .unknown)
+        XCTAssertEqual(Problem(URLError(.timedOut)).map(Code.init), .timeout)
+        XCTAssertEqual(Problem(URLError(.cannotFindHost)).map(Code.init), .unreachable)
+        XCTAssertEqual(Problem(PairingError.updateRequired).map(Code.init), .versionMismatch)
+        XCTAssertEqual(Problem(PairingError.unavailable).map(Code.init), .unreachable)
+        XCTAssertNil(Problem(CancellationError()))
+        XCTAssertEqual(ConnectionIncidents.Link.agent(id: "a", direct: true, down: true, problem: .revoked).code, .revoked)
+        XCTAssertEqual(ConnectionIncidents.Link.agent(id: "a", direct: false, down: true, problem: .revoked).code, .authExpired)
+        XCTAssertEqual(ConnectionIncidents.Link.agent(id: "a", direct: false, down: false, problem: .timeout).code, .unknown, "up: no code")
     }
 
     func testAFailureCardGivesAnalyticsItsKindProviderTypeAndPoolOnly() async throws {
@@ -273,16 +373,15 @@ final class AnalyticsTests: XCTestCase {
         XCTAssertEqual(AnalyticsEvent.FailureKind(wire: untyped.kind), .untyped)
     }
 
+    /// A crash is its exception type and signal alone.
     func testCrashesAreReducedToTheCatalogsReasons() async {
         typealias Reason = AnalyticsEvent.CrashReason
-        XCTAssertEqual(Reason(exceptionType: 1, signal: 11, termination: nil), .nativeCrash)
-        XCTAssertEqual(Reason(exceptionType: 6, signal: 5, termination: nil), .crash)
-        XCTAssertEqual(Reason(exceptionType: 10, signal: 6, termination: nil), .crash)
-        XCTAssertEqual(Reason(exceptionType: 10, signal: 9, termination: "Namespace FRONTBOARD, Code 0x8badf00d"), .hang)
-        XCTAssertEqual(Reason(exceptionType: 10, signal: 9, termination: "Namespace CODESIGNING, Code 2"), .integrity)
-        XCTAssertEqual(Reason(exceptionType: 10, signal: 9, termination: nil), .killed)
-        XCTAssertEqual(Reason(exceptionType: 11, signal: 9, termination: "MEMORY limit"), .oom)
-        XCTAssertEqual(Reason(exceptionType: nil, signal: nil, termination: nil), .unknown)
+        XCTAssertEqual(Reason(exceptionType: 1, signal: 11), .nativeCrash)
+        XCTAssertEqual(Reason(exceptionType: 6, signal: 5), .crash)
+        XCTAssertEqual(Reason(exceptionType: 10, signal: 6), .crash)
+        XCTAssertEqual(Reason(exceptionType: 10, signal: 9), .killed)
+        XCTAssertEqual(Reason(exceptionType: 11, signal: 9), .killed)
+        XCTAssertEqual(Reason(exceptionType: nil, signal: nil), .unknown)
     }
 
     func testWireWordsMapToTheCatalogsWords() async {
@@ -306,6 +405,7 @@ final class AnalyticsTests: XCTestCase {
         XCTAssertNil(Code(URLError(.cancelled)))
         XCTAssertEqual(Code(URLError(.notConnectedToInternet)), .offline)
         XCTAssertEqual(Code(URLError(.timedOut)), .timeout)
+        XCTAssertEqual(Code(URLError(.cannotFindHost)), .refused)
         XCTAssertEqual(Code(APIError.http(status: 404, body: "secret body")), .notFound)
         XCTAssertEqual(Code(APIError.unauthorized), .unauthorized)
         XCTAssertEqual(Code(APIError.decoding("field x")), .invalidResponse)
@@ -359,28 +459,32 @@ final class AnalyticsTests: XCTestCase {
         XCTAssertEqual(Analytics.event(LegacyPairingResult.approved, start: .pasteLink), .mobilePairingCompleted(method: .relay, start: .pasteLink))
         XCTAssertEqual(Analytics.event(LegacyPairingResult.alreadyHandled, start: .openedLink),
                        .mobilePairingFailed(method: .relay, start: .openedLink, errorCode: .expired))
-        XCTAssertEqual(Analytics.accountCreated(.approved), .accountCreated)
-        XCTAssertEqual(Analytics.accountCreated(.terminalNeedsUpdate), .signInFailed(method: .relayCreate, errorCode: .rejected))
+        XCTAssertNil(Analytics.accountCreateFailed(.approved))
+        XCTAssertEqual(Analytics.accountCreateFailed(.terminalNeedsUpdate), .signInFailed(method: .relayCreate, errorCode: .rejected))
     }
 
     /// What the core posts becomes the catalog's events: a start by what it
     /// made, a failed create with only why, a new conversation only once it
     /// starts, and a shown error by its type alone.
     func testWhatTheCorePostsBecomesTheCatalogsEvents() async throws {
-        func launch(target: HappyAgentSpawnTarget? = nil, bot: NewSessionLaunch.Bot? = nil, agent: NewSessionDraft.Agent = .claude) -> NewSessionLaunch {
-            NewSessionLaunch(machineId: "m", agent: agent, rigMetadata: nil, absolutePath: "/Users/kirill/secret", worktreeSelection: "__none__",
-                             worktreeCreationMachineId: nil, target: target, permissionMode: "default", modelMode: "opus",
-                             effortLevel: "high", prompt: "private words", attachments: [], signature: .init(machineId: "m", agent: "claude", place: "/x", worktree: nil, modelKey: nil, permissionMode: nil, effort: nil), bot: bot)
+        func launch(target: HappyAgentSpawnTarget? = nil, bot: NewSessionLaunch.Bot? = nil, model: String = "anthropic/opus-5-5") -> Happening.Start {
+            .init(NewSessionLaunch(machineId: "m", agent: .claude, rigMetadata: nil, absolutePath: "/Users/kirill/secret", worktreeSelection: "__none__",
+                                   worktreeCreationMachineId: nil, target: target, permissionMode: "default", modelMode: model,
+                                   effortLevel: "high", prompt: "private words", attachments: [],
+                                   signature: .init(machineId: "m", agent: "claude", place: "/x", worktree: nil, modelKey: nil, permissionMode: nil, effort: nil),
+                                   bot: bot))
         }
-        let opened = AnalyticsEvent.conversationCreated(source: .home, model: "opus", modelProviderKind: .claude, effort: .high)
+        XCTAssertEqual(launch(), .init(made: .session, agent: .claude, model: "anthropic/opus-5-5", effort: "high"), "nothing but what was started")
+        XCTAssertNil(launch(model: "default").model)
+        let opened = AnalyticsEvent.conversationCreated(source: .home, modelFamily: .claudeOpus, modelProviderKind: .claude, effort: .high)
         XCTAssertEqual(Analytics.started(launch(), .made), [opened])
-        XCTAssertEqual(Analytics.started(launch(), .failed(URLError(.timedOut))), [], "a conversation that never started")
+        XCTAssertEqual(Analytics.started(launch(), .failure(URLError(.timedOut))), [], "a conversation that never started")
         XCTAssertEqual(Analytics.started(launch(target: .task(name: "Secret")), .refused), [.taskCreated(result: .failed, errorCode: .refused)])
-        XCTAssertEqual(Analytics.started(launch(bot: .init(name: "Ada", faceSeed: "s")), .failed(URLError(.notConnectedToInternet))),
+        XCTAssertEqual(Analytics.started(launch(bot: .init(name: "Ada", faceSeed: "s")), .failure(URLError(.notConnectedToInternet))),
                        [.botCreated(source: .home, result: .failed, errorCode: .offline)])
         XCTAssertEqual(Analytics.started(launch(target: .bot(name: "Ada")), .made), [.botCreated(source: .home, result: .ok, errorCode: nil), opened])
-        XCTAssertEqual(AnalyticsEvent.conversationCreated(source: .home, model: "opus", modelProviderKind: .claude, effort: .high).properties["model"],
-                       .string("other"), "a Happy CLI model key is not a vendor id")
+        XCTAssertEqual(Analytics.started(launch(model: "opus"), .made).last?.properties["model_family"], .string("other"),
+                       "a Happy CLI model key is no family")
         XCTAssertEqual(AnalyticsEvent.taskCreated(result: .failed, errorCode: nil).properties["error_code"], .string("unknown"))
         XCTAssertNil(AnalyticsEvent.taskCreated(result: .ok, errorCode: nil).properties["error_code"])
 
@@ -388,8 +492,7 @@ final class AnalyticsTests: XCTestCase {
         let analytics = started(http)
         analytics.receive(.relayMessageQueued(source: .voice, attachments: 2))
         analytics.receive(.newWorkMade(.task, agentId: "t", .made))
-        analytics.receive(.errorShown(.attachmentUpload, URLError(.notConnectedToInternet)))
-        analytics.receive(.errorShown(.messageSend, CancellationError()))
+        analytics.receive(.errorShown(.attachmentUpload, .offline))
         analytics.receive(.callChanged(from: .active(.listening, muted: false, since: 0), to: .idle, at: 40))
         let events = try await sent(analytics, http)
         XCTAssertEqual(events.map { $0["event"]?.stringValue }, ["message_sent", "task_created", "error_shown", "voice_session_stopped"])
@@ -417,7 +520,7 @@ final class AnalyticsTests: XCTestCase {
         _ = analytics.agentSend(to: "bot", in: spaces, mode: mode, catalog: catalog, newWork: nil, attachments: 0, steering: false)
         analytics.agentSend(to: "bot", in: spaces, mode: mode, catalog: catalog, newWork: nil, attachments: 0, steering: true)()
         analytics.agentSend(to: "new", in: spaces, mode: mode, catalog: catalog, newWork: "new", attachments: 1, steering: false)()
-        analytics.receive(.newWorkMade(.task, agentId: "new", .failed(URLError(.notConnectedToInternet))))
+        analytics.receive(.newWorkMade(.task, agentId: "new", .failure(URLError(.notConnectedToInternet))))
         analytics.receive(.newWorkMade(.task, agentId: "other", .made))
         analytics.receive(.newWorkMade(.task, agentId: "new", .made))
         analytics.receive(.newWorkMade(.task, agentId: "new", .made))
@@ -429,7 +532,7 @@ final class AnalyticsTests: XCTestCase {
         XCTAssertEqual(events[1]["properties"]?["source"], .string("new_session"))
         XCTAssertEqual(events[1]["properties"]?["has_attachment"], .bool(true))
         XCTAssertEqual(events[2]["properties"]?["result"], .string("failed"))
-        XCTAssertEqual(events[5]["properties"]?["model"], .string("anthropic/opus-5-5"))
+        XCTAssertEqual(events[5]["properties"]?["model_family"], .string("claude_opus"))
         XCTAssertEqual(events[5]["properties"]?["model_provider_kind"], .string("claude"))
     }
 
