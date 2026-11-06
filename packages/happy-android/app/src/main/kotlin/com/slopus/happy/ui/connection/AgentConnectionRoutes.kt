@@ -52,6 +52,7 @@ val LocalServerSignIn: androidx.compose.runtime.ProvidableCompositionLocal<((Ser
 fun NavGraphBuilder.agentConnectionRoutes(graph: AppGraph, nav: NavHostController) {
     page<PairingRoute> { Pairing(graph, nav) }
     page<ServerSignInRoute> { ServerSignIn(graph, nav) }
+    cloudRoutes(graph, nav)
     artifactRoutes(graph, nav)
     feedRoutes(graph, nav)
     surfaceRoutes(graph, nav)
@@ -114,23 +115,6 @@ fun NavHostController.signInToServer(graph: AppGraph, invite: ServerInvite): Boo
     return true
 }
 
-/**
- * Happy Cloud ([HappyCloud]): opens the cloud team already here, adding
- * nothing; otherwise starts signing in to the compiled-in origin, with no
- * code and so no `instanceId` to check (health's is kept as it comes), and
- * shows that. False when this build has no usable cloud address.
- */
-fun NavHostController.connectToCloud(graph: AppGraph): Boolean {
-    HappyCloud.connection(graph.agentConnections.accounts.value, graph.openAgentId.value)?.let {
-        graph.open(it.id)
-        return true
-    }
-    val origin = HappyCloud.origin ?: return false
-    graph.startServerSignIn(origin.value)
-    navigate(ServerSignInRoute) { launchSingleTop = true }
-    return true
-}
-
 /** Signs [replacing], the team server at [address], in again, and shows it. */
 fun NavHostController.signInToServerAgain(graph: AppGraph, address: String, replacing: String) {
     graph.startServerSignIn(address, replacing)
@@ -151,6 +135,14 @@ private fun ServerSignIn(graph: AppGraph, nav: NavHostController) {
         // does another member's connection, which took the place of the one signed in again on.
         if (flow?.replacing == done.account.id) nav.popBackStack() else graph.open(done.account.id)
     }
+    // A Happy Cloud server's sign-in has no page: the browser holds the account's session and comes straight back.
+    LaunchedEffect(state) {
+        val ready = state as? ServerSignInState.Ready ?: return@LaunchedEffect
+        if (HappyCloud.isServer(ready.server) && !holder.opened) {
+            holder.opened = true
+            flow?.browserUrl()?.let { url -> openSignInPage(context, url, dark) }
+        }
+    }
     ServerSignInScreen(
         state = state,
         onOpenBrowser = { flow?.browserUrl()?.let { url -> openSignInPage(context, url, dark) } },
@@ -165,7 +157,7 @@ private fun ServerSignIn(graph: AppGraph, nav: NavHostController) {
  * never a WebView), so the person's SSO session and password manager are
  * there; where no browser has Custom Tabs, the default browser.
  */
-private fun openSignInPage(context: android.content.Context, url: String, dark: Boolean) {
+internal fun openSignInPage(context: android.content.Context, url: String, dark: Boolean) {
     val intent = androidx.browser.customtabs.CustomTabsIntent.Builder()
         .setShowTitle(true)
         .setColorScheme(if (dark) androidx.browser.customtabs.CustomTabsIntent.COLOR_SCHEME_DARK else androidx.browser.customtabs.CustomTabsIntent.COLOR_SCHEME_LIGHT)
@@ -180,6 +172,9 @@ private fun openSignInPage(context: android.content.Context, url: String, dark: 
 /** The sign-in this screen shows, kept by its back stack entry; popping the screen ends it. */
 private class ServerSignInHolder(private val graph: AppGraph) : ViewModel() {
     var flow: ServerSignInFlow? = graph.serverSignIn.value
+
+    /** The browser was opened without a tap once (a Happy Cloud server); after that, as any sign-in. */
+    var opened = false
 
     override fun onCleared() {
         flow?.let(graph::endServerSignIn)

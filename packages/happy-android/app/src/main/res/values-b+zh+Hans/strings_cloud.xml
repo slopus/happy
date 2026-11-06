@@ -6,7 +6,29 @@
 <resources>
     <string name="cloud_connect_row">连接到 Happy Cloud</string>
     <string name="cloud_connect_title">连接到 Happy Cloud？</string>
-    <string name="cloud_connect_message">登录或创建账户以添加云端团队。智能体在云端运行，无需电脑。</string>
+    <string name="cloud_connect_message">登录或创建 Happy Cloud 账户，然后打开你的服务器、新建服务器或加入服务器。智能体在云端运行，无需电脑。</string>
     <string name="cloud_connect_confirm">连接</string>
     <string name="cloud_needs_computer">Happy Cloud 只运行智能体。此功能需要电脑。</string>
+    <string name="cloud_title">Happy Cloud</string>
+    <string name="cloud_sign_in">登录 Happy Cloud</string>
+    <string name="cloud_your_servers">你的服务器</string>
+    <string name="cloud_loading">正在加载…</string>
+    <string name="cloud_no_servers">还没有服务器。在下方新建或加入一个。</string>
+    <string name="cloud_role_owner">所有者</string>
+    <string name="cloud_role_member">成员</string>
+    <string name="cloud_create">新建服务器</string>
+    <string name="cloud_create_detail">选择一个名称，它将成为服务器的地址。</string>
+    <string name="cloud_create_button">创建服务器</string>
+    <string name="cloud_join">加入服务器</string>
+    <string name="cloud_join_detail">输入服务器名称和所有者给你的邀请码。</string>
+    <string name="cloud_join_button">加入</string>
+    <string name="cloud_invite_code">邀请码</string>
+    <string name="cloud_join_not_found">没有使用该名称和邀请码的服务器。</string>
+    <string name="cloud_name_placeholder">名称</string>
+    <string name="cloud_name_rules">3 到 32 个小写字母、数字或连字符，不能以连字符开头或结尾。</string>
+    <string name="cloud_name_checking">正在检查…</string>
+    <string name="cloud_name_available">%1$s 可用。</string>
+    <string name="cloud_name_taken">该名称已被占用。</string>
+    <string name="cloud_name_reserved">该名称已被保留。</string>
+    <string name="cloud_failed">出了点问题，请重试。</string>
 </resources>

@@ -986,23 +986,32 @@ change its wire behaviour on Android alone.
   the code's (`ServerSignInFlow.verify`; a new member's health behind the
   profile gate is checked after the name); a mismatch, or none, drops the
   credential and reads "This code doesn't match the server it points to."
-- **Happy Cloud, the one exception** (`connection/HappyCloud.kt`,
-  `ui/connection/CloudConnect.kt`): the account menu's last row, a + reading
-  "Connect to Happy Cloud", adds the team server at `BuildConfig.HAPPY_CLOUD_URL`
-  (compiled in; `HAPPY_CLOUD_URL` or `-Phappy.cloudUrl` points a build
-  elsewhere, and an address that isn't an `https:` origin leaves the row out).
+- **Happy Cloud, the one exception** (accounts contract v1;
+  `connection/HappyCloud.kt`, `connection/CloudAccount.kt`,
+  `ui/connection/CloudConnect.kt`, `CloudScreens.kt`): everything lives under
+  one domain, `BuildConfig.HAPPY_CLOUD_BASE` (compiled in; `HAPPY_CLOUD_BASE`
+  or `-Phappy.cloudBase` points a build elsewhere): the accounts service at
+  `https://accounts.BASE` and the server named `acme` at `https://acme.BASE`.
   Only `debug` and `preview` builds offer it (`HappyCloud.offeredIn`, by
   `BuildConfig.BUILD_TYPE`); `release` and `bench` have no way in at all.
-  A phone with no account reaches it from the first screen's ⋮ and Add's
-  scanner ⋮ (`ScannerWay.Cloud`).
-  The address is the app's own, never typed or pasted, so it skips the code.
-  With a cloud team already here the + just opens it. Otherwise it asks
-  "Connect to Happy Cloud?" (Cancel / Connect), and Connect runs the sign-in
-  below on that origin with no `instanceId` to check: health's is kept as it
-  comes. The cloud's sign-in page offers Create account, which makes a new
-  cloud team. A cloud team has agents and no compute (no nodes, workspaces,
-  terminals or projects): `HappyCloud.isCloud` tells it apart, and screens
-  that need a computer say so (`cloud_needs_computer`) instead of failing.
+  The account menu's last row, a + reading "Connect to Happy Cloud" (with no
+  account yet, the first screen's ⋮ and Add's scanner ⋮, `ScannerWay.Cloud`),
+  asks "Connect to Happy Cloud?" (Cancel / Connect); Connect opens the
+  **account** sign-in in a Custom Tab: PKCE against the accounts origin's
+  `/authorize` and `/token`, `client_id` `happy`, `resource` the accounts
+  origin, nothing discovered. Its refresh token is Keystore-encrypted beside
+  the servers' (same prefs file, keychain service `happy-cloud-account`); the
+  account token only ever goes to the accounts API. Signed in, the + skips the
+  question and shows the picker: "Your servers" (`GET /v1/servers`, the ones on
+  the phone checked), "Create a new server" (a name with `.BASE` beside it,
+  checked with `GET /v1/servers/availability` as the person pauses, then
+  `POST /v1/servers`) and "Join a server" (name and invite code, `POST
+  /v1/servers/join`). Picking, creating or joining one runs the team server
+  sign-in below on its origin, which opens the browser by itself
+  (`HappyCloud.isServer`): the Custom Tab holds the account's session, so it
+  comes straight back. Each server is its own connection; one already here
+  just opens. The addresses are the app's own, never typed or pasted, so no
+  code and no `instanceId` check them.
 - **Sign-in** (`connection/ServerSignInFlow.kt`, `ServerAuth.kt`): `GET
   /v0/authentication` lists the methods, then OAuth authorization code + PKCE
   S256 in a Custom Tab (never a WebView), with RFC 8707 `resource` on
