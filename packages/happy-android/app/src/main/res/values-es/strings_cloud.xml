@@ -37,4 +37,10 @@
     <string name="cloud_leave_confirm_title">¿Salir de %1$s?</string>
     <string name="cloud_leave_confirm_message">Perderás sus agentes y tareas en todos tus dispositivos. Puedes volver con un nuevo código de invitación.</string>
     <string name="cloud_leave_last_owner">Eres su único propietario, así que no puedes salir.</string>
+    <string name="cloud_test_title">Inicia sesión con una cuenta de prueba.</string>
+    <string name="cloud_test_login">Usuario</string>
+    <string name="cloud_test_password">Contraseña</string>
+    <string name="cloud_test_sign_in">Iniciar sesión</string>
+    <string name="cloud_test_wrong">El usuario o la contraseña no son correctos.</string>
+    <string name="cloud_test_locked">Demasiados intentos. Vuelve a intentarlo en %1$d min.</string>
 </resources>

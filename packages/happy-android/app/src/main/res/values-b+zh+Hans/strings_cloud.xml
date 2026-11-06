@@ -37,4 +37,10 @@
     <string name="cloud_leave_confirm_title">离开 %1$s？</string>
     <string name="cloud_leave_confirm_message">你将在所有设备上失去它的智能体和任务。可以用新的邀请码重新加入。</string>
     <string name="cloud_leave_last_owner">你是它唯一的所有者，因此不能离开。</string>
+    <string name="cloud_test_title">使用测试账号登录。</string>
+    <string name="cloud_test_login">登录名</string>
+    <string name="cloud_test_password">密码</string>
+    <string name="cloud_test_sign_in">登录</string>
+    <string name="cloud_test_wrong">登录名或密码不正确。</string>
+    <string name="cloud_test_locked">尝试次数过多。请在 %1$d 分钟后重试。</string>
 </resources>

@@ -37,4 +37,10 @@
     <string name="cloud_leave_confirm_title">離開 %1$s？</string>
     <string name="cloud_leave_confirm_message">你將在所有裝置上失去它的代理程式和任務。可以用新的邀請碼重新加入。</string>
     <string name="cloud_leave_last_owner">你是它唯一的擁有者，因此不能離開。</string>
+    <string name="cloud_test_title">使用測試帳號登入。</string>
+    <string name="cloud_test_login">登入名稱</string>
+    <string name="cloud_test_password">密碼</string>
+    <string name="cloud_test_sign_in">登入</string>
+    <string name="cloud_test_wrong">登入名稱或密碼不正確。</string>
+    <string name="cloud_test_locked">嘗試次數過多。請在 %1$d 分鐘後再試。</string>
 </resources>

@@ -114,6 +114,46 @@ class CloudAccountTest {
     }
 
     @Test
+    fun aTestAccountSignsInWithItsPasswordForTheSameHour() = runBlocking {
+        val account = account()
+        val access = jwt(audience, tag = "p1")
+        server.enqueue(token(access))
+        assertEquals(PasswordSignIn.SignedIn, account.signInWithPassword("qa-android", "s3cret pass"))
+        assertEquals(CloudAccountState.SignedIn, account.state.value)
+        val request = server.takeRequest()
+        assertEquals("POST", request.method)
+        assertEquals("/v1/auth/password", request.target)
+        assertEquals(null, request.headers["Authorization"])
+        assertEquals("""{"login":"qa-android","password":"s3cret pass"}""", request.body?.utf8())
+        // From here it is the browser's pass: servers with it, and signed out at its hour.
+        server.enqueue(json("""{"servers":[]}"""))
+        assertEquals(emptyList<CloudServer>(), account.servers())
+        assertEquals("Bearer $access", server.takeRequest().headers["Authorization"])
+        now += 3_600_000L - 119_000L
+        assertEquals(false, account.signedIn())
+        assertEquals(CloudAccountState.SignedOut(expired = true), account.state.value)
+    }
+
+    @Test
+    fun aWrongPasswordOrALockoutLeavesItSignedOut() = runBlocking {
+        val account = account()
+        server.enqueue(json("""{"code":"invalid_credentials"}""", code = 401))
+        assertEquals(PasswordSignIn.Wrong, account.signInWithPassword("qa-android", "nope"))
+        server.enqueue(json("""{"code":"locked","retryAfter":61}""", code = 429))
+        assertEquals(PasswordSignIn.Locked(2), account.signInWithPassword("qa-android", "nope"))
+        server.enqueue(json("""{"code":"locked"}""", code = 429))
+        assertEquals(PasswordSignIn.Locked(15), account.signInWithPassword("qa-android", "nope"))
+        server.enqueue(json("""{"code":"internal"}""", code = 503))
+        assertEquals(PasswordSignIn.Failed(CloudException.Reason.Unreachable), account.signInWithPassword("qa-android", "pw"))
+        server.enqueue(json("""{"code":"not_found"}""", code = 404))
+        assertEquals(PasswordSignIn.Failed(CloudException.Reason.Failed), account.signInWithPassword("qa-android", "pw"))
+        server.enqueue(json("""{"token_type":"Bearer"}"""))
+        assertEquals(PasswordSignIn.Failed(CloudException.Reason.Failed), account.signInWithPassword("qa-android", "pw"))
+        assertEquals(CloudAccountState.SignedOut(), account.state.value)
+        assertEquals(false, account.signedIn())
+    }
+
+    @Test
     fun listsServersWithTheAccountToken() = runBlocking {
         val access = jwt(audience, tag = "a1")
         val account = account()

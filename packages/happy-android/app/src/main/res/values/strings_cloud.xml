@@ -39,4 +39,10 @@
     <string name="cloud_leave_confirm_title">Leave %1$s?</string>
     <string name="cloud_leave_confirm_message">You\'ll lose its agents and tasks on every device. You can come back with a new invite code.</string>
     <string name="cloud_leave_last_owner">You\'re its only owner, so you can\'t leave it.</string>
+    <string name="cloud_test_title">Sign in with a test account.</string>
+    <string name="cloud_test_login">Login</string>
+    <string name="cloud_test_password">Password</string>
+    <string name="cloud_test_sign_in">Sign in</string>
+    <string name="cloud_test_wrong">That login or password is wrong.</string>
+    <string name="cloud_test_locked">Too many tries. Try again in %1$d min.</string>
 </resources>
