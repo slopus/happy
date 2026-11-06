@@ -416,7 +416,7 @@ final class CloudServersViewController: CloudStageViewController {
 final class CloudCreateViewController: CloudStageViewController, UITextFieldDelegate {
     private let account: CloudAccount
     let field = CloudField(prefix: "@", placeholder: Strings.HappyCloud.namePlaceholder)
-    private let status = StartGalleryView.bodyLabel("")
+    let status = StartGalleryView.bodyLabel("")
     private var checking: Task<Void, Never>?
 
     init(context: AppContext, account: CloudAccount) {
@@ -459,18 +459,21 @@ final class CloudCreateViewController: CloudStageViewController, UITextFieldDele
         checking = Task { [weak self, account] in
             try? await Task.sleep(for: .milliseconds(300))
             guard !Task.isCancelled else { return }
-            let answer = try? await account.availability(name)
+            let answer: Result<CloudAccount.Availability, any Error>
+            do { answer = .success(try await account.availability(name)) } catch { answer = .failure(error) }
             guard !Task.isCancelled, let self, self.name == name else { return }
             switch answer {
-            case .available?: say(Strings.HappyCloud.available(name))
-            case let answer?: say(Strings.HappyCloud.unavailable(answer, name: name) ?? "", problem: true)
-            case nil: break
+            case .success(.available): say(Strings.HappyCloud.available(name))
+            case .success(let answer): say(Strings.HappyCloud.unavailable(answer, name: name) ?? "", problem: true)
+            case .failure(CloudAccountError.signInRequired): CloudScreens.signedOut(context: context, from: self)
+            case .failure(let error): say(Strings.HappyCloud.failure(error), problem: true)
             }
         }
     }
 
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-        Task { await create() }
+        // Through the button, which shows it working and runs it once.
+        primary.tapped()
         return false
     }
 
@@ -483,12 +486,12 @@ final class CloudCreateViewController: CloudStageViewController, UITextFieldDele
         status.frame = CGRect(x: 0, y: CloudField.height + 12, width: content.bounds.width, height: max(0, content.bounds.height - CloudField.height - 12))
     }
 
-    private func create() async {
+    /// The primary button's action: `RoundButton` marks itself loading
+    /// before running it, so this never checks `isLoading` itself, which
+    /// once made every tap return without a word.
+    func create() async {
         let name = name
         guard HappyCloud.isValidName(name) else { return say(Strings.HappyCloud.invalidName, problem: true) }
-        guard !primary.isLoading else { return }
-        primary.isLoading = true
-        defer { primary.isLoading = false }
         do {
             let server = try await account.create(name)
             navigationController?.pushViewController(CloudConnectingViewController(context: context, account: account, server: server), animated: true)
@@ -505,7 +508,7 @@ final class CloudJoinViewController: CloudStageViewController, UITextFieldDelega
     private let account: CloudAccount
     let nameField = CloudField(prefix: "@", placeholder: Strings.HappyCloud.namePlaceholder)
     let codeField = CloudField(prefix: nil, placeholder: Strings.HappyCloud.codePlaceholder)
-    private let status = StartGalleryView.bodyLabel("")
+    let status = StartGalleryView.bodyLabel("")
 
     init(context: AppContext, account: CloudAccount) {
         self.account = account
@@ -533,7 +536,7 @@ final class CloudJoinViewController: CloudStageViewController, UITextFieldDelega
     }
 
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-        if textField === nameField.text { codeField.text.becomeFirstResponder() } else { Task { await join() } }
+        if textField === nameField.text { codeField.text.becomeFirstResponder() } else { primary.tapped() }
         return false
     }
 
@@ -549,12 +552,15 @@ final class CloudJoinViewController: CloudStageViewController, UITextFieldDelega
         status.frame = CGRect(x: 0, y: top, width: width, height: max(0, content.bounds.height - top))
     }
 
-    private func join() async {
+    /// The primary button's action; like `create`, it leaves `isLoading`
+    /// to the button.
+    func join() async {
         let name = Strings.HappyCloud.bareName(nameField.text.text ?? "")
         let code = (codeField.text.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, !code.isEmpty, !primary.isLoading else { return }
-        primary.isLoading = true
-        defer { primary.isLoading = false }
+        guard !name.isEmpty, !code.isEmpty else {
+            status.string = Strings.HappyCloud.joinMissing
+            return relayout()
+        }
         status.string = ""
         do {
             let server = try await account.join(name, code: code)

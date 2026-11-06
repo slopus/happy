@@ -112,9 +112,10 @@ public actor CloudAccount {
     }
 
     #if DEBUG
-    /// An account from an access token alone, for the harness's screenshots.
-    public static func preview(token: String, expiresAt: Date? = nil) -> CloudAccount {
-        CloudAccount(access: OAuthAccess(token: token, expiresAt: expiresAt), http: NoRedirectURLSessionTransport(), now: Date.init)
+    /// An account from an access token alone, for the harness's screenshots
+    /// and the screens' tests.
+    public static func preview(token: String, expiresAt: Date? = nil, http: any HTTPTransport = NoRedirectURLSessionTransport()) -> CloudAccount {
+        CloudAccount(access: OAuthAccess(token: token, expiresAt: expiresAt), http: http, now: Date.init)
     }
     #endif
 
