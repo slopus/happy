@@ -1035,9 +1035,12 @@ class Conversation(
                 // Its photos still being read: it and everything after it wait ([prepared]).
                 if (next.waiting != null) break
                 writing = next.id
+                // A create that fails is told as `task_created` or `bot_created`, not as this send's error too.
+                var made = false
                 try {
                     next.images.indices.forEach { uploads.set(UploadBoard.pictureKey(next.id, it), UploadPhase.Preparing) }
                     ensureCreated()
+                    made = true
                     val mode = sendingMode() ?: throw IllegalStateException("No model is set up on this computer.")
                     upload(next.files)
                     val images = next.images
@@ -1073,7 +1076,7 @@ class Conversation(
                 } catch (e: Exception) {
                     uploads.clear(next.id)
                     next.failure = describe(e)
-                    errorShown(ErrorArea.MessageSend, AnalyticsReasons.error(e))
+                    if (made) errorShown(ErrorArea.MessageSend, AnalyticsReasons.error(e))
                 } finally {
                     writing = null
                 }

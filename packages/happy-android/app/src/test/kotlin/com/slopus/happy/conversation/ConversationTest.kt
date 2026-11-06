@@ -635,6 +635,27 @@ class ConversationTest {
         assertEquals("not again on a retry", 1, recorded.count { it is AnalyticsEvent.MessageSent })
     }
 
+    @Test fun `a refused new work is counted as the create that failed, not as the send's error too`() = runTest {
+        val agent = FakeAgent()
+        agent.refuseCreate = 409
+        val chat = conversation(agent, NewTask("t1", "w1", "a9", "m1"), WorkChoice(WorkKind.Bot, "Taken"))
+        advanceUntilIdle()
+        assertTrue(chat.send("Hello"))
+        advanceUntilIdle()
+        assertEquals(1, recorded.count { it is AnalyticsEvent.BotCreated && it.errorCode != null })
+        assertEquals(MessageSource.NewSession, recorded.filterIsInstance<AnalyticsEvent.MessageSent>().single().source)
+        assertEquals(emptyList<AnalyticsEvent>(), recorded.filter { it is AnalyticsEvent.ErrorShown || it is AnalyticsEvent.ConversationCreated })
+
+        agent.refuseCreate = null
+        chat.retrySend((chat.state.value.rows.single() as ConversationRow.User).messageId)
+        advanceUntilIdle()
+        assertTrue(chat.state.value.created)
+        assertEquals(listOf(AnalyticsEvent.BotCreated(null)), recorded.filter { it is AnalyticsEvent.BotCreated && it.errorCode == null })
+        assertEquals(1, recorded.count { it is AnalyticsEvent.ConversationCreated })
+        assertEquals(1, recorded.count { it is AnalyticsEvent.MessageSent })
+        assertTrue(recorded.none { it is AnalyticsEvent.ErrorShown })
+    }
+
     @Test fun `while new work is being made its choice is fixed`() = runTest {
         val agent = FakeAgent()
         val gate = CompletableDeferred<Unit>()
