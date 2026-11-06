@@ -24,7 +24,9 @@ final class PushConfigurationTests: XCTestCase {
     }
 
     func testEntitlementsAskForAPNsLikeTheRNApp() throws {
-        XCTAssertEqual(try plist("App/Happy.entitlements") as NSDictionary, ["aps-environment": "development"] as NSDictionary)
+        // Development and preview also sign in to Happy Cloud with Apple.
+        XCTAssertEqual(try plist("App/Happy.entitlements") as NSDictionary,
+                       ["aps-environment": "development", "com.apple.developer.applesignin": ["Default"]] as NSDictionary)
         let production = try plist("App/Happy-Production.entitlements")
         XCTAssertEqual(production["aps-environment"] as? String, "development")
         XCTAssertEqual(production["com.apple.developer.associated-domains"] as? [String], ["applinks:app.happy.engineering"])

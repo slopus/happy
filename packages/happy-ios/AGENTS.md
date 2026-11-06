@@ -650,7 +650,8 @@ identical and checks the variant keys:
 - `HappyAppVariant`;
 - ATS: local networking everywhere, arbitrary loads outside production.
 
-Only production has entitlements (associated domains).
+Every variant asks for push (`aps-environment`). Production adds associated
+domains; development and preview add Sign in with Apple for Happy Cloud.
 
 ### Versioning
 
