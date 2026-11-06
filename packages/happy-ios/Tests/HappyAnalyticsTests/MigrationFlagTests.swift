@@ -24,6 +24,14 @@ final class MigrationFlagTests: XCTestCase {
         return analytics
     }
 
+    /// One ask, with the analytics that made it kept until the answer is in:
+    /// the ask holds it weakly, as the app's own does.
+    private func ask(_ http: HTTPTransport, flag: MigrationNoteFlag) async {
+        let analytics = started(http, flag: flag)
+        await analytics.refreshMigrationFlag(accountOptedOut: false)?.value
+        withExtendedLifetime(analytics) {}
+    }
+
     private func answering(_ body: String, status: Int = 200) -> FakeHTTP {
         let http = FakeHTTP()
         http.on(route) { _ in (status, Data(body.utf8)) }
@@ -61,10 +69,10 @@ final class MigrationFlagTests: XCTestCase {
     func testFlagOffHidesTheCard() async {
         let flag = MigrationNoteFlag()
         flag.store(true)
-        await started(answering(on(false)), flag: flag).refreshMigrationFlag(accountOptedOut: false)?.value
+        await ask(answering(on(false)), flag: flag)
         XCTAssertFalse(flag.isOn(optedOut: false))
         flag.store(true)
-        await started(answering(#"{"flags":{},"errorsWhileComputingFlags":false}"#), flag: flag).refreshMigrationFlag(accountOptedOut: false)?.value
+        await ask(answering(#"{"flags":{},"errorsWhileComputingFlags":false}"#), flag: flag)
         XCTAssertFalse(flag.isOn(optedOut: false))
     }
 
@@ -74,13 +82,16 @@ final class MigrationFlagTests: XCTestCase {
         let flag = MigrationNoteFlag()
         let failing = FakeHTTP()
         failing.on(route) { _ in throw URLError(.notConnectedToInternet) }
-        await started(failing, flag: flag).refreshMigrationFlag(accountOptedOut: false)?.value
+        await ask(failing, flag: flag)
+        XCTAssertEqual(failing.requests(route).count, 1)
         XCTAssertNil(flag.answer)
 
         flag.store(true)
         for transport in [failing, answering("{}", status: 500), answering("not json"), answering(#"{"flags":{},"errorsWhileComputingFlags":true}"#),
                           answering("", status: 302)] {
-            await started(transport, flag: flag).refreshMigrationFlag(accountOptedOut: false)?.value
+            let before = transport.requests(route).count
+            await ask(transport, flag: flag)
+            XCTAssertEqual(transport.requests(route).count, before + 1)
             XCTAssertEqual(flag.answer, true)
         }
     }

@@ -90,10 +90,13 @@ extension Analytics {
     public func refreshMigrationFlag(accountOptedOut: Bool) -> Task<Void, Never>? {
         guard let ask = flagAsk, let engine, flag.fixedAnswer == nil, flagAsking == nil, !accountOptedOut,
               consent.isSettled, !consent.isOptedOut else { return nil }
-        let generation = generation
+        let generation = generation, previous = pending
         let asking = Task { @MainActor [weak self] in
             // An opt-out let go of it already, and a newer ask may be on its way.
             defer { if self?.generation == generation { self?.flagAsking = nil } }
+            // After what went to the engine before: the resume that lets it
+            // have an install id.
+            await previous?.value
             // Consent is checked again right before anything leaves.
             guard let install = await engine.installID, self?.isCurrent(generation) == true else { return }
             let answer = await ask.fetch(distinctID: install)

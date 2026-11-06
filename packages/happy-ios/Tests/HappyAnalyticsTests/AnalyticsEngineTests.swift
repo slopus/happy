@@ -215,7 +215,8 @@ final class AnalyticsEngineTests: XCTestCase {
         let gated = GatedHTTP(status: 503)
         let engine = engine(gated)
         await engine.record(.teamServerSignedIn, common: common, at: start)
-        let flushing = Task { await engine.flush(now: start) }
+        let at = start
+        let flushing = Task { await engine.flush(now: at) }
         await gated.started(1)
         await engine.clear()
         let cleared = await engine.queue
