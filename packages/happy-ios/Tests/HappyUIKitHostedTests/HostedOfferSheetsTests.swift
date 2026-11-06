@@ -21,7 +21,7 @@ func hostedOffers(_ fixture: String, preview: String? = nil, for test: XCTestCas
         Offers.shared = app
         UserDefaults.standard.removePersistentDomain(forName: suite)
     }
-    subscription.relay(nil)
+    subscription.refresh()
     await subscription.idle()
     return offers
 }

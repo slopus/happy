@@ -8,7 +8,8 @@ public protocol SubscriptionStore: Sendable {
     /// monthly auto-renewing subscription.
     func product(_ id: String) async -> StoreLookup
     /// The store's purchase sheet for `id`, the purchase tagged with `token`
-    /// (StoreKit's `appAccountToken`), which it keeps on every renewal.
+    /// (StoreKit's `appAccountToken`), which it keeps on every renewal and
+    /// shows every device on the same Apple ID.
     func purchase(_ id: String, token: UUID) async -> StorePurchase
     /// Verified transactions not finished yet: bought, renewed or approved
     /// while nothing here was listening, or posted but not finished.
@@ -52,8 +53,8 @@ public struct StoreTransaction: Equatable, Sendable {
     public var productID: String
     /// Its signed JWS, which RevenueCat verifies with Apple.
     public var jws: String
-    /// The `appAccountToken` it was bought with; nil when bought elsewhere
-    /// or by an app that set none.
+    /// The `appAccountToken` it was bought with (`Subscription.customer(_:)`
+    /// reads whose); nil when bought by an app that set none.
     public var token: UUID?
 
     public init(id: String, originalID: String, productID: String, jws: String, token: UUID?) {

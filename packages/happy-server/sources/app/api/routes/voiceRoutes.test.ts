@@ -24,7 +24,8 @@ describe("voiceRoutes", () => {
     beforeEach(async () => {
         vi.stubEnv("ELEVENLABS_API_KEY", "test-elevenlabs-key");
         vi.stubEnv("HANDY_MASTER_SECRET", masterSecret);
-        vi.stubEnv("REVENUECAT_API_KEY", undefined);
+        // Never read: a configured key must not bring a subscription check back.
+        vi.stubEnv("REVENUECAT_API_KEY", "test-revenuecat-key");
         fetchMock.mockReset();
         // Unexpected network requests must fail, never reach a real service.
         fetchMock.mockRejectedValue(new Error("Unexpected provider request"));
@@ -71,7 +72,7 @@ describe("voiceRoutes", () => {
         });
     }
 
-    it.each([0, 1199])("grants free voice at %i seconds without RevenueCat configuration", async (usedSeconds) => {
+    it.each([0, 1199, 1200, 17999])("grants voice below the hard cap at %i seconds without asking about a subscription", async (usedSeconds) => {
         mockUsage(usedSeconds ? [usedSeconds] : []);
         mockToken();
 
@@ -86,7 +87,7 @@ describe("voiceRoutes", () => {
             agentId,
             elevenUserId,
             usedSeconds,
-            limitSeconds: 1200,
+            limitSeconds: 18000,
         });
         expect(fetchMock).toHaveBeenCalledTimes(2);
         const usageUrl = new URL(String(fetchMock.mock.calls[0][0]));
@@ -103,22 +104,6 @@ describe("voiceRoutes", () => {
             `https://api.elevenlabs.io/v1/convai/conversation/token?agent_id=${agentId}&participant_name=${elevenUserId}`,
             { headers: { "xi-api-key": "test-elevenlabs-key" } },
         );
-    });
-
-    it.each([1200, 17999])("requires a subscription at %i seconds without RevenueCat configuration", async (usedSeconds) => {
-        mockUsage([usedSeconds]);
-
-        const response = await requestConversation();
-
-        expect(response.statusCode).toBe(200);
-        expect(VoiceConversationResponseSchema.parse(response.json())).toEqual({
-            allowed: false,
-            reason: "subscription_required",
-            usedSeconds,
-            limitSeconds: 1200,
-            agentId,
-        });
-        expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
     it("requires authentication before querying usage or minting a token", async () => {
@@ -138,8 +123,7 @@ describe("voiceRoutes", () => {
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it.each([undefined, "test-revenuecat-key"])("enforces the hard cap with RevenueCat key %s", async (key) => {
-        vi.stubEnv("REVENUECAT_API_KEY", key);
+    it("enforces the hard cap for every account", async () => {
         mockUsage([18000]);
 
         const response = await requestConversation();
@@ -155,8 +139,7 @@ describe("voiceRoutes", () => {
         expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
-    it.each([undefined, "test-revenuecat-key"])("allows a full history page below the free limit with RevenueCat key %s", async (key) => {
-        vi.stubEnv("REVENUECAT_API_KEY", key);
+    it("allows a full history page below the hard cap", async () => {
         mockUsage(Array.from({ length: 100 }, () => 1));
         mockToken();
 
@@ -169,59 +152,13 @@ describe("voiceRoutes", () => {
             conversationId: "conv_test123",
             elevenUserId,
             usedSeconds: 100,
-            limitSeconds: 1200,
-            agentId,
-        });
-        expect(fetchMock).toHaveBeenCalledTimes(2);
-    });
-
-    it("allows an active subscription above the free limit when RevenueCat is configured", async () => {
-        vi.stubEnv("REVENUECAT_API_KEY", "test-revenuecat-key");
-        mockUsage([1200]);
-        fetchMock.mockResolvedValueOnce(Response.json({ items: [{ entitlement_id: "voice" }] }));
-        mockToken();
-
-        const response = await requestConversation();
-
-        expect(response.statusCode).toBe(200);
-        expect(VoiceConversationResponseSchema.parse(response.json())).toEqual({
-            allowed: true,
-            conversationToken,
-            conversationId: "conv_test123",
-            agentId,
-            elevenUserId,
-            usedSeconds: 1200,
             limitSeconds: 18000,
-        });
-        expect(fetchMock).toHaveBeenCalledTimes(3);
-        expect(fetchMock).toHaveBeenNthCalledWith(2,
-            `https://api.revenuecat.com/v2/projects/proj493735ad/customers/${userId}/active_entitlements`,
-            { method: "GET", headers: { Authorization: "Bearer test-revenuecat-key" } },
-        );
-    });
-
-    it.each([
-        { name: "no active entitlement", status: 200, body: { items: [] } },
-        { name: "a failed subscription check", status: 503, body: {} },
-    ])("requires a subscription with $name when RevenueCat is configured", async ({ status, body }) => {
-        vi.stubEnv("REVENUECAT_API_KEY", "test-revenuecat-key");
-        mockUsage([1200]);
-        fetchMock.mockResolvedValueOnce(Response.json(body, { status }));
-
-        const response = await requestConversation();
-
-        expect(response.statusCode).toBe(200);
-        expect(VoiceConversationResponseSchema.parse(response.json())).toEqual({
-            allowed: false,
-            reason: "subscription_required",
-            usedSeconds: 1200,
-            limitSeconds: 1200,
             agentId,
         });
         expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
-    it("reports the free allowance in usage without RevenueCat configuration", async () => {
+    it("reports usage against the hard cap without asking about a subscription", async () => {
         mockUsage([400, 800]);
 
         const response = await app.inject({
@@ -233,7 +170,7 @@ describe("voiceRoutes", () => {
         expect(response.statusCode).toBe(200);
         expect(VoiceUsageResponseSchema.parse(response.json())).toEqual({
             usedSeconds: 1200,
-            limitSeconds: 1200,
+            limitSeconds: 18000,
             conversationCount: 2,
             conversationLimit: 100,
             elevenUserId,
@@ -288,23 +225,21 @@ describe("voiceRoutes", () => {
         }
     });
 
-    it.each([true, false])("accounts for 101 recent conversations before checking subscription (active=%s)", async (subscribed) => {
-        vi.stubEnv("REVENUECAT_API_KEY", "test-revenuecat-key");
+    it("accounts for 101 recent conversations before minting a token", async () => {
         mockUsage(Array.from({ length: 100 }, () => 88), "page+/2=");
         mockUsage([2]);
-        fetchMock.mockResolvedValueOnce(Response.json({ items: subscribed ? [{ entitlement_id: "voice" }] : [] }));
-        if (subscribed) mockToken();
+        mockToken();
 
         const response = await requestConversation();
 
         expect(response.statusCode).toBe(200);
         expect(VoiceConversationResponseSchema.parse(response.json())).toMatchObject({
-            allowed: subscribed,
+            allowed: true,
             usedSeconds: 8802,
-            limitSeconds: subscribed ? 18000 : 1200,
-            ...(subscribed ? { conversationToken } : { reason: "subscription_required" }),
+            limitSeconds: 18000,
+            conversationToken,
         });
-        expect(fetchMock).toHaveBeenCalledTimes(subscribed ? 4 : 3);
+        expect(fetchMock).toHaveBeenCalledTimes(3);
         const firstPage = new URL(String(fetchMock.mock.calls[0][0]));
         const secondPage = new URL(String(fetchMock.mock.calls[1][0]));
         expect(firstPage.searchParams.has("cursor")).toBe(false);
@@ -337,7 +272,6 @@ describe("voiceRoutes", () => {
     });
 
     it("stops fetching history once a later page reaches the actual hard duration limit", async () => {
-        vi.stubEnv("REVENUECAT_API_KEY", "test-revenuecat-key");
         mockUsage([17900], "page-2");
         mockUsage([100], "page-3");
 
@@ -350,7 +284,7 @@ describe("voiceRoutes", () => {
             usedSeconds: 18000,
             limitSeconds: 18000,
         });
-        expect(fetchMock).toHaveBeenCalledTimes(2); // No further page, subscription request, or token.
+        expect(fetchMock).toHaveBeenCalledTimes(2); // No further page or token.
     });
 
     it.each([false, true])("fails safely when a provider history request fails (later page=%s)", async (laterPage) => {

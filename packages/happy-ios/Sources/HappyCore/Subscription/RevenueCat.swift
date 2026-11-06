@@ -42,8 +42,6 @@ public protocol RevenueCatAPI: Sendable {
     func offerings(customer: String) async -> RevenueCatAnswer
     func subscriber(customer: String) async -> RevenueCatAnswer
     func post(_ receipt: RevenueCatReceipt) async -> RevenueCatAnswer
-    /// The SDK's `logIn`: `from` (anonymous) brought into, or just switched to, `to`.
-    func identify(from: String, to: String) async -> RevenueCatAnswer
 }
 
 /// RevenueCat's REST API v1 with the app's public Apple SDK key, the calls
@@ -90,10 +88,6 @@ public struct RevenueCatClient: RevenueCatAPI {
         ]
         if let appTransaction = receipt.appTransaction { body["app_transaction"] = .string(appTransaction) }
         return await send("POST", "/v1/receipts", body: body)
-    }
-
-    public func identify(from: String, to: String) async -> RevenueCatAnswer {
-        await send("POST", "/v1/subscribers/identify", body: ["app_user_id": .string(from), "new_app_user_id": .string(to)])
     }
 
     private func send(_ method: String, _ path: String, body: [String: JSONValue]? = nil) async -> RevenueCatAnswer {

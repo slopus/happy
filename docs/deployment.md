@@ -45,7 +45,7 @@ This document describes how to deploy the Happy backend (`packages/happy-server`
   - `GITHUB_REDIRECT_URL` is used by the OAuth callback handler.
   - `GITHUB_REDIRECT_URI` is used by the GitHub App initializer.
 - Voice: `ELEVENLABS_API_KEY` (required for `/v1/voice/conversations` in production).
-- Subscriptions: `REVENUECAT_API_KEY` (server-side RevenueCat key, required for voice subscription checks).
+- Subscriptions: none. The server no longer checks subscriptions (the phones track them with RevenueCat), so `REVENUECAT_API_KEY` is unused and can be removed from deployments.
 - Debug logging: `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING` (enables file logging + dev log endpoint).
 
 ## Docker image

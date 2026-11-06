@@ -14,7 +14,8 @@ import HappyWire
 /// - `pending`: Subscribe waits on Ask to Buy.
 /// - `unconfirmed`: bought, but RevenueCat can't be reached to take it.
 /// - `owned`: no monthly package on offer, so nothing is sold, but the App
-///   Store account owns a yearly one that Restore brings back.
+///   Store account owns a yearly one that Restore brings back (the one
+///   restore a new version makes by itself already made).
 /// - `unconfigured`: no key, nothing sold.
 struct SubscriptionFixture {
     let subscription: Subscription
@@ -23,6 +24,7 @@ struct SubscriptionFixture {
     init?(_ name: String?) {
         guard let name else { return nil }
         let defaults = InMemoryKeyValueStore()
+        if name == "owned" { defaults.set("1", forKey: "subscription.migrated") }
         let price = ProcessInfo.processInfo.environment["HAPPY_SUBSCRIPTION_PRICE"] ?? "$19.99"
         switch name {
         case "unconfigured":
@@ -95,8 +97,6 @@ private final class FixtureRevenueCat: RevenueCatAPI, @unchecked Sendable {
         lock.withLock { _ = granted.insert(receipt.customer) }
         return answer(receipt.customer)
     }
-
-    func identify(from: String, to: String) async -> RevenueCatAnswer { answer(to) }
 
     private func answer(_ customer: String) -> RevenueCatAnswer {
         let now = Date()

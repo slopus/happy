@@ -78,7 +78,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -485,7 +484,7 @@ class AppGraph(
 
     /**
      * The app's one subscription, RevenueCat's `pro` through Play and
-     * RevenueCat's REST API, under the Happy account when one is signed in.
+     * RevenueCat's REST API, this install's whatever account is signed in.
      * Without the build's RevenueCat key it offers nothing.
      */
     val subscription: Subscription by lazy {
@@ -504,16 +503,6 @@ class AppGraph(
     }
 
     init {
-        scope.launch {
-            var relay: String? = null
-            combine(auth.state, openAccount, accountStore.registry) { _, _, _ -> voiceRelay(relay).also { relay = it } }
-                .distinctUntilChanged()
-                .collect {
-                    subscription.relay(it)
-                    // Another account's: whatever sheet was up for the last one goes.
-                    offers.close()
-                }
-        }
         scope.launch {
             foreground.collect { if (it) subscription.refresh() }
         }
@@ -536,21 +525,6 @@ class AppGraph(
                 accountStore.updateDisplay(id, AccountDisplay.of(Profile.parse(store.profile())))
             }
         }
-    }
-
-    /**
-     * The Happy account voice's subscription is under: the open one; while
-     * an agent connection is open, the account open before it ([last], or
-     * before this launch), as long as it is still signed in here. Voice is
-     * used on agent connections, so opening one never changes whose
-     * subscription it is.
-     */
-    private fun voiceRelay(last: String?): String? = when (openAccount.value) {
-        is OpenAccount.Happy -> (auth.state.value as? AuthState.SignedIn)?.publicId?.takeIf(String::isNotBlank)
-        is OpenAccount.Agent -> (last ?: subscription.account)?.takeIf { subject ->
-            accountStore.registry.value.entries.any { accountStore.credentials(it.id)?.credentials?.token?.let(::tokenSubject) == subject }
-        }
-        OpenAccount.None -> null
     }
 
     /** Ask for a delta sync now (sign-in, app back in the foreground). No-op when signed out. */

@@ -21,9 +21,10 @@ import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.resume
 
 /**
- * A subscription the store holds for this device's store account. [account]:
- * the customer id it was bought for, as [SubscriptionStore.buy] gave it
- * (Play's obfuscated account id); null for one bought without one.
+ * A subscription the store holds for this device's store account, bought
+ * on this phone or another. [account]: Play's obfuscated account id, as
+ * [SubscriptionStore.buy] gave it (the customer itself, see
+ * [Subscription.named]); null for one bought without one.
  */
 data class StorePurchase(
     val token: String,

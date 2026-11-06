@@ -33,16 +33,17 @@ The Happy app sends usage events to PostHog so we can see which features people 
 - **Happy Agent**: Happy Agent itself, the program that runs agents on your computer, sends no analytics.
 
 ### Subscription Management (Revenue Cat)
-- **Account ID**: Revenue Cat uses your account ID to manage subscriptions and enable premium features
-- **Backend Integration**: This ID allows us to provide additional features from our backend while maintaining end-to-end encryption for your content
-- **Data Separation**: Purchase analytics sent to PostHog use the pseudonymous analytics ID instead - we cannot match Revenue Cat data with PostHog analytics
+- **Random Purchase ID**: The iOS and Android apps manage the voice subscription with RevenueCat under a random ID created on your phone when the app is installed. It is not your Happy account ID or your email, and it is never sent to Happy's server.
+- **Shared Through the Store**: When you subscribe, the app writes this ID onto the purchase in the App Store or Google Play, so your other phones signed in to the same Apple ID or Google account read it from the store and use the same subscription without restoring it.
+- **What RevenueCat Receives**: That ID, the store's purchase receipts, and what you bought. It learns nothing about your Happy account, sessions, or content.
+- **Data Separation**: The purchase ID is not linked to your Happy account or to the pseudonymous analytics ID sent to PostHog, and it is never sent to PostHog - we cannot match Revenue Cat data with PostHog analytics
 
 ### Voice (Optional)
 When you turn on voice, your device connects to ElevenLabs to provide the voice agent. Native apps use the ElevenLabs SDK with a LiveKit/WebRTC media connection; the web client uses the ElevenLabs web SDK over WebSocket.
 
 - **Voice Audio**: ElevenLabs receives audio from your microphone during a voice session.
 - **Voice Context**: The Happy app sends text to the voice agent so it can assist you. This can include active-session IDs and summaries; the current session's ID, project path, summary, message history, and new messages; session focus or readiness events; and pending permission requests, including the tool name and arguments. It may also include agent tool-call details configured for the voice session.
-- **Encryption Boundary**: Voice audio and context sent to the voice agent are not covered by Happy's end-to-end encryption or zero-knowledge architecture. Happy's server does not proxy this audio or context. For Happy-managed voice, it authenticates your Happy account, checks subscription and usage limits, and obtains a voice-session token. It processes account, agent, conversation, and voice-usage metadata for that purpose.
+- **Encryption Boundary**: Voice audio and context sent to the voice agent are not covered by Happy's end-to-end encryption or zero-knowledge architecture. Happy's server does not proxy this audio or context. For Happy-managed voice, it authenticates your Happy account, checks usage limits, and obtains a voice-session token; it does not check or know about your subscription. It processes account, agent, conversation, and voice-usage metadata for that purpose.
 - **Pseudonymous Voice Identifier**: For Happy-managed voice, Happy gives ElevenLabs a stable pseudonymous identifier derived from your Happy account ID using HMAC-SHA-256. This lets ElevenLabs apply per-user voice limits without using your raw Happy account ID as the voice user ID. The identifier can still link your voice sessions to one another.
 - **Direct Connection**: If you configure your own ElevenLabs agent and choose to bypass Happy's token flow, Happy bypasses its managed token and usage-limit flow. The selected ElevenLabs agent still receives the voice audio and context described above.
 

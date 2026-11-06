@@ -1135,18 +1135,19 @@ its paywall dialog are gone; their old caches (`purchases` preferences, the
 SDK's own) stay on disk, unread.
 
 - `AppGraph.subscription` (`Subscription`) is the one purchase-state owner:
-  the customer (the relay account's JWT subject, else a persistent anonymous
-  install id; login is never needed), `pro`, what is on sale (`offer`:
+  the customer (the install's own anonymous id, kept on the phone; no Happy
+  account, sign-in or analytics id ever touches it), `pro`, what is on sale (`offer`:
   the current offering's monthly package only), buy, the launch/foreground
   sweep of unfinished purchases and Restore. `pro` comes from the last
   RevenueCat answer (`ProPass`, cached 24 h), never from the offering, and
   honours any product granting `pro` (older annual or lifetime too).
 - A purchase belongs to whoever it was bought for: Play's
-  `obfuscatedAccountId` is SHA-256 of the customer id, kept for good in
-  `accounts`. Only a user's Restore moves one to another customer
-  (`restored`); nothing is posted for whoever happens to be signed in.
-  Signing in identifies an anonymous buyer with the account; RevenueCat does
-  not guarantee that merges.
+  `obfuscatedAccountId` is the customer id itself, so every phone on the
+  Google account reads it. At launch and foreground an active subscription
+  naming a customer makes it the install's (`adopt`, no restore). Only a
+  user's Restore moves one to another customer (`restored`), except the one
+  restore a new version makes of a subscription that names no one
+  (`migrate`, once, only without `pro`).
 - `AppGraph.offers` (`Offers`) is the one offer presenter, drawn by the one
   `OfferHost` in `HappyApp`: voice's welcome and used-up sheets and the relay
   voice's Required sheet (`voice_must_pay`, unreachable while that voice is
@@ -1156,8 +1157,9 @@ SDK's own) stay on disk, unread.
   boba row, which is that page's only Support us): "Pledge <price>/month"
   over Subscribe, always there and greyed out while nothing is on sale,
   then Restore Purchases and Manage subscriptions as quiet links.
-- Grants are client-side. Only the relay's voice has a server gate; its
-  5-hour hard cap is never sold, only said.
+- Grants are client-side. The server checks no subscription; its 5-hour
+  hard cap on every account's voice is a cost safety net, never sold, only
+  said.
 - Debug builds treat About's Support row as Pro, as RN does; that grants no
   voice.
 

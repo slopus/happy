@@ -201,10 +201,14 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
   only when the current offering's `$rc_monthly` is a one-month
   auto-renewable App Store product, at the store's price; anything else,
   nothing is sold. RevenueCat's `pro`, from any product, gives 5 hours a
-  paid month in place of the free time. The rules (customer ids, store ids,
-  restore, grace, months, retention) are the frozen billing contract
-  shared with Android; read `Subscription.swift` and `ProPass.swift`
-  before changing them. One knowing divergence from RevenueCat's SDK: a
+  paid month in place of the free time. The customer is the install's own
+  anonymous id, kept on the phone: no Happy account, sign-in or analytics
+  id touches it. Its `appAccountToken` is that id's hex as a UUID, so an
+  active subscription on the Apple ID is adopted by every phone at launch
+  and foreground without a restore. The rules (customer ids, store ids,
+  adoption, restore, the one migration restore, grace, months, retention)
+  are the frozen billing contract shared with Android; read
+  `Subscription.swift` and `ProPass.swift` before changing them. One knowing divergence from RevenueCat's SDK: a
   transaction is finished only after RevenueCat answers 2xx, never on a
   4xx. Restore runs on a person's tap only, never at launch. Debug runs
   can draw it from a fixture (`HAPPY_SUBSCRIPTION_FIXTURE`: `onsale`,

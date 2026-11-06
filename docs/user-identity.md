@@ -19,9 +19,10 @@ Happy Account CUID (e.g. cm4x7k2...)
 │                 Derived on every request, never stored.
 │                 voiceRoutes.ts:deriveElevenUserId()
 │
-├─► RevenueCat ── Same CUID, passed directly as appUserID
-│                 Set once on mobile: RevenueCat.configure({ appUserID: serverID })
-│                 Server queries RevenueCat API with the same CUID
+├─✗ RevenueCat ── Not linked. Native apps use a random per-install
+│                 $RCAnonymousID, kept on the phone and shared only through
+│                 the store purchase (appAccountToken / obfuscatedAccountId).
+│                 The server never asks RevenueCat about anyone.
 │
 ├─► GitHub ────── External GitHub integer ID → stored in Account.githubUserId
 │                 Linked via OAuth in githubConnect.ts
@@ -57,7 +58,7 @@ Server extracts CUID from JWT via app.authenticate decorator
 | System | ID Type | Why |
 |--------|---------|-----|
 | ElevenLabs | HMAC-derived | Privacy — raw Happy ID never sent to ElevenLabs |
-| RevenueCat | Pass-through | Direct correlation needed for subscription API calls |
+| RevenueCat | Not linked (random per-install id) | Subscriptions are tracked on the phone; no server-side correlation |
 | GitHub | Stored foreign key | Enables profile linking and account recovery via OAuth |
 | AI vendors | Stored encrypted | User-owned keys, need to be retrievable |
 

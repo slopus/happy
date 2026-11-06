@@ -8,31 +8,36 @@ import HappyWire
 /// about it asks here: voice's sheets and hours, the relay's voice, Support
 /// us, Settings.
 ///
-/// **Whose it is.** The Happy account's, by the subject RevenueCat already
-/// knows it by (the relay token's `sub`, happy-app's `appUserID`), when one
-/// is signed in; otherwise this install's own anonymous customer, so buying
-/// needs no sign-in. Signing in after this install bought something asks
-/// RevenueCat to bring the install into the account (`identify`) before
-/// the account is used. That is not a promise: RevenueCat merges only into
-/// an account no install was brought into before, and otherwise just
-/// switches; then only Restore moves a purchase. Signing out starts a new
-/// install customer, never one an account was brought together with.
+/// **Whose it is.** This install's own anonymous customer
+/// (`$RCAnonymousID:` and 32 hex digits, as RevenueCat's SDK makes them),
+/// kept on the phone and never told to anyone but RevenueCat: not the
+/// Happy account, not analytics. No account, signed in or out, changes it.
+///
+/// **Every phone on the Apple ID.** A purchase carries its customer
+/// readably: its `appAccountToken` is the customer's 32 hex digits as a
+/// UUID (`token(_:)`, `customer(_:)`), kept on the purchase and every
+/// renewal. At launch and foreground, an active subscription on the App
+/// Store account that names a customer makes that customer this install's
+/// (`adopt`): nothing is restored or moved in RevenueCat, so phones never
+/// pull a subscription from each other.
 ///
 /// **Access** is only what RevenueCat says, kept a day at most
 /// (`ProPassCache`). Everything that asks RevenueCat or the store runs one
 /// at a time, and each customer change starts a new generation at once:
-/// nothing is granted or sold until it settles, and an answer asked under
-/// an older one is dropped.
+/// nothing is granted until RevenueCat answers for the new customer, and an
+/// answer asked under an older one is dropped.
 ///
-/// **Whose a purchase is.** Each customer has one `appAccountToken` for
-/// good (`token(for:)`), which the App Store keeps on the purchase and every
-/// renewal, and this install remembers which customer each token is for,
-/// with no expiry. A transaction is posted for its token's customer,
-/// whoever is signed in by then, and finished only once RevenueCat has
-/// taken it (RevenueCat's SDK also finishes on a 4xx; this doesn't). One
-/// with no token, or one this install doesn't know, is left alone for
-/// Restore. A chain Restore moved to a customer stays theirs. One store
-/// sheet at a time.
+/// **Whose a purchase is.** A transaction is posted for the customer its
+/// token names, or the one Restore moved its chain to, and finished only
+/// once RevenueCat has taken it (RevenueCat's SDK also finishes on a 4xx;
+/// this doesn't). One that names no one is left alone. One store sheet at
+/// a time.
+///
+/// **Restore** is the person's tap, with one exception: the first time
+/// RevenueCat answers after this version is installed, a subscription the
+/// App Store account holds that names no customer (bought before purchases
+/// named theirs) is restored once to this install, if it hasn't `pro`
+/// (`migrate`).
 @MainActor
 public final class Subscription {
     /// Why nothing is on sale, when something stands in its way.
@@ -67,27 +72,15 @@ public final class Subscription {
         case failed
     }
 
-    /// A Happy account as voice's subscription knows it: its id here and its subject.
-    public struct Account: Codable, Equatable, Sendable {
-        public var id: String
-        public var subject: String
-
-        public init(id: String, subject: String) {
-            self.id = id
-            self.subject = subject
-        }
-    }
-
     public static let anonymousPrefix = "$RCAnonymousID:"
 
     private enum Key {
         static let install = "subscription.install"
-        static let customer = "subscription.customer"
-        static let postedByInstall = "subscription.posted-by-install"
-        static let tokens = "subscription.tokens"
         static let restored = "subscription.restored"
         static let posted = "subscription.posted"
-        static let account = "subscription.account"
+        static let migrated = "subscription.migrated"
+        /// Earlier versions', when the Happy account could be the customer: cleared, never read.
+        static let retired = ["subscription.customer", "subscription.posted-by-install", "subscription.tokens", "subscription.account"]
     }
 
     private let store: (any SubscriptionStore)?
@@ -98,9 +91,6 @@ public final class Subscription {
     private let work = SerialWork()
     /// Bumped by every customer change, at once.
     public private(set) var generation = 0
-    private var told = false
-    private var relay: String?
-    private var changing = false
     private var monthly: StoreProduct?
     /// Whether the store holds a purchase RevenueCat hasn't taken yet; nothing is sold meanwhile.
     public private(set) var unconfirmed = false
@@ -116,25 +106,30 @@ public final class Subscription {
         self.now = now
         cache = ProPassCache(store: defaults)
         problem = store == nil || revenueCat == nil ? .unconfigured : nil
+        for key in Key.retired { defaults.set(nil, forKey: key) }
     }
 
     // MARK: What it says
 
-    /// Whose subscription this is now.
-    public var customer: String { defaults.string(forKey: Key.customer) ?? install }
+    /// Whose subscription this is: this install's customer, made at its first ask.
+    public var customer: String {
+        if let id = defaults.string(forKey: Key.install), Self.token(id) != nil { return id }
+        let id = Self.anonymousPrefix + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        defaults.set(id, forKey: Key.install)
+        return id
+    }
 
     /// Whether the customer has `pro` now, as RevenueCat last said within a
-    /// day: any product that grants it, whatever is on sale. False while the
-    /// customer changes.
-    public var hasPro: Bool { settled && cache.active(customer: customer, now: now()) }
+    /// day: any product that grants it, whatever is on sale.
+    public var hasPro: Bool { cache.active(customer: customer, now: now()) }
 
     /// The month of 5 hours the customer has now; nil without `pro`, or
     /// when RevenueCat hasn't said within a day. The meter's window.
-    public func month() -> ProMonth? { settled ? cache.month(customer: customer, now: now()) : nil }
+    public func month() -> ProMonth? { cache.month(customer: customer, now: now()) }
 
     /// What the sheets offer.
     public var offer: CallOffer {
-        guard store != nil, revenueCat != nil, settled else { return .unavailable }
+        guard store != nil, revenueCat != nil else { return .unavailable }
         if hasPro { return .subscribed }
         if unconfirmed { return .unavailable }
         return monthly.map { .onSale(price: $0.displayPrice) } ?? .unavailable
@@ -169,63 +164,19 @@ public final class Subscription {
         refresh()
     }
 
-    /// The accounts now: the Happy account in front, if one is, and which
-    /// are signed in. While an agent connection is in front the account
-    /// in front before it stays the customer, as long as it is signed in
-    /// here: voice is used on agent connections, so opening one never
-    /// changes whose subscription it is.
-    public func accounts(active: Account?, signedIn: Set<String>) {
-        var account = active
-        if account == nil, let text = defaults.string(forKey: Key.account),
-           let last = try? JSONDecoder().decode(Account.self, from: Data(text.utf8)), signedIn.contains(last.id) {
-            account = last
-        }
-        defaults.set(account.flatMap { try? JSONEncoder().encode($0) }.flatMap { String(data: $0, encoding: .utf8) }, forKey: Key.account)
-        relay(account?.subject)
-    }
-
-    /// The relay customer now, by its subject; nil for none. Whatever was
-    /// being asked for the one before is dropped at once. Another account
-    /// is switched to, never merged into; signing out starts a new install
-    /// customer.
-    public func relay(_ subject: String?) {
-        if told, relay == subject { return }
-        let stored = defaults.string(forKey: Key.customer)
-        let previous = told ? relay : stored
-        told = true
-        relay = subject
-        generation += 1
-        let asked = generation
-        // Launch, with the customer as it was: what RevenueCat said within the day still holds.
-        changing = previous != subject || stored != subject
-        if changing { cache.clear() }
-        notify()
-        work.enqueue {
-            if subject == nil, self.defaults.string(forKey: Key.customer) != nil {
-                // Whatever the account was brought together with stays the account's.
-                self.retireInstall()
-                self.defaults.set(nil, forKey: Key.customer)
-            }
-            await self.refreshing()
-            if asked == self.generation { self.changing = false }
-            self.notify()
-        }
-    }
-
-    /// Launch and foreground: what's on sale, what the store left
-    /// unfinished, and what RevenueCat says now.
+    /// Launch and foreground: what the store left unfinished, whose
+    /// subscription the App Store account holds, what's on sale, and what
+    /// RevenueCat says now.
     public func refresh() {
         work.enqueue { await self.refreshing() }
     }
 
     /// The store's sheet for the monthly subscription, for the customer it
-    /// opens for: what comes of it is that customer's, whoever is signed in
-    /// by then.
+    /// opens for: what comes of it is that customer's.
     public func buy() async -> PurchaseResult {
-        guard let store, !purchasing, case .onSale = offer, let product = monthly else { return .unavailable }
+        guard let store, !purchasing, case .onSale = offer, let product = monthly, let token = Self.token(customer) else { return .unavailable }
         purchasing = true
         defer { purchasing = false }
-        let token = token(for: customer)
         switch await store.purchase(product.id, token: token) {
         case .purchased(let transaction):
             return await work.run {
@@ -241,17 +192,19 @@ public final class Subscription {
         }
     }
 
-    /// Restore, on the person's tap only: the store brought up to date,
-    /// then everything the App Store account holds posted again as a
-    /// restore for the customer now, whatever is on sale and whoever it was
-    /// bought by; a chain RevenueCat takes is this customer's from then on.
+    /// Restore, on the person's tap: the store brought up to date, its
+    /// customer adopted as at launch, then everything the App Store account
+    /// holds posted again as a restore for the customer now, whatever is on
+    /// sale and whoever it was bought by; a chain RevenueCat takes is this
+    /// customer's from then on.
     public func restore() async -> RestoreResult {
         await work.run {
-            guard let store = self.store, let revenueCat = self.revenueCat, await self.settle() else { return .failed }
-            let asked = self.generation
-            let customer = self.customer
+            guard let store = self.store, let revenueCat = self.revenueCat else { return .failed }
             _ = await store.sync()
             var transactions = await store.entitlements()
+            self.adopt(transactions)
+            let asked = self.generation
+            let customer = self.customer
             for transaction in await store.unfinished() where !transactions.contains(where: { $0.id == transaction.id }) {
                 transactions.append(transaction)
             }
@@ -267,10 +220,7 @@ public final class Subscription {
             }
             let answer = await revenueCat.subscriber(customer: customer)
             guard asked == self.generation else { return .failed }
-            // Only a chain RevenueCat took, for the customer still in front.
-            var restored = self.restoredOwners()
-            for id in moved { restored[id] = customer }
-            self.write(restored, forKey: Key.restored)
+            self.moved(moved, to: customer)
             self.take(answer, for: customer, asked: asked)
             self.unconfirmed = failed
             self.notify()
@@ -287,21 +237,17 @@ public final class Subscription {
 
     // MARK: Inside
 
-    private var settled: Bool {
-        guard !changing, told else { return false }
-        return relay == nil || defaults.string(forKey: Key.customer) == relay
-    }
-
     private func refreshing() async {
         guard let store, let revenueCat else { return notify() }
-        // Whatever the store left is its owner's, whoever is in front.
+        // Whatever the store left is its owner's.
         var failed = false
         for transaction in await store.unfinished() {
             guard let owner = owner(of: transaction) else { continue }
             if !(await post(transaction, for: owner, restore: false, source: .queue, asked: generation)) { failed = true }
         }
         unconfirmed = failed
-        guard told, await settle() else { return notify() }
+        let entitlements = await store.entitlements()
+        adopt(entitlements)
         let asked = generation
         let customer = customer
         problem = nil
@@ -325,11 +271,12 @@ public final class Subscription {
         let answer = await revenueCat.subscriber(customer: customer)
         guard asked == generation else { return }
         take(answer, for: customer, asked: asked)
+        if case .ok = answer { await migrate(entitlements, for: customer, asked: asked) }
         if unconfirmed { problem = .unconfirmed }
         notify()
     }
 
-    /// What the store sent while the app runs: posted for its owner, if it has one here.
+    /// What the store sent while the app runs: posted for its owner, if it has one.
     private func delivered(_ transaction: StoreTransaction) async {
         await work.run {
             guard let owner = self.owner(of: transaction) else { return }
@@ -363,7 +310,6 @@ public final class Subscription {
         posted.removeAll { $0 == mark }
         posted.append(mark)
         write(Array(posted.suffix(500)), forKey: Key.posted)
-        if owner == install, defaults.string(forKey: Key.customer) == nil { defaults.set("1", forKey: Key.postedByInstall) }
         await store.finish(transaction)
         if owner == customer { take(answer, for: owner, asked: asked) }
         return true
@@ -379,27 +325,52 @@ public final class Subscription {
         cache.save(customer: customer, pass: pass, now: now())
     }
 
-    /// Brings the customer to the relay account. What the install bought is
-    /// brought into it first (`identify`); until that is done nothing is
-    /// sold or granted under either. False while it isn't.
-    private func settle() async -> Bool {
-        guard let relay else { return true }
-        if defaults.string(forKey: Key.customer) == relay { return true }
-        if defaults.string(forKey: Key.customer) == nil, defaults.string(forKey: Key.postedByInstall) != nil {
-            guard let revenueCat else { return false }
-            let asked = generation
-            let answer = await revenueCat.identify(from: install, to: relay)
-            // Brought together, whatever happened here meanwhile: the install's id is the account's now.
-            if case .ok = answer { retireInstall() }
-            guard asked == generation else { return false }
-            guard case .ok = answer else {
-                trouble(answer)
-                return false
+    /// The customer an active subscription on the App Store account names,
+    /// made this install's when none of them is already: bought on another
+    /// phone with the same Apple ID, or by this install before a reinstall.
+    /// Nothing is posted; RevenueCat already has it under that customer.
+    private func adopt(_ entitlements: [StoreTransaction]) {
+        let customer = customer
+        let restored = restoredOwners()
+        let named = entitlements.compactMap { $0.token.flatMap(Self.customer) }
+        guard let adopted = named.first, !named.contains(customer),
+              !entitlements.contains(where: { restored[$0.originalID] == customer }) else { return }
+        defaults.set(adopted, forKey: Key.install)
+        generation += 1
+        notify()
+    }
+
+    /// The one restore this version makes by itself: the first time
+    /// RevenueCat answers for this install without `pro`, every subscription
+    /// the App Store account holds that names no customer is posted as a
+    /// restore for it. Done once RevenueCat has taken them all, or when
+    /// there was nothing to take; tried again at the next launch or
+    /// foreground until then.
+    private func migrate(_ entitlements: [StoreTransaction], for customer: String, asked: Int) async {
+        guard defaults.string(forKey: Key.migrated) == nil else { return }
+        var failed = false
+        if !hasPro {
+            var moved: [String] = []
+            for transaction in entitlements where transaction.token.flatMap(Self.customer) == nil {
+                guard asked == generation else { return }
+                if await post(transaction, for: customer, restore: true, source: .restore, asked: asked) {
+                    moved.append(transaction.originalID)
+                } else {
+                    failed = true
+                }
             }
+            guard asked == generation else { return }
+            self.moved(moved, to: customer)
         }
-        defaults.set(relay, forKey: Key.customer)
-        defaults.set(nil, forKey: Key.postedByInstall)
-        return true
+        if !failed { defaults.set("1", forKey: Key.migrated) }
+    }
+
+    /// The chains RevenueCat took as restored for `customer`: theirs from then on.
+    private func moved(_ chains: [String], to customer: String) {
+        guard !chains.isEmpty else { return }
+        var restored = restoredOwners()
+        for id in chains { restored[id] = customer }
+        write(restored, forKey: Key.restored)
     }
 
     private func trouble(_ answer: RevenueCatAnswer) {
@@ -416,34 +387,32 @@ public final class Subscription {
 
     // MARK: Identity
 
-    private var install: String {
-        defaults.string(forKey: Key.install) ?? retireInstall()
-    }
-
-    /// A new anonymous install customer, as RevenueCat's SDK makes them.
-    @discardableResult
-    private func retireInstall() -> String {
-        let id = Self.anonymousPrefix + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-        defaults.set(id, forKey: Key.install)
-        defaults.set(nil, forKey: Key.postedByInstall)
-        return id
-    }
-
-    /// `customer`'s `appAccountToken`, the same for good, remembered as
-    /// theirs: SHA-256 of the id, its first 16 bytes with RFC 4122's
-    /// name-based version and variant. RevenueCat's SDK passes the id
-    /// itself when it is a UUID; these never are.
-    public func token(for customer: String) -> UUID {
-        let token = Self.token(customer)
-        var tokens = readMap(Key.tokens)
-        if tokens[token.uuidString] != customer {
-            tokens[token.uuidString] = customer
-            write(tokens, forKey: Key.tokens)
-        }
+    /// `customer`'s `appAccountToken`: its 32 hex digits as a UUID, which
+    /// reads back as the customer on any phone (`customer(_:)`). Nil for an
+    /// id that isn't an install's.
+    static func token(_ customer: String) -> UUID? {
+        guard customer.hasPrefix(anonymousPrefix) else { return nil }
+        let hex = Array(customer.dropFirst(anonymousPrefix.count))
+        guard hex.count == 32 else { return nil }
+        let text = [0..<8, 8..<12, 12..<16, 16..<20, 20..<32].map { String(hex[$0]) }.joined(separator: "-")
+        guard let token = UUID(uuidString: text), Self.customer(token) == customer else { return nil }
         return token
     }
 
-    static func token(_ customer: String) -> UUID {
+    /// The customer a purchase's `appAccountToken` names; nil for none. An
+    /// install's id is a random UUID's hex, version 4; the tokens earlier
+    /// versions bought with were SHA-256 of a customer id (version 5), and
+    /// name no one.
+    static func customer(_ token: UUID) -> String? {
+        let hex = Array(token.uuidString.replacingOccurrences(of: "-", with: "").lowercased())
+        guard hex[12] == "4", "89ab".contains(hex[16]) else { return nil }
+        return anonymousPrefix + String(hex)
+    }
+
+    /// The `appAccountToken` earlier versions bought with for `customer`:
+    /// SHA-256 of its id, its first 16 bytes with RFC 4122's name-based
+    /// version and variant. Read only as this install's own.
+    static func legacyToken(_ customer: String) -> UUID {
         var bytes = [UInt8](Hashing.sha256(Data(customer.utf8)).prefix(16))
         bytes[6] = (bytes[6] & 0x0F) | 0x50
         bytes[8] = (bytes[8] & 0x3F) | 0x80
@@ -452,12 +421,18 @@ public final class Subscription {
     }
 
     /// Whose `transaction` is: the customer Restore moved its chain to, or
-    /// its token's; nil for one this install never sold.
+    /// the one its token names (an earlier version's, this install's own);
+    /// nil for one that names no one.
     private func owner(of transaction: StoreTransaction) -> String? {
-        restoredOwners()[transaction.originalID] ?? transaction.token.flatMap { readMap(Key.tokens)[$0.uuidString] }
+        if let owner = restoredOwners()[transaction.originalID] { return owner }
+        guard let token = transaction.token else { return nil }
+        if let named = Self.customer(token) { return named }
+        let customer = customer
+        return token == Self.legacyToken(customer) ? customer : nil
     }
 
-    private func restoredOwners() -> [String: String] { readMap(Key.restored) }
+    /// The chains Restore moved, and to whom; one moved to a Happy account by an earlier version is no one's.
+    private func restoredOwners() -> [String: String] { readMap(Key.restored).filter { Self.token($0.value) != nil } }
 
     private static func hash(_ text: String) -> String {
         Hashing.sha256(Data(text.utf8)).map { String(format: "%02x", $0) }.joined()

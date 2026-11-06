@@ -4,13 +4,6 @@ import android.app.Activity
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.slopus.happy.payments.ProPassTest.Companion.pro
-import com.slopus.happy.payments.ProPassTest.Companion.subscriber
-import com.slopus.happy.payments.RevenueCat.Answer
-import com.slopus.happy.net.HappyJson
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -23,21 +16,28 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
-import java.io.IOException
+import java.security.MessageDigest
 import java.time.Instant
 
 /**
  * Voice's subscription against a store and RevenueCat that are only this
  * test's ([Subscription]): what is offered, what is posted and
- * acknowledged, for whom, and what a change of account in the middle of
- * it does. No store, network or charge.
+ * acknowledged, for whom, the install's one customer and the one a store
+ * account's subscription names, and the one restore a new version makes.
+ * No store, network or charge.
  */
 @RunWith(AndroidJUnit4::class)
 class SubscriptionTest {
     private val preferences = ApplicationProvider.getApplicationContext<Context>().getSharedPreferences("voice-subscription-test", Context.MODE_PRIVATE)
     private var now = Instant.parse("2026-11-04T10:00:00Z").toEpochMilli()
 
-    @Before fun clear() { preferences.edit().clear().commit() }
+    /** Another phone's install on the same Google account. */
+    private val other = "\$RCAnonymousID:0123456789ab4def8123456789abcdef"
+
+    @Before fun clear() {
+        // The one restore a new version makes is its own tests'.
+        preferences.edit().clear().putBoolean("migrated", true).commit()
+    }
 
     private val store = FakeStore()
     private val rc = FakeRevenueCat()
@@ -46,9 +46,9 @@ class SubscriptionTest {
     private fun TestScope.subscription(store: SubscriptionStore? = this@SubscriptionTest.store, rc: RevenueCat? = this@SubscriptionTest.rc) =
         Subscription(backgroundScope, store, rc, preferences, now = { now }).also { runCurrent() }
 
-    /** Bought elsewhere, or by RevenueCat's SDK: no customer id of this install's names it. */
-    private fun bought(token: String, purchased: Boolean = true, acknowledged: Boolean = false, product: String = "happy") =
-        StorePurchase(token, listOf(product), purchased, acknowledged)
+    /** Bought elsewhere, by an earlier version or RevenueCat's SDK ([account], the SHA-256 of a customer id), or for [account]'s customer. */
+    private fun bought(token: String, purchased: Boolean = true, acknowledged: Boolean = false, product: String = "happy", account: String? = null) =
+        StorePurchase(token, listOf(product), purchased, acknowledged, account)
 
     /** Opens the store's sheet for [subscription]'s customer now and buys [token] there. */
     private suspend fun TestScope.buys(subscription: Subscription, token: String, purchased: Boolean = true, product: String = "happy"): StorePurchase {
@@ -58,6 +58,8 @@ class SubscriptionTest {
     }
 
     private fun posts() = rc.calls.filter { it.startsWith("post") }
+
+    private fun sha(text: String) = MessageDigest.getInstance("SHA-256").digest(text.toByteArray()).joinToString("") { "%02x".format(it) }
 
     @Test
     fun withoutAKeyNothingIsOfferedAndItSaysWhy() = runTest {
@@ -73,6 +75,7 @@ class SubscriptionTest {
         subscription.refresh(); runCurrent()
         assertEquals(Offer.OnSale("9,99 €"), subscription.offer.value)
         assertTrue(subscription.customer.matches(Regex("""\${'$'}RCAnonymousID:[a-f0-9]{32}""")))
+        assertEquals(subscription.customer, subscription().customer)
     }
 
     @Test
@@ -114,34 +117,37 @@ class SubscriptionTest {
     }
 
     @Test
-    fun theSweepFinishesWhatWasLeftUnfinishedAfterARestartForItsBuyerWhateverIsOnSale() = runTest {
+    fun theSweepFinishesWhatWasLeftUnfinishedAfterARestartWhateverIsOnSale() = runTest {
         val first = subscription()
         first.refresh(); runCurrent()
         val install = first.customer
-        // Bought, and the app died before the store said so; then signed in, and the product went off sale.
+        // Bought, and the app died before the store said so; then the product went off sale.
         store.owned += buys(first, "t-old", product = "happy_old")
         store.owned += bought("done", acknowledged = true, product = "relay_pro")
+        // This install's own from an earlier version, named by the SHA-256 of its id.
+        store.owned += bought("legacy", account = sha(install))
         store.monthly = null
-        rc.pro["account-a"] = "happy"
         val subscription = subscription()
-        subscription.relay("account-a"); runCurrent()
         subscription.refresh(); runCurrent()
         subscription.refresh(); runCurrent()
-        assertEquals(listOf("post $install t-old [happy_old] restore=false"), posts())
-        assertEquals(listOf("t-old"), store.acknowledged)
+        assertEquals(listOf("post $install t-old [happy_old] restore=false", "post $install legacy [happy] restore=false"), posts())
+        assertEquals(listOf("t-old", "legacy"), store.acknowledged)
     }
 
     @Test
-    fun aPurchaseNoAttemptHereNamesIsLeftForRestore() = runTest {
+    fun aPurchaseThatNamesNoOneIsLeftForRestore() = runTest {
         store.owned += bought("elsewhere")
+        store.owned += bought("someone", account = sha("someone"))
         val subscription = subscription()
-        subscription.relay("account-a"); runCurrent()
         subscription.refresh(); runCurrent()
         assertTrue(posts().isEmpty())
         assertTrue(store.acknowledged.isEmpty())
         assertNotEquals(Subscription.Problem.Unconfirmed, subscription.problem.value)
         assertTrue(subscription.restore())
-        assertEquals(listOf("post account-a elsewhere [happy] restore=true"), posts())
+        assertEquals(
+            listOf("post ${subscription.customer} elsewhere [happy] restore=true", "post ${subscription.customer} someone [happy] restore=true"),
+            posts(),
+        )
     }
 
     @Test
@@ -156,141 +162,97 @@ class SubscriptionTest {
     }
 
     @Test
-    fun aCancelledSheetForOneAccountGivesTheNextNothing() = runTest {
-        val subscription = subscription()
-        subscription.relay("account-a"); runCurrent()
-        subscription.refresh(); runCurrent()
-        assertTrue(subscription.buy(activity)); runCurrent()
-        store.updates.emit(StoreUpdate.Cancelled); runCurrent()
-        subscription.relay("account-b"); runCurrent()
-        subscription.refresh(); runCurrent()
-        val b = buys(subscription, "tb")
-        store.emit(b); runCurrent()
-        assertEquals(listOf("post account-b tb [happy] restore=false"), posts())
-        assertTrue(subscription.pro.value)
-    }
-
-    @Test
-    fun aFailedSheetLetsAnotherOpenForTheSameCustomerId() = runTest {
+    fun everySheetCarriesTheCustomerItselfAsItsStoreId() = runTest {
         val subscription = subscription()
         subscription.refresh(); runCurrent()
         assertTrue(subscription.buy(activity)); runCurrent()
         store.updates.emit(StoreUpdate.Failed(7)); runCurrent()
         assertTrue(subscription.buy(activity))
-        // One id per customer, whatever the sheet: the store names every purchase and renewal of theirs with it.
+        // One id, whatever the sheet: Play names every purchase of theirs with it, and any phone reads it back.
         assertEquals(store.opened[0].second, store.opened[1].second)
-        subscription.relay("account-b"); runCurrent()
-        subscription.refresh(); runCurrent()
-        store.updates.emit(StoreUpdate.Cancelled); runCurrent()
-        assertTrue(subscription.buy(activity))
-        assertNotEquals(store.opened[0].second, store.opened[2].second)
-        // RevenueCat's SDK's id for the same customer: the SHA-256 of its id, never the id itself.
-        val sha = java.security.MessageDigest.getInstance("SHA-256").digest("account-b".toByteArray()).joinToString("") { "%02x".format(it) }
-        assertEquals(sha, store.opened[2].second)
+        assertEquals(subscription.customer, store.opened[0].second)
+        assertEquals(subscription.customer, Subscription.named(store.opened[0].second))
+        assertTrue(store.opened[0].second.length <= 64)
     }
 
-    /**
-     * A later purchase under the same customer id (bought again after a
-     * lapse; on Apple, every renewal) is its buyer's after a sign-out,
-     * another account, a restart, and told twice, without granting whoever
-     * is signed in.
-     */
     @Test
-    fun aRenewalIsItsBuyersWhoeverIsSignedInAfterARestartAndToldTwice() = runTest {
+    fun onlyAnInstallsIdNamesACustomer() {
+        assertEquals(other, Subscription.named(other))
+        assertNull(Subscription.named(null))
+        assertNull(Subscription.named("account-a"))
+        assertNull(Subscription.named(sha(other)))
+        assertNull(Subscription.named(other.uppercase()))
+        assertNull(Subscription.named("\$RCAnonymousID:0123"))
+    }
+
+    /** A later purchase under the same id is its buyer's after a restart, and told twice it is posted once. */
+    @Test
+    fun aRenewalIsItsBuyersAfterARestartAndToldTwice() = runTest {
         val subscription = subscription()
-        subscription.relay("account-a"); runCurrent()
         subscription.refresh(); runCurrent()
+        val install = subscription.customer
         val first = buys(subscription, "ta")
         store.emit(first); runCurrent()
-        subscription.relay(null); runCurrent()
-        subscription.relay("account-b"); runCurrent()
-        subscription.refresh(); runCurrent()
         val renewal = first.copy(token = "ta-renewed")
         store.emit(renewal); runCurrent()
         store.emit(renewal); runCurrent()
-        assertEquals(listOf("post account-a ta [happy] restore=false", "post account-a ta-renewed [happy] restore=false"), posts())
-        assertFalse(subscription.pro.value)
+        assertEquals(listOf("post $install ta [happy] restore=false", "post $install ta-renewed [happy] restore=false"), posts())
         // After a restart, the sweep finds it finished.
         store.owned += renewal.copy(acknowledged = true)
         store.owned += first.copy(token = "ta-renewed-again")
         val again = subscription()
-        again.relay("account-b"); runCurrent()
         again.refresh(); runCurrent()
-        assertEquals("post account-a ta-renewed-again [happy] restore=false", posts().last())
+        assertEquals("post $install ta-renewed-again [happy] restore=false", posts().last())
         assertEquals(3, posts().size)
-        assertFalse(again.pro.value)
     }
 
-    /** Restored for B, a purchase bought as A is B's from then on: nothing the store says of it later goes back to A. */
+    /** Restored, a purchase another id named is the install's: told again or swept, it never goes back to that id. */
     @Test
-    fun aRestoredPurchaseIsTheRestoringCustomersFromThenOn() = runTest {
+    fun aRestoredPurchaseIsTheInstallsFromThenOn() = runTest {
+        val legacy = bought("t1", account = sha("account-a"))
+        store.owned += legacy
         val subscription = subscription()
-        subscription.relay("account-a"); runCurrent()
         subscription.refresh(); runCurrent()
         rc.refusePosts = 400
-        val t1 = buys(subscription, "t1")
-        store.emit(t1); runCurrent()
-        store.owned += t1
+        assertFalse(subscription.restore())
         rc.refusePosts = null
-        subscription.relay("account-b"); runCurrent()
         assertTrue(subscription.restore())
-        assertEquals(listOf("post account-b t1 [happy] restore=true"), posts().filter { "restore=true" in it })
-        // Told again, swept, after a restart: never posted for A.
-        store.emit(t1); runCurrent()
+        val install = subscription.customer
+        assertEquals(listOf("post $install t1 [happy] restore=true", "post $install t1 [happy] restore=true"), posts())
+        // Told again, and swept after a restart: nothing more, never for account-a.
+        store.emit(legacy); runCurrent()
         val again = subscription()
-        again.relay("account-a"); runCurrent()
         again.refresh(); runCurrent()
-        assertTrue(posts().none { it.startsWith("post account-a t1") && "restore=false" in it && posts().indexOf(it) > 1 })
-        assertEquals(1, posts().count { it == "post account-b t1 [happy] restore=true" })
+        assertTrue(posts().none { "account-a" in it })
+        assertEquals(2, posts().size)
     }
 
     @Test
     fun aPurchasePendingForMonthsIsStillItsBuyers() = runTest {
         val subscription = subscription()
-        subscription.relay("account-a"); runCurrent()
         subscription.refresh(); runCurrent()
         val pending = buys(subscription, "ta", purchased = false)
         store.emit(pending); runCurrent()
-        subscription.relay("account-b"); runCurrent()
         now += 120L * 24 * 60 * 60 * 1000
         store.emit(pending.copy(purchased = true)); runCurrent()
-        assertEquals(listOf("post account-a ta [happy] restore=false"), posts())
-    }
-
-    @Test
-    fun aPendingPurchaseStaysItsBuyersThroughAnotherAccountsPurchase() = runTest {
-        val subscription = subscription()
-        subscription.relay("account-a"); runCurrent()
-        subscription.refresh(); runCurrent()
-        val pending = buys(subscription, "ta", purchased = false)
-        store.emit(pending); runCurrent()
-        subscription.relay("account-b"); runCurrent()
-        subscription.refresh(); runCurrent()
-        val b = buys(subscription, "tb")
-        store.emit(b); runCurrent()
-        // Paid for at last, days later: still account A's.
-        store.emit(pending.copy(purchased = true)); runCurrent()
-        assertEquals(listOf("post account-b tb [happy] restore=false", "post account-a ta [happy] restore=false"), posts())
+        assertEquals(listOf("post ${subscription.customer} ta [happy] restore=false"), posts())
     }
 
     @Test
     fun aRestoreWhileAPurchaseIsPendingLeavesItForItsBuyer() = runTest {
         val subscription = subscription()
-        subscription.relay("account-a"); runCurrent()
         subscription.refresh(); runCurrent()
         val pending = buys(subscription, "ta", purchased = false)
         store.emit(pending); runCurrent()
         store.owned += pending
         store.owned += bought("old", acknowledged = true)
-        subscription.relay("account-b"); runCurrent()
         subscription.restore()
-        assertEquals(listOf("post account-b old [happy] restore=true"), posts())
-        // Paid for, then the app restarted: the sweep posts it for A.
+        assertEquals(listOf("post ${subscription.customer} old [happy] restore=true"), posts())
+        // Paid for, then the app restarted: the sweep posts it.
         store.owned.replaceAll { if (it.token == "ta") it.copy(purchased = true) else it }
         val again = subscription()
-        again.relay("account-b"); runCurrent()
         again.refresh(); runCurrent()
-        assertEquals("post account-a ta [happy] restore=false", posts().last())
+        assertEquals("post ${subscription.customer} ta [happy] restore=false", posts().last())
     }
 
     @Test
@@ -321,6 +283,17 @@ class SubscriptionTest {
         assertTrue(subscription.hasPro())
     }
 
+    /** Restore adopts as a launch does first: a subscription another phone bought is restored for its own customer, never pulled to this one's. */
+    @Test
+    fun restoreAdoptsTheCustomerTheStoresSubscriptionNamesFirst() = runTest {
+        val subscription = subscription()
+        subscription.refresh(); runCurrent()
+        store.owned += bought("elsewhere", acknowledged = true, account = other)
+        assertTrue(subscription.restore())
+        assertEquals(other, subscription.customer)
+        assertEquals(listOf("post $other elsewhere [happy] restore=true"), posts())
+    }
+
     @Test
     fun boughtButUnconfirmedOffersNothingAndGrantsNothing() = runTest {
         val subscription = subscription()
@@ -336,54 +309,12 @@ class SubscriptionTest {
     }
 
     @Test
-    fun aPurchaseIsPostedForWhoeverOpenedTheStoreWhoeverIsSignedInBy() = runTest {
-        val subscription = subscription()
-        subscription.refresh(); runCurrent()
-        val install = subscription.customer
-        val t1 = buys(subscription, "t1")
-        // Signed in while the store's sheet was up.
-        subscription.relay("account-a"); runCurrent()
-        store.emit(t1); runCurrent()
-        assertEquals(listOf("post $install t1 [happy] restore=false"), posts())
-        assertEquals("account-a", subscription.customer)
-        // The install's purchase isn't the account's access.
-        assertNull(subscription.period())
-    }
-
-    @Test
-    fun signingInMergesWhatTheInstallBoughtFirstAndSigningOutNeverGoesBackToIt() = runTest {
-        val subscription = subscription()
-        subscription.refresh(); runCurrent()
-        store.owned += buys(subscription, "t1")
-        subscription.refresh(); runCurrent()
-        val install = subscription.customer
-        subscription.relay("account-a"); runCurrent()
-        assertEquals("identify $install account-a", rc.calls.last())
-        assertEquals("account-a", subscription.customer)
-        subscription.refresh(); runCurrent()
-        assertEquals(Offer.Subscribed, subscription.offer.value)
-        // Signed out: a new install customer, neither the account nor the one merged into it.
-        subscription.relay(null); runCurrent()
-        val after = subscription.customer
-        assertNotEquals(install, after)
-        assertNotEquals("account-a", after)
-        assertNull(subscription.period())
-        // Another account on this phone: switched to, never merged, and nothing restored on its own.
-        subscription.relay("account-b"); runCurrent()
-        assertEquals("account-b", subscription.customer)
-        assertEquals(1, rc.calls.count { it.startsWith("identify") })
-        subscription.refresh(); runCurrent()
-        assertTrue(posts().none { it.startsWith("post account-b") })
-        assertNull(subscription.period())
-    }
-
-    @Test
-    fun anAccountsExistingProCountsWhateverIsOnSaleAndWithNothingBoughtHere() = runTest {
-        // Bought long ago, a yearly product, on another device: RevenueCat's word is enough.
-        rc.pro["account-a"] = "happy_yearly"
+    fun anExistingProCountsWhateverIsOnSaleAndWithNothingBoughtHere() = runTest {
+        // A yearly product, granted in RevenueCat: its word is enough.
+        val install = subscription().customer
+        rc.pro[install] = "happy_yearly"
         store.monthly = null
         val subscription = subscription()
-        subscription.relay("account-a"); runCurrent()
         subscription.refresh(); runCurrent()
         assertTrue(subscription.pro.value)
         assertTrue(subscription.hasPro())
@@ -391,108 +322,12 @@ class SubscriptionTest {
         assertNull("a yearly pro is said at the monthly price", subscription.subscribedPrice.value)
         assertEquals(Subscription.Problem.NoProduct, subscription.problem.value)
         assertTrue(posts().isEmpty())
-        // Offline at the next launch, within the day: still pro, without asking.
+        // Offline at the next launch, within the day: still pro, from the first moment.
         rc.unreachable = true
         val again = subscription()
-        again.relay("account-a"); runCurrent()
         assertTrue(again.pro.value)
-    }
-
-    @Test
-    fun proGoesTheMomentTheAccountChangesAndNeverComesBackForAnother() = runTest {
-        rc.pro["account-a"] = "happy"
-        val subscription = subscription()
-        subscription.relay("account-a"); runCurrent()
-        subscription.refresh(); runCurrent()
-        assertTrue(subscription.pro.value)
-        subscription.relay("account-b")
-        assertFalse(subscription.pro.value)
-        assertFalse(subscription.hasPro())
-        runCurrent()
-        subscription.refresh(); runCurrent()
-        assertFalse(subscription.pro.value)
-        subscription.relay(null); runCurrent()
-        subscription.refresh(); runCurrent()
-        assertFalse(subscription.pro.value)
-    }
-
-    @Test
-    fun anAccountWithNothingBoughtHereIsSwitchedToWithoutAnIdentify() = runTest {
-        val subscription = subscription()
-        subscription.relay("account-a"); runCurrent()
-        assertEquals("account-a", subscription.customer)
-        subscription.relay("account-b"); runCurrent()
-        assertEquals("account-b", subscription.customer)
-        assertTrue(rc.calls.none { it.startsWith("identify") })
-    }
-
-    @Test
-    fun aFailedMergeKeepsTheInstallAndPostsNothingUnderTheAccount() = runTest {
-        val subscription = subscription()
-        subscription.refresh(); runCurrent()
-        store.owned += buys(subscription, "t1")
-        subscription.refresh(); runCurrent()
-        val install = subscription.customer
-        rc.identifyFails = true
-        subscription.relay("account-a"); runCurrent()
-        assertEquals(install, subscription.customer)
-        store.owned += bought("t2")
-        subscription.refresh(); runCurrent()
-        assertTrue(posts().none { it.startsWith("post account-a") })
-        // Tried again on the next refresh, and then the account's.
-        rc.identifyFails = false
-        subscription.refresh(); runCurrent()
-        assertEquals("account-a", subscription.customer)
-    }
-
-    @Test
-    fun anAnswerForTheCustomerBeforeASignOutIsDropped() = runTest {
-        val subscription = subscription()
-        subscription.relay("account-a"); runCurrent()
-        rc.pro["account-a"] = "happy"
-        rc.hold["subscriber"] = CompletableDeferred()
-        subscription.refresh(); runCurrent()
-        // Signed out while RevenueCat was still answering for the account.
-        subscription.relay(null)
-        assertNull(subscription.period())
-        assertEquals(Offer.Unavailable, subscription.offer.value)
-        rc.hold.remove("subscriber")!!.complete(Unit); runCurrent()
-        assertNull(subscription.period())
-        assertNotEquals(Offer.Subscribed, subscription.offer.value)
-        assertNotEquals("account-a", subscription.customer)
-    }
-
-    @Test
-    fun aMergeThatAnsweredAfterASignOutStillRetiresTheInstallId() = runTest {
-        val subscription = subscription()
-        subscription.refresh(); runCurrent()
-        store.owned += buys(subscription, "t1")
-        subscription.refresh(); runCurrent()
-        val install = subscription.customer
-        rc.hold["identify"] = CompletableDeferred()
-        subscription.relay("account-a"); runCurrent()
-        subscription.relay(null)
-        rc.hold.remove("identify")!!.complete(Unit); runCurrent()
-        // RevenueCat merged it: that id is the account's now, so this install never uses it again.
-        assertNotEquals(install, subscription.customer)
-        assertNotEquals("account-a", subscription.customer)
-        assertNull(subscription.period())
-    }
-
-    @Test
-    fun aRestoreForTheCustomerBeforeASwitchSaysNothingRestored() = runTest {
-        store.owned += bought("t1", acknowledged = true)
-        val subscription = subscription()
-        subscription.refresh(); runCurrent()
-        rc.hold["post"] = CompletableDeferred()
-        val restored = CompletableDeferred<Boolean>()
-        backgroundScope.launch { restored.complete(subscription.restore()) }
-        runCurrent()
-        subscription.relay("account-b")
-        rc.hold.remove("post")!!.complete(Unit); runCurrent()
-        assertFalse(restored.await())
-        assertEquals("account-b", subscription.customer)
-        assertNull(subscription.period())
+        again.refresh(); runCurrent()
+        assertTrue(again.pro.value)
     }
 
     @Test
@@ -505,6 +340,8 @@ class SubscriptionTest {
         subscription.refresh(); runCurrent()
         assertEquals(Offer.Subscribed, subscription.offer.value)
         assertEquals(Subscription.Problem.Unreached, subscription.problem.value)
+        now += 25L * 60 * 60 * 1000
+        assertNull(subscription.period())
     }
 
     @Test
@@ -514,5 +351,166 @@ class SubscriptionTest {
         assertTrue(Offer.Preview(Offer.PRICE).onSale)
         assertNull(subscription.period())
         assertTrue(posts().isEmpty())
+    }
+
+    // Another phone on the same Google account
+
+    /** The store account holds a subscription another phone bought: its customer is this install's from now on, with no restore. */
+    @Test
+    fun aSubscriptionNamingAnotherInstallIsAdoptedWithoutARestore() = runTest {
+        val mine = subscription().customer
+        store.owned += bought("elsewhere", acknowledged = true, account = other)
+        rc.pro[other] = "happy"
+        val subscription = subscription()
+        subscription.refresh(); runCurrent()
+        assertEquals(other, subscription.customer)
+        assertNotEquals(mine, subscription.customer)
+        assertTrue(subscription.pro.value)
+        assertEquals(Offer.Subscribed, subscription.offer.value)
+        assertTrue("adopting posted a receipt", posts().isEmpty())
+        assertEquals(listOf("offerings $other", "subscriber $other"), rc.calls)
+        // Restarted: still the adopted customer.
+        assertEquals(other, subscription().customer)
+    }
+
+    /** Bought on the other phone while this one runs: adopted at the next foreground. */
+    @Test
+    fun aSubscriptionBoughtElsewhereIsAdoptedAtTheNextForeground() = runTest {
+        val subscription = subscription()
+        subscription.refresh(); runCurrent()
+        val mine = subscription.customer
+        assertFalse(subscription.pro.value)
+        store.owned += bought("elsewhere", account = other)
+        rc.pro[other] = "happy"
+        subscription.refresh(); runCurrent()
+        assertNotEquals(mine, subscription.customer)
+        assertEquals(other, subscription.customer)
+        assertTrue(subscription.pro.value)
+        // Not yet acknowledged: posted for the customer it names, once.
+        assertEquals(listOf("post $other elsewhere [happy] restore=false"), posts())
+    }
+
+    @Test
+    fun anInstallWhoseOwnSubscriptionIsThereKeepsItsCustomer() = runTest {
+        val mine = subscription().customer
+        store.owned += bought("elsewhere", acknowledged = true, account = other)
+        store.owned += bought("mine", acknowledged = true, account = mine)
+        val subscription = subscription()
+        subscription.refresh(); runCurrent()
+        assertEquals(mine, subscription.customer)
+    }
+
+    @Test
+    fun nothingIsAdoptedFromAPendingOrUnnamedSubscription() = runTest {
+        val mine = subscription().customer
+        store.owned += bought("pending", purchased = false, account = other)
+        store.owned += bought("legacy", acknowledged = true, account = sha(other))
+        store.owned += bought("sdk", acknowledged = true)
+        val subscription = subscription()
+        subscription.refresh(); runCurrent()
+        assertEquals(mine, subscription.customer)
+    }
+
+    // The one restore a new version makes
+
+    /**
+     * The first launch of this version: the store account holds a
+     * subscription that names no one (an earlier version's, or happy-app's
+     * RevenueCat SDK's) and this install hasn't pro: posted once as a
+     * restore, the install's from then on. Never again by itself.
+     */
+    @Test
+    fun theFirstLaunchRestoresAnUnnamedSubscriptionOnce() = runTest {
+        preferences.edit().remove("migrated").commit()
+        store.owned += bought("hashed", acknowledged = true, account = sha("account-a"))
+        store.owned += bought("sdk", acknowledged = true)
+        store.owned += bought("pending", purchased = false)
+        val subscription = subscription()
+        subscription.refresh(); runCurrent()
+        val install = subscription.customer
+        assertEquals(listOf("post $install hashed [happy] restore=true", "post $install sdk [happy] restore=true"), posts())
+        assertTrue(subscription.pro.value)
+        // Lost in RevenueCat later: nothing restores by itself again, after a restart either.
+        rc.pro.remove(install)
+        now += 2L * 24 * 60 * 60 * 1000
+        subscription.refresh(); runCurrent()
+        val again = subscription()
+        again.refresh(); runCurrent()
+        assertFalse(again.pro.value)
+        assertEquals(2, posts().size)
+    }
+
+    @Test
+    fun theFirstLaunchRestoresNothingWhenTheInstallHasPro() = runTest {
+        preferences.edit().remove("migrated").commit()
+        val install = subscription().customer
+        rc.pro[install] = "happy"
+        store.owned += bought("sdk", acknowledged = true)
+        val subscription = subscription()
+        subscription.refresh(); runCurrent()
+        assertTrue(posts().isEmpty())
+        // Done: pro lost later restores nothing.
+        rc.pro.remove(install)
+        now += 2L * 24 * 60 * 60 * 1000
+        subscription.refresh(); runCurrent()
+        assertTrue(posts().isEmpty())
+    }
+
+    @Test
+    fun theFirstLaunchRestoresNothingWhenTheAdoptedCustomerHasPro() = runTest {
+        preferences.edit().remove("migrated").commit()
+        rc.pro[other] = "happy"
+        store.owned += bought("named", acknowledged = true, account = other)
+        store.owned += bought("sdk", acknowledged = true)
+        val subscription = subscription()
+        subscription.refresh(); runCurrent()
+        assertEquals(other, subscription.customer)
+        assertTrue(posts().isEmpty())
+    }
+
+    /** RevenueCat unreached, or not taking the restore: tried again at the next launch or foreground, until it is done once. */
+    @Test
+    fun theFirstLaunchsRestoreWaitsForRevenueCat() = runTest {
+        preferences.edit().remove("migrated").commit()
+        store.owned += bought("sdk", acknowledged = true)
+        rc.unreachable = true
+        val subscription = subscription()
+        subscription.refresh(); runCurrent()
+        assertTrue(posts().isEmpty())
+        rc.unreachable = false
+        rc.refusePosts = 503
+        subscription.refresh(); runCurrent()
+        assertFalse(subscription.pro.value)
+        rc.refusePosts = null
+        subscription.refresh(); runCurrent()
+        assertTrue(subscription.pro.value)
+        subscription.refresh(); runCurrent()
+        // One refused, one taken, none after.
+        assertEquals(listOf("post ${subscription.customer} sdk [happy] restore=true"), posts().distinct())
+        assertEquals(2, posts().size)
+    }
+
+    /**
+     * An earlier version's: the Happy account as the customer, the ids it
+     * bought with, a purchase restored to it. None of it is the
+     * subscription's any more, and nothing is posted for the account.
+     */
+    @Test
+    fun whatAnEarlierVersionKeptForAHappyAccountIsDropped() = runTest {
+        val install = subscription().customer
+        preferences.edit()
+            .putString("customer", "account-a")
+            .putBoolean("posted-by-install", true)
+            .putString("accounts", """{"${sha("account-a")}":"account-a"}""")
+            .putString("restored", """{"${sha("restored-to-a")}":"account-a"}""")
+            .commit()
+        store.owned += bought("bought-as-a", account = sha("account-a"))
+        store.owned += bought("restored-to-a")
+        val subscription = subscription()
+        subscription.refresh(); runCurrent()
+        assertEquals(install, subscription.customer)
+        assertTrue(posts().isEmpty())
+        assertTrue(rc.calls.none { "account-a" in it })
+        for (key in listOf("customer", "posted-by-install", "accounts")) assertFalse(key, preferences.contains(key))
     }
 }

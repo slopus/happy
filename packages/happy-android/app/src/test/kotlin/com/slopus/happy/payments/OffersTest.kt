@@ -112,9 +112,8 @@ class OffersTest {
 
     @Test
     fun aSubscriberOpeningASheetIsNotAnsweredAsANewPurchase() = runTest {
-        rc.pro["account-a"] = "happy"
         val (subscription, offers) = setUp()
-        subscription.relay("account-a"); runCurrent()
+        rc.pro[subscription.customer] = "happy"
         subscription.refresh(); runCurrent()
         assertTrue(subscription.pro.value)
         val asked = async { offers.ask(OfferSheet.Required(offers.offer)) }
@@ -125,11 +124,10 @@ class OffersTest {
     }
 
     @Test
-    fun anAccountChangeClosesWhateverIsUp() = runTest {
-        val (subscription, offers) = setUp()
+    fun closeTakesWhateverIsUpAway() = runTest {
+        val (_, offers) = setUp()
         val asked = async { offers.ask(OfferSheet.Required(offers.offer)) }
         runCurrent()
-        subscription.relay("account-b")
         offers.close()
         assertEquals(OfferResult.Dismissed, asked.await())
         assertNull(offers.sheet.value)

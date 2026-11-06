@@ -5,23 +5,35 @@ import XCTest
 
 /// The one subscription owner (`Subscription`) with the App Store and
 /// RevenueCat faked: whose a purchase is, when it is posted and finished,
-/// identity across sign-in and sign-out, restore, and what is on sale.
+/// the install's one customer and the one an App Store account's
+/// subscription names, the one restore a new version makes, restore, and
+/// what is on sale.
 @MainActor
 final class SubscriptionTests: XCTestCase {
     private var clock = 1_793_000_000.0
     private let defaults = InMemoryKeyValueStore()
     private let store = FakeStore()
     private let revenueCat = FakeRevenueCat()
+    /// Another phone's install on the same Apple ID.
+    private let other = "$RCAnonymousID:0123456789ab4def8123456789abcdef"
+
+    override func setUp() {
+        super.setUp()
+        // The one restore a new version makes is its own tests'.
+        defaults.set("1", forKey: "subscription.migrated")
+    }
 
     private func owner() -> Subscription {
         Subscription(store: store, revenueCat: revenueCat, defaults: defaults, now: { [unowned self] in clock })
     }
 
-    /// An owner told its customer (`subject`, or the install's), settled.
-    private func ready(_ subject: String? = nil, launch: Bool = false) async -> Subscription {
+    /// This install's customer, as the next owner will know it.
+    private var install: String { owner().customer }
+
+    /// An owner launched or refreshed once, settled.
+    private func ready(launch: Bool = false) async -> Subscription {
         let subscription = owner()
-        if launch { subscription.launch() }
-        subscription.relay(subject)
+        if launch { subscription.launch() } else { subscription.refresh() }
         await subscription.idle()
         return subscription
     }
@@ -38,11 +50,15 @@ final class SubscriptionTests: XCTestCase {
         StoreTransaction(id: id, originalID: original ?? id, productID: "happy_monthly", jws: "jws.\(id)", token: token)
     }
 
+    private func token(_ customer: String) -> UUID {
+        Subscription.token(customer)!
+    }
+
     // MARK: On sale
 
     func testWithoutAKeyNothingIsSoldAndNothingIsAsked() async {
         let subscription = Subscription(store: nil, revenueCat: nil, defaults: defaults)
-        subscription.relay(nil)
+        subscription.refresh()
         await subscription.idle()
         XCTAssertEqual(subscription.offer, .unavailable)
         XCTAssertEqual(subscription.problem, .unconfigured)
@@ -77,8 +93,8 @@ final class SubscriptionTests: XCTestCase {
     }
 
     func testAnExistingProOfAnyProductSellsNothing() async {
-        revenueCat.grant("a", product: "happy_lifetime", expires: nil, at: clock)
-        let subscription = await ready("a")
+        revenueCat.grant(install, product: "happy_lifetime", expires: nil, at: clock)
+        let subscription = await ready()
         XCTAssertTrue(subscription.hasPro)
         XCTAssertEqual(subscription.offer, .subscribed)
         XCTAssertNil(subscription.subscribedPrice, "a lifetime pro is said at the monthly price")
@@ -86,14 +102,17 @@ final class SubscriptionTests: XCTestCase {
         XCTAssertTrue(store.purchases.isEmpty)
     }
 
-    /// Relaunched offline with the same customer: what RevenueCat said
-    /// within the day holds; a day later it is unknown and grants nothing.
-    func testALaunchWithTheSameCustomerKeepsTheDaysAnswer() async {
-        revenueCat.grant("a", expires: clock + 20 * 86_400, at: clock)
-        _ = await ready("a")
+    /// Relaunched offline: what RevenueCat said within the day holds from
+    /// the first moment; a day later it is unknown and grants nothing.
+    func testALaunchKeepsTheDaysAnswer() async {
+        revenueCat.grant(install, expires: clock + 20 * 86_400, at: clock)
+        _ = await ready()
         revenueCat.unreachable = true
         clock += 3600
-        let again = await ready("a")
+        let again = owner()
+        XCTAssertTrue(again.hasPro, "pro waited for RevenueCat at launch")
+        again.refresh()
+        await again.idle()
         XCTAssertTrue(again.hasPro)
         clock += 86_400
         XCTAssertFalse(again.hasPro)
@@ -102,12 +121,14 @@ final class SubscriptionTests: XCTestCase {
     // MARK: Buying
 
     func testAPurchaseIsPostedForItsBuyerAndFinishedOnlyOnceTaken() async throws {
-        let subscription = await ready("a")
+        let subscription = await ready()
         store.next = .bought
         assertEqual(await subscription.buy(), .purchased)
         let bought = try XCTUnwrap(store.purchases.first)
-        XCTAssertEqual(bought.token, subscription.token(for: "a"))
-        XCTAssertEqual(revenueCat.posted.map(\.customer), ["a"])
+        // The purchase names its buyer readably: any phone on the Apple ID reads it back.
+        XCTAssertEqual(bought.token, token(subscription.customer))
+        XCTAssertEqual(bought.token.flatMap(Subscription.customer), subscription.customer)
+        XCTAssertEqual(revenueCat.posted.map(\.customer), [subscription.customer])
         let receipt = try XCTUnwrap(revenueCat.posted.first)
         XCTAssertEqual(receipt.jws, "jws.\(bought.id)")
         XCTAssertEqual(receipt.source, .purchase)
@@ -120,7 +141,7 @@ final class SubscriptionTests: XCTestCase {
     }
 
     func testAPurchaseRevenueCatDidntTakeStaysUnfinishedAndIsPostedAtTheNextForeground() async {
-        let subscription = await ready("a")
+        let subscription = await ready()
         revenueCat.failPosts = 500
         store.next = .bought
         assertEqual(await subscription.buy(), .unconfirmed)
@@ -132,7 +153,7 @@ final class SubscriptionTests: XCTestCase {
         subscription.refresh()
         await subscription.idle()
         XCTAssertFalse(subscription.unconfirmed)
-        XCTAssertEqual(revenueCat.posted.map(\.customer), ["a"])
+        XCTAssertEqual(revenueCat.posted.map(\.customer), [subscription.customer])
         XCTAssertEqual(revenueCat.posted.last?.source, .queue)
         XCTAssertEqual(store.finished.count, 1)
         XCTAssertTrue(subscription.hasPro)
@@ -140,7 +161,7 @@ final class SubscriptionTests: XCTestCase {
 
     /// RevenueCat's SDK finishes on a 4xx; this keeps it for RevenueCat.
     func testARefusedReceiptIsNotFinished() async {
-        let subscription = await ready("a")
+        let subscription = await ready()
         revenueCat.failPosts = 400
         store.next = .bought
         assertEqual(await subscription.buy(), .unconfirmed)
@@ -149,7 +170,7 @@ final class SubscriptionTests: XCTestCase {
     }
 
     func testASecondSubscribeWhileTheSheetIsOpenOpensNothing() async {
-        let subscription = await ready("a")
+        let subscription = await ready()
         store.next = .held
         let first = Task { await subscription.buy() }
         await waitFor { store.open }
@@ -159,97 +180,223 @@ final class SubscriptionTests: XCTestCase {
         XCTAssertEqual(store.purchases.count, 1)
     }
 
-    func testCancelledAsAThenBoughtAsBIsBsAlone() async {
-        let subscription = await ready("a")
-        store.next = .cancel
-        assertEqual(await subscription.buy(), .cancelled)
-        subscription.relay("b")
-        await subscription.idle()
-        store.next = .bought
-        assertEqual(await subscription.buy(), .purchased)
-        XCTAssertEqual(revenueCat.posted.map(\.customer), ["b"])
-        XCTAssertEqual(store.purchases.last?.token, Subscription.token("b"))
-    }
-
-    /// Ask to Buy for A; B signs in and buys; A's is approved months later:
-    /// it is A's, and B is granted only B's.
+    /// Ask to Buy, approved months later: posted for the customer it names, and granted.
     func testAPendingPurchaseIsItsBuyersHoweverLongItWaits() async {
-        let subscription = await ready("a", launch: true)
+        let subscription = await ready(launch: true)
         store.next = .pending
         assertEqual(await subscription.buy(), .pending)
-        subscription.relay("b")
-        await subscription.idle()
-        store.next = .bought
-        assertEqual(await subscription.buy(), .purchased)
         clock += 120 * 86_400
-        let approved = transaction("late", token: Subscription.token("a"))
-        store.deliver(approved)
+        revenueCat.now = clock
+        store.deliver(transaction("late", token: store.purchases[0].token))
         // Finished only once RevenueCat took it: after the post, so wait for the finish.
         await waitFor { store.finished.contains("late") }
-        XCTAssertEqual(revenueCat.posted.map(\.customer), ["b", "a"])
-        XCTAssertTrue(store.finished.contains("late"))
-        XCTAssertEqual(subscription.customer, "b")
+        XCTAssertEqual(revenueCat.posted.map(\.customer), [subscription.customer])
+        XCTAssertTrue(subscription.hasPro)
     }
 
-    /// A bought, then signed out; B signs in. A renewal of A's arrives:
-    /// posted for A, B granted nothing by it. The same after a restart,
+    /// A renewal is posted for the customer it names, after a restart too,
     /// and delivered twice it is posted once.
-    func testARenewalIsTheOriginalBuyersWhoeverIsSignedIn() async {
-        var subscription = await ready("a", launch: true)
+    func testARenewalIsPostedOnceForItsBuyer() async {
+        var subscription = await ready(launch: true)
         store.next = .bought
         assertEqual(await subscription.buy(), .purchased)
-        subscription.relay(nil)
-        await subscription.idle()
-        subscription.relay("b")
-        await subscription.idle()
-        let renewal = transaction("renewal1", token: Subscription.token("a"), original: store.purchases[0].id)
-        store.deliver(renewal)
+        let buyer = subscription.customer
+        store.deliver(transaction("renewal1", token: token(buyer), original: store.purchases[0].id))
         await waitFor { revenueCat.posted.count == 2 }
-        XCTAssertEqual(revenueCat.posted.last?.customer, "a")
-        XCTAssertFalse(subscription.hasPro)
-        // Restarted: the token is still A's.
+        XCTAssertEqual(revenueCat.posted.last?.customer, buyer)
         subscription = owner()
         subscription.launch()
-        subscription.relay("b")
         await subscription.idle()
-        let next = transaction("renewal2", token: Subscription.token("a"), original: store.purchases[0].id)
+        let next = transaction("renewal2", token: token(buyer), original: store.purchases[0].id)
         store.deliver(next)
         store.deliver(next)
         await waitFor { store.finished.filter { $0 == "renewal2" }.count == 2 }
-        XCTAssertEqual(revenueCat.posted.filter { $0.transactionID == "renewal2" }.map(\.customer), ["a"])
-        XCTAssertFalse(subscription.hasPro)
+        XCTAssertEqual(revenueCat.posted.filter { $0.transactionID == "renewal2" }.map(\.customer), [buyer])
     }
 
-    /// Launch with transactions the store holds: the finished ones (already
-    /// acknowledged) are never posted again; an unfinished one this install
-    /// sold is posted for its owner; one it never sold is left for Restore.
-    func testTheLaunchSweepPostsOnlyWhatItSoldAndLeftUnfinished() async {
-        store.entitlementList = [transaction("old", token: nil)]
-        store.unfinishedList = [transaction("mine", token: Subscription.token("a")), transaction("foreign", token: UUID())]
-        let first = owner()
-        _ = first.token(for: "a")
-        let subscription = await ready(nil, launch: true)
-        await waitFor { !store.finished.isEmpty }
-        XCTAssertEqual(revenueCat.posted.map(\.transactionID), ["mine"])
-        XCTAssertEqual(revenueCat.posted.map(\.customer), ["a"])
-        XCTAssertEqual(store.finished, ["mine"])
-        XCTAssertNotEqual(subscription.customer, "a")
+    /// Launch with transactions the store holds: the finished ones are
+    /// never posted again; an unfinished one is posted for the customer it
+    /// names, this install's own from an earlier version included; one that
+    /// names no one is left alone.
+    func testTheLaunchSweepPostsWhatNamesACustomerAndLeftUnfinished() async {
+        let install = install
+        store.unfinishedList = [
+            transaction("mine", token: token(install)),
+            transaction("legacy", token: Subscription.legacyToken(install)),
+            transaction("expired", token: token(other)),
+            transaction("foreign", token: Subscription.legacyToken("someone")),
+            transaction("none", token: nil),
+        ]
+        let subscription = await ready(launch: true)
+        XCTAssertEqual(revenueCat.posted.map(\.transactionID), ["mine", "legacy", "expired"])
+        XCTAssertEqual(revenueCat.posted.map(\.customer), [install, install, other])
+        XCTAssertEqual(store.finished, ["mine", "legacy", "expired"])
+        // An unfinished transaction isn't a subscription the account holds: nothing adopted.
+        XCTAssertEqual(subscription.customer, install)
+    }
+
+    // MARK: Another phone on the same Apple ID
+
+    /// The App Store account holds a subscription another phone bought:
+    /// its customer is this install's from now on, with no restore and no
+    /// receipt, and RevenueCat says it has pro.
+    func testASubscriptionNamingAnotherInstallIsAdoptedWithoutARestore() async {
+        let mine = install
+        store.entitlementList = [transaction("bought-elsewhere", token: token(other))]
+        revenueCat.grant(other, expires: clock + 20 * 86_400, at: clock)
+        let subscription = await ready(launch: true)
+        XCTAssertEqual(subscription.customer, other)
+        XCTAssertNotEqual(subscription.customer, mine)
+        XCTAssertTrue(subscription.hasPro)
+        XCTAssertEqual(subscription.offer, .subscribed)
+        XCTAssertTrue(revenueCat.posted.isEmpty, "adopting posted a receipt")
+        XCTAssertFalse(store.synced)
+        XCTAssertTrue(revenueCat.calls.contains("subscriber \(other)"))
+        // Restarted: still the adopted customer.
+        XCTAssertEqual(owner().customer, other)
+    }
+
+    /// Bought on the other phone while this one runs: adopted at the next
+    /// foreground, at once a new generation that grants nothing until
+    /// RevenueCat answers for it.
+    func testASubscriptionBoughtElsewhereIsAdoptedAtTheNextForeground() async {
+        let subscription = await ready(launch: true)
+        let mine = subscription.customer
+        let generation = subscription.generation
+        XCTAssertFalse(subscription.hasPro)
+        store.entitlementList = [transaction("bought-elsewhere", token: token(other))]
+        revenueCat.grant(other, expires: clock + 20 * 86_400, at: clock)
+        subscription.refresh()
+        await subscription.idle()
+        XCTAssertEqual(revenueCat.calls.suffix(2), ["offerings \(other)", "subscriber \(other)"])
+        XCTAssertNotEqual(subscription.customer, mine)
+        XCTAssertEqual(subscription.customer, other)
+        XCTAssertGreaterThan(subscription.generation, generation)
+        XCTAssertTrue(subscription.hasPro)
+        XCTAssertTrue(revenueCat.posted.isEmpty)
+    }
+
+    /// One of the account's subscriptions is this install's own: it stays,
+    /// whatever else the account holds.
+    func testAnInstallWhoseOwnSubscriptionIsThereKeepsItsCustomer() async {
+        let mine = install
+        store.entitlementList = [transaction("elsewhere", token: token(other)), transaction("mine", token: token(mine))]
+        let subscription = await ready()
+        XCTAssertEqual(subscription.customer, mine)
+    }
+
+    /// Only an active subscription is adopted, never one that names no one.
+    func testNothingIsAdoptedFromAnUnnamedOrLapsedSubscription() async {
+        let mine = install
+        store.entitlementList = [transaction("old", token: Subscription.legacyToken(other)), transaction("none", token: nil)]
+        let subscription = await ready()
+        XCTAssertEqual(subscription.customer, mine)
+    }
+
+    // MARK: The one restore a new version makes
+
+    /// The first launch of this version: the account holds a subscription
+    /// that names no one (bought by an earlier version, or by happy-app),
+    /// and this install hasn't pro: it is posted once as a restore, and its
+    /// chain is the install's from then on. Never again by itself.
+    func testTheFirstLaunchRestoresAnUnnamedSubscriptionOnce() async throws {
+        defaults.set(nil, forKey: "subscription.migrated")
+        let install = install
+        store.entitlementList = [transaction("hashed", token: Subscription.legacyToken("account-a")), transaction("sdk", token: nil)]
+        let subscription = await ready()
+        XCTAssertEqual(Set(revenueCat.posted.map(\.transactionID)), ["hashed", "sdk"])
+        XCTAssertTrue(revenueCat.posted.allSatisfy { $0.customer == install && $0.restore && $0.source == .restore })
+        XCTAssertTrue(subscription.hasPro)
+        XCTAssertFalse(store.synced, "it asked the person to sign in to the App Store")
+        // Lost in RevenueCat later: nothing restores by itself again, after a restart either.
+        revenueCat.revoke(install)
+        clock += 2 * 86_400
+        revenueCat.now = clock
+        subscription.refresh()
+        await subscription.idle()
+        let again = await ready()
+        XCTAssertFalse(again.hasPro)
+        XCTAssertEqual(revenueCat.posted.count, 2)
+        // Its next renewal is the install's.
+        again.launch()
+        store.deliver(transaction("renewal", token: nil, original: "sdk"))
+        await waitFor { revenueCat.posted.count >= 3 }
+        await again.idle()
+        XCTAssertEqual(revenueCat.posted.count, 3)
+        XCTAssertEqual(revenueCat.posted.last?.customer, install)
+        XCTAssertEqual(revenueCat.posted.last?.restore, false)
+    }
+
+    func testTheFirstLaunchRestoresNothingWhenTheInstallHasPro() async {
+        defaults.set(nil, forKey: "subscription.migrated")
+        revenueCat.grant(install, expires: clock + 20 * 86_400, at: clock)
+        store.entitlementList = [transaction("sdk", token: nil)]
+        _ = await ready()
+        XCTAssertTrue(revenueCat.posted.isEmpty)
+        // Done: pro lost later restores nothing.
+        revenueCat.revoke(install)
+        clock += 2 * 86_400
+        revenueCat.now = clock
+        _ = await ready()
+        XCTAssertTrue(revenueCat.posted.isEmpty)
+    }
+
+    /// An adopted customer with pro is pro: nothing of the older purchases is restored.
+    func testTheFirstLaunchRestoresNothingWhenTheAdoptedCustomerHasPro() async {
+        defaults.set(nil, forKey: "subscription.migrated")
+        revenueCat.grant(other, expires: clock + 20 * 86_400, at: clock)
+        store.entitlementList = [transaction("named", token: token(other)), transaction("sdk", token: nil)]
+        let subscription = await ready()
+        XCTAssertEqual(subscription.customer, other)
+        XCTAssertTrue(revenueCat.posted.isEmpty)
+    }
+
+    /// RevenueCat unreached, or not taking the restore: tried again at the
+    /// next launch or foreground, until it is done once.
+    func testTheFirstLaunchsRestoreWaitsForRevenueCat() async {
+        defaults.set(nil, forKey: "subscription.migrated")
+        store.entitlementList = [transaction("sdk", token: nil)]
+        revenueCat.unreachable = true
+        let subscription = await ready()
+        XCTAssertTrue(revenueCat.posted.isEmpty)
+        revenueCat.unreachable = false
+        revenueCat.failPosts = 503
+        subscription.refresh()
+        await subscription.idle()
+        XCTAssertTrue(revenueCat.posted.isEmpty)
+        XCTAssertFalse(subscription.hasPro)
+        revenueCat.failPosts = nil
+        subscription.refresh()
+        await subscription.idle()
+        XCTAssertEqual(revenueCat.posted.map(\.transactionID), ["sdk"])
+        XCTAssertTrue(subscription.hasPro)
+        subscription.refresh()
+        await subscription.idle()
+        XCTAssertEqual(revenueCat.posted.count, 1)
     }
 
     // MARK: Restore
 
     func testRestorePostsWhatTheAccountHoldsForTheCustomerNow() async {
-        let foreign = transaction("foreign", token: nil)
-        store.entitlementList = [foreign]
-        store.unfinishedList = [transaction("unknown", token: UUID())]
-        let subscription = await ready("b")
+        store.entitlementList = [transaction("foreign", token: nil)]
+        store.unfinishedList = [transaction("unknown", token: Subscription.legacyToken("someone"))]
+        let subscription = await ready()
         XCTAssertTrue(revenueCat.posted.isEmpty)
-        revenueCat.grantOnPost = true
         assertEqual(await subscription.restore(), .restored)
         XCTAssertTrue(store.synced)
         XCTAssertEqual(Set(revenueCat.posted.map(\.transactionID)), ["foreign", "unknown"])
-        XCTAssertTrue(revenueCat.posted.allSatisfy { $0.customer == "b" && $0.restore && $0.source == .restore })
+        XCTAssertTrue(revenueCat.posted.allSatisfy { $0.customer == subscription.customer && $0.restore && $0.source == .restore })
         XCTAssertTrue(store.finished.contains("unknown"))
+    }
+
+    /// Restore adopts as a launch does first: a subscription another phone
+    /// bought is restored for its own customer, never pulled to this one's.
+    func testRestoreAdoptsTheCustomerTheAccountsSubscriptionNamesFirst() async {
+        let subscription = await ready()
+        store.entitlementList = [transaction("elsewhere", token: token(other))]
+        assertEqual(await subscription.restore(), .restored)
+        XCTAssertEqual(subscription.customer, other)
+        XCTAssertEqual(revenueCat.posted.map(\.customer), [other])
     }
 
     /// Restore needs the key and the store, never something on sale: an
@@ -267,20 +414,20 @@ final class SubscriptionTests: XCTestCase {
 
     private func restoresWithNothingOnSale(file: StaticString = #filePath, line: UInt = #line) async {
         store.entitlementList = [StoreTransaction(id: "y1", originalID: "y0", productID: "happy_yearly", jws: "jws.y1", token: nil)]
-        let subscription = await ready("b")
+        let subscription = await ready()
         XCTAssertEqual(subscription.offer, .unavailable, file: file, line: line)
         XCTAssertEqual(subscription.problem, .noProduct, file: file, line: line)
         assertEqual(await subscription.buy(), .unavailable, file: file, line: line)
         XCTAssertTrue(store.purchases.isEmpty, file: file, line: line)
         assertEqual(await subscription.restore(), .restored, file: file, line: line)
         XCTAssertEqual(revenueCat.posted.map(\.productID), ["happy_yearly"], file: file, line: line)
-        XCTAssertTrue(revenueCat.posted.allSatisfy { $0.customer == "b" && $0.restore }, file: file, line: line)
+        XCTAssertTrue(revenueCat.posted.allSatisfy { $0.customer == subscription.customer && $0.restore }, file: file, line: line)
         XCTAssertTrue(subscription.hasPro, file: file, line: line)
         XCTAssertEqual(subscription.offer, .subscribed, file: file, line: line)
     }
 
     func testRestoreWhilePendingFindsNothing() async {
-        let subscription = await ready("a")
+        let subscription = await ready()
         store.next = .pending
         assertEqual(await subscription.buy(), .pending)
         assertEqual(await subscription.restore(), .nothingFound)
@@ -289,51 +436,27 @@ final class SubscriptionTests: XCTestCase {
         assertEqual(await subscription.restore(), .failed)
     }
 
-    /// A bought; B restores it on purpose: the chain is B's from then on.
-    /// Its next renewal, still carrying A's token, is posted for B and
-    /// never back to A, after a restart too; another purchase of A's
-    /// chain-apart stays A's.
+    /// A chain that names no one, restored on purpose: the install's from
+    /// then on, its renewals posted for it after a restart too.
     func testARestoredChainStaysWithWhoeverRestoredIt() async {
-        var subscription = await ready("a", launch: true)
-        store.next = .bought
-        assertEqual(await subscription.buy(), .purchased)
-        let original = store.purchases[0]
-        store.entitlementList = [original]
-        subscription.relay("b")
-        await subscription.idle()
-        revenueCat.grantOnPost = true
+        store.entitlementList = [transaction("old", token: nil)]
+        var subscription = await ready()
         assertEqual(await subscription.restore(), .restored)
-        XCTAssertEqual(revenueCat.posted.last?.customer, "b")
+        let restorer = subscription.customer
         subscription = owner()
         subscription.launch()
-        subscription.relay("b")
         await subscription.idle()
-        store.deliver(transaction("renewal", token: Subscription.token("a"), original: original.id))
-        store.deliver(transaction("other", token: Subscription.token("a"), original: "other-chain"))
-        await waitFor { revenueCat.posted.count == 4 }
-        XCTAssertEqual(revenueCat.posted.first { $0.transactionID == "renewal" }?.customer, "b")
-        XCTAssertEqual(revenueCat.posted.first { $0.transactionID == "other" }?.customer, "a")
-    }
-
-    /// A restore whose customer changes before RevenueCat answers moves nothing.
-    func testARestoreOvertakenByASwitchMovesNoChain() async {
-        let chain = transaction("chain", token: Subscription.token("a"))
-        store.entitlementList = [chain]
-        let subscription = await ready("b")
-        _ = subscription.token(for: "a")
-        revenueCat.onPost = { [weak subscription] in Task { @MainActor in subscription?.relay("c") } }
-        assertEqual(await subscription.restore(), .failed)
-        revenueCat.onPost = nil
-        await subscription.idle()
-        subscription.launch()
-        store.deliver(transaction("renewal", token: Subscription.token("a"), original: "chain"))
-        await waitFor { revenueCat.posted.contains { $0.transactionID == "renewal" } }
-        XCTAssertEqual(revenueCat.posted.first { $0.transactionID == "renewal" }?.customer, "a")
+        store.deliver(transaction("renewal", token: nil, original: "old"))
+        store.deliver(transaction("stranger", token: nil, original: "another-chain"))
+        await waitFor { revenueCat.posted.count == 2 }
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(revenueCat.posted.map(\.transactionID), ["old", "renewal"])
+        XCTAssertEqual(revenueCat.posted.last?.customer, restorer)
     }
 
     // MARK: Identity
 
-    func testTheInstallsCustomerIsAnonymousAndKeptUntilSignOut() async {
+    func testTheInstallsCustomerIsAnonymousAndKeptForGood() async {
         let subscription = await ready()
         let install = subscription.customer
         XCTAssertTrue(install.hasPrefix("$RCAnonymousID:"))
@@ -342,99 +465,42 @@ final class SubscriptionTests: XCTestCase {
         XCTAssertEqual(owner().customer, install)
     }
 
-    func testSigningInAfterBuyingBringsTheInstallIntoTheAccountAndRetiresIt() async {
-        let subscription = await ready()
-        let install = subscription.customer
-        store.next = .bought
-        assertEqual(await subscription.buy(), .purchased)
-        subscription.relay("a")
-        await subscription.idle()
-        XCTAssertEqual(revenueCat.identified.map { "\($0.0)>\($0.1)" }, ["\(install)>a"])
-        XCTAssertEqual(subscription.customer, "a")
-        subscription.relay(nil)
-        await subscription.idle()
-        XCTAssertNotEqual(subscription.customer, install)
-        XCTAssertTrue(subscription.customer.hasPrefix("$RCAnonymousID:"))
-        // The retired install's token is still its own, for its renewals.
-        XCTAssertNotEqual(Subscription.token(subscription.customer), Subscription.token(install))
-    }
-
-    func testSigningInWithNothingBoughtJustSwitches() async {
-        let subscription = await ready()
-        subscription.relay("a")
-        await subscription.idle()
-        subscription.relay("b")
-        await subscription.idle()
-        XCTAssertTrue(revenueCat.identified.isEmpty)
-        XCTAssertEqual(subscription.customer, "b")
-    }
-
-    /// identify unanswered: nothing is sold or granted under either, and it
-    /// is asked again at the next foreground.
-    func testAnUnansweredIdentifySellsNothingUntilItIsAnswered() async {
-        let subscription = await ready()
-        store.next = .bought
-        _ = await subscription.buy()
-        revenueCat.unreachable = true
-        subscription.relay("a")
-        await subscription.idle()
-        XCTAssertEqual(subscription.offer, .unavailable)
-        XCTAssertFalse(subscription.hasPro)
-        XCTAssertEqual(subscription.problem, .unreached)
-        revenueCat.unreachable = false
-        subscription.refresh()
-        await subscription.idle()
-        XCTAssertEqual(subscription.customer, "a")
-        XCTAssertEqual(revenueCat.identified.count, 1)
-    }
-
-    /// An answer asked for A that comes back after a switch to B grants B nothing.
-    func testAnAnswerAskedBeforeASwitchIsDropped() async {
-        revenueCat.grant("a", expires: clock + 20 * 86_400, at: clock)
-        let subscription = owner()
-        revenueCat.onSubscriber = { [weak subscription] customer in
-            if customer == "a" { Task { @MainActor in subscription?.relay("b") } }
+    /// An earlier version's: the Happy account as the customer, the hashed
+    /// tokens it bought with, a chain restored to it. None of it is the
+    /// subscription's any more, and nothing is posted for the account.
+    func testWhatAnEarlierVersionKeptForAHappyAccountIsDropped() async throws {
+        let install = install
+        defaults.set("account-a", forKey: "subscription.customer")
+        defaults.set("1", forKey: "subscription.posted-by-install")
+        defaults.set(#"{"\#(Subscription.legacyToken("account-a").uuidString)":"account-a"}"#, forKey: "subscription.tokens")
+        defaults.set(#"{"chain":"account-a"}"#, forKey: "subscription.restored")
+        defaults.set(#"{"id":"x","subject":"account-a"}"#, forKey: "subscription.account")
+        store.unfinishedList = [transaction("bought-as-a", token: Subscription.legacyToken("account-a")), transaction("renewal", token: nil, original: "chain")]
+        let subscription = await ready(launch: true)
+        XCTAssertEqual(subscription.customer, install)
+        XCTAssertTrue(revenueCat.posted.isEmpty)
+        XCTAssertFalse(revenueCat.calls.contains { $0.contains("account-a") })
+        for key in ["subscription.customer", "subscription.posted-by-install", "subscription.tokens", "subscription.account"] {
+            XCTAssertNil(defaults.string(forKey: key), key)
         }
-        subscription.relay("a")
-        await subscription.idle()
-        await subscription.idle()
-        XCTAssertEqual(subscription.customer, "b")
-        XCTAssertFalse(subscription.hasPro)
-        // Mid-change, nothing is on sale or granted.
-        revenueCat.onSubscriber = nil
-        subscription.relay("a")
-        XCTAssertEqual(subscription.offer, .unavailable)
-        XCTAssertFalse(subscription.hasPro)
-        await subscription.idle()
-        XCTAssertTrue(subscription.hasPro)
     }
 
-    /// An agent connection in front keeps the account before it, while that
-    /// account is signed in here.
-    func testAnAgentConnectionKeepsTheAccountBeforeIt() async {
-        let subscription = owner()
-        subscription.accounts(active: .init(id: "x", subject: "a"), signedIn: ["x"])
-        await subscription.idle()
-        XCTAssertEqual(subscription.customer, "a")
-        subscription.accounts(active: nil, signedIn: ["x", "agent"])
-        await subscription.idle()
-        XCTAssertEqual(subscription.customer, "a")
-        // Relaunched straight into the agent connection.
-        let relaunched = owner()
-        relaunched.accounts(active: nil, signedIn: ["x"])
-        await relaunched.idle()
-        XCTAssertEqual(relaunched.customer, "a")
-        relaunched.accounts(active: nil, signedIn: ["agent"])
-        await relaunched.idle()
-        XCTAssertTrue(relaunched.customer.hasPrefix("$RCAnonymousID:"))
-    }
-
-    func testTheTokenIsTheCustomersForGood() {
-        XCTAssertEqual(Subscription.token("a"), Subscription.token("a"))
-        XCTAssertNotEqual(Subscription.token("a"), Subscription.token("b"))
-        let text = Subscription.token("$RCAnonymousID:0123456789abcdef0123456789abcdef").uuidString
-        XCTAssertEqual(Array(text)[14], "5")
-        XCTAssertTrue("89AB".contains(Array(text)[19]))
+    func testTheTokenIsTheCustomersHexAndReadsBack() throws {
+        let customer = "$RCAnonymousID:0123456789ab4def8123456789abcdef"
+        let token = try XCTUnwrap(Subscription.token(customer))
+        XCTAssertEqual(token.uuidString, "01234567-89AB-4DEF-8123-456789ABCDEF")
+        XCTAssertEqual(Subscription.customer(token), customer)
+        // Every install's reads back as itself.
+        for _ in 0..<50 {
+            let fresh = Subscription(store: nil, revenueCat: nil, defaults: InMemoryKeyValueStore()).customer
+            XCTAssertEqual(Subscription.token(fresh).flatMap(Subscription.customer), fresh)
+        }
+        // Not an install's: no token. An earlier version's hashed token names no one.
+        XCTAssertNil(Subscription.token("account-a"))
+        XCTAssertNil(Subscription.token("$RCAnonymousID:0123456789AB4DEF8123456789ABCDEF"))
+        XCTAssertNil(Subscription.token("$RCAnonymousID:0123"))
+        XCTAssertNil(Subscription.customer(Subscription.legacyToken(customer)))
+        XCTAssertEqual(Array(Subscription.legacyToken(customer).uuidString)[14], "5")
     }
 
     // MARK: The REST client
@@ -443,7 +509,7 @@ final class SubscriptionTests: XCTestCase {
         let http = FakeHTTP()
         http.onRaw("GET /v1/subscribers/$RCAnonymousID:abc/offerings", #"{"current_offering_id":"d","offerings":[]}"#)
         http.onRaw("POST /v1/receipts", #"{"request_date":"2026-11-04T10:00:00Z","subscriber":{"entitlements":{}}}"#)
-        http.onRaw("POST /v1/subscribers/identify", #"{"message":"Invalid API key"}"#, status: 401)
+        http.onRaw("GET /v1/subscribers/x", #"{"message":"Invalid API key"}"#, status: 401)
         let client = RevenueCatClient(transport: http, key: "appl_test")
         guard case .ok = await client.offerings(customer: "$RCAnonymousID:abc") else { return XCTFail("offerings") }
         let request = try XCTUnwrap(http.requests.first)
@@ -460,7 +526,7 @@ final class SubscriptionTests: XCTestCase {
             "transaction_id": .string("7"), "is_restore": .bool(true), "observer_mode": .bool(false), "initiation_source": .string("restore"),
             "sdk_originated": .bool(false), "app_transaction": .string("app"),
         ]))
-        assertEqual(await client.identify(from: "x", to: "y"), .refused(status: 401, message: "Invalid API key"))
+        assertEqual(await client.subscriber(customer: "x"), .refused(status: 401, message: "Invalid API key"))
     }
 }
 
@@ -560,7 +626,6 @@ final class FakeRevenueCat: RevenueCatAPI, @unchecked Sendable {
     private let lock = NSLock()
     private var _calls: [String] = []
     private var _posted: [RevenueCatReceipt] = []
-    private var _identified: [(String, String)] = []
     private var _grants: [String: String] = [:]
     var offerings: JSONValue = FakeRevenueCat.offerings(product: "happy_monthly")
     var refuse: Int?
@@ -580,11 +645,15 @@ final class FakeRevenueCat: RevenueCatAPI, @unchecked Sendable {
 
     var calls: [String] { locked { _calls } }
     var posted: [RevenueCatReceipt] { locked { _posted } }
-    var identified: [(String, String)] { locked { _identified } }
 
     static func offerings(product: String?) -> JSONValue {
         let packages: JSONValue = product.map { .array([.object(["identifier": .string("$rc_monthly"), "platform_product_identifier": .string($0)])]) } ?? .array([])
         return .object(["current_offering_id": .string("default"), "offerings": .array([.object(["identifier": .string("default"), "packages": packages])])])
+    }
+
+    /// `customer` has `pro` no more.
+    func revoke(_ customer: String) {
+        locked { _grants[customer] = nil }
     }
 
     /// `customer` has `pro` from `product` until `expires`, as of `at`.
@@ -626,12 +695,5 @@ final class FakeRevenueCat: RevenueCatAPI, @unchecked Sendable {
         locked { _posted.append(receipt) }
         if grantOnPost { grant(receipt.customer, expires: now + 30 * 86_400, at: now) }
         return answer(receipt.customer)
-    }
-
-    func identify(from: String, to: String) async -> RevenueCatAnswer {
-        locked { _calls.append("identify") }
-        if unreachable { return .unreached }
-        locked { _identified.append((from, to)) }
-        return answer(to)
     }
 }

@@ -110,8 +110,9 @@ covers every connection on the device and survives sign-out.
 With the subscription (RevenueCat's `pro` entitlement, from any product
 that grants it) the limit is 5 hours a month instead, counted by the same
 ledger. The ledger keeps calls for at least 62 days and never forgets one
-from inside the running paid month. Both limits are local: only the relay's
-voice has a server gate.
+from inside the running paid month. Both limits are local. The server checks
+no subscription; it only caps every account's Happy-managed voice at 5 hours
+per 30 days as a cost safety net.
 
 Voice in Happy (relay) sessions is switched off in both apps: a session's
 chat has no voice button and nothing reaches ElevenLabs from it (Android
@@ -129,16 +130,26 @@ apps'.
 - **On sale** is the current offering's monthly package (`$rc_monthly`),
   only if the store says it is a one-month auto-renewing subscription. Its
   price is the store's. No key, no product or no answer: nothing is sold.
-- **Whose purchase.** The customer is the relay account's JWT subject when
-  signed in, else a persistent anonymous id; login is never needed. A
-  purchase carries an id for its customer, remembered for good (Play
-  `obfuscatedAccountId`, SHA-256 of the customer id; StoreKit's
-  `appAccountToken`, a UUID from SHA-256 of the customer id), so a renewal
-  or a purchase that completes late is posted for whoever bought it,
-  whoever is signed in by then. One with no
-  id we know is left alone. Only a user's Restore moves a purchase to the
-  restoring customer, from then on. Signing in after an anonymous purchase
-  identifies the two with RevenueCat; it does not guarantee a merge.
+- **Whose purchase.** The customer is the install's own anonymous id
+  (`$RCAnonymousID:` and 32 hex digits), kept on the phone. It is not the
+  Happy account, never sent to Happy's server, and never the PostHog
+  distinct id; signing in or out, or switching accounts, changes nothing. A
+  purchase carries its customer readably, for good: Play's
+  `obfuscatedAccountId` is the id itself, StoreKit's `appAccountToken` is
+  its 32 hex digits as a UUID. So a renewal or a purchase that completes
+  late is posted for whoever bought it, and one that names no customer is
+  left alone.
+- **Every phone on the store account.** At launch and foreground, an active
+  subscription the Apple ID or Google account holds that names a customer
+  makes that customer the install's own (adoption): no restore, no receipt,
+  nothing moved in RevenueCat, so phones never pull a subscription from
+  each other.
+- **Restore** is the user's tap only, and moves a purchase to the restoring
+  customer from then on. One exception: the first time RevenueCat answers
+  after the phone-only version is installed, a subscription that names no
+  customer (bought by happy-app or by an earlier native version, whose ids
+  were SHA-256 hashes) is posted once as a restore, if the install hasn't
+  `pro`.
 - **Pro** is the last RevenueCat answer, cached for 24 hours by RevenueCat's
   own clock, never read from the offering.
 - **The month.** Month n runs from the entitlement's latest purchase date

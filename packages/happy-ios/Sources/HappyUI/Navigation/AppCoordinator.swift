@@ -69,8 +69,6 @@ public final class AppCoordinator {
             await account.restore(openingAgentConnection: v2.takeFilterChoice(), preferred: v2.agentConnectionID)
             self?.show(account.state)
             self?.accountRestored = true
-            // Only now, with the accounts read, is it known whose subscription it is.
-            Offers.shared.follow(account)
             self?.openPendingLink()
             self?.openPendingInstanceLink()
             self?.openNotificationSession()
@@ -279,7 +277,6 @@ public final class AppCoordinator {
         let session: AccountSession?
         if case .signedIn(let value) = state { session = value } else { session = nil }
         VoiceCoordinator.shared.accountDidChange(to: session)
-        if accountRestored { Offers.shared.tell(context.account) }
         let identity = session.map(ObjectIdentifier.init)
         let pending = context.account.pendingServerConfirmation
         let agentConnectionID = context.account.agentConnections.activeID

@@ -39,7 +39,6 @@ internal class FakeRevenueCat : RevenueCat {
     val pro = HashMap<String, String>()
     var refusePosts: Int? = null
     var unreachable = false
-    var identifyFails = false
     /** No current offering set up in RevenueCat at all. */
     var noOffering = false
     val hold = HashMap<String, CompletableDeferred<Unit>>()
@@ -60,16 +59,10 @@ internal class FakeRevenueCat : RevenueCat {
     override suspend fun post(receipt: RevenueCat.Receipt): Answer {
         calls += "post ${receipt.customer} ${receipt.token} ${receipt.products} restore=${receipt.restore}"
         gate("post")
+        if (unreachable) return Answer.Unreached(IOException("offline"))
         refusePosts?.let { return Answer.Refused(it, "invalid receipt") }
         pro[receipt.customer] = receipt.products.first()
         return Answer.Ok(answer(receipt.customer))
-    }
-    override suspend fun identify(from: String, to: String): Answer {
-        calls += "identify $from $to"
-        gate("identify")
-        if (identifyFails) return Answer.Unreached(IOException("offline"))
-        pro.remove(from)?.let { pro[to] = it }
-        return Answer.Ok(answer(to))
     }
     private fun answer(customer: String) =
         subscriber("2026-11-04T10:00:00Z", pro[customer]?.let { pro("2026-10-20T08:00:00Z", "2026-11-20T08:00:00Z", product = it) })

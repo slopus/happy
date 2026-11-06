@@ -14,7 +14,7 @@ User taps mic
 │   │   └─ Follow next_cursor while has_more, sum call_duration_secs → usedSeconds
 │   │
 │   ├─ usedSeconds >= 5h?             → { allowed: false, reason: "voice_hard_limit_reached" }
-│   ├─ usedSeconds >= 20min + no sub? → { allowed: false, reason: "subscription_required" }
+│   │   (no subscription check: the 20 free minutes and `pro` are enforced on the phone)
 │   │
 │   ├─ GET /v1/convai/conversation/token?agent_id=X&participant_name=ELEVEN_USER_ID
 │   │   └─ Decode JWT → extract conv_id from video.room
@@ -38,8 +38,9 @@ User taps mic
 
 | Tier | Limit | Window | Cost to us | What happens |
 |------|-------|--------|------------|--------------|
-| Free | 20 min | 30 days | ~$0.19 | Paywall |
+| Free | 20 min | 30 days | ~$0.19 | Paywall (on the phone) |
 | Subscribed | 5 hours | 30 days | — | Hard block → BYO agent |
+| Server cap (everyone) | 5 hours | 30 days | — | `voice_hard_limit_reached`, the only server gate |
 | BYO Agent | Unlimited | — | $0 | User's own ElevenLabs |
 
 Cost: ~$0.01/min ($1600 / 171K min measured).
@@ -54,7 +55,7 @@ ElevenLabs is the source of truth. No local DB.
 - Max `page_size` is 100. Follow `next_cursor` while `has_more` to count all matching conversations, including users with more than 100 calls.
 - Stop reading once the 5-hour duration quota is reached. Above that quota, reported duration and conversation count are lower bounds on monthly usage.
 - History lookup has a 15-second total timeout. Provider failures and malformed/repeated cursors return a server error; they never grant voice based on partial or zero usage.
-- `/v1/voice/usage` retains numeric `conversationLimit: 100` for compatibility with shipped native clients. It is a deprecated display field, no longer an eligibility limit. Older settings screens may display `103 / 100`; new calls are governed by duration and subscription status.
+- `/v1/voice/usage` retains numeric `conversationLimit: 100` for compatibility with shipped native clients. It is a deprecated display field, no longer an eligibility limit. Older settings screens may display `103 / 100`; new calls are governed by duration alone on the server.
 
 **TODO:** Remove `VoiceConversation` model from Prisma schema (no longer used, DB table can be dropped).
 
@@ -65,7 +66,7 @@ Single paywall template, rules driven by custom variable `flow`:
 | Flow | When | Behavior |
 |------|------|----------|
 | `voice_trial_eligible` | Feature flag variant `show-paywall-before-first-voice-chat`, first free voice use | Soft — dismissable, voice starts anyway |
-| `voice_must_pay` | Server returns `allowed: false` | Hard — must purchase |
+| `voice_must_pay` | Server returns `allowed: false` (the server no longer sends `subscription_required`) | Hard — must purchase |
 | `voluntary_support` | Settings | User-initiated |
 
 ### Future: Voice Agent Self-Sell

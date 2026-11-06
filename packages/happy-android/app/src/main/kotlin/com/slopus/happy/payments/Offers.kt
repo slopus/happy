@@ -83,7 +83,7 @@ enum class OfferResult {
     /** `pro` came while it was up: bought or restored. */
     Pro,
 
-    /** Closed by its ✕, back, a swipe or an account change, or another sheet was already up: nothing more. */
+    /** Closed by its ✕, back or a swipe, or another sheet was already up: nothing more. */
     Dismissed,
 }
 

@@ -23,33 +23,33 @@ import java.util.concurrent.atomic.AtomicLong
  * without its SDK. Everything that sells it or asks about it asks here:
  * voice's sheets and hours, the relay's voice, Support us.
  *
- * Whose it is: the Happy account's when one is signed in (by the subject
- * RevenueCat already knows it by), otherwise this install's own
- * anonymous customer, so buying needs no sign-in. Signing in after this
- * install bought something asks RevenueCat to bring the install into the
- * account (`identify`) before the account is used. That is not a promise:
- * RevenueCat merges only into an account it hasn't merged an install into
- * before, otherwise it just switches, and then only Restore moves a
- * purchase. Signing out starts a new install customer, never one an
- * account was brought together with.
+ * Whose it is: this install's own anonymous customer (`$RCAnonymousID:`
+ * and 32 hex digits, as RevenueCat's SDK makes them), kept on the phone
+ * and never told to anyone but RevenueCat: not the Happy account, not
+ * analytics. No account, signed in or out, changes it.
+ *
+ * Every phone on the Google account: a purchase carries its customer
+ * readably, as Play's obfuscated account id ([StorePurchase.account]), on
+ * the purchase for good. At launch and foreground, an active subscription
+ * the store account holds that names a customer makes that customer this
+ * install's ([adopt]): nothing is restored or moved in RevenueCat, so
+ * phones never pull a subscription from each other.
  *
  * Access is only what RevenueCat says, kept a day at most ([ProPassCache]).
  * Everything that asks RevenueCat or the store runs one at a time ([work]),
  * and each customer change starts a new [generation] at once: an answer
- * asked under an older one is dropped. A purchase belongs to the customer
- * who opened the store's sheet for it: each customer has one opaque id
- * ([account], the SHA-256 of its id, as RevenueCat's SDK makes Play's
- * obfuscated account id), which the store keeps on every purchase made for
- * it, and this install keeps which customer each id is for ([ACCOUNTS]),
- * for good: a renewal or
- * a pending purchase paid for months later is still that customer's,
- * whoever is signed in by then. One sheet at a time. A purchase is
- * acknowledged only once RevenueCat has taken it, and one left unfinished
- * is finished at the next launch or foreground, for its own customer; one
- * no id here names is left alone. Restore posts every subscription the
- * store account holds for the customer now, whatever is on sale; each one
- * RevenueCat takes is that customer's from then on ([RESTORED]), whatever
- * id it was bought under.
+ * asked under an older one is dropped. A purchase is posted for the
+ * customer it names, or the one Restore moved it to ([RESTORED]), and
+ * acknowledged only once RevenueCat has taken it; one left unfinished is
+ * finished at the next launch or foreground. One that names no one is left
+ * alone. One sheet at a time.
+ *
+ * Restore is the person's tap: every subscription the store account holds
+ * posted for the customer now, whatever is on sale; each one RevenueCat
+ * takes is that customer's from then on. With one exception: the first
+ * time RevenueCat answers after this version is installed, a subscription
+ * that names no customer (bought before purchases named theirs) is
+ * restored once to this install, if it hasn't `pro` ([migrate]).
  */
 class Subscription(
     private val scope: CoroutineScope,
@@ -79,10 +79,6 @@ class Subscription(
     private val cache = ProPassCache(preferences)
     private val work = Mutex()
     private val generation = AtomicLong()
-    @Volatile private var relay: String? = null
-    @Volatile private var told = false
-    /** A customer change not yet settled: nothing is granted meanwhile. */
-    @Volatile private var changing = false
     private var monthly: StoreOffer? = null
     private var unconfirmed = false
     /** A purchase sheet is open. */
@@ -104,68 +100,38 @@ class Subscription(
 
     /**
      * Whether [customer] has `pro` now, as RevenueCat last said within a
-     * day: any product that grants it, whatever is on sale. False while
-     * the customer changes. [hasPro] asks at this moment.
+     * day: any product that grants it, whatever is on sale. [hasPro] asks
+     * at this moment.
      */
     val pro: StateFlow<Boolean> = mutablePro.asStateFlow()
 
-    /** Whose subscription this is now. */
-    val customer: String get() = preferences.getString(CUSTOMER, null) ?: install
-
-    /** The Happy account's subject when [customer] is one, null when it is this install's. */
-    val account: String? get() = preferences.getString(CUSTOMER, null)
-
-    private val install: String
-        get() = preferences.getString(INSTALL, null) ?: fresh()
+    /** Whose subscription this is: this install's customer, made at its first ask. */
+    val customer: String
+        get() = preferences.getString(INSTALL, null)?.takeIf { isInstall(it) } ?: fresh()
 
     init {
+        preferences.edit().apply { RETIRED.forEach { remove(it) } }.apply()
         publish()
         if (store != null) scope.launch { store.updates.collect { bought(it) } }
     }
 
     /** The month of 5 hours [customer] has now; null without `pro`, or when RevenueCat hasn't said within a day. */
-    fun period(): ProMonth? = if (changing) null else cache.period(customer, now())
+    fun period(): ProMonth? = cache.period(customer, now())
 
     fun hasPro(): Boolean = period() != null
 
     /**
-     * The Happy account signed in now, by its subject; null when none.
-     * Whatever was being asked for the customer before is dropped at once.
-     * Another account is switched to, never merged into; signing out starts
-     * a new install customer.
+     * Launch and foreground: purchases left unfinished, whose subscription
+     * the store account holds, what's on sale, and what RevenueCat says now.
      */
-    fun relay(subject: String?) {
-        if (told && relay == subject) return
-        told = true
-        relay = subject
-        val asked = generation.incrementAndGet()
-        changing = true
-        mutableOffer.value = Offer.Unavailable
-        mutablePro.value = false
-        mutableSubscribedPrice.value = null
-        scope.launch {
-            work.withLock {
-                if (subject == null && preferences.getString(CUSTOMER, null) != null) {
-                    // Whatever the account was merged with stays the account's.
-                    fresh()
-                    preferences.edit().remove(CUSTOMER).remove(POSTED_BY_INSTALL).apply()
-                }
-                settle()
-                if (asked == generation.get()) changing = false
-                publish()
-            }
-        }
-    }
-
-    /** Launch and foreground: what's on sale, purchases left unfinished, and what RevenueCat says now. */
     fun refresh() {
         scope.launch { work.withLock { refreshing(restore = false) } }
     }
 
     /**
      * The store's purchase sheet for the monthly subscription, for the
-     * customer it opens for: what comes of it is posted for them, whoever
-     * is signed in by then. False if it couldn't open, or one is open.
+     * customer it opens for, whose id the purchase carries: what comes of it
+     * is posted for them. False if it couldn't open, or one is open.
      */
     suspend fun buy(activity: Activity): Boolean {
         val store = store ?: return false
@@ -173,7 +139,7 @@ class Subscription(
             if (launching) return false
             val offer = monthly.takeIf { mutableOffer.value is Offer.OnSale } ?: return false
             launching = true
-            offer to account(customer)
+            offer to customer
         }
         if (store.buy(activity, offer, account)) return true
         work.withLock { launching = false }
@@ -181,21 +147,21 @@ class Subscription(
     }
 
     /**
-     * Restore: every subscription the store account holds and has paid
-     * for, posted again as a restore with its own products, whatever is on
-     * sale and whatever was posted before. True when RevenueCat then says
-     * [customer] has `pro`.
+     * Restore: its customer adopted as at launch, then every subscription
+     * the store account holds and has paid for posted again as a restore
+     * with its own products, whatever is on sale and whatever was posted
+     * before. True when RevenueCat then says [customer] has `pro`.
      */
     suspend fun restore(): Boolean = work.withLock {
-        val asked = generation.get()
         refreshing(restore = true)
-        asked == generation.get() && cache.period(customer, now()) != null
+        cache.period(customer, now()) != null
     }
 
     private suspend fun refreshing(restore: Boolean) {
         val revenueCat = revenueCat ?: return publish()
         val store = store ?: return publish()
-        if (!settle()) return publish()
+        val owned = store.owned()
+        if (owned != null) adopt(owned)
         val asked = generation.get()
         val customer = customer
         mutableProblem.value = null
@@ -208,7 +174,6 @@ class Subscription(
             offerings !is Answer.Ok -> trouble(offerings)
             found == null -> mutableProblem.value = Problem.NoProduct
         }
-        val owned = store.owned()
         if (owned == null) mutableProblem.value = Problem.Unreached
         var unfinished = false
         for (purchase in owned.orEmpty()) {
@@ -219,7 +184,7 @@ class Subscription(
                 store.acknowledge(purchase.token)
                 continue
             }
-            // Restoring, everything is the customer's now; otherwise only what an id here names, for its customer.
+            // Restoring, everything is the customer's now; otherwise only what names a customer, for them.
             val owner = if (restore) customer else ownerOf(purchase) ?: continue
             if (!post(revenueCat, store, purchase, owner, restore, asked)) unfinished = true
         }
@@ -230,7 +195,47 @@ class Subscription(
             is Answer.Ok -> if (ProPass.answered(answer.body)) cache.save(customer, ProPass.from(answer.body), now())
             else -> trouble(answer)
         }
+        if (!restore && answer is Answer.Ok && owned != null) migrate(revenueCat, store, owned, customer, asked)
         publish()
+    }
+
+    /**
+     * The customer an active subscription the store account holds names,
+     * made this install's when none of them is already: bought on another
+     * phone with the same Google account, or by this install before a
+     * reinstall. Nothing is posted; RevenueCat already has it under that
+     * customer.
+     */
+    private fun adopt(owned: List<StorePurchase>) {
+        val customer = customer
+        val held = owned.filter { it.purchased }
+        val named = held.mapNotNull { named(it.account) }
+        val adopted = named.firstOrNull() ?: return
+        if (customer in named || held.any { restored()[hash(it.token)] == customer }) return
+        preferences.edit().putString(INSTALL, adopted).commit()
+        generation.incrementAndGet()
+        publish()
+    }
+
+    /**
+     * The one restore this version makes by itself: the first time
+     * RevenueCat answers for this install without `pro`, every subscription
+     * the store account holds that names no customer is posted as a restore
+     * for it. Done once RevenueCat has taken them all, or when there was
+     * nothing to take; tried again at the next launch or foreground until
+     * then.
+     */
+    private suspend fun migrate(revenueCat: RevenueCat, store: SubscriptionStore, owned: List<StorePurchase>, customer: String, asked: Long) {
+        if (preferences.getBoolean(MIGRATED, false)) return
+        var failed = false
+        if (cache.period(customer, now()) == null) {
+            for (purchase in owned) {
+                if (!purchase.purchased || named(purchase.account) != null) continue
+                if (asked != generation.get()) return
+                if (!post(revenueCat, store, purchase, customer, restore = true, asked)) failed = true
+            }
+        }
+        if (!failed) preferences.edit().putBoolean(MIGRATED, true).apply()
     }
 
     /**
@@ -243,7 +248,6 @@ class Subscription(
         val purchases = (update as? StoreUpdate.Purchases)?.purchases ?: return@withLock
         val revenueCat = revenueCat ?: return@withLock
         val store = store ?: return@withLock
-        settle()
         val asked = generation.get()
         for (purchase in purchases) {
             if (!purchase.purchased) continue
@@ -271,42 +275,11 @@ class Subscription(
             trouble(answer)
             return false
         }
-        preferences.edit()
-            .putStringSet(POSTED, posted() + hash(purchase.token))
-            .apply { if (owner == install && preferences.getString(CUSTOMER, null) == null) putBoolean(POSTED_BY_INSTALL, true) }
-            .apply()
+        preferences.edit().putStringSet(POSTED, posted() + hash(purchase.token)).apply()
         // Restored: the purchase is its new customer's, for whatever the store says of it next.
         if (restore) preferences.edit().putString(RESTORED, Json.encodeToString(ACCOUNT_MAP, restored() + (hash(purchase.token) to owner))).commit()
         if (!purchase.acknowledged) store.acknowledge(purchase.token)
         if (owner == customer && asked == generation.get() && ProPass.answered(answer.body)) cache.save(customer, ProPass.from(answer.body), now())
-        return true
-    }
-
-    /**
-     * Brings [customer] to the signed-in account. What the install bought is
-     * merged into it first (`identify`); until that is done the install
-     * stays the customer, so nothing is posted under the account in its
-     * name. False while it isn't.
-     */
-    private suspend fun settle(): Boolean {
-        val relay = relay ?: return true
-        if (preferences.getString(CUSTOMER, null) == relay) return true
-        if (preferences.getString(CUSTOMER, null) == null && preferences.getBoolean(POSTED_BY_INSTALL, false)) {
-            val revenueCat = revenueCat ?: return false
-            val asked = generation.get()
-            val answer = revenueCat.identify(install, relay)
-            if (answer is Answer.Ok) {
-                // Merged, whatever happened here meanwhile: the install's id is the account's from now on, never this install's again.
-                fresh()
-                preferences.edit().remove(POSTED_BY_INSTALL).apply()
-            }
-            if (asked != generation.get()) return false
-            if (answer !is Answer.Ok) {
-                trouble(answer)
-                return false
-            }
-        }
-        preferences.edit().putString(CUSTOMER, relay).remove(POSTED_BY_INSTALL).apply()
         return true
     }
 
@@ -333,38 +306,26 @@ class Subscription(
 
     private fun posted(): Set<String> = preferences.getStringSet(POSTED, emptySet()).orEmpty()
 
-    private fun accounts(): Map<String, String> = preferences.getString(ACCOUNTS, null)
-        ?.let { runCatching { Json.decodeFromString(ACCOUNT_MAP, it) }.getOrNull() }.orEmpty()
-
-    /**
-     * [customer]'s id for the store: the SHA-256 of its id, so it says
-     * nothing of the customer and is the same on every sheet (Play refuses
-     * a purchase whose id differs from the subscription it touches). Kept
-     * with its customer for good, through sign-outs and finished purchases,
-     * since the store names every purchase for it with it. A retired
-     * install's stays its own.
-     */
-    private fun account(customer: String): String {
-        val id = hash(customer)
-        val accounts = accounts()
-        if (accounts[id] != customer) preferences.edit().putString(ACCOUNTS, Json.encodeToString(ACCOUNT_MAP, accounts + (id to customer))).commit()
-        return id
-    }
-
+    /** The purchases Restore moved, and to whom; one moved to a Happy account by an earlier version is no one's. */
     private fun restored(): Map<String, String> = preferences.getString(RESTORED, null)
-        ?.let { runCatching { Json.decodeFromString(ACCOUNT_MAP, it) }.getOrNull() }.orEmpty()
+        ?.let { runCatching { Json.decodeFromString(ACCOUNT_MAP, it) }.getOrNull() }.orEmpty().filterValues { isInstall(it) }
 
     /**
      * Whose [purchase] is: the customer it was last restored for, else the
-     * customer its store id is for; null for a purchase neither names.
+     * one its store id names (an earlier version's, the SHA-256 of this
+     * install's id, as this install's own); null for one that names no one.
      */
-    private fun ownerOf(purchase: StorePurchase): String? =
-        restored()[hash(purchase.token)] ?: purchase.account?.let { accounts()[it] }
+    private fun ownerOf(purchase: StorePurchase): String? {
+        restored()[hash(purchase.token)]?.let { return it }
+        named(purchase.account)?.let { return it }
+        val customer = customer
+        return customer.takeIf { purchase.account == hash(it) }
+    }
 
     /** A new anonymous install customer, as RevenueCat's SDK makes them. */
     private fun fresh(): String {
         val id = ANONYMOUS + UUID.randomUUID().toString().replace("-", "").lowercase()
-        preferences.edit().putString(INSTALL, id).apply()
+        preferences.edit().putString(INSTALL, id).commit()
         return id
     }
 
@@ -372,13 +333,26 @@ class Subscription(
         const val PREFS_NAME = "voice-subscription"
         const val ANONYMOUS = "\$RCAnonymousID:"
         private const val INSTALL = "install"
-        private const val CUSTOMER = "customer"
-        private const val ACCOUNTS = "accounts"
         private const val RESTORED = "restored"
         private const val POSTED = "posted"
-        private const val POSTED_BY_INSTALL = "posted-by-install"
+        private const val MIGRATED = "migrated"
+
+        /** Earlier versions', when the Happy account could be the customer: cleared, never read. */
+        private val RETIRED = listOf("customer", "accounts", "posted-by-install")
 
         private val ACCOUNT_MAP = MapSerializer(String.serializer(), String.serializer())
+        private val INSTALL_ID = Regex("""\${'$'}RCAnonymousID:[0-9a-f]{32}""")
+
+        /** Whether [id] is an install's customer, as [fresh] makes them. */
+        fun isInstall(id: String): Boolean = INSTALL_ID.matches(id)
+
+        /**
+         * The customer a purchase's obfuscated account id names: the id
+         * itself, when it is an install's; null for none. Earlier versions,
+         * and RevenueCat's SDK, sent the SHA-256 of the customer id, which
+         * names no one.
+         */
+        fun named(account: String?): String? = account?.takeIf { isInstall(it) }
 
         private fun hash(token: String) = MessageDigest.getInstance("SHA-256").digest(token.toByteArray()).joinToString("") { "%02x".format(it) }
     }

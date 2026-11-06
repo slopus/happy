@@ -40,7 +40,6 @@ public final class Offers {
     let preview: String?
     private weak var shown: OfferSheetViewController?
     private var observation: SubscriptionObservation?
-    private var accountsObservation: AccountsObservation?
 
     init(subscription: Subscription, intro: CallIntro = CallIntro(), preview: String? = Offers.previewPrice) {
         self.subscription = subscription
@@ -77,26 +76,11 @@ public final class Offers {
         shared.subscription.launch()
     }
 
-    /// The foreground: what's on sale, what the store left unfinished, what RevenueCat says.
+    /// The foreground: what the store left unfinished, whose subscription
+    /// the App Store account holds, what's on sale, what RevenueCat says.
+    /// The subscription is this install's, whatever account is signed in.
     func foreground() {
         subscription.refresh()
-    }
-
-    /// The accounts, once they are known: whose subscription it is follows
-    /// the Happy account in front, or the one before an agent connection.
-    func follow(_ account: AccountController) {
-        tell(account)
-        accountsObservation = account.observeAccounts { [weak self, weak account] _ in
-            guard let self, let account else { return }
-            self.tell(account)
-        }
-    }
-
-    func tell(_ account: AccountController) {
-        // The relay token's `sub` (AccountSession.serverID), happy-app's RevenueCat appUserID.
-        let active = account.session.flatMap { session in session.serverID.map { Subscription.Account(id: session.keys.anonID, subject: $0) } }
-        let signedIn = Set(account.accounts.filter { !$0.isAgentConnection }.map(\.id))
-        subscription.accounts(active: active, signedIn: signedIn)
     }
 
     /// What the sheets offer. A debug preview charges and grants nothing.
@@ -122,7 +106,6 @@ public final class Offers {
     func ask(_ sheet: OfferSheet, over top: UIViewController) async -> OfferResult {
         guard shown == nil, top.presentedViewController == nil || !(top.presentedViewController is OfferSheetViewController) else { return .dismissed }
         let proBefore = subscription.hasPro
-        let generation = subscription.generation
         return await withCheckedContinuation { continuation in
             let controller: OfferSheetViewController = CallSheetViewController(sheet, offers: self)
             controller.onResult = { [weak self] result in
@@ -131,10 +114,10 @@ public final class Offers {
                 continuation.resume(returning: result)
             }
             shown = controller
-            // pro came, or another customer: the sheet has done its work, or isn't theirs.
+            // pro came: the sheet has done its work. The customer is this
+            // install's whatever account is in front, so nothing else closes it.
             observation = subscription.observe { [weak self, weak controller] in
                 guard let self, let controller else { return }
-                if self.subscription.generation != generation { return controller.finish(.dismissed) }
                 if !proBefore, self.subscription.hasPro { return controller.finish(.pro) }
                 controller.offerChanged()
             }

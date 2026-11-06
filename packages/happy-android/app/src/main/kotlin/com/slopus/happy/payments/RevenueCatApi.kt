@@ -43,9 +43,6 @@ interface RevenueCat {
     suspend fun subscriber(customer: String): Answer
     suspend fun post(receipt: Receipt): Answer
 
-    /** `logIn`'s call: [from] (anonymous) merged into or switched to [to]. */
-    suspend fun identify(from: String, to: String): Answer
-
     companion object {
         /**
          * The current offering's monthly package (`$rc_monthly`) as Play
@@ -92,12 +89,6 @@ class RevenueCatApi(
                 put("is_restore", receipt.restore)
                 put("observer_mode", false)
             }.toString().toRequestBody(JSON),
-        ),
-    )
-
-    override suspend fun identify(from: String, to: String): Answer = send(
-        request("/v1/subscribers/identify").post(
-            buildJsonObject { put("app_user_id", from); put("new_app_user_id", to) }.toString().toRequestBody(JSON),
         ),
     )
 
