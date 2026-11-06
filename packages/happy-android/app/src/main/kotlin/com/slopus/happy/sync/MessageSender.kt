@@ -129,6 +129,8 @@ class MessageSender internal constructor(
     private val sentFrom: String = SENT_FROM,
 ) {
     private val flushes = ConcurrentHashMap<String, InvalidateSync>()
+    /** Failed rows not yet seen, by localId, and what their `error_shown` says ([failureSeen]). In memory only. */
+    private val unseenFailures = ConcurrentHashMap<String, ErrorCode>()
 
     @Volatile
     private var backgroundSince: Long? = null
@@ -273,6 +275,7 @@ class MessageSender internal constructor(
 
     /** A failed message goes back in the queue. */
     suspend fun retry(sessionId: String, localId: String) {
+        unseenFailures.remove(localId)
         withContext(io) { store.setOutboxState(sessionId, listOf(localId), OutboxState.QUEUED) }
         flushFor(sessionId).invalidate()
         maybeStartWatchdog()
@@ -280,6 +283,7 @@ class MessageSender internal constructor(
 
     /** A failed message is dropped without sending. */
     suspend fun discard(sessionId: String, localId: String) {
+        unseenFailures.remove(localId)
         withContext(io) {
             val row = store.outbox(sessionId).firstOrNull { it.localId == localId }
             if (row != null && row.state == OutboxState.FAILED) store.deleteOutbox(sessionId, localId)
@@ -327,12 +331,19 @@ class MessageSender internal constructor(
                 val pending = store.outbox().filter { it.state == OutboxState.QUEUED || it.state == OutboxState.SENDING }
                 pending.groupBy { it.sessionId }
                     .forEach { (sessionId, rows) -> store.setOutboxState(sessionId, rows.map { it.localId }, OutboxState.FAILED, reason) }
-                pending.isNotEmpty()
+                pending.map { it.localId }
             }
         }
-        // The failed rows say so in their chats.
-        if (failed) Analytics.errorShown(ErrorArea.MessageSend, ErrorCode.Timeout)
+        // Told as the failed rows are seen in their chats, which is not now: the app is behind.
+        failed.forEach { unseenFailures[it] = ErrorCode.Timeout }
     }
+
+    /**
+     * A failed row is in front of the person: its `error_shown`, once.
+     * Returns what was told, or null when that row has nothing to tell.
+     */
+    fun failureSeen(localId: String): ErrorCode? =
+        unseenFailures.remove(localId)?.also { Analytics.errorShown(ErrorArea.MessageSend, it) }
 
     @Synchronized
     private fun maybeStartWatchdog() {
@@ -411,7 +422,7 @@ class MessageSender internal constructor(
             if (e.status in 400..499 && e.status != 408 && e.status != 429) {
                 // Asking again gets the same answer: the user decides.
                 settleSending(sessionId, ids, OutboxState.FAILED, failureMessage(e))
-                Analytics.errorShown(ErrorArea.MessageSend, ErrorCode.ofStatus(e.status))
+                ids.forEach { unseenFailures[it] = ErrorCode.ofStatus(e.status) }
                 return@withContext true
             }
             settleSending(sessionId, ids, OutboxState.QUEUED, failureMessage(e))

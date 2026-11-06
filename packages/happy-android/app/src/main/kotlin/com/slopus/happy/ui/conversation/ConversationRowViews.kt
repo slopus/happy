@@ -1,9 +1,5 @@
 package com.slopus.happy.ui.conversation
 
-import androidx.compose.ui.layout.onVisibilityChanged
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.repeatOnLifecycle
 import com.slopus.happy.analytics.Analytics
 import com.slopus.happy.analytics.AnalyticsEvent
 import com.slopus.happy.analytics.FailureAction
@@ -74,6 +70,7 @@ import com.slopus.happy.ui.chat.MessageCallbacks
 import com.slopus.happy.ui.chat.UserMessage
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.onSeen
 import com.slopus.happy.ui.components.rememberThumbHash
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
@@ -584,15 +581,10 @@ private fun InfoCard(
 @Composable
 private fun FailureRow(row: ConversationRow.Failure, actions: ConversationRowActions, modifier: Modifier) {
     val colors = HappyTheme.colors
-    // Shown: at least half of the card in the window, its page resumed. A card the list only laid out ahead isn't.
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
-    var onScreen by remember { mutableStateOf(false) }
-    LaunchedEffect(row.messageId, lifecycle, onScreen) {
-        if (onScreen) lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { actions.onFailureShown(row) }
-    }
+    // Shown: at least half of the card in the window, its page resumed, no dialog over it. A card the list only laid out ahead isn't.
     Column(
         modifier
-            .onVisibilityChanged(minFractionVisible = 0.5f) { onScreen = it }
+            .onSeen(row.messageId) { actions.onFailureShown(row) }
             .fillMaxWidth()
             .padding(horizontal = ConversationRowSpec.marginHorizontal, vertical = ConversationRowSpec.marginVertical)
             .clip(RoundedCornerShape(ConversationRowSpec.cardRadius))

@@ -108,6 +108,9 @@ interface ChatActions {
     /** A failed send is dropped. */
     suspend fun discard(sessionId: String, localId: String) = Unit
 
+    /** A failed send was in front of the person: its `error_shown` goes now ([MessageSender.failureSeen]). */
+    fun failureSeen(localId: String) = Unit
+
     suspend fun abort(sessionId: String)
 
     suspend fun answerPermission(sessionId: String, answer: PermissionAnswer)
@@ -208,6 +211,10 @@ class SyncChatActions(private val account: () -> AccountSync?) : ChatActions {
     override suspend fun retry(sessionId: String, localId: String) = account().sender.retry(sessionId, localId)
 
     override suspend fun discard(sessionId: String, localId: String) = account().sender.discard(sessionId, localId)
+
+    override fun failureSeen(localId: String) {
+        account.invoke()?.sender?.failureSeen(localId)
+    }
 
     override suspend fun setModes(sessionId: String, patch: Map<AgentModeField, String?>) {
         if (patch.isNotEmpty()) account().composer.setAgentModes(sessionId, patch)

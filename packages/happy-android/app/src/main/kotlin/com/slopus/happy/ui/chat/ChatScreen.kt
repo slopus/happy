@@ -134,6 +134,8 @@ class ChatScreenActions(
     /** A failed send, by its localId: queue it again, or drop it. */
     val onRetry: (String) -> Unit = {},
     val onDiscard: (String) -> Unit = {},
+    /** A failed send was seen, by its localId. */
+    val onSendFailureShown: (String) -> Unit = {},
     val onAnswerQuestion: suspend (communicationId: String, answers: Map<String, AgentQuestionAnswer>, kind: String) -> Unit = { _, _, _ -> },
     val onCancelQuestion: suspend (communicationId: String, kind: String) -> Unit = { _, _ -> },
     /** A pick from header permissions or the composer's model/effort picker. */
@@ -264,6 +266,7 @@ fun ChatScreen(
             onPermission = actions.onPermission,
             onRetry = actions.onRetry,
             onDiscard = actions.onDiscard,
+            onSendFailureShown = actions.onSendFailureShown,
             onAnswerQuestion = actions.onAnswerQuestion,
             onCancelQuestion = actions.onCancelQuestion,
         )

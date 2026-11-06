@@ -60,6 +60,7 @@ import com.slopus.happy.chat.PermissionStatus
 import com.slopus.happy.chat.ToolState
 import com.slopus.happy.chat.UserDisplay
 import com.slopus.happy.ui.attachments.FileMessageView
+import com.slopus.happy.ui.components.onSeen
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.layout.LocalWindowLayout
@@ -140,6 +141,8 @@ class MessageCallbacks(
     /** A failed send, by its localId. */
     val onRetry: (String) -> Unit = {},
     val onDiscard: (String) -> Unit = {},
+    /** A failed send is in front of the person ([onSeen]), by its localId. */
+    val onSendFailureShown: (String) -> Unit = {},
     /** Answers / dismisses an agent communication; throws on failure. */
     val onAnswerQuestion: suspend (communicationId: String, answers: Map<String, AgentQuestionAnswer>, kind: String) -> Unit = { _, _, _ -> },
     val onCancelQuestion: suspend (communicationId: String, kind: String) -> Unit = { _, _ -> },
@@ -371,7 +374,7 @@ fun UserMessage(
             StatusLine(statusText, if (message.sendError != null) colors.textDestructive else chat.agentEventText)
         } else {
             Row(
-                modifier = Modifier.testTag(MessageTags.USER_FAILED),
+                modifier = Modifier.testTag(MessageTags.USER_FAILED).onSeen(failed) { callbacks.onSendFailureShown(failed) },
                 horizontalArrangement = Arrangement.spacedBy(MessageSpec.failedGap),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

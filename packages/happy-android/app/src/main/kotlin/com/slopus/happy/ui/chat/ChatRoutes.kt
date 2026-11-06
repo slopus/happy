@@ -266,6 +266,7 @@ private fun ChatRoute(
             },
             onRetry = { localId -> scope.launch { runCatching { actions.retry(sessionId, localId) } } },
             onDiscard = { localId -> scope.launch { runCatching { actions.discard(sessionId, localId) } } },
+            onSendFailureShown = { localId -> actions.failureSeen(localId) },
             onAnswerQuestion = { id, answers, kind -> actions.answerQuestion(sessionId, id, answers, kind) },
             onCancelQuestion = { id, kind -> actions.cancelQuestion(sessionId, id, kind) },
             onDismissCliWarning = {
