@@ -41,12 +41,11 @@ val revenueCatGoogleKey = providers.environmentVariable("EXPO_PUBLIC_REVENUE_CAT
     ?: providers.gradleProperty("happy.revenueCatGoogleKey").orNull.orEmpty()
 
 // Happy Cloud (the account menu's "Connect to Happy Cloud"): the one domain
-// its accounts service (accounts.BASE) and every server (<name>.BASE) live
-// under, compiled in. HAPPY_CLOUD_BASE or -Phappy.cloudBase points a build
+// every server (<name>.BASE) lives under, compiled in. HAPPY_CLOUD_BASE or -Phappy.cloudBase points a build
 // at another deployment.
 val happyCloudBase = providers.environmentVariable("HAPPY_CLOUD_BASE").orNull?.takeIf { it.isNotBlank() }
     ?: providers.gradleProperty("happy.cloudBase").orNull?.takeIf { it.isNotBlank() }
-    ?: "24-144-71-103.sslip.io"
+    ?: "happy-clusters.com"
 
 // Happy Cloud's accounts service, where the person signs in and their servers
 // are listed: its own origin, apart from HAPPY_CLOUD_BASE. HAPPY_CLOUD_ACCOUNTS
