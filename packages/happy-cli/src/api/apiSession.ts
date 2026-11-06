@@ -19,6 +19,9 @@ import { AsyncLock } from '@/utils/lock';
 import { deriveKey } from '@/utils/deriveKey';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
+import { registerGoalBoardHandlers } from '../modules/goalBoard/registerGoalBoardHandlers';
+import { goalBoardTaskPrompt } from '../modules/goalBoard/taskPrompt';
+import { launchIndependentDaemonSession } from '../daemon/controlClient';
 import { calculateCost } from '@/utils/pricing';
 import { shouldReconnect } from '@/utils/lidState';
 import { createEnvelope, type InteractivePreviewEvent, type SessionEnvelope, type SessionTurnEndStatus } from '@slopus/happy-wire';
@@ -153,6 +156,9 @@ export class ApiSessionClient extends EventEmitter {
         startedSubagents: new Set<string>(),
         activeSubagents: new Set<string>(),
     };
+    private goalBoardController: { dispose(): void };
+    private goalBoardSnapshotSequence = 0;
+    private goalBoardClosed = false;
     private lastSeq = 0;
     private pendingOutbox: Array<{ content: string; localId: string }> = [];
     private readonly sendSync: InvalidateSync;
@@ -180,6 +186,35 @@ export class ApiSessionClient extends EventEmitter {
             logger: (msg, data) => logger.debug(msg, data)
         });
         registerCommonHandlers(this.rpcHandlerManager, this.metadata.path);
+        this.goalBoardController = registerGoalBoardHandlers(this.rpcHandlerManager, this.metadata.path, {
+            homeDirectory: this.metadata.homeDir,
+            initialFeaturePath: this.metadata.goalBoard?.featurePath,
+            onSnapshot: (snapshot) => {
+                const sequence = ++this.goalBoardSnapshotSequence;
+                this.updateMetadata((metadata) => {
+                    if (this.goalBoardClosed || sequence !== this.goalBoardSnapshotSequence ||
+                        (metadata.goalBoard && metadata.goalBoard.featurePath !== snapshot.featurePath) ||
+                        metadata.goalBoardSnapshot?.revision === snapshot.revision) return metadata;
+                    return { ...metadata, goalBoardSnapshot: snapshot };
+                });
+            },
+            prepareAttachment: async (path, kind) => {
+                if (kind === 'audio' || kind === 'video') {
+                    const uploaded = await this.uploadMediaAttachment(path);
+                    return { ...uploaded, encrypted: false };
+                }
+                // uploadImageAttachment encrypts arbitrary bytes; readImageSize returns null for PDF.
+                const uploaded = await this.uploadImageAttachment(path);
+                const extension = path.split('.').pop()?.toLowerCase();
+                const imageMime: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', avif: 'image/avif', heic: 'image/heic' };
+                return { ref: uploaded.ref, name: uploaded.name, size: uploaded.size,
+                    mimeType: kind === 'pdf' ? 'application/pdf' : imageMime[extension || ''] || 'application/octet-stream',
+                    kind: kind === 'pdf' ? 'file' as const : 'image' as const, encrypted: true };
+            },
+            startTask: (task, featurePath, requestId) => launchIndependentDaemonSession(this.sessionId, {
+                requestId, title: task.title.slice(0, 200), prompt: goalBoardTaskPrompt(task, featurePath), directory: featurePath,
+            }),
+        });
 
         //
         // Create socket
@@ -401,8 +436,11 @@ export class ApiSessionClient extends EventEmitter {
      * blob key. Throws on read/encrypt/upload failure.
      */
     async uploadImageAttachment(filePath: string): Promise<{ ref: string; name: string; size: number; dims: { width: number; height: number } | null; motionPhoto: MotionPhotoVideo | null }> {
-        const raw = new Uint8Array(await readFile(filePath));
         const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
+        const info = await stat(filePath);
+        if (!info.isFile()) throw new Error(`Not a regular file: ${filePath}`);
+        if (info.size > MAX_ATTACHMENT_BYTES) throw new Error(`Image too large: ${info.size} bytes (max ${MAX_ATTACHMENT_BYTES})`);
+        const raw = new Uint8Array(await readFile(filePath));
         if (raw.length > MAX_ATTACHMENT_BYTES) {
             throw new Error(`Image too large: ${raw.length} bytes (max ${MAX_ATTACHMENT_BYTES})`);
         }
@@ -991,6 +1029,7 @@ export class ApiSessionClient extends EventEmitter {
         await this.metadataLock.inLock(async () => {
             await backoff(async () => {
                 let updated = handler(this.metadata!); // Weird state if metadata is null - should never happen but here we are
+                if (updated === this.metadata) return;
                 const answer = await this.socket.emitWithAck('update-metadata', { sid: this.sessionId, expectedVersion: this.metadataVersion, metadata: encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, updated)) });
                 if (answer.result === 'success') {
                     this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.metadata));
@@ -1084,6 +1123,9 @@ export class ApiSessionClient extends EventEmitter {
 
     async close() {
         logger.debug('[API] socket.close() called');
+        this.goalBoardClosed = true;
+        this.goalBoardSnapshotSequence++;
+        this.goalBoardController.dispose();
         if (this.listenerCount('before-close') > 0) {
             try {
                 this.emit('before-close');

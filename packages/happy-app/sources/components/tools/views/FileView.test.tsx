@@ -419,6 +419,18 @@ describe('FileView media playback', () => {
         expect(mocks.release).toHaveBeenCalledTimes(1);
     });
 
+    it('lets a modal host open the original image without a sibling native Modal', async () => {
+        const onOpenImage = vi.fn();
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<FileView tool={{
+            name: 'file', state: 'completed', input: { kind: 'image', ref: 'original.png', name: '原图.png' },
+        } as any} sessionId="s1" metadata={null} messages={[]} onOpenImage={onOpenImage} />); });
+        act(() => renderer.root.findByProps({ accessibilityLabel: '原图.png' }).props.onPress());
+        expect(onOpenImage).toHaveBeenCalledWith(expect.objectContaining({ uri: 'data:image/jpeg;base64,AA==', attachmentRef: 'original.png', sessionId: 's1' }));
+        expect(mocks.openImageViewer).not.toHaveBeenCalled();
+        await act(async () => renderer.unmount());
+    });
+
     it('opens a motion-photo cover as a still image in the fullscreen viewer', async () => {
         const tool = {
             name: 'file',

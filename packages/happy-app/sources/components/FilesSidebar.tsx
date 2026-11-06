@@ -1,3 +1,4 @@
+import { encodeFilePath } from '@/utils/filePathEncoding';
 import * as React from 'react';
 import { View, Text, ScrollView, Pressable, Platform, TextInput, ActivityIndicator } from 'react-native';
 import { Octicons } from '@expo/vector-icons';
@@ -180,7 +181,7 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
             onFilePress(file);
             return;
         }
-        const encodedPath = btoa(file.fullPath);
+        const encodedPath = encodeFilePath(file.fullPath);
         router.push(`/session/${sessionId}/file?path=${encodedPath}`);
     }, [router, sessionId, onFilePress]);
 

@@ -28,6 +28,15 @@ const mocks = vi.hoisted(() => ({
     currentViewingSessionId: null as string | null,
 }));
 
+// Goal Board owns its RPC/account lifecycle in dedicated hook tests. Keep
+// this SessionView test focused on route ownership and surface composition.
+vi.mock('@/hooks/useGoalBoard', () => ({ useGoalBoard: () => ({
+    snapshot: null, catalog: [], loading: false, error: null, offline: true,
+    openingTaskId: null, activeTaskId: undefined, parentSessionId: undefined,
+    selectFeature: vi.fn(), refresh: vi.fn(), openTask: vi.fn(), getTaskSessionId: () => null,
+}) }));
+vi.mock('@/hooks/useNavigateToSession', () => ({ useNavigateToSession: () => vi.fn() }));
+
 vi.mock('react-native', () => ({
     ActivityIndicator: 'ActivityIndicator',
     Platform: { OS: 'web', select: (values: Record<string, unknown>) => values.web ?? values.default },

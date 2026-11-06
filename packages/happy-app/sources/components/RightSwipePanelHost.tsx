@@ -323,6 +323,11 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
     React.useEffect(() => {
         if (Platform.OS !== 'web' || !open || typeof document === 'undefined') return;
         const handleKeyDown = (event: KeyboardEvent) => {
+            // A portal dialog (for example an artifact reader or its image preview)
+            // owns its keys while the task drawer stays mounted underneath.
+            const panel = panelRef.current as HTMLElement | null;
+            if (event.target instanceof Element && !panel?.contains(event.target)
+                && event.target.closest('[aria-modal="true"]')) return;
             if (event.key === 'Escape') {
                 if (!handlePanelBack()) return;
                 event.preventDefault();
@@ -330,7 +335,6 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
                 return;
             }
             if (event.key !== 'Tab') return;
-            const panel = panelRef.current as HTMLElement | null;
             if (!panel) return;
             const focusable = Array.from(panel.querySelectorAll<HTMLElement>(
                 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',

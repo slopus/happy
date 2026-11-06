@@ -1,3 +1,4 @@
+import { encodeFilePath } from '@/utils/filePathEncoding';
 import * as React from 'react';
 import { View, Text, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -55,7 +56,7 @@ export const ToolGroupView = React.memo<ToolGroupViewProps>((props) => {
             ? singleToolMessage.tool.input.file_path
             : null;
         if (filePath) {
-            router.push(`/session/${sessionId}/file?path=${btoa(filePath)}`);
+            router.push(`/session/${sessionId}/file?path=${encodeFilePath(filePath)}`);
             return;
         }
         router.push(`/session/${sessionId}/message/${singleToolMessage.id}`);
@@ -365,7 +366,7 @@ function ToolSummaryRow(props: {
     const handlePress = React.useCallback(() => {
         if (!props.sessionId) return;
         if (filePath) {
-            router.push(`/session/${props.sessionId}/file?path=${btoa(filePath)}`);
+            router.push(`/session/${props.sessionId}/file?path=${encodeFilePath(filePath)}`);
             return;
         }
         router.push(`/session/${props.sessionId}/message/${props.message.id}`);

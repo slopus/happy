@@ -1,3 +1,4 @@
+import { encodeFilePath } from '@/utils/filePathEncoding';
 import { TranscriptReadOnlyContext } from "../TranscriptReadOnlyContext";
 import * as React from 'react';
 import { Text, View, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
@@ -44,7 +45,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         if (onPress) {
             onPress();
         } else if (sessionId && filePath) {
-            router.push(`/session/${sessionId}/file?path=${btoa(filePath)}`);
+            router.push(`/session/${sessionId}/file?path=${encodeFilePath(filePath)}`);
         } else if (sessionId && messageId) {
             router.push(`/session/${sessionId}/message/${messageId}`);
         }

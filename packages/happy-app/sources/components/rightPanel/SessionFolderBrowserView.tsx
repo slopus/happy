@@ -1,3 +1,4 @@
+import { encodeFilePath } from '@/utils/filePathEncoding';
 import * as React from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -77,7 +78,7 @@ export const SessionFolderBrowserView = React.memo(function SessionFolderBrowser
             setCurrentPath(childPath);
         } else {
             // 打开文件查看器但**不关闭右侧面板**——看完文件返回后仍停在当前文件夹，可继续浏览。
-            router.push(`/session/${sessionId}/file?path=${btoa(childPath)}` as any);
+            router.push(`/session/${sessionId}/file?path=${encodeFilePath(childPath)}` as any);
         }
     }, [currentPath, router, sessionId]);
 

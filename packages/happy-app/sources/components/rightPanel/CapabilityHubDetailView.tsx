@@ -1,3 +1,4 @@
+import { encodeFilePath } from '@/utils/filePathEncoding';
 import * as React from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { Image } from 'expo-image';
@@ -237,7 +238,7 @@ const TaskResourceTextItemRow = React.memo(function TaskResourceTextItemRow(prop
     const { theme } = useUnistyles();
     const event = props.item.event;
     const onPress = event.resourceType === 'file'
-        ? () => router.push(`/session/${props.sessionId}/file?path=${btoa(event.path)}` as any)
+        ? () => router.push(`/session/${props.sessionId}/file?path=${encodeFilePath(event.path)}` as any)
         : event.resourceType === 'artifact' && event.artifactId
             ? () => router.push(`/artifacts/${event.artifactId}` as any)
             : event.resourceType === 'web'
@@ -586,7 +587,7 @@ const FileItemRow = React.memo(function FileItemRow(props: {
 
     return (
         <Pressable
-            onPress={() => router.push(`/session/${props.sessionId}/file?path=${btoa(props.item.path)}` as any)}
+            onPress={() => router.push(`/session/${props.sessionId}/file?path=${encodeFilePath(props.item.path)}` as any)}
             style={({ pressed }) => [
                 styles.rowCard,
                 {

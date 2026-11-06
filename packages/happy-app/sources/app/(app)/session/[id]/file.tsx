@@ -1,3 +1,4 @@
+import { decodeFilePath } from '@/utils/filePathEncoding';
 import * as React from 'react';
 import { View, ScrollView, ActivityIndicator, Platform, Pressable } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
@@ -101,7 +102,7 @@ export default React.memo(function FileScreen() {
 
     // Decode base64 path with error handling
     try {
-        rawPath = encodedPath ? atob(encodedPath) : '';
+        rawPath = encodedPath ? decodeFilePath(encodedPath) : '';
     } catch (error) {
         console.error('Failed to decode file path:', error);
         rawPath = encodedPath || '';

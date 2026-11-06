@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ApplicationSessionMetadataSchema } from "@slopus/happy-wire";
+import { ApplicationSessionMetadataSchema, GoalBoardBindingSchema, GoalBoardSnapshotSchema } from "@slopus/happy-wire";
 
 //
 // Agent states
@@ -7,6 +7,9 @@ import { ApplicationSessionMetadataSchema } from "@slopus/happy-wire";
 
 export const MetadataSchema = z.object({
     application: ApplicationSessionMetadataSchema.optional(),
+    goalBoard: GoalBoardBindingSchema.optional(),
+    goalBoardSnapshot: GoalBoardSnapshotSchema.optional(),
+    goalBoardTaskSessions: z.record(z.string().max(65536), z.string().max(256)).optional(),
     models: z.array(z.object({
         code: z.string(),
         value: z.string(),

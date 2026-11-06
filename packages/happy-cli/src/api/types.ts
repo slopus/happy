@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Update, UpdateMachineBody, SessionStreamEnvelope } from '@slopus/happy-wire';
+import type { GoalBoardBinding, GoalBoardSnapshot, Update, UpdateMachineBody, SessionStreamEnvelope } from '@slopus/happy-wire';
 import { UsageSchema } from '@/claude/types'
 import type { SandboxConfig } from '@/persistence'
 
@@ -362,6 +362,9 @@ export const MessageContentSchema = z.union([UserMessageSchema, AgentMessageSche
 export type MessageContent = z.infer<typeof MessageContentSchema>
 
 export type Metadata = {
+  goalBoard?: GoalBoardBinding;
+  goalBoardSnapshot?: GoalBoardSnapshot;
+  goalBoardTaskSessions?: Record<string, string>;
   application?: { appId: string; bindingId: string };
   /**
    * ACP session config option value (normalized for UI metadata consumers).

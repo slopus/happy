@@ -1,15 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtemp, mkdir, writeFile, rm, realpath } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { ApiSessionClient } from './apiSession';
 import { applyCodexReconnectUpdate } from '@/codex/reconnectMetadata';
 import { ApiClient } from './api';
 import { createWorkerSessionStartupLifecycleFromEnvironment, WorkerSessionStartupLifecycle } from './sessionStartupTrace';
-import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
+import { decodeBase64, decrypt, decryptBlob, encodeBase64, encrypt } from './encryption';
 import type { Update } from './types';
 
 const {
     mockIo,
     mockAxiosGet,
     mockAxiosPost,
+    mockAxiosPut,
     mockBackoff,
     mockDelay,
     mockShouldReconnect,
@@ -18,6 +22,7 @@ const {
     mockIo: vi.fn(),
     mockAxiosGet: vi.fn(),
     mockAxiosPost: vi.fn(),
+    mockAxiosPut: vi.fn(),
     mockBackoff: vi.fn(async <T>(callback: () => Promise<T>) => {
         let lastError: unknown;
         for (let i = 0; i < 20; i += 1) {
@@ -41,7 +46,8 @@ vi.mock('socket.io-client', () => ({
 vi.mock('axios', () => ({
     default: {
         get: mockAxiosGet,
-        post: mockAxiosPost
+        post: mockAxiosPost,
+        put: mockAxiosPut,
     }
 }));
 
@@ -60,6 +66,8 @@ vi.mock('@/ui/logger', () => ({
 
 vi.mock('@/api/rpc/RpcHandlerManager', () => ({
     RpcHandlerManager: class {
+        registerHandler = vi.fn();
+        unregisterHandler = vi.fn();
         onSocketConnect = vi.fn();
         onSocketDisconnect = vi.fn();
         handleRequest = vi.fn(async () => '');
@@ -1461,6 +1469,64 @@ describe('ApiSessionClient v3 messages API migration', () => {
         mockSocket.close.mockImplementation(() => order.push('close'));
         await client.close();
         expect(order).toEqual(['expire previews', 'flush', 'close']);
+    });
+
+    it('publishes changed encrypted Goal snapshots and previews PDF bytes through the encrypted attachment lane without chat', async () => {
+        const home = await mkdtemp(join(tmpdir(), 'goal-api-'));
+        let client: ApiSessionClient | undefined;
+        try {
+            const feature = join(home, '.codex/skills/goal-first-ops/projects/demo/features/goal');
+            const taskDirectory = join(feature, 'tasks/01-task');
+            await mkdir(taskDirectory, { recursive: true });
+            await writeFile(join(feature, 'index.md'), '# Goal');
+            await writeFile(join(taskDirectory, 'index.md'), '---\nstatus: pending\n---\n# Task\n目标摘要：Actual goal\n## 当前产物\n[Original PDF](报告.pdf)');
+            const original = Buffer.from('%PDF-1.7\nOriginal document bytes');
+            await writeFile(join(taskDirectory, '报告.pdf'), original);
+            session.metadata.homeDir = home;
+            session.metadata.path = home;
+            mockSocket.emitWithAck.mockImplementation(async (_event: string, payload: any) => ({ result: 'success', version: payload.expectedVersion + 1, metadata: payload.metadata }));
+            client = new ApiSessionClient('fake-token', session);
+            const manager = (client as any).rpcHandlerManager;
+            const read = manager.registerHandler.mock.calls.find(([method]: string[]) => method === 'goalBoardRead')[1];
+            const artifact = manager.registerHandler.mock.calls.find(([method]: string[]) => method === 'goalBoardArtifact')[1];
+            const result = await read({ featurePath: await realpath(feature) });
+            expect(result.success).toBe(true);
+            await client.updateMetadataAndAwait(metadata => metadata);
+            const metadataUpdates = mockSocket.emitWithAck.mock.calls.filter(([event]: string[]) => event === 'update-metadata');
+            expect(metadataUpdates).toHaveLength(1);
+            expect(decrypt(session.encryptionKey, session.encryptionVariant, decodeBase64(metadataUpdates[0][1].metadata))).toMatchObject({ goalBoardSnapshot: { tasks: [{ status: 'pending', goal: 'Actual goal' }] } });
+            await read({ featurePath: await realpath(feature) });
+            await client.updateMetadataAndAwait(metadata => metadata);
+            expect(mockSocket.emitWithAck.mock.calls.filter(([event]: string[]) => event === 'update-metadata')).toHaveLength(1);
+            expect(mockAxiosPost).not.toHaveBeenCalled();
+            mockAxiosPost.mockResolvedValueOnce({ data: { ref: 'private-ref', uploadUrl: 'https://server.test/upload', method: 'PUT' } });
+            mockAxiosPut.mockResolvedValueOnce({ status: 200 });
+            const task = result.snapshot.tasks[0];
+            const preview = await artifact({ featurePath: result.snapshot.featurePath, taskId: task.id, artifactId: task.artifacts[0].id });
+            expect(preview).toMatchObject({ success: true, kind: 'attachment', attachment: { kind: 'file', mimeType: 'application/pdf', encrypted: true } });
+            expect(mockAxiosPost).toHaveBeenCalledTimes(1);
+            expect(mockAxiosPost.mock.calls[0][0]).toContain('/attachments/request-upload');
+            const encrypted = mockAxiosPut.mock.calls[0][1];
+            expect(Buffer.from(encrypted)).not.toEqual(original);
+            expect(Buffer.from(decryptBlob(encrypted, await client.getBlobKey())!)).toEqual(original);
+            expect(mockSocket.emit.mock.calls.some(([event]: string[]) => event === 'message')).toBe(false);
+        } finally {
+            await client?.close();
+            await rm(home, { recursive: true, force: true });
+        }
+    });
+
+    it('registers Goal Board RPCs and disposes its lifecycle-owned handlers on close', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const manager = (client as any).rpcHandlerManager;
+        for (const method of ['goalBoardCatalog', 'goalBoardRead', 'goalBoardArtifact', 'goalBoardStartTask']) {
+            expect(manager.registerHandler).toHaveBeenCalledWith(method, expect.any(Function));
+        }
+        await client.close();
+        for (const method of ['goalBoardCatalog', 'goalBoardRead', 'goalBoardArtifact', 'goalBoardStartTask']) {
+            expect(manager.unregisterHandler).toHaveBeenCalledWith(method);
+        }
+        expect(manager.unregisterHandler).toHaveBeenCalledTimes(4);
     });
 
     it('stops send and receive sync loops on close', async () => {

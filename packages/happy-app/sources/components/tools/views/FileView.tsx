@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { useAttachmentImage } from '@/hooks/useAttachmentImage';
 import { thumbhashToDataUri } from '@/utils/thumbhash';
 import { openSessionImageViewer } from '@/sync/openSessionImageViewer';
+import type { ImageViewerSource } from '@/sync/imageViewer';
 import { CHAT_IMAGE_THUMB_SIZE } from '@/utils/attachmentGalleryLayout';
 import { resolveMediaAttachmentSource } from '@/sync/resolveMediaAttachmentSource';
 import { attachmentCacheGeneration, subscribeAttachmentCache } from '@/sync/attachmentCacheContext';
@@ -61,7 +62,7 @@ function humanSize(bytes: number | undefined): string | null {
     return `${bytes}B`;
 }
 
-export const FileView = React.memo<ToolViewProps>(({ tool, sessionId }) => {
+export const FileView = React.memo<ToolViewProps & { onOpenImage?: (source: ImageViewerSource) => void }>(({ tool, sessionId, onOpenImage }) => {
     const parsed = fileInputSchema.safeParse(tool.input);
     if (!parsed.success) return null;
     if (parsed.data.kind === 'video') {
@@ -107,6 +108,7 @@ export const FileView = React.memo<ToolViewProps>(({ tool, sessionId }) => {
         ref_={parsed.data.ref}
         sessionId={sessionId}
         motionPhoto={parsed.data.motionPhoto}
+        onOpenImage={onOpenImage}
     />;
 });
 
@@ -392,12 +394,13 @@ function CompactAudioFile({ ref_, sessionId, name, mimeType, encrypted, source: 
     );
 }
 
-function ImageFileView({ name, image, ref_, sessionId, motionPhoto }: {
+function ImageFileView({ name, image, ref_, sessionId, motionPhoto, onOpenImage = openSessionImageViewer }: {
     name: string;
     image?: { width: number; height: number; thumbhash?: string };
     ref_: string;
     sessionId?: string;
     motionPhoto?: MotionPhotoMetadata;
+    onOpenImage?: (source: ImageViewerSource) => void;
 }) {
     const { theme } = useUnistyles();
     const ref = ref_;
@@ -451,7 +454,7 @@ function ImageFileView({ name, image, ref_, sessionId, motionPhoto }: {
                 testID={effectiveMotionPhoto ? 'motion-photo-cover' : undefined}
                 accessibilityRole="button"
                 accessibilityLabel={name}
-                onPress={uri ? () => openSessionImageViewer({
+                onPress={uri ? () => onOpenImage({
                     uri,
                     width: image?.width,
                     height: image?.height,

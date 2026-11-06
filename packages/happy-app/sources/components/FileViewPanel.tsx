@@ -106,15 +106,11 @@ function encodeStringToBase64(str: string): string {
     return btoa(binary);
 }
 
-/** Read file and decode to string, returns null on failure */
-async function readFileContent(sessionId: string, filePath: string): Promise<string | null> {
+/** Read once and preserve empty UTF-8 files. Failures must never permit an unchecked write. */
+async function readFileContent(sessionId: string, filePath: string): Promise<string> {
     const res = await sessionReadFile(sessionId, filePath);
-    if (!res.success || !res.content) return null;
-    try {
-        return decodeUtf8Bytes(decodeBase64ToBytes(res.content));
-    } catch {
-        return null;
-    }
+    if (!res.success || typeof res.content !== 'string') throw new Error(res.error || t('files.failedToRead'));
+    return decodeUtf8Bytes(decodeBase64ToBytes(res.content));
 }
 
 /** Compute SHA-256 hash of a UTF-8 string (matches server's crypto.createHash('sha256').update(str).digest('hex')) */
@@ -134,6 +130,16 @@ export const FileViewPanel = React.memo(function FileViewPanel({
     const [fileState, setFileState] = React.useState<FileState>({ kind: 'loading' });
     const [editContent, setEditContent] = React.useState('');
     const [isSaving, setIsSaving] = React.useState(false);
+    const [readVersion, setReadVersion] = React.useState(0);
+    const [isRefreshing, setIsRefreshing] = React.useState(false);
+    const [refreshError, setRefreshError] = React.useState<string | null>(null);
+    const identity = JSON.stringify([sessionId, filePath]);
+    const identityRef = React.useRef({ key: identity, generation: 0 });
+    if (identityRef.current.key !== identity) identityRef.current = { key: identity, generation: identityRef.current.generation + 1 };
+    const generation = identityRef.current.generation;
+    const mounted = React.useRef(true);
+    React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+    const refreshPending = React.useRef(false);
     const [displayMode, setDisplayMode] = React.useState<'edit' | 'preview'>('edit');
 
     // External change detection
@@ -145,11 +151,15 @@ export const FileViewPanel = React.memo(function FileViewPanel({
     const isMarkdown = language === 'markdown';
 
     const hasChanges = fileState.kind === 'loaded' && editContent !== fileState.content;
+    const currentRef = React.useRef({ fileState, editContent });
+    currentRef.current = { fileState, editContent };
 
     // Load file content
     React.useEffect(() => {
         let cancelled = false;
         setFileState({ kind: 'loading' });
+        setIsSaving(false);
+        setRefreshError(null); setIsRefreshing(false); refreshPending.current = false;
         setExternalChange(null);
         setShowConflictDiff(false);
 
@@ -164,7 +174,7 @@ export const FileViewPanel = React.memo(function FileViewPanel({
 
                 if (cancelled) return;
 
-                if (!fileResponse.success || !fileResponse.content) {
+                if (!fileResponse.success || typeof fileResponse.content !== 'string') {
                     setFileState({ kind: 'error', message: fileResponse.error || t('files.failedToRead') });
                     return;
                 }
@@ -190,6 +200,7 @@ export const FileViewPanel = React.memo(function FileViewPanel({
                 }
 
                 const hash = await computeSHA256(decodedContent);
+                if (cancelled) return;
                 setFileState({ kind: 'loaded', content: decodedContent, originalHash: hash });
                 setEditContent(decodedContent);
             } catch {
@@ -200,36 +211,45 @@ export const FileViewPanel = React.memo(function FileViewPanel({
         })();
 
         return () => { cancelled = true; };
-    }, [sessionId, filePath]);
+    }, [sessionId, filePath, readVersion]);
 
-    // Poll for external changes every 5s
-    React.useEffect(() => {
-        if (fileState.kind !== 'loaded' || !fileState.originalHash) return;
-        const originalHash = fileState.originalHash;
-
-        const interval = setInterval(async () => {
+    // Remote changes are checked only by this explicit user action.
+    const handleRefresh = React.useCallback(async () => {
+        if (fileState.kind === 'error') { setReadVersion(value => value + 1); return; }
+        if (refreshPending.current || isSaving || fileState.kind !== 'loaded') return;
+        refreshPending.current = true; setIsRefreshing(true); setRefreshError(null);
+        try {
             const content = await readFileContent(sessionId, filePath);
-            if (!content) return;
-            const currentHash = await computeSHA256(content);
-            if (currentHash !== originalHash) {
-                setExternalChange(content);
+            const hash = await computeSHA256(content);
+            if ((identityRef.current.generation !== generation || !mounted.current)) return;
+            const latest = currentRef.current;
+            if (latest.fileState.kind !== 'loaded') return;
+            if (latest.editContent !== latest.fileState.content) {
+                // Preserve edits made before or during this read; show an explicit conflict.
+                setExternalChange(content !== latest.fileState.content ? content : null);
+            } else {
+                setFileState({ kind: 'loaded', content, originalHash: hash });
+                setEditContent(content); setExternalChange(null); setShowConflictDiff(false);
             }
-        }, 5000);
-
-        return () => clearInterval(interval);
-    }, [sessionId, filePath, fileState]);
+        } catch (cause) {
+            if ((identityRef.current.generation === generation && mounted.current)) setRefreshError(cause instanceof Error ? cause.message : t('files.failedToRead'));
+        } finally {
+            if ((identityRef.current.generation === generation && mounted.current)) { refreshPending.current = false; setIsRefreshing(false); }
+        }
+    }, [sessionId, filePath, identity, generation, isSaving, fileState.kind]);
 
     const handleReload = React.useCallback(() => {
-        if (!externalChange) return;
+        if (externalChange === null) return;
         const reloaded = externalChange;
         setExternalChange(null);
         setShowConflictDiff(false);
         (async () => {
             const hash = await computeSHA256(reloaded);
+            if ((identityRef.current.generation !== generation || !mounted.current)) return;
             setFileState({ kind: 'loaded', content: reloaded, originalHash: hash });
             setEditContent(reloaded);
         })();
-    }, [externalChange]);
+    }, [externalChange, identity, generation]);
 
     const handleDismissWarning = React.useCallback(() => {
         setExternalChange(null);
@@ -252,16 +272,14 @@ export const FileViewPanel = React.memo(function FileViewPanel({
                 fileState.originalHash,
             );
 
+            if ((identityRef.current.generation !== generation || !mounted.current)) return;
             if (!response.success) {
                 if (response.error?.includes('hash') || response.error?.includes('mismatch')) {
                     // Fetch the current server content for diff
                     const serverContent = await readFileContent(sessionId, filePath);
-                    if (serverContent) {
-                        setExternalChange(serverContent);
-                        setShowConflictDiff(true);
-                    } else {
-                        Modal.alert(t('files.fileConflict'), t('files.fileConflictDescription'));
-                    }
+                    if ((identityRef.current.generation !== generation || !mounted.current)) return;
+                    setExternalChange(serverContent);
+                    setShowConflictDiff(true);
                 } else {
                     Modal.alert(t('common.error'), response.error || t('files.failedToSave'));
                 }
@@ -276,10 +294,12 @@ export const FileViewPanel = React.memo(function FileViewPanel({
             });
             setExternalChange(null);
             setShowConflictDiff(false);
+        } catch (cause) {
+            if ((identityRef.current.generation === generation && mounted.current)) Modal.alert(t('common.error'), cause instanceof Error ? cause.message : t('files.failedToSave'));
         } finally {
-            setIsSaving(false);
+            if ((identityRef.current.generation === generation && mounted.current)) setIsSaving(false);
         }
-    }, [sessionId, filePath, editContent, fileState, hasChanges]);
+    }, [sessionId, filePath, editContent, fileState, hasChanges, identity, generation]);
 
     const handleForceSave = React.useCallback(async () => {
         if (fileState.kind !== 'loaded') return;
@@ -288,11 +308,13 @@ export const FileViewPanel = React.memo(function FileViewPanel({
         try {
             // Re-read to get current hash, then write
             const serverContent = await readFileContent(sessionId, filePath);
-            const currentHash = serverContent ? await computeSHA256(serverContent) : undefined;
+            const currentHash = await computeSHA256(serverContent);
+            if ((identityRef.current.generation !== generation || !mounted.current)) return;
 
             const base64 = encodeStringToBase64(editContent);
             const response = await sessionWriteFile(sessionId, filePath, base64, currentHash);
 
+            if ((identityRef.current.generation !== generation || !mounted.current)) return;
             if (!response.success) {
                 Modal.alert(t('common.error'), response.error || t('files.failedToSave'));
                 return;
@@ -305,10 +327,12 @@ export const FileViewPanel = React.memo(function FileViewPanel({
             });
             setExternalChange(null);
             setShowConflictDiff(false);
+        } catch (cause) {
+            if ((identityRef.current.generation === generation && mounted.current)) Modal.alert(t('common.error'), cause instanceof Error ? cause.message : t('files.failedToSave'));
         } finally {
-            setIsSaving(false);
+            if ((identityRef.current.generation === generation && mounted.current)) setIsSaving(false);
         }
-    }, [sessionId, filePath, editContent, fileState]);
+    }, [sessionId, filePath, editContent, fileState, identity, generation]);
 
     // Publish right-slot controls (edit/preview toggle, save button) into the chat header.
     const isLoaded = fileState.kind === 'loaded';
@@ -322,15 +346,19 @@ export const FileViewPanel = React.memo(function FileViewPanel({
                 hasChanges={hasChanges}
                 isSaving={isSaving}
                 onSave={handleSave}
+                onRefresh={handleRefresh}
+                isRefreshing={isRefreshing}
+                canRefresh={isLoaded || fileState.kind === 'error'}
             />
         );
         return () => onHeaderRightSlotChange(null);
-    }, [isMarkdown, isLoaded, displayMode, hasChanges, isSaving, handleSave, onHeaderRightSlotChange]);
+    }, [isMarkdown, isLoaded, displayMode, hasChanges, isSaving, handleSave, handleRefresh, isRefreshing, fileState.kind, onHeaderRightSlotChange]);
 
     return (
         <View style={styles.outer}>
+            {refreshError !== null && <Text accessibilityRole="alert" style={{ color: theme.colors.textDestructive, padding: 12 }}>{refreshError}</Text>}
             {/* External change warning bar */}
-            {externalChange && !showConflictDiff && (
+            {externalChange !== null && !showConflictDiff && (
                 <View style={[styles.warningBar, { backgroundColor: theme.colors.warning + '18', borderBottomColor: theme.colors.divider }]}>
                     <Ionicons name="alert-circle" size={16} color={theme.colors.warning} />
                     <Text style={[styles.warningText, { color: theme.colors.text }]}>
@@ -350,7 +378,7 @@ export const FileViewPanel = React.memo(function FileViewPanel({
             )}
 
             {/* Conflict diff view */}
-            {showConflictDiff && externalChange && fileState.kind === 'loaded' ? (
+            {showConflictDiff && externalChange !== null && fileState.kind === 'loaded' ? (
                 <View style={{ flex: 1 }}>
                     <View style={[styles.conflictHeader, { backgroundColor: theme.colors.surfaceHigh, borderBottomColor: theme.colors.divider }]}>
                         <Text style={[styles.conflictTitle, { color: theme.colors.text }]}>
@@ -436,6 +464,9 @@ const FileHeaderRight = React.memo(function FileHeaderRight({
     hasChanges,
     isSaving,
     onSave,
+    onRefresh,
+    isRefreshing,
+    canRefresh,
 }: {
     isMarkdown: boolean;
     isLoaded: boolean;
@@ -444,10 +475,25 @@ const FileHeaderRight = React.memo(function FileHeaderRight({
     hasChanges: boolean;
     isSaving: boolean;
     onSave: () => void;
+    onRefresh: () => void;
+    isRefreshing: boolean;
+    canRefresh: boolean;
 }) {
     const { theme } = useUnistyles();
     return (
         <>
+            {canRefresh && (
+                <Pressable
+                    testID="file-panel-refresh"
+                    accessibilityRole="button"
+                    accessibilityLabel={t('goalBoard.artifactRefresh')}
+                    disabled={isRefreshing || isSaving}
+                    onPress={onRefresh}
+                    style={({ pressed }) => [styles.actionButton, { backgroundColor: pressed ? theme.colors.surfacePressed : theme.colors.surface }]}
+                >
+                    <Text style={{ color: theme.colors.text }}>{t('goalBoard.artifactRefresh')}</Text>
+                </Pressable>
+            )}
             {isMarkdown && isLoaded && (
                 <View style={[styles.toggleRow, { backgroundColor: theme.colors.groupped.background, borderColor: theme.colors.divider }]}>
                     <Pressable

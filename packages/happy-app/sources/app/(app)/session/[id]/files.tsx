@@ -1,3 +1,4 @@
+import { encodeFilePath } from '@/utils/filePathEncoding';
 import * as React from 'react';
 import { View, ActivityIndicator, Platform, TextInput } from 'react-native';
 import { t } from '@/text';
@@ -76,7 +77,7 @@ export default React.memo(function FilesScreen() {
             shakerRefs.current.get(file.fullPath)?.shake();
             return;
         }
-        const encodedPath = btoa(file.fullPath);
+        const encodedPath = encodeFilePath(file.fullPath);
         router.push(`/session/${sessionId}/file?path=${encodedPath}`);
     }, [router, sessionId]);
 

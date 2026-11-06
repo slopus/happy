@@ -8,6 +8,10 @@ import type { MultiTextInputHandle } from '@/components/MultiTextInput';
 import { layout } from '@/components/layout';
 import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
+import { GoalBoardTrigger } from '@/components/goalBoard/GoalBoardTrigger';
+import { useGoalBoard } from '@/hooks/useGoalBoard';
+import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import type { GoalTask, GoalArtifact } from '@slopus/happy-wire';
 import { DesktopSkinCanvas } from '@/components/DesktopSkinCanvas';
 import { DesktopReadingWidthContext, useDesktopReadingWidth } from '@/components/DesktopReadingWidth';
 import { SessionHeaderChip } from '@/components/SessionHeaderChip';
@@ -529,6 +533,9 @@ export const SessionView = React.memo((props: { id: string }) => (
     </SubagentInspectorProvider>
 ));
 
+const GoalBoardPanel = React.lazy(() => import('@/components/goalBoard/GoalBoardPanel').then(module => ({ default: module.GoalBoardPanel })));
+const GoalArtifactWindow = React.lazy(() => import('@/components/GoalArtifactWindow').then(module => ({ default: module.GoalArtifactWindow })));
+
 const SessionViewContent = React.memo((props: { id: string }) => {
     const sessionId = props.id;
     const router = useRouter();
@@ -569,6 +576,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
         rightPanelAvailable: layoutRightPanelAvailable,
         rightExpandedWidth: layoutRightPanelExpandedWidth,
         rightWidth: layoutRightPanelWidth,
+        toggleRightSidebar: toggleLayoutRightSidebar,
     } = useDesktopWorkspaceLayout();
     const sessionComposerHandleRef = React.useRef<ChatComposerHandle | null>(null);
     const [routeOwner, setRouteOwner] = React.useState<SessionRouteOwner | null>(null);
@@ -713,7 +721,60 @@ const SessionViewContent = React.memo((props: { id: string }) => {
     }));
 
     const [sidebarMode, setSidebarMode] = React.useState<SidebarMode>('changes');
-    const [desktopPanelMode, setDesktopPanelMode] = React.useState<'capabilities' | 'files'>('capabilities');
+    const [desktopPanelMode, setDesktopPanelMode] = React.useState<'capabilities' | 'files' | 'tasks'>('capabilities');
+    const goalBoardOpen = desktopPanelMode === 'tasks' && !subagentSelection
+        && (desktopRightPanelAvailable ? showDesktopRightPanel : rightDrawerOpen);
+    const goalBoard = useGoalBoard(sessionId, goalBoardOpen && isFocused);
+    const navigateToTaskSession = useNavigateToSession();
+    const goalTriggerAnchor = React.useRef<View>(null);
+    const [goalArtifact, setGoalArtifact] = React.useState<{ featurePath: string; task: GoalTask; artifact: GoalArtifact } | null>(null);
+    const closeGoalBoard = React.useCallback(() => {
+        if (desktopRightPanelAvailable) setDesktopRightPanelCollapsed(true);
+        else setRightDrawerOpen(false);
+        if (Platform.OS === 'web') {
+            const anchor = goalTriggerAnchor.current as unknown as HTMLElement | null;
+            anchor?.querySelector<HTMLElement>('button')?.focus();
+        }
+    }, [desktopRightPanelAvailable, setDesktopRightPanelCollapsed]);
+    const toggleGoalBoard = () => {
+        setInfoPanelOpen(false);
+        subagentInspector?.close();
+        if (goalBoardOpen) { closeGoalBoard(); return; }
+        setDesktopPanelMode('tasks');
+        if (desktopRightPanelAvailable) {
+            if (zenMode) toggleLayoutRightSidebar(); else setDesktopRightPanelCollapsed(false);
+        } else setRightDrawerOpen(true);
+    };
+    const openGoalArtifact = React.useCallback((task: GoalTask, artifact: GoalArtifact) => {
+        const featurePath = session?.metadata?.goalBoard?.featurePath;
+        if (!featurePath) return;
+        setGoalArtifact({ featurePath, task, artifact });
+    }, [session?.metadata?.goalBoard?.featurePath]);
+    const openGoalTask = React.useCallback(async (task: GoalTask, newSession: boolean) => {
+        const childId = await goalBoard.openTask(task, newSession);
+        navigateToTaskSession(childId);
+    }, [goalBoard.openTask, navigateToTaskSession]);
+    React.useEffect(() => {
+        if (!isFocused || Platform.OS !== 'web' || !goalBoardOpen || goalArtifact) return;
+        const onEscape = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape' || event.defaultPrevented) return;
+            event.preventDefault();
+            closeGoalBoard();
+        };
+        window.addEventListener('keydown', onEscape);
+        return () => window.removeEventListener('keydown', onEscape);
+    }, [isFocused, goalBoardOpen, goalArtifact, closeGoalBoard]);
+    const goalBoardContent = <React.Suspense fallback={<ActivityIndicator size="small" color={theme.colors.textSecondary} />}>
+        <GoalBoardPanel snapshot={goalBoard.snapshot} catalog={goalBoard.catalog} loading={goalBoard.loading}
+            error={goalBoard.error} offline={goalBoard.offline} activeTaskId={goalBoard.activeTaskId}
+            onSelectFeature={(entry) => { void goalBoard.selectFeature(entry); }} onRefresh={() => { void goalBoard.refresh(); }}
+            onClose={closeGoalBoard} onOpenArtifact={openGoalArtifact} onOpenTask={openGoalTask}
+            getTaskSessionId={goalBoard.getTaskSessionId} openingTaskId={goalBoard.openingTaskId} />
+    </React.Suspense>;
+    const latestGoalTask = goalArtifact && goalBoard.snapshot?.featurePath === goalArtifact.featurePath
+        ? goalBoard.snapshot.tasks.find(task => task.id === goalArtifact.task.id) : null;
+    const latestGoalArtifact = latestGoalTask?.artifacts.find(artifact => artifact.id === goalArtifact?.artifact.id);
+
     React.useEffect(() => {
         if (isFocused && !canShowFilePanel && desktopPanelMode === 'files') {
             setDesktopPanelMode('capabilities');
@@ -991,13 +1052,11 @@ const SessionViewContent = React.memo((props: { id: string }) => {
     const subagentPanelLabel = subagentSelection
         ? t('toolGroup.subagentPanelLabel', { title: subagentSelection.title ?? subagentSelection.id })
         : null;
-    const desktopPanelLabel = subagentPanelLabel ?? (desktopPanelMode === 'files' && canShowFilePanel
+    const desktopPanelLabel = subagentPanelLabel ?? (desktopPanelMode === 'tasks' ? t('goalBoard.title') : desktopPanelMode === 'files' && canShowFilePanel
         ? t('common.files')
         : t('rightPanelCapabilityHub.title'));
-    const compactPanelLabel = subagentPanelLabel ?? t('rightPanelCapabilityHub.title');
-    const rightPanelToggleLabel = desktopRightPanelAvailable
-        ? desktopPanelLabel
-        : compactPanelLabel;
+    const compactPanelLabel = subagentPanelLabel ?? (desktopPanelMode === 'tasks' ? t('goalBoard.title') : t('rightPanelCapabilityHub.title'));
+    const rightPanelToggleLabel = desktopPanelMode === 'tasks' ? t('rightPanelCapabilityHub.title') : desktopRightPanelAvailable ? desktopPanelLabel : compactPanelLabel;
     const rightPanelToggleButton = (
         (desktopRightPanelAvailable && desktopRightPanelPresentation !== 'zen')
         || compactRightDrawerAvailable
@@ -1008,6 +1067,11 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                 ? t('desktopWorkspace.hidePanel', { panel: rightPanelToggleLabel })
                 : t('desktopWorkspace.showPanel', { panel: rightPanelToggleLabel })}
             onPress={() => {
+                if (desktopPanelMode === 'tasks') {
+                    setDesktopPanelMode('capabilities');
+                    if (desktopRightPanelAvailable) setDesktopRightPanelCollapsed(false); else setRightDrawerOpen(true);
+                    return;
+                }
                 if (desktopRightPanelAvailable) {
                     if (showDesktopRightPanel) subagentInspector?.close();
                     setDesktopRightPanelCollapsed(showDesktopRightPanel);
@@ -1070,6 +1134,8 @@ const SessionViewContent = React.memo((props: { id: string }) => {
             {readingWidthControl}
             {dreamskinHeaderActions}
             {moreButton}
+            {showChip && <View ref={goalTriggerAnchor}><GoalBoardTrigger completed={goalBoard.snapshot?.tasks.filter(task => task.status === 'done').length ?? 0}
+                total={goalBoard.snapshot?.tasks.length ?? 0} open={goalBoardOpen} onPress={toggleGoalBoard} /></View>}
             {rightPanelToggleButton}
         </View>
     );
@@ -1078,6 +1144,8 @@ const SessionViewContent = React.memo((props: { id: string }) => {
             {readingWidthControl}
             {dreamskinHeaderActions}
             {moreButton}
+            {showChip && <View ref={goalTriggerAnchor}><GoalBoardTrigger completed={goalBoard.snapshot?.tasks.filter(task => task.status === 'done').length ?? 0}
+                total={goalBoard.snapshot?.tasks.length ?? 0} open={goalBoardOpen} onPress={toggleGoalBoard} /></View>}
             {rightPanelToggleButton}
             {headerRightSlot}
         </View>
@@ -1151,6 +1219,13 @@ const SessionViewContent = React.memo((props: { id: string }) => {
 
             {/* Content based on state */}
             <View style={{ flex: 1, paddingTop: !(isLandscape && deviceType === 'phone' && Platform.OS !== 'web') ? safeArea.top + headerHeight : 0 }}>
+                {goalBoard.parentSessionId && <View testID="goal-board-parent-banner" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: theme.colors.surfaceSelected }}>
+                    <Text style={{ flex: 1, color: theme.colors.textSecondary, fontSize: 12 }} numberOfLines={1}>{t('goalBoard.taskContext')}</Text>
+                    <Pressable testID="goal-board-return-parent" accessibilityRole="button" accessibilityLabel={t('goalBoard.returnToParent')}
+                        onPress={() => navigateToTaskSession(goalBoard.parentSessionId!)} style={({ pressed }) => ({ padding: 6, borderRadius: 6, backgroundColor: pressed ? theme.colors.surfacePressed : theme.colors.surfaceSelected })}>
+                        <Text style={{ color: theme.colors.text, fontSize: 12 }}>{t('goalBoard.returnToParent')}</Text>
+                    </Pressable>
+                </View>}
                 {canRenderCachedSession && (sessionResolution === 'retrying' || sessionResolution === 'error') && (
                     <View testID={sessionResolution === 'error' ? 'session-load-error-cached' : 'session-retrying-cached'}
                         style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8, backgroundColor: theme.colors.surface }}>
@@ -1200,6 +1275,13 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                 )}
             </View>
 
+            {goalArtifact && (
+                <React.Suspense fallback={<ActivityIndicator size="small" color={theme.colors.textSecondary} />}>
+                    <GoalArtifactWindow sessionId={sessionId} featurePath={goalArtifact.featurePath}
+                        task={latestGoalTask ?? goalArtifact.task} artifact={latestGoalArtifact ?? goalArtifact.artifact} onClose={() => setGoalArtifact(null)} />
+                </React.Suspense>
+            )}
+
             {/* Read-only session-info dropdown, anchored under the header chip.
                 A sibling of the (padded) content view — not a child — so its
                 absolute `top` measures from the screen edge without the content
@@ -1243,7 +1325,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                 selection={subagentSelection}
                 sessionId={sessionId}
             />
-        ) : (
+        ) : desktopPanelMode === 'tasks' ? goalBoardContent : (
             <SessionRightPanelContent
                 composerHandleRef={sessionComposerHandleRef}
                 sessionId={sessionId}
@@ -1386,7 +1468,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                             selection={subagentSelection}
                             sessionId={sessionId}
                         />
-                    ) : <DesktopRightPanel
+                    ) : desktopPanelMode === 'tasks' ? goalBoardContent : <DesktopRightPanel
                         activeTab={desktopPanelMode}
                         collapseAccessibilityLabel={t('desktopWorkspace.hidePanel', {
                             panel: desktopPanelLabel,

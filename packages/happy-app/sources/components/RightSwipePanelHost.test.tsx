@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import * as React from 'react';
 import { act } from 'react';
 import { Platform, Pressable, View } from 'react-native';
@@ -465,6 +466,49 @@ describe('RightSwipePanelHost close completion', () => {
             expect(drawer.props.importantForAccessibility).toBeUndefined();
         } finally {
             if (renderer) act(() => renderer.unmount());
+            (Platform as { OS: string }).OS = 'ios';
+        }
+    });
+
+    it('leaves Escape and Tab to a portal dialog above the still-open drawer', () => {
+        (Platform as { OS: string }).OS = 'web';
+        const onOpenChange = vi.fn();
+        const host = document.createElement('div');
+        const panel = document.createElement('div');
+        const main = document.createElement('div');
+        panel.tabIndex = -1;
+        host.append(main, panel); document.body.append(host);
+        let renderer: any;
+        let portal: HTMLElement | undefined;
+        try {
+            act(() => {
+                renderer = TestRenderer.create(<RightSwipePanelHost {...PANEL_ACCESSIBILITY_LABELS}
+                    enabled gestureEnabled={false} open onOpenChange={onOpenChange} panelContent={<View />}><View /></RightSwipePanelHost>, {
+                    createNodeMock: (node: any) => ({
+                        'right-swipe-panel-host': host, 'right-swipe-panel-main': main, 'right-swipe-panel-drawer': panel,
+                    } as Record<string, HTMLElement>)[node.props.testID] ?? null,
+                });
+            });
+            // RN Web mounts a Modal in a sibling portal after the drawer opens.
+            portal = document.createElement('div'); portal.setAttribute('aria-modal', 'true');
+            const close = document.createElement('button'); portal.append(close); document.body.append(portal);
+            close.focus();
+            const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+            close.dispatchEvent(escape);
+            expect(onOpenChange).not.toHaveBeenCalled();
+            expect(escape.defaultPrevented).toBe(false);
+            const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+            close.dispatchEvent(tab);
+            expect(tab.defaultPrevented).toBe(false);
+            expect(document.activeElement).toBe(close);
+            // Normal drawer dismissal must continue to work after the dialog closes.
+            portal.remove(); panel.focus();
+            act(() => panel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })));
+            act(() => latestSpringCompletion()(true));
+            expect(onOpenChange).toHaveBeenCalledWith(false);
+        } finally {
+            if (renderer) act(() => renderer.unmount());
+            portal?.remove(); host.remove();
             (Platform as { OS: string }).OS = 'ios';
         }
     });
