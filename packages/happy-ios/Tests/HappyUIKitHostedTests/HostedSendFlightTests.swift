@@ -419,6 +419,9 @@ final class HostedSendFlightTests: XCTestCase {
         try await flySend(screen, "legacy")
     }
 
+    /// Flaky on iOS 27.0 (about one run in three on a Mac's simulator; the
+    /// rows above move by more than the new row, or no flight arms), never
+    /// on iOS 26.5. No commit of ours found to blame yet.
     func testTheLegacyChatFliesASendInOverTheKeyboard() async throws {
         let (screen, _) = try await legacyChat()
         try await keyboardUp(screen)

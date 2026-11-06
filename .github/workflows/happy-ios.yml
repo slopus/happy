@@ -110,6 +110,10 @@ jobs:
     # which classes are whose.
     runs-on: xcode-27
     timeout-minutes: 60
+    # Reports without blocking: on the hosted VMs a different handful of
+    # frame-timing tests fails each run, however their budgets stretch,
+    # while they pass on a Mac. `uikit` is the required check.
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
