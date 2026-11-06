@@ -6,7 +6,7 @@ import UIKit
 /// Home's left bar item, alone there on both homes: the active account's
 /// picture and name on one line, and a chevron. A tap opens the native
 /// menu: every account and agent connection (the active one ticked; another
-/// switches to it), then Add (`AccountAdding`) and Manage Accounts. Adding
+/// switches to it), then Add (`AccountAdding`) and Connect to Happy Cloud. Adding
 /// or a failed switch leaves the active account as it was.
 ///
 /// Every kind of account is one row in the menu: a legacy account, one made
@@ -193,9 +193,14 @@ final class AccountSwitcher: NSObject {
             AccountAdding.begin(context: context, from: controller)
         }
         add.accessibilityIdentifier = "account-add"
+        let cloud = UIAction(title: Strings.ServerSignIn.cloudAction, image: UIImage(systemName: "cloud")) { [weak self] _ in
+            guard let self, let controller else { return }
+            AccountAdding.connectToCloud(context: context, from: controller)
+        }
+        cloud.accessibilityIdentifier = "account-cloud"
         return [
             UIMenu(options: .displayInline, children: choices),
-            UIMenu(options: .displayInline, children: [add]),
+            UIMenu(options: .displayInline, children: [add, cloud]),
         ]
     }
 

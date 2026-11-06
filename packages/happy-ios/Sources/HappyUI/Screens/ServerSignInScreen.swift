@@ -19,8 +19,12 @@ final class ServerSignInViewController: UIViewController, ASWebAuthenticationPre
     private let list = GroupedListView()
     private let form = ServerFormView()
     private let server: String
-    /// The installation the server must report (health `instanceId`).
-    private let instanceId: String?
+    /// The installation the server must report (health `instanceId`), or
+    /// for Happy Cloud the one it reports, kept.
+    private let installation: ServerSignInFlow.Installation
+    /// Happy Cloud's: the person already said Connect, so the browser opens
+    /// as soon as the screen shows.
+    private var startsAtOnce: Bool
     private var browser: ASWebAuthenticationSession?
     /// Discovery, started as the screen opens; a failed one starts again on
     /// Continue.
@@ -28,10 +32,11 @@ final class ServerSignInViewController: UIViewController, ASWebAuthenticationPre
     private let serverRow = ItemRowView(title: Strings.ServerSignIn.server)
     private let authorizationRow = ItemRowView(title: Strings.ServerSignIn.signsInAt)
 
-    init(context: AppContext, server: String, instanceId: String?) {
+    init(context: AppContext, server: String, installation: ServerSignInFlow.Installation, startsAtOnce: Bool = false) {
         self.context = context
         self.server = server
-        self.instanceId = instanceId
+        self.installation = installation
+        self.startsAtOnce = startsAtOnce
         super.init(nibName: nil, bundle: nil)
         followsTextSize()
     }
@@ -43,9 +48,9 @@ final class ServerSignInViewController: UIViewController, ASWebAuthenticationPre
     override func viewDidLoad() {
         super.viewDidLoad()
         let again = context.account.agentConnections.accounts.contains { $0.server == server }
-        title = again ? Strings.ServerSignIn.signInAgain : Strings.ServerSignIn.title
+        title = again ? Strings.ServerSignIn.signInAgain : HappyCloud.isCloud(server) ? HappyCloud.name : Strings.ServerSignIn.title
         view.accessibilityIdentifier = "server-sign-in"
-        list.sections = [ItemGroupView(footer: Strings.ServerSignIn.footer, rows: [form])]
+        list.sections = [ItemGroupView(footer: footer, rows: [form])]
         serverRow.detail = URLComponents(string: server).map { ($0.host ?? server) + ($0.port.map { ":\($0)" } ?? "") }
         serverRow.accessibilityIdentifier = "server-sign-in-host"
         authorizationRow.accessibilityIdentifier = "server-sign-in-authorization-host"
@@ -58,6 +63,15 @@ final class ServerSignInViewController: UIViewController, ASWebAuthenticationPre
         form.save.action = { [weak self] in await self?.signIn() }
         _ = discover()
     }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        guard startsAtOnce else { return }
+        startsAtOnce = false
+        Task { await signIn() }
+    }
+
+    private var footer: String { HappyCloud.isCloud(server) ? Strings.ServerSignIn.cloudMessage : Strings.ServerSignIn.footer }
 
     /// How the server signs in, once: the method shown is the method used.
     private func discover() -> Task<ServerSignInFlow, any Error> {
@@ -80,7 +94,7 @@ final class ServerSignInViewController: UIViewController, ASWebAuthenticationPre
     /// The server's host, and beside it the host the browser will open.
     private func show(_ flow: ServerSignInFlow) {
         authorizationRow.detail = flow.method.authorizationHost
-        list.sections = [ItemGroupView(footer: Strings.ServerSignIn.footer, rows: [form]), ItemGroupView(rows: [serverRow, authorizationRow])]
+        list.sections = [ItemGroupView(footer: footer, rows: [form]), ItemGroupView(rows: [serverRow, authorizationRow])]
     }
 
     private func signIn() async {
@@ -92,7 +106,7 @@ final class ServerSignInViewController: UIViewController, ASWebAuthenticationPre
             let flow = try await discover().value
             let request = try flow.request(redirectUri: OAuthRedirect.uri)
             let callback = try await authenticate(request.url, scheme: OAuthRedirect.scheme)
-            var signedIn = try await flow.complete(request, callback: callback, instanceId: instanceId)
+            var signedIn = try await flow.complete(request, callback: callback, installation: installation)
             if signedIn.needsProfile {
                 guard let name = await askName() else { throw OAuthError.cancelled }
                 signedIn = try await flow.saveProfile(name, for: signedIn)

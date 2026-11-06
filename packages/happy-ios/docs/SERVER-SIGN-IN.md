@@ -3,7 +3,9 @@
 A team runs Happy Agent on its own server, behind an HTTPS load balancer
 that may enforce the organization's single sign-on. The app adds such a
 server only by scanning the code Happy Desktop shows, and signs in with
-the server's own OAuth method. It never takes a typed or pasted address. It
+the server's own OAuth method. It never takes a typed or pasted address.
+The one exception is Happy Cloud, whose address is compiled into the app
+(below). It
 doesn't need Tailcat, Happy Cloud, WorkOS or the hosted relay. The daemon
 side is specified in happy-agent's `API.md` ("Signing in with the
 authorization code flow") and the edge SSO contract shared by iOS, Android
@@ -77,14 +79,45 @@ document it is inert text. What happens to one (`HappyScan`):
 same way; a connection from an older daemon that never reported one isn't
 checked.
 
+## Happy Cloud
+
+Happy Cloud is a team server at one address compiled into the app,
+`HappyCloud.server` (`Sources/HappyCore/ServerSignIn/HappyCloud.swift`).
+It can't be edited. Creating an account on its sign-in page creates a new
+cloud team with the person as its owner, so connecting to the cloud is
+adding this server and signing in.
+
+- **Where.** "Connect to Happy Cloud" in the account switcher's menu (the
+  list of accounts and servers, under Add) and in the scanner's and first
+  screen's ⋯ (`AccountAdding.connectToCloud`).
+- **Already connected.** A connection whose server is the cloud's address
+  is switched to, and nothing is asked or added.
+- **Otherwise** "Connect to Happy Cloud?" asks first ("Sign in or create
+  an account to add a cloud team. Agents run in the cloud; no computer
+  needed.", Cancel / Connect). Connect opens the sign-in screen on the
+  cloud's address, and the browser opens as soon as the screen shows, with
+  no second Continue. From there it is the sign-in below.
+- **No scanned code.** The scan-only rule exists so that no one can send
+  a person's sign-in to a server by a link or a pasted address. The cloud's
+  address comes from the app itself, so the rule doesn't apply to it, and
+  only to it: `HappyScan` still refuses every other server not scanned.
+- **Installation.** There is no code to compare with. After the code
+  exchange, health's `instanceId` is read and kept on the connection as
+  reported (`ServerSignInFlow.Installation.recorded`); a cloud reporting
+  none still signs in. "Sign In Again" then checks the one kept, as for
+  any server.
+- The connection is named "Happy Cloud" until `/v0/config` names it.
+- Same-origin and audience binding apply unchanged: the cloud's token must
+  name its address.
+
 ## Sign-in
 
 A fresh install needs nothing else first: no paired computer, Happy
 account or Happy Cloud sign-in. The first screen's Start opens the scanner,
 and a server code scanned there signs in and lands on the server's home.
 
-1. The server comes from a scanned code, or from the connection signing
-   in again.
+1. The server comes from a scanned code, Happy Cloud's compiled-in
+   address, or the connection signing in again.
 2. `GET /v0/authentication` (`ServerDiscovery`) runs without a token and
    doesn't follow redirects. A redirect (3xx but not 304), a 401 or a non-JSON 403 here means the
    load balancer didn't let discovery through, and the screen says so.

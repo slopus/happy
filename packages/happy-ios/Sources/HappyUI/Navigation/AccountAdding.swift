@@ -19,10 +19,15 @@ enum AccountAdding {
         }
     }
 
-    /// Entering a link, restoring an account, and the relay server. A team
-    /// server is added by scanning the code Happy Desktop shows.
+    /// Happy Cloud, entering a link, restoring an account, and the relay
+    /// server. Any other team server is added by scanning the code Happy
+    /// Desktop shows.
     static func otherWays(context: AppContext, from controller: UIViewController, intent: ScanIntent = .addAccount, busy: @escaping (Bool) -> Void = { _ in }) -> [ScannerWay] {
         [
+            ScannerWay(title: Strings.ServerSignIn.cloudAction, symbol: "cloud") { [weak controller] in
+                guard let controller else { return }
+                connectToCloud(context: context, from: controller)
+            },
             ScannerWay(title: Strings.Start.enterLink, symbol: "link") { [weak controller] in
                 guard let controller else { return }
                 enterLink(context: context, from: controller, intent: intent, busy: busy)
@@ -44,7 +49,27 @@ enum AccountAdding {
     /// (`instanceId` is the installation it must be), or one here already
     /// whose sign-in is renewed.
     static func signInToServer(context: AppContext, from controller: UIViewController, server: String, instanceId: String?) {
-        show(ServerSignInViewController(context: context, server: server, instanceId: instanceId), context: context, from: controller)
+        show(ServerSignInViewController(context: context, server: server, installation: instanceId.map { .expected($0) } ?? .unchecked), context: context, from: controller)
+    }
+
+    /// Happy Cloud, the server compiled into the app: shown when it is
+    /// here already, otherwise signed in to once the person confirms. Its
+    /// address is the app's own, so it needs no scanned code; its
+    /// installation is kept as health reports it.
+    static func connectToCloud(context: AppContext, from controller: UIViewController) {
+        let account = context.account
+        if let cloud = HappyCloud.connection(in: account.agentConnections.accounts) {
+            Task {
+                if !account.showsAgentConnections { await account.setShowsAgentConnections(true) }
+                do { try await account.switchAccount(to: cloud.id) }
+                catch { Alerts.show(Strings.Common.error, Strings.AccountSwitcher.switchFailed, on: controller) }
+            }
+            return
+        }
+        Task {
+            guard await Alerts.confirm(Strings.ServerSignIn.cloudTitle, Strings.ServerSignIn.cloudMessage, confirmTitle: Strings.ServerSignIn.cloudConnect, on: controller) else { return }
+            show(ServerSignInViewController(context: context, server: HappyCloud.server, installation: .recorded, startsAtOnce: true), context: context, from: controller)
+        }
     }
 
     /// Restore: the code another phone scans, with a secret key under it.
