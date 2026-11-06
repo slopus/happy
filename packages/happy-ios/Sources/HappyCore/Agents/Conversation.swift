@@ -346,6 +346,15 @@ public actor Conversation {
     private var children: Task<Void, Never>?
     private var reading: Task<Void, Never>?
     private var reloadSoon: Task<Void, Never>?
+    /// History reads finished, read or failed.
+    private var reads = 0
+    /// Messages whose words stopped applying, with `reads` as they did.
+    /// Each is read for once. History doesn't hold a message the agent is
+    /// still writing, so one still behind after that read waits for its
+    /// next whole self (`message.updated`): read again on every word, the
+    /// chat read its whole page several times a second while the agent
+    /// wrote, at about 40% of a core.
+    private var behind: [String: Int] = [:]
     /// Events that came while history was being read, applied after it.
     private var heldEvents: [JSONValue]?
     /// Subagents made or retitled while history was being read, applied over
@@ -623,6 +632,7 @@ public actor Conversation {
                 adopt(start, history)
             } catch {
                 if Task.isCancelled { return }
+                reads += 1
                 snapshot.error = Store.describe(error)
                 Happenings.errorShown(.conversationLoad, error)
                 snapshot.loaded = true
@@ -635,6 +645,7 @@ public actor Conversation {
     }
 
     private func adopt(_ start: AgentWire.Bootstrap, _ history: AgentWire.MessagesResponse) {
+        reads += 1
         // The draft carries the mode the next message goes with (the last
         // pick, on any device), so it stands over what the agent last ran
         // with; this phone's own draft coming back would otherwise drop it.
@@ -755,6 +766,7 @@ public actor Conversation {
         case "message.created", "message.updated":
             guard let message = payload["message"].flatMap(Self.decodeMessage) else { return }
             messages[message.id] = message
+            behind[message.id] = nil
             attachmentCleanup.insert(message.id)
             outgoing.removeAll { $0.id == message.id }
             UploadProgressBoard.shared.clear(message: message.id)
@@ -767,6 +779,12 @@ public actor Conversation {
             guard let id = payload["messageId"]?.stringValue, let index = payload["blockIndex"]?.numberValue,
                   let offset = payload["offset"]?.numberValue, let append = payload["append"]?.stringValue else { return }
             guard let message = messages[id], let grown = Self.grow(message, block: Int(index), offset: Int(offset), append: append) else {
+                if let since = behind[id] {
+                    // Read for since it broke: the next whole message mends it.
+                    if reads > since { return }
+                } else {
+                    behind[id] = reads
+                }
                 reconcile()
                 return
             }
@@ -775,6 +793,7 @@ public actor Conversation {
         case "message.deleted":
             guard let id = payload["messageId"]?.stringValue else { return }
             messages.removeValue(forKey: id)
+            behind[id] = nil
             pending.removeAll { $0 == id }
             for index in runs.indices { runs[index].messageIds.removeAll { $0 == id } }
         case "run.started":

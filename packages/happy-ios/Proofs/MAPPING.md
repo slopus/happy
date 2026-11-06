@@ -39,7 +39,8 @@ re-check its rows.
   (`Refresh.reads_le`, `no_staleness_no_reads`), and any amount of news
   while a read is on its way costs one more read (`reads_count_raises`).
 - A conversation is read again for a word only when the word starts past
-  what it holds (`Delta.grow_gives_up_iff_gap`).
+  what it holds (`Delta.grow_gives_up_iff_gap`), and only once for each
+  message that breaks (see the limits below).
 - Back on the stream with no stale news outstanding and no read on its way,
   home already holds what the computer has, so a reconnect that picks up
   where it left off reads nothing (`Refresh.resume_is_current`).
@@ -84,6 +85,12 @@ keeps it one read behind at most (`merged_keeps_up`, and
   them marks home stale and is read; that read is needed, not proven
   minimal per field. Structural agent changes (`workspaceId`,
   `parentAgentId`, `subtasks`) are read too.
+- `Delta` says when a word can't be laid on what is held, not how often
+  history is read for it. The daemon's history leaves out a message the
+  agent is still writing, so a read can't mend it. `Conversation` reads
+  once for each broken message (`behind`) and then waits for the
+  message's next `message.updated`, which carries all of it. This bound
+  is in the code and its tests, not in the proofs.
 - Not modelled: the sidebar document (`Store`, which has its own versioned
   operations), intents laid over home (`IntentOverlay`), the feed, and
   timing (the 200 ms coalescing and 250 ms redraw).
