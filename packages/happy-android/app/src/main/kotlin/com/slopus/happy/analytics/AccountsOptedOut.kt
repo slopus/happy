@@ -1,6 +1,8 @@
 package com.slopus.happy.analytics
 
+import com.slopus.happy.model.settings.SettingsRepository
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -8,6 +10,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -38,3 +41,15 @@ fun accountsOptedOut(
             }
         }
     }
+
+/**
+ * The Account screen's Analytics switch ([optOut] is it turned off):
+ * analytics goes off at once, before the setting reaches [accountsOptedOut],
+ * then the setting is written. [notSaved] is told when an opt-out couldn't
+ * be written, for the screen to say so as Data and Storage's switch does.
+ */
+fun CoroutineScope.setAnalyticsOptOut(settings: SettingsRepository, optOut: Boolean, notSaved: () -> Unit) {
+    if (optOut) Analytics.revoke() else Analytics.allow()
+    val saved = settings.change { it.copy(analyticsOptOut = optOut) }
+    launch { if (!saved.await() && optOut) notSaved() }
+}

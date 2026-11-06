@@ -19,6 +19,8 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.jsonObject
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -167,5 +169,28 @@ class AccountsOptedOutTest {
         stored(open, false)
         storedRaw(otherDatabase, "[1, 2]")
         assertEquals("another account", true, settled(listOf("open", "other")))
+    }
+
+    /** The Account screen's switch off with the account's database refusing writes: off still, and said so. */
+    @Test
+    fun anOptOutThatCantBeWrittenIsSaid() = runTest {
+        stored(open, false)
+        val settings = SettingsRepository(open, backgroundScope, onChanged = {}, io = StandardTestDispatcher(testScheduler))
+        runCurrent()
+        openDatabase.writableDatabase.execSQL("CREATE TRIGGER no_writes BEFORE INSERT ON account BEGIN SELECT RAISE(ABORT, 'no writes'); END")
+        var notSaved = 0
+        backgroundScope.setAnalyticsOptOut(settings, optOut = true) { notSaved++ }
+        runCurrent()
+        assertEquals(1, notSaved)
+        assertTrue("off until the app starts again", settings.settings.value.analyticsOptOut)
+        assertFalse(read("open"))
+
+        openDatabase.writableDatabase.execSQL("DROP TRIGGER no_writes")
+        backgroundScope.setAnalyticsOptOut(settings, optOut = false) { notSaved++ }
+        runCurrent()
+        backgroundScope.setAnalyticsOptOut(settings, optOut = true) { notSaved++ }
+        runCurrent()
+        assertEquals("written this time", 1, notSaved)
+        assertTrue(read("open"))
     }
 }

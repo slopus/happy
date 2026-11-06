@@ -32,7 +32,7 @@ import androidx.navigation.toRoute
 import com.slopus.happy.ui.components.ProvideRowReveal
 import com.slopus.happy.ui.voice.voicePageEntries
 import com.slopus.happy.AppGraph
-import com.slopus.happy.analytics.Analytics
+import com.slopus.happy.analytics.setAnalyticsOptOut
 import com.slopus.happy.BuildConfig
 import com.slopus.happy.R
 import com.slopus.happy.auth.AuthState
@@ -449,9 +449,7 @@ private fun Account(graph: AppGraph, nav: NavHostController) {
         publicId = account.publicId,
         analyticsOptOut = settings.analyticsOptOut,
         onAnalyticsOptOutChange = { optOut ->
-            // Off at once, before the setting reaches the accounts' consent.
-            if (optOut) Analytics.revoke() else Analytics.allow()
-            graph.settings.change { it.copy(analyticsOptOut = optOut) }
+            scope.setAnalyticsOptOut(graph.settings, optOut) { showError(resources.getString(R.string.settings_analytics_not_saved)) }
         },
         onBack = { nav.popBackStack() },
         displayName = profile.displayName,
