@@ -29,4 +29,5 @@
     <string name="cloud_name_reserved">%1$s è riservato.</string>
     <string name="cloud_failed">Qualcosa è andato storto. Riprova.</string>
     <string name="cloud_connecting">Connessione a %1$s…</string>
+    <string name="cloud_session_expired">L\'accesso a Happy Cloud dura un\'ora ed è scaduto. Accedi di nuovo per aprire, creare o unirti a un server. I server già su questo telefono restano connessi.</string>
 </resources>

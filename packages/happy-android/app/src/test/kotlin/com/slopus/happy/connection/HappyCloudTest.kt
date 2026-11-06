@@ -12,12 +12,13 @@ class HappyCloudTest {
     private fun connection(id: String, server: String?, addedAt: Long = 0) = AgentConnection(id = id, name = id, addedAt = addedAt, server = server)
 
     @Test
-    fun accountsAndServersLiveUnderTheBuildsBase() {
-        assertEquals("https://accounts.${BuildConfig.HAPPY_CLOUD_BASE}", HappyCloud.accounts?.value)
-        assertEquals("https://accounts.happy.computer", HappyCloud.accountsOf("happy.computer")?.value)
+    fun accountsHaveTheirOwnOriginAndServersLiveUnderBase() {
+        assertEquals(BuildConfig.HAPPY_CLOUD_ACCOUNTS.removeSuffix("/"), HappyCloud.accounts?.value)
+        assertEquals("https://auth.happy.engineering", HappyCloud.originOf("https://auth.happy.engineering/")?.value)
+        assertNull(HappyCloud.originOf("https://auth.happy.engineering/v1"))
+        assertNull(HappyCloud.originOf("http://auth.happy.engineering"))
         assertEquals("https://acme.happy.computer", HappyCloud.serverOf("happy.computer", "acme")?.value)
-        assertNull(HappyCloud.accountsOf("happy.computer/team"))
-        assertNull(HappyCloud.accountsOf("happy computer"))
+        assertNull(HappyCloud.serverOf("happy computer", "acme"))
     }
 
     @Test
@@ -32,7 +33,6 @@ class HappyCloudTest {
     fun aServerIsOneNameDirectlyUnderBase() {
         val base = "happy.computer"
         assertTrue(HappyCloud.isServer("https://acme.happy.computer", base))
-        assertFalse(HappyCloud.isServer("https://accounts.happy.computer", base))
         assertFalse(HappyCloud.isServer("https://a.b.happy.computer", base))
         assertFalse(HappyCloud.isServer("https://happy.computer", base))
         assertFalse(HappyCloud.isServer("https://acme.happy.computer:8443", base))
@@ -46,7 +46,7 @@ class HappyCloudTest {
     fun aServerReadsLikeAUsername() {
         val base = "happy.computer"
         assertEquals("@acme", HappyCloud.handle("https://acme.happy.computer", base))
-        assertNull(HappyCloud.handle("https://accounts.happy.computer", base))
+        assertNull(HappyCloud.handle("https://a.b.happy.computer", base))
         assertNull(HappyCloud.handle("https://happy.acme.example", base))
         assertNull(HappyCloud.handle(null, base))
     }

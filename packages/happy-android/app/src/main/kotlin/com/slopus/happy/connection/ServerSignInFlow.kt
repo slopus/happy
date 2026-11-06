@@ -85,6 +85,9 @@ class ServerSignInFlow(
     private var job: Job? = null
     private var reported = false
 
+    /** Where [startWith] gets its token, kept for [retry]. */
+    private var tokenSource: (suspend (AgentOrigin) -> Pair<OAuthGrant, OAuthCredential>)? = null
+
     /**
      * [replacing] is signed in but has no profile on its server yet (the
      * profile gate): asks for the name with the token it has, no browser.
@@ -143,18 +146,38 @@ class ServerSignInFlow(
         this.pending = null
         val server = pending.origin.value
         mutableState.value = ServerSignInState.Finishing(server)
-        run(server) {
-            val signedIn = auth.complete(pending, uri)
-            grant = signedIn
-            verified = false
-            val (authenticated, userId) = auth.check(pending.origin, signedIn.first.access.value)
-            if (!authenticated) throw ServerAuthException(ServerAuthException.Reason.Rejected)
-            member = userId
-            if (userId != null) return@run finish()
-            // A new member: checked before the name, so none is saved on another server, unless health is behind the profile gate too.
-            verify(pending.origin, signedIn.first.access.value, beforeProfile = true)
-            mutableState.value = ServerSignInState.NeedsName(server)
+        run(server) { signedIn(pending.origin, auth.complete(pending, uri)) }
+    }
+
+    /**
+     * Signs in to [address] with a token got without a browser: a Happy
+     * Cloud server's, from the account ([CloudAccount.serverToken]). Then as
+     * after the browser: checked with the server, a name if new, kept.
+     */
+    fun startWith(address: String, token: suspend (AgentOrigin) -> Pair<OAuthGrant, OAuthCredential>) {
+        tokenSource = token
+        val parsed = try {
+            ServerAuthClient.parseAddress(address)
+        } catch (e: ServerAuthException) {
+            mutableState.value = ServerSignInState.Failed(null, e.reason)
+            return
         }
+        origin = parsed
+        mutableState.value = ServerSignInState.Finishing(parsed.value)
+        run(parsed.value) { signedIn(parsed, token(parsed)) }
+    }
+
+    /** A grant for [origin] in hand: checked with the server, then kept, or a new member asked for a name first. */
+    private suspend fun signedIn(origin: AgentOrigin, signedIn: Pair<OAuthGrant, OAuthCredential>) {
+        grant = signedIn
+        verified = false
+        val (authenticated, userId) = auth.check(origin, signedIn.first.access.value)
+        if (!authenticated) throw ServerAuthException(ServerAuthException.Reason.Rejected)
+        member = userId
+        if (userId != null) return finish()
+        // A new member: checked before the name, so none is saved on another server, unless health is behind the profile gate too.
+        verify(origin, signedIn.first.access.value, beforeProfile = true)
+        mutableState.value = ServerSignInState.NeedsName(origin.value)
     }
 
     /** A new member's name, saved before the server is kept. */
@@ -206,6 +229,7 @@ class ServerSignInFlow(
     /** After a failure: the server's sign-in if it was found, else the server asked again. Without an address there is nothing to retry. */
     fun retry() {
         val origin = origin ?: return
+        tokenSource?.let { return startWith(origin.value, it) }
         val method = method
         if (method != null) mutableState.value = ServerSignInState.Ready(origin.value, method) else start(origin.value)
     }

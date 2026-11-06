@@ -29,4 +29,5 @@
     <string name="cloud_name_reserved">%1$s は予約されています。</string>
     <string name="cloud_failed">問題が発生しました。もう一度お試しください。</string>
     <string name="cloud_connecting">%1$s に接続中…</string>
+    <string name="cloud_session_expired">Happy Cloud のサインインは 1 時間で切れます。サーバーを開く・作成する・参加するには、もう一度サインインしてください。この端末にあるサーバーはサインインしたままです。</string>
 </resources>

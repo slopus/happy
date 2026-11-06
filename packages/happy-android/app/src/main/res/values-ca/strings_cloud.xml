@@ -29,4 +29,5 @@
     <string name="cloud_name_reserved">%1$s està reservat.</string>
     <string name="cloud_failed">Alguna cosa ha anat malament. Torna-ho a provar.</string>
     <string name="cloud_connecting">S\'està connectant a %1$s…</string>
+    <string name="cloud_session_expired">La sessió de Happy Cloud dura una hora i ja s\'ha acabat. Torna a iniciar la sessió per obrir, crear o unir-te a un servidor. Els servidors que ja són en aquest telèfon continuen connectats.</string>
 </resources>

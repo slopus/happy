@@ -3,25 +3,31 @@ package com.slopus.happy.connection
 import com.slopus.happy.BuildConfig
 
 /**
- * Happy Cloud (accounts contract v1): one domain, [BuildConfig.HAPPY_CLOUD_BASE],
- * under which the accounts service is `https://accounts.BASE` and the server
- * named `acme` is `https://acme.BASE`. The person signs in to their account
- * once, then picks, creates or joins servers; each server is a team server
- * signed in to as any other, and kept as its own connection. These addresses
- * are the app's own, never typed or pasted, so no code and no `instanceId`
- * check them.
+ * Happy Cloud (accounts contract v1): the accounts service at its own
+ * origin, [BuildConfig.HAPPY_CLOUD_ACCOUNTS], where the person signs in and
+ * their servers are listed, and the servers under one domain,
+ * [BuildConfig.HAPPY_CLOUD_BASE]: the server named `acme` is
+ * `https://acme.BASE`. The person signs in to their account once, then
+ * picks, creates or joins servers; the account gets each server's token
+ * ([CloudAccount.serverToken]), and each server is kept as its own
+ * connection. These addresses are the app's own, never typed or pasted, so
+ * no code and no `instanceId` check them.
  */
 object HappyCloud {
     /** BASE; null in release builds (`release`, and `bench`, which is release) and when the build's isn't a host. Null leaves out every way in. */
-    val base: String? = BuildConfig.HAPPY_CLOUD_BASE.takeIf { offeredIn(BuildConfig.BUILD_TYPE) && accountsOf(it) != null }
+    val base: String? = BuildConfig.HAPPY_CLOUD_BASE.takeIf { offeredIn(BuildConfig.BUILD_TYPE) && serverOf(it, "x") != null }
 
-    /** The accounts service, where the account signs in and servers are listed. */
-    val accounts: AgentOrigin? = base?.let(::accountsOf)
+    /** The accounts service, where the account signs in and servers are listed; null wherever [base] is. */
+    val accounts: AgentOrigin? = base?.let { originOf(BuildConfig.HAPPY_CLOUD_ACCOUNTS) }
 
     /** Only the dev (`debug`) and `preview` builds offer Happy Cloud. */
     internal fun offeredIn(buildType: String): Boolean = buildType == "debug" || buildType == "preview"
 
-    internal fun accountsOf(base: String): AgentOrigin? = serverOf(base, "accounts")
+    internal fun originOf(url: String): AgentOrigin? = try {
+        ServerAuthClient.parseAddress(url)
+    } catch (_: ServerAuthException) {
+        null
+    }
 
     /** The server named [name] under [base]; null when that isn't an origin. */
     internal fun serverOf(base: String, name: String): AgentOrigin? = try {
@@ -30,12 +36,12 @@ object HappyCloud {
         null
     }
 
-    /** Whether [server], an origin, is a Happy Cloud server: a host directly under BASE, other than the accounts service. */
+    /** Whether [server], an origin, is a Happy Cloud server: a host directly under BASE. */
     fun isServer(server: String?, base: String? = this.base): Boolean {
         if (server == null || base == null) return false
         val origin = runCatching { AgentOrigin.parse(server) }.getOrNull() ?: return false
         val name = origin.host.removeSuffix(".$base").takeIf { it != origin.host } ?: return false
-        return origin.port == 443 && name.isNotEmpty() && '.' !in name && name != "accounts"
+        return origin.port == 443 && name.isNotEmpty() && '.' !in name
     }
 
     /**

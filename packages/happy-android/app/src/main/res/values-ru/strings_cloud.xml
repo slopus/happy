@@ -29,4 +29,5 @@
     <string name="cloud_name_reserved">%1$s зарезервировано.</string>
     <string name="cloud_failed">Что-то пошло не так. Попробуйте ещё раз.</string>
     <string name="cloud_connecting">Подключение к %1$s…</string>
+    <string name="cloud_session_expired">Вход в Happy Cloud действует час, и он истёк. Войдите снова, чтобы открыть, создать сервер или присоединиться к нему. Серверы, уже добавленные на этот телефон, остаются подключены.</string>
 </resources>

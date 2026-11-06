@@ -31,4 +31,5 @@
     <string name="cloud_name_reserved">%1$s is reserved.</string>
     <string name="cloud_failed">Something went wrong. Try again.</string>
     <string name="cloud_connecting">Connecting to %1$s…</string>
+    <string name="cloud_session_expired">Your Happy Cloud sign-in lasts an hour, and it\'s up. Sign in again to open, create or join a server. Servers already on this phone stay signed in.</string>
 </resources>
