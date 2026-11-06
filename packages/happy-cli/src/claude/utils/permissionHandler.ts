@@ -10,7 +10,7 @@ import type { CanCallToolOptions, PermissionResult } from "../sdk/types";
 import { Session } from "../session";
 import { EnhancedMode, PermissionMode } from "../loop";
 import { getToolDescriptor } from "./getToolDescriptor";
-import { isClaudeBypassEquivalent, mapToClaudeMode } from "./permissionMode";
+import { ClaudeSdkPermissionMode, isClaudeBypassEquivalent, mapToClaudeMode } from "./permissionMode";
 
 export interface PermissionResponse {
     id: string;
@@ -44,6 +44,13 @@ export class PermissionHandler {
     private onPermissionRequestCallback?: (toolCallId: string) => void;
     /** Callback to change permission mode on the active query (set by claudeRemote) */
     private setPermissionModeCallback?: (mode: PermissionMode) => Promise<void>;
+    /**
+     * The mode the live query is actually running with. Kept apart from
+     * permissionMode because a push can fail (the query closed under it), and
+     * comparing against what we merely asked for would then skip every later
+     * push of the same mode.
+     */
+    private appliedMode?: ClaudeSdkPermissionMode;
 
     constructor(session: Session) {
         this.session = session;
@@ -58,7 +65,6 @@ export class PermissionHandler {
     }
 
     handleModeChange(mode: PermissionMode | undefined) {
-        const previousMode = this.permissionMode;
         // An unset mode means "use Claude's own configuration", which this
         // handler cannot read. It is treated as 'default' for Happy's own
         // auto-approval decisions so an unknown mode can only make us ask more,
@@ -72,10 +78,17 @@ export class PermissionHandler {
         // Only a concrete mode is pushed: setPermissionMode has no way to say
         // "go back to inheriting", so switching to Default leaves the running
         // query where it is and takes effect on the next one.
-        if (mode !== undefined
+        const target = mapToClaudeMode(mode);
+        if (target !== undefined
             && this.setPermissionModeCallback
-            && mapToClaudeMode(previousMode) !== mapToClaudeMode(mode)) {
-            this.setPermissionModeCallback(mapToClaudeMode(mode)).catch((err) => {
+            && target !== this.appliedMode) {
+            const push = this.setPermissionModeCallback;
+            push(target).then(() => {
+                // A reply from a query that has since been replaced says nothing about the new one.
+                if (this.setPermissionModeCallback === push) {
+                    this.appliedMode = target;
+                }
+            }).catch((err) => {
                 logger.debug('Failed to sync permission mode via SDK:', err);
             });
         }
@@ -83,10 +96,12 @@ export class PermissionHandler {
 
     /**
      * Set callback to dynamically change permission mode on the active query.
-     * Called by claudeRemote after the Query object is created.
+     * Called by claudeRemote after the Query object is created, with the mode
+     * that query was spawned with.
      */
-    setPermissionModeUpdater(callback: (mode: PermissionMode) => Promise<void>) {
+    setPermissionModeUpdater(callback: (mode: PermissionMode) => Promise<void>, spawnedMode: ClaudeSdkPermissionMode | undefined) {
         this.setPermissionModeCallback = callback;
+        this.appliedMode = spawnedMode;
     }
 
     /**
@@ -125,7 +140,9 @@ export class PermissionHandler {
                 logger.debug(`Plan approved - switching to ${newMode} mode and allowing ExitPlanMode`);
 
                 if (this.setPermissionModeCallback) {
-                    this.setPermissionModeCallback(newMode).catch((err) => {
+                    this.setPermissionModeCallback(newMode).then(() => {
+                        this.appliedMode = newMode;
+                    }).catch((err) => {
                         logger.debug('Failed to set permission mode via SDK:', err);
                     });
                 }
@@ -340,6 +357,9 @@ export class PermissionHandler {
         this.allowedBashLiterals.clear();
         this.allowedBashPrefixes.clear();
         this.permissionMode = 'default';
+        // The query this callback reached is gone; the next one installs its own.
+        this.setPermissionModeCallback = undefined;
+        this.appliedMode = undefined;
 
         // Cancel all pending requests
         for (const [, pending] of this.pendingRequests.entries()) {
