@@ -11,8 +11,15 @@ import com.slopus.happy.BuildConfig
  * it against. Health's `instanceId` is still kept on the connection.
  */
 object HappyCloud {
-    /** The cloud's origin; null when this build's address isn't one (a path prefix, `http:`). */
-    val origin: AgentOrigin? = of(BuildConfig.HAPPY_CLOUD_URL)
+    /**
+     * The cloud's origin; null in release builds (`release`, and `bench`,
+     * which is release), where it isn't offered yet, and when this build's
+     * address isn't one (a path prefix, `http:`). Null leaves out every way in.
+     */
+    val origin: AgentOrigin? = of(BuildConfig.HAPPY_CLOUD_URL).takeIf { offeredIn(BuildConfig.BUILD_TYPE) }
+
+    /** Only the dev (`debug`) and `preview` builds offer Happy Cloud. */
+    internal fun offeredIn(buildType: String): Boolean = buildType == "debug" || buildType == "preview"
 
     internal fun of(url: String): AgentOrigin? = try {
         ServerAuthClient.parseAddress(url)
