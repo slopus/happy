@@ -102,7 +102,7 @@ fun rememberAccountMenu(graph: AppGraph): AccountMenu {
                     agent = true,
                     active = registry.activeId == agent.id,
                     attention = agent.revoked || agent.signInRequired,
-                    detail = agent.server?.removePrefix("https://"),
+                    detail = agent.server?.let { com.slopus.happy.ui.connection.host(it) },
                 )
             },
         )

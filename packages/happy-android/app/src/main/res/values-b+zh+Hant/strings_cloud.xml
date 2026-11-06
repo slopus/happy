@@ -17,7 +17,7 @@
     <string name="cloud_role_owner">擁有者</string>
     <string name="cloud_role_member">成員</string>
     <string name="cloud_create">建立新伺服器</string>
-    <string name="cloud_create_detail">選擇一個名稱，它會成為伺服器的位址。</string>
+    <string name="cloud_create_detail">選擇一個名稱。伺服器會像使用者名稱一樣顯示為 @名稱。</string>
     <string name="cloud_create_button">建立伺服器</string>
     <string name="cloud_join">加入伺服器</string>
     <string name="cloud_join_detail">輸入伺服器名稱和擁有者給你的邀請碼。</string>
@@ -28,7 +28,7 @@
     <string name="cloud_name_rules">3 到 32 個小寫字母、數字或連字號，不能以連字號開頭或結尾。</string>
     <string name="cloud_name_checking">正在檢查…</string>
     <string name="cloud_name_available">%1$s 可以使用。</string>
-    <string name="cloud_name_taken">該名稱已被使用。</string>
-    <string name="cloud_name_reserved">該名稱已被保留。</string>
+    <string name="cloud_name_taken">%1$s 已被使用。</string>
+    <string name="cloud_name_reserved">%1$s 已被保留。</string>
     <string name="cloud_failed">發生問題，請再試一次。</string>
 </resources>

@@ -35,6 +35,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
@@ -74,7 +78,7 @@ object CloudTags {
  * Happy Cloud: until the account is signed in, the sign-in in the browser
  * as [ServerSignInScreen] draws a team server's (waiting with Open browser
  * again, finishing, or why it failed); then the account's servers ("Your
- * servers": each one's picture, display name, host and the person's role,
+ * servers": each one's picture, display name, `@name` and the person's role,
  * the ones already on the phone checked), and "Create a new server" and
  * "Join a server".
  */
@@ -143,7 +147,7 @@ fun CloudScreen(
                     else -> servers.forEach { server ->
                         Item(
                             title = server.title,
-                            subtitle = host(server.origin ?: server.url),
+                            subtitle = "@${server.name}",
                             subtitleLines = 1,
                             icon = { ServerAvatar(server, image, avatar) },
                             // The role, and a check for a server already on the phone: Item drops its detail beside a right element.
@@ -178,13 +182,13 @@ fun CloudScreen(
 }
 
 /**
- * Creating a server: its name, typed with the `.BASE` it will live under
- * beside it, said to be free or not as the person pauses, then Create.
+ * Creating a server: its name, typed as `@name` like a username (its
+ * domain isn't shown yet), said to be free or not as the person pauses,
+ * then Create.
  */
 @Composable
 fun CloudCreateScreen(
     name: String,
-    base: String,
     availability: CloudName?,
     busy: Boolean,
     failure: CloudException.Reason?,
@@ -196,14 +200,14 @@ fun CloudCreateScreen(
     Screen(header = { StackHeader(stringResource(R.string.cloud_create), onBack) }, avoidKeyboard = true) {
         CloudColumn {
             Line(stringResource(R.string.cloud_create_detail), CloudText.body, secondary = true)
-            NameField(name, base, busy, onName, ImeAction.Done)
+            NameField(name, busy, onName, ImeAction.Done)
             val (note, color) = when {
                 failure != null && failure != CloudException.Reason.Taken -> stringResource(cloudFailureText(failure)) to colors.textDestructive
                 name.length < 3 -> stringResource(R.string.cloud_name_rules) to colors.textSecondary
                 availability == null -> stringResource(R.string.cloud_name_checking) to colors.textSecondary
-                availability == CloudName.Available -> stringResource(R.string.cloud_name_available, "$name.$base") to colors.success
-                availability == CloudName.Taken -> stringResource(R.string.cloud_name_taken) to colors.textDestructive
-                availability == CloudName.Reserved -> stringResource(R.string.cloud_name_reserved) to colors.textDestructive
+                availability == CloudName.Available -> stringResource(R.string.cloud_name_available, "@$name") to colors.success
+                availability == CloudName.Taken -> stringResource(R.string.cloud_name_taken, "@$name") to colors.textDestructive
+                availability == CloudName.Reserved -> stringResource(R.string.cloud_name_reserved, "@$name") to colors.textDestructive
                 else -> stringResource(R.string.cloud_name_rules) to colors.textDestructive
             }
             Line(note, CloudText.note, color = color)
@@ -224,7 +228,6 @@ fun CloudCreateScreen(
 fun CloudJoinScreen(
     name: String,
     code: String,
-    base: String,
     busy: Boolean,
     failure: CloudException.Reason?,
     onName: (String) -> Unit,
@@ -236,7 +239,7 @@ fun CloudJoinScreen(
     Screen(header = { StackHeader(stringResource(R.string.cloud_join), onBack) }, avoidKeyboard = true) {
         CloudColumn {
             Line(stringResource(R.string.cloud_join_detail), CloudText.body, secondary = true)
-            NameField(name, base, busy, onName, ImeAction.Next)
+            NameField(name, busy, onName, ImeAction.Next)
             HappyTextField(
                 value = code,
                 onValueChange = onCode,
@@ -272,7 +275,7 @@ fun CloudJoinScreen(
 private fun ServerAvatar(server: CloudServer, image: suspend (String) -> ByteArray?, size: Dp) {
     val picture = server.image
     if (picture == null) {
-        PlaceholderAvatar("agent:${host(server.origin ?: server.url)}", size, animated = false)
+        PlaceholderAvatar("agent:${server.origin?.removePrefix("https://") ?: server.url}", size, animated = false)
         return
     }
     val bytes by produceState<ByteArray?>(null, picture.url) { value = image(picture.url) }
@@ -285,24 +288,36 @@ private fun ServerAvatar(server: CloudServer, image: suspend (String) -> ByteArr
     }
 }
 
-/** A server name field with `.BASE` after it, as the server's host will read. */
+/** A server name field, read like a username: `@` inside the field before the name. */
 @Composable
-private fun NameField(name: String, base: String, busy: Boolean, onName: (String) -> Unit, ime: ImeAction) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        HappyTextField(
-            value = name,
-            onValueChange = onName,
-            placeholder = stringResource(R.string.cloud_name_placeholder),
-            textStyle = CloudText.field,
-            contentPadding = ServerSignInSpec.fieldPadding,
-            minHeight = ServerSignInSpec.fieldMinHeight,
-            cornerRadius = ServerSignInSpec.fieldRadius,
-            singleLine = true,
-            enabled = !busy,
-            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false, keyboardType = KeyboardType.Uri, imeAction = ime),
-            modifier = Modifier.weight(1f).testTag(CloudTags.NAME),
+private fun NameField(name: String, busy: Boolean, onName: (String) -> Unit, ime: ImeAction) {
+    HappyTextField(
+        value = name,
+        onValueChange = onName,
+        placeholder = "@" + stringResource(R.string.cloud_name_placeholder),
+        textStyle = CloudText.field,
+        contentPadding = ServerSignInSpec.fieldPadding,
+        minHeight = ServerSignInSpec.fieldMinHeight,
+        cornerRadius = ServerSignInSpec.fieldRadius,
+        singleLine = true,
+        enabled = !busy,
+        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false, keyboardType = KeyboardType.Uri, imeAction = ime),
+        visualTransformation = AtPrefix,
+        modifier = Modifier.testTag(CloudTags.NAME),
+    )
+}
+
+/** `@` before what is typed; nothing while empty, so the placeholder shows alone. */
+private object AtPrefix : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        if (text.isEmpty()) return TransformedText(text, OffsetMapping.Identity)
+        return TransformedText(
+            AnnotatedString("@") + text,
+            object : OffsetMapping {
+                override fun originalToTransformed(offset: Int) = offset + 1
+                override fun transformedToOriginal(offset: Int) = (offset - 1).coerceIn(0, text.length)
+            },
         )
-        Text(".$base", style = CloudText.field, color = HappyTheme.colors.textSecondary, maxLines = 1, modifier = Modifier.padding(start = 8.dp).weight(1f, fill = false))
     }
 }
 
@@ -341,7 +356,8 @@ private fun Line(text: String, style: TextStyle, secondary: Boolean = false, col
 private fun Spinner() = CircularProgressIndicator(color = HappyTheme.colors.textSecondary, strokeWidth = 2.dp, modifier = Modifier.size(ServerSignInSpec.spinner))
 
 private fun cloudFailureText(reason: CloudException.Reason): Int = when (reason) {
-    CloudException.Reason.Taken -> R.string.cloud_name_taken
+    // Create shows a taken name as its availability, with the name; join never hears it.
+    CloudException.Reason.Taken -> R.string.cloud_failed
     CloudException.Reason.Invalid -> R.string.cloud_name_rules
     CloudException.Reason.NotFound -> R.string.cloud_join_not_found
     CloudException.Reason.SignInRequired -> R.string.team_server_error_sign_in_required

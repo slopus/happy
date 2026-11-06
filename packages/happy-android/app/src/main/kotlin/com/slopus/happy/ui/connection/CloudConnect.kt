@@ -171,7 +171,6 @@ private fun CloudCreate(graph: AppGraph, account: CloudAccount, nav: NavHostCont
     }
     CloudCreateScreen(
         name = name,
-        base = account.origin.host.removePrefix("accounts."),
         availability = availability,
         busy = busy,
         failure = failure,
@@ -205,7 +204,6 @@ private fun CloudJoin(graph: AppGraph, account: CloudAccount, nav: NavHostContro
     CloudJoinScreen(
         name = name,
         code = code,
-        base = account.origin.host.removePrefix("accounts."),
         busy = busy,
         failure = failure,
         onName = { name = CloudNames.typed(it); failure = null },

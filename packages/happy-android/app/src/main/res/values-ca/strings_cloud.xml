@@ -17,7 +17,7 @@
     <string name="cloud_role_owner">Propietari</string>
     <string name="cloud_role_member">Membre</string>
     <string name="cloud_create">Crea un servidor nou</string>
-    <string name="cloud_create_detail">Tria un nom. Serà l\'adreça del teu servidor.</string>
+    <string name="cloud_create_detail">Tria un nom. El teu servidor es veurà com a @nom, com un nom d\'usuari.</string>
     <string name="cloud_create_button">Crea el servidor</string>
     <string name="cloud_join">Uneix-te a un servidor</string>
     <string name="cloud_join_detail">Introdueix el nom del servidor i el codi d\'invitació que et va donar el seu propietari.</string>
@@ -28,7 +28,7 @@
     <string name="cloud_name_rules">De 3 a 32 lletres minúscules, xifres o guions, sense guió al principi ni al final.</string>
     <string name="cloud_name_checking">S\'està comprovant…</string>
     <string name="cloud_name_available">%1$s està disponible.</string>
-    <string name="cloud_name_taken">Aquest nom ja està agafat.</string>
-    <string name="cloud_name_reserved">Aquest nom està reservat.</string>
+    <string name="cloud_name_taken">%1$s ja està agafat.</string>
+    <string name="cloud_name_reserved">%1$s està reservat.</string>
     <string name="cloud_failed">Alguna cosa ha anat malament. Torna-ho a provar.</string>
 </resources>
