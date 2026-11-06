@@ -142,6 +142,9 @@ final class NewWorkUITests: XCTestCase {
         XCTAssertEqual(fields["swipeDrops"], "0", "the keyboard went or lost the composer during the swipe: \(fields)")
         XCTAssertEqual(fields["responder"], "composer", "the composer lost the keyboard: \(fields)")
         XCTAssertTrue(app.keyboards.firstMatch.exists)
+        // Back over the keyboard, not under it.
+        let keyboardTop = app.keyboards.firstMatch.frame.minY
+        XCTAssertLessThanOrEqual(composer.frame.maxY, keyboardTop + 1, "the keyboard covers the composer: \(fields)")
         tapKeys(" on")
         XCTAssertEqual(composer.value as? String, "Kept on")
     }

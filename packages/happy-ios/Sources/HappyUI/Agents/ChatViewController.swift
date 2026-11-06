@@ -427,6 +427,12 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         #endif
         // A finger or a release holding the keyboard lets it go at once.
         if ultraKeyboard?.isDriving == true { ultraKeyboard?.dismissImmediately() }
+        // A swipe back let go of: the composer rides the keyboard where it
+        // is, not where the swipe's notifications left it.
+        transitionCoordinator?.animate(alongsideTransition: nil) { [weak self] context in
+            guard context.isCancelled, let self else { return }
+            self.keyboardStayed()
+        }
         // Leaving keeps a name being typed, as a tap away does.
         titleView.finishEditing()
         picker?.close(animated: false)
@@ -507,6 +513,23 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         if !ownsKeyboard || abs(keyboardTracker.frame.minY - min(keyboardTop, view.bounds.maxY)) < 1 {
             fingerOnKeyboard = false
         }
+    }
+
+    /// The swipe back was let go of and the keyboard is back with the
+    /// screen: where it rests is read off the layout guide, which the
+    /// swipe's notifications may have left behind (the hide the swipe
+    /// started may end after the keyboard is back up).
+    private func keyboardStayed() {
+        guard isViewLoaded, view.window != nil else { return }
+        ultraKeyboard?.resyncWithGuide()
+        view.setNeedsLayout()
+        view.layoutIfNeeded()
+        // Resting on the safe area, the guide covers nothing.
+        let guideTop = keyboardTracker.frame.minY
+        keyboardTop = guideTop < view.bounds.maxY - view.safeAreaInsets.bottom - 0.5 ? guideTop : .greatestFiniteMagnitude
+        fingerOnKeyboard = false
+        updateBar(animated: false)
+        view.setNeedsLayout()
     }
 
     /// The composer goes with the keyboard: to the same place, in the same

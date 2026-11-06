@@ -57,6 +57,8 @@ final class ChatUltraKeyboard: NSObject {
     private var generation: UInt64 = 0
     /// When the keyboard motion the last notification started ends.
     private var notifiedMotionEnd: CFTimeInterval = 0
+    /// How far the last notification's keyboard covers `view`.
+    private var notifiedHeight: CGFloat = 0
 
     private(set) var isActive = false
     /// The controller found a keyboard it can drive.
@@ -134,6 +136,17 @@ final class ChatUltraKeyboard: NSObject {
         height = covered > view.safeAreaInsets.bottom + 0.5 ? covered : 0
     }
 
+    /// A swipe back let go of: the keyboard came back with the screen,
+    /// which its notifications meanwhile may not say (the hide the swipe
+    /// started can end after the keyboard is back). The next layout reads
+    /// where it rests off the layout guide, and nothing heard before
+    /// applies after.
+    func resyncWithGuide() {
+        guard isActive else { return }
+        generation &+= 1
+        resync = true
+    }
+
     /// After the screen's layout: the controller finds the keyboard and
     /// the window again.
     func refresh() {
@@ -198,12 +211,16 @@ final class ChatUltraKeyboard: NSObject {
         // with `followsUndockedKeyboard` off.
         let docked = local.maxY >= view.bounds.maxY - 1
         notifiedMotionEnd = CACurrentMediaTime() + max(0, duration)
-        notified(height: docked ? max(0, view.bounds.maxY - local.minY) : 0,
-                 Change(transition: duration > 0 ? .keyboard(duration) : .immediate))
+        notifiedHeight = docked ? max(0, view.bounds.maxY - local.minY) : 0
+        notified(height: notifiedHeight, Change(transition: duration > 0 ? .keyboard(duration) : .immediate))
     }
 
     @objc private func keyboardDidHide(_ notification: Notification) {
         guard isActive, dismissal?.handle(notification) != true, view?.window != nil else { return }
+        // The input still has the keyboard and the last notification
+        // brought it back: the hide this ends was undone, as a swipe back
+        // let go of undoes the one it started.
+        if hasInput(), notifiedHeight > 0 { return }
         // A phone on its side hears the hide as the keyboard starts to go:
         // its motion is landed once it has played, unless something has
         // moved the keyboard since.

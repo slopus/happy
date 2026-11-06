@@ -772,6 +772,13 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         MessageLiftOverlay.putBack(from: self)
         if contentInstalled { keepStripOffset() }
         if ultraKeyboard?.isDriving == true { ultraKeyboard?.dismissImmediately() }
+        // A swipe back let go of: the dock rides the keyboard where it is,
+        // not where the swipe's notifications left it.
+        transitionCoordinator?.animate(alongsideTransition: nil) { [weak self] context in
+            guard context.isCancelled, let self, self.view.window != nil else { return }
+            self.ultraKeyboard?.resyncWithGuide()
+            self.view.setNeedsLayout()
+        }
         // Screens pushed from here, and the one under it, have their bar.
         if hidesHeader, navigationController?.topViewController !== self {
             navigationController?.setNavigationBarHidden(false, animated: animated)
