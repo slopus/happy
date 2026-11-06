@@ -326,7 +326,7 @@ public enum DocumentMarkdown {
             let digits = rest[match].prefix { $0.isNumber }
             rest = String(digits) + "\\" + rest.dropFirst(digits.count)
         }
-        var out = indent.isEmpty ? rest : entity(indent.first!) + indent.dropFirst() + rest
+        var out = indent.isEmpty ? rest : entity(indent.first!) + String(indent.dropFirst()) + rest
         if let last = out.last, last == " " || last == "\t", out.contains(where: { $0 != " " && $0 != "\t" }) {
             out = String(out.dropLast()) + entity(last)
         }
