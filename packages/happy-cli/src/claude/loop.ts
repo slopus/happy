@@ -7,13 +7,12 @@ import { claudeRemoteLauncher } from "./claudeRemoteLauncher"
 import { ApiClient } from "@/lib"
 import type { JsRuntime } from "./runClaude"
 import type { SandboxConfig } from "@/persistence"
+import type { ClaudeEffort } from "./utils/effort"
 
 // Re-export permission mode type from api/types
 // Single unified type with 7 modes - Codex modes mapped at SDK boundary
 export type { PermissionMode } from "@/api/types"
 import type { PermissionMode } from "@/api/types"
-
-export type ClaudeEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 export interface EnhancedMode {
     /** Unset means "no override" — Claude uses its own configured mode. */

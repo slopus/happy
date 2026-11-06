@@ -33,6 +33,7 @@ import {
 } from '@/claude/claudeGoalStatus';
 import { Session } from './session';
 import { applySandboxPermissionPolicy, normalizeRemotePermissionMode, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './utils/permissionMode';
+import { isClaudeEffort, type ClaudeEffort } from './utils/effort';
 import { decodeBase64, encodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
 import { getProjectPath } from './utils/path';
@@ -46,7 +47,7 @@ export type JsRuntime = 'node' | 'bun'
 export interface StartOptions {
     model?: string
     permissionMode?: PermissionMode
-    effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+    effort?: ClaudeEffort
     startingMode?: 'local' | 'remote'
     shouldStartDaemon?: boolean
     claudeEnvVars?: Record<string, string>
@@ -64,7 +65,7 @@ export interface StartOptions {
 // The model works the same way: no default. This used to be 'opus', which
 // pinned every remote turn to the 200K model even when the user's own Claude
 // config (settings.json, ANTHROPIC_MODEL) said e.g. claude-opus-5[1m] (#1721).
-const DEFAULT_CLAUDE_EFFORT: 'low' | 'medium' | 'high' | 'xhigh' | 'max' = 'medium';
+const DEFAULT_CLAUDE_EFFORT: ClaudeEffort = 'medium';
 type ClaudeGoalCommand = NonNullable<ReturnType<typeof parseClaudeGoalActionParams>>;
 type PendingClaudeGoalAction = {
     command: ClaudeGoalCommand;
@@ -541,7 +542,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
     let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
     let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
-    let currentEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined = options.effort ?? DEFAULT_CLAUDE_EFFORT; // Track current Claude effort (thinking depth)
+    let currentEffort: ClaudeEffort | undefined = options.effort ?? DEFAULT_CLAUDE_EFFORT; // Track current Claude effort (thinking depth)
 
     const resetCurrentModeDefaults = () => {
         // Model and effort are deliberately NOT reset here. The app sends them
@@ -750,18 +751,17 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         }
 
         // Resolve effort — pass through to Claude SDK as the `effort` option.
-        // Validate against the SDK's accepted set so a stale/garbage value
-        // from the wire doesn't poison the session.
+        // Validate against the levels Claude Code takes so a stale/garbage
+        // value from the wire doesn't poison the session.
         let messageEffort = currentEffort;
-        const VALID_EFFORTS: ReadonlySet<string> = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
         if (message.meta?.hasOwnProperty('effort')) {
             const incoming = (message.meta as Record<string, unknown>).effort;
             if (incoming === null || incoming === undefined) {
                 messageEffort = undefined;
                 currentEffort = undefined;
                 logger.debug(`[loop] Effort reset to default`);
-            } else if (typeof incoming === 'string' && VALID_EFFORTS.has(incoming)) {
-                messageEffort = incoming as 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+            } else if (isClaudeEffort(incoming)) {
+                messageEffort = incoming;
                 currentEffort = messageEffort;
                 logger.debug(`[loop] Effort updated from user message: ${messageEffort}`);
             } else {
