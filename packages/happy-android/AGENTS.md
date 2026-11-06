@@ -1090,7 +1090,10 @@ change its wire behaviour on Android alone.
   the servers' (same prefs file, keychain service `happy-cloud-account`); the
   account token only ever goes to the accounts API. Signed in, the + skips the
   question and shows the picker: "Your servers" (`GET /v1/servers`, the ones on
-  the phone checked), "Create a new server" (a name with `.BASE` beside it,
+  the phone checked; each titled by its `displayName` over `name.BASE`, with its
+  picture: the ThumbHash painted first, then the bytes from its `url`, which
+  `CloudAccount.image` fetches with the account token only from the accounts
+  origin; no picture, the generated avatar its connection will have), "Create a new server" (a name with `.BASE` beside it,
   checked with `GET /v1/servers/availability` as the person pauses, then
   `POST /v1/servers`) and "Join a server" (name and invite code, `POST
   /v1/servers/join`). Picking, creating or joining one runs the team server

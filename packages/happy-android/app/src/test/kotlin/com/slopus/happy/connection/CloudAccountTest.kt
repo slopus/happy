@@ -124,6 +124,44 @@ class CloudAccountTest {
     }
 
     @Test
+    fun aServersDisplayNameAndPictureAreRead() = runBlocking {
+        val account = account()
+        signIn(account, jwt(audience, tag = "a1"))
+        val url = "${origin.value}/v1/servers/s1/image?v=abc"
+        server.enqueue(
+            json(
+                """{"servers":[""" +
+                    """{"id":"s1","name":"acme","url":"https://acme.happy.computer/","role":"owner","displayName":"Acme Inc","image":{"thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI","width":512,"height":512,"url":"$url"}},""" +
+                    """{"id":"s2","name":"beta","url":"https://beta.happy.computer/","role":"member","displayName":null,"image":null}]}""",
+            ),
+        )
+        val (acme, beta) = account.servers()
+        assertEquals("Acme Inc", acme.title)
+        assertEquals(CloudServerImage("1QcSHQRnh493V4dIh4eXh1h4kJUI", 512, 512, url), acme.image)
+        assertEquals("beta", beta.title)
+        assertEquals(null, beta.image)
+    }
+
+    @Test
+    fun aPictureIsFetchedWithTheAccountTokenOnlyFromTheAccountsOrigin() = runBlocking {
+        val access = jwt(audience, tag = "a1")
+        val account = account()
+        signIn(account, access)
+        val url = "${origin.value}/v1/servers/s1/image?v=abc"
+        server.enqueue(MockResponse.Builder().code(200).addHeader("Content-Type", "image/png").body(okio.Buffer().write(byteArrayOf(1, 2, 3))).build())
+        assertEquals(listOf<Byte>(1, 2, 3), account.image(url)?.toList())
+        val request = server.takeRequest()
+        assertEquals("/v1/servers/s1/image?v=abc", request.target)
+        assertEquals("Bearer $access", request.headers["Authorization"])
+        // Its URL names its digest: the second ask is answered from memory.
+        assertEquals(listOf<Byte>(1, 2, 3), account.image(url)?.toList())
+        assertEquals(2, server.requestCount)
+        assertEquals(null, account.image("https://elsewhere.example/v1/servers/s1/image"))
+        assertEquals(null, account.image("https://localhost:1/v1/servers/s1/image"))
+        assertEquals(2, server.requestCount)
+    }
+
+    @Test
     fun availabilityCreateAndJoinReadTheContractsAnswers() = runBlocking {
         val account = account()
         signIn(account, jwt(audience, tag = "a1"))

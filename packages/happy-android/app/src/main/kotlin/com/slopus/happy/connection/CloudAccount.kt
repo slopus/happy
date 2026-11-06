@@ -18,6 +18,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -27,11 +28,25 @@ import java.util.concurrent.TimeUnit
 
 /** A server the account is on (`GET /v1/servers`). */
 @Serializable
-data class CloudServer(val id: String, val name: String, val url: String, val role: String, val createdAt: String? = null) {
+data class CloudServer(
+    val id: String,
+    val name: String,
+    val url: String,
+    val role: String,
+    val createdAt: String? = null,
+    /** The server's own name for itself (its node name); [name] until it has one. */
+    val displayName: String? = null,
+    val image: CloudServerImage? = null,
+) {
     /** The server's origin, as its connection keeps it; null for a URL that isn't one. */
     val origin: String? get() = runCatching { ServerAuthClient.parseAddress(url).value }.getOrNull()
     val owner: Boolean get() = role == "owner"
+    val title: String get() = displayName?.takeIf { it.isNotBlank() } ?: name
 }
+
+/** A server's picture: its ThumbHash to paint first, and its bytes at [url] on the accounts origin, with the account token. */
+@Serializable
+data class CloudServerImage(val thumbhash: String? = null, val width: Int? = null, val height: Int? = null, val url: String)
 
 /** What `GET /v1/servers/availability` says of a name. */
 enum class CloudName { Available, Taken, Reserved, Invalid }
@@ -162,6 +177,41 @@ class CloudAccount(
     suspend fun join(name: String, code: String): CloudServer =
         server(call("POST", "/v1/servers/join", JsonObject(mapOf("name" to JsonPrimitive(name), "code" to JsonPrimitive(code)))).second)
 
+    /**
+     * A server picture's bytes, kept in memory: its URL names its digest, so
+     * it never changes. Null when it can't be had. The account token goes
+     * only to the accounts origin, so a URL anywhere else isn't asked.
+     */
+    suspend fun image(url: String): ByteArray? {
+        synchronized(images) { images.get(url) }?.let { return it }
+        val target = url.toHttpUrlOrNull()?.takeIf { it.scheme == "https" && it.host == origin.host && it.port == origin.port } ?: return null
+        val bytes = try {
+            var token = bearer()
+            var answer = fetch(target.toString(), token)
+            if (answer.first == 401) {
+                token = refresh(stale = token)
+                answer = fetch(target.toString(), token)
+            }
+            answer.second.takeIf { answer.first == 200 }
+        } catch (_: CloudException) {
+            null
+        } ?: return null
+        synchronized(images) { images.put(url, bytes) }
+        return bytes
+    }
+
+    private val images = android.util.LruCache<String, ByteArray>(32)
+
+    private suspend fun fetch(url: String, token: String): Pair<Int, ByteArray?> = withContext(Dispatchers.IO) {
+        try {
+            http.newCall(Request.Builder().url(url).header("Authorization", "Bearer $token").build()).execute().use { response ->
+                response.code to (if (response.isSuccessful) response.body.bytes().takeIf { it.size <= MAX_IMAGE } else null)
+            }
+        } catch (e: IOException) {
+            throw CloudException(CloudException.Reason.Unreachable).initCause(e)
+        }
+    }
+
     private fun server(body: JsonObject): CloudServer =
         json.decodeFromJsonElement(CloudServer.serializer(), body["server"]?.jsonObject ?: throw CloudException(CloudException.Reason.Failed))
 
@@ -238,6 +288,7 @@ class CloudAccount(
         const val KEYCHAIN_SERVICE = "happy-cloud-account"
         private const val KEY = "account"
         private const val MAX_BODY = 1024L * 1024
+        private const val MAX_IMAGE = 8 * 1024 * 1024
         private const val REFRESH_MARGIN_MILLIS = 60_000L
         private val json = Json { ignoreUnknownKeys = true }
     }
