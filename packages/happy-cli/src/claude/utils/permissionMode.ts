@@ -15,18 +15,23 @@ export type ClaudeSdkPermissionMode = NonNullable<QueryOptions['permissionMode']
  * - read-only → default (Claude doesn't support read-only)
  *
  * Claude modes pass through unchanged:
- * - auto, default, acceptEdits, bypassPermissions, plan
+ * - auto, acceptEdits, bypassPermissions, plan
  *
  * `auto` is a first-class mode in the Agent SDK's own PermissionMode union,
  * so it passes straight through rather than being mapped onto `default`.
+ *
+ * Claude's `default` is the one exception: it is the ambient "no override"
+ * value, so it maps to undefined and the SDK is left to apply the user's own
+ * `permissions.defaultMode`. Forwarding the literal would spawn Claude with an
+ * explicit `--permission-mode default`, and a flag outranks the settings file —
+ * a user whose defaultMode is `auto` would be dropped back to prompting. Codex's
+ * safe-yolo and read-only still map to a literal 'default' because for them
+ * asking is the policy that was picked, not the absence of one.
  */
-export function mapToClaudeMode(mode: undefined): undefined;
-export function mapToClaudeMode(mode: PermissionMode): ClaudeSdkPermissionMode;
-export function mapToClaudeMode(mode: PermissionMode | undefined): ClaudeSdkPermissionMode | undefined;
 export function mapToClaudeMode(mode: PermissionMode | undefined): ClaudeSdkPermissionMode | undefined {
     // Undefined is a meaningful value, not a missing one: it is how "Default"
     // reaches the SDK, which then applies Claude's own configuration.
-    if (mode === undefined) {
+    if (mode === undefined || mode === 'default') {
         return undefined;
     }
     const codexToClaudeMap: Record<string, ClaudeSdkPermissionMode> = {
