@@ -339,7 +339,7 @@ final class SignInRequiredTests: XCTestCase {
         XCTAssertEqual(after, before)
     }
 
-    /// Happy Cloud has no code to compare with: whatever installation
+    /// A Happy Cloud server has no code to compare with: whatever installation
     /// health reports is kept, and one that reports none still signs in.
     func testHappyCloudRecordsItsInstallationWithoutComparing() async throws {
         let http = ScriptedHTTP()
@@ -361,16 +361,66 @@ final class SignInRequiredTests: XCTestCase {
         XCTAssertEqual(second.record.userId, "u1")
     }
 
-    func testHappyCloudIsFoundAmongConnections() throws {
-        XCTAssertNoThrow(try ServerURL.normalize(HappyCloud.server))
-        XCTAssertEqual(try ServerURL.normalize(HappyCloud.server).value, HappyCloud.server)
-        var cloud = AgentConnection(id: "server-1", name: "Happy Cloud")
-        cloud.server = HappyCloud.server
-        var team = AgentConnection(id: "server-2", name: "Acme")
-        team.server = "https://happy.acme.example"
-        XCTAssertEqual(HappyCloud.connection(in: [team, cloud])?.id, "server-1")
-        XCTAssertNil(HappyCloud.connection(in: [team]))
+    func testHappyCloudServersAreNamedUnderTheBase() throws {
+        let acme = HappyCloud.server(named: "acme")
+        XCTAssertEqual(acme, "https://acme.\(HappyCloud.base)")
+        XCTAssertEqual(try ServerURL.normalize(acme).value, acme)
+        XCTAssertEqual(HappyCloud.serverName(acme), "acme")
+        XCTAssertNil(HappyCloud.serverName("https://happy.acme.example"))
+        XCTAssertNil(HappyCloud.serverName(HappyCloud.accounts))
+        for bad in ["ab", "-acme", "acme-", "Acme", "ac_me", "api", "accounts", String(repeating: "a", count: 33)] { XCTAssertFalse(HappyCloud.isValidName(bad), bad) }
+        for good in ["abc", "acme-2", String(repeating: "a", count: 32)] { XCTAssertTrue(HappyCloud.isValidName(good), good) }
+        // The address comes from the name and the app's base, never the listed URL.
+        XCTAssertEqual(CloudServer(id: "s1", name: "acme", url: "https://evil.example/", role: .owner).origin, acme)
+        XCTAssertNil(CloudServer(id: "s1", name: "evil.example", url: "https://evil.example/", role: .owner).origin)
+        var cloud = AgentConnection(id: "server-1", name: "acme")
+        cloud.server = acme
+        XCTAssertEqual(HappyCloud.connection(to: acme, in: [cloud])?.id, "server-1")
+        XCTAssertNil(HappyCloud.connection(to: HappyCloud.server(named: "other"), in: [cloud]))
         XCTAssertEqual(AppVariant.allCases.filter(HappyCloud.isOffered), [.development, .preview])
+    }
+
+    /// The account signs in at the accounts origin for itself, keeps its
+    /// grant in the Keychain after first unlock, this device only, and
+    /// calls the accounts API with its token, refreshing it after a 401.
+    func testHappyCloudAccountSignsInKeepsItsGrantAndListsServers() async throws {
+        let accounts = HappyCloud.accounts
+        let account1 = jwt("acc1", aud: accounts + "/"), account2 = jwt("acc2", aud: accounts + "/")
+        let http = ScriptedHTTP()
+        http.json(accounts + "/token", #"{"access_token":"\#(account1)","token_type":"Bearer","expires_in":900,"refresh_token":"r1"}"#)
+        let keychain = FakeKeychain()
+        let store = CloudAccountKeychain(backend: keychain)
+        let request = try CloudAccount.request()
+        let query = URLComponents(url: request.url, resolvingAgainstBaseURL: false)!.queryItems!
+        XCTAssertEqual(request.url.absoluteString.components(separatedBy: "?").first, accounts + "/authorize")
+        XCTAssertEqual(query.first { $0.name == "resource" }?.value, accounts + "/")
+        XCTAssertEqual(query.first { $0.name == "client_id" }?.value, "happy")
+        XCTAssertEqual(query.first { $0.name == "code_challenge_method" }?.value, "S256")
+        let account = try await CloudAccount.signIn(request, callback: URL(string: "happy://oauth/callback?code=c&state=\(request.state)")!, keychain: store, http: http)
+        let item = KeychainItemQuery(service: "happy-ios:cloud-account", account: Data("account".utf8), generic: Data("account".utf8))
+        XCTAssertEqual(keychain.stored(item)?.accessibility, .afterFirstUnlockThisDeviceOnly)
+        XCTAssertNotNil(CloudAccount.restore(keychain: store, http: http))
+
+        http.on(accounts + "/v1/servers") { request in
+            if request.headers["Authorization"] == "Bearer \(account1)" { return HTTPResponse(status: 401, body: Data(#"{"code":"unauthorized","error":"Expired"}"#.utf8)) }
+            XCTAssertEqual(request.headers["Authorization"], "Bearer \(account2)")
+            return HTTPResponse(status: 200, body: Data(#"{"servers":[{"id":"s1","name":"acme","url":"https://acme.example/","role":"owner","createdAt":1}]}"#.utf8))
+        }
+        http.json(accounts + "/token", #"{"access_token":"\#(account2)","token_type":"Bearer","expires_in":900,"refresh_token":"r2"}"#)
+        let servers = try await account.servers()
+        XCTAssertEqual(servers, [CloudServer(id: "s1", name: "acme", url: "https://acme.example/", role: .owner)])
+        XCTAssertEqual(http.requests.filter { $0.url.absoluteString == accounts + "/v1/servers" }.count, 2)
+        XCTAssertEqual(try store.load()?.refreshToken, "r2")
+
+        http.json(accounts + "/v1/servers/join", status: 404, #"{"code":"not_found","error":"No such server."}"#)
+        await XCTAssertThrowsAsync(try await account.join("acme", code: "nope")) {
+            XCTAssertEqual($0 as? CloudAccountError, .refused(status: 404, code: "not_found", message: "No such server."))
+        }
+        http.json(accounts + "/v1/servers/availability?name=acme", #"{"name":"acme","available":false,"reason":"taken"}"#)
+        let taken = try await account.availability("acme")
+        XCTAssertEqual(taken, .taken)
+        await account.signOut()
+        XCTAssertNil(CloudAccount.restore(keychain: store, http: http))
     }
 }
 
