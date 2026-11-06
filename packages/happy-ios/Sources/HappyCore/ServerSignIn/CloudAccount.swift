@@ -35,63 +35,93 @@ public struct CloudServer: Codable, Equatable, Sendable {
 }
 
 public enum CloudAccountError: Error, Equatable, Sendable {
-    /// The account's sign-in ended; sign in to the account again.
+    /// The account's pass expired or was refused; sign in to the account
+    /// again.
     case signInRequired
     /// `{ code, error }` from the accounts API.
     case refused(status: Int, code: String?, message: String?)
     case invalidResponse
 }
 
-/// The Happy Cloud account: its sign-in (authorization code + PKCE against
-/// the accounts origin, `resource` the accounts origin) and the accounts
-/// API under its token. The access token is held in memory only; the grant
-/// (refresh token) is in the Keychain as a team server's is
-/// (`CloudAccountKeychain`), so the picker opens again without the browser.
-/// The account token goes only to the accounts service, never to a server.
+/// The Happy Cloud account: a one-hour pass from the accounts service
+/// (Sign in with Apple, or the authorization code flow in the browser),
+/// good for the picker's calls and for minting a token per server. It has
+/// no refresh token and is never stored: held in memory with its expiry,
+/// and once it ends, or any accounts call answers 401, the person signs in
+/// again. Each server's own token, from `serverToken`, is the lasting
+/// session. The account token goes only to the accounts service, never to
+/// a server.
 public actor CloudAccount {
-    /// How the account signs in; fixed, not discovered.
+    /// How the account signs in in the browser; fixed, not discovered.
     public static let method = OAuthMethod(
         id: "accounts", name: HappyCloud.name, authorizationUrl: HappyCloud.accounts + "/authorize", tokenUrl: HappyCloud.accounts + "/token",
-        refreshUrl: HappyCloud.accounts + "/token", clientId: "happy", resource: HappyCloud.accounts + "/")
+        clientId: "happy", resource: HappyCloud.accounts + "/")
+    /// Every account token must be for the accounts service.
+    static let grant = OAuthGrant(clientId: "happy", audience: HappyCloud.accounts + "/")
+    /// The pass lasts an hour (ACCOUNTS.md, "Token lifetimes (v4)") when
+    /// the answer doesn't say.
+    static let lifetime: TimeInterval = 3600
 
     /// The authorization request to open in the browser.
     public static func request(redirectUri: String = OAuthRedirect.uri) throws -> OAuthSignInRequest {
         try OAuthSignInRequest(method: method, audience: OAuthAudience(HappyCloud.accounts + "/")!, redirectUri: redirectUri)
     }
 
-    private let authorization: ServerAuthorization
+    private let token: String
+    /// When the pass ends.
+    public nonisolated let expiresAt: Date
     private let http: any HTTPTransport
-    private let keychain: CloudAccountKeychain
+    private let tokens: OAuthTokenClient
+    private let now: @Sendable () -> Date
 
-    init(grant: OAuthGrant, access: OAuthAccess?, keychain: CloudAccountKeychain, http: any HTTPTransport, tokens: OAuthTokenClient) {
-        self.keychain = keychain
+    init(access: OAuthAccess, http: any HTTPTransport, now: @escaping @Sendable () -> Date) {
+        token = access.token
+        expiresAt = access.expiresAt ?? now().addingTimeInterval(Self.lifetime)
         self.http = http
-        authorization = ServerAuthorization(grant: grant, access: access, tokens: tokens) { try keychain.save($0) }
+        tokens = OAuthTokenClient(http: http, now: now)
+        self.now = now
     }
 
-    /// Exchanges the browser's redirect for the account's tokens and keeps
-    /// the grant.
-    public static func signIn(_ request: OAuthSignInRequest, callback: URL, keychain: CloudAccountKeychain,
-                              http: any HTTPTransport = NoRedirectURLSessionTransport()) async throws -> CloudAccount {
-        let tokens = OAuthTokenClient(http: http)
-        let (access, grant) = try await tokens.complete(request, callback: callback)
-        try keychain.save(grant)
-        return CloudAccount(grant: grant, access: access, keychain: keychain, http: http, tokens: tokens)
+    /// Whether the pass is still good, with a minute to spare for the call
+    /// about to use it.
+    public nonisolated func isLive(at date: Date = Date()) -> Bool { expiresAt.timeIntervalSince(date) > 60 }
+
+    /// Exchanges the browser's redirect for the account's pass. A refresh
+    /// token, if one came, is dropped.
+    public static func signIn(_ request: OAuthSignInRequest, callback: URL, http: any HTTPTransport = NoRedirectURLSessionTransport(),
+                              now: @escaping @Sendable () -> Date = Date.init) async throws -> CloudAccount {
+        let (access, _) = try await OAuthTokenClient(http: http, now: now).complete(request, callback: callback)
+        return CloudAccount(access: access, http: http, now: now)
+    }
+
+    /// Signs in with an identity token the phone got natively
+    /// (`POST /v1/auth/native`): Apple's, with the raw nonce its hash was
+    /// asked with, and the person's name, which Apple gives only the first
+    /// time.
+    public static func signIn(provider: String, idToken: String, nonce: String, authorizationCode: String?, name: String?,
+                              http: any HTTPTransport = NoRedirectURLSessionTransport(), now: @escaping @Sendable () -> Date = Date.init) async throws -> CloudAccount {
+        var body = ["provider": provider, "idToken": idToken, "nonce": nonce]
+        body["authorizationCode"] = authorizationCode
+        if let name, !name.isEmpty { body["name"] = name }
+        let response = try await http.send(HTTPRequest(method: "POST", url: URL(string: HappyCloud.accounts + "/v1/auth/native")!,
+                                                       headers: ["Accept": "application/json", "Content-Type": "application/json"], body: try JSONEncoder().encode(body)))
+        // A 401 here is the identity token refused, not a pass ending.
+        guard (200..<300).contains(response.status) else { throw refusal(response, endsPass: false) }
+        let (access, _) = try OAuthTokenClient(http: http, now: now).accept(response.body, previous: grant, typed: false)
+        return CloudAccount(access: access, http: http, now: now)
     }
 
     #if DEBUG
     /// An account from an access token alone, for the harness's screenshots.
-    public static func preview(token: String, keychain: CloudAccountKeychain) -> CloudAccount {
-        let http = NoRedirectURLSessionTransport()
-        return CloudAccount(grant: OAuthGrant(clientId: "happy", audience: HappyCloud.accounts + "/"), access: OAuthAccess(token: token, expiresAt: nil),
-                            keychain: keychain, http: http, tokens: OAuthTokenClient(http: http))
+    public static func preview(token: String, expiresAt: Date? = nil) -> CloudAccount {
+        CloudAccount(access: OAuthAccess(token: token, expiresAt: expiresAt), http: NoRedirectURLSessionTransport(), now: Date.init)
     }
     #endif
 
-    /// The account signed in before, from its kept grant.
-    public static func restore(keychain: CloudAccountKeychain, http: any HTTPTransport = NoRedirectURLSessionTransport()) -> CloudAccount? {
-        guard let grant = try? keychain.load(), grant.canRefresh else { return nil }
-        return CloudAccount(grant: grant, access: nil, keychain: keychain, http: http, tokens: OAuthTokenClient(http: http))
+    /// Forgets the account grant earlier builds kept in the Keychain: the
+    /// account has no refresh token now.
+    public static func forgetKeptGrant(backend: any KeychainBackend) {
+        backend.delete(KeychainItemQuery(service: "happy-ios:cloud-account", account: Data("account".utf8), generic: Data("account".utf8)))
     }
 
     public func servers() async throws -> [CloudServer] {
@@ -127,10 +157,16 @@ public actor CloudAccount {
         return response.body
     }
 
-    /// Forgets the account on this phone.
-    public func signOut() async {
-        await authorization.signInRequired()
-        keychain.remove()
+    /// A token for `server`, the person's lasting session there: its
+    /// access and refresh tokens, which refresh at the accounts service's
+    /// token endpoint without the account (`POST /v1/servers/:id/token`).
+    public func serverToken(for server: CloudServer) async throws -> (OAuthAccess, OAuthGrant) {
+        guard let origin = server.origin else { throw CloudAccountError.invalidResponse }
+        let method = HappyCloud.method(server: origin)
+        let id = server.id.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "-_"))) ?? server.id
+        let response = try await send("POST", url: URL(string: HappyCloud.accounts + "/v1/servers/\(id)/token")!, body: Data("{}".utf8))
+        let grant = OAuthGrant(refreshUrl: method.refreshUrl, clientId: method.clientId, resource: method.resource, audience: origin + "/")
+        return try tokens.accept(response.body, previous: grant, typed: false)
     }
 
     private func call<T: Decodable>(_ method: String, _ path: String, body: [String: String]? = nil, as: T.Type) async throws -> T {
@@ -139,54 +175,21 @@ public actor CloudAccount {
         return value
     }
 
-    /// One request under the account's token, refreshed once after a 401.
+    /// One request under the account's pass. An expired pass or a 401
+    /// ends the account: there is nothing to refresh it with.
     private func send(_ method: String, url: URL, body: Data? = nil, accept: String = "application/json") async throws -> HTTPResponse {
-        var token: String
-        do { token = try await authorization.bearer() } catch { throw CloudAccountError.signInRequired }
-        for attempt in 0..<2 {
-            var headers = ["Accept": accept, "Authorization": "Bearer \(token)"]
-            if body != nil { headers["Content-Type"] = "application/json" }
-            let response = try await http.send(HTTPRequest(method: method, url: url, headers: headers, body: body))
-            if response.status == 401, attempt == 0 {
-                switch await authorization.renew(after: token) {
-                case .token(let next): token = next; continue
-                case .signIn: throw CloudAccountError.signInRequired
-                case .failed(let error): throw error
-                }
-            }
-            guard (200..<300).contains(response.status) else {
-                if response.status == 401 { throw CloudAccountError.signInRequired }
-                let failure = try? JSONDecoder().decode(Failure.self, from: response.body)
-                throw CloudAccountError.refused(status: response.status, code: failure?.code, message: failure?.error)
-            }
-            return response
-        }
-        throw CloudAccountError.signInRequired
+        guard isLive(at: now()) else { throw CloudAccountError.signInRequired }
+        var headers = ["Accept": accept, "Authorization": "Bearer \(token)"]
+        if body != nil { headers["Content-Type"] = "application/json" }
+        let response = try await http.send(HTTPRequest(method: method, url: url, headers: headers, body: body))
+        guard (200..<300).contains(response.status) else { throw Self.refusal(response) }
+        return response
     }
 
-    private struct Failure: Decodable { let code: String?; let error: String? }
-}
-
-/// The account's grant in its own Keychain item, protected as a team
-/// server's (`KeychainAgentConnectionCredentialStore`): after first unlock,
-/// this device only, never synced.
-public struct CloudAccountKeychain: Sendable {
-    public static let service = "happy-ios:cloud-account"
-    private let backend: any KeychainBackend
-    private let query = KeychainItemQuery(service: CloudAccountKeychain.service, account: Data("account".utf8), generic: Data("account".utf8))
-
-    public init(backend: any KeychainBackend) { self.backend = backend }
-
-    func save(_ grant: OAuthGrant) throws {
-        let data = try JSONEncoder().encode(grant)
-        if try backend.add(query, data: data, accessibility: .afterFirstUnlockThisDeviceOnly) == .duplicate {
-            try backend.update(query, data: data, accessibility: .afterFirstUnlockThisDeviceOnly)
-        }
+    private static func refusal(_ response: HTTPResponse, endsPass: Bool = true) -> CloudAccountError {
+        if response.status == 401, endsPass { return .signInRequired }
+        struct Failure: Decodable { let code: String?; let error: String? }
+        let failure = try? JSONDecoder().decode(Failure.self, from: response.body)
+        return .refused(status: response.status, code: failure?.code, message: failure?.error)
     }
-
-    func load() throws -> OAuthGrant? {
-        try backend.copyData(query).flatMap { try? JSONDecoder().decode(OAuthGrant.self, from: $0) }
-    }
-
-    func remove() { backend.delete(query) }
 }

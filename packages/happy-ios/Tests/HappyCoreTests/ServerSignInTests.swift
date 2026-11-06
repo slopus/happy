@@ -25,8 +25,10 @@ private final class ScriptedHTTP: HTTPTransport, @unchecked Sendable {
         return try handler(request)
     }
 
-    func form(_ index: Int) -> [String: String] {
-        let text = String(decoding: lock.withLock { requests[index].body ?? Data() }, as: UTF8.self)
+    func form(_ index: Int) -> [String: String] { formOf(lock.withLock { requests[index] }) }
+
+    func formOf(_ request: HTTPRequest) -> [String: String] {
+        let text = String(decoding: request.body ?? Data(), as: UTF8.self)
         var result: [String: String] = [:]
         for pair in text.split(separator: "&") {
             let parts = pair.split(separator: "=", maxSplits: 1).map { String($0).removingPercentEncoding ?? "" }
@@ -382,37 +384,32 @@ final class SignInRequiredTests: XCTestCase {
         XCTAssertEqual(AppVariant.allCases.filter(HappyCloud.isOffered), [.development, .preview])
     }
 
-    /// The account signs in at the accounts origin for itself, keeps its
-    /// grant in the Keychain after first unlock, this device only, and
-    /// calls the accounts API with its token, refreshing it after a 401.
-    func testHappyCloudAccountSignsInKeepsItsGrantAndListsServers() async throws {
+    /// The account signs in at the accounts origin for itself and gets a
+    /// one-hour pass: no refresh token, nothing kept. Its API calls carry
+    /// the pass; a 401 or the hour ending means signing in again, never a
+    /// refresh. Each server's token comes from the accounts API, for that
+    /// server, and refreshes at the token endpoint without the account.
+    func testHappyCloudAccountIsAnHourPassThatMintsServerTokens() async throws {
         let accounts = HappyCloud.accounts
-        let account1 = jwt("acc1", aud: accounts + "/"), account2 = jwt("acc2", aud: accounts + "/")
+        XCTAssertEqual(accounts, "https://auth.happy.engineering")
+        let pass = jwt("acc1", aud: accounts + "/")
         let http = ScriptedHTTP()
-        http.json(accounts + "/token", #"{"access_token":"\#(account1)","token_type":"Bearer","expires_in":900,"refresh_token":"r1"}"#)
-        let keychain = FakeKeychain()
-        let store = CloudAccountKeychain(backend: keychain)
+        let clock = Clock()
+        let now: @Sendable () -> Date = { clock.now }
+        http.json(accounts + "/token", #"{"access_token":"\#(pass)","token_type":"Bearer","expires_in":3600}"#)
         let request = try CloudAccount.request()
         let query = URLComponents(url: request.url, resolvingAgainstBaseURL: false)!.queryItems!
         XCTAssertEqual(request.url.absoluteString.components(separatedBy: "?").first, accounts + "/authorize")
         XCTAssertEqual(query.first { $0.name == "resource" }?.value, accounts + "/")
         XCTAssertEqual(query.first { $0.name == "client_id" }?.value, "happy")
         XCTAssertEqual(query.first { $0.name == "code_challenge_method" }?.value, "S256")
-        let account = try await CloudAccount.signIn(request, callback: URL(string: "happy://oauth/callback?code=c&state=\(request.state)")!, keychain: store, http: http)
-        let item = KeychainItemQuery(service: "happy-ios:cloud-account", account: Data("account".utf8), generic: Data("account".utf8))
-        XCTAssertEqual(keychain.stored(item)?.accessibility, .afterFirstUnlockThisDeviceOnly)
-        XCTAssertNotNil(CloudAccount.restore(keychain: store, http: http))
+        let account = try await CloudAccount.signIn(request, callback: URL(string: "happy://oauth/callback?code=c&state=\(request.state)")!, http: http, now: now)
+        XCTAssertTrue(account.isLive(at: clock.now))
 
-        http.on(accounts + "/v1/servers") { request in
-            if request.headers["Authorization"] == "Bearer \(account1)" { return HTTPResponse(status: 401, body: Data(#"{"code":"unauthorized","error":"Expired"}"#.utf8)) }
-            XCTAssertEqual(request.headers["Authorization"], "Bearer \(account2)")
-            return HTTPResponse(status: 200, body: Data(#"{"servers":[{"id":"s1","name":"acme","url":"https://acme.example/","role":"owner","createdAt":1}]}"#.utf8))
-        }
-        http.json(accounts + "/token", #"{"access_token":"\#(account2)","token_type":"Bearer","expires_in":900,"refresh_token":"r2"}"#)
+        http.json(accounts + "/v1/servers", #"{"servers":[{"id":"s1","name":"acme","url":"https://acme.example/","role":"owner","createdAt":1}]}"#)
         let servers = try await account.servers()
         XCTAssertEqual(servers, [CloudServer(id: "s1", name: "acme", url: "https://acme.example/", role: .owner)])
-        XCTAssertEqual(http.requests.filter { $0.url.absoluteString == accounts + "/v1/servers" }.count, 2)
-        XCTAssertEqual(try store.load()?.refreshToken, "r2")
+        XCTAssertEqual(http.requests.last?.headers["Authorization"], "Bearer \(pass)")
 
         http.json(accounts + "/v1/servers/join", status: 404, #"{"code":"not_found","error":"No such server."}"#)
         await XCTAssertThrowsAsync(try await account.join("acme", code: "nope")) {
@@ -425,18 +422,113 @@ final class SignInRequiredTests: XCTestCase {
         http.json(accounts + "/v1/servers", #"{"servers":[{"id":"s2","name":"acme","url":"https://acme.example/","role":"member","displayName":"Acme Corp","image":{"thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI","width":64,"height":64,"url":"\#(accounts)/v1/servers/s2/image?v=abc"}}]}"#)
         let pictured = try await account.servers()
         XCTAssertEqual(pictured.first?.title, "Acme Corp")
-        http.on(accounts + "/v1/servers/s2/image?v=abc") { request in
-            XCTAssertEqual(request.headers["Authorization"], "Bearer \(account2)")
-            return HTTPResponse(status: 200, body: Data([1, 2, 3]))
-        }
+        http.json(accounts + "/v1/servers/s2/image?v=abc", "x")
         let bytes = try await account.image(pictured[0].image!)
-        XCTAssertEqual(bytes, Data([1, 2, 3]))
+        XCTAssertEqual(bytes, Data("x".utf8))
         let before = http.requests.count
         await XCTAssertThrowsAsync(try await account.image(.init(thumbhash: nil, width: nil, height: nil, url: "https://evil.example/x.png"))) { _ in }
         XCTAssertEqual(http.requests.count, before)
         XCTAssertEqual(CloudServer(id: "s1", name: "acme", url: "", role: nil, displayName: "").title, "acme")
-        await account.signOut()
-        XCTAssertNil(CloudAccount.restore(keychain: store, http: http))
+
+        // A server's token: for that server, with its refresh token, which
+        // goes to the token endpoint for the server, not the account.
+        let server = HappyCloud.server(named: "acme")
+        let serverToken = jwt("srv1", aud: [server + "/", "https://api.\(HappyCloud.base)/"])
+        http.json(accounts + "/v1/servers/s2/token", #"{"access_token":"\#(serverToken)","refresh_token":"sr1","expires_in":900}"#)
+        let (access, grant) = try await account.serverToken(for: pictured[0])
+        XCTAssertEqual(access.token, serverToken)
+        XCTAssertEqual(http.requests.last?.method, "POST")
+        XCTAssertEqual(http.requests.last?.headers["Authorization"], "Bearer \(pass)")
+        XCTAssertEqual(grant, OAuthGrant(refreshToken: "sr1", refreshUrl: accounts + "/token", clientId: "happy", resource: server + "/", audience: server + "/"))
+        let refreshed = jwt("srv2", aud: server + "/")
+        http.json(accounts + "/token", #"{"access_token":"\#(refreshed)","token_type":"Bearer","refresh_token":"sr2"}"#)
+        let (next, rotated) = try await OAuthTokenClient(http: http).refresh(grant)
+        XCTAssertEqual(next.token, refreshed)
+        XCTAssertEqual(rotated.refreshToken, "sr2")
+        XCTAssertEqual(http.form(http.requests.count - 1), ["grant_type": "refresh_token", "refresh_token": "sr1", "client_id": "happy", "resource": server + "/"])
+        XCTAssertNil(http.requests.last?.headers["Authorization"])
+        // A token for another server is refused before it's kept.
+        http.json(accounts + "/v1/servers/s2/token", #"{"access_token":"\#(jwt("x", aud: "https://other.example/"))","refresh_token":"stolen"}"#)
+        await XCTAssertThrowsAsync(try await account.serverToken(for: pictured[0])) { XCTAssertEqual($0 as? OAuthError, .wrongAudience) }
+
+        // A 401 ends the pass: no refresh is tried.
+        let calls = http.requests.count
+        http.json(accounts + "/v1/servers", status: 401, #"{"code":"unauthorized","error":"A valid account token is required."}"#)
+        await XCTAssertThrowsAsync(try await account.servers()) { XCTAssertEqual($0 as? CloudAccountError, .signInRequired) }
+        XCTAssertEqual(http.requests.count, calls + 1)
+        // So does the hour: nothing is sent.
+        http.json(accounts + "/v1/servers", #"{"servers":[]}"#)
+        clock.now = clock.now.addingTimeInterval(3600)
+        XCTAssertFalse(account.isLive(at: clock.now))
+        await XCTAssertThrowsAsync(try await account.servers()) { XCTAssertEqual($0 as? CloudAccountError, .signInRequired) }
+        XCTAssertEqual(http.requests.count, calls + 1)
+        XCTAssertFalse(http.requests.contains { $0.url.absoluteString == accounts + "/token" && http.formOf($0)["grant_type"] == "refresh_token" && http.formOf($0)["resource"] == accounts + "/" })
+    }
+
+    /// Sign in with Apple: the identity token, the raw nonce and the name
+    /// go to the accounts service, which answers with a pass for itself; a
+    /// refused identity token is a failure, not an ended pass.
+    func testHappyCloudSignsInWithApple() async throws {
+        let accounts = HappyCloud.accounts
+        let http = ScriptedHTTP()
+        let pass = jwt("acc1", aud: accounts + "/")
+        http.on(accounts + "/v1/auth/native") { request in
+            let body = try JSONSerialization.jsonObject(with: request.body ?? Data()) as? [String: String]
+            XCTAssertEqual(body, ["provider": "apple", "idToken": "id.token.x", "nonce": "raw", "authorizationCode": "code", "name": "Steve K"])
+            return HTTPResponse(status: 200, body: Data(#"{"access_token":"\#(pass)","expires_in":3600}"#.utf8))
+        }
+        let account = try await CloudAccount.signIn(provider: "apple", idToken: "id.token.x", nonce: "raw", authorizationCode: "code", name: "Steve K", http: http)
+        XCTAssertTrue(account.isLive())
+        http.json(accounts + "/v1/auth/native", status: 401, #"{"code":"invalid_token","error":"That sign-in could not be verified."}"#)
+        await XCTAssertThrowsAsync(try await CloudAccount.signIn(provider: "apple", idToken: "bad", nonce: "raw", authorizationCode: nil, name: nil, http: http)) {
+            XCTAssertEqual($0 as? CloudAccountError, .refused(status: 401, code: "invalid_token", message: "That sign-in could not be verified."))
+        }
+        // A pass for anything else is refused.
+        http.json(accounts + "/v1/auth/native", #"{"access_token":"\#(jwt("x", aud: "https://acme.example/"))"}"#)
+        await XCTAssertThrowsAsync(try await CloudAccount.signIn(provider: "apple", idToken: "id", nonce: "raw", authorizationCode: nil, name: nil, http: http)) {
+            XCTAssertEqual($0 as? OAuthError, .wrongAudience)
+        }
+        // Earlier builds' kept account grant is forgotten.
+        let keychain = FakeKeychain()
+        let item = KeychainItemQuery(service: "happy-ios:cloud-account", account: Data("account".utf8), generic: Data("account".utf8))
+        _ = try keychain.add(item, data: Data("{}".utf8), accessibility: .afterFirstUnlockThisDeviceOnly)
+        CloudAccount.forgetKeptGrant(backend: keychain)
+        XCTAssertNil(keychain.stored(item))
+    }
+
+    /// A cloud server signs in from tokens the accounts API issued, for it
+    /// only, then reads who signed in and its installation.
+    func testHappyCloudServerSignsInFromIssuedTokens() async throws {
+        let server = HappyCloud.server(named: "acme")
+        let http = ScriptedHTTP()
+        http.json(server + "/v0/authentication", #"{"authenticated":true,"userId":"u1","methods":[]}"#)
+        let daemon = Daemon()
+        await daemon.answer("/v0/health", HTTP1Response(status: 200, body: Data(#"{"ready":true,"instanceId":"c0ud9q2m7p0a4b8c1d5e6f7g"}"#.utf8)))
+        let flow = try ServerSignInFlow.cloud(server, http: http, makeTransport: { _ in daemon })
+        XCTAssertEqual(flow.method.tokenUrl, HappyCloud.accounts + "/token")
+        XCTAssertEqual(flow.method.resource, server + "/")
+        let token = jwt("srv", aud: server + "/")
+        let grant = OAuthGrant(refreshToken: "sr1", refreshUrl: HappyCloud.accounts + "/token", clientId: "happy", resource: server + "/", audience: server + "/")
+        let signedIn = try await flow.signedIn(access: OAuthAccess(token: token, expiresAt: nil), grant: grant, installation: .recorded)
+        XCTAssertEqual(signedIn.record.userId, "u1")
+        XCTAssertEqual(signedIn.record.grant, grant)
+        XCTAssertEqual(signedIn.instanceId, "c0ud9q2m7p0a4b8c1d5e6f7g")
+        let other = HappyCloud.server(named: "other")
+        var foreign = grant
+        foreign.audience = other + "/"
+        await XCTAssertThrowsAsync(try await flow.signedIn(access: OAuthAccess(token: jwt("srv", aud: other + "/"), expiresAt: nil), grant: foreign, installation: .recorded)) {
+            XCTAssertEqual($0 as? OAuthError, .wrongAudience)
+        }
+    }
+}
+
+/// A clock the test moves.
+private final class Clock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = Date(timeIntervalSince1970: 1_800_000_000)
+    var now: Date {
+        get { lock.withLock { value } }
+        set { lock.withLock { value = newValue } }
     }
 }
 

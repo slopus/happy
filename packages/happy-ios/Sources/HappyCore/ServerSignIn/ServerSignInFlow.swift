@@ -39,6 +39,16 @@ public struct ServerSignInFlow: Sendable {
         return ServerSignInFlow(origin: origin, method: method, tokens: OAuthTokenClient(http: http), discovery: discovery, makeTransport: makeTransport)
     }
 
+    /// A Happy Cloud server, whose tokens come from the accounts API
+    /// (`CloudAccount.serverToken`) rather than a browser: nothing to
+    /// discover first, the method is the cloud's own.
+    public static func cloud(_ server: String, http: any HTTPTransport = NoRedirectURLSessionTransport(),
+                             makeTransport: @escaping @Sendable (AgentOrigin) -> any AgentTransport = ServerSignInFlow.transport) throws -> ServerSignInFlow {
+        let origin = try ServerURL.normalize(server)
+        return ServerSignInFlow(origin: origin, method: HappyCloud.method(server: origin.value), tokens: OAuthTokenClient(http: http),
+                                discovery: ServerDiscovery(http: http), makeTransport: makeTransport)
+    }
+
     /// The daemon over HTTPS only: a signed-in server never uses Tailcat.
     public static let transport: @Sendable (AgentOrigin) -> any AgentTransport = { AgentHTTPTransport(address: "", port: 0, publicUrl: $0.value, tailcatAvailable: false) }
 
@@ -63,6 +73,13 @@ public struct ServerSignInFlow: Sendable {
     /// and, as `installation` says, which installation it is.
     public func complete(_ request: OAuthSignInRequest, callback: URL, installation: Installation = .unchecked) async throws -> SignedIn {
         let (access, grant) = try await tokens.complete(request, callback: callback)
+        return try await signedIn(access: access, grant: grant, installation: installation)
+    }
+
+    /// Tokens for this server however they were issued: asks the server
+    /// who signed in and, as `installation` says, which installation it is.
+    public func signedIn(access: OAuthAccess, grant: OAuthGrant, installation: Installation) async throws -> SignedIn {
+        guard let audience = grant.audience.flatMap(OAuthAudience.init), audience == OAuthAudience(origin: origin), audience.accepts(access.token) else { throw OAuthError.wrongAudience }
         let who = try await discovery.discover(origin, token: access.token)
         guard who.authenticated else { throw ServerSignInError.rejected }
         var signedIn = SignedIn(origin: origin, record: ServerSignInRecord(method: method, grant: grant, userId: who.userId), access: access)
