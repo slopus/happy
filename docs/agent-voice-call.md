@@ -448,15 +448,35 @@ Debug builds count every update and tool result by size
 Use a new, versioned agent. Leave the relay's agent (`sendMessageToSession`,
 `processPermissionRequest`) as it is.
 
+The live one is "Happy Agent v2public" (`agent_1301m6gbcnwtfsvvwsyzvjjjxdqn`);
+builds take its ID from `HAPPY_CALL_AGENT_ID`, never from the repo. Its
+client tools, each its own workspace tool used by this agent alone:
+
+| Tool | ID |
+| --- | --- |
+| listSessions | `tool_1701m6ggnc2pf21rxphd5g201e5h` |
+| getSessionContext | `tool_6501m6ggnh3afqgtx048kjn9mkcw` |
+| openSession | `tool_3101m6ggnqjeepx920r2a7z972a5` |
+| sendMessage | `tool_8201m6ggny4mef9b9y7m65ex4t4z` |
+| newWork | `tool_3001m6rcrfv2fkya66v4pkj9f55d` |
+| goBack | `tool_1501m6rcrg9pex190mnpp2r3xm3j` |
+| goHome | `tool_1901m6rcrggffd3bkcxdhhtywbm3` |
+
+A tool is edited in place (`PATCH /v1/convai/tools/{id}`, the
+`convai_write` scope) and the change reaches every build at once; a new one
+is created (`POST /v1/convai/tools`) and attached through the agent's
+`conversation_config.agent.prompt.tool_ids`, which lists them all. As of
+2026-11-06 the descriptions are the ones below; the parameters'
+descriptions are the dashboard's own wording, which says the same as these.
+
 ### Settings
 
 - Authentication: off (public), for the reasons above.
 - Overrides: **System prompt** on (Security → Overrides), and Language on
-  if a language is ever chosen. The app sends the prompt below as the
-  agent's prompt override on every call (`CallPrompt`), with the one dynamic
-  variable; it sends no first message. ElevenLabs refuses a conversation
-  whose override the agent doesn't allow, so this is switched on before a
-  build that sends the prompt ships.
+  if a language is ever chosen (both are on). The app sends the prompt below
+  as the agent's prompt override on every call (`CallPrompt`), with the one
+  dynamic variable; it sends no first message. ElevenLabs refuses a
+  conversation whose override the agent doesn't allow.
 - Dynamic variable: `initialConversationContext` (a string). It holds a JSON
   snapshot (`schema` 2): the directory as text, the conversation on
   screen with its last five turns, and `focusRevision`. It is limited to
@@ -472,9 +492,12 @@ Use a new, versioned agent. Leave the relay's agent (`sendMessageToSession`,
 The phones send this prompt themselves, as the agent's prompt override
 (`CallPrompt.system` on iOS, `CallPrompt.SYSTEM` on Android, the same
 words; unit tests on both fail if this block and the code differ). The
-dashboard's own prompt is then only what older builds run on: set it to the
-same text, so an old build that is offered the new tools hears the same
-rules (it answers `newWork`, `goBack` and `goHome` with `Unknown tool.`).
+dashboard's own prompt is then only what older builds run on, which send
+none. It is still the relay's voice prompt (it names `messageClaudeCode`
+and `processPermissionRequest`, which this agent doesn't have), with its
+first message "Hi, Happy here". Those builds answer `newWork`, `goBack` and
+`goHome` with `Unknown tool.` and take no `model` or `effort`, so this
+prompt's rules don't fit them either: leave it until they are gone.
 
 ```text
 You are Happy, a voice companion for the person's coding agents on their computer. Speak briefly and plainly: one or two sentences unless asked for more.
