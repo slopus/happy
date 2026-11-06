@@ -30,6 +30,8 @@ actor ChatPlanner {
     struct Planned: @unchecked Sendable {
         var item: ChatItem
         var key: Key
+        /// `key`'s number in `plans`; 0 for one it hasn't numbered.
+        var keyNumber: Int
         var copied: Bool
         var opened: Bool
         var proposals: [ProposalShown?]
@@ -91,6 +93,20 @@ actor ChatPlanner {
         self.syntax = syntax
     }
 
+    /// The key each row was last planned with, as a number: the same key
+    /// keeps its number, so a row is told planned with it in one step, not
+    /// by comparing every reference the key holds once per row.
+    private var keys: [(key: Key, number: Int)] = []
+    private var keyNumbers = 0
+
+    private func number(_ key: Key) -> Int {
+        if let known = keys.first(where: { $0.key == key }) { return known.number }
+        keyNumbers += 1
+        // The rows' key and a failure card's: two are all a pass needs.
+        keys = Array((keys + [(key, keyNumbers)]).suffix(4))
+        return keyNumbers
+    }
+
     /// `proposals` are the sidebar proposals the items show, as they stand;
     /// `opened` the other agents' messages opened to read.
     func plans(_ items: [ChatItem], key: Key, copied: String?, opened: Set<String> = [], proposals: [String: ProposalShown] = [:]) -> [ChatRowPlan] {
@@ -101,24 +117,31 @@ actor ChatPlanner {
         var others = key
         others.switchTarget = nil
         others.modelNames = [:]
+        let othersNumber = number(others)
+        var failureNumber: Int?
         var shownTimes: [String: Double?] = [:]
         for var item in items {
             if item.role == .user {
-                if let first = times[item.id] { item.time = first }
+                if let first = times[item.id], item.time != first { item.time = first }
                 shownTimes[item.id] = item.time
             }
             let isCopied = copied == item.id
             let isOpened = opened.contains(item.id)
             let shown = item.proposalIds.map { proposals[$0] }
             var reads = others
-            if case .failure = item.role { reads = key }
+            var readsNumber = othersNumber
+            if case .failure = item.role {
+                reads = key
+                if failureNumber == nil { failureNumber = number(key) }
+                readsNumber = failureNumber ?? 0
+            }
             let plan: ChatRowPlan
-            if let cached = cache[item.id], cached.item == item, cached.key == reads, cached.copied == isCopied, cached.opened == isOpened, cached.proposals == shown {
+            if let cached = cache[item.id], (cached.keyNumber == 0 ? cached.key == reads : cached.keyNumber == readsNumber), cached.item == item, cached.copied == isCopied, cached.opened == isOpened, cached.proposals == shown {
                 plan = cached.plan
             } else {
                 plan = Self.plan(item, key: reads, copied: isCopied, opened: isOpened, syntax: syntax, proposals: proposals)
             }
-            next[item.id] = Planned(item: item, key: reads, copied: isCopied, opened: isOpened, proposals: shown, plan: plan)
+            next[item.id] = Planned(item: item, key: reads, keyNumber: readsNumber, copied: isCopied, opened: isOpened, proposals: shown, plan: plan)
             if plan.size.height > 0 { plans.append(plan) }
         }
         cache.replace(with: next)
@@ -152,6 +175,8 @@ actor ChatPlanner {
                 for (proposal, shown) in zip(row.item.proposalIds, row.proposals) { proposals[proposal] = shown }
                 var next = row
                 next.key = key
+                // Planned at a key `plans` hasn't numbered: told by the key itself.
+                next.keyNumber = 0
                 next.plan = Self.plan(row.item, key: key, copied: row.copied, opened: row.opened, syntax: syntax, proposals: proposals)
                 cache.adopt(next, replacing: row, id: id)
                 planned[id] = next

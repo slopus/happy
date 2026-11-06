@@ -173,8 +173,12 @@ public enum TurnFold {
         // How a turn ended keeps 4 more from a step right above it.
         for index in result.indices.dropFirst() {
             guard case .turnEnd(var ended) = result[index].role else { continue }
-            ended.afterStep = isStep(result[index - 1])
-            result[index].role = .turnEnd(ended)
+            let afterStep = isStep(result[index - 1])
+            guard ended.afterStep != afterStep else { continue }
+            ended.afterStep = afterStep
+            // Read from nothing but whether a step is above it: the same
+            // turn's end so placed again is the same making (`ChatItem.revision`).
+            result[index] = result[index].derived(afterStep ? 1 : 2) { $0.role = .turnEnd(ended) }
         }
         return MediaRuns.join(result)
     }

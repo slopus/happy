@@ -132,6 +132,8 @@ public struct Row: Equatable, Sendable, Identifiable {
     /// minute): what search's recent conversations are ordered by.
     public var activityTime: Double?
     public var lineChanges: GitLineChanges?
+    /// A muted bot's, or under one: drawn with no status or dot.
+    public var muted = false
     /// A count at the row's end, as iOS's lists show one (the Feed's unread
     /// entries); nil for none.
     public var count: Int?

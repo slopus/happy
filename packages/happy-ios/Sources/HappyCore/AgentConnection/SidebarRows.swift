@@ -49,6 +49,7 @@ public enum SidebarRows {
             row.targetId = owner?.id
             row.canArchive = owner?.canArchive ?? false
             row.activityTime = agent.activityAt.map(Rows.minute)
+            row.muted = muted
             rows.append(row)
             for child in children { agentRow(child, depth: depth + 1, muted: muted) }
         }
@@ -101,6 +102,40 @@ public enum SidebarRows {
             }
         }
         return rows
+    }
+
+    /// What of an agent's row its agent draws (`make`): its status, its
+    /// dot, a session's name, its time to the minute. An update that moves
+    /// none of these draws nothing.
+    struct Drawn: Equatable {
+        var status: Row.Status
+        var unread: Bool
+        var title: String?
+        var minute: Double?
+        var archived: Bool
+
+        init(_ agent: AgentWire.Agent) {
+            status = Rows.activity(agent)
+            unread = agent.unread != nil
+            title = agent.title
+            minute = agent.activityAt.map(Rows.minute)
+            archived = agent.archivedAt != nil
+        }
+    }
+
+    /// `row`, an agent's as `make` drew it, drawn again for `agent` as it
+    /// is now: what `Drawn` names, the rest as it was.
+    static func redraw(_ row: inout Row, for agent: AgentWire.Agent) {
+        row.status = row.muted ? .none : Rows.activity(agent)
+        row.unread = !row.muted && agent.unread != nil
+        if row.kind == .session { row.label = agent.title ?? "Untitled" }
+        row.activityTime = agent.activityAt.map(Rows.minute)
+    }
+
+    /// Whether `make` drew the row for an agent (a session, a bot's or a
+    /// task's), so `redraw` may draw it again.
+    static func drawsAgent(_ row: Row) -> Bool {
+        row.agentId != nil && (row.kind == .session || row.targetKind == "bot" || row.targetKind == "task")
     }
 
     /// A project's face, as desktop's sidebar shows it: its picture (the

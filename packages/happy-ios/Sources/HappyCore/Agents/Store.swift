@@ -166,14 +166,39 @@ public actor Store {
     }
 
     public func externalEvent(_ envelope: JSONValue) {
+        hand(envelope)
+        receive(envelope)
+    }
+
+    /// The event to whoever follows its conversation or Surface, and to
+    /// whoever follows its type: both found by key, not by asking every
+    /// follower, for every word an agent writes.
+    private func hand(_ envelope: JSONValue) {
         let payload = envelope["payload"]
         if let key = payload?["agentId"]?.stringValue ?? payload?["surfaceId"]?.stringValue ?? payload?["todo"]?["surfaceId"]?.stringValue {
-            for listener in listeners.values where listener.key == key { listener.continuation.yield(.event(envelope)) }
+            for id in keyed[key] ?? [] { listeners[id]?.continuation.yield(.event(envelope)) }
         }
-        if let type = envelope["type"]?.stringValue {
-            for listener in typeListeners.values where listener.prefixes.contains(where: type.hasPrefix) { listener.continuation.yield(.event(envelope)) }
+        guard let type = envelope["type"]?.stringValue, !prefixed.isEmpty else { return }
+        var heard = Set<UUID>()
+        for prefix in Self.prefixes(of: type) {
+            for id in prefixed[prefix] ?? [] where heard.insert(id).inserted {
+                guard let listener = typeListeners[id], listener.wanted?(envelope) ?? true else { continue }
+                listener.continuation.yield(.event(envelope))
+            }
         }
-        receive(envelope)
+    }
+
+    /// What `events(matching:)` may follow `type` by: it whole, and each
+    /// part of it up to a dot (`space.`, `space.sidebar.`, …).
+    static func prefixes(of type: String) -> [String] {
+        var prefixes = [type]
+        var index = type.startIndex
+        while let dot = type[index...].firstIndex(of: ".") {
+            let next = type.index(after: dot)
+            if next < type.endIndex { prefixes.append(String(type[..<next])) }
+            index = next
+        }
+        return prefixes
     }
 
     public func start() {
@@ -234,13 +259,7 @@ public actor Store {
                     }
                     if let id = frame.id { cursor = id }
                     guard let envelope = try? JSONValue.decode(Data(frame.data.utf8)) else { continue }
-                    let payload = envelope["payload"]
-                    if let key = payload?["agentId"]?.stringValue ?? payload?["surfaceId"]?.stringValue ?? payload?["todo"]?["surfaceId"]?.stringValue {
-                        for listener in listeners.values where listener.key == key { listener.continuation.yield(.event(envelope)) }
-                    }
-                    if let type = envelope["type"]?.stringValue {
-                        for listener in typeListeners.values where listener.prefixes.contains(where: type.hasPrefix) { listener.continuation.yield(.event(envelope)) }
-                    }
+                    hand(envelope)
                     receive(envelope)
                 }
             } catch AgentClientError.revoked {
@@ -265,26 +284,44 @@ public actor Store {
     }
 
     private var listeners: [UUID: (key: String, continuation: AsyncStream<ConversationEvent>.Continuation)] = [:]
+    /// The followers of each key and of each type prefix (`hand`).
+    private var keyed: [String: Set<UUID>] = [:]
+    private var prefixed: [String: Set<UUID>] = [:]
 
     /// `key` is a conversation's agent ID, or a Surface's ID for its todos.
     public func conversationEvents(_ key: String) -> AsyncStream<ConversationEvent> {
         let id = UUID()
         let (stream, continuation) = AsyncStream.makeStream(of: ConversationEvent.self)
         listeners[id] = (key, continuation)
+        keyed[key, default: []].insert(id)
         continuation.onTermination = { [weak self] _ in Task { await self?.unlisten(id) } }
         return stream
     }
 
-    private func unlisten(_ id: UUID) { listeners.removeValue(forKey: id); typeListeners.removeValue(forKey: id) }
+    private func unlisten(_ id: UUID) {
+        if let key = listeners.removeValue(forKey: id)?.key {
+            keyed[key]?.remove(id)
+            if keyed[key]?.isEmpty == true { keyed[key] = nil }
+        }
+        for prefix in typeListeners.removeValue(forKey: id)?.prefixes ?? [] {
+            prefixed[prefix]?.remove(id)
+            if prefixed[prefix]?.isEmpty == true { prefixed[prefix] = nil }
+        }
+    }
 
-    private var typeListeners: [UUID: (prefixes: [String], continuation: AsyncStream<ConversationEvent>.Continuation)] = [:]
+    private var typeListeners: [UUID: (prefixes: [String], wanted: (@Sendable (JSONValue) -> Bool)?, continuation: AsyncStream<ConversationEvent>.Continuation)] = [:]
 
-    /// Every event whose type starts with one of `prefixes` (`"artifact."`),
-    /// for what no conversation or Surface key names. `resync` as above.
-    public func events(matching prefixes: [String]) -> AsyncStream<ConversationEvent> {
+    /// Every event whose type starts with one of `prefixes`, for what no
+    /// conversation or Surface key names. A prefix ends at a dot
+    /// (`"artifact."`) or is a whole type (`"agent.created"`): each is
+    /// found by key (`prefixes(of:)`). `wanted`, when given, picks among
+    /// them here, so what isn't wanted isn't handed over at all. `resync`
+    /// as above.
+    public func events(matching prefixes: [String], wanted: (@Sendable (JSONValue) -> Bool)? = nil) -> AsyncStream<ConversationEvent> {
         let id = UUID()
         let (stream, continuation) = AsyncStream.makeStream(of: ConversationEvent.self)
-        typeListeners[id] = (prefixes, continuation)
+        typeListeners[id] = (prefixes, wanted, continuation)
+        for prefix in prefixes { prefixed[prefix, default: []].insert(id) }
         continuation.onTermination = { [weak self] _ in Task { await self?.unlisten(id) } }
         return stream
     }
@@ -570,9 +607,15 @@ public actor Store {
         case "space.sidebar.changed":
             sidebarChanged(payload)
         case "agent.updated":
-            guard let id = payload["agentId"]?.stringValue else { return }
+            // An agent no bot or task here holds draws nothing here; one
+            // that moved only its time within the minute, nothing either.
+            guard let id = payload["agentId"]?.stringValue, agents.holds(id) else { return }
+            let drawn = agents.drawn(id)
             let followed = agents.update(agentId: id, previousVersion: payload["previousVersion"]?.stringValue, version: payload["version"]?.stringValue, changes: payload["changes"]?.objectValue ?? [:])
-            if followed { return followAgentsSoon() }
+            if followed {
+                if agents.drawn(id) != drawn { followAgentsSoon() }
+                return
+            }
             schedulePlacesReload()
         case "agent.created":
             if let agent = payload["agent"] { agents.created(agent); rebuildPlaces() }

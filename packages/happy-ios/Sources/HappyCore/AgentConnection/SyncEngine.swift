@@ -93,6 +93,14 @@ public actor SyncEngine {
     private let url: URL?
     private var storage: SyncStorage?
     private var desktop: DesktopSnapshot?
+    /// Where each agent of `desktop` stands (`AgentIndex`), made on the
+    /// first update after each read; nil until then.
+    private var agentIndex: AgentIndex?
+    /// Each agent's row among `snapshot.allRows`, and each row's place
+    /// among `snapshot.rows`, as `derive` last drew them: an update redraws
+    /// only its agent's row.
+    private var agentRows: [String: Int] = [:]
+    private var shownRows: [String: Int] = [:]
     private var snapshot = HomeSnapshot()
     private var listeners: [UUID: AsyncStream<HomeSnapshot>.Continuation] = [:]
     private var runner: Task<Void, Never>?
@@ -275,6 +283,7 @@ public actor SyncEngine {
             let database = try database()
             if desktop == nil, let cached = try await database.checkpoint("desktop") {
                 desktop = try JSONDecoder().decode(DesktopSnapshot.self, from: JSONEncoder().encode(cached.value))
+                agentIndex = nil
                 cursor = cached.cursor
             }
             if users.isEmpty, let kept = try await database.checkpoint("users"),
@@ -369,7 +378,7 @@ public actor SyncEngine {
                     await spaces.externalEvent(event)
                     guard current(generation) else { return }
                     if event["type"]?.stringValue?.hasPrefix("feed.") == true { await feed.receive(event) }
-                    await lookups.receive(event)
+                    if FeedLookups.reads(event) { await lookups.receive(event) }
                     if event["type"] == .string("git.updated"),
                        let id = event["payload"]?["workspaceId"]?.stringValue,
                        gitInterest.contains(id), let value = event["payload"]?["git"],
@@ -392,13 +401,15 @@ public actor SyncEngine {
                     // A working agent's `agent.updated` comes with every word:
                     // laid over the held bootstrap, it is read again only when a
                     // version was missed (`AgentUpdate`).
-                    if event["type"] == .string("agent.updated"), let desktop {
-                        switch AgentUpdate.apply(event["payload"] ?? .null, to: desktop) {
-                        case .applied(let next):
-                            self.desktop = next
-                            deriveSoon()
-                        case .unchanged: break
-                        case .reread: scheduleReconcile(generation)
+                    if event["type"] == .string("agent.updated"), desktop != nil {
+                        if agentIndex == nil, let desktop { agentIndex = AgentIndex(desktop) }
+                        // Changed where it is held: nothing else of it is copied.
+                        if let index = agentIndex {
+                            switch AgentUpdate.apply(event["payload"] ?? .null, to: &desktop!, index: index) {
+                            case .applied(let patches): agentsMoved(patches)
+                            case .unchanged: break
+                            case .reread: scheduleReconcile(generation)
+                            }
                         }
                     } else if let type = event["type"]?.stringValue,
                        ["project.", "workspace.", "bot.", "task.", "agent.", "surface.", "user_settings."].contains(where: type.hasPrefix),
@@ -507,6 +518,7 @@ public actor SyncEngine {
         adopted = read
         covered = max(covered, asOf)
         self.desktop = self.desktop.map { AgentUpdate.keepingNewer(desktop, than: $0) } ?? desktop
+        agentIndex = nil
         verified = true
         cursor = desktop.cursor
         await feed.bootstrap(unread: desktop.feedUnread, cursor: desktop.cursor)
@@ -669,9 +681,9 @@ public actor SyncEngine {
         }
     }
 
-    /// Agents' updates, a row's time and its working state, drawn together
-    /// a few times a second rather than once a word; nothing reaches home
-    /// when the rows came out the same.
+    /// Home drawn whole a moment on, for an agent's update that takes its
+    /// row away or brings it back (`agentsMoved`); several drawn together,
+    /// and nothing reaches home when the rows came out the same.
     private func deriveSoon() {
         guard deriving == nil else { return }
         deriving = Task {
@@ -689,20 +701,60 @@ public actor SyncEngine {
         snapshot.loaded = desktop != nil
         if let desktop {
             snapshot.allRows = overlay.apply(SidebarRows.make(desktop, settings: snapshot.settings, users: users, feed: feedRow))
+            agentRows = [:]
             for index in snapshot.allRows.indices {
                 snapshot.allRows[index].lineChanges = snapshot.allRows[index].workspaceId.flatMap { gitSnapshots[$0]?.visible }
+                if SidebarRows.drawsAgent(snapshot.allRows[index]), let agentId = snapshot.allRows[index].agentId { agentRows[agentId] = index }
             }
             snapshot.rows = Rows.visible(snapshot.allRows)
+            shownRows = Dictionary(snapshot.rows.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
             snapshot.userId = desktop.profile?.userId
             snapshot.profilePhoto = desktop.profile?.photo?.thumbhash
         }
         if publishing { publish() }
     }
 
-    private func publish() {
+    /// Agents' updates laid over the bootstrap (`AgentUpdate.Patch`): only
+    /// what their rows draw moving redraws anything, and then only their
+    /// rows and the rows above them, at once. A working agent's come with
+    /// every word, and drew home whole a few times a second for a time
+    /// that moves once a minute. A row coming or going draws it whole.
+    private func agentsMoved(_ patches: [AgentUpdate.Patch]) {
+        var titled = false
+        var moved: [AgentWire.Agent] = []
+        for patch in patches {
+            for (before, after) in zip(patch.before, patch.after) {
+                let was = SidebarRows.Drawn(before), now = SidebarRows.Drawn(after)
+                guard was != now else { continue }
+                if was.archived != now.archived { return deriveSoon() }
+                if was.title != now.title { titled = true }
+                moved.append(after)
+            }
+        }
+        // Titles are what the Feed's directory reads of agents.
+        if titled { deriveDirectory() }
+        guard !moved.isEmpty else { return }
+        var redrawn = false
+        for agent in moved {
+            guard let index = agentRows[agent.id], snapshot.allRows.indices.contains(index), snapshot.allRows[index].agentId == agent.id else { continue }
+            var row = snapshot.allRows[index]
+            SidebarRows.redraw(&row, for: agent)
+            // What the person did that the computer hasn't heard yet stays over it.
+            if overlay.read.contains(agent.id) { row.unread = false; row.isNew = false }
+            guard row != snapshot.allRows[index] else { continue }
+            snapshot.allRows[index] = row
+            if let shown = shownRows[row.id], snapshot.rows.indices.contains(shown), snapshot.rows[shown].id == row.id { snapshot.rows[shown] = row }
+            redrawn = true
+        }
+        if redrawn { publish(rowsMoved: false) }
+    }
+
+    /// `rowsMoved`: rows may have come or gone, so the workspaces whose
+    /// line counts are followed are looked at again.
+    private func publish(rowsMoved: Bool = true) {
         if !snapshot.live { gitWatcher?.cancel(); gitWatcher = nil; gitInterest = [] }
         for listener in listeners.values { listener.yield(snapshot) }
-        watchGit()
+        if rowsMoved { watchGit() }
     }
 
     /// One subscription set per open account, never one request per row.

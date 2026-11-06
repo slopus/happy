@@ -203,6 +203,17 @@ public actor FeedLookups {
         read()
     }
 
+    /// Whether `receive` reads anything of `event`: the stream need not
+    /// hand over the others, an agent's words and its updates without a
+    /// new title above all, which come many times a second.
+    public static func reads(_ event: JSONValue) -> Bool {
+        switch event["type"]?.stringValue {
+        case "agent.updated": event["payload"]?["changes"]?["title"] != nil
+        case "profile.updated", "todo.created", "todo.updated", "project.updated", "workspace.updated", "artifact.updated", "artifact.deleted": true
+        default: false
+        }
+    }
+
     /// One event from the stream: a thing held that it says changed is
     /// taken in or read again.
     public func receive(_ event: JSONValue) async {

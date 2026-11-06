@@ -54,6 +54,57 @@ enum AgentUpdate {
         return changed ? .applied(next) : .unchanged
     }
 
+    /// What applying an update found, by `index`: the agents from each
+    /// place it is listed down to it, before and after (`Patch`).
+    enum Found {
+        case applied([Patch])
+        case unchanged
+        case reread
+    }
+
+    /// One place an updated agent is listed at: the agents from the one
+    /// its list holds down to it, as they were and as they are.
+    struct Patch {
+        var place: AgentIndex.Place
+        var before: [AgentWire.Agent]
+        var after: [AgentWire.Agent]
+    }
+
+    /// `apply`, finding the agent by `index` and changing `desktop` in
+    /// place: only the agents from it up to its list are made again, and
+    /// nothing else in the bootstrap is looked at. Agrees with `apply` on
+    /// every update (`AgentUpdateTests`).
+    static func apply(_ payload: JSONValue, to desktop: inout DesktopSnapshot, index: AgentIndex) -> Found {
+        guard let id = payload["agentId"]?.stringValue, let version = payload["version"]?.stringValue,
+              let changes = payload["changes"]?.objectValue else { return .reread }
+        if changes.keys.contains(where: structural.contains) { return .reread }
+        let places = index[id]
+        guard !places.isEmpty else { return .unchanged }
+        var chains: [(AgentIndex.Place, [AgentWire.Agent])] = []
+        for place in places {
+            guard let chain = index.chain(place, in: desktop), let held = chain.last, let heldVersion = held.version else { return .reread }
+            if version <= heldVersion { continue }
+            guard payload["previousVersion"]?.stringValue == heldVersion else { return .reread }
+            chains.append((place, chain))
+        }
+        guard !chains.isEmpty else { return .unchanged }
+        var patches: [Patch] = []
+        for (place, chain) in chains {
+            guard let patched = chain[chain.count - 1].applying(changes, version: version) else { return .reread }
+            var after = chain
+            after[after.count - 1] = patched
+            // Each agent above it, with the one below it in its place.
+            for level in stride(from: chain.count - 2, through: 0, by: -1) {
+                var subtasks = chain[level].subtasks ?? []
+                subtasks[place.path[level + 1]] = after[level + 1]
+                after[level] = chain[level].with(subtasks: subtasks)
+            }
+            patches.append(Patch(place: place, before: chain, after: after))
+        }
+        for patch in patches { AgentIndex.put(patch.after[0], at: patch.place, in: &desktop) }
+        return .applied(patches)
+    }
+
     /// `fetched`, a bootstrap read again, with each agent `held` has at a
     /// newer version kept as held: an update applied while the read was on
     /// its way is never rolled back by it.

@@ -135,7 +135,18 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     private var references = References()
     /// The messages' words looked through for references not read yet, by
     /// item, and what references read as then.
-    private var scanned = (references: References(), texts: [String: String]())
+    private var scanned = Scanned(references: References())
+    /// Each row's making looked into for the proposals it shows.
+    private var proposalsLooked: [String: UInt64] = [:]
+
+    private struct Scanned {
+        var references: References
+        /// Each row's making last looked into, and its words then.
+        var revisions: [String: UInt64] = [:]
+        var texts: [String: String] = [:]
+        /// The HTML artifacts rows show, read until their pages are known.
+        var pages: Set<String> = []
+    }
     /// Inline pages' heights as they measured themselves.
     private var pageHeights: [String: CGFloat] = [:]
     /// The references with this conversation's own subagents, which the
@@ -905,7 +916,12 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             if snapshot.draftUpdatedAt >= lastDraftEdit { showDraft(snapshot.draft) }
         }
         if snapshot.localDraftLoaded { showPrefill() }
-        proposals.want(snapshot.items.flatMap(\.proposalIds))
+        var wanted: [String] = []
+        for item in snapshot.items where item.revision == 0 || proposalsLooked[item.id] != item.revision {
+            proposalsLooked[item.id] = item.revision
+            wanted += item.proposalIds
+        }
+        proposals.want(wanted)
         updateHeaderStatus()
         if wasSettled != settled(snapshot), let intro { introView.configure(intro, settled: settled(snapshot)) }
         showIntro()
@@ -1149,9 +1165,22 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         }
         // Only words not looked through yet, as of what references read as
         // now: a long conversation isn't read again on every layout pass.
-        if scanned.references != references { scanned = (references, [:]) }
-        let fresh = items.filter { scanned.texts[$0.id] != $0.text }
-        for item in fresh { scanned.texts[item.id] = item.text }
+        if scanned.references != references { scanned = Scanned(references: references) }
+        // A row is looked into once per making of it (`ChatItem.revision`):
+        // its words aren't joined and compared again on every word that
+        // lands in another row.
+        var changed: [ChatItem] = []
+        for item in items where item.revision == 0 || scanned.revisions[item.id] != item.revision {
+            scanned.revisions[item.id] = item.revision
+            changed.append(item)
+        }
+        var fresh: [ChatItem] = []
+        for item in changed {
+            let text = item.text
+            guard scanned.texts[item.id] != text else { continue }
+            scanned.texts[item.id] = text
+            fresh.append(item)
+        }
         // Artifacts the messages name are read for their titles, once each.
         let unread = fresh.flatMap { references.unread(in: $0.text) }
         if !unread.isEmpty {
@@ -1160,13 +1189,13 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         }
         // An HTML artifact a call shows is read for whether it wants to be
         // inline, or is an app, whose card opens it full screen.
-        let pages = items.flatMap(\.pieces).compactMap { piece -> String? in
-            guard case .artifact(let artifact) = piece, artifact.type == "html", references.artifacts[artifact.id] == nil else { return nil }
-            return artifact.id
+        for piece in changed.lazy.flatMap(\.pieces) {
+            if case .artifact(let artifact) = piece, artifact.type == "html" { scanned.pages.insert(artifact.id) }
         }
+        let pages = scanned.pages.filter { references.artifacts[$0] == nil }
         if !pages.isEmpty {
             let store = session.store
-            Task { await store.readArtifacts(pages) }
+            Task { await store.readArtifacts(Array(pages)) }
         }
         // So are the names of the people they mention.
         let people = fresh.flatMap { references.unknownUsers(in: $0.text) }

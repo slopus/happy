@@ -55,19 +55,19 @@ keeps it one read behind at most (`merged_keeps_up`, and
 
 | Model (`SyncProofs/…`) | Swift (`Sources/HappyCore/…`) |
 | --- | --- |
-| `Versions.decide` | `AgentUpdate.apply`'s `patch`: absent agent → `.unchanged`; no held version → `.reread`; `version <= held` → unchanged; `previousVersion == held` → applied; else `.reread` (AgentConnection/AgentUpdate.swift) |
+| `Versions.decide` | `AgentUpdate.apply`'s `patch`: absent agent → `.unchanged`; no held version → `.reread`; `version <= held` → unchanged; `previousVersion == held` → applied; else `.reread` (AgentConnection/AgentUpdate.swift). `SyncEngine` runs the same decision on the agent `AgentIndex` finds (`apply(_:to:index:)`), which `AgentUpdateTests` holds to the walk on every update |
 | `Versions.merge` | `AgentUpdate.keepingNewer`: the read's agents, each at the newer version |
 | `Chain`, `Chain.previous` | the daemon's per-agent versions and each event's `previousVersion` |
 | `Chain.Input`, `Chain.run`, `InOrder` | `SyncEngine.run`'s stream loop over `client.events(after: cursor)` with `reconcile` merges between |
 | `Refresh.Step.change` | an event `scheduleReconcile` answers: any catalog prefix, or `AgentUpdate` → `.reread` (SyncEngine.run) |
-| `Refresh.Step.applied` | `AgentUpdate` → `.applied`: `self.desktop = next; deriveSoon()` |
+| `Refresh.Step.applied` | `AgentUpdate` → `.applied`: `desktop` changed in place, then `agentsMoved` redraws the rows whose drawn fields moved |
 | `Refresh.Step.begin` / `fail` / `exit` | `scheduleReconcile`'s loop: `while dirty { sleep; dirty = false; reconcile }`, its `catch` (dirty again, back off), and `refresh = nil`; a read cancelled by a disconnect is a `fail` (it never advances `covered`) |
 | `Refresh.Step.gap` | a `hello` with `gap`, or from another `daemonId`, while resuming: home is read before anything is delivered |
 | `resume_is_current`'s premise | `covered == signalled` with a verified `daemonId`: `run` resumes from `streamCursor` and skips the bootstrap read, the conversations' `.resync` and the authors' re-read |
 | `Refresh` (the same loop) | `Store.schedulePlacesReload`, reading bots and tasks after an `agent.updated` the sidebar can't follow or a `bot.`/`task.` event; it used to restart its wait on each one and so never read while they kept coming |
 | `Refresh.Step.finish` | `reconcile` taking the read: `self.desktop = keepingNewer(read, than: held)` |
 | `Refresh.droppedTurn` | the removed `guard self.revision == revision else { return }` |
-| `Delta.grow` | `Conversation.grow`, on one block's UTF-16 units (Agents/Conversation.swift) |
+| `Delta.grow` | `Conversation.grow`, on one block's UTF-16 units (Agents/Conversation.swift); the stream applies it as `Conversation.growth` on `Transcript`'s held block, appending in place |
 
 ## Assumptions and limits
 

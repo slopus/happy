@@ -86,4 +86,78 @@ final class AgentUpdateTests: XCTestCase {
         XCTAssertEqual(agent("sub", in: kept)?.version, "0003")
         XCTAssertEqual(AgentUpdate.keepingNewer(held, than: fetched), held)
     }
+
+    /// Found by the index, an update does exactly what walking every agent
+    /// does: the same outcome and the same bootstrap after it, whatever
+    /// the update, over hundreds of them.
+    func testFindingTheAgentByItsPlaceAgreesWithWalkingEveryAgent() throws {
+        var walked = try desktop()
+        var found = walked
+        let index = AgentIndex(found)
+        var versions = ["root": 3, "research-agent": 5, "sub": 2, "t1-agent": 0]
+        var state: UInt64 = 0x2545F4914F6CDD1D
+        func next(_ bound: Int) -> Int { state ^= state << 13; state ^= state >> 7; state ^= state << 17; return Int(state % UInt64(bound)) }
+        let ids = ["root", "research-agent", "sub", "t1-agent", "nobody"]
+        let changes: [[String: JSONValue]] = [
+            ["status": .string("working")], ["status": .string("idle")], ["updatedAt": .number(5)], ["lastActivityAt": .number(70_000)],
+            ["title": .string("Retitled")], ["unread": .object(["reason": .string("finished")])], ["unread": .null],
+            ["wait": .null], ["pendingQuestionId": .string("q")], ["subagents": .object(["running": .number(2)])],
+            ["workspaceId": .string("moved")], ["status": .number(1)],
+        ]
+        for step in 0..<400 {
+            let id = ids[next(ids.count)]
+            let held = versions[id] ?? 0
+            // Mostly the next version; now and then one held already, or a gap.
+            let offset = [1, 1, 1, 1, 0, 2][next(6)]
+            let payload = update(id, from: String(format: "%04d", held), to: String(format: "%04d", held + offset), changes[next(changes.count)])
+            let slow = AgentUpdate.apply(payload, to: walked)
+            let fast = AgentUpdate.apply(payload, to: &found, index: index)
+            switch (slow, fast) {
+            case (.applied(let next), .applied):
+                walked = next
+                versions[id] = held + offset
+            case (.unchanged, .unchanged), (.reread, .reread): break
+            default: return XCTFail("step \(step): walking and the index disagree on \(id)")
+            }
+            XCTAssertEqual(found, walked, "step \(step)")
+        }
+    }
+
+    /// The rows an update redraws (`SidebarRows.redraw`) are the rows home
+    /// drawn whole after it would have, a muted bot's included; and an
+    /// update that moves nothing a row draws redraws nothing.
+    func testRedrawingAnAgentsRowsDrawsWhatDrawingHomeWholeDoes() throws {
+        var held = try desktop()
+        let settings: [String: JSONValue] = ["happy-desktop.bot.research": .object(["muted": .bool(true)])]
+        let index = AgentIndex(held)
+        var rows = SidebarRows.make(held, settings: settings)
+        var versions = ["root": 3, "research-agent": 5, "sub": 2]
+        func apply(_ id: String, _ change: [String: JSONValue]) -> [AgentUpdate.Patch] {
+            let from = versions[id] ?? 0
+            versions[id] = from + 1
+            let payload = update(id, from: String(format: "%04d", from), to: String(format: "%04d", from + 1), change)
+            guard case .applied(let patches) = AgentUpdate.apply(payload, to: &held, index: index) else { XCTFail("\(id) not applied"); return [] }
+            return patches
+        }
+        let updates: [(String, [String: JSONValue])] = [
+            ("sub", ["status": .string("working"), "wait": .null]), ("root", ["title": .string("Renamed")]),
+            ("root", ["updatedAt": .number(1_000)]), ("root", ["updatedAt": .number(2_000)]), ("root", ["lastActivityAt": .number(61_000)]),
+            ("research-agent", ["unread": .object(["reason": .string("finished")])]), ("root", ["unread": .object(["reason": .string("finished")])]),
+            ("sub", ["pendingQuestionId": .string("q")]), ("root", ["status": .string("working")]),
+        ]
+        for (id, change) in updates {
+            for patch in apply(id, change) {
+                for (before, after) in zip(patch.before, patch.after) where SidebarRows.Drawn(before) != SidebarRows.Drawn(after) {
+                    for row in rows.indices where SidebarRows.drawsAgent(rows[row]) && rows[row].agentId == after.id {
+                        SidebarRows.redraw(&rows[row], for: after)
+                    }
+                }
+            }
+            XCTAssertEqual(rows, SidebarRows.make(held, settings: settings), "after \(id) \(change)")
+        }
+        // A word's update, its time within the minute: nothing a row draws moves.
+        let quiet = apply("root", ["updatedAt": .number(2_500)])
+        XCTAssertFalse(quiet.isEmpty)
+        XCTAssertTrue(quiet.allSatisfy { zip($0.before, $0.after).allSatisfy { SidebarRows.Drawn($0) == SidebarRows.Drawn($1) } })
+    }
 }

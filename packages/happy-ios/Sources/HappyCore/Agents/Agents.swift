@@ -57,6 +57,20 @@ struct Agents: Equatable, Sendable {
         return true
     }
 
+    func holds(_ id: String) -> Bool { records[id] != nil }
+
+    /// What of a held agent anything draws: all of it but when it last
+    /// moved, which is drawn to the minute. A working agent's update with
+    /// every word moves only that.
+    func drawn(_ id: String) -> JSONValue? {
+        guard var object = records[id]?.objectValue else { return nil }
+        let activity = object["lastActivityAt"]?.numberValue ?? max(object["statusLine"]?["updatedAt"]?.numberValue ?? 0, object["updatedAt"]?.numberValue ?? 0)
+        for key in ["version", "updatedAt", "lastActivityAt"] { object[key] = nil }
+        object["statusLine"] = object["statusLine"]?["text"]
+        object["minute"] = .number(Rows.minute(activity))
+        return .object(object)
+    }
+
     /// The agent with its active subtasks composed under it.
     func tree(_ id: String, depth: Int = 0) -> JSONValue? {
         guard var object = records[id]?.objectValue, depth < 32 else { return nil }
