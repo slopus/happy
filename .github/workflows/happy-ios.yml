@@ -17,10 +17,13 @@ concurrency:
 
 jobs:
   uikit:
-    runs-on: macos-15
+    # Xcode 27.2, what the app is built and released with; the tests'
+    # layout expectations are iOS 27's. The `xcode-27` image is a GitHub
+    # preview (runner-images#14404).
+    runs-on: xcode-27
     timeout-minutes: 45
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
     defaults:
       run:
         working-directory: packages/happy-ios
@@ -60,7 +63,15 @@ jobs:
                       candidates.append((numbers, entry['name'], entry['udid']))
           if not candidates:
               raise SystemExit('No available iPhone simulator with iOS 17 or later')
-          _, _, device_id = max(candidates)
+          # The device and iOS the tests are checked on locally: an iPhone
+          # 17-class phone (3x, 402 points wide) on iOS 27.0; otherwise the
+          # newest iPhone there is.
+          preferred = ['iPhone 17 Pro', 'iPhone 17', 'iPhone 18 Pro']
+          local = [c for c in candidates if c[0][:2] == (27, 0) and c[1] in preferred]
+          if local:
+              _, _, device_id = min(local, key=lambda c: preferred.index(c[1]))
+          else:
+              _, _, device_id = max(candidates)
           if not re.fullmatch(r'[0-9A-Fa-f-]{36}', device_id):
               raise SystemExit('Invalid simulator UUID')
           print(f'HAPPY_IOS_SIMULATOR_ID={device_id}')
