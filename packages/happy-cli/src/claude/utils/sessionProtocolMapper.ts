@@ -257,16 +257,16 @@ function resolveProviderSubagent(message: RawJSONLines, state: ClaudeSessionProt
         return explicitSubagent;
     }
 
+    if (!isSidechainMessage(message)) {
+        return undefined;
+    }
+
     const parentUuid = pickParentUuid(message);
     if (parentUuid) {
         const inheritedSubagent = getUuidToProviderSubagent(state).get(parentUuid);
         if (inheritedSubagent) {
             return inheritedSubagent;
         }
-    }
-
-    if (!isSidechainMessage(message)) {
-        return undefined;
     }
 
     const prompt = pickSidechainRootPrompt(message);
@@ -388,12 +388,15 @@ function emitActiveSubagentStops(
 function clearSubagentTracking(state: ClaudeSessionProtocolState): void {
     getUuidToProviderSubagent(state).clear();
     getTaskPromptToSubagents(state).clear();
-    getProviderSubagentToSessionSubagent(state).clear();
-    getSubagentTitles(state).clear();
     getBufferedSubagentMessages(state).clear();
     getHiddenParentToolCalls(state).clear();
     getStartedSubagents(state).clear();
     getActiveSubagents(state).clear();
+    // providerSubagentToSessionSubagent and subagentTitles are deliberately kept:
+    // background subagents outlive the turn that spawned them, and a wiped
+    // registration makes every later message from them fail the
+    // `providerSubagent && !subagent` check and get buffered forever.
+    // The ids are a pure hash of the provider id, so keeping them is free.
 }
 
 function ensureTurn(state: ClaudeSessionProtocolState, envelopes: SessionEnvelope[]): string {
