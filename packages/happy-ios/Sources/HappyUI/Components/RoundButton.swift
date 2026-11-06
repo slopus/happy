@@ -179,7 +179,8 @@ public final class RoundButton: UIControl {
         setNeedsLayout()
     }
 
-    @objc private func tapped() {
+    /// A tap: `onTap`, or `action` with the spinner shown until it ends.
+    @objc func tapped() {
         guard !isLoading else { return }
         if let onTap {
             onTap()

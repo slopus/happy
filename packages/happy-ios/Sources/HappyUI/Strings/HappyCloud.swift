@@ -15,6 +15,7 @@ extension Strings {
         static let joinAction = "Join"
         static let joinMessage = "Enter the server’s name and the invite code its owner gave you."
         static let joinFailedTitle = "Couldn’t Join"
+        static let joinMissing = "Enter the server’s name and its invite code."
         static let namePlaceholder = "name"
         static let nameLabel = "Name"
         static let codePlaceholder = "Invite code"
