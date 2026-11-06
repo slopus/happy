@@ -62,7 +62,7 @@ class CloudStageViewController: UIViewController, AccountAddingFlow {
     let context: AppContext
     private let gradient = GrainGradientView(palette: StartViewController.Colors.grain)
     let scroll = UIScrollView()
-    private let art: StateSceneView?
+    let art: StateSceneView?
     let titleLabel: StyledLabel
     let bodyLabel: StyledLabel
     let content = UIView()
@@ -163,13 +163,63 @@ class CloudStageViewController: UIViewController, AccountAddingFlow {
     }
 }
 
+/// Taps on Welcome's logo: ten within four seconds open the test account
+/// form.
+struct CloudLogoTaps {
+    static let needed = 10
+    static let within: TimeInterval = 4
+    private var times: [Date] = []
+
+    /// Whether this tap is the tenth within the window.
+    mutating func tap(at now: Date) -> Bool {
+        times = times.filter { now.timeIntervalSince($0) < Self.within } + [now]
+        return times.count >= Self.needed
+    }
+}
+
+/// A test account's login and password, and its sign-in button. Made only
+/// once the logo opens it; the password lives in the field alone.
+final class CloudTestSignIn: UIView {
+    let login = CloudField(prefix: nil, placeholder: Strings.HappyCloud.testLogin)
+    let password = CloudField(prefix: nil, placeholder: Strings.HappyCloud.testPassword)
+    let button = RoundButton(title: Strings.HappyCloud.testSignIn, size: .normal, display: .inverted)
+
+    init() {
+        super.init(frame: .zero)
+        accessibilityIdentifier = "cloud-test-sign-in"
+        login.text.accessibilityIdentifier = "cloud-test-login"
+        password.text.accessibilityIdentifier = "cloud-test-password"
+        button.accessibilityIdentifier = "cloud-test-submit"
+        login.text.returnKeyType = .next
+        password.text.returnKeyType = .go
+        password.text.isSecureTextEntry = true
+        for view in [login, password, button] { addSubview(view) }
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    func height(width: CGFloat) -> CGFloat { CloudField.height * 2 + 24 + button.layout(width: width).size.height }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let width = bounds.width
+        login.frame = CGRect(x: 0, y: 0, width: width, height: CloudField.height)
+        password.frame = CGRect(x: 0, y: CloudField.height + 12, width: width, height: CloudField.height)
+        button.frame = CGRect(x: 0, y: CloudField.height * 2 + 24, width: width, height: button.layout(width: width).size.height)
+    }
+}
+
 /// "Connect to Happy Cloud?": Sign in with Apple, or other ways in the
-/// system browser.
-final class CloudWelcomeViewController: CloudStageViewController, ASWebAuthenticationPresentationContextProviding {
+/// system browser. Ten taps on the logo open a test account's sign-in.
+final class CloudWelcomeViewController: CloudStageViewController, ASWebAuthenticationPresentationContextProviding, UITextFieldDelegate {
     private var browser: ASWebAuthenticationSession?
     private var apple: CloudApple?
     private let appleButton = ASAuthorizationAppleIDButton(authorizationButtonType: .continue, authorizationButtonStyle: .black)
-    private let problem = StartGalleryView.bodyLabel("")
+    let problem = StartGalleryView.bodyLabel("")
+    private var taps = CloudLogoTaps()
+    private(set) var testSignIn: CloudTestSignIn?
+    /// Where the test account's sign-in goes; the tests' fake accounts.
+    var http: any HTTPTransport = NoRedirectURLSessionTransport()
 
     init(context: AppContext) {
         super.init(context: context, scene: .sparkles, title: Strings.ServerSignIn.cloudTitle, body: Strings.ServerSignIn.cloudMessage,
@@ -186,6 +236,45 @@ final class CloudWelcomeViewController: CloudStageViewController, ASWebAuthentic
         secondary?.action = { [weak self] in await self?.signInInBrowser() }
         problem.textColor = UIColor(Palette.textDestructive)
         content.addSubview(problem)
+        art?.accessibilityIdentifier = "cloud-logo"
+        if HappyCloud.isOffered(in: context.variant) {
+            art?.onTap = { [weak self] in self?.logoTapped(at: Date()) }
+        }
+    }
+
+    func logoTapped(at now: Date) {
+        guard HappyCloud.isOffered(in: context.variant), testSignIn == nil, taps.tap(at: now) else { return }
+        let form = CloudTestSignIn()
+        form.login.text.delegate = self
+        form.password.text.delegate = self
+        form.button.action = { [weak self] in await self?.signInWithTestAccount() }
+        content.addSubview(form)
+        testSignIn = form
+        relayout()
+        form.login.text.becomeFirstResponder()
+    }
+
+    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        guard let form = testSignIn else { return true }
+        if textField === form.login.text { form.password.text.becomeFirstResponder() } else { form.button.tapped() }
+        return false
+    }
+
+    /// The test form's button's action; it leaves `isLoading` to the button.
+    func signInWithTestAccount() async {
+        guard let form = testSignIn else { return }
+        let login = (form.login.text.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let password = form.password.text.text ?? ""
+        guard !login.isEmpty, !password.isEmpty else { return say(Strings.HappyCloud.testMissing) }
+        say(nil)
+        do {
+            let account = try await CloudAccount.signIn(login: login, password: password, http: http)
+            form.password.text.text = nil
+            view.endEditing(true)
+            CloudScreens.signedIn(account, context: context, from: self)
+        } catch {
+            say(Strings.HappyCloud.failure(error))
+        }
     }
 
     override func viewDidLayoutSubviews() {
@@ -194,10 +283,19 @@ final class CloudWelcomeViewController: CloudStageViewController, ASWebAuthentic
     }
 
     override func contentHeight(width: CGFloat) -> CGFloat {
-        problem.string.isEmpty ? 0 : ceil(problem.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height)
+        let form = testSignIn.map { $0.height(width: width) + 16 } ?? 0
+        return form + (problem.string.isEmpty ? 0 : ceil(problem.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height))
     }
 
-    override func layoutContent() { problem.frame = content.bounds }
+    override func layoutContent() {
+        let width = content.bounds.width
+        var top: CGFloat = 0
+        if let testSignIn {
+            testSignIn.frame = CGRect(x: 0, y: 0, width: width, height: testSignIn.height(width: width))
+            top = testSignIn.frame.maxY + 16
+        }
+        problem.frame = CGRect(x: 0, y: top, width: width, height: max(0, content.bounds.height - top))
+    }
 
     private func signInWithApple() async {
         guard apple == nil else { return }
