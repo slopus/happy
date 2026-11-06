@@ -1,5 +1,8 @@
 package com.slopus.happy.ui
 
+import com.slopus.happy.analytics.AnalyticsReasons
+import com.slopus.happy.connection.PairingStart
+import com.slopus.happy.analytics.SignInMethod
 import com.slopus.happy.ui.todos.todoRoutes
 
 import com.slopus.happy.ui.connection.openAgentSettingsRow
@@ -144,7 +147,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
             SideEffect { onNavigationReady(nav) }
             val openSession = { id: String -> nav.navigate(SessionRoute(id)) }
             val troubleshoot = { nav.navigate(TroubleshootRoute) }
-            val connectAgent = remember(nav) { { code: String -> nav.connectAgent(graph, code) } }
+            val connectAgent = remember(nav) { { code: String, start: PairingStart -> nav.connectAgent(graph, code, start) } }
             val signInToServer = remember(nav) { { invite: ServerInvite -> nav.signInToServer(graph, invite) } }
             // Happy URLs (edge SSO §7): external ones only on their own installation's connection.
             val happyLinks = rememberHappyLinks(graph, nav, agent)
@@ -316,7 +319,7 @@ private fun RestoreManual(graph: AppGraph, nav: NavHostController) {
                 scope.launch {
                     restoring = true
                     try {
-                        graph.auth.restore(secretKey)
+                        AnalyticsReasons.signingIn(SignInMethod.RelayRestore) { graph.auth.restore(secretKey) }
                     } catch (e: CancellationException) {
                         throw e
                     } catch (_: Exception) {

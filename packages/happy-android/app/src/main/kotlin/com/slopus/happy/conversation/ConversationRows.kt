@@ -129,8 +129,23 @@ sealed interface ConversationRow {
     /** Another agent writing to this one: a collaborator or subtask reporting. */
     data class Collaborator(override val key: String, val senderAgentId: String, val text: String, val blocks: List<MarkdownBlock>) : ConversationRow
 
-    /** A turn that failed, with Retry while it can help and nobody acted on it yet. */
-    data class Failure(override val key: String, val messageId: String, val reason: FailureReason, val retryable: Boolean, val resolved: Boolean) : ConversationRow
+    /**
+     * A turn that failed, with Retry while it can help and nobody acted on it yet.
+     * [kind] is the typed failure's (null from an older daemon), [providerType]
+     * its account's family, [pool] whether a routing pool ran out, [createdAt]
+     * when the message was written: what analytics may know of it.
+     */
+    data class Failure(
+        override val key: String,
+        val messageId: String,
+        val reason: FailureReason,
+        val retryable: Boolean,
+        val resolved: Boolean,
+        val kind: String? = null,
+        val providerType: String? = null,
+        val pool: Boolean = false,
+        val createdAt: Long = 0,
+    ) : ConversationRow
 
     /**
      * A question the agent asked (iOS 7f6355041 `ChatItem.Ask`): waiting, it
@@ -410,6 +425,10 @@ class ConversationRowBuilder(
                 reason = reason,
                 retryable = failure?.get("kind").str != "context_too_long",
                 resolved = failure?.get("resolution").obj != null,
+                kind = failure?.get("kind").str,
+                providerType = failure?.get("provider").obj?.get("type").str,
+                pool = failure?.get("poolName").str != null,
+                createdAt = message.createdAt,
             )
         }
 

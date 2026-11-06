@@ -50,8 +50,9 @@ val callAgentId = providers.environmentVariable("HAPPY_CALL_AGENT_ID").orNull?.t
         providers.fileContents(rootProject.layout.projectDirectory.file("local.properties")).asText.orNull?.let { load(it.reader()) }
     }.getProperty("happy.callAgentId")?.takeIf { it.isNotBlank() }
 
-// PostHog's public project key (the existing environment variable is retained);
-// only feature flags are read with it. Without one every flag is off.
+// PostHog's public project key (the existing environment variable is retained):
+// :analytics sends its events and asks this install's feature flags with it,
+// from release and preview builds. Without one nothing is sent and every flag is off.
 val postHogKey = providers.environmentVariable("EXPO_PUBLIC_POSTHOG_API_KEY").orNull
     ?.takeIf { it.isNotBlank() }
     ?: providers.gradleProperty("happy.postHogKey").orNull.orEmpty()
@@ -408,6 +409,8 @@ android.sourceSets.matching { it.name == "benchmarkBench" || it.name == "nonMini
 
 dependencies {
     implementation(project(":crypto"))
+    // Product analytics behind one facade; removable with its call sites (AGENTS.md "Analytics").
+    implementation(project(":analytics"))
     // Installs the Baseline Profile on sideloaded and pre-Play-cloud-profile installs.
     implementation(libs.androidx.profileinstaller)
 

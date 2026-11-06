@@ -1,5 +1,10 @@
 package com.slopus.happy.connection
 
+import com.slopus.happy.analytics.Analytics
+import com.slopus.happy.analytics.AnalyticsEvent
+import com.slopus.happy.analytics.AnalyticsReasons
+import com.slopus.happy.analytics.SignInError
+import com.slopus.happy.analytics.SignInMethod
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -38,7 +43,9 @@ sealed interface ServerSignInState {
  * `instanceId` checked against [expectedInstance], and the server kept as
  * an agent connection. [replacing] signs an existing one in again. The
  * verifier and state live only in this object: a sign-in the app was
- * killed during starts over.
+ * killed during starts over. Closing records how it ended
+ * (`team_server_signed_in` or `sign_in_failed`; nothing when it was left),
+ * whatever retries came before.
  */
 class ServerSignInFlow(
     private val scope: CoroutineScope,
@@ -49,6 +56,7 @@ class ServerSignInFlow(
     private val expectedInstance: String? = null,
     /** Another member signed in again on [replacing]: the id of the connection of their own that took its place. */
     private val onReplaced: (String) -> Unit = {},
+    private val record: (AnalyticsEvent) -> Unit = Analytics::record,
 ) {
     private val mutableState = MutableStateFlow<ServerSignInState>(ServerSignInState.Checking(""))
     val state: StateFlow<ServerSignInState> = mutableState.asStateFlow()
@@ -64,6 +72,7 @@ class ServerSignInFlow(
     /** Who this grant signed in, once the server says (a new member: after their name is saved). */
     private var member: String? = null
     private var job: Job? = null
+    private var reported = false
 
     /**
      * [replacing] is signed in but has no profile on its server yet (the
@@ -194,6 +203,16 @@ class ServerSignInFlow(
         job?.cancel()
         pending = null
         grant = null
+        if (reported) return
+        reported = true
+        // Left without signing in sends nothing.
+        val event = when (val state = mutableState.value) {
+            is ServerSignInState.Done -> AnalyticsEvent.TeamServerSignedIn
+            is ServerSignInState.Failed -> AnalyticsEvent.SignInFailed(SignInMethod.TeamServer, AnalyticsReasons.signIn(state.reason))
+            is ServerSignInState.NeedsName -> if (state.failed) AnalyticsEvent.SignInFailed(SignInMethod.TeamServer, SignInError.ProfileRequired) else null
+            else -> null
+        }
+        event?.let(record)
     }
 
     private suspend fun finish() {

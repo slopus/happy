@@ -1,5 +1,13 @@
 package com.slopus.happy.ui.conversation
 
+import androidx.compose.ui.layout.onVisibilityChanged
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import com.slopus.happy.analytics.Analytics
+import com.slopus.happy.analytics.AnalyticsEvent
+import com.slopus.happy.analytics.FailureAction
+import com.slopus.happy.analytics.FailureKind
 import com.slopus.happy.ui.artifacts.ArtifactInlinePage
 import com.slopus.happy.ui.artifacts.InlinePages
 import com.slopus.happy.ui.artifacts.artifactCardDetail
@@ -110,6 +118,8 @@ object ConversationRowSpec {
 class ConversationRowActions(
     val legacy: MessageCallbacks,
     val onRetryFailure: (String) -> Unit,
+    /** A failure card is on the screen, the conversation in front (`chat_failure_shown`). */
+    val onFailureShown: (ConversationRow.Failure) -> Unit = {},
     /** A presented item's bytes. */
     val loadMedia: suspend (MediaRef) -> ByteArray,
     /** Opens an artifact; null where this build has no viewer, and its card says where it opens. */
@@ -574,8 +584,15 @@ private fun InfoCard(
 @Composable
 private fun FailureRow(row: ConversationRow.Failure, actions: ConversationRowActions, modifier: Modifier) {
     val colors = HappyTheme.colors
+    // Shown: at least half of the card in the window, its page resumed. A card the list only laid out ahead isn't.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var onScreen by remember { mutableStateOf(false) }
+    LaunchedEffect(row.messageId, lifecycle, onScreen) {
+        if (onScreen) lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { actions.onFailureShown(row) }
+    }
     Column(
         modifier
+            .onVisibilityChanged(minFractionVisible = 0.5f) { onScreen = it }
             .fillMaxWidth()
             .padding(horizontal = ConversationRowSpec.marginHorizontal, vertical = ConversationRowSpec.marginVertical)
             .clip(RoundedCornerShape(ConversationRowSpec.cardRadius))
@@ -596,7 +613,10 @@ private fun FailureRow(row: ConversationRow.Failure, actions: ConversationRowAct
                 color = colors.textLink,
                 modifier = Modifier
                     .testTag(ConversationRowTags.FAILURE_RETRY)
-                    .clickable(role = Role.Button) { actions.onRetryFailure(row.messageId) }
+                    .clickable(role = Role.Button) {
+                        Analytics.record(AnalyticsEvent.ChatFailureActionClicked(FailureKind.of(row.kind), FailureAction.Retry))
+                        actions.onRetryFailure(row.messageId)
+                    }
                     .padding(vertical = 4.dp),
             )
         }

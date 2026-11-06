@@ -1,5 +1,7 @@
 package com.slopus.happy.ui.onboarding
 
+import com.slopus.happy.analytics.AnalyticsReasons
+import com.slopus.happy.analytics.SignInMethod
 import com.slopus.happy.ui.page
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -124,10 +126,13 @@ internal class RestoreLink(private val graph: AppGraph) : ViewModel() {
             state.value = RestoreCode.Waiting
             val request = AccountLinkRequest(graph.authApi)
             try {
-                request.start()
-                state.value = RestoreCode.Ready(request.url)
-                val linked = request.awaitApproval()
-                if (linked != null) graph.auth.signIn(linked.token, linked.secret) else state.value = RestoreCode.Failed
+                // `sign_in_failed` when this code's restore failed.
+                AnalyticsReasons.signingIn(SignInMethod.RelayRestore) {
+                    request.start()
+                    state.value = RestoreCode.Ready(request.url)
+                    val linked = request.awaitApproval() ?: throw IllegalStateException("The approval doesn't open with this key")
+                    graph.auth.signIn(linked.token, linked.secret)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {

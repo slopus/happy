@@ -18,6 +18,7 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
+import com.slopus.happy.connection.PairingStart
 import com.slopus.happy.connection.PairingFlow
 import com.slopus.happy.connection.PairingState
 import com.slopus.happy.connection.ServerInvite
@@ -58,8 +59,8 @@ fun NavGraphBuilder.agentConnectionRoutes(graph: AppGraph, nav: NavHostControlle
 }
 
 /** Starts pairing [code] and shows it, over whatever screen is up. */
-fun NavHostController.connectAgent(graph: AppGraph, code: String) {
-    graph.startAgentPairing(code)
+fun NavHostController.connectAgent(graph: AppGraph, code: String, start: PairingStart) {
+    graph.startAgentPairing(code, start)
     navigate(PairingRoute) { launchSingleTop = true }
 }
 

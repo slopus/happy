@@ -55,4 +55,5 @@
     <string name="agent_settings_default_access">Доступ по умолчанию</string>
     <string name="agent_settings_default_access_description">Что новая сессия может делать без вопросов. Сохраняется в вашем аккаунте и действует на всех ваших устройствах.</string>
     <string name="agent_settings_new_sessions_unreadable">Не удалось загрузить модели. Проверьте подключение и откройте эту страницу снова.</string>
+    <string name="settings_analytics_not_saved">Аналитика пока выключена, но настройку не удалось сохранить. Она снова включится при следующем запуске Happy.</string>
 </resources>

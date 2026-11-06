@@ -318,7 +318,7 @@ class DesktopMigrationTest {
 
     private fun scanner() {
         rule.setHappyContent {
-            CompositionLocalProvider(LocalQrScanner provides QrScanner { ScanResult.Scanned(scans.removeFirst()) }, LocalAgentPairing provides { paired += it }) {
+            CompositionLocalProvider(LocalQrScanner provides QrScanner { ScanResult.Scanned(scans.removeFirst()) }, LocalAgentPairing provides { code, _ -> paired += code }) {
                 scan = rememberMigrationScan(approve = { url -> linked += url })
             }
         }

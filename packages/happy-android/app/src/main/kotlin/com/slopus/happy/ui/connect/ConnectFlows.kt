@@ -1,5 +1,7 @@
 package com.slopus.happy.ui.connect
 
+import com.slopus.happy.analytics.AnalyticsReasons
+import com.slopus.happy.connection.PairingStart
 import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ProvidableCompositionLocal
@@ -16,6 +18,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
+import com.slopus.happy.analytics.SignInMethod
 import com.slopus.happy.auth.AuthState
 import com.slopus.happy.auth.TERMINAL_URL_PREFIX
 import com.slopus.happy.auth.approveAccountLink
@@ -56,7 +59,7 @@ class ConnectFlow internal constructor(
 
     /** Restore or the server, picked from the scanner's ⋮; a pasted link is the flow's own prompt. */
     internal var onWay: (ScannerWay) -> Unit = {}
-    internal var connectAgent: ((String) -> Unit)? = null
+    internal var connectAgent: ((String, PairingStart) -> Unit)? = null
 
     /**
      * A team server's code, from any scanner: opens that server or signs in
@@ -90,7 +93,7 @@ class ConnectFlow internal constructor(
                     ScanResult.Cancelled -> Unit
                     is ScanResult.Chose -> if (result.way == ScannerWay.EnterLink) enteringLink = true else onWay(result.way)
                     is ScanResult.Failed -> onUnavailable?.invoke() ?: run { alert = errorAlert(messages.failure(result.reason)) }
-                    is ScanResult.Scanned -> route(result.value)
+                    is ScanResult.Scanned -> route(result.value, PairingStart.Scan)
                 }
             } finally {
                 scanning = false
@@ -103,9 +106,9 @@ class ConnectFlow internal constructor(
      * pairing code starts pairing, and anything else is an alert naming
      * where it belongs.
      */
-    internal suspend fun route(text: String) {
+    internal suspend fun route(text: String, start: PairingStart) {
         when (val code = HappyCode.classify(text)) {
-            is HappyCode.AgentPairing -> connectAgent?.invoke(code.text)
+            is HappyCode.AgentPairing -> connectAgent?.invoke(code.text, start)
                 ?: run { alert = errorAlert(messages.pairingUnavailable) }
             is HappyCode.Terminal -> when {
                 kind != ConnectKind.Terminal && kind != ConnectKind.Add -> alert = errorAlert(messages.terminalElsewhere)
@@ -145,7 +148,7 @@ class ConnectFlow internal constructor(
                 is HappyCode.NotHappy, is HappyCode.UnknownHappy -> alert = errorAlert(messages.invalidUrl)
                 // A team server is added only from the camera (contract §8), never a pasted link.
                 is HappyCode.Server -> alert = errorAlert(messages.serverScanOnly)
-                else -> route(url)
+                else -> route(url, PairingStart.PasteLink)
             }
         }
     }
@@ -348,7 +351,9 @@ private fun rememberConnectFlow(
 @Composable
 fun rememberAddFlow(graph: AppGraph, onRestore: () -> Unit, onServer: () -> Unit, serverLabel: String?): ConnectFlow = rememberAddConnect(
     approve = { url ->
-        graph.auth.createAccount { account -> approveTerminal(graph.authApi, account.credentials, account.encryption, url) }
+        AnalyticsReasons.signingIn(SignInMethod.RelayCreate) {
+            graph.auth.createAccount { account -> approveTerminal(graph.authApi, account.credentials, account.encryption, url) }
+        }
     },
     onRestore = onRestore,
     onServer = onServer,

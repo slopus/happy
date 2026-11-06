@@ -55,4 +55,5 @@
     <string name="agent_settings_default_access">Domyślny dostęp</string>
     <string name="agent_settings_default_access_description">Co nowa sesja może robić bez pytania. Zapisane na Twoim koncie, więc działa na wszystkich Twoich urządzeniach.</string>
     <string name="agent_settings_new_sessions_unreadable">Nie udało się odczytać modeli. Sprawdź połączenie i otwórz tę stronę ponownie.</string>
+    <string name="settings_analytics_not_saved">Analityka jest na razie wyłączona, ale nie udało się zapisać ustawienia. Włączy się ponownie przy następnym uruchomieniu Happy.</string>
 </resources>

@@ -245,9 +245,131 @@ can stay or go:
 
 ## Android (`packages/happy-android`)
 
-Android analytics is not shipped. Its branch was stopped before v5. Before
-it ships, it must:
+- The Gradle module `:analytics` (`analytics/`) holds the whole client.
+  `AnalyticsEvent` is the typed catalog. `AnalyticsSchema` is the
+  allowlist, built from the same Kotlin enums. `AnalyticsClient` keeps the
+  queue (500 events, 7 days), the `error_shown` throttle and the failure
+  dedupe set in memory, and the install id in the `analytics` prefs, next to
+  the Settings switch: the only two things analytics stores. What earlier
+  builds kept (`noBackupFilesDir/analytics`, day counts, the per-account
+  `feature-flags` prefs) is deleted at start. `Analytics` is the facade the
+  app calls; the app maps its own reasons to the catalog's sets in
+  `app/…/analytics/`.
+- Events are posted to `https://us.i.posthog.com/batch/` with OkHttp in
+  one batch every 30 seconds while the app is in front and once when it
+  goes behind, never following a redirect. There is no PostHog SDK. A
+  failed batch stays queued and is sent again later with the same
+  `$insert_id`. Two errors in one area within 10 seconds, while the first
+  is still queued, are one `error_shown`, whose `unknown` code gives way to
+  a specific one.
+- Nothing is recorded until this phone's switch and every signed-in Happy
+  account's `analyticsOptOut` have been read: the open account's setting as
+  it is now, every other one from its own database. An account that can't
+  be read counts as opted out, and so does a stored switch.
+- Sending stops when the Analytics switch (Settings › Data and Storage) is
+  off, or when any signed-in Happy account has `analyticsOptOut` on.
+  Turning analytics off stops the observers (app opens, the connection
+  watch, the flag ask), and deletes the queue, the throttle, the dedupe set
+  and the install id at once, without waiting for a request on its way. If
+  the switch can't be written down, Settings says so.
+- The migration card's PostHog flag (`direct-connection-migration-note`)
+  is asked for by `:analytics` alone, with the same install UUID as
+  `distinct_id` and the same consent, each time the app comes to the
+  front. The answer is kept in memory for the launch; the app's
+  `FeatureFlags` only holds it, and without the module the card never
+  shows.
+- Crashes, native crashes, hangs and failed starts come from the system's
+  `ApplicationExitInfo` at the next start. Only the reason, the importance
+  and the version that crashed are read, never the trace or description. A
+  process leaves its version with the system (`setProcessStateSummary`)
+  only while analytics is on, so a run with analytics off is never
+  reported.
+- A debug build sends only to a capture endpoint on the same machine:
+  `adb reverse tcp:8787 tcp:8787`, then
+  `adb shell setprop debug.happy.analytics_host http://127.0.0.1:8787`.
+  It never asks for the flag.
+- Contract test: `analytics/src/test/kotlin/com/slopus/happy/analytics/AnalyticsCatalogTest.kt`.
 
-- adopt v5, including memory-only storage, with no on-disk queue;
-- fix the account opt-out bug: an account's `analyticsOptOut` did not stop
-  `message_sent`.
+### Removing analytics on Android
+
+Everything that sends or asks PostHog is inside the module. Outside it,
+app code calls `Analytics` and its typed events, and maps its own types in
+`app/…/analytics/`. Paths are under `packages/happy-android`, and
+`app/…` is `app/src/main/kotlin/com/slopus/happy`.
+
+1. Delete `analytics/`, `app/…/analytics/` (`AnalyticsReasons.kt`,
+   `ChatAddress.kt`, `AccountsOptedOut.kt`),
+   `app/src/test/kotlin/com/slopus/happy/analytics/` and
+   `app/src/test/kotlin/com/slopus/happy/ui/conversation/FailureShownTest.kt`.
+2. In `settings.gradle.kts`, remove `include(":analytics")` and its
+   comment. In `app/build.gradle.kts`, remove
+   `implementation(project(":analytics"))` and its comment.
+3. Remove these lines. Each file also has its
+   `import com.slopus.happy.analytics.…` lines.
+   - `AppGraph.kt`: `analyticsTarget`, `analyticsSwitch`,
+     `analyticsOptOuts()`, the `init` block that calls `startAnalytics`,
+     `startAnalytics`, `analyticsAgent` and `analyticsConfiguration`
+     (with the `NotificationManagerCompat` import).
+   - `call/CallController.kt`: the `report` field, `val report =
+     CallReport()…` in `connect`, `report.observe(state)`, the two `report`
+     lines in `close`, and the `CallReport` class.
+   - `connection/PairingFlow.kt`: the `record` parameter, the `mismatch`
+     and `reported` fields, `mismatch = true` in `reject`, and `report()`
+     with its call in `close`.
+   - `connection/ServerSignInFlow.kt`: the `record` parameter, the
+     `reported` field, and the end of `close` from `if (reported) return`
+     to `event?.let(record)`.
+   - `conversation/Conversation.kt`: the `address` parameter, the two
+     `Analytics.errorShown` lines, `val steering = …` and
+     `recordSent(…)` in the send loop, the `try`/`catch` around
+     `withRetries { api.createWork(task, choice) }` and `recordCreated(null)`,
+     and `recordCreated` and `recordSent`.
+   - `sync/MessageSender.kt`: `recordSent(…)` with its call, the two
+     `Analytics.errorShown` lines.
+   - `payments/Offers.kt`: `Analytics.record(…Presented…)` and its comment.
+   - `payments/Subscription.kt`: the `.also { … }` on `restore`'s result,
+     `val sheet` and the `when (update)` block in `bought`, the
+     `paywall`/`paywallError` calls after `post(…)` (back to
+     `if (!post(…)) unconfirmed = true`), and `paywall`, `paywallError`,
+     `restoreError` and `storeError` (with the `BillingClient` import).
+   - `ui/HappyApp.kt`, `ui/connect/ConnectFlows.kt`,
+     `ui/onboarding/OnboardingRoutes.kt`: unwrap the three
+     `AnalyticsReasons.signingIn(…) { … }` calls, keeping their blocks.
+   - `ui/conversation/ConversationRoutes.kt`: `address = { ChatAddress.of(…) }`,
+     `failureShown(…)` and the `onFailureShown = …` line.
+   - `ui/conversation/ConversationRowViews.kt`: in `FailureRow`, the
+     lifecycle, `onScreen` and `LaunchedEffect` lines and
+     `.onVisibilityChanged(…)`; `Analytics.record(…ChatFailureActionClicked…)`
+     in Retry's click.
+   - `ui/connection/AgentDataStorage.kt`: in `MediaStoragePage`,
+     `analytics`, `analyticsNotSaved`, `analytics = analytics`,
+     `onAnalytics = …` with its comment, and the `HappyAlert` for
+     `analyticsNotSaved`.
+   - Tests: `closingAPairingRecordsHowItEndedOnce` with `recorded` and
+     `record = …` in `connection/AgentConnectionsTest.kt`, and
+     `closingASignInRecordsHowItEndedOnce` in
+     `connection/TeamServerTest.kt`.
+
+After that, `grep -rnE 'com\.slopus\.happy\.analytics|":analytics"|analyticsSwitch'`
+over `packages/happy-android` finds nothing. Before it, outside the
+module and the deleted folders, it finds 87 lines in 19 files: the 2
+Gradle lines, the `import com.slopus.happy.analytics.…` lines of the
+files above, the 4 expected events in `AgentConnectionsTest`, and the
+`analyticsSwitch` lines in `AppGraph.kt` and `AgentDataStorage.kt`.
+
+These neutral pieces stay behind and do nothing without the module. They
+can stay or go:
+
+- `connection.PairingStart` and how it reaches `PairingFlow`
+  (`ConnectFlow.route`, `LocalAgentPairing`, `DeepLinkEffect`,
+  `connectAgent`, `AppGraph.startAgentPairing`).
+- `ConversationRow.Failure`'s `kind`, `providerType`, `pool` and
+  `createdAt`; `Conversation.Outgoing`'s `voice`; `MessageSender`'s
+  `thinking` and `failPending`'s `failed`; the `onFailureShown` hooks on
+  `ConversationRowActions` and `ConversationScreenActions`.
+- `config/FeatureFlags.kt`, which holds the flag answer and, with nothing
+  setting it, hides the migration card, and the deletion of the retired
+  `feature-flags` prefs in `AppGraph`.
+- `DataStorageScreen`'s `analytics` and `onAnalytics` parameters, its
+  `DataStorageTags.ANALYTICS*` tags, and the `settings_analytics_not_saved`
+  string in every language.

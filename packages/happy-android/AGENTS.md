@@ -404,6 +404,8 @@ win:
 crypto/   pure Kotlin/JVM, no Android: every primitive and key derivation of
           happy-app's encryption, byte for byte. BouncyCastle low-level
           classes (no JCA provider), so it behaves the same on every device.
+analytics/ product analytics, its own Android library behind the `Analytics`
+          facade (see "Analytics"); knows none of the app's types.
 app/
   auth/     account auth (POST /v1/auth), credentials in expo-secure-store's format
   config/   server URL (survives logout), device-only settings (theme)
@@ -801,6 +803,7 @@ cd packages/happy-android
 ./gradlew assembleDebug            # app/build/outputs/apk/debug/app-debug.apk
 ./gradlew testDebugUnitTest        # app unit + Robolectric layout tests
 ./gradlew :crypto:test             # crypto, incl. vectors from happy-app's TS
+./gradlew :analytics:testDebugUnitTest  # analytics, incl. the shared catalog's contract
 ```
 
 Build types map to happy-app's variants and application ids: `debug` →
@@ -845,12 +848,12 @@ ANDROID_SERIAL=<device> ./gradlew :benchmark:connectedBenchmarkBenchAndroidTest 
   anywhere, CI included.
 - PostHog's public project key comes from `EXPO_PUBLIC_POSTHOG_API_KEY` or
   `-Phappy.postHogKey`, as happy-app's and Happy Desktop's do; nothing is
-  checked in. A build without it reads every feature flag as off. Only flags
-  are read with it (`config/FeatureFlags.kt`): one `POST /flags/?v=2` per
+  checked in. A build without it reads every feature flag as off and sends
+  no events. Flags (`config/FeatureFlags.kt`): one `POST /flags/?v=2` per
   open Happy account with its `anonId` as the distinct id (happy-app's
-  `identify`), each foreground, skipped when the account opted out of
-  analytics. The answer is kept per account in `feature-flags` prefs; a failed
-  ask keeps the last one. Nothing is captured.
+  `identify`), each foreground, only from a build that sends analytics to
+  PostHog and only while analytics may go (see "Analytics"). The answer is kept per account in `feature-flags` prefs; a failed
+  ask keeps the last one. Events: see "Analytics".
 - A signed release or preview build without an explicit versionCode fails in
   `pre<Variant>Build`, before R8, rather than at the Play console.
 - Shipping goes through the `release` skill like every other release.
@@ -868,6 +871,73 @@ vectors (`app/src/test/resources/happy-ts-send-vectors.json`) are preserved
 compatibility baselines captured from the former client. Their React Native
 generators are retired. Historical source inputs remain in Git; protocol
 changes must explicitly update these baselines against current producers.
+
+## Analytics
+
+The `:analytics` module (`analytics/`) sends the events
+`docs/analytics-catalog.json` lists for Android (the contract shared with
+Happy Desktop and happy-ios; never edit the copy, ask for a change to the
+shared one). It knows none of the app's types: the app calls the
+`Analytics` facade (`start` once in `AppGraph`, then `record`, `errorShown`,
+`failureShown`) with the typed events, and maps its own reasons to the
+catalog's sets in `app/…/analytics/` (`AnalyticsReasons`, `ChatAddress`,
+`accountsOptedOut`). Deleting the module, that folder and the call sites
+removes analytics; `docs/product-analytics.md` lists every line.
+
+No PostHog SDK: it would add the device's name, screen and time zone.
+`AnalyticsEvent` is the typed catalog (closed enums only; no text, id, name,
+path or message has a field; a model goes as its `ModelFamily`, never its
+id), `AnalyticsSchema` the send boundary's allowlist, which drops unknown
+events and properties and any event holding a value outside its set;
+`AnalyticsCatalogTest` holds both, and the family rule, to the JSON.
+Versions are numbers only (`AnalyticsSchema.version` cuts a `-`/`+`
+suffix). `AnalyticsClient` adds the common properties and PostHog's own
+(`distinct_id`, a random install id, never an account's; `$insert_id`;
+`$lib`; `$process_person_profile: false`; `$ip: null`;
+`$geoip_disable: true`), keeps events in memory (500, 7 days) and posts
+`/batch/` (`PostHog`, timestamps in whole seconds, no redirect followed,
+an https host or a loopback one only) every 30 s in the foreground and as
+the app goes behind. A failed batch goes again with the same `$insert_id`;
+what a process held when it died is lost.
+
+Nothing on the phone but the install id (and the switch) in `analytics`
+prefs: the queue, `error_shown`'s throttle and the failure cards seen live
+in memory. `Retired` deletes what earlier builds kept
+(`noBackupFilesDir/analytics`, the day counts), and `AppGraph` the old
+per-account `feature-flags` prefs. `app_crashed` reads only the reason,
+importance and the crashed version of the system's last `ApplicationExitInfo`;
+a process leaves its version with the system
+(`setProcessStateSummary`) only while analytics is on, so a run with
+analytics off is never reported, and the trace is never read.
+
+Fewer events and more privacy: an event is only what no other event
+answers. Nothing is counted on the phone, and no screen, view, navigation,
+picker change, stop, approval or todo is sent; model and effort ride on
+`message_sent`. Each event goes once its step worked (or failed, for the
+`*_failed`/`_error` ones). The "fires" rules are `AnalyticsRules.kt`:
+`error_shown`'s throttle, `chat_failure_shown`'s fresh-and-unseen check
+(and only for a card at least half on screen in a resumed page),
+`agent_connection_lost`'s incidents, `app_opened`'s cold and warm opens.
+
+Only release and preview builds with a key send, never debug, bench, a test
+harness, an instrumented run or Robolectric (`AnalyticsTarget`). Consent is
+this phone's switch (Data and Storage › Analytics, `AnalyticsSwitch`; a
+stored value that can't be read is off) and every Happy account signed in
+here allowing it (`accountsOptedOut`: the open account's setting as it is
+now, the others from their own databases). Nothing is recorded until both
+are read. Off stops every observer, forgets the queue, the throttle and the
+cards seen, deletes the install id and the crash mark, and empties the
+flags; on again starts a new install id. PostHog's `/flags` is asked only
+by the module, with the install id, under the same consent; `FeatureFlags`
+holds the answer in memory for the migration card. If the switch can't be
+written down, Data and Storage says so. Each account's switch on the Account
+screen toggles from its switch only, not its title, like the app's other
+switch rows.
+
+To see the payloads, a debug build sends to a local endpoint only:
+`adb reverse tcp:8787 tcp:8787` to a listener, then
+`adb shell setprop debug.happy.analytics_host http://127.0.0.1:8787` and a
+cold start.
 
 ## Onboarding and connect
 

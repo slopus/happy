@@ -1,5 +1,11 @@
 package com.slopus.happy.payments
 
+import com.android.billingclient.api.BillingClient
+import com.slopus.happy.analytics.Analytics
+import com.slopus.happy.analytics.AnalyticsEvent
+import com.slopus.happy.analytics.PurchaseError
+import com.slopus.happy.analytics.PaywallStep
+import com.slopus.happy.analytics.PurchaseProduct
 import android.app.Activity
 import android.content.SharedPreferences
 import com.slopus.happy.payments.RevenueCat.Answer
@@ -154,7 +160,9 @@ class Subscription(
      */
     suspend fun restore(): Boolean = work.withLock {
         refreshing(restore = true)
-        cache.period(customer, now()) != null
+        (cache.period(customer, now()) != null).also { restored ->
+            if (restored) paywall(PaywallStep.Restored) else paywallError(restoreError(mutableProblem.value) ?: PurchaseError.NothingToRestore)
+        }
     }
 
     private suspend fun refreshing(restore: Boolean) {
@@ -244,7 +252,14 @@ class Subscription(
      * taken. Whatever it came to, the sheet has closed.
      */
     private suspend fun bought(update: StoreUpdate) = work.withLock {
+        // The sheet was open: what came of it is the purchase's end. Otherwise a pending one was paid for.
+        val sheet = launching
         launching = false
+        when (update) {
+            StoreUpdate.Cancelled -> if (sheet) paywall(PaywallStep.Cancelled)
+            is StoreUpdate.Failed -> if (sheet) paywallError(storeError(update.code))
+            is StoreUpdate.Purchases -> if (sheet && update.purchases.any { !it.purchased }) paywallError(PurchaseError.Pending)
+        }
         val purchases = (update as? StoreUpdate.Purchases)?.purchases ?: return@withLock
         val revenueCat = revenueCat ?: return@withLock
         val store = store ?: return@withLock
@@ -257,9 +272,37 @@ class Subscription(
                 continue
             }
             val owner = ownerOf(purchase) ?: continue
-            if (!post(revenueCat, store, purchase, owner, restore = false, asked)) unconfirmed = true
+            if (post(revenueCat, store, purchase, owner, restore = false, asked)) {
+                paywall(PaywallStep.Purchased)
+            } else {
+                unconfirmed = true
+                paywallError(PurchaseError.VerificationFailed)
+            }
         }
         if (asked == generation.get()) publish()
+    }
+
+    /** A paywall step; Android sells one product, the subscription (`pro`). */
+    private fun paywall(step: PaywallStep) = Analytics.record(AnalyticsEvent.Paywall(step, PurchaseProduct.Pro))
+
+    private fun paywallError(error: PurchaseError) = Analytics.record(AnalyticsEvent.PaywallError(PurchaseProduct.Pro, error))
+
+    /** What stood in a restore's way; null when there was simply nothing to restore. */
+    private fun restoreError(problem: Problem?): PurchaseError? = when (problem) {
+        null, Problem.NoProduct -> null
+        Problem.Unconfigured -> PurchaseError.StoreUnavailable
+        Problem.Unreached -> PurchaseError.Network
+        is Problem.Refused, Problem.Unconfirmed -> PurchaseError.VerificationFailed
+    }
+
+    /** Play Billing's response code as `paywall_error`'s code. */
+    private fun storeError(code: Int): PurchaseError = when (code) {
+        BillingClient.BillingResponseCode.SERVICE_UNAVAILABLE, BillingClient.BillingResponseCode.BILLING_UNAVAILABLE,
+        BillingClient.BillingResponseCode.SERVICE_DISCONNECTED -> PurchaseError.StoreUnavailable
+        BillingClient.BillingResponseCode.NETWORK_ERROR -> PurchaseError.Network
+        BillingClient.BillingResponseCode.ITEM_UNAVAILABLE, BillingClient.BillingResponseCode.FEATURE_NOT_SUPPORTED,
+        BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED -> PurchaseError.NotAllowed
+        else -> PurchaseError.Unknown
     }
 
     /**

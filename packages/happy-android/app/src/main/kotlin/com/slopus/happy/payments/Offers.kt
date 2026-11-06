@@ -3,6 +3,10 @@ package com.slopus.happy.payments
 import android.app.Activity
 import android.content.SharedPreferences
 import com.slopus.happy.BuildConfig
+import com.slopus.happy.analytics.Analytics
+import com.slopus.happy.analytics.AnalyticsEvent
+import com.slopus.happy.analytics.PaywallStep
+import com.slopus.happy.analytics.PurchaseProduct
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -180,6 +184,8 @@ class Offers(
                 mutableSheet.value = sheet
             }
         }
+        // A sheet with the subscription for sale on it; Android sells that one product.
+        if (sheet.offer is Offer.OnSale) Analytics.record(AnalyticsEvent.Paywall(PaywallStep.Presented, PurchaseProduct.Pro))
         try {
             return waiting.await()
         } finally {

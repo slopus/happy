@@ -180,6 +180,8 @@ class ConversationScreenActions(
     /** Takes a picture out of a message still on its way. */
     val onRemovePicture: (messageId: String, index: Int) -> Unit = { _, _ -> },
     val onRetryFailure: (String) -> Unit = {},
+    /** A failure card is on the screen, the conversation in front. */
+    val onFailureShown: (ConversationRow.Failure) -> Unit = {},
     val onAnswer: suspend (questionId: String, answers: Map<String, List<String>>) -> Unit = { _, _ -> },
     /** Older history; `retry` after a failed page (Retry), which nothing else asks again. */
     val onLoadOlder: (retry: Boolean) -> Unit = {},
@@ -295,6 +297,7 @@ fun ConversationScreen(
         ConversationRowActions(
             legacy = legacy,
             onRetryFailure = actions.onRetryFailure,
+            onFailureShown = actions.onFailureShown,
             loadMedia = store::bytes,
             onOpenArtifact = actions.onOpenArtifact,
             onOpenPicture = { key -> pictures.show(ConversationViewing.entries(rows, pictureLabel, videoLabel), key) },

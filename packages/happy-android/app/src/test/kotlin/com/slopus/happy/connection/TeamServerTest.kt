@@ -6,6 +6,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.agent.AgentApiException
 import com.slopus.happy.agent.AgentClient
 import com.slopus.happy.agent.AgentSessions
+import com.slopus.happy.analytics.AnalyticsEvent
+import com.slopus.happy.analytics.SignInError
+import com.slopus.happy.analytics.SignInMethod
 import com.slopus.happy.auth.ExpoSecureStore
 import com.slopus.happy.auth.SecureStoreKeys
 import com.slopus.happy.testing.SoftwareKeys
@@ -525,6 +528,30 @@ class TeamServerTest {
         throughBrowser(flow, "u1", health(INSTANCE))
         val done = withTimeout(5_000) { flow.state.first { it is ServerSignInState.Done } } as ServerSignInState.Done
         assertEquals("https://localhost:${sso.port}", done.account.server)
+    }
+
+    @Test
+    fun closingASignInRecordsHowItEndedOnce() = runBlocking {
+        val recorded = mutableListOf<AnalyticsEvent>()
+        val done = ServerSignInFlow(scope, connections(), auth, expectedInstance = INSTANCE, record = { recorded += it })
+        throughBrowser(done, "u1", health(INSTANCE))
+        withTimeout(5_000) { done.state.first { it is ServerSignInState.Done } }
+        done.close()
+        done.close()
+        val wrong = ServerSignInFlow(scope, connections(), auth, expectedInstance = INSTANCE, record = { recorded += it })
+        throughBrowser(wrong, "u1", health("z9y8x7w6v5u4t3s2r1q0p9o8"))
+        withTimeout(5_000) { wrong.state.first { it is ServerSignInState.Failed } }
+        wrong.close()
+        val left = ServerSignInFlow(scope, connections(), auth, record = { recorded += it })
+        left.close()
+        assertEquals(
+            listOf(
+                AnalyticsEvent.TeamServerSignedIn,
+                AnalyticsEvent.SignInFailed(SignInMethod.TeamServer, SignInError.WrongServer),
+                // Left: nothing.
+            ),
+            recorded,
+        )
     }
 
     @Test

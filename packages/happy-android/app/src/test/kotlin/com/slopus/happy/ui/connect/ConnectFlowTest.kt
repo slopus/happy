@@ -129,7 +129,7 @@ class ConnectFlowTest {
     fun aPairingCodeGoesToAgentPairingFromAnyScanner() {
         val paired = CopyOnWriteArrayList<String>()
         rule.setHappyContent {
-            CompositionLocalProvider(LocalQrScanner provides scanner, LocalAgentPairing provides { paired += it }) {
+            CompositionLocalProvider(LocalQrScanner provides scanner, LocalAgentPairing provides { code, _ -> paired += code }) {
                 flow = rememberAccountLink(approve = { url -> approved += url })
             }
         }
@@ -244,7 +244,7 @@ class ConnectFlowTest {
 
     private fun setStart() {
         rule.setHappyContent {
-            CompositionLocalProvider(LocalQrScanner provides scanner, LocalAgentPairing provides { paired += it }) {
+            CompositionLocalProvider(LocalQrScanner provides scanner, LocalAgentPairing provides { code, _ -> paired += code }) {
                 flow = rememberAddConnect(
                     approve = { url -> failWith?.let { throw it }; approved += url },
                     onRestore = { ways += "restore" },

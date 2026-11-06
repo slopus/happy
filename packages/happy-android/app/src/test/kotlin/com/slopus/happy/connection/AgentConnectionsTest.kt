@@ -3,6 +3,9 @@ package com.slopus.happy.connection
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.analytics.AnalyticsEvent
+import com.slopus.happy.analytics.PairingError
+import com.slopus.happy.analytics.PairingMethod
 import com.slopus.happy.auth.ExpoSecureStore
 import com.slopus.happy.crypto.CanonicalBase64Url
 import com.slopus.happy.testing.SoftwareKeys
@@ -23,6 +26,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.IOException
+import java.util.Collections
 
 /** Paired agents kept on the phone, and one pairing from code to kept agent. */
 @RunWith(AndroidJUnit4::class)
@@ -253,8 +257,10 @@ class AgentConnectionsTest {
         assertTrue(accounts().accounts.value.isEmpty())
     }
 
-    private fun flow(daemon: FakeDaemon, accounts: AgentConnections = accounts()) =
-        PairingFlow(scope, accounts, "Pixel 9", makeTransport = { daemon }, now = { PAIRING_NOW })
+    private val recorded = Collections.synchronizedList(ArrayList<AnalyticsEvent>())
+
+    private fun flow(daemon: FakeDaemon, accounts: AgentConnections = accounts(), start: PairingStart = PairingStart.Scan) =
+        PairingFlow(scope, accounts, "Pixel 9", start, makeTransport = { daemon }, now = { PAIRING_NOW }, record = { recorded += it })
 
     private suspend inline fun <reified S : PairingState> PairingFlow.await(): S =
         withTimeout(10_000) { state.first { it is S } as S }
@@ -309,5 +315,38 @@ class AgentConnectionsTest {
         val failed = flow.state.value as PairingState.Failed
         assertEquals(AgentConnectionException.Reason.Expired.message, failed.message)
         assertTrue(pairing.calls.isEmpty())
+    }
+    @Test
+    fun closingAPairingRecordsHowItEndedOnce() = runBlocking {
+        val pairing = FakeDaemon()
+        transport = { pairing }
+        val paired = flow(pairing, start = PairingStart.OpenedLink)
+        paired.start(pairingCode())
+        paired.await<PairingState.Compare>()
+        paired.confirm()
+        paired.await<PairingState.Paired>()
+        paired.close()
+        paired.close()
+        val mismatched = flow(FakeDaemon())
+        mismatched.start(pairingCode())
+        mismatched.await<PairingState.Compare>()
+        mismatched.reject()
+        mismatched.close()
+        val left = flow(FakeDaemon(), start = PairingStart.PasteLink)
+        left.start(pairingCode())
+        left.await<PairingState.Compare>()
+        left.close()
+        val expired = flow(FakeDaemon())
+        expired.start(pairingCode(e = PAIRING_NOW - 1))
+        expired.close()
+        assertEquals(
+            listOf(
+                AnalyticsEvent.MobilePairingCompleted(PairingMethod.Direct, com.slopus.happy.analytics.PairingStart.OpenedLink),
+                AnalyticsEvent.MobilePairingFailed(PairingMethod.Direct, com.slopus.happy.analytics.PairingStart.Scan, PairingError.EmojiMismatch),
+                AnalyticsEvent.MobilePairingCancelled(PairingMethod.Direct, com.slopus.happy.analytics.PairingStart.PasteLink),
+                AnalyticsEvent.MobilePairingFailed(PairingMethod.Direct, com.slopus.happy.analytics.PairingStart.Scan, PairingError.Expired),
+            ),
+            recorded.toList(),
+        )
     }
 }

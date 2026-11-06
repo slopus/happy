@@ -55,4 +55,5 @@
     <string name="agent_settings_default_access">預設存取模式</string>
     <string name="agent_settings_default_access_description">新工作階段無需詢問即可執行的操作。儲存在你的帳號中，因此在你的所有裝置上都生效。</string>
     <string name="agent_settings_new_sessions_unreadable">無法讀取模型。請檢查連線後重新開啟此頁面。</string>
+    <string name="settings_analytics_not_saved">分析暫時已關閉，但無法儲存此設定。下次啟動 Happy 時將重新開啟。</string>
 </resources>

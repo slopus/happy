@@ -122,7 +122,7 @@ class ScanRouteTableTest {
     /** One composition for the whole table: the rule takes content once. */
     private fun start() {
         rule.setHappyContent {
-            CompositionLocalProvider(LocalQrScanner provides scanner, LocalAgentPairing provides { paired += it }, LocalServerSignIn provides { invite -> invite.origin != null && signedIn.add(invite.url) }) {
+            CompositionLocalProvider(LocalQrScanner provides scanner, LocalAgentPairing provides { code, _ -> paired += code }, LocalServerSignIn provides { invite -> invite.origin != null && signedIn.add(invite.url) }) {
                 key(row) {
                     val approve: suspend (String) -> Unit = { url -> approved += url }
                     flow = when (kind) {

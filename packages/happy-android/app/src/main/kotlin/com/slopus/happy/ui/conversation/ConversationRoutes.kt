@@ -1,5 +1,11 @@
 package com.slopus.happy.ui.conversation
 
+import com.slopus.happy.analytics.Analytics
+import com.slopus.happy.analytics.AnalyticsEvent
+import com.slopus.happy.analytics.ChatAddress
+import com.slopus.happy.analytics.FailureKind
+import com.slopus.happy.analytics.ProviderKind
+import com.slopus.happy.analytics.SessionClient
 import com.slopus.happy.ui.backStackEntries
 
 import com.slopus.happy.connection.LinkState
@@ -43,6 +49,7 @@ import com.slopus.happy.conversation.Conversation
 import com.slopus.happy.conversation.ConversationApi
 import com.slopus.happy.conversation.ConversationApiException
 import com.slopus.happy.conversation.ConversationKeeper
+import com.slopus.happy.conversation.ConversationRow
 import com.slopus.happy.conversation.ConversationSignal
 import com.slopus.happy.conversation.HeldConversations
 import com.slopus.happy.conversation.RowTypesetter
@@ -243,6 +250,7 @@ internal fun AgentSession.makeConversation(
     references = references,
     preferences = modelPreferences,
     onStarted = ::recordStart,
+    address = { ChatAddress.of(catalog.value, agentId) },
 )
 
 /** Where [agentId]'s newest history is kept, beside the connection's catalog and gone with it. */
@@ -363,6 +371,12 @@ internal fun SavedStateHandle.takePrefill(prefill: String?): String? {
 
 private const val PREFILLED = "prefilled"
 
+/** `chat_failure_shown` for [row], a Happy Agent conversation's, once per message while fresh. */
+private fun failureShown(row: ConversationRow.Failure, address: ChatAddress) {
+    val event = AnalyticsEvent.ChatFailureShown(FailureKind.of(row.kind), ProviderKind.of(row.providerType), row.pool, address.target, SessionClient.HappyAgent)
+    Analytics.failureShown(row.messageId, row.createdAt, event)
+}
+
 /** An agent connection's link as its chats' headers say it: a computer that didn't answer, or a pairing to redo, is offline. */
 internal fun AgentLinkStatus?.linkState(syncing: Boolean, network: Boolean): LinkState = when {
     !network -> LinkState.WaitingForNetwork
@@ -450,6 +464,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                     uploads = conversation.uploads,
                     onRemovePicture = conversation::removePicture,
                     onRetryFailure = conversation::retryFailure,
+                    onFailureShown = { row -> failureShown(row, ChatAddress.of(session.catalog.value, conversation.agentId)) },
                     onAnswer = conversation::answer,
                     onLoadOlder = { retry -> conversation.loadOlder(retry) },
                     onOpenArtifact = { row -> nav.openArtifact(route.connectionId, row.ref) },

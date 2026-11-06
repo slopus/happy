@@ -55,4 +55,5 @@
     <string name="agent_settings_default_access">Acceso predeterminado</string>
     <string name="agent_settings_default_access_description">Lo que una sesión nueva puede hacer sin preguntar. Se guarda en tu cuenta, así que te acompaña en todos tus dispositivos.</string>
     <string name="agent_settings_new_sessions_unreadable">No se pudieron leer los modelos. Comprueba la conexión y vuelve a abrir esta página.</string>
+    <string name="settings_analytics_not_saved">Las analíticas están desactivadas por ahora, pero no se pudo guardar el ajuste. Se volverán a activar la próxima vez que se inicie Happy.</string>
 </resources>

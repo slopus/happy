@@ -55,4 +55,5 @@
     <string name="agent_settings_default_access">デフォルトのアクセスモード</string>
     <string name="agent_settings_default_access_description">新しいセッションが確認なしで行えること。アカウントに保存されるため、すべてのデバイスで共通です。</string>
     <string name="agent_settings_new_sessions_unreadable">モデルを読み込めませんでした。接続を確認して、このページを開き直してください。</string>
+    <string name="settings_analytics_not_saved">アナリティクスは一時的にオフになっていますが、設定を保存できませんでした。次回 Happy を起動すると再びオンになります。</string>
 </resources>

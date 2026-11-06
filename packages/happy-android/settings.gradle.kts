@@ -38,6 +38,8 @@ rootProject.name = "happy-android"
 
 include(":app")
 include(":crypto")
+// Product analytics, its own module so it can be taken out whole (analytics/build.gradle.kts).
+include(":analytics")
 include(":benchmark")
 include(":elevenlabs")
 project(":elevenlabs").projectDir = file("vendor/elevenlabs")

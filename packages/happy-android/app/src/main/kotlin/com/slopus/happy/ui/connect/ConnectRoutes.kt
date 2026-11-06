@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.connect
 
+import com.slopus.happy.connection.PairingStart
 import com.slopus.happy.ui.components.LocalOverlays
 import com.slopus.happy.ui.guest.GuestChatEntry
 import com.slopus.happy.ui.guest.GuestChatRoute
@@ -80,7 +81,7 @@ fun DeepLinkEffect(
             return@LaunchedEffect
         }
         if (link is DeepLink.AgentPairing) {
-            connectAgent?.invoke(link.code)
+            connectAgent?.invoke(link.code, PairingStart.OpenedLink)
             return@LaunchedEffect
         }
         // A guest chat needs no account, and is no account's: it opens over whatever is up.

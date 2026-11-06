@@ -1,5 +1,9 @@
 package com.slopus.happy.call
 
+import com.slopus.happy.analytics.Analytics
+import com.slopus.happy.analytics.AnalyticsEvent
+import com.slopus.happy.analytics.DurationBucket
+import com.slopus.happy.analytics.VoiceError
 import android.content.Context
 import android.os.SystemClock
 import com.slopus.happy.BuildConfig
@@ -65,6 +69,7 @@ class CallController(
     private var calling: CoroutineScope? = null
     private var connectionId: String? = null
     private var focus: String? = null
+    private var report: CallReport? = null
     /** Set by the screen while it is up. */
     var screen: CallScreen? = null
 
@@ -106,6 +111,7 @@ class CallController(
         this.targets = targets
         this.context = context
         session = call
+        val report = CallReport().also { this.report = it }
         call.onLevel = { level -> if (session === call) mutableLevel.value = level }
         val drain = DirectoryDrain(calling, context, call)
         call.onOverflow = {
@@ -138,6 +144,7 @@ class CallController(
         }.launchIn(calling)
         call.state.onEach { state ->
             if (session !== call) return@onEach
+            report.observe(state)
             show(state)
             // Connected: whatever the directory still owes goes now.
             if (state is CallState.Active) drain.start()
@@ -198,6 +205,8 @@ class CallController(
 
     /** End: the call, or the bar of one that ended. */
     fun close() {
+        report?.closed()
+        report = null
         val old = session
         session = null
         old?.stop()
@@ -257,3 +266,41 @@ class CallController(
     }
 }
 
+/**
+ * How one call ended, once: `voice_session_stopped` when it was closed
+ * after it connected, `voice_session_error` when it failed to start or
+ * dropped, with how long it was live (none if it never was). A call never
+ * set up on this build, or closed before it connected, reports nothing.
+ */
+private class CallReport {
+    private var since: Long? = null
+    private var done = false
+
+    fun observe(state: CallState) {
+        when (state) {
+            is CallState.Active -> if (since == null) since = state.since
+            is CallState.Ended -> end(state.problem)
+            else -> Unit
+        }
+    }
+
+    fun closed() {
+        if (since != null) end(null)
+    }
+
+    private fun end(problem: CallProblem?) {
+        if (done || problem == CallProblem.NotSetUp) return
+        done = true
+        val live = since?.let { DurationBucket.of(SystemClock.elapsedRealtime() - it) }
+        val error = when (problem) {
+            // Ended as asked: only a call that connected counts.
+            null -> return live?.let { Analytics.record(AnalyticsEvent.VoiceSessionStopped(it)) } ?: Unit
+            CallProblem.MicrophonePermission -> VoiceError.MicDenied
+            CallProblem.SubscriptionRequired, CallProblem.LimitReached -> VoiceError.QuotaExhausted
+            CallProblem.Connection -> if (since != null) VoiceError.Dropped else VoiceError.ConnectFailed
+            CallProblem.Authentication -> VoiceError.ConnectFailed
+            CallProblem.NotSetUp -> VoiceError.Unknown
+        }
+        Analytics.record(AnalyticsEvent.VoiceSessionError(error, live))
+    }
+}

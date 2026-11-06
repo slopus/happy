@@ -11,6 +11,7 @@ import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import com.slopus.happy.connection.PairingStart
 import kotlinx.coroutines.CompletableDeferred
 import com.slopus.happy.camera.cameraPresent
 
@@ -117,4 +118,4 @@ fun rememberQrScanner(): QrScanner {
  * for `happy://direct?` codes, provided at the app's root. Null where
  * nothing can pair (tests, signed-out screens); such a code is then an error.
  */
-val LocalAgentPairing: ProvidableCompositionLocal<((String) -> Unit)?> = compositionLocalOf { null }
+val LocalAgentPairing: ProvidableCompositionLocal<((String, PairingStart) -> Unit)?> = compositionLocalOf { null }

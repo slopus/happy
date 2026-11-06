@@ -1,5 +1,14 @@
 package com.slopus.happy.sync
 
+import com.slopus.happy.analytics.Analytics
+import com.slopus.happy.analytics.AnalyticsEvent
+import com.slopus.happy.analytics.ChatTarget
+import com.slopus.happy.analytics.Effort
+import com.slopus.happy.analytics.ErrorArea
+import com.slopus.happy.analytics.ErrorCode
+import com.slopus.happy.analytics.MessageSource
+import com.slopus.happy.analytics.ProviderKind
+import com.slopus.happy.analytics.SessionClient
 import com.slopus.happy.chat.ChatNormalizer
 import com.slopus.happy.chat.hasUnreceiptedUserMessage
 import com.slopus.happy.data.HappyStore
@@ -167,10 +176,11 @@ class MessageSender internal constructor(
         } catch (e: UnsupportedPermissionModeException) {
             return SendResult.NotSent(e.message)
         }
+        val thinking = isThinking(sessionId)
         val deliveryMeta = options.deliveryMeta ?: MessageMetaResolver.delivery(
             metadata,
             session.agentStateJson,
-            thinking = isThinking(sessionId),
+            thinking = thinking,
             isNewSession = options.source == "new_session",
             // Queued or in flight, or echoed with no receipt yet: happy-app holds all of them pending.
             hasPendingUserMessage = withContext(io) {
@@ -218,6 +228,7 @@ class MessageSender internal constructor(
             true
         }
         if (!accepted) return SendResult.NotSent(null)
+        recordSent(metadata, modeMeta, options, steering = thinking)
 
         // Accepted is irreversible: what follows runs even if the caller stops waiting.
         withContext(NonCancellable) {
@@ -228,6 +239,36 @@ class MessageSender internal constructor(
         if (options.awaitDelivery) flush.invalidateAndAwait() else flush.invalidate()
         maybeStartWatchdog()
         return SendResult.Accepted(localId)
+    }
+
+    /**
+     * `message_sent` for a Happy (relay) session's message, once it is
+     * queued, and a new session's first also `conversation_created`.
+     * [steering]: the agent was thinking when it went.
+     */
+    private fun recordSent(metadata: SessionMetadata?, mode: MessageModeMeta, options: SendOptions, steering: Boolean) {
+        val source = MessageSource.entries.firstOrNull { it.wire == options.source } ?: MessageSource.Chat
+        val providerKind = when (metadata?.flavor?.ifEmpty { null } ?: "claude") {
+            "claude" -> ProviderKind.Claude
+            "codex", "gpt", "openai" -> ProviderKind.Codex
+            "gemini" -> ProviderKind.Gemini
+            else -> ProviderKind.Other
+        }
+        val effort = Effort.of(mode.effort?.value)
+        if (source == MessageSource.NewSession) Analytics.record(AnalyticsEvent.ConversationCreated(mode.model?.value, providerKind, effort))
+        Analytics.record(
+            AnalyticsEvent.MessageSent(
+                source = source,
+                target = if (metadata?.bot != null) ChatTarget.Bot else ChatTarget.Session,
+                sessionClient = if (metadata.isRigV1()) SessionClient.HappyAgent else SessionClient.Cli,
+                model = mode.model?.value,
+                modelProviderKind = providerKind,
+                effort = effort,
+                taskDepth = null,
+                hasAttachment = options.attachments.isNotEmpty(),
+                isSteering = steering,
+            ),
+        )
     }
 
     /** A failed message goes back in the queue. */
@@ -281,14 +322,16 @@ class MessageSender internal constructor(
     suspend fun failPending(reason: String) {
         flushes.values.forEach { it.cancel() }
         flushes.clear()
-        withContext(io) {
+        val failed = withContext(io) {
             store.transaction {
-                store.outbox()
-                    .filter { it.state == OutboxState.QUEUED || it.state == OutboxState.SENDING }
-                    .groupBy { it.sessionId }
+                val pending = store.outbox().filter { it.state == OutboxState.QUEUED || it.state == OutboxState.SENDING }
+                pending.groupBy { it.sessionId }
                     .forEach { (sessionId, rows) -> store.setOutboxState(sessionId, rows.map { it.localId }, OutboxState.FAILED, reason) }
+                pending.isNotEmpty()
             }
         }
+        // The failed rows say so in their chats.
+        if (failed) Analytics.errorShown(ErrorArea.MessageSend, ErrorCode.Timeout)
     }
 
     @Synchronized
@@ -368,6 +411,7 @@ class MessageSender internal constructor(
             if (e.status in 400..499 && e.status != 408 && e.status != 429) {
                 // Asking again gets the same answer: the user decides.
                 settleSending(sessionId, ids, OutboxState.FAILED, failureMessage(e))
+                Analytics.errorShown(ErrorArea.MessageSend, ErrorCode.ofStatus(e.status))
                 return@withContext true
             }
             settleSending(sessionId, ids, OutboxState.QUEUED, failureMessage(e))
