@@ -11,7 +11,7 @@ import HappyWire
 /// Cloud").
 public enum HappyCloud {
     /// The domain every cloud server is under. Change it here only.
-    public static let base = "24-144-71-103.sslip.io"
+    public static let base = "happy-clusters.com"
     public static let name = "Happy Cloud"
     /// The accounts service, on its own domain: account sign-in, the
     /// servers API, and every token. Change it here only.
