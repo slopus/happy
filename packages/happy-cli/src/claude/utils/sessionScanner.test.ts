@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { createSessionScanner } from './sessionScanner'
+import { createSessionScanner, readSessionPermissionMode } from './sessionScanner'
 import { RawJSONLines } from '../types'
 import type { ClaudeGoalStatusTranscriptEvent } from '../claudeGoalStatus'
 import { mkdir, writeFile, appendFile, rm, readFile } from 'node:fs/promises'
@@ -54,6 +54,33 @@ describe('sessionScanner', () => {
     if (existsSync(configDir)) {
       await rm(configDir, { recursive: true, force: true })
     }
+  })
+
+  it.each(['auto', 'acceptEdits', 'default', 'bypassPermissions', 'plan'])(
+    'reads the latest main-session user permission mode (%s), ignoring unrelated and malformed entries', async mode => {
+      const user = { type: 'user', uuid: 'user-1', message: { content: 'hello' } }
+      const entries = [
+        { ...user, permissionMode: 'plan' },
+        { ...user, uuid: 'user-2', permissionMode: mode },
+        { ...user, uuid: 'sidechain', isSidechain: true, permissionMode: 'bypassPermissions' },
+        { ...user, uuid: 'meta', isMeta: true, permissionMode: 'bypassPermissions' },
+        { type: 'assistant', uuid: 'assistant', permissionMode: 'bypassPermissions' },
+        { ...user, uuid: 'unknown', permissionMode: 'future-mode' },
+        { ...user, uuid: 'no-mode' },
+      ]
+      await writeFile(join(projectDir, 'permissions.jsonl'),
+        entries.map(entry => JSON.stringify(entry)).join('\n') + '\n{"incomplete":')
+
+      expect(await readSessionPermissionMode(testDir, 'permissions')).toBe(mode)
+    },
+  )
+
+  it('leaves the permission mode unset for a missing transcript or one without a valid user mode', async () => {
+    expect(await readSessionPermissionMode(testDir, 'missing')).toBeUndefined()
+    await writeFile(join(projectDir, 'permissions.jsonl'), JSON.stringify({
+      type: 'user', uuid: 'unknown', permissionMode: { mode: 'bypassPermissions' }, message: { content: 'hello' },
+    }))
+    expect(await readSessionPermissionMode(testDir, 'permissions')).toBeUndefined()
   })
   
   it('should process initial session and resumed session correctly', async () => {
