@@ -14,6 +14,7 @@ import * as z from 'zod';
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
 import type { Metadata } from '@/api/types';
 import { logger } from '@/ui/logger';
+import { isPidAlive } from '@/daemon/sessionLiveness';
 
 export const SandboxConfigSchema = z.object({
   enabled: z.boolean().default(false),
@@ -460,14 +461,7 @@ function isSessionProcessRunning(session: PersistedSession): boolean {
   const pid = session.metadata?.hostPid;
   if (!Number.isSafeInteger(pid) || pid! <= 0) return false;
   if (session.savedAt < Date.now() - os.uptime() * 1000) return false;
-  try {
-    process.kill(pid!, 0);
-    return true;
-  } catch (error) {
-    // Permission failures do not prove death. Keep the record so a resume
-    // cannot lose its only warning about a possibly live detached owner.
-    return (error as NodeJS.ErrnoException).code !== 'ESRCH';
-  }
+  return isPidAlive(pid);
 }
 
 export function readPersistedSessions(): Record<string, PersistedSession> {
