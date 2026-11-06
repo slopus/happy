@@ -7,14 +7,11 @@
 -->
 <resources>
     <string name="cloud_connect_row">Connect to Happy Cloud</string>
-    <string name="cloud_connect_title">Connect to Happy Cloud?</string>
     <string name="cloud_connect_message">Sign in or create a Happy Cloud account, then open one of your servers, create one or join one. Agents run in the cloud; no computer needed.</string>
     <string name="cloud_connect_confirm">Connect</string>
     <string name="cloud_needs_computer">Happy Cloud runs agents only. This needs a computer.</string>
     <string name="cloud_title">Happy Cloud</string>
-    <string name="cloud_sign_in">Sign in to Happy Cloud</string>
     <string name="cloud_your_servers">Your servers</string>
-    <string name="cloud_loading">Loading…</string>
     <string name="cloud_no_servers">No servers yet. Create one or join one below.</string>
     <string name="cloud_role_owner">Owner</string>
     <string name="cloud_role_member">Member</string>
@@ -33,4 +30,5 @@
     <string name="cloud_name_taken">%1$s is taken.</string>
     <string name="cloud_name_reserved">%1$s is reserved.</string>
     <string name="cloud_failed">Something went wrong. Try again.</string>
+    <string name="cloud_connecting">Connecting to %1$s…</string>
 </resources>

@@ -5,14 +5,11 @@
 -->
 <resources>
     <string name="cloud_connect_row">連線到 Happy Cloud</string>
-    <string name="cloud_connect_title">連線到 Happy Cloud？</string>
     <string name="cloud_connect_message">登入或建立 Happy Cloud 帳號，然後開啟你的伺服器、建立伺服器或加入伺服器。代理程式在雲端執行，不需要電腦。</string>
     <string name="cloud_connect_confirm">連線</string>
     <string name="cloud_needs_computer">Happy Cloud 只執行代理程式。此功能需要電腦。</string>
     <string name="cloud_title">Happy Cloud</string>
-    <string name="cloud_sign_in">登入 Happy Cloud</string>
     <string name="cloud_your_servers">你的伺服器</string>
-    <string name="cloud_loading">載入中…</string>
     <string name="cloud_no_servers">還沒有伺服器。在下方建立或加入一個。</string>
     <string name="cloud_role_owner">擁有者</string>
     <string name="cloud_role_member">成員</string>
@@ -31,4 +28,5 @@
     <string name="cloud_name_taken">%1$s 已被使用。</string>
     <string name="cloud_name_reserved">%1$s 已被保留。</string>
     <string name="cloud_failed">發生問題，請再試一次。</string>
+    <string name="cloud_connecting">正在連線到 %1$s…</string>
 </resources>

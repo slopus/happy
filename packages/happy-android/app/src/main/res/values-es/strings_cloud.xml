@@ -5,14 +5,11 @@
 -->
 <resources>
     <string name="cloud_connect_row">Conectar a Happy Cloud</string>
-    <string name="cloud_connect_title">¿Conectar a Happy Cloud?</string>
     <string name="cloud_connect_message">Inicia sesión o crea una cuenta de Happy Cloud y luego abre uno de tus servidores, crea uno o únete a uno. Los agentes se ejecutan en la nube; no necesitas un ordenador.</string>
     <string name="cloud_connect_confirm">Conectar</string>
     <string name="cloud_needs_computer">Happy Cloud solo ejecuta agentes. Esto necesita un ordenador.</string>
     <string name="cloud_title">Happy Cloud</string>
-    <string name="cloud_sign_in">Iniciar sesión en Happy Cloud</string>
     <string name="cloud_your_servers">Tus servidores</string>
-    <string name="cloud_loading">Cargando…</string>
     <string name="cloud_no_servers">Aún no hay servidores. Crea uno o únete a uno abajo.</string>
     <string name="cloud_role_owner">Propietario</string>
     <string name="cloud_role_member">Miembro</string>
@@ -31,4 +28,5 @@
     <string name="cloud_name_taken">%1$s ya está en uso.</string>
     <string name="cloud_name_reserved">%1$s está reservado.</string>
     <string name="cloud_failed">Algo salió mal. Inténtalo de nuevo.</string>
+    <string name="cloud_connecting">Conectando con %1$s…</string>
 </resources>

@@ -996,13 +996,13 @@ change its wire behaviour on Android alone.
   `BuildConfig.BUILD_TYPE`); `release` and `bench` have no way in at all.
   The account menu's last row, a + reading "Connect to Happy Cloud" (with no
   account yet, the first screen's ⋮ and Add's scanner ⋮, `ScannerWay.Cloud`),
-  asks "Connect to Happy Cloud?" (Cancel / Connect); Connect opens the
+  opens a full-screen welcome (no dialog); its Connect opens the
   **account** sign-in in a Custom Tab: PKCE against the accounts origin's
   `/authorize` and `/token`, `client_id` `happy`, `resource` the accounts
   origin, nothing discovered. Its refresh token is Keystore-encrypted beside
   the servers' (same prefs file, keychain service `happy-cloud-account`); the
   account token only ever goes to the accounts API. Signed in, the + skips the
-  question and shows the picker: "Your servers" (`GET /v1/servers`, the ones on
+  welcome and shows the picker: "Your servers" (`GET /v1/servers`, the ones on
   the phone checked; each titled by its `displayName` over `@name`, with its
   picture: the ThumbHash painted first, then the bytes from its `url`, which
   `CloudAccount.image` fetches with the account token only from the accounts
@@ -1015,6 +1015,11 @@ change its wire behaviour on Android alone.
   comes straight back. Each server is its own connection; one already here
   just opens. The addresses are the app's own, never typed or pasted, so no
   code and no `instanceId` check them.
+  Every Happy Cloud screen (welcome, Your servers, Create, Join, and the
+  server sign-in, which reads "Connecting to @name…") is full screen on the
+  first screen's Grain Gradient (`StartSpec` palettes, onboarding's 28/34
+  title, a scene above it) with one primary action at the bottom
+  (`CloudScreens.kt`, `CloudFrame`); servers are cards on it.
   People read a cloud server's address as `@name`, like a username, until
   Happy Cloud has its own domain (`HappyCloud.handle`: the picker, create,
   join, the server sign-in screen, the account menu); the URL is used as
