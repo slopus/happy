@@ -64,7 +64,16 @@ export async function doAuth(): Promise<Credentials | null> {
 /**
  * Display authentication method selector and return user choice
  */
-function selectAuthenticationMethod(): Promise<AuthMethod | null> {
+function hasInteractiveTerminal(): boolean {
+    return Boolean(process.stdout.isTTY && process.stdin.isTTY);
+}
+
+export function selectAuthenticationMethod(): Promise<AuthMethod | null> {
+    if (!hasInteractiveTerminal()) {
+        console.log('Non-interactive terminal detected. Falling back to Web Browser authentication.');
+        return Promise.resolve('web');
+    }
+
     return new Promise((resolve) => {
         let hasResolved = false;
 
