@@ -236,6 +236,7 @@ final class CloudWelcomeViewController: CloudStageViewController, ASWebAuthentic
         secondary?.action = { [weak self] in await self?.signInInBrowser() }
         problem.textColor = UIColor(Palette.textDestructive)
         content.addSubview(problem)
+        art?.accessibilityIdentifier = "cloud-logo"
         if HappyCloud.isOffered(in: context.variant) {
             art?.onTap = { [weak self] in self?.logoTapped(at: Date()) }
         }

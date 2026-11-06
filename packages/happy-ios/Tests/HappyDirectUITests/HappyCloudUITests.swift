@@ -99,4 +99,97 @@ final class HappyCloudUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 10)
         capture("12-relaunch")
     }
+
+    /// The whole flow with a test account, no person needed: ten taps on
+    /// the logo, its login and password, a new server, its home, a task
+    /// and a message (with no provider set up, the answer is the card
+    /// asking to connect one), another server, and signing out. Runs only
+    /// with `TEST_RUNNER_QA_LOGIN` and `TEST_RUNNER_QA_PASSWORD`; the
+    /// password is typed, never written down.
+    func testATestAccountRunsTheWholeFlow() throws {
+        guard let login = env["QA_LOGIN"], let password = env["QA_PASSWORD"] else { throw XCTSkip("no test account") }
+        app.launch()
+
+        let switcher = element("account-switcher")
+        let start = element("start-more")
+        guard let entry = first([switcher, start], timeout: 30) else { return require(false, "neither home nor Start") }
+        capture("01-before")
+        entry.tap()
+        let cloud = first([app.buttons["Connect to Happy Cloud"], app.buttons["account-cloud"]], timeout: 5)
+        require(cloud != nil, "no Connect to Happy Cloud")
+        cloud?.tap()
+
+        let logo = element("cloud-logo")
+        require(logo.waitForExistence(timeout: 10), "no welcome")
+        capture("02-welcome")
+        let form = element("cloud-test-login")
+        for _ in 0..<10 where !form.exists { logo.tap() }
+        require(form.waitForExistence(timeout: 3), "ten taps on the logo opened nothing")
+        capture("03-test-sign-in")
+        form.tap()
+        form.typeText(login)
+        let secret = element("cloud-test-password")
+        secret.tap()
+        secret.typeText(password)
+        capture("04-filled")
+        element("cloud-test-submit").tap()
+
+        let create = element("cloud-create")
+        require(create.waitForExistence(timeout: 30), "no servers after the test account's sign-in")
+        Thread.sleep(forTimeInterval: 2)
+        capture("05-servers")
+        create.tap()
+        let name = element("cloud-create-name")
+        require(name.waitForExistence(timeout: 10), "no name field")
+        name.tap()
+        let server = "qa-ios-\(Int(Date().timeIntervalSince1970) % 1_000_000)"
+        name.typeText(server)
+        Thread.sleep(forTimeInterval: 1.5)
+        capture("06-name")
+        element("cloud-create-save").tap()
+
+        require(switcher.waitForExistence(timeout: 90), "no home after creating \(server)")
+        Thread.sleep(forTimeInterval: 5)
+        capture("07-home")
+        tree("07-home", app)
+
+        let compose = element("compose")
+        require(compose.waitForExistence(timeout: 20), "no compose")
+        compose.tap()
+        let composer = app.textViews["composer"]
+        require(composer.waitForExistence(timeout: 15), "no composer")
+        capture("08-new-task")
+        composer.tap()
+        composer.typeText("Hello from the iOS test account.")
+        app.buttons["Send"].tap()
+        Thread.sleep(forTimeInterval: 20)
+        capture("09-sent")
+        tree("09-sent", app)
+
+        let back = app.navigationBars.buttons.element(boundBy: 0)
+        if back.exists { back.tap() }
+        require(switcher.waitForExistence(timeout: 10), "no home to switch from")
+        switcher.tap()
+        Thread.sleep(forTimeInterval: 1)
+        capture("10-switcher")
+        tree("10-switcher", app)
+        let others = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'account-' AND NOT (identifier IN %@)", ["account-add", "account-cloud", "account-cloud-sign-out"]))
+        let other = (0..<others.count).map { others.element(boundBy: $0) }.first { !$0.isSelected && $0.label != server && !$0.label.contains(server) }
+        if let other {
+            other.tap()
+            Thread.sleep(forTimeInterval: 4)
+            capture("11-switched")
+            switcher.tap()
+            Thread.sleep(forTimeInterval: 1)
+        }
+        let signOut = element("account-cloud-sign-out")
+        require(signOut.waitForExistence(timeout: 5), "no Sign Out of Happy Cloud while the pass lasts")
+        capture("12-sign-out-menu")
+        signOut.tap()
+        Thread.sleep(forTimeInterval: 1)
+        switcher.tap()
+        Thread.sleep(forTimeInterval: 1)
+        capture("13-signed-out")
+        XCTAssertFalse(element("account-cloud-sign-out").exists, "still signed in to Happy Cloud")
+    }
 }
