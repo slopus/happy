@@ -5,6 +5,10 @@ import HappyCore
 import HappyLayout
 import UIKit
 
+/// The navigation Happy Cloud is presented in, full screen; the
+/// coordinator dismisses it over the account it opened.
+final class CloudNavigationController: UINavigationController, AccountAddingFlow {}
+
 /// Happy Cloud's screens, full screen on the first screen's Grain Gradient
 /// with its large type and one primary action each: Welcome (Sign in with
 /// Apple, or the account's sign-in in the system browser), Your Servers,
@@ -40,9 +44,12 @@ enum CloudScreens {
         navigation.setViewControllers(stack, animated: true)
     }
 
-    /// Done: the sheet goes, or a pushed flow returns to where it began.
-    static func finish(from controller: UIViewController) {
-        guard let navigation = controller.navigationController else { return }
+    /// Done. When the account open changed, the coordinator ends the flow
+    /// over the new account's home (`AccountAddingFlow`); dismissing here
+    /// too would show the old home first. Otherwise the sheet goes, or a
+    /// pushed flow returns to where it began.
+    static func finish(from controller: UIViewController, opened: Bool) {
+        guard !opened, let navigation = controller.navigationController, !navigation.isBeingDismissed else { return }
         if navigation.presentingViewController != nil { navigation.dismiss(animated: true); return }
         if let start = navigation.viewControllers.last(where: { !($0 is CloudStageViewController) }) { navigation.popToViewController(start, animated: true) }
     }
@@ -51,7 +58,7 @@ enum CloudScreens {
 /// One Happy Cloud screen: the gradient, optional art, a large title, a
 /// line under it, what the screen holds, and its action at the bottom,
 /// riding the keyboard.
-class CloudStageViewController: UIViewController {
+class CloudStageViewController: UIViewController, AccountAddingFlow {
     let context: AppContext
     private let gradient = GrainGradientView(palette: StartViewController.Colors.grain)
     let scroll = UIScrollView()
@@ -402,8 +409,9 @@ final class CloudServersViewController: CloudStageViewController {
         if let existing = HappyCloud.connection(to: origin, in: accounts.agentConnections.accounts), !existing.revoked {
             Task { [weak self] in
                 if !accounts.showsAgentConnections { await accounts.setShowsAgentConnections(true) }
+                let opened = accounts.agentConnections.activeID != existing.id
                 guard (try? await accounts.switchAccount(to: existing.id)) != nil, let self else { return }
-                CloudScreens.finish(from: self)
+                CloudScreens.finish(from: self, opened: opened)
             }
             return
         }
@@ -630,7 +638,7 @@ final class CloudConnectingViewController: CloudStageViewController {
             // answers the team profile gate on a server that hasn't.
             if signedIn.needsProfile { signedIn = try await flow.saveProfile(HappyCloud.handle(server.name), for: signedIn) }
             try await context.account.addServer(signedIn)
-            CloudScreens.finish(from: self)
+            CloudScreens.finish(from: self, opened: true)
         } catch CloudAccountError.signInRequired {
             CloudScreens.signedOut(context: context, from: self)
         } catch let error as CloudAccountError {
