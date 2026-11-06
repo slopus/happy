@@ -360,7 +360,7 @@ final class MediaDownloadsTests: XCTestCase {
     func testAutomaticDownloadsWaitTheirTurn() async throws {
         let gate = MediaGate()
         let servers = (0..<3).map { _ in FakeMediaServer(mediaBytes(10)) }
-        for server in servers.prefix(2) { server.gate = { await gate.wait() } }
+        for server in servers { server.gate = { await gate.wait() } }
         let downloads = MediaDownloads(store: MediaStore(directory: directory), board: DownloadBoard())
         for (index, server) in servers.enumerated() {
             await downloads.download("f\(index)", source: server.source(), priority: .background)

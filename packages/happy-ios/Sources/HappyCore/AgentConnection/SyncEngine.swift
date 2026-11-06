@@ -850,7 +850,7 @@ public actor SyncEngine {
     }
 
     private func layIntents() async {
-        let next = IntentOverlay(settling.map(\.intent) + waiting)
+        let next = IntentOverlay((settling.map(\.intent) + waiting).filter { !refusedIds.contains($0.id) })
         guard next != overlay else { return }
         overlay = next
         await spaces.setOverlay(next)
@@ -864,10 +864,10 @@ public actor SyncEngine {
         let id = rejection.intent.id
         if settling.contains(where: { $0.intent.id == id }) {
             settling.removeAll { $0.intent.id == id }
-            await layIntents()
         } else if waiting.contains(where: { $0.id == id }) {
             refusedIds.insert(id)
         }
+        await layIntents()
         // A refused read or seen entry is nothing to tell; a todo list tells its own.
         guard rejection.intent.kind != .read, !rejection.intent.kind.isTodo, !rejection.intent.kind.isFeed else { return }
         snapshot.notice = rejection.reason

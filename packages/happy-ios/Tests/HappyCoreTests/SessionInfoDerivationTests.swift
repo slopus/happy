@@ -68,7 +68,8 @@ final class SessionInfoDerivationTests: XCTestCase {
     }
 
     func testTheCheckoutStatusRebuildsOnlyTheQuickActions() throws {
-        let first = try XCTUnwrap(derive(Self.detail(Self.record)))
+        let clean = GitStatusParser.parse(status: "# branch.head main", unstagedNumstat: "")
+        let first = try XCTUnwrap(derive(Self.detail(Self.record), git: clean))
         var status = GitStatusParser.parse(status: "# branch.head main\n1 .M N... 100644 100644 100644 abc def a.swift", unstagedNumstat: "4\t2\ta.swift")
         status.lastUpdatedAt = 1
         let update = try XCTUnwrap(derive(Self.detail(Self.record), git: status, after: first.state))
@@ -76,6 +77,14 @@ final class SessionInfoDerivationTests: XCTestCase {
         // A refresh that finds the same files changes nothing drawn.
         status.lastUpdatedAt = 2
         XCTAssertNil(derive(Self.detail(Self.record), git: status, after: update.state))
+    }
+
+    func testALiveBranchAlsoRebuildsTheMetadata() throws {
+        let first = try XCTUnwrap(derive(Self.detail(Self.record)))
+        let status = GitStatusParser.parse(status: "# branch.head main", unstagedNumstat: "")
+        let update = try XCTUnwrap(derive(Self.detail(Self.record), git: status, after: first.state))
+        XCTAssertEqual(update.output.changes, SessionInfoChanges(rebuilt: [.quickActions, .metadata]))
+        XCTAssertEqual(update.output.frame.model?.branch, "main")
     }
 
     /// Home's record gives the title the first frame shows, so the screen's
