@@ -235,7 +235,7 @@ public final class WebSocketTunnel: BrowserStream, @unchecked Sendable {
         var frame = Data([0x80 | opcode])
         let count = payload.count
         if count <= 125 { frame.append(0x80 | UInt8(count)) }
-        else if count <= 0xFFFF { frame.append(contentsOf: [0x80 | 126, UInt8(count >> 8), UInt8(count & 0xFF)]) }
+        else if count <= 0xFFFF { frame.append(contentsOf: [0x80 | 126, UInt8(count >> 8), UInt8(count & 0xFF)] as [UInt8]) }
         else {
             frame.append(0x80 | 127)
             for shift in stride(from: 56, through: 0, by: -8) { frame.append(UInt8((UInt64(count) >> UInt64(shift)) & 0xFF)) }
