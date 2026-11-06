@@ -530,9 +530,10 @@ final class CallContextTests: XCTestCase {
         // Settled, the same words later are a new message.
         _ = await send("t3", "go")
         await waitFor { await targets.sends.count == 3 }
+        // The first, cut off, may land on either side of the second: two
+        // under one ID, the settled one under its own.
         let ids = await targets.sends.map(\.id)
-        XCTAssertEqual(Set(ids.prefix(2)).count, 1)
-        XCTAssertNotEqual(ids[2], ids[0])
+        XCTAssertEqual(Dictionary(grouping: ids) { $0 }.values.map(\.count).sorted(), [1, 2])
     }
 
     func testMovingTheScreenRefusesWhatWasAskedUnderTheOldFocus() async throws {
@@ -1276,6 +1277,31 @@ final class CallSessionTests: XCTestCase {
         events?.disconnected()
         XCTAssertEqual(session.state, .ended(.connection))
         await waitUntil { connection.ended }
+    }
+
+    /// The agent's end_call is a hang-up, not a failure: the call goes
+    /// idle as End leaves it, and whoever holds it hears once.
+    func testTheAgentHangingUpEndsTheCallAsEndWould() async {
+        let connection = FakeCallConnection()
+        var events: CallEvents?
+        let session = CallSession(grants: FakeGrants(.granted(CallGrant(agentId: "g", conversationToken: "t", userId: "u"))),
+                                  permission: { true }) { _, _, callEvents in
+            events = callEvents
+            return connection
+        }
+        var hangUps = 0
+        session.onHangUp = { hangUps += 1 }
+        session.start(language: nil, context: { "" }, tool: { _ in CallToolResult(text: "") })
+        await waitUntil { if case .active = session.state { true } else { false } }
+        events?.hungUp()
+        XCTAssertEqual(session.state, .idle)
+        XCTAssertEqual(hangUps, 1)
+        await waitUntil { connection.ended }
+        // What the dying connection still says changes nothing.
+        events?.disconnected()
+        events?.hungUp()
+        XCTAssertEqual(session.state, .idle)
+        XCTAssertEqual(hangUps, 1)
     }
 
     /// An update that takes long doesn't let the next one overtake it.

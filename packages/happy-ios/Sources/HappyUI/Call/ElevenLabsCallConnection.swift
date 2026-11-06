@@ -35,10 +35,12 @@ final class ElevenLabsCallConnection: CallConnection {
             onVadScore: { score in Task { @MainActor in tracker.vad(score) } }
         )
         let teardown = Teardown()
-        let disconnected: @Sendable (DisconnectionReason) -> Void = { _ in
+        // The SDK ends the call itself for the agent's end_call, as the
+        // person's own end: only an end it didn't ask for is a drop.
+        let disconnected: @Sendable (DisconnectionReason) -> Void = { reason in
             Task { @MainActor in
                 teardown.finish()
-                events.disconnected()
+                if reason == .user { events.hungUp() } else { events.disconnected() }
             }
         }
         // A minted token when a Happy service grants one; a public agent by its ID otherwise.

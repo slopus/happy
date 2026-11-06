@@ -19,7 +19,7 @@ final class CallController {
     private var connectionID: String?
     private weak var shell: ShellViewController?
     private var clock: Timer?
-    private var state: CallState = .idle
+    private(set) var state: CallState = .idle
     /// A call has the microphone: dictation waits for it to end.
     var holdsMicrophone: Bool { state.isLive }
     private var focus: String?
@@ -109,6 +109,11 @@ final class CallController {
                 guard let self, let call, self.session === call else { return }
                 self.deliver(update)
             }
+        }
+        // The agent hung up: as if End were tapped, with no bar left.
+        call.onHangUp = { [weak self, weak call] in
+            guard let self, let call, self.session === call else { return }
+            self.close()
         }
         call.onLevel = { [weak self, weak call] level in
             guard let self, let call, self.session === call else { return }

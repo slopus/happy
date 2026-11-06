@@ -173,6 +173,61 @@ class CallLiveDeviceCheck {
     }
 
     /**
+     * The agent hanging up with its end_call: asked to, it ends the call,
+     * and the bar goes as it does for End, saying nothing failed. Shots
+     * `hang-up-before.png` (live) and `hang-up-after.png`; `hang-up.txt`
+     * has the state it ended in. A billed conversation; it is short.
+     */
+    @Test
+    fun theAgentHangingUpEndsTheCallAsEndWould() {
+        val agentId = CallAgent.hostedAgentId
+        assumeTrue("no agent ID in this build", agentId != null)
+        instrumentation.uiAutomation.grantRuntimePermission(app.packageName, android.Manifest.permission.RECORD_AUDIO)
+        CallProbe.reset()
+        val context = CallContext(Targets())
+        val level = MutableStateFlow(0f)
+        lateinit var session: CallSession
+        var hungUp = false
+        rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
+        rule.setContent {
+            val scope = rememberCoroutineScope()
+            session = remember {
+                CallSession(scope, PublicAgentCallGrants(agentId!!), permission = { true }, now = SystemClock::elapsedRealtime) { grant, request, events ->
+                    ElevenLabsCallConnection.connect(app, scope, grant, request, events).also { connection = it }
+                }.also { it.onHangUp = { hungUp = true } }
+            }
+            HappyTheme(ThemePreference.Light) {
+                CallFrame(session.state, level, onMute = session::toggleMute, onEnd = session::stop) {
+                    val accounts = AccountMenu(listOf(AccountMenuEntry("fx-connection", "Studio Mac", agent = true, active = true)))
+                    AgentHomeScreen("Studio Mac", feed(), AgentLinkStatus.Connected, accounts, AgentHomeActions({}, {}, {}, {}, {}, {}, onVoice = {
+                        session.start(null, { context.initial() }, { call -> context.handle(call) })
+                    }))
+                }
+            }
+        }
+        rule.waitForIdle()
+        rule.mainClock.autoAdvance = false
+        rule.onNodeWithTag(AgentHomeTags.VOICE, useUnmergedTree = true).performClick()
+        assertTrue("never connected: ${session.state.value}", until(30_000) { session.state.value is CallState.Active })
+        until(15_000) { CallProbe.lines.value.any { it.role == "agent" } }
+        until(3_000) { false }
+        device.takeScreenshot(File(dir, "hang-up-before.png"))
+        val prompt = "Thanks, that's all for now. Please end the call."
+        rule.runOnUiThread { connection?.type(prompt) }
+        CallProbe.line("user", prompt)
+        val ended = until(30_000) { session.state.value !is CallState.Active }
+        until(1_500) { false }
+        device.takeScreenshot(File(dir, "hang-up-after.png"))
+        val state = session.state.value
+        val log = StringBuilder("ended $ended, hung up $hungUp, state $state\n")
+        CallProbe.lines.value.forEach { log.append("${it.role}: ${it.text}\n") }
+        File(dir, "hang-up.txt").writeText(log.toString())
+        android.util.Log.i("HappyCall", "hang-up check done\n$log")
+        if (state is CallState.Active) rule.runOnUiThread { session.stop() }
+        assertTrue("the agent never hung up: $state", hungUp && state == CallState.Idle)
+    }
+
+    /**
      * A conversation's new words reaching a real call (iOS `CallLiveCheck`'s
      * incoming part), with no LLM step needed to drive them: the call visits
      * five disposable conversations in turn, the first one's agent writes a

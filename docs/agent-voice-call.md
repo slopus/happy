@@ -504,7 +504,13 @@ descriptions are the dashboard's own wording, which says the same as these.
   a response timeout of 10 s or more. The phone answers within 8 s and says
   `uncertain` if a send is still in doubt at that point.
 - System tools: `end_call` is fine. Don't add tools for permissions or
-  questions. Those stay in the app.
+  questions. Those stay in the app. The agent hanging up with it ends the
+  call as the person tapping End does: no bar is left and nothing says it
+  failed. Both SDKs answer `end_call` by ending the session themselves, with
+  the person's reason (`DisconnectionReason.user`, `DisconnectionDetails.User`);
+  Android also notes the tool's response, since the agent leaving the room
+  can be heard first. Every other end the app didn't ask for (a dropped
+  room, an error) still says the call ended with a problem.
 
 ### System prompt
 

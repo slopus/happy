@@ -155,6 +155,28 @@ class CallSessionTest {
         assertTrue(connection.ended)
     }
 
+    /** The agent's end_call is a hang-up, not a failure: the call goes idle as End leaves it, and whoever holds it hears once. */
+    @Test
+    fun theAgentHangingUpEndsTheCallAsEndWould() {
+        val connection = FakeCallConnection()
+        var events: CallEvents? = null
+        val call = session { _, _, callEvents -> events = callEvents; connection }
+        var hangUps = 0
+        call.onHangUp = { hangUps += 1 }
+        call.start(null, { "" }, { CallToolResult("") })
+        test.runCurrent()
+        events!!.hungUp()
+        assertEquals(CallState.Idle, call.state.value)
+        assertEquals(1, hangUps)
+        test.runCurrent()
+        assertTrue(connection.ended)
+        // What the dying connection still says changes nothing.
+        events!!.disconnected()
+        events!!.hungUp()
+        assertEquals(CallState.Idle, call.state.value)
+        assertEquals(1, hangUps)
+    }
+
     @Test
     fun whatAnEndedCallStillSaysGoesNowhere() {
         val connection = FakeCallConnection()

@@ -115,6 +115,8 @@ class CallController(
         // Begun now: a call started while analytics is off, or on through an opt-out, is never told.
         val report = CallReport(Analytics.span()).also { this.report = it }
         call.onLevel = { level -> if (session === call) mutableLevel.value = level }
+        // The agent hung up: as if End were tapped, with no bar left.
+        call.onHangUp = { if (session === call) close() }
         call.onOverflow = {
             calling.launch {
                 val update = context.resync()

@@ -22,8 +22,10 @@ data class CallStart(val context: String, val language: String? = null, val prom
 class CallEvents(
     /** Who is speaking, with the person's voice activity (0..1) and the SDK's audio level, if it has one. */
     val activity: (CallActivity, Float, Float?) -> Unit,
-    /** The provider ended the call, or it dropped. */
+    /** The call dropped, or the provider ended it unasked. */
     val disconnected: () -> Unit,
+    /** The agent hung up (its `end_call`): the same as the person tapping End. */
+    val hungUp: () -> Unit,
     /** One client tool call; the connection replies with the answer. */
     val tool: suspend (CallToolCall) -> CallToolResult,
 )
@@ -64,6 +66,8 @@ class CallSession(
     var onLevel: ((Float) -> Unit)? = null
     /** Context waiting for the call went past [PENDING_BYTES] and was let go whole: the call's context sends what puts it right ([CallContext.resync]). */
     var onOverflow: (() -> Unit)? = null
+    /** The agent hung up, after the call went idle: whoever holds it ends it as End would. */
+    var onHangUp: (() -> Unit)? = null
 
     private var connection: CallConnection? = null
     private var starting: Job? = null
@@ -116,6 +120,12 @@ class CallSession(
                         }
                     },
                     disconnected = { if (current == generation) end(CallProblem.Connection) },
+                    hungUp = {
+                        if (current == generation) {
+                            stop()
+                            onHangUp?.invoke()
+                        }
+                    },
                     tool = tool,
                 )
                 val opened = connect(grant, request, events)

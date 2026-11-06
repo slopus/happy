@@ -72,7 +72,11 @@ final class CallLiveCheck {
                 continue
             }
             if await !quiet(after: agentLines, timeout: 60) { log("no answer to \(prompt.lastPathComponent)") }
+            if !CallController.shared.state.isShown { break }
         }
+        // What the bar shows once the talking is done: gone if the agent hung up.
+        log("call state \(CallController.shared.state)")
+        try? await Task.sleep(for: .seconds(4))
     }
 
     /// Until the agent has said more than `after` lines and been quiet

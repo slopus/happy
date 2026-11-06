@@ -20,16 +20,20 @@ public struct CallStart: Equatable, Sendable {
 public struct CallEvents: Sendable {
     /// Who is speaking, with the person's voice activity score (0...1).
     public var activity: @MainActor @Sendable (CallActivity, Double) -> Void
-    /// The provider ended the call, or it dropped.
+    /// The call dropped, or the provider ended it unasked.
     public var disconnected: @MainActor @Sendable () -> Void
+    /// The agent hung up (its `end_call`): the same as the person tapping End.
+    public var hungUp: @MainActor @Sendable () -> Void
     /// One client tool call; the connection replies with the answer.
     public var tool: @Sendable (CallToolCall) async -> CallToolResult
 
     public init(activity: @escaping @MainActor @Sendable (CallActivity, Double) -> Void,
                 disconnected: @escaping @MainActor @Sendable () -> Void,
+                hungUp: @escaping @MainActor @Sendable () -> Void,
                 tool: @escaping @Sendable (CallToolCall) async -> CallToolResult) {
         self.activity = activity
         self.disconnected = disconnected
+        self.hungUp = hungUp
         self.tool = tool
     }
 }
@@ -67,6 +71,9 @@ public final class CallSession {
     /// Context waiting for the call went past `pendingBytes` and was let go
     /// whole: the call's context sends what puts it right (`CallContext.resync`).
     public var onOverflow: (@MainActor () -> Void)?
+    /// The agent hung up, after the call went idle: whoever holds it ends
+    /// it as End would.
+    public var onHangUp: (@MainActor () -> Void)?
 
     private let grants: any CallGrantSource
     private let allowance: CallAllowance?
@@ -143,6 +150,10 @@ public final class CallSession {
                 }, disconnected: { [weak self] in
                     guard let self, current == self.generation else { return }
                     self.end(.connection)
+                }, hungUp: { [weak self] in
+                    guard let self, current == self.generation else { return }
+                    self.stop()
+                    self.onHangUp?()
                 }, tool: tool)
                 let opened: any CallConnection
                 do { opened = try await connect(grant, request, events) }

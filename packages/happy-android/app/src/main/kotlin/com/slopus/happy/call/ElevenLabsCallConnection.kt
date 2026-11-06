@@ -9,6 +9,7 @@ import io.elevenlabs.Language
 import io.elevenlabs.Overrides
 import io.elevenlabs.PromptOverrides
 import io.elevenlabs.models.ConversationMode
+import io.elevenlabs.models.DisconnectionDetails
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -104,6 +105,9 @@ class ElevenLabsCallConnection private constructor(
             var connection: ElevenLabsCallConnection? = null
             // Calls that come before the session is handed back wait for it.
             val early = ArrayList<CallToolCall>()
+            // The SDK ends the call itself for the agent's end_call, as the person's own end; the agent
+            // leaving the room can be heard first, so the tool's response is what says it hung up.
+            val agentEnded = java.util.concurrent.atomic.AtomicBoolean(false)
             val config = ConversationConfig(
                 // A minted token when a Happy service grants one; a public agent by its ID otherwise.
                 agentId = grant.agentId.takeIf { grant.conversationToken == null },
@@ -122,7 +126,11 @@ class ElevenLabsCallConnection private constructor(
                 onAudioLevelChanged = { level -> scope.launch { tracker.level(level) } },
                 onUserTranscript = { text -> if (com.slopus.happy.BuildConfig.DEBUG) scope.launch { CallProbe.line("user", text) } },
                 onAgentResponse = { text -> if (com.slopus.happy.BuildConfig.DEBUG) scope.launch { CallProbe.line("agent", text) } },
-                onDisconnect = { scope.launch { events.disconnected() } },
+                onAgentToolResponse = { toolName, _, _, _ -> if (toolName == "end_call") agentEnded.set(true) },
+                onDisconnect = { details ->
+                    val hungUp = details is DisconnectionDetails.User || agentEnded.get()
+                    scope.launch { if (hungUp) events.hungUp() else events.disconnected() }
+                },
                 onError = { _, _ -> scope.launch { events.disconnected() } },
             )
             var opened: ConversationSession? = null
