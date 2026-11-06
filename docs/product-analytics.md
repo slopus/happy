@@ -109,7 +109,11 @@ Definitions:
   `AnalyticsEngine` keeps the queue (500 events, 7 days), the
   `error_shown` throttle and the failure dedupe set in memory, and the
   install id in the `happy-analytics` defaults suite, next to the
-  Settings switch: the only two things analytics stores.
+  Settings switch: the only two things analytics stores. Two errors in
+  one area within 10 seconds, while the first is still queued, are one
+  failure seen twice (a conversation read when it opens and again on the
+  resync after): one `error_shown`, whose `unknown` code gives way to a
+  specific one.
   `Analytics.shared` is the facade HappyUI and HappyApp call.
 - What happens inside HappyCore (a send queued, a create, a start, a shown
   error, a call, an agent connection) is posted on `Happenings`, a hook with

@@ -156,6 +156,27 @@ final class AnalyticsEngineTests: XCTestCase {
         XCTAssertNil(try events(http).first?["properties"]?["repeat_count"])
     }
 
+    /// One failed conversation load seen twice in the same moment (when it
+    /// opens and on the resync after) is one `error_shown`, with the most
+    /// specific code either saw; a later failure is its own.
+    func testOneFailureSeenTwiceAtOnceIsOneErrorWithItsMostSpecificCode() async throws {
+        let http = http()
+        let engine = engine(http)
+        await engine.recordError(area: .conversationLoad, code: .offline, common: common, at: start)
+        await engine.recordError(area: .conversationLoad, code: .unknown, common: common, at: start.addingTimeInterval(0.4))
+        await engine.recordError(area: .messageSend, code: .unknown, common: common, at: start.addingTimeInterval(1))
+        await engine.recordError(area: .messageSend, code: .timeout, common: common, at: start.addingTimeInterval(2))
+        await engine.recordError(area: .messageSend, code: .offline, common: common, at: start.addingTimeInterval(3))
+        await engine.recordError(area: .conversationLoad, code: .unknown, common: common, at: start.addingTimeInterval(20))
+        await engine.flush(now: start.addingTimeInterval(20))
+        let sent = try events(http).map { [$0["properties"]?["area"], $0["properties"]?["code"]] }
+        XCTAssertEqual(sent, [
+            [.string("conversation_load"), .string("offline")],
+            [.string("message_send"), .string("timeout")],
+            [.string("conversation_load"), .string("unknown")],
+        ])
+    }
+
     func testAFailureCardCountsOnceAndOnlyWhileItIsNews() async throws {
         let http = http()
         let engine = engine(http)

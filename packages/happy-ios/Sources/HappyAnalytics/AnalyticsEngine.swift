@@ -76,9 +76,23 @@ public actor AnalyticsEngine {
     }
 
     /// `error_shown`, at most once per area and code every ten minutes;
-    /// the ones in between are dropped.
+    /// the ones in between are dropped. One failure reached by two paths
+    /// at once, such as a conversation read when it opens and again on the
+    /// resync that follows, is one event: within `ErrorThrottle.burst` of
+    /// one still queued for the same area, a specific code takes the place
+    /// of `unknown` and anything else is dropped.
     public func recordError(area: AnalyticsEvent.ErrorArea, code: AnalyticsEvent.ErrorCode, common: [String: JSONValue], at now: Date) {
-        guard !paused, throttle.admit(area: area, code: code, at: now) else { return }
+        guard !paused else { return }
+        if let index = queue.lastIndex(where: {
+            $0.event == "error_shown" && $0.properties["area"] == .string(area.rawValue) && now.timeIntervalSince($0.timestamp) < ErrorThrottle.burst
+        }) {
+            if queue[index].properties["code"] == .string(AnalyticsEvent.ErrorCode.unknown.rawValue), code != .unknown,
+               throttle.admit(area: area, code: code, at: now) {
+                queue[index].properties["code"] = .string(code.rawValue)
+            }
+            return
+        }
+        guard throttle.admit(area: area, code: code, at: now) else { return }
         record(.errorShown(area: area, code: code), common: common, at: now)
     }
 
@@ -161,6 +175,8 @@ public actor AnalyticsEngine {
 /// per device; the rest are dropped, not counted.
 struct ErrorThrottle: Equatable, Sendable {
     static let window: TimeInterval = 10 * 60
+    /// How close together two of one area's errors are one failure.
+    static let burst: TimeInterval = 10
 
     var sentAt: [String: Date] = [:]
 
