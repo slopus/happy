@@ -75,6 +75,19 @@ public actor SyncEngine {
     private var refusedIds: Set<String> = []
     /// Reads of the computer begun (`reconcile`).
     private var reads = 0
+    /// The newest read home has taken: one begun before it is older in
+    /// every part and is dropped.
+    private var adopted = 0
+    /// News home couldn't apply (`scheduleReconcile`), counted, and how
+    /// much of it the newest read taken began after: home is stale while
+    /// they differ, a read cancelled on its way included.
+    private var signalled = 0
+    private var covered = 0
+    /// The newest journal event taken in, and the daemon process a read
+    /// verified: back on that process with nothing stale, the stream picks
+    /// up from there and nothing is read again.
+    private var streamCursor: String?
+    private var verifiedDaemon: String?
     private var intentsFollowing: Task<Void, Never>?
     private var noticeClearing: Task<Void, Never>?
     private let url: URL?
@@ -99,7 +112,6 @@ public actor SyncEngine {
     private var stopped = false
     private var cursor: String?
     private var dirty = false
-    private var revision = 0
     private var sidebarSyncing = false
     /// The team members the listed tasks belong to, as last read, kept
     /// beside the bootstrap (`TeamUser`); those asked for and not named,
@@ -110,6 +122,8 @@ public actor SyncEngine {
     private var usersDirty = false
     private var usersRead: Task<Void, Never>?
     private var gitWatcher: Task<Void, Never>?
+    /// Rows drawn again soon, after agents' updates (`deriveSoon`).
+    private var deriving: Task<Void, Never>?
     private var gitInterest: Set<String> = []
     private var gitSnapshots: [String: WorkspaceLineChanges] = [:]
 
@@ -199,6 +213,7 @@ public actor SyncEngine {
         await lookups.disconnected()
         gitWatcher = nil; gitInterest = []
         runner = nil; refresh = nil; delivery = nil; messageDelivery = nil; usersRead = nil
+        deriving?.cancel(); deriving = nil
         tasks.forEach { $0.cancel() }
         for task in tasks { await task.value }
         await intents.setOnline(false)
@@ -290,11 +305,20 @@ public actor SyncEngine {
                 sidebarSyncing = false
                 snapshot.syncing = true
                 publish()
-                try await reconcile(generation)
-                beginDelivery(generation)
-                beginMessageDelivery(generation)
-                await intents.setOnline(deliveryAllowed)
-                let stream = try await client.events(after: cursor)
+                // Back on the process a read verified, with nothing stale:
+                // the stream picks up after the last event taken in, and
+                // neither home nor any conversation is read again. A flapping
+                // network read the whole bootstrap, and every warm chat, on
+                // every reconnect (Proofs/: `Refresh.resume_is_current`).
+                let resuming = desktop != nil && verifiedDaemon != nil && streamCursor != nil && covered == signalled
+                if !resuming {
+                    try await reconcile(generation)
+                    streamCursor = cursor
+                    beginDelivery(generation)
+                    beginMessageDelivery(generation)
+                    await intents.setOnline(deliveryAllowed)
+                }
+                let stream = try await client.events(after: resuming ? streamCursor : cursor)
                 for try await frame in stream {
                     guard current(generation) else { return }
                     if frame.event == "hello" {
@@ -306,17 +330,35 @@ public actor SyncEngine {
                         // The bootstrap cursor precedes its reads. Opening from
                         // it is safe even after a crash, replay or daemon replacement.
                         let hello = try JSONDecoder().decode(JSONValue.self, from: Data(frame.data.utf8))
+                        let gap = hello["gap"] == .bool(true)
+                        let daemon = hello["daemonId"]?.stringValue
+                        // Everything since the cursor follows, from the same process.
+                        let continued = resuming && !gap && hello["resumed"] == .bool(true) && daemon != nil && daemon == verifiedDaemon
+                        if resuming {
+                            // Something was missed, or another process answered:
+                            // it is read, and its owner checked, before anything
+                            // is delivered.
+                            if continued { verified = true } else { verified = false; try await reconcile(generation) }
+                            beginDelivery(generation)
+                            beginMessageDelivery(generation)
+                            await intents.setOnline(deliveryAllowed)
+                        }
+                        verifiedDaemon = verified ? daemon : nil
+                        if gap || hello["resumed"] != .bool(true) { streamCursor = hello["cursor"]?.stringValue ?? streamCursor }
                         await documents.opened(hello)
-                        if hello["gap"] == .bool(true) { scheduleReconcile(generation) }
+                        // Resuming, the read above already came after the gap.
+                        if gap, !resuming { scheduleReconcile(generation) }
                         profileChanged()
                         // Reads the newest page each time, so a gap loses nothing.
                         await feed.connected()
-                        await lookups.connected(gap: hello["gap"] == .bool(true))
+                        await lookups.connected(gap: gap)
                         await wantReferences()
-                        // Faces may have changed while away.
+                        // Faces may have changed while away; picked up where
+                        // it left off, their `profile.updated` follows instead.
                         usersMissing = []
-                        readAuthors(generation, again: Set(users.keys))
-                        try await resyncSidebar(generation)
+                        if !continued { readAuthors(generation, again: Set(users.keys)) }
+                        // Conversations and lists read again only for what they missed.
+                        try await resyncSidebar(generation, resync: !continued)
                         continue
                     }
                     if DocumentStreams.isDocumentFrame(frame.event) {
@@ -347,9 +389,22 @@ public actor SyncEngine {
                     // Events are delivery hints, never a durable checkpoint.
                     // Coalesce catalog invalidations; message token events go
                     // straight to the open conversation without rereading Home.
-                    if let type = event["type"]?.stringValue,
+                    // A working agent's `agent.updated` comes with every word:
+                    // laid over the held bootstrap, it is read again only when a
+                    // version was missed (`AgentUpdate`).
+                    if event["type"] == .string("agent.updated"), let desktop {
+                        switch AgentUpdate.apply(event["payload"] ?? .null, to: desktop) {
+                        case .applied(let next):
+                            self.desktop = next
+                            deriveSoon()
+                        case .unchanged: break
+                        case .reread: scheduleReconcile(generation)
+                        }
+                    } else if let type = event["type"]?.stringValue,
                        ["project.", "workspace.", "bot.", "task.", "agent.", "surface.", "user_settings."].contains(where: type.hasPrefix),
                        type != "agent.draft.updated" { scheduleReconcile(generation) }
+                    // Taken in: applied, or home marked stale for it.
+                    if let id = frame.id { streamCursor = id }
                 }
             } catch AgentClientError.revoked {
                 snapshot.live = false
@@ -374,10 +429,10 @@ public actor SyncEngine {
 
     private func current(_ generation: Int) -> Bool { !stopped && !Task.isCancelled && self.generation == generation }
 
-    private func resyncSidebar(_ generation: Int) async throws {
+    private func resyncSidebar(_ generation: Int, resync: Bool) async throws {
         sidebarSyncing = true
         if !snapshot.syncing { snapshot.syncing = true; publish() }
-        let ready = await spaces.externalResync(loadSidebar: false)
+        let ready = await spaces.externalResync(loadSidebar: false, resync: resync)
         guard current(generation) else { throw CancellationError() }
         guard ready else { throw AgentClientError.invalidResponse }
         sidebarSyncing = false
@@ -387,7 +442,7 @@ public actor SyncEngine {
 
     private func scheduleReconcile(_ generation: Int) {
         dirty = true
-        revision += 1
+        signalled += 1
         guard refresh == nil else { return }
         refresh = Task {
             var failures = 0
@@ -415,7 +470,7 @@ public actor SyncEngine {
     }
 
     private func reconcile(_ generation: Int) async throws {
-        let revision = revision
+        let asOf = signalled
         reads += 1
         let read = reads
         let database = try database()
@@ -439,12 +494,19 @@ public actor SyncEngine {
         } else if desktop.userSettings != nil {
             throw AgentClientError.invalidResponse
         }
-        // An event during the read may be newer than part of this composed
-        // snapshot. The coalesced next read owns that invalidation.
-        guard self.revision == revision else { return }
+        // A read is taken even when news came while it was on its way: what
+        // of home is newer here (an agent laid over it by `AgentUpdate`)
+        // stays, and that news already marked home stale, so the next read
+        // follows. Dropping it instead, as this did, kept home at what it
+        // held before agents began working for as long as they worked:
+        // news came with every word. Only a read begun before the one
+        // last taken is older in every part (Proofs/: `Refresh`).
+        guard read > adopted else { return }
         try await database.commit(.init(value: value, cursor: desktop.cursor), named: "desktop", settings: desktop.userSettings ?? [], expectedSettingsRevision: settingRevision)
-        guard current(generation) else { return }
-        self.desktop = desktop
+        guard current(generation), read > adopted else { return }
+        adopted = read
+        covered = max(covered, asOf)
+        self.desktop = self.desktop.map { AgentUpdate.keepingNewer(desktop, than: $0) } ?? desktop
         verified = true
         cursor = desktop.cursor
         await feed.bootstrap(unread: desktop.feedUnread, cursor: desktop.cursor)
@@ -605,7 +667,23 @@ public actor SyncEngine {
         }
     }
 
-    private func derive() {
+    /// Agents' updates, a row's time and its working state, drawn together
+    /// a few times a second rather than once a word; nothing reaches home
+    /// when the rows came out the same.
+    private func deriveSoon() {
+        guard deriving == nil else { return }
+        deriving = Task {
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            deriving = nil
+            let before = snapshot
+            derive(publishing: false)
+            deriveDirectory()
+            if snapshot != before { publish() }
+        }
+    }
+
+    private func derive(publishing: Bool = true) {
         snapshot.loaded = desktop != nil
         if let desktop {
             snapshot.allRows = overlay.apply(SidebarRows.make(desktop, settings: snapshot.settings, users: users, feed: feedRow))
@@ -616,7 +694,7 @@ public actor SyncEngine {
             snapshot.userId = desktop.profile?.userId
             snapshot.profilePhoto = desktop.profile?.photo?.thumbhash
         }
-        publish()
+        if publishing { publish() }
     }
 
     private func publish() {

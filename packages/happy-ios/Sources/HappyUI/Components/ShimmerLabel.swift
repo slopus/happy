@@ -190,7 +190,11 @@ final class ShimmerBand: UIView {
         } else {
             sweep.beginTime = ramp.convertTime(clock.epoch, from: nil)
         }
-        sweep.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+        // For as long as an agent works the screen is composed again every
+        // frame this runs: the render server spent a quarter of a core on
+        // Home with four working rows, half that at 30 Hz. A soft band
+        // crossing in 1.6 s looks the same at 30.
+        sweep.preferredFrameRateRange = CAFrameRateRange(minimum: 15, maximum: 30, preferred: 30)
         ramp.add(sweep, forKey: Self.key)
     }
 }

@@ -1,0 +1,5 @@
+name = "SyncProofs"
+defaultTargets = ["SyncProofs"]
+
+[[lean_lib]]
+name = "SyncProofs"

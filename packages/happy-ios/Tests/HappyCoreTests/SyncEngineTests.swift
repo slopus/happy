@@ -53,6 +53,31 @@ private actor SyncFixture: AgentTransport {
     func savedWrites() -> [JSONValue] { writes }
     func savedSends() -> [JSONValue] { sends }
     func loseNextSendAcknowledgement() { loseSendAck = true }
+    /// Each of the next `reads` bootstrap reads has news come while it is
+    /// on its way, as when agents work.
+    var newsDuringReads = 0
+    /// The process every hello names; nil as an older daemon's.
+    var daemonId: String?
+    var nextHelloGap = false
+    func setDaemon(_ id: String?) { daemonId = id }
+    func gapNextHello() { nextHelloGap = true }
+    func bootstrapReads() -> Int { requested.filter { $0 == "/v0/bootstrap/desktop" }.count }
+    func lastStreamCursor() -> String? { streamHeaders.last?["Last-Event-ID"] }
+    /// Ends the open streams, as a network that drops.
+    func drop() { continuations.forEach { $0.finish() }; continuations.removeAll() }
+    func emit(id: String, _ event: JSONValue) {
+        let json = String(data: try! JSONEncoder().encode(event), encoding: .utf8)!
+        continuations.forEach { $0.yield(Data("id: \(id)\nevent: message\ndata: \(json)\n\n".utf8)) }
+    }
+    func renameProject(withNewsDuringReads reads: Int) {
+        newsDuringReads = reads
+        var object = value.objectValue!
+        var project = object["projects"]!.arrayValue!.first!.objectValue!
+        project["name"] = .string("Renamed while busy")
+        object["projects"] = .array([.object(project)])
+        value = .object(object)
+        emit(.object(["type": .string("project.updated"), "payload": .object(["projectId": .string("p")])]))
+    }
     func renameProjectAfterOneFailedRead() {
         bootstrapFailures = 1
         var object = value.objectValue!
@@ -90,7 +115,13 @@ private actor SyncFixture: AgentTransport {
         requested.append(path)
         if path == "/v0/bootstrap/desktop" {
             if bootstrapFailures > 0 { bootstrapFailures -= 1; throw URLError(.timedOut) }
-            return .init(status: 200, body: try JSONEncoder().encode(value))
+            let read = try JSONEncoder().encode(value)
+            if newsDuringReads > 0 {
+                newsDuringReads -= 1
+                emit(.object(["type": .string("workspace.updated"), "payload": .object(["workspaceId": .string("work")])]))
+                try await Task.sleep(for: .milliseconds(50))
+            }
+            return .init(status: 200, body: read)
         }
         if method == "PUT", path.hasPrefix("/v0/user-settings/") {
             let request = try JSONDecoder().decode(JSONValue.self, from: body!)
@@ -125,7 +156,10 @@ private actor SyncFixture: AgentTransport {
         streamHeaders.append(headers)
         let (body, continuation) = AsyncThrowingStream<Data, Error>.makeStream()
         continuations.append(continuation)
-        continuation.yield(Data("event: hello\ndata: {\"cursor\":\"cursor-1\",\"resumed\":true}\n\n".utf8))
+        let process = daemonId.map { ",\"daemonId\":\"\($0)\"" } ?? ""
+        let gap = nextHelloGap ? "true" : "false"
+        nextHelloGap = false
+        continuation.yield(Data("event: hello\ndata: {\"cursor\":\"cursor-1\",\"resumed\":true,\"gap\":\(gap)\(process)}\n\n".utf8))
         return .init(status: 200, body: body)
     }
     func close() { continuations.forEach { $0.finish() }; continuations.removeAll() }
@@ -155,6 +189,61 @@ final class SyncEngineTests: XCTestCase {
         let changed = try await wait(engine) { $0.rows.contains { $0.label == "Renamed remotely" } }
         XCTAssertTrue(changed.live)
         await engine.stop()
+    }
+
+    /// News during every read, as while agents work: each read is still
+    /// taken, so home moves at once rather than when the news stops.
+    func testNewsDuringEveryReadStillMovesHome() async throws {
+        let transport = SyncFixture()
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        await engine.start()
+        _ = try await wait(engine) { $0.live }
+        await transport.renameProject(withNewsDuringReads: 1_000)
+        let changed = try await wait(engine) { $0.rows.contains { $0.label == "Renamed while busy" } }
+        XCTAssertTrue(changed.live)
+        await engine.stop()
+    }
+
+    /// A dropped stream that comes back to the same process with nothing
+    /// missed picks up after the last event and reads nothing again; a gap
+    /// or another process reads home first.
+    func testAReconnectReadsOnlyWhatItMissed() async throws {
+        let transport = SyncFixture()
+        await transport.setDaemon("d1")
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        await engine.start()
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        let first = await transport.bootstrapReads()
+        await transport.emit(id: "cursor-2", .object(["type": .string("git.updated"), "payload": .object([:])]))
+        try await Task.sleep(for: .milliseconds(100))
+
+        await transport.drop()
+        _ = try await wait(engine) { !$0.live }
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        let resumed = await transport.bootstrapReads()
+        XCTAssertEqual(resumed, first, "back on the same process with nothing stale: no read")
+        let resumedFrom = await transport.lastStreamCursor()
+        XCTAssertEqual(resumedFrom, "cursor-2", "picked up after the last event taken in")
+
+        await transport.gapNextHello()
+        await transport.drop()
+        _ = try await wait(engine) { !$0.live }
+        try await eventually { await transport.bootstrapReads() > resumed }
+
+        let afterGap = await transport.bootstrapReads()
+        await transport.setDaemon("d2")
+        await transport.drop()
+        _ = try await wait(engine) { !$0.live }
+        try await eventually { await transport.bootstrapReads() > afterGap }
+        await engine.stop()
+    }
+
+    private func eventually(_ condition: @escaping @Sendable () async -> Bool) async throws {
+        for _ in 0..<80 {
+            if await condition() { return }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTFail("not in time")
     }
 
     func testAccountDrainsPersistedSendWithoutOpeningConversation() async throws {

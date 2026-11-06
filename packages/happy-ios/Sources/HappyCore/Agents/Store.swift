@@ -122,6 +122,7 @@ public actor Store {
     private var me: String?
     private var places = Places()
     private var placesReload: Task<Void, Never>?
+    private var placesDirty = false
     /// Names given here whose rename no read has carried yet.
     private var titleIntents: [String: (title: String, base: String?)] = [:]
 
@@ -145,9 +146,13 @@ public actor Store {
     public func startExternal() async { await restoreOffline() }
 
     @discardableResult
-    public func externalResync(loadSidebar: Bool) async -> Bool {
-        for listener in listeners.values { listener.continuation.yield(.resync) }
-        for listener in typeListeners.values { listener.continuation.yield(.resync) }
+    public func externalResync(loadSidebar: Bool, resync: Bool = true) async -> Bool {
+        // A stream that picked up where it left off replays what they
+        // missed: nothing is read again.
+        if resync {
+            for listener in listeners.values { listener.continuation.yield(.resync) }
+            for listener in typeListeners.values { listener.continuation.yield(.resync) }
+        }
         snapshot.live = true
         if loadSidebar {
             await load()
@@ -376,13 +381,23 @@ public actor Store {
         publish()
     }
 
+    /// The bots and tasks are stale: read once things settle, and once
+    /// more for news that came during the read, as home's own loop does
+    /// (Proofs/: `Refresh`). Starting the wait again with each piece of
+    /// news, as this did, never read while news kept coming.
     private func schedulePlacesReload() {
-        placesReload?.cancel()
+        placesDirty = true
+        guard placesReload == nil else { return }
         placesReload = Task {
-            try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled else { return }
-            guard let (bots, tasks) = try? await (client.bots(), client.tasks()) else { return }
-            await adoptPlaces(bots: bots, tasks: tasks)
+            while placesDirty {
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled else { return }
+                placesDirty = false
+                guard let (bots, tasks) = try? await (client.bots(), client.tasks()) else { placesDirty = true; break }
+                guard !Task.isCancelled else { return }
+                adoptPlaces(bots: bots, tasks: tasks)
+            }
+            placesReload = nil
         }
     }
 

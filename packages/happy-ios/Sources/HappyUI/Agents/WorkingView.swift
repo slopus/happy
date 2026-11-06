@@ -267,7 +267,9 @@ final class BrailleView: UIView {
             let lag = Double(phase) * Braille.frame / 1000
             wave.timeOffset = (cycle - lag).truncatingRemainder(dividingBy: cycle)
             wave.isRemovedOnCompletion = false
-            wave.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+            // Looping for as long as the agent works, at the shimmer's 30 Hz:
+            // its steps are 100 ms.
+            wave.preferredFrameRateRange = CAFrameRateRange(minimum: 15, maximum: 30, preferred: 30)
             dot.add(wave, forKey: "wave")
         }
     }
