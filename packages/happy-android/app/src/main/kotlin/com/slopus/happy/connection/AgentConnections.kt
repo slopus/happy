@@ -47,7 +47,14 @@ data class AgentConnection(
     /** Last health response's daemon version, shown separately from this phone's build. */
     val daemonVersion: String? = null,
     val protocol: Int? = null,
-)
+) {
+    /**
+     * A team server's session ended (not just a name owed): the phone shows
+     * only its Sign in, and nothing of it is kept here (credentials,
+     * catalog, conversations, outbox, media) until the person signs in again.
+     */
+    val sessionEnded: Boolean get() = server != null && signInRequired && !profileRequired
+}
 
 /**
  * The paired agents (iOS's AgentConnections). Each one's credentials
@@ -78,9 +85,10 @@ class AgentConnections(
     private val diagnosticTransports = TransportDiagnosticsRegistry()
 
     init {
-        // Credentials whose entry went in a disconnect the process didn't live to finish.
-        val listed = state.value.mapTo(HashSet()) { it.id }
-        secrets.keys().filterNot { it in listed }.forEach(secrets::deleteItem)
+        // Credentials whose entry went in a disconnect the process didn't live to finish, or whose session ended
+        // before ending one forgot them ([AgentConnection.sessionEnded]).
+        val kept = state.value.filterNot { it.sessionEnded }.mapTo(HashSet()) { it.id }
+        secrets.keys().filterNot { it in kept }.forEach(secrets::deleteItem)
     }
 
     internal fun transport(id: String, credentials: AgentConnectionCredentials, make: (AgentConnectionCredentials) -> Transport): Transport {
@@ -119,7 +127,7 @@ class AgentConnections(
         // Read again and signed out under one hold of the lock: a sign-in that landed since stands.
         val signedIn = lock.withLock {
             withContext(Dispatchers.IO) { read(id) } ?: run {
-                if (grant(id) == grant) change(id) { it.copy(signInRequired = true, profileRequired = false) }
+                if (grant(id) == grant) endSession(id)
                 null
             }
         }
@@ -292,7 +300,18 @@ class AgentConnections(
     suspend fun signedOut(id: String, profileRequired: Boolean = false, grant: Long? = null) = lock.withLock {
         // Refused under an older sign-in than [id]'s now: the newer one stands.
         if (grant != null && grant != grant(id)) return@withLock
-        change(id) { it.copy(signInRequired = true, profileRequired = profileRequired) }
+        if (profileRequired) change(id) { it.copy(signInRequired = true, profileRequired = true) } else endSession(id)
+    }
+
+    /**
+     * [id]'s session ended: signed out, and its tokens and credentials
+     * forgotten here, so nothing of the session is left on the phone ([AgentConnection.sessionEnded]);
+     * its sessions and caches go with it in [com.slopus.happy.agent.AgentSessions]. Holding [lock].
+     */
+    private suspend fun endSession(id: String) {
+        synchronized(tokens) { tokens.remove(id) }
+        withContext(Dispatchers.IO) { secrets.deleteItem(id) }
+        change(id) { it.copy(signInRequired = true, profileRequired = false) }
     }
 
     /**
@@ -324,10 +343,7 @@ class AgentConnections(
                 // Checked and signed out under one hold of the lock, so no sign-in lands in between.
                 val signedOutHere = lock.withLock {
                     current(id, generation, credential).also { current ->
-                        if (current) {
-                            synchronized(tokens) { tokens.remove(id) }
-                            change(id) { it.copy(signInRequired = true, profileRequired = false) }
-                        }
+                        if (current) endSession(id)
                     }
                 }
                 if (signedOutHere) throw AgentConnectionException(AgentConnectionException.Reason.SignInRequired).initCause(e)

@@ -85,6 +85,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slopus.happy.AppGraph
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.navigation.NavHostController
+import androidx.navigation.NavDestination.Companion.hasRoute
+import com.slopus.happy.connection.AgentConnection
+import com.slopus.happy.ui.HomeRoute
 import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
 import com.slopus.happy.R
@@ -791,8 +798,100 @@ fun AgentHome(
     onOpenTodos: () -> Unit = {},
     onOpenVaultItem: (surfaceId: String, itemId: String, folder: Boolean, name: String) -> Unit = { _, _, _, _ -> },
 ) {
-    val session = remember(id) { graph.agentSessions.session(id) } ?: return
     val agents by graph.agentConnections.accounts.collectAsStateWithLifecycle()
+    val connection = agents.firstOrNull { it.id == id } ?: return
+    // A team server whose session ended shows its Sign in and nothing else; signed in again, a new session opens.
+    if (connection.sessionEnded) {
+        val add = LocalAddFlow.current
+        AgentSignedOutHome(
+            name = connection.name.takeIf { it.isNotBlank() } ?: stringResource(R.string.account_kind_agent),
+            accounts = rememberAccountMenu(graph),
+            onSwitchAccount = rememberHomeAccountSwitch(graph),
+            onAdd = { add?.scan() },
+            onSignIn = { connection.server?.let(onSignIn) },
+        )
+        return
+    }
+    SignedInAgentHome(graph, id, agents, onOpenConversation, onCompose, onSettings, onSettingsRow, onComposeWithPicture, onOpenArtifacts, onOpenSurface, onOpenArtifact, onOpenFeed, onSignIn, onOpenTodos, onOpenVaultItem)
+}
+
+/**
+ * Home for a team server whose session ended ([AgentConnection.sessionEnded]):
+ * the account menu to go elsewhere, the server's name, and Sign in again.
+ * Nothing of the server shows, as nothing of it is kept.
+ */
+@Composable
+fun AgentSignedOutHome(
+    name: String,
+    accounts: AccountMenu,
+    onSwitchAccount: (String) -> Unit,
+    onAdd: () -> Unit,
+    onSignIn: () -> Unit,
+) {
+    val ground = HappyTheme.colors.surface
+    GlassBarLayout(
+        modifier = Modifier.fillMaxSize().background(ground),
+        ground = ground,
+        feathered = false,
+        bar = {
+            AgentTopBar(
+                tag = AgentHomeTags.BAR,
+                container = ground,
+                navigationIcon = { AccountMenuButton(accounts, onSwitchAccount, onAdd) },
+                title = { Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag(AgentHomeTags.TITLE)) },
+                inset = HomeCardSpec.inset,
+            )
+        },
+    ) { top ->
+        StatePage(
+            tag = AgentHomeTags.SIGNED_OUT,
+            icon = Ionicon.LogIn,
+            title = null,
+            body = stringResource(R.string.team_server_error_sign_in_required),
+            action = stringResource(R.string.team_server_sign_in_again) to onSignIn,
+            modifier = Modifier.padding(top = top - GlassSpec.feather),
+        )
+    }
+}
+
+/**
+ * Back to home when the open connection [connectionId]'s team server
+ * session ends with a page of it over home: none stays up, as nothing of
+ * it is kept. Only on the change, so a sign-in under way stays.
+ */
+@Composable
+internal fun SessionEndedEffect(graph: AppGraph, nav: NavHostController, connectionId: String?) {
+    if (connectionId == null) return
+    LaunchedEffect(graph, nav, connectionId) {
+        graph.agentConnections.accounts
+            .map { list -> list.firstOrNull { it.id == connectionId }?.sessionEnded == true }
+            .distinctUntilChanged()
+            .drop(1)
+            .collect { ended ->
+                if (ended && nav.currentBackStackEntry?.destination?.hasRoute<HomeRoute>() == false) nav.popBackStack<HomeRoute>(inclusive = false)
+            }
+    }
+}
+
+@Composable
+private fun SignedInAgentHome(
+    graph: AppGraph,
+    id: String,
+    agents: List<AgentConnection>,
+    onOpenConversation: (agentId: String) -> Unit,
+    onCompose: () -> Unit,
+    onSettings: () -> Unit,
+    onSettingsRow: (AgentSettingsRow) -> Unit,
+    onComposeWithPicture: () -> Unit,
+    onOpenArtifacts: () -> Unit,
+    onOpenSurface: (AgentFeedRow.Surface) -> Unit,
+    onOpenArtifact: (ArtifactRef) -> Unit,
+    onOpenFeed: () -> Unit,
+    onSignIn: (server: String) -> Unit,
+    onOpenTodos: () -> Unit,
+    onOpenVaultItem: (surfaceId: String, itemId: String, folder: Boolean, name: String) -> Unit,
+) {
+    val session = remember(id) { graph.agentSessions.session(id) } ?: return
     val feed by session.feed.collectAsStateWithLifecycle()
     val status by session.status.collectAsStateWithLifecycle()
     val syncing by session.isSyncing.collectAsStateWithLifecycle()
