@@ -17,6 +17,7 @@ final class TodoListsViewController: UIViewController {
     private(set) lazy var newItem = UIBarButtonItem(image: .icon(.ionicons("add"), size: 26), menu: newMenu())
     private var pipeline: ApplyPipeline<TodoListsInput, Applied, Output>?
     private var headerWatch: Watch?
+    private var accessWatch: Watch?
     private var following: Task<Void, Never>?
     /// The Surfaces the rows on screen show, by ID.
     private(set) var surfaces: [String: AgentWire.Surface] = [:]
@@ -70,7 +71,13 @@ final class TodoListsViewController: UIViewController {
         HeaderBar.edge(list.edge, in: self)
         newItem.accessibilityLabel = Strings.Todos.new
         newItem.accessibilityIdentifier = "todo-lists-new"
-        navigationItem.rightBarButtonItem = newItem
+        // A role that can't write content makes nothing here.
+        let showNew = { [weak self] in
+            guard let self else { return }
+            navigationItem.rightBarButtonItem = session.gate.allows(.contentWrite) ? newItem : nil
+        }
+        showNew()
+        accessWatch = session.watchAccess(showNew)
 
         let pipeline = ApplyPipeline<TodoListsInput, Applied, Output>(
             input: currentInput(),

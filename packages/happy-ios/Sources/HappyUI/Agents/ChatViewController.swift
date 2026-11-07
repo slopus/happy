@@ -161,6 +161,13 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     /// Holds the accounts' readings followed while this screen shows.
     private var usageWatch: Watch?
     private var headerWatch: Watch?
+    private var accessWatch: Watch?
+    private var homeGateWatch: Watch?
+    /// In the composer's place where the person's role can't write here
+    /// (`RoleGate`): a cloud viewer anywhere, a member in the Chief of Staff's.
+    private let readOnlyNote = UILabel()
+    /// Whether the composer shows: nil until the gate is first read.
+    private var mayWrite: Bool?
     private var headerState: Strings.HeaderStatus.State = .connecting
     private var copied: (id: String, until: Task<Void, Never>)?
     /// The newest row is in view: what arrives keeps it there.
@@ -357,7 +364,21 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         #endif
         applyIntro()
         proposals.onChange = { [weak self] in self?.replan() }
-        watch = session.watch { [weak self] snapshot in self?.follow(snapshot) }
+        watch = session.watch { [weak self] snapshot in self?.follow(snapshot); self?.applyGate() }
+        if !previewing {
+            readOnlyNote.text = Strings.readOnlyConversation
+            readOnlyNote.font = .preferredFont(forTextStyle: .footnote)
+            readOnlyNote.adjustsFontForContentSizeCategory = true
+            readOnlyNote.textColor = UIColor(Palette.textSecondary)
+            readOnlyNote.textAlignment = .center
+            readOnlyNote.numberOfLines = 0
+            readOnlyNote.accessibilityIdentifier = "read-only-note"
+            readOnlyNote.isHidden = true
+            view.addSubview(readOnlyNote)
+            accessWatch = session.watchAccess { [weak self] in self?.applyGate() }
+            homeGateWatch = session.watchHome { [weak self] _ in self?.applyGate() }
+            applyGate()
+        }
         headerWatch = session.watchHeader { [weak self] state in
             guard let self else { return }
             headerState = state
@@ -1359,6 +1380,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         proposalViews[key] = card
         // A preview is only looked at: nothing in it is decided from there.
         if previewing { return card }
+        card.answerable = session.gate.allows(.contentWrite)
         let proposals = proposals
         card.onAccept = { proposals.accept(artifactId) }
         card.onDecline = { proposals.decline(artifactId) }
@@ -1414,6 +1436,11 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         ) { [card] width in card.height(fitting: width) }
         transcriptHeaderScrim.setLayoutFrame(screen.headerScrim)
         card.setLayoutFrame(screen.card)
+        if !readOnlyNote.isHidden {
+            let inset = screen.card.insetBy(dx: 24, dy: 0)
+            let height = readOnlyNote.sizeThatFits(CGSize(width: inset.width, height: .greatestFiniteMagnitude)).height
+            readOnlyNote.frame = CGRect(x: inset.minX, y: screen.card.maxY - height - 12, width: inset.width, height: height)
+        }
         placeSlash()
         meter.isHidden = screen.meter == nil
         if let frame = screen.meter { meter.setLayoutFrame(frame) }
@@ -1431,6 +1458,29 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         layoutTranscript()
         updateHeaderEdge()
         ultraKeyboard?.refresh()
+    }
+
+    // MARK: Role
+
+    /// The Chief of Staff's conversation, known by its bot's `systemKey`
+    /// (the spaces' or home's rows).
+    private var isChiefOfStaff: Bool {
+        let agentId = shownAgentId
+        return !agentId.isEmpty && (session.snapshot.happyAgentId == agentId || session.home.allRows.contains { $0.isHappy && $0.agentId == agentId })
+    }
+
+    /// The composer where the person's role may write here, and a line
+    /// saying why not where it can't: never a send the server refuses.
+    private func applyGate() {
+        guard !previewing else { return }
+        let may = session.gate.allowsSending(toChiefOfStaff: isChiefOfStaff)
+        guard may != mayWrite else { return }
+        mayWrite = may
+        card.configuration.isEditable = may
+        card.isHidden = !may
+        readOnlyNote.isHidden = may
+        if !may { card.blur(); card.textView.resignFirstResponder() }
+        view.setNeedsLayout()
     }
 
     // MARK: Preview

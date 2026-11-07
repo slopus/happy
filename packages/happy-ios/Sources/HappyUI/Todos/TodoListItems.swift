@@ -25,6 +25,8 @@ struct TodoListInput: Sendable {
     var scale: CGFloat = 1
     var displayScale: CGFloat = 2
     var dark = false
+    /// The person's role may change the list: else no add row.
+    var writable = true
 }
 
 /// Where a row's parts are, for a tap or a drag: by row ID.
@@ -91,7 +93,7 @@ enum TodoListItems {
             context.note("todo:missing", Strings.Todos.missing)
             return Output(items: context.items, geometry: context.geometry, active: [])
         }
-        add(&context)
+        if input.writable { add(&context) }
         let active = shownActive(input)
         let completed = state.completed.filter { input.settling[$0.id] == nil }
         if active.isEmpty, completed.isEmpty {

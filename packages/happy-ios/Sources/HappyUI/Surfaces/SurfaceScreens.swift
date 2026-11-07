@@ -20,6 +20,10 @@ enum SurfaceScreens {
         case "todo":
             return TodoListViewController(session: session, surface: surface)
         case "vault":
+            // Listed but closed to the person's role: its name, and why,
+            // with nothing asked of the server.
+            let access = session.vaultAccesses[surface.id] ?? (surface.access != nil ? surface.vaultAccess : session.vaultAccess(surface.id))
+            if access.isLocked { return SurfaceElsewhereViewController(surface: surface, message: Strings.Vaults.locked, identifier: "vault-locked") }
             return VaultViewController(session: session, surfaceId: surface.id, vaultName: surface.name.isEmpty ? Strings.Vaults.title : surface.name)
         default:
             return SurfaceElsewhereViewController(surface: surface)

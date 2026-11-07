@@ -15,5 +15,12 @@ final class BotRefusalTests: XCTestCase {
         XCTAssertNil(Strings.botRefusal(AgentClientError.status(403, code: "system_bot_protected", message: nil)))
         XCTAssertNil(Strings.botRefusal(AgentClientError.revoked))
     }
+
+    /// A role's refusal reads in our words, never the server's.
+    func testARolesRefusalReadsPlainly() {
+        XCTAssertEqual(Strings.refusal(AgentClientError.status(403, code: "forbidden", message: "This needs the content.write permission.")), "You don’t have permission to do that.")
+        XCTAssertEqual(Strings.refusal(AgentClientError.status(409, code: "last_admin_bot", message: nil)), Strings.botRefusal(AgentClientError.status(409, code: "last_admin_bot", message: nil)))
+        XCTAssertNil(Strings.refusal(AgentClientError.status(500, code: nil, message: "x")))
+    }
 }
 #endif

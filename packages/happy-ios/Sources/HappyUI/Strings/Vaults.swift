@@ -5,6 +5,8 @@ import HappyCore
 // they follow Happy Desktop and stay English in every language.
 extension Strings {
     enum Vaults {
+        /// A listed vault the person's role may not open.
+        static let locked = "You don’t have access to this vault."
         static let title = "Vault"
 
         // The browser.

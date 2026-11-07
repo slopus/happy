@@ -15,7 +15,8 @@ final class Session {
     /// which gets no such link.
     private(set) var instanceId: String?
     /// A Happy Cloud server's: its Chief of Staff can be renamed but never
-    /// archived, and it reads onboarding (`followOnboarding`).
+    /// archived, and it reads onboarding, the person's permissions and
+    /// what each vault lets them do (`followCloud`).
     let isCloud: Bool
     /// What it set up for, kept so a screen inside a conversation can
     /// open Settings.
@@ -25,7 +26,16 @@ final class Session {
     /// until read.
     private(set) var onboarding: Onboarding?
     private var onboardingWatchers: [UUID: (Onboarding?) -> Void] = [:]
-    private var onboardingFollowing: Task<Void, Never>?
+    private var cloudFollowing: Task<Void, Never>?
+    /// What the person's role lets them do on a cloud server; nil until
+    /// read, and kept nil if the read fails, so `gate` shows nothing it
+    /// would refuse.
+    private(set) var permissions: Permissions?
+    /// What each vault lets the person do, by Surface ID (cloud only).
+    private(set) var vaultAccesses: [String: VaultAccess] = [:]
+    private var accessWatchers: [UUID: () -> Void] = [:]
+    /// What the controls a role decides follow: a computer gates nothing.
+    var gate: RoleGate { isCloud ? .cloud(permissions) : .open }
     let engine: SyncEngine
     let client: AgentClient
     let store: Store
@@ -139,8 +149,8 @@ final class Session {
     func stop() {
         following?.cancel()
         following = nil
-        onboardingFollowing?.cancel()
-        onboardingFollowing = nil
+        cloudFollowing?.cancel()
+        cloudFollowing = nil
         connectionFollowing?.cancel()
         connectionFollowing = nil
         connectionObservation?.cancel()
@@ -175,7 +185,7 @@ final class Session {
             for await snapshot in updates {
                 guard let self else { return }
                 // Back after a gap: the pictures it couldn't read then.
-                if snapshot.live, !self.snapshot.live { images.retryFailed() }
+                if snapshot.live, !self.snapshot.live { images.retryFailed(); reconnected() }
                 self.snapshot = snapshot
                 for watcher in self.watchers.values { watcher(snapshot) }
             }
@@ -202,30 +212,103 @@ final class Session {
                 receive(home: snapshot)
             }
         }
-        if isCloud { followOnboarding() }
+        if isCloud { followCloud() }
         // AgentConnections owns foreground/background and account switching.
         // Opening an offscreen account's settings never starts another stream.
     }
 
-    /// Reads onboarding, then again on each event that may change it and
-    /// on every resync; one read at a time, the last asked for winning.
-    private func followOnboarding() {
-        let store = store, client = client
-        onboardingFollowing = Task { [weak self] in
-            let events = await store.events(matching: Onboarding.refreshEvents)
-            await self?.readOnboarding(client)
-            for await _ in events {
-                guard !Task.isCancelled else { return }
-                await self?.readOnboarding(client)
+    /// What a cloud server says of the person, read at once and again on
+    /// each event that may change it: onboarding (`Onboarding.refreshEvents`),
+    /// permissions (`role.*`), and the vaults' access (`surface.*`,
+    /// `vault.settings.updated`); everything on a resync. A role changed at
+    /// the accounts service lands with the next token, so a reconnect
+    /// reads the permissions again too (`reconnected`).
+    private func followCloud() {
+        let store = store
+        cloudFollowing = Task { [weak self] in
+            let events = await store.events(matching: Onboarding.refreshEvents + Permissions.refreshEvents + ["surface.", "vault.settings.updated"])
+            self?.read([.onboarding, .permissions, .vaults])
+            for await event in events {
+                guard !Task.isCancelled, let self else { return }
+                guard case .event(let envelope) = event, let type = envelope["type"]?.stringValue else {
+                    read([.onboarding, .permissions, .vaults])
+                    continue
+                }
+                var parts: Set<CloudPart> = []
+                if Onboarding.refreshEvents.contains(where: { type == $0 || ($0.hasSuffix(".") && type.hasPrefix($0)) }) { parts.insert(.onboarding) }
+                if type.hasPrefix("role.") { parts.insert(.permissions) }
+                if type.hasPrefix("surface.") || type == "vault.settings.updated" { parts.insert(.vaults) }
+                read(parts)
             }
         }
     }
 
-    private func readOnboarding(_ client: AgentClient) async {
-        // An older server, or one away: what was read stands.
-        guard let read = try? await client.onboarding(), read != onboarding else { return }
-        onboarding = read
-        for watcher in onboardingWatchers.values { watcher(read) }
+    private enum CloudPart { case onboarding, permissions, vaults }
+    /// One read of each part at a time; asked again meanwhile, it reads
+    /// once more when that lands.
+    private var reading: Set<CloudPart> = []
+    private var readAgain: Set<CloudPart> = []
+
+    private func reconnected() {
+        guard isCloud else { return }
+        read([.permissions, .vaults])
+    }
+
+    private func read(_ parts: Set<CloudPart>) {
+        let client = client
+        for part in parts {
+            guard !reading.contains(part) else { readAgain.insert(part); continue }
+            reading.insert(part)
+            Task { [weak self] in
+                switch part {
+                case .onboarding:
+                    let read = try? await client.onboarding()
+                    if let read, read != self?.onboarding { self?.adopt(read) }
+                case .permissions:
+                    // A failed read keeps what was read: a dropped link
+                    // isn't a role taken away, and nothing is shown it
+                    // never had.
+                    if let read = try? await client.permissions(), read != self?.permissions { self?.adopt(read) }
+                case .vaults:
+                    if let surfaces = (try? await client.surfaces()) ?? nil { self?.adopt(vaults: surfaces) }
+                }
+                guard let self else { return }
+                reading.remove(part)
+                if readAgain.remove(part) != nil { read([part]) }
+            }
+        }
+    }
+
+    private func adopt(_ onboarding: Onboarding) {
+        self.onboarding = onboarding
+        for watcher in onboardingWatchers.values { watcher(onboarding) }
+    }
+
+    private func adopt(_ permissions: Permissions) {
+        self.permissions = permissions
+        for watcher in accessWatchers.values { watcher() }
+    }
+
+    private func adopt(vaults surfaces: [AgentWire.Surface]) {
+        let next = Dictionary(surfaces.filter { $0.type == "vault" }.map { ($0.id, $0.vaultAccess) }, uniquingKeysWith: { first, _ in first })
+        guard next != vaultAccesses else { return }
+        vaultAccesses = next
+        for watcher in accessWatchers.values { watcher() }
+    }
+
+    /// What `surfaceId`'s vault lets the person do. On a cloud server, one
+    /// not yet read is read-only, never locked: it opens, and offers no
+    /// change it may be refused.
+    func vaultAccess(_ surfaceId: String) -> VaultAccess {
+        guard isCloud else { return VaultAccess() }
+        return vaultAccesses[surfaceId] ?? VaultAccess(level: .read)
+    }
+
+    /// Calls `watch` whenever the permissions or a vault's access change.
+    func watchAccess(_ watch: @escaping () -> Void) -> Watch {
+        let id = UUID()
+        accessWatchers[id] = watch
+        return Watch { [weak self] in self?.accessWatchers.removeValue(forKey: id) }
     }
 
     /// Calls `watch` with onboarding as it is and as it changes.
@@ -284,7 +367,7 @@ final class Session {
 
     /// A snapshot from the engine (or a test standing in for it).
     func receive(home snapshot: HomeSnapshot) {
-        if snapshot.live, !home.live { images.retryFailed() }
+        if snapshot.live, !home.live { images.retryFailed(); reconnected() }
         home = snapshot
         madeProfile?.placeholderSeed = personSeed
         updateHeaderState()

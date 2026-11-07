@@ -10,6 +10,8 @@ import UIKit
 @MainActor
 final class SidebarProposalView: UIView {
     var onAccept: (() -> Void)?
+    /// The person's role may decide it (`RoleGate`); else it only shows.
+    var answerable = true
     var onDecline: (() -> Void)?
     /// A section or a row with rows under it was folded or unfolded.
     var onTurn: ((String) -> Void)?
@@ -87,8 +89,8 @@ final class SidebarProposalView: UIView {
         sidebar.apply(shown.rows)
         ground.alpha = shown.status == .declined ? M.declinedAlpha : 1
         let open = shown.status == .open
-        keep.isHidden = !open
-        use.isHidden = !open
+        keep.isHidden = !open || !answerable
+        use.isHidden = !open || !answerable
         keep.isEnabled = shown.answering == nil
         use.isEnabled = shown.answering == nil
         keep.loading = shown.answering == .decline

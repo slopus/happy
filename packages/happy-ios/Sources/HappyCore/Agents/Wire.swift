@@ -302,13 +302,21 @@ extension AgentWire {
         public var type: String
         public var name: String
         public var version: String?
+        /// A vault's on a Happy Cloud server: what the person may do in it
+        /// (`none`, `read`, `write`), and whether it is the Policy vault.
+        public var access: String?
+        public var policyVault: Bool?
 
-        public init(id: String, type: String, name: String, version: String? = nil) {
+        public init(id: String, type: String, name: String, version: String? = nil, access: String? = nil, policyVault: Bool? = nil) {
             self.id = id
             self.type = type
             self.name = name
             self.version = version
+            self.access = access
+            self.policyVault = policyVault
         }
+
+        public var vaultAccess: VaultAccess { VaultAccess(access: access, policyVault: policyVault) }
     }
 
     public struct Mode: Equatable, Sendable, Codable {

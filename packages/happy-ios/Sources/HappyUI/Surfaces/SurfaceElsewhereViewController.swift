@@ -7,8 +7,14 @@ import UIKit
 /// seedling with a line saying to open it on the computer.
 final class SurfaceElsewhereViewController: UIViewController {
     private let empty = EmptyView()
+    private let message: String
+    private let identifier: String
 
-    init(surface: AgentWire.Surface) {
+    /// `message`: why it shows nothing here; by default, that it opens on
+    /// a computer.
+    init(surface: AgentWire.Surface, message: String = Strings.Todos.openOnComputer, identifier: String = "surface-elsewhere") {
+        self.message = message
+        self.identifier = identifier
         super.init(nibName: nil, bundle: nil)
         title = surface.name
         navigationItem.largeTitleDisplayMode = .never
@@ -20,9 +26,9 @@ final class SurfaceElsewhereViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = UIColor(Palette.surface)
         minimalBackButton()
-        empty.message = Strings.Todos.openOnComputer
+        empty.message = message
         empty.showsPair = false
-        empty.accessibilityIdentifier = "surface-elsewhere"
+        empty.accessibilityIdentifier = identifier
         view.addSubview(empty)
     }
 

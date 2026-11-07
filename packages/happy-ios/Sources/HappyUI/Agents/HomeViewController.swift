@@ -547,7 +547,7 @@ final class HomeViewController: UIViewController {
                 runs[rowId] = one.run
             }
         }
-        let actions = HappyCore.Search.ranked(quickActions(), query: query) { $0.title }
+        let actions = HappyCore.Search.ranked(quickActions().filter { !$0.id.hasPrefix("new-work") || session?.gate.allows(.contentWrite) ?? true }, query: query) { $0.title }
         section("actions", Strings.quickActions, actions.map { ($0.id, $0.title, $0.glyph, $0.run) })
         let computer = session?.accountID
         let entries = SettingsIndex.computer
@@ -751,6 +751,8 @@ final class HomeViewController: UIViewController {
     /// `draft`, words said into home's microphone and stopped, wait typed
     /// in its composer; `saying`, words let go of, are sent as it comes in.
     func makeNewWork(library: Bool = false, draft: String? = nil, saying: String? = nil) {
+        // A role that can't write content starts nothing (`RoleGate`).
+        guard session?.gate.allows(.contentWrite) ?? true else { return }
         guard let session, !opening, navigationController?.topViewController === parent || navigationController?.topViewController === self else { return }
         opening = true
         let store = session.store
@@ -782,7 +784,7 @@ final class HomeViewController: UIViewController {
     /// and its row comes in, or, not made (offline, refused), it opens
     /// with the message waiting to retry.
     func startWork(saying words: String) {
-        guard let session else { return }
+        guard let session, session.gate.allows(.contentWrite) else { return }
         guard !session.localSettings.dictationOpensTask else { return makeNewWork(saying: words) }
         Haptics.play(.send)
         let task = NewTask(client: session.client)

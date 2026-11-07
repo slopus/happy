@@ -192,8 +192,12 @@ final class VaultTrashViewController: UIViewController {
 
     // MARK: Acts
 
+    /// Restoring changes the vault: only where the person's role may write.
+    private var writable: Bool { session.vaultAccess(surfaceId).canWrite(session.gate) }
+
     private func open(_ id: String) {
         guard let item = items[id] else { return }
+        guard writable else { return item.entry.isFolder ? () : preview(item) }
         let sheet = UIAlertController(title: item.entry.shownName, message: nil, preferredStyle: .actionSheet)
         sheet.addAction(UIAlertAction(title: Strings.Vaults.restore, style: .default) { [weak self] _ in self?.restore(item) })
         sheet.addAction(UIAlertAction(title: Strings.Vaults.restoreTo, style: .default) { [weak self] _ in self?.restoreTo(item) })
@@ -211,23 +215,23 @@ final class VaultTrashViewController: UIViewController {
 
     private func menu(_ id: String) -> UIMenu? {
         guard let item = items[id] else { return nil }
-        var children: [UIMenuElement] = [
+        var children: [UIMenuElement] = !writable ? [] : [
             UIAction(title: Strings.Vaults.restore, image: Glyphs.image("return-up-back-outline", size: 20)) { [weak self] _ in self?.restore(item) },
             UIAction(title: Strings.Vaults.restoreTo, image: Glyphs.image("folder-outline", size: 20)) { [weak self] _ in self?.restoreTo(item) },
         ]
         if !item.entry.isFolder {
             children.append(UIAction(title: Strings.Vaults.preview, image: Glyphs.image("eye-outline", size: 20)) { [weak self] _ in self?.preview(item) })
         }
-        return UIMenu(children: children)
+        return children.isEmpty ? nil : UIMenu(children: children)
     }
 
     private func swipeActions(_ id: String) -> [ListSwipeAction] {
-        guard let item = items[id] else { return [] }
+        guard let item = items[id], writable else { return [] }
         return [ListSwipeAction(title: Strings.Vaults.restore, image: .icon(.ionicons("return-up-back-outline"), size: 20), color: UIColor(Palette.todoCheck)) { [weak self] in self?.restore(item) }]
     }
 
     private func accessibilityActions(_ id: String) -> [UIAccessibilityCustomAction] {
-        guard let item = items[id] else { return [] }
+        guard let item = items[id], writable else { return [] }
         return [
             UIAccessibilityCustomAction(name: Strings.Vaults.restore) { [weak self] _ in self?.restore(item); return true },
             UIAccessibilityCustomAction(name: Strings.Vaults.restoreTo) { [weak self] _ in self?.restoreTo(item); return true },
