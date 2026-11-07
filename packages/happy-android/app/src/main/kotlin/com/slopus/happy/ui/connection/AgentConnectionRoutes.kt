@@ -149,7 +149,11 @@ private fun ServerSignIn(graph: AppGraph, nav: NavHostController) {
     // Kept once known: Done no longer names the server, and the screen must not change look as it leaves.
     state.server?.let { holder.cloud = HappyCloud.handle(it) }
     val cloud = holder.cloud
-    if (cloud != null && state !is ServerSignInState.NeedsName) {
+    if (cloud != null && state is ServerSignInState.NeedsName) {
+        CloudNameScreen(cloud, saving = state.saving, failed = state.failed, onSubmit = { flow?.submitName(it) }, onBack = { nav.popBackStack() })
+        return
+    }
+    if (cloud != null) {
         CloudConnectingScreen(
             handle = cloud,
             failed = (state as? ServerSignInState.Failed)?.reason,

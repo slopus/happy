@@ -562,6 +562,36 @@ fun CloudConnectingScreen(handle: String, failed: ServerAuthException.Reason?, i
     ) { Spinner() }
 }
 
+/**
+ * A new member's name on a Happy Cloud server, on the gradient as the
+ * screens before it (the team server sign-in's name step, restyled): the
+ * server has no profile for them until it is named (`userId: null`), and
+ * nothing is filled in for them.
+ */
+@Composable
+fun CloudNameScreen(handle: String, saving: Boolean, failed: Boolean, onSubmit: (String) -> Unit, onBack: () -> Unit) {
+    var name by rememberSaveable { mutableStateOf("") }
+    CloudFrame(
+        title = stringResource(R.string.team_server_name_title),
+        body = stringResource(R.string.team_server_name_detail, handle),
+        art = R.raw.state_sparkles,
+        primary = CloudAction(stringResource(R.string.common_continue), { onSubmit(name) }, enabled = name.isNotBlank() && !saving, loading = saving),
+        onBack = onBack,
+    ) {
+        CloudField(
+            name,
+            { name = it },
+            stringResource(R.string.team_server_name_placeholder),
+            ServerSignInTags.NAME,
+            !saving,
+            KeyboardType.Text,
+            ImeAction.Done,
+            capitalization = KeyboardCapitalization.Words,
+        )
+        if (failed) NotePill(stringResource(R.string.team_server_name_failed), HappyTheme.colors.textDestructive)
+    }
+}
+
 /** A large field on the gradient: the theme's surface, a little see-through, 18 type. */
 @Composable
 private fun CloudField(
@@ -573,6 +603,7 @@ private fun CloudField(
     keyboard: KeyboardType,
     ime: ImeAction,
     transformation: VisualTransformation = VisualTransformation.None,
+    capitalization: KeyboardCapitalization = KeyboardCapitalization.None,
 ) {
     Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(CloudSpec.fieldRadius)).background(HappyTheme.colors.surface.copy(alpha = CloudSpec.SURFACE_ALPHA))) {
         HappyTextField(
@@ -585,7 +616,7 @@ private fun CloudField(
             cornerRadius = CloudSpec.fieldRadius,
             singleLine = true,
             enabled = enabled,
-            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false, keyboardType = keyboard, imeAction = ime),
+            keyboardOptions = KeyboardOptions(capitalization = capitalization, autoCorrectEnabled = false, keyboardType = keyboard, imeAction = ime),
             visualTransformation = transformation,
             modifier = Modifier.testTag(tag),
         )
