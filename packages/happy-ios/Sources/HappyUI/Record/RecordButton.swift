@@ -81,6 +81,9 @@ final class RecordButton: UIControl {
         self.style = style
         glyph = IconView(nil, size: style == .toolbar ? 22 : AgentInputCardLayout.Metrics.primaryIconSize)
         super.init(frame: .zero)
+        // The keyboard's language is heard from the first microphone on,
+        // before any press: dictation starts in it.
+        DictationLanguages.observeKeyboard()
         isExclusiveTouch = true
         isMultipleTouchEnabled = false
         addSubview(glyph)

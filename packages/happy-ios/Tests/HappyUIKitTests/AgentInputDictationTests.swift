@@ -40,13 +40,14 @@ final class AgentInputDictationTests: XCTestCase {
     func testARevisionReplacesOnlyWhatChanged() {
         let card = card()
         card.text = "Notes: "
-        card.setDictatedText("Notes: write a high", volatileLength: 12)
+        card.setDictatedText("Notes: write a high", volatileLength: 4)
         let ranges = edits(of: card) {
-            card.setDictatedText("Notes: write a haiku", volatileLength: 13)
+            card.setDictatedText("Notes: write a haiku", volatileLength: 5)
         }
         XCTAssertEqual(card.text, "Notes: write a haiku")
-        // "Notes: write a h" stayed; only "igh" became "aiku".
-        XCTAssertEqual(ranges, [NSRange(location: 16, length: 4)])
+        // "Notes: write a h" stayed; "igh" became "aiku", and only the
+        // revisable word was restyled: the storage edited from "h" on.
+        XCTAssertEqual(ranges, [NSRange(location: 15, length: 5)])
         XCTAssertEqual(card.textMirrorResets, 0)
     }
 
@@ -92,8 +93,8 @@ final class AgentInputDictationTests: XCTestCase {
     func testAnEmojiIsNeverSplit() {
         let card = card()
         // 👩🏽‍💻 and 👩🏽‍🔬 share their first UTF-16 units.
-        card.setDictatedText("hi 👩🏽‍💻", volatileLength: 8)
-        let ranges = edits(of: card) { card.setDictatedText("hi 👩🏽‍🔬", volatileLength: 8) }
+        card.setDictatedText("hi 👩🏽‍💻", volatileLength: 7)
+        let ranges = edits(of: card) { card.setDictatedText("hi 👩🏽‍🔬", volatileLength: 7) }
         XCTAssertEqual(card.text, "hi 👩🏽‍🔬")
         XCTAssertEqual(ranges, [NSRange(location: 3, length: ("👩🏽‍🔬" as NSString).length)])
     }
