@@ -1,0 +1,6 @@
+Please open the settings screen and check the server address. [[slnc 3000]]
+Then look at why the dictation keeps only the last sentence. [[slnc 4000]]
+I think the recognizer starts over after every pause. [[slnc 2500]]
+The fourth sentence talks about bananas, trains, and the weather in Lisbon. [[slnc 5000]]
+After that, write a short haiku about the ocean. [[slnc 3000]]
+Finally, send the whole message to Kirill and wait for an answer.
