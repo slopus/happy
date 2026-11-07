@@ -104,8 +104,9 @@ final class FailureTests: XCTestCase {
         XCTAssertEqual(failure(loaded)?.messageId, "s1")
         XCTAssertNil(failure(loaded)?.resolution)
         XCTAssertEqual(loaded?.title, "In ~/code/sproutsense-dashboard, fix the DST bug")
-        // The draft's mode (the last pick) stands over what the agent last ran with.
-        XCTAssertEqual(loaded?.mode?.providerId, "claude")
+        // The agent's own mode stands over the draft's, which every device
+        // writes picked or not (`AgentModeTests`).
+        XCTAssertEqual(loaded?.mode?.providerId, "codex")
         XCTAssertEqual(loaded?.working, false)
 
         try await conversation.resolveFailure("s1")
