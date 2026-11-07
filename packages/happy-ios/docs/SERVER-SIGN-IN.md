@@ -412,6 +412,24 @@ ported from happy-agent-client's `happyLinks.ts`.
   link opens nothing here is its label as words; a malformed one asking
   to be a button is too. The Markdown parser reads a link's title apart
   from its destination (`LegacyMarkdown.link`).
+- **Entity links in a conversation** (`[label](happy://agents/…)`, found
+  by `HappyMarkdownLinks` as happy-agent-client's `parseHappyLinks` finds
+  them) read as desktop's `messageReferencesResolve`: the live name wins,
+  and the written label stands in while it is read and for what this
+  phone can't look up. `HappyReferences.markdown` turns each into the
+  same reference link a `<happy-KIND/>` tag becomes. An agent or
+  workspace the bots and tasks hold opens its conversation, an artifact
+  its viewer, and a Surface its screen (`SurfaceScreens`). A person is a
+  mention, and a project or service is words. A link naming another
+  installation is its label as words. The bots, tasks and Surfaces come
+  from the account's bootstrap (`SyncEngine` → `Store.externalDirectory`).
+- **File links** (`happy://agents/<id>/files/<path>#L<n>`) are read when
+  tapped (`AgentClient.linkedFile`: the agent's workspace, then
+  `GET /v0/workspaces/:id/file`), then shown read-only by
+  `WorkspaceFileViewController` at the line. A 403 says politely that the
+  person has no access. A file that isn't there, or a server without
+  workspace files yet (404, 501), turns the link into its label as words
+  for as long as the conversation is open.
 - Copy Link, in the bar of an artifact and of a conversation's detail,
   writes the instance form, and isn't offered when the daemon reports no
   `instanceId`.

@@ -300,10 +300,12 @@ public enum LegacyMarkdown {
             url = match.group(1, in: trimmed) ?? match.group(2, in: trimmed) ?? trimmed
             title = match.group(3, in: trimmed) ?? match.group(4, in: trimmed) ?? match.group(5, in: trimmed)
         }
+        // A reference `HappyReferences.markdown` wrote for a Happy link is one too.
+        let written = HappyReferences.reference(link: url) != nil
         let link = HappyLink(url)
-        let button = title == "button" && HappyLink.owns(url)
+        let button = title == "button" && (HappyLink.owns(url) || written)
         let settings = Patterns.settingsHost.firstMatch(in: url) != nil
-        if (button && link == nil) || (settings && (link == nil || trim(label).isEmpty)) {
+        if (button && link == nil && !written) || (settings && (link == nil || trim(label).isEmpty)) {
             return MarkdownSpan(text: label)
         }
         return MarkdownSpan(text: label, url: url, button: button)

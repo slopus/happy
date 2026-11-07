@@ -180,6 +180,8 @@ final class Session {
         store = engine.spaces
         images = Images(client: client, offline: offline)
         warm = WarmChats(client: client, store: store, syntax: syntax, persistence: engine)
+        warm.server = server
+        warm.instanceId = instanceId
         models = ModelState(client: client, offline: offline, store: store)
         drafts = Drafts(offline: offline)
         models.load()
@@ -207,6 +209,7 @@ final class Session {
             guard let self, let account else { return }
             computerName = account.agentConnections.accounts.first { $0.id == accountID }?.name ?? computerName
             instanceId = account.agentConnections.accounts.first { $0.id == accountID }?.instanceId
+            warm.instanceId = instanceId
             receive(status: account.agentConnections.accounts.first { $0.id == accountID }?.status ?? .paused)
         }
         connectionFollowing = Task { [weak self, engine] in

@@ -3,6 +3,7 @@ import AVKit
 import HappyAnalytics
 import HappyCore
 import HappyLayout
+import HappyWire
 import QuickLook
 import UIKit
 import UniformTypeIdentifiers
@@ -154,8 +155,14 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     private var subagentReferences: References {
         var known = references
         known.subagents = chat.subagentTitles
+        known.instanceId = session.instanceId
+        known.closedFiles = closedFiles
         return known
     }
+    /// File links found not to open here, read as their words.
+    private var closedFiles: Set<String> = []
+    /// File links being read, so a second tap waits for the first.
+    private var openingFiles: Set<String> = []
     private var watch: Watch?
     private var modelsWatch: Watch?
     /// Holds the accounts' readings followed while this screen shows.
@@ -1917,6 +1924,11 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             openArtifact(artifact, session: session)
             return
         }
+        if reference.kind == "surface" {
+            guard let surface = references.surfaces[reference.id] else { return }
+            navigationController?.pushViewController(SurfaceScreens.make(session: session, surface: surface), animated: true)
+            return
+        }
         guard let entity = references.entity(reference) else { return }
         // A bot's or task's own conversation opens as its row opens it: renamed in its bar, its mark in the intro.
         let row = sidebarRows.first { $0.kind == .space && $0.agentId == entity.agentId }
@@ -1939,7 +1951,35 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     private func open(link: String) {
         if let reference = HappyReferences.reference(link: link) { open(reference) }
         else if let page = SettingsLinkPlace.page(link) { SettingsLinks.open(page, session: session, from: self) }
+        else if let file = ChatLinks.file(link) { open(file) }
+        else if HappyLink.isHappyURL(link) { return }
         else if let url = URL(string: link) { openBrowser(url, session: session, agentID: media.agentId) }
+    }
+
+    /// A file link, read before anything shows: the file read-only over
+    /// this conversation; one that isn't there to open (a server without
+    /// workspace files answers 404 or 501) becomes its words.
+    private func open(_ file: HappyLink.File) {
+        guard let url = HappyLink(.file(file)).url, !openingFiles.contains(url) else { return }
+        openingFiles.insert(url)
+        let client = session.client
+        Task { [weak self] in
+            let outcome = await client.linkedFile(file)
+            guard let self else { return }
+            openingFiles.remove(url)
+            switch outcome {
+            case .file(let content):
+                let viewer = WorkspaceFileViewController(session: session, file: file, content: content)
+                navigationController?.pushViewController(viewer, animated: true)
+            case .forbidden:
+                Alerts.show(Strings.FileLinks.noAccessTitle, Strings.FileLinks.noAccess, on: self)
+            case .unavailable:
+                closedFiles.insert(url)
+                replan()
+            case .failed(let message):
+                Alerts.show(Strings.FileLinks.failedTitle, message ?? Strings.FilesDetail.failedToRead, on: self)
+            }
+        }
     }
 
     private func updateToolScreens() {

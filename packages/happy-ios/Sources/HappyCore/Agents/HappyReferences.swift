@@ -1,4 +1,5 @@
 import Foundation
+import HappyWire
 
 /// Happy reference tags (`<happy-KIND id="…"/>`) an agent writes inline in
 /// its Markdown: a tag carries only identity, and the reader shows the live
@@ -31,7 +32,7 @@ public enum HappyReferences {
     }
 
     /// The kinds a reader resolves; any other well-formed kind reads as inert text.
-    public static let knownKinds: Set<String> = ["artifact", "agent", "workspace", "project", "service", "user"]
+    public static let knownKinds: Set<String> = ["artifact", "agent", "workspace", "project", "service", "surface", "user"]
 
     static let maxTagLength = 512
     static let maxValueLength = 256
@@ -120,8 +121,50 @@ public enum HappyReferences {
     /// `messageReferencesResolve`): a reference that opens is a link with
     /// its name, any other its words; a kind this build doesn't know is
     /// never asked about.
-    public static func markdown(_ text: String, view: (Reference) -> References.View) -> String {
-        replace(text) { reference in
+    /// Happy links written as Markdown (`[label](happy://agents/…)`) read
+    /// the same way, the live name winning over the written label, which
+    /// stands in while the name is read and for what can't be looked up.
+    /// `instanceId` is the installation the conversation is on: a link to
+    /// another one is its label as words, as is a file link `files` says
+    /// can't be opened here.
+    public static func markdown(
+        _ text: String, instanceId: String? = nil, files: (HappyLink.File) -> Bool = { _ in true }, view: (Reference) -> References.View
+    ) -> String {
+        let linked = HappyMarkdownLinks.replace(text) { match in
+            guard let link = match.link else { return nil }
+            // A button stays one, which the screen draws as its words where
+            // it opens nothing, in its place among the others.
+            func words(_ name: String) -> String {
+                guard match.button, let url = link.url else { return name }
+                return "[\(name)](\(url) \"button\")"
+            }
+            if let named = link.instanceId, named != instanceId { return words(Self.words(match, link)) }
+            if case .file(let file) = link.target, !files(file) { return words(Self.words(match, link)) }
+            let reference: Reference
+            switch link.target {
+            case .settings, .file:
+                // Opened by the screen as written; one naming this installation reads as the plain form.
+                guard link.instanceId != nil, let url = HappyLink(link.target).url else { return nil }
+                return "[\(match.label)](\(url)\(match.button ? " \"button\"" : ""))"
+            case .reference(let named):
+                reference = Reference(kind: named.kind.rawValue, id: named.id, version: named.version, workspaceId: named.workspaceId)
+            }
+            let shown = view(reference)
+            let written = label(match.label)
+            let name: String
+            switch shown {
+            case .link(_, true) where !written.isEmpty: name = written
+            case .text(let words) where words == placeholder(reference) && !written.isEmpty: name = written
+            default: name = label(shown.label).isEmpty ? label(placeholder(reference)) : label(shown.label)
+            }
+            let title = match.button ? " \"button\"" : ""
+            switch shown {
+            case .link: return "[\(name)](\(self.link(reference))\(title))"
+            case .mention(_, let me): return "[\(name)](\(mentionLink(reference, me: me)))"
+            case .text: return words(name)
+            }
+        }
+        return replace(linked) { reference in
             let shown = knownKinds.contains(reference.kind) ? view(reference) : .text(placeholder(reference))
             let name = label(shown.label).isEmpty ? label(placeholder(reference)) : label(shown.label)
             switch shown {
@@ -134,9 +177,39 @@ public enum HappyReferences {
 
     /// The same words as plain text, for what is read aloud or copied
     /// (`messageReferencesPlainText`).
-    public static func plain(_ text: String, view: (Reference) -> References.View) -> String {
-        replace(text) { reference in
+    public static func plain(_ text: String, instanceId: String? = nil, view: (Reference) -> References.View) -> String {
+        let linked = HappyMarkdownLinks.replace(text) { match in
+            guard let link = match.link else { return label(match.label) }
+            if let named = link.instanceId, named != instanceId { return words(match, link) }
+            guard case .reference(let named) = link.target else {
+                let written = label(match.label)
+                if !written.isEmpty { return written }
+                if case .file(let file) = link.target { return file.path }
+                return "Settings"
+            }
+            let reference = Reference(kind: named.kind.rawValue, id: named.id, version: named.version, workspaceId: named.workspaceId)
+            let shown = view(reference)
+            let written = label(match.label)
+            switch shown {
+            case .link(_, true) where !written.isEmpty: return written
+            case .text(let words) where words == placeholder(reference) && !written.isEmpty: return written
+            default: return shown.label
+            }
+        }
+        return replace(linked) { reference in
             knownKinds.contains(reference.kind) ? view(reference).label : placeholder(reference)
+        }
+    }
+
+    /// A link to what this conversation's installation doesn't hold: its
+    /// label, or words for what it names.
+    static func words(_ match: HappyMarkdownLinks.Match, _ link: HappyLink) -> String {
+        let written = label(match.label)
+        if !written.isEmpty { return written }
+        switch link.target {
+        case .file(let file): return label(file.path)
+        case .settings: return "Settings"
+        case .reference(let named): return placeholder(Reference(kind: named.kind.rawValue, id: named.id))
         }
     }
 
