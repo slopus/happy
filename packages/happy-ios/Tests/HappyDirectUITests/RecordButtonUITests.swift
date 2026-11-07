@@ -98,11 +98,26 @@ final class RecordButtonUITests: XCTestCase {
         print("RECORD_PROBE exists=\(record.exists) hittable=\(record.exists && record.isHittable)")
     }
 
+    /// What `composer` read while it was watched, each change once: the
+    /// words as dictation wrote them in.
+    private func live(_ composer: XCUIElement, for seconds: TimeInterval) -> [String] {
+        var seen: [String] = []
+        let deadline = Date().addingTimeInterval(seconds)
+        repeat {
+            let value = composer.value as? String ?? ""
+            if value.contains(" "), value != seen.last { seen.append(value) }
+            pause(0.2)
+        } while Date() < deadline
+        print("RECORD_LIVE \(seen)")
+        return seen
+    }
+
     /// The whole story, filmed: idle; a tap that lands locked, cancelled;
     /// a hold slid away; a hold let go, whose words start a task that
     /// opens; then that task's composer: the microphone and send changing
-    /// places, a locked recording stopped into a draft, and one sent with
-    /// the big circle.
+    /// places, a locked recording whose words come in as they are said,
+    /// cancelled back to empty, one stopped into a draft, and one sent
+    /// with the big circle.
     func testFilm() {
         home()
         allowAlerts(for: 3)
@@ -147,9 +162,22 @@ final class RecordButtonUITests: XCTestCase {
         for _ in 0..<6 { composer.typeText(XCUIKeyboardKey.delete.rawValue) }
         pause(1.5)
 
-        // A tap lands locked; stop: the words wait in the composer.
+        // A tap lands locked: the words come into the composer as they
+        // are said; cancel, and it is empty again.
         chatRecord.tap()
-        pause(4)
+        let heard = live(composer, for: 2.5)
+        capture("6a-chat-live")
+        XCTAssertGreaterThanOrEqual(heard.count, 3, "the words didn't come in as they were said: \(heard)")
+        XCTAssertTrue(app.buttons["record-cancel"].waitForExistence(timeout: 3))
+        app.buttons["record-cancel"].tap()
+        pause(1.5)
+        capture("6b-chat-cancelled")
+        XCTAssertFalse((composer.value as? String ?? "").contains("Write"), "cancel left the words in the composer")
+        XCTAssertTrue(chatRecord.waitForExistence(timeout: 5))
+
+        // Locked again; stop: the words wait in the composer.
+        chatRecord.tap()
+        _ = live(composer, for: 4)
         capture("6-chat-locked")
         let stop = app.buttons["record-stop"]
         XCTAssertTrue(stop.waitForExistence(timeout: 3))

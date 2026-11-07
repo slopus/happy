@@ -441,6 +441,12 @@ public final class AgentInputCardView: UIView {
     var actionRowFrame: CGRect {
         desktopLayout(width: bounds.width)?.actionRow ?? layout(width: bounds.width).actionRow
     }
+
+    /// The recording is over: send takes the microphone's place if the
+    /// words it left are to be sent, as typing them would have.
+    func recordEnded() {
+        updateRecord(animated: window != nil)
+    }
     private var installedDesktopControls: AgentInputDesktopControlsView?
     /// A phone's compact card never mounts the hidden desktop button tree.
     /// Keep it after the first wide layout so resizing preserves its controls.
@@ -483,6 +489,9 @@ public final class AgentInputCardView: UIView {
     /// A text set not to animate its height, until its own measurement
     /// lands or the person edits it.
     private var quietGrowth: ComposerTextHeights.QuietGrowth?
+    /// Where dictation's dimmed tail starts, while there is one
+    /// (`setDictatedText`).
+    private var dimmedFrom: Int?
     /// The height a `premeasure`d text brought, for `textChanged` to file
     /// under its revision.
     private var premeasured: PremeasuredText?
@@ -735,6 +744,61 @@ public final class AgentInputCardView: UIView {
 
     public var selectedRange: NSRange { textView.selectedRange }
 
+    /// The words being dictated, as the recognizer revises them
+    /// (`RecordButton.onTranscript`), the way the keyboard's dictation
+    /// writes them: only what differs from the text already there is
+    /// replaced, so the words before it never redraw, and the last
+    /// `volatileLength` UTF-16 units, which the recognizer may still change,
+    /// are drawn dimmed. A caret at the end stays at the end, the newest
+    /// words in view; anywhere else it stays where it is.
+    func setDictatedText(_ text: String, volatileLength: Int) {
+        let storage = textView.textStorage
+        let units = text as NSString
+        let oldLength = storage.length
+        let changed = !storage.mutableString.isEqual(to: text)
+        let selection = textView.selectedRange
+        let followsEnd = NSMaxRange(selection) == oldLength
+        let shared = changed ? Self.sharedPrefix(storage.mutableString, units) : units.length
+        let dimFrom = units.length - min(max(volatileLength, 0), units.length)
+        let restyleFrom = min(shared, dimmedFrom ?? shared, dimFrom)
+        storage.beginEditing()
+        if changed {
+            storage.replaceCharacters(in: NSRange(location: shared, length: oldLength - shared), with: units.substring(from: shared))
+        }
+        let restyled = NSRange(location: restyleFrom, length: units.length - restyleFrom)
+        storage.setAttributes(inputStyle.attributes(color: UIColor(Palette.inputText)), range: restyled)
+        if dimFrom < units.length {
+            storage.addAttribute(.foregroundColor, value: UIColor(Palette.inputText).withAlphaComponent(Self.dictatedTailAlpha),
+                                 range: NSRange(location: dimFrom, length: units.length - dimFrom))
+        }
+        storage.endEditing()
+        dimmedFrom = dimFrom < units.length ? dimFrom : nil
+        textView.typingAttributes = inputStyle.attributes(color: UIColor(Palette.inputText))
+        let location = followsEnd ? units.length : min(selection.location, units.length)
+        textView.selectedRange = NSRange(location: location, length: followsEnd ? 0 : min(selection.length, units.length - location))
+        guard changed else { return }
+        // The edit went under the text view's own: its undo steps would
+        // point into text that is no longer there.
+        textView.undoManager?.removeAllActions()
+        quietGrowth = nil
+        textChanged()
+        if followsEnd, textView.isScrollEnabled { textView.scrollRangeToVisible(NSRange(location: units.length, length: 0)) }
+    }
+
+    /// The words the recognizer may still revise: the text's colour, fainter.
+    static let dictatedTailAlpha: CGFloat = 0.5
+
+    /// The UTF-16 length `a` and `b` start with in common, never ending
+    /// inside a composed character (an emoji, a letter and its accent).
+    private static func sharedPrefix(_ a: NSString, _ b: NSString) -> Int {
+        let limit = min(a.length, b.length)
+        var shared = 0
+        while shared < limit, a.character(at: shared) == b.character(at: shared) { shared += 1 }
+        if shared > 0, shared < b.length { shared = min(shared, b.rangeOfComposedCharacterSequence(at: shared).location) }
+        if shared > 0, shared < a.length { shared = min(shared, a.rangeOfComposedCharacterSequence(at: shared).location) }
+        return shared
+    }
+
     /// Replaces the text and moves the caret (`setTextAndSelection`).
     /// Reports the change to the delegate, as a keystroke would.
     /// `animatesHeight: false` reports the new height, then and when it is
@@ -744,6 +808,7 @@ public final class AgentInputCardView: UIView {
         // `textChanged` moves the revision to this text's.
         quietGrowth = animatesHeight ? nil : .init(generation: textGeneration, revision: textRevision + 1)
         textView.attributedText = inputStyle.attributedString(text, color: UIColor(Palette.inputText))
+        dimmedFrom = nil
         textView.typingAttributes = inputStyle.attributes(color: UIColor(Palette.inputText))
         let length = (text as NSString).length
         let location = min(max(0, selection.location), length)

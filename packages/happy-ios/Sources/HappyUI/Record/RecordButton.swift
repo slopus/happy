@@ -48,6 +48,12 @@ final class RecordButton: UIControl {
 
     /// What was heard, when anything was.
     var onResult: ((Result) -> Void)?
+    /// The words so far, while recording and until the result: those the
+    /// recognizer has settled, then those it may still revise. Each call
+    /// replaces the last.
+    var onTranscript: ((_ finalized: String, _ volatile: String) -> Void)?
+    /// Thrown away, or nothing was heard: what `onTranscript` showed goes.
+    var onDiscard: (() -> Void)?
     /// Recording began (true) or ended (false), for the host to make room
     /// for the bar (home's toolbar morphs into it) or to fade what the bar
     /// covers. Heard once the recording screen is up, and as it goes.
@@ -87,6 +93,9 @@ final class RecordButton: UIControl {
         applyColors()
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.applyColors() }
         dictation.onLevel = { [weak self] level in self?.overlay?.setLevel(level) }
+        dictation.onTranscript = { [weak self] finalized, volatile in
+            self?.onTranscript?(finalized, volatile)
+        }
         NotificationCenter.default.addObserver(self, selector: #selector(resigned), name: UIApplication.didEnterBackgroundNotification, object: nil)
     }
 
@@ -276,6 +285,7 @@ final class RecordButton: UIControl {
             dictation.cancel()
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
             phase = .idle
+            onDiscard?()
             return
         }
         glyph.isHidden = true
@@ -287,6 +297,7 @@ final class RecordButton: UIControl {
             glyph.isHidden = false
             phase = .idle
             guard !text.isEmpty else {
+                onDiscard?()
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
                 accessibilityValue = Strings.Record.nothingHeard
                 return

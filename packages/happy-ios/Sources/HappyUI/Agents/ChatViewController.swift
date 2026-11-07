@@ -304,6 +304,16 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
                 return RecordBar(frame: RecordOverlayLayout.capsule(button: button, leading: leading), cornerRadius: button.height / 2, ground: .grown)
             }
             record.onResult = { [weak self] result in self?.dictated(result) }
+            // The words come into the composer as they are said, after
+            // what was there; thrown away, it is as it was.
+            record.onRecording = { [weak self] recording in
+                guard let self, recording else { return }
+                dictationOriginal = (card.text, card.selectedRange)
+            }
+            record.onTranscript = { [weak self] finalized, volatile in
+                self?.showDictation(finalized + volatile, volatileLength: (volatile as NSString).length)
+            }
+            record.onDiscard = { [weak self] in self?.discardDictation() }
             card.recordButton = record
         }
         card.textView.accessibilityIdentifier = "composer"
@@ -947,6 +957,9 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     private var saying: String?
     /// The microphone in the composer (`RecordButton`).
     private let record = RecordButton(style: .composer)
+    /// The composer as it was when the microphone was pressed, while
+    /// dictation writes after it.
+    private var dictationOriginal: (text: String, selection: NSRange)?
     /// Waits for it to be made, then names this screen after its row.
     private var made: Task<Void, Never>?
 
@@ -1668,14 +1681,28 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         switch result {
         case .send(let said), .draft(let said): words = said
         }
-        let typed = card.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let combined = typed.isEmpty ? words : typed + " " + words
-        card.setText(combined, selection: NSRange(location: (combined as NSString).length, length: 0))
-        agentInputCardDidChangeText(card)
+        showDictation(words, volatileLength: 0)
+        dictationOriginal = nil
+        card.recordEnded()
         switch result {
         case .send: send()
         case .draft: card.focus()
         }
+    }
+
+    /// What has been said so far, after what was typed before the press.
+    private func showDictation(_ words: String, volatileLength: Int) {
+        guard let original = dictationOriginal else { return }
+        let separator = original.text.isEmpty || original.text.last?.isWhitespace == true || words.isEmpty ? "" : " "
+        card.setDictatedText(original.text + separator + words, volatileLength: volatileLength)
+    }
+
+    /// Cancelled, or nothing heard: the composer as it was before the press.
+    private func discardDictation() {
+        guard let original = dictationOriginal else { return }
+        dictationOriginal = nil
+        if card.text != original.text { card.setText(original.text, selection: original.selection) }
+        card.recordEnded()
     }
 
     /// New work said into home's microphone: its words go as the first
