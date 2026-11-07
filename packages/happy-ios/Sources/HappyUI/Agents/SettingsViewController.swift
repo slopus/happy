@@ -735,7 +735,14 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             Row(Index.terms, action: { [weak self] in self?.openBrowser(Strings.Links.terms) }),
             Row(Index.eula, action: { [weak self] in self?.openBrowser(Strings.Links.eula) }),
             Row(Index.version, value: SettingsIndexModel.versionDetail(version: context.version, variant: context.variant), accessory: .none, action: { [weak self] in self?.versionTapped() }),
-        ].withFooter(Strings.Settings.aboutFooter)
+        ].withFooter(aboutFooter)
+    }
+
+    /// The relay app's words, about keys kept on this phone, aren't true
+    /// of a Happy Cloud server, whose agents and data are on the server.
+    private var aboutFooter: String {
+        let cloud = shown.flatMap { Session.session(for: $0.id, context: context) }?.isCloud == true
+        return cloud ? Strings.HappyCloud.aboutFooter : Strings.Settings.aboutFooter
     }
 
     /// What search looks through: the page's rows and the profiles.
