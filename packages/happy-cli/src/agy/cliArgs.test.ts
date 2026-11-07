@@ -51,4 +51,11 @@ describe('buildAgyArgs', () => {
     expect(idx).toBeGreaterThanOrEqual(0);
     expect(args[idx + 1]).toBe('10m');
   });
+
+  it('passes --log-file when provided', () => {
+    const args = buildAgyArgs({ prompt: 'p', permissionMode: 'default', logFile: '/tmp/agy.log' });
+    const idx = args.indexOf('--log-file');
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(args[idx + 1]).toBe('/tmp/agy.log');
+  });
 });
