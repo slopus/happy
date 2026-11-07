@@ -211,6 +211,80 @@ final class HappyCloudUITests: XCTestCase {
         capture("16-\(role)-signed-out")
     }
 
+    /// The settings links and buttons an agent wrote on a cloud server
+    /// (`.context/links-task.py` makes the task): each opens where
+    /// `SettingsLinkPlace` says, the web fallback in Safari.
+    func testBSettingsLinksOpenWhereTheySay() throws {
+        guard let login = env["QA_LOGIN"], let password = env["QA_PASSWORD"], let server = env["LINKS_SERVER"] else { throw XCTSkip("no links run") }
+        app.launch()
+        signInWithTestAccount(login: login, password: password)
+        let card = element("cloud-server-\(server)")
+        require(card.waitForExistence(timeout: 30), "@\(server) isn't among \(login)'s servers")
+        card.tap()
+        let switcher = element("account-switcher")
+        require(switcher.waitForExistence(timeout: 90), "no home of @\(server)")
+        Thread.sleep(forTimeInterval: 4)
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Settings links check'")).firstMatch
+        for _ in 0..<3 where !row.isHittable { app.swipeUp() }
+        require(row.waitForExistence(timeout: 30), "no Settings links check on home")
+        row.tap()
+        func button(_ label: String) -> XCUIElement { app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch }
+        let general = button("General settings")
+        require(general.waitForExistence(timeout: 20), "no General settings button")
+        Thread.sleep(forTimeInterval: 2)
+        capture("20-links-task")
+        tree("20-links-task", app)
+        let chat = app.navigationBars.buttons.element(boundBy: 0)
+
+        general.tap()
+        let settingsRow = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'settings:'")).firstMatch
+        require(settingsRow.waitForExistence(timeout: 10), "General settings didn't open Settings")
+        capture("21-general")
+        chat.tap()
+        require(general.waitForExistence(timeout: 10), "not back in the task")
+
+        button("Your servers").tap()
+        let close = element("cloud-close")
+        require(close.waitForExistence(timeout: 10), "Your servers didn't open Happy Cloud")
+        Thread.sleep(forTimeInterval: 1.5)
+        capture("22-servers")
+        close.tap()
+        require(general.waitForExistence(timeout: 10), "not back in the task after Happy Cloud")
+
+        let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
+        button("Usage on the web").tap()
+        require(safari.wait(for: .runningForeground, timeout: 15), "Usage on the web didn't open Safari")
+        Thread.sleep(forTimeInterval: 4)
+        capture("23-usage-web")
+        tree("23-usage-web", safari)
+        app.activate()
+        require(general.waitForExistence(timeout: 15), "not back in the task after Safari")
+
+        // The inline link, the line under the last button: its word.
+        let usage = button("Usage on the web")
+        usage.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 1)).withOffset(CGVector(dx: 30, dy: 22)).tap()
+        require(safari.wait(for: .runningForeground, timeout: 15), "the Providers link didn't open Safari")
+        Thread.sleep(forTimeInterval: 4)
+        capture("24-providers-web")
+        tree("24-providers-web", safari)
+        app.activate()
+        require(general.waitForExistence(timeout: 15), "not back in the task after Safari")
+        goBack(switcher)
+
+        let gear = app.buttons["settings"].firstMatch
+        require(gear.waitForExistence(timeout: 5), "no settings on the home")
+        gear.tap()
+        Thread.sleep(forTimeInterval: 1.5)
+        let rowOut = element("settings:disconnect")
+        for _ in 0..<4 where !rowOut.isHittable { app.swipeUp() }
+        require(rowOut.waitForExistence(timeout: 5), "no Sign Out on the server's settings")
+        rowOut.tap()
+        let confirm = app.alerts.buttons["Sign Out"]
+        require(confirm.waitForExistence(timeout: 5), "no confirmation")
+        confirm.tap()
+        Thread.sleep(forTimeInterval: 2)
+    }
+
     /// A home row by its name, scrolled to if it must be.
     private func open(_ name: String) {
         let row = app.buttons["row:space:\(name)"].firstMatch
