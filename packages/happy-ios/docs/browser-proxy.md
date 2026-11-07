@@ -109,7 +109,8 @@ page's, with its host as the subtitle. Embedded in an artifact, the buttons go
 in the artifact's header and its title stays. The page runs the full height,
 under the header and the home indicator, and WebKit insets its content by the
 safe area, so nothing moves when the header appears. Until it paints, the
-screen's surface shows through (`isOpaque = false`). Pull to refresh reloads.
+screen's surface shows through (`isOpaque = false`). There is no pull to
+refresh (Steve, for both apps); the header's button reloads.
 
 The back swipe is the page's while it has history (`TakesBackSwipe`): the
 shell's pop doesn't begin, and WebKit's own swipe goes back a page. On the

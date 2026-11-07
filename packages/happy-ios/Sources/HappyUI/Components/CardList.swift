@@ -392,13 +392,12 @@ final class CardListRowView: ListRowView, UIContextMenuInteractionDelegate, UIGe
 /// mounted, each drawn off the main thread, a change applying only the
 /// rows whose revision moved. Like home's list it rides inside a scroll
 /// view that never scrolls under a finger (`SidebarListEdge`), so the
-/// bar's soft edge and the indicator follow it. A pull past the top
-/// asks for a refresh when the screen takes one.
+/// bar's soft edge and the indicator follow it. There is no pull to
+/// refresh: what it lists follows its feed on its own.
 @MainActor
 final class CardListView: UIView {
     let list = UltraListView(engineMode: .keyframe)
     let edge = SidebarListEdge()
-    private let spinner = UIActivityIndicatorView(style: .medium)
 
     var onSelect: ((String) -> Void)?
     /// A tap on the row `id`, where in it: set for rows with parts (a
@@ -412,8 +411,6 @@ final class CardListView: UIView {
     var menu: ((String) -> UIMenu?)?
     /// Makes the view an overlay asks for on the row `id`.
     var makeOverlay: ((CardOverlay, _ id: String) -> UIView?)?
-    /// Set to let a pull past the top refresh.
-    var onRefresh: (() -> Void)?
     var onScroll: (() -> Void)?
 
     private(set) var items: [CardItem] = []
@@ -424,10 +421,6 @@ final class CardListView: UIView {
     private var rows: [String: CardListRow] = [:]
     private var tops: [CGFloat] = []
     private(set) var contentInsets = UIEdgeInsets.zero
-    private var refreshRoom: CGFloat = 0
-    /// Pulled this far past the top, a release refreshes.
-    static let refreshPull: CGFloat = 64
-    static let refreshRoomHeight: CGFloat = 44
 
     /// The widest the list gets: on a wide window it stands centred in the
     /// readable column, as home's does, so no row's bitmap is wider than
@@ -449,29 +442,14 @@ final class CardListView: UIView {
 
     private var listSize: CGSize? { contentWidth > 0 ? CGSize(width: contentWidth, height: bounds.height) : nil }
 
-    /// The refresh asked for is under way: the spinner holds its room.
-    var refreshing = false {
-        didSet {
-            guard refreshing != oldValue else { return }
-            if refreshing { spinner.startAnimating() } else { spinner.stopAnimating() }
-            refreshRoom = refreshing ? Self.refreshRoomHeight : 0
-            applyInsets(animated: true)
-            placeSpinner()
-        }
-    }
-
     override init(frame: CGRect) {
         super.init(frame: frame)
         list.accessibilityIdentifier = "card-list"
         list.swipeActions.allowsFullSwipe = false
         list.onScroll = { [weak self] _ in self?.scrolled() }
         list.onVisibleWindowChanged = { [weak self] in self?.mirror() }
-        list.didEndDragging = { [weak self] in self?.released() }
         addSubview(edge)
         edge.addSubview(list)
-        spinner.hidesWhenStopped = false
-        spinner.alpha = 0
-        addSubview(spinner)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -479,7 +457,6 @@ final class CardListView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         resizeList()
-        placeSpinner()
     }
 
     override func safeAreaInsetsDidChange() {
@@ -553,21 +530,21 @@ final class CardListView: UIView {
         let atTop = isAtTop
         contentInsets = insets
         edge.verticalScrollIndicatorInsets = insets
-        applyInsets(animated: false, keepsTop: atTop)
+        applyInsets(keepsTop: atTop)
     }
 
-    private func applyInsets(animated: Bool, keepsTop: Bool = true) {
-        let top = contentInsets.top + refreshRoom
+    private func applyInsets(keepsTop: Bool) {
+        let top = contentInsets.top
         edge.contentInset = UIEdgeInsets(top: top, left: 0, bottom: contentInsets.bottom, right: 0)
         resizeList()
-        list.applyChanges(newSize: listSize, newInsets: .init(top: top, bottom: contentInsets.bottom), anchorMode: keepsTop ? .automatic : .preserveVisibleContent, compensatesInsetChange: keepsTop, transition: animated && window != nil ? .easeInOut(0.3) : .none)
+        list.applyChanges(newSize: listSize, newInsets: .init(top: top, bottom: contentInsets.bottom), anchorMode: keepsTop ? .automatic : .preserveVisibleContent, compensatesInsetChange: keepsTop, transition: .none)
         mirror()
     }
 
     /// The list's place as a scroll view's `contentOffset.y`: `-top` at
     /// rest at its top, less under a pull.
     var contentOffsetY: CGFloat {
-        let top = contentInsets.top + refreshRoom
+        let top = contentInsets.top
         for index in list.loadedIndexRange where tops.indices.contains(index) {
             guard let frame = list.settledFrame(at: index) else { continue }
             return tops[index] - frame.minY
@@ -575,7 +552,7 @@ final class CardListView: UIView {
         return -top
     }
 
-    var isAtTop: Bool { contentOffsetY <= -(contentInsets.top + refreshRoom) + 1 }
+    var isAtTop: Bool { contentOffsetY <= -contentInsets.top + 1 }
 
     func scrollToTop(animated: Bool) { list.scrollToTop(animated: animated) }
 
@@ -590,7 +567,6 @@ final class CardListView: UIView {
         GymFrameMeter.noteScroll()
         #endif
         mirror()
-        placeSpinner()
         onScroll?()
     }
 
@@ -599,29 +575,6 @@ final class CardListView: UIView {
         guard abs(edge.contentOffset.y - offset) > 0.01 else { return }
         edge.contentOffset.y = offset
         list.frame.origin = edge.bounds.origin
-    }
-
-    // MARK: Refresh
-
-    /// How far past its top the list is pulled.
-    private var pull: CGFloat { max(0, -(contentOffsetY + contentInsets.top + refreshRoom)) }
-
-    private func placeSpinner() {
-        guard onRefresh != nil else { spinner.alpha = 0; return }
-        let room = refreshing ? Self.refreshRoomHeight : pull
-        let side = spinner.intrinsicContentSize
-        spinner.frame = CGRect(x: (column.midX - side.width / 2).rounded(), y: (contentInsets.top + (room - side.height) / 2).rounded(), width: side.width, height: side.height)
-        spinner.alpha = refreshing ? 1 : min(1, pull / Self.refreshPull)
-        if !refreshing {
-            if pull > 8 { spinner.startAnimating() } else { spinner.stopAnimating() }
-        }
-    }
-
-    private func released() {
-        guard let onRefresh, !refreshing, pull >= Self.refreshPull else { return }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        refreshing = true
-        onRefresh()
     }
 }
 #endif

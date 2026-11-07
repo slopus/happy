@@ -503,6 +503,10 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
   emoji sits on a tile like every other row's glyph, the tile's size (30)
   where the tile goes and orange for the boba, at the row's top when the
   row grows (`SettingsLayout`'s art row, `SupportBobaArt`).
+- **No pull to refresh** (Steve, for both apps), on any list or page. A
+  list stays current through its feed (events, a resync after a gap, a
+  read when it opens or the stream reconnects); a page reloads from its
+  header's button.
 
 ## Record kinds: current vs retired
 

@@ -188,9 +188,9 @@ final class ArtifactCatalogFeedTests: XCTestCase {
         let last = await watch(feed)
         await feed.start()
         try await eventually { last.all.contains { $0.items.map(\.id) == ["old"] && $0.loaded } }
-        try await eventually { last.state.items.map(\.id) == ["a", "b"] && !last.state.refreshing }
-        let kept = await box.kept
-        XCTAssertEqual(kept?.arrayValue?.compactMap { $0["id"]?.stringValue }, ["a", "b"])
+        try await eventually { last.state.items.map(\.id) == ["a", "b"] }
+        // Written down after it shows.
+        try await eventually { await box.kept?.arrayValue?.compactMap { $0["id"]?.stringValue } == ["a", "b"] }
         await feed.stop()
     }
 
@@ -227,7 +227,7 @@ final class ArtifactCatalogFeedTests: XCTestCase {
         let feed = make(box, events: events)
         let last = await watch(feed)
         await feed.start()
-        try await eventually { last.state.error != nil && !last.state.refreshing }
+        try await eventually { last.state.error != nil }
         XCTAssertEqual(last.state.items.map(\.id), ["old"])
         await box.set(status: 404)
         await feed.refresh()

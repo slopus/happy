@@ -9,8 +9,7 @@ import UltraView
 /// the previous seven and thirty days, then by month), newest first. It
 /// opens on the list it last showed, kept on the phone by the account's
 /// catalog (`SyncEngine.artifacts`, which follows its events and reads it
-/// whole after a gap); a pull reads it again. The bar's search filters by title
-/// and kind. A row opens the artifact viewer on the latest version.
+/// whole after a gap). The bar's search filters by title and kind. A row opens the artifact viewer on the latest version.
 final class ArtifactsViewController: UIViewController, UISearchResultsUpdating {
     private let session: Session
     private let feed: ArtifactCatalogFeed
@@ -22,21 +21,17 @@ final class ArtifactsViewController: UIViewController, UISearchResultsUpdating {
     private var following: Task<Void, Never>?
     /// What the rows on screen show, by ID.
     private(set) var artifacts: [String: ArtifactSummary] = [:]
-    /// The pull's refresh is under way.
-    private var pulled = false
 
     struct Applied: Sendable {
         var items: [String: CardItem] = [:]
         var order: [String] = []
         var counter: UInt64 = 0
-        var refreshing = false
     }
 
     struct Output: Sendable {
         var items: [CardItem]
         var artifacts: [String: ArtifactSummary]
         var width: CGFloat
-        var refreshing: Bool
         /// The same items at another width, for a width change.
         var replan: @Sendable (CGFloat) -> [CardItem]
     }
@@ -67,7 +62,6 @@ final class ArtifactsViewController: UIViewController, UISearchResultsUpdating {
         list.accessibilityIdentifier = "artifacts-list"
         view.addSubview(list)
         list.onSelect = { [weak self] id in self?.open(id) }
-        list.onRefresh = { [weak self] in self?.refresh() }
         list.menu = { [weak self] id in self?.menu(id) }
         list.makeOverlay = { [weak self] overlay, id in self?.makeOverlay(overlay, id: id) }
         setUpBar()
@@ -160,39 +154,28 @@ final class ArtifactsViewController: UIViewController, UISearchResultsUpdating {
         var counter = applied.counter
         let items = CardItems.revise(next, previous: applied.items, counter: &counter)
         let order = items.map(\.id)
-        let refreshing = input.state.refreshing
-        let unchanged = order == applied.order && refreshing == applied.refreshing && items.allSatisfy { applied.items[$0.id]?.revision == $0.revision }
-        guard !unchanged else { return nil }
+        guard order != applied.order || !items.allSatisfy({ applied.items[$0.id]?.revision == $0.revision }) else { return nil }
         var artifacts: [String: ArtifactSummary] = [:]
         for artifact in input.state.items { artifacts[artifact.id] = artifact }
-        let state = Applied(items: Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }), order: order, counter: counter, refreshing: refreshing)
+        let state = Applied(items: Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }), order: order, counter: counter)
         let replan: @Sendable (CGFloat) -> [CardItem] = { width in
             var input = input
             input.width = width
             return ArtifactListItems.items(input)
         }
-        return (Output(items: items, artifacts: artifacts, width: input.width, refreshing: refreshing, replan: replan), state)
+        return (Output(items: items, artifacts: artifacts, width: input.width, replan: replan), state)
     }
 
     private func show(_ output: Output) -> Bool {
         guard output.width == list.contentWidth else { return false }
         artifacts = output.artifacts
         list.apply(output.items, animated: true, replan: output.replan)
-        if pulled, !output.refreshing {
-            pulled = false
-            list.refreshing = false
-        }
         return true
     }
 
     // MARK: Acts
 
     func updateSearchResults(for searchController: UISearchController) { updateInput() }
-
-    private func refresh() {
-        pulled = true
-        Task { [feed] in await feed.refresh() }
-    }
 
     private func open(_ id: String) {
         guard let artifact = artifacts[id] else { return }

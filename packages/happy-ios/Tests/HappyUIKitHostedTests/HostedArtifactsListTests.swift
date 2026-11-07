@@ -67,7 +67,7 @@ actor ArtifactCatalogDaemon: AgentTransport {
 }
 
 /// The Artifacts screen home's fixed row opens: home's grouped cards split
-/// by date, a picture's thumbnail, the bar's search, a pull's refresh, the
+/// by date, a picture's thumbnail, the bar's search, a catalog read again, the
 /// list kept for when the computer is away, and a row opening the viewer.
 /// Pictures, light and dark, go to `.context/evidence/artifacts`.
 @MainActor
@@ -280,7 +280,9 @@ final class HostedArtifactsListTests: XCTestCase {
         try await wait("everything again") { rows(screen).count == 7 }
     }
 
-    func testAPullReadsTheCatalogAgainAndARowOpensTheViewer() async throws {
+    /// No pull to refresh: the catalog read again, as after a gap, brings
+    /// what changed, and the list offers no spinner.
+    func testAReadAgainBringsNewArtifactsAndARowOpensTheViewer() async throws {
         let daemon = ArtifactCatalogDaemon(items: Self.fixture())
         let opened = try await open(daemon)
         let screen = opened.screen
@@ -289,10 +291,9 @@ final class HostedArtifactsListTests: XCTestCase {
         var items = Self.fixture()
         items.insert(.init(id: "new", type: "markdown", title: "Fresh report", updatedAt: Date(), picture: nil), at: 0)
         await daemon.set(items: items)
-        screen.list.refreshing = true
-        screen.list.onRefresh?()
+        await opened.session.engine.artifacts.refresh()
         try await wait("the new artifact") { rows(screen).first == "new" }
-        try await wait("the spinner to go") { !screen.list.refreshing }
+        XCTAssertFalse(screen.list.subviews.contains { $0 is UIActivityIndicatorView }, "no pull spinner")
 
         screen.list.onSelect?("a3")
         try await wait("the viewer") { opened.navigation.topViewController is ArtifactViewController }

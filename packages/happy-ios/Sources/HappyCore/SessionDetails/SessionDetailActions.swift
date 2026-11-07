@@ -187,10 +187,6 @@ public struct SessionDetailActions: Sendable {
         await machines.machineDelete(machineId: machineId)
     }
 
-    public func refreshMachines() async {
-        await sync.run(.machines)
-    }
-
     // MARK: Copy
 
     /// Hard-coded in useSessionQuickActions.ts / info.tsx, not in en.ts.

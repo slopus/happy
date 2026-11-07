@@ -7,7 +7,7 @@ import UltraView
 /// Home's Todos row: the computer's todo lists in one of home's grouped
 /// cards, by name, with how many todos each has left. It opens on the
 /// catalog kept on the phone (`SurfaceCatalogFeed`), reads it again, then
-/// follows its events; a pull reads it again. The bar's + makes a todo
+/// follows its events. The bar's + makes a todo
 /// list or a document, named in an alert, and opens it.
 final class TodoListsViewController: UIViewController {
     private let session: Session
@@ -22,7 +22,6 @@ final class TodoListsViewController: UIViewController {
     private(set) var surfaces: [String: AgentWire.Surface] = [:]
     /// The catalog as last read, for counting again.
     private var catalog = SurfaceCatalogFeed.State()
-    private var pulled = false
     /// A name is being sent to the computer.
     private var creating = false
 
@@ -66,7 +65,6 @@ final class TodoListsViewController: UIViewController {
         list.accessibilityIdentifier = "todo-lists-list"
         view.addSubview(list)
         list.onSelect = { [weak self] id in self?.open(id) }
-        list.onRefresh = { [weak self] in self?.refresh() }
         HeaderBar.edge(list.edge, in: self)
         newItem.accessibilityLabel = Strings.Todos.new
         newItem.accessibilityIdentifier = "todo-lists-new"
@@ -162,19 +160,10 @@ final class TodoListsViewController: UIViewController {
         guard output.width == list.contentWidth else { return false }
         surfaces = output.surfaces
         list.apply(output.items, animated: true, replan: output.replan)
-        if pulled {
-            pulled = false
-            list.refreshing = false
-        }
         return true
     }
 
     // MARK: Acts
-
-    private func refresh() {
-        pulled = true
-        Task { [feed] in await feed.refresh() }
-    }
 
     private func open(_ id: String) {
         guard let surface = surfaces[id] else { return }

@@ -16,8 +16,10 @@ import WebKit
 /// Embedded in another screen (an artifact), the buttons go in that
 /// screen's header and its title stays.
 ///
-/// An app (`ArtifactPageMode`, in `AppPageViewController`) has no header,
-/// loading bar or pull to refresh: its page fills the view, never scrolls,
+/// There is no pull to refresh; the header's button reloads.
+///
+/// An app (`ArtifactPageMode`, in `AppPageViewController`) has no header
+/// or loading bar: its page fills the view, never scrolls,
 /// bounces or zooms, and runs with `AppPageScripts`.
 final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, TakesBackSwipe {
     private let originalURL: URL
@@ -30,7 +32,6 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
     private var observations: [NSKeyValueObservation] = []
     private let progressView = BrowserProgressView()
     let failureView = BrowserFailureView()
-    private let refresh = UIRefreshControl()
     private(set) var progress = BrowserProgress()
     private var trickling: Task<Void, Never>?
     /// Why the error page shows, while it does.
@@ -91,7 +92,6 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         failureView.isHidden = true
         failureView.retried = { [weak self] in self?.retry() }
         progressView.faded = { [weak self] in self?.setProgress { $0.hide() } }
-        refresh.addAction(UIAction { [weak self] _ in self?.pulled() }, for: .valueChanged)
         backItem.accessibilityLabel = Strings.Browser.back
         backItem.accessibilityIdentifier = "browser-back"
         forwardItem.accessibilityLabel = Strings.Browser.forward
@@ -179,7 +179,6 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         web.isOpaque = false
         web.backgroundColor = UIColor(Palette.surface)
         web.scrollView.backgroundColor = UIColor(Palette.surface)
-        web.scrollView.refreshControl = refresh
         HeaderBar.edge(web.scrollView, in: header)
     }
 
@@ -223,7 +222,6 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
     private func loadingChanged(_ isLoading: Bool) {
         updateHeader()
         if isLoading { setProgress { $0.begin() }; return }
-        refresh.endRefreshing()
         // A failure says so in its own callback, which may come just after:
         // only a load that ended without one fills the bar.
         DispatchQueue.main.async { [weak self] in
@@ -259,7 +257,6 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         failedURL = url ?? failedURL ?? originalURL
         failedBeforeCommit = beforeCommit
         setProgress { $0.hide() }
-        refresh.endRefreshing()
         failureView.show(problem, computer: computerName, host: failedURL.flatMap(Self.address))
         if failureView.isHidden {
             failureView.alpha = 0
@@ -333,16 +330,9 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         if problem != nil { retry(); return }
         if web.isLoading {
             web.stopLoading()
-            refresh.endRefreshing()
             setProgress { $0.hide() }
             return
         }
-        if web.url == nil { load(failedURL ?? page?.url ?? originalURL, in: web) } else { setProgress { $0.begin() }; web.reload() }
-    }
-
-    /// Pull to refresh: always loads again, never stops.
-    private func pulled() {
-        guard let web, problem == nil else { retry(); return }
         if web.url == nil { load(failedURL ?? page?.url ?? originalURL, in: web) } else { setProgress { $0.begin() }; web.reload() }
     }
 

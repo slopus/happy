@@ -67,8 +67,6 @@ final class FeedViewController: UIViewController {
     private var pending: Set<String> = []
     private var clusterFaces: [String: FeedFace] = [:]
     private var clustersRead = false
-    /// The pull's refresh is under way.
-    private var pulled = false
     /// The posts whose summary is open in full, by entry.
     private(set) var expanded: Set<String> = []
 
@@ -76,7 +74,6 @@ final class FeedViewController: UIViewController {
         var items: [String: CardItem] = [:]
         var order: [String] = []
         var counter: UInt64 = 0
-        var refreshing = false
     }
 
     struct Output: Sendable {
@@ -91,7 +88,6 @@ final class FeedViewController: UIViewController {
         var hasMore: Bool
         var loadingMore: Bool
         var width: CGFloat
-        var refreshing: Bool
         var replan: @Sendable (CGFloat) -> [CardItem]
     }
 
@@ -140,7 +136,6 @@ final class FeedViewController: UIViewController {
             if FeedListItems.toggleHit(activity.items.first { $0.id == id }, at: point) { toggleSummary(id) } else { open(id) }
         }
         activity.accessibilityActions = { [weak self] id in self?.summaryActions(id) ?? [] }
-        activity.onRefresh = { [weak self] in self?.refresh() }
         activity.onScroll = { [weak self] in self?.loadMoreIfNeeded() }
         activity.makeOverlay = { [weak self] overlay, id in
             guard let self else { return nil }
@@ -148,7 +143,6 @@ final class FeedViewController: UIViewController {
             return makeFace(overlay, faces: faces)
         }
         following.onSelect = { [weak self] id in self?.peek(id) }
-        following.onRefresh = { [weak self] in self?.readClusters(pulled: true) }
         following.makeOverlay = { [weak self] overlay, id in self?.makeClusterOverlay(overlay, id: id) }
         following.accessibilityActions = { [weak self] id in self?.clusterActions(id) ?? [] }
         setUpBar()
@@ -291,13 +285,11 @@ final class FeedViewController: UIViewController {
         var counter = applied.counter
         let items = CardItems.revise(next.items, previous: applied.items, counter: &counter)
         let order = items.map(\.id)
-        let refreshing = input.state.refreshing
-        let unchanged = order == applied.order && refreshing == applied.refreshing && items.allSatisfy { applied.items[$0.id]?.revision == $0.revision }
-        guard !unchanged else { return nil }
+        guard order != applied.order || !items.allSatisfy({ applied.items[$0.id]?.revision == $0.revision }) else { return nil }
         var entries: [String: FeedItem] = [:]
         for entry in input.state.items { entries[entry.id] = entry }
         let rows = Dictionary(next.rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let state = Applied(items: Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }), order: order, counter: counter, refreshing: refreshing)
+        let state = Applied(items: Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }), order: order, counter: counter)
         let replan: @Sendable (CGFloat) -> [CardItem] = { width in
             var input = input
             input.width = width
@@ -306,7 +298,7 @@ final class FeedViewController: UIViewController {
         let output = Output(
             items: items, faces: next.faces, entries: entries, rows: rows, lastEntryId: input.state.items.last?.id,
             unread: input.state.shownUnread, filter: input.state.filter, hasMore: input.state.hasMore, loadingMore: input.state.loadingMore,
-            width: input.width, refreshing: refreshing, replan: replan
+            width: input.width, replan: replan
         )
         return (output, state)
     }
@@ -339,10 +331,6 @@ final class FeedViewController: UIViewController {
         readAllItem.isEnabled = output.unread > 0
         showFilter(output.filter)
         activity.apply(output.items, animated: true, replan: output.replan)
-        if pulled, !output.refreshing {
-            pulled = false
-            activity.refreshing = false
-        }
         loadMoreIfNeeded()
         return true
     }
@@ -356,11 +344,6 @@ final class FeedViewController: UIViewController {
     }
 
     // MARK: Activity
-
-    private func refresh() {
-        pulled = true
-        Task { [feed] in await feed.refresh() }
-    }
 
     /// The next page, once the last entry held is on screen.
     private func loadMoreIfNeeded() {
@@ -421,19 +404,17 @@ final class FeedViewController: UIViewController {
         following.isHidden = !showsFollowing
         HeaderBar.edge(showsFollowing ? following.edge : activity.edge, in: self)
         navigationItem.rightBarButtonItems = showsFollowing ? nil : [readAllItem, filterItem]
-        if showsFollowing { readClusters(pulled: false) }
+        if showsFollowing { readClusters() }
     }
 
     /// The places, read again each time Following shows: they live on the
     /// computer alone, as desktop's do.
-    private func readClusters(pulled: Bool) {
-        if pulled { following.refreshing = true }
+    private func readClusters() {
         reading?.cancel()
         reading = Task { [weak self, feed] in
             let result: Result<[FeedCluster], Error>
             do { result = .success(try await feed.clusters()) } catch { result = .failure(error) }
             guard !Task.isCancelled, let self else { return }
-            following.refreshing = false
             switch result {
             case .success(let clusters):
                 clustersRead = true
@@ -571,7 +552,6 @@ final class FeedPeekViewController: UIViewController {
             guard let self else { return }
             if FeedListItems.toggleHit(list.items.first { $0.id == id }, at: point) { toggleSummary(id) } else { open(id) }
         }
-        list.onRefresh = { [weak self] in self?.read(pulled: true) }
         list.makeOverlay = { [weak self] overlay, id in
             guard let self else { return nil }
             if overlay.kind == FeedListItems.coverKind, let cover = rows[id]?.post?.cover {
@@ -608,7 +588,7 @@ final class FeedPeekViewController: UIViewController {
         registerForTraitChanges(UIView.textSizeTraits + [UITraitUserInterfaceStyle.self, UITraitDisplayScale.self]) { (self: Self, _) in
             self.updateInput()
         }
-        read(pulled: false)
+        read()
     }
 
     override func viewDidLayoutSubviews() {
@@ -639,15 +619,13 @@ final class FeedPeekViewController: UIViewController {
         }
     }
 
-    private func read(pulled: Bool) {
-        if pulled { list.refreshing = true }
+    private func read() {
         reading?.cancel()
         reading = Task { [weak self, feed, cluster] in
             let result: Result<FeedPeek, Error>
             do { result = .success(try await feed.peek(cluster.cluster)) } catch { result = .failure(error) }
             let covers = await feed.current.covers
             guard !Task.isCancelled, let self else { return }
-            list.refreshing = false
             if case .success(let peek) = result {
                 Task { [engine = session.engine] in await engine.feedPeeking(peek.entries) }
             }
