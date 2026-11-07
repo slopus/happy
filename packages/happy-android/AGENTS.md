@@ -836,23 +836,22 @@ ANDROID_SERIAL=<device> ./gradlew :benchmark:connectedBenchmarkBenchAndroidTest 
 
 - `versionName` is CalVer `YYYY.M.C`: the UTC year, the month without a
   leading zero, and a counter that starts at 1 each month (`2026.11.1`).
-  Every variant carries the same one; a preview upload differs from
-  production only by its versionCode. The checked-in default
-  (`defaultVersionName` in `app/build.gradle.kts`) is the upcoming release.
-  `C` moves only when a production version ships: the next version is the
-  highest `C` this UTC month's production tags carry, plus one, else 1, and
-  a month with previews but no production release restamps it to the new
-  month.
-- Production uploads, and only they, are tagged
-  `native-android-<versionName>-build<versionCode>`; Android counts on its
-  own, and tags of other schemes (`2.0.0`) don't count. Preview uploads get
-  no tag.
+  Every variant carries the same one, and every build of it differs only
+  by its versionCode. The checked-in default (`defaultVersionName` in
+  `app/build.gradle.kts`) is the upcoming release. `C` moves only when a
+  version is released publicly (a Play production rollout); uploads to a
+  test track, production builds included, don't move it. The next version
+  is the highest `C` this UTC month's release tags carry, plus one, else 1,
+  and a month without a release restamps it to the new month.
+- The build released publicly is tagged
+  `native-android-<versionName>-build<versionCode>` when its rollout
+  starts, never at upload; Android counts on its own, and tags of other
+  schemes (`2.0.0`) don't count. Uploads get no tag; their upload record
+  goes in the release report.
 - `node scripts/native-version.cjs next android` prints the upcoming
   version from the tags; `check android` fails unless the default is it;
   `set android` writes it. Before any store build run `check android`, and
-  if it fails, `set android`, commit and land that on `main` first. A
-  production build re-sent under an already tagged version keeps it:
-  `set android <version>` and skip `check`.
+  if it fails, `set android`, commit and land that on `main` first.
 - `HAPPY_VERSION_NAME` or `-Phappy.versionName` overrides the default. A
   signed release or preview build whose versionName isn't CalVer fails in
   `pre<Variant>Build`.

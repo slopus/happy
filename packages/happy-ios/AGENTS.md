@@ -660,18 +660,20 @@ leading zero, and a counter that starts at 1 each month (`2026.11.1`,
 `2026.9.3`). It is still three integers, as `CFBundleShortVersionString`
 wants, and sorts above the RN app's `1.x` and the first native `2.0.0`.
 All three variants (development, preview, production) carry the same
-version; a preview upload differs from production only by its build
-number. Production continues the existing `com.ex3ndr.happy` listing; dev
+version, and every build of it, preview or production, differs only by its
+build number. Production continues the existing `com.ex3ndr.happy` listing; dev
 and preview ship the same number on their own listings.
 
 - The checked-in version is the upcoming release. `C` moves only when a
-  production version ships: the next version is the highest `C` this UTC
-  month's production tags carry, plus one, else 1. A month with previews
-  but no production release restamps the version to the new month.
-- Production uploads, and only they, are tagged
-  `native-ios-<version>-build<N>` (iOS counts on its own; Android has its
-  own tags). Preview uploads get no tag. Tags of other schemes (`2.0.0`)
-  don't count.
+  version is released publicly on the App Store; uploading to TestFlight,
+  production builds included, doesn't move it, so any number of builds of
+  2026.11.1 go up until 2026.11.1 is released. The next version is the
+  highest `C` this UTC month's release tags carry, plus one, else 1. A
+  month without a release restamps the version to the new month.
+- The build released publicly is tagged `native-ios-<version>-build<N>`
+  when it is released, never at upload (iOS counts on its own; Android has
+  its own tags). Uploads get no tag; their upload ID and binary SHA-256 go
+  in the release report. Tags of other schemes (`2.0.0`) don't count.
 - `node scripts/native-version.cjs next ios` prints the upcoming version
   from the tags; `check ios` fails unless the checked-in version is it;
   `set ios` writes it. Before any release build run `check ios`, and if it
@@ -682,9 +684,6 @@ and preview ship the same number on their own listings.
   `App/Info-*.plist` files and `AppClip/project.yml`.
   `AppConfigurationTests` fails unless they all match and the version is
   CalVer.
-- A production build re-sent under a version that is already tagged (a
-  rejected build, before that version goes public) keeps its version: use
-  `set ios <version>` and skip `check`.
 - `CFBundleVersion` (`CURRENT_PROJECT_VERSION`) stays the build number:
   production's is set in `App/Info-Production.plist` and the Happy target's
   Release settings; preview uploads let Xcode pick the next free one.

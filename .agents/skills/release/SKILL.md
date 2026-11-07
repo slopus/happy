@@ -88,7 +88,7 @@ local release procedure.
 
 Tag namespace note:
 - CLI releases use `cli-X.Y.Z`
-- Native production releases use `native-<platform>-<version>-build<N>` (see Native Mobile Release)
+- Native public releases use `native-<platform>-<version>-build<N>` (see Native Mobile Release)
 - Do not use a bare `vX.Y.Z` tag for Happy releases because multiple release streams coexist in this repo
 
 ### Step 2: Gather state
@@ -327,16 +327,20 @@ App Store / Play signing identity and an explicit store build number.
 
 Native versions are CalVer `YYYY.M.C` (UTC year, unpadded month, a counter
 from 1 each month), counted per platform. Every variant ships the same
-version; preview uploads differ only by build number. `C` moves only when a
-production version ships, and the release flow records that with the
-platform's tag, made after a production upload and never for a preview:
+version, and every build of it differs only by build number. Uploading a
+build, to TestFlight or a Play test track, production included, does not
+move the version: any number of builds of 2026.11.1 can go up. `C` moves
+only when a version is **released publicly** (App Store release, Play
+production rollout), and the release flow records that with the platform's
+tag on the released build, made at release time:
 
     native-ios-<version>-build<CFBundleVersion>
     native-android-<versionName>-build<versionCode>
 
 Annotate it as the existing ones are ("Native <platform> production
 <version> (<build>)", source commit, binary SHA-256, distribution, store
-receipt). Before any native build, preview or production, from `main` per
+receipt). An upload gets no tag; report its upload ID and binary SHA-256
+instead. Before any native build, preview or production, from `main` per
 Step 0:
 
 ```bash
@@ -344,13 +348,11 @@ node scripts/native-version.cjs check ios        # or android
 ```
 
 It prints the checked-in version when that is the upcoming release (the
-highest `C` this UTC month's production tags carry, plus one, else 1). If it
-fails, run `node scripts/native-version.cjs set ios` (it reads origin's
-tags and writes every file that holds the version), commit, push to `main`,
-and start Step 0 again. `next` prints the version without writing anything.
-A production build re-sent under an already tagged version (a rejected
-build, before that version goes public) keeps its version: say so to the
-user, `set <platform> <version>` explicitly and skip `check`. Never move or
+highest `C` this UTC month's release tags carry, plus one, else 1). If it
+fails, because a version was released or a new month began, run
+`node scripts/native-version.cjs set ios` (it reads origin's tags and writes
+every file that holds the version), commit, push to `main`, and start Step 0
+again. `next` prints the version without writing anything. Never move or
 reuse an existing tag.
 
 ---

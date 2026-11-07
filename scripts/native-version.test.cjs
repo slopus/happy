@@ -17,7 +17,7 @@ test('versions are YYYY.M.C with an unpadded month and a counter from 1', () => 
   }
 });
 
-test('only the platform\'s CalVer production tags count', () => {
+test('only the platform\'s CalVer release tags count', () => {
   const tags = ['native-ios-2.0.0-build155', 'native-android-2.0.0-build150', 'native-ios-2026.11.2-build160',
     'native-android-2026.11.5-build170', 'native-ios-2026.11.3', 'cli-2026.11.9', 'native-ios-2026.11.x-build1',
     'native-ios-preview-2026.11.4-build161', 'desktop-2026.11.6', 'native-ios-2026.11.7-preview.1-build162'];
@@ -26,16 +26,17 @@ test('only the platform\'s CalVer production tags count', () => {
 });
 
 test('the first release of a month is C = 1; legacy tags and other platforms do not count', () => {
+  // Uploads leave no tag: until a version is released, next keeps naming it.
   assert.equal(nextVersion('ios', [], november), '2026.11.1');
   assert.equal(nextVersion('ios', ['native-ios-2.0.0-build155', 'native-android-2026.11.4-build170'], november), '2026.11.1');
   assert.equal(nextVersion('android', ['native-android-2.0.0-build150'], new Date('2027-01-01T00:00:00Z')), '2027.1.1');
 });
 
-test('the counter follows the highest production tag this month and resets the next month', () => {
+test('the counter follows the highest release tag this month and resets the next month', () => {
   const tags = ['native-ios-2026.10.7-build158', 'native-ios-2026.11.1-build159', 'native-ios-2026.11.2-build160',
     'native-ios-2026.11.2-build161', 'native-ios-2026.11.10-build170', 'native-ios-2025.11.30-build100'];
   assert.equal(nextVersion('ios', tags, november), '2026.11.11');
-  // A production upload that is re-sent with a new build number keeps its version.
+  // Two tags of one version count once.
   assert.equal(nextVersion('ios', ['native-ios-2026.11.2-build160', 'native-ios-2026.11.2-build161'], november), '2026.11.3');
   assert.equal(nextVersion('ios', tags, new Date('2026-12-01T00:00:00Z')), '2026.12.1');
 });
@@ -110,4 +111,9 @@ test('the checked-in versions are CalVer and every iOS copy agrees', () => {
   }
   setVersion('ios', currentVersion('ios', root), copy);
   for (const file of files) assert.equal(fs.readFileSync(path.join(copy, file), 'utf8'), fs.readFileSync(path.join(root, file), 'utf8'), file);
+});
+
+test('a version released in a later month does not hold back that month', () => {
+  // 2026.11.1 was uploaded in November and released on 2 December.
+  assert.equal(nextVersion('ios', ['native-ios-2026.11.1-build158'], new Date('2026-12-02T10:00:00Z')), '2026.12.1');
 });

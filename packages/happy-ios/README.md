@@ -33,8 +33,10 @@ local `main` matching freshly fetched `origin/main`. Production signs manually
 with the distribution certificate and profile and uploads with the App Store
 Connect API key: the Xcode account on the release Mac has no access to this
 app. App Review submission and public release each need separate user
-authorization. After a successful production upload, tag the exact source
-commit `native-ios-<version>-build<build>`. Never move an existing tag. No
+authorization. An upload gets no tag: report its upload ID and binary
+SHA-256. When a build is released publicly on the App Store, tag its exact
+source commit `native-ios-<version>-build<build>`; that moves the version
+on (see [Versioning](AGENTS.md#versioning)). Never move an existing tag. No
 GitHub Release is needed for a native build.
 
 ## Native Mac app

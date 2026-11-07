@@ -1,12 +1,15 @@
 // Native app versions (happy-ios, happy-android) are CalVer YYYY.M.C: the
 // UTC year and month, then a counter that starts at 1 each month. Every
-// variant (development, preview, production) carries the same version; a
-// preview upload differs only by build number. The counter moves only when
-// a production version ships, which the release flow records with a tag
-// native-<platform>-<version>-build<N> on production uploads alone. So the
-// next version is the highest counter this month's production tags carry,
-// plus one, else 1. Each platform counts on its own; tags of other schemes
-// (2.0.0) don't count. Build numbers are not versions and aren't touched.
+// variant (development, preview, production) carries the same version, and
+// any number of builds of it (preview or production, TestFlight or a Play
+// test track) differ only by build number. The counter moves only when a
+// version is released publicly (App Store release, Play production
+// rollout). The release flow records that with a tag
+// native-<platform>-<version>-build<N> on the released build, made at
+// release time, never at upload. So the next version is the highest counter
+// this month's release tags carry, plus one, else 1. Each platform counts on
+// its own; tags of other schemes (2.0.0) don't count. Build numbers are not
+// versions and aren't touched.
 //
 //   node scripts/native-version.cjs next <ios|android> [--offline]
 //   node scripts/native-version.cjs check <ios|android> [--offline]
@@ -41,7 +44,7 @@ function checkVersion(version) {
   return version;
 }
 
-/** The CalVer versions a platform's production release tags carry. */
+/** The CalVer versions a platform's release tags (public releases) carry. */
 function taggedVersions(platform, tags) {
   const pattern = new RegExp(`^native-${platform}-(\\d[^-]*)-build\\d+$`);
   return tags.map(tag => pattern.exec(tag)?.[1]).filter(version => version && parseVersion(version));
