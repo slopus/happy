@@ -22,6 +22,8 @@ class LiveText internal constructor(
     private val now: () -> Long,
     /** Lays out each reading on the lane before the row can read it; null where nothing does. */
     private val prepare: ((Content, markdown: Boolean) -> Unit)? = null,
+    /** Which settings pages its connection has ([parseMarkdown]); null leaves every link. */
+    private val hasPage: ((String) -> Boolean)? = null,
 ) {
     /** One reading of the block. Compared by identity: each update is a new one. */
     class Content(val text: String, val blocks: List<MarkdownBlock>)
@@ -39,7 +41,7 @@ class LiveText internal constructor(
     internal fun update(text: String, markdown: Boolean): Boolean {
         val previous = _content.value
         if (previous.text == text) return false
-        val next = Content(text, if (markdown) reuse(previous.blocks, parseMarkdown(text)) else emptyList())
+        val next = Content(text, if (markdown) reuse(previous.blocks, parseMarkdown(text, hasPage)) else emptyList())
         prepare?.invoke(next, markdown)
         _content.value = next
         return true

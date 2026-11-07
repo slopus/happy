@@ -1260,9 +1260,11 @@ change its wire behaviour on Android alone.
   general → Settings, account → Profile, sharing, voice, servers → Happy Cloud's
   servers (Settings elsewhere), members → Members on Happy Cloud; every other
   page opens `https://<name>.HAPPY_CLOUD_WEB/#/settings/<page>` in a Custom Tab
-  on a Happy Cloud server and is inert anywhere else. Buttons ask
-  `LinkOpener.opens` and show their words when nothing opens; an inline link
-  whose page this connection lacks stays drawn as a link but opens nothing.
+  on a Happy Cloud server and is inert anywhere else. A conversation's rows
+  are parsed for their connection (`AgentSession.settingsPages`, through
+  `ConversationRowBuilder.hasPage` and `LiveText`): a settings link to a page
+  it lacks is its words, inline, and a button its words in its place. Buttons
+  elsewhere ask `LinkOpener.opens` and show their words when nothing opens.
   Unlocked `happy://settings…` from outside is still happy-app's path
   (`DeepLinks`); only the instance form opens a settings link.
 

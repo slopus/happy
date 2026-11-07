@@ -170,6 +170,8 @@ class Conversation(
     private val read: (suspend (String) -> Unit)? = null,
     /** What the Happy references in its messages read as ([AgentSession.references][com.slopus.happy.agent.AgentSession.references]); null leaves the tags as written. */
     private val references: com.slopus.happy.references.ReferenceReader? = null,
+    /** Which settings pages its connection has: a link to any other reads as its words. Null leaves every link. */
+    private val hasSettingsPage: ((String) -> Boolean)? = null,
     /** The person's model preferences: a new chat opens on their start ([ModelPreferences.startMode]); null, on the catalog's default. */
     private val preferences: StateFlow<ModelPreferences>? = null,
     /** A new chat's first message went with this mode: it is the session's start. */
@@ -238,6 +240,7 @@ class Conversation(
         references = this@Conversation.references?.references?.value
         named = this@Conversation.references?.let { reader -> reader::read }
         pages = this@Conversation.references?.let { reader -> reader::readArtifacts }
+        hasPage = hasSettingsPage
     }
     private val runs = ArrayList<Pair<String, MutableList<String>>>()
     /** Each run's status, start and end as last read, so it is kept as it came. */
@@ -1557,7 +1560,7 @@ class Conversation(
         for (send in outgoing) {
             val delivery = send.failure?.let(Delivery::Failed) ?: if (send.accepted) Delivery.Pending else Delivery.Sending
             val time = shownAt.getOrPut(send.id) { send.sentAt }
-            rows += ConversationRow.User("${send.id}:user", send.id, send.wire, com.slopus.happy.chat.markdown.parseMarkdown(send.wire), send.images + send.thumbnails, delivery, time)
+            rows += ConversationRow.User("${send.id}:user", send.id, send.wire, com.slopus.happy.chat.markdown.parseMarkdown(send.wire, hasSettingsPage), send.images + send.thumbnails, delivery, time)
         }
         if (opened.isNotEmpty()) rows.replaceAll { if (it is ConversationRow.User && it.key in opened) it.copy(opened = true) else it }
         builder.forget(messages.keys)

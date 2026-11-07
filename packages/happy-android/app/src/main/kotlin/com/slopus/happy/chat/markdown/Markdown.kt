@@ -1,6 +1,7 @@
 package com.slopus.happy.chat.markdown
 
 import androidx.compose.runtime.Immutable
+import com.slopus.happy.agent.HappyLink
 import com.slopus.happy.agent.HappyUrls
 
 // happy-app's components/markdown parser (parseMarkdown.ts,
@@ -50,6 +51,61 @@ private val SETTINGS_HOST = Regex("^happy://(?:[a-z][a-z0-9]{23}/)?settings(?:[/
 fun isHttpMarkdownLink(url: String): Boolean = HTTP_URL.containsMatchIn(url.trim())
 
 fun parseMarkdown(markdown: String): List<MarkdownBlock> = parseMarkdownBlocks(markdown)
+
+/**
+ * [markdown] parsed for one connection: a settings link to a page [hasPage]
+ * says it hasn't is its label as inert text, inline or asking to be a
+ * button (API.md, "Settings links"). Null [hasPage] leaves every link.
+ */
+fun parseMarkdown(markdown: String, hasPage: ((String) -> Boolean)?): List<MarkdownBlock> =
+    parseMarkdownBlocks(markdown).let { blocks -> if (hasPage == null) blocks else settleSettingsLinks(blocks, hasPage) }
+
+/** [blocks] with every settings link to a page [hasPage] hasn't made its words; a block with none is the same object. */
+fun settleSettingsLinks(blocks: List<MarkdownBlock>, hasPage: (String) -> Boolean): List<MarkdownBlock> {
+    fun inert(span: MarkdownSpan): Boolean {
+        val url = span.url ?: return false
+        if (!SETTINGS_HOST.containsMatchIn(url)) return false
+        val parsed = HappyUrls.parse(url) ?: return false
+        // An instance link's page is that installation's to have; it opens there.
+        return parsed.instanceId == null && (parsed.link as? HappyLink.Settings)?.page?.let(hasPage) == false
+    }
+    fun settle(spans: List<MarkdownSpan>): List<MarkdownSpan> =
+        if (spans.none(::inert)) spans else spans.map { if (inert(it)) MarkdownSpan(it.styles, it.text) else it }
+    var changed = false
+    val out = ArrayList<MarkdownBlock>(blocks.size)
+    for (block in blocks) {
+        val settled: MarkdownBlock = when (block) {
+            is MarkdownBlock.Text -> settle(block.content).let { if (it === block.content) block else MarkdownBlock.Text(it) }
+            is MarkdownBlock.Header -> settle(block.content).let { if (it === block.content) block else MarkdownBlock.Header(block.level, it) }
+            is MarkdownBlock.BulletList ->
+                if (block.items.none { item -> item.spans.any(::inert) }) block else MarkdownBlock.BulletList(block.items.map { it.copy(spans = settle(it.spans)) })
+            is MarkdownBlock.NumberedList ->
+                if (block.items.none { item -> item.spans.any(::inert) }) block else MarkdownBlock.NumberedList(block.items.map { it.copy(spans = settle(it.spans)) })
+            is MarkdownBlock.Table ->
+                if ((block.headers + block.rows.flatten()).none { cell -> cell.any(::inert) }) block
+                else MarkdownBlock.Table(block.headers.map(::settle), block.rows.map { row -> row.map(::settle) })
+            // A button that opens nothing is its words, in its place among the others.
+            is MarkdownBlock.Buttons -> {
+                if (block.links.none(::inert)) block
+                else {
+                    changed = true
+                    val live = ArrayList<MarkdownSpan>()
+                    for (link in block.links) {
+                        if (!inert(link)) { live += link; continue }
+                        if (live.isNotEmpty()) out += MarkdownBlock.Buttons(live.toList()).also { live.clear() }
+                        out += MarkdownBlock.Text(listOf(MarkdownSpan(link.styles, link.text)))
+                    }
+                    if (live.isEmpty()) continue
+                    MarkdownBlock.Buttons(live)
+                }
+            }
+            else -> block
+        }
+        if (settled !== block) changed = true
+        out += settled
+    }
+    return if (changed) out else blocks
+}
 
 private fun MutableList<MarkdownSpan>.pushTextWithAutoLinks(text: String, styles: Set<SpanStyle>) {
     var lastIndex = 0

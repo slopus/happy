@@ -250,10 +250,17 @@ internal fun AgentSession.makeConversation(
     typesetter = typesetter,
     read = ::markRead,
     references = references,
+    hasSettingsPage = settingsPages(),
     preferences = modelPreferences,
     onStarted = ::recordStart,
     address = { ChatAddress.of(catalog.value, agentId) },
 )
+
+/** Which settings pages this connection has ([com.slopus.happy.ui.connection.SettingsLinks]): a link to any other reads as its words. */
+internal fun AgentSession.settingsPages(): (String) -> Boolean {
+    val cloud = com.slopus.happy.connection.HappyCloud.isServer(server)
+    return { page -> com.slopus.happy.ui.connection.SettingsLinks.place(page, server, cloud) != null }
+}
 
 /** Where [agentId]'s newest history is kept, beside the connection's catalog and gone with it. */
 internal fun AgentSession.conversationKeeper(agentId: String): ConversationKeeper = object : ConversationKeeper {

@@ -219,6 +219,9 @@ class ConversationRowBuilder(
      */
     var references: References? = null
 
+    /** Which settings pages the conversation's connection has: a link to any other is its words. Null leaves every link. */
+    var hasPage: ((String) -> Boolean)? = null
+
     /** Told the words of each message built that may name references, so their titles and names are read. */
     var named: ((String) -> Unit)? = null
 
@@ -236,7 +239,7 @@ class ConversationRowBuilder(
     fun rows(message: Message, agentId: String, parentAgentId: String?, streaming: Boolean): List<ConversationRow> {
         val references = references
         cache[message.id]?.let { if (!streaming && !it.streaming && it.message == message && (!it.names || it.references === references)) return it.rows }
-        val rows = build(message, agentId, parentAgentId, streaming, if (streaming) ::live else null, references)
+        val rows = build(message, agentId, parentAgentId, streaming, if (streaming) ::live else null, references, hasPage)
         val shown = message.content.mapNotNull { block -> (block as? Block.ToolCall)?.presentation?.let(::inlineCandidate) }
         val names = shown.isNotEmpty() || message.content.any { it is Block.Text && References.mayHold(it.text) }
         if (names) named?.let { tell -> message.content.forEach { if (it is Block.Text) tell(it.text) } }
@@ -255,7 +258,7 @@ class ConversationRowBuilder(
     private fun live(key: String, text: String, markdown: Boolean): LiveText {
         val live = lives.getOrPut(key) {
             val prepare = typesetter?.let { t -> { content: LiveText.Content, md: Boolean -> t.live(key, content, md) } }
-            LiveText(text, if (markdown) parseMarkdown(text) else emptyList(), now, prepare).also { created ->
+            LiveText(text, if (markdown) parseMarkdown(text, hasPage) else emptyList(), now, prepare, hasPage).also { created ->
                 // Its first words, too, are laid out before a row reads them.
                 prepare?.invoke(created.content.value, markdown)
             }
@@ -302,6 +305,8 @@ class ConversationRowBuilder(
             live: ((key: String, text: String, markdown: Boolean) -> LiveText)? = null,
             /** Tags read as their names: links in what agents say, words in what the person said; null leaves them as written. */
             references: References? = null,
+            /** [ConversationRowBuilder.hasPage]. */
+            hasPage: ((String) -> Boolean)? = null,
         ): List<ConversationRow> {
             val id = message.id
             if (message.role == "service") {
@@ -318,7 +323,7 @@ class ConversationRowBuilder(
             val sender = message.senderAgentId
             if (sender != null && sender != agentId && sender != parentAgentId) {
                 val text = inboundText(message.text, sender).trim()
-                return listOf(ConversationRow.Collaborator("$id:from", sender, plain(text, references), parseMarkdown(resolved(text, references, false))))
+                return listOf(ConversationRow.Collaborator("$id:from", sender, plain(text, references), parseMarkdown(resolved(text, references, false), hasPage)))
             }
             // The agent that manages this one gives it its work: it reads as the person's lane.
             val fromManager = message.role == "agent" && sender != null && sender != agentId
@@ -329,7 +334,7 @@ class ConversationRowBuilder(
                 val pictures = message.content.filterIsInstance<Block.Image>()
                 if (text.isEmpty() && pictures.isEmpty()) return emptyList()
                 val delivery = if (message.status == "pending") Delivery.Pending else Delivery.Sent
-                return listOf(ConversationRow.User("$id:user", id, text, parseMarkdown(text), pictures, delivery, message.createdAt))
+                return listOf(ConversationRow.User("$id:user", id, text, parseMarkdown(text, hasPage), pictures, delivery, message.createdAt))
             }
             val rows = ArrayList<ConversationRow>()
             message.content.forEachIndexed { index, block ->
@@ -340,7 +345,7 @@ class ConversationRowBuilder(
                     is Block.Text -> block.text.trim().takeIf { it.isNotEmpty() }?.let { text ->
                         val shown = resolved(text, references, growing != null)
                         val holder = growing?.invoke(key, shown, true)
-                        rows += ConversationRow.Text(key, plain(text, references), holder?.content?.value?.blocks ?: parseMarkdown(shown), holder)
+                        rows += ConversationRow.Text(key, plain(text, references), holder?.content?.value?.blocks ?: parseMarkdown(shown, hasPage), holder)
                     }
                     is Block.Reasoning -> block.text.trim().takeIf { it.isNotEmpty() }?.let {
                         rows += ConversationRow.Reasoning(key, it, streaming && index == message.content.lastIndex, growing?.invoke(key, it, false))
