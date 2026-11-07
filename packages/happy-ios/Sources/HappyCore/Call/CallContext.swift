@@ -31,12 +31,24 @@ public struct CallUpdate: Equatable, Sendable {
 /// too when that alone leaves it unclear or the agent hasn't had it yet.
 public actor CallContext {
     public enum Limits {
+        /// The first context, and half of it a resync. The prompt's override
+        /// goes beside it in the call's first message, which the data channel
+        /// takes up to 64,000 bytes (LiveKit).
         public static let totalBytes = 32 * 1024
+        /// A read (`readConversation`), as it goes on the wire
+        /// (`escapedSize`): one escaped string in a data channel message,
+        /// which LiveKit takes up to 64,000 bytes, its envelope beside it.
+        /// Five turns of a whole reply each fit as prose does.
+        public static let readBytes = 56 * 1024
         /// Turns a read shows, the person's message still waiting for an answer
         /// counted as one: each the person's message and the agent's last
         /// words, or as much of the pair as there is.
         public static let turns = 5
-        public static let messageBytes = 4 * 1024
+        /// One of the agent's messages: a thousand words of technical prose,
+        /// Markdown and all (6.3 to 7.3 bytes a word in this repository's docs).
+        public static let replyBytes = 8 * 1024
+        /// One of the person's own, a third of that.
+        public static let userBytes = 2 * 1024
         public static let errorBytes = 1024
         /// Conversations the first context lists, and its directory's size.
         public static let directory = 100
@@ -133,7 +145,7 @@ public actor CallContext {
     /// with its last five turns and the models it can switch to, the
     /// directory, how new work starts and where `navigate` goes.
     /// Within `Limits.totalBytes`: the older turns give way first, then the
-    /// directory's tail.
+    /// directory's tail, and the newest turn only after that.
     public func initial() async -> String {
         see(await targets.directory())
         focus = await targets.focused()
@@ -152,8 +164,9 @@ public actor CallContext {
         func text(telling: Bool = false) -> String {
             [header, screen(focused, turns: turns), directoryText(bytes: budget, telling: telling), Self.newWorkText, Self.destinationsText].joined(separator: "\n\n")
         }
-        while text().utf8.count > Limits.totalBytes, !turns.isEmpty { turns.removeFirst() }
+        while text().utf8.count > Limits.totalBytes, turns.count > 1 { turns.removeFirst() }
         while text().utf8.count > Limits.totalBytes, budget > 512 { budget /= 2 }
+        while text().utf8.count > Limits.totalBytes, !turns.isEmpty { turns.removeFirst() }
         if let focus { told.insert(focus) }
         return text(telling: true)
     }
@@ -204,14 +217,13 @@ public actor CallContext {
         }
         if state.hasMore || Self.answering(state).count > turns.count { lines.append("Older turns aren't shown.") }
         if let pending = state.unanswered {
-            let text = Self.truncated(pending.text, bytes: Limits.messageBytes)
+            let text = Self.clipped(pending.text, bytes: Limits.userBytes)
             let delivery: String = switch pending.delivery {
             case .queued?: ", still on this phone"
             case .failed?: ", which failed to send"
             default: ""
             }
-            lines.append("Waiting for an answer, from \(pending.by ?? "the person")\(delivery):\n   " + Self.indented(text)
-                + (text.utf8.count < pending.text.utf8.count ? " [cut short]" : ""))
+            lines.append("Waiting for an answer, from \(pending.by ?? "the person")\(delivery):\n   " + Self.indented(text))
         }
         return lines.joined(separator: "\n")
     }
@@ -225,13 +237,12 @@ public actor CallContext {
     /// and how it ended when that wasn't plain.
     static func turnText(_ turn: CallTurn, number: Int) -> String {
         var lines: [String] = []
-        func text(_ words: String?, as who: String) {
+        func text(_ words: String?, as who: String, bytes: Int) {
             guard let words, !words.isEmpty else { return }
-            let kept = truncated(words, bytes: Limits.messageBytes)
-            lines.append("\(who): " + indented(kept) + (kept.utf8.count < words.utf8.count ? " [cut short]" : ""))
+            lines.append("\(who): " + indented(clipped(words, bytes: bytes)))
         }
-        text(turn.user, as: turn.userBy.map { $0 == "the person" ? "The person" : $0 } ?? "The person")
-        text(turn.reply, as: "Agent")
+        text(turn.user, as: turn.userBy.map { $0 == "the person" ? "The person" : $0 } ?? "The person", bytes: Limits.userBytes)
+        text(turn.reply, as: "Agent", bytes: Limits.replyBytes)
         if turn.ended == "error" {
             lines.append("Ended in an error" + (turn.error.flatMap { $0.isEmpty ? nil : ": " + indented(truncated($0, bytes: Limits.errorBytes)) } ?? "."))
         } else if turn.ended != "completed" {
@@ -296,11 +307,11 @@ public actor CallContext {
         for message in state.messages.suffix(Limits.messages) where message.role == .assistant && message.final {
             guard !known.had.contains(message.id), !message.text.isEmpty else { continue }
             known.had.insert(message.id)
-            let text = Self.truncated(message.text, bytes: Limits.messageBytes)
+            let text = Self.clipped(message.text, bytes: Limits.replyBytes)
             var event = address
             event["event"] = "assistant_text"
             event["text"] = text
-            if text.utf8.count < message.text.utf8.count { event["truncated"] = true }
+            if text != message.text { event["truncated"] = true }
             // Its run is over and these were its last words.
             if let turn = message.turn, ended.contains(turn), last[turn] == message.id { event["finishedTurn"] = true }
             let line = Self.string(event)
@@ -504,7 +515,8 @@ public actor CallContext {
             let name: [String: Any] = ["title": state.target.title, "parents": state.target.parents.map(\.title)]
             var turns = Self.recent(state)
             var value = body(state, turns: turns, as: name, options: true)
-            while Self.data(value).count > Limits.totalBytes, !turns.isEmpty {
+            // The older turns give way first; the newest stays whole.
+            while Self.escapedSize(Self.data(value)) > Limits.readBytes, turns.count > 1 {
                 turns.removeFirst()
                 value = body(state, turns: turns, as: name, options: true)
             }
@@ -855,9 +867,9 @@ public actor CallContext {
         value["turns"] = turns.map(Self.turn)
         value["olderTurns"] = state.hasMore || Self.answering(state).count > turns.count
         if let pending = state.unanswered {
-            let text = Self.truncated(pending.text, bytes: Limits.messageBytes)
+            let text = Self.clipped(pending.text, bytes: Limits.userBytes)
             var message: [String: Any] = ["text": text]
-            if text.utf8.count < pending.text.utf8.count { message["truncated"] = true }
+            if text != pending.text { message["truncated"] = true }
             if let delivery = pending.delivery { message["delivery"] = delivery.rawValue }
             if let by = pending.by { message["by"] = by }
             value["pendingUserMessage"] = message
@@ -868,18 +880,51 @@ public actor CallContext {
     static func turn(_ turn: CallTurn) -> [String: Any] {
         var value: [String: Any] = ["ended": turn.ended]
         var cut = false
-        func text(_ words: String?, as key: String) {
+        func text(_ words: String?, as key: String, bytes: Int) {
             guard let words, !words.isEmpty else { return }
-            let kept = truncated(words, bytes: Limits.messageBytes)
+            let kept = clipped(words, bytes: bytes)
             value[key] = kept
-            if kept.utf8.count < words.utf8.count { cut = true }
+            if kept != words { cut = true }
         }
-        text(turn.user, as: "user")
+        text(turn.user, as: "user", bytes: Limits.userBytes)
         if turn.user?.isEmpty == false, let by = turn.userBy { value["userBy"] = by }
-        text(turn.reply, as: "assistant")
+        text(turn.reply, as: "assistant", bytes: Limits.replyBytes)
         if turn.ended == "error", let reason = turn.error, !reason.isEmpty { value["error"] = truncated(reason, bytes: Limits.errorBytes) }
         if cut { value["truncated"] = true }
         return value
+    }
+
+    /// `text` within `bytes` of UTF-8, cut after a whole word and saying
+    /// how many were left out: "… (cut, 120 more words)". A text with no
+    /// space to cut at is cut between characters.
+    static func clipped(_ text: String, bytes: Int) -> String {
+        guard text.utf8.count > bytes else { return text }
+        // Room for the note, whatever its count.
+        var kept = truncated(text, bytes: max(0, bytes - 32))
+        let next = text.dropFirst(kept.count).first
+        if let next, !isSpace(next), let space = kept.lastIndex(where: isSpace) { kept = String(kept[..<space]) }
+        while let last = kept.last, isSpace(last) { kept.removeLast() }
+        let left = text.dropFirst(kept.count).split(whereSeparator: isSpace).count
+        return kept + " … (cut, \(left) more \(left == 1 ? "word" : "words"))"
+    }
+
+    /// What `json` weighs sent on as a string inside a call SDK's own JSON,
+    /// at most: a quote, backslash or slash escaped in two bytes, a control
+    /// character or one Gson escapes as HTML (`<`, `>`, `&`, `=`, `'`) in
+    /// six (`\u003c`). Android's `escapedSize` counts the same.
+    static func escapedSize(_ json: Data) -> Int {
+        json.reduce(0) { size, byte in
+            switch byte {
+            case 0x22, 0x5C, 0x2F: size + 2
+            case 0x3C, 0x3E, 0x26, 0x3D, 0x27, 0..<0x20: size + 6
+            default: size + 1
+            }
+        }
+    }
+
+    /// A space, tab or line break: where `clipped` cuts and counts words.
+    private static func isSpace(_ character: Character) -> Bool {
+        character.unicodeScalars.allSatisfy { $0 == " " || $0 == "\t" || $0 == "\n" || $0 == "\r" }
     }
 
     /// The longest prefix of whole characters within `bytes` of UTF-8,

@@ -363,7 +363,8 @@ reporting in, a question, or anything else that is not the agent's own
 next step in that run completes nothing. The agent's last words in its
 newest run while it still works never go, however long it pauses. Each
 piece goes once: a status change, a refresh or the same state again sends
-nothing. A piece longer than 4 KB goes cut there, with `"truncated":true`.
+nothing. A piece longer than 8 KB (about 1,000 words) goes cut after a
+whole word, ending `… (cut, N more words)`, with `"truncated":true`.
 Android has no run on a row: there a turn's rows come together with its
 end after them, so its words are of that run, and words with a step after
 them (a tool call, a picture, more words, a failure, the end) are complete.
@@ -428,8 +429,9 @@ context repeats the directory, and the tools' list is the prompt's alone.
 The destinations are the only places `navigate` goes, listed as the new-work
 refs are; nothing else in the app has a `happy://` address of the call's. A turn says who
 wrote it on a team, its non-plain end (`Ended: steering`, `Ended in an
-error: …`), and `[cut short]` after a text cut at 4 KB; "Older turns aren't
-shown." when there are more.
+error: …`), and a text past its limit (8 KB for the agent's words, 2 KB for
+the person's) cut after a whole word, ending `… (cut, N more words)`;
+"Older turns aren't shown." when there are more.
 
 **History** (`readConversation`, JSON): the conversation's `title` and
 `parents`, `working`, `needsInput`, when the person last wrote there
@@ -447,8 +449,14 @@ turn steered or stopped before an answer has only the person's message, one
 with no message of the person's only the agent's words, one an error ended
 its `error`. The person's latest message, when no finished turn answers it
 yet, is the fifth, labelled `pendingUserMessage`, so then four finished
-turns come with it. Each text is cut at 4 KB, and the whole within 32 KB
-(the oldest turns give way, `olderTurns` says more exist). It also lists
+turns come with it. The agent's words are cut at 8 KB, about 1,000 words
+(two pages), and the person's at 2 KB, each after a whole word, ending
+`… (cut, N more words)`, with `"truncated":true` on the turn. The whole is
+within 56 KB as it goes on the wire, counted with each character as escaped
+in the call SDK's own JSON (`escapedSize`; a data channel message is at most
+64 KB): the oldest turns give way, `olderTurns` says more exist, and the
+newest stays whole. Five turns of 1,000 words of prose (about 6 KB each) all
+fit. It also lists
 the `models` the conversation can switch to (`[{id,name,efforts}]`, at most
 30: the composer's model picker's, each shown account's switched-on models
 less those it hides).
@@ -467,16 +475,23 @@ next `readConversation`, and in the chat as any failed message does.
 No update announces it.
 
 **Sizes:** the first context is capped at 32 KB of UTF-8 (the older turns
-give way first, then the directory's tail). Context that arrives before
+give way first, then the directory's tail, and the newest turn only after
+that). Five turns of 1,000 words of prose (about 30 KB) fit; five replies
+at their 8 KB limit don't, and then the older turns give way, the newest
+stays whole and `readConversation` has the rest. Context that arrives before
 the call is live waits, up to 32 KB. Past that it is let go whole rather
 than cut, and replaced by one resync (`CallContext.resync`): a `focus`
 event with the current `focusRevision`, its `ref` and `"resync":true`, the
 errors the call told of, and each piece it told, as told, the most recent
 first, those within 16 KB (`omitted` counts any that didn't fit). The first
 context is the prompt's variable and is never lost, so the resync doesn't
-repeat the directory. Per call, words are bounded by 4 KB per piece of the
+repeat the directory. Per call, words are bounded by 8 KB per piece of the
 four visited conversations, but not in total: a long call over busy
-conversations still grows the agent's context.
+conversations still grows the agent's context. ElevenLabs documents no
+size limit on a client tool's result or a contextual update (only the 64 KB
+it cuts a tool's full payload to on its way to the client); each goes as one
+LiveKit data channel message, which both SDKs take up to 64 KB (LiveKit
+recommends 15 KB), so the read's 56 KB is the largest.
 Debug builds count every update and tool result by size
 (`CallProbe.sent`, `live.json`), so real calls can be measured.
 

@@ -26,6 +26,8 @@ import java.io.File
 /** The agent connection's voice call: its context and its tools, with the conversations faked (iOS `CallContextTests`). */
 class CallContextTest {
     private val backendTarget = CallTarget("a", "Backend", CallTarget.Kind.Bot, CallTarget.Status.Idle)
+    /** A thousand words of the agent's, two pages: about 6 KB. */
+    private val thousandWords = List(40) { "The build in `packages/happy-ios` failed on step three: the cache key changed after the lockfile update, so the agent rebuilt it and reran the tests." }.joinToString(" ")
     private val docsTarget = CallTarget("b", "Docs", CallTarget.Kind.Task, CallTarget.Status.Running)
     private val releaseTarget = CallTarget("t", "Release notes", CallTarget.Kind.Task, CallTarget.Status.Idle)
     private val fixTarget = CallTarget("c", "Fix cache race", CallTarget.Kind.Subtask, CallTarget.Status.Running,
@@ -124,7 +126,7 @@ class CallContextTest {
         assertTrue(directory.utf8Size() <= CallContext.Limits.DIRECTORY_BYTES)
         val screen = parts.first { it.startsWith("On screen:") }
         assertTrue(screen.lines().count { it.firstOrNull()?.isDigit() == true } <= CallContext.Limits.TURNS)
-        assertTrue(screen.contains("[cut short]"))
+        assertTrue(screen.contains(" … (cut, 1 more word)"))
         assertTrue(screen.contains("Older turns aren't shown."))
         assertTrue(text.endsWith(CallContext.NEW_WORK_TEXT + "\n\n" + CallContext.DESTINATIONS_TEXT))
     }
@@ -169,7 +171,8 @@ class CallContextTest {
     /**
      * Five in all: five finished turns with nothing waiting, four with a
      * message waiting; an answer with no message of the person's is half a
-     * pair; a read within 32 KB, oldest first to go.
+     * pair; a read within [CallContext.Limits.READ_BYTES] on the wire, the
+     * oldest first to go and the newest whole.
      */
     @Test
     fun fiveTurnsInAllAndTheBudgetHolds() = runBlocking {
@@ -185,12 +188,63 @@ class CallContextTest {
         read = obj(context.tool("readConversation", """{"ref":"s1"}""").text)
         assertEquals(4, read.turns().size)
         assertEquals("and now?", read["pendingUserMessage"]!!.jsonObject.str("text"))
-        val long = "é".repeat(5000)
-        targets.states["a"] = CallTargetState(backendTarget, turns = (0 until 6).map { CallTurn("l$it", long, long) })
+        // Each reply within its own limit, but escaped six bytes a character on the wire.
+        val heavy = "<<<< ".repeat(1600)
+        targets.states["a"] = CallTargetState(backendTarget, turns = (0 until 6).map { CallTurn("l$it", "ask $it", heavy) })
         val big = context.tool("readConversation", """{"ref":"s1"}""")
-        assertTrue(big.text.utf8Size() <= CallContext.Limits.TOTAL_BYTES)
+        assertTrue(CallContext.escapedSize(big.text) <= CallContext.Limits.READ_BYTES)
         val shown = obj(big.text).turns()
-        assertTrue(shown.size in 1 until 5)
+        assertEquals(listOf("ask 5"), shown.map { it.str("user") })
+        assertEquals(heavy, shown.single().str("assistant"))
+        assertNull(shown.single()["truncated"])
+    }
+
+    /** About a thousand words of the agent's come back whole: in a read, five turns of them, and told as they come. */
+    @Test
+    fun aThousandWordReplyComesBackWhole() = runBlocking {
+        assertEquals(1000, thousandWords.split(" ").size)
+        val turns = (1..5).map { CallTurn("r$it", "ask $it", thousandWords) }
+        val context = CallContext(FakeCallTargets(listOf(backendTarget), mutableMapOf("a" to CallTargetState(backendTarget, turns = turns)), null))
+        context.initial()
+        val read = context.tool("readConversation", """{"ref":"s1"}""")
+        assertTrue(CallContext.escapedSize(read.text) <= CallContext.Limits.READ_BYTES)
+        val shown = obj(read.text).turns()
+        assertEquals(List(5) { thousandWords }, shown.map { it.str("assistant") })
+        assertTrue(shown.all { it["truncated"] == null })
+        val live = CallContext(backend())
+        live.initial()
+        live.targetChanged(CallTargetState(backendTarget))
+        val told = events(live.targetChanged(CallTargetState(backendTarget, listOf(CallMessage("r", CallMessage.Role.Assistant, thousandWords))))).single()
+        assertEquals(thousandWords, told.str("text"))
+        assertNull(told["truncated"])
+    }
+
+    /** Five turns of a thousand words fit the first context whole; five replies at their limit don't, and the older give way, the newest there whole. */
+    @Test
+    fun theFirstContextKeepsTheNewestTurnWhole() = runBlocking {
+        suspend fun initial(reply: String): String {
+            val turns = (1..5).map { CallTurn("r$it", "ask $it", "Turn $it. $reply") }
+            return CallContext(FakeCallTargets(listOf(backendTarget), mutableMapOf("a" to CallTargetState(backendTarget, turns = turns)), "a")).initial()
+        }
+        val fits = initial(thousandWords)
+        assertTrue(fits.utf8Size() <= CallContext.Limits.TOTAL_BYTES)
+        for (turn in 1..5) assertTrue(fits.contains("Agent: Turn $turn. $thousandWords\n"))
+        assertFalse(fits.contains("(cut,"))
+        val most = "$thousandWords $thousandWords".split(" ").take(1300).joinToString(" ")
+        assertTrue(most.utf8Size() + 8 <= CallContext.Limits.REPLY_BYTES)
+        val text = initial(most)
+        assertTrue(text.utf8Size() <= CallContext.Limits.TOTAL_BYTES)
+        assertTrue(text.contains("Agent: Turn 5. $most\n"))
+        assertFalse(text.contains("Turn 1. "))
+        assertFalse(text.contains("(cut,"))
+        assertTrue(text.contains("Older turns aren't shown."))
+    }
+
+    @Test
+    fun clippingCutsAfterAWordAndCountsTheRest() {
+        assertEquals("short", CallContext.clipped("short", 64))
+        assertEquals("word word word word word word … (cut, 94 more words)", CallContext.clipped("word ".repeat(100), 64))
+        assertEquals("é".repeat(16) + " … (cut, 1 more word)", CallContext.clipped("é".repeat(100), 64))
     }
 
     @Test
@@ -347,13 +401,18 @@ class CallContextTest {
     }
 
     @Test
-    fun aLongMessageGoesCutAtFourKilobytesOnce() = runBlocking {
+    fun aLongMessageGoesCutAfterAWordOnce() = runBlocking {
         val context = CallContext(backend())
         context.initial()
         context.targetChanged(CallTargetState(backendTarget))
-        val long = CallTargetState(backendTarget, listOf(CallMessage("r", CallMessage.Role.Assistant, "é".repeat(3000))))
+        val words = (1..2000).map { "w$it" }
+        val long = CallTargetState(backendTarget, listOf(CallMessage("r", CallMessage.Role.Assistant, words.joinToString(" "))))
         val cut = events(context.targetChanged(long)).single()
-        assertEquals(4096, cut.str("text")!!.utf8Size())
+        val text = cut.str("text")!!
+        assertTrue(text.utf8Size() <= CallContext.Limits.REPLY_BYTES)
+        val kept = text.substringBefore(" … (cut, ").split(" ")
+        assertEquals(words.take(kept.size), kept)
+        assertTrue(text, text.endsWith(" … (cut, ${words.size - kept.size} more words)"))
         assertTrue(cut["truncated"]!!.jsonPrimitive.boolean)
         assertTrue(context.targetChanged(long).isEmpty)
     }

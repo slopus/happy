@@ -11,6 +11,8 @@ final class CallContextTests: XCTestCase {
     }
 
     private let backendTarget = CallTarget(agentId: "a", title: "Backend", kind: .bot, status: .idle)
+    /// A thousand words of the agent's, two pages: about 6 KB.
+    private let thousandWords = Array(repeating: "The build in `packages/happy-ios` failed on step three: the cache key changed after the lockfile update, so the agent rebuilt it and reran the tests.", count: 40).joined(separator: " ")
     private let docsTarget = CallTarget(agentId: "b", title: "Docs", kind: .task, status: .running)
 
     /// Backend: three finished turns, one that failed, and a message no turn has answered yet.
@@ -106,7 +108,7 @@ final class CallContextTests: XCTestCase {
         let screen = try XCTUnwrap(parts.first { $0.hasPrefix("On screen:") })
         let shown = screen.components(separatedBy: "\n").filter { $0.first?.isNumber == true }
         XCTAssertLessThanOrEqual(shown.count, CallContext.Limits.turns)
-        XCTAssertTrue(screen.contains("[cut short]"))
+        XCTAssertTrue(screen.contains(" … (cut, 1 more word)"))
         XCTAssertTrue(screen.contains("Older turns aren't shown."))
         XCTAssertTrue(text.hasSuffix(CallContext.newWorkText + "\n\n" + CallContext.destinationsText))
     }
@@ -148,7 +150,8 @@ final class CallContextTests: XCTestCase {
 
     /// Five in all: five finished turns with nothing waiting, four with a
     /// message waiting; an answer with no message of the person's is half
-    /// a pair; a read within 32 KB, oldest first to go.
+    /// a pair; a read within `Limits.readBytes` on the wire, the oldest
+    /// first to go and the newest whole.
     func testFiveTurnsInAllAndTheBudgetHolds() async throws {
         var turns = (1...7).map { CallTurn(id: "r\($0)", user: "ask \($0)", reply: "answer \($0)") }
         turns.append(CallTurn(id: "r8", reply: "done on its own"))
@@ -164,13 +167,63 @@ final class CallContextTests: XCTestCase {
         read = try object(await tool(context, "readConversation", #"{"ref":"s1"}"#).text)
         XCTAssertEqual((read["turns"] as? [[String: Any]])?.count, 4)
         XCTAssertEqual((read["pendingUserMessage"] as? [String: Any])?["text"] as? String, "and now?")
-        let long = String(repeating: "é", count: 5000)
-        await targets.set("a", CallTargetState(target: backendTarget, turns: (0..<6).map { CallTurn(id: "l\($0)", user: long, reply: long) }))
+        // Each reply within its own limit, but escaped six bytes a character on the wire.
+        let heavy = String(repeating: "<<<< ", count: 1600)
+        await targets.set("a", CallTargetState(target: backendTarget, turns: (0..<6).map { CallTurn(id: "l\($0)", user: "ask \($0)", reply: heavy) }))
         let big = await tool(context, "readConversation", #"{"ref":"s1"}"#)
-        XCTAssertLessThanOrEqual(big.text.utf8.count, CallContext.Limits.totalBytes)
+        XCTAssertLessThanOrEqual(CallContext.escapedSize(Data(big.text.utf8)), CallContext.Limits.readBytes)
         let shown = try XCTUnwrap(try object(big.text)["turns"] as? [[String: Any]])
-        XCTAssertLessThan(shown.count, 5)
-        XCTAssertFalse(shown.isEmpty)
+        XCTAssertEqual(shown.map { $0["user"] as? String }, ["ask 5"])
+        XCTAssertEqual(shown.first?["assistant"] as? String, heavy)
+        XCTAssertNil(shown.first?["truncated"])
+    }
+
+    /// About a thousand words of the agent's come back whole: in a read,
+    /// five turns of them, and told as they come.
+    func testAThousandWordReplyComesBackWhole() async throws {
+        XCTAssertEqual(thousandWords.split(separator: " ").count, 1000)
+        let turns = (1...5).map { CallTurn(id: "r\($0)", user: "ask \($0)", reply: thousandWords) }
+        let context = CallContext(targets: FakeCallTargets(directory: [backendTarget], states: ["a": CallTargetState(target: backendTarget, turns: turns)], focus: nil))
+        _ = await context.initial()
+        let read = await tool(context, "readConversation", #"{"ref":"s1"}"#)
+        XCTAssertLessThanOrEqual(CallContext.escapedSize(Data(read.text.utf8)), CallContext.Limits.readBytes)
+        let shown = try XCTUnwrap(try object(read.text)["turns"] as? [[String: Any]])
+        XCTAssertEqual(shown.map { $0["assistant"] as? String }, Array(repeating: thousandWords, count: 5))
+        XCTAssertTrue(shown.allSatisfy { $0["truncated"] == nil })
+        let live = CallContext(targets: backend())
+        _ = await live.initial()
+        _ = await live.targetChanged(CallTargetState(target: backendTarget))
+        let told = try events(await live.targetChanged(CallTargetState(target: backendTarget, messages: [CallMessage(id: "r", role: .assistant, text: thousandWords)])))
+        XCTAssertEqual(told.first?["text"] as? String, thousandWords)
+        XCTAssertNil(told.first?["truncated"])
+    }
+
+    /// Five turns of a thousand words fit the first context whole; five
+    /// replies at their limit don't, and the older give way, the newest
+    /// there whole.
+    func testTheFirstContextKeepsTheNewestTurnWhole() async throws {
+        func initial(_ reply: String) async -> String {
+            let turns = (1...5).map { CallTurn(id: "r\($0)", user: "ask \($0)", reply: "Turn \($0). " + reply) }
+            return await CallContext(targets: FakeCallTargets(directory: [backendTarget], states: ["a": CallTargetState(target: backendTarget, turns: turns)], focus: "a")).initial()
+        }
+        let fits = await initial(thousandWords)
+        XCTAssertLessThanOrEqual(fits.utf8.count, CallContext.Limits.totalBytes)
+        for turn in 1...5 { XCTAssertTrue(fits.contains("Agent: Turn \(turn). " + thousandWords + "\n")) }
+        XCTAssertFalse(fits.contains("(cut,"))
+        let most = Array(repeating: thousandWords, count: 2).joined(separator: " ").split(separator: " ").prefix(1300).joined(separator: " ")
+        XCTAssertLessThanOrEqual(most.utf8.count + 8, CallContext.Limits.replyBytes)
+        let text = await initial(most)
+        XCTAssertLessThanOrEqual(text.utf8.count, CallContext.Limits.totalBytes)
+        XCTAssertTrue(text.contains("Agent: Turn 5. " + most + "\n"))
+        XCTAssertFalse(text.contains("Turn 1. "))
+        XCTAssertFalse(text.contains("(cut,"))
+        XCTAssertTrue(text.contains("Older turns aren't shown."))
+    }
+
+    func testClippingCutsAfterAWordAndCountsTheRest() {
+        XCTAssertEqual(CallContext.clipped("short", bytes: 64), "short")
+        XCTAssertEqual(CallContext.clipped(String(repeating: "word ", count: 100), bytes: 64), "word word word word word word … (cut, 94 more words)")
+        XCTAssertEqual(CallContext.clipped(String(repeating: "é", count: 100), bytes: 64), String(repeating: "é", count: 16) + " … (cut, 1 more word)")
     }
 
     func testAFailedTurnIsReadWithItsReason() async throws {
@@ -370,13 +423,18 @@ final class CallContextTests: XCTestCase {
         XCTAssertEqual(rest.map { $0["text"] as? String }, ["They show a timeout."])
     }
 
-    func testALongMessageGoesCutAtFourKilobytesOnce() async throws {
+    func testALongMessageGoesCutAfterAWordOnce() async throws {
         let context = CallContext(targets: backend())
         _ = await context.initial()
         _ = await context.targetChanged(CallTargetState(target: backendTarget))
-        let long = CallTargetState(target: backendTarget, messages: [CallMessage(id: "r", role: .assistant, text: String(repeating: "é", count: 3000))])
+        let words = (1...2000).map { "w\($0)" }
+        let long = CallTargetState(target: backendTarget, messages: [CallMessage(id: "r", role: .assistant, text: words.joined(separator: " "))])
         let cut = try events(await context.targetChanged(long))
-        XCTAssertEqual((cut.first?["text"] as? String)?.utf8.count, 4096)
+        let text = try XCTUnwrap(cut.first?["text"] as? String)
+        XCTAssertLessThanOrEqual(text.utf8.count, CallContext.Limits.replyBytes)
+        let kept = try XCTUnwrap(text.components(separatedBy: " … (cut, ").first).components(separatedBy: " ")
+        XCTAssertEqual(kept, Array(words.prefix(kept.count)))
+        XCTAssertTrue(text.hasSuffix(" … (cut, \(words.count - kept.count) more words)"), text)
         XCTAssertEqual(cut.first?["truncated"] as? Bool, true)
         let after = await context.targetChanged(long)
         XCTAssertTrue(after.isEmpty)

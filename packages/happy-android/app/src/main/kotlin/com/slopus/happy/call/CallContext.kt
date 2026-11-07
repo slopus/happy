@@ -61,14 +61,29 @@ class CallContext(
     private val lane: CoroutineContext = Dispatchers.Default.limitedParallelism(1),
 ) {
     object Limits {
+        /**
+         * The first context, and half of it a resync. The prompt's override goes
+         * beside it in the call's first message, which the data channel takes up
+         * to 64 KB (LiveKit).
+         */
         const val TOTAL_BYTES = 32 * 1024
+        /**
+         * A read (`readConversation`), as it goes on the wire ([escapedSize]):
+         * one escaped string in a data channel message, which LiveKit takes up
+         * to 65,535 bytes (64,000 on iOS), its envelope beside it. Five turns of
+         * a whole reply each fit as prose does.
+         */
+        const val READ_BYTES = 56 * 1024
         /**
          * Turns a read shows, the person's message still waiting for an answer
          * counted as one: each the person's message and the agent's last
          * words, or as much of the pair as there is.
          */
         const val TURNS = 5
-        const val MESSAGE_BYTES = 4 * 1024
+        /** One of the agent's messages: a thousand words of technical prose, Markdown and all (6.3 to 7.3 bytes a word in this repository's docs). */
+        const val REPLY_BYTES = 8 * 1024
+        /** One of the person's own, a third of that. */
+        const val USER_BYTES = 2 * 1024
         const val ERROR_BYTES = 1024
         /** Conversations the first context lists, and its directory's size. */
         const val DIRECTORY = 100
@@ -145,7 +160,7 @@ class CallContext(
      * last five turns and the models it can switch to, the directory, how new
      * work starts and where `navigate` goes. Within
      * [Limits.TOTAL_BYTES]: the older turns give way first, then the
-     * directory's tail.
+     * directory's tail, and the newest turn only after that.
      */
     suspend fun initial(): String = withContext(lane) {
         see(targets.directory())
@@ -162,8 +177,9 @@ class CallContext(
         var budget = Limits.DIRECTORY_BYTES
         fun text(telling: Boolean = false): String =
             listOf(header, screen(state, turns), directoryText(budget, telling), NEW_WORK_TEXT, DESTINATIONS_TEXT).joinToString("\n\n")
-        while (text().utf8Size() > Limits.TOTAL_BYTES && turns.isNotEmpty()) turns.removeAt(0)
+        while (text().utf8Size() > Limits.TOTAL_BYTES && turns.size > 1) turns.removeAt(0)
         while (text().utf8Size() > Limits.TOTAL_BYTES && budget > 512) budget /= 2
+        while (text().utf8Size() > Limits.TOTAL_BYTES && turns.isNotEmpty()) turns.removeAt(0)
         focused?.let { told += it }
         text(telling = true)
     }
@@ -197,14 +213,13 @@ class CallContext(
         }
         if (state.hasMore || answering(state).size > turns.size) lines += "Older turns aren't shown."
         state.unanswered?.let { pending ->
-            val text = truncated(pending.text, Limits.MESSAGE_BYTES)
+            val text = clipped(pending.text, Limits.USER_BYTES)
             val delivery = when (pending.delivery) {
                 CallMessage.Delivery.Queued -> ", still on this phone"
                 CallMessage.Delivery.Failed -> ", which failed to send"
                 else -> ""
             }
-            lines += "Waiting for an answer, from ${pending.by ?: "the person"}$delivery:\n   " + indented(text) +
-                if (text.length < pending.text.length) " [cut short]" else ""
+            lines += "Waiting for an answer, from ${pending.by ?: "the person"}$delivery:\n   " + indented(text)
         }
         return lines.joinToString("\n")
     }
@@ -269,11 +284,11 @@ class CallContext(
             if (message.role != CallMessage.Role.Assistant || !message.final) continue
             if (message.id in known.had || message.text.isEmpty()) continue
             known.had += message.id
-            val text = truncated(message.text, Limits.MESSAGE_BYTES)
+            val text = clipped(message.text, Limits.REPLY_BYTES)
             val event = LinkedHashMap(address)
             event["event"] = JsonPrimitive("assistant_text")
             event["text"] = JsonPrimitive(text)
-            if (text.length < message.text.length) event["truncated"] = JsonPrimitive(true)
+            if (text != message.text) event["truncated"] = JsonPrimitive(true)
             // Its run is over and these were its last words.
             val turn = message.turn
             if (turn != null && turn in ended && last[turn] == message.id) event["finishedTurn"] = JsonPrimitive(true)
@@ -511,7 +526,8 @@ class CallContext(
                 )
                 val turns = recent(state).toMutableList()
                 var value = body(state, turns, name, options = true)
-                while (CallJson.encode(value).utf8Size() > Limits.TOTAL_BYTES && turns.isNotEmpty()) {
+                // The older turns give way first; the newest stays whole.
+                while (escapedSize(CallJson.encode(value)) > Limits.READ_BYTES && turns.size > 1) {
                     turns.removeAt(0)
                     value = body(state, turns, name, options = true)
                 }
@@ -751,9 +767,9 @@ class CallContext(
         value["turns"] = JsonArray(turns.map(::turn))
         value["olderTurns"] = JsonPrimitive(state.hasMore || answering(state).size > turns.size)
         state.unanswered?.let { pending ->
-            val text = truncated(pending.text, Limits.MESSAGE_BYTES)
+            val text = clipped(pending.text, Limits.USER_BYTES)
             val message = linkedMapOf<String, JsonElement>("text" to JsonPrimitive(text))
-            if (text.length < pending.text.length) message["truncated"] = JsonPrimitive(true)
+            if (text != pending.text) message["truncated"] = JsonPrimitive(true)
             pending.delivery?.let { message["delivery"] = JsonPrimitive(it.wire) }
             pending.by?.let { message["by"] = JsonPrimitive(it) }
             value["pendingUserMessage"] = JsonObject(message)
@@ -828,13 +844,12 @@ class CallContext(
         /** One turn of the first context: who asked, the agent's last words, and how it ended when that wasn't plain. */
         fun turnText(turn: CallTurn, number: Int): String {
             val lines = ArrayList<String>()
-            fun text(words: String?, who: String) {
+            fun text(words: String?, who: String, bytes: Int) {
                 if (words.isNullOrEmpty()) return
-                val kept = truncated(words, Limits.MESSAGE_BYTES)
-                lines += "$who: " + indented(kept) + if (kept.length < words.length) " [cut short]" else ""
+                lines += "$who: " + indented(clipped(words, bytes))
             }
-            text(turn.user, turn.userBy?.let { if (it == "the person") "The person" else it } ?: "The person")
-            text(turn.reply, "Agent")
+            text(turn.user, turn.userBy?.let { if (it == "the person") "The person" else it } ?: "The person", Limits.USER_BYTES)
+            text(turn.reply, "Agent", Limits.REPLY_BYTES)
             if (turn.ended == "error") {
                 lines += "Ended in an error" + (turn.error?.takeIf { it.isNotEmpty() }?.let { ": " + indented(truncated(it, Limits.ERROR_BYTES)) } ?: ".")
             } else if (turn.ended != "completed") {
@@ -866,19 +881,54 @@ class CallContext(
         fun turn(turn: CallTurn): JsonObject {
             val value = linkedMapOf<String, JsonElement>("ended" to JsonPrimitive(turn.ended))
             var cut = false
-            fun text(words: String?, key: String) {
+            fun text(words: String?, key: String, bytes: Int) {
                 if (words.isNullOrEmpty()) return
-                val kept = truncated(words, Limits.MESSAGE_BYTES)
+                val kept = clipped(words, bytes)
                 value[key] = JsonPrimitive(kept)
-                if (kept.length < words.length) cut = true
+                if (kept != words) cut = true
             }
-            text(turn.user, "user")
+            text(turn.user, "user", Limits.USER_BYTES)
             if (!turn.user.isNullOrEmpty()) turn.userBy?.let { value["userBy"] = JsonPrimitive(it) }
-            text(turn.reply, "assistant")
+            text(turn.reply, "assistant", Limits.REPLY_BYTES)
             if (turn.ended == "error") turn.error?.takeIf { it.isNotEmpty() }?.let { value["error"] = JsonPrimitive(truncated(it, Limits.ERROR_BYTES)) }
             if (cut) value["truncated"] = JsonPrimitive(true)
             return JsonObject(value)
         }
+
+        /**
+         * [text] within [bytes] of UTF-8, cut after a whole word and saying how
+         * many were left out: "… (cut, 120 more words)". A text with no space
+         * to cut at is cut between characters (iOS `CallContext.clipped`).
+         */
+        fun clipped(text: String, bytes: Int): String {
+            if (text.utf8Size() <= bytes) return text
+            // Room for the note, whatever its count.
+            var kept = truncated(text, maxOf(0, bytes - 32))
+            if (kept.length < text.length && !isSpace(text[kept.length])) {
+                val space = kept.indexOfLast(::isSpace)
+                if (space >= 0) kept = kept.substring(0, space)
+            }
+            kept = kept.trimEnd(::isSpace)
+            val left = text.substring(kept.length).split(' ', '\t', '\n', '\r').count { it.isNotEmpty() }
+            return kept + " … (cut, $left more ${if (left == 1) "word" else "words"})"
+        }
+
+        /**
+         * What [json] weighs sent on as a string inside a call SDK's own JSON, at
+         * most: a quote, backslash or slash escaped in two bytes, a control
+         * character or one Gson escapes as HTML (`<`, `>`, `&`, `=`, `'`) in six
+         * (`\u003c`). iOS's `escapedSize` counts the same.
+         */
+        fun escapedSize(json: String): Int = json.encodeToByteArray().sumOf { byte ->
+            when (byte.toInt()) {
+                0x22, 0x5C, 0x2F -> 2
+                0x3C, 0x3E, 0x26, 0x3D, 0x27, in 0 until 0x20 -> 6
+                else -> 1
+            }.toInt()
+        }
+
+        /** A space, tab or line break: where [clipped] cuts and counts words. */
+        private fun isSpace(character: Char): Boolean = character == ' ' || character == '\t' || character == '\n' || character == '\r'
 
         /** The longest prefix of whole characters (code points) within [bytes] of UTF-8, or of what [size] counts. */
         fun truncated(text: String, bytes: Int, size: (String) -> Int = { it.utf8Size() }): String {
