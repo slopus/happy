@@ -60,6 +60,7 @@ import com.slopus.happy.ui.connection.LocalHappyLinks
 import com.slopus.happy.ui.connection.rememberHappyLinks
 import com.slopus.happy.ui.connection.signInToServer
 import com.slopus.happy.ui.connection.signInToServerAgain
+import com.slopus.happy.ui.connection.SessionEndedEffect
 import com.slopus.happy.connection.ServerInvite
 import com.slopus.happy.ui.connection.LocalCloudConnect
 import com.slopus.happy.ui.connection.rememberCloudConnect
@@ -205,6 +206,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                 TabletShell(graph, nav, hasHome = open != OpenAccount.None, sidebar = home) {
                     // Inside the shell: on the split, what the call opens is the main panel's new root.
                     CallScreenEffect(graph.calls, nav, agent)
+                    SessionEndedEffect(graph, nav, agent)
                     val start: Any = if (open == OpenAccount.None) StartRoute else HomeRoute
                     val motion = rememberNavMotion()
                     RetainedNavHost(nav, start, motion, modifier = Modifier.backdrop(nav)) {

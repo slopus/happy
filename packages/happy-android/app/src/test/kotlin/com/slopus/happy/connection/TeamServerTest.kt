@@ -270,6 +270,72 @@ class TeamServerTest {
     }
 
     @Test
+    fun aSessionEndingLeavesOnlyItsSignInAndNothingOfItsServer(): Unit = runBlocking {
+        val connections = connections()
+        daemon.valid += setOf("access-a", "access-b")
+        val a = connections.addServer(origin, member("u-a", "refresh-a"), AccessToken("access-a", now + 300_000), fallbackName = "happy.acme.example")
+        val other = AgentOrigin.parse("https://happy.other.example")
+        val b = connections.addServer(other, member("u-b", "refresh-b"), AccessToken("access-b", now + 300_000), fallbackName = "happy.other.example")
+        val dir = kotlin.io.path.createTempDirectory("agent-connections").toFile()
+        val staged = kotlin.io.path.createTempDirectory("conversation-media").toFile()
+        // A's catalog, a kept conversation, its outbox and its downloaded files; B's catalog and outbox.
+        val aFiles = listOf("${a.id}.json", "${a.id}.chats.json", "${a.id}.intents.json").map { File(dir, it).apply { writeText("{}") } } +
+            File(dir, "${a.id}.media").apply { mkdirs(); File(this, "photo.jpg").writeText("x") }
+        val bFiles = listOf("${b.id}.json", "${b.id}.intents.json").map { File(dir, it).apply { writeText("{}") } }
+        val opened = File(staged, "vault-1-1").apply { mkdirs(); File(this, "report.pdf").writeText("x") }
+        val sessions = AgentSessions(connections, scope, dir, stagedFiles = staged, openId = MutableStateFlow(a.id), foreground = MutableStateFlow(false), makeTransport = { daemon })
+        val session = sessions.session(a.id)!!
+        delay(200)
+        assertTrue(aFiles.all { it.exists() })
+
+        connections.signedOut(a.id)
+        withTimeout(5_000) { while (aFiles.any { it.exists() } || opened.exists()) delay(10) }
+        // A keeps its entry, for its Sign in, and nothing else: no credentials, no token, no session.
+        val ended = connections.accounts.value.single { it.id == a.id }
+        assertTrue(ended.sessionEnded)
+        assertEquals(null, connections.credentials(a.id))
+        assertEquals(null, sessions.session(a.id))
+        // B, another server, is untouched.
+        assertTrue(bFiles.all { it.exists() })
+        assertEquals("refresh-b", connections.credentials(b.id)?.oauth?.refreshToken)
+        assertFalse(connections.accounts.value.single { it.id == b.id }.signInRequired)
+        assertEquals("access-b", connections.bearer(b.id, connections.credentials(b.id)!!))
+
+        // Signed in again: a new session, from nothing.
+        connections.addServer(origin, member("u-a", "refresh-a2"), AccessToken("access-a", now + 300_000), fallbackName = "happy.acme.example", replacing = a.id)
+        assertFalse(connections.accounts.value.single { it.id == a.id }.sessionEnded)
+        assertTrue(sessions.session(a.id) !== session)
+        dir.deleteRecursively()
+        staged.deleteRecursively()
+    }
+
+    @Test
+    fun aNameOwedIsNotAnEndedSession(): Unit = runBlocking {
+        val connections = connections()
+        daemon.valid += setOf("access-a")
+        val a = connections.addServer(origin, member("u-a", "refresh-a"), AccessToken("access-a", now + 300_000), fallbackName = "happy.acme.example")
+        connections.signedOut(a.id, profileRequired = true)
+        val owed = connections.accounts.value.single()
+        assertTrue(owed.signInRequired && owed.profileRequired)
+        assertFalse(owed.sessionEnded)
+        assertEquals("refresh-a", connections.credentials(a.id)?.oauth?.refreshToken)
+        assertEquals("refresh-a", connections().credentials(a.id)?.oauth?.refreshToken)
+    }
+
+    @Test
+    fun aSessionEndedUnderAnOlderBuildHasItsCredentialsForgottenOnStart(): Unit = runBlocking {
+        val connections = connections()
+        daemon.valid += setOf("access-a")
+        val a = connections.addServer(origin, member("u-a", "refresh-a"), AccessToken("access-a", now + 300_000), fallbackName = "happy.acme.example")
+        // Signed out as builds before did: flagged, the credentials kept.
+        connections.update(a.id) { it.copy(signInRequired = true) }
+        assertEquals("refresh-a", connections.credentials(a.id)?.oauth?.refreshToken)
+        val started = connections()
+        assertTrue(started.accounts.value.single().sessionEnded)
+        assertEquals(null, started.credentials(a.id))
+    }
+
+    @Test
     fun aRefreshOfAnOlderGrantIsDroppedWhenASignInLandsFirst(): Unit = runBlocking {
         val connections = connections()
         daemon.valid += setOf("access-a", "access-b")
@@ -323,7 +389,6 @@ class TeamServerTest {
         val dir = kotlin.io.path.createTempDirectory("agent-connections").toFile()
         val cache = File(dir, "${a.id}.json").apply { writeText("{}") }
         AgentSessions(connections, scope, dir, openId = MutableStateFlow(null), foreground = MutableStateFlow(false), makeTransport = { daemon })
-        connections.signedOut(a.id)
         daemon.hold = CompletableDeferred()
         val b = scope.async { connections.addServer(origin, member("u-b", "refresh-b"), AccessToken("access-b", now + 300_000), fallbackName = "happy.acme.example", replacing = a.id) }
         withTimeout(5_000) { daemon.held.await() }

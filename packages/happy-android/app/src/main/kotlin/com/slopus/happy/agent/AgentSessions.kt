@@ -27,8 +27,8 @@ import java.io.File
  * Every agent connection's [AgentSession], made on first use and kept while
  * the connection is on the phone. A session's live link runs only while
  * its connection is the open account and the app is in the foreground;
- * otherwise it stays with its cached catalog. Removing a connection closes
- * its session and deletes its cache.
+ * otherwise it stays with its cached catalog. Removing a connection, or
+ * its team server's session ending, closes its session and deletes its cache.
  */
 class AgentSessions(
     private val connections: AgentConnections,
@@ -43,6 +43,13 @@ class AgentSessions(
     private val identityRefreshMillis: Long = 60_000,
     /** Desktop's completion chime, for a conversation that finished while its connection is open ([CompletionWatch]). */
     private val chime: () -> Unit = {},
+    /**
+     * Files read through any connection and staged for another app to open
+     * or share ([com.slopus.happy.conversation.MediaFiles.DIRECTORY]), not
+     * kept per connection: emptied when a team server's session ends, as
+     * they are made again on the next open.
+     */
+    private val stagedFiles: File? = null,
     private val makeTransport: (AgentConnectionCredentials) -> Transport = { agentTransport(it.address, it.port, it.publicUrl, it.tailcatAvailable != false) },
 ) {
     private val sessions = HashMap<String, AgentSession>()
@@ -66,18 +73,24 @@ class AgentSessions(
         }
         scope.launch {
             var known: Set<String>? = null
+            var endedBefore = emptySet<String>()
             connections.accounts.collect { list ->
                 val ids = list.map { it.id }.toSet()
-                val gone = synchronized(sessions) { sessions.keys.filter { it !in ids }.map { sessions.remove(it)!! } }
+                // A team server whose session ended keeps its entry, for its Sign in, and nothing else: its session and caches go too.
+                val ended = list.filter { it.sessionEnded }.map { it.id }.toSet()
+                val gone = synchronized(sessions) { sessions.keys.filter { it !in ids || it in ended }.map { sessions.remove(it)!! } }
                 gone.forEach { it.close() }
-                // Every connection that went, open or not (another member's replaced, one forgotten), and at the
-                // start whatever a connection gone while the app wasn't running left behind.
-                val wiped = known?.let { it - ids }.orEmpty() + gone.map { it.connectionId }
+                // Every connection that went, open or not (another member's replaced, one forgotten), every ended session,
+                // and at the start whatever a connection gone while the app wasn't running left behind.
+                val wiped = known?.let { it - ids }.orEmpty() + gone.map { it.connectionId } + ended
+                val newlyEnded = ended - endedBefore
                 withContext(Dispatchers.IO) {
                     wiped.forEach(::deleteCache)
                     if (known == null) sweep(ids)
+                    if (newlyEnded.isNotEmpty()) stagedFiles?.deleteRecursively()
                 }
                 known = ids
+                endedBefore = ended
             }
         }
     }
@@ -124,9 +137,9 @@ class AgentSessions(
         }
     }
 
-    /** The session for [connectionId]; null when no such connection is on the phone. */
+    /** The session for [connectionId]; null when no such connection is on the phone, or its team server's session ended. */
     fun session(connectionId: String): AgentSession? {
-        if (connections.accounts.value.none { it.id == connectionId }) return null
+        if (connections.accounts.value.none { it.id == connectionId && !it.sessionEnded }) return null
         return synchronized(sessions) {
             sessions.getOrPut(connectionId) {
                 AgentSession(

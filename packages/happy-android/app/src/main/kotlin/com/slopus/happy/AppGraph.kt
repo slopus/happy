@@ -597,6 +597,7 @@ class AppGraph(
         connections = agentConnections,
         scope = scope,
         cacheDir = File(appContext.noBackupFilesDir, "agent-connections"),
+        stagedFiles = File(appContext.cacheDir, com.slopus.happy.conversation.MediaFiles.DIRECTORY),
         openId = openAgentId,
         foreground = isForeground,
         network = appContext.networkPath(),
