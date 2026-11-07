@@ -12,6 +12,7 @@ import CoreGraphics
 ///     list      0 ┬ items, 6 apart ┬ 8
 ///     code      8 ┬ [8 language] 16 code 16 ┬ 8     (scrolls sideways)
 ///     options   8 ┬ buttons, 8 apart ┬ 8
+///     buttons   8 ┬ full-width RoundButtons, 8 apart ┬ 8
 ///     table     8 ┬ bordered grid ┬ 8                (scrolls sideways)
 ///     image     8 ┬ 240 picture, 8, caption ┬ 8
 ///     picture   8 ┬ picture in its own shape, 8, caption ┬ 8
@@ -103,6 +104,8 @@ public struct MarkdownLayout: Equatable, Sendable {
         /// `code` is the highlighted text's unwrapped size.
         case code(language: Measurable?, code: CGSize)
         case options([Measurable])
+        /// Happy links shown as buttons: each its label, one line.
+        case buttons([Measurable])
         case table(Table)
         case image(caption: Measurable?)
         /// A picture a document holds, as a browser draws it: one point a
@@ -148,6 +151,7 @@ public struct MarkdownLayout: Equatable, Sendable {
         case list(frame: CGRect, items: [PlacedListItem])
         case code(PlacedCode)
         case options(frame: CGRect, buttons: [CGRect], labels: [CGRect])
+        case buttons(frame: CGRect, buttons: [CGRect], labels: [CGRect])
         case table(PlacedTable)
         case image(frame: CGRect, picture: CGRect, caption: CGRect?)
         case mermaid(CGRect)
@@ -157,7 +161,7 @@ public struct MarkdownLayout: Equatable, Sendable {
             case .text(let frame), .header(let frame), .rule(let frame): frame
             case .list(let frame, _): frame
             case .code(let code): code.frame
-            case .options(let frame, _, _): frame
+            case .options(let frame, _, _), .buttons(let frame, _, _): frame
             case .table(let table): table.frame
             case .image(let frame, _, _): frame
             case .mermaid(let frame): frame
@@ -265,6 +269,25 @@ public struct MarkdownLayout: Equatable, Sendable {
                 placed.append(.options(frame: CGRect(x: 0, y: top, width: width, height: y - top), buttons: buttons, labels: labelFrames))
                 close(M.blockMargin)
 
+            case .buttons(let labels):
+                // A normal RoundButton, stretched to the width.
+                open(M.blockMargin)
+                let top = y
+                let metrics = RoundButtonMetrics.of(.normal)
+                var buttons: [CGRect] = []
+                var labelFrames: [CGRect] = []
+                let labelWidth = max(0, width - 2 * metrics.paddingHorizontal)
+                for (index, label) in labels.enumerated() {
+                    if index > 0 { y += M.optionGap }
+                    let size = label.size(fitting: labelWidth)
+                    let height = max(metrics.height, size.height)
+                    buttons.append(CGRect(x: 0, y: y, width: width, height: height))
+                    labelFrames.append(CGRect(x: ((width - size.width) / 2).rounded(), y: y + ((height - size.height) / 2).rounded(), width: size.width, height: size.height))
+                    y += height
+                }
+                placed.append(.buttons(frame: CGRect(x: 0, y: top, width: width, height: y - top), buttons: buttons, labels: labelFrames))
+                close(M.blockMargin)
+
             case .table(let table):
                 open(M.blockMargin)
                 let grid = Self.tableGrid(table)
@@ -346,6 +369,8 @@ public struct MarkdownLayout: Equatable, Sendable {
                 width = max(code.width, language?.size(fitting: available).width ?? 0) + 2 * M.codePadding
             case .options(let labels):
                 width = (labels.map { $0.size(fitting: max(0, available - 2 * M.optionPaddingH)).width }.max() ?? 0) + 2 * M.optionPaddingH
+            case .buttons:
+                width = available
             case .table(let table):
                 width = table.columnWidths.reduce(0, +) + 2 * M.tableBorder
             case .image:

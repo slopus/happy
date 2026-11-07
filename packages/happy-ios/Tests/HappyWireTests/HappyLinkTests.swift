@@ -90,6 +90,34 @@ final class HappyLinkTests: XCTestCase {
         XCTAssertFalse(HappyLink.isInstanceID("oauth"))
     }
 
+    func testSettingsLinksAreAClosedListOfPages() {
+        let instance = "k3x9q2m7p0a4b8c1d5e6f7g2"
+        XCTAssertEqual(HappyLink.SettingsPage.allCases.map(\.rawValue), [
+            "general", "account", "sharing", "servers", "instructions", "secrets", "providers", "providers/import",
+            "usage", "voice", "mobile-access", "members", "roles", "policy", "mcp", "computes",
+        ])
+        for page in HappyLink.SettingsPage.allCases {
+            let url = "happy://settings/\(page.rawValue)"
+            XCTAssertEqual(HappyLink(url), HappyLink(.settings(page)), url)
+            XCTAssertEqual(HappyLink(.settings(page)).url, url)
+            XCTAssertEqual(HappyLink("happy://\(instance)/settings/\(page.rawValue)"), HappyLink(.settings(page), instanceId: instance))
+        }
+        for url in [
+            "happy://settings", "happy://settings/", "happy://settings/providers/", "happy://settings/Providers",
+            "happy://settings/providers?x=1", "happy://settings/providers#top", "happy://settings/billing", "happy://Settings/providers",
+            "happy://settings/providers/import/more",
+        ] {
+            XCTAssertNil(HappyLink(url), url)
+        }
+        // Under a Happy host, well-formed or not; the app's own routes aren't.
+        for url in ["happy://settings/billing", "happy://agents/a1", "happy://\(instance)/x", "happy-file://agents/a/Foo", "HAPPY://Settings/x"] {
+            XCTAssertTrue(HappyLink.owns(url), url)
+        }
+        for url in ["happy://direct?x", "happy://oauth/callback", "https://settings/providers", "happy://settingsx/providers"] {
+            XCTAssertFalse(HappyLink.owns(url), url)
+        }
+    }
+
     private func path(_ url: String) -> String? {
         guard case .file(let file)? = HappyLink(url)?.target else { return nil }
         return file.path

@@ -26,6 +26,9 @@ actor ChatPlanner {
         var modelNames: [String: String] = [:]
         /// Whether the person's role may run a failed turn again.
         var actionable = true
+        /// The server the conversation is on, which says where a settings
+        /// link opens (`SettingsLinkPlace`).
+        var server: String?
     }
 
     /// A row as it was planned, and what from.
@@ -334,7 +337,11 @@ actor ChatPlanner {
             switch piece {
             case .text(let text):
                 let resolved = HappyReferences.markdown(text, view: key.references.view)
-                let markdown = MarkdownPiece(Markdown.joiningSoftBreaks(resolved), color: Palette.text, diagrams: ChatMermaidHeights(row: item.id), syntax: syntax, in: environment, body: ChatTextStyles.text, header: ChatTextStyles.header)
+                let server = key.server
+                let markdown = MarkdownPiece(
+                    Markdown.joiningSoftBreaks(resolved), color: Palette.text, diagrams: ChatMermaidHeights(row: item.id), syntax: syntax, in: environment,
+                    body: ChatTextStyles.text, header: ChatTextStyles.header, opens: { SettingsLinkPlace.opens($0, server: server) }
+                )
                 drafts.append(.markdown(markdown))
                 parts.append(.markdown(markdown.blocks))
             case .gallery(let media, let columns):

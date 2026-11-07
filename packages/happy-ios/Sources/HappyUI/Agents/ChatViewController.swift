@@ -1082,6 +1082,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
 
     private var planKey: ChatPlanner.Key {
         var key = ChatPlanner.Key(width: transcriptWidth, maxContentWidth: ContentWidth.maxWidth, environment: traitCollection.textEnvironment, references: subagentReferences, subagentTitles: chat.subagentTitles, pageHeights: pageHeights)
+        key.server = session.server
         // Only a failure card reads the composer's model; without one the
         // key stays the warm chat's, so its rows planned ahead are taken.
         if chat.items.contains(where: { if case .failure = $0.role { true } else { false } }) {
@@ -1804,6 +1805,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     private func cardLabel(_ action: ChatRowAction) -> String? {
         switch action {
         case .openArtifact(let artifact): Strings.open(artifact.title.isEmpty ? Strings.untitledArtifact : artifact.title)
+        case .linkButton(_, let label): label
         case .openMedia(let key): media.media(key).flatMap { $0.isVisual ? nil : Strings.open($0.item.name) }
         default: nil
         }
@@ -1936,6 +1938,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     /// A link in a row: the reference it names, else the web.
     private func open(link: String) {
         if let reference = HappyReferences.reference(link: link) { open(reference) }
+        else if let page = SettingsLinkPlace.page(link) { SettingsLinks.open(page, session: session, from: self) }
         else if let url = URL(string: link) { openBrowser(url, session: session, agentID: media.agentId) }
     }
 
@@ -1979,7 +1982,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             toggle(messageId)
         case .openMessage(let itemId):
             openTool(itemId)
-        case .openURL(let link):
+        case .openURL(let link), .linkButton(let link, _):
             open(link: link)
         case .toggleTurn(let turn):
             toggleTurn(turn)

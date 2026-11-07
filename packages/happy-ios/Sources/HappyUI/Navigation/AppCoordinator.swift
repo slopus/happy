@@ -234,13 +234,17 @@ public final class AppCoordinator {
     }
 
     /// The linked entity, pushed over its connection's home once that is
-    /// the root. An artifact or a conversation opens; anything else
-    /// (a workspace, a file, a service) shows that connection's home.
+    /// the root. An artifact, a conversation or a settings page opens;
+    /// anything else (a workspace, a file, a service) shows that
+    /// connection's home.
     private func openInstanceTarget() {
         guard let target = instanceTarget, case .agentConnection(let shown) = context.account.state, shown.id == target.connection,
               shell.stack.first is AgentHomeViewController, let session = Session.session(for: target.connection, context: context) else { return }
         instanceTarget = nil
         shell.presentedViewController?.dismiss(animated: false)
+        if case .settings(let page) = target.link.target, let top = shell.topViewController {
+            return SettingsLinks.open(page, session: session, from: top)
+        }
         guard case .reference(let reference) = target.link.target, let navigation = shell.topViewController?.navigationController else { return }
         switch reference.kind {
         case .artifact:

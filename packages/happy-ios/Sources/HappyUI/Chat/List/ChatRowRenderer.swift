@@ -407,10 +407,12 @@ struct MarkdownPiece {
     /// headings (V2 passes desktop's).
     /// `document`: the pictures and links of a document that has files of
     /// its own (an artifact); nil reads them as a conversation does.
+    /// `opens`: whether a Happy link opens anything where this is shown; a
+    /// button whose link doesn't is its label as words.
     init(
         _ markdown: String, color: ColorToken, selectable: Bool = true, diagrams: ChatMermaidHeights, syntax: CodeSyntaxService, in environment: TextEnvironment?,
         body: ChatTextStyle = ChatTextStyles.markdownText, header: (Int) -> ChatTextStyle = ChatTextStyles.markdownHeader,
-        document: MarkdownDocument? = nil
+        document: MarkdownDocument? = nil, opens: (String) -> Bool = { _ in false }
     ) {
         var blocks: [MarkdownLayout.Block] = []
         var drawers: [Drawer] = []
@@ -493,6 +495,40 @@ struct MarkdownPiece {
                     }
                     return Drawn(items: items, hits: hits)
                 }
+
+            case .buttons(let spans):
+                // Stacked full-width RoundButtons; one whose link opens
+                // nothing here is its words, a paragraph of its own.
+                var shown: [(url: String, label: MeasuredText)] = []
+                func words() {
+                    guard !shown.isEmpty else { return }
+                    let links = shown
+                    shown = []
+                    blocks.append(.buttons(links.map(\.label.measurable)))
+                    drawers.append { placed, origin in
+                        guard case .buttons(_, let buttons, let frames) = placed else { return Drawn(items: [], hits: []) }
+                        var items: [ChatDrawItem] = []
+                        var hits: [ChatHit] = []
+                        for (index, button) in buttons.enumerated() where index < links.count {
+                            let frame = button.offsetBy(dx: origin.x, dy: origin.y)
+                            items.append(.box(ChatBox(frame: frame, fill: Palette.roundButtonFill, radius: frame.height / 2)))
+                            items.append(.text(links[index].label.layout(for: frames[index]), frames[index].offsetBy(dx: origin.x, dy: origin.y)))
+                            hits.append(ChatHit(frame: frame, action: .linkButton(url: links[index].url, label: links[index].label.string.string)))
+                        }
+                        return Drawn(items: items, hits: hits)
+                    }
+                }
+                for span in spans {
+                    if let url = span.url, opens(url) {
+                        shown.append((url, MeasuredText(ChatTextStyles.linkButton.string(span.text, color: Palette.roundButtonText, in: environment), maxLines: 1)))
+                        continue
+                    }
+                    words()
+                    let measured = MeasuredText(ChatSpans.string([MarkdownSpan(text: span.text)], style: body, color: color, in: environment))
+                    blocks.append(.text(measured.measurable))
+                    drawers.append(text(measured))
+                }
+                words()
 
             case .table(let headers, let rows):
                 let all = [headers] + rows

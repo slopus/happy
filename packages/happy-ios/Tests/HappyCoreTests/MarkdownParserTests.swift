@@ -187,6 +187,63 @@ final class MarkdownParserTests: XCTestCase {
         ])
     }
 
+    func testALinksTitleIsApartFromItsDestination() {
+        XCTAssertEqual(LegacyMarkdown.parseSpans(#"[a](https://x.dev "Docs") [b](<https://y.dev/a b>) [c](https://w.dev/Foo_(bar))"#, header: false), [
+            MarkdownSpan(text: "a", url: "https://x.dev"), MarkdownSpan(text: " "),
+            MarkdownSpan(text: "b", url: "https://y.dev/a b"), MarkdownSpan(text: " "),
+            MarkdownSpan(text: "c", url: "https://w.dev/Foo_(bar)"),
+        ])
+    }
+
+    func testHappyLinksTitledButtonAreLiftedUnderTheirBlock() {
+        let md = #"Add your keys. [Add your team's tokens](happy://settings/providers "button") then [Usage](happy://settings/usage 'button') and go."#
+        XCTAssertEqual(LegacyMarkdown.parse(md), [
+            // The words either side meet with one space between them.
+            .text([MarkdownSpan(text: "Add your keys. "), MarkdownSpan(text: "then "), MarkdownSpan(text: "and go.")]),
+            .buttons([
+                MarkdownSpan(text: "Add your team's tokens", url: "happy://settings/providers", button: true),
+                MarkdownSpan(text: "Usage", url: "happy://settings/usage", button: true),
+            ]),
+        ])
+        // A paragraph of nothing but buttons leaves only them.
+        XCTAssertEqual(LegacyMarkdown.parse("[Keys](happy://settings/providers (button))"), [
+            .buttons([MarkdownSpan(text: "Keys", url: "happy://settings/providers", button: true)]),
+        ])
+        // A list item keeps its place, its button under the list.
+        XCTAssertEqual(LegacyMarkdown.parse(#"- one [Go](happy://settings/general "button")"#), [
+            .list([MarkdownListItem(depth: 0, spans: [MarkdownSpan(text: "one")])]),
+            .buttons([MarkdownSpan(text: "Go", url: "happy://settings/general", button: true)]),
+        ])
+    }
+
+    func testOnlyAWellFormedHappyLinkIsAButton() {
+        // Another title, or a web link titled button: an ordinary link.
+        XCTAssertEqual(LegacyMarkdown.parse(#"[Keys](happy://settings/providers "Button") [Web](https://x.dev "button")"#), [
+            .text([MarkdownSpan(text: "Keys", url: "happy://settings/providers"), MarkdownSpan(text: " "), MarkdownSpan(text: "Web", url: "https://x.dev")]),
+        ])
+        // A malformed Happy button, a malformed settings link, and a settings link with a blank label are their words.
+        XCTAssertEqual(LegacyMarkdown.parseSpans(#"[Bad](happy://agents/ "button") [Bill](happy://settings/billing) [ ](happy://settings/general)"#, header: false), [
+            MarkdownSpan(text: "Bad"), MarkdownSpan(text: " "), MarkdownSpan(text: "Bill"), MarkdownSpan(text: " "), MarkdownSpan(text: " "),
+        ])
+    }
+
+    func testSettingsLinksOpenWhereThePhoneHasThePage() {
+        let cloud = "https://acme.happy-clusters.com"
+        XCTAssertEqual(SettingsLinkPlace.place(.general, server: nil), .general)
+        XCTAssertEqual(SettingsLinkPlace.place(.account, server: cloud), .profile)
+        XCTAssertEqual(SettingsLinkPlace.place(.voice, server: nil), .voice)
+        XCTAssertEqual(SettingsLinkPlace.place(.servers, server: cloud), .servers)
+        XCTAssertEqual(SettingsLinkPlace.place(.servers, server: "https://team.example"), .general)
+        XCTAssertEqual(SettingsLinkPlace.place(.providersImport, server: cloud), .web(URL(string: "https://acme.happybases.com/#/settings/providers/import")!))
+        XCTAssertEqual(SettingsLinkPlace.place(.members, server: cloud), .web(URL(string: "https://acme.happybases.com/#/settings/members")!))
+        XCTAssertNil(SettingsLinkPlace.place(.providers, server: nil))
+        XCTAssertNil(SettingsLinkPlace.place(.providers, server: "https://team.example"))
+        XCTAssertTrue(SettingsLinkPlace.opens("happy://settings/providers", server: cloud))
+        XCTAssertFalse(SettingsLinkPlace.opens("happy://settings/providers", server: nil))
+        XCTAssertFalse(SettingsLinkPlace.opens("happy://k3x9q2m7p0a4b8c1d5e6f7g2/settings/general", server: cloud))
+        XCTAssertFalse(SettingsLinkPlace.opens("happy://agents/a1", server: cloud))
+    }
+
     func testUnclosedMarkersRunToTheEnd() {
         XCTAssertEqual(LegacyMarkdown.parseSpans("x **bold", header: false), [
             MarkdownSpan(text: "x "), MarkdownSpan(styles: [.bold], text: "bold"),

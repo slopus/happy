@@ -395,7 +395,23 @@ ported from happy-agent-client's `happyLinks.ts`.
   belongs to a Happy server you're not connected to." and never falls back
   to another server. A link naming no installation isn't opened from
   outside. The app's own `happy://` routes (`direct`, `terminal`, `oauth`,
-  and the server code) aren't instance links.
+  and the server code) aren't instance links. An instance link to a
+  settings page opens that page as below.
+- **Settings links** (`happy://settings/<page>`, API.md "Settings
+  links"): a closed list of pages (`HappyLink.SettingsPage`). In an
+  agent's message one is drawn as a link and opens where
+  `SettingsLinkPlace` says: `general` Settings, `account` Profile, `voice`
+  the computer's Voice row, `servers` Happy Cloud's servers (Settings off
+  Happy Cloud); every other page opens
+  `https://<name>.happybases.com/#/settings/<page>` in the system browser
+  on a Happy Cloud server, and nothing elsewhere. Opening one only
+  navigates. A malformed or blank-labelled settings link is its words.
+- **Buttons.** A well-formed Happy link titled exactly `button` is lifted
+  out of its paragraph, header or list item into `MarkdownBlock.buttons`
+  under it, drawn as full-width normal RoundButtons, 8 apart. One whose
+  link opens nothing here is its label as words; a malformed one asking
+  to be a button is too. The Markdown parser reads a link's title apart
+  from its destination (`LegacyMarkdown.link`).
 - Copy Link, in the bar of an artifact and of a conversation's detail,
   writes the instance form, and isn't offered when the daemon reports no
   `instanceId`.

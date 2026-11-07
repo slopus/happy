@@ -16,6 +16,9 @@ public enum HappyCloud {
     /// The accounts service, on its own domain: account sign-in, the
     /// servers API, and every token. Change it here only.
     public static let accounts = "https://auth.happy.engineering"
+    /// The web app, where a server's settings the phone has no page for
+    /// are: `acme`'s under `https://acme.<web>/#/settings/`. Change it here only.
+    public static let web = "happybases.com"
 
     /// How a cloud server's own sign-in is described: on the accounts
     /// service, for the server (what `/v0/authentication` advertises). The
@@ -48,6 +51,12 @@ public enum HappyCloud {
     public static func handle(server: String?) -> String? { serverName(server).map(handle) }
 
     public static func isCloud(_ server: String?) -> Bool { serverName(server) != nil }
+
+    /// `page` of the cloud server at `server`'s settings in the web app;
+    /// nil for a server that isn't a cloud server.
+    public static func webSettings(server: String?, page: HappyLink.SettingsPage) -> URL? {
+        serverName(server).flatMap { URL(string: "https://\($0).\(web)/#/settings/\(page.rawValue)") }
+    }
 
     /// The connection already signed in to `server`, if there is one.
     public static func connection(to server: String, in connections: [AgentConnection]) -> AgentConnection? {
