@@ -957,6 +957,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             currentSession = sessionInstance;
         },
         onAbort: resetCurrentModeDefaults,
+        getEnhancedMode: currentEnhancedMode,
         mcpServers: {
             'happy': {
                 type: 'http' as const,

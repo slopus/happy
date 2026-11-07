@@ -44,6 +44,11 @@ interface LoopOptions {
     sandboxConfig?: SandboxConfig
     onSessionReady?: (session: Session) => void
     onAbort?: () => void
+    /**
+     * Current model / permission mode / effort. Needed when the CLI enqueues a
+     * message on the user's behalf — see Session.getEnhancedMode.
+     */
+    getEnhancedMode?: () => EnhancedMode
     /** Path to temporary settings file with SessionStart hook (required for session tracking) */
     hookSettingsPath: string
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
@@ -68,6 +73,7 @@ export async function loop(opts: LoopOptions): Promise<number> {
         sandboxConfig: opts.sandboxConfig,
         onModeChange: opts.onModeChange,
         onAbort: opts.onAbort,
+        getEnhancedMode: opts.getEnhancedMode,
         hookSettingsPath: opts.hookSettingsPath,
         jsRuntime: opts.jsRuntime
     });
