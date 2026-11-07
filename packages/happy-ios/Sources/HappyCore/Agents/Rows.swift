@@ -273,8 +273,9 @@ public enum Rows {
         row.hasShownSessions = node.children.contains { spaces[$0.id] == nil && places.agent($0.id) != nil }
         if space.target.kind == "surface" { row.surfaceType = places.surface(space.target.id)?.type }
         row.activityTime = conversation?.activityAt.map(minute)
-        // A bot can always be archived; a task only where the daemon says so.
-        row.canArchive = space.target.kind == "bot" || places.task(space.target.id)?.canArchive == true
+        // A bot can be archived, but never the Chief of Staff; a task only
+        // where the daemon says so.
+        row.canArchive = (space.target.kind == "bot" && !places.isHappy(space)) || places.task(space.target.id)?.canArchive == true
         return [row] + children
     }
 

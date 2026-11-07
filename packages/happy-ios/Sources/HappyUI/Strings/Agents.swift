@@ -44,6 +44,17 @@ extension Strings {
     public static let leaveSurface = "Leave"
     public static let archiveTask = "Archive task"
     public static let archiveBot = "Archive bot"
+    /// A Happy Cloud server's refusals to take a bot away
+    /// (`409 system_bot_protected`, `409 last_admin_bot`), plainly; nil
+    /// for any other error.
+    public static func botRefusal(_ error: Error) -> String? {
+        guard case .status(409, let code?, _) = error as? AgentClientError else { return nil }
+        switch code {
+        case "system_bot_protected": return "The Chief of Staff can’t be archived, deleted or made a non-admin. You can still rename it or change its picture."
+        case "last_admin_bot": return "This is the last admin bot, so it has to stay an admin. Make another bot an admin first."
+        default: return nil
+        }
+    }
     public static let archiveSubtask = "Archive subtask"
     public static let deleteSection = "Delete section"
 

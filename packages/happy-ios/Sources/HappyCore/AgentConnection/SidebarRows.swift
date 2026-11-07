@@ -47,7 +47,8 @@ public enum SidebarRows {
                 status: muted ? .none : status(agent), unread: !muted && agent.unread != nil,
                 isHappy: owner?.systemKey == "chief_of_staff", agentId: agent.id, workspaceId: agent.workspaceId, targetKind: kind)
             row.targetId = owner?.id
-            row.canArchive = owner?.canArchive ?? false
+            // The Chief of Staff never, whatever an older server says.
+            row.canArchive = owner?.systemKey != "chief_of_staff" && owner?.canArchive == true
             row.activityTime = agent.activityAt.map(Rows.minute)
             row.muted = muted
             rows.append(row)
