@@ -149,12 +149,15 @@ class AgentSession internal constructor(
      */
     val events: SharedFlow<AgentEvent> = eventFlow.asSharedFlow()
 
+    /** The server this connection is to, as it was when the session began; it never changes. */
+    val server: String? = connections.accounts.value.firstOrNull { it.id == connectionId }?.server
+
     /**
      * What the person may do here: a Happy Cloud server's role, read on
      * every connect and `role.*` event; any other server gates nothing.
      */
     val permissions: StateFlow<ServerPermissions> =
-        if (com.slopus.happy.connection.HappyCloud.isServer(connections.accounts.value.firstOrNull { it.id == connectionId }?.server)) {
+        if (com.slopus.happy.connection.HappyCloud.isServer(server)) {
             AgentPermissionsSource({ client.decode<JsonObject>("GET", "/v0/permissions") }, events, scope).permissions
         } else {
             MutableStateFlow(ServerPermissions.Ungated).asStateFlow()
