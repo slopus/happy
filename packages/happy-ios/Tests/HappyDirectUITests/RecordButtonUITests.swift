@@ -115,9 +115,9 @@ final class RecordButtonUITests: XCTestCase {
     /// The whole story, filmed: idle; a tap that lands locked, cancelled;
     /// a hold slid away; a hold let go, whose words start a task that
     /// opens; then that task's composer: the microphone and send changing
-    /// places, a locked recording whose words come in as they are said,
-    /// cancelled back to empty, one stopped into a draft, and one sent
-    /// with the big circle.
+    /// places, a hold whose words come in as they are said and go when let
+    /// go, a locked recording cancelled back to empty, one stopped into a
+    /// draft, and one sent with the big circle.
     func testFilm() {
         home()
         allowAlerts(for: 3)
@@ -161,6 +161,17 @@ final class RecordButtonUITests: XCTestCase {
         capture("5-chat-send")
         for _ in 0..<6 { composer.typeText(XCUIKeyboardKey.delete.rawValue) }
         pause(1.5)
+
+        // Held: the words come into the composer as they are said; let
+        // go, and they go as the next message.
+        let messages = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'haiku'")).count
+        chatRecord.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 5.5)
+        pause(3)
+        capture("5b-chat-held-sent")
+        XCTAssertFalse((composer.value as? String ?? "").contains("Write"), "let go, the words stayed in the composer")
+        XCTAssertGreaterThan(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'haiku'")).count, messages, "let go, nothing was sent")
+        XCTAssertTrue(chatRecord.waitForExistence(timeout: 10))
+        pause(1)
 
         // A tap lands locked: the words come into the composer as they
         // are said; cancel, and it is empty again.

@@ -25,16 +25,16 @@ final class AgentInputDictationTests: XCTestCase {
     /// Every character edit the storage processed, as (location, length) of
     /// the edited range.
     private func edits(of card: AgentInputCardView, during body: () -> Void) -> [NSRange] {
-        var ranges: [NSRange] = []
-        let storage = card.textView.textStorage
-        let observer = NotificationCenter.default.addObserver(forName: NSTextStorage.didProcessEditingNotification, object: storage, queue: nil) { _ in
-            MainActor.assumeIsolated {
-                if storage.editedMask.contains(.editedCharacters) { ranges.append(storage.editedRange) }
-            }
+        let seen = EditedRanges()
+        let observer = NotificationCenter.default.addObserver(
+            forName: NSTextStorage.didProcessEditingNotification, object: card.textView.textStorage, queue: nil
+        ) { note in
+            guard let storage = note.object as? NSTextStorage, storage.editedMask.contains(.editedCharacters) else { return }
+            seen.ranges.append(storage.editedRange)
         }
         body()
         NotificationCenter.default.removeObserver(observer)
-        return ranges
+        return seen.ranges
     }
 
     func testARevisionReplacesOnlyWhatChanged() {
@@ -105,5 +105,11 @@ final class AgentInputDictationTests: XCTestCase {
         card.setDictatedText("sea", volatileLength: 0)
         XCTAssertEqual(alpha(card, at: 0), 1, accuracy: 0.01)
     }
+}
+
+/// The ranges a storage reported, kept by its observer (synchronous, on
+/// the main thread, during the edit).
+private final class EditedRanges: @unchecked Sendable {
+    var ranges: [NSRange] = []
 }
 #endif
