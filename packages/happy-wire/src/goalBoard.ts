@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+// Keep encrypted RPC frames below Socket.IO's 1 MB default. Larger originals
+// use the existing authenticated, encrypted HTTP attachment lane.
+export const GOAL_ARTIFACT_MAX_INLINE_TEXT_BYTES = 64 * 1024;
+export const GOAL_ARTIFACT_MAX_TEXT_BYTES = 16 * 1024 * 1024;
+
 const label = z.string().max(2048);
 const path = z.string().max(8192);
 export const GoalTaskStatusSchema = z.enum(['pending', 'running', 'review', 'done', 'blocked', 'unknown']).catch('unknown');

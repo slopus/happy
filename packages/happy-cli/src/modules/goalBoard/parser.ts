@@ -136,7 +136,7 @@ async function artifactsOf(root: string, taskPath: string, source: string, direc
     for (const link of linksOf(source)) {
         if (artifacts.length >= 50) break;
         const isContract = /^(PROMPT|AGENTS|problem|PROGRESS)\.md$/i.test(basename(link.target)) || /契约|合同|任务说明|执行依据|历史|参考|基准|计划|预期/.test(link.name) || /历史|参考|输入|契约|计划|预期|\b(?:references?|inputs?|contracts?|historical|baseline|planned|plans?|expected|future|proposals?)\b/i.test(link.heading + ' ' + link.name);
-        const explicitOutput = /当前产物|实际(?:产物|产出|成果|交付)|阶段(?:产物|交付)|已(?:产出|交付|生成)|\b(?:actual\s+(?:outputs?|results?|deliverables?)|produced\s+(?:outputs?|files?|reports?)|outputs?|results?)\b/i.test(link.heading);
+        const explicitOutput = /(?:当前|最终|交付)产物|最终(?:交付|成果)|实际(?:产物|产出|成果|交付)|阶段(?:产物|交付)|已(?:产出|交付|生成)|\b(?:(?:actual|final)\s+(?:outputs?|results?|deliverables?)|produced\s+(?:outputs?|files?|reports?)|outputs?|results?)\b/i.test(link.heading);
         if (/^https?:\/\//i.test(link.target)) {
             artifacts.push({ id: digest(link.target), name: link.name, url: link.target.slice(0, 8192), kind: /\/commit\/[0-9a-f]+/i.test(link.target) ? 'commit' : 'url', relation: !isContract && explicitOutput ? 'output' : 'reference', available: true, description: link.description }); continue;
         }

@@ -1,4 +1,4 @@
-import { GoalBoardArtifactResponseSchema, type GoalArtifact, type GoalBoardArtifactResponse } from '@slopus/happy-wire';
+import { GOAL_ARTIFACT_MAX_TEXT_BYTES, GoalBoardArtifactResponseSchema, type GoalArtifact, type GoalBoardArtifactResponse, type GoalBoardAttachment } from '@slopus/happy-wire';
 import { assertAccountRuntime, getRuntimeAccountSelection } from '@/auth/accountRuntime';
 import { getServerUrl } from './serverConfig';
 import { apiSocket } from './apiSocket';
@@ -7,6 +7,8 @@ import { attachmentCacheGeneration } from './attachmentCacheContext';
 export type GoalArtifactResponse = Extract<GoalBoardArtifactResponse, { success: true }>;
 export type GoalArtifactRequest = { sessionId: string; featurePath: string; taskId: string; artifact: GoalArtifact };
 type ArtifactRPC = (sessionId: string, method: string, input: { featurePath: string; taskId: string; artifactId: string }) => Promise<unknown>;
+type ReadTextAttachment = (sessionId: string, attachment: GoalBoardAttachment, signal?: AbortSignal) => Promise<string>;
+const readTextAttachment: ReadTextAttachment = async (...args) => (await import('./loadGoalArtifactText')).loadGoalArtifactText(...args);
 const MAX_TEXT_BYTES = 2 * 1024 * 1024;
 function assertCurrent(signal?: AbortSignal) {
     if (signal?.aborted) {
@@ -29,7 +31,7 @@ export class GoalArtifactCache {
     private entries = new Map<string, { response: GoalArtifactResponse; bytes: number }>();
     private bytes = 0;
     private context: string | null = null;
-    constructor(private rpc: ArtifactRPC, private limits: { maxEntries?: number; maxBytes?: number } = {}) {}
+    constructor(private rpc: ArtifactRPC, private limits: { maxEntries?: number; maxBytes?: number } = {}, private readText: ReadTextAttachment = readTextAttachment) {}
     async open(input: GoalArtifactRequest, signal?: AbortSignal): Promise<GoalArtifactResponse> {
         assertCurrent(signal);
         const context = captureContext();
@@ -51,8 +53,17 @@ export class GoalArtifactCache {
         const parsed = GoalBoardArtifactResponseSchema.safeParse(raw);
         if (!parsed.success) throw new Error('Invalid artifact response');
         if (!parsed.data.success) throw new Error(parsed.data.error);
-        const response = parsed.data;
-        if (response.kind === 'text' && new TextEncoder().encode(response.content).byteLength > MAX_TEXT_BYTES) {
+        let response: GoalArtifactResponse = parsed.data;
+        if (input.artifact.kind === 'text' && response.kind === 'attachment') {
+            const { attachment } = response;
+            if (attachment.kind !== 'file' || !attachment.encrypted || attachment.size > GOAL_ARTIFACT_MAX_TEXT_BYTES) throw new Error('Invalid text attachment');
+            const content = await this.readText(input.sessionId, attachment, signal);
+            assertCurrent(signal);
+            if (context !== captureContext()) throw new Error('Artifact context expired');
+            if (new TextEncoder().encode(content).byteLength > GOAL_ARTIFACT_MAX_TEXT_BYTES) throw new Error('Artifact exceeds the text limit');
+            response = { success: true, kind: 'text', content, name: attachment.name, revision: `${input.artifact.id}:${input.artifact.modifiedAt}:${attachment.size}` };
+        }
+        else if (response.kind === 'text' && new TextEncoder().encode(response.content).byteLength > MAX_TEXT_BYTES) {
             throw new Error('Artifact exceeds the 2 MiB text limit');
         }
         const bytes = response.kind === 'text' ? response.content.length * 2 + 512 : JSON.stringify(response).length * 2;

@@ -6,6 +6,7 @@ import { Text } from '@/components/StyledText';
 import { MarkdownView } from '@/components/markdown/MarkdownView';
 import { SimpleSyntaxHighlighter } from '@/components/SimpleSyntaxHighlighter';
 import { FileView } from '@/components/tools/views/FileView';
+import { GoalHtmlPreview } from '@/components/GoalHtmlPreview';
 import { goalArtifactIdentity, openGoalArtifact, type GoalArtifactResponse } from '@/sync/goalBoardArtifacts';
 import { openExternalUrl } from '@/utils/openExternalUrl';
 import { t } from '@/text';
@@ -54,6 +55,7 @@ export const GoalArtifactViewer = React.memo(function GoalArtifactViewer({ sessi
     const originalName = artifact.path ?? (response?.kind === 'text' ? response.name : artifact.name);
     const extension = originalName.split('.').pop()?.toLowerCase() ?? '';
     const markdown = extension === 'md' || extension === 'markdown';
+    const html = extension === 'html' || extension === 'htm';
     const externalUrl = artifact.url && /^https?:\/\//i.test(artifact.url) ? artifact.url : null;
     const [linkError, setLinkError] = React.useState<string | null>(null);
     const button = { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 6 };
@@ -61,7 +63,7 @@ export const GoalArtifactViewer = React.memo(function GoalArtifactViewer({ sessi
         <View style={{ flex: 1, backgroundColor: theme.colors.surface }} testID="goal-artifact-viewer">
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderBottomWidth: 1, borderColor: theme.colors.divider }}>
                 <Text style={{ flex: 1, color: theme.colors.text }} selectable>{artifact.name}</Text>
-                {markdown && response?.kind === 'text' && (
+                {(markdown || html) && response?.kind === 'text' && (
                     <Pressable testID="goal-artifact-source" accessibilityRole="button" onPress={() => setSourceMode(value => !value)} style={({ pressed }) => [button, { backgroundColor: pressed ? theme.colors.surfacePressed : theme.colors.surfaceSelected }]}>
                         <Text style={{ color: theme.colors.text }}>{sourceMode ? t('goalBoard.artifactPreview') : t('goalBoard.artifactSource')}</Text>
                     </Pressable>
@@ -78,6 +80,7 @@ export const GoalArtifactViewer = React.memo(function GoalArtifactViewer({ sessi
                     </Pressable>
                 </View>
             ) : !response ? <ActivityIndicator color={theme.colors.textSecondary} /> : (
+                html && !sourceMode && response.kind === 'text' ? <GoalHtmlPreview content={response.content} title={artifact.name} /> :
                 <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
                     {response.kind === 'text' ? markdown && !sourceMode ? (
                         <MarkdownView markdown={response.content} sessionId={sessionId} readOnly />

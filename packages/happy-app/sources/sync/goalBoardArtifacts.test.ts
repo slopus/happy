@@ -98,9 +98,34 @@ describe('Goal artifact loading', () => {
         await expect(new GoalArtifactCache(rpc).open({ ...request, artifact: { ...request.artifact, available: false } })).rejects.toThrow('unavailable');
         expect(rpc).not.toHaveBeenCalled();
     });
+    it('loads a large text attachment outside RPC and caches its complete original', async () => {
+        const content = '<!doctype html><h1>原始报告</h1>' + 'x'.repeat(4704647);
+        const attachment = { ref: 'private/report', name: 'report.html', kind: 'file', size: new TextEncoder().encode(content).length, mimeType: 'text/html', encrypted: true };
+        rpc.mockResolvedValue({ success: true, kind: 'attachment', attachment });
+        const readText = vi.fn(async () => content);
+        const cache = new GoalArtifactCache(rpc, { maxBytes: 16 * 1024 * 1024 }, readText);
+        const result = await cache.open(request);
+        expect(result.kind).toBe('text');
+        if (result.kind !== 'text') throw new Error('Expected original text');
+        expect(result.name).toBe('report.html');
+        expect(result.content === content).toBe(true);
+        await cache.open(request);
+        expect(rpc).toHaveBeenCalledTimes(1);
+        expect(readText).toHaveBeenCalledWith('s1', attachment, undefined);
+    });
+    it('rejects a late text attachment after account ownership changes', async () => {
+        rpc.mockResolvedValue({ success: true, kind: 'attachment', attachment: { ref: 'private/report', name: 'report.html', kind: 'file', size: 50, mimeType: 'text/html', encrypted: true } });
+        let finish!: (value: string) => void;
+        const readText = vi.fn(() => new Promise<string>(resolve => { finish = resolve; }));
+        const pending = new GoalArtifactCache(rpc, {}, readText).open(request);
+        await vi.waitFor(() => expect(readText).toHaveBeenCalledTimes(1));
+        ownership.generation += 1;
+        finish('STALE REPORT');
+        await expect(pending).rejects.toThrow('context expired');
+    });
     it.each(['image', 'audio', 'video', 'file'])('retains valid %s attachment metadata', async kind => {
         const response = { success: true, kind: 'attachment', attachment: { ref: 'private/ref', name: 'original', size: 100, mimeType: 'application/pdf', kind, encrypted: true } };
         rpc.mockResolvedValue(response);
-        expect(await new GoalArtifactCache(rpc).open(request)).toEqual(response);
+        expect(await new GoalArtifactCache(rpc).open({ ...request, artifact: { ...request.artifact, kind: kind === 'file' ? 'pdf' : kind as 'image' | 'audio' | 'video' } })).toEqual(response);
     });
 });

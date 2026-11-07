@@ -15,6 +15,7 @@ vi.mock('@/components/StyledText', () => ({ Text: 'Text' }));
 vi.mock('@/components/markdown/MarkdownView', () => ({ MarkdownView: 'MarkdownView' }));
 vi.mock('@/components/SimpleSyntaxHighlighter', () => ({ SimpleSyntaxHighlighter: 'Syntax' }));
 vi.mock('@/components/tools/views/FileView', () => ({ FileView: 'FileView' }));
+vi.mock('@/components/GoalHtmlPreview', () => ({ GoalHtmlPreview: 'GoalHtmlPreview' }));
 vi.mock('@/utils/openExternalUrl', () => ({ openExternalUrl: vi.fn() }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('react-native-unistyles', () => ({ useUnistyles: () => ({ theme: { colors: { surface: 'surface', surfacePressed: 'pressed', surfaceSelected: 'selected', text: 'text', textSecondary: 'secondary', textDestructive: 'error', divider: 'divider' } } }) }));
@@ -55,6 +56,15 @@ describe('GoalArtifactViewer original content', () => {
         const renderer = await mount({ ...props, artifact: { ...artifact, name: 'source.ts' } });
         expect(renderer.root.findAllByType('MarkdownView')).toHaveLength(0);
         expect(renderer.root.findByType('Syntax').props).toMatchObject({ code: full, language: 'typescript', selectable: true });
+        await act(async () => renderer.unmount());
+    });
+    it('opens an HTML original as a document and lets the user switch to its complete source', async () => {
+        const content = '<!doctype html><html><body><h1>开发者复现教程</h1><button>Agent</button></body></html>';
+        mocks.open.mockResolvedValue({ success: true, kind: 'text', name: 'report.html', revision: '1', content });
+        const renderer = await mount({ ...props, artifact: { ...artifact, name: '开发者复现教程', path: '/goal/report.html' } });
+        expect(renderer.root.findByType('GoalHtmlPreview').props.content).toBe(content);
+        await act(async () => renderer.root.findByProps({ testID: 'goal-artifact-source' }).props.onPress());
+        expect(renderer.root.findByType('Syntax').props.code).toBe(content);
         await act(async () => renderer.unmount());
     });
     it('keeps large code and Markdown source complete and selectable without syntax tokenization', async () => {

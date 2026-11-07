@@ -1,6 +1,7 @@
 import { watch, type FSWatcher } from 'node:fs';
 import { stat, realpath } from 'node:fs/promises';
 import type { GoalArtifact, GoalBoardAttachment, GoalBoardSnapshot, GoalTask } from '@slopus/happy-wire';
+import { GOAL_ARTIFACT_MAX_INLINE_TEXT_BYTES, GOAL_ARTIFACT_MAX_TEXT_BYTES } from '@slopus/happy-wire';
 import { discoverRoots, readCatalog, safePath, type CatalogRecord } from './catalog';
 import { digest, parseBoard, readBoundedFile } from './parser';
 import { withStagedAttachment } from './authorizedFiles';
@@ -142,11 +143,11 @@ export function registerGoalBoardHandlers(manager: Manager, workingDirectory: st
         const info = await stat(path);
         assertCurrent(epoch);
         if (!info.isFile()) throw new Error('Artifact is not a regular file');
-        const maxBytes = artifact.kind === 'text' ? 2 * 1024 * 1024 : ['audio', 'video'].includes(artifact.kind) ? 500 * 1024 * 1024 : artifact.kind === 'pdf' ? 10 * 1024 * 1024 : 50 * 1024 * 1024;
+        const maxBytes = artifact.kind === 'text' ? GOAL_ARTIFACT_MAX_TEXT_BYTES : ['audio', 'video'].includes(artifact.kind) ? 500 * 1024 * 1024 : artifact.kind === 'pdf' ? 10 * 1024 * 1024 : 50 * 1024 * 1024;
         if (info.size > maxBytes) throw new Error(`File too large (maximum ${maxBytes} bytes)`);
         const revision = digest(`${artifact.id}:${info.mtimeMs}:${info.size}`);
-        if (artifact.kind === 'text') {
-            const raw = await readBoundedFile(entry.root, path, maxBytes);
+        if (artifact.kind === 'text' && info.size <= GOAL_ARTIFACT_MAX_INLINE_TEXT_BYTES) {
+            const raw = await readBoundedFile(entry.root, path, GOAL_ARTIFACT_MAX_INLINE_TEXT_BYTES);
             assertCurrent(epoch);
             if (raw.includes(0)) throw new Error('Binary file cannot be read as text');
             return { success: true, kind: 'text', content: new TextDecoder('utf-8', { fatal: true }).decode(raw), revision, name: artifact.name };

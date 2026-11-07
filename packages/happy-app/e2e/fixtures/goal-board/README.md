@@ -40,6 +40,7 @@ Transport ping events renew session presence. There is no periodic task/file/sta
 | POST | `/activate` | One session-presence action |
 | POST | `/offline` | Ends the bound CLI client and unregisters its Goal Board handlers |
 | POST | `/smoke` | Repeats real original-file and attachment smoke on the bound session (warms it; use after cold measurements) |
+| POST | `/verify-text` | Opens every available output text in G01 through real encrypted RPC/HTTP, verifies exact bytes and returns sizes, hashes and RPC frame sizes |
 
 To inspect original bytes, use the feature path from `runtime.json`; do not put credentials in shell arguments. To exercise event updates, issue `/mutate` once and observe the real App without pressing refresh. `/metrics` should show no new business RPCs from idle time or closing/reopening a board with a cached snapshot.
 

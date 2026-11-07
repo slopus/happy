@@ -1471,7 +1471,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
         expect(order).toEqual(['expire previews', 'flush', 'close']);
     });
 
-    it('publishes changed encrypted Goal snapshots and previews PDF bytes through the encrypted attachment lane without chat', async () => {
+    it.each(['pdf', 'html'])('publishes changed encrypted Goal snapshots and previews %s bytes through the encrypted attachment lane without chat', async (extension) => {
         const home = await mkdtemp(join(tmpdir(), 'goal-api-'));
         let client: ApiSessionClient | undefined;
         try {
@@ -1479,9 +1479,9 @@ describe('ApiSessionClient v3 messages API migration', () => {
             const taskDirectory = join(feature, 'tasks/01-task');
             await mkdir(taskDirectory, { recursive: true });
             await writeFile(join(feature, 'index.md'), '# Goal');
-            await writeFile(join(taskDirectory, 'index.md'), '---\nstatus: pending\n---\n# Task\n目标摘要：Actual goal\n## 当前产物\n[Original PDF](报告.pdf)');
-            const original = Buffer.from('%PDF-1.7\nOriginal document bytes');
-            await writeFile(join(taskDirectory, '报告.pdf'), original);
+            await writeFile(join(taskDirectory, 'index.md'), `---\nstatus: pending\n---\n# Task\n目标摘要：Actual goal\n## 当前产物\n[Original document](报告.${extension})`);
+            const original = Buffer.from(extension === 'pdf' ? '%PDF-1.7\nOriginal document bytes' : '<!doctype html><h1>原文</h1>' + 'x'.repeat(4704647));
+            await writeFile(join(taskDirectory, `报告.${extension}`), original);
             session.metadata.homeDir = home;
             session.metadata.path = home;
             mockSocket.emitWithAck.mockImplementation(async (_event: string, payload: any) => ({ result: 'success', version: payload.expectedVersion + 1, metadata: payload.metadata }));
@@ -1503,7 +1503,8 @@ describe('ApiSessionClient v3 messages API migration', () => {
             mockAxiosPut.mockResolvedValueOnce({ status: 200 });
             const task = result.snapshot.tasks[0];
             const preview = await artifact({ featurePath: result.snapshot.featurePath, taskId: task.id, artifactId: task.artifacts[0].id });
-            expect(preview).toMatchObject({ success: true, kind: 'attachment', attachment: { kind: 'file', mimeType: 'application/pdf', encrypted: true } });
+            expect(preview).toMatchObject({ success: true, kind: 'attachment', attachment: { kind: 'file', mimeType: extension === 'pdf' ? 'application/pdf' : 'text/html', encrypted: true } });
+            expect(Buffer.byteLength(JSON.stringify(preview))).toBeLessThan(16 * 1024);
             expect(mockAxiosPost).toHaveBeenCalledTimes(1);
             expect(mockAxiosPost.mock.calls[0][0]).toContain('/attachments/request-upload');
             const encrypted = mockAxiosPut.mock.calls[0][1];
@@ -1514,7 +1515,7 @@ describe('ApiSessionClient v3 messages API migration', () => {
             await client?.close();
             await rm(home, { recursive: true, force: true });
         }
-    });
+    }, 30_000); // Multi-MiB encryption/decryption can exceed the default 5s on shared CI runners.
 
     it('registers Goal Board RPCs and disposes its lifecycle-owned handlers on close', async () => {
         const client = new ApiSessionClient('fake-token', session);

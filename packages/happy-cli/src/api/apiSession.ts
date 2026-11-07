@@ -203,13 +203,13 @@ export class ApiSessionClient extends EventEmitter {
                     const uploaded = await this.uploadMediaAttachment(path);
                     return { ...uploaded, encrypted: false };
                 }
-                // uploadImageAttachment encrypts arbitrary bytes; readImageSize returns null for PDF.
+                // uploadImageAttachment encrypts arbitrary bytes, including documents.
                 const uploaded = await this.uploadImageAttachment(path);
                 const extension = path.split('.').pop()?.toLowerCase();
                 const imageMime: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', avif: 'image/avif', heic: 'image/heic' };
                 return { ref: uploaded.ref, name: uploaded.name, size: uploaded.size,
-                    mimeType: kind === 'pdf' ? 'application/pdf' : imageMime[extension || ''] || 'application/octet-stream',
-                    kind: kind === 'pdf' ? 'file' as const : 'image' as const, encrypted: true };
+                    mimeType: kind === 'pdf' ? 'application/pdf' : kind === 'text' ? (extension === 'html' || extension === 'htm' ? 'text/html' : 'text/plain') : imageMime[extension || ''] || 'application/octet-stream',
+                    kind: kind === 'pdf' || kind === 'text' ? 'file' as const : 'image' as const, encrypted: true };
             },
             startTask: (task, featurePath, requestId) => launchIndependentDaemonSession(this.sessionId, {
                 requestId, title: task.title.slice(0, 200), prompt: goalBoardTaskPrompt(task, featurePath), directory: featurePath,

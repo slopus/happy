@@ -29,8 +29,15 @@ export async function createGoalDataset(home) {
     await write(path.join(task, '完整 中文报告.md'), markdown);
     await write(path.join(task, '示例 code.ts'), '// 中文路径与完整代码\nexport const goalBoardFixture = { isolated: true, original: true };\n// GOAL_CODE_END\n');
     await write(path.join(task, 'baseline.md'), '# 历史基线\n参考资料，不是本轮产出。\n');
+    for (const [name, size] of [['大图文报告.html', 4704647], ['交互教程.html', 1920569]]) {
+        const start = '<!doctype html><html><head><meta charset="utf-8"><style>body{font:18px sans-serif;padding:32px}</style></head><body><h1>完整 HTML 原件</h1><button onclick="document.querySelector(\'p\').textContent=\'Agent 步骤可用\'">切换 Agent</button><p>Human 说明</p><!--';
+        const end = '--><footer>GOAL_HTML_ORIGINAL_END</footer></body></html>';
+        await write(path.join(task, name), start + 'x'.repeat(size - Buffer.byteLength(start + end)) + end);
+    }
+    const index = path.join(task, 'index.md');
+    await fs.writeFile(index, (await fs.readFile(index, 'utf8')).replace('## 当前产物\n', '## 当前产物\n[大图文报告](大图文报告.html)\n[交互教程](交互教程.html)\n'));
     await write(path.join(task, 'oversized.txt'), '');
-    await fs.truncate(path.join(task, 'oversized.txt'), 2 * 1024 * 1024 + 1);
+    await fs.truncate(path.join(task, 'oversized.txt'), 16 * 1024 * 1024 + 1);
     await write(path.join(task, 'unsupported.zip'), 'fixture unsupported data');
     await write(path.join(home, 'outside-goal.md'), 'This file must not be read through the Goal catalog');
     await fs.symlink(path.join(home, 'outside-goal.md'), path.join(task, 'escape.md'));

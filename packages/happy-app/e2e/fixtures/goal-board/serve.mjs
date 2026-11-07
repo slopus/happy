@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import environmentHelpers from '../../../../../environments/environments.ts';
 import { createGoalDataset } from './dataset.mjs';
 
@@ -74,6 +74,19 @@ async function main() {
             if (request.method === 'POST' && url.pathname === '/activate') { for (const client of clients.values()) client.keepAlive(false, 'remote'); return response.end('{"active":true}'); }
             if (request.method === 'POST' && url.pathname === '/offline') { const client = clients.get(bound); client?.sendSessionDeath(); await client?.close(); clients.delete(bound); return response.end('{"offline":true}'); }
             if (request.method === 'POST' && url.pathname === '/smoke') return response.end(JSON.stringify(await smoke(bound)));
+            if (request.method === 'POST' && url.pathname === '/verify-text') {
+                const read = await rpc(bound, 'goalBoardRead', { featurePath: dataset.featurePath }); assert(read.success);
+                const task = read.snapshot.tasks.find(task => task.code === 'G01'); assert(task);
+                const checked = [];
+                for (const artifact of task.artifacts.filter(item => item.kind === 'text' && item.available && item.relation === 'output' && !item.name.includes('超限'))) {
+                    const result = await rpc(bound, 'goalBoardArtifact', { featurePath: dataset.featurePath, taskId: task.id, artifactId: artifact.id }); assert(result.success, result.error);
+                    const original = await fs.readFile(artifact.path);
+                    const bytes = result.kind === 'text' ? Buffer.from(result.content, 'utf8') : Buffer.from(await clients.get(bound).downloadAndDecryptAttachment(result.attachment.ref));
+                    assert.deepEqual(bytes, original);
+                    checked.push({ name: artifact.name, size: bytes.length, transport: result.kind, rpcBytes: Buffer.byteLength(JSON.stringify(result)), sha256: createHash('sha256').update(bytes).digest('hex') });
+                }
+                return response.end(JSON.stringify({ checked, connectionAlive: accountSocket.connected }));
+            }
             response.writeHead(404); response.end('{"error":"Unknown fixture action"}');
         } catch (error) { response.writeHead(500); response.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) })); }
     });
@@ -165,12 +178,13 @@ async function smoke(sessionId) {
             const start = performance.now();
             const opened = await rpc(sessionId, 'goalBoardArtifact', { featurePath: dataset.featurePath, taskId: task.id, artifactId: artifact.id }); assert(opened.success, opened.error);
             const original = await fs.readFile(artifact.path);
-            if (kind === 'text') { assert.equal(opened.content, original.toString('utf8')); }
+            if (kind === 'text' && opened.kind === 'text') { assert.equal(opened.content, original.toString('utf8')); }
             else {
                 assert.equal(opened.kind, 'attachment');
                 const client = clients.get(sessionId);
                 const bytes = opened.attachment.encrypted ? await client.downloadAndDecryptAttachment(opened.attachment.ref) : await client.downloadAttachment(opened.attachment.ref);
                 assert.deepEqual(Buffer.from(bytes), original, 'Uploaded original must round-trip through the private attachment channel');
+                if (kind === 'text') assert(Buffer.byteLength(JSON.stringify(opened)) < 16 * 1024, 'Large text must not travel in an RPC frame');
             }
             result.passed.push(`${kind}:${artifact.name}`); result.artifactMs[artifact.name] = performance.now() - start;
         }

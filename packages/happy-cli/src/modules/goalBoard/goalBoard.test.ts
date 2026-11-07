@@ -98,11 +98,24 @@ describe('Goal Board real filesystem', () => {
         const request = (name: string) => f.call('goalBoardArtifact', { featurePath: f.feature, taskId: task.id, artifactId: task.artifacts.find((a: any) => a.name === name).id });
         expect(await request('PDF')).toMatchObject({ success: true, kind: 'attachment', attachment: { kind: 'file', encrypted: true } });
         expect(await request('Audio')).toMatchObject({ success: true, kind: 'attachment', attachment: { kind: 'audio' } });
-        await truncate(join(f.taskDir, '中文 文稿.md'), 2 * 1024 * 1024 + 1);
+        await truncate(join(f.taskDir, '中文 文稿.md'), 16 * 1024 * 1024 + 1);
         expect(await request('中文 文稿')).toMatchObject({ success: false });
         await truncate(join(f.taskDir, 'report.pdf'), 50 * 1024 * 1024 + 1);
         expect(await request('PDF')).toMatchObject({ success: false });
         expect(f.uploads).toHaveLength(2);
+    });
+    it.each([1920569, 4704647])('sends a %i-byte document through attachments without a large Socket.IO response', async (size) => {
+        const f = await fixture();
+        const original = '<!doctype html><h1>原文</h1>' + 'x'.repeat(size);
+        await f.put(join(f.taskDir, 'report.html'), original);
+        await f.put(join(f.taskDir, 'index.md'), '---\nstatus: done\n---\n# Task\n## 当前产物\n[Report](report.html)');
+        const { snapshot } = await f.call('goalBoardRead', { featurePath: f.feature });
+        const task = snapshot.tasks[0];
+        const response = await f.call('goalBoardArtifact', { featurePath: f.feature, taskId: task.id, artifactId: task.artifacts[0].id });
+        expect(response).toMatchObject({ success: true, kind: 'attachment' });
+        expect(Buffer.byteLength(JSON.stringify(response))).toBeLessThan(16 * 1024);
+        expect(f.uploads).toHaveLength(1);
+        expect(f.uploads[0].kind).toBe('text');
     });
     it('publishes real watcher changes once, blocks stale features and disposes watchers', async () => {
         const f = await fixture();
@@ -321,6 +334,29 @@ describe('Goal Board real filesystem', () => {
         expect(task.artifacts.find((a: any) => a.name === 'Unclassified').relation).toBe('reference');
         expect(task.artifacts.find((a: any) => a.name === 'Planned report')).toMatchObject({ relation: 'reference', available: false });
         expect(task.artifacts.find((a: any) => a.name === 'Produced report')).toMatchObject({ relation: 'output', available: true });
+    });
+    it.each(['最终产物', '交付产物', '最终交付', 'Final deliverables'])('recognizes two approved documents under %s without promoting process records', async (heading) => {
+        const f = await fixture();
+        await f.put(join(f.taskDir, 'report.html'), '<h1>Video breakdown</h1>');
+        await f.put(join(f.taskDir, 'tutorial.html'), '<h1>Developer tutorial</h1>');
+        await f.put(join(f.taskDir, 'process.md'), 'Approval and iteration history');
+        await f.put(join(f.taskDir, 'index.md'), `---\nstatus: done\n---\n# Completed documentation\n## ${heading}\n1. [视频拆解报告](report.html)\n2. [开发者复现教程](tutorial.html)\n## 归档与过程\n[Process record](process.md)\n[Full contract](PROMPT.md)`);
+        const { snapshot } = await f.call('goalBoardRead', { featurePath: f.feature });
+        const task = snapshot.tasks[0];
+        expect(task.status).toBe('done');
+        expect(task.artifacts.filter((a: any) => a.relation === 'output')).toEqual([
+            expect.objectContaining({ name: '视频拆解报告', available: true, kind: 'text' }),
+            expect.objectContaining({ name: '开发者复现教程', available: true, kind: 'text' }),
+        ]);
+        expect(task.artifacts.find((a: any) => a.name === 'Process record').relation).toBe('reference');
+        expect(task.artifacts.find((a: any) => a.name === 'Full contract').relation).toBe('reference');
+    });
+    it.each(['预期交付', '参考资料', '历史产物'])('keeps nested final deliverables under %s as references', async (heading) => {
+        const f = await fixture();
+        await f.put(join(f.taskDir, 'report.html'), '<h1>Reference</h1>');
+        await f.put(join(f.taskDir, 'index.md'), `---\nstatus: done\n---\n# Task\n## ${heading}\n### 最终产物\n[Report](report.html)`);
+        const { snapshot } = await f.call('goalBoardRead', { featurePath: f.feature });
+        expect(snapshot.tasks[0].artifacts[0]).toMatchObject({ relation: 'reference', available: true });
     });
     it('shows explicitly produced commits as deliverables while keeping reference commits separate', async () => {
         const f = await fixture();
