@@ -39,6 +39,8 @@ import { getProjectPath } from './utils/path';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { RawJSONLinesSchema, type RawJSONLines } from './types';
+import { applyClaudeModelCatalog, resolveClaudeModelCode } from './utils/modelCatalog';
+import { discoverClaudeModels } from './utils/discoverClaudeModels';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -153,6 +155,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         ...(isSideChat ? { isSideChat: true } : {}),
     };
 
+    if (options.model) {
+        metadata = applyClaudeModelCatalog(metadata, undefined, options.model);
+    }
+
     // Check for session reconnection env vars (set by daemon for resume-in-place)
     const reconnectSessionId = process.env.HAPPY_RECONNECT_SESSION_ID;
     const reconnectKeyBase64 = process.env.HAPPY_RECONNECT_ENCRYPTION_KEY;
@@ -246,6 +252,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 abort: new AbortController().signal,
                 claudeEnvVars: options.claudeEnvVars,
                 claudeArgs: options.claudeArgs,
+                model: options.model,
                 mcpServers: {},
                 allowedTools: [],
                 sandboxConfig,
@@ -282,6 +289,23 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
 
     // Create realtime session
     const session = api.sessionSyncClient(response);
+
+    // Publish the runtime-owned catalog without delaying the terminal. Failure
+    // leaves the app's fallback intact; cleanup cancels the probe on exit.
+    let currentRunMode: 'local' | 'remote' = options.startingMode ?? 'local';
+    const modelDiscovery = new AbortController();
+    void discoverClaudeModels({
+        cwd: workingDirectory,
+        env: options.claudeEnvVars,
+        signal: modelDiscovery.signal,
+        useLocalCli: options.startingMode !== 'remote',
+    }).then(models => {
+        if (models.length > 0 && !modelDiscovery.signal.aborted && currentRunMode === (options.startingMode ?? 'local')) {
+            return session.updateMetadata(current => applyClaudeModelCatalog(current, models));
+        }
+    }).catch(error => {
+        logger.debug('[claude] Unable to publish model catalog', error);
+    });
 
     // On reconnect, un-archive the session and skip replaying old messages.
     if (reconnectSessionId) {
@@ -375,7 +399,6 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         return false;
     };
 
-    let currentRunMode: 'local' | 'remote' = options.startingMode ?? 'local';
     let latestClaudeGoalStatus: AgentGoalStatus | null = null;
     const observedClaudeGoalRevisions = new Set<string>();
     let pendingClaudeGoalAction: PendingClaudeGoalAction | null = null;
@@ -470,6 +493,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Variable to track current session instance (updated via onSessionReady callback)
     // Used by hook server to notify Session when Claude changes session ID
     let currentSession: Session | null = null;
+    let currentModel: string | undefined = options.model;
 
     // Start Hook server for receiving Claude session notifications
     const hookServer = await startHookServer({
@@ -490,6 +514,21 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             // *future* JSONL writes from a parallel `claude --resume`
             // terminal, which the file watcher will pick up.
             remoteScanner.onNewSession(sessionId, { treatExistingAsProcessed: true });
+
+            // SessionStart is the local CLI's observed model, not a guess from
+            // Happy's app defaults. Preserve a requested alias/[1m] selection
+            // only when it resolves to the model Claude actually reports.
+            const observedModel = data.model;
+            if (typeof observedModel === 'string' && observedModel) {
+                const modelCode = resolveClaudeModelCode(currentSession?.model, observedModel);
+                if (currentRunMode === 'local') {
+                    // The next remote turn must retain the model the native CLI
+                    // resolved, even when its alias differs in the bundled SDK.
+                    currentModel = modelCode;
+                    if (currentSession) currentSession.model = modelCode;
+                }
+                session.updateMetadata(current => applyClaudeModelCatalog(current, undefined, modelCode));
+            }
 
             // Update session ID in the Session instance
             if (currentSession) {
@@ -535,7 +574,6 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let currentPermissionMode: PermissionMode | undefined = initialPermissionMode;
     // Undefined means "no override" and lets Claude resolve the model itself —
     // same contract as the mid-session reset below (meta.model null → undefined).
-    let currentModel: string | undefined = options.model;
     let currentFallbackModel: string | undefined = undefined; // Track current fallback model
     let currentCustomSystemPrompt: string | undefined = undefined; // Track current custom system prompt
     let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
@@ -694,6 +732,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         if (message.meta?.hasOwnProperty('model')) {
             messageModel = message.meta.model || undefined; // null becomes undefined
             currentModel = messageModel;
+            if (currentSession) currentSession.model = messageModel;
+            session.updateMetadata(current => applyClaudeModelCatalog(current, undefined, messageModel ?? 'default'));
             logger.debug(`[loop] Model updated from user message: ${messageModel || 'reset to default'}`);
         } else {
             logger.debug(`[loop] User message received with no model override, using current: ${currentModel || 'default'}`);
@@ -852,6 +892,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Crashes (uncaughtException / unhandledRejection) keep archiving
     // because the session is genuinely toast at that point.
     const cleanup = async (opts: { archive?: boolean } = { archive: true }) => {
+        modelDiscovery.abort();
         logger.debug(`[START] Received termination signal, cleaning up (archive=${opts.archive ?? true})...`);
 
         try {
@@ -970,6 +1011,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         hookSettingsPath,
         jsRuntime: options.jsRuntime
     });
+
+    modelDiscovery.abort();
 
     // Cleanup session resources (intervals, callbacks) - prevents memory leak
     // Note: currentSession is set by onSessionReady callback during loop()

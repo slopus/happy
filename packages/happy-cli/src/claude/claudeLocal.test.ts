@@ -86,6 +86,22 @@ describe('claudeLocal --continue handling', () => {
         mockWrapCommand.mockResolvedValue('wrapped claude command');
     });
 
+    it.each(['claude-opus-5-5', 'claude-opus-5-5[1m]', 'opus'])(
+        'forwards the model selected by Happy to the actual local CLI: %s', async model => {
+            await claudeLocal({
+                abort: new AbortController().signal, sessionId: null, path: '/tmp',
+                onSessionFound, model,
+            });
+            const args: string[] = mockSpawn.mock.calls[0][1];
+            expect(args.slice(args.indexOf('--model'), args.indexOf('--model') + 2)).toEqual(['--model', model]);
+        },
+    );
+
+    it('does not force a local model when none was selected', async () => {
+        await claudeLocal({ abort: new AbortController().signal, sessionId: null, path: '/tmp', onSessionFound });
+        expect(mockSpawn.mock.calls[0][1]).not.toContain('--model');
+    });
+
     it('should convert --continue to --resume with last session ID', async () => {
         // Mock claudeFindLastSession to return a session ID
         mockClaudeFindLastSession.mockReturnValue('123e4567-e89b-12d3-a456-426614174000');
