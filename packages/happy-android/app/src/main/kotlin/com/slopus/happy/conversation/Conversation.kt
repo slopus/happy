@@ -1603,7 +1603,14 @@ class Conversation(
         }
 
         /** Why [e] happened, for the person: the agent's own words where it gave some. */
-        fun describe(e: Exception): Problem = when (e) {
+        fun describe(e: Exception): Problem = when {
+            // Plain words of the phone's own, never the server's "This needs the … permission."
+            e is ConversationApiException && com.slopus.happy.agent.Permission.refused(e.status, e.code, e.message) -> Problem.Forbidden
+            e is com.slopus.happy.agent.AgentApiException && com.slopus.happy.agent.Permission.refused(e.status, e.code, e.message) -> Problem.Forbidden
+            else -> describeOther(e)
+        }
+
+        private fun describeOther(e: Exception): Problem = when (e) {
             is AgentConnectionException -> Problem.Link(e.reason)
             is ConversationApiException -> e.message?.takeIf { it.isNotBlank() }?.let(Problem::Said) ?: Problem.Refused(e.status)
             else -> e.message?.takeIf { it.isNotBlank() }?.let(Problem::Said) ?: Problem.Unknown

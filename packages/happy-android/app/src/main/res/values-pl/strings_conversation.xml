@@ -106,4 +106,6 @@
     <string name="conversation_failure_internal">Coś poszło nie tak: %1$s</string>
     <string name="conversation_editor_expand">Rozwiń</string>
     <string name="conversation_editor_collapse">Zwiń</string>
+    <string name="problem_forbidden">Nie masz uprawnień, aby to zrobić.</string>
+    <string name="conversation_role_read_only">Możesz czytać tę rozmowę, ale Twoja rola nie może wysyłać wiadomości.</string>
 </resources>

@@ -149,4 +149,5 @@
         <item quantity="many">%1$d версий</item>
         <item quantity="other">%1$d версий</item>
     </plurals>
+    <string name="vaults_no_access">У вас нет доступа к этому хранилищу.</string>
 </resources>

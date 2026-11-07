@@ -106,4 +106,6 @@
     <string name="conversation_failure_internal">Algo salió mal: %1$s</string>
     <string name="conversation_editor_expand">Expandir</string>
     <string name="conversation_editor_collapse">Contraer</string>
+    <string name="problem_forbidden">No tienes permiso para hacer eso.</string>
+    <string name="conversation_role_read_only">Puedes leer esta conversación, pero tu rol no puede enviar mensajes.</string>
 </resources>

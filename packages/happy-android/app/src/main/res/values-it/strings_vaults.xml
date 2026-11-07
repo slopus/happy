@@ -145,4 +145,5 @@
         <item quantity="many">%1$d versioni</item>
         <item quantity="other">%1$d versioni</item>
     </plurals>
+    <string name="vaults_no_access">Non hai accesso a questo archivio.</string>
 </resources>

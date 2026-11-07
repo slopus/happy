@@ -1,5 +1,7 @@
 package com.slopus.happy.ui.surfaces
 
+import com.slopus.happy.ui.conversation.refusalText
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -65,7 +67,7 @@ private fun JoinRefusal(session: AgentSession, surfaceId: String, name: String) 
     HappyAlert(
         Alert(
             title = stringResource(R.string.surface_join_failed, name),
-            message = reason.ifEmpty { stringResource(R.string.surface_leave_no_answer) },
+            message = reason.ifEmpty { stringResource(R.string.surface_leave_no_answer) }.let { LocalResources.current.refusalText(it) },
             buttons = listOf(AlertButton(stringResource(R.string.common_ok))),
         ),
         onDismiss = { session.dismissJoinRefusal(surfaceId) },

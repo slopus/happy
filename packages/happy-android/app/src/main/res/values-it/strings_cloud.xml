@@ -43,4 +43,6 @@
     <string name="cloud_test_sign_in">Accedi</string>
     <string name="cloud_test_wrong">Nome utente o password errati.</string>
     <string name="cloud_test_locked">Troppi tentativi. Riprova tra %1$d min.</string>
+    <string name="cloud_role_admin">Amministratore</string>
+    <string name="cloud_role_viewer">Lettore</string>
 </resources>

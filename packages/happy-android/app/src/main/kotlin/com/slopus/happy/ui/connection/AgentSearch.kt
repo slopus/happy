@@ -1,5 +1,7 @@
 package com.slopus.happy.ui.connection
 
+import com.slopus.happy.agent.VaultAccess
+import com.slopus.happy.agent.SurfaceType
 import com.slopus.happy.chat.arr
 import com.slopus.happy.agent.Intent
 import com.slopus.happy.todos.TodoItem
@@ -299,7 +301,9 @@ data class AgentSearchSources(
                     val joined = (surface["members"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>().any { it.string("userId") == catalog.userId }
                     if (joined && id !in listed) return@mapNotNull null
                     val updatedAt = (surface["updatedAt"] as? JsonPrimitive)?.longOrNull ?: 0L
-                    updatedAt to Surface(AgentFeedRow.Surface(id, surface.string("name").orEmpty(), surface.string("type").orEmpty()), joined)
+                    val type = surface.string("type").orEmpty()
+                    val locked = type == SurfaceType.VAULT && VaultAccess.of(surface.string("access")) == VaultAccess.None
+                    updatedAt to Surface(AgentFeedRow.Surface(id, surface.string("name").orEmpty(), type, locked), joined)
                 }
                 .sortedByDescending { it.first }
                 .map { it.second }

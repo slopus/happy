@@ -37,6 +37,8 @@ import com.slopus.happy.R
 import com.slopus.happy.agent.AgentApiException
 import com.slopus.happy.agent.AgentClient
 import com.slopus.happy.agent.AgentSession
+import com.slopus.happy.agent.VaultAccess
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slopus.happy.conversation.Conversation
 import com.slopus.happy.conversation.MediaFiles
 import com.slopus.happy.ui.components.Alert
@@ -96,6 +98,19 @@ class VaultActions internal constructor(
     internal class Failure(val message: String, @StringRes val title: Int = R.string.vaults_failed)
 
     internal var failure by mutableStateOf<Failure?>(null)
+
+    /** The person may change this vault: it lets them write, and their role writes content. */
+    internal var writable by mutableStateOf(false)
+
+    /** This vault is the team's Policy vault, whose places stay put ([PolicyPlaces]). */
+    internal var policy by mutableStateOf(false)
+
+    /** The folder whose entries this screen shows: its name, and whether it is at the root. Null at the root. */
+    internal var within by mutableStateOf<Pair<String, Boolean>?>(null)
+
+    /** Whether [entry] may be renamed, moved or deleted. */
+    fun canChange(entry: VaultItem): Boolean =
+        writable && !(policy && PolicyPlaces.fixed(entry, within?.first, within?.second == true))
     internal var transfer by mutableStateOf<Transfer?>(null)
     internal var pickFiles: (String?) -> Unit = {}
     internal var pickMedia: (String?) -> Unit = {}
@@ -382,6 +397,10 @@ fun rememberVaultActions(session: AgentSession, surfaceId: String, open: (Any) -
     val resources = LocalResources.current
     val scope = rememberCoroutineScope()
     val actions = remember(session, surfaceId) { VaultActions(session, surfaceId, scope, context, resources, open) }
+    val permissions by session.permissions.collectAsStateWithLifecycle()
+    val surface by remember(session, surfaceId) { session.surface(surfaceId) }.collectAsStateWithLifecycle(session.surfaces.value[surfaceId])
+    actions.writable = permissions.canWrite && surface?.access == VaultAccess.Write
+    actions.policy = surface?.policyVault == true
     var uploadInto by remember { mutableStateOf<VaultActions.Folder?>(null) }
     var replacing by remember { mutableStateOf<VaultItem?>(null) }
     var placing by remember { mutableStateOf<Pair<VaultItem, Int?>?>(null) }
@@ -492,5 +511,21 @@ fun VaultActionsHost(actions: VaultActions) {
             Alert(stringResource(failure.title), failure.message.ifEmpty { null }, listOf(AlertButton(stringResource(R.string.common_ok)))),
             onDismiss = { actions.failure = null },
         )
+    }
+}
+
+/**
+ * The Policy vault's places that stay as they are: its `Global` and
+ * `Security` folders at the root, and the one document each keeps, the
+ * team's instructions and security rules. Known by name and parent: the
+ * server gives them no marks of their own.
+ */
+internal object PolicyPlaces {
+    private val documents = mapOf("Global" to "AGENTS.md", "Security" to "SECURITY.md")
+
+    /** Whether [entry] is one, in the folder named [parent] ([parentAtRoot] whether that folder is at the root). */
+    fun fixed(entry: VaultItem, parent: String?, parentAtRoot: Boolean): Boolean = when {
+        entry.parentId == null -> entry.isFolder && entry.name in documents
+        else -> entry.isFile && parentAtRoot && documents[parent] == entry.name
     }
 }

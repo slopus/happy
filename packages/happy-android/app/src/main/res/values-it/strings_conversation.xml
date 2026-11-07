@@ -106,4 +106,6 @@
     <string name="conversation_failure_internal">Qualcosa è andato storto: %1$s</string>
     <string name="conversation_editor_expand">Espandi</string>
     <string name="conversation_editor_collapse">Comprimi</string>
+    <string name="problem_forbidden">Non hai il permesso di farlo.</string>
+    <string name="conversation_role_read_only">Puoi leggere questa conversazione, ma il tuo ruolo non può inviare messaggi.</string>
 </resources>

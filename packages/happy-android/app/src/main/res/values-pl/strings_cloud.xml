@@ -43,4 +43,6 @@
     <string name="cloud_test_sign_in">Zaloguj się</string>
     <string name="cloud_test_wrong">Nieprawidłowy login lub hasło.</string>
     <string name="cloud_test_locked">Zbyt wiele prób. Spróbuj ponownie za %1$d min.</string>
+    <string name="cloud_role_admin">Administrator</string>
+    <string name="cloud_role_viewer">Obserwator</string>
 </resources>

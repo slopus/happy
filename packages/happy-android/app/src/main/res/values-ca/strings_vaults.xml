@@ -145,4 +145,5 @@
         <item quantity="many">%1$d versions</item>
         <item quantity="other">%1$d versions</item>
     </plurals>
+    <string name="vaults_no_access">No tens accés a aquesta caixa forta.</string>
 </resources>

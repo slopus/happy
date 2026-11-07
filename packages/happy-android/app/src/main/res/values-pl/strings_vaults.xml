@@ -149,4 +149,5 @@
         <item quantity="many">%1$d wersji</item>
         <item quantity="other">%1$d wersji</item>
     </plurals>
+    <string name="vaults_no_access">Nie masz dostępu do tego sejfu.</string>
 </resources>

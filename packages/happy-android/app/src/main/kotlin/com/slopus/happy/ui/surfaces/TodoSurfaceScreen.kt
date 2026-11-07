@@ -24,5 +24,5 @@ fun TodoSurfaceScreen(session: AgentSession, surfaceId: String, onBack: () -> Un
         SurfaceMenu(session, surfaceId, onBack, open = open) { close ->
             HappyMenuItem(stringResource(R.string.todo_deleted_todos), onClick = { close(); open(TodoDeletedRoute(session.connectionId, surfaceId)) })
         }
-    }) { TodoListContent(state, actions) }
+    }) { TodoListContent(state, actions, readOnly = !session.permissions.collectAsStateWithLifecycle().value.canWrite) }
 }

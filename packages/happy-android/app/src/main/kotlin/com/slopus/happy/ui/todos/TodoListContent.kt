@@ -126,7 +126,9 @@ private data class Undo(val todo: TodoItem, val after: String?)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TodoListContent(state: TodoListState, actions: TodoActions, deleted: Boolean = false,
-    compute: CoroutineDispatcher = Dispatchers.Default) {
+    compute: CoroutineDispatcher = Dispatchers.Default,
+    /** The person's role reads but doesn't write: no adding, ticking, editing, moving, deleting or restoring; history stays. */
+    readOnly: Boolean = false) {
     val colors = HappyTheme.colors
     val scope = rememberCoroutineScope()
     val focus = LocalFocusManager.current
@@ -147,12 +149,12 @@ fun TodoListContent(state: TodoListState, actions: TodoActions, deleted: Boolean
     val settlingJobs = remember { mutableMapOf<String, Job>() }
     var undo by remember { mutableStateOf<Undo?>(null) }
     var lastUndo by remember { mutableStateOf<Undo?>(null) }
-    val rows by produceState(emptyList<TodoRow>(), state, deleted, completedShown, settling, drag.order, compute) {
-        value = withContext(compute) { todoRows(state, deleted, completedShown, settling, drag.order) }
+    val rows by produceState(emptyList<TodoRow>(), state, deleted, completedShown, settling, drag.order, compute, readOnly) {
+        value = withContext(compute) { todoRows(state, deleted, completedShown, settling, drag.order).filter { !readOnly || it != TodoRow.Add } }
     }
 
     fun commit(id: String?, stay: Boolean) {
-        if (id == null || editing != id) return
+        if (readOnly || id == null || editing != id) return
         val value = text
         val valid = TodoText.normalized(value) != null
         if (!stay || id != "add" || !valid) { editing = null; focus.clearFocus() } else text = ""
@@ -160,12 +162,13 @@ fun TodoListContent(state: TodoListState, actions: TodoActions, deleted: Boolean
     }
     fun edit(todo: TodoItem?) {
         val next = todo?.id ?: "add"
-        if (editing == next) return
+        if (readOnly || editing == next) return
         commit(editing, false)
         text = todo?.text.orEmpty()
         editing = next
     }
     fun toggle(todo: TodoItem) {
+        if (readOnly) return
         val done = todo.status != TodoItem.Status.Completed && todo.id !in settling
         settlingJobs.remove(todo.id)?.cancel()
         if (done && !reduced) {
@@ -176,12 +179,13 @@ fun TodoListContent(state: TodoListState, actions: TodoActions, deleted: Boolean
         scope.launch { actions.done(todo.id, done) }
     }
     fun remove(todo: TodoItem) {
+        if (readOnly) return
         val index = state.active.indexOfFirst { it.id == todo.id }
         val held = Undo(todo, state.active.getOrNull(index - 1)?.id)
         if (editing == todo.id) { editing = null; focus.clearFocus() }
         scope.launch { actions.delete(todo.id); lastUndo = held; undo = held }
     }
-    fun restore(todo: TodoItem) { scope.launch { actions.restore(todo.id, TodoLibrary.Place.End, TodoItem.Status.Active) } }
+    fun restore(todo: TodoItem) { if (!readOnly) scope.launch { actions.restore(todo.id, TodoLibrary.Place.End, TodoItem.Status.Active) } }
 
     BackHandler(editing != null) { commit(editing, false) }
     LaunchedEffect(editing) { if (editing == null) rootFocus.requestFocus() }
@@ -196,13 +200,13 @@ fun TodoListContent(state: TodoListState, actions: TodoActions, deleted: Boolean
     Box(Modifier.fillMaxSize().imePadding().navigationBarsPadding().testTag(if (deleted) "todo.deleted" else "todo.list")
         .onPreviewKeyEvent { event ->
             val character = event.nativeKeyEvent.unicodeChar
-            if (!deleted && editing == null && event.type == KeyEventType.KeyDown && character >= 32 && !event.nativeKeyEvent.isCtrlPressed && !event.nativeKeyEvent.isAltPressed) {
+            if (!deleted && !readOnly && editing == null && event.type == KeyEventType.KeyDown && character >= 32 && !event.nativeKeyEvent.isCtrlPressed && !event.nativeKeyEvent.isAltPressed) {
                 text = String(Character.toChars(character)); editing = "add"; true
             } else false
         }.focusRequester(rootFocus).focusable()) {
         PullToRefreshBox(isRefreshing = false, onRefresh = actions.refresh) {
             CompositionLocalProvider(LocalViewConfiguration provides dragConfiguration) {
-            LazyColumn(Modifier.fillMaxSize().then(drag.input(!deleted && editing == null)).testTag("todo.rows"), state = list, userScrollEnabled = !drag.dragging, contentPadding = PaddingValues(top = 8.dp, bottom = 86.dp)) {
+            LazyColumn(Modifier.fillMaxSize().then(drag.input(!deleted && !readOnly && editing == null)).testTag("todo.rows"), state = list, userScrollEnabled = !drag.dragging, contentPadding = PaddingValues(top = 8.dp, bottom = 86.dp)) {
                 items(rows, key = { it.key }, contentType = { it::class }) { row ->
                     when (row) {
                         TodoRow.Add -> TodoLine("add", HomeCardPlace(true, true), onCheck = { edit(null) }, checkRole = Role.Button, checkLabel = stringResource(R.string.agent_surface_add_todo), mark = { TodoAddMark() }, text = {
@@ -225,7 +229,7 @@ fun TodoListContent(state: TodoListState, actions: TodoActions, deleted: Boolean
                                 heading()
                                 contentDescription = todo.heading.orEmpty()
                                 onClick(editLabel) { edit(todo); true }
-                                customActions = buildList {
+                                customActions = if (readOnly) listOf(CustomAccessibilityAction(historyLabel) { actions.history(todo); true }) else buildList {
                                     add(CustomAccessibilityAction(editLabel) { edit(todo); true })
                                     add(CustomAccessibilityAction(deleteHeading) { remove(todo); true })
                                     add(CustomAccessibilityAction(historyLabel) { actions.history(todo); true })
@@ -234,7 +238,7 @@ fun TodoListContent(state: TodoListState, actions: TodoActions, deleted: Boolean
                                 }
                             }
                             val modifier = drag.row(todo.id).contentMaxWidth(LocalWindowLayout.current).padding(start = 32.dp, end = 32.dp, top = 26.dp, bottom = 8.dp).then(accessibility).testTag("todo.heading.${todo.id}")
-                            TodoSwipe(onDelete = { remove(todo) }, onHistory = { actions.history(todo) }, deleted = false, modifier = modifier) {
+                            TodoSwipe(onDelete = { remove(todo) }, onHistory = { actions.history(todo) }, deleted = false, modifier = modifier, deletes = !readOnly) {
                                 if (editing == todo.id) TodoEditor(text, { if (editing == todo.id) text = it }, { commit(todo.id, false) }, heading = true)
                                 else Text(todo.heading.orEmpty(), style = happyTextStyle(fontSize = 20, lineHeight = 24, weight = FontWeight.SemiBold), maxLines = 3, color = colors.text, modifier = Modifier.fillMaxWidth().clickable { edit(todo) })
                             }
@@ -254,7 +258,8 @@ fun TodoListContent(state: TodoListState, actions: TodoActions, deleted: Boolean
                                 contentDescription = todo.text
                                 stateDescription = if (deleted) restoreLabel else statusWords
                                 onClick(if (deleted) restoreLabel else editLabel) { if (deleted) restore(todo) else edit(todo); true }
-                                customActions = if (deleted) listOf(CustomAccessibilityAction(restoreLabel) { restore(todo); true }) else buildList {
+                                customActions = if (deleted && !readOnly) listOf(CustomAccessibilityAction(restoreLabel) { restore(todo); true })
+                                    else if (readOnly) listOf(CustomAccessibilityAction(historyLabel) { actions.history(todo); true }) else buildList {
                                     add(CustomAccessibilityAction(mark) { toggle(todo); true })
                                     add(CustomAccessibilityAction(editLabel) { edit(todo); true })
                                     add(CustomAccessibilityAction(deleteLabel) { remove(todo); true })
@@ -266,7 +271,7 @@ fun TodoListContent(state: TodoListState, actions: TodoActions, deleted: Boolean
                                 }
                             }
                             val motion = if (reduced) Modifier else Modifier.animateItem(fadeInSpec = null, placementSpec = tween(250), fadeOutSpec = null)
-                            TodoSwipe(onDelete = { if (deleted) restore(todo) else remove(todo) }, onHistory = { actions.history(todo) }, deleted = deleted, modifier = motion.then(drag.row(todo.id))) {
+                            TodoSwipe(onDelete = { if (deleted) restore(todo) else remove(todo) }, onHistory = { actions.history(todo) }, deleted = deleted, modifier = motion.then(drag.row(todo.id)), deletes = !readOnly) {
                                 if (deleted) TodoDeletedLine(todo.id, todo.text, row.place, semantics) { restore(todo) }
                                 else TodoLine(todo.id, row.place, semantics, author = author, authorSeed = todo.authorUserId, onCheck = { toggle(todo) }, checked = row.done, checkLabel = mark,
                                     mark = { TodoCheck(row.done) },
@@ -311,7 +316,7 @@ private fun TodoNotice(text: String, onDismiss: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TodoSwipe(onDelete: () -> Unit, onHistory: () -> Unit, deleted: Boolean, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+private fun TodoSwipe(onDelete: () -> Unit, onHistory: () -> Unit, deleted: Boolean, modifier: Modifier = Modifier, deletes: Boolean = true, content: @Composable () -> Unit) {
     val colors = HappyTheme.colors
     // Material asks whether an anchor may change while crossing it as well
     // as on release. History is navigation: one gesture must open one page.
@@ -333,7 +338,7 @@ private fun TodoSwipe(onDelete: () -> Unit, onHistory: () -> Unit, deleted: Bool
             acted = false
             waitForUpOrCancellation()
         }
-    }, enableDismissFromStartToEnd = !deleted, backgroundContent = {
+    }, enableDismissFromStartToEnd = !deleted, enableDismissFromEndToStart = deletes, backgroundContent = {
         // At rest, painting behind the same rounded edge leaks the action
         // color through its antialiasing. Only a revealed action draws it.
         if (state.dismissDirection != SwipeToDismissBoxValue.Settled) {

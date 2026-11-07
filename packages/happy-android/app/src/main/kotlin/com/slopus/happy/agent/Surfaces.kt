@@ -3,6 +3,7 @@ package com.slopus.happy.agent
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.longOrNull
 
 internal const val SURFACE_JOIN = "surface.join"
@@ -31,6 +32,19 @@ object SurfaceType {
     const val TASK = "task"
 }
 
+/** What the person may do in a vault (a vault Surface's `access`); a server that doesn't say allows writing. */
+enum class VaultAccess {
+    None, Read, Write;
+
+    companion object {
+        fun of(value: String?): VaultAccess = when (value) {
+            "none" -> None
+            "read" -> Read
+            else -> Write
+        }
+    }
+}
+
 /** One person in a Surface: when they joined and where it sits in their own list. */
 data class SurfaceMember(val userId: String?, val orderKey: String, val joinedAt: Long?)
 
@@ -55,6 +69,10 @@ data class Surface(
     val target: SurfaceTarget? = null,
     val thumbhash: String? = null,
     val version: String? = null,
+    /** A vault's: what the person may do in it. */
+    val access: VaultAccess = VaultAccess.Write,
+    /** The team's Policy vault (`policyVault`): its instructions and security rules, which keep their places. */
+    val policyVault: Boolean = false,
 ) {
     /** Whether [userId] is in it; for the paired person, whether it is in their list. */
     fun joinedBy(userId: String?): Boolean = members.any { it.userId == userId }
@@ -86,6 +104,8 @@ data class Surface(
                 target = target,
                 thumbhash = (value["image"] as? JsonObject)?.string("thumbhash"),
                 version = value.string("version"),
+                access = VaultAccess.of(value.string("access")),
+                policyVault = (value["policyVault"] as? JsonPrimitive)?.booleanOrNull == true,
             )
         }
     }

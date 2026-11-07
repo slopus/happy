@@ -43,4 +43,6 @@
     <string name="cloud_test_sign_in">Iniciar sesión</string>
     <string name="cloud_test_wrong">El usuario o la contraseña no son correctos.</string>
     <string name="cloud_test_locked">Demasiados intentos. Vuelve a intentarlo en %1$d min.</string>
+    <string name="cloud_role_admin">Administrador</string>
+    <string name="cloud_role_viewer">Lector</string>
 </resources>

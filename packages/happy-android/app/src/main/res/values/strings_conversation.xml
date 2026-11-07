@@ -110,4 +110,6 @@
     <string name="conversation_failure_internal">Something went wrong: %1$s</string>
     <string name="conversation_editor_expand">Expand</string>
     <string name="conversation_editor_collapse">Collapse</string>
+    <string name="problem_forbidden">You don\'t have permission to do that.</string>
+    <string name="conversation_role_read_only">You can read this conversation, but your role can\'t send messages.</string>
 </resources>

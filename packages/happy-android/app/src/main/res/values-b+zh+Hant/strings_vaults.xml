@@ -137,4 +137,5 @@
     <plurals name="vaults_versions_count">
         <item quantity="other">%1$d 個版本</item>
     </plurals>
+    <string name="vaults_no_access">你無權存取此保險庫。</string>
 </resources>

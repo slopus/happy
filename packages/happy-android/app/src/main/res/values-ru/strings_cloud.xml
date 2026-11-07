@@ -43,4 +43,6 @@
     <string name="cloud_test_sign_in">Войти</string>
     <string name="cloud_test_wrong">Неверный логин или пароль.</string>
     <string name="cloud_test_locked">Слишком много попыток. Повторите через %1$d мин.</string>
+    <string name="cloud_role_admin">Администратор</string>
+    <string name="cloud_role_viewer">Наблюдатель</string>
 </resources>

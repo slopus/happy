@@ -215,7 +215,7 @@ fun VaultHistoryScreen(session: AgentSession, surfaceId: String, itemId: String,
                                 if (VaultPreview.inViewer(entry)) viewing = version.number
                                 else open(VaultFileRoute(session.connectionId, surfaceId, itemId, if (current) null else version.number, entry.shownName))
                             },
-                            onRestore = if (current || state.location?.inTrash == true) null else ({ actions.restoreVersion(entry, version.number) }),
+                            onRestore = if (current || state.location?.inTrash == true || !actions.writable) null else ({ actions.restoreVersion(entry, version.number) }),
                             onPin = { model.pin(version) },
                             onSave = { actions.save(entry, version.number) },
                         )

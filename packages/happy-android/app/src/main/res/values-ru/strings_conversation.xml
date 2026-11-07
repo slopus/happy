@@ -106,4 +106,6 @@
     <string name="conversation_failure_internal">Что-то пошло не так: %1$s</string>
     <string name="conversation_editor_expand">Развернуть</string>
     <string name="conversation_editor_collapse">Свернуть</string>
+    <string name="problem_forbidden">У вас нет прав на это действие.</string>
+    <string name="conversation_role_read_only">Вы можете читать этот разговор, но ваша роль не позволяет отправлять сообщения.</string>
 </resources>

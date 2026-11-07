@@ -549,7 +549,7 @@ private fun ConversationRow(row: AgentFeedRow.Conversation, onOpen: (String) -> 
 @Composable
 private fun SurfaceRow(row: AgentFeedRow.Surface, onOpen: () -> Unit, onLeave: ((AgentFeedRow.Surface) -> Unit)?) {
     var menu by remember { mutableStateOf(false) }
-    val (glyph, tile) = RowTile.surface(row.type)
+    val (glyph, tile) = RowTile.surface(row.type).let { if (row.locked) Ionicon.LockClosedOutline to it.second else it }
     Box(Modifier.fillMaxSize()) {
         PlaceRow(row.name, { TileMark(glyph, tile) }, onOpen, onLongClick = onLeave?.let { { menu = true } })
         if (onLeave != null) {

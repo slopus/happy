@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.connection
 
+import com.slopus.happy.agent.Permission
 import com.slopus.happy.connection.HappyCloud
 import com.slopus.happy.ui.tablet.BackOrSidebarToggle
 import com.slopus.happy.ui.settings.SettingsTags
@@ -178,8 +179,8 @@ class AgentSettingsActions(
     val onMembers: (() -> Unit)? = null,
     /** Disconnects this connection; asked for only after the person confirmed. */
     val onRemove: () -> Unit = {},
-    /** Opens this connection's Chief of Staff with [prefix] typed, unsent. */
-    val onAskChief: (prefix: String) -> Unit = {},
+    /** Opens this connection's Chief of Staff with [prefix] typed, unsent; null where the person's role can't write to it. */
+    val onAskChief: ((prefix: String) -> Unit)? = {},
 )
 
 /** The Profile row: the person's own name and picture on the agent. */
@@ -223,10 +224,12 @@ fun AgentConnectionSettingsScreen(
     val avatarPrefix = stringResource(R.string.agent_settings_edit_avatar_prefix)
     val changeAvatar = stringResource(R.string.settings_change_avatar)
     val editName = stringResource(R.string.settings_edit_name)
-    val edit = listOf(
-        SettingsEditItem(changeAvatar, Ionicon.ImageOutline, SettingsPageTags.EDIT_AVATAR) { actions.onAskChief(avatarPrefix) },
-        SettingsEditItem(editName, Ionicon.Pencil, SettingsPageTags.EDIT_NAME) { actions.onAskChief(namePrefix) },
-    )
+    val edit = actions.onAskChief?.let { ask ->
+        listOf(
+            SettingsEditItem(changeAvatar, Ionicon.ImageOutline, SettingsPageTags.EDIT_AVATAR) { ask(avatarPrefix) },
+            SettingsEditItem(editName, Ionicon.Pencil, SettingsPageTags.EDIT_NAME) { ask(namePrefix) },
+        )
+    }
     val search = rememberSettingsSearch()
     val sections = listOf(
         SettingsSection(
@@ -318,9 +321,10 @@ fun AgentConnectionSettingsScreen(
     ) {
         if (search.searching) {
             // The picture's two asks, found here, run: the Chief of Staff's chat opens with the words typed in.
-            val asks = listOf(
-                SettingsEntry(AgentSettingsTags.ASK_NAME, stringResource(R.string.agent_settings_edit_name), icon = { SettingsTile(Ionicon.CreateOutline, SettingsTiles.blue) }, chevron = false, onClick = { actions.onAskChief(namePrefix) }, closesSearch = true),
-                SettingsEntry(AgentSettingsTags.ASK_AVATAR, stringResource(R.string.agent_settings_edit_avatar), icon = { SettingsTile(Ionicon.ImageOutline, SettingsTiles.orange) }, chevron = false, onClick = { actions.onAskChief(avatarPrefix) }, closesSearch = true),
+            val ask = actions.onAskChief
+            val asks = if (ask == null) emptyList() else listOf(
+                SettingsEntry(AgentSettingsTags.ASK_NAME, stringResource(R.string.agent_settings_edit_name), icon = { SettingsTile(Ionicon.CreateOutline, SettingsTiles.blue) }, chevron = false, onClick = { ask(namePrefix) }, closesSearch = true),
+                SettingsEntry(AgentSettingsTags.ASK_AVATAR, stringResource(R.string.agent_settings_edit_avatar), icon = { SettingsTile(Ionicon.ImageOutline, SettingsTiles.orange) }, chevron = false, onClick = { ask(avatarPrefix) }, closesSearch = true),
             )
             val profiles = settingsProfileEntries(accounts, accountActions.onSwitch)
             val rows = listOf(addAgentEntry(accountActions), supportBobaEntry(aboutActions.onSupport)) + sections.flatMap { it.rows } + appearance
@@ -442,7 +446,9 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
     val accounts = rememberAccountMenu(graph).shownAs(connectionId)
     val switcher = LocalAccountSwitcher.current
     val cloud = graph.cloudAccount != null && HappyCloud.isServer(agent.server)
-    val actions = remember(graph, nav, connectionId, switcher, cloud) {
+    // The Chief of Staff is an admin bot: asking it needs a role that manages bots.
+    val askChief = session?.permissions?.collectAsStateWithLifecycle()?.value?.allows(Permission.BOTS_MANAGE) ?: true
+    val actions = remember(graph, nav, connectionId, switcher, cloud, askChief) {
         AgentSettingsActions(
             onBack = { nav.popBackStack() },
             onProfile = { nav.navigate(AgentProfileRoute(connectionId)) },
@@ -452,7 +458,7 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
             onSharing = { nav.navigate(AgentSharingRoute(connectionId)) },
             onAgents = { nav.navigate(AgentAgentsRoute(connectionId)) },
             onMembers = if (cloud) ({ nav.navigate(CloudMembersRoute(connectionId)) }) else null,
-            onAskChief = { prefix -> nav.openChiefOfStaff(connectionId, prefix) },
+            onAskChief = if (askChief) ({ prefix -> nav.openChiefOfStaff(connectionId, prefix) }) else null,
             onRemove = {
                 if (switcher != null) switcher.removingFromSettings { removeAgentConnection(graph, connectionId) }
                 else scope.launch { removeAgentConnection(graph, connectionId) }

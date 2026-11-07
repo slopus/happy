@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.conversation
 
+import com.slopus.happy.agent.Permission
 import com.slopus.happy.analytics.Analytics
 import com.slopus.happy.analytics.AnalyticsEvent
 import com.slopus.happy.analytics.ChatAddress
@@ -78,6 +79,7 @@ import com.slopus.happy.ui.theme.HappyTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
@@ -438,11 +440,19 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
         LinkOpener.agent(context, computer, app = references::open) { url -> nav.navigate(BrowserRoute(route.connectionId, url, conversation.agentId)) }
     }
     val kept = rememberKeptMedia(graph, session, conversation.agentId)
+    // A team's role writes content; the Chief of Staff, an admin bot, takes words only from those who manage bots.
+    val permissions by session.permissions.collectAsStateWithLifecycle()
+    val chief by remember(session, conversation.agentId) {
+        session.catalog.map { ChatAddress.of(it, conversation.agentId).chiefOfStaff }.distinctUntilChanged()
+    }.collectAsStateWithLifecycle(false)
+    val roleCanSend = permissions.allows(if (chief) Permission.BOTS_MANAGE else Permission.CONTENT_WRITE)
     // A command's artwork is read and kept as the agent's other pictures are.
     ProvideLinks(links) { androidx.compose.runtime.CompositionLocalProvider(com.slopus.happy.ui.connection.LocalAgentPictures provides session.pictures) {
         ConversationScreen(
             state = state,
             opensAttach = route.attach,
+            roleCanSend = roleCanSend,
+            roleCanCompose = permissions.canWrite,
             // Offline says why in words of its own; the link on its way spins (iOS 7aee3a9b8).
             connection = if (link == LinkState.Offline) linkStatusText(status) ?: stringResource(R.string.status_offline) else null,
             link = link,

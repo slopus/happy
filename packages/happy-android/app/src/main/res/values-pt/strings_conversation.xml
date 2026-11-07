@@ -106,4 +106,6 @@
     <string name="conversation_failure_internal">Algo deu errado: %1$s</string>
     <string name="conversation_editor_expand">Expandir</string>
     <string name="conversation_editor_collapse">Recolher</string>
+    <string name="problem_forbidden">Você não tem permissão para fazer isso.</string>
+    <string name="conversation_role_read_only">Você pode ler esta conversa, mas sua função não pode enviar mensagens.</string>
 </resources>

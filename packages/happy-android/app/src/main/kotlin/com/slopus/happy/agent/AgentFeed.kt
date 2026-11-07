@@ -28,9 +28,11 @@ sealed interface AgentFeedRow {
 
     /**
      * A Surface the person joined: a todo list, a document, a calendar, a
-     * system monitor or a chat ([type]). It opens on its own page.
+     * system monitor or a chat ([type]). It opens on its own page. A
+     * [locked] vault is listed for the team, but the person's role can't
+     * open it.
      */
-    data class Surface(val id: String, val name: String, val type: String) : AgentFeedRow {
+    data class Surface(val id: String, val name: String, val type: String, val locked: Boolean = false) : AgentFeedRow {
         override val key get() = "surface-$id"
     }
 
@@ -262,7 +264,9 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     .sortedWith(compareBy({ it.second }, { it.first.string("id") }))
                     .forEach { (surface, _) ->
                         val id = surface.string("id")?.takeIf { it !in leaving && it !in removed } ?: return@forEach
-                        rows += AgentFeedRow.Surface(id, surface.string("name").orEmpty(), surface.string("type").orEmpty())
+                        val type = surface.string("type").orEmpty()
+                        val locked = type == SurfaceType.VAULT && VaultAccess.of(surface.string("access")) == VaultAccess.None
+                        rows += AgentFeedRow.Surface(id, surface.string("name").orEmpty(), type, locked)
                     }
             }
             section(AgentFeedSection.Bots) {

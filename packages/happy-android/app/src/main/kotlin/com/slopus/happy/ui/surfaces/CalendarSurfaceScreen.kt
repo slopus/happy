@@ -50,9 +50,11 @@ fun CalendarSurfaceScreen(session: AgentSession, surfaceId: String, onBack: () -
     var current by remember { mutableStateOf<CalendarEvent?>(null) }
     val scope = rememberCoroutineScope()
     val routes = remember(session) { CalendarRoutes(session.client) }
+    // A role that reads but doesn't write adds and moves no events.
+    val writes = session.permissions.collectAsStateWithLifecycle().value.canWrite
     CalendarScreen(state, surfaceTitle(session, surface?.name.orEmpty()), zone, onRange = { model.feed.show(it.range(surfaceId, zone)) },
-        onBack = onBack, onEvent = { if (!moving) { selected = it; date = LocalDate.now(zone) } }, onNewEvent = { if (!moving) { selected = null; date = it } },
-        onMove = if (moving) null else { item, timing ->
+        onBack = onBack, onEvent = { if (!moving) { selected = it; date = LocalDate.now(zone) } }, onNewEvent = if (writes) ({ if (!moving) { selected = null; date = it } }) else null,
+        onMove = if (moving || !writes) null else { item, timing ->
             moving = true
             scope.launch {
                 try {

@@ -438,7 +438,13 @@ private fun ServerCard(server: CloudServer, onPhone: Boolean, image: suspend (St
             Text(server.title, style = happyTextStyle(fontSize = 18, lineHeight = 24, weight = FontWeight.SemiBold), color = colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text("@${server.name}", style = happyTextStyle(fontSize = 15, lineHeight = 20), color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Text(stringResource(if (server.owner) R.string.cloud_role_owner else R.string.cloud_role_member), style = happyTextStyle(fontSize = 14, lineHeight = 18), color = colors.textSecondary)
+        val role = when (server.role) {
+            "owner" -> R.string.cloud_role_owner
+            "admin" -> R.string.cloud_role_admin
+            "viewer" -> R.string.cloud_role_viewer
+            else -> R.string.cloud_role_member
+        }
+        Text(stringResource(role), style = happyTextStyle(fontSize = 14, lineHeight = 18), color = colors.textSecondary)
         if (onPhone) Icon(Ionicon.CheckmarkCircle, 22.dp, colors.success)
     }
 }
