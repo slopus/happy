@@ -9,6 +9,7 @@
  */
 
 import { AcpBackend, type AcpBackendOptions, type AcpPermissionHandler } from '../acp/AcpBackend';
+import { HAPPY_CHANGE_TITLE_TOOL_NAME } from '../constants/happyChangeTitleTool';
 import type { AgentBackend, McpServerConfig, AgentFactoryOptions } from '../core';
 import { agentRegistry } from '../core';
 import { geminiTransport } from '../transport';
@@ -150,7 +151,7 @@ export function createGeminiBackend(options: GeminiBackendOptions): GeminiBacken
       return lower.includes('change_title') ||
              lower.includes('change title') ||
              lower.includes('set title') ||
-             lower.includes('mcp__happy__change_title');
+             lower.includes(HAPPY_CHANGE_TITLE_TOOL_NAME);
     },
   };
 
