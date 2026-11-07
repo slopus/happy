@@ -54,15 +54,20 @@ object TeamMembers {
     /** `409 last_owner`: the team needs another owner before this one goes. */
     fun lastOwner(e: AgentApiException): Boolean = e.status == 409 && e.code == "last_owner"
 
-    /** Whether [event] may change who is on the team, their roles, or what roles are called; a reconnect may have missed any of it. */
+    /**
+     * Whether [event] may change who is on the team, their roles, what roles
+     * are called, or a member's name (it is their profile's, and `member.*`
+     * carries none); a reconnect may have missed any of it.
+     */
     fun changes(event: AgentEvent): Boolean =
-        event.type == AgentEvent.HELLO || event.type.startsWith("member.") || event.type.startsWith("role.")
+        event.type == AgentEvent.HELLO || event.type.startsWith("member.") || event.type.startsWith("role.") || event.type == "profile.updated"
 }
 
 /**
  * The team as a screen shows it: read at once, and again on every event
- * that may change it ([TeamMembers.changes]). There is no `member.added`,
- * so a join shows on the next read.
+ * that may change it ([TeamMembers.changes]): `member.*`, `role.*`,
+ * `profile.updated` and every reconnect. There is no `member.added`, so a
+ * join shows on the next read.
  */
 class TeamSource(
     private val read: suspend () -> Team,

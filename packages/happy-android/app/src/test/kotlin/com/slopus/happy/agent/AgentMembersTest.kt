@@ -61,7 +61,7 @@ class AgentMembersTest {
     }
 
     @Test
-    fun theTeamIsReadAgainOnEveryConnectAndMemberOrRoleChange() = runTest {
+    fun theTeamIsReadAgainOnEveryConnectAndMemberRoleOrNameChange() = runTest {
         val events = MutableSharedFlow<AgentEvent>(extraBufferCapacity = 16)
         val answers = ArrayDeque<() -> Team>()
         var reads = 0
@@ -70,14 +70,14 @@ class AgentMembersTest {
         assertEquals(TeamSource.State.Loading, source.team.value)
         runCurrent()
         assertEquals(1, (source.team.value as TeamSource.State.Loaded).team.members.size)
-        for (type in listOf("member.updated", "member.removed", "role.updated", AgentEvent.HELLO)) {
+        for (type in listOf("member.updated", "member.removed", "role.updated", "profile.updated", AgentEvent.HELLO)) {
             answers += { Team(listOf(TeamMember("a1", role = "owner"), TeamMember("a2", role = "viewer"))) }
             events.emit(AgentEvent(null, type, JsonObject(emptyMap())))
             runCurrent()
         }
         events.emit(AgentEvent(null, "agent.updated", JsonObject(emptyMap())))
         runCurrent()
-        assertEquals(5, reads)
+        assertEquals(6, reads)
         // A failed read keeps what was shown; failing before anything was, it says so.
         answers += { throw AgentApiException(500, "internal", null) }
         source.retry()
