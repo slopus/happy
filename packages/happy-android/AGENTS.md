@@ -1156,7 +1156,8 @@ change its wire behaviour on Android alone.
   the roles cutover the team is the server's (members contract): `GET
   /v0/members` with each role's name from `GET /v0/roles` (a built-in one in
   the app's words where roles can't be read), read again on every connect,
-  `member.*` and `role.*` (there is no `member.added`); Leave server is `POST
+  `member.*`, `role.*` and `profile.updated`, since a member's name is
+  their profile's (there is no `member.added`); Leave server is `POST
   /v0/members/leave`, confirmed, then the server is removed here too, and
   its last owner gets `409 last_owner`. No account pass is needed. The
   accounts service lists servers without a role now (`CloudServer.role` is
