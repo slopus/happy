@@ -220,7 +220,7 @@ public final class AgentConnections {
         await stop(id)
         // Looked up after the wait: the list may have changed meanwhile.
         guard let index = accounts.firstIndex(where: { $0.id == id }) else { return }
-        accounts[index].name = name
+        accounts[index].name = AgentName.friendly(name)
         onChange?()
         try? await storage.update(accounts[index])
         startConnections()

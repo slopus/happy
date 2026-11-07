@@ -31,6 +31,8 @@ public struct Permissions: Decodable, Equatable, Sendable {
         case projectsManage = "projects.manage"
         /// Admin bots, the Chief of Staff among them, and input to them.
         case botsManage = "bots.manage"
+        /// The server's own settings, its name among them.
+        case configManage = "config.manage"
     }
 
     public static let refreshEvents = ["role."]
