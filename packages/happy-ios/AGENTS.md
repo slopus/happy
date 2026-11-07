@@ -188,7 +188,10 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
   settles one second from the first, never longer (`DirectorySettle`), and
   goes whole, as the sidebar is then. It projects the app's own state
   (`WarmChats` hold, watch and release, the chat's own send), never a read
-  of its own.
+  of its own. A conversation it doesn't follow is reached for first, as a
+  finger on its row reaches (`WarmChats.intent`), and both a read and a send
+  wait for its first page: one never opened on this phone takes a message
+  by voice, and a read or send after it finds it kept, not started over.
   It ends on background, interruption, lost route, account change and when
   the relay's voice starts. For launch it connects to a public agent by its
   ID (`PublicAgentCallGrants`): a connection mechanism, not authentication.

@@ -100,12 +100,7 @@ final class SessionCallTargets: CallTargets {
             return await withModels(state, mode: draft.callMode)
         }
         let read: (CallTargetState, AgentWire.Mode?)? = await borrowing(agentId) { chat in
-            // One bounded read: about three seconds for its first page, less
-            // if the tool's time runs out first.
-            for _ in 0..<60 where !chat.snapshot.loaded && !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(50))
-            }
-            guard chat.snapshot.loaded else { return nil }
+            guard await Self.loaded(chat) else { return nil }
             return (.from(chat.snapshot, target: target), chat.snapshot.mode)
         }
         guard let read else { return nil }
@@ -177,13 +172,26 @@ final class SessionCallTargets: CallTargets {
     /// The app's kept chat for `agentId` while `use` runs: the call's own
     /// hold when it follows the conversation, else a hold of its own, let
     /// go of after, whatever else held it meanwhile. The chat is the one its
-    /// screen shows, so what a send does shows there.
+    /// screen shows, so what a send does shows there. Reached for first, as
+    /// a finger on its row reaches (`WarmChats.intent`): let go of, it is
+    /// kept as that one is, so a send after a read, or a read again, finds
+    /// it read, or still reading, rather than a new one starting over.
     private func borrowing<T>(_ agentId: String, _ use: @MainActor (WarmChats.Chat) async -> T) async -> T {
         if let hold = held[agentId] { return await use(hold.chat) }
+        session.warm.intent(agentId)
         let hold = session.warm.hold(agentId)
         let result = await use(hold.chat)
         session.warm.release(hold.chat, token: hold.token, opened: false)
         return result
+    }
+
+    /// Whether `chat` has its first page, waiting a bounded while as its
+    /// screen would: about three seconds, less if the tool's time runs out first.
+    private static func loaded(_ chat: WarmChats.Chat) async -> Bool {
+        for _ in 0..<60 where !chat.snapshot.loaded && !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return chat.snapshot.loaded
     }
 
     func focused() async -> String? { focusedNow }
@@ -367,6 +375,8 @@ final class SessionCallTargets: CallTargets {
             return await draft.sendFromCall(id: id, text: text) ? .queued : .refused("It couldn't be kept on this phone.")
         }
         return await borrowing(agentId) { chat in
+            // Read as the call's context read it: a send never judges a page not there yet.
+            guard await Self.loaded(chat) else { return .refused("That conversation is still loading; try again in a moment.") }
             let snapshot = chat.snapshot
             // Under an ID it already has, it went the first time.
             if snapshot.items.contains(where: { $0.id == id }) { return .queued }
