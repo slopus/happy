@@ -45,8 +45,6 @@ class ArtifactCatalogFeed(
         val items: List<ArtifactSummary> = emptyList(),
         /** Something was read, from disk or the computer: the list can say it is empty rather than loading. */
         val loaded: Boolean = false,
-        /** The computer is being read. */
-        val refreshing: Boolean = false,
         /** This Happy Agent keeps no artifacts (`404` on the catalog). */
         val unsupported: Boolean = false,
         /** The last read failed, and why. */
@@ -94,7 +92,6 @@ class ArtifactCatalogFeed(
     }
 
     private suspend fun read() {
-        stateFlow.update { it.copy(refreshing = true) }
         val items = ArrayList<ArtifactSummary>()
         var cursor: String? = null
         try {
@@ -104,22 +101,21 @@ class ArtifactCatalogFeed(
                 cursor = next ?: break
             }
         } catch (e: CancellationException) {
-            stateFlow.update { it.copy(refreshing = false) }
             throw e
         } catch (e: AgentApiException) {
             if (e.status == 404) {
-                stateFlow.update { it.copy(items = emptyList(), loaded = true, refreshing = false, unsupported = true, error = null) }
+                stateFlow.update { it.copy(items = emptyList(), loaded = true, unsupported = true, error = null) }
                 withContext(io) { keep(ArtifactCatalog.kept(emptyList())) }
             } else {
-                stateFlow.update { it.copy(refreshing = false, error = Conversation.describe(e)) }
+                stateFlow.update { it.copy(error = Conversation.describe(e)) }
             }
             return
         } catch (e: Exception) {
-            stateFlow.update { it.copy(refreshing = false, error = Conversation.describe(e)) }
+            stateFlow.update { it.copy(error = Conversation.describe(e)) }
             return
         }
         val seen = HashSet<String>()
-        stateFlow.update { it.copy(loaded = true, refreshing = false, unsupported = false, error = null) }
+        stateFlow.update { it.copy(loaded = true, unsupported = false, error = null) }
         set(ArtifactCatalog.sorted(items.filter { seen.add(it.id) }))
     }
 

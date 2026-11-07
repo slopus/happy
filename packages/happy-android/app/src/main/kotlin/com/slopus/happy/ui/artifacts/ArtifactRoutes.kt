@@ -111,7 +111,6 @@ private fun AgentArtifacts(graph: AppGraph, nav: NavHostController, route: Agent
         state = state,
         onBack = { nav.popBackStack() },
         onOpen = { nav.openArtifact(route.connectionId, it.ref) },
-        onRefresh = { feed?.refresh() },
         thumbnails = holder.thumbnails,
         link = link,
         covers = session?.feedCovers,

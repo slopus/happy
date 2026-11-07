@@ -72,7 +72,7 @@ class ArtifactsEmptyDeviceShots {
                     HappyTheme(preference = if (dark) ThemePreference.Dark else ThemePreference.Light) {
                         ProvideWindowLayout {
                             val state by catalog.state.collectAsState()
-                            ArtifactsScreen(state, {}, {}, {})
+                            ArtifactsScreen(state, {}, {})
                         }
                     }
                 }

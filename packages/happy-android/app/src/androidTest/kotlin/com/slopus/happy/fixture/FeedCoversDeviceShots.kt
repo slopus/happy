@@ -139,7 +139,7 @@ class FeedCoversDeviceShots {
         rule.setContent {
             HappyTheme(preference = if (dark) com.slopus.happy.ui.theme.ThemePreference.Dark else com.slopus.happy.ui.theme.ThemePreference.Light) {
                 val state by catalog.state.collectAsState()
-                com.slopus.happy.ui.artifacts.ArtifactsScreen(state, {}, {}, {}, thumbnails, covers = covers)
+                com.slopus.happy.ui.artifacts.ArtifactsScreen(state, {}, {}, thumbnails, covers = covers)
             }
         }
         // Two covers read whole; the animated cover and the photo through their stills.

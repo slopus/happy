@@ -19,6 +19,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.width
@@ -37,6 +38,7 @@ import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.PHONE_WIDTH
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
+import com.slopus.happy.ui.cards.CardListSpec
 import com.slopus.happy.ui.cards.CardListTags
 import com.slopus.happy.ui.components.StateAnimationTags
 import com.slopus.happy.ui.connection.AgentSearchTags
@@ -102,7 +104,7 @@ class ArtifactsListTest {
     }
 
     private fun show(state: ArtifactCatalogFeed.State, dark: Boolean = false, onOpen: (ArtifactSummary) -> Unit = {}, thumbnails: ArtifactThumbnails? = null) {
-        rule.setHappyContent(dark) { ArtifactsScreen(state, {}, onOpen, {}, thumbnails, clock = { now }) }
+        rule.setHappyContent(dark) { ArtifactsScreen(state, {}, onOpen, thumbnails, clock = { now }) }
         rule.waitForIdle()
     }
 
@@ -179,7 +181,7 @@ class ArtifactsListTest {
 
     @Test fun theTitleSaysWhereTheLinkIsWhileItIsOnItsWay() {
         var link by mutableStateOf(com.slopus.happy.connection.LinkState.Connecting)
-        rule.setHappyContent { ArtifactsScreen(ArtifactCatalogFeed.State(loaded = true), {}, {}, {}, clock = { now }, link = link) }
+        rule.setHappyContent { ArtifactsScreen(ArtifactCatalogFeed.State(loaded = true), {}, {}, clock = { now }, link = link) }
         rule.onNodeWithText("Connecting…").assertExists()
         link = com.slopus.happy.connection.LinkState.Syncing
         rule.onNodeWithText("Updating…").assertExists()
@@ -190,7 +192,7 @@ class ArtifactsListTest {
 
     @Test fun aNoteStandsInPlaceOfTheRows() {
         var state by mutableStateOf(ArtifactCatalogFeed.State())
-        rule.setHappyContent { ArtifactsScreen(state, {}, {}, {}, clock = { now }) }
+        rule.setHappyContent { ArtifactsScreen(state, {}, {}, clock = { now }) }
         rule.onNodeWithText("Loading artifacts...").assertExists()
         for ((next, words) in listOf(
             ArtifactCatalogFeed.State(loaded = true) to "No artifacts yet. Ask an agent to make one.",
@@ -202,12 +204,28 @@ class ArtifactsListTest {
         }
         val note = rule.node(CardListTags.NOTE).bounds
         assertDp("the note is centred in the column", (PHONE_WIDTH / 2f).dp, (note.left + note.right) / 2)
+        assertCentredInTheList(note.top, note.bottom)
         shot("artifacts-failed")
+    }
+
+    /**
+     * What spans [top] to [bottom] sits in the middle of the screen, not of
+     * the room under the bar: the room's centre lifted by half the bar, so
+     * off the screen's centre only by the list's uneven padding (8 above, 24 below).
+     */
+    private fun assertCentredInTheList(top: Dp, bottom: Dp) {
+        val bar = rule.node(PlaceTags.BAR).bounds
+        val list = rule.node(ArtifactsTags.LIST).bounds
+        val room = rule.node(ArtifactsTags.NOTE).bounds
+        assertDp("the note's room starts under the bar and the list's padding", bar.bottom + CardListSpec.contentTop, room.top)
+        assertDp("and ends above the list's padding", list.bottom - CardListSpec.contentBottom, room.bottom)
+        val screen = (list.top + list.bottom) / 2 + (CardListSpec.contentTop - CardListSpec.contentBottom) / 2
+        assertDp("the note is centred on the screen", screen, (top + bottom) / 2)
     }
 
     @Test fun theEmptyListShowsTheTicketOverItsNote() {
         var state by mutableStateOf(ArtifactCatalogFeed.State())
-        rule.setHappyContent { ArtifactsScreen(state, {}, {}, {}, clock = { now }) }
+        rule.setHappyContent { ArtifactsScreen(state, {}, {}, clock = { now }) }
         rule.onNodeWithText("Loading artifacts...").assertExists()
         rule.onAllNodesWithTag(StateAnimationTags.ANIMATION, useUnmergedTree = true).assertCountEquals(0)
         state = ArtifactCatalogFeed.State(loaded = true)
@@ -218,6 +236,7 @@ class ArtifactsListTest {
         assertDp("square", 128, art.height)
         assertDp("centred in the column", (PHONE_WIDTH / 2f).dp, (art.left + art.right) / 2)
         assertDp("the note right under it", art.bottom, note.top)
+        assertCentredInTheList(art.top, note.bottom)
         shot("artifacts-empty")
         // Only the empty list has it: a failed read keeps its plain note.
         state = ArtifactCatalogFeed.State(loaded = true, error = Problem.Said("offline"))
@@ -286,7 +305,7 @@ class ArtifactsListTest {
         val covers = FeedCovers(fetch = { cover -> if (cover.path == "cover.png") ByteArray(1) else ByteArray(2) })
         rule.setHappyContent(dark) {
             androidx.compose.runtime.CompositionLocalProvider(com.slopus.happy.ui.components.LocalImageLoader provides coverLoader) {
-                ArtifactsScreen(ArtifactCatalogFeed.State(covered, loaded = true), {}, {}, {}, clock = { now }, covers = covers)
+                ArtifactsScreen(ArtifactCatalogFeed.State(covered, loaded = true), {}, {}, clock = { now }, covers = covers)
             }
         }
         rule.waitForIdle()
@@ -323,7 +342,7 @@ class ArtifactsListTest {
         )
         rule.setHappyContent {
             androidx.compose.runtime.CompositionLocalProvider(com.slopus.happy.ui.components.LocalImageLoader provides coverLoader) {
-                ArtifactsScreen(ArtifactCatalogFeed.State(items, loaded = true), {}, {}, {}, clock = { now }, covers = covers)
+                ArtifactsScreen(ArtifactCatalogFeed.State(items, loaded = true), {}, {}, clock = { now }, covers = covers)
             }
         }
         rule.waitUntil(5_000) { asked.size >= 2 }

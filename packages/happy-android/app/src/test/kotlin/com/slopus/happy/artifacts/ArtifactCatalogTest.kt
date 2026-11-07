@@ -202,11 +202,9 @@ class ArtifactCatalogTest {
         // What was kept shows while the computer is read.
         assertEquals(listOf("old"), feed.state.value.items.map { it.id })
         assertTrue(feed.state.value.loaded)
-        assertTrue(feed.state.value.refreshing)
         fake.gate!!.complete(Unit)
         runCurrent()
         assertEquals(listOf("a1", "a2", "a3"), feed.state.value.items.map { it.id })
-        assertFalse(feed.state.value.refreshing)
         assertEquals(listOf(null, "p2"), fake.asked)
         assertEquals(listOf("a1", "a2", "a3"), ArtifactCatalog.fromKept(fake.kept!!).map { it.id })
     }

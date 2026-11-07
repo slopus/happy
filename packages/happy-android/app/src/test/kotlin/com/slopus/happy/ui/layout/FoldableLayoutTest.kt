@@ -375,7 +375,7 @@ abstract class FoldableLayoutTest(
             ArtifactSummary("a2", "html", "Dashboard", 1, null, createdAt = now - day, updatedAt = now - day),
             ArtifactSummary("a3", "image", "Screenshots of the new onboarding flow on every size of phone", 2, null, createdAt = now - 3 * day, updatedAt = now - 3 * day),
         )
-        show { ArtifactsScreen(ArtifactCatalogFeed.State(items, loaded = true), {}, {}, {}) }
+        show { ArtifactsScreen(ArtifactCatalogFeed.State(items, loaded = true), {}, {}) }
         // The cards stand on the column's keyline; the title is a card's 16, a tile and its 12 further in.
         val row = first(ArtifactsTags.ROW)
         val card = DpRect(row.left + ContentTokens.inset, row.top, row.right - ContentTokens.inset, row.bottom)
