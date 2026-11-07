@@ -285,6 +285,82 @@ final class HappyCloudUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 2)
     }
 
+    /// A task's reply with a Happy link of every kind (`.context/entity-links.py`):
+    /// a task, an artifact and a Surface open their screens under their live
+    /// names; a file link this server can't open yet (501) turns into its
+    /// words; the rest read as words.
+    func testDEntityLinksOpenWhereTheAppHasAScreen() throws {
+        guard let login = env["QA_LOGIN"], let password = env["QA_PASSWORD"], let server = env["ENTITY_SERVER"] else { throw XCTSkip("no entity links run") }
+        app.launch()
+        signInWithTestAccount(login: login, password: password)
+        let card = element("cloud-server-\(server)")
+        require(card.waitForExistence(timeout: 30), "@\(server) isn't among \(login)'s servers")
+        card.tap()
+        let switcher = element("account-switcher")
+        require(switcher.waitForExistence(timeout: 90), "no home of @\(server)")
+        Thread.sleep(forTimeInterval: 4)
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Entity links check'")).firstMatch
+        for _ in 0..<3 where !row.isHittable { app.swipeUp() }
+        require(row.waitForExistence(timeout: 30), "no Entity links check on home")
+        row.tap()
+        func button(_ label: String) -> XCUIElement { app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch }
+        // The live names, not the written labels.
+        let task = button("Link target")
+        require(task.waitForExistence(timeout: 20), "the agent button isn't named Link target")
+        let report = button("Q3 summary")
+        require(report.waitForExistence(timeout: 20), "the artifact button isn't named Q3 summary")
+        let list = button("Groceries")
+        require(list.waitForExistence(timeout: 10), "the Surface button isn't named Groceries")
+        Thread.sleep(forTimeInterval: 2)
+        capture("30-entity-links")
+        tree("30-entity-links", app)
+        let back = app.navigationBars.buttons.element(boundBy: 0)
+
+        task.tap()
+        require(app.navigationBars.staticTexts["Link target"].waitForExistence(timeout: 10) || button("Link target").waitForExistence(timeout: 1), "the agent link didn't open its conversation")
+        Thread.sleep(forTimeInterval: 1.5)
+        capture("31-agent")
+        back.tap()
+        require(report.waitForExistence(timeout: 10), "not back in the task")
+
+        report.tap()
+        let markdown = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Revenue is up'")).firstMatch
+        require(markdown.waitForExistence(timeout: 20), "the artifact link didn't open the artifact")
+        capture("32-artifact")
+        back.tap()
+        require(list.waitForExistence(timeout: 10), "not back in the task after the artifact")
+
+        list.tap()
+        require(button("Milk").waitForExistence(timeout: 15), "the Surface link didn't open Groceries")
+        capture("33-surface")
+        back.tap()
+        require(list.waitForExistence(timeout: 10), "not back in the task after the Surface")
+
+        // No workspace files on this server yet: the button becomes its words, with no alert.
+        let file = app.buttons.matching(NSPredicate(format: "label == 'notes.md'")).firstMatch
+        require(file.waitForExistence(timeout: 5), "no notes.md button")
+        file.tap()
+        Thread.sleep(forTimeInterval: 4)
+        require(app.alerts.count == 0, "the file link showed an alert")
+        require(!app.buttons.matching(NSPredicate(format: "label == 'notes.md'")).firstMatch.exists, "the file button is still a button")
+        capture("34-file-words")
+        tree("34-file-words", app)
+        goBack(switcher)
+
+        let gear = app.buttons["settings"].firstMatch
+        require(gear.waitForExistence(timeout: 5), "no settings on the home")
+        gear.tap()
+        Thread.sleep(forTimeInterval: 1.5)
+        let rowOut = element("settings:disconnect")
+        for _ in 0..<4 where !rowOut.isHittable { app.swipeUp() }
+        require(rowOut.waitForExistence(timeout: 5), "no Sign Out on the server's settings")
+        rowOut.tap()
+        let confirm = app.alerts.buttons["Sign Out"]
+        require(confirm.waitForExistence(timeout: 5), "no confirmation")
+        confirm.tap()
+        Thread.sleep(forTimeInterval: 2)
+    }
+
     /// A fresh cloud server's Chief of Staff: its greeting is on home as an
     /// ordinary bot conversation, nothing opens it on its own, and its
     /// providers button opens the server's web settings. A viewer reads it

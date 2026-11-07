@@ -6,6 +6,7 @@ The person's last message picks the reply:
   "status TEXT" -> the agent's `set_status` tool called with TEXT; then one short line
   "tool NAME JSON" -> the agent's tool NAME called with the JSON object (for example
                    `tool create_artifact {"type": "html"}`); then one line
+  "echo\nTEXT"  -> TEXT, word by word, as written (Markdown the app must render)
 anything else -> one short line at once (titles and other internal asks).
 """
 import json, re, sys, time
@@ -87,7 +88,10 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(f"{len(data):x}\r\n".encode() + data + b"\r\n0\r\n\r\n")
             self.wfile.flush()
             return
-        if m:
+        echo = re.match(r"echo\n(.+)$", text.strip(), re.S)
+        if echo:
+            reply, delay = echo.group(1), 0
+        elif m:
             reply, delay = "".join(section(i) for i in range(int(m.group(1)))), int(m.group(2)) / 1000
         else:
             reply, delay = "Gym reply.", 0

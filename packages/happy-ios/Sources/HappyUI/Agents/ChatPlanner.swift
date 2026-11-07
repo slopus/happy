@@ -207,7 +207,7 @@ actor ChatPlanner {
         }
         guard !item.pieces.isEmpty else { return ChatRowPlan(id: item.id, size: CGSize(width: width, height: 0), items: []) }
         typealias M = MessageLayout.Metrics
-        let text = HappyReferences.plain(item.text, view: key.references.view)
+        let text = HappyReferences.plain(item.text, instanceId: key.references.instanceId, view: key.references.view)
         switch item.role {
         case .agent:
             return Self.body(item, key: key, syntax: syntax, proposals: proposals, revealable: true) {
@@ -319,7 +319,7 @@ actor ChatPlanner {
     /// pictures, recordings, files and artifacts where they were presented.
     static func body(_ item: ChatItem, key: Key, syntax: CodeSyntaxService, proposals: [String: ProposalShown], revealable: Bool = false, layout: ([MessageLayout.Part]) -> MessageLayout) -> ChatRowPlan {
         let environment = key.environment
-        let text = HappyReferences.plain(item.text, view: key.references.view)
+        let text = HappyReferences.plain(item.text, instanceId: key.references.instanceId, view: key.references.view)
         var parts: [MessageLayout.Part] = []
         enum Draft {
             case markdown(MarkdownPiece)
@@ -336,11 +336,12 @@ actor ChatPlanner {
         for piece in item.pieces {
             switch piece {
             case .text(let text):
-                let resolved = HappyReferences.markdown(text, view: key.references.view)
+                let resolved = HappyReferences.markdown(text, instanceId: key.references.instanceId, files: key.references.opens, view: key.references.view)
                 let server = key.server
+                let references = key.references
                 let markdown = MarkdownPiece(
                     Markdown.joiningSoftBreaks(resolved), color: Palette.text, diagrams: ChatMermaidHeights(row: item.id), syntax: syntax, in: environment,
-                    body: ChatTextStyles.text, header: ChatTextStyles.header, opens: { SettingsLinkPlace.opens($0, server: server) }
+                    body: ChatTextStyles.text, header: ChatTextStyles.header, opens: { ChatLinks.opens($0, server: server) && (ChatLinks.file($0).map(references.opens) ?? true) }
                 )
                 drafts.append(.markdown(markdown))
                 parts.append(.markdown(markdown.blocks))
@@ -523,14 +524,14 @@ actor ChatPlanner {
         default: name
         }
         // Desktop names a bare ID in the line by its agent's title.
-        let line = explanation.map { HappyReferences.plain($0, view: key.references.view).replacingOccurrences(of: agentId, with: name) }
+        let line = explanation.map { HappyReferences.plain($0, instanceId: key.references.instanceId, view: key.references.view).replacingOccurrences(of: agentId, with: name) }
             ?? Strings.agentMessageFrom(name)
         let body = item.text
         let opens = !body.isEmpty
         let verbText = verb.map { ChatTextStyles.activityVerb.string($0, color: Palette.textSecondary, lineBreakMode: .byTruncatingTail, in: environment) }
         let lineText = ChatTextStyles.activityText.string(line, color: Palette.text, lineBreakMode: .byTruncatingTail, in: environment)
         let markdown = opened && opens ? MarkdownPiece(
-            Markdown.joiningSoftBreaks(HappyReferences.markdown(body, view: key.references.view)), color: Palette.textSecondary,
+            Markdown.joiningSoftBreaks(HappyReferences.markdown(body, instanceId: key.references.instanceId, files: key.references.opens, view: key.references.view)), color: Palette.textSecondary,
             diagrams: ChatMermaidHeights(row: item.id), syntax: syntax, in: environment,
             body: ChatTextStyles.activityBody, header: ChatTextStyles.activityHeader
         ) : nil
@@ -554,7 +555,7 @@ actor ChatPlanner {
         }
         // The whole line opens and closes it, a finger's room above and below.
         if opens { hits.insert(ChatHit(frame: layout.header.insetBy(dx: 0, dy: -AgentMessageLayout.Metrics.paddingV), action: .toggleTool(item.id)), at: 0) }
-        let spoken = [verb, line].compactMap { $0 }.joined(separator: " ") + (opened && opens ? "\n\n" + HappyReferences.plain(body, view: key.references.view) : "")
+        let spoken = [verb, line].compactMap { $0 }.joined(separator: " ") + (opened && opens ? "\n\n" + HappyReferences.plain(body, instanceId: key.references.instanceId, view: key.references.view) : "")
         return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: spoken)
     }
 

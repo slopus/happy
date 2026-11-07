@@ -72,6 +72,13 @@ public struct References: Equatable, Sendable {
     public var me: String?
     /// People the daemon doesn't know; any other unnamed one is still being read.
     public var missingUsers: Set<String> = []
+    /// The Surfaces the person is in, by ID: a Surface link opens one.
+    public var surfaces: [String: AgentWire.Surface] = [:]
+    /// The installation the conversation is on (health `instanceId`): a
+    /// Happy link naming another one reads as its words.
+    public var instanceId: String?
+    /// File links (canonical URLs) found not to open here: their words.
+    public var closedFiles: Set<String> = []
 
     public init(agents: [String: Entity] = [:], workspaces: [String: Entity] = [:], artifacts: [String: Artifact] = [:]) {
         self.agents = agents
@@ -149,21 +156,39 @@ public struct References: Equatable, Sendable {
 
     /// The artifacts `text` names whose titles haven't been read.
     public func unread(in text: String) -> [String] {
-        guard Self.holds(text, "<happy-artifact") else { return [] }
         var ids: [String] = []
-        for case .reference(let reference, _) in HappyReferences.parse(text) where reference.kind == "artifact" && artifacts[reference.id] == nil && !ids.contains(reference.id) {
-            ids.append(reference.id)
+        if Self.holds(text, "<happy-artifact") {
+            for case .reference(let reference, _) in HappyReferences.parse(text) where reference.kind == "artifact" && artifacts[reference.id] == nil && !ids.contains(reference.id) {
+                ids.append(reference.id)
+            }
         }
+        for id in linked(.artifact, in: text) where artifacts[id] == nil && !ids.contains(id) { ids.append(id) }
         return ids
+    }
+
+    /// The IDs of `kind` the Happy links in `text` name on this installation.
+    private func linked(_ kind: HappyLink.Kind, in text: String) -> [String] {
+        guard Self.holds(text, "happy://") else { return [] }
+        return HappyMarkdownLinks.matches(text).compactMap { match in
+            guard let link = match.link, link.instanceId == nil || link.instanceId == instanceId,
+                  case .reference(let reference) = link.target, reference.kind == kind else { return nil }
+            return reference.id
+        }
+    }
+
+    /// Whether a file link may still open: one not yet found missing.
+    public func opens(_ file: HappyLink.File) -> Bool {
+        HappyLink(.file(file)).url.map { !closedFiles.contains($0) } ?? false
     }
 
     /// The people `text` mentions whose names haven't been read.
     public func unknownUsers(in text: String) -> [String] {
-        guard Self.holds(text, "<happy-user") else { return [] }
         var ids: [String] = []
+        guard Self.holds(text, "<happy-user") || Self.holds(text, "happy://") else { return [] }
         for case .reference(let reference, _) in HappyReferences.parse(text) where reference.kind == "user" && users[reference.id] == nil && !ids.contains(reference.id) {
             ids.append(reference.id)
         }
+        for id in linked(.user, in: text) where users[id] == nil && !ids.contains(id) { ids.append(id) }
         return ids
     }
 
@@ -197,6 +222,10 @@ public struct References: Equatable, Sendable {
                 return missingUsers.contains(reference.id) ? inert : .mention("@…", me: reference.id == me)
             }
             return .mention("@" + name, me: reference.id == me)
+        case "surface":
+            guard let surface = surfaces[reference.id] else { return inert }
+            let name = surface.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            return .link(name.isEmpty ? "Untitled \(surface.type.replacingOccurrences(of: "_", with: " "))" : name)
         default:
             // Projects aren't on this phone; services open nowhere yet.
             return inert

@@ -93,6 +93,10 @@ public actor SyncEngine {
     private let url: URL?
     private var storage: SyncStorage?
     private var desktop: DesktopSnapshot?
+    /// What `spaces` was last given of the bootstrap's bots, tasks and
+    /// Surfaces, in order.
+    private var shared: (owners: [DesktopSnapshot.Owner], surfaces: [DesktopSnapshot.Surface])?
+    private var sharing: Task<Void, Never>?
     /// Where each agent of `desktop` stands (`AgentIndex`), made on the
     /// first update after each read; nil until then.
     private var agentIndex: AgentIndex?
@@ -711,7 +715,28 @@ public actor SyncEngine {
             snapshot.userId = desktop.profile?.userId
             snapshot.profilePhoto = desktop.profile?.photo?.thumbhash
         }
+        shareDirectory()
         if publishing { publish() }
+    }
+
+    /// The bots, tasks and Surfaces to `spaces`, which names and opens
+    /// what messages refer to: on a daemon without the sidebar document
+    /// it reads none of them itself.
+    private func shareDirectory() {
+        guard let desktop else { return }
+        let owners = (desktop.bots ?? []) + (desktop.tasks ?? [])
+        let surfaces = desktop.surfaces ?? []
+        guard shared?.owners != owners || shared?.surfaces != surfaces else { return }
+        shared = (owners, surfaces)
+        let encoder = JSONEncoder()
+        let json = owners.compactMap { owner in (try? encoder.encode(owner)).flatMap { try? JSONValue.decode($0) } }
+        let listed = surfaces.map { AgentWire.Surface(id: $0.id, type: $0.type, name: $0.name, access: $0.access, policyVault: $0.policyVault) }
+        let previous = sharing
+        let spaces = spaces
+        sharing = Task {
+            await previous?.value
+            await spaces.externalDirectory(owners: json, surfaces: listed)
+        }
     }
 
     /// Agents' updates laid over the bootstrap (`AgentUpdate.Patch`): only
@@ -731,8 +756,8 @@ public actor SyncEngine {
                 moved.append(after)
             }
         }
-        // Titles are what the Feed's directory reads of agents.
-        if titled { deriveDirectory() }
+        // Titles are what the Feed's directory reads of agents, and what references name.
+        if titled { deriveDirectory(); shareDirectory() }
         guard !moved.isEmpty else { return }
         var redrawn = false
         for agent in moved {

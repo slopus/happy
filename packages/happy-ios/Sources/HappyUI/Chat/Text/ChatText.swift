@@ -129,11 +129,11 @@ enum ChatSpans {
             }
             var attributes = style.attributes(color: uiColor, font: spanStyle.font(in: environment), in: environment)
             // An http(s) link, a reference this phone wrote (never one an
-            // agent typed), or a settings link, drawn as a link even where
-            // its page goes nowhere. A team server's code is inert text:
-            // only the scanner takes one.
+            // agent typed), a settings link or a file link, drawn as a link
+            // even where its page goes nowhere. A team server's code is
+            // inert text: only the scanner takes one.
             if let url = span.url, !ServerLink.isServerLink(url),
-               (everyLink && !url.isEmpty) || LegacyMarkdown.isHTTPLink(url) || HappyReferences.reference(link: url) != nil || SettingsLinkPlace.page(url) != nil {
+               (everyLink && !url.isEmpty) || LegacyMarkdown.isHTTPLink(url) || ChatLinks.drawn(url) {
                 attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
                 attributes[.chatLink] = url
             }

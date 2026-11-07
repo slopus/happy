@@ -109,6 +109,9 @@ public actor Store {
     private var bots: [JSONValue] = []
     private var tasks: [JSONValue] = []
     private var surfaces: [AgentWire.Surface] = []
+    /// The bots, tasks and Surfaces as the account's bootstrap has them
+    /// (`SyncEngine`), which never reads them here: what references name.
+    private var bootstrapped: (owners: [JSONValue], surfaces: [AgentWire.Surface])?
     private var agents = Agents()
     /// Artifact titles references asked for, as read; and those being read.
     private var artifactTitles: [String: References.Artifact] = [:]
@@ -163,6 +166,14 @@ public actor Store {
         }
         publish()
         return true
+    }
+
+    /// The bots, tasks and Surfaces from the account's bootstrap, kept
+    /// current by its stream, for references to name and open.
+    public func externalDirectory(owners: [JSONValue], surfaces: [AgentWire.Surface]) {
+        guard bootstrapped?.owners != owners || bootstrapped?.surfaces != surfaces else { return }
+        bootstrapped = (owners, surfaces)
+        publish()
     }
 
     public func externalEvent(_ envelope: JSONValue) {
@@ -755,13 +766,14 @@ public actor Store {
         }
         snapshot.happyAgentId = places.chiefOfStaffAgentId
         snapshot.botAgentIds = Set(places.bots.compactMap { $0.agent?.id })
-        var references = References.entities(owners: composedOwners)
+        var references = References.entities(owners: bootstrapped?.owners ?? composedOwners)
         references.artifacts = artifactTitles
         references.pages = artifactPages
         references.apps = artifactApps
         references.users = userNames
         references.me = me
         references.missingUsers = usersMissing
+        references.surfaces = Dictionary((bootstrapped?.surfaces ?? surfaces).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         snapshot.references = references
         continuation.yield(snapshot)
         // What the events changed is kept too, once they settle.
