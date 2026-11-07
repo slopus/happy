@@ -95,8 +95,12 @@ class LinkOpener internal constructor(
     private val tap: (String) -> Unit,
     private val inApp: (String) -> Unit,
     private val external: (String) -> Unit,
+    private val opensUrl: (String) -> Boolean = { true },
 ) {
     fun open(url: String) = tap(url)
+
+    /** Whether a tap on [url] opens anything; false for an app's own link that goes nowhere here (a Happy link shown as a button is its words then). */
+    fun opens(url: String): Boolean = opensUrl(url)
     fun openInApp(url: String) = inApp(url)
     fun openExternal(url: String) = external(url)
 
@@ -115,7 +119,14 @@ class LinkOpener internal constructor(
          * ([navigateBrowser] pushes it), anything else (`mailto:`, `tel:`) to
          * the system, as `BrowserPolicy.route` sorts them.
          */
-        fun agent(context: Context, computer: String, app: (String) -> Boolean = { false }, navigateBrowser: (String) -> Unit): LinkOpener {
+        fun agent(
+            context: Context,
+            computer: String,
+            app: (String) -> Boolean = { false },
+            /** Whether one of the app's own links opens anything ([com.slopus.happy.ui.connection.HappyLinks.opens]); a screen that opens none, none. */
+            opens: (String) -> Boolean = { url -> !com.slopus.happy.agent.HappyUrls.owns(url) && !HappyReferences.owns(url) },
+            navigateBrowser: (String) -> Unit,
+        ): LinkOpener {
             val browse = { url: String ->
                 when {
                     app(url) -> Unit
@@ -123,7 +134,7 @@ class LinkOpener internal constructor(
                     else -> openOutside(context, url).let {}
                 }
             }
-            return LinkOpener(proxied = true, computer = computer, tap = browse, inApp = browse, external = { openOutside(context, it) })
+            return LinkOpener(proxied = true, computer = computer, tap = browse, inApp = browse, external = { openOutside(context, it) }, opensUrl = opens)
         }
 
         /** Legacy mode: a tap does what [system] always did; "in the app" is a Custom Tab, [dark] or light as the app is. */
@@ -134,6 +145,7 @@ class LinkOpener internal constructor(
             tap = { url -> if (!com.slopus.happy.agent.HappyUrls.owns(url) && !HappyReferences.owns(url)) system.openUri(url) },
             inApp = { url -> if (BrowserPolicy.route(url) == BrowserPolicy.Route.Web) openCustomTab(context, url, dark) else openOutside(context, url) },
             external = { openOutside(context, it) },
+            opensUrl = { url -> !com.slopus.happy.agent.HappyUrls.owns(url) && !HappyReferences.owns(url) },
         )
     }
 }

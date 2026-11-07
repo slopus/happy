@@ -20,6 +20,16 @@ object HappyCloud {
     /** The accounts service, where the account signs in and servers are listed; null wherever [base] is. */
     val accounts: AgentOrigin? = base?.let { originOf(BuildConfig.HAPPY_CLOUD_ACCOUNTS) }
 
+    /** The web app's domain, [BuildConfig.HAPPY_CLOUD_WEB]: the server named `acme`'s settings are under `https://acme.WEB/#/settings/`. */
+    private val web: String = BuildConfig.HAPPY_CLOUD_WEB
+
+    /**
+     * [page] of [server]'s settings in the web app, for a settings link to
+     * a page the phone hasn't; null for a server that isn't Happy Cloud's.
+     */
+    fun webSettings(server: String?, page: String, base: String? = this.base, web: String = this.web): String? =
+        handle(server, base)?.let { "https://${it.removePrefix("@")}.$web/#/settings/$page" }
+
     /** Only the dev (`debug`) and `preview` builds offer Happy Cloud. */
     internal fun offeredIn(buildType: String): Boolean = buildType == "debug" || buildType == "preview"
 

@@ -1250,6 +1250,21 @@ change its wire behaviour on Android alone.
   connection; `openOutside` never hands a Happy URL to the system. Sharing a
   bundled artifact's page shares its external link, and isn't offered when the
   server has no `instanceId`. Chat doesn't render `happy://` links as links yet.
+- **Settings links and buttons** (API.md "Happy links", `ui/connection/SettingsLinks.kt`):
+  `happy://settings/<page>` is a closed list of pages (`HappyUrls.SETTINGS_PAGES`).
+  The Markdown parser splits a link's title from its destination; a well-formed
+  Happy link titled exactly `button` is lifted out of its paragraph, header or
+  list into a `MarkdownBlock.Buttons` after it, drawn as full-width RoundButtons
+  stacked in order. A malformed or blank-labelled settings link, and a
+  malformed button, are their label as inert text. Pages open as iOS maps them:
+  general → Settings, account → Profile, sharing, voice, servers → Happy Cloud's
+  servers (Settings elsewhere), members → Members on Happy Cloud; every other
+  page opens `https://<name>.HAPPY_CLOUD_WEB/#/settings/<page>` in a Custom Tab
+  on a Happy Cloud server and is inert anywhere else. Buttons ask
+  `LinkOpener.opens` and show their words when nothing opens; an inline link
+  whose page this connection lacks stays drawn as a link but opens nothing.
+  Unlocked `happy://settings…` from outside is still happy-app's path
+  (`DeepLinks`); only the instance form opens a settings link.
 
 ## Push
 

@@ -59,4 +59,12 @@ class HappyCloudTest {
         assertEquals("new", HappyCloud.connection(accounts, acme, open = "new")?.id)
         assertNull(HappyCloud.connection(accounts, "https://gamma.happy.computer"))
     }
+
+    @Test
+    fun aServersWebSettingsAreUnderTheWebAppsDomain() {
+        val base = "happy.computer"
+        assertEquals("https://acme.happybases.com/#/settings/providers", HappyCloud.webSettings("https://acme.happy.computer", "providers", base, "happybases.com"))
+        assertEquals("https://acme.happybases.com/#/settings/providers/import", HappyCloud.webSettings("https://acme.happy.computer", "providers/import", base, "happybases.com"))
+        assertEquals(null, HappyCloud.webSettings("https://studio.example", "providers", base, "happybases.com"))
+    }
 }

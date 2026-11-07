@@ -103,7 +103,8 @@ sealed interface DeepLink {
 fun parseDeepLink(link: String): DeepLink? {
     if (HappyCode.isAgentPairing(link)) return DeepLink.AgentPairing(link.trim())
     GuestInvitation.parse(link)?.let { return DeepLink.GuestInvite(it.url) }
-    if (HappyUrls.owns(link.trim())) {
+    // happy-app's own `happy://settings/…` paths keep their screens: from outside, a settings link opens only in its instance form.
+    if (HappyUrls.owns(link.trim()) && !APP_SETTINGS.containsMatchIn(link.trim())) {
         val url = HappyUrls.parse(link.trim()) ?: return null
         return url.instanceId?.let { DeepLink.Instance(it, url.link) }
     }
@@ -119,6 +120,9 @@ fun parseDeepLink(link: String): DeepLink? {
     }.filter { it.isNotEmpty() }.map(::decode)
     return route(segments, uri.rawQuery) ?: DeepLink.Home
 }
+
+/** An unlocked `happy://settings…`, which is happy-app's path before it is a Happy settings link. */
+private val APP_SETTINGS = Regex("^happy://settings(?:[/?#]|$)", RegexOption.IGNORE_CASE)
 
 /** app/(app)'s file routes. Static segments win over `[id]`, as in expo-router (`session/recent`). */
 private fun route(segments: List<String>, rawQuery: String?): DeepLink? {

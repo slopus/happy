@@ -196,4 +196,38 @@ class HappyUrlsTest {
         for (url in listOf("happy://artifacts/", "happy://Agents/x/y", "happy://$instance/whatever", "happy-file://x", "happy://surfaces")) assertTrue(url, HappyUrls.owns(url))
         for (url in listOf("happy://session/abc", "happy://terminal?k", "happy://direct?x", "happy://oauth/callback", "happy:///account?k", "https://happy.engineering")) assertFalse(url, HappyUrls.owns(url))
     }
+
+    @Test
+    fun settingsUrlsParseAndFormat() {
+        for (page in HappyUrls.SETTINGS_PAGES) {
+            val url = "happy://settings/$page"
+            assertEquals(HappyLink.Settings(page), parse(url))
+            assertEquals(url, HappyUrls.format(HappyLink.Settings(page)))
+            assertTrue(url, HappyUrls.owns(url))
+        }
+        for (url in listOf(
+            "happy://settings",
+            "happy://settings/",
+            "happy://settings/providers/",
+            "happy://settings/Providers",
+            "happy://settings/billing",
+            "happy://settings/providers/export",
+            "happy://settings/import",
+            "happy://settings/providers?tab=keys",
+            "happy://settings/providers#keys",
+            "happy-file://settings/providers",
+        )) {
+            assertNull(url, HappyUrls.parse(url))
+            assertTrue(url, HappyUrls.owns(url))
+        }
+        assertThrows(IllegalArgumentException::class.java) { HappyUrls.format(HappyLink.Settings("billing")) }
+    }
+
+    @Test
+    fun settingsUrlsHaveAnInstanceForm() {
+        val url = "happy://$instance/settings/mobile-access"
+        assertEquals(HappyUrl(HappyLink.Settings("mobile-access"), instance), HappyUrls.parse(url))
+        assertEquals(url, HappyUrls.format(HappyLink.Settings("mobile-access"), instance))
+        assertNull(HappyUrls.parse("happy://$instance/settings/nowhere"))
+    }
 }

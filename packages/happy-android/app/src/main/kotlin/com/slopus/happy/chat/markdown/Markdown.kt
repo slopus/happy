@@ -1,6 +1,7 @@
 package com.slopus.happy.chat.markdown
 
 import androidx.compose.runtime.Immutable
+import com.slopus.happy.agent.HappyUrls
 
 // happy-app's components/markdown parser (parseMarkdown.ts,
 // parseMarkdownBlock.ts, parseMarkdownSpans.ts): a line-oriented subset of
@@ -9,8 +10,9 @@ import androidx.compose.runtime.Immutable
 
 enum class SpanStyle { Italic, Bold, Semibold, Code }
 
+/** [button]: a link whose title is exactly `button` (API.md, "Buttons"); only a Happy link is ever shown as one. */
 @Immutable
-data class MarkdownSpan(val styles: Set<SpanStyle>, val text: String, val url: String? = null)
+data class MarkdownSpan(val styles: Set<SpanStyle>, val text: String, val url: String? = null, val button: Boolean = false)
 
 @Immutable
 sealed interface MarkdownBlock {
@@ -27,9 +29,11 @@ sealed interface MarkdownBlock {
     data class Options(val items: List<String>) : MarkdownBlock
     data class Table(val headers: List<List<MarkdownSpan>>, val rows: List<List<List<MarkdownSpan>>>) : MarkdownBlock
     data class Image(val alt: String, val url: String) : MarkdownBlock
+    /** The well-formed Happy links titled `button` in the block before, lifted out of it, in order: one button each. */
+    data class Buttons(val links: List<MarkdownSpan>) : MarkdownBlock
 }
 
-private val SPAN_PATTERN = Regex("""(\*\*(.*?)(?:\*\*|$))|(\*(.*?)(?:\*|$))|(\[([^\]]+)\](?:\(([^)]+)\))?)|(`(.*?)(?:`|$))""")
+private val SPAN_PATTERN = Regex("""(\*\*(.*?)(?:\*\*|$))|(\*(.*?)(?:\*|$))|(\[([^\]]+)\](?:\(((?:[^()]|\([^()]*\))+)\))?)|(`(.*?)(?:`|$))""")
 private val URL_PATTERN = Regex("""https?://[^\s<]+""")
 private val TRAILING_PUNCTUATION = Regex("""[),.;:!?]$""")
 private val TABLE_SEPARATOR = Regex("""^[|\s\-:=]*$""")
@@ -38,6 +42,10 @@ private val IMAGE = Regex("""^!\[([^\]]*)\]\(([^)]+)\)$""")
 private val NUMBERED = Regex("""^(\d+)\.\s+""")
 private val BULLET = Regex("""^([-*+])\s+""")
 private val HTTP_URL = Regex("^https?://", RegexOption.IGNORE_CASE)
+/** A link's destination, bare or in `<>`, then an optional title in `"`, `'` or parentheses. */
+private val LINK_TARGET = Regex("""(?:<([^<>\n]*)>|(\S+))(?:\s+(?:"([^"]*)"|'([^']*)'|\(([^()]*)\)))?""")
+/** A settings link's host, internal or in an instance link, well-formed or not. */
+private val SETTINGS_HOST = Regex("^happy://(?:[a-z][a-z0-9]{23}/)?settings(?:[/?#]|$)")
 
 fun isHttpMarkdownLink(url: String): Boolean = HTTP_URL.containsMatchIn(url.trim())
 
@@ -75,8 +83,8 @@ fun parseMarkdownSpans(markdown: String, header: Boolean): List<MarkdownSpan> {
             g[1] != null -> spans.pushTextWithAutoLinks(g[2]?.value.orEmpty(), if (header) emptySet() else setOf(SpanStyle.Bold))
             g[3] != null -> spans.pushTextWithAutoLinks(g[4]?.value.orEmpty(), if (header) emptySet() else setOf(SpanStyle.Italic))
             g[5] != null -> {
-                val url = g[7]?.value
-                if (url != null) spans.add(MarkdownSpan(emptySet(), g[6]!!.value, url))
+                val target = g[7]?.value
+                if (target != null) spans.add(link(g[6]!!.value, target))
                 else spans.pushTextWithAutoLinks("[${g[6]!!.value}]", emptySet())
             }
             g[8] != null -> spans.add(MarkdownSpan(setOf(SpanStyle.Code), g[9]?.value.orEmpty()))
@@ -85,6 +93,64 @@ fun parseMarkdownSpans(markdown: String, header: Boolean): List<MarkdownSpan> {
     }
     if (lastIndex < markdown.length) spans.pushTextWithAutoLinks(markdown.substring(lastIndex), emptySet())
     return spans
+}
+
+/**
+ * `[text](target)` as a span. A Happy link titled `button` is one; a settings
+ * link that is malformed or has a blank label, and a malformed Happy link
+ * asking to be a button, are their label as inert text (API.md, "Buttons",
+ * "Settings links").
+ */
+private fun link(text: String, target: String): MarkdownSpan {
+    val parts = LINK_TARGET.matchEntire(target.trim())
+    val url = parts?.let { it.groups[1]?.value ?: it.groups[2]?.value } ?: target
+    val title = parts?.let { it.groups[3] ?: it.groups[4] ?: it.groups[5] }?.value
+    val link = HappyUrls.parse(url)?.link
+    val button = title == "button" && HappyUrls.owns(url)
+    val inert = (button && link == null) || (SETTINGS_HOST.containsMatchIn(url) && (link == null || text.isBlank()))
+    if (inert) return MarkdownSpan(emptySet(), text)
+    return MarkdownSpan(emptySet(), text, url, button = button)
+}
+
+/**
+ * [blocks] with [block] added, its buttons lifted out after it
+ * ([MarkdownBlock.Buttons]); a block that was nothing but buttons leaves
+ * only them.
+ */
+private fun MutableList<MarkdownBlock>.addLifting(block: MarkdownBlock) {
+    val buttons = ArrayList<MarkdownSpan>()
+    fun keep(spans: List<MarkdownSpan>): List<MarkdownSpan> {
+        if (spans.none { it.button }) return spans
+        val kept = ArrayList<MarkdownSpan>()
+        var lifted = false
+        for (span in spans) {
+            if (span.button) {
+                buttons += span
+                lifted = true
+                continue
+            }
+            // The words either side of a lifted button meet with one space between them.
+            val joined = if (lifted && (kept.isEmpty() || kept.last().text.lastOrNull()?.isWhitespace() == true)) span.copy(text = span.text.trimStart()) else span
+            if (joined.text.isNotEmpty()) kept += joined
+            lifted = lifted && joined.text.isEmpty()
+        }
+        kept.firstOrNull()?.let { kept[0] = it.copy(text = it.text.trimStart()) }
+        kept.lastOrNull()?.let { kept[kept.lastIndex] = it.copy(text = it.text.trimEnd()) }
+        return kept.filter { it.text.isNotEmpty() }
+    }
+    val kept: MarkdownBlock? = when (block) {
+        is MarkdownBlock.Text -> keep(block.content).takeIf { spans -> spans.any { it.text.isNotBlank() } }?.let { MarkdownBlock.Text(it) }
+        is MarkdownBlock.Header -> keep(block.content).takeIf { spans -> spans.any { it.text.isNotBlank() } }?.let { MarkdownBlock.Header(block.level, it) }
+        is MarkdownBlock.BulletList -> MarkdownBlock.BulletList(block.items.map { it.copy(spans = keep(it.spans)) })
+        is MarkdownBlock.NumberedList -> MarkdownBlock.NumberedList(block.items.map { it.copy(spans = keep(it.spans)) })
+        else -> block
+    }
+    if (buttons.isEmpty()) {
+        add(block)
+        return
+    }
+    kept?.let(::add)
+    add(MarkdownBlock.Buttons(buttons))
 }
 
 /** Splits a pipe row into cells, dropping only the empty cells the outer pipes make. */
@@ -130,7 +196,7 @@ fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
 
         for (level in 1..6) {
             if (line.startsWith("#".repeat(level) + " ")) {
-                blocks.add(MarkdownBlock.Header(level, parseMarkdownSpans(line.substring(level + 1).trim(), true)))
+                blocks.addLifting(MarkdownBlock.Header(level, parseMarkdownSpans(line.substring(level + 1).trim(), true)))
                 continue@outer
             }
         }
@@ -184,7 +250,7 @@ fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
                 index++
             }
             val base = all.first().indent
-            blocks.add(MarkdownBlock.NumberedList(all.map { MarkdownBlock.NumberedItem(it.number, Math.floorDiv(it.indent - base, 2), parseMarkdownSpans(it.content, false)) }))
+            blocks.addLifting(MarkdownBlock.NumberedList(all.map { MarkdownBlock.NumberedItem(it.number, Math.floorDiv(it.indent - base, 2), parseMarkdownSpans(it.content, false)) }))
             continue@outer
         }
 
@@ -198,7 +264,7 @@ fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
                 index++
             }
             val base = all.first().first
-            blocks.add(MarkdownBlock.BulletList(all.map { (indent, content) -> MarkdownBlock.ListItem(Math.floorDiv(indent - base, 2), parseMarkdownSpans(content, false)) }))
+            blocks.addLifting(MarkdownBlock.BulletList(all.map { (indent, content) -> MarkdownBlock.ListItem(Math.floorDiv(indent - base, 2), parseMarkdownSpans(content, false)) }))
             continue@outer
         }
 
@@ -211,7 +277,7 @@ fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
             }
         }
 
-        if (trimmed.isNotEmpty()) blocks.add(MarkdownBlock.Text(parseMarkdownSpans(trimmed, false)))
+        if (trimmed.isNotEmpty()) blocks.addLifting(MarkdownBlock.Text(parseMarkdownSpans(trimmed, false)))
     }
     return blocks
 }

@@ -99,7 +99,8 @@ class ProseSource(val key: String, val kind: ProseKind, val text: String, val bl
  * TextLayoutBlocks: built off the main thread for [geometry], at
  * [available] pixels, into [segments] the row stacks. A [DrawnSegment] is
  * text and rules the row draws in one node; a [ComposedSegment] is a block
- * that stays a composable (code, tables, options, pictures, diagrams).
+ * that stays a composable (code, tables, options, pictures, diagrams,
+ * buttons).
  */
 @Immutable
 class Prose internal constructor(
@@ -330,7 +331,7 @@ internal class ProseBuilder(resolver: FontFamily.Resolver) {
             val line = geometry.px(1.dp)
             ProsePart(block, null, emptyList(), intArrayOf(margin, line), available, margin + line + margin)
         }
-        is MarkdownBlock.CodeBlock, is MarkdownBlock.Mermaid, is MarkdownBlock.Options, is MarkdownBlock.Table, is MarkdownBlock.Image -> null
+        is MarkdownBlock.CodeBlock, is MarkdownBlock.Mermaid, is MarkdownBlock.Options, is MarkdownBlock.Table, is MarkdownBlock.Image, is MarkdownBlock.Buttons -> null
     }
 
     /**

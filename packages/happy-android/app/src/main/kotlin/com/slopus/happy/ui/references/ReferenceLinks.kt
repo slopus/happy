@@ -37,6 +37,14 @@ class ReferenceOpener(
         return happyLinks?.open(url, connectionId) ?: com.slopus.happy.agent.HappyUrls.owns(url)
     }
 
+    /** Whether a tap on [url] opens anything here: an address that isn't the app's does, as does a reference; a Happy URL as [HappyLinks.opens] says. */
+    fun opens(url: String): Boolean = when {
+        HappyReferences.reference(url) != null -> true
+        HappyReferences.owns(url) -> false
+        com.slopus.happy.agent.HappyUrls.owns(url) -> happyLinks?.opens(url, connectionId) == true
+        else -> true
+    }
+
     /** What [reference] names, over this screen. */
     fun open(reference: HappyReferences.Reference) {
         val references = reader?.references?.value ?: References()

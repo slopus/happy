@@ -286,7 +286,11 @@ private fun rememberLinks(graph: AppGraph, nav: NavHostController, agent: String
     // A Happy URL in the connection's screens opens in the app (LocalHappyLinks, provided just above).
     val happy = LocalHappyLinks.current
     return remember(nav, agent, computer, happy) {
-        LinkOpener.agent(context, computer, app = { url -> happy?.open(url, agent) == true }) { url -> nav.navigate(BrowserRoute(agent, url)) }
+        LinkOpener.agent(
+            context, computer,
+            app = { url -> happy?.open(url, agent) == true },
+            opens = { url -> !com.slopus.happy.agent.HappyUrls.owns(url) || happy?.opens(url, agent) == true },
+        ) { url -> nav.navigate(BrowserRoute(agent, url)) }
     }
 }
 
