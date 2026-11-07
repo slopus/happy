@@ -4,6 +4,9 @@ import android.text.format.DateFormat
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
@@ -57,6 +60,8 @@ import com.slopus.happy.ui.components.HomeCardPlace
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.MenuSpec
+import com.slopus.happy.ui.components.StateAnimation
+import com.slopus.happy.ui.components.StateArt
 import com.slopus.happy.ui.connection.AgentSearchField
 import com.slopus.happy.ui.connection.AgentSearchTags
 import com.slopus.happy.ui.connection.AgentTopBar
@@ -205,7 +210,7 @@ fun rememberArtifactListWords(): ArtifactListWords {
     }
 }
 
-/** One slot of the list: a date's heading over its card, an artifact's row, or a note in place of them. */
+/** One slot of the list: a date's heading over its card, an artifact's row, or a note in place of them (under its [Note.art], if any). */
 @Immutable
 sealed interface ArtifactListItem {
     val key: String
@@ -218,7 +223,7 @@ sealed interface ArtifactListItem {
         override val key: String get() = artifact.id
     }
 
-    data class Note(val text: String) : ArtifactListItem {
+    data class Note(val text: String, val art: StateArt? = null) : ArtifactListItem {
         override val key: String get() = "note"
     }
 }
@@ -228,22 +233,20 @@ sealed interface ArtifactListItem {
  * match [query], grouped by when each last changed under a heading per
  * bucket, newest first; or one note in their place: this Happy Agent keeps
  * none, nothing matches, it couldn't be read, it is being read, or it is
- * empty.
+ * empty. Empty, the note sits under the yellow ticket ([StateArt.Tickets]).
  */
 fun artifactListItems(state: ArtifactCatalogFeed.State, query: String, words: ArtifactListWords, now: Long): List<ArtifactListItem> {
     val shown = ArtifactCatalog.matching(query, state.items) { words.kind(it.type, it.live) }
     if (shown.isEmpty()) {
         val notes = words.notes
         return listOf(
-            ArtifactListItem.Note(
-                when {
-                    state.unsupported -> notes.unsupported
-                    state.items.isNotEmpty() -> notes.noMatches
-                    state.error != null -> notes.unavailable
-                    !state.loaded -> notes.loading
-                    else -> notes.empty
-                },
-            ),
+            when {
+                state.unsupported -> ArtifactListItem.Note(notes.unsupported)
+                state.items.isNotEmpty() -> ArtifactListItem.Note(notes.noMatches)
+                state.error != null -> ArtifactListItem.Note(notes.unavailable)
+                !state.loaded -> ArtifactListItem.Note(notes.loading)
+                else -> ArtifactListItem.Note(notes.empty, StateArt.Tickets)
+            },
         )
     }
     val items = ArrayList<ArtifactListItem>(shown.size + 8)
@@ -277,7 +280,9 @@ internal fun artifactTile(artifact: ArtifactSummary): Pair<Ionicon, RowTile> = w
  * title on up to two lines, the kind under it and when it changed beside
  * it. A tap opens the artifact on its latest version; a hold offers Open
  * and Copy Title. The bar's search filters by every word of the title or
- * kind; a pull past the top reads the catalog again.
+ * kind; a pull past the top reads the catalog again. With none yet, the
+ * note sits under the yellow ticket, its 128 box 24 below the list's top
+ * and 24 above the note's text.
  *
  * The slots are derived off the main thread whenever the catalog, the
  * search or the day changes; the first frame derives them in place.
@@ -357,12 +362,21 @@ fun ArtifactsScreen(
                 items(items, key = { it.key }, contentType = { it::class }) { item ->
                     when (item) {
                         is ArtifactListItem.Heading -> CardHeading(item.text, item.afterCard)
-                        is ArtifactListItem.Note -> CardNote(item.text)
+                        is ArtifactListItem.Note -> ArtifactNote(item)
                         is ArtifactListItem.Row -> ArtifactRow(item, thumbnails, covers, onOpen)
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ArtifactNote(item: ArtifactListItem.Note) {
+    val art = item.art ?: return CardNote(item.text)
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        StateAnimation(art, Modifier.padding(top = CardListSpec.notePadding))
+        CardNote(item.text)
     }
 }
 

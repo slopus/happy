@@ -48,7 +48,10 @@ import com.slopus.happy.ui.theme.happyTextStyle
  * `assets/animations/PROVENANCE.md`, at 8b133d98e). The files in `res/raw`
  * are desktop's, compacted back to the exact bytes its PROVENANCE records
  * (SHA-256 below): MIT, Happy Coder Contributors, this repository's own
- * happy-app animations. Errors, offline, a search that found nothing and
+ * happy-app animations. [Tickets] is not desktop's: a Telegram sticker
+ * (`"tgs": 1`, in-point 60) Steve chose for the Artifacts list, kept as
+ * given; Lottie's progress runs from its in-point, so it starts at frame
+ * 60. Errors, offline, a search that found nothing and
  * small inline tiles get no picture, as on desktop: a glyph at most.
  * Waiting has none either (desktop's snail): a read shows the platform's
  * spinner ([LoadingIndicator]).
@@ -65,6 +68,9 @@ enum class StateArt(@RawRes val raw: Int) {
 
     /** Nothing open yet: the tablet's main panel beside the sidebar (owl, `95402270…`; happy-ios 75715e1c0). */
     Owl(R.raw.state_owl),
+
+    /** Nothing made to keep yet: the empty Artifacts list (yellow ticket, `8715ac66…`). */
+    Tickets(R.raw.state_tickets),
 }
 
 object StateAnimationTags {

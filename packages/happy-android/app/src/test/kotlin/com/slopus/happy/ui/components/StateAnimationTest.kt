@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.airbnb.lottie.LottieCompositionFactory
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.assertActionsLabelled
 import com.slopus.happy.ui.assertDp
@@ -34,7 +35,7 @@ import java.security.MessageDigest
 class StateAnimationTest {
     @get:Rule val rule = createComposeRule()
 
-    /** happy-desktop assets/animations/PROVENANCE.md's hashes: the same bytes, unmodified. */
+    /** happy-desktop assets/animations/PROVENANCE.md's hashes (and the ticket's as Steve gave it): the same bytes, unmodified. */
     @Test
     fun theFilesAreDesktopsExactBytes() {
         val expected = mapOf(
@@ -42,6 +43,7 @@ class StateAnimationTest {
             StateArt.Ready to "eeabc392ba20328c",
             StateArt.Done to "b14e504ce3467a6b",
             StateArt.Owl to "95402270d116a310",
+            StateArt.Tickets to "8715ac66cadbd7cb",
         )
         val resources = RuntimeEnvironment.getApplication().resources
         for ((art, hash) in expected) {
@@ -49,6 +51,16 @@ class StateAnimationTest {
             val actual = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
             assertEquals(art.name, hash, actual.take(16))
         }
+    }
+
+    // The ticket starts at its in-point, frame 60, and ends on 240 (Lottie stops 0.01 short): progress 0 is its first pose.
+    @Test
+    fun theTicketPlaysFromItsInPoint() {
+        val composition = LottieCompositionFactory.fromRawResSync(RuntimeEnvironment.getApplication(), StateArt.Tickets.raw).value!!
+        assertEquals(60f, composition.startFrame)
+        assertEquals(240f, composition.endFrame, 0.01f)
+        assertEquals(60f, composition.frameRate)
+        assertEquals(3_000f, composition.duration, 1f)
     }
 
     @Test

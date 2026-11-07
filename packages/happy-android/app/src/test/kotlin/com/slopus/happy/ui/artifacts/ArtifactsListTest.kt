@@ -38,6 +38,7 @@ import com.slopus.happy.ui.PHONE_WIDTH
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.cards.CardListTags
+import com.slopus.happy.ui.components.StateAnimationTags
 import com.slopus.happy.ui.connection.AgentSearchTags
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
@@ -202,6 +203,25 @@ class ArtifactsListTest {
         val note = rule.node(CardListTags.NOTE).bounds
         assertDp("the note is centred in the column", (PHONE_WIDTH / 2f).dp, (note.left + note.right) / 2)
         shot("artifacts-failed")
+    }
+
+    @Test fun theEmptyListShowsTheTicketOverItsNote() {
+        var state by mutableStateOf(ArtifactCatalogFeed.State())
+        rule.setHappyContent { ArtifactsScreen(state, {}, {}, {}, clock = { now }) }
+        rule.onNodeWithText("Loading artifacts...").assertExists()
+        rule.onAllNodesWithTag(StateAnimationTags.ANIMATION, useUnmergedTree = true).assertCountEquals(0)
+        state = ArtifactCatalogFeed.State(loaded = true)
+        rule.waitUntil(5_000) { rule.onAllNodesWithText("No artifacts yet. Ask an agent to make one.").fetchSemanticsNodes().isNotEmpty() }
+        val art = rule.node(StateAnimationTags.ANIMATION).bounds
+        val note = rule.node(CardListTags.NOTE).bounds
+        assertDp("a 128 box", 128, art.width)
+        assertDp("square", 128, art.height)
+        assertDp("centred in the column", (PHONE_WIDTH / 2f).dp, (art.left + art.right) / 2)
+        assertDp("the note right under it", art.bottom, note.top)
+        shot("artifacts-empty")
+        // Only the empty list has it: a failed read keeps its plain note.
+        state = ArtifactCatalogFeed.State(loaded = true, error = Problem.Said("offline"))
+        rule.waitUntil(5_000) { rule.onAllNodesWithTag(StateAnimationTags.ANIMATION, useUnmergedTree = true).fetchSemanticsNodes().isEmpty() }
     }
 
     @Test fun picturesLandOverTheirTiles() {
