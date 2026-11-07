@@ -17,9 +17,6 @@ extension Palette {
         public static let glyph = ColorToken("#FFFFFF")
         /// The lock and its chevron (`panelControlColor`).
         public static let lock = ColorToken("#8E8E93", "#8E8E93")
-        /// The bar's fill over the glass: solid, so the controls it covers
-        /// (the field, the toolbar's buttons) don't show through.
-        public static let barFill = ColorToken("#FFFFFF", "#1E1E1E")
     }
 }
 

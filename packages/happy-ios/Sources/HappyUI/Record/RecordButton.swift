@@ -4,6 +4,13 @@ import HappyIcons
 import HappyLayout
 import UIKit
 
+/// A view the microphone sits in that changes while it records: the
+/// composer card fades its row as the bar stretches over it.
+@MainActor
+protocol RecordButtonHosting: AnyObject {
+    func recordButton(_ button: RecordButton, isRecording: Bool)
+}
+
 /// The microphone, as Telegram's voice button: press and hold to talk,
 /// let go to send what was said, slide left to throw it away, slide up (or
 /// just tap) to keep talking hands-free, then send with the big circle or
@@ -40,8 +47,9 @@ final class RecordButton: UIControl {
 
     /// What was heard, when anything was.
     var onResult: ((Result) -> Void)?
-    /// Recording began (true) or ended (false), for the host to fade what
-    /// the bar covers, as Telegram's field fades under its recording panel.
+    /// Recording began (true) or ended (false), for the host to make room
+    /// for the bar (home's toolbar morphs into it) or to fade what the bar
+    /// covers. Heard once the recording screen is up, and as it goes.
     var onRecording: ((Bool) -> Void)?
     /// Where the clock goes while recording, in the window's space.
     var bar: (() -> RecordBar?)?
@@ -91,7 +99,13 @@ final class RecordButton: UIControl {
     var isRecording: Bool { phase != .idle }
 
     override var intrinsicContentSize: CGSize {
-        style == .toolbar ? CGSize(width: 44, height: 44) : CGSize(width: 42, height: 42)
+        switch style {
+        case .toolbar:
+            let side = RecordToolbarLayout.Metrics.button
+            return CGSize(width: side, height: side)
+        case .composer:
+            return CGSize(width: 42, height: 42)
+        }
     }
 
     override func sizeThatFits(_ size: CGSize) -> CGSize { intrinsicContentSize }
@@ -238,6 +252,7 @@ final class RecordButton: UIControl {
         overlay.present(button: frame, bar: bar, mode: mode)
         overlay.update(gesture)
         onRecording?(true)
+        hosting?.recordButton(self, isRecording: true)
         UIView.animate(withDuration: RecordMotion.Metrics.appearFade) {
             self.glyph.alpha = 0
             self.fill.alpha = 0
@@ -260,6 +275,7 @@ final class RecordButton: UIControl {
         following = false
         overlay?.dismiss(cancelled: ending == .cancel)
         onRecording?(false)
+        hosting?.recordButton(self, isRecording: false)
         UIView.animate(withDuration: RecordMotion.Metrics.disappearDuration) {
             self.glyph.alpha = 1
             self.fill.alpha = 1
@@ -285,6 +301,10 @@ final class RecordButton: UIControl {
             }
             onResult?(ending == .send ? .send(text) : .draft(text))
         }
+    }
+
+    private var hosting: RecordButtonHosting? {
+        sequence(first: superview, next: { $0?.superview }).lazy.compactMap { $0 as? RecordButtonHosting }.first
     }
 
     /// Off the screen mid-recording: the words are kept, as a draft.

@@ -432,6 +432,13 @@ public final class AgentInputCardView: UIView {
         }
     }
     private var showsRecord: Bool?
+
+    /// The action row, add to the microphone, in the card's space: the
+    /// recording bar stretches out of the microphone across it, under the
+    /// text, which stays in sight.
+    var actionRowFrame: CGRect {
+        desktopLayout(width: bounds.width)?.actionRow ?? layout(width: bounds.width).actionRow
+    }
     private var installedDesktopControls: AgentInputDesktopControlsView?
     /// A phone's compact card never mounts the hidden desktop button tree.
     /// Keep it after the first wide layout so resizing preserves its controls.
@@ -1418,6 +1425,16 @@ public final class AgentInputCardView: UIView {
         }
     }
 
+    /// The row under the recording bar: add and the chips fade as the bar
+    /// stretches over them, as Telegram's attach button does under its
+    /// recording panel, and come back as it shrinks away.
+    private func fadeRow(recording: Bool) {
+        let row: [UIView?] = [addButton, middle, optionsButton, installedDesktopControls]
+        UIView.animate(withDuration: recording ? 0.15 : 0.25, delay: recording ? 0 : 0.1, options: [.beginFromCurrentState, .allowUserInteraction]) {
+            for view in row { view?.alpha = recording ? 0 : 1 }
+        }
+    }
+
     /// Send or the microphone (`ChatTextInputPanelNode`'s swap): one fades
     /// out as the other fades in, 0.2 s, and send's arrow flies in as it
     /// comes back. A recording under way keeps its button.
@@ -1528,6 +1545,12 @@ public final class AgentInputCardView: UIView {
 
     @objc private func expandTapped() {
         delegate?.agentInputCardDidPressExpand(self)
+    }
+}
+
+extension AgentInputCardView: RecordButtonHosting {
+    func recordButton(_ button: RecordButton, isRecording: Bool) {
+        fadeRow(recording: isRecording)
     }
 }
 

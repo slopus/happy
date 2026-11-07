@@ -15,9 +15,9 @@ import CoreGraphics
 ///                                             the waves' 244 square round it
 ///
 /// Every frame is in the overlay's space, the window's. The bar's line
-/// runs through the button's middle; "Slide to cancel" is centred in the
-/// bar (less 16, as Telegram's) and slides with the finger at half its
-/// pace, fading as it reaches the clock.
+/// runs through the button's middle; "Slide to cancel" is centred in what
+/// shows of the bar between the clock and the circle, and slides with the
+/// finger at half its pace, fading as it reaches the clock.
 public struct RecordOverlayLayout: Equatable, Sendable {
     public enum Metrics {
         public static let lockWidth: CGFloat = 40
@@ -46,8 +46,6 @@ public struct RecordOverlayLayout: Equatable, Sendable {
         public static let cancelThreshold: CGFloat = 8
         /// The line fades out over its last points before the clock.
         public static let cancelFade: CGFloat = 10
-        /// Telegram centres the line in the bar less this.
-        public static let laneInset: CGFloat = 16
     }
 
     public struct Input: Equatable, Sendable {
@@ -65,8 +63,11 @@ public struct RecordOverlayLayout: Equatable, Sendable {
         public var cancelTranslation: CGFloat
         /// How closed the lock is, 0 to 1.
         public var lockness: CGFloat
+        /// How far the bar has grown out of the button, 0 to 1
+        /// (`RecordMotion.barGrowth`).
+        public var growth: CGFloat
 
-        public init(button: CGRect, bar: CGRect, clock: CGSize, arrow: CGSize, label: CGSize, cancel: CGSize, cancelTranslation: CGFloat = 0, lockness: CGFloat = 0) {
+        public init(button: CGRect, bar: CGRect, clock: CGSize, arrow: CGSize, label: CGSize, cancel: CGSize, cancelTranslation: CGFloat = 0, lockness: CGFloat = 0, growth: CGFloat = 1) {
             self.button = button
             self.bar = bar
             self.clock = clock
@@ -75,9 +76,17 @@ public struct RecordOverlayLayout: Equatable, Sendable {
             self.cancel = cancel
             self.cancelTranslation = cancelTranslation
             self.lockness = lockness
+            self.growth = growth
         }
     }
 
+    /// The bar as it grows out of the button: the button's circle
+    /// stretching left along its line into the full bar. Its corners stay
+    /// half its height.
+    public var bar: CGRect
+    /// What the bar holds, the full bar's size, in the growing bar's
+    /// space: it is uncovered as the bar grows, never squeezed.
+    public var barContent: CGRect
     /// The blue circle and the waves' square, before their transforms.
     public var inner: CGRect
     public var outer: CGRect
@@ -132,16 +141,29 @@ public struct RecordOverlayLayout: Equatable, Sendable {
         )
         arrowAlpha = max(0, 1 - lockness * M.arrowFade)
 
+        let growth = min(1, max(0, input.growth))
+        let start = input.button
+        func mix(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a) * growth }
+        let barMinX = mix(start.minX, input.bar.minX)
+        let barMinY = mix(start.minY, input.bar.minY)
+        bar = CGRect(x: barMinX, y: barMinY, width: mix(start.maxX, input.bar.maxX) - barMinX, height: mix(start.maxY, input.bar.maxY) - barMinY)
+        barContent = CGRect(x: input.bar.minX - barMinX, y: input.bar.minY - barMinY, width: input.bar.width, height: input.bar.height)
+
         let bar = input.bar
         dot = CGRect(x: bar.minX + M.dotLeft, y: center.y - M.dotSize / 2, width: M.dotSize, height: M.dotSize)
         clock = CGRect(x: bar.minX + M.clockLeft, y: center.y - input.clock.height / 2, width: input.clock.width, height: input.clock.height)
 
-        let lane = max(0, bar.width - M.laneInset)
+        // The lane is what shows of the bar between the clock and the
+        // circle: a toolbar's bar ends under the circle, short of the
+        // button's edge, so centring in the whole bar (Telegram's panel
+        // less 16) would run the line into the clock.
+        let laneStart = clock.maxX
+        let lane = max(0, min(bar.maxX, inner.minX) - laneStart)
         let lineWidth = input.arrow.width + M.cancelGap + input.label.width
         let lineHeight = max(input.arrow.height, input.label.height)
         let slide = max(0, input.cancelTranslation - M.cancelThreshold)
         cancelLine = CGRect(
-            x: bar.minX + ((lane - lineWidth - slide) / 2).rounded(.down),
+            x: laneStart + ((lane - lineWidth - slide) / 2).rounded(.down),
             y: center.y - lineHeight / 2,
             width: lineWidth,
             height: lineHeight
@@ -153,7 +175,7 @@ public struct RecordOverlayLayout: Equatable, Sendable {
             ? min(1, max(0, (cancelLine.minX - fadeStart) / M.cancelFade))
             : 1
         cancelButton = CGRect(
-            x: bar.minX + ((lane - input.cancel.width) / 2).rounded(.down),
+            x: laneStart + ((lane - input.cancel.width) / 2).rounded(.down),
             y: center.y - input.cancel.height / 2,
             width: input.cancel.width,
             height: input.cancel.height

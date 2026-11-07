@@ -46,21 +46,14 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
     /// stopped while locked, its composer opens with them as a draft.
     private lazy var record: RecordButton = {
         let button = RecordButton(style: .toolbar)
-        button.bar = { [weak self, weak button] in
-            guard let self, let button, button.window != nil else { return nil }
-            let frame = button.convert(button.bounds, to: nil)
-            let field = search.bar.searchTextField
-            let leading = field.window == button.window && field.bounds.height > 0 ? field.convert(field.bounds, to: nil).minX : view.convert(CGPoint(x: view.safeAreaInsets.left + 16, y: 0), to: nil).x
-            return RecordBar(frame: RecordOverlayLayout.capsule(button: frame, leading: leading), cornerRadius: frame.height / 2)
+        // The toolbar becomes the bar: its glass morphs from search, the
+        // call and compose into one item the clock is written over, and
+        // back when the recording ends (`RecordToolbarLayout`).
+        button.bar = { [weak self] in
+            guard let self, let toolbar = navigationController?.toolbar, let layout = recordingLayout(in: toolbar) else { return nil }
+            return RecordBar(frame: toolbar.convert(layout.bar, to: nil), cornerRadius: layout.bar.height / 2, ground: .host)
         }
-        // The toolbar's other buttons stand a little taller than the
-        // bar: they fade while it is up (the microphone's glyph is gone
-        // then too).
-        button.onRecording = { [weak self] recording in
-            UIView.animate(withDuration: recording ? 0.15 : RecordMotion.Metrics.disappearDuration) {
-                self?.navigationController?.toolbar.alpha = recording ? 0 : 1
-            }
-        }
+        button.onRecording = { [weak self] recording in self?.morphToolbar(recording: recording) }
         button.onResult = { [weak self] result in
             guard let self else { return }
             endSearch()
@@ -76,6 +69,18 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         item.sharesBackground = false
         return item
     }()
+    /// The toolbar's one item besides the microphone while it records: room
+    /// for the clock, in glass search's field morphs into.
+    private let recordBarSpace = RecordBarSpace()
+    private lazy var recordBarItem: UIBarButtonItem = {
+        let item = UIBarButtonItem(customView: recordBarSpace)
+        item.sharesBackground = false
+        item.identifier = Self.searchIdentifier
+        return item
+    }()
+    private static let searchIdentifier = "home-search"
+    /// The toolbar's frames while the microphone records; nil at rest.
+    private var recordingToolbar: RecordToolbarLayout?
     private var switcher: AccountSwitcher?
     private var headerWatch: Watch?
     private var accessWatch: Watch?
@@ -206,12 +211,50 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
             bottomBar.follow(v2.list)
         } else {
             search.install()
-            toolbarItems = [navigationItem.searchBarPlacementBarButtonItem, .flexibleSpace()] + (mayWrite ? [voiceItem, composeItem, recordItem] : [])
+            toolbarItems = recordingToolbar == nil ? restingToolbarItems : recordingToolbarItems
             bottomBar.follow(nil)
         }
         updateBar()
         if navigationController?.topViewController === self { HomeToolbar.show(for: self, animated: false) }
         view.setNeedsLayout()
+    }
+
+    /// Search, then the call, compose and the microphone, if this person
+    /// may start work.
+    private var restingToolbarItems: [UIBarButtonItem] {
+        let search = navigationItem.searchBarPlacementBarButtonItem
+        search.identifier = Self.searchIdentifier
+        return [search, .flexibleSpace()] + (mayWrite ? [voiceItem, composeItem, recordItem] : [])
+    }
+
+    /// The bar's room, then the microphone.
+    private var recordingToolbarItems: [UIBarButtonItem] { [recordBarItem, .flexibleSpace(), recordItem] }
+
+    /// The toolbar morphs into the recording bar and back
+    /// (`setToolbarItems(_:animated:)`): the bar's glass grows from
+    /// search's field over the call and compose, the microphone stays.
+    private func morphToolbar(recording: Bool) {
+        guard let toolbar = navigationController?.toolbar else { return }
+        if recording {
+            guard let layout = recordingLayout(in: toolbar) else { return }
+            recordingToolbar = layout
+            recordBarSpace.size = layout.barView
+        } else {
+            guard recordingToolbar != nil else { return }
+            recordingToolbar = nil
+        }
+        // The recording screen's animations reach the screen first: the
+        // toolbar's morph lays its bar out in a transaction of its own, so
+        // the circles never wait on it.
+        CATransaction.flush()
+        setToolbarItems(recording ? recordingToolbarItems : restingToolbarItems, animated: true)
+    }
+
+    /// The toolbar's frames while the microphone records; nil as the
+    /// iPad's sidebar, whose toolbar has no microphone.
+    private func recordingLayout(in toolbar: UIToolbar) -> RecordToolbarLayout? {
+        guard !traitCollection.isSidebarColumn, record.window != nil else { return nil }
+        return RecordToolbarLayout(width: toolbar.bounds.width, microphone: record.convert(record.bounds, to: toolbar))
     }
 
     private func applyGround() {
@@ -400,6 +443,27 @@ extension AgentHomeViewController {
             : bottom.min { $0.convert($0.bounds, to: nil).midX < $1.convert($1.bounds, to: nil).midX }
         return last.map(VoiceTouch.glassMark)
     }
+}
+
+/// The recording bar's item: empty, its glass is the bar.
+private final class RecordBarSpace: UIView {
+    var size: CGSize = .zero {
+        didSet {
+            frame.size = size
+            invalidateIntrinsicContentSize()
+        }
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        isAccessibilityElement = false
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override var intrinsicContentSize: CGSize { size }
+    override func sizeThatFits(_ size: CGSize) -> CGSize { self.size }
 }
 
 extension AgentHomeViewController: MainPanelFollowing {

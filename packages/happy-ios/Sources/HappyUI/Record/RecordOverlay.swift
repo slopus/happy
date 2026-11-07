@@ -5,10 +5,20 @@ import HappyLayout
 import UIKit
 
 /// Where the clock and "Slide to cancel" show while recording: a part of
-/// the host's screen, in the window's space, and its corners.
+/// the host's screen, in the window's space, its corners, and who draws it.
 struct RecordBar: Equatable {
+    enum Ground: Equatable {
+        /// The host's own glass is the bar: home's toolbar morphs its
+        /// buttons into it, and only what is in it is drawn here.
+        case host
+        /// Drawn here in the button's fill, stretching out of the button
+        /// as it comes and back into it as it goes.
+        case grown
+    }
+
     var frame: CGRect
     var cornerRadius: CGFloat
+    var ground: Ground = .grown
 }
 
 /// Telegram's recording screen over everything, the keyboard included, in
@@ -31,8 +41,8 @@ final class RecordOverlay {
     private let window: RecordOverlayWindow
     private let root = UIView()
     private let bar = UIView()
-    private let barGlass = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
-    private let barFill = UIView()
+    /// What the bar holds, faded in over the host's glass as it morphs.
+    private let barContent = UIView()
     private let dot = UIView()
     private let clock = UILabel()
     private let cancelLine = UIView()
@@ -57,6 +67,9 @@ final class RecordOverlay {
 
     private var button: CGRect = .zero
     private var barShape = RecordBar(frame: .zero, cornerRadius: 0)
+    /// The bar's growth is stepped from this time on; nil once it has
+    /// grown (or the host draws the bar).
+    private var growing: CFTimeInterval?
     private var gesture = RecordGesture()
     private var level: CGFloat = 0
     private var motion = RecordMotion()
@@ -83,27 +96,25 @@ final class RecordOverlay {
     private func build() {
         bar.clipsToBounds = true
         bar.layer.cornerCurve = .continuous
-        bar.addSubview(barGlass)
-        barFill.backgroundColor = UIColor(Palette.Record.barFill)
-        bar.addSubview(barFill)
+        bar.addSubview(barContent)
         dot.backgroundColor = UIColor(Palette.Record.dot)
         dot.layer.cornerRadius = RecordOverlayLayout.Metrics.dotSize / 2
-        bar.addSubview(dot)
+        barContent.addSubview(dot)
         clock.font = .monospacedDigitSystemFont(ofSize: 15, weight: .regular)
         clock.textColor = UIColor(Palette.text)
-        bar.addSubview(clock)
+        barContent.addSubview(clock)
         cancelLabel.string = Strings.Record.slideToCancel
         cancelLine.addSubview(cancelArrow)
         cancelLine.addSubview(cancelLabel)
         cancelLine.isUserInteractionEnabled = false
-        bar.addSubview(cancelLine)
+        barContent.addSubview(cancelLine)
         cancelButton.setTitle(Strings.Record.cancel, for: .normal)
         cancelButton.titleLabel?.font = TextStyles.recordCancelButton.font
         cancelButton.tintColor = UIColor(Palette.Record.circle)
         cancelButton.accessibilityIdentifier = "record-cancel"
         cancelButton.alpha = 0
         cancelButton.addAction(UIAction { [weak self] _ in self?.onCancel?() }, for: .touchUpInside)
-        bar.addSubview(cancelButton)
+        barContent.addSubview(cancelButton)
         root.addSubview(bar)
 
         lockGlass.clipsToBounds = true
@@ -157,13 +168,24 @@ final class RecordOverlay {
     // MARK: Presenting
 
     /// Comes in over `button` (in the window's space), the clock in `bar`:
-    /// the circles spring up from a fifth, the pill rises 100 into place
-    /// and the bar's line slides in from the right edge.
+    /// the circles spring up from a fifth, the pill rises 100 into place,
+    /// the bar stretches out of the button (or the host's glass morphs
+    /// into it) and its line slides in from the right edge.
     func present(button: CGRect, bar barShape: RecordBar, mode: RecordMode) {
         self.button = button
         self.barShape = barShape
         started = CACurrentMediaTime()
         lastTick = started
+        bar.layer.removeAllAnimations()
+        barContent.layer.removeAllAnimations()
+        switch barShape.ground {
+        case .host:
+            growing = nil
+            bar.backgroundColor = .clear
+        case .grown:
+            growing = started
+            bar.backgroundColor = UIColor(Palette.surfaceHighest)
+        }
         motion = RecordMotion()
         outerBlob = RecordBlob(seed: .random(in: 0...UInt64.max))
         middleBlob = RecordBlob(seed: .random(in: 0...UInt64.max))
@@ -180,8 +202,12 @@ final class RecordOverlay {
         // The bar's pieces, as `ChatTextInputPanelNode` brings them: the
         // bar under them, the dot popping in and then blinking, the clock
         // fading in and the line springing in from the right.
-        bar.alpha = 0
-        UIView.animate(withDuration: 0.15, delay: 0, options: [.curveEaseOut, .allowUserInteraction]) { self.bar.alpha = 1 }
+        // Over the host's glass, what the bar holds waits for the morph to
+        // be well under way.
+        bar.alpha = 1
+        barContent.alpha = 0
+        let contentDelay = barShape.ground == .host ? 0.12 : 0
+        UIView.animate(withDuration: 0.15, delay: contentDelay, options: [.curveEaseOut, .allowUserInteraction]) { self.barContent.alpha = 1 }
         dot.alpha = 0
         dot.transform = CGAffineTransform(scaleX: 0.3, y: 0.3)
         UIView.animate(withDuration: 0.15, delay: 0, options: [.allowUserInteraction]) {
@@ -271,22 +297,13 @@ final class RecordOverlay {
         stopDisplayLink()
         let small = CGAffineTransform(scaleX: RecordMotion.Metrics.appearScale, y: RecordMotion.Metrics.appearScale)
         let drop = CGAffineTransform(translationX: 0, y: RecordMotion.Metrics.lockRise).scaledBy(x: 0.2, y: 0.2)
-        UIView.animate(withDuration: RecordMotion.Metrics.disappearDuration, delay: 0, options: [.beginFromCurrentState]) {
-            self.inner.transform = small
-            self.waves.transform = small
-            self.inner.alpha = 0
-            self.waves.alpha = 0
-            self.lockWrapper.transform = drop
-            self.lockWrapper.alpha = 0
-        }
-        if cancelled {
-            UIView.animate(withDuration: 0.15, delay: 0, options: [.beginFromCurrentState]) {
-                self.dot.transform = CGAffineTransform(scaleX: 0.3, y: 0.3)
-            }
-        }
-        UIView.animate(withDuration: 0.2, delay: 0.05, options: [.beginFromCurrentState]) {
-            self.bar.alpha = 0
-        } completion: { [weak self] _ in
+        let grown = barShape.ground == .grown
+        // Gone once the last of it is: the circles, or a bar drawn here
+        // shrinking back into the button whose fill it is (the host's
+        // glass morphs back on its own). Nothing waits on a delay: a
+        // delayed animation's clock starts when it is made, so a busy main
+        // thread would put it on screen already over.
+        let hide: (Bool) -> Void = { [weak self] _ in
             guard let self, self.isDismissing else { return }
             self.dot.layer.removeAllAnimations()
             self.cancelLine.layer.removeAllAnimations()
@@ -294,6 +311,28 @@ final class RecordOverlay {
             self.window.isHidden = true
             completion?()
         }
+        UIView.animate(withDuration: RecordMotion.Metrics.disappearDuration, delay: 0, options: [.beginFromCurrentState]) {
+            self.inner.transform = small
+            self.waves.transform = small
+            self.inner.alpha = 0
+            self.waves.alpha = 0
+            self.lockWrapper.transform = drop
+            self.lockWrapper.alpha = 0
+        } completion: { grown ? () : hide($0) }
+        if cancelled {
+            UIView.animate(withDuration: 0.15, delay: 0, options: [.beginFromCurrentState]) {
+                self.dot.transform = CGAffineTransform(scaleX: 0.3, y: 0.3)
+            }
+        }
+        UIView.animate(withDuration: 0.1, delay: 0, options: [.beginFromCurrentState]) {
+            self.barContent.alpha = 0
+        }
+        guard grown else { return }
+        let back = layout(lockness: isLocked ? 1 : gesture.lockness, growth: 0)
+        UIView.animate(withDuration: RecordMotion.Metrics.barShrinkDuration, delay: 0, usingSpringWithDamping: RecordMotion.Metrics.barDamping, initialSpringVelocity: 0, options: [.beginFromCurrentState]) {
+            self.bar.frame = back.bar
+            self.barContent.frame = back.barContent
+        } completion: { hide($0) }
     }
 
     // MARK: Frames
@@ -308,7 +347,7 @@ final class RecordOverlay {
         clock.text = RecordClock.text(0)
     }
 
-    private func layout(lockness: CGFloat) -> RecordOverlayLayout {
+    private func layout(lockness: CGFloat, growth: CGFloat = 1) -> RecordOverlayLayout {
         RecordOverlayLayout(.init(
             button: button,
             bar: barShape.frame,
@@ -317,7 +356,8 @@ final class RecordOverlay {
             label: measured.label,
             cancel: measured.cancel,
             cancelTranslation: isLocked ? 0 : gesture.cancelTranslation,
-            lockness: lockness
+            lockness: lockness,
+            growth: growth
         ))
     }
 
@@ -329,12 +369,16 @@ final class RecordOverlay {
         motion.step(level: level, lift: isLocked ? 0 : gesture.translation.y, slide: isLocked ? 0 : gesture.translation.x, frames: frames)
         let elapsed = now - started
         let lockness = lockStart.map { RecordMotion.lockness(from: $0.from, at: now - $0.time) } ?? gesture.lockness
-        let layout = layout(lockness: lockness)
+        var growth: CGFloat = 1
+        if let growing {
+            growth = RecordMotion.barGrowth(at: now - growing)
+            if growth >= 1 { self.growing = nil }
+        }
+        let layout = layout(lockness: lockness, growth: growth)
 
-        bar.frame = barShape.frame
+        bar.frame = layout.bar
         bar.layer.cornerRadius = barShape.cornerRadius
-        barGlass.frame = bar.bounds
-        barFill.frame = bar.bounds
+        barContent.frame = layout.barContent
         let origin = barShape.frame.origin
         func local(_ rect: CGRect) -> CGRect { rect.offsetBy(dx: -origin.x, dy: -origin.y) }
         place(dot, local(layout.dot))

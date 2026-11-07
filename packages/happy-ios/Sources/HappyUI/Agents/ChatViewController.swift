@@ -295,10 +295,13 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         if !previewing {
             // Telegram's microphone in send's place while the composer is
             // empty: what is said goes as the next message, or, stopped
-            // while locked, waits typed in.
+            // while locked, waits typed in. Its bar stretches out of it
+            // across the action row; the text above stays in sight.
             record.bar = { [weak self] in
                 guard let self, card.window != nil else { return nil }
-                return RecordBar(frame: card.convert(card.bounds, to: nil), cornerRadius: card.metrics.shellRadius)
+                let button = record.convert(record.bounds, to: nil)
+                let leading = card.convert(card.actionRowFrame, to: nil).minX
+                return RecordBar(frame: RecordOverlayLayout.capsule(button: button, leading: leading), cornerRadius: button.height / 2, ground: .grown)
             }
             record.onResult = { [weak self] result in self?.dictated(result) }
             card.recordButton = record

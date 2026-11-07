@@ -173,6 +173,54 @@ final class RecordButtonUITests: XCTestCase {
         capture("8-chat-sent")
     }
 
+    /// The morph, filmed for slow motion: home's toolbar turning into the
+    /// bar and back, held and slid away, then tapped (locked) and
+    /// cancelled; then the same in a chat's composer, where the bar
+    /// stretches out of the microphone under the text. Nothing is sent.
+    func testMorph() {
+        home()
+        allowAlerts(for: 3)
+        // The first press may ask for speech recognition.
+        record.tap()
+        allowAlerts(for: 3)
+        if app.buttons["record-cancel"].waitForExistence(timeout: 2) { app.buttons["record-cancel"].tap() }
+        pause(2)
+        capture("morph-0-rest")
+        print("RECORD_MORPH mark hold")
+        let center = record.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        center.press(forDuration: 2.5, thenDragTo: center.withOffset(CGVector(dx: -220, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        pause(2)
+        print("RECORD_MORPH mark tap")
+        record.tap()
+        pause(2)
+        capture("morph-1-home-locked")
+        XCTAssertTrue(app.buttons["record-cancel"].waitForExistence(timeout: 3))
+        app.buttons["record-cancel"].tap()
+        pause(2)
+        capture("morph-2-home-back")
+
+        let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'row:' AND identifier ENDSWITH ':Bug triage'")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.tap()
+        let composer = app.textViews["composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        let chatRecord = app.buttons["record-button"].firstMatch
+        XCTAssertTrue(chatRecord.waitForExistence(timeout: 10))
+        pause(2)
+        capture("morph-3-chat-rest")
+        print("RECORD_MORPH mark chat")
+        chatRecord.tap()
+        pause(2)
+        capture("morph-4-chat-locked")
+        XCTAssertTrue(app.buttons["record-cancel"].waitForExistence(timeout: 3))
+        app.buttons["record-cancel"].tap()
+        pause(2)
+        let chatCenter = chatRecord.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        chatCenter.press(forDuration: 2.5, thenDragTo: chatCenter.withOffset(CGVector(dx: -220, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        pause(2)
+        capture("morph-5-chat-back")
+    }
+
     /// Settings › Agents › Open task after dictating off: let go, and the
     /// task starts while home stays.
     func testFilmStaysHome() {
