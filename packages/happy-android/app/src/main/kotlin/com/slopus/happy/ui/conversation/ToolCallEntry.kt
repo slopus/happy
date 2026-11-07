@@ -140,8 +140,12 @@ internal fun ToolCallEntry(graph: AppGraph, nav: NavHostController, route: ToolC
     // A link opens as one in the chat does: through this agent's workspace.
     val context = LocalContext.current
     val computer = computerName(graph, route.connectionId)
-    val links = remember(nav, computer, route.agentId) {
-        LinkOpener.agent(context, computer) { url -> nav.navigate(BrowserRoute(route.connectionId, url, route.agentId)) }
+    // A Happy URL, or a share link carrying one, opens in the app.
+    val happyLinks = com.slopus.happy.ui.connection.LocalHappyLinks.current
+    val links = remember(nav, computer, route.agentId, happyLinks) {
+        LinkOpener.agent(context, computer, app = { url -> happyLinks?.open(url, route.connectionId) == true }) { url ->
+            nav.navigate(BrowserRoute(route.connectionId, url, route.agentId))
+        }
     }
     ProvideLinks(links) { ToolCallScreen(state, actions) }
 }

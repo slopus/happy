@@ -41,4 +41,10 @@
     <string name="team_server_code_scan_only">サーバーコードはスキャンしたときだけ使えます。コンピューターの Happy に表示されたコードをスキャンしてください。</string>
     <string name="team_server_error_cross_origin">このサーバーのサインイン設定ではサインイン情報が別のサイトに送られるため、使用できません。</string>
     <string name="team_server_error_wrong_audience">このサインインは別のサーバー用です。</string>
+    <string name="share_link_copy_task">タスクへのリンクをコピー</string>
+    <string name="share_link_copy_bot">ボットへのリンクをコピー</string>
+    <string name="share_link_copy_subtask">サブタスクへのリンクをコピー</string>
+    <string name="share_link_copy_subagent">サブエージェントへのリンクをコピー</string>
+    <string name="share_link_copy_session">会話へのリンクをコピー</string>
+    <string name="share_link_copy_artifact">アーティファクトへのリンクをコピー</string>
 </resources>

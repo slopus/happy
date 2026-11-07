@@ -13,6 +13,7 @@ import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.agent.HappyLink
 import com.slopus.happy.agent.HappyReferenceKind
+import com.slopus.happy.agent.HappyShareLinks
 import com.slopus.happy.agent.HappyUrls
 import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.connection.AgentConnection
@@ -28,7 +29,8 @@ import com.slopus.happy.ui.files.openWorkspaceFile
 
 /**
  * Opens Happy URLs (edge SSO contract §7) in one account's back stack.
- * An external link, `happy://<instanceId>/…`, opens only on the
+ * An external link, `happy://<instanceId>/…`, or the link.happy.page share
+ * link that carries one ([HappyShareLinks]), opens only on the
  * connection whose installation that is, switching to it first, and never
  * on another: one no connection matches says so. An internal link means
  * the connection it was shown in.
@@ -57,10 +59,13 @@ class HappyLinks internal constructor(
 
     /**
      * [url] tapped in [connectionId]'s screens. True when it was a Happy
-     * URL, opened or not (a malformed one opens nothing); false for any
-     * other address, which is the caller's.
+     * URL or a link.happy.page share link carrying one, opened or not (a
+     * malformed Happy URL opens nothing); false for any other address,
+     * which is the caller's.
      */
     fun open(url: String, connectionId: String): Boolean {
+        // A share link opens as the instance link it carries, on that installation alone.
+        HappyShareLinks.parse(url)?.let { return open(it.url, connectionId) }
         if (!HappyUrls.owns(url)) return false
         val parsed = HappyUrls.parse(url) ?: return true
         val instanceId = parsed.instanceId
@@ -74,7 +79,7 @@ class HappyLinks internal constructor(
      * the phone has nowhere for on the connection it names.
      */
     fun opens(url: String, connectionId: String): Boolean {
-        val parsed = HappyUrls.parse(url) ?: return false
+        val parsed = HappyUrls.parse(HappyShareLinks.parse(url)?.url ?: url) ?: return false
         val settings = parsed.link as? HappyLink.Settings ?: return true
         val instanceId = parsed.instanceId
         val id = if (instanceId == null) connectionId else connectionFor(graph.agentConnections.accounts.value, instanceId, openConnection) ?: return true

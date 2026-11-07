@@ -41,4 +41,10 @@
     <string name="team_server_code_scan_only">Код сервера работает, только если его отсканировать. Отсканируйте код из Happy на компьютере.</string>
     <string name="team_server_error_cross_origin">Настройки входа этого сервера отправили бы ваши данные входа на другой сайт, поэтому их нельзя использовать.</string>
     <string name="team_server_error_wrong_audience">Этот вход предназначен для другого сервера.</string>
+    <string name="share_link_copy_task">Копировать ссылку на задачу</string>
+    <string name="share_link_copy_bot">Копировать ссылку на бота</string>
+    <string name="share_link_copy_subtask">Копировать ссылку на подзадачу</string>
+    <string name="share_link_copy_subagent">Копировать ссылку на субагента</string>
+    <string name="share_link_copy_session">Копировать ссылку на разговор</string>
+    <string name="share_link_copy_artifact">Копировать ссылку на артефакт</string>
 </resources>

@@ -126,8 +126,8 @@ data class References(
     }
 
     companion object {
-        /** Whether [text] may hold a reference at all: most messages don't, and are never parsed for one. */
-        fun mayHold(text: String): Boolean = text.contains("<happy-")
+        /** Whether [text] may hold a reference at all, or a share link that may read as one: most messages don't, and are never parsed for one. */
+        fun mayHold(text: String): Boolean = text.contains("<happy-") || text.contains(com.slopus.happy.agent.HappyShareLinks.PREFIX)
 
         /**
          * `messageReferenceEntities`, from the bots and tasks [catalog] holds,

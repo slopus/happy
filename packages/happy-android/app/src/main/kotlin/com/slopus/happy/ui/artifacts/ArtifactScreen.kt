@@ -110,15 +110,15 @@ class ArtifactActions(
     val onOpenWeb: (String) -> Unit = {},
     /** Another scheme, for the system; a Happy URL stays in the app. */
     val onOpenExternal: (String) -> Unit = {},
-    /** An artifact's external Happy link, for sharing; null where its server has no instance id ([BrowserView]). */
+    /** An artifact's share link (link.happy.page), for sharing; null where its server has no instance id ([BrowserView]). */
     val artifactLink: (artifactId: String) -> String? = { null },
     /** A file read whole, for handing to another app; it tells how much of how much is here as it reads. */
     val fileReader: suspend (ArtifactFile, progress: (done: Long, total: Long) -> Unit) -> ByteArray = { _, _ -> throw IllegalStateException("no reader") },
     /** Names this artifact's staged files apart from others'. */
     val artifactKey: String = "artifact",
     /**
-     * The artifact's external Happy link, at the version it was pinned to
-     * (iOS `CopyLinkItem`), for the bar's Copy Link; null where it has none:
+     * The artifact's share link (link.happy.page), at the version it was
+     * pinned to (iOS `CopyLinkItem`), for the bar's Copy link to artifact; null where it has none:
      * a file a link opened, or a server with no instance id.
      */
     val shareLink: (() -> String?)? = null,
@@ -171,7 +171,7 @@ fun ArtifactScreen(
                 val haptics = LocalHapticFeedback.current
                 BarIconButton(
                     Ionicon.LinkOutline,
-                    stringResource(R.string.link_menu_copy),
+                    stringResource(R.string.share_link_copy_artifact),
                     { if (copyToClipboard(context, link)) haptics.performHapticFeedback(HapticFeedbackType.Confirm) },
                     Modifier.testTag(ArtifactTags.COPY_LINK),
                 )

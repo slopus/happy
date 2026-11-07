@@ -222,9 +222,10 @@ fun BrowserView(
     /** A page to open on a screen of its own: a link from an artifact's page to another origin, or a new window. */
     onOpenElsewhere: (String) -> Unit = {},
     /**
-     * An artifact's external link (`happy://<instanceId>/artifacts/<id>`,
-     * edge SSO §7), what sharing a bundled artifact's page shares; null
-     * where its server has no instance id, and then it isn't offered.
+     * An artifact's share link (`https://link.happy.page/#1/<instanceId>/artifacts/<id>`,
+     * [com.slopus.happy.agent.HappyShareLinks]), what sharing a bundled
+     * artifact's page shares and copies; null where its server has no
+     * instance id, and then neither is offered.
      */
     artifactLink: (artifactId: String) -> String? = { null },
     /**
@@ -451,7 +452,8 @@ internal fun openOutside(context: Context, url: String): Boolean = if (com.slopu
  * one) and nothing else's; a scheme that isn't web handed to the system on
  * a tap; on an artifact's page, a tapped link to another origin opened in a
  * browser of its own, as iOS does; and every load's start, end and failure
- * told to [state]. A Happy URL tapped on an artifact's page opens in the app.
+ * told to [state]. A Happy URL tapped on an artifact's page opens in the app,
+ * and a link.happy.page share link tapped on any page does too.
  */
 private class BrowserClient(
     private val page: BrowserPage,
@@ -475,6 +477,11 @@ private class BrowserClient(
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
         val url = request.url.toString()
         if (BrowserPolicy.isInPage(url)) return false
+        // A share link tapped on any page opens in the app as the Happy URL it carries (desktop 5a4c075c).
+        if (request.isForMainFrame && com.slopus.happy.agent.HappyShareLinks.parse(url) != null) {
+            if (request.hasGesture()) onElsewhere(url)
+            return true
+        }
         // A Happy URL followed in an artifact's page opens in the app (desktop 1ff04853, c6e1caad);
         // a scripted navigation to one, or one on any other page, opens nothing.
         if (com.slopus.happy.agent.HappyUrls.owns(url)) {

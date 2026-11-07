@@ -1,5 +1,9 @@
 package com.slopus.happy.references
 
+import com.slopus.happy.agent.HappyLink
+import com.slopus.happy.agent.HappyReferenceKind
+import com.slopus.happy.agent.HappyShareLinks
+import com.slopus.happy.agent.HappyUrls
 import java.util.UUID
 
 /**
@@ -104,10 +108,13 @@ object HappyReferences {
 
     /**
      * Whether a Markdown link to [url] opens in the app: a reference this
-     * phone wrote (not a mention, which opens nothing), or a Happy URL
-     * (`happy://`, `happy-file:`) an agent did.
+     * phone wrote (not a mention, which opens nothing), a Happy URL
+     * (`happy://`, `happy-file:`) an agent did, or a link.happy.page share
+     * link carrying one.
      */
-    fun opensInApp(url: String): Boolean = (reference(url) != null && mention(url) == null) || com.slopus.happy.agent.HappyUrls.owns(url)
+    fun opensInApp(url: String): Boolean =
+        (reference(url) != null && mention(url) == null) || com.slopus.happy.agent.HappyUrls.owns(url) ||
+            com.slopus.happy.agent.HappyShareLinks.parse(url) != null
 
     /**
      * The Markdown a message is drawn from (desktop's
@@ -127,6 +134,54 @@ object HappyReferences {
     /** The same words as plain text, for what is read aloud, copied or shown as written (`messageReferencesPlainText`). */
     fun plain(text: String, references: References, streaming: Boolean = false): String = replace(text, streaming) { reference ->
         if (reference.kind in knownKinds) references.view(reference).label else references.placeholder(reference)
+    }
+
+    /**
+     * [text] with every share link outside code that names this installation
+     * ([here]) written as the Happy link it carries (desktop's
+     * `shareLinksHere`, 5a4c075c): a link keeps its words and opens the
+     * `happy://` link; a bare or angle-bracketed one reads as the reference it
+     * names, with its live name, where [references] say that opens, a file as
+     * its path, and anything else as the address written, opening in the app.
+     * Another server's share link stays a web address. Still [streaming], a
+     * link at the very end may not have come whole and is left as written.
+     */
+    fun shareLinks(text: String, references: References?, here: (String) -> Boolean, streaming: Boolean = false): String {
+        if (!text.contains(HappyShareLinks.PREFIX)) return text
+        val cut = if (!streaming) text.length else text.lastIndexOf(HappyShareLinks.PREFIX).takeIf { start -> text.substring(start).none(Char::isWhitespace) } ?: text.length
+        val head = HappyShareLinks.rewrite(text.substring(0, cut), here) { target, written ->
+            val link = HappyUrls.parse(target.url)?.link
+            val tag = link?.let(::tag)
+            when {
+                tag != null && references?.view(tag.first) is References.View.Link -> tag.second
+                link is HappyLink.File -> "[${label(link.path)}](${target.url})"
+                else -> "[${label(written)}](${target.url})"
+            }
+        }
+        return head + text.substring(cut)
+    }
+
+    /** [text] with the share links naming this installation as the tags they read as, so what they name is read ([ReferenceReader.read]). */
+    fun shareLinkTags(text: String, here: (String) -> Boolean): String =
+        if (!text.contains(HappyShareLinks.PREFIX)) text
+        else HappyShareLinks.rewrite(text, here) { target, written -> HappyUrls.parse(target.url)?.link?.let(::tag)?.second ?: written }
+
+    /** The reference [link] names, and its tag; null for what no tag names (a Surface, a file, a settings page). */
+    private fun tag(link: HappyLink): Pair<Reference, String>? {
+        val reference = link as? HappyLink.Reference ?: return null
+        val kind = when (reference.kind) {
+            HappyReferenceKind.Artifact -> "artifact"
+            HappyReferenceKind.Agent -> "agent"
+            HappyReferenceKind.Workspace -> "workspace"
+            HappyReferenceKind.Project -> "project"
+            HappyReferenceKind.Service -> "service"
+            HappyReferenceKind.User -> "user"
+            HappyReferenceKind.Surface -> return null
+        }
+        val source = "<happy-$kind id=\"${reference.id}\"" +
+            (reference.version?.let { " version=\"$it\"" } ?: "") +
+            (reference.workspaceId?.let { " workspace=\"$it\"" } ?: "") + "/>"
+        return Reference(kind, reference.id, reference.version, reference.workspaceId) to source
     }
 
     private val lineBreaks = Regex("\\s*[\\r\\n]+\\s*")

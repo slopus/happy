@@ -71,6 +71,7 @@ import com.slopus.happy.R
 import com.slopus.happy.agent.AgentFamily
 import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.agent.ConversationKind
+import com.slopus.happy.agent.HappyShareRole
 import com.slopus.happy.connection.TransportResponse
 import com.slopus.happy.artifacts.formatDuration
 import com.slopus.happy.conversation.AgentChild
@@ -280,9 +281,10 @@ class AgentPageActions(
     /** A permission mode picked here, sent through the chat beneath as its header's menu sends it. */
     val onModeChange: (Mode) -> Unit = {},
     /**
-     * The agent's external Happy link (`happy://<instanceId>/agents/<id>`),
-     * for the bar's Copy Link (iOS `CopyLinkItem`, desktop e712a6e4's Copy
-     * agent ID); null where the daemon reports no instance id.
+     * The agent's share link (`https://link.happy.page/#1/<instanceId>/agents/<id>?as=<kind>`,
+     * [com.slopus.happy.agent.HappyShareLinks]), for the bar's Copy link to
+     * task, bot… (iOS `CopyLinkItem`, desktop 5a4c075c); null where the
+     * daemon reports no instance id.
      */
     val link: String? = null,
 )
@@ -329,7 +331,7 @@ fun AgentPageScreen(state: AgentPageState, actions: AgentPageActions, now: Long 
                     val haptics = LocalHapticFeedback.current
                     BarIconButton(
                         Ionicon.LinkOutline,
-                        stringResource(R.string.link_menu_copy),
+                        copyLinkLabel(state.kind),
                         { if (copyToClipboard(context, link)) haptics.performHapticFeedback(HapticFeedbackType.Confirm) },
                         Modifier.testTag(AgentPageTags.COPY_LINK),
                     )
@@ -1074,6 +1076,28 @@ private fun DetailRow(title: String, value: String, last: Boolean, chevron: Bool
         if (!last) Divider(AgentPageSpec.plainTextX)
     }
 }
+
+/** What an agent's share link says it is. */
+internal fun AgentKind.shareRole(): HappyShareRole = when (this) {
+    AgentKind.Bot -> HappyShareRole.Bot
+    AgentKind.Task -> HappyShareRole.Task
+    AgentKind.Subtask -> HappyShareRole.Subtask
+    AgentKind.Subagent -> HappyShareRole.Subagent
+    AgentKind.Conversation -> HappyShareRole.Session
+}
+
+/** Copy link to task, bot, subtask, subagent or session, as desktop names it; plain Copy link while the kind is still read. */
+@Composable
+internal fun copyLinkLabel(kind: AgentKind?): String = stringResource(
+    when (kind) {
+        AgentKind.Bot -> R.string.share_link_copy_bot
+        AgentKind.Task -> R.string.share_link_copy_task
+        AgentKind.Subtask -> R.string.share_link_copy_subtask
+        AgentKind.Subagent -> R.string.share_link_copy_subagent
+        AgentKind.Conversation -> R.string.share_link_copy_session
+        null -> R.string.link_menu_copy
+    },
+)
 
 /** What home's kind of row says the agent is, else what the agent itself says. */
 internal fun agentKind(row: AgentFeedRow.Conversation?, subtask: Boolean?, parentAgentId: String?): AgentKind? = when (row?.kind) {

@@ -103,8 +103,8 @@ class ArtifactsListTest {
         File(dir, "$name.png").outputStream().use { rule.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
-    private fun show(state: ArtifactCatalogFeed.State, dark: Boolean = false, onOpen: (ArtifactSummary) -> Unit = {}, thumbnails: ArtifactThumbnails? = null) {
-        rule.setHappyContent(dark) { ArtifactsScreen(state, {}, onOpen, thumbnails, clock = { now }) }
+    private fun show(state: ArtifactCatalogFeed.State, dark: Boolean = false, onOpen: (ArtifactSummary) -> Unit = {}, thumbnails: ArtifactThumbnails? = null, shareLink: (ArtifactSummary) -> String? = { null }) {
+        rule.setHappyContent(dark) { ArtifactsScreen(state, {}, onOpen, thumbnails, clock = { now }, shareLink = shareLink) }
         rule.waitForIdle()
     }
 
@@ -164,6 +164,26 @@ class ArtifactsListTest {
         rule.onNodeWithText("Release notes").performTouchInput { longClick() }
         rule.node(ArtifactsTags.MENU_OPEN).performClick()
         assertEquals(listOf("a2", "a1"), opened)
+    }
+
+    /** Desktop 5a4c075c's artifact rows: Copy link to artifact copies its share link, offered only where the server has an instance. */
+    @Test fun aServerWithNoInstanceOffersNoCopyLink() {
+        show(loaded)
+        rule.onNodeWithText("Release notes").performTouchInput { longClick() }
+        rule.waitForIdle()
+        rule.node(ArtifactsTags.MENU_OPEN).assertExists()
+        rule.node(ArtifactsTags.MENU_LINK).assertDoesNotExist()
+    }
+
+    @Test fun aHoldOffersCopyLinkToArtifactWhereTheServerHasAnInstance() {
+        show(loaded, shareLink = { "https://link.happy.page/#1/k3x9q2m7p0a4b8c1d5e6f7g2/artifacts/${it.id}" })
+        rule.onNodeWithText("Release notes").performTouchInput { longClick() }
+        rule.waitForIdle()
+        shot("artifacts-menu-link")
+        rule.onNodeWithText("Copy link to artifact").assertExists()
+        rule.node(ArtifactsTags.MENU_LINK).performClick()
+        val clipboard = ApplicationProvider.getApplicationContext<Context>().getSystemService(ClipboardManager::class.java)
+        assertEquals("https://link.happy.page/#1/k3x9q2m7p0a4b8c1d5e6f7g2/artifacts/a1", clipboard.primaryClip!!.getItemAt(0).text.toString())
     }
 
     @Test fun searchFindsEveryWordOfTheTitleOrKind() {

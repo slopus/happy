@@ -41,4 +41,10 @@
     <string name="team_server_code_scan_only">服务器代码只能通过扫描使用。请扫描电脑上 Happy 中显示的代码。</string>
     <string name="team_server_error_cross_origin">此服务器的登录设置会把你的登录信息发送到其他网站，因此无法使用。</string>
     <string name="team_server_error_wrong_audience">此登录属于其他服务器。</string>
+    <string name="share_link_copy_task">复制任务链接</string>
+    <string name="share_link_copy_bot">复制机器人链接</string>
+    <string name="share_link_copy_subtask">复制子任务链接</string>
+    <string name="share_link_copy_subagent">复制子代理链接</string>
+    <string name="share_link_copy_session">复制对话链接</string>
+    <string name="share_link_copy_artifact">复制工件链接</string>
 </resources>

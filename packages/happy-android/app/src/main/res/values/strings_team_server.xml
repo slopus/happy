@@ -42,4 +42,10 @@
     <string name="team_server_code_scan_only">A server code works only when you scan it. Scan the code from Happy on your computer.</string>
     <string name="team_server_error_cross_origin">This server\'s sign-in settings would send your sign-in to a different site, so they can\'t be used.</string>
     <string name="team_server_error_wrong_audience">This sign-in is for a different server.</string>
+    <string name="share_link_copy_task">Copy link to task</string>
+    <string name="share_link_copy_bot">Copy link to bot</string>
+    <string name="share_link_copy_subtask">Copy link to subtask</string>
+    <string name="share_link_copy_subagent">Copy link to subagent</string>
+    <string name="share_link_copy_session">Copy link to conversation</string>
+    <string name="share_link_copy_artifact">Copy link to artifact</string>
 </resources>

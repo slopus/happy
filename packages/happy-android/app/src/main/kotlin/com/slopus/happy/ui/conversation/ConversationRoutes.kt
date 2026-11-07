@@ -280,6 +280,7 @@ internal fun AgentSession.makeConversation(
     cloudFiles = client.cloud,
     attachmentRoute = attachmentRoute,
     keepAttachment = { id, file -> media?.store?.keep(com.slopus.happy.conversation.KeptMedia.attachmentId(agentId, id), file) },
+    here = ::isHere,
     preferences = modelPreferences,
     onStarted = ::recordStart,
     address = { ChatAddress.of(catalog.value, agentId) },

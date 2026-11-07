@@ -18,6 +18,7 @@ import com.slopus.happy.agent.AgentFamily
 import com.slopus.happy.agent.AgentSession
 import com.slopus.happy.agent.HappyLink
 import com.slopus.happy.agent.HappyReferenceKind
+import com.slopus.happy.agent.HappyShareLinks
 import com.slopus.happy.agent.HappyUrls
 import com.slopus.happy.agent.string
 import com.slopus.happy.connection.RequestCategory
@@ -196,7 +197,8 @@ internal fun AgentPageEntry(graph: AppGraph, nav: NavHostController, route: Conv
     val kept = rememberKeptMedia(graph, session, route.agentId)
     val connections by graph.agentConnections.accounts.collectAsStateWithLifecycle()
     val instanceId = connections.firstOrNull { it.id == route.connectionId }?.instanceId?.takeIf(HappyUrls::isInstanceId)
-    val actions = remember(nav, model, session, route, kept, held, instanceId) {
+    val kind = state.kind
+    val actions = remember(nav, model, session, route, kept, held, instanceId, kind) {
         AgentPageActions(
             onBack = { nav.popBackStack() },
             onOpenConversation = { id -> if (id == route.agentId) nav.popBackStack() else nav.openConversation(route.connectionId, id) },
@@ -214,14 +216,18 @@ internal fun AgentPageEntry(graph: AppGraph, nav: NavHostController, route: Conv
             },
             kept = kept,
             onModeChange = { mode -> held?.setMode(mode) },
-            link = instanceId?.let { HappyUrls.format(HappyLink.Reference(HappyReferenceKind.Agent, route.agentId), it) },
+            link = HappyShareLinks.format(HappyLink.Reference(HappyReferenceKind.Agent, route.agentId), instanceId, kind?.shareRole()),
         )
     }
     // A link opens as one in the chat does: through this agent's workspace.
     val context = LocalContext.current
     val computer = computerName(graph, route.connectionId)
-    val links = remember(nav, computer, route.agentId) {
-        LinkOpener.agent(context, computer) { url -> nav.navigate(BrowserRoute(route.connectionId, url, route.agentId)) }
+    // A Happy URL, or a share link carrying one, opens in the app.
+    val happyLinks = com.slopus.happy.ui.connection.LocalHappyLinks.current
+    val links = remember(nav, computer, route.agentId, happyLinks) {
+        LinkOpener.agent(context, computer, app = { url -> happyLinks?.open(url, route.connectionId) == true }) { url ->
+            nav.navigate(BrowserRoute(route.connectionId, url, route.agentId))
+        }
     }
     CompositionLocalProvider(LocalAgentPictures provides session.pictures) {
         ProvideLinks(links) { AgentPageScreen(state, actions) }

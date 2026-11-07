@@ -133,6 +133,21 @@ class DeepLinksTest {
     }
 
     @Test
+    fun shareLinksOpenAsTheInstanceLinkTheyCarry() {
+        val instance = "k3x9q2m7p0a4b8c1d5e6f7g2"
+        assertEquals(
+            DeepLink.Instance(instance, com.slopus.happy.agent.HappyLink.Reference(com.slopus.happy.agent.HappyReferenceKind.Agent, "t1")),
+            parseDeepLink("https://link.happy.page/#1/$instance/agents/t1?as=task"),
+        )
+        // Outside the grammar, or with no instance, it is the web's and nothing here opens it.
+        listOf(
+            "https://link.happy.page/#1/agents/t1",
+            "https://link.happy.page/#1/$instance/agents/t1?title=Plan",
+            "https://link.happy.page/",
+        ).forEach { assertNull(it, parseDeepLink(it)) }
+    }
+
+    @Test
     fun linksThatArentTheAppsAreIgnored() {
         listOf(
             "https://example.com/terminal?$key",

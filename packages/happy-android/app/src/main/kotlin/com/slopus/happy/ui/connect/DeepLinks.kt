@@ -106,12 +106,17 @@ sealed interface DeepLink {
  * Android has no screen for opens Home. Null for links that aren't the
  * app's (another scheme or host, or not a URL), and for Happy URLs
  * ([HappyUrls]) not locked to an instance: from outside the app, only an
- * external `happy://<instanceId>/…` link opens, and a malformed one never.
+ * external `happy://<instanceId>/…` link, or the link.happy.page share link
+ * carrying one, opens, and a malformed one never.
  */
 fun parseDeepLink(link: String): DeepLink? {
     if (HappyCode.isAgentPairing(link)) return DeepLink.AgentPairing(link.trim())
     GuestInvitation.parse(link)?.let { return DeepLink.GuestInvite(it.url) }
     CloudInvite.parse(link)?.let { return DeepLink.CloudServerInvite(it) }
+    // A link.happy.page share link opens as the instance link it carries; any other address on that host is the web's.
+    com.slopus.happy.agent.HappyShareLinks.parse(link.trim())?.let { share ->
+        return HappyUrls.parse(share.url)?.let { url -> url.instanceId?.let { DeepLink.Instance(it, url.link) } }
+    }
     // happy-app's own `happy://settings/…` paths keep their screens: from outside, a settings link opens only in its instance form.
     if (HappyUrls.owns(link.trim()) && !APP_SETTINGS.containsMatchIn(link.trim())) {
         val url = HappyUrls.parse(link.trim()) ?: return null

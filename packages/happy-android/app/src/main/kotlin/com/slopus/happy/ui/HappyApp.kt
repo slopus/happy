@@ -283,14 +283,17 @@ private fun rememberStackGeneration(open: OpenAccount, keep: () -> Boolean): Int
 @Composable
 private fun rememberLinks(graph: AppGraph, nav: NavHostController, agent: String?): LinkOpener {
     val context = LocalContext.current
+    // A Happy URL in the connection's screens opens in the app (LocalHappyLinks, provided just above).
+    val happy = LocalHappyLinks.current
     if (agent == null) {
         val system = LocalUriHandler.current
         val dark = HappyTheme.colors.dark
-        return remember(system, dark) { LinkOpener.legacy(context, system, dark) }
+        // A share link opens on its own agent connection, or says it isn't one of this phone's.
+        return remember(system, dark, happy) {
+            LinkOpener.legacy(context, system, dark) { url -> com.slopus.happy.agent.HappyShareLinks.parse(url) != null && happy?.open(url, "") == true }
+        }
     }
     val computer = computerName(graph, agent)
-    // A Happy URL in the connection's screens opens in the app (LocalHappyLinks, provided just above).
-    val happy = LocalHappyLinks.current
     return remember(nav, agent, computer, happy) {
         LinkOpener.agent(
             context, computer,

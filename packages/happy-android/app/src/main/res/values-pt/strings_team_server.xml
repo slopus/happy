@@ -41,4 +41,10 @@
     <string name="team_server_code_scan_only">Um código de servidor só funciona quando escaneado. Escaneie o código do Happy no seu computador.</string>
     <string name="team_server_error_cross_origin">As configurações de login deste servidor enviariam seu login para outro site, então não podem ser usadas.</string>
     <string name="team_server_error_wrong_audience">Este login é de outro servidor.</string>
+    <string name="share_link_copy_task">Copiar link da tarefa</string>
+    <string name="share_link_copy_bot">Copiar link do bot</string>
+    <string name="share_link_copy_subtask">Copiar link da subtarefa</string>
+    <string name="share_link_copy_subagent">Copiar link do subagente</string>
+    <string name="share_link_copy_session">Copiar link da conversa</string>
+    <string name="share_link_copy_artifact">Copiar link do artefato</string>
 </resources>

@@ -340,6 +340,9 @@ class AgentSession internal constructor(
         }
     }
 
+    /** Whether [instanceId] is this connection's installation, as its health last said: its share links read as its own. */
+    fun isHere(instanceId: String): Boolean = connections.accounts.value.firstOrNull { it.id == connectionId }?.instanceId == instanceId
+
     /** What the Happy references in this connection's messages read as, and the titles and names they need read. */
     val references: com.slopus.happy.references.ReferenceReader by lazy {
         com.slopus.happy.references.ReferenceReader(

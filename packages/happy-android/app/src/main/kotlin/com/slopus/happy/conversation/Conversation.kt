@@ -189,6 +189,8 @@ class Conversation(
     private val attachmentRoute: AttachmentRoute = AttachmentRoute(),
     /** Keeps an uploaded attachment's bytes where its tile reads them, so the sender never downloads its own; called on [io]. */
     private val keepAttachment: (id: String, file: File) -> Unit = { _, _ -> },
+    /** Whether an installation is this conversation's connection's ([ConversationRowBuilder.here]). */
+    private val here: ((String) -> Boolean)? = null,
     /** The person's model preferences: a new chat opens on their start ([ModelPreferences.startMode]); null, on the catalog's default. */
     private val preferences: StateFlow<ModelPreferences>? = null,
     /** A new chat's first message went with this mode: it is the session's start. */
@@ -263,6 +265,7 @@ class Conversation(
         named = this@Conversation.references?.let { reader -> reader::read }
         pages = this@Conversation.references?.let { reader -> reader::readArtifacts }
         hasPage = hasSettingsPage
+        here = this@Conversation.here
     }
     private val runs = ArrayList<Pair<String, MutableList<String>>>()
     /** Each run's status, start and end as last read, so it is kept as it came. */

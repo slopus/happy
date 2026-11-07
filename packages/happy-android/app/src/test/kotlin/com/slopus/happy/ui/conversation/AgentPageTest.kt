@@ -40,6 +40,7 @@ import com.slopus.happy.ui.setHappyContent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
@@ -104,15 +105,33 @@ class AgentPageTest {
         shot("light")
     }
 
-    /** iOS SessionDetailViewController's bar: Copy Link puts the agent's instance link on the clipboard (desktop e712a6e4). */
-    @Test fun `copy link puts the agents happy link on the clipboard, and without an instance there is none`() {
-        show(actions = AgentPageActions(link = "happy://inst/agents/a1"))
+    /** iOS SessionDetailViewController's bar: Copy link to task puts the agent's share link on the clipboard (desktop 5a4c075c). */
+    @Test fun `copy link puts the agents share link on the clipboard, and without an instance there is none`() {
+        val link = "https://link.happy.page/#1/k3x9q2m7p0a4b8c1d5e6f7g2/agents/a1?as=task"
+        show(actions = AgentPageActions(link = link))
+        // Named by what the agent is, as desktop's menus are.
+        rule.onNodeWithContentDescription("Copy link to task").assertExists()
         val bar = rule.node(GlassBarTags.BAR).bounds
         val copy = rule.node(AgentPageTags.COPY_LINK).bounds
         assertTrue("in the bar's end", copy.right <= bar.right && copy.left > (PHONE_WIDTH / 2).dp)
         rule.node(AgentPageTags.COPY_LINK).performClick()
         val clipboard = ApplicationProvider.getApplicationContext<android.content.Context>().getSystemService(android.content.ClipboardManager::class.java)
-        assertEquals("happy://inst/agents/a1", clipboard.primaryClip?.getItemAt(0)?.text?.toString())
+        assertEquals(link, clipboard.primaryClip?.getItemAt(0)?.text?.toString())
+    }
+
+    @Test fun `the copy links label says what the agent is`() {
+        for (kind in AgentKind.entries) {
+            assertEquals(com.slopus.happy.agent.HappyShareRole.valueOf(kind.name.replace("Conversation", "Session")), kind.shareRole())
+        }
+        val shown = HashMap<AgentKind?, String>()
+        rule.setHappyContent { for (kind in AgentKind.entries + listOf(null)) shown[kind] = copyLinkLabel(kind) }
+        rule.waitForIdle()
+        assertEquals("Copy link to bot", shown[AgentKind.Bot])
+        assertEquals("Copy link to subtask", shown[AgentKind.Subtask])
+        assertEquals("Copy link to subagent", shown[AgentKind.Subagent])
+        assertEquals("Copy link to conversation", shown[AgentKind.Conversation])
+        // Still reading what the agent is.
+        assertEquals("Copy link", shown[null])
     }
 
     @Test fun `a daemon with no instance id offers no copy link`() {

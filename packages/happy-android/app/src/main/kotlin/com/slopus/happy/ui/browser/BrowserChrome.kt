@@ -356,7 +356,8 @@ private fun HistoryButton(state: BrowserState, forward: Boolean) {
 /**
  * Share…, Copy Link, and Open in browser (outside proxy) (iOS's
  * `shareActions`). A bundled artifact's origin exists only in this app: its
- * external Happy link is what is shared, and it is never copied or opened outside.
+ * share link is what is shared and copied (Copy link to artifact), and it
+ * is never opened outside.
  */
 @Composable
 private fun ShareButton(state: BrowserState) {
@@ -364,7 +365,7 @@ private fun ShareButton(state: BrowserState) {
     var open by remember { mutableStateOf(false) }
     val page = state.page
     val synthetic = page?.synthetic == true
-    // A bundled artifact's origin exists only here: its external Happy link is what can be shared, if its server has one.
+    // A bundled artifact's origin exists only here: its share link is what can be shared, if its server has one.
     val shareUrl = if (synthetic) page.artifactId?.let(state.artifactLink) else if (page?.artifactId == null) state.currentUrl else page.url
     Box {
         IconButton(onClick = { open = true }, enabled = page != null && shareUrl != null, modifier = Modifier.testTag(BrowserTags.SHARE)) {
@@ -378,12 +379,12 @@ private fun ShareButton(state: BrowserState) {
                     val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, shareUrl)
                     context.startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
-            }
-            if (!synthetic && shareUrl != null) {
-                ShareItem(stringResource(R.string.link_menu_copy), MaterialSymbols.ContentCopy) {
+                ShareItem(stringResource(if (synthetic) R.string.share_link_copy_artifact else R.string.link_menu_copy), MaterialSymbols.ContentCopy) {
                     open = false
                     copy(context, shareUrl)
                 }
+            }
+            if (!synthetic && shareUrl != null) {
                 ShareItem(stringResource(R.string.browser_open_outside), MaterialSymbols.OpenInNew) {
                     open = false
                     openOutside(context, shareUrl)
