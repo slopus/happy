@@ -137,7 +137,7 @@ final class HappyCloudUITests: XCTestCase {
             app.buttons["Send"].tap()
             Thread.sleep(forTimeInterval: 8)
         } else {
-            let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Roles check'")).firstMatch
+            let row = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'roles check'")).firstMatch
             require(row.waitForExistence(timeout: 30), "the owner's task isn't on the viewer's home")
             row.tap()
             require(element("read-only-note").waitForExistence(timeout: 15), "no read-only line in the composer's place")
@@ -269,6 +269,65 @@ final class HappyCloudUITests: XCTestCase {
         tree("24-providers-web", safari)
         app.activate()
         require(general.waitForExistence(timeout: 15), "not back in the task after Safari")
+        goBack(switcher)
+
+        let gear = app.buttons["settings"].firstMatch
+        require(gear.waitForExistence(timeout: 5), "no settings on the home")
+        gear.tap()
+        Thread.sleep(forTimeInterval: 1.5)
+        let rowOut = element("settings:disconnect")
+        for _ in 0..<4 where !rowOut.isHittable { app.swipeUp() }
+        require(rowOut.waitForExistence(timeout: 5), "no Sign Out on the server's settings")
+        rowOut.tap()
+        let confirm = app.alerts.buttons["Sign Out"]
+        require(confirm.waitForExistence(timeout: 5), "no confirmation")
+        confirm.tap()
+        Thread.sleep(forTimeInterval: 2)
+    }
+
+    /// A fresh cloud server's Chief of Staff: its greeting is on home as an
+    /// ordinary bot conversation, nothing opens it on its own, and its
+    /// providers button opens the server's web settings. A viewer reads it
+    /// and can't write to it.
+    func testCChiefOfStaffGreetsAndOffersProviders() throws {
+        guard let login = env["QA_LOGIN"], let password = env["QA_PASSWORD"], let server = env["COS_SERVER"] else { throw XCTSkip("no Chief of Staff run") }
+        let owner = env["ROLE"] != "viewer"
+        app.launch()
+        signInWithTestAccount(login: login, password: password)
+        let card = element("cloud-server-\(server)")
+        require(card.waitForExistence(timeout: 30), "@\(server) isn't among \(login)'s servers")
+        card.tap()
+        let switcher = element("account-switcher")
+        require(switcher.waitForExistence(timeout: 90), "no home of @\(server)")
+        Thread.sleep(forTimeInterval: 5)
+        // Home, not the conversation: nothing navigates to it on its own.
+        XCTAssertFalse(app.navigationBars.buttons.element(boundBy: 0).exists && !switcher.isHittable, "the app left home on its own")
+        capture("30-cos-home")
+        tree("30-cos-home", app)
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Chief of Staff'")).firstMatch
+        for _ in 0..<3 where !row.isHittable { app.swipeUp() }
+        require(row.waitForExistence(timeout: 30), "no Chief of Staff on home")
+        row.tap()
+        let greeting = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'What would you like to call me'")).firstMatch
+        require(greeting.waitForExistence(timeout: 20), "no greeting in the Chief of Staff's conversation")
+        let providers = app.descendants(matching: .any).matching(NSPredicate(format: "label == 'Add provider credentials'")).firstMatch
+        require(providers.waitForExistence(timeout: 10), "no providers button")
+        Thread.sleep(forTimeInterval: 1.5)
+        capture("31-\(owner ? "owner" : "viewer")-cos")
+        tree("31-cos", app)
+        if owner {
+            XCTAssertTrue(app.textViews["composer"].exists, "the owner can't write to the Chief of Staff")
+        } else {
+            require(element("read-only-note").waitForExistence(timeout: 10), "the viewer can write to the Chief of Staff")
+        }
+        let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
+        providers.tap()
+        require(safari.wait(for: .runningForeground, timeout: 15), "the providers button didn't open Safari")
+        Thread.sleep(forTimeInterval: 4)
+        capture("32-providers-web")
+        tree("32-providers-web", safari)
+        app.activate()
+        require(providers.waitForExistence(timeout: 15), "not back in the Chief of Staff after Safari")
         goBack(switcher)
 
         let gear = app.buttons["settings"].firstMatch
