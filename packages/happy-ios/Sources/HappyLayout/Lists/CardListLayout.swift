@@ -114,16 +114,22 @@ public struct CardHeadingLayout: Equatable, Sendable {
 
 /// A note in place of a list's rows ("Nothing here yet."), or under its
 /// heading: centred in the readable column, `padding` above and below.
+/// With `art`, a state scene's square stands centred over the words,
+/// `noteSceneGap` above them.
 public struct CardNoteLayout: Equatable, Sendable {
     public var size: CGSize
     public var text: CGRect
+    public var art: CGRect?
 
-    public init(width: CGFloat, maxWidth: CGFloat = .greatestFiniteMagnitude, text: Measurable, padding: CGFloat = 24) {
+    public init(width: CGFloat, maxWidth: CGFloat = .greatestFiniteMagnitude, text: Measurable, padding: CGFloat = 24, art: CGFloat? = nil) {
         let column = CardColumn(width: width, maxWidth: maxWidth)
         let inner = max(0, column.width - 2 * CardListMetrics.inset)
         let measured = text.size(fitting: inner)
-        let x = column.x + CardListMetrics.inset + ((inner - measured.width) / 2).rounded(.down)
-        self.text = CGRect(x: x, y: padding, width: measured.width, height: measured.height)
-        size = CGSize(width: max(0, width), height: measured.height + 2 * padding)
+        let left = column.x + CardListMetrics.inset
+        self.art = art.map { CGRect(x: left + ((inner - $0) / 2).rounded(.down), y: padding, width: $0, height: $0) }
+        let top = padding + (art.map { $0 + CardListMetrics.noteSceneGap } ?? 0)
+        let x = left + ((inner - measured.width) / 2).rounded(.down)
+        self.text = CGRect(x: x, y: top, width: measured.width, height: measured.height)
+        size = CGSize(width: max(0, width), height: top + measured.height + padding)
     }
 }

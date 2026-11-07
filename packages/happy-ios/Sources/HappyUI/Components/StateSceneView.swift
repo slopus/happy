@@ -37,6 +37,9 @@ public enum StateScene: String, CaseIterable, Sendable {
     /// Voice: what voice does and what it costs, voice's welcome and paywall
     /// sheets (a 🎙️ sticker; `PROVENANCE.md`).
     case podcastMic = "podcast-mic"
+    /// Nothing made yet where what agents make is kept: the Artifacts list
+    /// with none (a 🎟️ sticker; `PROVENANCE.md`).
+    case tickets
 }
 
 /// One state picture in a fixed square, drawn the way desktop draws it

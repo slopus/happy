@@ -25,6 +25,8 @@ final class StateSceneTests: XCTestCase {
         .boba: "ce7d0449e69bb1e3eba1d06b158a945da94ccc07953cd9e5c477650341b48ae9",
         // The 🎙️ sticker supplied for voice's sheets (PROVENANCE.md).
         .podcastMic: "f90db7a207596916bc5c0b22db6e3ca40f2e24008b015bc654ee1aa5ff724284",
+        // The 🎟️ sticker supplied for the empty Artifacts list (PROVENANCE.md).
+        .tickets: "8715ac66cadbd7cba548b81f7366e190592a7c515811c0df69d65ac8e9db51d4",
     ]
 
     private func url(_ scene: StateScene) throws -> URL {

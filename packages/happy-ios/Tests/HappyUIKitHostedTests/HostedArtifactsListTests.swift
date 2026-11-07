@@ -315,10 +315,31 @@ final class HostedArtifactsListTests: XCTestCase {
         XCTAssertEqual(rows(again), rows(opened.screen))
     }
 
+    /// The tickets stand over the words and play once; a read that finds
+    /// nothing new keeps the same picture, resting.
     func testAComputerWithNoArtifactsSaysSo() async throws {
-        let opened = try await open(ArtifactCatalogDaemon(items: []), style: .dark)
-        try await wait("the empty note") { opened.screen.list.items.map(\.accessibilityLabel) == [Strings.Artifacts.empty] }
-        capture(opened.window, "artifacts-empty")
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let opened = try await open(ArtifactCatalogDaemon(items: []), style: style)
+            try await wait("the empty note") { opened.screen.list.items.map(\.accessibilityLabel) == [Strings.Artifacts.empty] }
+            let art = try XCTUnwrap(opened.screen.list.items.first?.overlays.first)
+            XCTAssertEqual(art.kind, CardOverlay.scene)
+            XCTAssertEqual(art.key, StateScene.tickets.rawValue)
+            var scene: StateSceneView?
+            try await wait("the tickets") {
+                scene = opened.screen.list.rowView("artifacts:note")?.overlay(art.key) as? StateSceneView
+                return scene?.isLoaded == true
+            }
+            XCTAssertEqual(scene?.scene, .tickets)
+            XCTAssertEqual(scene?.frame, art.frame)
+            try await wait("its one play") { (scene?.progress ?? 0) > 0.999 && scene?.isAnimating == false }
+            capture(opened.window, "artifacts-empty")
+
+            await opened.session.engine.artifacts.refresh()
+            try await Task.sleep(for: .milliseconds(300))
+            XCTAssertTrue(opened.screen.list.rowView("artifacts:note")?.overlay(art.key) === scene, "the same picture")
+            XCTAssertEqual(scene?.isAnimating, false, "it did not play again")
+            opened.window.isHidden = true
+        }
     }
 }
 #endif

@@ -39,4 +39,10 @@ public enum CardListMetrics {
     public static let subtitleSize: CGFloat = 13
     /// A note in place of the rows.
     public static let noteSize: CGFloat = 15
+    /// A state scene over a note in place of the rows: the square desktop
+    /// gives an empty state's scene in a panel (happy-desktop
+    /// `EmptyState.tsx` `sceneSize.panel`, as `MainPanelPlaceholderLayout`),
+    /// and its gap down to the words.
+    public static let noteScene: CGFloat = 128
+    public static let noteSceneGap: CGFloat = 16
 }

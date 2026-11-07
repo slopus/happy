@@ -63,15 +63,16 @@ enum ArtifactListItems {
         // Tombstones are the Feed's, which still names them.
         let live = state.items.filter { !$0.deleted }
         let shown = ArtifactCatalog.matching(input.query, in: live) { Strings.Artifacts.kind($0) }
-        func note(_ text: String) -> [CardItem] {
-            [CardItems.note("artifacts:note", text, width: input.width, maxWidth: input.maxWidth, scale: input.scale, dark: input.dark, displayScale: input.displayScale)]
+        func note(_ text: String, scene: StateScene? = nil) -> [CardItem] {
+            [CardItems.note("artifacts:note", text, scene: scene, width: input.width, maxWidth: input.maxWidth, scale: input.scale, dark: input.dark, displayScale: input.displayScale)]
         }
         if shown.isEmpty {
             if state.unsupported { return note(Strings.Artifacts.unsupported) }
             if !live.isEmpty { return note(Strings.Artifacts.noMatches) }
             if state.error != nil { return note(Strings.Artifacts.unavailable) }
             if !state.loaded { return note(Strings.Artifacts.loading) }
-            return note(Strings.Artifacts.empty)
+            // Nothing made yet: the tickets, waiting for something to admit.
+            return note(Strings.Artifacts.empty, scene: .tickets)
         }
         var items: [CardItem] = []
         let groups = DateBucket.group(shown, now: input.now, calendar: input.calendar) { Date(timeIntervalSince1970: $0.updatedAt / 1000) }

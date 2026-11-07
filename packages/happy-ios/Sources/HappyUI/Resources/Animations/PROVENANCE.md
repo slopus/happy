@@ -68,3 +68,16 @@ committed as that file gunzipped, byte for byte (SHA-256
 author and licence are **not verified**: confirm them before a release
 build ships it. `packages/happy-android/app/src/main/res/raw/state_boba.json`
 is the same bytes.
+
+## `tickets.json`, the empty Artifacts list
+
+Not desktop's, and not under `LICENSE` here. Supplied by Steve on 7 November
+2026 for the Artifacts screen with nothing in it (`ArtifactListItems`, the
+`tickets` scene) as a Telegram sticker's Lottie JSON, already decompressed
+(`tickets.json`, "26_YELLOWTICKET_amp1", 512×512, 60 fps, frames 60–240), and
+committed byte for byte (SHA-256
+`8715ac66cadbd7cba548b81f7366e190592a7c515811c0df69d65ac8e9db51d4`). Its
+`"tgs":1` key stays, as the TV's, boba's and mic's do; Lottie ignores it, and
+a play from progress 0 starts at its in-point, frame 60. Its author and
+licence are **not verified**: confirm them before a release build ships it.
+Android ships the same bytes for its empty Artifacts list.

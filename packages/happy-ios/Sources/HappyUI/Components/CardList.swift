@@ -12,6 +12,10 @@ struct CardOverlay: Equatable, Sendable {
     var key: String
     var frame: CGRect
     var radius: CGFloat = 0
+
+    /// A state scene, keyed by its `StateScene`, which the list draws
+    /// itself (`CardItems.note`'s `scene`).
+    static let scene = "scene"
 }
 
 /// One slot of a card list as worked out off the main thread: its size,
@@ -87,14 +91,19 @@ enum CardItems {
     }
 
     /// A quiet line in place of rows: an empty list, a search that found
-    /// nothing, a list's footing.
-    nonisolated static func note(_ id: String, _ text: String, size: CGFloat = CardListMetrics.noteSize, padding: CGFloat = 24, width: CGFloat, maxWidth: CGFloat, scale: CGFloat, dark: Bool, displayScale: CGFloat) -> CardItem {
+    /// nothing, a list's footing. A `scene` stands over the words, for an
+    /// empty list whose state has one.
+    nonisolated static func note(_ id: String, _ text: String, size: CGFloat = CardListMetrics.noteSize, padding: CGFloat = 24, scene: StateScene? = nil, width: CGFloat, maxWidth: CGFloat, scale: CGFloat, dark: Bool, displayScale: CGFloat) -> CardItem {
         let font = CardFont(.regular, size, scale: scale)
-        let layout = CardNoteLayout(width: width, maxWidth: maxWidth, text: CardText.measurable(text, font: font, maxLines: 0, scale: displayScale), padding: padding)
+        let layout = CardNoteLayout(width: width, maxWidth: maxWidth, text: CardText.measurable(text, font: font, maxLines: 0, scale: displayScale), padding: padding,
+                                    art: scene == nil ? nil : CardListMetrics.noteScene)
         var drawing = CardDrawing(dark: dark, displayScale: displayScale)
         let paragraph = layout.text
         drawing.text(text, font, Palette.settingsSecondary, paragraph, wraps: true)
         var item = CardItem(id: id, kind: .note, size: layout.size, drawing: drawing)
+        if let scene, let art = layout.art {
+            item.overlays = [CardOverlay(kind: CardOverlay.scene, key: scene.rawValue, frame: art)]
+        }
         item.accessibilityLabel = text
         return item
     }
@@ -222,8 +231,13 @@ final class CardListRowView: ListRowView, UIContextMenuInteractionDelegate, UIGe
     private func show(_ item: CardItem, replacing previous: CardItem) {
         shown = item
         if previous.overlays != item.overlays || previous.id != item.id {
-            for view in overlays.values { view.removeFromSuperview() }
-            overlays = [:]
+            // A scene that only moved (a width change) is kept, so it does
+            // not play again; layout puts it where it now goes.
+            let kept = previous.id == item.id ? Set(item.overlays.filter { $0.kind == CardOverlay.scene }.map(\.key)) : []
+            for (key, view) in overlays where !kept.contains(key) {
+                view.removeFromSuperview()
+                overlays[key] = nil
+            }
         }
         applyRow()
         setNeedsLayout()
@@ -243,7 +257,7 @@ final class CardListRowView: ListRowView, UIContextMenuInteractionDelegate, UIGe
             view.layer.maskedCorners = corners
         }
         for overlay in item.overlays where overlays[overlay.key] == nil {
-            guard let view = row.owner?.makeOverlay?(overlay, item.id) else { continue }
+            guard let view = overlay.kind == CardOverlay.scene ? Self.scene(overlay) : row.owner?.makeOverlay?(overlay, item.id) else { continue }
             overlays[overlay.key] = view
             content.addSubview(view)
         }
@@ -261,6 +275,13 @@ final class CardListRowView: ListRowView, UIContextMenuInteractionDelegate, UIGe
         accessibilityIdentifier = item.id
         accessibilityCustomActions = row.owner?.accessibilityActions?(row.identity)
         setPressed(false, animated: false)
+    }
+
+    /// The scene over a note's words. The words say what it shows, so
+    /// VoiceOver reads the note, not the picture.
+    private static func scene(_ overlay: CardOverlay) -> UIView? {
+        guard let scene = StateScene(rawValue: overlay.key) else { return nil }
+        return StateSceneView(scene: scene, size: overlay.frame.width, replayLabel: Strings.Tablet.replayIllustration)
     }
 
     private func applyColors() {
