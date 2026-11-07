@@ -187,7 +187,8 @@ internal fun AgentPageEntry(graph: AppGraph, nav: NavHostController, route: Conv
         // A worktree of a project; a bot's or task's own folder is the bot or task.
         workspace = workspace?.takeIf { projectId != null && it.string("id") != projectId }?.string("name")?.takeIf { it.isNotBlank() },
         parent = agent?.parentAgentId?.let { id -> AgentPageParent(id, feed.title(id) ?: catalog.agent(id)?.title?.takeIf { it.isNotBlank() }) },
-        workspaceId = agent?.workspaceId ?: row?.workspaceId,
+        // Happy Cloud has no folders: no Changes or Files.
+        workspaceId = (agent?.workspaceId ?: row?.workspaceId)?.takeUnless { session.client.cloud },
         lineChanges = row?.lineChanges,
         // The chat beneath picks it, once it knows its mode or the catalog's default, as its header did.
         chatMode = held?.let { warm?.mode ?: warm?.catalog?.defaults },

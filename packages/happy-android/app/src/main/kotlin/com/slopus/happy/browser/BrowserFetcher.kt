@@ -19,7 +19,7 @@ object Browser {
 
 /**
  * iOS's `BrowserFetcher`: single resources (a document's pictures) fetched as
- * the in-app browser reaches the web, through the computer's workspace,
+ * the in-app browser reaches the web, through the computer's [BrowserNetwork],
  * never the phone's network, with no fallback. `https` goes through the
  * loopback [BrowserProxy] as OkHttp's CONNECT proxy, so TLS stays end to
  * end; plain `http` is one GET over a CONNECT tunnel. Nothing is sent with a
@@ -27,10 +27,10 @@ object Browser {
  */
 class BrowserFetcher(
     private val client: AgentClient,
-    workspace: suspend () -> String,
+    network: suspend () -> BrowserNetwork,
     private val proxy: BrowserProxy = Browser.proxy,
 ) {
-    private val page = proxy.open(BrowserProxy.Scope.Workspace(client, workspace), webView = false)
+    private val page = proxy.open(BrowserProxy.Scope.Web(client, network), webView = false)
     private val lazyHttp = lazy {
         OkHttpClient.Builder()
             .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress(BrowserProxy.LOOPBACK, proxy.port)))
@@ -83,7 +83,7 @@ class BrowserFetcher(
         // The address's own authority, as a browser sends it; credentials in it were refused above.
         val hostField = uri.rawAuthority ?: throw BrowserException(BrowserException.Kind.Malformed)
         if ((target + hostField).any { it.code < 33 || it.code == 127 }) throw BrowserException(BrowserException.Kind.Malformed)
-        val stream = BrowserTunnel.open(client, page.workspace(), authority)
+        val stream = BrowserTunnel.open(client, page.network(), authority)
         val (head, body, status) = try {
             stream.write("GET $target HTTP/1.1\r\nHost: $hostField\r\nAccept: image/*,*/*;q=0.8\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n".toByteArray())
             BrowserRelay.response(stream, LIMIT)
