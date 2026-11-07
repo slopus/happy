@@ -32,9 +32,9 @@ export function validatePath(targetPath: string, workingDirectory: string): Path
 
 /**
  * 只读访问校验：相对路径仍相对 workingDirectory 解析（保持既有调用行为），
- * 但「允许访问的根」放宽到 containmentRoot（本项目传机器 HOME）。
- * 用于 readFile / listDirectory / getDirectoryTree，让手机端能浏览 HOME 下
- * 任意文件；写入与命令执行仍走 validatePath（锁在工作目录）。
+ * 允许读取 containmentRoot（本项目传机器 HOME）以及会话工作目录。
+ * 用于 readFile / listDirectory / getDirectoryTree，兼容工作目录位于
+ * 外置盘等 HOME 之外的位置；写入与命令执行仍走 validatePath。
  *
  * @param targetPath - 要验证的路径（可以是相对路径或绝对路径）
  * @param workingDirectory - 会话的工作目录（用于解析相对路径）
@@ -47,9 +47,9 @@ export function validateReadPath(
     containmentRoot: string,
 ): PathValidationResult {
     const resolvedTarget = resolve(workingDirectory, targetPath);
-    const root = resolve(containmentRoot);
+    const roots = [resolve(containmentRoot), resolve(workingDirectory)];
 
-    if (resolvedTarget !== root && !resolvedTarget.startsWith(root + sep)) {
+    if (!roots.some(root => resolvedTarget === root || resolvedTarget.startsWith(root.endsWith(sep) ? root : root + sep))) {
         return {
             valid: false,
             resolvedPath: resolvedTarget,

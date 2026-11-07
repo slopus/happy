@@ -71,4 +71,38 @@ describe('validateReadPath', () => {
     it('denies traversal that escapes home', () => {
         expect(validateReadPath(join(home, '..', 'someone-else'), cwd, home).valid).toBe(false);
     });
+
+    describe('working directory outside home', () => {
+        const externalCwd = resolve('/Volumes/External SSD/Development/demo');
+
+        it('allows the session working directory itself', () => {
+            expect(validateReadPath(externalCwd, externalCwd, home)).toEqual({
+                valid: true, resolvedPath: externalCwd,
+            });
+        });
+
+        it('allows absolute and relative files inside the session directory', () => {
+            for (const path of ['src/index.ts', join(externalCwd, 'src/index.ts')]) {
+                expect(validateReadPath(path, externalCwd, home)).toEqual({
+                    valid: true, resolvedPath: join(externalCwd, 'src/index.ts'),
+                });
+            }
+        });
+
+        it('keeps home readable for external sessions', () => {
+            expect(validateReadPath(join(home, 'notes.txt'), externalCwd, home).valid).toBe(true);
+        });
+
+        it('rejects parent traversal, prefix siblings, and unrelated volumes', () => {
+            for (const path of ['..', '../private.txt', `${externalCwd}-private/file.txt`, '/Volumes/Other/file.txt']) {
+                expect(validateReadPath(path, externalCwd, home).valid).toBe(false);
+            }
+        });
+
+        it('keeps writes restricted to the working directory', () => {
+            expect(validatePath(join(home, 'notes.txt'), externalCwd).valid).toBe(false);
+            expect(validatePath('../private.txt', externalCwd).valid).toBe(false);
+            expect(validatePath('notes.txt', externalCwd).valid).toBe(true);
+        });
+    });
 });

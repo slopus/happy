@@ -14,7 +14,7 @@ import { canGoUp, getParentPath, joinChild, resolveBack } from './folderBrowserN
 
 type Entry = { name: string; type: 'file' | 'directory' | 'other'; size?: number; modified?: number };
 
-// 逐层懒加载的目录浏览器：根 = 会话工作目录，可上爬到 HOME；点文件跳现有查看器。
+// 逐层懒加载的目录浏览器：HOME 内可上爬到 HOME，外部工作目录封顶于自身。
 // 视觉上对齐能力中心的 CapabilityHubDetailView（同款 header + rowCard 行）。
 export const SessionFolderBrowserView = React.memo(function SessionFolderBrowserView(props: {
     sessionId: string;
@@ -66,10 +66,10 @@ export const SessionFolderBrowserView = React.memo(function SessionFolderBrowser
     }, [panel, handleBack]);
 
     const goUp = React.useCallback(() => {
-        if (!canGoUp(currentPath, homeDir)) return;
+        if (!canGoUp(currentPath, homeDir, rootPath)) return;
         hapticsLight();
         setCurrentPath(getParentPath(currentPath));
-    }, [currentPath, homeDir]);
+    }, [currentPath, homeDir, rootPath]);
 
     const openEntry = React.useCallback((entry: Entry) => {
         hapticsLight();
@@ -82,7 +82,7 @@ export const SessionFolderBrowserView = React.memo(function SessionFolderBrowser
         }
     }, [currentPath, router, sessionId]);
 
-    const upEnabled = canGoUp(currentPath, homeDir);
+    const upEnabled = canGoUp(currentPath, homeDir, rootPath);
 
     return (
         <View style={styles.container}>

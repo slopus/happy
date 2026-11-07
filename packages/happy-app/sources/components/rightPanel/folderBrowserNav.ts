@@ -17,19 +17,24 @@ export function joinChild(dir: string, name: string): string {
     return `${base}/${name}`;
 }
 
-/** 是否还能向上(不越过 HOME)。到达 HOME 即不可再上。 */
-export function canGoUp(currentPath: string, homeDir: string): boolean {
-    return currentPath !== homeDir;
+/** 上一级必须仍在 HOME 或会话工作目录内；外置盘会话封顶于工作目录。 */
+export function canGoUp(currentPath: string, homeDir: string, rootPath: string): boolean {
+    const parent = getParentPath(currentPath);
+    if (parent === currentPath) return false;
+    return [homeDir, rootPath].some(root => {
+        const normalizedRoot = root.replace(/\/+$/, '') || '/';
+        return parent === normalizedRoot || parent.startsWith(normalizedRoot === '/' ? '/' : `${normalizedRoot}/`);
+    });
 }
 
 export type BackTarget = { kind: 'up'; path: string } | { kind: 'exit' };
 
 /**
  * 解析「返回」手势去向:逐层上退到浏览器根目录,到根则退出回能力中心;
- * 永不越过 HOME。
+ * 不越过 HOME 或外置盘会话工作目录的边界。
  */
 export function resolveBack(currentPath: string, rootPath: string, homeDir: string): BackTarget {
-    if (currentPath === rootPath || !canGoUp(currentPath, homeDir)) {
+    if (currentPath === rootPath || !canGoUp(currentPath, homeDir, rootPath)) {
         return { kind: 'exit' };
     }
     return { kind: 'up', path: getParentPath(currentPath) };

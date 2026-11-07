@@ -274,7 +274,7 @@ export function registerCommonHandlers(
     rpcHandlerManager.registerHandler<ReadFileRequest, ReadFileResponse>('readFile', async (data) => {
         logger.debug('Read file request:', data.path);
 
-        // Read is allowed anywhere under the machine HOME (see validateReadPath).
+        // Read is allowed under HOME or the session working directory, including external drives.
         const validation = validateReadPath(data.path, workingDirectory, homedir());
         if (!validation.valid) {
             return { success: false, error: validation.error };
@@ -360,7 +360,7 @@ export function registerCommonHandlers(
     rpcHandlerManager.registerHandler<ListDirectoryRequest, ListDirectoryResponse>('listDirectory', async (data) => {
         logger.debug('List directory request:', data.path);
 
-        // Validate path is within working directory
+        // Validate the read against HOME and the session working directory.
         const validation = validateReadPath(data.path, workingDirectory, homedir());
         if (!validation.valid) {
             return { success: false, error: validation.error };
@@ -430,7 +430,7 @@ export function registerCommonHandlers(
     rpcHandlerManager.registerHandler<GetDirectoryTreeRequest, GetDirectoryTreeResponse>('getDirectoryTree', async (data) => {
         logger.debug('Get directory tree request:', data.path, 'maxDepth:', data.maxDepth);
 
-        // Validate path is within working directory
+        // Validate the read against HOME and the session working directory.
         const validation = validateReadPath(data.path, workingDirectory, homedir());
         if (!validation.valid) {
             return { success: false, error: validation.error };
