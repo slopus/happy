@@ -221,7 +221,8 @@ final class AgentInputCardLayoutTests: XCTestCase {
         effort: CGSize? = nil,
         minHeight: CGFloat? = nil,
         zenMode: Bool = false,
-        offersExpand: Bool = false
+        offersExpand: Bool = false,
+        recording: Bool = false
     ) -> AgentInputCardLayout {
         AgentInputCardLayout(.init(
             width: 377,
@@ -237,7 +238,8 @@ final class AgentInputCardLayoutTests: XCTestCase {
             effort: effort.map(AgentInputCardLayout.Chip.init),
             separator: effort == nil ? .zero : CGSize(width: 5, height: 17),
             zenMode: zenMode,
-            offersExpand: offersExpand
+            offersExpand: offersExpand,
+            recording: recording
         ))
     }
 
@@ -252,6 +254,18 @@ final class AgentInputCardLayoutTests: XCTestCase {
         XCTAssertNil(layout.add)
         assertFrame(layout.primary, rect(325, 52, 42, 42))
         assertFrame(layout.middle, rect(10, 52, 305, 42))
+    }
+
+    /// Dictating, the words wrap 8 short of the 110 recording circle
+    /// centred on send (346): at 291 - 8, and are measured at that width.
+    func testDictatedTextWrapsClearOfTheRecordingCircle() {
+        let layout = card(recording: true)
+        assertFrame(layout.text, rect(18, 15, 265, 30))
+        assertFrame(layout.primary, rect(325, 52, 42, 42))
+        assertFrame(layout.actionRow, rect(10, 52, 357, 42))
+        let input = AgentInputCardLayout.Input(width: 377, textContentHeight: 0, hasText: false, recording: true)
+        XCTAssertEqual(AgentInputCardLayout.textWidth(input), 265)
+        assertFrame(card(recording: false).text, rect(18, 15, 341, 30))
     }
 
     /// The card is the height agentInputLayout.ts promises for each input.

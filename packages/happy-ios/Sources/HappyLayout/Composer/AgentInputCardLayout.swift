@@ -29,6 +29,8 @@ public struct AgentInputCardLayout: Equatable, Sendable {
     public enum Metrics {
         // AgentInputAttachmentStrip
         public static let attachmentSize: CGFloat = 64
+        /// Between dictated words and the recording circle over send.
+        public static let recordingTextGap: CGFloat = 8
         public static let attachmentGap: CGFloat = 8
         public static let attachmentStripPaddingH: CGFloat = 4
         public static let attachmentStripMarginH: CGFloat = 8
@@ -119,6 +121,10 @@ public struct AgentInputCardLayout: Equatable, Sendable {
         /// One row: the text between add and the options button
         /// (`compactTextCap`), the chips behind that button.
         public var compact: Bool
+        /// Dictation is writing into the text while the recording circle
+        /// (`RecordMotion.Metrics.innerDiameter`) stands centred on send:
+        /// the text wraps clear of the circle, so the newest words show.
+        public var recording: Bool
 
         /// The compact card's options button: there whenever a chip is.
         public var showsOptions: Bool {
@@ -142,7 +148,8 @@ public struct AgentInputCardLayout: Equatable, Sendable {
             separator: CGSize = .zero,
             zenMode: Bool = false,
             offersExpand: Bool = false,
-            compact: Bool = false
+            compact: Bool = false,
+            recording: Bool = false
         ) {
             self.width = width
             self.metrics = metrics
@@ -161,6 +168,7 @@ public struct AgentInputCardLayout: Equatable, Sendable {
             self.zenMode = zenMode
             self.offersExpand = offersExpand
             self.compact = compact
+            self.recording = recording
         }
     }
 
@@ -259,7 +267,7 @@ public struct AgentInputCardLayout: Equatable, Sendable {
             var textFrame = CGRect(
                 x: columns.containerX + insets.inputContainerPaddingLeft,
                 y: y + metrics.inputPaddingTop + (containerHeight - metrics.inputPaddingTop - metrics.inputPaddingBottom - text.height) / 2,
-                width: max(0, columns.containerWidth - insets.inputContainerPaddingLeft - insets.inputContainerPaddingRight),
+                width: Self.textWidth(input),
                 height: text.height
             )
             textScrolls = text.scrollEnabled
@@ -324,7 +332,7 @@ public struct AgentInputCardLayout: Equatable, Sendable {
         self.text = CGRect(
             x: contentX + insets.inputContainerPaddingLeft,
             y: y + metrics.inputPaddingTop + (innerHeight - text.height) / 2,
-            width: max(0, contentWidth - insets.inputContainerPaddingLeft - insets.inputContainerPaddingRight),
+            width: Self.textWidth(input),
             height: text.height
         )
         textScrolls = text.scrollEnabled
@@ -490,10 +498,23 @@ public struct AgentInputCardLayout: Equatable, Sendable {
         let metrics = input.metrics
         let border = max(0, input.borderWidth)
         let insets = AgentInputInsets(shellInset: metrics.shellInset, actionSize: metrics.actionSize, addIconSize: metrics.addIconSize)
-        let container = input.compact
-            ? compactColumns(width: max(0, input.width), borderWidth: border, metrics: metrics, input: input).containerWidth
-            : max(0, input.width - 2 * border - 2 * metrics.shellInset)
-        return max(0, container - insets.inputContainerPaddingLeft - insets.inputContainerPaddingRight)
+        let contentX = border + metrics.shellInset
+        let containerX: CGFloat
+        let containerWidth: CGFloat
+        let primaryX: CGFloat
+        if input.compact {
+            let columns = compactColumns(width: max(0, input.width), borderWidth: border, metrics: metrics, input: input)
+            (containerX, containerWidth, primaryX) = (columns.containerX, columns.containerWidth, columns.primary)
+        } else {
+            containerWidth = max(0, input.width - 2 * border - 2 * metrics.shellInset)
+            (containerX, primaryX) = (contentX, contentX + containerWidth - metrics.primaryActionSize)
+        }
+        let width = max(0, containerWidth - insets.inputContainerPaddingLeft - insets.inputContainerPaddingRight)
+        guard input.recording else { return width }
+        // Send is the circle's centre; the words stop a gap short of it.
+        let circleMinX = primaryX + metrics.primaryActionSize / 2 - RecordMotion.Metrics.innerDiameter / 2
+        let textX = containerX + insets.inputContainerPaddingLeft
+        return max(0, min(width, circleMinX - Metrics.recordingTextGap - textX))
     }
 
     /// The thumbnails in the attachment strip's scrolling content, and that

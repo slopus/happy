@@ -177,7 +177,7 @@ final class RecordButtonUITests: XCTestCase {
 
         // Locked again; stop: the words wait in the composer.
         chatRecord.tap()
-        _ = live(composer, for: 4)
+        let growing = live(composer, for: 4)
         capture("6-chat-locked")
         let stop = app.buttons["record-stop"]
         XCTAssertTrue(stop.waitForExistence(timeout: 3))
@@ -187,6 +187,10 @@ final class RecordButtonUITests: XCTestCase {
         print("RECORD_DRAFT \(composer.value as? String ?? "")")
         XCTAssertTrue((composer.value as? String ?? "").contains("haiku"), "stop didn't leave the words as a draft")
         let draft = composer.value as? String ?? ""
+        // The words grew into the draft, nothing doubled or run together.
+        for words in growing where !words.isEmpty {
+            XCTAssertTrue(draft.hasPrefix(words), "\"\(words)\" isn't how the draft \"\(draft)\" begins")
+        }
         composer.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: draft.count + 2))
         pause(1.5)
 

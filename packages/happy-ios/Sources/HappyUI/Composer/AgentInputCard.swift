@@ -447,6 +447,17 @@ public final class AgentInputCardView: UIView {
     func recordEnded() {
         updateRecord(animated: window != nil)
     }
+
+    /// Dictation writes into the text while the recording circle stands
+    /// over send: the text wraps clear of it (`AgentInputCardLayout`'s
+    /// `recording`).
+    var isDictating = false {
+        didSet {
+            guard isDictating != oldValue else { return }
+            reportHeightChange(animated: window != nil)
+            setNeedsLayout()
+        }
+    }
     private var installedDesktopControls: AgentInputDesktopControlsView?
     /// A phone's compact card never mounts the hidden desktop button tree.
     /// Keep it after the first wide layout so resizing preserves its controls.
@@ -1258,7 +1269,8 @@ public final class AgentInputCardView: UIView {
             separator: config.effort == nil || !measuresChips ? .zero : separator.sizeThatFits(.zero),
             zenMode: config.zenMode,
             offersExpand: config.showsExpand,
-            compact: compact
+            compact: compact,
+            recording: isDictating
         )
     }
 

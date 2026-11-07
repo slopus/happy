@@ -307,11 +307,14 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             // The words come into the composer as they are said, after
             // what was there; thrown away, it is as it was.
             record.onRecording = { [weak self] recording in
-                guard let self, recording else { return }
-                dictationOriginal = (card.text, card.selectedRange)
+                guard let self else { return }
+                if recording { dictationOriginal = (card.text, card.selectedRange) }
+                card.isDictating = recording
             }
             record.onTranscript = { [weak self] finalized, volatile in
-                self?.showDictation(finalized + volatile, volatileLength: (volatile as NSString).length)
+                // A space between them, as `DictationTranscript.text` joins them.
+                let words = finalized.isEmpty || volatile.isEmpty ? finalized + volatile : finalized + " " + volatile
+                self?.showDictation(words, volatileLength: (volatile as NSString).length)
             }
             record.onDiscard = { [weak self] in self?.discardDictation() }
             card.recordButton = record

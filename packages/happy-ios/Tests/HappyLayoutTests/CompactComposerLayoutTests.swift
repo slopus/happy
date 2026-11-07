@@ -50,6 +50,17 @@ final class CompactComposerLayoutTests: XCTestCase {
         XCTAssertEqual(AgentInputCardLayout.textWidth(full), card(compact: false).text.width)
     }
 
+    /// The compact card's text ends before options, clear of the
+    /// recording circle on send already: dictating changes nothing.
+    func testDictatingLeavesTheCompactTextAsItIs() {
+        var input = AgentInputCardLayout.Input(width: width, textContentHeight: 0, hasText: false, showsAdd: true,
+                                               model: .init(labelSize: .zero), compact: true)
+        let resting = AgentInputCardLayout(input).text
+        input.recording = true
+        XCTAssertEqual(AgentInputCardLayout(input).text, resting)
+        XCTAssertEqual(AgentInputCardLayout.textWidth(input), 684)
+    }
+
     func testNoChipsNoOptionsButton() {
         let layout = card(chips: false)
         XCTAssertNil(layout.options)
