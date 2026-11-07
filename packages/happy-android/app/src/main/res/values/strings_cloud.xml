@@ -45,4 +45,6 @@
     <string name="cloud_test_sign_in">Sign in</string>
     <string name="cloud_test_wrong">That login or password is wrong.</string>
     <string name="cloud_test_locked">Too many tries. Try again in %1$d min.</string>
+    <string name="cloud_role_admin">Admin</string>
+    <string name="cloud_role_viewer">Viewer</string>
 </resources>

@@ -145,4 +145,5 @@
         <item quantity="many">%1$d versiones</item>
         <item quantity="other">%1$d versiones</item>
     </plurals>
+    <string name="vaults_no_access">No tienes acceso a esta bóveda.</string>
 </resources>

@@ -415,6 +415,19 @@ class ConversationLayoutTest {
         rule.node(ConversationComposerTags.COMPOSER).assertDoesNotExist()
     }
 
+    @Test fun `a role that only reads gets a line saying so in the composer's place, in a new chat too`() {
+        rule.setHappyContent { ConversationScreen(ConversationState(created = true, loaded = true, rows = history, agent = agent), null, ConversationScreenActions(), roleCanSend = false) }
+        rule.node(ConversationScreenTags.READ_ONLY).assertIsDisplayed()
+        rule.onNodeWithText("You can read this conversation, but your role can't send messages.").assertIsDisplayed()
+        rule.node(ConversationComposerTags.COMPOSER).assertDoesNotExist()
+    }
+
+    @Test fun `a new chat a role can't send in has no composer`() {
+        rule.setHappyContent { ConversationScreen(ConversationState(created = false, loaded = true), null, ConversationScreenActions(), roleCanSend = false) }
+        rule.node(ConversationScreenTags.READ_ONLY).assertIsDisplayed()
+        rule.node(ConversationComposerTags.COMPOSER).assertDoesNotExist()
+    }
+
     @Test fun `a chat that could not be read says why`() {
         show(ConversationState(created = true, loaded = true, error = Problem.Said("Could not reach the agent.")))
         rule.node(ConversationScreenTags.ERROR).assertIsDisplayed()

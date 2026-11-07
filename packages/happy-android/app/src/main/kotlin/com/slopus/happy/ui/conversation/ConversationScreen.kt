@@ -247,6 +247,10 @@ fun ConversationScreen(
     onRefreshUsage: (List<String>) -> Unit = {},
     /** "+"'s sheet is up as the screen first opens. */
     opensAttach: Boolean = false,
+    /** The person's role on the team lets them write here; false puts a line saying so in the composer's place. */
+    roleCanSend: Boolean = true,
+    /** The person's role starts new work: the header's compose shows. */
+    roleCanCompose: Boolean = true,
 ) {
     RecomposeProbe.mark(ConversationScreenTags.PROBE_SCREEN)
     val colors = HappyTheme.colors
@@ -473,7 +477,7 @@ fun ConversationScreen(
                             }
                         },
                         actions = {
-                            ConversationHeaderActions(state, actions)
+                            ConversationHeaderActions(state, actions, composes = roleCanCompose)
                         },
                         // On the glass, light and dark: no colour of its own, scrolled or not.
                         colors = TopAppBarDefaults.topAppBarColors(
@@ -563,7 +567,7 @@ fun ConversationScreen(
                                 maxHeight = minOf(ConversationQuestionSpec.maxHeight, androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp / 2),
                             )
                         }
-                        if (state.created && state.canSend) {
+                        if (state.created && state.canSend && roleCanSend) {
                             // Over the transcript, in the pill's width and 8 above it (the composer's own margin under it).
                             Box(
                                 Modifier
@@ -577,9 +581,15 @@ fun ConversationScreen(
                                 com.slopus.happy.ui.autocomplete.ComposerSuggestions(autocomplete, backdrop = glass)
                             }
                         }
-                        if (state.created && !state.canSend) {
+                        if ((state.created && !state.canSend) || !roleCanSend) {
                             Text(
-                                stringResource(if (state.agent?.archivedAt != null) R.string.conversation_archived else R.string.conversation_read_only),
+                                stringResource(
+                                    when {
+                                        state.created && state.agent?.archivedAt != null -> R.string.conversation_archived
+                                        state.created && !state.canSend -> R.string.conversation_read_only
+                                        else -> R.string.conversation_role_read_only
+                                    },
+                                ),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = colors.textSecondary,
                                 textAlign = TextAlign.Center,

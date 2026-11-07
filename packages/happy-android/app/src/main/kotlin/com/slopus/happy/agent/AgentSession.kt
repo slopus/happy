@@ -149,6 +149,17 @@ class AgentSession internal constructor(
      */
     val events: SharedFlow<AgentEvent> = eventFlow.asSharedFlow()
 
+    /**
+     * What the person may do here: a Happy Cloud server's role, read on
+     * every connect and `role.*` event; any other server gates nothing.
+     */
+    val permissions: StateFlow<ServerPermissions> =
+        if (com.slopus.happy.connection.HappyCloud.isServer(connections.accounts.value.firstOrNull { it.id == connectionId }?.server)) {
+            AgentPermissionsSource({ client.decode<JsonObject>("GET", "/v0/permissions") }, events, scope).permissions
+        } else {
+            MutableStateFlow(ServerPermissions.Ungated).asStateFlow()
+        }
+
     private val gitSnapshots = MutableStateFlow<Map<String, WorkspaceLineChanges>>(emptyMap())
     private val gitRenewal = MutableStateFlow(0)
 
@@ -439,6 +450,7 @@ class AgentSession internal constructor(
                 else -> throw IntentRefusal("")
             }
         } catch (e: AgentApiException) {
+            if (Permission.refused(e.status, e.code, e.message)) throw IntentRefusal(IntentRefusal.FORBIDDEN)
             if (e.status in 400..499 && (e.status != 404 || intent.kind == SURFACE_JOIN) && e.status != 408 && e.status != 429) throw IntentRefusal(e.message.orEmpty())
             if (e.status != 404) throw e
         }

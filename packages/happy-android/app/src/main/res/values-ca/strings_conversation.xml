@@ -106,4 +106,6 @@
     <string name="conversation_failure_internal">Alguna cosa ha anat malament: %1$s</string>
     <string name="conversation_editor_expand">Amplia</string>
     <string name="conversation_editor_collapse">Redueix</string>
+    <string name="problem_forbidden">No tens permís per fer això.</string>
+    <string name="conversation_role_read_only">Pots llegir aquesta conversa, però el teu rol no pot enviar missatges.</string>
 </resources>

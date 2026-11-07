@@ -106,4 +106,6 @@
     <string name="conversation_failure_internal">出了点问题：%1$s</string>
     <string name="conversation_editor_expand">展开</string>
     <string name="conversation_editor_collapse">收起</string>
+    <string name="problem_forbidden">你没有执行此操作的权限。</string>
+    <string name="conversation_role_read_only">你可以阅读此对话，但你的角色无法发送消息。</string>
 </resources>

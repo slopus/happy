@@ -43,4 +43,6 @@
     <string name="cloud_test_sign_in">Inicia la sessió</string>
     <string name="cloud_test_wrong">L\'usuari o la contrasenya no són correctes.</string>
     <string name="cloud_test_locked">Massa intents. Torna-ho a provar d\'aquí a %1$d min.</string>
+    <string name="cloud_role_admin">Administrador</string>
+    <string name="cloud_role_viewer">Lector</string>
 </resources>

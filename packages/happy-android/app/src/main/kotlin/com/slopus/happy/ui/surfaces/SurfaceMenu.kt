@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.surfaces
 
+import com.slopus.happy.ui.conversation.refusalText
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.size
@@ -51,8 +52,10 @@ fun SurfaceMenu(
     var openingChat by remember { mutableStateOf(false) }
     var chatRefused by remember { mutableStateOf<String?>(null) }
     val resources = LocalResources.current
+    // Opening the chat made already only reads it; making it is a write.
+    val chats = surface.chatAgentId != null || session.permissions.collectAsStateWithLifecycle().value.canWrite
     val items: @Composable ColumnScope.(close: () -> Unit) -> Unit = { close ->
-        if (open != null) {
+        if (open != null && chats) {
             // Desktop b3204bde: the one chat everyone in the Surface shares, made the first time anyone opens it.
             HappyMenuItem(
                 stringResource(R.string.surface_chat),
@@ -136,6 +139,7 @@ internal fun SurfaceLeaveMenu(
     var refused by remember { mutableStateOf<String?>(null) }
     var leaving by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val refusals = LocalResources.current
     Box {
         IconButton(onClick = { expanded = true }, enabled = !leaving, modifier = Modifier.size(48.dp).testTag("surface.more")) {
             Icon(Ionicon.EllipsisVertical, 24.dp, HappyTheme.colors.text, contentDescription = stringResource(R.string.conversation_composer_more))
@@ -167,7 +171,7 @@ internal fun SurfaceLeaveMenu(
                     scope.launch {
                         try {
                             val reason = leave()
-                            if (reason == null) onBack() else refused = reason
+                            if (reason == null) onBack() else refused = refusals.refusalText(reason)
                         } finally { leaving = false }
                     }
                 },

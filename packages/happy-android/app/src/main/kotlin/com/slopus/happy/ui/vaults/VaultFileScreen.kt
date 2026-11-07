@@ -189,12 +189,13 @@ fun VaultFileScreen(session: AgentSession, surfaceId: String, itemId: String, ve
     val state by model.state.collectAsStateWithLifecycle()
     val actions = rememberVaultActions(session, surfaceId, open)
     val entry = state.location?.item
+    actions.within = state.location?.ancestors?.lastOrNull()?.let { it.name to (state.location?.ancestors?.size == 1) }
     val title = entry?.shownName ?: VaultNames.shown(name)
     val subtitle = version?.let { stringResource(R.string.vaults_version_number, it) }
     var viewing by remember { mutableStateOf(false) }
     val bar: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {
         if (entry != null) {
-            if (version != null && entry.deletedAt == null && state.location?.inTrash != true) {
+            if (version != null && entry.deletedAt == null && state.location?.inTrash != true && actions.writable) {
                 IconButton(onClick = { actions.restoreVersion(entry, version) }) {
                     Icon(Ionicon.ArrowUndoOutline, 24.dp, HappyTheme.colors.text, contentDescription = stringResource(R.string.vaults_restore_version))
                 }

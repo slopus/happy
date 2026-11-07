@@ -45,6 +45,14 @@ class ProblemTextTest {
         assertEquals(Problem.Refused(409), Conversation.describe(ConversationApiException(409, null, " ")))
         assertEquals(Problem.Said("timeout"), Conversation.describe(IOException("timeout")))
         assertEquals(Problem.Unknown, Conversation.describe(IllegalStateException()))
+        // A role's refusal reads in the phone's words, never the server's.
+        assertEquals(Problem.Forbidden, Conversation.describe(ConversationApiException(403, "forbidden", "This needs the content.write permission.")))
+        assertEquals(Problem.Forbidden, Conversation.describe(com.slopus.happy.agent.AgentApiException(403, "forbidden", "This needs the vaults.manage_access permission.")))
+        // A computer's own refusal keeps its words.
+        assertEquals(Problem.Said("Only the owner can archive this task."), Conversation.describe(ConversationApiException(403, "forbidden", "Only the owner can archive this task.")))
+        assertEquals("You don't have permission to do that.", english.problemText(Problem.Forbidden))
+        assertEquals("You don't have permission to do that.", english.refusalText(com.slopus.happy.agent.IntentRefusal.FORBIDDEN))
+        assertEquals("Busy.", english.refusalText("Busy."))
     }
 
     @Test

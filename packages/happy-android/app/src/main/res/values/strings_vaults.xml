@@ -147,4 +147,5 @@
         <item quantity="one">%1$d version</item>
         <item quantity="other">%1$d versions</item>
     </plurals>
+    <string name="vaults_no_access">You don\'t have access to this vault.</string>
 </resources>

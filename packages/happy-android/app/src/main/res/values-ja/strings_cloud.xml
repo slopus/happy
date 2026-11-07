@@ -43,4 +43,6 @@
     <string name="cloud_test_sign_in">サインイン</string>
     <string name="cloud_test_wrong">ログインまたはパスワードが正しくありません。</string>
     <string name="cloud_test_locked">試行回数が多すぎます。%1$d 分後にもう一度お試しください。</string>
+    <string name="cloud_role_admin">管理者</string>
+    <string name="cloud_role_viewer">閲覧者</string>
 </resources>

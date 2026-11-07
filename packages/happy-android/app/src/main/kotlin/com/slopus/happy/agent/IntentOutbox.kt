@@ -72,7 +72,12 @@ data class Intent(
 }
 
 /** What a delivery throws when the computer said no for good: the intent is dropped and its overlay goes. */
-class IntentRefusal(val reason: String) : Exception(reason)
+class IntentRefusal(val reason: String) : Exception(reason) {
+    companion object {
+        /** The [reason] of a team server's `403 forbidden`: the person's role doesn't allow it, said in the phone's own words. */
+        const val FORBIDDEN = "\u0000forbidden"
+    }
+}
 
 /** Where a connection keeps its intents. Each call is the whole list; it is short. */
 interface IntentStorage {

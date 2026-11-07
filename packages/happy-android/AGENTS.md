@@ -1155,6 +1155,22 @@ change its wire behaviour on Android alone.
   Leave server, `POST /v1/servers/:id/leave`, confirmed, then the server is
   removed here too; its only owner gets `last_owner`), asking for the sign-in
   when the pass is gone.
+  A cloud server's team roles gate what shows (`agent/AgentPermissions.kt`):
+  `GET /v0/permissions`'s `granted`, read on every connect and `role.*`
+  event (`AgentSession.permissions`), and nothing granted until it is read
+  or when reading fails; any other server gates nothing. Without
+  `content.write` there is no compose, voice call, todo or document
+  editing, adding or moving calendar events, or vault changes, and a chat
+  says "your role can't send messages" in the composer's place; the Chief
+  of Staff's chat and settings' asks of it need `bots.manage`. A vault
+  Surface's `access` (`none` locks it: its name, and nothing asked;
+  `read` hides every change) and `policyVault` (its `Global` and
+  `Security` folders and their `AGENTS.md` / `SECURITY.md` keep their
+  names and places, `PolicyPlaces`; no retention settings) come with the
+  snapshot, read again on `vault.settings.updated`. A `403 forbidden`
+  reads "You don't have permission to do that." (`Problem.Forbidden`,
+  `IntentRefusal.FORBIDDEN`), never the server's words. Mobile edits no
+  roles or access rules; iOS matches field for field.
   People read a cloud server's address as `@name`, like a username, until
   Happy Cloud has its own domain (`HappyCloud.handle`: the picker, create,
   join, the server sign-in screen, the account menu); the URL is used as

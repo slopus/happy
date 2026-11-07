@@ -32,11 +32,11 @@ object ConversationHeaderSpec {
  * them ([AgentPageScreen]).
  */
 @Composable
-internal fun ConversationHeaderActions(state: ConversationState, actions: ConversationScreenActions) {
+internal fun ConversationHeaderActions(state: ConversationState, actions: ConversationScreenActions, composes: Boolean = true) {
     val colors = HappyTheme.colors
     // Composing another from the empty chat has nothing to leave: compose comes with the first send.
     AnimatedVisibility(
-        visible = state.created,
+        visible = state.created && composes,
         enter = fadeIn(tween(ConversationHeaderSpec.FADE_MILLIS, easing = ConversationHeaderSpec.easing)),
         exit = ExitTransition.None,
     ) {

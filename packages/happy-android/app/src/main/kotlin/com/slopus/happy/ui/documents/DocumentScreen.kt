@@ -93,6 +93,9 @@ fun DocumentScreen(session: AgentSession, surfaceId: String, onBack: () -> Unit,
     val save by holder.save.collectAsStateWithLifecycle()
     val notice by holder.notice.collectAsStateWithLifecycle()
     val peers by holder.peers.collectAsStateWithLifecycle()
+    // A role that reads but doesn't write sees the document as it is: no cursor, no keyboard, no renaming.
+    val writes = session.permissions.collectAsStateWithLifecycle().value.canWrite
+    LaunchedEffect(writes) { holder.controller?.editable = writes }
     val name = surface?.name.orEmpty()
     var renaming by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
@@ -117,13 +120,13 @@ fun DocumentScreen(session: AgentSession, surfaceId: String, onBack: () -> Unit,
         title = name.ifEmpty { stringResource(R.string.document_untitled) },
         subtitle = subtitle,
         phase = phase,
-        toolbar = focused,
+        toolbar = focused && writes,
         active = active,
         onBack = onBack,
         actions = {
             DocumentPeers(peers)
             SurfaceMenu(session, surfaceId, onBack, open) { close ->
-                HappyMenuItem(stringResource(R.string.common_rename), onClick = { close(); renaming = true })
+                if (writes) HappyMenuItem(stringResource(R.string.common_rename), onClick = { close(); renaming = true })
                 HappyMenuItem(stringResource(R.string.document_history), onClick = { close(); onHistory() })
             }
         },
@@ -134,7 +137,7 @@ fun DocumentScreen(session: AgentSession, surfaceId: String, onBack: () -> Unit,
         val fallbackName = stringResource(R.string.document_someone)
         DocumentEditorView(
             editor = editor,
-            onController = { holder.controller = it },
+            onController = { holder.controller = it; it?.editable = writes },
             onSelection = { controller, focus ->
                 active = controller.activeTools
                 holder.presence(controller, focus, fallbackName)

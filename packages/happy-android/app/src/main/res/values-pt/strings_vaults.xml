@@ -145,4 +145,5 @@
         <item quantity="many">%1$d versões</item>
         <item quantity="other">%1$d versões</item>
     </plurals>
+    <string name="vaults_no_access">Você não tem acesso a este cofre.</string>
 </resources>

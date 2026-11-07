@@ -70,7 +70,7 @@ private fun TodoDeletedScreen(session: AgentSession, surfaceId: String, onBack: 
     val actions = rememberTodoActions(session, surfaceId, open)
     LaunchedEffect(session, surfaceId) { session.todos.showDeleted(surfaceId) }
     PlaceScaffold(surfaceTitle(session, stringResource(R.string.todo_deleted_todos)), onBack, tag = "todo.deleted.screen") {
-        TodoListContent(state, actions, deleted = true)
+        TodoListContent(state, actions, deleted = true, readOnly = !session.permissions.collectAsStateWithLifecycle().value.canWrite)
     }
 }
 

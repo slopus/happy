@@ -17,8 +17,13 @@ fun Resources.problemText(problem: Problem): String = when (problem) {
     Problem.Unavailable -> getString(R.string.conversation_unavailable)
     is Problem.CommandGone -> getString(R.string.conversation_command_gone, problem.name)
     is Problem.CommandBusy -> getString(R.string.conversation_command_busy, problem.name)
+    Problem.Forbidden -> getString(R.string.problem_forbidden)
     Problem.Unknown -> getString(R.string.conversation_problem_unknown)
 }
+
+/** An intent's refusal ([com.slopus.happy.agent.IntentRefusal.reason]) as the person reads it. */
+fun Resources.refusalText(reason: String): String =
+    if (reason == com.slopus.happy.agent.IntentRefusal.FORBIDDEN) getString(R.string.problem_forbidden) else reason
 
 /** [reason] as desktop's failure card words it, in the person's language. */
 fun Resources.failureText(reason: FailureReason): String = when (reason) {

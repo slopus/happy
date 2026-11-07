@@ -73,4 +73,16 @@ class SurfacesTest {
         assertFalse(SurfaceCatalog.of(left).let { it.joined(it["s2"]!!) })
         assertEquals(listOf("u2"), SurfaceCatalog.of(left)["s2"]!!.members.map { it.userId })
     }
+
+    @Test
+    fun aVaultSaysWhatThePersonMayDoInItAndAnOlderServerAllowsWriting() {
+        val vault = Wire.surface("v1", "Policy", "vault")
+        assertEquals(VaultAccess.Write, Surface.parse(vault)!!.access)
+        assertFalse(Surface.parse(vault)!!.policyVault)
+        val policy = Surface.parse(vault.with("access", "read").with("policyVault", true))!!
+        assertEquals(VaultAccess.Read, policy.access)
+        assertTrue(policy.policyVault)
+        assertEquals(VaultAccess.None, Surface.parse(vault.with("access", "none"))!!.access)
+        assertEquals(VaultAccess.Write, Surface.parse(vault.with("access", "write"))!!.access)
+    }
 }

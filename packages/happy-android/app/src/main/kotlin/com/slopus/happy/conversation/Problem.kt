@@ -32,6 +32,9 @@ sealed interface Problem {
     /** Slash command [name] can't run in the agent's current state (409). */
     data class CommandBusy(val name: String) : Problem
 
+    /** The person's role on the team doesn't allow it (a team server's `403 forbidden`). */
+    data object Forbidden : Problem
+
     /** Nothing says why. */
     data object Unknown : Problem
 }

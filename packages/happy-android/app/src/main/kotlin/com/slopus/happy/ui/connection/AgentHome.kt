@@ -1,5 +1,7 @@
 package com.slopus.happy.ui.connection
 
+import com.slopus.happy.ui.conversation.refusalText
+import androidx.compose.ui.platform.LocalResources
 import com.slopus.happy.BuildConfig
 import androidx.compose.ui.platform.LocalContext
 import com.slopus.happy.ui.voice.rememberMicrophonePermission
@@ -162,6 +164,10 @@ class AgentHomeActions(
     val onVoice: (() -> Unit)? = null,
     /** Opens a vault's folder ([folder]) or file that search found. */
     val onOpenVaultItem: (surfaceId: String, itemId: String, folder: Boolean, name: String) -> Unit = { _, _, _, _ -> },
+    /** The person's role starts work: compose, its picture and the voice call show; a viewer's home has none of them. */
+    val canCompose: Boolean = true,
+    /** The person's role writes to the Chief of Staff, so settings' asks of it are found by search. */
+    val canAskChief: Boolean = true,
 )
 
 /** The colours of every bar on an agent connection's screens: the page's own [container], scrolled or not. */
@@ -409,7 +415,7 @@ fun AgentHomeScreen(
                             art = if (statusMessage(status, profileRequired) == null) StateArt.Make else null,
                             title = stringResource(R.string.agent_home_empty_title),
                             body = statusMessage(status, profileRequired) ?: stringResource(R.string.agent_home_empty_body),
-                            action = signInAction(status, actions, profileRequired) ?: (stringResource(R.string.session_new_chat) to actions.onCompose),
+                            action = signInAction(status, actions, profileRequired) ?: (stringResource(R.string.session_new_chat) to actions.onCompose).takeIf { actions.canCompose },
                             modifier = Modifier.padding(top = barFoot),
                         )
                         HomePhase.List -> AgentHomeList(
@@ -459,7 +465,7 @@ fun AgentHomeScreen(
                         )
                     }
                 }
-                if (sidebar == null && feed.loaded && !searching) {
+                if (sidebar == null && feed.loaded && !searching && actions.canCompose) {
                     ComposeFab(actions.onCompose, AgentHomeTags.COMPOSE, stringResource(R.string.agent_search_new_task), onVoice = actions.onVoice)
                 }
                 // While search is open the sidebar's field holds still at its rest, Cancel beside it, whatever the list did.
@@ -517,19 +523,20 @@ fun AgentHomeScreen(
                 }
                 // The sidebar's foot stands over home and search's results alike.
                 if (sidebar != null) {
-                    SidebarFootBar(if (feed.loaded) stringResource(R.string.agent_search_new_task) else null, actions.onSettings, compose, onVoice = actions.onVoice)
+                    SidebarFootBar(if (feed.loaded && actions.canCompose) stringResource(R.string.agent_search_new_task) else null, actions.onSettings, compose, onVoice = actions.onVoice)
                 }
             }
         }
         // Over the bar too: the whole screen blurs under a held row's preview.
         if (preview != null) ChatPreviewOverlay(chatPreview, actions.onOpenConversation, preview)
     }
+    val refusals = LocalResources.current
     LeaveSurfaceDialogs(
         confirming = confirmingLeave,
         refused = leaveRefused,
         onConfirm = { surface ->
             actions.onLeaveSurface?.let { leave ->
-                scope.launch { leave(surface)?.let { reason -> leaveRefused = surface.name to reason } }
+                scope.launch { leave(surface)?.let { reason -> leaveRefused = surface.name to refusals.refusalText(reason) } }
             }
         },
         onDismissConfirm = { confirmingLeave = null },
@@ -657,14 +664,14 @@ private fun rememberSearchEntries(actions: AgentHomeActions, endSearch: () -> Un
     return remember(actions, newTask, newTaskPicture, connect, scan, openSettings, index) {
         // happy-ios HomeViewController.quickActions (7a605f6ce). Connect and Scan both open the
         // scanner here: Android's one Add scanner takes a computer's, a terminal's or an agent's code.
-        listOf(
+        listOfNotNull(
             // New work takes the screen, so the search gives it back first.
-            AgentSearchEntry("new-work", newTask, Ionicon.CreateOutline) { end(); actions.onCompose() },
-            AgentSearchEntry("new-work-picture", newTaskPicture, Ionicon.ImageOutline) { end(); actions.onComposeWithPicture() },
+            AgentSearchEntry("new-work", newTask, Ionicon.CreateOutline) { end(); actions.onCompose() }.takeIf { actions.canCompose },
+            AgentSearchEntry("new-work-picture", newTaskPicture, Ionicon.ImageOutline) { end(); actions.onComposeWithPicture() }.takeIf { actions.canCompose },
             AgentSearchEntry("connect-agent", connect, Ionicon.LaptopOutline, actions.onAdd),
             AgentSearchEntry("scan", scan, Ionicon.QrCodeOutline, actions.onAdd),
             AgentSearchEntry("settings", openSettings, Ionicon.SettingsOutline, actions.onSettings),
-        ) to index.map { row -> AgentSearchEntry(row.id, row.title, row.icon) { actions.onSettingsRow(row) } }
+        ) to index.filter { it.place != AgentSettingsPlace.Ask || actions.canAskChief }.map { row -> AgentSearchEntry(row.id, row.title, row.icon) { actions.onSettingsRow(row) } }
     }
 }
 
@@ -715,7 +722,7 @@ private fun statusMessage(status: AgentLinkStatus, profileRequired: Boolean = fa
  */
 @Composable
 private fun noticeMessage(status: AgentLinkStatus, profileRequired: Boolean, refusal: String?): String? =
-    statusMessage(status, profileRequired) ?: refusal?.takeIf { it.isNotBlank() }
+    statusMessage(status, profileRequired) ?: refusal?.takeIf { it.isNotBlank() }?.let { LocalResources.current.refusalText(it) }
         ?: if (status == AgentLinkStatus.Offline) stringResource(R.string.agent_home_unanswered) else null
 
 /** The notice row's motion, the rows' own ([agentHomeRows]). */
@@ -790,7 +797,10 @@ fun AgentHome(
     val microphone = rememberMicrophonePermission()
     val voice = remember(graph, id, microphone) { { graph.calls.start(id) { microphone.request().granted } } }
     if (BuildConfig.DEBUG) CallLaunchHooks(graph, voice)
-    val actions = remember(graph, session, onOpenConversation, onCompose, onComposeWithPicture, onSettings, onSettingsRow, onOpenArtifacts, onOpenSurface, onOpenArtifact, onOpenFeed, add, switchAccount, onSignIn, onOpenTodos, voice, onOpenVaultItem) {
+    val permissions by session.permissions.collectAsStateWithLifecycle()
+    val canCompose = permissions.canWrite
+    val canAskChief = permissions.allows(com.slopus.happy.agent.Permission.BOTS_MANAGE)
+    val actions = remember(graph, session, onOpenConversation, onCompose, onComposeWithPicture, onSettings, onSettingsRow, onOpenArtifacts, onOpenSurface, onOpenArtifact, onOpenFeed, add, switchAccount, onSignIn, onOpenTodos, voice, onOpenVaultItem, canCompose, canAskChief) {
         AgentHomeActions(
             onOpenConversation = onOpenConversation,
             onCompose = onCompose,
@@ -806,8 +816,10 @@ fun AgentHome(
             onOpenFeed = onOpenFeed,
             onLeaveSurface = { session.leaveSurface(it.id) },
             onSignIn = { graph.agentConnections.accounts.value.firstOrNull { it.id == id }?.server?.let(onSignIn) },
-            onVoice = voice,
+            onVoice = voice.takeIf { canCompose },
             onOpenVaultItem = onOpenVaultItem,
+            canCompose = canCompose,
+            canAskChief = canAskChief,
         )
     }
     CompositionLocalProvider(LocalAgentPictures provides session.pictures) {
