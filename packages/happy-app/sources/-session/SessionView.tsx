@@ -9,6 +9,7 @@ import { layout } from '@/components/layout';
 import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { GoalBoardTrigger } from '@/components/goalBoard/GoalBoardTrigger';
+import { GoalBoardButton } from '@/components/goalBoard/GoalBoardButton';
 import { useGoalBoard } from '@/hooks/useGoalBoard';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import type { GoalTask, GoalArtifact } from '@slopus/happy-wire';
@@ -552,6 +553,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
     const safeArea = useSafeAreaInsets();
     const isLandscape = useIsLandscape();
     const deviceType = useDeviceType();
+    const showSessionHeader = !(isLandscape && deviceType === 'phone' && Platform.OS !== 'web');
     const headerHeight = useHeaderHeight();
     const isTablet = useIsTablet();
     const { width: windowWidth } = useWindowDimensions();
@@ -1129,10 +1131,18 @@ const SessionViewContent = React.memo((props: { id: string }) => {
     ) : null;
     const readingWidthControl = dreamskin && desktopMainWidth >= 920 && !showDesktopRightPanel && showChip
         ? <DesktopReadingWidthControl /> : null;
+    const goalParentAction = showChip && goalBoard.parentSessionId ? (
+        <GoalBoardButton testID="goal-board-return-parent" label={t('goalBoard.returnToParent')}
+            variant={showSessionHeader ? "toolbar" : "chip"} onPress={() => navigateToTaskSession(goalBoard.parentSessionId!)}>
+            <Ionicons name="arrow-undo-outline" size={16} color={theme.colors.textSecondary} />
+            {isTablet && !compactSessionHeader && <Text numberOfLines={1} style={{ color: theme.colors.text, fontSize: 12 }}>{t('goalBoard.returnToParent')}</Text>}
+        </GoalBoardButton>
+    ) : null;
     const defaultHeaderRightSlot = (
         <View style={workspaceStyles.headerActions}>
             {readingWidthControl}
             {dreamskinHeaderActions}
+            {goalParentAction}
             {moreButton}
             {showChip && <View ref={goalTriggerAnchor}><GoalBoardTrigger completed={goalBoard.snapshot?.tasks.filter(task => task.status === 'done').length ?? 0}
                 total={goalBoard.snapshot?.tasks.length ?? 0} open={goalBoardOpen} onPress={toggleGoalBoard} /></View>}
@@ -1143,6 +1153,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
         <View style={workspaceStyles.headerActions}>
             {readingWidthControl}
             {dreamskinHeaderActions}
+            {goalParentAction}
             {moreButton}
             {showChip && <View ref={goalTriggerAnchor}><GoalBoardTrigger completed={goalBoard.snapshot?.tasks.filter(task => task.status === 'done').length ?? 0}
                 total={goalBoard.snapshot?.tasks.length ?? 0} open={goalBoardOpen} onPress={toggleGoalBoard} /></View>}
@@ -1193,7 +1204,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
             )}
 
             {/* Header - always shown on desktop/Mac, hidden in landscape mode only on actual phones */}
-            {!(isLandscape && deviceType === 'phone' && Platform.OS !== 'web') && (
+            {showSessionHeader && (
                 <View style={{
                     position: 'absolute',
                     top: 0,
@@ -1218,13 +1229,10 @@ const SessionViewContent = React.memo((props: { id: string }) => {
             )}
 
             {/* Content based on state */}
-            <View style={{ flex: 1, paddingTop: !(isLandscape && deviceType === 'phone' && Platform.OS !== 'web') ? safeArea.top + headerHeight : 0 }}>
-                {goalBoard.parentSessionId && <View testID="goal-board-parent-banner" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: theme.colors.surfaceSelected }}>
-                    <Text style={{ flex: 1, color: theme.colors.textSecondary, fontSize: 12 }} numberOfLines={1}>{t('goalBoard.taskContext')}</Text>
-                    <Pressable testID="goal-board-return-parent" accessibilityRole="button" accessibilityLabel={t('goalBoard.returnToParent')}
-                        onPress={() => navigateToTaskSession(goalBoard.parentSessionId!)} style={({ pressed }) => ({ padding: 6, borderRadius: 6, backgroundColor: pressed ? theme.colors.surfacePressed : theme.colors.surfaceSelected })}>
-                        <Text style={{ color: theme.colors.text, fontSize: 12 }}>{t('goalBoard.returnToParent')}</Text>
-                    </Pressable>
+            <View style={{ flex: 1, paddingTop: showSessionHeader ? safeArea.top + headerHeight : 0 }}>
+                {!showSessionHeader && goalParentAction && <View testID="goal-board-parent-floating-action" pointerEvents="box-none"
+                    style={{ position: 'absolute', top: safeArea.top + 8, right: safeArea.right + 8, zIndex: 2 }}>
+                    {goalParentAction}
                 </View>}
                 {canRenderCachedSession && (sessionResolution === 'retrying' || sessionResolution === 'error') && (
                     <View testID={sessionResolution === 'error' ? 'session-load-error-cached' : 'session-retrying-cached'}

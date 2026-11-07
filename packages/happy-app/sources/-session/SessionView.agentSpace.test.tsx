@@ -37,6 +37,7 @@ const mocks = vi.hoisted(() => ({
     setDesktopReadingWidth: vi.fn(),
     previewLocalSettings: vi.fn(),
     isTablet: false,
+    isLandscape: false,
     focusContext: null as unknown as React.Context<boolean>,
     rightPanelRoute: true,
     platformOS: 'android',
@@ -54,6 +55,7 @@ const mocks = vi.hoisted(() => ({
     enterSpace: vi.fn(),
     exitSpace: vi.fn(),
     routerNavigate: vi.fn(),
+    navigateToTaskSession: vi.fn(),
     routerPush: vi.fn(),
     routerBack: vi.fn(),
     navigationDispatch: vi.fn(),
@@ -119,10 +121,10 @@ const mocks = vi.hoisted(() => ({
 // this SessionView test focused on route ownership and surface composition.
 vi.mock('@/hooks/useGoalBoard', () => ({ useGoalBoard: () => ({
     snapshot: null, catalog: [], loading: false, error: null, offline: true,
-    openingTaskId: null, activeTaskId: undefined, parentSessionId: undefined,
+    openingTaskId: null, activeTaskId: undefined, parentSessionId: (mocks.session.metadata as any).goalBoard?.parentSessionId,
     selectFeature: vi.fn(), refresh: vi.fn(), openTask: vi.fn(), getTaskSessionId: () => null,
 }) }));
-vi.mock('@/hooks/useNavigateToSession', () => ({ useNavigateToSession: () => vi.fn() }));
+vi.mock('@/hooks/useNavigateToSession', () => ({ useNavigateToSession: () => mocks.navigateToTaskSession }));
 
 vi.mock('@/components/goalBoard/GoalBoardPanel', () => ({ GoalBoardPanel: (props: any) => React.createElement('GoalBoardPanel', props) }));
 vi.mock('@/components/GoalArtifactWindow', () => ({ GoalArtifactWindow: (props: any) => React.createElement('GoalArtifactWindow', props) }));
@@ -171,6 +173,7 @@ vi.mock('react-native-unistyles', () => {
             surfacePressed: '#333333',
             text: '#ffffff',
             textSecondary: '#aaaaaa',
+            textLink: '#9cc8ef',
             button: {
                 primary: {
                     background: '#7c5cbf',
@@ -430,7 +433,7 @@ vi.mock('@/utils/platform', () => ({ isRunningOnMac: () => mocks.runningOnMac })
 vi.mock('@/utils/responsive', () => ({
     useDeviceType: () => 'phone',
     useHeaderHeight: () => 52,
-    useIsLandscape: () => false,
+    useIsLandscape: () => mocks.isLandscape,
     useIsTablet: () => mocks.isTablet,
 }));
 vi.mock('@/hooks/useSessionResultSyncing', () => ({ useSessionResultSyncing: () => false }));
@@ -503,6 +506,7 @@ describe('SessionView Agent-space boundary', () => {
         mocks.desktopSkinId = 'default';
         mocks.desktopReadingWidth = 960;
         mocks.isTablet = false;
+        mocks.isLandscape = false;
         mocks.rightPanelRoute = true;
         mocks.platformOS = 'android';
         mocks.desktopRightPanelCollapsed = false;
@@ -1428,6 +1432,68 @@ describe('SessionView Agent-space boundary', () => {
         expect(renderer.root.findAllByType('FilesSidebar')).toHaveLength(1);
 
         act(() => renderer.unmount());
+    });
+
+    it.each([
+        { platform: 'web', width: 1600, tablet: true },
+        { platform: 'web', width: 900, tablet: true },
+        { platform: 'android', width: 390, tablet: false },
+    ])('keeps the parent return action in the header without a banner on $platform/$width', async ({ platform, width, tablet }) => {
+        mocks.isDataReady = true;
+        mocks.platformOS = platform;
+        mocks.windowWidth = width;
+        mocks.isTablet = tablet;
+        (mocks.session.metadata as any).goalBoard = { featurePath: '/goal/feature', taskId: 'G01', parentSessionId: 'parent-1' };
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
+        expect(renderer.root.findAllByProps({ testID: 'goal-board-parent-banner' })).toHaveLength(0);
+        const header = renderer.root.findByType('ChatHeaderView');
+        const action = header.findAllByType('Pressable').find((node: any) => node.props.testID === 'goal-board-return-parent');
+        expect(action.props.accessibilityLabel).toBe('goalBoard.returnToParent');
+        const rest = Object.assign({}, ...action.props.style({ pressed: false }).filter(Boolean));
+        expect(rest.backgroundColor).toBe('transparent');
+        expect(rest.borderColor).toBe('transparent');
+        const pressed = Object.assign({}, ...action.props.style({ pressed: true }).filter(Boolean));
+        expect(pressed.backgroundColor).toBe('#333333');
+        act(() => action.props.onFocus());
+        const focused = Object.assign({}, ...action.props.style({ pressed: false }).filter(Boolean));
+        expect(focused.borderColor).toBe('#9cc8ef');
+        act(() => action.props.onBlur());
+        expect(action.findAllByType('Text').some((node: any) => node.props.children === 'goalBoard.returnToParent')).toBe(tablet && width >= 1180);
+        act(() => action.props.onPress());
+        expect(mocks.navigateToTaskSession).toHaveBeenCalledExactlyOnceWith('parent-1');
+        await act(async () => renderer.unmount());
+    });
+
+    it.each(['android', 'ios'])('keeps a small return action when the native phone header is hidden in landscape on %s', async (platform) => {
+        mocks.isDataReady = true;
+        mocks.platformOS = platform;
+        mocks.isLandscape = true;
+        mocks.windowWidth = 844;
+        (mocks.session.metadata as any).goalBoard = { featurePath: '/goal/feature', parentSessionId: 'parent-1' };
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
+        expect(renderer.root.findAllByType('ChatHeaderView')).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'goal-board-parent-banner' })).toHaveLength(0);
+        const action = renderer.root.findAllByType('Pressable').find((node: any) => node.props.testID === 'goal-board-return-parent');
+        expect(action).toBeTruthy();
+        const rest = Object.assign({}, ...action.props.style({ pressed: false }).filter(Boolean));
+        expect(rest.backgroundColor).toBe('#171717');
+        act(() => action.props.onPress());
+        expect(mocks.navigateToTaskSession).toHaveBeenCalledExactlyOnceWith('parent-1');
+        await act(async () => renderer.unmount());
+    });
+
+    it('does not add a parent return action to a normal or main Goal conversation', async () => {
+        mocks.isDataReady = true;
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
+        expect(renderer.root.findAllByProps({ testID: 'goal-board-return-parent' })).toHaveLength(0);
+        (mocks.session.metadata as any).goalBoard = { featurePath: '/goal/feature' };
+        await act(async () => renderer.update(<SessionView id="session-1" />));
+        expect(renderer.root.findAllByProps({ testID: 'goal-board-return-parent' })).toHaveLength(0);
+        expect(renderer.root.findByProps({ testID: 'goal-board-trigger' })).toBeTruthy();
+        await act(async () => renderer.unmount());
     });
 
     it('opens artifacts in a separate reader and keeps the task drawer mounted underneath', async () => {

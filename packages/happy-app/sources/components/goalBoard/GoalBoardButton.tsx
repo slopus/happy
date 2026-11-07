@@ -11,7 +11,7 @@ interface GoalBoardButtonProps {
     expanded?: boolean;
     disabled?: boolean;
     busy?: boolean;
-    variant?: 'plain' | 'chip' | 'row' | 'primary';
+    variant?: 'plain' | 'chip' | 'row' | 'primary' | 'toolbar';
 }
 
 /** Shared keyboard, pointer and touch surface; colors always come from the active theme. */
@@ -35,7 +35,7 @@ export const GoalBoardButton = React.memo(React.forwardRef<View, GoalBoardButton
         hitSlop={4}
         style={(state: { pressed: boolean; hovered?: boolean }) => [
             styles.base,
-            variant === 'row' ? styles.row : variant === 'chip' ? styles.chip : variant === 'primary' ? styles.primary : styles.plain,
+            variant === 'row' ? styles.row : variant === 'chip' ? styles.chip : variant === 'primary' ? styles.primary : variant === 'toolbar' ? styles.toolbar : styles.plain,
             selected ? styles.selected : undefined,
             !disabled && (state.pressed || state.hovered || hovered) ? styles.pressed : undefined,
             focused ? styles.focused : undefined,
@@ -49,6 +49,8 @@ const styles = StyleSheet.create((theme) => ({
         flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 7 },
     plain: {},
     chip: { borderRadius: 999, paddingHorizontal: 10 },
+    // Header actions sit on the active header/skin instead of adding a solid chip.
+    toolbar: { borderColor: 'transparent', backgroundColor: 'transparent', borderRadius: 10, paddingHorizontal: 10 },
     row: { alignItems: 'flex-start', justifyContent: 'flex-start', paddingHorizontal: 12, paddingVertical: 12, width: '100%' },
     primary: { borderColor: theme.colors.divider, backgroundColor: theme.colors.surfaceSelected, minHeight: 44 },
     selected: { backgroundColor: theme.colors.surfaceSelected },
