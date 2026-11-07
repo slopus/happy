@@ -21,6 +21,8 @@ final class RecordButtonUITests: XCTestCase {
             app.launchEnvironment["HAPPY_SCREEN_FILM"] = film
             app.launchEnvironment["HAPPY_SCREEN_FILM_SECONDS"] = environment["RECORD_FILM_SECONDS"] ?? "90"
         }
+        // Settings › Agents › Open task after dictating, for this run only.
+        if name.contains("StaysHome") { app.launchArguments += ["-dictationStaysHome", "true"] }
         app.launch()
     }
 
@@ -96,10 +98,11 @@ final class RecordButtonUITests: XCTestCase {
         print("RECORD_PROBE exists=\(record.exists) hittable=\(record.exists && record.isHittable)")
     }
 
-    /// The whole story, filmed: idle, a hold slid away, a hold slid up and
-    /// locked then cancelled, a hold let go whose words open new work typed
-    /// in its composer, sent; then the task's own composer: the microphone
-    /// and send changing places, and a tap that locks, its words typed in.
+    /// The whole story, filmed: idle; a tap that lands locked, cancelled;
+    /// a hold slid away; a hold let go, whose words start a task that
+    /// opens; then that task's composer: the microphone and send changing
+    /// places, a locked recording stopped into a draft, and one sent with
+    /// the big circle.
     func testFilm() {
         home()
         allowAlerts(for: 3)
@@ -107,59 +110,80 @@ final class RecordButtonUITests: XCTestCase {
         // the tap lands locked, and Cancel ends it.
         record.tap()
         allowAlerts(for: 3)
-        if app.buttons["record-cancel"].exists {
-            pause(2)
-            app.buttons["record-cancel"].tap()
+        if !app.buttons["record-cancel"].exists {
+            pause(1)
+            record.tap()
         }
+        pause(2.5)
+        capture("1-tap-locked")
+        XCTAssertTrue(app.buttons["record-cancel"].waitForExistence(timeout: 3))
+        app.buttons["record-cancel"].tap()
         pause(1.5)
-        capture("1-idle")
+        capture("2-idle")
 
         let center = record.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         // Hold, then slide left past the threshold: cancelled.
         center.press(forDuration: 2.5, thenDragTo: center.withOffset(CGVector(dx: -220, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.3)
         pause(1.5)
 
-        // Hold, slide up onto the lock: hands-free; then Cancel.
-        center.press(forDuration: 1.4, thenDragTo: center.withOffset(CGVector(dx: 0, dy: -150)), withVelocity: .slow, thenHoldForDuration: 0.2)
-        pause(2.5)
-        capture("2-locked")
-        let cancel = app.buttons["record-cancel"]
-        XCTAssertTrue(cancel.waitForExistence(timeout: 3))
-        cancel.tap()
-        pause(1.5)
-
-        // Hold while the sentence plays, let go: new work opens with it typed in.
+        // Hold while the sentence plays, let go: a new task starts with it, and opens.
         center.press(forDuration: 6.5)
         let composer = app.textViews["composer"]
         XCTAssertTrue(composer.waitForExistence(timeout: 10))
-        pause(2)
-        capture("3-home-typed")
-        print("RECORD_TYPED \(composer.value as? String ?? "")")
-        app.buttons["Send"].firstMatch.tap()
-        pause(6)
-        capture("4-task-started")
+        pause(4)
+        capture("3-task-started")
+        // Sent, not typed in: the composer is empty again.
+        XCTAssertFalse((composer.value as? String ?? "").contains("haiku"), "the words were typed in, not sent")
 
-        // The task's composer, empty again: the microphone holds send's place.
+        // The task's composer, empty: the microphone holds send's place.
         let chatRecord = app.buttons["record-button"].firstMatch
         XCTAssertTrue(chatRecord.waitForExistence(timeout: 30), "no microphone in the task's composer")
         pause(1)
-        capture("5-chat-mic")
+        capture("4-chat-mic")
         composer.tap()
         composer.typeText("Thanks")
         pause(1)
-        capture("6-chat-send")
+        capture("5-chat-send")
         for _ in 0..<6 { composer.typeText(XCUIKeyboardKey.delete.rawValue) }
         pause(1.5)
 
-        // A tap lands locked; Done types the words in.
+        // A tap lands locked; stop: the words wait in the composer.
         chatRecord.tap()
-        pause(5)
-        capture("7-chat-locked")
-        let done = app.buttons["record-send"]
-        XCTAssertTrue(done.waitForExistence(timeout: 3))
-        done.tap()
+        pause(4)
+        capture("6-chat-locked")
+        let stop = app.buttons["record-stop"]
+        XCTAssertTrue(stop.waitForExistence(timeout: 3))
+        stop.tap()
         pause(3)
-        capture("8-chat-typed")
-        print("RECORD_TYPED \(composer.value as? String ?? "")")
+        capture("7-chat-draft")
+        print("RECORD_DRAFT \(composer.value as? String ?? "")")
+        XCTAssertTrue((composer.value as? String ?? "").contains("haiku"), "stop didn't leave the words as a draft")
+        let draft = composer.value as? String ?? ""
+        composer.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: draft.count + 2))
+        pause(1.5)
+
+        // Locked again; the big circle sends.
+        XCTAssertTrue(chatRecord.waitForExistence(timeout: 10))
+        chatRecord.tap()
+        pause(4)
+        let send = app.buttons["record-send"]
+        XCTAssertTrue(send.waitForExistence(timeout: 3))
+        send.tap()
+        pause(5)
+        capture("8-chat-sent")
+    }
+
+    /// Settings › Agents › Open task after dictating off: let go, and the
+    /// task starts while home stays.
+    func testFilmStaysHome() {
+        home()
+        allowAlerts(for: 3)
+        pause(1.5)
+        let center = record.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        center.press(forDuration: 6.5)
+        pause(6)
+        capture("9-home-stayed")
+        XCTAssertFalse(app.textViews["composer"].exists, "the task opened")
+        XCTAssertTrue(record.exists, "home went")
     }
 }

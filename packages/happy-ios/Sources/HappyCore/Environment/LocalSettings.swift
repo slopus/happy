@@ -103,6 +103,13 @@ public final class LocalSettings: Sendable {
         set { storage.set(newValue ? "true" : nil, forKey: Keys.zenMode) }
     }
 
+    /// Settings › Agents › Open task after dictating: a task started from
+    /// home's microphone opens (the default), or starts while home stays.
+    public var dictationOpensTask: Bool {
+        get { storage.string(forKey: Keys.dictationStaysHome) != "true" }
+        set { storage.set(newValue ? nil : "true", forKey: Keys.dictationStaysHome) }
+    }
+
     /// The projects showing every worktree on the grouped home list
     /// (localSettings.ts `expandedProjects`, keyed by project id).
     public var expandedProjects: Set<String> {
@@ -148,7 +155,7 @@ public final class LocalSettings: Sendable {
     }
 
     public func clear() {
-        for key in [Keys.linkComputerChecklist, Keys.themePreference, Keys.devModeEnabled, Keys.markdownCopyV2, Keys.expandedProjects, Keys.acknowledgedCliVersions, Keys.registeredPushToken, Keys.zenMode, NewSessionDraft.storageKey] {
+        for key in [Keys.linkComputerChecklist, Keys.themePreference, Keys.devModeEnabled, Keys.markdownCopyV2, Keys.expandedProjects, Keys.acknowledgedCliVersions, Keys.registeredPushToken, Keys.zenMode, Keys.dictationStaysHome, NewSessionDraft.storageKey] {
             storage.set(nil, forKey: key)
         }
     }
@@ -174,5 +181,6 @@ public final class LocalSettings: Sendable {
         static let acknowledgedCliVersions = "acknowledgedCliVersions"
         static let registeredPushToken = "registered-push-token-v1"
         static let zenMode = "zenMode"
+        static let dictationStaysHome = "dictationStaysHome"
     }
 }

@@ -198,8 +198,9 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     private let header = ChatHeaderView()
     private var titleView: ChatTitleView { header.titleView }
 
-    init(session: Session, agentId: String, title: String, spaceId: String?, intro: Intro?, newTask: NewTask? = nil, prefill: ChatPrefill? = nil, previewing: Bool = false) {
+    init(session: Session, agentId: String, title: String, spaceId: String?, intro: Intro?, newTask: NewTask? = nil, prefill: ChatPrefill? = nil, saying: String? = nil, previewing: Bool = false) {
         self.session = session
+        self.saying = previewing ? nil : saying
         self.spaceId = spaceId
         self.intro = intro
         self.previewing = previewing
@@ -279,12 +280,13 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         card.delegate = self
         if !previewing {
             // Telegram's microphone in send's place while the composer is
-            // empty: what is said is typed into it, for send to take.
+            // empty: what is said goes as the next message, or, stopped
+            // while locked, waits typed in.
             record.bar = { [weak self] in
                 guard let self, card.window != nil else { return nil }
                 return RecordBar(frame: card.convert(card.bounds, to: nil), cornerRadius: card.metrics.shellRadius)
             }
-            record.onText = { [weak self] text in self?.dictated(text) }
+            record.onResult = { [weak self] result in self?.dictated(result) }
             card.recordButton = record
         }
         card.textView.accessibilityIdentifier = "composer"
@@ -421,6 +423,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         // Pushed with the keyboard already coming (`KeyboardPush`), the
         // composer takes it once the push is over, not inside it.
         if !keyboardPushed { takeOpeningFocus() }
+        sendSaid()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -892,6 +895,8 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     private var creating = false
     /// The task this conversation's first message makes, when it is one.
     private let newTask: NewTask?
+    /// Words said into home's microphone for new work, sent as it opens.
+    private var saying: String?
     /// The microphone in the composer (`RecordButton`).
     private let record = RecordButton(style: .composer)
     /// Waits for it to be made, then names this screen after its row.
@@ -1575,13 +1580,31 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         )
     }
 
-    /// What the microphone heard, typed into the composer after anything
-    /// already there; send then takes it like typed words.
-    private func dictated(_ text: String) {
+    /// What the microphone heard, after anything already typed: sent as
+    /// the next message, or, as a draft, left in the composer to finish.
+    private func dictated(_ result: RecordButton.Result) {
+        let words: String
+        switch result {
+        case .send(let said), .draft(let said): words = said
+        }
         let typed = card.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let combined = typed.isEmpty ? text : typed + " " + text
+        let combined = typed.isEmpty ? words : typed + " " + words
         card.setText(combined, selection: NSRange(location: (combined as NSString).length, length: 0))
         agentInputCardDidChangeText(card)
+        switch result {
+        case .send: send()
+        case .draft: card.focus()
+        }
+    }
+
+    /// New work said into home's microphone: its words go as the first
+    /// message the moment the screen comes in, which makes the task.
+    private func sendSaid() {
+        guard let saying, !previewing else { return }
+        self.saying = nil
+        card.setText(saying, selection: NSRange(location: (saying as NSString).length, length: 0))
+        agentInputCardDidChangeText(card)
+        send()
     }
 
     /// A send follows the transcript the person is actually reading.

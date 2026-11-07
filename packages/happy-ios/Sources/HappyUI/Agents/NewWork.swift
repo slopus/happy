@@ -18,10 +18,11 @@ protocol NavigationTransitionProviding: AnyObject {
 /// bot in place (`NewTask`).
 @MainActor
 enum NewWork {
-    /// `prefill` is an ask typed in for the person, unsent (`ChatPrefill`).
-    static func chat(_ session: Session, task: NewTask, library: Bool = false, prefill: ChatPrefill? = nil) -> ChatViewController {
-        let chat = ChatViewController(session: session, agentId: task.agentId, title: Strings.untitled, spaceId: nil, intro: nil, newTask: task, prefill: prefill)
-        chat.focusesOnOpen = !library
+    /// `prefill` is an ask typed in for the person, unsent (`ChatPrefill`);
+    /// `saying`, words said into home's microphone, sent as it opens.
+    static func chat(_ session: Session, task: NewTask, library: Bool = false, prefill: ChatPrefill? = nil, saying: String? = nil) -> ChatViewController {
+        let chat = ChatViewController(session: session, agentId: task.agentId, title: Strings.untitled, spaceId: nil, intro: nil, newTask: task, prefill: prefill, saying: saying)
+        chat.focusesOnOpen = !library && saying == nil
         chat.focusesAfterPick = library
         return chat
     }

@@ -42,8 +42,8 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         return item
     }()
     /// Telegram's microphone, the toolbar's last and primary button: hold
-    /// to say what a new task should do, and its composer opens with those
-    /// words typed in.
+    /// to say what a new task should do, and it starts with those words;
+    /// stopped while locked, its composer opens with them as a draft.
     private lazy var record: RecordButton = {
         let button = RecordButton(style: .toolbar)
         button.bar = { [weak self, weak button] in
@@ -61,9 +61,13 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
                 self?.navigationController?.toolbar.alpha = recording ? 0 : 1
             }
         }
-        button.onText = { [weak self] text in
-            self?.endSearch()
-            self?.v2.makeNewWork(dictated: text)
+        button.onResult = { [weak self] result in
+            guard let self else { return }
+            endSearch()
+            switch result {
+            case .send(let words): v2.startWork(saying: words)
+            case .draft(let words): v2.makeNewWork(draft: words)
+            }
         }
         return button
     }()

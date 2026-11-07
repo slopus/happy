@@ -674,6 +674,11 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             [start].withFooter(Text.startFooter(preferences.start)),
             [defaultModel, effort].withFooter(Text.modelFooter(preferences.start)),
             [permission].withFooter(Text.accessFooter),
+            // This phone's, not the computer's: where a task started from
+            // home's microphone leaves the person.
+            [Row(SettingsIndex.dictationOpensTask, accessory: .toggle, isOn: context.account.localSettings.dictationOpensTask, toggled: { [weak self] on in
+                self?.context.account.localSettings.dictationOpensTask = on
+            })].withFooter(Strings.Record.opensTaskFooter),
         ]
     }
 

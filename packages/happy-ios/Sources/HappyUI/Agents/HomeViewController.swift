@@ -748,8 +748,9 @@ final class HomeViewController: UIViewController {
     /// so leaving it leaves nothing behind; compose again before then opens
     /// the same one, with what was typed in it.
     ///
-    /// Dictated on home's microphone, the words wait typed in its composer.
-    func makeNewWork(library: Bool = false, dictated: String? = nil) {
+    /// `draft`, words said into home's microphone and stopped, wait typed
+    /// in its composer; `saying`, words let go of, are sent as it comes in.
+    func makeNewWork(library: Bool = false, draft: String? = nil, saying: String? = nil) {
         guard let session, !opening, navigationController?.topViewController === parent || navigationController?.topViewController === self else { return }
         opening = true
         let store = session.store
@@ -759,9 +760,12 @@ final class HomeViewController: UIViewController {
             // Gone from the screen meanwhile: nothing is pushed over another.
             guard navigationController?.topViewController === parent || navigationController?.topViewController === self else { return }
             Haptics.play(.newWork)
-            let chat = NewWork.chat(session, task: task, library: library, prefill: dictated.map { ChatPrefill(prefix: $0) })
+            let chat = NewWork.chat(session, task: task, library: library, prefill: draft.map { ChatPrefill(prefix: $0) }, saying: saying)
             guard let navigation = navigationController else { return }
-            if library {
+            if saying != nil {
+                // Nothing to type: no keyboard, the words go as it comes in.
+                navigation.pushViewController(chat, animated: true)
+            } else if library {
                 navigation.pushViewController(chat, animated: true)
                 // Over the screen it goes to, as that screen comes in.
                 chat.presentAttach(from: navigation)
@@ -769,6 +773,32 @@ final class HomeViewController: UIViewController {
                 // The keyboard first, then the push in its frame (`KeyboardPush`).
                 KeyboardPush.push(chat, on: navigation, traits: chat.card.textView)
             }
+        }
+    }
+
+    /// Words let go of on home's microphone: a new task starts with them as
+    /// its first message. It opens unless Settings › Agents says to stay on
+    /// home (`LocalSettings.dictationOpensTask`); then it is made from here
+    /// and its row comes in, or, not made (offline, refused), it opens
+    /// with the message waiting to retry.
+    func startWork(saying words: String) {
+        guard let session else { return }
+        guard !session.localSettings.dictationOpensTask else { return makeNewWork(saying: words) }
+        Haptics.play(.send)
+        let task = NewTask(client: session.client)
+        let conversation = Conversation(client: session.client, store: session.store, agentId: task.agentId, newTask: task,
+                                        mode: session.newWorkMode, persistence: session.engine)
+        Task { @MainActor [weak self] in
+            await conversation.start()
+            let accepted = await conversation.send(text: words)
+            // Waits for the message to be handed to the computer, and saves.
+            await conversation.stop()
+            let made = await task.isMade
+            guard !made, let self,
+                  navigationController?.topViewController === parent || navigationController?.topViewController === self else { return }
+            // Not saved: the words come back typed in, to send again.
+            let chat = NewWork.chat(session, task: task, prefill: accepted ? nil : ChatPrefill(prefix: words))
+            navigationController?.pushViewController(chat, animated: true)
         }
     }
 }

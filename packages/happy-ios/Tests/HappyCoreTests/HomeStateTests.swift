@@ -309,6 +309,16 @@ final class LocalSettingsTests: XCTestCase {
         XCTAssertTrue(settings.linkComputerChecklist.isComplete)
     }
 
+    func testADictatedTaskOpensUntilTurnedOff() {
+        let storage = InMemoryKeyValueStore()
+        let settings = LocalSettings(storage: storage)
+        XCTAssertTrue(settings.dictationOpensTask)
+        settings.dictationOpensTask = false
+        XCTAssertFalse(LocalSettings(storage: storage).dictationOpensTask)
+        settings.clear()
+        XCTAssertTrue(settings.dictationOpensTask)
+    }
+
     func testReadsHappyAppsPartialRecord() {
         let storage = InMemoryKeyValueStore(["linkComputerChecklist": #"{"install":true}"#])
         XCTAssertEqual(LocalSettings(storage: storage).linkComputerChecklist, LinkChecklist(install: true, open: false))

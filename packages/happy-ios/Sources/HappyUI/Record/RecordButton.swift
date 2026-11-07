@@ -5,10 +5,10 @@ import HappyLayout
 import UIKit
 
 /// The microphone, as Telegram's voice button: press and hold to talk,
-/// let go to have what was said, slide left to throw it away, slide up (or
-/// just tap) to keep talking hands-free. What was said is written out on
-/// the phone (`Dictation`) and handed to the host as text, which puts it
-/// in its input box; nothing is sent from here.
+/// let go to send what was said, slide left to throw it away, slide up (or
+/// just tap) to keep talking hands-free, then send with the big circle or
+/// stop with the pill to have the words as a draft. What was said is
+/// written out on the phone (`Dictation`) and handed to the host as text.
 ///
 /// One control for every place it sits, home's toolbar and the chat's
 /// composer; only its resting look differs. The recording screen is
@@ -29,8 +29,17 @@ final class RecordButton: UIControl {
     var mode: RecordMode = .dictation {
         didSet { applyMode() }
     }
+    enum Result: Equatable {
+        /// Let go, the big circle, or the button again while locked: the
+        /// words go now.
+        case send(String)
+        /// Stop while locked (or the app left mid-recording): the words,
+        /// as a draft to finish before sending.
+        case draft(String)
+    }
+
     /// What was heard, when anything was.
-    var onText: ((String) -> Void)?
+    var onResult: ((Result) -> Void)?
     /// Recording began (true) or ended (false), for the host to fade what
     /// the bar covers, as Telegram's field fades under its recording panel.
     var onRecording: ((Bool) -> Void)?
@@ -119,9 +128,9 @@ final class RecordButton: UIControl {
 
     override func beginTracking(_ touch: UITouch, with event: UIEvent?) -> Bool {
         guard super.beginTracking(touch, with: event) else { return false }
-        // Locked: pressing the button again ends it, as Telegram's sends.
+        // Locked: pressing the button again sends, as Telegram's does.
         if phase == .locked {
-            finish(.done)
+            finish(.send)
             return false
         }
         guard phase == .idle, gesture.accepts(at: touch.timestamp), canRecord() else { return false }
@@ -192,7 +201,7 @@ final class RecordButton: UIControl {
         let time = touch?.timestamp ?? ProcessInfo.processInfo.systemUptime
         if let touch { sample(point, at: touch.timestamp) }
         switch gesture.end(CGPoint(x: point.x - origin.x, y: point.y - origin.y), velocity: velocity, at: time) {
-        case .send: finish(.done)
+        case .send: finish(.send)
         case .cancel: finish(.cancel)
         case .lock: lock()
         }
@@ -221,8 +230,8 @@ final class RecordButton: UIControl {
         guard let window, let scene = window.windowScene else { return }
         let overlay = self.overlay ?? RecordOverlay(scene: scene)
         self.overlay = overlay
-        overlay.onSend = { [weak self] in self?.finish(.done) }
-        overlay.onStop = { [weak self] in self?.finish(.done) }
+        overlay.onSend = { [weak self] in self?.finish(.send) }
+        overlay.onStop = { [weak self] in self?.finish(.draft) }
         overlay.onCancel = { [weak self] in self?.finish(.cancel) }
         let frame = convert(bounds, to: nil)
         let bar = bar?() ?? RecordBar(frame: RecordOverlayLayout.capsule(button: frame, leading: 16), cornerRadius: frame.height / 2)
@@ -243,7 +252,7 @@ final class RecordButton: UIControl {
         UIAccessibility.post(notification: .layoutChanged, argument: nil)
     }
 
-    private enum Ending { case done, cancel }
+    private enum Ending { case send, draft, cancel }
 
     private func finish(_ ending: Ending) {
         guard phase == .holding || phase == .locked else { return }
@@ -274,20 +283,20 @@ final class RecordButton: UIControl {
                 accessibilityValue = Strings.Record.nothingHeard
                 return
             }
-            onText?(text)
+            onResult?(ending == .send ? .send(text) : .draft(text))
         }
     }
 
-    /// Off the screen mid-recording: the words are kept.
+    /// Off the screen mid-recording: the words are kept, as a draft.
     @objc private func resigned() {
-        if phase == .holding || phase == .locked { finish(.done) }
+        if phase == .holding || phase == .locked { finish(.draft) }
     }
 
     /// Taken off the screen while recording (the host went): it stops
-    /// and its words go to the host.
+    /// and its words go to the host as a draft.
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        if window == nil, phase == .holding || phase == .locked { finish(.done) }
+        if window == nil, phase == .holding || phase == .locked { finish(.draft) }
     }
 
     private func refuse(_ title: String, _ message: String, settings: Bool) {
