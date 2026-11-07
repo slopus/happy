@@ -39,6 +39,9 @@ Local changes:
   configured audio type, disarms before focus is abandoned, and adds no focus
   owner. Happy uses its normal disconnect path to cancel startup or end the call
   (iOS `VoiceCoordinator` interruption/route/background behavior).
+- `consumer-rules.pro` keeps `TokenResponse`'s fields. Gson reads the public
+  agent's token by field name; R8 renamed it, so every minified call connected
+  with no token (`verifyReleaseKeeps` in the app checks it).
 
 The published AAR has no resources (`R.txt` is empty). The original manifest
 permissions and consumer ProGuard rules are preserved by this module. LiveKit

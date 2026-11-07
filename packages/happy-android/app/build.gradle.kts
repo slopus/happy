@@ -364,6 +364,11 @@ abstract class VerifyReleaseKeeps : DefaultTask() {
             if ("$name: $name[] values()" !in seedLines) problems += "Navigation enum $name lost values() for getEnumConstants()"
         }
 
+        // Gson reads the public agent's token by this field's name; renamed, every call connects with none.
+        if ("io.elevenlabs.network.TokenResponse: java.lang.String token" !in seedLines) {
+            problems += "ElevenLabs TokenResponse.token is not kept for Gson"
+        }
+
         val xml = manifest.get().asFile.readText()
         val kept = seedLines.filter { ':' !in it }.toSet()
         Regex("""android:name="(com\.slopus\.happy\.[\w.]+)"""").findAll(xml).map { it.groupValues[1] }.toSet()
