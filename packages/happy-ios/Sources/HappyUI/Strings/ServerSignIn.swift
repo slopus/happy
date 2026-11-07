@@ -21,6 +21,9 @@ extension Strings {
         static let signOutTitle = "Sign out of this server?"
         static let signOutDetail = "This phone forgets the server and your sign-in. You can sign in again later."
         static let needsSignIn = "Sign in again"
+        static func signedOutTitle(_ server: String) -> String { "Signed out of \(server)" }
+        static let signedOutBody = "Sign in again to see this server’s chats and files. Nothing of it is kept on this phone until you do."
+        static let signIn = "Sign In"
         static let nameTitle = "What’s your name?"
         static let nameMessage = "This is the first time you’re signing in to this server. Your name shows to your team."
         static let namePlaceholder = "Name"

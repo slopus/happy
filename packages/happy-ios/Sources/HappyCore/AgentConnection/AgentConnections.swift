@@ -74,11 +74,49 @@ public final class AgentConnections {
         // A grant from before the audience check: the server it was
         // signed in to, which never changes.
         if grant.audience == nil, let server = credential.publicUrl.flatMap({ try? AgentOrigin($0) }) { grant.audience = OAuthAudience(origin: server).server }
-        let value = ServerAuthorization(grant: grant, access: access, tokens: tokens) { [weak self] grant in
+        // Told at once, not through an observer added later: a session can
+        // end before anything else gets to look.
+        let value = ServerAuthorization(grant: grant, access: access, tokens: tokens, ended: { [weak self] in
+            Task { @MainActor in await self?.sessionEnded(id, told: true) }
+        }) { [weak self] grant in
             try await self?.saveGrant(grant, for: id)
         }
         authorizations[id] = value
         return value
+    }
+
+    /// Whether `id` is a signed-in server whose session ended: nothing of it
+    /// is kept or shown but the way to sign in again.
+    public func signedOut(_ id: String) -> Bool {
+        credentials[id]?.signIn != nil && accounts.first { $0.id == id }?.revoked == true
+    }
+
+    /// A signed-in server's session ended for good (the authorization
+    /// server refused its refresh, or the server asked to sign in again):
+    /// its tokens, its engine and everything kept of it on this phone go,
+    /// and only its name, address and who signed in stay, so signing in
+    /// again finds the same account and syncs it from scratch. Other
+    /// servers are untouched.
+    func sessionEnded(_ id: String, told: Bool = false) async {
+        // Told by its authorization: unless a sign-in came since.
+        if told { guard let current = authorizations[id], await current.state == .needsSignIn else { return } }
+        guard var value = credentials[id], value.signIn != nil, !hidden.contains(id) else { return }
+        // Shown at once; what ran on it is stopped after.
+        value.signIn?.grant.refreshToken = nil
+        credentials[id] = value
+        let engine = engines.removeValue(forKey: id)
+        if let index = accounts.firstIndex(where: { $0.id == id }) {
+            accounts[index].revoked = true
+            accounts[index].status = .revoked
+        }
+        // The folder's gate shuts first: nothing still running writes there again.
+        OfflineFile.remove(id)
+        onChange?()
+        try? await storage.updateCredentials(value, id: id)
+        if let account = accounts.first(where: { $0.id == id }) { try? await storage.update(account) }
+        await stop(id)
+        await engine?.stop()
+        OfflineFile.remove(id)
     }
 
     /// A rotated refresh token, saved over the old one.
@@ -115,6 +153,8 @@ public final class AgentConnections {
     /// A stable account lifetime, shared by Home, Settings and conversations.
     /// Construction performs no I/O; the actor opens SQLite off-main on start.
     public func syncEngine(for id: String) -> SyncEngine? {
+        // Signed out: nothing is read or kept until it signs in again.
+        if signedOut(id) { return nil }
         if let engine = engines[id] { return engine }
         guard let client = agentClient(for: id) else { return nil }
         let engine = SyncEngine(client: client, directory: OfflineFile.directory(for: id))
@@ -132,6 +172,10 @@ public final class AgentConnections {
         guard !loaded else { return }
         let saved = try await storage.load(hiding: hidden)
         accounts = saved.accounts; activeID = saved.activeID; credentials = saved.credentials; loaded = true
+        // A session an earlier build saw end kept its tokens and data.
+        for account in accounts where account.revoked && credentials[account.id]?.signIn?.grant.refreshToken != nil {
+            await sessionEnded(account.id)
+        }
         onChange?(); startConnections()
     }
 

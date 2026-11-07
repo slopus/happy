@@ -15,6 +15,14 @@ enum AgentIdentity {
         guard state.version.protocol >= 27 else { throw PairingError.updateRequired }
         guard state.ready else { throw PairingError.unavailable }
         let response = try await transport.request("/v0/config", credential: token)
+        var updated = account
+        updated.instanceId = state.instanceId.flatMap { HappyLink.isInstanceID($0) ? $0 : nil }
+        // A member with no profile yet is connected, and asked their name;
+        // the server's own name and picture are read once they have one.
+        if response.status == 403, Self.profileRequired(response) {
+            updated.status = .connected
+            return updated
+        }
         try check(response)
         struct Configuration: Decodable {
             struct Config: Decodable {
@@ -24,8 +32,6 @@ enum AgentIdentity {
             let config: Config
         }
         let config = try JSONDecoder().decode(Configuration.self, from: response.body)
-        var updated = account
-        updated.instanceId = state.instanceId.flatMap { HappyLink.isInstanceID($0) ? $0 : nil }
         if let node = config.config.node {
             guard !node.name.isEmpty, node.name.count <= 128, !node.name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { throw PairingError.invalidResponse }
             updated.name = AgentName.friendly(node.name)
@@ -46,5 +52,12 @@ enum AgentIdentity {
         }
         updated.status = .connected
         return updated
+    }
+
+    /// Happy's `403` `profile_required`: the member has no profile yet.
+    static func profileRequired(_ response: HTTP1Response) -> Bool {
+        struct Failure: Decodable { let code: String? }
+        return SignInRequired.isHappyError(contentType: response.headers["content-type"], body: response.body)
+            && (try? JSONDecoder().decode(Failure.self, from: response.body))?.code == "profile_required"
     }
 }

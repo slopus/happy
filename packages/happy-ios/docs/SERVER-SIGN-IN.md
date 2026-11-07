@@ -338,27 +338,49 @@ sign-in:
 
 ### "Sign in again"
 
-`SignInRequired.check` decides, and `SignedInTransport` applies it to every
-response, stream head, tunnel refusal and WebSocket upgrade:
+This should almost never happen. `SignInRequired.check` decides, and
+`SignedInTransport` applies it to every response, stream head, tunnel
+refusal and WebSocket upgrade:
 
-- any redirect (`3xx` other than `304 Not Modified`), any `401`, or a `403` that isn't Happy's JSON (`Content-Type:
-  application/json` plus an object whose `error` and `code` are strings);
 - a `401` with Happy's JSON first asks `GET /v0/authentication` with the
   same token (contract v2):
   - not authenticated: refresh once and repeat;
   - authenticated as a known user: transient, repeat once;
-  - authenticated with `userId: null`: the team profile gate. Signing in
-    again gets past it, because the sign-in screen asks for the name and
-    saves it with `PATCH /v0/profile`;
-- a `401` that isn't Happy's JSON came from the edge and needs signing in
-  at once, without discovery or refresh;
+  - authenticated with `userId: null`: the team profile gate. It is not a
+    sign-out: callers see `403 {"code":"profile_required"}`, the server's
+    own answer for it, and home asks the name (`Onboarding.needsName`);
+- a `403 {"code":"profile_required"}` is an ordinary refusal: the account
+  stays connected (`AgentIdentity`) and home asks the name;
+- any redirect (`3xx` other than `304 Not Modified`), a `401` or a `403`
+  that isn't Happy's JSON (`Content-Type: application/json` plus an object
+  whose `error` and `code` are strings) came from the edge. On a
+  self-hosted server it needs signing in at once. On Happy Cloud the edge
+  never signs out: the token is refreshed once and the request repeated,
+  and if the edge still answers, callers see `503 {"code":"unavailable"}`;
+- on Happy Cloud, a second Happy `401` after a refresh is also
+  `unavailable`. Only the authorization server refusing the refresh token
+  ends a Happy Cloud session;
 - the rest, or a refresh the authorization server refuses, sets
-  `ServerAuthorization.state = .needsSignIn`. From then on nothing is sent
-  to the server or the token endpoint, and callers see a plain 401: the
-  account shows "Sign in again" in Settings, and its chat says the sign-in
-  has ended. A refresh that fails only on the network keeps the grant.
+  `ServerAuthorization.state = .needsSignIn`. A refresh that fails only on
+  the network keeps the grant.
 
 A 403 with Happy's JSON is an ordinary permission error.
+
+When a session ends (`AgentConnections.sessionEnded`), nothing of that
+server is kept or shown:
+
+- its refresh token is dropped from the Keychain, its engine stopped, and
+  its folder (`OfflineFile`: the database, drafts, downloads and
+  attachments) removed; `syncEngine(for:)` gives none until it signs in
+  again. Other servers are untouched. A launch that finds a session an
+  earlier build saw end erases it the same way;
+- home (`AgentHomeViewController.followSignIn`) closes whatever was open on
+  it and shows only "Signed out of …" with a Sign In button
+  (`ServerSignedOutView`): no list, search, composer or toolbar. Signing in
+  again replaces the home, which syncs from scratch.
+
+`HostedSignedOutTests` and `AgentConnectionsTests.testAnEndedSessionErasesThatServerOnly`
+check both.
 
 ## Tunnels without CONNECT
 
