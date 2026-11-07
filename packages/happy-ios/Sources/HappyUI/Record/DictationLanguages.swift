@@ -53,6 +53,12 @@ final class DictationLanguages: NSObject {
         ).map { Locale(identifier: $0) }
     }
 
+    /// At most two locales of different languages, for one SpeechAnalyzer
+    /// to run side by side; `DictationLanguage.choose` keeps one reading.
+    static func probeLocales(supported: [Locale]) -> [Locale] {
+        DictationLanguage.probes(rankedLocales(supported: supported).map(\.identifier)).map { Locale(identifier: $0) }
+    }
+
     static func recognizer(allowUnavailableOnDevice: Bool = false) -> SFSpeechRecognizer? {
         let recognizers = SFSpeechRecognizer.supportedLocales().compactMap { SFSpeechRecognizer(locale: $0) }
             .filter { $0.supportsOnDeviceRecognition || allowUnavailableOnDevice }

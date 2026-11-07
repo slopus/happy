@@ -36,6 +36,35 @@ final class DictationLanguageTests: XCTestCase {
         XCTAssertEqual(DictationLanguage.ranked(keyboard: "zh-Hant", successful: nil, preferred: [], installed: [], supported: ["zh-Hans-CN", "zh-Hant-TW"]), ["zh-Hant-TW"])
     }
 
+    func testProbesTakeTheNextDifferentLanguage() {
+        XCTAssertEqual(DictationLanguage.probes(["en-GB", "en-US", "ru-RU", "de-DE"]), ["en-GB", "ru-RU"])
+        XCTAssertEqual(DictationLanguage.probes(["ru_RU", "en_US"]), ["ru_RU", "en_US"])
+        XCTAssertEqual(DictationLanguage.probes(["en-US", "en-GB"]), ["en-US"])
+        XCTAssertEqual(DictationLanguage.probes([]), [])
+    }
+
+    /// Readings measured on macOS 27 from `say` clips (Milena, Samantha).
+    func testChooseFollowsTheSpokenLanguage() {
+        let russian = [reading("en-US", "Previous pagoda", 0.29), reading("ru-RU", "Привет как дела сегодня хорошая погода", 0.98)]
+        XCTAssertEqual(DictationLanguage.choose(russian)?.locale, "ru-RU")
+        let english = [reading("ru-RU", "Hello how are you to where is nice today", 0.40), reading("en-US", "Hello, how are you? The weather is nice today.", 0.98)]
+        XCTAssertEqual(DictationLanguage.choose(english)?.locale, "en-US")
+    }
+
+    func testChooseKeepsThePreferredLanguageWhenClose() {
+        XCTAssertEqual(DictationLanguage.choose([reading("ru-RU", "да", 0.70), reading("en-US", "da", 0.80)])?.locale, "ru-RU")
+    }
+
+    func testChooseIgnoresEmptyReadings() {
+        XCTAssertEqual(DictationLanguage.choose([reading("ru-RU", " ", 0.99), reading("en-US", "hi", 0.30)])?.locale, "en-US")
+        XCTAssertNil(DictationLanguage.choose([reading("ru-RU", "", 0)]))
+        XCTAssertNil(DictationLanguage.choose([]))
+    }
+
+    private func reading(_ locale: String, _ text: String, _ confidence: Double) -> DictationLanguage.Reading {
+        .init(locale: locale, text: text, confidence: confidence)
+    }
+
     private func rank(keyboard: String? = nil, successful: String? = nil, preferred: [String] = ["en-US"], installed: [String] = []) -> [String] {
         DictationLanguage.ranked(keyboard: keyboard, successful: successful, preferred: preferred, installed: installed, supported: supported)
     }
