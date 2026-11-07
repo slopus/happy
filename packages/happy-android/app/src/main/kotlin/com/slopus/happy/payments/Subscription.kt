@@ -56,12 +56,17 @@ import java.util.concurrent.atomic.AtomicLong
  * time RevenueCat answers after this version is installed, a subscription
  * that names no customer (bought before purchases named theirs) is
  * restored once to this install, if it hasn't `pro` ([migrate]).
+ *
+ * The preview app grants `pro` itself ([grantsPro]): everything that asks
+ * sees a subscriber, with a subscriber's hours in each calendar month
+ * ([ProMonth.calendar]); nothing is sold or restored.
  */
 class Subscription(
     private val scope: CoroutineScope,
     private val store: SubscriptionStore?,
     private val revenueCat: RevenueCat?,
     private val preferences: SharedPreferences,
+    val grantsPro: Boolean = false,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
     /** Why the offer is what it is, when something stands in its way. */
@@ -122,7 +127,7 @@ class Subscription(
     }
 
     /** The month of 5 hours [customer] has now; null without `pro`, or when RevenueCat hasn't said within a day. */
-    fun period(): ProMonth? = cache.period(customer, now())
+    fun period(): ProMonth? = if (grantsPro) ProMonth.calendar(now()) else cache.period(customer, now())
 
     fun hasPro(): Boolean = period() != null
 
@@ -385,6 +390,9 @@ class Subscription(
 
         private val ACCOUNT_MAP = MapSerializer(String.serializer(), String.serializer())
         private val INSTALL_ID = Regex("""\${'$'}RCAnonymousID:[0-9a-f]{32}""")
+
+        /** Whether a build of [buildType] grants `pro` itself: the preview app, decided when it is built. */
+        fun grantsPro(buildType: String): Boolean = buildType == "preview"
 
         /** Whether [id] is an install's customer, as [fresh] makes them. */
         fun isInstall(id: String): Boolean = INSTALL_ID.matches(id)

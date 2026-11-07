@@ -54,6 +54,37 @@ final class SubscriptionTests: XCTestCase {
         Subscription.token(customer)!
     }
 
+    // MARK: The preview app
+
+    /// The preview app is a subscriber from its build alone: voice opens with no welcome, a subscriber's 5 hours
+    /// in each calendar month, and nothing sold.
+    func testThePreviewBuildIsASubscriber() async throws {
+        XCTAssertEqual(AppVariant.allCases.filter(\.grantsPro), [.preview])
+        let subscription = Subscription(store: nil, revenueCat: nil, defaults: defaults, grantsPro: true, now: { [unowned self] in clock })
+        subscription.refresh()
+        await subscription.idle()
+        XCTAssertTrue(subscription.hasPro)
+        XCTAssertEqual(subscription.offer, .subscribed)
+        let month = try XCTUnwrap(subscription.month())
+        XCTAssertEqual(month, ProMonth.calendar(at: clock))
+        XCTAssertLessThanOrEqual(month.start, clock)
+        XCTAssertGreaterThan(try XCTUnwrap(month.end), clock)
+        assertEqual(await subscription.buy(), .unavailable)
+        XCTAssertEqual(CallAllowance(store: MemoryCallUsage(), period: { subscription.month() }).remaining(at: clock), CallAllowance.paidSeconds)
+        XCTAssertFalse(CallIntro(defaults: UserDefaults(suiteName: "preview-\(UUID())")!).welcomes(subscription.offer))
+    }
+
+    /// A store build is unchanged: without RevenueCat's `pro` it sells, welcomes and counts the free 20 minutes.
+    func testAStoreBuildIsNotASubscriberUntilItBuys() async {
+        let subscription = await ready()
+        XCTAssertFalse(subscription.grantsPro)
+        XCTAssertFalse(subscription.hasPro)
+        XCTAssertNil(subscription.month())
+        XCTAssertEqual(subscription.offer, .onSale(price: "$19.99"))
+        XCTAssertEqual(CallAllowance(store: MemoryCallUsage(), period: { subscription.month() }).remaining(at: clock), CallAllowance.freeSeconds)
+        XCTAssertTrue(CallIntro(defaults: UserDefaults(suiteName: "store-\(UUID())")!).welcomes(subscription.offer))
+    }
+
     // MARK: On sale
 
     func testWithoutAKeyNothingIsSoldAndNothingIsAsked() async {
@@ -696,4 +727,11 @@ final class FakeRevenueCat: RevenueCatAPI, @unchecked Sendable {
         if grantOnPost { grant(receipt.customer, expires: now + 30 * 86_400, at: now) }
         return answer(receipt.customer)
     }
+}
+
+/// A call usage store kept in memory.
+private final class MemoryCallUsage: CallUsageStore, @unchecked Sendable {
+    var usage = CallUsage()
+    func load() -> CallUsage { usage }
+    func save(_ usage: CallUsage) { self.usage = usage }
 }

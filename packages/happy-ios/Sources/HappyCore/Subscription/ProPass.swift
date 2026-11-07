@@ -12,6 +12,12 @@ public struct ProMonth: Codable, Equatable, Sendable {
         self.start = start
         self.end = end
     }
+
+    /// The calendar month, in UTC, that `now` is in: a granted subscription's month (`Subscription.grantsPro`).
+    public static func calendar(at now: Double) -> ProMonth {
+        let month = ProPass.calendar.dateInterval(of: .month, for: Date(timeIntervalSince1970: now))
+        return ProMonth(start: month?.start.timeIntervalSince1970 ?? now, end: month?.end.timeIntervalSince1970)
+    }
 }
 
 /// RevenueCat's word on a customer's `pro` entitlement, from a subscriber
@@ -77,7 +83,7 @@ public struct ProPass: Codable, Equatable, Sendable {
         Self.calendar.date(byAdding: .month, value: n, to: Date(timeIntervalSince1970: purchase))?.timeIntervalSince1970
     }
 
-    private static let calendar: Calendar = {
+    static let calendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
         return calendar

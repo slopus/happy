@@ -49,11 +49,15 @@ public final class Offers {
     }
 
     /// The build's: StoreKit and RevenueCat with its key, nothing without
-    /// one. Debug runs can ask for a fixture (`HAPPY_SUBSCRIPTION_FIXTURE`).
+    /// one; the preview app's grants it, with no store. Debug runs can ask
+    /// for a fixture (`HAPPY_SUBSCRIPTION_FIXTURE`).
     private static func build() -> Subscription {
         #if DEBUG
         if let fixture = SubscriptionFixture(ProcessInfo.processInfo.environment["HAPPY_SUBSCRIPTION_FIXTURE"]) { return fixture.subscription }
         #endif
+        if AppVariant.current().grantsPro {
+            return Subscription(store: nil, revenueCat: nil, defaults: UserDefaultsStore(suiteName: "happy.subscription"), grantsPro: true)
+        }
         let key = RevenueCatClient.key(Bundle.main.object(forInfoDictionaryKey: "HappyRevenueCatAppleKey"))
         return Subscription(
             store: key.map { _ in StoreKitSubscriptionStore() },

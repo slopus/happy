@@ -98,10 +98,16 @@ public final class Subscription {
     private var listening: Task<Void, Never>?
     private var observers: [UUID: @MainActor () -> Void] = [:]
     public private(set) var problem: Problem?
+    /// The build grants `pro` itself (`AppVariant.grantsPro`): everything
+    /// that asks sees a subscriber, with a subscriber's hours in each
+    /// calendar month (`ProMonth.calendar`). Nothing is sold or restored.
+    public let grantsPro: Bool
 
-    public init(store: (any SubscriptionStore)?, revenueCat: (any RevenueCatAPI)?, defaults: any KeyValueStore, now: @escaping () -> Double = { Date().timeIntervalSince1970 }) {
+    public init(store: (any SubscriptionStore)?, revenueCat: (any RevenueCatAPI)?, defaults: any KeyValueStore, grantsPro: Bool = false,
+                now: @escaping () -> Double = { Date().timeIntervalSince1970 }) {
         self.store = store
         self.revenueCat = revenueCat
+        self.grantsPro = grantsPro
         self.defaults = defaults
         self.now = now
         cache = ProPassCache(store: defaults)
@@ -121,14 +127,15 @@ public final class Subscription {
 
     /// Whether the customer has `pro` now, as RevenueCat last said within a
     /// day: any product that grants it, whatever is on sale.
-    public var hasPro: Bool { cache.active(customer: customer, now: now()) }
+    public var hasPro: Bool { grantsPro || cache.active(customer: customer, now: now()) }
 
     /// The month of 5 hours the customer has now; nil without `pro`, or
     /// when RevenueCat hasn't said within a day. The meter's window.
-    public func month() -> ProMonth? { cache.month(customer: customer, now: now()) }
+    public func month() -> ProMonth? { grantsPro ? .calendar(at: now()) : cache.month(customer: customer, now: now()) }
 
     /// What the sheets offer.
     public var offer: CallOffer {
+        if grantsPro { return .subscribed }
         guard store != nil, revenueCat != nil else { return .unavailable }
         if hasPro { return .subscribed }
         if unconfirmed { return .unavailable }

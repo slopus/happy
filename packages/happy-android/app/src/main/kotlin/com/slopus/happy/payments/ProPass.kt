@@ -17,7 +17,15 @@ import java.time.ZoneOffset
  * (they begin only if it succeeds).
  */
 @Serializable
-data class ProMonth(val start: Long, val end: Long?)
+data class ProMonth(val start: Long, val end: Long?) {
+    companion object {
+        /** The calendar month, in UTC, that [now] is in: a granted subscription's month ([Subscription.grantsPro]). */
+        fun calendar(now: Long): ProMonth {
+            val start = Instant.ofEpochMilli(now).atOffset(ZoneOffset.UTC).withDayOfMonth(1).toLocalDate().atStartOfDay().atOffset(ZoneOffset.UTC)
+            return ProMonth(start.toInstant().toEpochMilli(), start.plusMonths(1).toInstant().toEpochMilli())
+        }
+    }
+}
 
 /**
  * RevenueCat's word on a customer's `pro` entitlement, from a subscriber

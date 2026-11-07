@@ -2,6 +2,8 @@ package com.slopus.happy.payments
 
 import android.app.Activity
 import android.content.Context
+import com.slopus.happy.call.CallAllowance
+import com.slopus.happy.call.MemoryUsageStore
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.test.TestScope
@@ -60,6 +62,34 @@ class SubscriptionTest {
     private fun posts() = rc.calls.filter { it.startsWith("post") }
 
     private fun sha(text: String) = MessageDigest.getInstance("SHA-256").digest(text.toByteArray()).joinToString("") { "%02x".format(it) }
+
+    /** The preview app is a subscriber from its build alone: no welcome, a subscriber's 5 hours in each calendar month, nothing sold. */
+    @Test
+    fun thePreviewBuildIsASubscriber() = runTest {
+        assertEquals(listOf("preview"), listOf("debug", "release", "preview", "bench").filter(Subscription::grantsPro))
+        val subscription = Subscription(backgroundScope, null, null, preferences, grantsPro = true, now = { now }).also { runCurrent() }
+        subscription.refresh(); runCurrent()
+        assertTrue(subscription.hasPro())
+        assertTrue(subscription.pro.value)
+        assertEquals(Offer.Subscribed, subscription.offer.value)
+        assertEquals(ProMonth(Instant.parse("2026-11-01T00:00:00Z").toEpochMilli(), Instant.parse("2026-12-01T00:00:00Z").toEpochMilli()), subscription.period())
+        assertFalse(subscription.buy(activity))
+        assertEquals(CallAllowance.PAID_MILLIS, CallAllowance(MemoryUsageStore(), period = subscription::period).remaining(now))
+        assertFalse(CallIntro(preferences).welcomes(subscription.offer.value))
+    }
+
+    /** A store build is unchanged: without RevenueCat's `pro` it sells, welcomes and counts the free 20 minutes. */
+    @Test
+    fun aStoreBuildIsNotASubscriberUntilItBuys() = runTest {
+        val subscription = subscription()
+        subscription.refresh(); runCurrent()
+        assertFalse(subscription.grantsPro)
+        assertFalse(subscription.hasPro())
+        assertNull(subscription.period())
+        assertEquals(Offer.OnSale("9,99 €"), subscription.offer.value)
+        assertEquals(CallAllowance.FREE_MILLIS, CallAllowance(MemoryUsageStore(), period = subscription::period).remaining(now))
+        assertTrue(CallIntro(preferences).welcomes(subscription.offer.value))
+    }
 
     @Test
     fun withoutAKeyNothingIsOfferedAndItSaysWhy() = runTest {

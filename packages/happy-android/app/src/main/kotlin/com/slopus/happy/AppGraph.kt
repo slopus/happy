@@ -533,15 +533,18 @@ class AppGraph(
     /**
      * The app's one subscription, RevenueCat's `pro` through Play and
      * RevenueCat's REST API, this install's whatever account is signed in.
-     * Without the build's RevenueCat key it offers nothing.
+     * Without the build's RevenueCat key it offers nothing; the preview app's grants it, with no store.
      */
     val subscription: Subscription by lazy {
         val key = BuildConfig.REVENUE_CAT_GOOGLE_KEY
+        val granted = Subscription.grantsPro(BuildConfig.BUILD_TYPE)
+        val sells = key.isNotBlank() && !granted
         Subscription(
             scope,
-            store = PlayBilling(appContext).takeIf { key.isNotBlank() },
-            revenueCat = RevenueCatApi(okHttp, key).takeIf { key.isNotBlank() },
+            store = PlayBilling(appContext).takeIf { sells },
+            revenueCat = RevenueCatApi(okHttp, key).takeIf { sells },
             preferences = appContext.getSharedPreferences(Subscription.PREFS_NAME, Context.MODE_PRIVATE),
+            grantsPro = granted,
         )
     }
 
