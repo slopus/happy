@@ -1,0 +1,15 @@
+{
+  "format": "android/feature-graphic",
+  "display": "Google Play feature graphic",
+  "screenshot_rule": "single image",
+  "story": "Six-beat story: Happy, Your computer and team servers, Build together, Use all your subscriptions, Call your agents, All platforms. Fictional fixture data only.",
+  "slots": [
+    {
+      "slot": 1,
+      "file": "feature-graphic-1024x500.png",
+      "size": "1024x500",
+      "bytes": 584632
+    }
+  ],
+  "status": "prepared, not uploaded"
+}

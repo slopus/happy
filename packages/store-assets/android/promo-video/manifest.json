@@ -1,0 +1,8 @@
+{
+  "format": "android/promo-video",
+  "display": "Google Play promo video (YouTube URL field)",
+  "status": "blocked: not rendered",
+  "reason": "Play takes a YouTube link, and needs a YouTube link before Play can use it. No Android tour recording exists yet; the only tour take is the iOS one, and an iPhone recording would misrepresent the Android app.",
+  "next_step": "Record the same six-beat tour on the Android emulator (androids VM) with the v8 fixture, then compose 1920x1080 with the same cut.",
+  "slots": []
+}

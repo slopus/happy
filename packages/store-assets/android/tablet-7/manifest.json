@@ -1,0 +1,45 @@
+{
+  "format": "android/tablet-7",
+  "display": "Google Play 7-inch tablet screenshots",
+  "screenshot_rule": "Play has no gallery video slot: all six screenshots",
+  "story": "Six-beat story: Happy, Your computer and team servers, Build together, Use all your subscriptions, Call your agents, All platforms. Fictional fixture data only.",
+  "slots": [
+    {
+      "slot": 1,
+      "file": "01-happy.png",
+      "size": "1200x1920",
+      "bytes": 2034676
+    },
+    {
+      "slot": 2,
+      "file": "02-computer-and-team-servers.png",
+      "size": "1200x1920",
+      "bytes": 2079990
+    },
+    {
+      "slot": 3,
+      "file": "03-build-together.png",
+      "size": "1200x1920",
+      "bytes": 2049650
+    },
+    {
+      "slot": 4,
+      "file": "04-use-all-your-subscriptions.png",
+      "size": "1200x1920",
+      "bytes": 2042344
+    },
+    {
+      "slot": 5,
+      "file": "05-call-your-agents.png",
+      "size": "1200x1920",
+      "bytes": 2130490
+    },
+    {
+      "slot": 6,
+      "file": "06-all-platforms.png",
+      "size": "1200x1920",
+      "bytes": 1716203
+    }
+  ],
+  "status": "prepared, not uploaded"
+}

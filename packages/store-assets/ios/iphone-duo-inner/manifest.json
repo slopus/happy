@@ -1,0 +1,45 @@
+{
+  "format": "ios/iphone-duo-inner",
+  "display": "iPhone Duo, inner display (upload slot unconfirmed by Apple docs)",
+  "screenshot_rule": "no confirmed video slot: all six screenshots",
+  "story": "Six-beat story: Happy, Your computer and team servers, Build together, Use all your subscriptions, Call your agents, All platforms. Fictional fixture data only.",
+  "slots": [
+    {
+      "slot": 1,
+      "file": "01-happy.png",
+      "size": "2853x2007",
+      "bytes": 4707572
+    },
+    {
+      "slot": 2,
+      "file": "02-computer-and-team-servers.png",
+      "size": "2853x2007",
+      "bytes": 4756550
+    },
+    {
+      "slot": 3,
+      "file": "03-build-together.png",
+      "size": "2853x2007",
+      "bytes": 4703714
+    },
+    {
+      "slot": 4,
+      "file": "04-use-all-your-subscriptions.png",
+      "size": "2853x2007",
+      "bytes": 5009310
+    },
+    {
+      "slot": 5,
+      "file": "05-call-your-agents.png",
+      "size": "2853x2007",
+      "bytes": 4913081
+    },
+    {
+      "slot": 6,
+      "file": "06-all-platforms.png",
+      "size": "2853x2007",
+      "bytes": 4046336
+    }
+  ],
+  "status": "prepared, not uploaded"
+}

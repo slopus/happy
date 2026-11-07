@@ -1,0 +1,25 @@
+{
+  "format": "ios/search-results",
+  "display": "Header and Search Results tab, 3:2 search video (spec a28b6440)",
+  "screenshot_rule": "single video asset; copy inside Apple art safe area",
+  "story": "Six-beat story: Happy, Your computer and team servers, Build together, Use all your subscriptions, Call your agents, All platforms. Fictional fixture data only.",
+  "slots": [
+    {
+      "slot": 1,
+      "file": "search-video-2880x1920.mp4",
+      "size": "2880x1920",
+      "bytes": 65593303,
+      "duration_s": 29.3
+    }
+  ],
+  "video": {
+    "duration_s": 29.3,
+    "fps": 30,
+    "frames": 879,
+    "poster_timecode": "00:00:00:00",
+    "source_take": "iOS Simulator XCUITest tour, fictional fixtures",
+    "audio": "none",
+    "codec": "H.264 High@5.1, ~20 Mb/s, BT.709"
+  },
+  "status": "prepared, not uploaded"
+}

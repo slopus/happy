@@ -1,0 +1,55 @@
+{
+  "format": "ios/ipad-13",
+  "display": "APP_IPAD_PRO_3GEN_129 (13\")",
+  "screenshot_rule": "video slot: preview video + screenshots 2-6",
+  "story": "Six-beat story: Happy, Your computer and team servers, Build together, Use all your subscriptions, Call your agents, All platforms. Fictional fixture data only.",
+  "slots": [
+    {
+      "slot": 1,
+      "file": "01-preview-video.mp4",
+      "size": "1600x1200",
+      "bytes": 40858610,
+      "duration_s": 29.3
+    },
+    {
+      "slot": 2,
+      "file": "02-computer-and-team-servers.png",
+      "size": "2752x2064",
+      "bytes": 4162283
+    },
+    {
+      "slot": 3,
+      "file": "03-build-together.png",
+      "size": "2752x2064",
+      "bytes": 4235131
+    },
+    {
+      "slot": 4,
+      "file": "04-use-all-your-subscriptions.png",
+      "size": "2752x2064",
+      "bytes": 4443473
+    },
+    {
+      "slot": 5,
+      "file": "05-call-your-agents.png",
+      "size": "2752x2064",
+      "bytes": 4484979
+    },
+    {
+      "slot": 6,
+      "file": "06-all-platforms.png",
+      "size": "2752x2064",
+      "bytes": 3827253
+    }
+  ],
+  "video": {
+    "duration_s": 29.3,
+    "fps": 30,
+    "frames": 879,
+    "poster_timecode": "00:00:00:00",
+    "source_take": "iPad Simulator XCUITest tour (same cut, moved per beat), fictional fixtures",
+    "audio": "AAC stereo 48 kHz, pink-noise floor near -88 dBFS (inaudible)",
+    "codec": "H.264 High@4.0, 11 Mb/s CBR, BT.709"
+  },
+  "status": "prepared, not uploaded"
+}
