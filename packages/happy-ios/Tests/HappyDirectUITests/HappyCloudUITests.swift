@@ -211,6 +211,73 @@ final class HappyCloudUITests: XCTestCase {
         capture("16-\(role)-signed-out")
     }
 
+    /// "Edit name" on the server's picture renames the server
+    /// (`TEST_RUNNER_RENAME_SERVER`), then puts its name back; a viewer
+    /// (`TEST_RUNNER_ROLE` `viewer`) isn't offered it.
+    func testEServerIsRenamedFromItsSettings() throws {
+        guard let login = env["QA_LOGIN"], let password = env["QA_PASSWORD"], let server = env["RENAME_SERVER"] else { throw XCTSkip("no rename run") }
+        let owner = env["ROLE"] != "viewer"
+        app.launch()
+        signInWithTestAccount(login: login, password: password)
+        let card = element("cloud-server-\(server)")
+        require(card.waitForExistence(timeout: 30), "@\(server) isn't among \(login)'s servers")
+        card.tap()
+        let switcher = element("account-switcher")
+        require(switcher.waitForExistence(timeout: 90), "no home of @\(server)")
+        Thread.sleep(forTimeInterval: 4)
+        let gear = app.buttons["settings"].firstMatch
+        require(gear.waitForExistence(timeout: 5), "no settings on the home")
+        gear.tap()
+        let picture = element("settings-agent-menu")
+        let editName = app.buttons["Edit name"].firstMatch
+        let avatar = app.buttons["Change avatar"].firstMatch
+        if picture.waitForExistence(timeout: 10) {
+            picture.tap()
+            require(avatar.waitForExistence(timeout: 5), "no menu")
+            if !owner { XCTAssertFalse(editName.exists, "the viewer is offered Edit name") }
+        } else {
+            // A viewer may have no menu on the picture at all.
+            require(!owner && element("settings-avatar").exists, "no menu on the server's picture")
+        }
+        capture("20-\(owner ? "owner" : "viewer")-menu")
+        // Renamed, then given its own name back: shown as Settings shows it.
+        var shown = ""
+        for to in owner ? ["Probe Links Renamed", server] : [] {
+            if !editName.exists {
+                picture.tap()
+                require(editName.waitForExistence(timeout: 5), "no Edit name")
+            }
+            editName.tap()
+            let alert = app.alerts["Server Name"]
+            require(alert.waitForExistence(timeout: 5), "Edit name didn't ask for the server's name")
+            let field = alert.textFields.firstMatch
+            let from = field.value as? String ?? ""
+            XCTAssertTrue(app.staticTexts[from].exists, "the prompt holds \(from), not the name Settings shows")
+            if shown.isEmpty { shown = from }
+            field.tap()
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: from.count + 2) + to)
+            Thread.sleep(forTimeInterval: 1)
+            capture("21-rename-to-\(to == server ? "back" : "new")")
+            alert.buttons["Save"].tap()
+            require(waitGone(alert, 5), "Save didn't close the prompt")
+            XCTAssertFalse(app.alerts["Could not rename the server"].waitForExistence(timeout: 4), "the server refused the name")
+            let expected = to == server ? shown : to
+            require(app.staticTexts[expected].waitForExistence(timeout: 20), "Settings doesn't show \(expected)")
+            capture("22-renamed-\(to == server ? "back" : "new")")
+        }
+        if app.buttons["Change avatar"].exists { app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)).tap() }
+
+        // Out of the server, so the other role can connect to it here.
+        let rowOut = element("settings:disconnect")
+        for _ in 0..<4 where !rowOut.isHittable { app.swipeUp() }
+        require(rowOut.waitForExistence(timeout: 5), "no Sign Out on the server's settings")
+        rowOut.tap()
+        let confirm = app.alerts.buttons["Sign Out"]
+        require(confirm.waitForExistence(timeout: 5), "no confirmation")
+        confirm.tap()
+        Thread.sleep(forTimeInterval: 2)
+    }
+
     /// The settings links and buttons an agent wrote on a cloud server
     /// (`.context/links-task.py` makes the task): each opens where
     /// `SettingsLinkPlace` says, the web fallback in Safari.

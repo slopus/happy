@@ -22,7 +22,8 @@ import UIKit
 /// Support us, About, then Disconnect or Sign out. A Happy account's
 /// picture is only that. A computer's page: the agent's picture, whose menu
 /// asks it to change its picture or name (`AgentEditButton`,
-/// `ChiefOfStaffAsk`; nothing renamed here); the person's own Profile
+/// `ChiefOfStaffAsk`; nothing renamed here, but a Happy Cloud server,
+/// `ServerRename`); the person's own Profile
 /// there (`ProfileViewController`); Appearance (the theme, which
 /// each profile keeps on this phone, and Hide projects). A Happy
 /// account's, in the same places: Account and Backup & Restore where the
@@ -41,6 +42,9 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         guard let navigation = controller.navigationController, navigation.topViewController === controller else { return }
         let asks = [SettingsIndex.changeAgentName.id: ChatPrefill.agentName, SettingsIndex.changeAgentAvatar.id: ChatPrefill.agentAvatar]
         if let ask = reveal.flatMap({ asks[$0] }), let computer, let session = Session.session(for: computer, context: context) {
+            if ask == .agentName, ServerRename.renames(session) {
+                return ServerRename.ask(computer, context: context, on: controller)
+            }
             return ChiefOfStaffAsk.open(ask, session: session, from: controller)
         }
         let settings = SettingsViewController(context: context, computer: computer)
@@ -603,6 +607,11 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         Session.session(for: id, context: context)?.gate.allowsSending(toChiefOfStaff: true) ?? true
     }
 
+    /// Whether the picture's menu has "Edit name" (`ServerRename`).
+    private func nameable(_ id: String) -> Bool {
+        Session.session(for: id, context: context).map(ServerRename.offered) ?? true
+    }
+
     private func open(_ page: Page, reveal: String? = nil) {
         guard isTop, let controller = make(page) else { return }
         controller.reveal = reveal
@@ -748,7 +757,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         }
         // The agent's two asks live in its picture's menu; found here, they run.
         if let profile = shown, profile.isAgentConnection, mayAsk(profile.id) {
-            for (entry, ask) in [(SettingsIndex.changeAgentName, ChatPrefill.agentName), (SettingsIndex.changeAgentAvatar, ChatPrefill.agentAvatar)] where entry.title.localizedCaseInsensitiveContains(query) {
+            let asks = [(SettingsIndex.changeAgentName, ChatPrefill.agentName), (SettingsIndex.changeAgentAvatar, ChatPrefill.agentAvatar)].filter { $0.1 != .agentName || nameable(profile.id) }
+            for (entry, ask) in asks where entry.title.localizedCaseInsensitiveContains(query) {
                 found.append(SettingsRow(entry, accessory: .none, action: { [weak self] in
                     self?.endSearch()
                     self?.ask(ask)
@@ -795,6 +805,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         // shows; only a connection's has the pencil and the agent's menu.
         agentButton.isHidden = searching
         agentButton.editable = profile.isAgentConnection && mayAsk(profile.id)
+        agentButton.nameable = nameable(profile.id)
         agentButton.picture = images[profile.id]
         agentButton.liveSeed = liveSeeds[profile.id]
         empty.isHidden = !(searching && !(query ?? "").isEmpty && rows.isEmpty)
@@ -885,9 +896,14 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
 
     /// "Change agent name" and "Change agent avatar" change nothing here:
     /// they open Happy's conversation on the computer shown with the ask
-    /// typed in, unsent, for the person to finish (`ChiefOfStaffAsk`).
+    /// typed in, unsent, for the person to finish (`ChiefOfStaffAsk`). A
+    /// Happy Cloud server's name is the server's: renamed here
+    /// (`ServerRename`).
     private func ask(_ prefill: ChatPrefill) {
         guard isTop, let profile = shown, profile.isAgentConnection, let session = Session.session(for: profile.id, context: context) else { return }
+        if prefill == .agentName, ServerRename.renames(session) {
+            return ServerRename.ask(profile.id, context: context, on: self)
+        }
         ChiefOfStaffAsk.open(prefill, session: session, from: self)
     }
 
