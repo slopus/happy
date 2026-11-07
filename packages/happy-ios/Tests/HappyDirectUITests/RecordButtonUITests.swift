@@ -221,6 +221,71 @@ final class RecordButtonUITests: XCTestCase {
         capture("morph-5-chat-back")
     }
 
+    /// A chat's composer, filmed for slow motion: the microphone at rest;
+    /// held, slid slowly to cancel; then a character typed, deleted and
+    /// typed again, so send and the microphone morph into each other in
+    /// place; then fast typing and deleting, which must not stutter.
+    /// Nothing is sent.
+    func testComposerSwap() {
+        home()
+        allowAlerts(for: 3)
+        let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'row:' AND identifier ENDSWITH ':Bug triage'")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.tap()
+        let composer = app.textViews["composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        composer.tap()
+        // The on-screen keyboard's keys, as a thumb types: `typeText`
+        // drops the simulator's keyboard for each string it sends.
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
+        // Shift is on at the start of a message: the keys read capitals.
+        func key(_ name: String) {
+            let lower = keyboard.keys[name]
+            (lower.exists ? lower : keyboard.keys[name.uppercased()]).tap()
+        }
+        let delete = { keyboard.keys["delete"].tap() }
+        // An earlier run's draft, from its end.
+        composer.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+        for _ in 0..<(composer.value as? String ?? "").count + 2 { delete() }
+        let chatRecord = app.buttons["record-button"].firstMatch
+        XCTAssertTrue(chatRecord.waitForExistence(timeout: 10))
+        pause(2)
+        capture("swap-0-rest")
+        print("RECORD_SWAP mark hold")
+        let center = chatRecord.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        center.press(forDuration: 3, thenDragTo: center.withOffset(CGVector(dx: -240, dy: 0)), withVelocity: 120, thenHoldForDuration: 0.3)
+        pause(2)
+        capture("swap-1-empty")
+        print("RECORD_SWAP mark type")
+        key("a")
+        pause(2)
+        capture("swap-2-send")
+        print("RECORD_SWAP mark delete")
+        delete()
+        pause(2)
+        capture("swap-3-mic")
+        print("RECORD_SWAP mark again")
+        key("a")
+        pause(2)
+        capture("swap-4-send")
+        print("RECORD_SWAP mark fast")
+        delete()
+        key("h")
+        delete()
+        key("o")
+        key("k")
+        delete()
+        delete()
+        key("o")
+        key("k")
+        pause(2)
+        capture("swap-5-send")
+        XCTAssertEqual((composer.value as? String)?.lowercased(), "ok")
+        delete()
+        delete()
+    }
+
     /// Settings › Agents › Open task after dictating off: let go, and the
     /// task starts while home stays.
     func testFilmStaysHome() {

@@ -45,11 +45,15 @@ public enum StopGlyphLayout {
     }
 }
 
-/// Send turning into stop and back: the old glyph shrinks and fades as the
-/// new one grows in from the same size, while the fill changes.
+/// The primary button changing its glyph in place: send to stop, and send
+/// to the chat's microphone (`ChatTextInputPanelNode`'s swap). The old
+/// glyph shrinks and fades as the new one grows in from the same size,
+/// centred, on one short spring, while the fill changes.
 public enum AgentInputPrimaryGlyphMotion {
     /// Seconds.
-    public static let duration: Double = 0.2
+    public static let duration: Double = 0.3
+    /// `UIView` spring damping: a hint of overshoot as the glyph lands.
+    public static let damping: CGFloat = 0.8
     /// Where the glyph going away ends and the one coming in starts. Reduce
     /// Motion keeps the fade and drops the scale.
     public static let scale: CGFloat = 0.5

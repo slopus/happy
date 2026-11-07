@@ -29,7 +29,8 @@ final class RecordButton: UIControl {
     enum Style {
         /// A bar button: the toolbar draws the glass, this the glyph.
         case toolbar
-        /// The composer's round primary button, as send is drawn.
+        /// Over the composer's primary button: send's fill is that
+        /// button's, this the glyph, so the two morph in place.
         case composer
     }
 
@@ -57,7 +58,6 @@ final class RecordButton: UIControl {
     var canRecord: () -> Bool = { true }
 
     private let style: Style
-    private let fill = UIView()
     private let glyph: IconView
     private let spinner = UIActivityIndicatorView(style: .medium)
     private var gesture = RecordGesture()
@@ -77,9 +77,6 @@ final class RecordButton: UIControl {
         super.init(frame: .zero)
         isExclusiveTouch = true
         isMultipleTouchEnabled = false
-        fill.isUserInteractionEnabled = false
-        fill.isHidden = style != .composer
-        addSubview(fill)
         addSubview(glyph)
         spinner.hidesWhenStopped = true
         addSubview(spinner)
@@ -120,15 +117,12 @@ final class RecordButton: UIControl {
     }
 
     private func applyColors() {
-        fill.backgroundColor = UIColor(Palette.surfaceHighest)
         glyph.tintColor = UIColor(Palette.text)
         spinner.color = UIColor(Palette.text)
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        fill.frame = bounds
-        fill.layer.cornerRadius = bounds.height / 2
         glyph.frame = bounds
         spinner.center = CGPoint(x: bounds.midX, y: bounds.midY)
     }
@@ -255,7 +249,6 @@ final class RecordButton: UIControl {
         hosting?.recordButton(self, isRecording: true)
         UIView.animate(withDuration: RecordMotion.Metrics.appearFade) {
             self.glyph.alpha = 0
-            self.fill.alpha = 0
         }
     }
 
@@ -278,7 +271,6 @@ final class RecordButton: UIControl {
         hosting?.recordButton(self, isRecording: false)
         UIView.animate(withDuration: RecordMotion.Metrics.disappearDuration) {
             self.glyph.alpha = 1
-            self.fill.alpha = 1
         }
         if ending == .cancel {
             dictation.cancel()

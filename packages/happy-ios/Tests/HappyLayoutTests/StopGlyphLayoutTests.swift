@@ -64,7 +64,8 @@ final class StopGlyphLayoutTests: XCTestCase {
     }
 
     func testGlyphMotion() {
-        XCTAssertEqual(AgentInputPrimaryGlyphMotion.duration, 0.2)
+        XCTAssertEqual(AgentInputPrimaryGlyphMotion.duration, 0.3)
+        XCTAssertEqual(AgentInputPrimaryGlyphMotion.damping, 0.8)
         XCTAssertEqual(AgentInputPrimaryGlyphMotion.scale, 0.5)
     }
 }

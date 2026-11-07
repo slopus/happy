@@ -418,14 +418,16 @@ public final class AgentInputCardView: UIView {
     private let primaryButton = ComposerPrimaryButton()
     /// The microphone in send's place while there is nothing to send
     /// (`.record`): the owner's `RecordButton`, the one home's toolbar has
-    /// too. Send and it change places as Telegram's do.
+    /// too. It is only a glyph, over send's own fill, so send's arrow and
+    /// it morph into each other in place.
     var recordButton: RecordButton? {
         didSet {
             guard recordButton !== oldValue else { return }
             oldValue?.removeFromSuperview()
             if let recordButton {
                 primaryHost.addSubview(recordButton)
-                recordButton.frame = primaryHost.bounds
+                recordButton.bounds = primaryHost.bounds
+                recordButton.center = CGPoint(x: primaryHost.bounds.midX, y: primaryHost.bounds.midY)
             }
             showsRecord = nil
             updateRecord(animated: false)
@@ -1267,7 +1269,9 @@ public final class AgentInputCardView: UIView {
         primaryHost.bounds = CGRect(origin: .zero, size: primary.size)
         primaryHost.center = CGPoint(x: primary.midX, y: primary.midY)
         primaryButton.frame = primaryHost.bounds
-        recordButton?.frame = primaryHost.bounds
+        // Bounds and centre, not frame: the microphone may be mid-scale.
+        recordButton?.bounds = primaryHost.bounds
+        recordButton?.center = CGPoint(x: primaryHost.bounds.midX, y: primaryHost.bounds.midY)
     }
 
     /// The flat panel: the strip and text where `AgentInputDesktopLayout`
@@ -1435,9 +1439,12 @@ public final class AgentInputCardView: UIView {
         }
     }
 
-    /// Send or the microphone (`ChatTextInputPanelNode`'s swap): one fades
-    /// out as the other fades in, 0.2 s, and send's arrow flies in as it
-    /// comes back. A recording under way keeps its button.
+    /// Send or the microphone (`ChatTextInputPanelNode`'s swap), in place:
+    /// send's arrow shrinks and fades out as the microphone grows in over
+    /// the same fill, on the glyph's spring (`AgentInputPrimaryGlyphMotion`),
+    /// and back. Only empty to not and back changes it, so typing doesn't;
+    /// a change caught halfway turns back from where it is. A recording
+    /// under way keeps the microphone.
     private func updateRecord(animated: Bool) {
         guard let recordButton else { return }
         let shows = configuration.primaryAction == .record || recordButton.isRecording
@@ -1447,17 +1454,15 @@ public final class AgentInputCardView: UIView {
         primaryButton.isUserInteractionEnabled = !shows
         recordButton.isUserInteractionEnabled = shows
         let apply = {
-            self.primaryButton.alpha = shows ? 0 : 1
             recordButton.alpha = shows ? 1 : 0
+            recordButton.transform = shows ? .identity : AgentInputPrimaryGlyphMotion.shrunk
         }
         guard animated, !first else {
-            primaryButton.layer.removeAllAnimations()
             recordButton.layer.removeAllAnimations()
             apply()
             return
         }
-        if !shows { primaryButton.slideArrowIn(duration: 0.2) }
-        UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseInOut, .beginFromCurrentState, .allowUserInteraction], animations: apply)
+        AgentInputPrimaryGlyphMotion.animate(apply)
     }
 
     /// What of the flat panel moves its frames: whether it is there, the
@@ -1551,6 +1556,15 @@ public final class AgentInputCardView: UIView {
 extension AgentInputCardView: RecordButtonHosting {
     func recordButton(_ button: RecordButton, isRecording: Bool) {
         fadeRow(recording: isRecording)
+        // The microphone's fill is send's: it goes with the microphone's
+        // glyph as the bar grows out of the button, and comes back with it.
+        UIView.animate(
+            withDuration: isRecording ? RecordMotion.Metrics.appearFade : RecordMotion.Metrics.disappearDuration,
+            delay: 0,
+            options: [.beginFromCurrentState, .allowUserInteraction]
+        ) {
+            self.primaryButton.alpha = isRecording ? 0 : 1
+        }
     }
 }
 
@@ -1915,22 +1929,25 @@ final class ComposerPrimaryButton: ComposerPressableButton {
     }
 
     func configure(action: AgentInputPrimaryAction, style: AgentInputPrimaryStyle, busy: Bool, accessibilityLabel: String?) {
-        // Send to stop and back is the one button changing its glyph, so
-        // the glyph changes in place: the old one shrinks away as the new
-        // one grows in.
-        let wasStop = self.action == .stop
-        let glyphChanges = configured && !busy && !self.busy && wasStop != (action == .stop)
+        // Send to stop, or to the microphone, and back is the one button
+        // changing its glyph, so the glyph changes in place: the old one
+        // shrinks away as the new one grows in.
+        let old = configured ? glyph : nil
+        let wasBusy = self.busy
+        let wasConfigured = configured
         configured = true
         self.action = action
         self.style = style
         self.busy = busy
         switch action {
-        case .stop:
+        case .stop, .record:
+            // Stop draws its square; the microphone over the button its
+            // own glyph. Send's arrow is left to shrink away.
             break
         case .blocked:
             iconView.icon = .ionicons("lock-closed")
             iconView.size = AgentInputCardLayout.Metrics.lockIconSize
-        case .voice, .record:
+        case .voice:
             iconView.icon = .ionicons("mic-outline")
             iconView.size = AgentInputCardLayout.Metrics.primaryIconSize
         case .send, .idle:
@@ -1947,56 +1964,57 @@ final class ComposerPrimaryButton: ComposerPressableButton {
             spinner.stopAnimating()
         }
         self.accessibilityLabel = accessibilityLabel ?? (action == .stop ? Strings.Composer.stop : Strings.Composer.send)
-        if glyphChanges, window != nil {
-            showGlyph(from: wasStop ? stopView : iconView)
-        } else {
-            showGlyph(from: nil)
+        if wasConfigured, glyph === old, busy == wasBusy {
+            // The same glyph (a keystroke more to send): one still growing
+            // in keeps growing.
             applyColors()
+        } else {
+            showGlyph(from: old, animated: wasConfigured && !busy && !wasBusy && window != nil)
         }
     }
 
-    /// Send coming back in place of the microphone: its arrow flies in
-    /// from the lower left as the button fades in (Telegram's
-    /// `animatePositionAdditive`, offset -22, 18).
-    func slideArrowIn(duration: Double) {
-        guard !UIAccessibility.isReduceMotionEnabled else { return }
-        let slide = CABasicAnimation(keyPath: "position")
-        slide.fromValue = NSValue(cgPoint: CGPoint(x: -22, y: 18))
-        slide.toValue = NSValue(cgPoint: .zero)
-        slide.isAdditive = true
-        slide.duration = duration
-        slide.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        iconView.layer.add(slide, forKey: "arrow-in")
+    /// What the action draws: the icon, stop's square, or nothing under
+    /// the chat's microphone (`.record`), which draws its own glyph on
+    /// this fill.
+    private var glyph: UIView? {
+        switch action {
+        case .stop: stopView
+        case .record: nil
+        default: iconView
+        }
     }
 
-    /// The icon, or stop's square: whichever the action draws. `from`, the
-    /// glyph going away, shrinks and fades out as the new one grows in,
-    /// and the fill changes with them.
-    private func showGlyph(from old: UIView?) {
-        let new: UIView = action == .stop ? stopView : iconView
-        guard let old, old !== new else {
-            for glyph in [iconView, stopView] {
-                glyph.layer.removeAllAnimations()
-                glyph.alpha = 1
-                glyph.transform = .identity
-                glyph.isHidden = busy || glyph !== new
+    /// The glyph the action draws, in place. `old`, the one going away,
+    /// shrinks and fades out as the new one grows in, centred, and the
+    /// fill changes with them. A glyph caught on its way out turns back
+    /// from where it is, so typing and deleting fast never jumps.
+    private func showGlyph(from old: UIView?, animated: Bool) {
+        let new = glyph
+        guard animated, old !== new else {
+            for view in [iconView, stopView] as [UIView] {
+                view.layer.removeAllAnimations()
+                view.alpha = 1
+                view.transform = .identity
+                view.isHidden = busy || view !== new
             }
+            applyColors()
             return
         }
-        let motion = AgentInputPrimaryGlyphMotion.self
-        let shrunk = UIAccessibility.isReduceMotionEnabled ? .identity : CGAffineTransform(scaleX: motion.scale, y: motion.scale)
-        new.isHidden = false
-        new.alpha = 0
-        new.transform = shrunk
-        UIView.animate(withDuration: motion.duration, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction, .curveEaseInOut]) {
-            new.alpha = 1
-            new.transform = .identity
-            old.alpha = 0
-            old.transform = shrunk
+        let shrunk = AgentInputPrimaryGlyphMotion.shrunk
+        if let new, new.isHidden {
+            new.isHidden = false
+            new.alpha = 0
+            new.transform = shrunk
+        }
+        AgentInputPrimaryGlyphMotion.animate {
+            new?.alpha = 1
+            new?.transform = .identity
+            old?.alpha = 0
+            old?.transform = shrunk
             self.applyColors()
-        } completion: { _ in
+        } completion: {
             // A later change may have made the old glyph the shown one again.
-            guard old !== (self.action == .stop ? self.stopView : self.iconView) else { return }
+            guard let old, old !== self.glyph else { return }
             old.isHidden = true
             old.alpha = 1
             old.transform = .identity
@@ -2054,6 +2072,29 @@ final class ComposerPrimaryButton: ComposerPressableButton {
             glyph.center = center
         }
         spinner.center = center
+    }
+}
+
+extension AgentInputPrimaryGlyphMotion {
+    /// Where a glyph going away ends and one coming in starts; Reduce
+    /// Motion keeps only the fade.
+    static var shrunk: CGAffineTransform {
+        UIAccessibility.isReduceMotionEnabled ? .identity : CGAffineTransform(scaleX: scale, y: scale)
+    }
+
+    /// The change on the glyph's spring, from wherever an earlier one left
+    /// it.
+    @MainActor
+    static func animate(_ changes: @escaping () -> Void, completion: (() -> Void)? = nil) {
+        UIView.animate(
+            withDuration: duration,
+            delay: 0,
+            usingSpringWithDamping: damping,
+            initialSpringVelocity: 0,
+            options: [.beginFromCurrentState, .allowUserInteraction],
+            animations: changes,
+            completion: { _ in completion?() }
+        )
     }
 }
 
