@@ -29,7 +29,8 @@ data class CloudServer(
     val id: String,
     val name: String,
     val url: String,
-    val role: String,
+    /** The account's role there; the accounts service no longer lists it since roles moved to the server (`GET /v0/permissions`). */
+    val role: String? = null,
     val createdAt: String? = null,
     /** The server's own name for itself (its node name); [name] until it has one. */
     val displayName: String? = null,
@@ -45,18 +46,12 @@ data class CloudServer(
 @Serializable
 data class CloudServerImage(val thumbhash: String? = null, val width: Int? = null, val height: Int? = null, val url: String)
 
-/** Someone on a server (`GET /v1/servers/:id/members`). */
-@Serializable
-data class CloudMember(val accountId: String, val name: String? = null, val role: String, val joinedAt: String? = null) {
-    val owner: Boolean get() = role == "owner"
-}
-
 /** What `GET /v1/servers/availability` says of a name. */
 enum class CloudName { Available, Taken, Reserved, Invalid }
 
 /** Why an accounts API call failed, from its `code` where it gave one. */
 class CloudException(val reason: Reason) : Exception(reason.name) {
-    enum class Reason { Taken, Invalid, NotFound, LastOwner, SignInRequired, Unreachable, Failed }
+    enum class Reason { Taken, Invalid, NotFound, SignInRequired, Unreachable, Failed }
 }
 
 /** How a test account's password sign-in went ([CloudAccount.signInWithPassword]). */
@@ -269,19 +264,6 @@ class CloudAccount(
             OAuthCredential(methodId = method.id, clientId = method.clientId, refreshUrl = method.tokenUrl, refreshToken = refresh, resource = "${origin.value}/")
     }
 
-    /** Who is on server [id]: the account must be a member. */
-    suspend fun members(id: String): List<CloudMember> =
-        json.decodeFromJsonElement(MemberList.serializer(), call("GET", "/v1/servers/${segment(id)}/members").second).members
-
-    /** Leaves server [id]; its only owner can't (LastOwner). The server's sessions for this account are revoked by the service. */
-    suspend fun leave(id: String) {
-        call("POST", "/v1/servers/${segment(id)}/leave", JsonObject(emptyMap()))
-    }
-
-    /** The account's server at [origin], by the servers it lists; NotFound when it isn't one of them. */
-    suspend fun serverAt(origin: String): CloudServer =
-        servers().firstOrNull { it.origin == origin } ?: throw CloudException(CloudException.Reason.NotFound)
-
     /**
      * Revokes a cloud server's session (RFC 7009 `POST /revoke`, the refresh
      * token and `client_id`, no account token) as the person removes it from
@@ -352,7 +334,6 @@ class CloudAccount(
                 "taken" -> CloudException.Reason.Taken
                 "invalid" -> CloudException.Reason.Invalid
                 "not_found" -> CloudException.Reason.NotFound
-                "last_owner" -> CloudException.Reason.LastOwner
                 else -> if (status >= 500) CloudException.Reason.Unreachable else CloudException.Reason.Failed
             },
         )
@@ -383,7 +364,6 @@ class CloudAccount(
 
     @Serializable private class ServerList(val servers: List<CloudServer>)
 
-    @Serializable private class MemberList(val members: List<CloudMember>)
 
     companion object {
         private const val MAX_BODY = 1024L * 1024
