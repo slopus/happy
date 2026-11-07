@@ -6,6 +6,8 @@ import HappyCore
 extension Strings {
     enum HappyCloud {
         static let signIn = "Sign In to Happy Cloud"
+        /// Settings' About footer on a Happy Cloud server.
+        static let aboutFooter = "Happy Cloud runs your team’s agents on your server in the cloud, where your conversations and files are kept. Not affiliated with Anthropic or OpenAI."
         static let yourServers = "Your Servers"
         static let connected = "Connected"
         static let owner = "Owner"
