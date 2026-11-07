@@ -248,15 +248,30 @@ public final class AgentConnections {
     /// here at once; the identity loop starts again from it, so a retry
     /// never puts the old one back.
     public func rename(_ id: String, to name: String) async throws {
+        try await changeNode(id, ["name": name]) { $0.name = AgentName.friendly(name) }
+    }
+
+    /// Sets the computer's picture (`PATCH /v0/config` `node.avatar`), or
+    /// takes it away with nil. Shown here at once; the identity loop reads
+    /// the server's copy back.
+    public func setAvatar(_ id: String, to picture: Data?) async throws {
+        try await changeNode(id, ["avatar": picture.map { ["data": $0.base64EncodedString()] } ?? NSNull()]) {
+            $0.avatar = picture
+            $0.avatarETag = nil
+            if picture == nil { $0.thumbhash = nil }
+        }
+    }
+
+    private func changeNode(_ id: String, _ node: [String: Any], shown: (inout AgentConnection) -> Void) async throws {
         guard let credential = credentials[id] else { throw AccountSwitchError.unknownAccount }
-        let body = try JSONSerialization.data(withJSONObject: ["node": ["name": name]])
+        let body = try JSONSerialization.data(withJSONObject: ["node": node])
         let transport = transport(credential, for: id)
         defer { Task { await transport.close() } }
         // The transport names the body's type itself.
         let response = try await transport.request(method: "PATCH", path: "/v0/config", credential: credential.deviceToken, body: body, headers: [:])
         if response.status == 401 { throw PairingError.revoked }
         guard response.status == 200 else {
-            // The daemon's own words (an owner-only rename, a name it refuses).
+            // The daemon's own words (an owner-only change, a name it refuses).
             struct Failure: Decodable { let error: String?; let code: String? }
             let failure = try? JSONDecoder().decode(Failure.self, from: response.body)
             throw AgentClientError.status(response.status, code: failure?.code, message: failure?.error)
@@ -264,7 +279,7 @@ public final class AgentConnections {
         await stop(id)
         // Looked up after the wait: the list may have changed meanwhile.
         guard let index = accounts.firstIndex(where: { $0.id == id }) else { return }
-        accounts[index].name = AgentName.friendly(name)
+        shown(&accounts[index])
         onChange?()
         try? await storage.update(accounts[index])
         startConnections()

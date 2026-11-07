@@ -9,9 +9,10 @@ import UIKit
 /// pencil badge on its rim made of the system's Liquid Glass
 /// (`UIGlassEffect`), and a press opens its native menu from it, "Change
 /// avatar" and "Edit name". Each asks the agent in Happy's conversation;
-/// nothing here changes the agent itself (`ChiefOfStaffAsk`), but a Happy
-/// Cloud server's name, which "Edit name" renames (`ServerRename`). A Happy
-/// account's picture is only the picture: no badge, no menu.
+/// nothing here changes the agent itself (`ChiefOfStaffAsk`), but on a
+/// Happy Cloud server, where each changes the server's own picture or name
+/// (`ServerEdits`). A Happy account's picture is only the picture: no
+/// badge, no menu.
 final class AgentEditButton: UIButton {
     private let avatar = UIImageView()
     private let badge = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
@@ -33,12 +34,6 @@ final class AgentEditButton: UIButton {
 
     /// What each menu item asks for.
     var ask: (@MainActor (ChatPrefill) -> Void)?
-
-    /// Whether the menu has "Edit name": not for a cloud member who may not
-    /// rename the server.
-    var nameable = true {
-        didSet { if nameable != oldValue { showEditable() } }
-    }
 
     /// The pencil and the menu, a computer's; without them, a picture.
     var editable = true {
@@ -91,16 +86,17 @@ final class AgentEditButton: UIButton {
     private func showEditable() {
         badge.isHidden = !editable
         showsMenuAsPrimaryAction = editable
-        menu = editable ? Self.menu(nameable: nameable) { [weak self] in self?.ask?($0) } : nil
+        menu = editable ? Self.menu { [weak self] in self?.ask?($0) } : nil
         isUserInteractionEnabled = editable
         accessibilityIdentifier = editable ? "settings-agent-menu" : "settings-avatar"
         accessibilityLabel = editable ? Strings.AgentMenu.button : nil
     }
 
-    static func menu(nameable: Bool = true, _ ask: @escaping @MainActor (ChatPrefill) -> Void) -> UIMenu {
-        let avatar = UIAction(title: Strings.AgentMenu.changeAvatar, image: Glyphs.image("image-outline", size: 20), identifier: .init("agent-change-avatar")) { _ in ask(.agentAvatar) }
-        let name = UIAction(title: Strings.AgentMenu.editName, image: Glyphs.image("pencil", size: 20), identifier: .init("agent-edit-name")) { _ in ask(.agentName) }
-        return UIMenu(children: nameable ? [avatar, name] : [avatar])
+    static func menu(_ ask: @escaping @MainActor (ChatPrefill) -> Void) -> UIMenu {
+        UIMenu(children: [
+            UIAction(title: Strings.AgentMenu.changeAvatar, image: Glyphs.image("image-outline", size: 20), identifier: .init("agent-change-avatar")) { _ in ask(.agentAvatar) },
+            UIAction(title: Strings.AgentMenu.editName, image: Glyphs.image("pencil", size: 20), identifier: .init("agent-edit-name")) { _ in ask(.agentName) },
+        ])
     }
 }
 #endif

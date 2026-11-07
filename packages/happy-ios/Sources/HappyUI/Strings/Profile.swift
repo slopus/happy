@@ -25,11 +25,12 @@ extension Strings {
         static let editName = "Edit name"
     }
 
-    // "Edit name" on a Happy Cloud server: the server's own name.
+    // The picture's menu on a Happy Cloud server: the server's own name and picture.
     enum ServerName {
         static let title = "Server Name"
         static let message = "Everyone on this server sees this name."
         static let save = "Save"
         static let couldNotSave = "Could not rename the server"
+        static let couldNotChangePicture = "Could not change the server’s picture"
     }
 }

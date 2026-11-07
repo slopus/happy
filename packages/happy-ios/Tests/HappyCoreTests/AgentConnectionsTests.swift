@@ -254,6 +254,22 @@ final class AgentConnectionsTests: XCTestCase {
         XCTAssertNotNil(manager.syncEngine(for: ended.id))
     }
 
+    func testThePictureIsSentAsTheNodesAvatarAndShownAtOnce() async throws {
+        let transport = IdentityTransport()
+        let manager = AgentConnections(credentials: KeychainAgentConnectionCredentialStore(backend: AccountsKeychain()), directory: try directory(), makeTransport: { _ in transport })
+        await manager.setForeground(false)
+        let account = try await manager.add(value(), name: "QR name")
+        let picture = Data([0x89, 0x50, 0x4E, 0x47])
+        try await manager.setAvatar(account.id, to: picture)
+        XCTAssertEqual(manager.accounts.first?.avatar, picture)
+        try await manager.setAvatar(account.id, to: nil)
+        XCTAssertNil(manager.accounts.first?.avatar)
+        let sent = await transport.patches.map { try? JSONSerialization.jsonObject(with: $0) as? [String: [String: Any]] }
+        XCTAssertEqual(sent.count, 2)
+        XCTAssertEqual((sent[0]?["node"]?["avatar"] as? [String: String])?["data"], picture.base64EncodedString())
+        XCTAssertTrue(sent[1]?["node"]?["avatar"] is NSNull, "a removal isn't null")
+    }
+
     func testRevocationStopsRetryAndBackgroundPauses() async throws {
         let transport = IdentityTransport()
         let manager = AgentConnections(credentials: InMemoryAgentConnectionCredentialStore(), directory: nil, makeTransport: { _ in transport })
