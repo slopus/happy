@@ -79,6 +79,10 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
     private var switcher: AccountSwitcher?
     private var headerWatch: Watch?
     private var accessWatch: Watch?
+    private var onboardingWatch: Watch?
+    /// "What's your name?" was offered on this screen: once a launch, so
+    /// "Not Now" holds until the next.
+    private var askedName = false
     /// The person's role may start work here (`RoleGate`): else no compose,
     /// microphone or call. A computer always may.
     private var mayWrite: Bool { Session.session(for: id, context: context)?.gate.allows(.contentWrite) ?? true }
@@ -142,8 +146,36 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
             guard let self, shownMayWrite != mayWrite else { return }
             applyChrome()
         }
+        onboardingWatch = Session.session(for: id, context: context)?.watchOnboarding { [weak self] _ in self?.askNameIfNeeded() }
         updateTitle()
         applyChrome()
+    }
+
+    /// A Happy Cloud member whose profile onboarding says isn't saved
+    /// (`Onboarding.needsName`) is asked their name over home, with the
+    /// name Apple gave this sign-in offered, else the server's suggestion;
+    /// saved as the profile's name (`PATCH /v0/profile`).
+    private func askNameIfNeeded() {
+        guard !askedName, let session = Session.session(for: id, context: context), session.isCloud,
+              let onboarding = session.onboarding, view.window != nil, presentedViewController == nil else { return }
+        guard onboarding.needsName == true else { return }
+        askedName = true
+        let client = session.client
+        Task { [weak self] in
+            // Apple's name from this sign-in, else the server's suggestion.
+            let suggested = (try? await client.profile())?.name
+            guard let self else { return }
+            guard view.window != nil, presentedViewController == nil else { askedName = false; return }
+            guard let name = await NamePrompt.ask(on: self, message: Strings.ServerSignIn.nameCloudMessage, prefill: CloudScreens.appleName ?? suggested, cancel: Strings.ServerSignIn.nameLater) else { return }
+            do {
+                let profile = try await client.profile()
+                _ = try await client.renameProfile(name, version: profile.version)
+                CloudScreens.appleName = nil
+            } catch {
+                askedName = false
+                Alerts.show(Strings.Common.error, Store.describe(error), on: self)
+            }
+        }
     }
 
     private func searched(_ query: String) {
@@ -252,6 +284,7 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         launchCall()
         #endif
         standing = true
+        askNameIfNeeded()
         // The bar and the toolbar are where home rests: the list's room is
         // read from them again (`HomeListRoom`).
         view.setNeedsLayout()

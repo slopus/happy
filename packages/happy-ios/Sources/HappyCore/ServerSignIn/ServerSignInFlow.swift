@@ -107,6 +107,18 @@ public struct ServerSignInFlow: Sendable {
 
     /// Saves `name` as the person's profile, which makes them a member the
     /// rest of the API lets in (API.md, Profile).
+    /// The name the server suggests for a member who hasn't saved a
+    /// profile: `GET /v0/profile`'s `name` while it's unsaved (on Happy
+    /// Cloud, the account's). Nil when there's none or the read fails.
+    public func suggestedName(for signedIn: SignedIn) async -> String? {
+        let transport = makeTransport(origin)
+        defer { Task { await transport.close() } }
+        guard let current = try? await transport.request("/v0/profile", credential: signedIn.access.token), current.status == 200 else { return nil }
+        struct Profile: Decodable { struct Body: Decodable { let name: String? }; let profile: Body }
+        let name = (try? JSONDecoder().decode(Profile.self, from: current.body))?.profile.name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name?.isEmpty == false ? name : nil
+    }
+
     public func saveProfile(_ name: String, for signedIn: SignedIn) async throws -> SignedIn {
         let transport = makeTransport(origin)
         defer { Task { await transport.close() } }

@@ -49,6 +49,18 @@ final class ChiefOfStaffTests: XCTestCase {
 
     /// A standalone computer's: no Cloud parts, and a step it can't read
     /// is none rather than a failed read.
+    /// A member with no name is asked theirs: the member's profile step
+    /// says so, else the installation's; neither, and nothing is asked.
+    func testANamelessMemberIsAskedTheirName() throws {
+        func read(_ json: String) throws -> Onboarding { try JSONDecoder().decode(Onboarding.self, from: Data(json.utf8)) }
+        let nameless = try read(#"{"completed":false,"steps":{"profile":{"done":true}},"member":{"completed":false,"steps":{"profile":{"done":false}}}}"#)
+        XCTAssertEqual(nameless.needsName, true, "the member's step over the installation's")
+        let named = try read(#"{"completed":true,"steps":{},"member":{"completed":true,"steps":{"profile":{"done":true}}}}"#)
+        XCTAssertEqual(named.needsName, false)
+        XCTAssertEqual(try read(#"{"completed":false,"steps":{"profile":{"done":false}}}"#).needsName, true)
+        XCTAssertNil(try read(#"{"completed":true,"steps":{}}"#).needsName)
+    }
+
     func testAComputersOnboardingHasNoCloudParts() throws {
         let json = #"{"completed":true,"steps":{"providers":{"done":true,"signedIn":true},"profile":"odd","project":{"done":false}}}"#
         let onboarding = try JSONDecoder().decode(Onboarding.self, from: Data(json.utf8))

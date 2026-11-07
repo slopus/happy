@@ -154,6 +154,18 @@ accounts and servers v1, with v4's token lifetimes.
   sign-in, the server is asked who signed in, its installation is
   recorded, and the connection is added. The account token goes only to
   the accounts service.
+- **Your name.** A member the server has no profile for yet
+  (`GET /v0/authentication` with `userId: null`) is asked "What's your
+  name?" before the connection is added. The field is prefilled with the
+  name Apple gave this sign-in (only on an Apple ID's first authorization;
+  in memory only), else the server's suggestion, which is
+  `GET /v0/profile`'s `name` while the profile is unsaved. What they give
+  is saved with `PATCH /v0/profile`. If they cancel, the screen says the
+  server needs a name and offers Try Again. The app never makes a name
+  up. A connected cloud server whose onboarding still says the member's
+  `profile` step isn't done (`Onboarding.needsName`) asks the same over
+  home, once a launch, with Not Now. A name in the profile alone decides
+  nothing.
 - **Sign-in methods.** Apple natively and GitHub on the browser page
   (Other Ways); no Google or email anywhere in the app.
 - **Sign Out of Happy Cloud**, in the account switcher's menu while the

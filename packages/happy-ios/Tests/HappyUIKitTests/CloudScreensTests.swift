@@ -19,6 +19,28 @@ private actor CloudHTTP: HTTPTransport {
     }
 }
 
+/// A cloud server's daemon: each request kept, each answer by path.
+private actor CloudDaemon: AgentTransport {
+    var requests: [(method: String, path: String, body: Data?)] = []
+    var answers: [String: String] = [:]
+    func answer(_ path: String, _ body: String) { answers[path] = body }
+    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
+        requests.append((method, path, body))
+        return HTTP1Response(status: 200, body: Data((answers[path] ?? "{}").utf8))
+    }
+    func browserConnection() async throws -> any BrowserStream { throw BrowserError.unavailable }
+    func close() async {}
+}
+
+/// An access token for `audience`, as the accounts service issues one: unsigned.
+private func token(for audience: String) -> String {
+    func encode(_ object: [String: Any]) -> String {
+        try! JSONSerialization.data(withJSONObject: object).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+    }
+    return encode(["alg": "RS256", "typ": "JWT"]) + "." + encode(["aud": audience, "sub": "steve"]) + ".c2ln"
+}
+
 /// Happy Cloud's Create and Join buttons do what they say, and say why
 /// when they can't: a tap once returned at once, without a request or a
 /// word, because the screen checked the loading state `RoundButton` had
@@ -83,6 +105,59 @@ final class CloudScreensTests: XCTestCase {
         _ = screen.textFieldShouldReturn(screen.field.text)
         await settle { screen.status.string == "Something broke." }
         XCTAssertEqual(screen.status.string, "Something broke.")
+    }
+
+    /// A member a cloud server has no profile for (`userId` null) is
+    /// asked "What's your name?", offered Apple's name from this sign-in,
+    /// else the server's suggestion; what they give is saved as their
+    /// name, never one made up. Cancelled, the screen says the server
+    /// needs it.
+    func testANamelessMemberIsAskedTheirNameOnConnect() async throws {
+        let origin = HappyCloud.server(named: "acme")
+        let http = CloudHTTP()
+        await http.answer("POST /v1/servers/s1/token", 200, #"{"access_token":"\#(token(for: origin + "/"))","token_type":"Bearer","expires_in":3600}"#)
+        await http.answer("GET /v0/authentication", 200, #"{"authenticated":true,"userId":null,"methods":[]}"#)
+        let daemon = CloudDaemon()
+        await daemon.answer("/v0/health", #"{"ready":true}"#)
+        await daemon.answer("/v0/profile", #"{"profile":{"name":"Steve K","email":"s@example.com","updatedAt":0,"version":"v0"}}"#)
+        func connect(apple: String?) async throws -> (CloudConnectingViewController, UIAlertController) {
+            CloudScreens.appleName = apple
+            let screen = CloudConnectingViewController(context: context(), account: CloudAccount.preview(token: "account", http: http),
+                                                       server: CloudServer(id: "s1", name: "acme", url: origin + "/", role: .member))
+            screen.makeFlow = { try ServerSignInFlow.cloud($0, http: http, makeTransport: { _ in daemon }) }
+            show(UINavigationController(rootViewController: screen))
+            await settle { screen.presentedViewController is UIAlertController }
+            return (screen, try XCTUnwrap(screen.presentedViewController as? UIAlertController, "no name step"))
+        }
+        typealias Handler = @convention(block) (UIAlertAction) -> Void
+        func tap(_ action: UIAlertAction) throws {
+            unsafeBitCast(try XCTUnwrap(action.value(forKey: "handler") as AnyObject?), to: Handler.self)(action)
+        }
+
+        // The server's suggestion, then Cancel: nothing saved, and why.
+        var (screen, alert) = try await connect(apple: nil)
+        XCTAssertEqual(alert.title, "What’s your name?")
+        XCTAssertEqual(alert.textFields?.first?.text, "Steve K")
+        try tap(try XCTUnwrap(alert.actions.first { $0.style == .cancel }))
+        alert.dismiss(animated: false)
+        try await Task.sleep(for: .milliseconds(200))
+        let none = await daemon.requests.contains { $0.method == "PATCH" }
+        XCTAssertFalse(none, "no name made up")
+        window?.isHidden = true
+
+        // Apple's name over the suggestion; Continue saves what's typed.
+        (screen, alert) = try await connect(apple: "Steve Korshakov")
+        XCTAssertEqual(alert.textFields?.first?.text, "Steve Korshakov")
+        alert.textFields?.first?.text = "Steve"
+        await http.answer("GET /v0/authentication", 200, #"{"authenticated":true,"userId":"u1","methods":[]}"#)
+        try tap(try XCTUnwrap(alert.actions.first { $0.style == .default }))
+        alert.dismiss(animated: false)
+        await settle { await daemon.requests.contains { $0.method == "PATCH" } }
+        let patch = await daemon.requests.first { $0.method == "PATCH" }
+        XCTAssertEqual(patch?.path, "/v0/profile")
+        let body = try JSONSerialization.jsonObject(with: try XCTUnwrap(patch?.body)) as? [String: Any]
+        XCTAssertEqual(body?["name"] as? String, "Steve")
+        CloudScreens.appleName = nil
     }
 
     func testTappingJoinJoinsAndAMissingCodeSaysSo() async throws {
