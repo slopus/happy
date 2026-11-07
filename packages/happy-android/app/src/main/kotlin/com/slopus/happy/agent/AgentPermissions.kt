@@ -53,8 +53,8 @@ data class ServerPermissions(val gated: Boolean, val granted: Set<String> = empt
 
 /**
  * A Happy Cloud server's permissions for this person, read on every
- * connect (a role changed in the accounts service takes hold with the next
- * token) and on `role.*` events.
+ * connect and on `role.*` and `member.updated` events (roles are the
+ * cluster's since the roles cutover).
  */
 internal class AgentPermissionsSource(
     private val read: suspend () -> JsonObject,
@@ -67,7 +67,8 @@ internal class AgentPermissionsSource(
     init {
         // Subscribed before the link's first hello can come.
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            events.collect { if (it.type == AgentEvent.HELLO || it.type.startsWith("role.")) reload() }
+            // A role is changed by its definition (role.*) or by giving a member another (member.updated).
+            events.collect { if (it.type == AgentEvent.HELLO || it.type.startsWith("role.") || it.type == "member.updated") reload() }
         }
     }
 

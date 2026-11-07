@@ -118,6 +118,7 @@ object CloudTags {
     const val LOGIN = "cloud.login"
     const val PASSWORD = "cloud.password"
     fun server(name: String) = "cloud.server.$name"
+    fun member(accountId: String) = "cloud.member.$accountId"
 }
 
 /** Sizes of the Happy Cloud screens, on the first screen's gradient and type ([com.slopus.happy.ui.start.StartScreen]). */
@@ -438,13 +439,15 @@ private fun ServerCard(server: CloudServer, onPhone: Boolean, image: suspend (St
             Text(server.title, style = happyTextStyle(fontSize = 18, lineHeight = 24, weight = FontWeight.SemiBold), color = colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text("@${server.name}", style = happyTextStyle(fontSize = 15, lineHeight = 20), color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
+        // Roles are the server's since the roles cutover: an accounts service that still lists one shows it.
         val role = when (server.role) {
+            null -> null
             "owner" -> R.string.cloud_role_owner
             "admin" -> R.string.cloud_role_admin
             "viewer" -> R.string.cloud_role_viewer
             else -> R.string.cloud_role_member
         }
-        Text(stringResource(role), style = happyTextStyle(fontSize = 14, lineHeight = 18), color = colors.textSecondary)
+        if (role != null) Text(stringResource(role), style = happyTextStyle(fontSize = 14, lineHeight = 18), color = colors.textSecondary)
         if (onPhone) Icon(Ionicon.CheckmarkCircle, 22.dp, colors.success)
     }
 }
@@ -617,7 +620,6 @@ internal fun cloudFailureText(reason: CloudException.Reason): Int = when (reason
     CloudException.Reason.Taken -> R.string.cloud_failed
     CloudException.Reason.Invalid -> R.string.cloud_name_rules
     CloudException.Reason.NotFound -> R.string.cloud_join_not_found
-    CloudException.Reason.LastOwner -> R.string.cloud_leave_last_owner
     CloudException.Reason.SignInRequired -> R.string.team_server_error_sign_in_required
     CloudException.Reason.Unreachable -> R.string.team_server_error_unreachable
     CloudException.Reason.Failed -> R.string.cloud_failed

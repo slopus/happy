@@ -1151,12 +1151,18 @@ change its wire behaviour on Android alone.
   server (`removeAgentConnection`) first revokes its session at the accounts
   service (`POST /revoke`, its refresh token and `client_id`, no account
   token; `CloudAccount.revoke`, best effort, not waited on). A cloud server's
-  Settings has Members (`CloudMembers.kt`: `GET /v1/servers/:id/members`, and
-  Leave server, `POST /v1/servers/:id/leave`, confirmed, then the server is
-  removed here too; its only owner gets `last_owner`), asking for the sign-in
-  when the pass is gone.
+  Settings has Members (`CloudMembers.kt`, `agent/AgentMembers.kt`). Since
+  the roles cutover the team is the server's (members contract): `GET
+  /v0/members` with each role's name from `GET /v0/roles` (a built-in one in
+  the app's words where roles can't be read), read again on every connect,
+  `member.*` and `role.*` (there is no `member.added`); Leave server is `POST
+  /v0/members/leave`, confirmed, then the server is removed here too, and
+  its last owner gets `409 last_owner`. No account pass is needed. The
+  accounts service lists servers without a role now (`CloudServer.role` is
+  optional; the picker shows a role only where one is listed).
   A cloud server's team roles gate what shows (`agent/AgentPermissions.kt`):
-  `GET /v0/permissions`'s `granted`, read on every connect and `role.*`
+  `GET /v0/permissions`'s `granted`, read on every connect, `role.*` and
+  `member.updated`
   event (`AgentSession.permissions`), and nothing granted until it is read
   or when reading fails; any other server gates nothing. Without
   `content.write` there is no compose, voice call, todo or document

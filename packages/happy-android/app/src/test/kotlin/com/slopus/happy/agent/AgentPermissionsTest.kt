@@ -50,10 +50,15 @@ class AgentPermissionsTest {
         events.emit(event("role.updated"))
         runCurrent()
         assertFalse(source.permissions.value.canWrite)
+        // Another role given to a member (this person, perhaps): read again.
+        answers += { answer("content.write") }
+        events.emit(event("member.updated"))
+        runCurrent()
+        assertTrue(source.permissions.value.canWrite)
         answers += { throw AgentApiException(500, "internal", null) }
         events.emit(event(AgentEvent.HELLO))
         runCurrent()
         assertEquals(ServerPermissions.Unknown, source.permissions.value)
-        assertEquals(3, reads)
+        assertEquals(4, reads)
     }
 }
