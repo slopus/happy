@@ -597,6 +597,12 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         return Page.allCases.first { page in has(page, profile) && rows(page).joined().contains { $0.id == id } }
     }
 
+    /// The agent's asks go to the Chief of Staff: a cloud role must be
+    /// able to write to it (`RoleGate`).
+    private func mayAsk(_ id: String) -> Bool {
+        Session.session(for: id, context: context)?.gate.allowsSending(toChiefOfStaff: true) ?? true
+    }
+
     private func open(_ page: Page, reveal: String? = nil) {
         guard isTop, let controller = make(page) else { return }
         controller.reveal = reveal
@@ -741,7 +747,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             }))
         }
         // The agent's two asks live in its picture's menu; found here, they run.
-        if let profile = shown, profile.isAgentConnection {
+        if let profile = shown, profile.isAgentConnection, mayAsk(profile.id) {
             for (entry, ask) in [(SettingsIndex.changeAgentName, ChatPrefill.agentName), (SettingsIndex.changeAgentAvatar, ChatPrefill.agentAvatar)] where entry.title.localizedCaseInsensitiveContains(query) {
                 found.append(SettingsRow(entry, accessory: .none, action: { [weak self] in
                     self?.endSearch()
@@ -788,7 +794,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         // The profile's picture over its name, the one the accounts card
         // shows; only a connection's has the pencil and the agent's menu.
         agentButton.isHidden = searching
-        agentButton.editable = profile.isAgentConnection
+        agentButton.editable = profile.isAgentConnection && mayAsk(profile.id)
         agentButton.picture = images[profile.id]
         agentButton.liveSeed = liveSeeds[profile.id]
         empty.isHidden = !(searching && !(query ?? "").isEmpty && rows.isEmpty)

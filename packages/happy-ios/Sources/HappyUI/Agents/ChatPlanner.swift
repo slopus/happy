@@ -24,6 +24,8 @@ actor ChatPlanner {
         var switchTarget: SwitchTarget?
         /// Models' names by ID, for what a failure was switched to.
         var modelNames: [String: String] = [:]
+        /// Whether the person's role may run a failed turn again.
+        var actionable = true
     }
 
     /// A row as it was planned, and what from.
@@ -468,7 +470,7 @@ actor ChatPlanner {
         }
         var pieces: [MarkdownPiece] = [piece("**\(Strings.failure)**", Palette.statusError), piece(failure.reason, Palette.text, selectable: true)]
         pieces += failure.steps.map { piece($0, Palette.textSecondary) }
-        let action = Self.action(failure, target: key.switchTarget)
+        let action = key.actionable ? Self.action(failure, target: key.switchTarget) : nil
         let actionText: String? = switch action {
         case .retry?: Strings.retry
         case .switchTo(let target)?: Strings.switchAndContinue(target.label)

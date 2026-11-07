@@ -26,6 +26,10 @@ final class TodoListViewController: UIViewController, UITextFieldDelegate, UIGes
     private var pipeline: ApplyPipeline<TodoListInput, Applied, Output>?
     private var following: Task<Void, Never>?
     private var headerWatch: Watch?
+    private var accessWatch: Watch?
+    /// What the person's role lets them do to the list: everything, or
+    /// on a cloud server without `content.write`, read it.
+    private var writable: Bool { session.gate.allows(.contentWrite) }
     /// What the rows on screen were worked out from.
     private(set) var state = TodoListState()
     private var geometry: [String: TodoRowGeometry] = [:]
@@ -130,6 +134,11 @@ final class TodoListViewController: UIViewController, UITextFieldDelegate, UIGes
         registerForTraitChanges(UIView.textSizeTraits + [UITraitUserInterfaceStyle.self, UITraitDisplayScale.self]) { (self: Self, _) in
             self.updateInput()
         }
+        accessWatch = session.watchAccess { [weak self] in
+            guard let self else { return }
+            if !writable, editingID != nil { editingID = nil; editor.resignFirstResponder() }
+            updateInput()
+        }
         headerWatch = session.watchHeader { [weak self] state in
             guard let self else { return }
             navigationItem.title = Strings.HeaderStatus.title(state) ?? (mode == .deleted ? Strings.Todos.deletedTitle : name)
@@ -193,6 +202,7 @@ final class TodoListViewController: UIViewController, UITextFieldDelegate, UIGes
         input.editingID = editingID
         input.settling = settling
         input.dragOrder = drag?.order
+        input.writable = writable
         return input
     }
 
@@ -249,6 +259,7 @@ final class TodoListViewController: UIViewController, UITextFieldDelegate, UIGes
 
     private func tapped(_ rowID: String, at point: CGPoint) {
         guard let id = TodoListItems.todoID(rowID), mode == .list else { return activated(rowID) }
+        guard writable else { return }
         guard let todo = todo(id) else { return }
         if todo.heading == nil, let hit = geometry[rowID]?.hit, hit.contains(point) {
             toggle(id)
@@ -261,14 +272,14 @@ final class TodoListViewController: UIViewController, UITextFieldDelegate, UIGes
     /// a row has only one.
     func activated(_ rowID: String) {
         switch rowID {
-        case TodoListItems.addID: startEditing(TodoListItems.addID)
+        case TodoListItems.addID: if writable { startEditing(TodoListItems.addID) }
         case TodoListItems.failureID: Task { [library, surfaceId] in await library.dismissFailure(surfaceId) }
         case TodoListItems.toggleID:
             completedShown.toggle()
             Haptics.play(.fold)
             updateInput()
         default:
-            guard let id = TodoListItems.todoID(rowID), let todo = todo(id) else { return }
+            guard writable, let id = TodoListItems.todoID(rowID), let todo = todo(id) else { return }
             if mode == .deleted { return restore(id) }
             if todo.heading != nil { startEditing(id) } else { toggle(id) }
         }
@@ -351,15 +362,19 @@ final class TodoListViewController: UIViewController, UITextFieldDelegate, UIGes
     private func swipeActions(_ rowID: String) -> [ListSwipeAction] {
         guard let id = TodoListItems.todoID(rowID), let todo = todo(id), drag == nil else { return [] }
         if mode == .deleted {
+            guard writable else { return [] }
             return [ListSwipeAction(title: Strings.Todos.restore, image: .icon(.ionicons("return-up-back-outline"), size: 20), color: UIColor(Palette.todoCheck)) { [weak self] in self?.restore(id) }]
         }
-        var actions = [ListSwipeAction(title: Strings.Todos.delete, image: .icon(.ionicons("trash-outline"), size: 20), color: UIColor(Palette.statusError), isDestructive: true) { [weak self] in self?.delete(id) }]
+        var actions = !writable ? [] : [ListSwipeAction(title: Strings.Todos.delete, image: .icon(.ionicons("trash-outline"), size: 20), color: UIColor(Palette.statusError), isDestructive: true) { [weak self] in self?.delete(id) }]
         actions.append(ListSwipeAction(title: Strings.Todos.history, image: .icon(.ionicons("time-outline"), size: 20), color: UIColor(Palette.settingsSecondary)) { [weak self] in self?.openHistory(id) })
         return actions
     }
 
     private func accessibilityActions(_ rowID: String) -> [UIAccessibilityCustomAction] {
         guard let id = TodoListItems.todoID(rowID), let todo = todo(id) else { return [] }
+        if !writable {
+            return mode == .deleted ? [] : [UIAccessibilityCustomAction(name: Strings.Todos.history) { [weak self] _ in self?.openHistory(id); return true }]
+        }
         if mode == .deleted {
             return [UIAccessibilityCustomAction(name: Strings.Todos.restore) { [weak self] _ in self?.restore(id); return true }]
         }
@@ -413,7 +428,7 @@ final class TodoListViewController: UIViewController, UITextFieldDelegate, UIGes
 
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         guard gestureRecognizer === hold else { return true }
-        return editingID == nil && activeRow(at: gestureRecognizer.location(in: list)) != nil
+        return writable && editingID == nil && activeRow(at: gestureRecognizer.location(in: list)) != nil
     }
 
     /// The active todo under `point`, in the list's coordinates.

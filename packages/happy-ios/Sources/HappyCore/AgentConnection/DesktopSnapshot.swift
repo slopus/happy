@@ -111,8 +111,11 @@ public struct DesktopSnapshot: Codable, Equatable, Sendable {
         /// Its picture's ThumbHash, read at `/v0/surfaces/<id>/image`; nil
         /// while it has none.
         public var image: AgentWire.Avatar?
+        /// A vault's, on a Happy Cloud server (`VaultAccess`).
+        public var access: String?
+        public var policyVault: Bool?
 
-        enum CodingKeys: String, CodingKey { case id, name, type, members, chatAgentId, image }
+        enum CodingKeys: String, CodingKey { case id, name, type, members, chatAgentId, image, access, policyVault }
 
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -123,6 +126,8 @@ public struct DesktopSnapshot: Codable, Equatable, Sendable {
             chatAgentId = try container.decodeIfPresent(String.self, forKey: .chatAgentId)
             // A picture it can't read is none, never a lost bootstrap.
             image = try? container.decodeIfPresent(AgentWire.Avatar.self, forKey: .image)
+            access = try? container.decodeIfPresent(String.self, forKey: .access)
+            policyVault = try? container.decodeIfPresent(Bool.self, forKey: .policyVault)
         }
     }
 

@@ -186,6 +186,28 @@ accounts and servers v1, with v4's token lifetimes.
   `steps.chiefOfStaff`) and reads it again on `config.updated`,
   `provider.*` and `profile.*` (`Session.watchOnboarding`). A computer's
   Happy bot is as before: not renamed here, and onboarding not read.
+- **Roles.** A cloud session reads `GET /v0/permissions` (`Permissions`)
+  at once, on `role.*`, on a resync and on every reconnect (a role
+  changed at the accounts service lands with the next token). Only
+  `granted` decides: `Session.gate` (`RoleGate`) is `.open` on a computer
+  and, on a cloud server, allows nothing until read and keeps what was
+  read if a read fails, so no control is shown only to be refused.
+  Without `content.write`: no composer (a line says why), compose,
+  microphone, call, new work, rename, Todo or document edits, new lists,
+  or proposal answers. The Chief of Staff's composer, its rename and the
+  agent's asks also need `bots.manage`. The role table's `403 forbidden`
+  ("This needs the <id> permission.") reads "You don’t have permission to
+  do that." (`Strings.refusal`); a computer's own `403` keeps its words.
+- **Vault access.** A cloud session reads the vaults' `access` and
+  `policyVault` from `GET /v0/surfaces`, again on `surface.*` and
+  `vault.settings.updated` (`Session.vaultAccess`, `VaultAccess`); a vault
+  not yet read is read-only. `none`: a lock on its row, and opening it
+  says so with nothing asked of the server. Writing needs `write` and
+  `content.write`; else no add, rename, move, delete, new version,
+  restore, pin or retention. The Policy vault's root `Global` and
+  `Security` and their `AGENTS.md` and `SECURITY.md` are never renamed,
+  moved or deleted, and its retention isn't offered. The phone never
+  reads or edits `accessPolicy` or roles.
 - **Display.** A cloud server's address is never shown: it reads like a
   username, `@acme` (`HappyCloud.handle`), in the picker, the create field
   (an `@` in front, no domain), the availability and join messages, the

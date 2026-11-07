@@ -286,7 +286,9 @@ final class VaultHistoryViewController: UIViewController {
 
     // MARK: Acts
 
-    private var changeable: Bool { entry.deletedAt == nil }
+    /// Restoring and pinning change the vault: not in the Trash, and only
+    /// where the person's role may write (`VaultAccess`).
+    private var changeable: Bool { entry.deletedAt == nil && session.vaultAccess(surfaceId).canWrite(session.gate) }
 
     private func open(_ id: String) {
         guard let version = versions[id] else { return }

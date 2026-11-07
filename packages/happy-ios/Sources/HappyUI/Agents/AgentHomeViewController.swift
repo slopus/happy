@@ -78,6 +78,11 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
     }()
     private var switcher: AccountSwitcher?
     private var headerWatch: Watch?
+    private var accessWatch: Watch?
+    /// The person's role may start work here (`RoleGate`): else no compose,
+    /// microphone or call. A computer always may.
+    private var mayWrite: Bool { Session.session(for: id, context: context)?.gate.allows(.contentWrite) ?? true }
+    private var shownMayWrite: Bool?
     /// The list's room under the bar and above the toolbar, as home last
     /// stood with it.
     private var room: HomeListRoom?
@@ -133,6 +138,10 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         v2.onListScroll = { [weak self] in self?.placeSearchField() }
         switcher = AccountSwitcher(context: context, controller: self)
         headerWatch = Session.session(for: id, context: context)?.watchHeader { [weak self] in self?.headerState = $0 }
+        accessWatch = Session.session(for: id, context: context)?.watchAccess { [weak self] in
+            guard let self, shownMayWrite != mayWrite else { return }
+            applyChrome()
+        }
         updateTitle()
         applyChrome()
     }
@@ -156,13 +165,16 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         sidebarSearch.end()
         sidebarSearch.isHidden = !sidebar
         bottomBar.isHidden = !sidebar
+        let mayWrite = mayWrite
+        shownMayWrite = mayWrite
+        bottomBar.showsCompose = mayWrite
         if sidebar {
             navigationItem.searchController = nil
             toolbarItems = nil
             bottomBar.follow(v2.list)
         } else {
             search.install()
-            toolbarItems = [navigationItem.searchBarPlacementBarButtonItem, .flexibleSpace(), voiceItem, composeItem, recordItem]
+            toolbarItems = [navigationItem.searchBarPlacementBarButtonItem, .flexibleSpace()] + (mayWrite ? [voiceItem, composeItem, recordItem] : [])
             bottomBar.follow(nil)
         }
         updateBar()
@@ -303,6 +315,7 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
 
     /// The bar's compose: new work, over home.
     func compose() {
+        guard mayWrite else { return }
         endSearch()
         v2.compose()
     }

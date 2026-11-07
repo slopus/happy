@@ -272,7 +272,7 @@ final class SidebarProposals {
     }
 
     private static func notice(_ error: Error) -> String {
-        if let refusal = Strings.botRefusal(error) { return refusal }
+        if let refusal = Strings.refusal(error) { return refusal }
         if case .status(_, _, let message?) = error as? AgentClientError, !message.isEmpty { return message }
         return Strings.proposalFailed
     }

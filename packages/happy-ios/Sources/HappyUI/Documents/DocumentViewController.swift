@@ -27,6 +27,9 @@ final class DocumentViewController: UIViewController {
     private var keyboard: CGFloat = 0
     private var styleTraits: UITraitCollection?
     private var released = false
+    private var accessWatch: Watch?
+    /// The person's role may edit, rename and leave it; else it reads.
+    private var writable: Bool { session.gate.allows(.contentWrite) }
 
     init(session: Session, surfaceId: String, name: String) {
         self.session = session
@@ -58,6 +61,12 @@ final class DocumentViewController: UIViewController {
         toolbar.onStyle = { [weak self] in self?.controller?.setStyle($0) }
         toolbar.onDone = { [weak self] in self?.textView.resignFirstResponder() }
         setUpNavigation()
+        accessWatch = session.watchAccess { [weak self] in
+            guard let self else { return }
+            setUpNavigation()
+            if controller != nil, status.isHidden { textView.isEditable = writable }
+            if !writable { textView.resignFirstResponder() }
+        }
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged(_:)), name: UIResponder.keyboardWillHideNotification, object: nil)
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (self: Self, _) in self.restyle() }
@@ -69,9 +78,10 @@ final class DocumentViewController: UIViewController {
         navigationItem.title = name.isEmpty ? Strings.Documents.untitled : name
         let more = moreItem
         more.image = UIImage(systemName: "ellipsis")
-        more.menu = UIMenu(children: [
+        let history = UIAction(title: Strings.Documents.history, image: UIImage(systemName: "clock.arrow.circlepath")) { [weak self] _ in self?.showHistory() }
+        more.menu = UIMenu(children: !writable ? [history] : [
             UIAction(title: Strings.Documents.rename, image: UIImage(systemName: "pencil")) { [weak self] _ in self?.rename() },
-            UIAction(title: Strings.Documents.history, image: UIImage(systemName: "clock.arrow.circlepath")) { [weak self] _ in self?.showHistory() },
+            history,
             UIAction(title: Strings.Documents.leave, image: UIImage(systemName: "rectangle.portrait.and.arrow.right"), attributes: .destructive) { [weak self] _ in self?.leave() },
         ])
         more.accessibilityLabel = Strings.Documents.more
@@ -150,7 +160,7 @@ final class DocumentViewController: UIViewController {
         let client = session.client
         controller.loadPicture = { url in await Self.picture(url, client: client) }
         controller.install(editor, text: text)
-        textView.isEditable = true
+        textView.isEditable = writable
         status.isHidden = true
         view.setNeedsLayout()
         selectionChanged()

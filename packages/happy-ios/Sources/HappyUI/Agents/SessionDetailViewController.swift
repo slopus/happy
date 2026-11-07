@@ -272,6 +272,9 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
     /// Chief of Staff keeps its identity and conversation through it.
     private var canRename: Bool {
         guard let row, spaceId != nil else { return false }
+        // A cloud role that can't write content renames nothing, nor the
+        // Chief of Staff without `bots.manage` (`RoleGate`).
+        guard session.gate.allowsSending(toChiefOfStaff: row.isHappy) else { return false }
         return (!row.isHappy || session.isCloud) && (row.targetKind == "task" || row.targetKind == "bot")
     }
 

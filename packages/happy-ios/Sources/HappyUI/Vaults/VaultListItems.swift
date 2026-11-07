@@ -18,6 +18,8 @@ struct VaultListInput: Sendable {
     var words: Strings.Artifacts.DateWords
     var now = Date()
     var calendar = Calendar.current
+    /// Whether the person may add here, which the empty note offers.
+    var writable = true
 }
 
 /// A vault folder's slots, worked out off the main thread: uploads under
@@ -79,7 +81,7 @@ enum VaultListItems {
         let entries = input.sort.sorted(state.entries)
         if entries.isEmpty {
             if state.status == .loading { return items + [note("vault:note", Strings.Vaults.loading)] }
-            if state.uploads.isEmpty { items.append(note("vault:note", state.inTrash ? Strings.Vaults.emptyInTrash : Strings.Vaults.empty)) }
+            if state.uploads.isEmpty { items.append(note("vault:note", state.inTrash ? Strings.Vaults.emptyInTrash : input.writable ? Strings.Vaults.empty : Strings.Vaults.emptyReadOnly)) }
             return items
         }
         if !state.uploads.isEmpty {

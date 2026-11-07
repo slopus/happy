@@ -37,8 +37,15 @@ final class VaultPreviewViewController: UIViewController, QLPreviewControllerDat
     private var loading: Task<Void, Never>?
     private var following: Task<Void, Never>?
     private var gone = false
+    /// The folder the file is in, nil at the root; `.none` where that isn't
+    /// known (opened from search). For the Policy vault's own documents.
+    private let folder: VaultEntry??
+    private var accessWatch: Watch?
+    private var access: VaultAccess { session.vaultAccess(surfaceId) }
+    private var writable: Bool { access.canWrite(session.gate) }
 
-    init(session: Session, surfaceId: String, vaultName: String, entry: VaultEntry, version: Int? = nil) {
+    init(session: Session, surfaceId: String, vaultName: String, entry: VaultEntry, version: Int? = nil, parent: VaultEntry?? = .none) {
+        folder = parent
         self.session = session
         self.surfaceId = surfaceId
         self.vaultName = vaultName
@@ -72,6 +79,7 @@ final class VaultPreviewViewController: UIViewController, QLPreviewControllerDat
         spinner.hidesWhenStopped = true
         view.addSubview(spinner)
         setUpBar()
+        accessWatch = session.watchAccess { [weak self] in self?.setUpBar() }
         let library = library, surfaceId = surfaceId, entryId = entry.id, known = entry
         following = Task { [weak self] in
             let events = await library.entryEvents(surfaceId, entryId, known: known)
@@ -128,15 +136,16 @@ final class VaultPreviewViewController: UIViewController, QLPreviewControllerDat
         let entry = entry
         let history = UIAction(title: Strings.Vaults.history, image: Glyphs.image("time-outline", size: 20)) { [weak self] _ in self?.openHistory() }
         if let number = pinnedVersion {
-            guard number != entry.latestVersion, entry.deletedAt == nil else { return [history] }
+            guard number != entry.latestVersion, entry.deletedAt == nil, writable else { return [history] }
             return [
                 UIAction(title: Strings.Vaults.restoreVersion, image: Glyphs.image("return-up-back-outline", size: 20)) { [weak self] _ in self?.restoreVersion(number) },
                 history,
             ]
         }
-        guard entry.deletedAt == nil else { return [history] }
+        guard entry.deletedAt == nil, writable else { return [history] }
+        let fixed = access.isProtected(entry, in: folder ?? nil, parentKnown: folder != nil)
         var items: [UIMenuElement] = [history]
-        var edits: [UIMenuElement] = [
+        var edits: [UIMenuElement] = fixed ? [] : [
             UIAction(title: Strings.Vaults.rename, image: Glyphs.image("create-outline", size: 20)) { [weak self] _ in self?.actions.rename(entry) },
             UIAction(title: Strings.Vaults.move, image: Glyphs.image("folder-outline", size: 20)) { [weak self] _ in self?.actions.move(entry) },
         ]
@@ -144,6 +153,7 @@ final class VaultPreviewViewController: UIViewController, QLPreviewControllerDat
             edits.append(UIAction(title: Strings.Vaults.uploadNewVersion, image: Glyphs.image("arrow-up-outline", size: 20)) { [weak self] _ in self?.actions.chooseNewVersion(of: entry) })
         }
         items.append(UIMenu(options: .displayInline, children: edits))
+        guard !fixed else { return items }
         items.append(UIMenu(options: .displayInline, children: [
             UIAction(title: Strings.Vaults.delete, image: Glyphs.image("trash-outline", size: 20), attributes: .destructive) { [weak self] _ in
                 guard let self else { return }

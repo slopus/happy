@@ -34,6 +34,8 @@ enum ChiefOfStaffAsk {
     /// task instead, as home's compose opens it.
     static func open(_ ask: ChatPrefill, session: Session, from controller: UIViewController) {
         guard !opening, let navigation = controller.navigationController else { return }
+        // Nothing typed into a conversation the person's role can't write to.
+        guard session.gate.allowsSending(toChiefOfStaff: true) else { return }
         if let chat = chat(session: session, snapshot: session.snapshot, ask: ask) {
             navigation.pushViewController(chat, animated: true)
             return

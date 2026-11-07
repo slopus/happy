@@ -409,6 +409,11 @@ final class SignInRequiredTests: XCTestCase {
         http.json(accounts + "/v1/servers", #"{"servers":[{"id":"s1","name":"acme","url":"https://acme.example/","role":"owner","createdAt":1}]}"#)
         let servers = try await account.servers()
         XCTAssertEqual(servers, [CloudServer(id: "s1", name: "acme", url: "https://acme.example/", role: .owner)])
+
+        // A viewer, an admin and a team's own role read as theirs; none loses the server.
+        http.json(accounts + "/v1/servers", #"{"servers":[{"id":"s1","name":"acme","url":"","role":"viewer"},{"id":"s2","name":"beta","url":"","role":"admin"},{"id":"s3","name":"gamma","url":"","role":"reviewers"}]}"#)
+        let roles = try await account.servers().map(\.role)
+        XCTAssertEqual(roles, [.viewer, .admin, .other("reviewers")])
         XCTAssertEqual(http.requests.last?.headers["Authorization"], "Bearer \(pass)")
 
         http.json(accounts + "/v1/servers/join", status: 404, #"{"code":"not_found","error":"No such server."}"#)

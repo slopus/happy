@@ -88,6 +88,7 @@ final class VaultViewController: UIViewController {
         list.swipeActions = { [weak self] id in self?.swipeActions(id) ?? [] }
         list.accessibilityActions = { [weak self] id in self?.accessibilityActions(id) ?? [] }
         setUpBar()
+        accessWatch = session.watchAccess { [weak self] in self?.updateBarItems(); self?.updateInput() }
 
         let pipeline = ApplyPipeline<VaultListInput, Applied, Output>(
             input: currentInput(),
@@ -144,6 +145,15 @@ final class VaultViewController: UIViewController {
         }
     }
 
+    private var accessWatch: Watch?
+    /// What the person's role may do here (`VaultAccess`, `RoleGate`): on a
+    /// cloud server, read-only until both are read.
+    private var access: VaultAccess { session.vaultAccess(surfaceId) }
+    private var writable: Bool { access.canWrite(session.gate) }
+    /// The Policy vault's own folders and documents, never moved, renamed
+    /// or deleted.
+    private func isProtected(_ entry: VaultEntry) -> Bool { access.isProtected(entry, in: folder) }
+
     private func setUpBar() {
         HeaderBar.edge(list.edge, in: self)
         updateBarItems()
@@ -155,7 +165,7 @@ final class VaultViewController: UIViewController {
         let more = UIBarButtonItem(image: UIImage(systemName: "ellipsis"), menu: UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] done in done(self?.moreItems() ?? []) }]))
         more.accessibilityLabel = Strings.Vaults.more
         more.accessibilityIdentifier = "vault-more"
-        guard !state.inTrash, state.status != .missing else {
+        guard !state.inTrash, state.status != .missing, writable else {
             navigationItem.rightBarButtonItems = [more]
             return
         }
@@ -199,8 +209,9 @@ final class VaultViewController: UIViewController {
             ]),
             UIMenu(options: .displayInline, children: [
                 UIAction(title: Strings.Vaults.trash, image: Glyphs.image("trash-outline", size: 20)) { [weak self] _ in self?.openTrash() },
+            ] + (access.canEditSettings(session.gate) ? [
                 UIAction(title: Strings.Vaults.settings, image: Glyphs.image("settings-outline", size: 20)) { [weak self] _ in self?.openSettings() },
-            ]),
+            ] : [])),
         ]
     }
 
@@ -275,6 +286,7 @@ final class VaultViewController: UIViewController {
         input.displayScale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 2
         input.dark = traitCollection.userInterfaceStyle == .dark
         input.now = Date()
+        input.writable = writable
         return input
     }
 
@@ -289,6 +301,7 @@ final class VaultViewController: UIViewController {
             input.dark = next.dark
             input.now = next.now
             input.words = next.words
+            input.writable = next.writable
         }
     }
 
@@ -348,7 +361,7 @@ final class VaultViewController: UIViewController {
     }
 
     private func preview(_ entry: VaultEntry, version: Int? = nil) {
-        navigationController?.pushViewController(VaultPreviewViewController(session: session, surfaceId: surfaceId, vaultName: vaultName, entry: entry, version: version), animated: true)
+        navigationController?.pushViewController(VaultPreviewViewController(session: session, surfaceId: surfaceId, vaultName: vaultName, entry: entry, version: version, parent: .some(folder)), animated: true)
     }
 
     private func uploadFailed(_ upload: VaultUploadState, from id: String) {
@@ -400,8 +413,9 @@ final class VaultViewController: UIViewController {
         if !entry.isFolder {
             open.append(UIAction(title: Strings.Vaults.history, image: Glyphs.image("time-outline", size: 20)) { [weak self] _ in self?.openHistory(entry) })
         }
-        guard changeable(entry) else { return UIMenu(children: open) }
-        var edits: [UIMenuElement] = [
+        guard changeable(entry), writable else { return UIMenu(children: open) }
+        let fixed = isProtected(entry)
+        var edits: [UIMenuElement] = fixed ? [] : [
             UIAction(title: Strings.Vaults.rename, image: Glyphs.image("create-outline", size: 20)) { [weak self] _ in self?.actions.rename(entry) },
             UIAction(title: Strings.Vaults.move, image: Glyphs.image("folder-outline", size: 20)) { [weak self] _ in self?.actions.move(entry) },
         ]
@@ -411,14 +425,15 @@ final class VaultViewController: UIViewController {
         return UIMenu(children: [
             UIMenu(options: .displayInline, children: open),
             UIMenu(options: .displayInline, children: edits),
+        ] + (fixed ? [] : [
             UIMenu(options: .displayInline, children: [
                 UIAction(title: Strings.Vaults.delete, image: Glyphs.image("trash-outline", size: 20), attributes: .destructive) { [weak self] _ in self?.actions.delete(entry) },
             ]),
-        ])
+        ]))
     }
 
     private func swipeActions(_ id: String) -> [ListSwipeAction] {
-        guard let entry = entry(id), changeable(entry) else { return [] }
+        guard let entry = entry(id), changeable(entry), writable, !isProtected(entry) else { return [] }
         return [
             ListSwipeAction(title: Strings.Vaults.delete, image: .icon(.ionicons("trash-outline"), size: 20), color: UIColor(Palette.statusError), isDestructive: true) { [weak self] in
                 self?.actions.delete(entry)
@@ -437,7 +452,7 @@ final class VaultViewController: UIViewController {
         if !entry.isFolder {
             items.append(UIAccessibilityCustomAction(name: Strings.Vaults.history) { [weak self] _ in self?.openHistory(entry); return true })
         }
-        guard changeable(entry) else { return items }
+        guard changeable(entry), writable, !isProtected(entry) else { return items }
         items.append(UIAccessibilityCustomAction(name: Strings.Vaults.rename) { [weak self] _ in self?.actions.rename(entry); return true })
         items.append(UIAccessibilityCustomAction(name: Strings.Vaults.move) { [weak self] _ in self?.actions.move(entry); return true })
         items.append(UIAccessibilityCustomAction(name: Strings.Vaults.delete) { [weak self] _ in self?.actions.delete(entry); return true })

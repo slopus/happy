@@ -161,6 +161,13 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     /// Holds the accounts' readings followed while this screen shows.
     private var usageWatch: Watch?
     private var headerWatch: Watch?
+    private var accessWatch: Watch?
+    private var homeGateWatch: Watch?
+    /// In the composer's place where the person's role can't write here
+    /// (`RoleGate`): a cloud viewer anywhere, a member in the Chief of Staff's.
+    private let readOnlyNote = UILabel()
+    /// Whether the composer shows: nil until the gate is first read.
+    private var mayWrite: Bool?
     private var headerState: Strings.HeaderStatus.State = .connecting
     private var copied: (id: String, until: Task<Void, Never>)?
     /// The newest row is in view: what arrives keeps it there.
@@ -357,7 +364,24 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         #endif
         applyIntro()
         proposals.onChange = { [weak self] in self?.replan() }
-        watch = session.watch { [weak self] snapshot in self?.follow(snapshot) }
+        if !previewing {
+            readOnlyNote.text = Strings.readOnlyConversation
+            readOnlyNote.font = .preferredFont(forTextStyle: .footnote)
+            readOnlyNote.adjustsFontForContentSizeCategory = true
+            readOnlyNote.textColor = UIColor(Palette.textSecondary)
+            readOnlyNote.textAlignment = .center
+            readOnlyNote.numberOfLines = 0
+            readOnlyNote.accessibilityIdentifier = "read-only-note"
+            readOnlyNote.isHidden = true
+            view.addSubview(readOnlyNote)
+        }
+        // The note is in place before the first watch can show it.
+        watch = session.watch { [weak self] snapshot in self?.follow(snapshot); self?.applyGate() }
+        if !previewing {
+            accessWatch = session.watchAccess { [weak self] in self?.applyGate() }
+            homeGateWatch = session.watchHome { [weak self] _ in self?.applyGate() }
+            applyGate()
+        }
         headerWatch = session.watchHeader { [weak self] state in
             guard let self else { return }
             headerState = state
@@ -782,7 +806,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     /// (`ConversationHeader`); every other conversation's has its name and
     /// Compose.
     private func showHeader(animated: Bool) {
-        ConversationHeader.show(newTask == nil || newWorkPanelGone, title: header, items: composeItems, on: navigationItem, animated: animated)
+        ConversationHeader.show(newTask == nil || newWorkPanelGone, title: header, items: mayWrite == true ? composeItems : [], on: navigationItem, animated: animated)
     }
 
     /// Nothing typed or picked.
@@ -793,7 +817,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     /// until its first message; when the task compose opens is this one,
     /// it only takes the keyboard. What is typed here stays in its draft.
     func compose() {
-        guard !previewing, !composing, let navigationController, navigationController.topViewController === self else { return }
+        guard !previewing, !composing, mayWrite == true, let navigationController, navigationController.topViewController === self else { return }
         composing = true
         let store = session.store
         let session = session
@@ -1062,6 +1086,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         // key stays the warm chat's, so its rows planned ahead are taken.
         if chat.items.contains(where: { if case .failure = $0.role { true } else { false } }) {
             key.switchTarget = switchTarget
+            key.actionable = mayWrite == true
             key.modelNames = Dictionary((session.models.catalog?.models ?? []).map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
         }
         return key
@@ -1076,7 +1101,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     /// A failure card's action: the turn again, or continued on the
     /// composer's model. What went wrong doing it is said, not swallowed.
     private func resolveFailure(_ failure: Failure) {
-        guard let action = ChatPlanner.action(failure, target: switchTarget) else { return }
+        guard mayWrite == true, let action = ChatPlanner.action(failure, target: switchTarget) else { return }
         let conversation = conversation
         let mode: AgentWire.Mode? = if case .switchTo(let target) = action { target.mode } else { nil }
         Analytics.shared.failureActionClicked(failure, switchingModel: mode != nil)
@@ -1359,6 +1384,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         proposalViews[key] = card
         // A preview is only looked at: nothing in it is decided from there.
         if previewing { return card }
+        card.answerable = session.gate.allows(.contentWrite)
         let proposals = proposals
         card.onAccept = { proposals.accept(artifactId) }
         card.onDecline = { proposals.decline(artifactId) }
@@ -1414,6 +1440,11 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         ) { [card] width in card.height(fitting: width) }
         transcriptHeaderScrim.setLayoutFrame(screen.headerScrim)
         card.setLayoutFrame(screen.card)
+        if !readOnlyNote.isHidden {
+            let inset = screen.card.insetBy(dx: 24, dy: 0)
+            let height = readOnlyNote.sizeThatFits(CGSize(width: inset.width, height: .greatestFiniteMagnitude)).height
+            readOnlyNote.frame = CGRect(x: inset.minX, y: screen.card.maxY - height - 12, width: inset.width, height: height)
+        }
         placeSlash()
         meter.isHidden = screen.meter == nil
         if let frame = screen.meter { meter.setLayoutFrame(frame) }
@@ -1431,6 +1462,31 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         layoutTranscript()
         updateHeaderEdge()
         ultraKeyboard?.refresh()
+    }
+
+    // MARK: Role
+
+    /// The Chief of Staff's conversation, known by its bot's `systemKey`
+    /// (the spaces' or home's rows).
+    private var isChiefOfStaff: Bool {
+        let agentId = shownAgentId
+        return !agentId.isEmpty && (session.snapshot.happyAgentId == agentId || session.home.allRows.contains { $0.isHappy && $0.agentId == agentId })
+    }
+
+    /// The composer where the person's role may write here, and a line
+    /// saying why not where it can't: never a send the server refuses.
+    private func applyGate() {
+        guard !previewing else { return }
+        let may = session.gate.allowsSending(toChiefOfStaff: isChiefOfStaff)
+        guard may != mayWrite else { return }
+        mayWrite = may
+        card.configuration.isEditable = may
+        card.isHidden = !may
+        readOnlyNote.isHidden = may
+        if !may { card.blur(); card.textView.resignFirstResponder() }
+        showHeader(animated: false)
+        replan()
+        view.setNeedsLayout()
     }
 
     // MARK: Preview
@@ -1899,6 +1955,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             UIPasteboard.general.string = text
             showCopied(id)
         case .retry(let localId):
+            guard mayWrite == true else { return }
             // A failure card's action names its service message.
             if let item = chat.items.first(where: { $0.id == localId }), case .failure(let failure) = item.role {
                 resolveFailure(failure)
