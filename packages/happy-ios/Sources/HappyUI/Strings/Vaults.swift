@@ -13,6 +13,7 @@ extension Strings {
         static let loading = "Loading…"
         static let empty = "This folder is empty. Tap + to add files."
         static let emptyInTrash = "This folder is empty."
+        static let emptyReadOnly = "This folder is empty."
         static let missing = "This folder isn’t here. It may have been removed, or belong to a Happy Agent this one can’t reach."
         static let inTrash = "This folder is in the Trash. Restore it to change what is inside."
         static let uploads = "Uploading"

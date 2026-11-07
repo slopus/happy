@@ -364,7 +364,6 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         #endif
         applyIntro()
         proposals.onChange = { [weak self] in self?.replan() }
-        watch = session.watch { [weak self] snapshot in self?.follow(snapshot); self?.applyGate() }
         if !previewing {
             readOnlyNote.text = Strings.readOnlyConversation
             readOnlyNote.font = .preferredFont(forTextStyle: .footnote)
@@ -375,6 +374,10 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             readOnlyNote.accessibilityIdentifier = "read-only-note"
             readOnlyNote.isHidden = true
             view.addSubview(readOnlyNote)
+        }
+        // The note is in place before the first watch can show it.
+        watch = session.watch { [weak self] snapshot in self?.follow(snapshot); self?.applyGate() }
+        if !previewing {
             accessWatch = session.watchAccess { [weak self] in self?.applyGate() }
             homeGateWatch = session.watchHome { [weak self] _ in self?.applyGate() }
             applyGate()
@@ -803,7 +806,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     /// (`ConversationHeader`); every other conversation's has its name and
     /// Compose.
     private func showHeader(animated: Bool) {
-        ConversationHeader.show(newTask == nil || newWorkPanelGone, title: header, items: composeItems, on: navigationItem, animated: animated)
+        ConversationHeader.show(newTask == nil || newWorkPanelGone, title: header, items: mayWrite == true ? composeItems : [], on: navigationItem, animated: animated)
     }
 
     /// Nothing typed or picked.
@@ -814,7 +817,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     /// until its first message; when the task compose opens is this one,
     /// it only takes the keyboard. What is typed here stays in its draft.
     func compose() {
-        guard !previewing, !composing, let navigationController, navigationController.topViewController === self else { return }
+        guard !previewing, !composing, mayWrite == true, let navigationController, navigationController.topViewController === self else { return }
         composing = true
         let store = session.store
         let session = session
@@ -1083,6 +1086,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         // key stays the warm chat's, so its rows planned ahead are taken.
         if chat.items.contains(where: { if case .failure = $0.role { true } else { false } }) {
             key.switchTarget = switchTarget
+            key.actionable = mayWrite == true
             key.modelNames = Dictionary((session.models.catalog?.models ?? []).map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
         }
         return key
@@ -1097,7 +1101,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     /// A failure card's action: the turn again, or continued on the
     /// composer's model. What went wrong doing it is said, not swallowed.
     private func resolveFailure(_ failure: Failure) {
-        guard let action = ChatPlanner.action(failure, target: switchTarget) else { return }
+        guard mayWrite == true, let action = ChatPlanner.action(failure, target: switchTarget) else { return }
         let conversation = conversation
         let mode: AgentWire.Mode? = if case .switchTo(let target) = action { target.mode } else { nil }
         Analytics.shared.failureActionClicked(failure, switchingModel: mode != nil)
@@ -1480,6 +1484,8 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         card.isHidden = !may
         readOnlyNote.isHidden = may
         if !may { card.blur(); card.textView.resignFirstResponder() }
+        showHeader(animated: false)
+        replan()
         view.setNeedsLayout()
     }
 
@@ -1949,6 +1955,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             UIPasteboard.general.string = text
             showCopied(id)
         case .retry(let localId):
+            guard mayWrite == true else { return }
             // A failure card's action names its service message.
             if let item = chat.items.first(where: { $0.id == localId }), case .failure(let failure) = item.role {
                 resolveFailure(failure)

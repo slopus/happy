@@ -2,7 +2,39 @@ import Foundation
 
 /// A server the Happy Cloud account belongs to (`GET /v1/servers`).
 public struct CloudServer: Codable, Equatable, Sendable {
-    public enum Role: String, Codable, Sendable { case owner, member }
+    /// The person's role on it: a built-in one, or a team's own role ID,
+    /// which the cluster defines (`other`). A role this phone doesn't know
+    /// never loses the server.
+    public enum Role: Codable, Equatable, Sendable {
+        case owner, admin, member, viewer
+        case other(String)
+
+        public init(from decoder: Decoder) throws {
+            let id = try decoder.singleValueContainer().decode(String.self)
+            self = switch id {
+            case "owner": .owner
+            case "admin": .admin
+            case "member": .member
+            case "viewer": .viewer
+            default: .other(id)
+            }
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var container = encoder.singleValueContainer()
+            try container.encode(id)
+        }
+
+        public var id: String {
+            switch self {
+            case .owner: "owner"
+            case .admin: "admin"
+            case .member: "member"
+            case .viewer: "viewer"
+            case .other(let id): id
+            }
+        }
+    }
     /// The server's picture (its node avatar), served by the accounts
     /// service under the account's token.
     public struct Image: Codable, Equatable, Sendable {

@@ -88,7 +88,7 @@ final class VaultViewController: UIViewController {
         list.swipeActions = { [weak self] id in self?.swipeActions(id) ?? [] }
         list.accessibilityActions = { [weak self] id in self?.accessibilityActions(id) ?? [] }
         setUpBar()
-        accessWatch = session.watchAccess { [weak self] in self?.updateBarItems() }
+        accessWatch = session.watchAccess { [weak self] in self?.updateBarItems(); self?.updateInput() }
 
         let pipeline = ApplyPipeline<VaultListInput, Applied, Output>(
             input: currentInput(),
@@ -286,6 +286,7 @@ final class VaultViewController: UIViewController {
         input.displayScale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 2
         input.dark = traitCollection.userInterfaceStyle == .dark
         input.now = Date()
+        input.writable = writable
         return input
     }
 
@@ -300,6 +301,7 @@ final class VaultViewController: UIViewController {
             input.dark = next.dark
             input.now = next.now
             input.words = next.words
+            input.writable = next.writable
         }
     }
 

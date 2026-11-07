@@ -37,6 +37,197 @@ final class HappyCloudUITests: XCTestCase {
     }
 
     /// The first of `candidates` to show within `timeout`.
+    /// From home or Start, through Connect to Happy Cloud, the ten taps and
+    /// the test account's form, to its servers. The password is pasted,
+    /// never typed: XCTest's log keeps whatever is typed.
+    private func signInWithTestAccount(login: String, password: String) {
+        let switcher = element("account-switcher")
+        let start = element("start-more")
+        guard let entry = first([switcher, start], timeout: 30) else { return require(false, "neither home nor Start") }
+        capture("01-before")
+        entry.tap()
+        let cloud = first([app.buttons["Connect to Happy Cloud"], app.buttons["account-cloud"]], timeout: 5)
+        require(cloud != nil, "no Connect to Happy Cloud")
+        cloud?.tap()
+
+        let logo = element("cloud-logo")
+        require(logo.waitForExistence(timeout: 10), "no welcome")
+        capture("02-welcome")
+        let form = element("cloud-test-login")
+        // One quick burst: a phone's taps one by one can outlast the four seconds.
+        logo.tap(withNumberOfTaps: 10, numberOfTouches: 1)
+        if !form.waitForExistence(timeout: 2) { for _ in 0..<10 where !form.exists { logo.tap() } }
+        require(form.waitForExistence(timeout: 3), "ten taps on the logo opened nothing")
+        capture("03-test-sign-in")
+        form.tap()
+        form.typeText(login)
+        let secret = element("cloud-test-password")
+        // A phone lets only the app in front write the pasteboard: the
+        // runner comes forward to write it, and again to empty it.
+        onPasteboard(password)
+        defer { onPasteboard("") }
+        secret.tap()
+        Thread.sleep(forTimeInterval: 0.5)
+        secret.tap()
+        let paste = app.menuItems["Paste"]
+        if !paste.waitForExistence(timeout: 2) { secret.press(forDuration: 1.2) }
+        require(paste.waitForExistence(timeout: 5), "no Paste in the password's menu")
+        paste.tap()
+        let allow = first([app.buttons["Allow Paste"], XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Allow Paste"]], timeout: 3)
+        allow?.tap()
+        capture("04-filled")
+        // Back in front after the pasteboard, a phone can call the button
+        // not hittable for a moment: its place is tapped.
+        let submit = element("cloud-test-submit")
+        if submit.isHittable {
+            submit.tap()
+        } else {
+            // Return in the password's field signs in as the button does.
+            secret.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).tap()
+            Thread.sleep(forTimeInterval: 0.8)
+            app.typeText("\n")
+        }
+        Thread.sleep(forTimeInterval: 1)
+    }
+
+    /// Writes the pasteboard from the runner, brought in front for it, then
+    /// puts the app back in front.
+    private func onPasteboard(_ text: String) {
+        if let id = Bundle.main.bundleIdentifier {
+            let runner = XCUIApplication(bundleIdentifier: id)
+            runner.activate()
+            _ = runner.wait(for: .runningForeground, timeout: 5)
+        }
+        UIPasteboard.general.string = text
+        app.activate()
+        _ = app.wait(for: .runningForeground, timeout: 5)
+    }
+
+    /// A Happy Cloud server's controls follow the person's role: as
+    /// `TEST_RUNNER_ROLE` (`owner` or `viewer`) on `TEST_RUNNER_ROLE_SERVER`,
+    /// which holds the vaults Locked (owners only), Shared (read-only for
+    /// the rest) and Policy, and the todo list Groceries, each joined. The
+    /// owner runs first and starts a task the viewer then opens; each run
+    /// signs out of the server at its end. Pictures of every screen.
+    func testARolesControlsFollowItsPermissions() throws {
+        guard let login = env["QA_LOGIN"], let password = env["QA_PASSWORD"], let server = env["ROLE_SERVER"], let role = env["ROLE"] else { throw XCTSkip("no role run") }
+        let owner = role == "owner"
+        app.launch()
+        signInWithTestAccount(login: login, password: password)
+        let card = element("cloud-server-\(server)")
+        require(card.waitForExistence(timeout: 30), "@\(server) isn't among \(login)'s servers")
+        capture("05-servers")
+        card.tap()
+        let switcher = element("account-switcher")
+        require(switcher.waitForExistence(timeout: 90), "no home of @\(server)")
+        Thread.sleep(forTimeInterval: 6)
+        capture("10-\(role)-home")
+        tree("10-\(role)-home", app)
+        let compose = element("compose")
+        XCTAssertEqual(compose.exists, owner, "compose for the \(role)")
+
+        // A conversation: the owner starts it, the viewer only reads it.
+        let words = "Roles check from the owner."
+        if owner {
+            compose.tap()
+            let composer = app.textViews["composer"]
+            require(composer.waitForExistence(timeout: 15), "no composer")
+            composer.tap()
+            composer.typeText(words)
+            app.buttons["Send"].tap()
+            Thread.sleep(forTimeInterval: 8)
+        } else {
+            let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Roles check'")).firstMatch
+            require(row.waitForExistence(timeout: 30), "the owner's task isn't on the viewer's home")
+            row.tap()
+            require(element("read-only-note").waitForExistence(timeout: 15), "no read-only line in the composer's place")
+            XCTAssertFalse(app.textViews["composer"].exists && app.textViews["composer"].isHittable, "the viewer has a composer")
+            XCTAssertFalse(app.buttons["compose"].exists, "the viewer's chat offers a new task")
+            XCTAssertFalse(app.staticTexts["Retry"].exists, "the viewer's chat offers Retry")
+        }
+        capture("11-\(role)-task")
+        tree("11-\(role)-task", app)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        require(switcher.waitForExistence(timeout: 10), "no home after the task")
+
+        // Groceries: the viewer gets no add row.
+        open("Groceries")
+        require(element("todo-list").waitForExistence(timeout: 10), "Groceries didn't open")
+        Thread.sleep(forTimeInterval: 2)
+        XCTAssertEqual(app.descendants(matching: .any)["Add a todo"].exists, owner, "the add row for the \(role)")
+        capture("12-\(role)-todos")
+        goBack(switcher)
+
+        // Locked: owners only.
+        open("Locked")
+        if owner {
+            require(element("vault").waitForExistence(timeout: 10), "Locked didn't open for the owner")
+            XCTAssertTrue(element("vault-add").waitForExistence(timeout: 5), "no + for the owner")
+        } else {
+            require(element("vault-locked").waitForExistence(timeout: 10), "Locked isn't locked for the viewer")
+        }
+        capture("13-\(role)-locked")
+        goBack(switcher)
+
+        // Shared: everyone reads, only the owner writes.
+        open("Shared")
+        require(element("vault").waitForExistence(timeout: 10), "Shared didn't open")
+        Thread.sleep(forTimeInterval: 2)
+        XCTAssertEqual(element("vault-add").exists, owner, "+ in Shared for the \(role)")
+        capture("14-\(role)-shared")
+        goBack(switcher)
+
+        // Policy: the owner opens it, its Global folder fixed; locked for the viewer.
+        open("Policy")
+        if owner {
+            require(element("vault").waitForExistence(timeout: 10), "Policy didn't open for the owner")
+            let global = app.buttons["Global"].firstMatch
+            require(global.waitForExistence(timeout: 10), "no Global in Policy")
+            global.press(forDuration: 1.0)
+            Thread.sleep(forTimeInterval: 1)
+            capture("15-owner-policy-menu")
+            XCTAssertFalse(app.buttons["Rename"].exists || app.menuItems["Rename"].exists, "Global can be renamed")
+            XCTAssertFalse(app.buttons["Delete"].exists || app.menuItems["Delete"].exists, "Global can be deleted")
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap()
+        } else {
+            require(element("vault-locked").waitForExistence(timeout: 10), "Policy isn't locked for the viewer")
+            capture("15-viewer-policy")
+        }
+        goBack(switcher)
+
+        // Out of the server, so the other role can connect to it here.
+        let gear = app.buttons["settings"].firstMatch
+        require(gear.waitForExistence(timeout: 5), "no settings on the home")
+        gear.tap()
+        Thread.sleep(forTimeInterval: 1.5)
+        let rowOut = element("settings:disconnect")
+        for _ in 0..<4 where !rowOut.isHittable { app.swipeUp() }
+        require(rowOut.waitForExistence(timeout: 5), "no Sign Out on the server's settings")
+        rowOut.tap()
+        let confirm = app.alerts.buttons["Sign Out"]
+        require(confirm.waitForExistence(timeout: 5), "no confirmation")
+        confirm.tap()
+        Thread.sleep(forTimeInterval: 2)
+        capture("16-\(role)-signed-out")
+    }
+
+    /// A home row by its name, scrolled to if it must be.
+    private func open(_ name: String) {
+        let row = app.buttons["row:space:\(name)"].firstMatch
+        for _ in 0..<3 where !row.isHittable { app.swipeUp() }
+        require(row.waitForExistence(timeout: 15), "no \(name) on home")
+        row.tap()
+    }
+
+    private func goBack(_ home: XCUIElement) {
+        for _ in 0..<3 where !home.isHittable {
+            let back = app.navigationBars.buttons.element(boundBy: 0)
+            if back.exists { back.tap() } else { break }
+            Thread.sleep(forTimeInterval: 1)
+        }
+        require(home.waitForExistence(timeout: 10), "no home")
+    }
+
     private func waitGone(_ element: XCUIElement, _ seconds: TimeInterval) -> Bool {
         let deadline = Date().addingTimeInterval(seconds)
         while Date() < deadline, element.exists { Thread.sleep(forTimeInterval: 0.2) }
@@ -143,39 +334,8 @@ final class HappyCloudUITests: XCTestCase {
     func testATestAccountRunsTheWholeFlow() throws {
         guard let login = env["QA_LOGIN"], let password = env["QA_PASSWORD"] else { throw XCTSkip("no test account") }
         app.launch()
-
         let switcher = element("account-switcher")
-        let start = element("start-more")
-        guard let entry = first([switcher, start], timeout: 30) else { return require(false, "neither home nor Start") }
-        capture("01-before")
-        entry.tap()
-        let cloud = first([app.buttons["Connect to Happy Cloud"], app.buttons["account-cloud"]], timeout: 5)
-        require(cloud != nil, "no Connect to Happy Cloud")
-        cloud?.tap()
-
-        let logo = element("cloud-logo")
-        require(logo.waitForExistence(timeout: 10), "no welcome")
-        capture("02-welcome")
-        let form = element("cloud-test-login")
-        for _ in 0..<10 where !form.exists { logo.tap() }
-        require(form.waitForExistence(timeout: 3), "ten taps on the logo opened nothing")
-        capture("03-test-sign-in")
-        form.tap()
-        form.typeText(login)
-        // Pasted, not typed: XCTest's log keeps whatever is typed.
-        let secret = element("cloud-test-password")
-        UIPasteboard.general.string = password
-        defer { UIPasteboard.general.string = "" }
-        secret.tap()
-        secret.press(forDuration: 1.2)
-        let paste = app.menuItems["Paste"]
-        require(paste.waitForExistence(timeout: 5), "no Paste in the password's menu")
-        paste.tap()
-        let allow = first([app.buttons["Allow Paste"], XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Allow Paste"]], timeout: 3)
-        allow?.tap()
-        UIPasteboard.general.string = ""
-        capture("04-filled")
-        element("cloud-test-submit").tap()
+        signInWithTestAccount(login: login, password: password)
 
         let create = element("cloud-create")
         require(create.waitForExistence(timeout: 30), "no servers after the test account's sign-in")
