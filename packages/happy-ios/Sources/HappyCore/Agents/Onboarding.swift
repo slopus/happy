@@ -86,6 +86,14 @@ public struct Onboarding: Decodable, Equatable, Sendable {
     /// `config.updated` when the Chief of Staff is seeded or named and when
     /// onboarding completes; providers and the profile send their own.
     public static let refreshEvents = ["config.updated", "provider.", "profile."]
+
+    /// Whether the person has yet to tell this server their name: this
+    /// member's profile step, else the installation's (`profile.done`).
+    /// A name in the profile decides nothing; unsaved, it is only the
+    /// server's suggestion. Nil when the server reports neither.
+    public var needsName: Bool? {
+        (member?.steps.profile ?? steps.profile).map { !$0.done }
+    }
 }
 
 extension AgentClient {

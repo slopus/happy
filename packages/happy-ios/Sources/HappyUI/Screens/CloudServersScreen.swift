@@ -19,6 +19,9 @@ final class CloudNavigationController: UINavigationController, AccountAddingFlow
 enum CloudScreens {
     /// The account's one-hour pass, in memory only, while it lasts.
     static var account: CloudAccount?
+    /// The name Apple gave this sign-in, which it gives only the first
+    /// time: what "What's your name?" offers. In memory only.
+    static var appleName: String?
 
     /// The first screen of the flow: the servers while the account's pass
     /// lasts, Welcome otherwise.
@@ -305,6 +308,7 @@ final class CloudWelcomeViewController: CloudStageViewController, ASWebAuthentic
         defer { self.apple = nil }
         do {
             let identity = try await apple.signIn()
+            CloudScreens.appleName = identity.name ?? CloudScreens.appleName
             let account = try await CloudAccount.signIn(provider: "apple", idToken: identity.idToken, nonce: identity.nonce,
                                                         authorizationCode: identity.authorizationCode, name: identity.name)
             CloudScreens.signedIn(account, context: context, from: self)
@@ -687,6 +691,8 @@ final class CloudConnectingViewController: CloudStageViewController {
     private let server: CloudServer
     private let startsAtOnce: Bool
     private let spinner = UIActivityIndicatorView(style: .large)
+    /// How the server's sign-in is made: the cloud's own; a test's stand-in.
+    var makeFlow: (String) throws -> ServerSignInFlow = { try ServerSignInFlow.cloud($0) }
     private var started = false
 
     init(context: AppContext, account: CloudAccount, server: CloudServer, startsAtOnce: Bool = true) {
@@ -730,11 +736,18 @@ final class CloudConnectingViewController: CloudStageViewController {
         show(problem: nil)
         do {
             let (access, grant) = try await account.serverToken(for: server)
-            let flow = try ServerSignInFlow.cloud(origin)
+            let flow = try makeFlow(origin)
             var signedIn = try await flow.signedIn(access: access, grant: grant, installation: .recorded)
-            // The cloud names every member from the account; this only
-            // answers the team profile gate on a server that hasn't.
-            if signedIn.needsProfile { signedIn = try await flow.saveProfile(HappyCloud.handle(server.name), for: signedIn) }
+            // A server that wants the member's profile before anything
+            // else: their name, as they give it.
+            if signedIn.needsProfile {
+                let suggested = await flow.suggestedName(for: signedIn)
+                guard let name = await NamePrompt.ask(on: self, message: Strings.ServerSignIn.nameCloudMessage, prefill: CloudScreens.appleName ?? suggested) else {
+                    return show(problem: Strings.ServerSignIn.nameNeeded)
+                }
+                signedIn = try await flow.saveProfile(name, for: signedIn)
+                CloudScreens.appleName = nil
+            }
             try await context.account.addServer(signedIn)
             CloudScreens.finish(from: self, opened: true)
         } catch CloudAccountError.signInRequired {

@@ -363,6 +363,35 @@ final class SignInRequiredTests: XCTestCase {
         XCTAssertEqual(second.record.userId, "u1")
     }
 
+    /// A cloud member with no profile yet (`userId` null) is asked their
+    /// name, offered the one the server suggests while it's unsaved, and
+    /// is a member once it's saved. Nothing is saved for them.
+    func testANamelessCloudMemberIsOfferedTheSuggestionAndSavesTheirName() async throws {
+        let server = HappyCloud.server(named: "acme")
+        let http = ScriptedHTTP()
+        let saved = NSLock()
+        nonisolated(unsafe) var asked = 0
+        http.on(server + "/v0/authentication") { _ in
+            let userId = saved.withLock { asked += 1; return asked > 1 ? #""u1""# : "null" }
+            return HTTPResponse(status: 200, body: Data(#"{"authenticated":true,"userId":\#(userId),"methods":[]}"#.utf8), headers: ["Content-Type": "application/json"])
+        }
+        let daemon = Daemon()
+        await daemon.answer("/v0/health", HTTP1Response(status: 200, body: Data(#"{"ready":true}"#.utf8)))
+        await daemon.answer("/v0/profile", HTTP1Response(status: 200, body: Data(#"{"profile":{"name":" Steve K ","email":"s@example.com","updatedAt":0,"version":"v0"}}"#.utf8)))
+        let flow = try ServerSignInFlow.cloud(server, http: http, makeTransport: { _ in daemon })
+        let grant = OAuthGrant(refreshToken: "sr1", refreshUrl: HappyCloud.accounts + "/token", clientId: "happy", resource: server + "/", audience: server + "/")
+        let signedIn = try await flow.signedIn(access: OAuthAccess(token: jwt("srv", aud: server + "/"), expiresAt: nil), grant: grant, installation: .recorded)
+        XCTAssertTrue(signedIn.needsProfile)
+        let suggested = await flow.suggestedName(for: signedIn)
+        XCTAssertEqual(suggested, "Steve K")
+        let member = try await flow.saveProfile("Steve", for: signedIn)
+        XCTAssertFalse(member.needsProfile)
+        XCTAssertEqual(member.record.userId, "u1")
+        await daemon.answer("/v0/profile", HTTP1Response(status: 200, body: Data(#"{"profile":{"name":null,"updatedAt":0,"version":"v0"}}"#.utf8)))
+        let none = await flow.suggestedName(for: signedIn)
+        XCTAssertNil(none, "no suggestion, an empty field")
+    }
+
     func testHappyCloudServersAreNamedUnderTheBase() throws {
         let acme = HappyCloud.server(named: "acme")
         XCTAssertEqual(acme, "https://acme.\(HappyCloud.base)")

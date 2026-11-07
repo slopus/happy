@@ -146,21 +146,6 @@ final class ServerSignInViewController: UIViewController, ASWebAuthenticationPre
     }
 
     /// The person's name, for a server meeting them for the first time.
-    private func askName() async -> String? {
-        await withCheckedContinuation { continuation in
-            let alert = UIAlertController(title: Strings.ServerSignIn.nameTitle, message: Strings.ServerSignIn.nameMessage, preferredStyle: .alert)
-            alert.addTextField { field in
-                field.placeholder = Strings.ServerSignIn.namePlaceholder
-                field.textContentType = .name
-                field.autocapitalizationType = .words
-            }
-            alert.addAction(UIAlertAction(title: Strings.Common.cancel, style: .cancel) { _ in continuation.resume(returning: nil) })
-            alert.addAction(UIAlertAction(title: Strings.ServerSignIn.continueAction, style: .default) { [weak alert] _ in
-                let name = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                continuation.resume(returning: name.isEmpty ? nil : name)
-            })
-            present(alert, animated: true)
-        }
-    }
+    private func askName() async -> String? { await NamePrompt.ask(on: self) }
 }
 #endif
