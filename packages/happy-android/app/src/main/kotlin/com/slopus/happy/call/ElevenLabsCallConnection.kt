@@ -8,8 +8,10 @@ import io.elevenlabs.ConversationSession
 import io.elevenlabs.Language
 import io.elevenlabs.Overrides
 import io.elevenlabs.PromptOverrides
+import io.elevenlabs.models.ConversationEvent
 import io.elevenlabs.models.ConversationMode
 import io.elevenlabs.models.DisconnectionDetails
+import io.elevenlabs.network.ConversationEventParser
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -100,6 +102,10 @@ class ElevenLabsCallConnection private constructor(
     }
 
     companion object {
+        /** Whether [message], a raw event, is the response to the agent's end_call: it hung up. */
+        internal fun hangsUp(message: String): Boolean =
+            "end_call" in message && (ConversationEventParser.parseIncomingEvent(message) as? ConversationEvent.AgentToolResponse)?.toolName == "end_call"
+
         suspend fun connect(context: Context, scope: CoroutineScope, grant: CallGrant, request: CallStart, events: CallEvents): ElevenLabsCallConnection {
             val tracker = Tracker(scope, events.activity)
             var connection: ElevenLabsCallConnection? = null
@@ -107,6 +113,7 @@ class ElevenLabsCallConnection private constructor(
             val early = ArrayList<CallToolCall>()
             // The SDK ends the call itself for the agent's end_call, as the person's own end; the agent
             // leaving the room can be heard first, so the tool's response is what says it hung up.
+            // Its raw event, in order with the agent leaving: the parsed one comes off a queue, later.
             val agentEnded = java.util.concurrent.atomic.AtomicBoolean(false)
             val config = ConversationConfig(
                 // A minted token when a Happy service grants one; a public agent by its ID otherwise.
@@ -126,7 +133,7 @@ class ElevenLabsCallConnection private constructor(
                 onAudioLevelChanged = { level -> scope.launch { tracker.level(level) } },
                 onUserTranscript = { text -> if (com.slopus.happy.BuildConfig.DEBUG) scope.launch { CallProbe.line("user", text) } },
                 onAgentResponse = { text -> if (com.slopus.happy.BuildConfig.DEBUG) scope.launch { CallProbe.line("agent", text) } },
-                onAgentToolResponse = { toolName, _, _, _ -> if (toolName == "end_call") agentEnded.set(true) },
+                onMessage = { _, message -> if (hangsUp(message)) agentEnded.set(true) },
                 onDisconnect = { details ->
                     val hungUp = details is DisconnectionDetails.User || agentEnded.get()
                     scope.launch { if (hungUp) events.hungUp() else events.disconnected() }

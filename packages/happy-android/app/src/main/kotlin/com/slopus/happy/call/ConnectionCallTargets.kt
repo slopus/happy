@@ -111,10 +111,12 @@ class ConnectionCallTargets(
         }
         // Held by the call, its screen or anyone: as it is now.
         session.conversations.peek(agentId)?.state?.value?.takeIf { it.loaded }?.let { return@onMain named(withModels(CallTargetState.from(it, target, failureText), it)) }
-        // One bounded read: about three seconds for its first page.
+        // One bounded read: about three seconds for its first page, and the computer's models, read beside it,
+        // which a send that changes the model needs; without them, the page alone.
         val hold = make(agentId)
         try {
-            val state = withTimeoutOrNull(READ_MILLIS) { hold.conversation.state.first { it.loaded } } ?: return@onMain null
+            val state = withTimeoutOrNull(READ_MILLIS) { hold.conversation.state.first { it.loaded && it.catalog != null } }
+                ?: hold.conversation.state.value.takeIf { it.loaded } ?: return@onMain null
             named(withModels(CallTargetState.from(state, target, failureText), state))
         } finally {
             release(hold)
@@ -229,7 +231,8 @@ class ConnectionCallTargets(
             // New work: its first message makes it, in the conversation the call or its screen holds.
             val draft = unmade(agentId) ?: return@onMain CallSendOutcome.Refused("That new work was closed before anything was sent.")
             if (draft.has(id)) return@onMain CallSendOutcome.Queued
-            switch(draft, change)
+            if (change != null) withTimeoutOrNull(READ_MILLIS) { draft.state.first { it.catalog != null } }
+            if (!switch(draft, change)) return@onMain CallSendOutcome.Refused(MODELS_UNREAD)
             // Compose, where the person sees home, is pressed as they would.
             if (started[agentId]?.conversation === draft) screen()?.press(CallControl.Compose)
             if (closed) return@onMain CallSendOutcome.Refused("The call has ended.")
@@ -241,7 +244,9 @@ class ConnectionCallTargets(
         val outcome = run {
             // Under an ID it already has, it went the first time.
             if (conversation.has(id)) return@run CallSendOutcome.Queued
-            val state = withTimeoutOrNull(READ_MILLIS) { conversation.state.first { it.loaded } }
+            // A change of model waits for the computer's models too, read beside the first page.
+            val state = withTimeoutOrNull(READ_MILLIS) { conversation.state.first { it.loaded && (change == null || it.catalog != null) } }
+                ?: conversation.state.value.takeIf { it.loaded }
                 ?: return@run CallSendOutcome.Refused("That conversation can't be read now.")
             // Checked again here, where the send happens: a question that came
             // while the call's context read the conversation still stops it.
@@ -249,10 +254,9 @@ class ConnectionCallTargets(
             when {
                 !now.writable -> CallSendOutcome.Refused("That conversation can't take a message now.")
                 now.needsInput -> CallSendOutcome.Refused("It's waiting for the person in the app; answer there first.")
-                else -> {
-                    switch(conversation, change)
-                    if (conversation.sendAs(id, text)) CallSendOutcome.Queued else CallSendOutcome.Refused("It couldn't be kept on this phone.")
-                }
+                // Never with the old model when another was asked for.
+                !switch(conversation, change) -> CallSendOutcome.Refused(MODELS_UNREAD)
+                else -> if (conversation.sendAs(id, text)) CallSendOutcome.Queued else CallSendOutcome.Refused("It couldn't be kept on this phone.")
             }
         }
         if (held[agentId] !== own) release(own)
@@ -261,15 +265,17 @@ class ConnectionCallTargets(
 
     /**
      * The composer's model pick, made for the call: [change] on what the next message goes with, as the pickers make
-     * it ([ModeCatalog.pick]), in the conversation its screen shows, so the chips say so at once.
+     * it ([ModeCatalog.pick]), in the conversation its screen shows, so the chips say so at once. False when
+     * it can't be made: the computer's models aren't read.
      */
-    private fun switch(conversation: Conversation, change: CallModeChange?) {
-        change ?: return
+    private fun switch(conversation: Conversation, change: CallModeChange?): Boolean {
+        change ?: return true
         val state = conversation.state.value
-        val catalog = state.catalog ?: return
-        val current = state.mode ?: catalog.defaults ?: return
+        val catalog = state.catalog ?: return false
+        val current = state.mode ?: catalog.defaults ?: return false
         val next = change.applied(current, catalog)
         if (next != current) conversation.setMode(next)
+        return true
     }
 
     /** The conversations held for the call. */
@@ -304,5 +310,6 @@ class ConnectionCallTargets(
 
     private companion object {
         const val READ_MILLIS = 3_000L
+        const val MODELS_UNREAD = "This computer's models can't be read now, so the model and effort can't change."
     }
 }
