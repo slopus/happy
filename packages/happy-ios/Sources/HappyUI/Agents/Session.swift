@@ -14,6 +14,18 @@ final class Session {
     /// Happy names (`happy://<instanceId>/…`). Nil for an older daemon,
     /// which gets no such link.
     private(set) var instanceId: String?
+    /// A Happy Cloud server's: its Chief of Staff can be renamed but never
+    /// archived, and it reads onboarding (`followOnboarding`).
+    let isCloud: Bool
+    /// What it set up for, kept so a screen inside a conversation can
+    /// open Settings.
+    private(set) weak var context: AppContext?
+    /// What the server still wants of the person (`GET /v0/onboarding`),
+    /// read on a cloud server only, and again on the events it names; nil
+    /// until read.
+    private(set) var onboarding: Onboarding?
+    private var onboardingWatchers: [UUID: (Onboarding?) -> Void] = [:]
+    private var onboardingFollowing: Task<Void, Never>?
     let engine: SyncEngine
     let client: AgentClient
     let store: Store
@@ -94,6 +106,7 @@ final class Session {
             existing.stop()
         }
         let session = Session(accountID: accountID, engine: engine, account: context.account)
+        session.context = context
         sessions[accountID] = session
         return session
     }
@@ -126,6 +139,8 @@ final class Session {
     func stop() {
         following?.cancel()
         following = nil
+        onboardingFollowing?.cancel()
+        onboardingFollowing = nil
         connectionFollowing?.cancel()
         connectionFollowing = nil
         connectionObservation?.cancel()
@@ -141,6 +156,7 @@ final class Session {
         computerName = account.agentConnections.accounts.first { $0.id == accountID }?.name ?? Strings.agentConnection
         instanceId = account.agentConnections.accounts.first { $0.id == accountID }?.instanceId
         placeholderSeed = account.agentConnections.placeholderSeed(for: accountID) ?? accountID
+        isCloud = HappyCloud.isCloud(account.agentConnections.server(for: accountID))
         self.engine = engine
         self.localSettings = account.localSettings
         let client = engine.client
@@ -186,8 +202,38 @@ final class Session {
                 receive(home: snapshot)
             }
         }
+        if isCloud { followOnboarding() }
         // AgentConnections owns foreground/background and account switching.
         // Opening an offscreen account's settings never starts another stream.
+    }
+
+    /// Reads onboarding, then again on each event that may change it and
+    /// on every resync; one read at a time, the last asked for winning.
+    private func followOnboarding() {
+        let store = store, client = client
+        onboardingFollowing = Task { [weak self] in
+            let events = await store.events(matching: Onboarding.refreshEvents)
+            await self?.readOnboarding(client)
+            for await _ in events {
+                guard !Task.isCancelled else { return }
+                await self?.readOnboarding(client)
+            }
+        }
+    }
+
+    private func readOnboarding(_ client: AgentClient) async {
+        // An older server, or one away: what was read stands.
+        guard let read = try? await client.onboarding(), read != onboarding else { return }
+        onboarding = read
+        for watcher in onboardingWatchers.values { watcher(read) }
+    }
+
+    /// Calls `watch` with onboarding as it is and as it changes.
+    func watchOnboarding(_ watch: @escaping (Onboarding?) -> Void) -> Watch {
+        let id = UUID()
+        onboardingWatchers[id] = watch
+        watch(onboarding)
+        return Watch { [weak self] in self?.onboardingWatchers.removeValue(forKey: id) }
     }
 
     /// Calls `watch` with every snapshot from now on, starting with the current one.

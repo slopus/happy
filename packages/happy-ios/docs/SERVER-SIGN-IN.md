@@ -173,6 +173,19 @@ accounts and servers v1, with v4's token lifetimes.
   none still signs in. "Sign In Again" then checks the one kept, as for
   any server.
 - The connection is named after the server until `/v0/config` names it.
+- **The Chief of Staff.** There is no provider step after creating or
+  joining: the server's Chief of Staff writes first, as a bot's unread
+  message (it asks what to call it and offers provider setup), and the
+  app opens nothing for it. It is known by `systemKey: "chief_of_staff"`
+  alone, never its name. On a cloud server it can be renamed (its
+  detail's pencil), and it is never archivable (`Row.canArchive`), even if
+  the server says otherwise; its detail has an Agents row, Settings'
+  Agents. The server's `409 system_bot_protected` and `409
+  last_admin_bot` read plainly (`Strings.botRefusal`). A cloud session
+  reads `GET /v0/onboarding` (`Onboarding`: `server`, `member`,
+  `steps.chiefOfStaff`) and reads it again on `config.updated`,
+  `provider.*` and `profile.*` (`Session.watchOnboarding`). A computer's
+  Happy bot is as before: not renamed here, and onboarding not read.
 - **Display.** A cloud server's address is never shown: it reads like a
   username, `@acme` (`HappyCloud.handle`), in the picker, the create field
   (an `@` in front, no domain), the availability and join messages, the
