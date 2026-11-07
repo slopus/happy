@@ -18,9 +18,10 @@ xcodegen && open Happy.xcodeproj   # macOS
 ## Production continuation
 
 The native iOS app continues the existing `com.ex3ndr.happy` App Store Connect
-listing with **2.0.0 (157)**, following the React Native app's 1.8.0 (154).
-Development and preview keep their separate bundle identities and share the
-same version. The version is set once in `project.yml` (see
+listing, following the React Native app's 1.8.0 (154) and the first native
+2.0.0 builds (155–157). The next production build is **2026.11.1 (158)**, for
+TestFlight. Development and preview keep their separate bundle identities and
+share the same version. The version is set once in `project.yml` (see
 [Versioning](AGENTS.md#versioning)); production's build number is set in
 `App/Info-Production.plist` and the Happy target's Release settings. The
 client header reads the bundled version. Keep the existing signing team and
@@ -28,15 +29,13 @@ default Keychain access group so the RN credentials and Expo installation ID
 survive an in-place upgrade.
 
 Follow [the release skill](../../.agents/skills/release/SKILL.md) from a clean
-local `main` matching freshly fetched `origin/main`. Upload to App Store
-Connect and submit **2.0.0 (157) for App Review**, with release set to
-**Manual**. Approval must not publish the app automatically; public release
-requires separate user authorization. After successful upload, tag the exact
-source commit `native-ios-2.0.0-build157`; future iOS tags follow
-`native-ios-<version>-build<build>`, on production uploads only. Releases
-after 2.0.0 use CalVer versions (`2026.11.1`; see
-[Versioning](AGENTS.md#versioning)). Never move an existing tag. No GitHub
-Release is needed for this native build.
+local `main` matching freshly fetched `origin/main`. Production signs manually
+with the distribution certificate and profile and uploads with the App Store
+Connect API key: the Xcode account on the release Mac has no access to this
+app. App Review submission and public release each need separate user
+authorization. After a successful production upload, tag the exact source
+commit `native-ios-<version>-build<build>`. Never move an existing tag. No
+GitHub Release is needed for a native build.
 
 ## Native Mac app
 
