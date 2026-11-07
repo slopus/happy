@@ -96,6 +96,9 @@ class DeepLinksTest {
             DeepLink.Instance(instance, com.slopus.happy.agent.HappyLink.File(com.slopus.happy.agent.HappyLink.Target.Agent("a1"), "src/Foo.tsx", 42..50)),
             parseDeepLink("happy://$instance/agents/a1/files/src/Foo.tsx#L42-L50"),
         )
+        // A settings link opens from outside in its instance form; unlocked, `happy://settings/…` is still happy-app's path.
+        assertEquals(DeepLink.Instance(instance, com.slopus.happy.agent.HappyLink.Settings("providers")), parseDeepLink("happy://$instance/settings/providers"))
+        assertNull(parseDeepLink("happy://$instance/settings/billing"))
         // Internal links, malformed ones and happy-file:// never open from outside, nor fall back to Home.
         listOf(
             "happy://artifacts/abc123",

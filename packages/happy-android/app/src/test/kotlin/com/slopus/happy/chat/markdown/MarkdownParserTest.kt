@@ -99,4 +99,70 @@ class MarkdownParserTest {
         assertEquals(5, blocks.size)
         assertEquals(listOf(MarkdownBlock.CodeBlock(null, "unterminated")), parseMarkdown("```\nunterminated"))
     }
+
+    private fun button(text: String, url: String) = MarkdownSpan(emptySet(), text, url, button = true)
+
+    @Test fun `a link's title is not its address`() {
+        val text = parseMarkdown("See [docs](https://example.com/docs \"The docs\") and [wiki](https://en.wikipedia.org/wiki/Foo_(bar)).").single() as MarkdownBlock.Text
+        assertEquals(listOf(plain("See "), plain("docs", "https://example.com/docs"), plain(" and "), plain("wiki", "https://en.wikipedia.org/wiki/Foo_(bar)"), plain(".")), text.content)
+    }
+
+    @Test fun `happy links titled button are lifted under their paragraph in order`() {
+        for (quoted in listOf("\"button\"", "'button'", "(button)")) {
+            val blocks = parseMarkdown("Add your tokens: [Providers](happy://settings/providers $quoted) or [MCP](<happy://settings/mcp> \"button\")\nNext line")
+            assertEquals(
+                quoted,
+                listOf(
+                    MarkdownBlock.Text(listOf(plain("Add your tokens: "), plain("or"))),
+                    MarkdownBlock.Buttons(listOf(button("Providers", "happy://settings/providers"), button("MCP", "happy://settings/mcp"))),
+                    MarkdownBlock.Text(listOf(plain("Next line"))),
+                ),
+                blocks,
+            )
+        }
+    }
+
+    @Test fun `words either side of lifted buttons keep one space`() {
+        assertEquals(
+            listOf(
+                MarkdownBlock.Text(listOf(plain("Next: "), plain("or read "), plain("Voice", "happy://settings/voice"), plain("."))),
+                MarkdownBlock.Buttons(listOf(button("Providers", "happy://settings/providers"), button("Roles", "happy://settings/roles"))),
+            ),
+            parseMarkdown("Next: [Providers](happy://settings/providers \"button\") [Roles](happy://settings/roles \"button\") or read [Voice](happy://settings/voice)."),
+        )
+    }
+
+    @Test fun `a paragraph that is only a button leaves only the button`() {
+        assertEquals(
+            listOf(MarkdownBlock.Buttons(listOf(button("Q3", "happy://artifacts/r7k2m9q4w1e5t8y3u6i0o2p5")))),
+            parseMarkdown("[Q3](happy://artifacts/r7k2m9q4w1e5t8y3u6i0o2p5 \"button\")"),
+        )
+    }
+
+    @Test fun `buttons in a list follow the list`() {
+        val blocks = parseMarkdown("- Set up [Providers](happy://settings/providers \"button\")\n- Done")
+        assertEquals(
+            listOf(
+                MarkdownBlock.BulletList(listOf(MarkdownBlock.ListItem(0, listOf(plain("Set up"))), MarkdownBlock.ListItem(0, listOf(plain("Done"))))),
+                MarkdownBlock.Buttons(listOf(button("Providers", "happy://settings/providers"))),
+            ),
+            blocks,
+        )
+    }
+
+    @Test fun `any other title, or a web link, is an ordinary link`() {
+        val text = parseMarkdown("[a](happy://settings/usage \"Button\") [b](https://example.com \"button\") [c](happy://settings/usage \"button \")").single() as MarkdownBlock.Text
+        assertEquals(
+            listOf(plain("a", "happy://settings/usage"), plain(" "), plain("b", "https://example.com"), plain(" "), plain("c", "happy://settings/usage")),
+            text.content,
+        )
+    }
+
+    @Test fun `malformed or blank settings links and malformed buttons are inert words`() {
+        val text = parseMarkdown("[Billing](happy://settings/billing) [ ](happy://settings/usage \"button\") [Gone](happy://artifacts/ \"button\") [Old](happy://projects/x/settings)").single() as MarkdownBlock.Text
+        assertEquals(
+            listOf(plain("Billing"), plain(" "), plain(" "), plain(" "), plain("Gone"), plain(" "), plain("Old", "happy://projects/x/settings")),
+            text.content,
+        )
+    }
 }

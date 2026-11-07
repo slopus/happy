@@ -681,12 +681,13 @@ internal fun Prose.cut(lines: Int): ProseCut? {
     return null
 }
 
-/** How many lines a composed block reads as: code's own, a table's rows and header. */
+/** How many lines a composed block reads as: code's own, a table's rows and header, one an option or a button. */
 private fun MarkdownBlock.lineCount(): Int = when (this) {
     is MarkdownBlock.CodeBlock -> content.trimEnd('\n').lines().size
     is MarkdownBlock.Mermaid -> content.trimEnd('\n').lines().size
     is MarkdownBlock.Table -> rows.size + 1
     is MarkdownBlock.Options -> items.size
+    is MarkdownBlock.Buttons -> links.size
     else -> 1
 }
 

@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -64,7 +65,10 @@ import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.MarkdownImage
 import com.slopus.happy.ui.components.MermaidView
+import com.slopus.happy.ui.browser.LocalLinkOpener
 import com.slopus.happy.ui.browser.webLinkGestures
+import com.slopus.happy.ui.components.RoundButton
+import com.slopus.happy.ui.components.RoundButtonSize
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.AppMono
 import com.slopus.happy.ui.theme.happyTextStyle
@@ -81,6 +85,9 @@ object MarkdownTags {
     const val RULE = "markdown.rule"
     const val OPTION = "markdown.option"
     const val TABLE = "markdown.table"
+    const val BUTTON = "markdown.button"
+    /** A button's link that opens nothing here, shown as its words. */
+    const val BUTTON_INERT = "markdown.button.inert"
 }
 
 /** MarkdownView.tsx's stylesheet. */
@@ -126,6 +133,9 @@ object MarkdownSpec {
     const val COPIED_MILLIS = 1500L
     const val ICON_COPIED_MILLIS = 1600L
     val ruleMargin = 8.dp
+    /** Link buttons: 8 above and below their stack, 8 apart. */
+    val buttonMargin = 8.dp
+    val buttonGap = 8.dp
     val optionGap = 8.dp
     val optionRadius = 12.dp
     val optionText = happyTextStyle(fontSize = 16, lineHeight = 24)
@@ -163,6 +173,9 @@ object MarkdownSpec {
  *   by their longest text (8.5 per char + 24, clamped 80–360), cells padded
  *   12/8, header cells surfaceHigh and semibold; scrolls sideways.
  * - Images: [MarkdownImage].
+ * - Buttons (Happy links titled `button`): full-width Normal RoundButtons
+ *   under their block, 8 apart, 8 above and below; one whose link opens
+ *   nothing here is its words in the text style.
  */
 @Composable
 fun MarkdownView(
@@ -238,6 +251,35 @@ internal fun MarkdownBlockView(
         is MarkdownBlock.Options -> OptionsBlock(block.items, onOptionPress)
         is MarkdownBlock.Table -> TableBlock(block)
         is MarkdownBlock.Image -> image?.invoke(block) ?: MarkdownImage(block.alt, block.url)
+        is MarkdownBlock.Buttons -> LinkButtons(block.links)
+    }
+}
+
+/**
+ * Happy links shown as buttons (API.md, "Buttons"), stacked in order, each
+ * opening what its link names as the link would. Where the link opens
+ * nothing (a settings page this connection hasn't, or a screen that opens
+ * no Happy links) it is its label as inert text.
+ */
+@Composable
+private fun LinkButtons(links: List<MarkdownSpan>) {
+    val onLink = LocalMarkdownLinks.current
+    val opener = LocalLinkOpener.current
+    val handler = LocalUriHandler.current
+    Column(
+        modifier = Modifier.padding(vertical = MarkdownSpec.buttonMargin).fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(MarkdownSpec.buttonGap),
+    ) {
+        for (link in links) {
+            val url = link.url ?: continue
+            if (onLink == null && opener?.opens(url) != true) {
+                Text(link.text, style = MarkdownSpec.text, color = HappyTheme.colors.text, modifier = Modifier.testTag(MarkdownTags.BUTTON_INERT))
+            } else {
+                Box(Modifier.testTag(MarkdownTags.BUTTON)) {
+                    RoundButton(link.text, onClick = { if (onLink != null) onLink(url) else handler.openUri(url) }, size = RoundButtonSize.Normal)
+                }
+            }
+        }
     }
 }
 

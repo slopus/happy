@@ -10,8 +10,8 @@ import java.nio.charset.CodingErrorAction
  * Happy URLs, as `@slopus/happy-agent-client`'s happyLinks.ts reads and
  * writes them, so the phone agrees with the daemon and every other client
  * on what a link names: `happy://artifacts/<id>?version=2`,
- * `happy://workspaces/<w>/services/<s>`, `happy://agents/<a>/files/<path>#L3-L9`
- * and the API's `happy-file://agents/<a>/<path>`.
+ * `happy://workspaces/<w>/services/<s>`, `happy://agents/<a>/files/<path>#L3-L9`,
+ * `happy://settings/providers` and the API's `happy-file://agents/<a>/<path>`.
  *
  * External links (edge SSO contract §7) are locked to one installation:
  * `happy://<instanceId>/<remainder>`, the remainder exactly an internal
@@ -43,12 +43,21 @@ sealed interface HappyLink {
         data class Agent(val agentId: String) : Target
         data class Workspace(val workspaceId: String) : Target
     }
+
+    /** A page of the client's own settings, one of [HappyUrls.SETTINGS_PAGES]; it names no entity. */
+    data class Settings(val page: String) : HappyLink
 }
 
 /** A parsed Happy URL: [link], and the installation it is locked to when it came in external form. */
 data class HappyUrl(val link: HappyLink, val instanceId: String? = null)
 
 object HappyUrls {
+    /** The settings pages a settings link may name, a closed list (API.md, "Settings links"). */
+    val SETTINGS_PAGES = listOf(
+        "general", "account", "sharing", "servers", "instructions", "secrets", "providers", "providers/import",
+        "usage", "voice", "mobile-access", "members", "roles", "policy", "mcp", "computes",
+    )
+
     /** The longest URL, in characters. */
     const val MAX_LENGTH = 4096
 
@@ -65,10 +74,11 @@ object HappyUrls {
     private val SERVICE = Regex("happy://workspaces/($ID)/services/($ID)")
     private val FILE = Regex("happy://(agents|workspaces)/($ID)/files/($ENCODED_PATH)(?:$LINES)?")
     private val HAPPY_FILE = Regex("happy-file://(agents|workspaces)/($ID)/($ENCODED_PATH)(?:$LINES)?")
+    private val SETTINGS = Regex("happy://settings/(.+)")
     private val EXTERNAL = Regex("happy://([a-z][a-z0-9]{23})/(.+)")
 
     /** A host that is this grammar's, well-formed or not: the entity hosts, or anything shaped like an instance id. */
-    private val OWNED = Regex("happy://(artifacts|agents|workspaces|projects|services|surfaces|users|[a-z][a-z0-9]{23})(?:[/?#].*)?", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+    private val OWNED = Regex("happy://(artifacts|agents|workspaces|projects|services|surfaces|users|settings|[a-z][a-z0-9]{23})(?:[/?#].*)?", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
 
     /** Whether [instanceId] is an installation's id as health reports it. */
     fun isInstanceId(instanceId: String): Boolean = INSTANCE_ID.matches(instanceId)
@@ -91,6 +101,9 @@ object HappyUrls {
     }
 
     private fun parseInternal(url: String): HappyLink? {
+        SETTINGS.matchEntire(url)?.let { settings ->
+            return settings.groupValues[1].takeIf { it in SETTINGS_PAGES }?.let { HappyLink.Settings(it) }
+        }
         ENTITY.matchEntire(url)?.let { entity ->
             val (host, id, version) = entity.destructured
             val kind = HappyReferenceKind.entries.first { it.host == host }
@@ -119,6 +132,10 @@ object HappyUrls {
         val internal = when (link) {
             is HappyLink.Reference -> reference(link)
             is HappyLink.File -> file(link, fileScheme = false)
+            is HappyLink.Settings -> {
+                require(link.page in SETTINGS_PAGES) { "The settings page is unknown." }
+                "happy://settings/${link.page}"
+            }
         }
         return if (instanceId == null) internal else "happy://$instanceId/${internal.removePrefix("happy://")}"
     }

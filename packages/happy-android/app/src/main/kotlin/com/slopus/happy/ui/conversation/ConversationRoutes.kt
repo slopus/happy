@@ -437,7 +437,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
     val happyLinks = com.slopus.happy.ui.connection.LocalHappyLinks.current
     val references = remember(nav, session, happyLinks) { com.slopus.happy.ui.references.ReferenceOpener(nav, route.connectionId, session.references, happyLinks) }
     val links = remember(nav, computer, conversation.agentId, references) {
-        LinkOpener.agent(context, computer, app = references::open) { url -> nav.navigate(BrowserRoute(route.connectionId, url, conversation.agentId)) }
+        LinkOpener.agent(context, computer, app = references::open, opens = references::opens) { url -> nav.navigate(BrowserRoute(route.connectionId, url, conversation.agentId)) }
     }
     val kept = rememberKeptMedia(graph, session, conversation.agentId)
     // A team's role writes content; the Chief of Staff, an admin bot, takes words only from those who manage bots.
