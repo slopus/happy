@@ -18,6 +18,8 @@ final class Session {
     /// archived, and it reads onboarding, the person's permissions and
     /// what each vault lets them do (`followCloud`).
     let isCloud: Bool
+    /// The team server's origin; nil for a paired computer.
+    let server: String?
     /// What it set up for, kept so a screen inside a conversation can
     /// open Settings.
     private(set) weak var context: AppContext?
@@ -166,7 +168,8 @@ final class Session {
         computerName = account.agentConnections.accounts.first { $0.id == accountID }?.name ?? Strings.agentConnection
         instanceId = account.agentConnections.accounts.first { $0.id == accountID }?.instanceId
         placeholderSeed = account.agentConnections.placeholderSeed(for: accountID) ?? accountID
-        isCloud = HappyCloud.isCloud(account.agentConnections.server(for: accountID))
+        server = account.agentConnections.server(for: accountID)
+        isCloud = HappyCloud.isCloud(server)
         self.engine = engine
         self.localSettings = account.localSettings
         let client = engine.client

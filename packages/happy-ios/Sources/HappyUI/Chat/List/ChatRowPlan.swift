@@ -293,6 +293,9 @@ enum ChatRowAction: Equatable, Sendable {
     case openFile(String)
     /// A web address a tool call's screen shows.
     case openURL(String)
+    /// A Happy link shown as a button (API.md, "Buttons"): opens as its
+    /// link would; `label` is what it says.
+    case linkButton(url: String, label: String)
     case option(String)
     case retry(localId: String)
     /// A sending picture's cross: takes it out of message `messageId`. A

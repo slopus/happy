@@ -239,6 +239,8 @@ public enum ChatTextStyles {
     public static let tableHeader = ChatTextStyle(.plex(.semiBold), size: 16, lineHeight: 24)
     public static let tableCell = ChatTextStyle(.plex(.regular), size: 16, lineHeight: 24)
     public static let option = ChatTextStyle(.plex(.regular), size: 16, lineHeight: 24)
+    /// A Happy link shown as a button: a normal RoundButton's title.
+    public static let linkButton = ChatTextStyle(TextStyles.roundButton(.normal, display: .filled))
     public static let imageCaption = ChatTextStyle(.plex(.regular), size: 14, lineHeight: 20)
 
     // MessageView.tsx

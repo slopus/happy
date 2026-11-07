@@ -1,8 +1,9 @@
 import Foundation
 
-/// What a Happy URL names: an entity (`happy://artifacts/<id>`) or a file
+/// What a Happy URL names: an entity (`happy://artifacts/<id>`), a file
 /// (`happy://agents/<id>/files/Foo.tsx#L42`, or the API's
-/// `happy-file://agents/<id>/Foo.tsx#L42`). A port of
+/// `happy-file://agents/<id>/Foo.tsx#L42`), or a page of the client's own
+/// settings (`happy://settings/providers`). A port of
 /// `@slopus/happy-agent-client`'s `happyLinks.ts`, so the two agree on
 /// exactly what a link names.
 ///
@@ -45,9 +46,20 @@ public struct HappyLink: Equatable, Sendable {
         }
     }
 
+    /// A page of the client's settings (API.md, "Settings links"): a
+    /// closed list, naming no entity.
+    public enum SettingsPage: String, CaseIterable, Sendable {
+        case general, account, sharing, servers, instructions, secrets, providers
+        case providersImport = "providers/import"
+        case usage, voice
+        case mobileAccess = "mobile-access"
+        case members, roles, policy, mcp, computes
+    }
+
     public enum Target: Equatable, Sendable {
         case reference(Reference)
         case file(File)
+        case settings(SettingsPage)
     }
 
     public var target: Target
@@ -73,6 +85,15 @@ public struct HappyLink: Equatable, Sendable {
         return lower.hasPrefix("happy:") || lower.hasPrefix("happy-file:")
     }
 
+    /// Whether `text` is under one of the hosts Happy links use, or an
+    /// instance ID, or `happy-file:`, well-formed or not: one asking to be
+    /// a button that is malformed shows its words. The app's own routes
+    /// (`direct`, `terminal`, `oauth`) aren't.
+    public static func owns(_ text: String) -> Bool {
+        if text.lowercased().hasPrefix("happy-file:") { return true }
+        return groups(owned, text) != nil
+    }
+
     /// The link `text` is exactly, or nil.
     public init?(_ text: String) {
         guard text.utf16.count <= Self.maxLength else { return nil }
@@ -96,6 +117,7 @@ public struct HappyLink: Equatable, Sendable {
         switch target {
         case .reference(let reference): inner = Self.format(reference)
         case .file(let file): inner = Self.format(file)
+        case .settings(let page): inner = "happy://settings/\(page.rawValue)"
         }
         guard let inner else { return nil }
         guard let instanceId else { return inner }
@@ -113,6 +135,11 @@ public struct HappyLink: Equatable, Sendable {
     private static let entity = try! NSRegularExpression(pattern: "^happy://(artifacts|agents|workspaces|projects|surfaces|users)/(\(id))(?:\\?version=(\(number)))?$")
     private static let service = try! NSRegularExpression(pattern: "^happy://workspaces/(\(id))/services/(\(id))$")
     private static let file = try! NSRegularExpression(pattern: "^happy://(agents|workspaces)/(\(id))/files/(\(encodedPath))(?:\(lines))?$")
+    private static let settings = try! NSRegularExpression(pattern: "^happy://settings/(.+)$")
+    private static let owned = try! NSRegularExpression(
+        pattern: "^happy://(artifacts|agents|workspaces|projects|services|surfaces|users|settings|[a-z][a-z0-9]{23})(?:[/?#].*)?$",
+        options: [.caseInsensitive, .dotMatchesLineSeparators]
+    )
     private static let happyFile = try! NSRegularExpression(pattern: "^happy-file://(agents|workspaces)/(\(id))/(\(encodedPath))(?:\(lines))?$")
 
     private static func groups(_ regex: NSRegularExpression, _ text: String) -> [String?]? {
@@ -125,6 +152,9 @@ public struct HappyLink: Equatable, Sendable {
     }
 
     private static func parse(_ text: String) -> Target? {
+        if let parts = groups(settings, text), let page = parts[1] {
+            return SettingsPage(rawValue: page).map(Target.settings)
+        }
         if let parts = groups(entity, text), let host = parts[1], let id = parts[2] {
             guard let kind = Kind.allCases.first(where: { $0.host == host }) else { return nil }
             let version = parts[3].flatMap { Int($0) }

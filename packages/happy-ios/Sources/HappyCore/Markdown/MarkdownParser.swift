@@ -1,4 +1,5 @@
 import Foundation
+import HappyWire
 
 // A port of happy-app's components/markdown/parseMarkdown.ts,
 // parseMarkdownBlock.ts, parseMarkdownSpans.ts and linkUtils.ts. The chat,
@@ -18,11 +19,15 @@ public struct MarkdownSpan: Equatable, Hashable, Sendable {
     public var styles: [Style]
     public var text: String
     public var url: String?
+    /// A Happy link titled exactly `button` (API.md, "Buttons"): lifted
+    /// out of its block into a `.buttons` after it.
+    public var button: Bool
 
-    public init(styles: [Style] = [], text: String, url: String? = nil) {
+    public init(styles: [Style] = [], text: String, url: String? = nil, button: Bool = false) {
         self.styles = styles
         self.text = text
         self.url = url
+        self.button = button
     }
 }
 
@@ -60,6 +65,9 @@ public enum MarkdownBlock: Equatable, Hashable, Sendable {
     case options([String])
     case table(headers: [[MarkdownSpan]], rows: [[[MarkdownSpan]]])
     case image(alt: String, url: String)
+    /// The Happy links titled `button` in the block before, lifted out of
+    /// it, in order: one button each.
+    case buttons([MarkdownSpan])
 }
 
 public enum LegacyMarkdown {
@@ -92,7 +100,7 @@ public enum LegacyMarkdown {
 
             for level in 1...6 where line.hasPrefix(String(repeating: "#", count: level) + " ") {
                 let content = trim(String(line.utf16Dropping(level + 1)))
-                blocks.append(.header(level: level, parseSpans(content, header: true)))
+                addLifting(&blocks, .header(level: level, parseSpans(content, header: true)))
                 continue outer
             }
 
@@ -160,7 +168,7 @@ public enum LegacyMarkdown {
                     index += 1
                 }
                 let base = rows.map(\.indent).min() ?? 0
-                blocks.append(.numberedList(rows.map {
+                addLifting(&blocks, .numberedList(rows.map {
                     MarkdownNumberedItem(number: $0.number, depth: floorHalf($0.indent - base), spans: parseSpans($0.content, header: false))
                 }))
                 continue
@@ -181,7 +189,7 @@ public enum LegacyMarkdown {
                     index += 1
                 }
                 let base = rows.map(\.indent).min() ?? 0
-                blocks.append(.list(rows.map {
+                addLifting(&blocks, .list(rows.map {
                     MarkdownListItem(depth: floorHalf($0.indent - base), spans: parseSpans($0.content, header: false))
                 }))
                 continue
@@ -197,7 +205,7 @@ public enum LegacyMarkdown {
             }
 
             if !trimmed.isEmpty {
-                blocks.append(.text(parseSpans(trimmed, header: false)))
+                addLifting(&blocks, .text(parseSpans(trimmed, header: false)))
             }
         }
         return blocks
@@ -262,8 +270,8 @@ public enum LegacyMarkdown {
                 pushText(&spans, text, styles: header ? [] : [.italic])
             } else if match.has(5) {
                 let label = match.group(6, in: markdown) ?? ""
-                if let url = match.group(7, in: markdown), !url.isEmpty {
-                    spans.append(MarkdownSpan(text: label, url: url))
+                if let target = match.group(7, in: markdown), !target.isEmpty {
+                    spans.append(link(label, target: target))
                 } else {
                     // A link without its URL part reads as the bracketed text.
                     pushText(&spans, "[\(label)]", styles: [])
@@ -277,6 +285,72 @@ public enum LegacyMarkdown {
             pushText(&spans, source.substring(from: last), styles: [])
         }
         return spans
+    }
+
+    /// `[label](target)` as a span: the destination, bare or in `<>`, apart
+    /// from its title. A Happy link titled `button` is one; a settings link
+    /// that is malformed or has a blank label, and a malformed Happy link
+    /// asking to be a button, are their label as inert text (API.md,
+    /// "Buttons", "Settings links").
+    static func link(_ label: String, target: String) -> MarkdownSpan {
+        let trimmed = trim(target)
+        var url = trimmed
+        var title: String?
+        if let match = Patterns.linkTarget.firstMatch(in: trimmed) {
+            url = match.group(1, in: trimmed) ?? match.group(2, in: trimmed) ?? trimmed
+            title = match.group(3, in: trimmed) ?? match.group(4, in: trimmed) ?? match.group(5, in: trimmed)
+        }
+        let link = HappyLink(url)
+        let button = title == "button" && HappyLink.owns(url)
+        let settings = Patterns.settingsHost.firstMatch(in: url) != nil
+        if (button && link == nil) || (settings && (link == nil || trim(label).isEmpty)) {
+            return MarkdownSpan(text: label)
+        }
+        return MarkdownSpan(text: label, url: url, button: button)
+    }
+
+    /// `block` added to `blocks`, its buttons lifted out after it
+    /// (`.buttons`); a block that was nothing but buttons leaves only them.
+    static func addLifting(_ blocks: inout [MarkdownBlock], _ block: MarkdownBlock) {
+        var buttons: [MarkdownSpan] = []
+        func keep(_ spans: [MarkdownSpan]) -> [MarkdownSpan] {
+            guard spans.contains(where: \.button) else { return spans }
+            var kept: [MarkdownSpan] = []
+            var lifted = false
+            for span in spans {
+                if span.button {
+                    buttons.append(span)
+                    lifted = true
+                    continue
+                }
+                // The words either side of a lifted button meet with one space between them.
+                var joined = span
+                if lifted, kept.last.map({ $0.text.last?.isWhitespace == true }) ?? true {
+                    joined.text = String(joined.text.drop { $0.isWhitespace })
+                }
+                if !joined.text.isEmpty { kept.append(joined) }
+                lifted = lifted && joined.text.isEmpty
+            }
+            if !kept.isEmpty { kept[0].text = String(kept[0].text.drop { $0.isWhitespace }) }
+            if let last = kept.indices.last {
+                kept[last].text = String(kept[last].text.reversed().drop { $0.isWhitespace }.reversed())
+            }
+            return kept.filter { !$0.text.isEmpty }
+        }
+        func shown(_ spans: [MarkdownSpan]) -> [MarkdownSpan]? {
+            let kept = keep(spans)
+            return kept.contains { !trim($0.text).isEmpty } ? kept : nil
+        }
+        let kept: MarkdownBlock? = switch block {
+        case .text(let spans): shown(spans).map(MarkdownBlock.text)
+        case .header(let level, let spans): shown(spans).map { .header(level: level, $0) }
+        case .list(let items): .list(items.map { MarkdownListItem(depth: $0.depth, spans: keep($0.spans)) })
+        case .numberedList(let items): .numberedList(items.map { MarkdownNumberedItem(number: $0.number, depth: $0.depth, spans: keep($0.spans)) })
+        default: block
+        }
+        guard !buttons.isEmpty else { return blocks.append(block) }
+        if let kept { blocks.append(kept) }
+        blocks.append(.buttons(buttons))
     }
 
     /// Plain text with bare http(s) URLs turned into links, trailing
@@ -334,7 +408,12 @@ public enum LegacyMarkdown {
 /// happy-app's regular expressions. NSRegularExpression is immutable and
 /// safe to share between threads.
 enum Patterns {
-    nonisolated(unsafe) static let spans = regex(#"(\*\*(.*?)(?:\*\*|$))|(\*(.*?)(?:\*|$))|(\[([^\]]+)\](?:\(([^)]+)\))?)|(`(.*?)(?:`|$))"#)
+    nonisolated(unsafe) static let spans = regex(#"(\*\*(.*?)(?:\*\*|$))|(\*(.*?)(?:\*|$))|(\[([^\]]+)\](?:\(((?:[^()]|\([^()]*\))+)\))?)|(`(.*?)(?:`|$))"#)
+    /// A link's destination, bare or in `<>`, then an optional title in
+    /// `"`, `'` or parentheses.
+    nonisolated(unsafe) static let linkTarget = regex(#"^(?:<([^<>\n]*)>|(\S+))(?:\s+(?:"([^"]*)"|'([^']*)'|\(([^()]*)\)))?$"#)
+    /// A settings link's host, internal or in an instance link, well-formed or not.
+    nonisolated(unsafe) static let settingsHost = regex(#"^happy://(?:[a-z][a-z0-9]{23}/)?settings(?:[/?#]|$)"#)
     nonisolated(unsafe) static let url = regex(#"https?://[^\s<]+"#)
     nonisolated(unsafe) static let option = regex(#"<option>(.*?)</option>"#)
     nonisolated(unsafe) static let image = regex(#"^!\[([^\]]*)\]\(([^)]+)\)$"#)
