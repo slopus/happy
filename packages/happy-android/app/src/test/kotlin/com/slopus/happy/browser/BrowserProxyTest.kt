@@ -141,7 +141,7 @@ class BrowserProxyTest {
         proxy = BrowserProxy(scope)
         client = AgentClient(Sockets(daemon.server.localPort), "device-token")
         val authority = BrowserPolicy.Authority.of(origin)!!
-        page = proxy.open(BrowserProxy.Scope.Artifact(client, "a1", 3, authority, workspace = null), webView = false)
+        page = proxy.open(BrowserProxy.Scope.Artifact(client, "a1", 3, authority, network = null), webView = false)
         http = OkHttpClient.Builder()
             .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress(BrowserProxy.LOOPBACK, proxy.port)))
             .proxyAuthenticator { _, response -> response.request.newBuilder().header("Proxy-Authorization", Credentials.basic(page.username, page.password)).build() }
@@ -162,7 +162,7 @@ class BrowserProxyTest {
 
     @Test fun anIsolatedPageCannotReachAnotherPagesOrigin() {
         // A WebView in a profile of its own, as with MULTI_PROFILE: its credential, its workspace.
-        val other = proxy.open(BrowserProxy.Scope.Workspace(client) { "wsother" }, webView = true, isolated = true)
+        val other = proxy.open(BrowserProxy.Scope.Web(client) { BrowserNetwork.workspace("wsother") }, webView = true, isolated = true)
         through(other).newCall(Request.Builder().url("$origin/index.html").build()).execute().use {
             // Sent to its own workspace as any web address, which knows no such host.
             assertEquals("browser_proxy_upstream_refused", it.header("X-Happy-Proxy-Error"))
@@ -286,7 +286,7 @@ class BrowserProxyTest {
 
     /** WebView reports only ERR_TUNNEL_CONNECTION_FAILED for a refused CONNECT: the page keeps why, per host (iOS 34aa464e1). */
     @Test fun aRefusedTunnelIsKeptForItsHost() {
-        val other = proxy.open(BrowserProxy.Scope.Workspace(client) { "wsother" }, webView = true, isolated = true)
+        val other = proxy.open(BrowserProxy.Scope.Web(client) { BrowserNetwork.workspace("wsother") }, webView = true, isolated = true)
         assertEquals(null, other.refusals.last("https://secure.example/"))
         runCatching { through(other).newCall(Request.Builder().url("https://secure.example/").build()).execute().close() }
         assertEquals(BrowserProxyRefusal(404, "browser_proxy_upstream_refused"), other.refusals.last("https://secure.example/"))

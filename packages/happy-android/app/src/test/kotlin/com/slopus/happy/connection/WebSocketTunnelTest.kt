@@ -111,7 +111,7 @@ class WebSocketTunnelTest {
             }
         }).build())
         val client = AgentClient(transport, "device-token")
-        val tunnel = withTimeout(10_000) { BrowserTunnel.open(client, "w1", com.slopus.happy.browser.BrowserPolicy.Authority.parse("localhost:3000")!!) }
+        val tunnel = withTimeout(10_000) { BrowserTunnel.open(client, com.slopus.happy.browser.BrowserNetwork.workspace("w1"), com.slopus.happy.browser.BrowserPolicy.Authority.parse("localhost:3000")!!) }
         tunnel.close()
         assertEquals("/v0/health", server.takeRequest().target)
         assertEquals("/v0/workspaces/w1/proxy/websocket", server.takeRequest().target)
@@ -124,14 +124,14 @@ class WebSocketTunnelTest {
         server.enqueue(MockResponse.Builder().code(405).addHeader("Content-Type", "text/html").body("<html>Method Not Allowed</html>").build())
         val client = AgentClient(transport, "device-token")
         try {
-            withTimeout(10_000) { BrowserTunnel.open(client, "w1", com.slopus.happy.browser.BrowserPolicy.Authority.parse("localhost:3000")!!) }
+            withTimeout(10_000) { BrowserTunnel.open(client, com.slopus.happy.browser.BrowserNetwork.workspace("w1"), com.slopus.happy.browser.BrowserPolicy.Authority.parse("localhost:3000")!!) }
             fail("tunnelled")
         } catch (_: BrowserException) {
         }
         assertTrue(client.tunnelsBlocked.value)
         // Not asked again.
         val before = server.requestCount
-        try { BrowserTunnel.open(client, "w1", com.slopus.happy.browser.BrowserPolicy.Authority.parse("localhost:3000")!!); fail() } catch (_: BrowserException) {}
+        try { BrowserTunnel.open(client, com.slopus.happy.browser.BrowserNetwork.workspace("w1"), com.slopus.happy.browser.BrowserPolicy.Authority.parse("localhost:3000")!!); fail() } catch (_: BrowserException) {}
         assertEquals(before, server.requestCount)
     }
 }

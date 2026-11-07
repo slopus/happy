@@ -18,7 +18,7 @@ import com.slopus.happy.browser.BrowserException
 import com.slopus.happy.browser.BrowserFetcher
 import com.slopus.happy.browser.BrowserPolicy
 import com.slopus.happy.browser.BrowserProxy
-import com.slopus.happy.browser.browserWorkspace
+import com.slopus.happy.browser.browserNetwork
 import com.slopus.happy.chat.markdown.MarkdownBlock
 import com.slopus.happy.chat.num
 import com.slopus.happy.chat.markdown.parseMarkdownBlocks
@@ -172,7 +172,7 @@ class ArtifactLoader(
             is ArtifactShow.Page -> ArtifactUi.Page(app = ArtifactPageMode.of(files, ref.id, version.number, show.file.path)) {
                 agent ?: throw BrowserException(BrowserException.Kind.Unavailable)
                 BrowserPage.artifact(
-                    { authority -> BrowserProxy.Scope.Artifact(agent, ref.id, version.number, authority) { agent.browserWorkspace(artifactId = ref.id) } },
+                    { authority -> BrowserProxy.Scope.Artifact(agent, ref.id, version.number, authority) { agent.browserNetwork(artifactId = ref.id) } },
                     ref.id,
                     show.file.path,
                 )
@@ -190,12 +190,12 @@ class ArtifactLoader(
         agent ?: throw BrowserException(BrowserException.Kind.Unavailable)
         val authority = BrowserPolicy.Authority.of(url) ?: throw BrowserException(BrowserException.Kind.Malformed)
         if (!url.startsWith("http://", ignoreCase = true)) throw BrowserException(BrowserException.Kind.Forbidden)
-        val workspace = agent.browserWorkspace(artifactId = version.artifactId.ifEmpty { ref.id })
-        return BrowserPage(url, BrowserProxy.Scope.Live(agent, ref.id, workspace, authority), ref.id)
+        val network = agent.browserNetwork(artifactId = version.artifactId.ifEmpty { ref.id })
+        return BrowserPage(url, BrowserProxy.Scope.Live(agent, ref.id, network, authority), ref.id)
     }
 
     private fun media(version: ArtifactVersion): ArtifactMedia = media ?: ArtifactMedia(files, ref.id, version.number, library) {
-        agent?.let { client -> BrowserFetcher(client, { client.browserWorkspace(artifactId = ref.id) }) }
+        agent?.let { client -> BrowserFetcher(client, { client.browserNetwork(artifactId = ref.id) }) }
     }.also { media = it }
 
     private suspend fun document(version: ArtifactVersion, file: ArtifactFile): ArtifactUi {

@@ -33,7 +33,7 @@ import com.slopus.happy.ui.connection.rememberNetworkPath
 import com.slopus.happy.ui.conversation.linkState
 import com.slopus.happy.feed.FeedSubject
 import com.slopus.happy.browser.BrowserProxy
-import com.slopus.happy.browser.browserWorkspace
+import com.slopus.happy.browser.browserNetwork
 import com.slopus.happy.ui.browser.BrowserPage
 import com.slopus.happy.ui.browser.BrowserScreen
 import com.slopus.happy.ui.browser.openOutside
@@ -217,7 +217,7 @@ private fun BrowserEntry(graph: AppGraph, nav: NavHostController, route: Browser
         agentStatus = session?.status?.collectAsStateWithLifecycle()?.value,
         prepare = {
             val client = session?.client ?: throw IllegalStateException("no connection")
-            BrowserPage(route.url, BrowserProxy.Scope.Workspace(client) { client.browserWorkspace(agentId = route.agentId) })
+            BrowserPage(route.url, BrowserProxy.Scope.Web(client) { client.browserNetwork(agentId = route.agentId) })
         },
         onBack = { nav.popBackStack() },
         onOpenElsewhere = { url ->
