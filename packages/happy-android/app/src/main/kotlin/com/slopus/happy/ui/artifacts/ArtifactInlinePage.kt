@@ -40,7 +40,7 @@ import androidx.webkit.WebViewFeature
 import com.slopus.happy.R
 import com.slopus.happy.browser.BrowserPolicy
 import com.slopus.happy.browser.BrowserProxy
-import com.slopus.happy.browser.browserWorkspace
+import com.slopus.happy.browser.browserNetwork
 import com.slopus.happy.agent.HappyUrls
 import com.slopus.happy.references.References
 import com.slopus.happy.artifacts.ArtifactClient
@@ -119,7 +119,7 @@ class InlinePages(
             mode = { id, page -> ArtifactPageMode.of(ArtifactClient(client), id, page.version, page.entry) },
             prepare = { id, page ->
                 BrowserPage.artifact(
-                    { authority -> BrowserProxy.Scope.Artifact(client, id, page.version, authority) { client.browserWorkspace(artifactId = id) } },
+                    { authority -> BrowserProxy.Scope.Artifact(client, id, page.version, authority) { client.browserNetwork(artifactId = id) } },
                     id,
                     page.entry,
                 )

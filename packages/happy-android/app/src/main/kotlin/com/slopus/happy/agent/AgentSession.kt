@@ -109,7 +109,7 @@ class AgentSession internal constructor(
      * The transport is made once; the bearer is asked for on every request,
      * so a team server's access token is refreshed as it nears expiry.
      */
-    val client: AgentClient = AgentClient.lazy {
+    val client: AgentClient = AgentClient.lazy(cloud = com.slopus.happy.connection.HappyCloud.isServer(connections.accounts.value.firstOrNull { it.id == connectionId }?.server)) {
         val (credentials, transport) = linkLock.withLock {
             route ?: run {
                 val credentials = connections.linkCredentials(connectionId) ?: throw AgentConnectionException(AgentConnectionException.Reason.Revoked)
@@ -855,6 +855,8 @@ class AgentSession internal constructor(
 
     /** One renewing subscription per foreground account; rows never start network work. */
     private suspend fun watchGit() {
+        // Happy Cloud has no folders, so no git.
+        if (client.cloud) return
         combine(feed.map(::gitWorkspaceIds).distinctUntilChanged(), gitRenewal, status) { ids, renewal, status ->
             Triple(ids, renewal, status == AgentLinkStatus.Connected)
         }.distinctUntilChanged().collectLatest { (ids, _, connected) ->
@@ -911,6 +913,8 @@ class AgentSession internal constructor(
             }
             return
         }
+        // Happy Cloud has no folders to read.
+        if (stale.kind == "workspace" && client.cloud) return
         reads.update { it + 1 }
         val (path, key) = when (stale.kind) {
             "project" -> "/v0/projects/${AgentClient.escape(stale.id)}" to "project"

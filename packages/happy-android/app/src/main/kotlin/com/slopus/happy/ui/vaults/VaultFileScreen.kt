@@ -31,7 +31,7 @@ import com.slopus.happy.R
 import com.slopus.happy.agent.AgentApiException
 import com.slopus.happy.agent.AgentSession
 import com.slopus.happy.browser.BrowserProxy
-import com.slopus.happy.browser.browserWorkspace
+import com.slopus.happy.browser.browserNetwork
 import com.slopus.happy.conversation.Conversation
 import com.slopus.happy.conversation.MediaFiles
 import com.slopus.happy.ui.artifacts.PlaceScaffold
@@ -249,7 +249,7 @@ private fun VaultApp(session: AgentSession, entry: VaultItem, number: Int, compu
         browser,
         prepare = {
             BrowserPage.artifact(
-                { authority -> BrowserProxy.Scope.Artifact(client, entry.id, number, authority, vault = base) { client.browserWorkspace() } },
+                { authority -> BrowserProxy.Scope.Artifact(client, entry.id, number, authority, vault = base) { client.browserNetwork() } },
                 entry.id,
                 entry.artifact?.entry ?: "index.html",
             )

@@ -14,7 +14,7 @@ import kotlinx.serialization.json.JsonObject
 
 /**
  * iOS's `BrowserTunnel`: a stream to [target] reached by the computer, through
- * the workspace's proxy and a nested `CONNECT host:port`. The bearer goes on
+ * a [BrowserNetwork]'s proxy and a nested `CONNECT host:port`. The bearer goes on
  * the outer tunnel only, never to the target.
  *
  * The outer tunnel is the route's WebSocket twin where the agent offers it
@@ -24,9 +24,8 @@ import kotlinx.serialization.json.JsonObject
  * of being asked again.
  */
 object BrowserTunnel {
-    suspend fun open(client: AgentClient, workspaceId: String, target: BrowserPolicy.Authority): TransportSocket {
-        if (!BrowserPolicy.validId(workspaceId)) throw BrowserException(BrowserException.Kind.Forbidden)
-        val stream = outer(client, "/v0/workspaces/$workspaceId/proxy")
+    suspend fun open(client: AgentClient, network: BrowserNetwork, target: BrowserPolicy.Authority): TransportSocket {
+        val stream = outer(client, network.path)
         try {
             connect(stream, target.text, null)
             return stream
@@ -105,33 +104,55 @@ object BrowserTunnel {
 }
 
 /**
- * The workspace whose network a page reaches the web through (iOS's
- * `browserWorkspace`): an artifact's source's, else the agent's, else the
- * one active workspace on the computer itself. Never an arbitrary runner.
+ * Whose network a page reaches the web through, by its proxy route
+ * ([path]): a workspace's on a computer, an agent's on Happy Cloud, which
+ * has no workspaces. An id that isn't one is refused before any route.
  */
-suspend fun AgentClient.browserWorkspace(agentId: String? = null, artifactId: String? = null): String {
+@JvmInline
+value class BrowserNetwork private constructor(val path: String) {
+    companion object {
+        fun workspace(id: String) = BrowserNetwork("/v0/workspaces/${checked(id)}/proxy")
+        fun agent(id: String) = BrowserNetwork("/v0/agents/${checked(id)}/proxy")
+
+        private fun checked(id: String) = id.takeIf(BrowserPolicy::validId) ?: throw BrowserException(BrowserException.Kind.Forbidden)
+    }
+}
+
+/**
+ * The network a page reaches the web through (iOS's `browserWorkspace`).
+ * On a computer, a workspace's: an artifact's source's, else the agent's,
+ * else the one active workspace on the computer itself, never an
+ * arbitrary runner. On Happy Cloud, an agent's: the artifact's source's
+ * (its agent, bot's or task's), else [agentId]'s; nothing else has one.
+ */
+suspend fun AgentClient.browserNetwork(agentId: String? = null, artifactId: String? = null): BrowserNetwork {
     if (artifactId != null) {
         val artifact = decode<JsonObject>("GET", "/v0/artifacts/${AgentClient.escape(artifactId)}")["artifact"].obj
         val source = artifact?.get("updatedSource").obj ?: artifact?.get("source").obj
-        (source?.get("workspaceId").str ?: source?.get("projectId").str)?.takeIf(BrowserPolicy::validId)?.let { return it }
-        source?.get("agentId").str?.let { return agentWorkspace(it) }
+        if (!cloud) (source?.get("workspaceId").str ?: source?.get("projectId").str)?.takeIf(BrowserPolicy::validId)?.let { return BrowserNetwork.workspace(it) }
+        source?.get("agentId").str?.let { return agentNetwork(it) }
         for ((key, resource, field) in listOf(Triple("botId", "bots", "bot"), Triple("taskId", "tasks", "task"))) {
             val id = source?.get(key).str?.takeIf(BrowserPolicy::validId) ?: continue
-            return decode<JsonObject>("GET", "/v0/$resource/$id")[field].obj?.get("workspaceId").str?.takeIf(BrowserPolicy::validId)
+            val owner = decode<JsonObject>("GET", "/v0/$resource/$id")[field].obj
+            val found = if (cloud) owner?.get("agent").obj?.get("id").str else owner?.get("workspaceId").str
+            return found?.takeIf(BrowserPolicy::validId)?.let { if (cloud) BrowserNetwork.agent(it) else BrowserNetwork.workspace(it) }
                 ?: throw BrowserException(BrowserException.Kind.Unavailable)
         }
     }
-    if (!agentId.isNullOrEmpty()) return agentWorkspace(agentId)
+    if (!agentId.isNullOrEmpty()) return agentNetwork(agentId)
+    if (cloud) throw BrowserException(BrowserException.Kind.Unavailable)
     // The API has no unscoped host CONNECT route: a confirmed local host workspace provides exactly that.
     val workspaces = decode<JsonObject>("GET", "/v0/workspaces")["workspaces"].arr.orEmpty().mapNotNull { it.obj }
     return workspaces.firstOrNull { w ->
         val compute = w["compute"].obj
         w["status"].str == "active" && compute?.get("type").str == "host" && compute?.get("runnerId").str == null
-    }?.get("id").str ?: throw BrowserException(BrowserException.Kind.Unavailable)
+    }?.get("id").str?.let(BrowserNetwork::workspace) ?: throw BrowserException(BrowserException.Kind.Unavailable)
 }
 
-private suspend fun AgentClient.agentWorkspace(agentId: String): String =
-    decode<JsonObject>("GET", "/v0/agents/${AgentClient.escape(agentId)}")["agent"].obj?.get("workspaceId").str
+/** [agentId]'s own network on Happy Cloud; on a computer, its workspace's. */
+private suspend fun AgentClient.agentNetwork(agentId: String): BrowserNetwork =
+    if (cloud) BrowserNetwork.agent(agentId)
+    else decode<JsonObject>("GET", "/v0/agents/${AgentClient.escape(agentId)}")["agent"].obj?.get("workspaceId").str?.let(BrowserNetwork::workspace)
         ?: throw BrowserException(BrowserException.Kind.Unavailable)
 
 /** Runs [block], turning anything but cancellation into null. */
