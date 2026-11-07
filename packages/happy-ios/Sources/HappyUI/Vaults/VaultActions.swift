@@ -39,7 +39,6 @@ final class VaultActions: NSObject, UIDocumentPickerDelegate, PHPickerViewContro
     static func message(_ error: Error, name: String? = nil) -> String {
         if let refusal = Strings.refusal(error) { return refusal }
         switch error {
-        case AgentClientError.status(403, _, _): return Strings.forbidden
         case AgentClientError.status(409, "name_taken", _): return Strings.Vaults.nameTaken(VaultEntry.shownName(name ?? ""))
         case AgentClientError.status(409, _, let message):
             return message?.localizedCaseInsensitiveContains("trash") == true ? Strings.Vaults.inTrashRefused : Strings.Vaults.changedElsewhere

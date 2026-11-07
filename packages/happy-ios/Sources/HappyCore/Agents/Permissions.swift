@@ -65,10 +65,13 @@ extension AgentClient {
 }
 
 extension AgentClientError {
-    /// A route the person's role may not use (`403`, code `forbidden`).
+    /// A route a Happy Cloud server's role table refuses: `403`, code
+    /// `forbidden`, "This needs the <id> permission." A computer's own
+    /// `403 forbidden` ("Only the owner can archive this task.") says
+    /// something worth reading, so it isn't one.
     public var isForbidden: Bool {
-        if case .status(403, "forbidden", _) = self { return true }
-        return false
+        guard case .status(403, "forbidden", let message?) = self else { return false }
+        return message.hasPrefix("This needs the ") && message.hasSuffix(" permission.")
     }
 }
 

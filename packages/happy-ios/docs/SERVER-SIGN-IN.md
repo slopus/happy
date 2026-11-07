@@ -195,9 +195,9 @@ accounts and servers v1, with v4's token lifetimes.
   Without `content.write`: no composer (a line says why), compose,
   microphone, call, new work, rename, Todo or document edits, new lists,
   or proposal answers. The Chief of Staff's composer, its rename and the
-  agent's asks also need `bots.manage`. `403 forbidden` reads "You don’t
-  have permission to do that." (`Strings.refusal`), never the server's
-  words.
+  agent's asks also need `bots.manage`. The role table's `403 forbidden`
+  ("This needs the <id> permission.") reads "You don’t have permission to
+  do that." (`Strings.refusal`); a computer's own `403` keeps its words.
 - **Vault access.** A cloud session reads the vaults' `access` and
   `policyVault` from `GET /v0/surfaces`, again on `surface.*` and
   `vault.settings.updated` (`Session.vaultAccess`, `VaultAccess`); a vault

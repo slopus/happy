@@ -92,6 +92,7 @@ final class CloudPermissionsTests: XCTestCase {
     func testForbiddenIsARolesRefusal() {
         XCTAssertTrue(AgentClientError.status(403, code: "forbidden", message: "This needs the content.write permission.").isForbidden)
         XCTAssertFalse(AgentClientError.status(403, code: nil, message: nil).isForbidden)
+        XCTAssertFalse(AgentClientError.status(403, code: "forbidden", message: "Only the owner can archive this task.").isForbidden, "a computer's own words stand")
         XCTAssertFalse(AgentClientError.status(404, code: "forbidden", message: nil).isForbidden)
     }
 }
