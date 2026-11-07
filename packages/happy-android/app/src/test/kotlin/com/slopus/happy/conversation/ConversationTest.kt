@@ -143,6 +143,7 @@ class ConversationTest {
         typesetter: RowTypesetter? = null,
         preferences: kotlinx.coroutines.flow.StateFlow<ModelPreferences>? = null,
         started: (Mode) -> Unit = {},
+        filesUnavailable: Boolean = false,
         created: (JsonObject) -> Unit = {},
     ) = Conversation(
         api = ConversationApi(agent.request),
@@ -164,6 +165,7 @@ class ConversationTest {
         onStarted = started,
         record = { recorded += it },
         errorShown = { area, code -> recorded += AnalyticsEvent.ErrorShown(area, code) },
+        filesUnavailable = filesUnavailable,
     ).also { it.start() }
 
     private fun event(type: String, payload: String) = ConversationSignal.Event(type, Json.parseToJsonElement(payload).jsonObject)
@@ -1131,6 +1133,22 @@ class ConversationTest {
         assertEquals(1, (send.third!!["content"] as kotlinx.serialization.json.JsonArray).size)
         val row = chat.state.value.rows.filterIsInstance<ConversationRow.User>().first()
         assertTrue(row.text.contains("./.happy-uploads/$id/1-clip.mp4"))
+    }
+
+    @Test fun `files on a server that takes none say so and nothing goes`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent, filesUnavailable = true)
+        advanceUntilIdle()
+        val dir = kotlin.io.path.createTempDirectory("uploads").toFile()
+        val doc = java.io.File(dir, "notes.pdf").apply { writeBytes(byteArrayOf(4, 5)) }
+        assertTrue(chat.send("Look", listOf(preview(doc.toURI().toString(), "application/pdf", 2, name = "notes.pdf"))) { emptyList() })
+        advanceUntilIdle()
+        assertTrue(agent.written.isEmpty() && agent.requests.none { it.second.endsWith("/send") })
+        assertEquals(Delivery.Failed(Problem.FilesUnavailable), chat.state.value.rows.filterIsInstance<ConversationRow.User>().single().delivery)
+        // Pictures alone still go.
+        assertTrue(chat.send("Just a picture", listOf(preview("a.jpg", "image/jpeg", 10))) { list -> list.map { Block.Image("image/jpeg", it.name) } })
+        advanceUntilIdle()
+        assertEquals(1, agent.requests.count { it.second.endsWith("/send") })
     }
 
     private fun TestScope.held() = HeldConversations(CoroutineScope(StandardTestDispatcher(testScheduler) + SupervisorJob().also { jobs += it }))
