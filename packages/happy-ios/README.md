@@ -33,7 +33,9 @@ Connect and submit **2.0.0 (157) for App Review**, with release set to
 **Manual**. Approval must not publish the app automatically; public release
 requires separate user authorization. After successful upload, tag the exact
 source commit `native-ios-2.0.0-build157`; future iOS tags follow
-`native-ios-<version>-build<build>`. Never move an existing tag. No GitHub
+`native-ios-<version>-build<build>`, on production uploads only. Releases
+after 2.0.0 use CalVer versions (`2026.11.1`; see
+[Versioning](AGENTS.md#versioning)). Never move an existing tag. No GitHub
 Release is needed for this native build.
 
 ## Native Mac app

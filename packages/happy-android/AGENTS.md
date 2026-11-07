@@ -834,8 +834,28 @@ ANDROID_SERIAL=<device> ./gradlew :benchmark:connectedBenchmarkBenchAndroidTest 
 
 ### Versions and signing
 
-- `versionName` is owned by `app/build.gradle.kts`. `HAPPY_VERSION_NAME` or
-  `-Phappy.versionName` overrides it.
+- `versionName` is CalVer `YYYY.M.C`: the UTC year, the month without a
+  leading zero, and a counter that starts at 1 each month (`2026.11.1`).
+  Every variant carries the same one; a preview upload differs from
+  production only by its versionCode. The checked-in default
+  (`defaultVersionName` in `app/build.gradle.kts`) is the upcoming release.
+  `C` moves only when a production version ships: the next version is the
+  highest `C` this UTC month's production tags carry, plus one, else 1, and
+  a month with previews but no production release restamps it to the new
+  month.
+- Production uploads, and only they, are tagged
+  `native-android-<versionName>-build<versionCode>`; Android counts on its
+  own, and tags of other schemes (`2.0.0`) don't count. Preview uploads get
+  no tag.
+- `node scripts/native-version.cjs next android` prints the upcoming
+  version from the tags; `check android` fails unless the default is it;
+  `set android` writes it. Before any store build run `check android`, and
+  if it fails, `set android`, commit and land that on `main` first. A
+  production build re-sent under an already tagged version keeps it:
+  `set android <version>` and skip `check`.
+- `HAPPY_VERSION_NAME` or `-Phappy.versionName` overrides the default. A
+  signed release or preview build whose versionName isn't CalVer fails in
+  `pre<Variant>Build`.
 - `versionCode` is EAS's remote, auto-incremented build number
   (`eas.json` `appVersionSource: remote`). There is no counter in the repo:
   a store build passes the next number as `HAPPY_VERSION_CODE` or

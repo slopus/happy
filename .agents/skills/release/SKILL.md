@@ -88,7 +88,7 @@ local release procedure.
 
 Tag namespace note:
 - CLI releases use `cli-X.Y.Z`
-- Native releases use `native-<runtime-version>`
+- Native production releases use `native-<platform>-<version>-build<N>` (see Native Mobile Release)
 - Do not use a bare `vX.Y.Z` tag for Happy releases because multiple release streams coexist in this repo
 
 ### Step 2: Gather state
@@ -322,6 +322,36 @@ version and distribution target before any upload. Step 0 still applies.
 The Expo app, EAS OTA workflows and legacy web/Tauri client have been removed.
 Do not invoke their former scripts. A native store release needs the existing
 App Store / Play signing identity and an explicit store build number.
+
+### Version
+
+Native versions are CalVer `YYYY.M.C` (UTC year, unpadded month, a counter
+from 1 each month), counted per platform. Every variant ships the same
+version; preview uploads differ only by build number. `C` moves only when a
+production version ships, and the release flow records that with the
+platform's tag, made after a production upload and never for a preview:
+
+    native-ios-<version>-build<CFBundleVersion>
+    native-android-<versionName>-build<versionCode>
+
+Annotate it as the existing ones are ("Native <platform> production
+<version> (<build>)", source commit, binary SHA-256, distribution, store
+receipt). Before any native build, preview or production, from `main` per
+Step 0:
+
+```bash
+node scripts/native-version.cjs check ios        # or android
+```
+
+It prints the checked-in version when that is the upcoming release (the
+highest `C` this UTC month's production tags carry, plus one, else 1). If it
+fails, run `node scripts/native-version.cjs set ios` (it reads origin's
+tags and writes every file that holds the version), commit, push to `main`,
+and start Step 0 again. `next` prints the version without writing anything.
+A production build re-sent under an already tagged version (a rejected
+build, before that version goes public) keeps its version: say so to the
+user, `set <platform> <version>` explicitly and skip `check`. Never move or
+reuse an existing tag.
 
 ---
 

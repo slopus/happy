@@ -71,11 +71,15 @@ val postHogKey = providers.environmentVariable("EXPO_PUBLIC_POSTHOG_API_KEY").or
     ?.takeIf { it.isNotBlank() }
     ?: providers.gradleProperty("happy.postHogKey").orNull.orEmpty()
 
-// Native version ownership. Store builds must provide a versionCode above
-// the last published build; local builds default to 1.
+// Native version ownership. versionName is CalVer YYYY.M.C, written here at
+// release time by scripts/native-version.cjs (see AGENTS.md, "Versions and
+// signing"). Store builds must provide a versionCode above the last published
+// build; local builds default to 1.
+val defaultVersionName = "2026.11.1"
 val versionNameValue = providers.environmentVariable("HAPPY_VERSION_NAME").orNull
     ?: providers.gradleProperty("happy.versionName").orNull
-    ?: "1.8.0"
+    ?: defaultVersionName
+val calVer = Regex("""[1-9]\d{3}\.([1-9]|1[0-2])\.[1-9]\d*""")
 val versionCodeValue = (providers.environmentVariable("HAPPY_VERSION_CODE").orNull
     ?: providers.gradleProperty("happy.versionCode").orNull)
     ?.let { requireNotNull(it.toIntOrNull()?.takeIf { code -> code > 0 }) { "versionCode must be a positive integer, got '$it'" } }
@@ -252,16 +256,22 @@ fun firebaseResources(applicationId: String): Map<String, String> {
 }
 
 // A signed store build with the default versionCode would collide with every
-// earlier upload: refuse it rather than find out at the Play console.
-// The check runs first in the variant's build (pre<Variant>Build), not after R8.
+// earlier upload, and one whose versionName isn't CalVer breaks the scheme:
+// refuse it rather than find out at the Play console.
+// The checks run first in the variant's build (pre<Variant>Build), not after R8.
 tasks.configureEach {
     if (name == "preReleaseBuild" || name == "prePreviewBuild") {
         val taskName = if (name == "preReleaseBuild") "release build" else "preview build"
         val signed = if (name == "preReleaseBuild") releaseKey != null else previewKey != null
         val versionCodeSet = versionCodeValue != null
+        val versionName = versionNameValue
+        val versionNameCalVer = calVer.matches(versionName)
         doFirst {
             check(!signed || versionCodeSet) {
                 "A signed $taskName needs a versionCode above the last store upload: set HAPPY_VERSION_CODE or -Phappy.versionCode"
+            }
+            check(!signed || versionNameCalVer) {
+                "A signed $taskName needs a CalVer versionName (YYYY.M.C, e.g. 2026.11.1), got '$versionName': see scripts/native-version.cjs"
             }
         }
     }

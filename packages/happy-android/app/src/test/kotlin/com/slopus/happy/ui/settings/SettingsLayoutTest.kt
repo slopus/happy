@@ -198,9 +198,9 @@ class SettingsLayoutTest {
     fun tenTapsOnVersionToggleDeveloperMode() {
         var taps = 0
         rule.setHappyContent {
-            SettingsScreen(SettingsFixtures.profile, AboutInfo(versionDetail("1.8.0", 412)), aboutActions = AboutActions(onVersion = { taps++ }))
+            SettingsScreen(SettingsFixtures.profile, AboutInfo(versionDetail("2026.11.12", 412)), aboutActions = AboutActions(onVersion = { taps++ }))
         }
-        rule.onNodeWithText("1.8.0 (412)").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("2026.11.12 (412)").performScrollTo().assertIsDisplayed()
         rule.node(SettingsTags.VERSION).performClick()
         assertEquals(1, taps)
 

@@ -62,6 +62,11 @@ final class SessionDetailsFormattingTests: XCTestCase {
         XCTAssertFalse(SessionDetails.isVersionSupported(nil))
         XCTAssertEqual(SessionDetails.compareVersions("1.0", "1.0.0"), 0)
         XCTAssertEqual(SessionDetails.compareVersions("x.1", "0.1"), 0, "NaN is neither less nor greater")
+        // CalVer (YYYY.M.C, previews -preview.N) is above every 0.x.
+        XCTAssertTrue(SessionDetails.isVersionSupported("2026.11.1"))
+        XCTAssertTrue(SessionDetails.isVersionSupported("2026.11.1-preview.2"))
+        XCTAssertEqual(SessionDetails.compareVersions("2026.11.1-preview.2", "0.4.12-preview.3"), 1)
+        XCTAssertEqual(SessionDetails.compareVersions("2026.9.3", "2026.11.1"), -1)
     }
 
     func testShortId() {

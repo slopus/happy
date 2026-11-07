@@ -2,10 +2,10 @@ name: happy-android
 
 on:
   pull_request:
-    paths: ['packages/happy-android/**', 'packages/happy-i18n/**', '.github/workflows/happy-android.yml']
+    paths: ['packages/happy-android/**', 'packages/happy-i18n/**', 'scripts/native-version*', '.github/workflows/happy-android.yml']
   push:
     branches: [main]
-    paths: ['packages/happy-android/**', 'packages/happy-i18n/**', '.github/workflows/happy-android.yml']
+    paths: ['packages/happy-android/**', 'packages/happy-i18n/**', 'scripts/native-version*', '.github/workflows/happy-android.yml']
   workflow_dispatch:
 
 permissions:
@@ -32,6 +32,10 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
+      # The CalVer helper both native apps' releases use (scripts/native-version.cjs).
+      - name: Native version helper
+        working-directory: .
+        run: node --test scripts/native-version.test.cjs
       # No signing secrets: release builds unsigned, preview debug-signed.
       - name: Build and test
         run: ./gradlew --console=plain assembleDebug assembleRelease testDebugUnitTest :crypto:test

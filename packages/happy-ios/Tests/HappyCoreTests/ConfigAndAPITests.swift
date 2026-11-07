@@ -59,6 +59,7 @@ final class ServerConfigTests: XCTestCase {
         XCTAssertEqual(AppVariant.preview.bundleIdentifier, "com.slopus.happy.preview")
         XCTAssertEqual(AppVariant.production.bundleIdentifier, "com.ex3ndr.happy")
         XCTAssertEqual(HappyClientID.make(version: "1.8.0"), "ios/1.8.0")
+        XCTAssertEqual(HappyClientID.make(version: "2026.11.1"), "ios/2026.11.1")
     }
 }
 

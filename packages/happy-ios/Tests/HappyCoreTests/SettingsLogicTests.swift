@@ -81,6 +81,22 @@ final class SemanticVersionTests: XCTestCase {
         XCTAssertFalse(SemanticVersion.isWellFormed("1.2"))
         XCTAssertFalse(SemanticVersion.isWellFormed("v1.2.3"))
     }
+
+    /// Happy Agent and Happy Desktop move from 0.4.x to CalVer YYYY.M.C,
+    /// previews as YYYY.M.C-preview.N: both sort above every 0.x.
+    func testCalVerSortsAboveEarlierVersions() {
+        XCTAssertTrue(SemanticVersion.isWellFormed("2026.11.1"))
+        XCTAssertTrue(SemanticVersion.isWellFormed("2026.11.1-preview.2"))
+        XCTAssertEqual(SemanticVersion.compare("2026.11.1", "0.4.12"), 1)
+        XCTAssertEqual(SemanticVersion.compare("2026.11.1-preview.2", "0.4.12"), 1)
+        XCTAssertEqual(SemanticVersion.compare("2026.11.1-preview.2", "0.4.12-preview.3"), 1)
+        XCTAssertEqual(SemanticVersion.compare("2026.11.1", "0.4.12-preview.3"), 1)
+        XCTAssertEqual(SemanticVersion.compare("2026.11.1-preview.2", "2026.11.1"), -1)
+        XCTAssertEqual(SemanticVersion.compare("2026.11.1-preview.10", "2026.11.1-preview.9"), 1)
+        XCTAssertEqual(SemanticVersion.compare("2026.11.2", "2026.11.10"), -1)
+        XCTAssertEqual(SemanticVersion.compare("2026.12.1", "2026.9.30"), 1)
+        XCTAssertEqual(SemanticVersion.compare("2027.1.1", "2026.12.9"), 1)
+    }
 }
 
 final class AccountDetailsTests: XCTestCase {

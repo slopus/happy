@@ -45,6 +45,8 @@ class SessionInfoTest {
         assertTrue(isCliOutdated("0.9.9"))
         assertFalse(isCliOutdated("0.10.0"))
         assertFalse(isCliOutdated(null))
+        assertFalse(isCliOutdated("2026.11.1"))
+        assertFalse(isCliOutdated("2026.11.1-preview.2"))
     }
 
     @Test fun sandboxAndPermissionSummaries() {

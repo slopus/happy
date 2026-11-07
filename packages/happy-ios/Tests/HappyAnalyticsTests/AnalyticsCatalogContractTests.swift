@@ -95,6 +95,8 @@ final class AnalyticsCatalogContractTests: XCTestCase {
         XCTAssertNil(AnalyticsSchema.version("v2.1"))
         XCTAssertNil(AnalyticsSchema.version("1.2.3.4.5"))
         XCTAssertNil(AnalyticsSchema.version(nil))
+        XCTAssertEqual(AnalyticsSchema.version("2026.11.12"), "2026.11.12")
+        XCTAssertEqual(AnalyticsSchema.version("2026.11.1-preview.2"), "2026.11.1")
         XCTAssertEqual(AnalyticsEvent.appCrashed(process: .app, reason: .crash, crashedVersion: "2.0.0-rc1").properties["crashed_version"], .string("2.0.0"))
     }
 

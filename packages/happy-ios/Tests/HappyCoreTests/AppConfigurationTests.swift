@@ -56,14 +56,17 @@ final class AppConfigurationTests: XCTestCase {
         XCTAssertEqual(try shared(plist(.preview)), development)
         XCTAssertEqual(try shared(plist(.production)), development)
         let info = try plist(.development)
-        XCTAssertEqual(info["CFBundleShortVersionString"] as? String, "2.0.0")
+        // CalVer YYYY.M.C (month unpadded, counter from 1), written by
+        // scripts/native-version.cjs: see AGENTS.md, "Versioning".
+        let version = try XCTUnwrap(info["CFBundleShortVersionString"] as? String)
+        XCTAssertNotNil(version.wholeMatch(of: /[1-9][0-9]{3}\.([1-9]|1[0-2])\.[1-9][0-9]*/), version)
         let schemes = (info["CFBundleURLTypes"] as? [[String: Any]])?.first?["CFBundleURLSchemes"] as? [String]
         // `happy` also carries the server sign-in's redirect (`OAuthRedirect`).
         XCTAssertEqual(schemes, ["happy"])
         XCTAssertEqual(schemes?.contains(OAuthRedirect.scheme), true)
     }
 
-    /// One semver for every variant: the plists' version (kept equal by
+    /// One version for every variant: the plists' version (kept equal by
     /// `testSharedKeysMatch`) is the projects' only `MARKETING_VERSION`.
     func testEveryVariantSharesTheProjectVersion() throws {
         let packageDirectory = appDirectory.deletingLastPathComponent()

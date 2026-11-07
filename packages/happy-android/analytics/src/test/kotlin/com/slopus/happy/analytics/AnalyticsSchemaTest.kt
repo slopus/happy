@@ -52,6 +52,7 @@ class AnalyticsSchemaTest {
     fun versionsAreNumbersAndNothingElse() {
         assertTrue(AnalyticsSchema.isVersion("1.8.0"))
         assertTrue(AnalyticsSchema.isVersion("1.2.3.4"))
+        assertTrue(AnalyticsSchema.isVersion("2026.11.12"))
         assertFalse(AnalyticsSchema.isVersion("0.40.1-preview.3"))
         assertFalse(AnalyticsSchema.isVersion("1.8.0 (kirill-macbook)"))
         assertFalse(AnalyticsSchema.isVersion("1.2.3.4.5"))
@@ -59,6 +60,7 @@ class AnalyticsSchemaTest {
         assertEquals("0.40.1", AnalyticsSchema.version("0.40.1-preview.3"))
         assertEquals("1.8.0", AnalyticsSchema.version("1.8.0+build.7"))
         assertEquals("2026.11", AnalyticsSchema.version("2026.11-nightly+abc"))
+        assertEquals("2026.11.1", AnalyticsSchema.version("2026.11.1-preview.2"))
         assertNull(AnalyticsSchema.version("1.8.0 (kirill-macbook)"))
         assertNull(AnalyticsSchema.version("dev"))
         assertNull(AnalyticsSchema.version(""))

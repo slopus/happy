@@ -104,4 +104,22 @@ class AgentDefaultsTest {
         assertTrue(Versions.isWellFormed("1.2.6-beta.0+build"))
         assertFalse(Versions.isWellFormed("1.2"))
     }
+
+    /** Happy Agent and Happy Desktop move from 0.4.x to CalVer YYYY.M.C, previews as YYYY.M.C-preview.N: both sort above every 0.x. */
+    @Test
+    fun calVerSortsAboveEarlierVersions() {
+        assertTrue(Versions.isWellFormed("2026.11.1"))
+        assertTrue(Versions.isWellFormed("2026.11.1-preview.2"))
+        assertEquals(1, Versions.compare("2026.11.1", "0.4.12"))
+        assertEquals(1, Versions.compare("2026.11.1-preview.2", "0.4.12-preview.3"))
+        assertEquals(1, Versions.compareWithPrerelease("2026.11.1", "0.4.12"))
+        assertEquals(1, Versions.compareWithPrerelease("2026.11.1-preview.2", "0.4.12"))
+        assertEquals(1, Versions.compareWithPrerelease("2026.11.1-preview.2", "0.4.12-preview.3"))
+        assertEquals(1, Versions.compareWithPrerelease("2026.11.1", "0.4.12-preview.3"))
+        assertEquals(-1, Versions.compareWithPrerelease("2026.11.1-preview.2", "2026.11.1"))
+        assertEquals(1, Versions.compareWithPrerelease("2026.11.1-preview.10", "2026.11.1-preview.9"))
+        assertEquals(-1, Versions.compareWithPrerelease("2026.11.2", "2026.11.10"))
+        assertEquals(1, Versions.compareWithPrerelease("2026.12.1", "2026.9.30"))
+        assertEquals(1, Versions.compareWithPrerelease("2027.1.1", "2026.12.9"))
+    }
 }
