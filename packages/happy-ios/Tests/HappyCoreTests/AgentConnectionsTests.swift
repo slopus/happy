@@ -402,6 +402,21 @@ final class AgentConnectionsTests: XCTestCase {
         await manager.setForeground(false)
         XCTAssertTrue(manager.accounts.allSatisfy { $0.status == .paused })
     }
+    func testAnIdentityCheckClosesItsTransportUntilTheNext() async throws {
+        let transport = IdentityTransport()
+        let manager = AgentConnections(credentials: InMemoryAgentConnectionCredentialStore(), directory: nil, makeTransport: { _ in transport })
+        XCTAssertEqual(manager.refreshInterval, .seconds(600))
+        _ = try await manager.add(value("quiet"), name: "Mac")
+        for _ in 0..<100 where manager.accounts.first?.status != .connected { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(manager.accounts.first?.status, .connected)
+        // Its tunnels are gone while it waits ten minutes for the next check.
+        let closed = await transport.closed
+        XCTAssertTrue(closed)
+        let checks = await transport.paths().filter { $0 == "/v0/health" }.count
+        XCTAssertEqual(checks, 1)
+        await manager.setForeground(false)
+    }
+
     func testPeriodicIdentityRefreshStopsInBackgroundAndAfterRemoval() async throws {
         let transport = IdentityTransport()
         let manager = AgentConnections(credentials: InMemoryAgentConnectionCredentialStore(), directory: nil, makeTransport: { _ in transport })

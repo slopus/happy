@@ -43,8 +43,12 @@ entries after metadata corruption; Keychain access errors preserve them.
 The legacy registry and RN-compatible shared item keep their current format.
 
 `DirectAccounts` connects each stored instance independently on launch and
-foreground. It checks health and refreshes `config.node` every minute, using
-`GET /v0/node/avatar` with `If-None-Match` even when ThumbHash is unchanged.
+foreground. It checks health and refreshes `config.node` then and every ten
+minutes after (in the last minute of the ten, with traffic already moving:
+`RadioWake`), using `GET /v0/node/avatar` with `If-None-Match` even when
+ThumbHash is unchanged. Each check has a transport of its own, closed after
+it, so its Tailcat clients don't sit on the radio between checks; an open
+account's own event stream says whether its computer is there.
 Transient failures reconnect with 1–30 second backoff. Background cancels and
 awaits the loops; 401/403 marks the device revoked and prevents retries across
 relaunch. Disconnecting takes the agent off the list and out of the open

@@ -26,12 +26,16 @@ final class ShimmerClock {
         didSet { if reduceMotionOverride != oldValue { changed() } }
     }
 
-    /// Asked for less motion, the text simply stays at its own colour.
-    var reducesMotion: Bool { reduceMotionOverride ?? UIAccessibility.isReduceMotionEnabled }
+    /// Asked for less motion, or saving power, the text simply stays at its
+    /// own colour: a sweep has the screen composed again every frame it runs.
+    var reducesMotion: Bool { reduceMotionOverride ?? (UIAccessibility.isReduceMotionEnabled || ProcessInfo.processInfo.isLowPowerModeEnabled) }
 
     private init() {
         let center = NotificationCenter.default
         center.addObserver(self, selector: #selector(changed), name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
+        center.addObserver(forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.changed() }
+        }
         center.addObserver(self, selector: #selector(wentAway), name: UIApplication.didEnterBackgroundNotification, object: nil)
         center.addObserver(self, selector: #selector(cameBack), name: UIApplication.willEnterForegroundNotification, object: nil)
     }

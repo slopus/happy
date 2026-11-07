@@ -778,7 +778,9 @@ public actor SyncEngine {
                     guard current(generation), gitInterest == ids else { return }
                     receiveGit(response.snapshots)
                 } catch { if Task.isCancelled { return } }
-                do { try await Task.sleep(for: .seconds(30)) } catch { return }
+                // Renewed within 30 seconds as before, but from 20 on with the
+                // computer's heartbeat, while the radio is up for it anyway.
+                do { try await RadioWake.shared.next(after: .seconds(20), by: .seconds(30)) } catch { return }
             }
         }
     }

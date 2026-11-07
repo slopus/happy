@@ -25,7 +25,10 @@ public final class AgentConnections {
     /// again, while `finishRemoval` forgets them.
     var hidden: Set<String> = []
     let makeTransport: @Sendable (AgentConnectionCredentials) -> any AgentTransport
-    var refreshInterval: Duration = .seconds(60)
+    /// How often each pairing's name, avatar and health are read again while
+    /// in the foreground. Coming back to the foreground reads them at once,
+    /// and an open account's own stream says whether its computer is there.
+    var refreshInterval: Duration = .seconds(600)
 
     public init(credentials: any AgentConnectionCredentialStore, directory: URL?, makeTransport: @escaping @Sendable (AgentConnectionCredentials) -> any AgentTransport = { AgentHTTPTransport(address: $0.address, port: $0.port, publicUrl: $0.publicUrl, tailcatAvailable: $0.tailcatAvailable != false) }) {
         storage = AgentConnectionStorage(credentials: credentials, directory: directory)
@@ -344,26 +347,29 @@ public final class AgentConnections {
                 var attempt = 0
                 var issue: (any Error)?
                 while !Task.isCancelled {
-                    let transport = AgentEndpointTransport(endpoint: endpoint, metrics: meter, make: make)
                     do {
                         current.status = attempt == 0 ? .connecting : .retrying
                         await self?.apply(current, generation: generation)
                         while !Task.isCancelled {
-                            current = try await AgentIdentity.refresh(current, transport: transport, token: credential.deviceToken)
+                            // A transport per check, closed after it: its tunnels
+                            // don't idle on the radio until the next one.
+                            let transport = AgentEndpointTransport(endpoint: endpoint, metrics: meter, make: make)
+                            do { current = try await AgentIdentity.refresh(current, transport: transport, token: credential.deviceToken) }
+                            catch { await transport.close(); throw error }
+                            await transport.close()
                             try Task.checkCancellation()
                             await self?.apply(current, generation: generation)
                             attempt = 0
-                            try await Task.sleep(for: interval)
+                            // In its last tenth, with traffic already moving.
+                            try await RadioWake.shared.next(after: interval * 9 / 10, by: interval)
                         }
                     } catch PairingError.revoked {
                         current.revoked = true; current.status = .revoked
                         if !Task.isCancelled { await self?.apply(current, generation: generation, issue: PairingError.revoked) }
-                        await transport.close()
                         return
                     } catch {
                         issue = error
                     }
-                    await transport.close()
                     if Task.isCancelled { return }
                     current.status = .retrying
                     await self?.apply(current, generation: generation, issue: issue)

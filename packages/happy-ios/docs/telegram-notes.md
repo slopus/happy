@@ -425,8 +425,8 @@ rendering the resulting `file` tool rows.
   native canvas, so it never swaps to a bitmap on screen. The CLI sends
   each message whole, so there a new message at the newest end comes out
   in about half a second, and the one before it finishes.
-- Reduce Motion, or `HAPPY_REVEAL_OFF` (for comparing), shows replies as
-  they come.
+- Reduce Motion, Low Power Mode, or `HAPPY_REVEAL_OFF` (for comparing),
+  shows replies as they come.
 
 ## 9. Holding a message, and selecting its text
 
