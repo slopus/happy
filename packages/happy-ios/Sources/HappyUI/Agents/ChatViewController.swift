@@ -384,6 +384,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         }
         // The note is in place before the first watch can show it.
         watch = session.watch { [weak self] snapshot in self?.follow(snapshot); self?.applyGate() }
+        homeWatch = session.watchHome { [weak self] home in self?.follow(home) }
         if !previewing {
             accessWatch = session.watchAccess { [weak self] in self?.applyGate() }
             homeGateWatch = session.watchHome { [weak self] _ in self?.applyGate() }
@@ -878,6 +879,19 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
 
     /// The row's name as the sidebar has it, and whether it is one of its own.
     private var rowName: (label: String, titled: Bool)?
+    private var homeWatch: Watch?
+
+    /// The name home gives this conversation's row, as it changes: a bot
+    /// or task the agent renames is renamed here too, on a computer whose
+    /// sidebar is the account's bootstrap rather than the spaces document.
+    private func follow(_ home: HomeSnapshot) {
+        let agentId = media.agentId
+        let spaceId = spaceId
+        guard let row = home.allRows.first(where: { row in spaceId.map { row.spaceId == $0 } ?? (row.agentId == agentId && row.depth == 0) }),
+              rowName.map({ $0.label != row.label || $0.titled != row.titled }) ?? true else { return }
+        rowName = (row.label, row.titled)
+        applyTitle()
+    }
     /// Each failure card on screen in the conversation the person is
     /// looking at: the rows the transcript reports visible, as one comes on
     /// and as the screen comes to the front.
