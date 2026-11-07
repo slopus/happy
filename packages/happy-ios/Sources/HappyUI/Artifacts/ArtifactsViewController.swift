@@ -125,6 +125,7 @@ final class ArtifactsViewController: UIViewController, UISearchResultsUpdating {
     private func currentInput() -> ArtifactListInput {
         var input = ArtifactListInput(words: .current)
         input.width = list.contentWidth
+        input.height = max(0, list.bounds.height - list.contentInsets.top - list.contentInsets.bottom)
         input.scale = traitCollection.textEnvironment?.scale.multiplier ?? 1
         input.displayScale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 2
         input.dark = traitCollection.userInterfaceStyle == .dark
@@ -138,6 +139,7 @@ final class ArtifactsViewController: UIViewController, UISearchResultsUpdating {
         pipeline?.update { input in
             input.width = next.width
             input.maxWidth = next.maxWidth
+            input.height = next.height
             input.scale = next.scale
             input.displayScale = next.displayScale
             input.dark = next.dark

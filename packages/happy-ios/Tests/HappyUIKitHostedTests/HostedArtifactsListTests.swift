@@ -316,12 +316,18 @@ final class HostedArtifactsListTests: XCTestCase {
         XCTAssertEqual(rows(again), rows(opened.screen))
     }
 
-    /// The tickets stand over the words and play once; a read that finds
-    /// nothing new keeps the same picture, resting.
+    /// The tickets stand over the words in the middle of the screen and
+    /// play once; a read that finds nothing new keeps the same picture,
+    /// resting.
     func testAComputerWithNoArtifactsSaysSo() async throws {
         for style in [UIUserInterfaceStyle.light, .dark] {
             let opened = try await open(ArtifactCatalogDaemon(items: []), style: style)
             try await wait("the empty note") { opened.screen.list.items.map(\.accessibilityLabel) == [Strings.Artifacts.empty] }
+            // In the middle of what the list shows, not at its top.
+            let list = opened.screen.list
+            try await wait("the note to fill the list") {
+                list.items.first?.size.height == list.bounds.height - list.contentInsets.top - list.contentInsets.bottom
+            }
             let art = try XCTUnwrap(opened.screen.list.items.first?.overlays.first)
             XCTAssertEqual(art.kind, CardOverlay.scene)
             XCTAssertEqual(art.key, StateScene.tickets.rawValue)

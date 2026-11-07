@@ -115,21 +115,27 @@ public struct CardHeadingLayout: Equatable, Sendable {
 /// A note in place of a list's rows ("Nothing here yet."), or under its
 /// heading: centred in the readable column, `padding` above and below.
 /// With `art`, a state scene's square stands centred over the words,
-/// `noteSceneGap` above them.
+/// `noteSceneGap` above them. With `fill`, the note in place of a whole
+/// list is that tall, what the list shows between its insets, and its
+/// contents stand in its middle; a note taller than that keeps its own
+/// height.
 public struct CardNoteLayout: Equatable, Sendable {
     public var size: CGSize
     public var text: CGRect
     public var art: CGRect?
 
-    public init(width: CGFloat, maxWidth: CGFloat = .greatestFiniteMagnitude, text: Measurable, padding: CGFloat = 24, art: CGFloat? = nil) {
+    public init(width: CGFloat, maxWidth: CGFloat = .greatestFiniteMagnitude, text: Measurable, padding: CGFloat = 24, art: CGFloat? = nil, fill: CGFloat? = nil) {
         let column = CardColumn(width: width, maxWidth: maxWidth)
         let inner = max(0, column.width - 2 * CardListMetrics.inset)
         let measured = text.size(fitting: inner)
         let left = column.x + CardListMetrics.inset
-        self.art = art.map { CGRect(x: left + ((inner - $0) / 2).rounded(.down), y: padding, width: $0, height: $0) }
-        let top = padding + (art.map { $0 + CardListMetrics.noteSceneGap } ?? 0)
+        let artHeight = art.map { $0 + CardListMetrics.noteSceneGap } ?? 0
+        let own = artHeight + measured.height + 2 * padding
+        let height = max(own, fill ?? 0)
+        let top = ((height - own) / 2).rounded(.down) + padding
+        self.art = art.map { CGRect(x: left + ((inner - $0) / 2).rounded(.down), y: top, width: $0, height: $0) }
         let x = left + ((inner - measured.width) / 2).rounded(.down)
-        self.text = CGRect(x: x, y: top, width: measured.width, height: measured.height)
-        size = CGSize(width: max(0, width), height: top + measured.height + padding)
+        self.text = CGRect(x: x, y: top + artHeight, width: measured.width, height: measured.height)
+        size = CGSize(width: max(0, width), height: height)
     }
 }

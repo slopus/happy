@@ -12,6 +12,9 @@ struct ArtifactListInput: Sendable {
     var query = ""
     var width: CGFloat = 0
     var maxWidth: CGFloat = .greatestFiniteMagnitude
+    /// What the list shows between its insets: a note in place of the
+    /// whole list stands in its middle.
+    var height: CGFloat = 0
     /// The person's text size, where the screen follows it.
     var scale: CGFloat = 1
     var displayScale: CGFloat = 2
@@ -63,12 +66,13 @@ enum ArtifactListItems {
         // Tombstones are the Feed's, which still names them.
         let live = state.items.filter { !$0.deleted }
         let shown = ArtifactCatalog.matching(input.query, in: live) { Strings.Artifacts.kind($0) }
-        func note(_ text: String, scene: StateScene? = nil) -> [CardItem] {
-            [CardItems.note("artifacts:note", text, scene: scene, width: input.width, maxWidth: input.maxWidth, scale: input.scale, dark: input.dark, displayScale: input.displayScale)]
+        func note(_ text: String, scene: StateScene? = nil, centred: Bool = true) -> [CardItem] {
+            [CardItems.note("artifacts:note", text, scene: scene, fill: centred ? input.height : nil, width: input.width, maxWidth: input.maxWidth, scale: input.scale, dark: input.dark, displayScale: input.displayScale)]
         }
         if shown.isEmpty {
             if state.unsupported { return note(Strings.Artifacts.unsupported) }
-            if !live.isEmpty { return note(Strings.Artifacts.noMatches) }
+            // Under the search field, where the keyboard leaves it seen.
+            if !live.isEmpty { return note(Strings.Artifacts.noMatches, centred: false) }
             if state.error != nil { return note(Strings.Artifacts.unavailable) }
             if !state.loaded { return note(Strings.Artifacts.loading) }
             // Nothing made yet: the tickets, waiting for something to admit.

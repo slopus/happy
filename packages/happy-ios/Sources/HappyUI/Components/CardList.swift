@@ -92,11 +92,12 @@ enum CardItems {
 
     /// A quiet line in place of rows: an empty list, a search that found
     /// nothing, a list's footing. A `scene` stands over the words, for an
-    /// empty list whose state has one.
-    nonisolated static func note(_ id: String, _ text: String, size: CGFloat = CardListMetrics.noteSize, padding: CGFloat = 24, scene: StateScene? = nil, width: CGFloat, maxWidth: CGFloat, scale: CGFloat, dark: Bool, displayScale: CGFloat) -> CardItem {
+    /// empty list whose state has one; `fill`, what the list shows, stands
+    /// both in its middle (`CardNoteLayout`).
+    nonisolated static func note(_ id: String, _ text: String, size: CGFloat = CardListMetrics.noteSize, padding: CGFloat = 24, scene: StateScene? = nil, fill: CGFloat? = nil, width: CGFloat, maxWidth: CGFloat, scale: CGFloat, dark: Bool, displayScale: CGFloat) -> CardItem {
         let font = CardFont(.regular, size, scale: scale)
         let layout = CardNoteLayout(width: width, maxWidth: maxWidth, text: CardText.measurable(text, font: font, maxLines: 0, scale: displayScale), padding: padding,
-                                    art: scene == nil ? nil : CardListMetrics.noteScene)
+                                    art: scene == nil ? nil : CardListMetrics.noteScene, fill: fill)
         var drawing = CardDrawing(dark: dark, displayScale: displayScale)
         let paragraph = layout.text
         drawing.text(text, font, Palette.settingsSecondary, paragraph, wraps: true)
