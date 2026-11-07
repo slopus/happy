@@ -94,6 +94,7 @@
     <string name="conversation_problem_refused">代理拒絕了此操作（%1$d）。</string>
     <string name="conversation_problem_unknown">發生了問題。</string>
     <string name="conversation_problem_pictures">無法讀取要傳送的圖片。</string>
+    <string name="conversation_problem_files_unavailable">此伺服器尚不支援附加檔案。</string>
     <string name="conversation_failure_signin_missing">%1$s 未登入。請執行 `%2$s`，然後重試。</string>
     <string name="conversation_failure_cannot_authenticate">%1$s 無法完成身分驗證。請檢查其登入設定，然後重試。</string>
     <string name="conversation_failure_usage_limit">已達到 %1$s 的使用上限。</string>

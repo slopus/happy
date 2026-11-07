@@ -94,6 +94,7 @@
     <string name="conversation_problem_refused">エージェントが拒否しました（%1$d）。</string>
     <string name="conversation_problem_unknown">問題が発生しました。</string>
     <string name="conversation_problem_pictures">送信する画像を読み込めませんでした。</string>
+    <string name="conversation_problem_files_unavailable">このサーバーではまだファイルを添付できません。</string>
     <string name="conversation_failure_signin_missing">%1$s にサインインしていません。`%2$s` を実行してから再試行してください。</string>
     <string name="conversation_failure_cannot_authenticate">%1$s で認証できませんでした。サインイン設定を確認してから再試行してください。</string>
     <string name="conversation_failure_usage_limit">%1$s の利用上限に達しました。</string>

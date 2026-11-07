@@ -172,6 +172,8 @@ class Conversation(
     private val references: com.slopus.happy.references.ReferenceReader? = null,
     /** Which settings pages its connection has: a link to any other reads as its words. Null leaves every link. */
     private val hasSettingsPage: ((String) -> Boolean)? = null,
+    /** Its server takes no files yet (Happy Cloud, which has no folders): a send with files says so, and nothing goes. */
+    private val filesUnavailable: Boolean = false,
     /** The person's model preferences: a new chat opens on their start ([ModelPreferences.startMode]); null, on the catalog's default. */
     private val preferences: StateFlow<ModelPreferences>? = null,
     /** A new chat's first message went with this mode: it is the session's start. */
@@ -1043,6 +1045,7 @@ class Conversation(
                 // A create that fails is told as `task_created` or `bot_created`, not as this send's error too.
                 var made = false
                 try {
+                    if (filesUnavailable && next.files.isNotEmpty()) throw FilesUnavailable()
                     next.images.indices.forEach { uploads.set(UploadBoard.pictureKey(next.id, it), UploadPhase.Preparing) }
                     ensureCreated()
                     made = true
@@ -1617,6 +1620,7 @@ class Conversation(
         }
 
         private fun describeOther(e: Exception): Problem = when (e) {
+            is FilesUnavailable -> Problem.FilesUnavailable
             is AgentConnectionException -> Problem.Link(e.reason)
             is ConversationApiException -> e.message?.takeIf { it.isNotBlank() }?.let(Problem::Said) ?: Problem.Refused(e.status)
             else -> e.message?.takeIf { it.isNotBlank() }?.let(Problem::Said) ?: Problem.Unknown
@@ -1649,3 +1653,6 @@ class Conversation(
         }
     }
 }
+
+/** A send's files, on a server that takes none yet. */
+private class FilesUnavailable : Exception("File attachments aren't available on this server yet.")

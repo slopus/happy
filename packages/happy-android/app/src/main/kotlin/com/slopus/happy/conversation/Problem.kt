@@ -26,6 +26,9 @@ sealed interface Problem {
     /** The pictures picked to send couldn't be read on the phone. */
     data object PicturesUnreadable : Problem
 
+    /** Files sent to a server that takes none yet (Happy Cloud). */
+    data object FilesUnavailable : Problem
+
     /** Slash command [name] is no longer offered (404): unknown, or just removed. */
     data class CommandGone(val name: String) : Problem
 

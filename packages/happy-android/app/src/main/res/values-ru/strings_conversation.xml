@@ -94,6 +94,7 @@
     <string name="conversation_problem_refused">Агент отказал (%1$d).</string>
     <string name="conversation_problem_unknown">Что-то пошло не так.</string>
     <string name="conversation_problem_pictures">Не удалось прочитать изображения для отправки.</string>
+    <string name="conversation_problem_files_unavailable">Вложения файлов на этом сервере пока недоступны.</string>
     <string name="conversation_failure_signin_missing">%1$s: вход не выполнен. Выполните `%2$s` и повторите.</string>
     <string name="conversation_failure_cannot_authenticate">%1$s не удалось пройти аутентификацию. Проверьте настройки входа и повторите.</string>
     <string name="conversation_failure_usage_limit">Достигнут лимит использования %1$s.</string>

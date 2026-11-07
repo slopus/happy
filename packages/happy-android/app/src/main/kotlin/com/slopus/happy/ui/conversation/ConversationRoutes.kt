@@ -263,6 +263,7 @@ internal fun AgentSession.makeConversation(
     read = ::markRead,
     references = references,
     hasSettingsPage = settingsPages(),
+    filesUnavailable = client.cloud,
     preferences = modelPreferences,
     onStarted = ::recordStart,
     address = { ChatAddress.of(catalog.value, agentId) },

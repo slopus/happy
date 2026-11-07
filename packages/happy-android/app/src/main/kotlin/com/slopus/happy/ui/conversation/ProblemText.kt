@@ -14,6 +14,7 @@ fun Resources.problemText(problem: Problem): String = when (problem) {
     is Problem.Link -> getString(problem.reason.text)
     is Problem.Refused -> getString(R.string.conversation_problem_refused, problem.status)
     Problem.PicturesUnreadable -> getString(R.string.conversation_problem_pictures)
+    Problem.FilesUnavailable -> getString(R.string.conversation_problem_files_unavailable)
     Problem.Unavailable -> getString(R.string.conversation_unavailable)
     is Problem.CommandGone -> getString(R.string.conversation_command_gone, problem.name)
     is Problem.CommandBusy -> getString(R.string.conversation_command_busy, problem.name)
