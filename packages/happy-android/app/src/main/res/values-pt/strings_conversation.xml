@@ -94,6 +94,7 @@
     <string name="conversation_problem_refused">O agente recusou (%1$d).</string>
     <string name="conversation_problem_unknown">Algo deu errado.</string>
     <string name="conversation_problem_pictures">Não foi possível ler as imagens para enviar.</string>
+    <string name="conversation_problem_files_unavailable">Anexos de arquivos ainda não estão disponíveis neste servidor.</string>
     <string name="conversation_failure_signin_missing">%1$s não está conectado. Execute `%2$s` e tente de novo.</string>
     <string name="conversation_failure_cannot_authenticate">%1$s não conseguiu se autenticar. Verifique as configurações de login e tente de novo.</string>
     <string name="conversation_failure_usage_limit">Limite de uso do %1$s atingido.</string>
