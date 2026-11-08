@@ -835,18 +835,15 @@ agent at once, so a change of contract is a new agent and a new build
 setting, never an edit of the one a shipped build calls. A new tool is
 created (`POST /v1/convai/tools`) and attached through the agent's
 `conversation_config.agent.prompt.tool_ids`, which lists them all. As of
-2026-11-06 v3's descriptions and parameters are the ones below, word for
-word, but for `readConversation`'s: below is its paged version (the
-description, and `from`, `backTo` and `words`), which the phone answers
-and which is not on the hosted tool yet. The hosted one has `ref` alone and
-the description "Read one conversation before you summarise it: whether it
-is working or needs the person, its last five turns, when the person last
-wrote and the agent last replied, its workspace, its model and effort and
-the ones it can switch to. On a team, who wrote each message. It doesn't
-open the conversation or change the screen." Until it is uploaded the agent
-never pages, and every read is the five newest turns, 500 words a message.
-A build from before paging that is handed the new parameters reads only
-`ref` and answers as it did: five turns, no refs, its old cuts.
+2026-11-08 v3's descriptions and parameters are the ones below, word for
+word; `readConversation`'s paged version (its description, and `from`,
+`backTo` and `words`) was uploaded on 2026-11-08, in place, with
+`scripts/voice-tool.cjs`. A build from before paging that is handed the
+new parameters reads only `ref` and answers as it did: five turns, no
+refs, its old cuts. That script compares a hosted tool with this page
+(`node scripts/voice-tool.cjs <tool>`, with `ELEVENLABS_API_KEY`) and,
+with `--apply`, uploads this page's version of it, every other setting as
+it was, and reads it back; it never touches the agent.
 
 ### Settings
 
