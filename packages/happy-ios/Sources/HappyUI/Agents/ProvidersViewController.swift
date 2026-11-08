@@ -13,7 +13,7 @@ final class ProvidersViewController: SettingsPageViewController {
     private var failed = false
     /// The sign-ins the server runs (`codex`, `claude`); empty until read,
     /// and when it has none yet.
-    private var signIns: Set<CloudSignIn.CLI> = []
+    private var offer = CloudAddOffer()
     private var watch: Task<Void, Never>?
     /// The role decides what can be added: shown again when it is read.
     private var accessWatch: Watch?
@@ -40,29 +40,40 @@ final class ProvidersViewController: SettingsPageViewController {
         load()
     }
 
-    /// Reads the connections and which sign-ins the server offers.
+    /// Reads the connections and what the server lets people add.
     func load() {
         let client = session.client
         Task { @MainActor [weak self] in
-            async let listed = client.cloudProviders()
-            async let offered = Self.offeredSignIns(client)
-            do { self?.providers = CloudProvider.sorted(try await listed); self?.failed = false }
-            catch { self?.failed = self?.providers == nil }
-            self?.signIns = await offered
+            do {
+                let listing = try await client.cloudProviderListing()
+                self?.providers = CloudProvider.sorted(listing.providers)
+                self?.failed = false
+                self?.offer = await Self.offer(listing.offer, client)
+            } catch {
+                self?.failed = self?.providers == nil
+            }
             self?.reload()
         }
     }
 
-    /// `GET /v0/provider-clis`' sign-in CLIs; none where it isn't mounted.
-    static func offeredSignIns(_ client: AgentClient) async -> Set<CloudSignIn.CLI> {
-        guard let value = try? await client.providerCLIs() else { return [] }
-        return Set(value.compactMap(CloudSignIn.CLI.init(rawValue:)))
+    /// The server's own `capabilities`; without them, API keys and the
+    /// sign-ins `GET /v0/provider-clis` lists (none where it isn't
+    /// mounted), and no setup token.
+    static func offer(_ said: CloudAddOffer?, _ client: AgentClient) async -> CloudAddOffer {
+        if let said { return said }
+        guard let value = try? await client.providerCLIs() else { return CloudAddOffer() }
+        return CloudAddOffer(signIns: Set(value.compactMap(CloudSignIn.CLI.init(rawValue:))))
+    }
+
+    /// Whether the chooser has anything to offer.
+    private static func offers(_ offer: CloudAddOffer) -> Bool {
+        offer.apiKeys || offer.setupToken || !offer.signIns.isEmpty
     }
 
     override func makeRows() -> [[SettingsRow]] {
         typealias Text = Strings.Providers
         var cards: [[SettingsRow]] = []
-        if !CloudProvider.destinations(session.gate).isEmpty {
+        if !CloudProvider.destinations(session.gate).isEmpty, Self.offers(offer) {
             cards.append([SettingsRow(id: "providers-add", title: Text.add, icon: ("add", .action), action: { [weak self] in self?.choose() }, footer: Text.footer)])
         }
         guard let providers else {
@@ -113,18 +124,20 @@ final class ProvidersViewController: SettingsPageViewController {
     func choose(destination: CloudProvider.Destination? = nil) {
         typealias Text = Strings.Providers
         let sheet = UIAlertController(title: Text.add, message: nil, preferredStyle: .actionSheet)
-        if signIns.contains(.codex) {
+        if offer.signIns.contains(.codex) {
             sheet.addAction(UIAlertAction(title: Text.signInChatGPT, style: .default) { [weak self] _ in self?.open(.providersAddOpenAI, destination: destination) })
         }
-        if signIns.contains(.claude) {
+        if offer.signIns.contains(.claude) || offer.setupToken {
             sheet.addAction(UIAlertAction(title: Text.signInClaude, style: .default) { [weak self] _ in self?.open(.providersAddAnthropic, destination: destination) })
         }
-        sheet.addAction(UIAlertAction(title: "\(Text.addAPIKey) · \(Text.openAI)", style: .default) { [weak self] _ in
-            self?.open(.providersAddAPIKey, vendor: "openai", destination: destination)
-        })
-        sheet.addAction(UIAlertAction(title: "\(Text.addAPIKey) · \(Text.anthropic)", style: .default) { [weak self] _ in
-            self?.open(.providersAddAPIKey, vendor: "anthropic", destination: destination)
-        })
+        if offer.apiKeys {
+            sheet.addAction(UIAlertAction(title: "\(Text.addAPIKey) · \(Text.openAI)", style: .default) { [weak self] _ in
+                self?.open(.providersAddAPIKey, vendor: "openai", destination: destination)
+            })
+            sheet.addAction(UIAlertAction(title: "\(Text.addAPIKey) · \(Text.anthropic)", style: .default) { [weak self] _ in
+                self?.open(.providersAddAPIKey, vendor: "anthropic", destination: destination)
+            })
+        }
         sheet.addAction(UIAlertAction(title: Strings.Common.cancel, style: .cancel))
         if let popover = sheet.popoverPresentationController {
             popover.sourceView = view
@@ -139,6 +152,14 @@ final class ProvidersViewController: SettingsPageViewController {
         let allowed = CloudProvider.destinations(session.gate)
         guard !allowed.isEmpty else { return }
         if page == .providersAdd || page == .providers { return page == .providers ? () : choose(destination: destination) }
+        // A way this server doesn't offer (a link from elsewhere): the chooser.
+        let offered = switch page {
+        case .providersAddOpenAI: offer.signIns.contains(.codex)
+        case .providersAddAnthropic: offer.signIns.contains(.claude) || offer.setupToken
+        case .providersAddAPIKey: offer.apiKeys
+        default: false
+        }
+        guard offered else { return choose(destination: destination) }
         let picked = destination.flatMap { allowed.contains($0) ? $0 : nil } ?? (allowed.count == 1 ? allowed[0] : nil)
         guard let picked else {
             let sheet = UIAlertController(title: Strings.Providers.saveTo, message: nil, preferredStyle: .actionSheet)
@@ -159,7 +180,7 @@ final class ProvidersViewController: SettingsPageViewController {
         case .providersAddOpenAI:
             navigationController?.pushViewController(DeviceSignInViewController(flows: flows), animated: true)
         case .providersAddAnthropic:
-            navigationController?.pushViewController(ClaudeSignInViewController(flows: flows, offered: signIns.contains(.claude)), animated: true)
+            navigationController?.pushViewController(ClaudeSignInViewController(flows: flows, offered: offer.signIns.contains(.claude), setupToken: offer.setupToken), animated: true)
         case .providersAddAPIKey:
             flows.addKey(vendor: vendor ?? "openai")
         default:
@@ -176,7 +197,7 @@ final class ProvidersViewController: SettingsPageViewController {
         let destination = options.destination.flatMap(CloudProvider.Destination.init(rawValue:))
         Task { @MainActor in
             // The chooser offers only what the server runs: read that first.
-            list.signIns = await offeredSignIns(session.client)
+            list.offer = await offer((try? await session.client.cloudProviderListing())?.offer, session.client)
             list.open(page, vendor: options.vendor, destination: destination)
         }
     }

@@ -216,6 +216,30 @@ public struct CloudSignIn: Equatable, Sendable {
     }
 }
 
+/// What a server lets people add (`GET /v0/cloud/providers`'
+/// `capabilities`, ONBOARDING-API §2): each way shows only when on. A
+/// server that doesn't say offers API keys, the sign-ins its
+/// `/v0/provider-clis` lists, and no setup token.
+public struct CloudAddOffer: Equatable, Sendable {
+    public var apiKeys: Bool
+    public var setupToken: Bool
+    public var signIns: Set<CloudSignIn.CLI>
+
+    public init(apiKeys: Bool = true, setupToken: Bool = false, signIns: Set<CloudSignIn.CLI> = []) {
+        self.apiKeys = apiKeys
+        self.setupToken = setupToken
+        self.signIns = signIns
+    }
+
+    /// From the server's `capabilities`; nil when it sent none.
+    public init?(capabilities: JSONValue?) {
+        guard let capabilities, capabilities.objectValue != nil else { return nil }
+        func on(_ key: String) -> Bool { capabilities[key]?.boolValue == true }
+        self.init(apiKeys: on("apiKeys"), setupToken: on("claudeSetupToken"),
+                  signIns: Set([on("codexSignIn") ? .codex : nil, on("claudeSignIn") ? .claude : nil].compactMap { $0 }))
+    }
+}
+
 /// A credential the server refused to store, with its words for why.
 public struct CloudCredentialRefusal: Error, Equatable, Sendable {
     public var kind: String
@@ -224,8 +248,17 @@ public struct CloudCredentialRefusal: Error, Equatable, Sendable {
 
 extension AgentClient {
     public func cloudProviders() async throws -> [CloudProvider] {
-        struct Response: Decodable { let providers: [CloudProvider] }
-        return try await decode(Response.self, "GET", "/v0/cloud/providers").providers
+        try await cloudProviderListing().providers
+    }
+
+    /// The connections, and what the server lets people add when it says.
+    public func cloudProviderListing() async throws -> (providers: [CloudProvider], offer: CloudAddOffer?) {
+        struct Response: Decodable {
+            let providers: [CloudProvider]
+            let capabilities: JSONValue?
+        }
+        let response = try await decode(Response.self, "GET", "/v0/cloud/providers")
+        return (response.providers, CloudAddOffer(capabilities: response.capabilities))
     }
 
     /// Checks and stores a secret the person typed (an API key, Claude's

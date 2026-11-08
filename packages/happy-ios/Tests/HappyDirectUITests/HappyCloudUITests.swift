@@ -261,6 +261,39 @@ final class HappyCloudUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 1)
         capture("45-refused")
         refused.buttons["Cancel"].tap()
+
+        // ChatGPT's device sign-in, on the server: a code to enter at
+        // OpenAI, then cancelled. No token ever reaches the phone.
+        let add = app.descendants(matching: .any).matching(NSPredicate(format: "label == 'Add a provider'")).firstMatch
+        require(add.waitForExistence(timeout: 10), "no Add after the refusal")
+        add.tap()
+        let chatGPT = app.buttons["Sign in with ChatGPT"]
+        require(chatGPT.waitForExistence(timeout: 10), "the server's ChatGPT sign-in isn't offered")
+        chatGPT.tap()
+        if mine.waitForExistence(timeout: 5) { mine.tap() }
+        let code = app.staticTexts["provider-device-code"]
+        require(code.waitForExistence(timeout: 20), "no device screen")
+        let shown = NSPredicate(format: "label MATCHES '[A-Z0-9]{3,}-[A-Z0-9]{3,}'")
+        require(XCTWaiter.wait(for: [expectation(for: shown, evaluatedWith: code)], timeout: 120) == .completed, "no code from OpenAI: \(code.label)")
+        XCTAssertTrue(app.buttons["provider-device-open"].isEnabled, "Open OpenAI is off")
+        capture("46-device-code")
+        app.buttons["provider-device-cancel"].tap()
+        require(add.waitForExistence(timeout: 10), "cancel didn't come back to the list")
+
+        // Claude's: its page to open, and a field for the code it shows.
+        add.tap()
+        let claude = app.buttons["Sign in with Claude"]
+        require(claude.waitForExistence(timeout: 10), "the server's Claude sign-in isn't offered")
+        claude.tap()
+        if mine.waitForExistence(timeout: 5) { mine.tap() }
+        let open = app.buttons["provider-claude-open"]
+        require(open.waitForExistence(timeout: 20), "no Claude screen")
+        require(XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: open)], timeout: 120) == .completed, "Claude's page never came")
+        XCTAssertTrue(app.textFields["provider-claude-code"].exists, "no code field")
+        XCTAssertFalse(app.buttons["provider-claude-token"].exists && app.buttons["provider-claude-token"].isHittable, "the setup token is offered before the server takes it")
+        capture("47-claude")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        require(add.waitForExistence(timeout: 10), "back didn't come to the list")
     }
 
     func testEServerIsRenamedFromItsSettings() throws {

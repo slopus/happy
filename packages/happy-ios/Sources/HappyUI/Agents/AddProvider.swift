@@ -229,7 +229,11 @@ final class DeviceSignInViewController: ProviderSignInViewController {
             do {
                 let started = try await client.startCloudSignIn(.codex, container: container)
                 self?.show(started)
-                let end = try await client.waitForCloudSignIn(started)
+                // The code comes a moment after the start, from the server's
+                // CLI: each poll shows what has come.
+                let end = try await client.waitForCloudSignIn(started, tick: { [weak self] next in
+                    Task { @MainActor [weak self] in if !Task.isCancelled { self?.show(next) } }
+                })
                 guard !Task.isCancelled else { return }
                 self?.finished(end, success: Strings.Providers.chatGPTConnected) { self?.start() }
             } catch is CancellationError {
@@ -262,17 +266,20 @@ final class DeviceSignInViewController: ProviderSignInViewController {
 }
 
 /// Claude's sign-in (§5): its page, opened in Safari, shows a code that is
-/// pasted back here; or a setup token from `claude setup-token` (§3). A
-/// server that doesn't run the sign-in yet offers only the token.
+/// pasted back here; or a setup token from `claude setup-token` (§3) where
+/// the server takes one. A server that doesn't run the sign-in yet offers
+/// only the token.
 final class ClaudeSignInViewController: ProviderSignInViewController {
     private let field = UITextField()
     private let offered: Bool
+    private let setupToken: Bool
     private var signIn: CloudSignIn?
     private var open: UIButton?
     private var connect: UIButton?
 
-    init(flows: ProviderFlows, offered: Bool) {
+    init(flows: ProviderFlows, offered: Bool, setupToken: Bool) {
         self.offered = offered
+        self.setupToken = setupToken
         super.init(flows: flows, title: Strings.Providers.signInClaude)
     }
 
@@ -282,6 +289,7 @@ final class ClaudeSignInViewController: ProviderSignInViewController {
         let token = button(Strings.Providers.useSetupToken, id: "provider-claude-token") { [weak self] in
             self?.flows.addSetupToken { self?.follow?.cancel() }
         }
+        token.isHidden = !setupToken
         guard offered else {
             stack.addArrangedSubview(label(Strings.Providers.setupTokenHint))
             stack.addArrangedSubview(token)
@@ -314,10 +322,7 @@ final class ClaudeSignInViewController: ProviderSignInViewController {
         follow = Task { @MainActor [weak self] in
             do {
                 let started = try await client.startCloudSignIn(.claude, container: container)
-                self?.signIn = started
-                self?.open?.isEnabled = started.url != nil
-                self?.connect?.isEnabled = started.acceptsCode
-                self?.spinner.stopAnimating()
+                self?.show(started)
                 self?.watch(started)
             } catch is CancellationError {
             } catch {
@@ -326,11 +331,23 @@ final class ClaudeSignInViewController: ProviderSignInViewController {
         }
     }
 
-    /// Follows the sign-in to its end, whoever ends it.
+    /// Its page and code field, once the server's CLI has them.
+    private func show(_ signIn: CloudSignIn) {
+        self.signIn = signIn
+        open?.isEnabled = signIn.url != nil
+        connect?.isEnabled = signIn.acceptsCode
+        if signIn.url != nil { spinner.stopAnimating() }
+    }
+
+    /// Follows the sign-in to its end, whoever ends it, showing its page
+    /// when it comes.
     private func watch(_ signIn: CloudSignIn) {
         let client = flows.client
         follow = Task { @MainActor [weak self] in
-            guard let end = try? await client.waitForCloudSignIn(signIn), !Task.isCancelled else { return }
+            let end = try? await client.waitForCloudSignIn(signIn, tick: { [weak self] next in
+                Task { @MainActor [weak self] in if next.id == signIn.id, !next.ended { self?.show(next) } }
+            })
+            guard let end, !Task.isCancelled else { return }
             self?.finished(end, success: Strings.Providers.claudeConnected) { self?.start() }
         }
     }

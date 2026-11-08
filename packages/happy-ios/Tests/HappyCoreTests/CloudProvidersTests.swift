@@ -24,6 +24,20 @@ final class CloudProvidersTests: XCTestCase {
         XCTAssertEqual(providers[2].credentials?.first?.title, "ChatGPT")
     }
 
+    func testWhatCanBeAddedFollowsTheServersCapabilities() async throws {
+        let server = ProvidersServer()
+        await server.answer("GET /v0/cloud/providers", 200, #"""
+        {"providers":[],"capabilities":{"apiKeys":true,"claudeSetupToken":false,"codexSignIn":true,"claudeSignIn":false}}
+        """#)
+        let listing = try await AgentClient(transport: server, token: "t").cloudProviderListing()
+        XCTAssertEqual(listing.offer, CloudAddOffer(apiKeys: true, setupToken: false, signIns: [.codex]))
+        // Before the field lands: no word, so the caller asks /v0/provider-clis.
+        await server.answer("GET /v0/cloud/providers", 200, #"{"providers":[]}"#)
+        let older = try await AgentClient(transport: server, token: "t").cloudProviderListing()
+        XCTAssertNil(older.offer)
+        XCTAssertEqual(CloudAddOffer(), CloudAddOffer(apiKeys: true, setupToken: false, signIns: []), "without word: keys, and no setup token")
+    }
+
     func testThePickersOfferConnectionsAndSendTheirExactIDs() {
         let terra = ModelCatalog.Model(id: "openai/gpt-6.1-terra", name: "GPT-6.1 Terra", efforts: ["low", "medium"], defaultEffort: "medium", serviceTiers: [])
         let base = ModelCatalog(defaultProviderId: "openai", defaultModelId: terra.id, models: [terra],

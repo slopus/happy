@@ -37,7 +37,8 @@ private actor CloudProvidersServer: AgentTransport {
             return ok(#"{"providerClis":[{"id":"codex"},{"id":"claude"}]}"#)
         case ("POST", "/v0/provider-clis/codex/sign-in"):
             started.append(String(decoding: body ?? Data(), as: UTF8.self))
-            return ok(Self.cli("waiting"))
+            // As production answers: the code comes from the CLI a moment later.
+            return ok(Self.cli("running", code: false))
         case ("GET", "/v0/provider-clis/codex"):
             polls += 1
             return ok(Self.cli(polls < 2 ? "waiting" : "succeeded"))
@@ -50,8 +51,9 @@ private actor CloudProvidersServer: AgentTransport {
     func reset() async {}
     func close() async {}
 
-    static func cli(_ status: String) -> String {
-        #"{"providerCli":{"id":"codex","operation":{"id":"q7","kind":"sign_in","status":"\#(status)","authorization":{"method":"device","url":"https://auth.openai.com/codex/device","userCode":"ABCD-1234","acceptsCode":false,"expiresAt":1755400600000},"target":{"providerId":"private"},"error":null}}}"#
+    static func cli(_ status: String, code: Bool = true) -> String {
+        let authorization = code ? #"{"method":"device","url":"https://auth.openai.com/codex/device","userCode":"ABCD-1234","acceptsCode":false,"expiresAt":1755400600000}"# : "null"
+        return #"{"providerCli":{"id":"codex","operation":{"id":"q7","kind":"sign_in","status":"\#(status)","authorization":\#(authorization),"target":{"providerId":"private"},"error":null}}}"#
     }
 }
 
@@ -99,7 +101,7 @@ final class HostedProvidersTests: XCTestCase {
         list.open(.providersAddOpenAI, destination: .mine)
         let device = try await until { navigation.topViewController as? DeviceSignInViewController }
         let code = try XCTUnwrap(Self.find(UILabel.self, in: device.view) { $0.accessibilityIdentifier == "provider-device-code" })
-        _ = try await until { code.text == "ABCD-1234" ? true : nil }
+        _ = try await until(seconds: 8) { code.text == "ABCD-1234" ? true : nil }
         _ = try await until { navigation.transitionCoordinator == nil ? true : nil }
         capture(window, "providers-device")
         let body = await server.started.first ?? ""
