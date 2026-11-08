@@ -44,6 +44,8 @@ extension Strings {
     public static let leaveSurface = "Leave"
     public static let archiveTask = "Archive task"
     public static let archiveBot = "Archive bot"
+    public static let archiveTaskAsk = "Archive this task?"
+    public static let archiveBotAsk = "Archive this bot?"
     /// What a Happy Cloud server refused because of the person's role
     /// (`403 forbidden`), or a bot it won't let go (`botRefusal`), in our
     /// words, never the server's; nil for any other error.

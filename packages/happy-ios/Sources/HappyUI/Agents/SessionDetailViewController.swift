@@ -422,6 +422,8 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
         var shownSections = permissionChoice?().map { [ProfileSection(id: "controls", rows: [Self.permissionRow($0) { [weak self] in self?.permissionChoice?() } relaid: { [weak self] in self?.view.setNeedsLayout() }])] } ?? []
         if let workspaceId = row?.workspaceId { shownSections.append(ProfileSection(id: "workspace", rows: [changesRow(workspaceId)])) }
         if row?.isHappy == true, session.isCloud { shownSections.append(ProfileSection(id: "providers", rows: [providersRow()])) }
+        let putting = row.map { PuttingAway.acts($0, session: session) } ?? []
+        if !putting.isEmpty { shownSections.append(ProfileSection(id: "put-away", rows: putting.map(putAwayRow))) }
         sections.show(shownSections)
         let layout = SessionDetailLayout(
             width: width, nameHeight: header.nameHeight, nameWidth: header.nameWidth,
@@ -487,6 +489,22 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
 
     /// The Chief of Staff's, on a Happy Cloud server: where its greeting
     /// sends the person to connect a provider, Settings' Agents.
+    /// Leaving or archiving this task or bot: asked first when it can't be
+    /// undone here, and then home, where its row has already gone.
+    private func putAwayRow(_ act: PuttingAway.Act) -> SettingsRow {
+        SettingsRow(id: act.id, title: act.title, accessory: .none, destructive: act.destructive, action: { [weak self] in
+            guard let self else { return }
+            Task { @MainActor in
+                if let ask = act.ask {
+                    guard await Alerts.confirm(ask, confirmTitle: act.title, destructive: true, on: self) else { return }
+                }
+                Haptics.play(.putAway)
+                act.run()
+                self.navigationController?.popToRootViewController(animated: true)
+            }
+        })
+    }
+
     private func providersRow() -> SettingsRow {
         SettingsRow(SettingsIndex.agents, action: { [weak self] in
             guard let self, let context = session.context else { return }

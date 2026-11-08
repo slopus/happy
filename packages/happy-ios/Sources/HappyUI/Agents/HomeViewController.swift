@@ -127,6 +127,7 @@ final class HomeViewController: UIViewController {
             guard let agentId = row.agentId, row.targetKind != "surface" else { return }
             self?.session?.warm.intent(agentId)
         }
+        sidebar.menu = { [weak self] row in self?.menu(for: row) }
         sidebar.preview = { [weak self] row in self?.preview(for: row) }
         sidebar.onOpenPreview = { [weak self] row in self?.open(row, animated: false) }
         sidebar.onWillBeginDragging = { [weak self] in self?.listWillBeginDragging() }
@@ -719,6 +720,19 @@ final class HomeViewController: UIViewController {
         default:
             break
         }
+    }
+
+    /// What a hold on a task's or bot's row offers: putting it away
+    /// (`PuttingAway`), once the preview has gone. Nothing while searching.
+    private func menu(for row: Row) -> [[MenuItem]]? {
+        guard search == nil, let session else { return nil }
+        let items = PuttingAway.acts(row, session: session).map { act in
+            MenuItem(title: act.title, icon: act.icon, destructive: act.destructive) {
+                Haptics.play(.putAway)
+                act.run()
+            }
+        }
+        return items.isEmpty ? nil : [items]
     }
 
     /// What a hold on a row shows over its menu: a conversation's newest
