@@ -47,6 +47,10 @@ class SettingsLinksTest {
         assertEquals(SettingsPlace.Providers(CloudProviderFlow.Choose), SettingsLinks.place("providers/import", cloud, cloud = true))
         assertEquals(SettingsPlace.Providers(CloudProviderFlow.ChatGpt), SettingsLinks.place("providers/add/openai", cloud, cloud = true))
         assertEquals(
+            SettingsPlace.Providers(CloudProviderFlow.Choose, com.slopus.happy.agent.CloudDestination.Team),
+            SettingsLinks.place("providers/add", cloud, cloud = true, mapOf("to" to "team")),
+        )
+        assertEquals(
             SettingsPlace.Providers(CloudProviderFlow.Claude, com.slopus.happy.agent.CloudDestination.Team),
             SettingsLinks.place("providers/add/anthropic", cloud, cloud = true, mapOf("to" to "team")),
         )

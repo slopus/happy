@@ -202,6 +202,7 @@ class HappyUrlsTest {
         assertEquals(HappyLink.Settings("providers/add/api-key", mapOf("vendor" to "openai", "to" to "team")), parse("happy://settings/providers/add/api-key?vendor=openai&to=team"))
         assertEquals("happy://settings/providers/add/api-key?vendor=openai&to=team", HappyUrls.format(HappyLink.Settings("providers/add/api-key", mapOf("to" to "team", "vendor" to "openai"))))
         assertEquals(HappyLink.Settings("providers/add/openai", mapOf("to" to "private")), parse("happy://settings/providers/add/openai?to=private"))
+        assertEquals(HappyLink.Settings("providers/add", mapOf("to" to "team")), parse("happy://settings/providers/add?to=team"))
         // Anything else, a secret above all, isn't a settings link.
         assertNull(parse("happy://settings/providers/add/openai?key=sk-123"))
         assertNull(parse("happy://settings/providers/add/openai?to=everyone"))
