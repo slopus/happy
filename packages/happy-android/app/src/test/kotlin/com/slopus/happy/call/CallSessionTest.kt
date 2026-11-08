@@ -246,13 +246,14 @@ class CallSessionTest {
             working = true,
             draft = "half typed",
             question = question,
+            // Newest first, as a conversation publishes them.
             rows = listOf(
                 ConversationRow.User("u:user", "u", "hello", emptyList(), emptyList(), Delivery.Sending),
                 ConversationRow.Reasoning("x:0", "thinking out loud", streaming = false),
                 ConversationRow.Text("a:0", "first", emptyList()),
                 ConversationRow.Text("a:1", "second", emptyList()),
                 ConversationRow.Ask("ask", question, AskPhase.Pending),
-            ),
+            ).asReversed(),
         )
         val read = CallTargetState.from(state, CallTarget("a", "A", CallTarget.Kind.Bot, status = CallTarget.Status.Idle))
         // Each of the agent's text blocks is its own message: its words between steps.

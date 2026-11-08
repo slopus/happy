@@ -196,9 +196,12 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
   the relay's voice starts. For launch it connects to a public agent by its
   ID (`PublicAgentCallGrants`): a connection mechanism, not authentication.
   The ID is injected at build time (`HAPPY_CALL_AGENT_V3_ID`, from the ignored
-  `Config/Call.local.xcconfig` or the command line) and is never committed
-  in code, docs or tests. Without it the tap ends at once as "Voice isn't
-  set up for this connection yet"; never fake a live call. Each device gets
+  `Config/Call.local.xcconfig`, the command line or the environment) and is
+  never committed in code, docs or tests. Without it the tap ends at once as
+  "Voice isn't set up for this connection yet"; never fake a live call.
+  Preview and Release builds fail without it (the Happy target's "Require
+  the voice agent" phase reads the built Info.plist); one that ships nowhere
+  sets `HAPPY_RELEASE_WITHOUT_CALL_AGENT=1`. Each device gets
   20 free connected minutes in any rolling 30 days (`CallAllowance`, local,
   provisional). A device's first tap shows voice's welcome and its last
   free minute the same screen with "Start Voice Session" greyed out: one

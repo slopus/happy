@@ -48,6 +48,31 @@ targets:
         product: HappyKit
       - package: HappyIOS
         product: HappyGuestKit
+    # A store build without the voice agent ships a voice button that only
+    # says voice isn't set up: Preview and Release need HAPPY_CALL_AGENT_V3_ID
+    # (an ElevenLabs agent ID, as CallAgent.id reads it). Checked in the built
+    # Info.plist, what the app reads, whichever way the setting came. A build
+    # that ships nowhere says so with HAPPY_RELEASE_WITHOUT_CALL_AGENT=1.
+    # Debug never needs it.
+    postBuildScripts:
+      - name: Require the voice agent
+        basedOnDependencyAnalysis: false
+        inputFiles:
+          - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
+        script: |
+          case "$CONFIGURATION" in Preview|Release) ;; *) exit 0 ;; esac
+          id=$(/usr/libexec/PlistBuddy -c "Print :HappyCallAgentID" "$SCRIPT_INPUT_FILE_0" 2>/dev/null || true)
+          if printf '%s' "$id" | grep -Eqx 'agent_[A-Za-z0-9_]+'; then exit 0; fi
+          if [ "${HAPPY_RELEASE_WITHOUT_CALL_AGENT:-}" = 1 ]; then
+            echo "warning: HAPPY_RELEASE_WITHOUT_CALL_AGENT=1: this $CONFIGURATION build has no voice agent; voice says it isn't set up."
+            exit 0
+          fi
+          if [ -z "$id" ]; then
+            echo "error: A $CONFIGURATION build needs the voice agent: set HAPPY_CALL_AGENT_V3_ID (Config/Call.local.xcconfig, the xcodebuild command line or the environment) to the v3 agent's ID. The old HAPPY_CALL_AGENT_ID is ignored. See docs/agent-voice-call.md"
+          else
+            echo "error: A $CONFIGURATION build needs the voice agent, and HAPPY_CALL_AGENT_V3_ID isn't an ElevenLabs agent ID (agent_…)."
+          fi
+          exit 1
     settings:
       base:
         PRODUCT_NAME: Happy

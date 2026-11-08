@@ -244,6 +244,40 @@ class ConversationTest {
         assertTrue(chat.state.value.error != null)
     }
 
+    /** The call reads the rows the chat draws, newest first, as turns oldest first: each answer with its own question. */
+    @Test fun `a call reads a conversation's turns each with its own message`() = runTest {
+        val agent = FakeAgent()
+        agent.page = """{"runs":[
+          {"id":"r1","status":"completed","startedAt":1,"endedAt":3,"messages":[
+            {"id":"u1","role":"user","createdAt":1,"content":[{"type":"text","text":"First question"}],"metadata":{}},
+            {"id":"a1","role":"agent","createdAt":2,"content":[{"type":"text","text":"First answer"}],"metadata":{}}]},
+          {"id":"r2","status":"completed","startedAt":4,"endedAt":6,"messages":[
+            {"id":"u2","role":"user","createdAt":4,"content":[{"type":"text","text":"Second question"}],"metadata":{}},
+            {"id":"a2","role":"agent","createdAt":5,"content":[{"type":"text","text":"Second answer"}],"metadata":{}}]}
+        ],"hasMore":false}"""
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        val target = com.slopus.happy.call.CallTarget("a1", "Fix it", com.slopus.happy.call.CallTarget.Kind.Task, com.slopus.happy.call.CallTarget.Status.Idle)
+        val read = com.slopus.happy.call.CallTargetState.from(chat.state.value, target)
+        assertEquals(
+            listOf(
+                com.slopus.happy.call.CallTurn("r1", "First question", "First answer", endedAt = 3),
+                com.slopus.happy.call.CallTurn("r2", "Second question", "Second answer", endedAt = 6),
+            ),
+            read.turns,
+        )
+        assertNull(read.unanswered)
+        assertEquals(listOf("First question", "First answer", "Second question", "Second answer"), read.messages.map { it.text })
+        assertEquals(listOf(null, "r1", null, "r2"), read.messages.map { it.turn })
+        // The person's next message, taken but not answered yet, is the one waiting.
+        agent.bootstrap = agent.bootstrap.replace("\"pending\":[]", """"pending":[{"id":"u3","role":"user","status":"pending","createdAt":7,"content":[{"type":"text","text":"Third question"}],"metadata":{}}]""")
+        val waiting = conversation(agent)
+        advanceUntilIdle()
+        val later = com.slopus.happy.call.CallTargetState.from(waiting.state.value, target)
+        assertEquals(listOf("First question", "Second question"), later.turns.map { it.user })
+        assertEquals("Third question", later.unanswered?.text)
+    }
+
     @Test fun `reads history and pending messages in run order`() = runTest {
         val agent = FakeAgent()
         agent.page = """{"runs":[{"id":"r1","status":"completed","messages":[

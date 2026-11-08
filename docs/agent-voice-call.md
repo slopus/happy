@@ -39,10 +39,12 @@ the agents, under "The hosted agent", for whoever sets a build up). It is
 injected at build time:
 
 - iOS: `HAPPY_CALL_AGENT_V3_ID = agent_…` in
-  `packages/happy-ios/Config/Call.local.xcconfig` (ignored by git), or
-  `HAPPY_CALL_AGENT_V3_ID=agent_…` on the `xcodebuild` command line. It
-  reaches `Info.plist` as `HappyCallAgentID` and is read by
-  `CallAgent.hostedAgentId`.
+  `packages/happy-ios/Config/Call.local.xcconfig` (ignored by git),
+  `HAPPY_CALL_AGENT_V3_ID=agent_…` on the `xcodebuild` command line, or
+  `HAPPY_CALL_AGENT_V3_ID` in the build's environment. It reaches
+  `Info.plist` as `HappyCallAgentID` and is read by
+  `CallAgent.hostedAgentId`. (`Call.xcconfig` gives it no value of its own,
+  which would hide the environment's.)
 - Android: `HAPPY_CALL_AGENT_V3_ID` in the environment,
   `-Phappy.callAgentV3Id=agent_…`, or `happy.callAgentV3Id=agent_…` in
   `packages/happy-android/local.properties` (ignored). It becomes
@@ -58,7 +60,19 @@ whatever a later build sets. An old `Call.local.xcconfig` or
 isn't set up rather than shipping a call whose tools the agent doesn't have.
 
 Without an ID the button stays, and a tap says "Voice isn't set up for this
-connection yet" without asking for the microphone.
+connection yet" without asking for the microphone, and nothing reaches
+ElevenLabs. (Asked for a token, ElevenLabs answers an empty ID with 400
+`invalid_agent_id`, none with 422, an unknown one with 404
+`agent_not_found`, and any real agent, v2's too, with a token: only the
+setting's name keeps v2 out.)
+
+So a store build can't ship that way: every iOS Preview and Release build
+and every Android `preview` and `release` build fails without an
+`agent_…` ID. iOS checks the built `Info.plist` (the Happy target's last
+build phase, "Require the voice agent"), Android `pre<Variant>Build`. A
+build that ships nowhere sets `HAPPY_RELEASE_WITHOUT_CALL_AGENT=1` instead
+and is warned; Android's CI does, for its `assembleRelease`. Debug builds
+and tests never need the ID.
 
 ## The bar over every screen
 

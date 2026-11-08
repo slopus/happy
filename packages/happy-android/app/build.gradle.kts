@@ -287,6 +287,32 @@ tasks.configureEach {
     }
 }
 
+// A store build without the voice agent ships a voice button that only says
+// voice isn't set up: every release and preview build, signed or not, needs
+// HAPPY_CALL_AGENT_V3_ID (an ElevenLabs agent ID, as CallAgent.id reads it).
+// CI, which has no secrets, says so with HAPPY_RELEASE_WITHOUT_CALL_AGENT=1.
+// Debug, bench and tests never need it.
+tasks.configureEach {
+    if (name == "preReleaseBuild" || name == "prePreviewBuild") {
+        val taskName = if (name == "preReleaseBuild") "release build" else "preview build"
+        val agentId = callAgentId?.trim()
+        val agentIdValid = agentId != null && Regex("agent_[A-Za-z0-9_]+").matches(agentId)
+        val waived = providers.environmentVariable("HAPPY_RELEASE_WITHOUT_CALL_AGENT").orNull == "1"
+        doFirst {
+            if (waived && !agentIdValid) {
+                logger.warn("HAPPY_RELEASE_WITHOUT_CALL_AGENT=1: this $taskName has no voice agent; voice says it isn't set up.")
+            }
+            check(waived || agentIdValid) {
+                if (agentId == null) {
+                    "A $taskName needs the voice agent: set HAPPY_CALL_AGENT_V3_ID (or -Phappy.callAgentV3Id) to the v3 agent's ID. The old HAPPY_CALL_AGENT_ID is ignored. See docs/agent-voice-call.md"
+                } else {
+                    "A $taskName needs the voice agent, and HAPPY_CALL_AGENT_V3_ID isn't an ElevenLabs agent ID (agent_…)."
+                }
+            }
+        }
+    }
+}
+
 androidComponents {
     onVariants { variant ->
         // -Phappy.applicationId=com.slopus.happy.chatbench: a measuring build installed beside the

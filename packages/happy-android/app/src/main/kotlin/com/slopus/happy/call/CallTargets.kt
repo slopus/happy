@@ -213,7 +213,8 @@ data class CallTargetState(
          * a flag, never its words. A run's rows come together, its turn end
          * after them, so a turn is what came since the previous turn end: its
          * first message of the person's, its answer, and the failure that
-         * ended it, worded by [failureText].
+         * ended it, worded by [failureText]. The state's rows are newest
+         * first, as the chat draws them; they are read oldest first.
          */
         fun from(state: ConversationState, target: CallTarget, failureText: (FailureReason) -> String = { "" }): CallTargetState {
             val messages = ArrayList<CallMessage>()
@@ -225,7 +226,7 @@ data class CallTargetState(
             // The agent's words in the run still going, by index in [messages], and that run's last step.
             val running = ArrayList<Int>()
             var lastStep: ConversationRow? = null
-            for (row in state.rows) {
+            for (row in state.rows.asReversed()) {
                 if (row.isStep) lastStep = row
                 when (row) {
                     is ConversationRow.User -> if (row.text.isNotEmpty()) {

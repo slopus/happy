@@ -37,7 +37,11 @@ jobs:
         working-directory: .
         run: node --test scripts/native-version.test.cjs
       # No signing secrets: release builds unsigned, preview debug-signed.
+      # No voice agent either: a store build needs HAPPY_CALL_AGENT_V3_ID, and
+      # CI's release build, which ships nowhere, says it goes without.
       - name: Build and test
+        env:
+          HAPPY_RELEASE_WITHOUT_CALL_AGENT: '1'
         run: ./gradlew --console=plain assembleDebug assembleRelease testDebugUnitTest :crypto:test
       - name: Upload test reports
         if: failure()

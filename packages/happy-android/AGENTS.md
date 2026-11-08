@@ -866,6 +866,14 @@ ANDROID_SERIAL=<device> ./gradlew :benchmark:connectedBenchmarkBenchAndroidTest 
   (`keystore.properties.example` lists the keys). Without them `release`
   builds unsigned and `preview` debug-signed, so `assembleRelease` works
   anywhere, CI included.
+- Every `release` and `preview` build, signed or not, needs the voice agent:
+  `HAPPY_CALL_AGENT_V3_ID` (or `-Phappy.callAgentV3Id`, or `happy.callAgentV3Id`
+  in `local.properties`), an ElevenLabs `agent_…` ID. Without it the build
+  fails in `pre<Variant>Build` rather than ship a voice button that only says
+  voice isn't set up. v2's old `HAPPY_CALL_AGENT_ID` is ignored. A build that
+  ships nowhere (CI, a local `assembleRelease` to check R8) sets
+  `HAPPY_RELEASE_WITHOUT_CALL_AGENT=1` instead. Debug, bench and tests never
+  need it.
 - PostHog's public project key comes from `EXPO_PUBLIC_POSTHOG_API_KEY` or
   `-Phappy.postHogKey`, as happy-app's and Happy Desktop's do; nothing is
   checked in. A build without it reads every feature flag as off and sends
@@ -879,7 +887,8 @@ ANDROID_SERIAL=<device> ./gradlew :benchmark:connectedBenchmarkBenchAndroidTest 
 - Shipping goes through the `release` skill like every other release.
 - CI: `.github/workflows/happy-android.yml` runs `assembleDebug
   assembleRelease testDebugUnitTest :crypto:test` on changes under
-  `packages/happy-android/` and shared mobile resources. It has no signing secrets.
+  `packages/happy-android/` and shared mobile resources. It has no signing
+  secrets and no voice agent (`HAPPY_RELEASE_WITHOUT_CALL_AGENT=1`).
 
 The JDK toolchain (21) is provisioned by the foojay resolver if the machine
 only has a JRE. In the agent sandbox Gradle needs network and local sockets:

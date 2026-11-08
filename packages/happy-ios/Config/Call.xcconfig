@@ -1,13 +1,14 @@
 // The hosted voice agent's public ElevenLabs ID, for agent connection calls
 // (HappyCore CallAgent). Never committed: a public ID lets anyone start a
 // conversation billed to its owner. Set it in Call.local.xcconfig next to
-// this file (ignored by git) or on the build's command line:
+// this file (ignored by git), on the build's command line or in the build's
+// environment (as Android takes it):
 //     HAPPY_CALL_AGENT_V3_ID = agent_...
-// Named for the tools this code calls (v3: listConversations,
-// readConversation, message, navigate), so an older agent's ID, set under
-// the old HAPPY_CALL_AGENT_ID, never reaches it. Without it, the voice
-// button says voice isn't set up.
-HAPPY_CALL_AGENT_V3_ID =
+// It has no value here, which would hide the environment's. Named for the
+// tools this code calls (v3: listConversations, readConversation, message,
+// navigate), so an older agent's ID, set under the old HAPPY_CALL_AGENT_ID,
+// never reaches it. Preview and Release builds fail without it (project.yml);
+// a Debug build's voice button says voice isn't set up.
 
 // RevenueCat's public Apple app key, for voice's subscription (pro). The
 // same key the Expo app gets from EXPO_PUBLIC_REVENUE_CAT_APPLE, which is

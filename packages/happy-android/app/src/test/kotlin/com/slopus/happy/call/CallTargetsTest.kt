@@ -59,8 +59,12 @@ class CallTargetsTest {
     private fun end(turn: String, copy: String? = null, reason: String = "completed") = ConversationRow.TurnEnd("$turn:end", turn, reason, 5, 0, copy)
     private val target = CallTarget("a", "A", CallTarget.Kind.Task, CallTarget.Status.Idle)
 
+    /** [rows] as a conversation reads, oldest first, published newest first as [com.slopus.happy.conversation.Conversation] does. */
+    private fun conversation(rows: List<ConversationRow>, working: Boolean = true, draft: String = "") =
+        ConversationState(created = true, loaded = true, working = working, rows = rows.asReversed(), draft = draft)
+
     private fun read(rows: List<ConversationRow>, working: Boolean = true) =
-        CallTargetState.from(ConversationState(created = true, loaded = true, working = working, rows = rows), target)
+        CallTargetState.from(conversation(rows, working), target)
 
     private fun finals(rows: List<ConversationRow>, working: Boolean = true) =
         read(rows, working).messages.filter { it.role == CallMessage.Role.Assistant }.associate { it.id to it.final }
@@ -126,8 +130,7 @@ class CallTargetsTest {
             user("u3", "hello", Delivery.Sending),
             said("x:0", "thinking out loud"),
         )
-        val conversation = ConversationState(created = true, loaded = true, working = true, rows = rows, draft = "half typed")
-        val state = CallTargetState.from(conversation, target) { reason -> "rate limited: ${(reason as FailureReason.RateLimited).vendor}" }
+        val state = CallTargetState.from(conversation(rows, draft = "half typed"), target) { reason -> "rate limited: ${(reason as FailureReason.RateLimited).vendor}" }
         assertEquals(listOf(CallTurn("r1", "fix it", "Fixed."), CallTurn("r2", "again", null, "error", "rate limited: Claude")), state.turns)
         assertEquals("hello", state.unanswered?.text)
         assertEquals(CallMessage.Delivery.Queued, state.unanswered?.delivery)
