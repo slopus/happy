@@ -11,7 +11,8 @@ import UIKit
 /// Avatar Style: every avatar without a picture wears its placeholder
 /// (`AvatarPlaceholder`) whichever style is set, so only Black & White
 /// Avatars changes how they look, and this app's own Animated Avatars
-/// (`LiveAvatars`, off by default), which moves them.
+/// (`LiveAvatars`, off by default), which moves them. Display ends with
+/// this app's Shimmer in Low Power Mode (`LowPowerShimmer`, off by default).
 public final class SettingsAppearanceViewController: UIViewController {
     private enum Dropdown {
         case bubbleColor
@@ -227,6 +228,15 @@ public final class SettingsAppearanceViewController: UIViewController {
                 icon: "apps-outline",
                 tint: purple
             ),
+            toggles.row(
+                LowPowerShimmer.key,
+                title: Strings.LowPowerShimmer.title,
+                subtitle: Strings.LowPowerShimmer.description,
+                icon: ItemIcon(.ionicons("flash-outline"), tint: Palette.statusConnecting),
+                isOn: ShimmerClock.shared.shimmersInLowPower
+            ) { on in
+                ShimmerClock.shared.shimmersInLowPower = on
+            },
         ]))
         list.sections = sections
     }

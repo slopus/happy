@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import HappyCore
 import HappyLayout
 import UIKit
 
@@ -10,6 +11,8 @@ import UIKit
 @MainActor
 final class ShimmerClock {
     static let shared = ShimmerClock()
+
+    private let lowPowerShimmer = LowPowerShimmer(storage: UserDefaultsStore(suiteName: LowPowerShimmer.suiteName))
 
     let epoch = CACurrentMediaTime()
     private(set) var backgrounded = UIApplication.shared.applicationState == .background
@@ -26,9 +29,32 @@ final class ShimmerClock {
         didSet { if reduceMotionOverride != oldValue { changed() } }
     }
 
-    /// Asked for less motion, or saving power, the text simply stays at its
-    /// own colour: a sweep has the screen composed again every frame it runs.
-    var reducesMotion: Bool { reduceMotionOverride ?? (UIAccessibility.isReduceMotionEnabled || ProcessInfo.processInfo.isLowPowerModeEnabled) }
+    /// Tests and the harness stand in for the system's Low Power Mode with this.
+    var lowPowerOverride: Bool? {
+        didSet { if lowPowerOverride != oldValue { changed() } }
+    }
+
+    /// Settings › Appearance › Shimmer in Low Power Mode, kept on this
+    /// phone. Setting it reaches the bands already on screen.
+    var shimmersInLowPower: Bool {
+        get { lowPowerShimmer.isEnabled }
+        set {
+            guard newValue != shimmersInLowPower else { return }
+            lowPowerShimmer.isEnabled = newValue
+            changed()
+        }
+    }
+
+    /// Asked for less motion, or saving power without Shimmer in Low Power
+    /// Mode, the text simply stays at its own colour: a sweep has the screen
+    /// composed again every frame it runs.
+    var reducesMotion: Bool {
+        reduceMotionOverride ?? LowPowerShimmer.holdsStill(
+            reduceMotion: UIAccessibility.isReduceMotionEnabled,
+            lowPower: lowPowerOverride ?? ProcessInfo.processInfo.isLowPowerModeEnabled,
+            shimmersInLowPower: shimmersInLowPower
+        )
+    }
 
     private init() {
         let center = NotificationCenter.default

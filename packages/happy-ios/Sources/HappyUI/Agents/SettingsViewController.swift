@@ -619,9 +619,10 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         navigationController?.pushViewController(controller, animated: true)
     }
 
-    /// A computer's look on this phone: the theme, and whether home shows
+    /// A computer's look on this phone: the theme, whether home shows
     /// projects (desktop's account setting, which home follows; there is
-    /// deliberately no renderer or layout choice here).
+    /// deliberately no renderer or layout choice here), and whether a
+    /// shimmer runs in Low Power Mode (the phone's own, for every profile).
     private func appearanceRows() -> [[SettingsRow]] {
         typealias Row = SettingsRow
         guard let id = shown?.id else { return [] }
@@ -636,6 +637,9 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                 projectsHidden = on
                 Task { try? await engine.setProjectsHidden(on) }
             })],
+            [Row(SettingsIndex.shimmerInLowPower, accessory: .toggle, isOn: ShimmerClock.shared.shimmersInLowPower, toggled: { on in
+                ShimmerClock.shared.shimmersInLowPower = on
+            })].withFooter(Strings.LowPowerShimmer.description),
         ]
     }
 

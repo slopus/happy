@@ -132,6 +132,30 @@ final class WorkingRowTests: XCTestCase {
         }
     }
 
+    /// In Low Power Mode the loader keeps going while the title holds
+    /// still, until Shimmer in Low Power Mode brings its sweep back, live.
+    func testLowPowerModeKeepsTheLoaderAndStillsTheTitleUnlessAsked() throws {
+        let clock = ShimmerClock.shared
+        let kept = clock.shimmersInLowPower
+        clock.shimmersInLowPower = false
+        clock.lowPowerOverride = true
+        defer {
+            clock.lowPowerOverride = nil
+            clock.shimmersInLowPower = kept
+        }
+        let sidebar = sidebar(Self.rows(working: true))
+        let voice = try view(sidebar, "space:voice")
+        XCTAssertTrue(voice.workingSignalRunning, "the loader holds still in Low Power Mode")
+        XCTAssertNil(voice.titleSweepBegan)
+        clock.shimmersInLowPower = true
+        XCTAssertNotNil(voice.titleSweepBegan, "the setting doesn't reach a title on screen")
+        XCTAssertTrue(voice.workingSignalRunning)
+        clock.shimmersInLowPower = false
+        XCTAssertNil(voice.titleSweepBegan)
+        clock.lowPowerOverride = false
+        XCTAssertNotNil(voice.titleSweepBegan)
+    }
+
     /// Asked for less motion, a working title stays still at its colour.
     func testReduceMotionKeepsTitlesStill() throws {
         let sidebar = sidebar(Self.rows(working: true))

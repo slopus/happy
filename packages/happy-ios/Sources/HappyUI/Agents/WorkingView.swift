@@ -200,10 +200,6 @@ final class BrailleView: UIView {
         NotificationCenter.default.addObserver(self, selector: #selector(foregrounded), name: UIApplication.willEnterForegroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(wentAway), name: UIApplication.didEnterBackgroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(animate), name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
-        // Posted on any thread.
-        NotificationCenter.default.addObserver(forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.animate() }
-        }
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -256,9 +252,9 @@ final class BrailleView: UIView {
 
     @objc private func animate() {
         for dot in dots { dot.removeAnimation(forKey: "wave") }
-        // In Low Power Mode it holds still, as with Reduce Motion: each frame
-        // it runs has the whole screen composed again.
-        guard running, window != nil, !backgrounded, !UIAccessibility.isReduceMotionEnabled, !ProcessInfo.processInfo.isLowPowerModeEnabled else { return }
+        // It holds still with Reduce Motion only. In Low Power Mode it keeps
+        // moving, unlike a shimmer: it is the sign that work runs.
+        guard running, window != nil, !backgrounded, !UIAccessibility.isReduceMotionEnabled else { return }
         let start = CACurrentMediaTime()
         let cycle = Braille.cycle / 1000
         for (dot, phase) in zip(dots, Braille.phases) {
