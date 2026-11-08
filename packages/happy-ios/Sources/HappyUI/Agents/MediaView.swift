@@ -65,6 +65,8 @@ final class ChatMediaView: UIView, UploadRingTile, DownloadShowing {
     private var media: ChatMedia?
     private var loadedPixels = 0
     private var task: Task<Void, Never>?
+    /// A reconnect can arrive before the old request finishes failing.
+    private var retryPending = false
     /// The download it follows, and where it is.
     private(set) var download: ChatDownload?
     private(set) var downloadPhase: DownloadPhase?
@@ -140,6 +142,7 @@ final class ChatMediaView: UIView, UploadRingTile, DownloadShowing {
         }
         task?.cancel()
         task = nil
+        retryPending = false
         self.media = media
         loadedPixels = 0
         setFailed(false)
@@ -250,6 +253,7 @@ final class ChatMediaView: UIView, UploadRingTile, DownloadShowing {
         if phase?.isComplete == true, was?.isComplete != true, picture.image == nil || media?.isVideo == true {
             task?.cancel()
             task = nil
+            retryPending = false
             loadedPixels = 0
             setFailed(false)
             loadIfNeeded()
@@ -339,6 +343,13 @@ final class ChatMediaView: UIView, UploadRingTile, DownloadShowing {
                 self.refreshRing(animated: false)
             }
             guard let image else {
+                if self.retryPending {
+                    self.retryPending = false
+                    self.loadedPixels = 0
+                    self.setFailed(false)
+                    self.loadIfNeeded()
+                    return
+                }
                 // Not again until asked: the computer may be away.
                 self.loadedPixels = pixels
                 // Waiting for a tap, or showing how its download went: the ring says so.
@@ -353,7 +364,11 @@ final class ChatMediaView: UIView, UploadRingTile, DownloadShowing {
     /// Every tile still without its picture asks again: one that failed,
     /// and one whose ring stood in for it (a recording's first frame).
     @objc private func retry(_ notification: Notification) {
-        guard failed || picture.image == nil, task == nil, let source = source(), notification.object as AnyObject? === source else { return }
+        guard failed || picture.image == nil, let source = source(), notification.object as AnyObject? === source else { return }
+        if task != nil {
+            retryPending = true
+            return
+        }
         setFailed(false)
         loadedPixels = 0
         loadIfNeeded()
@@ -366,6 +381,7 @@ final class ChatMediaView: UIView, UploadRingTile, DownloadShowing {
     }
 
     private func show(_ image: UIImage, pixels: Int, fade: Bool) {
+        retryPending = false
         setFailed(false)
         let first = picture.image == nil
         loadedPixels = pixels
