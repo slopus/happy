@@ -78,6 +78,16 @@ object SignInRule {
     fun requiresSignIn(response: TransportResponse): Boolean =
         requiresSignIn(response.status, response.headers["content-type"], response.body)
 
+    /** The profile gate: a good token, no profile saved yet, `403 {"code":"profile_required"}`. The person adds a name. */
+    fun requiresProfile(status: Int, contentType: String?, body: ByteArray): Boolean {
+        if (status != 403 || !isHappyError(contentType, body)) return false
+        val root = runCatching { Json.parseToJsonElement(body.decodeToString()) as? JsonObject }.getOrNull()
+        return (root?.get("code") as? JsonPrimitive)?.content == "profile_required"
+    }
+
+    fun requiresProfile(response: TransportResponse): Boolean =
+        requiresProfile(response.status, response.headers["content-type"], response.body)
+
     private fun kotlinx.serialization.json.JsonElement?.isString() = (this as? JsonPrimitive)?.isString == true
 }
 

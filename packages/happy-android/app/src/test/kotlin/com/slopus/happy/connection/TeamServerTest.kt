@@ -82,6 +82,8 @@ class TeamServerTest {
         var edge: TransportResponse? = null
         /** Tokens of a member without a profile: everything but health, profile and discovery is a 401. */
         val noProfile = mutableSetOf<String>()
+        /** Tokens of a member without a profile on a cluster after 7333447: a 403 `profile_required` instead of the 401. */
+        val noProfile403 = mutableSetOf<String>()
         val calls = mutableListOf<Pair<String, String>>()
         /** Set: every request waits on it, after saying so in [held]. */
         @Volatile var hold: CompletableDeferred<Unit>? = null
@@ -101,6 +103,7 @@ class TeamServerTest {
             }
             if (credential !in valid) return happy(401, "unauthorized")
             if (credential in noProfile && path !in setOf("/v0/health", "/v0/profile")) return happy(401, "unauthorized")
+            if (credential in noProfile403 && path !in setOf("/v0/health", "/v0/profile")) return happy(403, "profile_required")
             return when (path) {
                 "/v0/health" -> TransportResponse(200, mapOf("content-type" to "application/json"), """{"healthy":true,"ready":true,"version":{"protocol":33,"daemon":"1"},"capabilities":{"webSocketTunnels":true}}""".toByteArray())
                 // A member may not read the node's configuration.
@@ -133,9 +136,10 @@ class TeamServerTest {
         return connections.addServer(origin, credential, AccessToken("access-1", now + expiresIn), fallbackName = "happy.acme.example")
     }
 
-    private fun client(connections: AgentConnections, id: String) = AgentClient.lazy {
+    /** [id]'s client; with [tellsAccount], its refusals sign the account out as a session's do. */
+    private fun client(connections: AgentConnections, id: String, tellsAccount: Boolean = false) = AgentClient.lazy {
         val credentials = connections.credentials(id)!!
-        AgentClient.Link(daemon, connections.bearer(id, credentials), renew = { stale -> connections.renew(id, stale) })
+        AgentClient.Link(daemon, connections.bearer(id, credentials), renew = { stale -> connections.renew(id, stale) }, signedOut = if (tellsAccount) { profile -> connections.signedOut(id, profile) } else null)
     }
 
     @Test
@@ -200,6 +204,26 @@ class TeamServerTest {
         // Asked, not refreshed.
         assertEquals(0, sso.requestCount)
         assertEquals("access-1", daemon.calls.last { it.first == "/v0/authentication" }.second)
+    }
+
+    @Test
+    fun theDaemons403ProfileRequiredIsTheProfileGate() = runBlocking {
+        val connections = connections()
+        val account = signedIn(connections)
+        daemon.noProfile403 += "access-1"
+        val client = client(connections, account.id, tellsAccount = true)
+        try { client.send("GET", "/v0/projects"); fail() } catch (e: AgentConnectionException) { assertEquals(AgentConnectionException.Reason.ProfileRequired, e.reason) }
+        // No refresh and no sign-in: a name is owed, and the credentials stay.
+        assertEquals(0, sso.requestCount)
+        val owed = connections.accounts.value.single()
+        assertTrue(owed.signInRequired && owed.profileRequired)
+        assertFalse(owed.sessionEnded)
+        assertTrue(connections.credentials(account.id) != null)
+        // The node's name and picture, read the same way, say so too.
+        try { AgentIdentity.refresh(client.requester, "x", oauth = true); fail() } catch (e: AgentConnectionException) { assertEquals(AgentConnectionException.Reason.ProfileRequired, e.reason) }
+        // Any other 403 of the daemon's stays an ordinary refusal.
+        daemon.noProfile403.clear()
+        try { client.send("GET", "/v0/forbidden"); fail() } catch (e: AgentApiException) { assertEquals("forbidden", e.code) }
     }
 
     @Test
