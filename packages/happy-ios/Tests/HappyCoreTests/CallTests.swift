@@ -83,6 +83,7 @@ final class CallContextTests: XCTestCase {
         - happy://home — the home list
         - happy://back — one screen back; refused at home
         - happy://conversation/<ref> — that conversation on screen, such as happy://conversation/s1
+        - happy://call/restart — end this call and start a new one at once, this conversation carried over; only when the person agrees
         """)
         XCTAssertFalse(text.contains("{"), "no JSON")
         let followed = await context.followed
@@ -1869,9 +1870,11 @@ struct FakeGrants: CallGrantSource {
 @MainActor
 final class FakeCallConnection: CallConnection {
     var updates: [String] = []
+    var cues: [String] = []
     var muted = false
     var ended = false
     func end() async { ended = true }
+    func cue(_ facts: String) async throws { cues.append(facts) }
     func setMuted(_ muted: Bool) async throws { self.muted = muted }
     /// Each update waits this long before it lands, the first one longest when set.
     var slowFirst: Duration?

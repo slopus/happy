@@ -31,6 +31,7 @@ import kotlinx.coroutines.withContext
 class ElevenLabsCallConnection private constructor(
     private val session: ConversationSession,
     private val scope: CoroutineScope,
+    private val events: CallEvents,
 ) : CallConnection {
     private val handled = HashSet<String>()
     private val tools = HashMap<String, Job>()
@@ -49,10 +50,23 @@ class ElevenLabsCallConnection private constructor(
         session.sendContextualUpdate(context)
     }
 
-    /** The person's turn typed rather than spoken: the device check's synthetic input, never the app's. */
+    /**
+     * A user message the prompt reads as the app's ([CallCue.MARK]): the one
+     * event that has the agent take a turn; a contextual update never does.
+     */
+    override fun cue(facts: String) {
+        if (com.slopus.happy.BuildConfig.DEBUG) CallProbe.sent("cue", facts)
+        session.sendUserMessage(CallCue.MARK + facts)
+    }
+
+    /**
+     * The person's turn typed rather than spoken: the device check's synthetic
+     * input, never the app's. Kept as theirs, as a transcript would be.
+     */
     fun type(text: String) {
         if (com.slopus.happy.BuildConfig.DEBUG) CallProbe.sent("typed", text)
         session.sendUserMessage(text)
+        events.heard(text)
     }
 
     private fun answer(call: CallToolCall, events: CallEvents) {
@@ -131,8 +145,20 @@ class ElevenLabsCallConnection private constructor(
                 onModeChange = { mode -> scope.launch { tracker.agentSpeaking(mode == ConversationMode.SPEAKING) } },
                 onVadScore = { score -> scope.launch { tracker.vad(score) } },
                 onAudioLevelChanged = { level -> scope.launch { tracker.level(level) } },
-                onUserTranscript = { text -> if (com.slopus.happy.BuildConfig.DEBUG) scope.launch { CallProbe.line("user", text) } },
-                onAgentResponse = { text -> if (com.slopus.happy.BuildConfig.DEBUG) scope.launch { CallProbe.line("agent", text) } },
+                // What was said aloud, final only, for the call's history: never a cue, which comes back as none of these.
+                onUserTranscriptEvent = { text, _ ->
+                    scope.launch {
+                        if (com.slopus.happy.BuildConfig.DEBUG) CallProbe.line("user", text)
+                        events.heard(text)
+                    }
+                },
+                onAgentResponseEvent = { text, event ->
+                    scope.launch {
+                        if (com.slopus.happy.BuildConfig.DEBUG) CallProbe.line("agent", text)
+                        events.said(text, event ?: -1)
+                    }
+                },
+                onAgentResponseCorrectionEvent = { text, event -> scope.launch { events.corrected(text, event ?: -1) } },
                 onMessage = { _, message -> if (hangsUp(message)) agentEnded.set(true) },
                 onDisconnect = { details ->
                     val hungUp = details is DisconnectionDetails.User || agentEnded.get()
@@ -144,7 +170,7 @@ class ElevenLabsCallConnection private constructor(
             try {
                 val session = ConversationClient.startSession(config, context)
                 opened = session
-                return ElevenLabsCallConnection(session, scope).also { made ->
+                return ElevenLabsCallConnection(session, scope, events).also { made ->
                     connection = made
                     early.forEach { made.answer(it, events) }
                     early.clear()

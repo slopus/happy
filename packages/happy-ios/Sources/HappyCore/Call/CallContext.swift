@@ -62,6 +62,10 @@ public actor CallContext {
         public static let toolDeadline: Duration = .seconds(8)
         /// Models a read or a refusal lists.
         public static let models = 30
+        /// What earlier calls said, in the first context (`CallHistory`),
+        /// and each of its lines' words.
+        public static let recapBytes = 8 * 1024
+        public static let slotBytes = 1024
     }
 
     /// The references `message` starts new work with, as the first
@@ -73,6 +77,10 @@ public actor CallContext {
     public static let homeURL = "happy://home"
     public static let backURL = "happy://back"
     public static let conversationURL = "happy://conversation/"
+    /// Not a screen: the call, ended and started again at once, carried
+    /// over (`CallSession.requestRestart`). Listed in the first context
+    /// only; the dashboard's navigate description names the screens.
+    public static let restartURL = "happy://call/restart"
     static let destinations = [homeURL, backURL, conversationURL + "<ref>"]
 
     private let targets: any CallTargets
@@ -108,6 +116,7 @@ public actor CallContext {
     private var results: [String: Task<CallToolResult, Never>] = [:]
     private var tail: Task<Void, Never>?
     private var closed = false
+    private var restart: (@Sendable () async -> CallToolResult)?
 
     /// What the agent has of one visited conversation: its agent's complete
     /// messages, those there when it was first seen counted as had, and the
@@ -138,15 +147,24 @@ public actor CallContext {
         for task in results.values { task.cancel() }
     }
 
+    /// What `navigate` to `restartURL` does: the call's to say.
+    public func onRestart(_ handler: @escaping @Sendable () async -> CallToolResult) {
+        restart = handler
+    }
+
     // MARK: The first context
 
     /// `initialConversationContext`, the hosted prompt's one variable, as
-    /// plain text: the time and focusRevision, the conversation on screen
-    /// with its last five turns and the models it can switch to, the
-    /// directory, how new work starts and where `navigate` goes.
-    /// Within `Limits.totalBytes`: the older turns give way first, then the
-    /// directory's tail, and the newest turn only after that.
-    public func initial() async -> String {
+    /// plain text: the time and focusRevision, what earlier calls said
+    /// (`previous`, `CallHistory`), the conversation on screen with its
+    /// last five turns and the models it can switch to, the directory, how
+    /// new work starts and where `navigate` goes. Within
+    /// `Limits.totalBytes`: the older turns give way first, then the
+    /// directory's tail, then the recap's older lines (nothing else has
+    /// them), and the newest turn only after that. A new conversation's:
+    /// the agent has no reference yet.
+    public func initial(previous: [CallSlot] = []) async -> String {
+        told.removeAll()
         see(await targets.directory())
         focus = await targets.focused()
         var focused: CallTargetState?
@@ -161,11 +179,15 @@ public actor CallContext {
         let header = "Now: \(Self.local(now(), in: timeZone)) (the person's local time)\nfocusRevision: \(focusRevision)"
         var turns = focused.map(Self.recent) ?? []
         var budget = Limits.directoryBytes
+        var recapBudget = Limits.recapBytes
+        let at = now()
         func text(telling: Bool = false) -> String {
-            [header, screen(focused, turns: turns), directoryText(bytes: budget, telling: telling), Self.newWorkText, Self.destinationsText].joined(separator: "\n\n")
+            [header, Self.recap(previous, now: at, bytes: recapBudget), screen(focused, turns: turns), directoryText(bytes: budget, telling: telling),
+             Self.newWorkText, Self.destinationsText].compactMap { $0 }.joined(separator: "\n\n")
         }
         while text().utf8.count > Limits.totalBytes, turns.count > 1 { turns.removeFirst() }
         while text().utf8.count > Limits.totalBytes, budget > 512 { budget /= 2 }
+        while text().utf8.count > Limits.totalBytes, recapBudget > 512 { recapBudget /= 2 }
         while text().utf8.count > Limits.totalBytes, !turns.isEmpty { turns.removeFirst() }
         if let focus { told.insert(focus) }
         return text(telling: true)
@@ -185,7 +207,32 @@ public actor CallContext {
     - \(homeURL) — the home list
     - \(backURL) — one screen back; refused at home
     - \(conversationURL)<ref> — that conversation on screen, such as \(conversationURL)s1
+    - \(restartURL) — end this call and start a new one at once, this conversation carried over; only when the person agrees
     """
+
+    /// What earlier calls said, oldest first, each line with how long ago:
+    /// the newest within `bytes`, each line's words within
+    /// `Limits.slotBytes`. Nil when nothing was said.
+    static func recap(_ slots: [CallSlot], now: Double, bytes: Int) -> String? {
+        guard !slots.isEmpty else { return nil }
+        let header = "Previous voice conversation (earlier calls, oldest first):"
+        let cut = "Older lines aren't shown."
+        var lines: [String] = []
+        var size = header.utf8.count + cut.utf8.count + 2
+        for slot in slots.reversed() {
+            let when = Self.ago(now - slot.at)
+            let line: String = switch slot.kind {
+            case .person: "- \(when), the person: " + indented(clipped(slot.text ?? "", bytes: Limits.slotBytes))
+            case .assistant: "- \(when), you: " + indented(clipped(slot.text ?? "", bytes: Limits.slotBytes))
+            case .ended: "- \(when): " + (slot.ending ?? .dropped).said
+            }
+            guard size + line.utf8.count + 1 <= bytes else { break }
+            size += line.utf8.count + 1
+            lines.append(line)
+        }
+        guard !lines.isEmpty else { return header + "\n" + cut }
+        return ([header] + (lines.count < slots.count ? [cut] : []) + lines.reversed()).joined(separator: "\n")
+    }
 
     /// The conversation on screen as the first context tells it: what
     /// `readConversation` reads of it, as lines.
@@ -534,6 +581,9 @@ public actor CallContext {
             // Home is home from wherever the screen is; the others are moves
             // from the screen the agent last saw, refused once it changed.
             switch destination {
+            case .restart:
+                guard let restart, !closed else { return .refused("The call can't restart now.") }
+                return await restart()
             case .conversation(let wanted):
                 if let unmade = Self.unmade(wanted) { return unmade }
                 guard let id = await resolve(wanted) else { return .refused("No such conversation.") }
@@ -687,7 +737,7 @@ public actor CallContext {
 
     /// Where `navigate` goes.
     enum Destination: Equatable {
-        case home, back
+        case home, back, restart
         case conversation(String)
     }
 
@@ -699,6 +749,7 @@ public actor CallContext {
         let lower = text.lowercased()
         if lower == homeURL { return .home }
         if lower == backURL { return .back }
+        if lower == restartURL { return .restart }
         guard lower.hasPrefix(conversationURL) else { return nil }
         let ref = String(text.dropFirst(conversationURL.count))
         return ref.isEmpty || ref.contains("/") ? nil : .conversation(ref)

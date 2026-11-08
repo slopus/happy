@@ -132,6 +132,32 @@ public actor OfflineFile {
         return try? Data(contentsOf: directory.appendingPathComponent(name))
     }
 
+    /// The folder for what the person said (`call-history.json`): never
+    /// backed up, its files readable only while the phone is unlocked.
+    public nonisolated var privateURL: URL { directory.appendingPathComponent("private", isDirectory: true) }
+
+    /// As `writeExtra`, into `privateURL`.
+    public nonisolated func writePrivate(_ name: String, data: Data) {
+        let folder = privateURL
+        gate.write {
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            #if canImport(Darwin)
+            var url = folder
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try? url.setResourceValues(values)
+            try? data.write(to: folder.appendingPathComponent(name), options: [.atomic, .completeFileProtection])
+            #else
+            try? data.write(to: folder.appendingPathComponent(name), options: .atomic)
+            #endif
+        }
+    }
+
+    public nonisolated func readPrivate(_ name: String) -> Data? {
+        guard !gate.isClosed else { return nil }
+        return try? Data(contentsOf: privateURL.appendingPathComponent(name))
+    }
+
     // MARK: Pictures
 
     /// A picture's bytes as last read, by where it is served and its hash.

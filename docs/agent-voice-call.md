@@ -475,8 +475,8 @@ next `readConversation`, and in the chat as any failed message does.
 No update announces it.
 
 **Sizes:** the first context is capped at 32 KB of UTF-8 (the older turns
-give way first, then the directory's tail, and the newest turn only after
-that). Five turns of 1,000 words of prose (about 30 KB) fit; five replies
+give way first, then the directory's tail, then the earlier calls' recap
+below, and the newest turn only after that). Five turns of 1,000 words of prose (about 30 KB) fit; five replies
 at their 8 KB limit don't, and then the older turns give way, the newest
 stays whole and `readConversation` has the rest. Context that arrives before
 the call is live waits, up to 32 KB. Past that it is let go whole rather
@@ -494,6 +494,106 @@ LiveKit data channel message, which both SDKs take up to 64 KB (LiveKit
 recommends 15 KB), so the read's 56 KB is the largest.
 Debug builds count every update and tool result by size
 (`CallProbe.sent`, `live.json`), so real calls can be measured.
+
+## Earlier calls, cues and the end of a call
+
+**Call history, on the phone only.** Each agent connection keeps what was
+said aloud in its recent calls (`CallHistory` on both): the person's final
+transcripts, the agent's words as corrected after an interruption (what was
+actually heard), and how each call ended. It never keeps the first context,
+contextual updates, tool calls, tool results or cues, and the agent's
+greeting is skipped. It is a rolling list of the latest 30 slots, each a
+person line, an agent line or an ending, each with its time; an ending
+counts as a slot. A call nobody said anything in leaves nothing behind when
+it ends plainly (the person's End, the agent's `end_call`, the app going to
+the background); any other ending is kept. It is written after every slot.
+iOS keeps it in the connection's own folder as `private/call-history.json`
+(`OfflineCallHistoryStore`, complete file protection, excluded from
+backup); Android beside the connection's cache, under `noBackupFilesDir`
+(`AgentSessions.keptFile`). Removing the connection removes it. It is never
+logged and goes nowhere but into the next call's first context.
+
+**The recap.** The first context of the next call starts its conversation
+part with the list, oldest first, times as said aloud:
+
+```text
+Previous voice conversation (earlier calls, oldest first):
+- 3 minutes ago, the person: Remember the word pineapple.
+- 3 minutes ago, you: Got it, pineapple.
+- 2 minutes ago: the call dropped (connection lost)
+```
+
+Endings read as the recap says them (`CallEnding.said`): `the person ended
+the call`, `you ended the call`, `the call restarted, carried over`, `the
+call dropped (connection lost)`, `the call reached its one-hour limit and
+ended`, `the call ended: the person's voice time ran out`, `the call ended
+after a long silence`, `the call was cut off: the phone took the audio
+(another call, or the audio route went)` and `the call ended when the app
+left the screen`. The recap has its own budget of 8 KB within the first
+context's 32 KB, each line cut at 1 KB, the oldest lines first to go
+(`Older lines aren't shown.` says so). When the first context is still too
+big, the older turns give way first, then the directory's tail, then the
+recap's older lines (down to 512 bytes), and the newest turn last. The
+prompt says to carry on naturally and never repeat an action just because
+the recap shows it.
+
+**Cues: the agent speaks first.** For a few moments the agent must speak
+without the person saying anything. A contextual update can't do it: the
+agent reads it and stays silent, and so it does after `user_activity`
+(both tried live on v3, which has `turn_timeout` -1). A user message
+does: the app sends `[app] ` and a JSON of facts (`CallConnection.cue`:
+iOS `conversation.sendMessage`, Android `sendUserMessage`), and the agent
+answers within about two seconds. The prompt says such a message is the
+app's, never the person's, and how to answer each event in its own words;
+the app sends no wording. A cue is never a history slot (history takes only
+transcripts and the agent's words) and doesn't count as the person
+speaking. `CallCues` decides when, every second, never while either side
+is speaking:
+
+| Event | When | The call then |
+| --- | --- | --- |
+| `{"event":"silence","endsIn":"25 seconds"}` | 75 s with nobody speaking | ends at 100 s unless the person speaks |
+| `{"event":"call_ending","reason":"call_limit","in":"about 5 minutes","restart":true}` | 5 min before the one-call limit | ends 10 s before ElevenLabs' 3,600 s |
+| `{"event":"call_ending","reason":"time_used","in":"about 2 minutes","restart":false}` | 2 min before the free 20 min run out, 5 min before the paid 5 h | ends when the time is used |
+
+- Silence is the app's. ElevenLabs ends a call after 120 s of silence
+  (`silence_end_call_timeout`), and its clock restarts when the agent
+  finishes speaking (measured on v3: a cue at 60 s, answered, moved its end
+  from 123 s to 187 s). The app's clock restarts at the same moments and
+  when the person's words are heard, so it always ends the call 20 s
+  first, and needs no change to the agent. The agent's answer to the
+  warning doesn't put the end off; the person speaking does. Muted time
+  counts: ElevenLabs hears silence then too.
+- At the one-call limit the agent offers a fresh call with this
+  conversation carried over (`restart` is true when more than 60 s of voice
+  time would be left past the limit). Voice time running out offers none.
+- The agent never ends the call on a cue; the app does.
+
+**Restart.** When the person agrees, the agent navigates to
+`happy://call/restart` (no new tool: it is one more line of `navigate`'s
+destinations in the first context, not in the tool's description). The app
+answers `{"ok":true,"restarting":true,...}`, waits for the agent to finish
+its few words (at most 12 s, or 4 s if it says nothing), ends the call with
+a `restarted` slot and starts a new one at once; the new call's first
+context has the recap. With too little time left it refuses and the call
+ends as cued.
+
+**A call that ends unasked.** A dropped connection, the one-call limit,
+used-up voice time, silence or an error plays a short "call dropped"
+sound, with no speech, and leaves an ending slot. The person's End, the
+agent's `end_call` (its goodbye was heard), a restart, a phone
+interruption and the app leaving the foreground play none.
+
+- iOS: `CallDropSound`, a two-note falling tone, the app's completion
+  chime turned down, played as a system sound
+  (`AudioServicesPlaySystemSound`), which needs no audio session while the
+  call's is torn down and is silent with the silent switch on.
+- Android: `CallDropSound`, the system's call-drop tone
+  (`ToneGenerator.TONE_CDMA_CALLDROP_LITE` on the system stream, 0.9 s),
+  only when the ringer mode is normal.
+
+The ended bar offers nothing to resume: it shows how the call ended, as
+before.
 
 ## The hosted agent
 
@@ -583,13 +683,13 @@ on: it is still the relay's voice prompt (it names `messageClaudeCode` and
 ```text
 You are Happy, a voice companion for the person's coding agents on their computer. Speak briefly and plainly: one or two sentences unless asked for more.
 
-What you know comes from {{initialConversationContext}} and from contextual updates during the call. The initial context is plain text, given once at the start: the time and focusRevision, the conversation on screen with its last turns and the models it can switch to, the conversations the person sees in the app as indented lines, each with its ref, the refs that start new work, and the destinations navigate takes. For anything new or changed since, use listConversations. Updates are JSON objects with an "event": focus (the conversation on screen, or a null title for home, Settings or anything else), assistant_text (a complete piece of a conversation's agent's words, whole; finishedTurn when it ended its turn) and session_error. Updates name a conversation by its title and the titles of what it sits under (parents), and give its ref when titles alone are unclear or you haven't had it yet. You hear new replies only from the four conversations the person most recently visited. Use refs (s1, s2, ...) in tools, never titles. Titles like "New Task" are work that hasn't been named yet.
+What you know comes from {{initialConversationContext}} and from contextual updates during the call. The initial context is plain text, given once at the start: the time and focusRevision, what you and the person said in earlier calls, the conversation on screen with its last turns and the models it can switch to, the conversations the person sees in the app as indented lines, each with its ref, the refs that start new work, and the destinations navigate takes. For anything new or changed since, use listConversations. Updates are JSON objects with an "event": focus (the conversation on screen, or a null title for home, Settings or anything else), assistant_text (a complete piece of a conversation's agent's words, whole; finishedTurn when it ended its turn) and session_error. Updates name a conversation by its title and the titles of what it sits under (parents), and give its ref when titles alone are unclear or you haven't had it yet. You hear new replies only from the four conversations the person most recently visited. Use refs (s1, s2, ...) in tools, never titles. Titles like "New Task" are work that hasn't been named yet.
 
 Tools:
 - listConversations: find conversations, ones started since the call began too, with when each last did something; query is a case-insensitive substring of the title.
 - readConversation: read a conversation before you summarise it: its last five turns (a message still waiting for an answer among them), when the person last wrote and the agent last replied, the workspace it runs in, its model and effort, and the models and efforts it can switch to. On a team, several people may write in one conversation: userBy and by say who wrote each message, "the person" being the one on this call.
 - message: send words to a conversation's agent, or start new work with them. to is the conversation's ref, new-task or new-bot; leave it out for the conversation on screen.
-- navigate: change the screen. to is one of the context's destinations: happy://home, happy://back, or happy://conversation/ followed by a ref, such as happy://conversation/s3.
+- navigate: change the screen. to is one of the context's destinations: happy://home, happy://back, or happy://conversation/ followed by a ref, such as happy://conversation/s3. happy://call/restart restarts the call instead (see Cues).
 
 Sending:
 - Call message only when the person explicitly asks you to send: "send it", "send that to the release task", "tell the backend bot to ...". Describing a problem, thinking aloud, dictating or answering your question is not a request to send. If you aren't sure they want it sent, ask, and send only after a yes.
@@ -600,6 +700,14 @@ Sending:
 - A conversation that is working takes messages too: send when asked, without waiting for it to finish. Only one waiting for the person (needsInput) can't take one.
 - Pass model or effort only when the person asks for them, using a name from the models the context or readConversation lists. They change with a message: there is no switch on its own. If a send is refused for its model or effort, say which ones it takes and ask; nothing was sent.
 - "queued" means queued on the person's device, not confirmed delivered or read: say "queued on your device", never "sent" or "delivered". Never send the same message again after "uncertain"; say it may not have gone.
+
+Earlier calls:
+- The initial context's "Previous voice conversation" is what you and the person said aloud in recent calls, oldest first, with how long ago and where a call was cut off. Use it to carry on naturally. Never repeat an action (a message or a navigate) just because it appears there.
+
+Cues:
+- A message that starts with [app] is from the Happy app, never the person: don't answer it as theirs and don't read it out. It is JSON with an "event"; answer it aloud at once, briefly and in your own words:
+  - silence: no one has spoken for a while, and the call ends in endsIn unless the person speaks. Say the call will end soon because it's quiet, and that next time you can pick up where you left off. Don't end the call yourself: the app ends it unless the person speaks.
+  - call_ending: the call ends in "in". reason call_limit: one call can't run longer; time_used: the person's voice time is nearly used up. With restart true, offer to restart the call with this conversation carried over, and navigate to happy://call/restart only once the person says yes. With restart false, just say the call is ending soon and why; offer no restart. Either way, don't end the call yourself.
 
 Rules:
 - Only say something happened if its tool said so. A result with "ok": false, "isError", "status": "uncertain" or no result means it did not happen, or might not have: say that plainly. Never claim success after an error.

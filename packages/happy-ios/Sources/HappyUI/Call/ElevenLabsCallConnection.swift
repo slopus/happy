@@ -32,6 +32,10 @@ final class ElevenLabsCallConnection: CallConnection {
             userId: grant.userId,
             // Foreground only: recording is let go when the call ends.
             audioConfiguration: AudioPipelineConfiguration(recordingAlwaysPrepared: false),
+            // What was said aloud, for the call's history: never a cue, which comes back as none of these.
+            onAgentResponse: { text, event in Task { @MainActor in events.said(text, event) } },
+            onAgentResponseCorrection: { _, corrected, event in Task { @MainActor in events.corrected(corrected, event) } },
+            onUserTranscript: { text, _ in Task { @MainActor in events.heard(text) } },
             onVadScore: { score in Task { @MainActor in tracker.vad(score) } }
         )
         let teardown = Teardown()
@@ -93,6 +97,15 @@ final class ElevenLabsCallConnection: CallConnection {
         CallProbe.sent("update", context)
         #endif
         try await conversation.updateContext(context)
+    }
+
+    /// A user message the prompt reads as the app's (`CallCue.mark`): the
+    /// one event that has the agent take a turn; a contextual update never does.
+    func cue(_ facts: String) async throws {
+        #if DEBUG
+        CallProbe.sent("cue", facts)
+        #endif
+        try await conversation.sendMessage(CallCue.mark + facts)
     }
 
     @MainActor

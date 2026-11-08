@@ -26,15 +26,27 @@ public struct CallEvents: Sendable {
     public var hungUp: @MainActor @Sendable () -> Void
     /// One client tool call; the connection replies with the answer.
     public var tool: @Sendable (CallToolCall) async -> CallToolResult
+    /// The person's words, as finally transcribed.
+    public var heard: @MainActor @Sendable (String) -> Void
+    /// The agent's words, by the provider's event for them.
+    public var said: @MainActor @Sendable (String, Int) -> Void
+    /// The agent's words for an event as they were heard: the person cut in.
+    public var corrected: @MainActor @Sendable (String, Int) -> Void
 
     public init(activity: @escaping @MainActor @Sendable (CallActivity, Double) -> Void,
                 disconnected: @escaping @MainActor @Sendable () -> Void,
                 hungUp: @escaping @MainActor @Sendable () -> Void,
-                tool: @escaping @Sendable (CallToolCall) async -> CallToolResult) {
+                tool: @escaping @Sendable (CallToolCall) async -> CallToolResult,
+                heard: @escaping @MainActor @Sendable (String) -> Void = { _ in },
+                said: @escaping @MainActor @Sendable (String, Int) -> Void = { _, _ in },
+                corrected: @escaping @MainActor @Sendable (String, Int) -> Void = { _, _ in }) {
         self.activity = activity
         self.disconnected = disconnected
         self.hungUp = hungUp
         self.tool = tool
+        self.heard = heard
+        self.said = said
+        self.corrected = corrected
     }
 }
 
@@ -46,6 +58,9 @@ public protocol CallConnection: AnyObject {
     func setMuted(_ muted: Bool) async throws
     /// Context the agent reads without answering.
     func update(_ context: String) async throws
+    /// Facts the agent answers aloud (`CallCue`), marked as the app's:
+    /// never the person's words, never kept as theirs.
+    func cue(_ facts: String) async throws
 }
 
 /// One call's life, from the tap to its end: the grant and the device's
@@ -53,7 +68,10 @@ public protocol CallConnection: AnyObject {
 /// once, without asking for the microphone), then the microphone, then the
 /// connection. Context that comes before it is live waits for it, up to
 /// 32 KB; past that it is let go, never cut, and put right in one go. A live call is counted against the allowance as it
-/// goes, and ends when that runs out.
+/// goes, and ends when that runs out. What the person and the agent say
+/// goes into `history`, and how the call ended; `CallCues` has the agent
+/// speak up before silence or a limit ends it, and a call the agent
+/// agreed to restart (`requestRestart`) starts again at once.
 @MainActor
 public final class CallSession {
     public typealias Connect = @MainActor (CallGrant, CallStart, CallEvents) async throws -> any CallConnection
@@ -74,6 +92,8 @@ public final class CallSession {
     /// The agent hung up, after the call went idle: whoever holds it ends
     /// it as End would.
     public var onHangUp: (@MainActor () -> Void)?
+    /// A call that went live ended, and its audio is let go: how.
+    public var onEnded: (@MainActor (CallEnding) -> Void)?
 
     private let grants: any CallGrantSource
     private let allowance: CallAllowance?
@@ -92,16 +112,30 @@ public final class CallSession {
     private var changingMute = false
     private var since: Double = 0
     private var pendingContext: [String] = []
-    private var counted: (id: String, start: Double)?
+    private var counted: (id: String, start: Double, at: Double)?
     private var counting: Task<Void, Never>?
+    private let history: CallHistory?
+    private let timing: CallCues.Timing
+    private let tick: Duration
+    private var cues: CallCues?
+    private var cueing: Task<Void, Never>?
+    /// What this call has said worth a line, past the agent's greeting.
+    private var spoke = false
+    private var greeted = false
+    private var lastVoice: Double = -.infinity
+    private var request: (language: String?, context: @MainActor () async -> String, tool: @Sendable (CallToolCall) async -> CallToolResult)?
 
     public init(grants: any CallGrantSource, allowance: CallAllowance? = nil, permission: @escaping @MainActor () async -> Bool,
-                lifetime: VoiceConnectionLifetime = VoiceConnectionLifetime(),
+                lifetime: VoiceConnectionLifetime = VoiceConnectionLifetime(), history: CallHistory? = nil,
+                timing: CallCues.Timing = CallCues.Timing(), tick: Duration = .seconds(1),
                 now: @escaping () -> Double = { Date().timeIntervalSince1970 }, connect: @escaping Connect) {
         self.grants = grants
         self.allowance = allowance
         self.permission = permission
         self.lifetime = lifetime
+        self.history = history
+        self.timing = timing
+        self.tick = tick
         self.now = now
         self.connect = connect
     }
@@ -111,7 +145,29 @@ public final class CallSession {
     public func start(language: String?, context: @escaping @MainActor () async -> String,
                       tool: @escaping @Sendable (CallToolCall) async -> CallToolResult) {
         guard startTask == nil, connection == nil, !state.isLive else { return }
+        request = (language, context, tool)
+        begin()
+    }
+
+    /// The agent asked for a fresh call (`happy://call/restart`): it comes
+    /// once its words on it are said, this one carried over in the next
+    /// one's context. Refused with too little voice time left.
+    public func requestRestart() -> CallToolResult {
+        guard connection != nil, cues != nil else { return .refused("The call isn't live.") }
+        guard cues!.canRestart(allowanceLeft: allowanceLeft()) else {
+            return .refused("There isn't enough voice time left to restart; the call ends soon.")
+        }
+        cues!.restartAsked(at: now())
+        return .json(["ok": true, "restarting": true, "note": "The call restarts once you finish speaking; say so in a few words."])
+    }
+
+    private func begin() {
+        guard let request else { return }
+        let language = request.language, context = request.context, tool = request.tool
         generation += 1
+        spoke = false
+        greeted = false
+        history?.began()
         let current = generation
         guard grants.isConfigured else {
             state = .ended(.notSetUp)
@@ -144,17 +200,34 @@ public final class CallSession {
                 let acquired = try await lifetime.acquire()
                 let events = CallEvents(activity: { [weak self] activity, vad in
                     guard let self, current == self.generation else { return }
+                    if self.activity == .agentSpeaking, activity != .agentSpeaking { self.cues?.agentSpoke(at: self.now()) }
+                    if activity == .userSpeaking { self.lastVoice = self.now() }
                     self.activity = activity
                     self.onLevel?(CallLevel.level(activity: activity, vad: vad, muted: self.muted))
                     if self.connection != nil { self.state = .active(activity, muted: self.muted, since: self.since) }
                 }, disconnected: { [weak self] in
                     guard let self, current == self.generation else { return }
-                    self.end(.connection)
+                    self.end(.connection, as: self.dropped())
                 }, hungUp: { [weak self] in
                     guard let self, current == self.generation else { return }
-                    self.stop()
+                    self.stop(.agentHungUp)
                     self.onHangUp?()
-                }, tool: tool)
+                }, tool: tool, heard: { [weak self] text in
+                    guard let self, current == self.generation else { return }
+                    self.cues?.heard(at: self.now())
+                    self.spoke = true
+                    self.greeted = true
+                    self.history?.heard(text, at: self.wall())
+                }, said: { [weak self] text, event in
+                    guard let self, current == self.generation else { return }
+                    // Its first words before anyone else's are the hosted agent's greeting.
+                    guard self.greeted else { self.greeted = true; return }
+                    self.spoke = true
+                    self.history?.said(text, event: event, at: self.wall())
+                }, corrected: { [weak self] text, event in
+                    guard let self, current == self.generation else { return }
+                    self.history?.corrected(text, event: event)
+                })
                 let opened: any CallConnection
                 do { opened = try await connect(grant, request, events) }
                 catch { acquired.finish(); throw error }
@@ -167,8 +240,10 @@ public final class CallSession {
                 lease = acquired
                 muted = false
                 since = now()
+                cues = CallCues(timing: timing, since: since)
                 state = .active(activity, muted: false, since: since)
                 count(current)
+                cue(current)
                 flushContext()
             } catch is CancellationError {
                 if current == generation { state = .idle }
@@ -180,15 +255,61 @@ public final class CallSession {
         }
     }
 
-    /// Hangs up, or closes the bar of a call that ended.
-    public func stop() {
-        tearDown()
+    /// Hangs up, or closes the bar of a call that ended; `ending` says why,
+    /// for a call that was live.
+    public func stop(_ ending: CallEnding = .hungUp) {
+        tearDown(ending)
         state = .idle
     }
 
-    private func end(_ problem: CallProblem) {
-        tearDown()
+    private func end(_ problem: CallProblem, as ending: CallEnding) {
+        tearDown(ending)
         state = .ended(problem)
+    }
+
+    /// What ended a call the provider let go of unasked: its limit, its
+    /// own silence timeout (never first, `CallCues`), or a drop.
+    private func dropped() -> CallEnding {
+        if now() - since >= timing.callLimit - 3 * timing.callLimitMargin { return .callLimit }
+        return .dropped
+    }
+
+    /// The wall clock, for the history, whatever `now` counts.
+    private func wall() -> Double { Date().timeIntervalSince1970 }
+
+    /// Voice time left now, counting what isn't written down yet.
+    private func allowanceLeft() -> Double? {
+        guard let allowance else { return nil }
+        let at = now()
+        return max(0, allowance.remaining(at: at) - (counted.map { at - $0.at } ?? 0))
+    }
+
+    /// Asks the cues every `tick` what to do while the call is live.
+    private func cue(_ current: Int) {
+        cueing = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self, current == self.generation else { return }
+                try? await Task.sleep(for: self.tick)
+                guard current == self.generation, self.connection != nil, var cues = self.cues else { return }
+                let moment = CallCues.Moment(now: self.now(), agentSpeaking: self.activity == .agentSpeaking,
+                                             personSpeaking: self.activity == .userSpeaking || self.now() - self.lastVoice < 1.5,
+                                             allowanceLeft: self.allowanceLeft(), allowanceTotal: self.allowance?.total)
+                let action = cues.next(moment)
+                self.cues = cues
+                switch action {
+                case .cue(let cue)?:
+                    let connection = self.connection
+                    Task { try? await connection?.cue(cue.text) }
+                case .end(let ending)?:
+                    return self.stop(ending)
+                case .restart?:
+                    self.tearDown(.restarted)
+                    return self.begin()
+                case nil:
+                    break
+                }
+            }
+        }
     }
 
     /// Writes the call's time down every 10 seconds, so a call the app
@@ -196,25 +317,29 @@ public final class CallSession {
     private func count(_ current: Int) {
         guard let allowance else { return }
         let call = (id: UUID().uuidString, start: since)
-        counted = call
+        counted = (call.id, call.start, since)
         counting = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self, current == self.generation else { return }
                 let now = self.now()
                 allowance.record(call: call.id, from: call.start, to: now)
+                self.counted = (call.id, call.start, now)
                 let left = allowance.remaining(at: now)
-                if left <= 0 { return self.end(.limitReached) }
+                if left <= 0 { return self.end(.limitReached, as: .timeUsed) }
                 try? await Task.sleep(for: .seconds(min(10, left)))
             }
         }
     }
 
-    private func tearDown() {
+    private func tearDown(_ ending: CallEnding = .hungUp) {
         generation += 1
         startTask?.cancel()
         startTask = nil
         counting?.cancel()
         counting = nil
+        cueing?.cancel()
+        cueing = nil
+        cues = nil
         if let counted { allowance?.record(call: counted.id, from: counted.start, to: now()) }
         counted = nil
         let old = connection
@@ -223,10 +348,20 @@ public final class CallSession {
         lease = nil
         pendingContext.removeAll()
         activity = .listening
+        lastVoice = -.infinity
         muted = false
         changingMute = false
         onLevel?(0)
-        Task { await old?.end(); oldLease?.finish() }
+        // Only a call that went live ended; a plain end is worth a line only after words.
+        if old != nil, spoke || !ending.isPlain { history?.ended(ending, at: wall()) }
+        spoke = false
+        // Told even once whoever held the session has let it go.
+        let ended = old == nil ? nil : onEnded
+        Task {
+            await old?.end()
+            oldLease?.finish()
+            ended?(ending)
+        }
     }
 
     public func toggleMute() async {
@@ -242,7 +377,7 @@ public final class CallSession {
             state = .active(activity, muted: muted, since: since)
         } catch {
             guard current == generation else { return }
-            end(.connection)
+            end(.connection, as: .dropped)
         }
     }
 
@@ -280,7 +415,7 @@ public final class CallSession {
             await previous?.value
             guard current == generation else { return }
             do { try await connection.update(text) }
-            catch { if current == generation { end(.connection) } }
+            catch { if current == generation { end(.connection, as: .dropped) } }
         }
     }
 }

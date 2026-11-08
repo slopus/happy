@@ -97,6 +97,9 @@ class CallContext(
         const val TOOL_DEADLINE_MS = 8_000L
         /** Models a read or a refusal lists. */
         const val MODELS = 30
+        /** What earlier calls said, in the first context ([CallHistory]), and each of its lines' words. */
+        const val RECAP_BYTES = 8 * 1024
+        const val SLOT_BYTES = 1024
     }
 
     private val scope = CoroutineScope(SupervisorJob() + lane)
@@ -128,6 +131,7 @@ class CallContext(
     private val results = HashMap<String, Deferred<CallToolResult>>()
     private var tail: Job? = null
     private var closed = false
+    private var restart: (suspend () -> CallToolResult)? = null
 
     /**
      * What the agent has of one visited conversation: its agent's complete
@@ -152,17 +156,23 @@ class CallContext(
         scope.cancel()
     }
 
+    /** What `navigate` to [RESTART_URL] does: the call's to say. */
+    suspend fun onRestart(handler: suspend () -> CallToolResult) = withContext(lane) { restart = handler }
+
     // The first context
 
     /**
      * `initialConversationContext`, the hosted prompt's one variable, as plain
-     * text: the time and focusRevision, the conversation on screen with its
-     * last five turns and the models it can switch to, the directory, how new
-     * work starts and where `navigate` goes. Within
-     * [Limits.TOTAL_BYTES]: the older turns give way first, then the
-     * directory's tail, and the newest turn only after that.
+     * text: the time and focusRevision, what earlier calls said ([previous],
+     * [CallHistory]), the conversation on screen with its last five turns and
+     * the models it can switch to, the directory, how new work starts and
+     * where `navigate` goes. Within [Limits.TOTAL_BYTES]: the older turns give
+     * way first, then the directory's tail, then the recap's older lines
+     * (nothing else has them), and the newest turn only after that. A new
+     * conversation's: the agent has no reference yet.
      */
-    suspend fun initial(): String = withContext(lane) {
+    suspend fun initial(previous: List<CallSlot> = emptyList()): String = withContext(lane) {
+        told.clear()
         see(targets.directory())
         val focused = targets.focused()
         focus = focused
@@ -175,10 +185,14 @@ class CallContext(
         val header = "Now: ${local(now(), zone)} (the person's local time)\nfocusRevision: $focusRevision"
         val turns = state?.let(::recent)?.toMutableList() ?: mutableListOf()
         var budget = Limits.DIRECTORY_BYTES
+        var recapBudget = Limits.RECAP_BYTES
+        val at = now()
         fun text(telling: Boolean = false): String =
-            listOf(header, screen(state, turns), directoryText(budget, telling), NEW_WORK_TEXT, DESTINATIONS_TEXT).joinToString("\n\n")
+            listOfNotNull(header, recap(previous, at, recapBudget), screen(state, turns), directoryText(budget, telling), NEW_WORK_TEXT, DESTINATIONS_TEXT)
+                .joinToString("\n\n")
         while (text().utf8Size() > Limits.TOTAL_BYTES && turns.size > 1) turns.removeAt(0)
         while (text().utf8Size() > Limits.TOTAL_BYTES && budget > 512) budget /= 2
+        while (text().utf8Size() > Limits.TOTAL_BYTES && recapBudget > 512) recapBudget /= 2
         while (text().utf8Size() > Limits.TOTAL_BYTES && turns.isNotEmpty()) turns.removeAt(0)
         focused?.let { told += it }
         text(telling = true)
@@ -546,6 +560,10 @@ class CallContext(
                 // Home is home from wherever the screen is; the others are moves from the screen the agent last saw,
                 // refused once it changed.
                 when (destination) {
+                    Destination.Restart -> {
+                        val restart = restart
+                        if (restart == null || closed) CallToolResult.refused("The call can't restart now.") else restart()
+                    }
                     is Destination.Conversation -> {
                         unmade(JsonPrimitive(destination.ref))?.let { return it }
                         val id = resolve(destination.ref) ?: return CallToolResult.refused("No such conversation.")
@@ -781,6 +799,7 @@ class CallContext(
     sealed interface Destination {
         data object Home : Destination
         data object Back : Destination
+        data object Restart : Destination
         data class Conversation(val ref: String) : Destination
     }
 
@@ -796,6 +815,12 @@ class CallContext(
         const val BACK_URL = "happy://back"
         const val CONVERSATION_URL = "happy://conversation/"
         val DESTINATIONS = listOf(HOME_URL, BACK_URL, "$CONVERSATION_URL<ref>")
+        /**
+         * Not a screen: the call, ended and started again at once, carried
+         * over ([CallSession.requestRestart]). Listed in the first context
+         * only; the dashboard's navigate description names the screens.
+         */
+        const val RESTART_URL = "happy://call/restart"
 
         /** How the first context starts new work, as `message` takes it. */
         val NEW_WORK_TEXT = """
@@ -811,7 +836,34 @@ class CallContext(
             - $HOME_URL — the home list
             - $BACK_URL — one screen back; refused at home
             - $CONVERSATION_URL<ref> — that conversation on screen, such as ${CONVERSATION_URL}s1
+            - $RESTART_URL — end this call and start a new one at once, this conversation carried over; only when the person agrees
         """.trimIndent()
+
+        /**
+         * What earlier calls said, oldest first, each line with how long ago
+         * (iOS `CallContext.recap`): the newest within [bytes], each line's
+         * words within [Limits.SLOT_BYTES]. Null when nothing was said.
+         */
+        fun recap(slots: List<CallSlot>, now: Long, bytes: Int): String? {
+            if (slots.isEmpty()) return null
+            val header = "Previous voice conversation (earlier calls, oldest first):"
+            val cut = "Older lines aren't shown."
+            val lines = ArrayList<String>()
+            var size = header.utf8Size() + cut.utf8Size() + 2
+            for (slot in slots.asReversed()) {
+                val whenSaid = ago(Math.floorDiv(now - slot.at, 1000L))
+                val line = when (slot.kind) {
+                    CallSlot.Kind.Person -> "- $whenSaid, the person: " + indented(clipped(slot.text.orEmpty(), Limits.SLOT_BYTES))
+                    CallSlot.Kind.Assistant -> "- $whenSaid, you: " + indented(clipped(slot.text.orEmpty(), Limits.SLOT_BYTES))
+                    CallSlot.Kind.Ended -> "- $whenSaid: " + (slot.ending ?: CallEnding.Dropped).said
+                }
+                if (size + line.utf8Size() + 1 > bytes) break
+                size += line.utf8Size() + 1
+                lines += line
+            }
+            if (lines.isEmpty()) return header + "\n" + cut
+            return (listOf(header) + (if (lines.size < slots.size) listOf(cut) else emptyList()) + lines.asReversed()).joinToString("\n")
+        }
 
         /** One of the first context's destinations, any case in the scheme and the place, a trailing slash allowed; null for anything else. */
         fun destination(url: String): Destination? {
@@ -819,6 +871,7 @@ class CallContext(
             val lower = text.lowercase()
             if (lower == HOME_URL) return Destination.Home
             if (lower == BACK_URL) return Destination.Back
+            if (lower == RESTART_URL) return Destination.Restart
             if (!lower.startsWith(CONVERSATION_URL)) return null
             val ref = text.substring(CONVERSATION_URL.length)
             return if (ref.isEmpty() || '/' in ref) null else Destination.Conversation(ref)

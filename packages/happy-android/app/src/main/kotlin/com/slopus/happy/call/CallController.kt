@@ -30,13 +30,16 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The agent connection's voice call (iOS `CallController`): started from
  * home's voice button, shown as the bar across the window's top
  * (`ui/call/CallFrame`), bound to the one connection it started on. It ends
- * when the app leaves the foreground, and when another account opens. Apart
- * from the relay's voice ([stopRelayVoice]), whose call it stops first.
+ * when the app leaves the foreground, and when another account opens. What
+ * each call said is kept for the connection's next one ([CallHistory]), and a
+ * call that ends unasked plays [CallDropSound]. Apart from the relay's voice
+ * ([stopRelayVoice]), whose call it stops first.
  */
 class CallController(
     private val appContext: Context,
@@ -71,12 +74,13 @@ class CallController(
     private var connectionId: String? = null
     private var focus: String? = null
     private var report: CallReport? = null
+    private val dropSound = CallDropSound(appContext)
     /** Set by the screen while it is up. */
     var screen: CallScreen? = null
 
     init {
         // Leaving the foreground hangs up: no microphone behind the person's back.
-        foreground.filter { !it }.onEach { hangUp() }.launchIn(scope)
+        foreground.filter { !it }.onEach { hangUp(CallEnding.Background) }.launchIn(scope)
         openAccount.drop(1).distinctUntilChanged().onEach { id -> if (state.value.isShown && id != connectionId) close() }.launchIn(scope)
         relayVoiceActive.distinctUntilChanged().filter { it }.onEach { if (state.value.isLive) close() }.launchIn(scope)
         // Subscribed while the used-up sheet is up: it goes once there is time again.
@@ -104,9 +108,14 @@ class CallController(
         connectionId = connection
         val targets = ConnectionCallTargets(account, appContext.resources::failureText, Typesetter.of(appContext)) { screen }
         val context = CallContext(targets)
-        val call = CallSession(scope, grants, permission = { stopRelayVoice(); microphone() }, now = SystemClock::elapsedRealtime, allowance = allowance) { grant, request, events ->
+        val history = CallHistory(sessions.keptFile(connection, HISTORY_FILE)?.let(::FileCallHistoryStore))
+        val call = CallSession(
+            scope, grants, permission = { stopRelayVoice(); microphone() }, now = SystemClock::elapsedRealtime, allowance = allowance, history = history,
+        ) { grant, request, events ->
             ElevenLabsCallConnection.connect(appContext, scope, grant, request, events)
         }
+        // Not the person's own end, nor the agent's goodbye: those were heard coming.
+        call.onEnded = { ending -> if (ending.isUnexpected) dropSound.play() }
         val calling = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job]))
         this.calling = calling
         this.targets = targets
@@ -136,8 +145,9 @@ class CallController(
             show(state)
         }.launchIn(calling)
         focus = targets.focusedNow
+        calling.launch { context.onRestart { withContext(Dispatchers.Main) { call.requestRestart() } } }
         call.start(language = null, context = {
-            context.initial().also { hold(context.followed(), targets) }
+            context.initial(history.slots).also { hold(context.followed(), targets) }
         }, tool = { context.handle(it) })
     }
 
@@ -189,13 +199,13 @@ class CallController(
         if (state == CallState.Ended(CallProblem.LimitReached) && before != state) showUsed()
     }
 
-    /** End: the call, or the bar of one that ended. */
-    fun close() {
+    /** End: the call, or the bar of one that ended; [ending] says why, for the call's history. */
+    fun close(ending: CallEnding = CallEnding.HungUp) {
         report?.closed()
         report = null
         val old = session
         session = null
-        old?.stop()
+        old?.stop(ending)
         val context = context
         this.context = null
         context?.let { scope.launch { it.close() } }
@@ -210,8 +220,8 @@ class CallController(
     }
 
     /** The call stops for the system; one that was live leaves no bar. */
-    private fun hangUp() {
-        if (state.value.isShown) close()
+    private fun hangUp(ending: CallEnding) {
+        if (state.value.isShown) close(ending)
     }
 
     /**
@@ -245,6 +255,9 @@ class CallController(
     }
 
     companion object {
+        /** Each connection's call history, beside its catalog. */
+        const val HISTORY_FILE = "call-history.json"
+
         /** Telegram's call clock: m:ss, then h:mm:ss. */
         fun clock(seconds: Long): String =
             if (seconds < 3600) "%d:%02d".format(seconds / 60, seconds % 60)

@@ -102,6 +102,7 @@ class CallContextTest {
             |- happy://home — the home list
             |- happy://back — one screen back; refused at home
             |- happy://conversation/<ref> — that conversation on screen, such as happy://conversation/s1
+            |- happy://call/restart — end this call and start a new one at once, this conversation carried over; only when the person agrees
             """.trimMargin(),
             text,
         )

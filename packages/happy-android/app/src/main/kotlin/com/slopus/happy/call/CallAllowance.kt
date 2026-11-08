@@ -91,6 +91,9 @@ class CallAllowance(
 ) {
     private var usage = store.load()
 
+    /** The voice time there is in all: the paid month's hours, or the free minutes. */
+    fun total(): Long = if (period() != null) PAID_MILLIS else free
+
     fun remaining(now: Long): Long {
         period()?.let { return maxOf(0L, PAID_MILLIS - usage.usedSince(it.start)) }
         return maxOf(0L, free - usage.used(now, window))

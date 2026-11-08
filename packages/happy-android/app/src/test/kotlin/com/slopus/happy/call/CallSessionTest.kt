@@ -278,9 +278,11 @@ class FakeGrants(private val result: CallGrantResult) : CallGrants {
 
 class FakeCallConnection : CallConnection {
     val updates = ArrayList<String>()
+    val cues = ArrayList<String>()
     var muted = false
     var ended = false
     override suspend fun end() { ended = true }
+    override fun cue(facts: String) { cues += facts }
     override suspend fun setMuted(muted: Boolean) { this.muted = muted }
     override fun update(context: String) { updates += context }
 }

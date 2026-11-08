@@ -170,6 +170,9 @@ class AgentSessions(
         }
     }
 
+    /** A file another feature keeps for [connectionId] beside its catalog (`call-history.json`): deleted with it. */
+    fun keptFile(connectionId: String, name: String): File? = cacheFile(connectionId)?.let { File(it.parentFile, "${it.nameWithoutExtension}.$name") }
+
     private fun cacheFile(connectionId: String): File? =
         cacheDir?.let { File(it, "${connectionId.filter { c -> c.isLetterOrDigit() || c == '-' }}.json") }
 }

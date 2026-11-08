@@ -112,6 +112,9 @@ public final class CallAllowance {
         usage = store.load()
     }
 
+    /// The voice time there is in all: the paid month's hours, or the free minutes.
+    public var total: Double { period() != nil ? Self.paidSeconds : free }
+
     public func remaining(at now: Double) -> Double {
         if let month = period() { return max(0, Self.paidSeconds - usage.used(since: month.start)) }
         return max(0, free - usage.used(at: now, window: window))
