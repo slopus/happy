@@ -13,6 +13,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.agent.CloudConnection
 import com.slopus.happy.agent.CloudCredential
+import com.slopus.happy.agent.CloudCapabilities
 import com.slopus.happy.agent.CloudDestination
 import com.slopus.happy.agent.CloudProviders
 import com.slopus.happy.agent.CloudProvidersSource
@@ -62,11 +63,21 @@ class CloudProvidersScreenTest {
     }
 
     @Test
-    fun theChooserOffersOnlyTheSignInsTheServerRuns() {
-        rule.setHappyContent { CloudAddChooser(signIns = emptySet(), onPick = {}, onDismiss = {}) }
-        assertEquals(0, rule.onAllNodesWithText("Sign in with ChatGPT").fetchSemanticsNodes().size)
-        rule.onNodeWithText("Add Claude setup token").assertIsDisplayed()
+    fun theChooserOffersOnlyWhatTheServerDoes() {
+        // Before `capabilities`: the listed sign-ins and keys, never a setup token.
+        rule.setHappyContent { CloudAddChooser(CloudCapabilities.listed(setOf("codex")), onPick = {}, onDismiss = {}) }
+        rule.onNodeWithText("Sign in with ChatGPT").assertIsDisplayed()
+        assertEquals(0, rule.onAllNodesWithText("Sign in with Claude").fetchSemanticsNodes().size)
+        assertEquals(0, rule.onAllNodesWithText("Add Claude setup token").fetchSemanticsNodes().size)
         rule.onNodeWithText("Add API key").assertIsDisplayed()
+    }
+
+    @Test
+    fun aSetupTokenStandsInForClaudesSignInWhereTheServerTakesOne() {
+        rule.setHappyContent { CloudAddChooser(CloudCapabilities(apiKeys = false, claudeSetupToken = true, codexSignIn = false, claudeSignIn = false), onPick = {}, onDismiss = {}) }
+        rule.onNodeWithText("Add Claude setup token").assertIsDisplayed()
+        assertEquals(0, rule.onAllNodesWithText("Sign in with ChatGPT").fetchSemanticsNodes().size)
+        assertEquals(0, rule.onAllNodesWithText("Add API key").fetchSemanticsNodes().size)
     }
 
     @Test

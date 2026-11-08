@@ -136,6 +136,40 @@ data class CloudSignIn(
     }
 }
 
+/**
+ * What a server lets people add (contract v1.5, `capabilities` beside the
+ * connections). A server that doesn't say yet offers API keys, the
+ * sign-ins `/v0/provider-clis` lists, and no setup token.
+ */
+data class CloudCapabilities(
+    val apiKeys: Boolean,
+    val claudeSetupToken: Boolean,
+    val codexSignIn: Boolean,
+    val claudeSignIn: Boolean,
+) {
+    companion object {
+        fun parse(json: JsonObject?): CloudCapabilities? = json?.let {
+            CloudCapabilities(
+                apiKeys = it["apiKeys"].bool == true,
+                claudeSetupToken = it["claudeSetupToken"].bool == true,
+                codexSignIn = it["codexSignIn"].bool == true,
+                claudeSignIn = it["claudeSignIn"].bool == true,
+            )
+        }
+
+        /** Before `capabilities`: by the sign-ins listed ([CloudProviders.signIns]). */
+        fun listed(signIns: Set<String>) = CloudCapabilities(
+            apiKeys = true,
+            claudeSetupToken = false,
+            codexSignIn = CloudProviders.CODEX in signIns,
+            claudeSignIn = CloudProviders.CLAUDE in signIns,
+        )
+    }
+}
+
+/** `GET /v0/cloud/providers`: the connections, and what may be added where the server says. */
+data class CloudProviderList(val connections: List<CloudConnection>, val capabilities: CloudCapabilities?)
+
 /** Where something added is kept: the person's own connection, or the team's default for its vendor. */
 enum class CloudDestination(val id: String) {
     Private("private"),
@@ -160,8 +194,19 @@ object CloudProviders {
     const val CODEX = "codex"
     const val CLAUDE = "claude"
 
-    suspend fun list(client: AgentClient): List<CloudConnection> =
-        client.decode<JsonObject>("GET", "/v0/cloud/providers")["providers"].arr.orEmpty().mapNotNull { it.obj }.mapNotNull(CloudConnection::parse)
+    suspend fun list(client: AgentClient): List<CloudConnection> = read(client).connections
+
+    suspend fun read(client: AgentClient): CloudProviderList {
+        val answer = client.decode<JsonObject>("GET", "/v0/cloud/providers")
+        return CloudProviderList(
+            answer["providers"].arr.orEmpty().mapNotNull { it.obj }.mapNotNull(CloudConnection::parse),
+            CloudCapabilities.parse(answer["capabilities"].obj),
+        )
+    }
+
+    /** What this server lets people add: its own word, else what [signIns] lists. */
+    suspend fun capabilities(client: AgentClient): CloudCapabilities =
+        read(client).capabilities ?: CloudCapabilities.listed(signIns(client))
 
     /**
      * Checks [secret] (an API key, or a Claude setup token as `oauth_token`)
@@ -257,11 +302,12 @@ object CloudProviders {
 
 /**
  * A server's connections as a screen shows them: read at once, and again on
- * every event that may change them ([CloudProviders.changes]); with the
- * sign-ins the server runs, which are read once.
+ * every event that may change them ([CloudProviders.changes]); with what
+ * the server lets people add: its `capabilities`, or until it sends them,
+ * the sign-ins `/v0/provider-clis` lists, read once.
  */
 class CloudProvidersSource(
-    private val read: suspend () -> List<CloudConnection>,
+    private val read: suspend () -> CloudProviderList,
     private val readSignIns: suspend () -> Set<String>,
     events: kotlinx.coroutines.flow.SharedFlow<AgentEvent>,
     private val scope: kotlinx.coroutines.CoroutineScope,
@@ -275,9 +321,11 @@ class CloudProvidersSource(
     private val state = kotlinx.coroutines.flow.MutableStateFlow<State>(State.Loading)
     val connections: kotlinx.coroutines.flow.StateFlow<State> = state
 
-    private val signInState = kotlinx.coroutines.flow.MutableStateFlow<Set<String>>(emptySet())
-    /** `codex` and `claude` where the server runs those sign-ins; empty until known, and where it runs none. */
-    val signIns: kotlinx.coroutines.flow.StateFlow<Set<String>> = signInState
+    private var reported: CloudCapabilities? = null
+    private var listed: Set<String>? = null
+    private val capabilityState = kotlinx.coroutines.flow.MutableStateFlow<CloudCapabilities?>(null)
+    /** What may be added here; null until known. */
+    val capabilities: kotlinx.coroutines.flow.StateFlow<CloudCapabilities?> = capabilityState
 
     init {
         scope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
@@ -285,13 +333,14 @@ class CloudProvidersSource(
         }
         scope.launch { reload() }
         scope.launch {
-            signInState.value = try {
+            listed = try {
                 readSignIns()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (_: Exception) {
                 emptySet()
             }
+            capabilityState.value = reported ?: CloudCapabilities.listed(listed.orEmpty())
         }
     }
 
@@ -301,7 +350,10 @@ class CloudProvidersSource(
 
     private suspend fun reload() {
         state.value = try {
-            State.Loaded(read())
+            val list = read()
+            reported = list.capabilities
+            (reported ?: listed?.let(CloudCapabilities::listed))?.let { capabilityState.value = it }
+            State.Loaded(list.connections)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -321,6 +373,8 @@ class CloudSignInRun(
     val vendor: String,
     private val destination: CloudDestination,
     private val pollMillis: Long = 3_000,
+    /** Where leaving's cancel is sent from: it outlives [scope], which goes with the page. */
+    private val leaving: kotlinx.coroutines.CoroutineScope = LEAVING,
 ) {
     sealed interface State {
         data object Starting : State
@@ -348,7 +402,15 @@ class CloudSignInRun(
                 show(started)
                 while (state.value !is State.Done && state.value !is State.Failed) {
                     kotlinx.coroutines.delay(pollMillis)
-                    CloudProviders.signIn(client, cli)?.takeIf { it.id == operation }?.let(::show)
+                    try {
+                        CloudProviders.signIn(client, cli)?.takeIf { it.id == operation }?.let(::show)
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: CloudProviderException) {
+                        throw e
+                    } catch (_: Exception) {
+                        // The app in the background while its browser is up drops its link; the next read goes on.
+                    }
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -382,10 +444,11 @@ class CloudSignInRun(
     fun close() {
         job?.cancel()
         val unfinished = operation != null && state.value !is State.Done && state.value !is State.Failed
-        if (unfinished) scope.launch(kotlinx.coroutines.NonCancellable) {
+        if (unfinished) leaving.launch {
             try {
                 CloudProviders.cancel(client, cli)
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                android.util.Log.w("CloudSignIn", "Couldn't cancel the $cli sign-in: ${e.javaClass.simpleName}")
             }
         }
     }
@@ -399,5 +462,10 @@ class CloudSignInRun(
             CloudSignIn.Status.Running -> state.value as? State.Waiting ?: State.Starting
             CloudSignIn.Status.Waiting -> State.Waiting(signIn.url, signIn.userCode, signIn.acceptsCode)
         }
+    }
+
+    private companion object {
+        /** A page's scope is cancelled as it goes; a sign-in left open would keep waiting on the server. */
+        val LEAVING = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
     }
 }
