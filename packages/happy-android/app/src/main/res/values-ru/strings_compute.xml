@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="compute_cpu_count">Логические процессоры</string>
+    <string name="compute_total_memory">Всего оперативной памяти</string>
+    <string name="compute_total_disk">Размер тома рабочих папок</string>
+    <string name="compute_revoked_count">Отозвано: %1$d</string>
     <string name="compute_pools_title">Вычислительные пулы</string>
     <string name="compute_permission">Для управления вычислительными пулами нужно разрешение pools.manage.</string>
     <string name="compute_empty">Нет вычислительных пулов</string>

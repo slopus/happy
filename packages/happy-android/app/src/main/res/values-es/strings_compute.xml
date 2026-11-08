@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="compute_cpu_count">CPU lógicas</string>
+    <string name="compute_total_memory">RAM total</string>
+    <string name="compute_total_disk">Tamaño del volumen de trabajo</string>
+    <string name="compute_revoked_count">Revocadas: %1$d</string>
     <string name="compute_pools_title">Grupos de cómputo</string>
     <string name="compute_permission">Se necesita el permiso pools.manage para gestionar los grupos de cómputo.</string>
     <string name="compute_empty">No hay grupos de cómputo</string>
