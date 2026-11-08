@@ -197,9 +197,9 @@ class Conversation(
         var images: List<Block.Image>,
         var files: List<OutgoingFile> = emptyList(),
         /** A tool the agent runs before it reads this (a skill's `read_skill`). */
-        val toolRequest: ToolRequest? = null,
-        /** New work's first words as one of the computer's skills, run as a command once the agent is made ([invoked]). */
-        val command: CommandInvocation? = null,
+        var toolRequest: ToolRequest? = null,
+        /** New work's first words as one of the computer's skills: it asks for that skill once the agent made offers it ([skillRequested]). */
+        var skill: String? = null,
         /** A voice call's words ([sendAs]). */
         val voice: Boolean = false,
         var accepted: Boolean = false,
@@ -531,11 +531,8 @@ class Conversation(
             messages[message.id] = message
             pending += message.id
         }
-        // A first skill run as a command is written under the daemon's own id: history holding a person's
-        // message is it, as nothing came before it in a new chat.
-        val invoked = messages.values.any { it.role == "user" }
         outgoing.filter { it.id in messages }.forEach { uploads.clear(it.id) }
-        outgoing.removeAll { it.id in messages || invoked && it.command != null && it.accepted }
+        outgoing.removeAll { it.id in messages }
         running = start.agent.isWorking
         activeRunStartedAt = runs.lastOrNull()?.first?.let(runInfo::get)?.takeIf { start.agent.isWorking && it.status == "running" }?.startedAt
         // Before what came while reading, which is newer.
@@ -633,9 +630,7 @@ class Conversation(
             "message.created", "message.updated" -> {
                 val message = Message.parse(payload["message"]) ?: return
                 messages[message.id] = message
-                // A first skill run as a command comes under the daemon's id, echoing the send's as its mutation.
-                val mutation = payload["mutationId"].str
-                outgoing.removeAll { it.id == message.id || it.command != null && it.id == mutation }
+                outgoing.removeAll { it.id == message.id }
                 uploads.clear(message.id)
                 val runId = payload["runId"].str
                 if (runId != null) place(message.id, runId)
@@ -804,17 +799,19 @@ class Conversation(
      * to send. A new chat's messages go once its task or bot is made
      * ([ensureCreated], in [pump]); the first fixes what it will be. A new
      * chat's first words that are `/skill args`, one of the computer's
-     * skills it offers, run that skill on the agent once it is made
-     * ([invoked]).
+     * skills it offers, go as a skill does in a chat ([runCommand]): `/name
+     * args`, asking for `read_skill` once the agent made offers it
+     * ([skillRequested]).
      */
     fun send(text: String, images: List<Block.Image> = emptyList()): Boolean {
         val trimmed = text.trim()
         if (trimmed.isEmpty() && images.isEmpty()) return false
         val id = ConversationApi.clientId()
         scope.launch(lane) {
-            val command = if (!created && outgoing.isEmpty() && images.isEmpty()) SlashCommands.invocation(trimmed, snapshot.commands) else null
+            val skill = if (!created && outgoing.isEmpty() && images.isEmpty()) SlashCommands.invocation(trimmed, snapshot.commands) else null
+            val words = skill?.let { skillText(it.command.name, it.arguments) } ?: trimmed
             if (!created) locked = true
-            queue(Outgoing(id, trimmed, images, command = command, sentAt = now()))
+            queue(Outgoing(id, words, images, skill = skill?.command?.name, sentAt = now()))
             setDraftNow("")
             publish()
             pump()
@@ -960,8 +957,7 @@ class Conversation(
             val given = arguments?.trim()?.takeIf { it.isNotEmpty() && command.hasArguments }
             setDraftNow("")
             if (command.isSkill) {
-                val text = if (given == null) "/$name" else "/$name $given"
-                queue(Outgoing(ConversationApi.clientId(), text, emptyList(), toolRequest = ToolRequest(READ_SKILL, mapOf("name" to name)), sentAt = now()))
+                queue(Outgoing(ConversationApi.clientId(), skillText(name, given), emptyList(), toolRequest = skillRequest(name), sentAt = now()))
                 publish()
                 pump()
                 return@launch
@@ -1069,7 +1065,8 @@ class Conversation(
                     val mode = sendingMode() ?: throw IllegalStateException("No model is set up on this computer.")
                     upload(next.files)
                     val images = next.images
-                    val message = if (invoked(next, mode)) null else withRetries {
+                    skillRequested(next)
+                    val message = withRetries {
                         // The bytes of each picture's base64 written say how far it is.
                         var ranges: UploadRanges? = null
                         val progress = com.slopus.happy.connection.BodyProgress { body, sent ->
@@ -1159,30 +1156,17 @@ class Conversation(
     }
 
     /**
-     * New work's first `/skill args` ([Outgoing.command]) run on the agent
-     * just made, as desktop runs it (`POST …/slash-commands/:name` under
-     * [mode], the send's id as its mutation, so its message is known when
-     * it comes). False when the agent's own catalog has no such command, a
-     * project skill of another name or one switched off meanwhile: the
-     * words then go as an ordinary message, so nothing typed is lost. The
-     * run is never tried again by itself: the same mutation again runs the
-     * skill twice. Only the person's Retry asks again.
+     * New work's first `/skill args` ([Outgoing.skill]) asks for the skill
+     * only once the agent just made offers it (its bootstrap's catalog);
+     * otherwise, a project skill of another name or one switched off
+     * meanwhile, the words go as they are, so nothing typed is lost.
+     * Decided once: a retry sends the same message.
      */
-    private suspend fun invoked(send: Outgoing, mode: Mode): Boolean {
-        val command = send.command ?: return false
-        val name = command.command.name
-        val offered = withRetries { api.bootstrap(agentId) }.slashCommands.orEmpty().firstOrNull { it.name == name } ?: return false
-        val arguments = command.arguments?.trim()?.takeIf { it.isNotEmpty() && offered.hasArguments }
-        val answer = try {
-            api.invokeCommand(agentId, name, arguments, mode, mutationId = send.id)
-        } catch (e: ConversationApiException) {
-            // Gone between the read and the run: the words go instead.
-            if (e.status == 404) return false
-            throw e
-        }
-        answer.agent?.let { agent = it }
-        answer.slashCommands?.let { commands -> publish { it.copy(commands = commands) } }
-        return true
+    private suspend fun skillRequested(send: Outgoing) {
+        val name = send.skill ?: return
+        val offered = withRetries { api.bootstrap(agentId) }.slashCommands.orEmpty().any { it.name == name && it.isSkill }
+        if (offered) send.toolRequest = skillRequest(name)
+        send.skill = null
     }
 
     /** The task or bot a new chat lives in, made once: a retry repeats the same ids, which is the same one. */
@@ -1667,6 +1651,13 @@ class Conversation(
     companion object {
         /** The tool a skill's invocation asks the agent to run first. */
         const val READ_SKILL = "read_skill"
+
+        /** A skill's message: `/name`, then its arguments after one space. */
+        fun skillText(name: String, arguments: String?): String =
+            arguments?.trim()?.takeIf { it.isNotEmpty() }?.let { "/$name $it" } ?: "/$name"
+
+        /** The `read_skill` request a skill's message carries (desktop aa8a2529). */
+        fun skillRequest(name: String) = ToolRequest(READ_SKILL, mapOf("name" to name))
 
         /** The computer's skills changed (API.md "Live synchronization"). */
         const val SKILLS_UPDATED = "skills.updated"

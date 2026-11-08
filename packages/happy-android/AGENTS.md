@@ -2074,11 +2074,8 @@ same list (`ConversationApi.skills`: `GET /v0/skills` 100 a page, read again
 from the start on 409, enabled and ready ones only; 404/501 offer none). They
 are read as the new chat starts and again on `skills.updated` or a reconnect.
 A first message that is `/skill args` with an offered name (`Conversation.send`)
-is drawn as the person's message, makes the task or bot as any first message
-does, then runs on the new agent with `POST /slash-commands/:name` under the
-composer's mode, the send's id as its `mutationId`, so the bubble gives way to
-the daemon's message when its `message.created` echoes that `mutationId` (or a
-reread history holds a person's message). The new agent's
-catalog (its bootstrap) decides: without that name, or with attachments, the
-words go as an ordinary message. A failure leaves the message failed with
-Retry, as a first send's does. Other commands wait for an agent.
+goes as a skill does in a chat: `/name args` asking for `read_skill`, sent as
+the task or bot's first message once it is made. The new agent's catalog (its
+bootstrap) decides: without that name, or with attachments, the words go as
+plain text. A failure leaves the message failed with Retry, as a first send's
+does. Other commands wait for an agent.

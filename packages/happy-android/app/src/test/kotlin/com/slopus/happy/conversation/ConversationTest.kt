@@ -1793,8 +1793,9 @@ class ConversationTest {
         assertNull(chat.state.value.error)
     }
 
-    @Test fun `a new chat's first skill makes the task, then runs on its agent under the composer's mode`() = runTest {
+    @Test fun `a new chat's first skill makes the task, then goes into it as a skill's message under the composer's mode`() = runTest {
         val agent = FakeAgent().withSkill()
+        agent.sendStatus = 202
         val chat = conversation(agent, NewTask("t1", "w1", "a9", "m1"))
         advanceUntilIdle()
         val picked = Mode("codex", "openai/gpt-5.6-luna", "low", null, "read_only")
@@ -1802,38 +1803,18 @@ class ConversationTest {
         assertTrue(chat.send("/code-review  focus on auth"))
         advanceUntilIdle()
         assertTrue(chat.state.value.created)
-        assertEquals(listOf("/v0/tasks", "/v0/agents/a9/slash-commands/code-review"), agent.paths("POST"))
-        val body = agent.requests.single { "/slash-commands/" in it.second }.third!!
-        assertEquals("focus on auth", body["arguments"]!!.jsonPrimitive.content)
-        assertEquals(picked, Mode.parse(body["mode"]))
-        // Drawn as the person's words until the daemon's message, known by the send's id, comes.
-        val row = chat.state.value.rows.single() as ConversationRow.User
-        assertEquals("/code-review  focus on auth", row.text)
-        assertEquals(Delivery.Pending, row.delivery)
-        assertEquals(row.messageId, body["mutationId"]!!.jsonPrimitive.content)
-        signals.emit(
-            event(
-                "message.created",
-                """{"agentId":"a9","runId":"r1","message":{"id":"daemon1","role":"user","createdAt":2,"content":[{"type":"text","text":"Use the /code-review skill.\n\nfocus on auth"}],"metadata":{}},"mutationId":"${row.messageId}"}""",
-            ),
+        assertEquals(listOf("/v0/tasks", "/v0/agents/a9/send"), agent.paths("POST"))
+        val body = agent.requests.single { it.second.endsWith("/send") }.third!!
+        // As a chat sends a skill: the person's words, asking for read_skill first.
+        assertEquals("/code-review focus on auth", body["text"]!!.jsonPrimitive.content)
+        assertEquals(
+            Json.parseToJsonElement("""[{"type":"tool_call_request","name":"read_skill","arguments":{"name":"code-review"}}]"""),
+            body["content"],
         )
-        advanceUntilIdle()
-        val shown = chat.state.value.rows.filterIsInstance<ConversationRow.User>()
-        assertEquals(listOf("daemon1"), shown.map { it.messageId })
-    }
-
-    @Test fun `a first skill's bubble gives way to the daemon's message read again after a reconnect`() = runTest {
-        val agent = FakeAgent().withSkill()
-        val chat = conversation(agent, NewTask("t1", "w1", "a9", "m1"))
-        advanceUntilIdle()
-        chat.send("/code-review")
-        advanceUntilIdle()
-        assertEquals(Delivery.Pending, (chat.state.value.rows.single() as ConversationRow.User).delivery)
-        // The echo was missed; history has the daemon's message, under its own id and with no mutation.
-        agent.page = """{"runs":[{"id":"r1","status":"running","messages":[{"id":"daemon1","role":"user","createdAt":2,"content":[{"type":"text","text":"Use the /code-review skill."}],"metadata":{}}]}],"hasMore":false}"""
-        signals.emit(ConversationSignal.Resync)
-        advanceUntilIdle()
-        assertEquals(listOf("daemon1"), chat.state.value.rows.filterIsInstance<ConversationRow.User>().map { it.messageId })
+        assertEquals(picked, Mode.parse(body["mode"]))
+        val row = chat.state.value.rows.single() as ConversationRow.User
+        assertEquals("/code-review focus on auth", row.text)
+        assertEquals(row.messageId, body["id"]!!.jsonPrimitive.content)
     }
 
     @Test fun `a first skill the new agent doesn't offer goes as the words`() = runTest {
@@ -1843,8 +1824,9 @@ class ConversationTest {
         advanceUntilIdle()
         chat.send("/code-review focus on auth")
         advanceUntilIdle()
-        assertTrue(agent.requests.none { "/slash-commands/" in it.second })
-        assertEquals("/code-review focus on auth", agent.requests.single { it.second.endsWith("/send") }.third!!["text"]!!.jsonPrimitive.content)
+        val body = agent.requests.single { it.second.endsWith("/send") }.third!!
+        assertEquals("/code-review focus on auth", body["text"]!!.jsonPrimitive.content)
+        assertFalse("content" in body)
     }
 
     @Test fun `a first skill with a picture goes as a message`() = runTest {
@@ -1854,31 +1836,28 @@ class ConversationTest {
         advanceUntilIdle()
         chat.send("/code-review this", listOf(Block.Image("image/jpeg", "AAAA")))
         advanceUntilIdle()
-        assertTrue(agent.requests.none { "/slash-commands/" in it.second })
-        assertEquals("/code-review this", agent.requests.single { it.second.endsWith("/send") }.third!!["text"]!!.jsonPrimitive.content)
+        val body = agent.requests.single { it.second.endsWith("/send") }.third!!
+        assertEquals("/code-review this", body["text"]!!.jsonPrimitive.content)
+        assertTrue(body["content"]!!.jsonArray.none { it.jsonObject["type"]!!.jsonPrimitive.content == "tool_call_request" })
     }
 
-    @Test fun `a first skill refused stays failed and Retry runs it again under the same id`() = runTest {
+    @Test fun `a first skill refused stays failed and Retry sends the same message again`() = runTest {
         val agent = FakeAgent().withSkill()
-        // A daemon's fault is not tried again by itself: the same run twice would run the skill twice.
-        agent.commandStatus = 503
+        agent.sendStatus = 400
         val chat = conversation(agent, NewTask("t1", "w1", "a9", "m1"))
         advanceUntilIdle()
         chat.send("/code-review")
         advanceUntilIdle()
         val row = chat.state.value.rows.single() as ConversationRow.User
         assertEquals("/code-review", row.text)
-        assertEquals(Delivery.Failed(Problem.Said("The daemon's own words.")), row.delivery)
-        assertEquals(1, agent.requests.count { "/slash-commands/" in it.second })
-        agent.commandStatus = 202
+        assertEquals(Delivery.Failed(Problem.Said("Unknown model.")), row.delivery)
+        agent.sendStatus = 202
         chat.retrySend(row.messageId)
         advanceUntilIdle()
-        val runs = agent.requests.filter { "/slash-commands/" in it.second }.map { it.third!! }
-        assertEquals(2, runs.size)
-        assertEquals(listOf(row.messageId, row.messageId), runs.map { it["mutationId"]!!.jsonPrimitive.content })
-        // No arguments were typed: none go.
-        assertFalse("arguments" in runs[1])
-        assertTrue(agent.requests.none { it.second.endsWith("/send") })
+        val sends = agent.requests.filter { it.second.endsWith("/send") }.map { it.third!! }
+        assertEquals(2, sends.size)
+        assertEquals(sends[0], sends[1])
+        assertEquals("read_skill", sends[1]["content"]!!.jsonArray.single().jsonObject["name"]!!.jsonPrimitive.content)
         assertEquals(Delivery.Pending, (chat.state.value.rows.single() as ConversationRow.User).delivery)
     }
 

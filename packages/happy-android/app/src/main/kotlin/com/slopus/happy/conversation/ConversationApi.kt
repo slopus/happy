@@ -211,11 +211,11 @@ open class ConversationApi(
      * composer's whole [mode]. 404 is a command unknown or just removed, 409
      * one that can't run now. The answer carries the catalog as it now is.
      */
-    open suspend fun invokeCommand(agentId: String, name: String, arguments: String?, mode: Mode, mutationId: String = clientId()): CommandInvoked {
+    open suspend fun invokeCommand(agentId: String, name: String, arguments: String?, mode: Mode): CommandInvoked {
         val body = buildJsonObject {
             arguments?.let { put("arguments", it) }
             put("mode", mode.json())
-            put("mutationId", mutationId)
+            put("mutationId", clientId())
         }
         val answer = call("POST", "/v0/agents/${escape(agentId)}/slash-commands/${escape(name)}", body)
         return CommandInvoked(AgentInfo.parse(answer["agent"]), SlashCommand.parseAll(answer["slashCommands"]))
