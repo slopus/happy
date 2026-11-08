@@ -95,6 +95,7 @@
     <string name="conversation_problem_unknown">Qualcosa è andato storto.</string>
     <string name="conversation_problem_pictures">Impossibile leggere le immagini da inviare.</string>
     <string name="conversation_problem_files_unavailable">Gli allegati non sono ancora disponibili su questo server.</string>
+    <string name="conversation_problem_file_too_large">%1$s supera i 25 MB e non può essere inviato qui.</string>
     <string name="conversation_failure_signin_missing">%1$s non ha effettuato l\'accesso. Esegui `%2$s` e riprova.</string>
     <string name="conversation_failure_cannot_authenticate">%1$s non è riuscito ad autenticarsi. Controlla le impostazioni di accesso e riprova.</string>
     <string name="conversation_failure_usage_limit">Limite di utilizzo di %1$s raggiunto.</string>

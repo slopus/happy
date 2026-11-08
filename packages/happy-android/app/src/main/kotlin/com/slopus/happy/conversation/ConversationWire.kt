@@ -305,6 +305,8 @@ sealed interface Block {
         val running: Boolean get() = status == "running"
         val failed: Boolean get() = status == "failed"
     }
+    /** A Happy Cloud attachment a message carries (`file`): its id, name, and what the server adds. */
+    data class File(val attachment: String, val name: String, val mimeType: String? = null, val size: Long? = null) : Block
     /** One context compaction, inside a service message: `running`, then `completed` or `failed`. */
     data class Compaction(val status: String) : Block
     data class Unknown(val type: String) : Block
@@ -336,6 +338,11 @@ sealed interface Block {
                         elevated = o["elevated"].bool,
                         cut = arguments?.cut == true || result?.cut == true,
                     )
+                }
+                "file" -> {
+                    val attachment = o["attachment"].str
+                    val name = o["name"].str
+                    if (attachment != null && name != null) File(attachment, name, o["mimeType"].str, o["size"].num?.toLong()) else Unknown(type)
                 }
                 "compaction" -> Compaction(o["status"].str ?: "running")
                 else -> Unknown(type)

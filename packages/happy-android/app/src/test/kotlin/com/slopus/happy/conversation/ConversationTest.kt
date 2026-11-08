@@ -55,6 +55,23 @@ private class FakeAgent {
     var commandStatus = 202
     /** A send writes half its body, then waits for this before writing the rest and answering. */
     var halfway: CompletableDeferred<Unit>? = null
+    /** Happy Cloud attachments uploaded (`PUT /v0/agents/:id/attachments?name=`): name, type and bytes; null answers 404, a server without the route. */
+    var attachments: ArrayList<Triple<String, String, ByteArray>>? = ArrayList()
+    /** Sends to [attachments]' route. */
+    val fileRequest: AgentFileRequest = { method, path, body, contentType ->
+        requests += Triple(method, path, null)
+        val uploads = attachments
+        when {
+            method != "PUT" || !path.substringBefore('?').endsWith("/attachments") -> TransportResponse(404, body = "{}".toByteArray())
+            uploads == null -> TransportResponse(404, body = """{"error":"Not found.","code":"not_found"}""".toByteArray())
+            else -> {
+                val name = java.net.URLDecoder.decode(path.substringAfter("name="), "UTF-8")
+                uploads += Triple(name, contentType, body)
+                val id = java.security.MessageDigest.getInstance("SHA-256").digest(body).joinToString("") { "%02x".format(it) }
+                TransportResponse(201, body = """{"attachment":{"id":"$id","name":"$name","mimeType":"$contentType","size":${body.size}}}""".toByteArray())
+            }
+        }
+    }
     /** What `GET /v0/config` answers. */
     var config = CONFIG
     var commandsAfter = """[{"name":"compact","hasArguments":false,"description":"Summarize.","kind":"compaction"}]"""
@@ -154,10 +171,10 @@ class ConversationTest {
         typesetter: RowTypesetter? = null,
         preferences: kotlinx.coroutines.flow.StateFlow<ModelPreferences>? = null,
         started: (Mode) -> Unit = {},
-        filesUnavailable: Boolean = false,
+        cloudFiles: Boolean = false,
         created: (JsonObject) -> Unit = {},
     ) = Conversation(
-        api = ConversationApi(agent.request),
+        api = ConversationApi(null, agent.request, fileRequest = agent.fileRequest),
         signals = signals,
         // Not backgroundScope: advanceUntilIdle leaves its work alone. Cancelled after each test.
         scope = CoroutineScope(StandardTestDispatcher(testScheduler) + SupervisorJob().also { jobs += it }),
@@ -176,7 +193,7 @@ class ConversationTest {
         onStarted = started,
         record = { recorded += it },
         errorShown = { area, code -> recorded += AnalyticsEvent.ErrorShown(area, code) },
-        filesUnavailable = filesUnavailable,
+        cloudFiles = cloudFiles,
     ).also { it.start() }
 
     private fun event(type: String, payload: String) = ConversationSignal.Event(type, Json.parseToJsonElement(payload).jsonObject)
@@ -1146,20 +1163,79 @@ class ConversationTest {
         assertTrue(row.text.contains("./.happy-uploads/$id/1-clip.mp4"))
     }
 
-    @Test fun `files on a server that takes none say so and nothing goes`() = runTest {
+    @Test fun `on Happy Cloud files go as the agent's attachments beside the words`() = runTest {
         val agent = FakeAgent()
-        val chat = conversation(agent, filesUnavailable = true)
+        val chat = conversation(agent, cloudFiles = true)
         advanceUntilIdle()
         val dir = kotlin.io.path.createTempDirectory("uploads").toFile()
         val doc = java.io.File(dir, "notes.pdf").apply { writeBytes(byteArrayOf(4, 5)) }
         assertTrue(chat.send("Look", listOf(preview(doc.toURI().toString(), "application/pdf", 2, name = "notes.pdf"))) { emptyList() })
         advanceUntilIdle()
-        assertTrue(agent.written.isEmpty() && agent.requests.none { it.second.endsWith("/send") })
+        // No folder write: the bytes go to the agent, as their type.
+        assertTrue(agent.written.isEmpty())
+        val (name, type, bytes) = agent.attachments!!.single()
+        assertEquals("notes.pdf" to "application/pdf", name to type)
+        assertTrue(bytes.contentEquals(byteArrayOf(4, 5)))
+        val send = agent.requests.single { it.second.endsWith("/send") }.third!!
+        assertEquals("Look", send["text"]!!.toString().trim('"'))
+        val file = (send["content"] as kotlinx.serialization.json.JsonArray).single() as JsonObject
+        assertEquals(setOf("type", "attachment", "name"), file.keys)
+        assertEquals("\"file\"", file["type"].toString())
+        assertEquals("\"notes.pdf\"", file["name"].toString())
+        // Its bubble lists it by name until the agent's copy comes.
+        assertEquals("Look\n\nAttached file:\n- notes.pdf", chat.state.value.rows.filterIsInstance<ConversationRow.User>().single().text)
+    }
+
+    @Test fun `on Happy Cloud a file past 25 MB or a server without attachments says so and nothing goes`() = runTest {
+        val agent = FakeAgent().apply { attachments = null }
+        val chat = conversation(agent, cloudFiles = true)
+        advanceUntilIdle()
+        val dir = kotlin.io.path.createTempDirectory("uploads").toFile()
+        val doc = java.io.File(dir, "notes.pdf").apply { writeBytes(byteArrayOf(4, 5)) }
+        assertTrue(chat.send("Look", listOf(preview(doc.toURI().toString(), "application/pdf", 2, name = "notes.pdf"))) { emptyList() })
+        advanceUntilIdle()
+        assertTrue(agent.requests.none { it.second.endsWith("/send") })
         assertEquals(Delivery.Failed(Problem.FilesUnavailable), chat.state.value.rows.filterIsInstance<ConversationRow.User>().single().delivery)
-        // Pictures alone still go.
+        agent.attachments = ArrayList()
+        val big = java.io.File(dir, "film.mov").apply { writeBytes(byteArrayOf(1)) }
+        assertTrue(chat.send("", listOf(preview(big.toURI().toString(), "video/quicktime", 26L * 1024 * 1024, name = "film.mov"))) { emptyList() })
+        advanceUntilIdle()
+        assertTrue(agent.attachments!!.isEmpty())
+        assertEquals(Delivery.Failed(Problem.FileTooLarge("film.mov")), chat.state.value.rows.filterIsInstance<ConversationRow.User>().single { it.text.contains("film.mov") }.delivery)
+        // Pictures alone still go inline.
         assertTrue(chat.send("Just a picture", listOf(preview("a.jpg", "image/jpeg", 10))) { list -> list.map { Block.Image("image/jpeg", it.name) } })
         advanceUntilIdle()
         assertEquals(1, agent.requests.count { it.second.endsWith("/send") })
+    }
+
+    @Test fun `a sent Happy Cloud file reads under its message`() {
+        val message = Message.parse(Json.parseToJsonElement("""{"id":"m1","role":"user","status":"completed","createdAt":1,"content":[{"type":"text","text":"Look"},{"type":"file","attachment":"abc","name":"notes.pdf","mimeType":"application/pdf","size":2}]}"""))!!
+        assertEquals(Block.File("abc", "notes.pdf", "application/pdf", 2), message.content[1])
+        val row = ConversationRowBuilder().rows(message, "a1", null, false).single() as ConversationRow.User
+        assertEquals("Look\n\nAttached file:\n- notes.pdf", row.text)
+        assertEquals(message, Message.parse(KeptConversation.messageJson(message)))
+    }
+
+    @Test fun `retrying a Happy Cloud send keeps the uploaded attachment and message id`() = runTest {
+        val agent = FakeAgent().apply { sendStatus = 400 }
+        val chat = conversation(agent, cloudFiles = true)
+        advanceUntilIdle()
+        val dir = kotlin.io.path.createTempDirectory("uploads").toFile()
+        val doc = java.io.File(dir, "notes.pdf").apply { writeBytes(byteArrayOf(4, 5)) }
+        assertTrue(chat.send("", listOf(preview(doc.toURI().toString(), "application/pdf", 2, name = "notes & plans.pdf"))) { emptyList() })
+        advanceUntilIdle()
+        val row = chat.state.value.rows.filterIsInstance<ConversationRow.User>().single()
+        assertTrue(row.delivery is Delivery.Failed)
+        assertEquals("notes & plans.pdf", agent.attachments!!.single().first)
+        agent.sendStatus = 202
+        chat.retrySend(row.messageId)
+        advanceUntilIdle()
+        assertEquals(1, agent.attachments!!.size)
+        val sends = agent.requests.filter { it.second.endsWith("/send") }.map { it.third!! }
+        assertEquals(2, sends.size)
+        assertEquals(sends.first(), sends.last())
+        assertEquals("\"Attached file.\"", sends.last()["text"].toString())
+        assertEquals(Delivery.Pending, chat.state.value.rows.filterIsInstance<ConversationRow.User>().single().delivery)
     }
 
     private fun TestScope.held() = HeldConversations(CoroutineScope(StandardTestDispatcher(testScheduler) + SupervisorJob().also { jobs += it }))

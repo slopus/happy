@@ -29,6 +29,9 @@ sealed interface Problem {
     /** Files sent to a server that takes none yet (Happy Cloud). */
     data object FilesUnavailable : Problem
 
+    /** File [name] is past what the server takes ([WorkspaceUploads.CLOUD_MAX_BYTES]). */
+    data class FileTooLarge(val name: String) : Problem
+
     /** Slash command [name] is no longer offered (404): unknown, or just removed. */
     data class CommandGone(val name: String) : Problem
 

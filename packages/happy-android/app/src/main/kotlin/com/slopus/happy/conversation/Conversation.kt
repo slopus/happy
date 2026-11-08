@@ -172,8 +172,12 @@ class Conversation(
     private val references: com.slopus.happy.references.ReferenceReader? = null,
     /** Which settings pages its connection has: a link to any other reads as its words. Null leaves every link. */
     private val hasSettingsPage: ((String) -> Boolean)? = null,
-    /** Its server takes no files yet (Happy Cloud, which has no folders): a send with files says so, and nothing goes. */
-    private val filesUnavailable: Boolean = false,
+    /**
+     * Its server is Happy Cloud's, which has no folders: files go as the
+     * agent's attachments, and one without that route says it takes none
+     * yet.
+     */
+    private val cloudFiles: Boolean = false,
     /** The person's model preferences: a new chat opens on their start ([ModelPreferences.startMode]); null, on the catalog's default. */
     private val preferences: StateFlow<ModelPreferences>? = null,
     /** A new chat's first message went with this mode: it is the session's start. */
@@ -212,7 +216,6 @@ class Conversation(
          */
         waiting: List<PendingPicture>? = null,
     ) {
-        val wire: String get() = WorkspaceUploads.text(text, files)
         var waiting: List<PendingPicture>? = waiting
             set(value) {
                 field = value
@@ -1058,12 +1061,11 @@ class Conversation(
                 // A create that fails is told as `task_created` or `bot_created`, not as this send's error too.
                 var made = false
                 try {
-                    if (filesUnavailable && next.files.isNotEmpty()) throw FilesUnavailable()
                     next.images.indices.forEach { uploads.set(UploadBoard.pictureKey(next.id, it), UploadPhase.Preparing) }
                     ensureCreated()
                     made = true
                     val mode = sendingMode() ?: throw IllegalStateException("No model is set up on this computer.")
-                    upload(next.files)
+                    val attachments = upload(next.files)
                     val images = next.images
                     skillRequested(next)
                     val message = withRetries {
@@ -1075,7 +1077,7 @@ class Conversation(
                                 uploads.set(UploadBoard.pictureKey(next.id, index), if (share >= 1f) UploadPhase.Done else UploadPhase.Uploading(share))
                             }
                         }
-                        withContext(progress) { api.send(agentId, next.id, next.wire, images, mode, next.toolRequest) }
+                        withContext(progress) { api.send(agentId, next.id, wire(next), images, mode, next.toolRequest, attachments) }
                     }
                     // All there, whatever the transport told on the way; the echo clears them.
                     images.indices.forEach { uploads.set(UploadBoard.pictureKey(next.id, it), UploadPhase.Done) }
@@ -1143,8 +1145,9 @@ class Conversation(
      * Writes a send's [files] into the agent's workspace, each once: a retry
      * skips what went up, and the same bytes again count as written.
      */
-    private suspend fun upload(files: List<OutgoingFile>) {
-        if (files.all { it.uploaded }) return
+    private suspend fun upload(files: List<OutgoingFile>): List<SentAttachment> {
+        if (cloudFiles) return attach(files)
+        if (files.all { it.uploaded }) return emptyList()
         val workspaceId = agent?.workspaceId
             ?: withRetries { api.bootstrap(agentId) }.agent.workspaceId
             ?: throw IllegalStateException("This chat has no folder on the computer to put files in.")
@@ -1153,7 +1156,35 @@ class Conversation(
             withRetries { api.uploadFile(workspaceId, file.path, file.file, io) }
             file.uploaded = true
         }
+        return emptyList()
     }
+
+    /**
+     * [files] as the agent's Happy Cloud attachments, each uploaded once: a
+     * file past what the server takes fails before any is read, and a
+     * server without the route says it takes none yet.
+     */
+    private suspend fun attach(files: List<OutgoingFile>): List<SentAttachment> {
+        files.firstOrNull { it.size > WorkspaceUploads.CLOUD_MAX_BYTES }?.let { throw FileTooLarge(it.name) }
+        for (file in files) {
+            if (file.attachmentId != null) continue
+            file.attachmentId = try {
+                withRetries { api.uploadAttachment(agentId, file, io) }
+            } catch (e: ConversationApiException) {
+                if (e.status == 404 || e.status == 405 || e.status == 501) throw FilesUnavailable()
+                if (e.status == 413) throw FileTooLarge(file.name)
+                throw e
+            }
+        }
+        return files.map { SentAttachment(it.attachmentId!!, it.name) }
+    }
+
+    /** What [send] says: on Happy Cloud its words, its files going beside them; else with the paths it wrote them to. */
+    private fun wire(send: Outgoing): String = if (cloudFiles) send.text else WorkspaceUploads.text(send.text, send.files)
+
+    /** [send] as its bubble reads until the agent has it: its files listed by name on Happy Cloud, else by path. */
+    private fun shown(send: Outgoing): String =
+        if (cloudFiles) WorkspaceUploads.listed(send.text, send.files.map { it.name }) else wire(send)
 
     /**
      * New work's first `/skill args` ([Outgoing.skill]) asks for the skill
@@ -1617,7 +1648,8 @@ class Conversation(
         for (send in outgoing) {
             val delivery = send.failure?.let(Delivery::Failed) ?: if (send.accepted) Delivery.Pending else Delivery.Sending
             val time = shownAt.getOrPut(send.id) { send.sentAt }
-            rows += ConversationRow.User("${send.id}:user", send.id, send.wire, com.slopus.happy.chat.markdown.parseMarkdown(send.wire, hasSettingsPage), send.images + send.thumbnails, delivery, time)
+            val text = shown(send)
+            rows += ConversationRow.User("${send.id}:user", send.id, text, com.slopus.happy.chat.markdown.parseMarkdown(text, hasSettingsPage), send.images + send.thumbnails, delivery, time)
         }
         if (opened.isNotEmpty()) rows.replaceAll { if (it is ConversationRow.User && it.key in opened) it.copy(opened = true) else it }
         builder.forget(messages.keys)
@@ -1682,6 +1714,7 @@ class Conversation(
 
         private fun describeOther(e: Exception): Problem = when (e) {
             is FilesUnavailable -> Problem.FilesUnavailable
+            is FileTooLarge -> Problem.FileTooLarge(e.name)
             is AgentConnectionException -> Problem.Link(e.reason)
             is ConversationApiException -> e.message?.takeIf { it.isNotBlank() }?.let(Problem::Said) ?: Problem.Refused(e.status)
             else -> e.message?.takeIf { it.isNotBlank() }?.let(Problem::Said) ?: Problem.Unknown
@@ -1717,3 +1750,6 @@ class Conversation(
 
 /** A send's files, on a server that takes none yet. */
 private class FilesUnavailable : Exception("File attachments aren't available on this server yet.")
+
+/** A send's file [name], past what the server takes. */
+private class FileTooLarge(val name: String) : Exception("$name is too large to send.")

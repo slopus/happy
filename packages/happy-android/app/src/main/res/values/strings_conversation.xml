@@ -98,6 +98,7 @@
     <string name="conversation_problem_unknown">Something went wrong.</string>
     <string name="conversation_problem_pictures">Couldn\'t read the pictures to send.</string>
     <string name="conversation_problem_files_unavailable">File attachments aren\'t available on this server yet.</string>
+    <string name="conversation_problem_file_too_large">%1$s is over 25 MB, too large to send here.</string>
     <!-- A failed turn, as desktop's failure card (conversationFailureMessage) words it. -->
     <string name="conversation_failure_signin_missing">%1$s isn\'t signed in. Run `%2$s`, then retry.</string>
     <string name="conversation_failure_cannot_authenticate">%1$s couldn\'t authenticate. Check its sign-in settings, then retry.</string>

@@ -335,6 +335,8 @@ class ConversationRowBuilder(
                 val text = message.content.filterIsInstance<Block.Text>().joinToString("\n") { it.text }
                     .let { if (fromManager && sender != null) inboundText(it, sender) else it }.trim()
                     .let { plain(it, references) }
+                    // Its Happy Cloud files read as a computer's uploads do: listed under its words.
+                    .let { WorkspaceUploads.listed(it, message.content.filterIsInstance<Block.File>().map(Block.File::name)) }
                 val pictures = message.content.filterIsInstance<Block.Image>()
                 if (text.isEmpty() && pictures.isEmpty()) return emptyList()
                 val delivery = if (message.status == "pending") Delivery.Pending else Delivery.Sent
@@ -356,7 +358,7 @@ class ConversationRowBuilder(
                     }
                     is Block.Image -> rows += ConversationRow.Picture(key, block)
                     is Block.ToolCall -> rows += toolRows(key, block, references)
-                    is Block.Compaction, is Block.Unknown -> Unit
+                    is Block.Compaction, is Block.File, is Block.Unknown -> Unit
                 }
             }
             return rows
