@@ -13,6 +13,12 @@
 #         flows finish FIN/ACK and TIME-WAIT outside the live 1024 / 256
 #         budgets (at most 1024 of them, oldest evicted), so a browser's
 #         short requests can't exhaust the stack.
+#   0002  A network change or a resume is checked, not assumed to have broken
+#         anything: TailcatClient.wake(), and notifyNetworkChanged() and the
+#         discovery worker's address change, ping DERP and reconnect only if
+#         nothing comes back within 2 s, probe the selected direct route and
+#         drop it only if its Pong doesn't come back by then, and re-advertise.
+#         Sockets and the session stay; resetNetworkPaths() is the forced reset.
 set -euo pipefail
 COMMIT=06303967c95dc6a05454037cbc931f68e0570c48
 here="$(cd "$(dirname "$0")" && pwd)"

@@ -589,7 +589,9 @@ class AppGraph(
      */
     fun setForeground(value: Boolean) {
         started = (started + if (value) 1 else -1).coerceAtLeast(0)
+        val was = foreground.value
         foreground.value = started > 0
+        if (was && !foreground.value) agentSessions.backgrounded()
     }
 
     /** Each agent connection's live link and cached home (AgentSessions). */

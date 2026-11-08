@@ -122,6 +122,8 @@ internal class AgentEndpointTransport(
     override suspend fun diagnostics(): TransportDiagnostics? = lock.withLock { selected?.first }?.diagnostics()
     override suspend fun reset() { lock.withLock { selected?.first }?.reset() }
     override suspend fun reset(category: RequestCategory) { lock.withLock { selected?.first }?.reset(category) }
+    override suspend fun resumed() { lock.withLock { selected?.first }?.resumed() }
+    override suspend fun networkChanged() { lock.withLock { selected?.first }?.networkChanged() }
     override suspend fun close() {
         val old = lock.withLock { closed = true; selected?.first.also { selected = null } }
         endpoint.removeObserver(id)

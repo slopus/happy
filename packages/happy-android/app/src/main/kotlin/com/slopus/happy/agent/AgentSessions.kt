@@ -137,6 +137,16 @@ class AgentSessions(
         }
     }
 
+    /**
+     * The app went to the background (one of its activities is no longer
+     * started): every session kept resumes its tunnels when it next runs.
+     * Told at once, by whoever sets [foreground], so a quick return can't
+     * outrun it.
+     */
+    fun backgrounded() {
+        synchronized(sessions) { sessions.values.toList() }.forEach { it.backgrounded() }
+    }
+
     /** The session for [connectionId]; null when no such connection is on the phone, or its team server's session ended. */
     fun session(connectionId: String): AgentSession? {
         if (connections.accounts.value.none { it.id == connectionId && !it.sessionEnded }) return null

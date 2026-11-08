@@ -71,6 +71,21 @@ class TailcatClientsTest {
     }
 
     @Test
+    fun backFromTheBackgroundEveryClientIsHandedBackAndNoneLetGo() = runBlocking {
+        assertTrue(clients.connected().isEmpty())
+        val realtime = clients.lease(RequestCategory.Realtime)
+        val query = clients.lease(RequestCategory.Query)
+        val upload = clients.lease(RequestCategory.File)
+        realtime.release(); query.release()
+        // Idle or carrying an upload, each is kept, to be woken.
+        assertEquals(setOf(realtime.client, query.client, upload.client), clients.connected().map { it.second }.toSet())
+        assertTrue(!realtime.client.closed && !query.client.closed && !upload.client.closed)
+        // The next stream goes over the same client.
+        assertSame(realtime.client, clients.lease(RequestCategory.Realtime).client)
+        upload.release()
+    }
+
+    @Test
     fun filesSpreadOverAtMostEightClients() = runBlocking {
         val leases = (1..10).map { clients.lease(RequestCategory.File) }
         assertEquals(TailcatClients.MAX_FILE_CLIENTS, clients.count(RequestCategory.File))

@@ -134,6 +134,8 @@ class AgentSession internal constructor(
     private val redials = MutableStateFlow(0)
     /** Whether the live link runs now (the connection open, the app in front, signed in). */
     @Volatile private var linking = false
+    /** Kept through the last background, its tunnels not resumed since ([backgrounded]). */
+    private val suspended = AtomicBoolean(false)
     val status: StateFlow<AgentLinkStatus> = statusState.asStateFlow()
 
     private val reads = MutableStateFlow(0)
@@ -640,6 +642,9 @@ class AgentSession internal constructor(
                 when {
                     !signedIn -> statusState.value = AgentLinkStatus.SignInRequired
                     on -> coroutineScope {
+                        // Kept through a background: its tunnels check every way to the
+                        // agent before the stream asks them for anything.
+                        if (suspended.getAndSet(false)) linkLock.withLock { route?.second }?.resumed()
                         launch { watchGit() }
                         live()
                     }
@@ -665,12 +670,23 @@ class AgentSession internal constructor(
      * of the computer, so the header says connecting until this try answers.
      */
     fun networkReturned() {
-        val status = statusState.value
-        if (!linking) return
-        if (status != AgentLinkStatus.Connecting && status != AgentLinkStatus.Offline) return
-        statusState.value = AgentLinkStatus.Connecting
-        redials.update { it + 1 }
+        // Every tunnel kept checks its relay and every path first, replacing only what doesn't answer.
+        scope.launch {
+            linkLock.withLock { route?.second }?.networkChanged()
+            val status = statusState.value
+            if (!linking) return@launch
+            if (status != AgentLinkStatus.Connecting && status != AgentLinkStatus.Offline) return@launch
+            statusState.value = AgentLinkStatus.Connecting
+            redials.update { it + 1 }
+        }
     }
+
+    /**
+     * The app went to the background (iOS's `AgentConnections.suspended`):
+     * the next time the link runs, open now or later, its tunnels are
+     * resumed first ([Transport.resumed]). Not on a cold start.
+     */
+    fun backgrounded() = suspended.set(true)
 
     /** Stops the link and lets go of the tunnel. */
     suspend fun close() {

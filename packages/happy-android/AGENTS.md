@@ -1849,7 +1849,17 @@ is `packages/happy-ios`. The wire keeps its own names
   existing ones). `HttpsTransport` (an agent with a public URL) has no
   clients: each socket is its own TLS connection tagged with its category,
   so `reset(category)` closes only that category's, with the same
-  deadlines; `AgentEndpointTransport` passes the category on. It uses
+  deadlines; `AgentEndpointTransport` passes the category on. A session
+  kept through the background (`AppGraph.setForeground` →
+  `AgentSessions.backgrounded`) resumes its transport before its link next
+  runs, open then or later (`Transport.resumed`, iOS's): every client is
+  woken (`TailcatClient.wake`), which checks rather than assumes anything
+  broke. The relay is pinged and replaced only if it doesn't answer within
+  two seconds, every direct path is probed and one that stopped answering
+  dropped, and an expired session rekeys; clients, requests under way and
+  live sessions stay. tailcat-kotlin watches no network itself, so a network
+  that returns gets the same check on every kept client
+  (`Transport.networkChanged`, from `AgentSession.networkReturned`). It uses
   tailcat-kotlin's default DERP map (`https://tailcat.dev/derpmap.json`),
   cached in `noBackupFilesDir/tailcat/derpmap.json` (`FileDerpMapCache`):
   with no network and no cached map, connecting fails.
