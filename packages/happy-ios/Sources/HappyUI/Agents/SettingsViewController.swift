@@ -633,8 +633,9 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             themes.map { theme in
                 Row(id: "theme-\(theme)", title: Self.themeName(theme), value: theme == current ? "✓" : nil, accessory: .none, action: { [weak self] in self?.setTheme(theme) })
             },
-            [Row(SettingsIndex.hideProjects, accessory: .toggle, isOn: projectsHidden, toggled: { [weak self] on in
-                guard let self, let engine = context.account.agentConnections.syncEngine(for: id) else { return }
+            HappyCloud.isCloud(context.account.agentConnections.server(for: id)) ? [] : [Row(SettingsIndex.hideProjects, accessory: .toggle, isOn: projectsHidden, toggled: { [weak self] on in
+                guard let self, shown?.id == id, !HappyCloud.isCloud(context.account.agentConnections.server(for: id)),
+                      let engine = context.account.agentConnections.syncEngine(for: id) else { return }
                 projectsHidden = on
                 Task { try? await engine.setProjectsHidden(on) }
             })],
