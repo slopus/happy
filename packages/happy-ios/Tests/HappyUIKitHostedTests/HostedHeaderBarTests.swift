@@ -107,7 +107,8 @@ final class HostedHeaderBarTests: XCTestCase {
             XCTAssertTrue(switcher.bounds.contains(child.frame), "\(child) is cut by the bar")
         }
         let right = item.rightBarButtonItems?.map(\.accessibilityIdentifier) ?? []
-        XCTAssertEqual(right, ["settings"])
+        // Right to left: Settings, then the call.
+        XCTAssertEqual(right, ["settings", "voice-call"])
         XCTAssertTrue(home.toolbarItems?.contains { $0.accessibilityIdentifier == "compose" } == true)
         let bar = try XCTUnwrap(home.navigationController?.navigationBar)
         Self.assertClear(bar)
