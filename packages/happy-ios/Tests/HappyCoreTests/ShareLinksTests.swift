@@ -142,6 +142,32 @@ final class ShareLinksTests: XCTestCase {
         XCTAssertEqual(InstanceLinkRoute.route("\(Self.page)1/agents/\(Self.id)", connections: [mine], active: nil), .notALink)
     }
 
+    /// A universal link arrives as the `webpageURL` of a browsing-web
+    /// activity: a `URL`, read back as the share link it was.
+    func testOpensAsAUniversalLink() throws {
+        var mine = AgentConnection(id: "mine", name: "Mine")
+        mine.instanceId = Self.instance
+        for payload in [
+            "1/\(Self.instance)/agents/\(Self.id)?as=task",
+            "1/\(Self.instance)/artifacts/\(Self.id)?version=2",
+            "1/\(Self.instance)/agents/\(Self.id)/files/src/a%20b.ts?lines=42-50",
+        ] {
+            let url = try XCTUnwrap(URL(string: Self.page + payload))
+            XCTAssertEqual(url.host, "link.happy.page")
+            XCTAssertEqual(url.path, "/")
+            XCTAssertEqual(URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedFragment, payload)
+            XCTAssertNotNil(HappyShareLink.parse(url.absoluteString), payload)
+            guard case .open(let connection, _) = InstanceLinkRoute.route(url.absoluteString, connections: [mine], active: nil) else {
+                return XCTFail(payload)
+            }
+            XCTAssertEqual(connection, "mine")
+        }
+        // Anything else on the host stays the web's.
+        for other in ["https://link.happy.page/", "https://link.happy.page/#1/agents/\(Self.id)", "https://link.happy.page/x#1/\(Self.instance)/agents/\(Self.id)"] {
+            XCTAssertNil(HappyShareLink.parse(try XCTUnwrap(URL(string: other)).absoluteString), other)
+        }
+    }
+
     func testReadsShareLinksNamingThisInstanceInMarkdownAsTheHappyLinksTheyCarry() {
         let share = "\(Self.page)1/\(Self.instance)/agents/\(Self.id)?as=task"
         let happy = "happy://\(Self.instance)/agents/\(Self.id)"

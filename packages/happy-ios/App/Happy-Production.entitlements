@@ -8,6 +8,7 @@
 	<array>
 		<string>applinks:app.happy.engineering</string>
 		<string>applinks:join.happy.engineering</string>
+		<string>applinks:link.happy.page</string>
 	</array>
 </dict>
 </plist>

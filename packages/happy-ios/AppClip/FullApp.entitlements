@@ -5,5 +5,5 @@
     <key>com.apple.developer.associated-appclip-app-identifiers</key>
     <array><string>$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER).Clip</string></array>
     <key>com.apple.developer.associated-domains</key>
-    <array><string>applinks:app.happy.engineering</string></array>
+    <array><string>applinks:app.happy.engineering</string><string>applinks:link.happy.page</string></array>
 </dict></plist>

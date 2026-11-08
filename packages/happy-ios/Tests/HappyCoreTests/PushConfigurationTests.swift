@@ -31,7 +31,9 @@ final class PushConfigurationTests: XCTestCase {
                         "com.apple.developer.associated-domains": ["applinks:join.happy.engineering"]] as NSDictionary)
         let production = try plist("App/Happy-Production.entitlements")
         XCTAssertEqual(production["aps-environment"] as? String, "development")
-        XCTAssertEqual(production["com.apple.developer.associated-domains"] as? [String], ["applinks:app.happy.engineering", "applinks:join.happy.engineering"])
+        // Share links open production alone, as app.happy.engineering does: the AASA on
+        // link.happy.page names 466DQWDR8C.com.ex3ndr.happy only.
+        XCTAssertEqual(production["com.apple.developer.associated-domains"] as? [String], ["applinks:app.happy.engineering", "applinks:join.happy.engineering", "applinks:link.happy.page"])
     }
 
     func testBuildFilesSignWithTheEntitlements() throws {

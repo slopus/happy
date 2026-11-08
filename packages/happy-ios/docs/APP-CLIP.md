@@ -35,8 +35,9 @@ The opt-in Clip identifiers are each native variant's bundle identifier plus
 `.Clip`. Its parent-application-identifiers entitlement names that variant,
 and the parent entitlement names the corresponding Clip. Both require explicit
 App IDs and profiles; a wildcard profile cannot sign a Clip. The Clip's domain
-service is `appclips:app.happy.engineering`, and the parent's is
-`applinks:app.happy.engineering`. No App Group or credential migration is
+service is `appclips:app.happy.engineering`, and the parent's are
+`applinks:app.happy.engineering` and `applinks:link.happy.page` (share links,
+as `App/Happy-Production.entitlements` has them). No App Group or credential migration is
 configured. A session redeemed in the Clip does not migrate to the newly
 installed parent in v1. Opening that invitation and joining in the installed
 app takes a second seat because its Keychain is separate. Owners should size
