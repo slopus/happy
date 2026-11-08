@@ -5,11 +5,13 @@ import Speech
 // Runs the app's DictationRecognition (compiled from the app's own source)
 // over a recording played at its real pace, as the microphone would give it,
 // and prints the transcript at every change, then what would be sent.
-// Arguments: recording, analyzer|dictation|recognizer, locale.
+// Arguments: recording, analyzer|dictation|recognizer|probe, locale (for
+// probe, several, comma-separated, best ranked first).
 setvbuf(stdout, nil, _IONBF, 0)
 let arguments = CommandLine.arguments
 let url = URL(fileURLWithPath: arguments[1])
-let locale = Locale(identifier: arguments.count > 3 ? arguments[3] : "en-US")
+let locales = (arguments.count > 3 ? arguments[3] : "en-US").split(separator: ",").map { Locale(identifier: String($0)) }
+let locale = locales[0]
 switch arguments.count > 2 ? arguments[2] : "analyzer" {
 case "recognizer": DictationRecognition.forcedEngine = .recognizer
 case "dictation": DictationRecognition.forcesDictationTranscriber = true
@@ -19,7 +21,7 @@ let start = Date()
 func stamp() -> String { String(format: "%6.2f", Date().timeIntervalSince(start)) }
 
 guard let recognizer = SFSpeechRecognizer(locale: locale) else { fatalError("no recognizer for \(locale.identifier)") }
-let recognition = DictationRecognition(recognizer: recognizer)
+let recognition = DictationRecognition(recognizer: recognizer, candidates: arguments.count > 2 && arguments[2] == "probe" ? locales : [])
 var last = ("", "")
 recognition.onTranscript = { transcript in
     let now = (transcript.finalized, transcript.volatile)
@@ -37,3 +39,4 @@ while let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapac
 }
 print(stamp(), "stop; engine:", recognition.engine?.rawValue ?? "none")
 print(stamp(), "SENT:", await recognition.finish())
+print(stamp(), "language:", recognition.locale.identifier)

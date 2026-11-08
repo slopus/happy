@@ -327,6 +327,7 @@ final class RecordButton: UIControl {
     override func didMoveToWindow() {
         super.didMoveToWindow()
         if window == nil, phase == .holding || phase == .locked { finish(.draft) }
+        if window != nil { Dictation.prefetch() }
     }
 
     private func refuse(_ title: String, _ message: String, settings: Bool) {

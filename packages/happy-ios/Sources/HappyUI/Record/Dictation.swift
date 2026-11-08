@@ -87,12 +87,31 @@ final class Dictation {
         DictationLanguages.recognizer(allowUnavailableOnDevice: simulatorScript != nil)
     }
 
+    /// The languages to listen for at once, best ranked first; the
+    /// recording's words decide between them (`DictationRecognition`).
+    private static func candidates() -> [Locale] {
+        DictationLanguages.probeLocales(supported: Array(SFSpeechRecognizer.supportedLocales()))
+    }
+
+    private static var prefetched: [Locale] = []
+
+    /// Downloads, in the background, the models for the languages a
+    /// recording would listen for, once speech recognition is allowed, so
+    /// the first recording in each can already choose. Nothing is heard.
+    static func prefetch() {
+        guard SFSpeechRecognizer.authorizationStatus() == .authorized else { return }
+        let locales = candidates()
+        guard locales.count > 1, locales != prefetched else { return }
+        prefetched = locales
+        DictationRecognition.prefetch(locales)
+    }
+
     /// Starts listening at once.
     func start() throws {
         guard !isRunning, recognition == nil else { throw Failure.audio }
         guard let recognizer = Self.recognizer() else { throw Failure.unavailable }
         publish(DictationTranscript())
-        let recognition = DictationRecognition(recognizer: recognizer)
+        let recognition = DictationRecognition(recognizer: recognizer, candidates: Self.candidates())
         let audio = recognition.audio
         let level: @Sendable (CGFloat) -> Void = { [weak self] value in
             Task { @MainActor in self?.onLevel?(value) }
