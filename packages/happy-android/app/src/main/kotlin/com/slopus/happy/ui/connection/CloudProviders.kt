@@ -14,6 +14,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -40,6 +41,7 @@ import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.agent.AgentSession
+import com.slopus.happy.agent.CloudCapabilities
 import com.slopus.happy.agent.CloudConnection
 import com.slopus.happy.agent.CloudDestination
 import com.slopus.happy.agent.CloudProviderException
@@ -151,21 +153,21 @@ private fun CloudProvidersPage(graph: AppGraph, nav: NavHostController, connecti
     val session = remember(connectionId) { graph.agentSessions.session(connectionId) } ?: return
     val scope = rememberCoroutineScope()
     val source = remember(session, scope) {
-        CloudProvidersSource({ CloudProviders.list(session.client) }, { CloudProviders.signIns(session.client) }, session.events, scope)
+        CloudProvidersSource({ CloudProviders.read(session.client) }, { CloudProviders.signIns(session.client) }, session.events, scope)
     }
     val state by source.connections.collectAsStateWithLifecycle()
-    val signIns by source.signIns.collectAsStateWithLifecycle()
+    val capabilities by source.capabilities.collectAsStateWithLifecycle()
     val canAdd = destinations(session).isNotEmpty()
     var choosing by rememberSaveable { mutableStateOf(choose) }
     CloudProvidersScreen(state, canAdd = canAdd, onAdd = { choosing = true }, onRetry = source::retry, onBack = { nav.popBackStack() })
     if (choosing) {
         CloudAddChooser(
-            signIns = signIns,
+            capabilities = capabilities,
             onPick = { flow ->
                 choosing = false
                 when (flow) {
                     CloudProviderFlow.ChatGpt -> nav.navigate(CloudChatGptRoute(connectionId))
-                    CloudProviderFlow.Claude -> nav.navigate(CloudClaudeRoute(connectionId, token = CloudProviders.CLAUDE !in signIns))
+                    CloudProviderFlow.Claude -> nav.navigate(CloudClaudeRoute(connectionId, token = capabilities?.claudeSignIn != true))
                     is CloudProviderFlow.ApiKey -> nav.navigate(CloudApiKeyRoute(connectionId, flow.vendor))
                     CloudProviderFlow.Choose -> Unit
                 }
@@ -277,12 +279,13 @@ internal fun vendorName(vendor: String): String = when (vendor) {
 
 /**
  * Add's choices, as a sheet from the bottom (iOS's action sheet): a
- * ChatGPT and a Claude sign-in where the server runs them (a Claude setup
- * token where it doesn't), and an API key.
+ * ChatGPT and a Claude sign-in, a Claude setup token where Claude's sign-in
+ * isn't offered, and an API key; each where the server offers it
+ * ([capabilities], null until known: nothing yet).
  */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-internal fun CloudAddChooser(signIns: Set<String>, onPick: (CloudProviderFlow) -> Unit, onDismiss: () -> Unit) {
+internal fun CloudAddChooser(capabilities: CloudCapabilities?, onPick: (CloudProviderFlow) -> Unit, onDismiss: () -> Unit) {
     val colors = HappyTheme.colors
     val sheet = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
@@ -294,7 +297,7 @@ internal fun CloudAddChooser(signIns: Set<String>, onPick: (CloudProviderFlow) -
     }
     androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = colors.surface) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 8.dp)) {
-            if (CloudProviders.CODEX in signIns) {
+            if (capabilities?.codexSignIn == true) {
                 Item(
                     title = stringResource(R.string.cloud_providers_add_chatgpt),
                     icon = { ProviderIcon(ProviderIconKind.Codex, size = 24.dp) },
@@ -302,18 +305,22 @@ internal fun CloudAddChooser(signIns: Set<String>, onPick: (CloudProviderFlow) -
                     onClick = { pick(CloudProviderFlow.ChatGpt) },
                 )
             }
-            Item(
-                title = stringResource(if (CloudProviders.CLAUDE in signIns) R.string.cloud_providers_add_claude else R.string.cloud_providers_add_setup_token),
-                icon = { ProviderIcon(ProviderIconKind.Claude, size = 24.dp) },
-                showChevron = false,
-                onClick = { pick(CloudProviderFlow.Claude) },
-            )
-            Item(
-                title = stringResource(R.string.cloud_providers_add_key),
-                icon = { com.slopus.happy.ui.components.Icon(com.slopus.happy.ui.components.Ionicon.KeyOutline, 24.dp, colors.textSecondary) },
-                showChevron = false,
-                onClick = { pick(CloudProviderFlow.ApiKey()) },
-            )
+            if (capabilities?.claudeSignIn == true || capabilities?.claudeSetupToken == true) {
+                Item(
+                    title = stringResource(if (capabilities.claudeSignIn) R.string.cloud_providers_add_claude else R.string.cloud_providers_add_setup_token),
+                    icon = { ProviderIcon(ProviderIconKind.Claude, size = 24.dp) },
+                    showChevron = false,
+                    onClick = { pick(CloudProviderFlow.Claude) },
+                )
+            }
+            if (capabilities?.apiKeys == true) {
+                Item(
+                    title = stringResource(R.string.cloud_providers_add_key),
+                    icon = { com.slopus.happy.ui.components.Icon(com.slopus.happy.ui.components.Ionicon.KeyOutline, 24.dp, colors.textSecondary) },
+                    showChevron = false,
+                    onClick = { pick(CloudProviderFlow.ApiKey()) },
+                )
+            }
         }
     }
 }
@@ -451,6 +458,19 @@ private fun CloudClaudePage(graph: AppGraph, nav: NavHostController, connectionI
     val allowed = remember(session) { destinations(session) }
     var destination by rememberSaveable { mutableStateOf(destinationFor(allowed, asked)) }
     var token by rememberSaveable { mutableStateOf(startWithToken) }
+    val capabilities by produceState<CloudCapabilities?>(null, session) {
+        value = try {
+            CloudProviders.capabilities(session.client)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
+    }
+    // A link to Claude where only its setup token is offered opens that.
+    LaunchedEffect(capabilities) {
+        if (capabilities?.let { !it.claudeSignIn && it.claudeSetupToken } == true) token = true
+    }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val dark = HappyTheme.colors.dark
@@ -480,7 +500,7 @@ private fun CloudClaudePage(graph: AppGraph, nav: NavHostController, connectionI
         onDestination = { destination = it },
         onOpen = { url -> openSignInPage(context, url, dark) },
         onCode = run::sendCode,
-        onUseToken = { token = true },
+        onUseToken = { token = true }.takeIf { capabilities?.claudeSetupToken == true },
         onRetry = run::start,
         onBack = { nav.popBackStack() },
     )
@@ -489,7 +509,8 @@ private fun CloudClaudePage(graph: AppGraph, nav: NavHostController, connectionI
 /**
  * Claude's sign-in: Open Claude (a Custom Tab), then the code its page shows
  * pasted here and sent to the server, which exchanges it. Or a setup token
- * instead. The code is never kept on the phone.
+ * instead, where the server takes them ([onUseToken]). The code is never
+ * kept on the phone.
  */
 @Composable
 internal fun CloudClaudeScreen(
@@ -499,7 +520,7 @@ internal fun CloudClaudeScreen(
     onDestination: (CloudDestination) -> Unit,
     onOpen: (String) -> Unit,
     onCode: (String) -> Unit,
-    onUseToken: () -> Unit,
+    onUseToken: (() -> Unit)?,
     onRetry: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -528,7 +549,7 @@ internal fun CloudClaudeScreen(
                 CloudSignInRun.State.Done -> Outcome(stringResource(R.string.cloud_providers_claude_done), null, null)
                 is CloudSignInRun.State.Failed -> Outcome(failureTitle(state.code), state.message ?: stringResource(R.string.cloud_failed), onRetry)
             }
-            if (state !is CloudSignInRun.State.Done) {
+            if (state !is CloudSignInRun.State.Done && onUseToken != null) {
                 ItemGroup {
                     Item(title = stringResource(R.string.cloud_providers_use_token), titleColor = HappyTheme.colors.textLink, showChevron = false, onClick = onUseToken)
                 }

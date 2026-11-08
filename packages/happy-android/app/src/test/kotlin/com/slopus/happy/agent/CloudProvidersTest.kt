@@ -84,6 +84,22 @@ class CloudProvidersTest {
     }
 
     @Test
+    fun whatMayBeAddedIsTheServersWordElseTheListedSignIns() = runBlocking {
+        val said = AgentClient(Server(mapOf("GET /v0/cloud/providers" to listOf(200 to """{"providers":[],"capabilities":{"apiKeys":true,"claudeSetupToken":true,"codexSignIn":false,"claudeSignIn":true}}"""))), "t")
+        assertEquals(CloudCapabilities(apiKeys = true, claudeSetupToken = true, codexSignIn = false, claudeSignIn = true), CloudProviders.capabilities(said))
+        val silent = AgentClient(
+            Server(
+                mapOf(
+                    "GET /v0/cloud/providers" to listOf(200 to listing),
+                    "GET /v0/provider-clis" to listOf(200 to """{"providerClis":[{"id":"codex"},{"id":"claude"}]}"""),
+                ),
+            ),
+            "t",
+        )
+        assertEquals(CloudCapabilities(apiKeys = true, claudeSetupToken = false, codexSignIn = true, claudeSignIn = true), CloudProviders.capabilities(silent))
+    }
+
+    @Test
     fun signInsNotMountedYetOfferNone() = runBlocking {
         val client = AgentClient(Server(mapOf("GET /v0/provider-clis" to listOf(501 to """{"error":"machine local","code":"machine_local"}"""))), "t")
         assertEquals(emptySet<String>(), CloudProviders.signIns(client))
@@ -96,7 +112,8 @@ class CloudProvidersTest {
         val server = Server(
             mapOf(
                 "POST /v0/provider-clis/codex/sign-in" to listOf(200 to operation("waiting", device)),
-                "GET /v0/provider-clis/codex" to listOf(200 to operation("waiting", device), 200 to operation("succeeded")),
+                // A read lost while the browser is up (the app in the background) is read again.
+                "GET /v0/provider-clis/codex" to listOf(200 to operation("waiting", device), 503 to """{"error":"Unavailable","code":"unavailable"}""", 200 to operation("succeeded")),
             ),
         )
         val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
@@ -107,6 +124,8 @@ class CloudProvidersTest {
         val start = server.asked.first().second!!
         assertEquals("device", start["method"].toString().trim('"'))
         assertEquals("""{"providerId":"codex"}""", start["target"].toString())
+        advanceTimeBy(3_001)
+        assertTrue(run.current.value is CloudSignInRun.State.Waiting)
         advanceTimeBy(3_001)
         assertTrue(run.current.value is CloudSignInRun.State.Waiting)
         advanceTimeBy(3_001)
@@ -151,14 +170,17 @@ class CloudProvidersTest {
                 "POST /v0/provider-clis/codex/cancel" to listOf(200 to operation("cancelled")),
             ),
         )
-        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
-        val run = CloudSignInRun(AgentClient(server, "t"), scope, CloudProviders.OPENAI, CloudDestination.Private)
+        val page = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val leaving = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val run = CloudSignInRun(AgentClient(server, "t"), page, CloudProviders.OPENAI, CloudDestination.Private, leaving = leaving)
         run.start()
         runCurrent()
+        // As a page goes: its effects end, then its scope.
         run.close()
+        page.cancel()
         runCurrent()
         assertTrue(server.asked.any { it.first == "POST /v0/provider-clis/codex/cancel" })
-        scope.cancel()
+        leaving.cancel()
     }
 
     @Test
