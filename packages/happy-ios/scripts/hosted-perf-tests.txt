@@ -1,0 +1,34 @@
+# The hosted UIKit perf plan: tests whose verdict is a time or frame budget.
+# On GitHub's virtual Macs a different handful of these fails each run while
+# they pass on a Mac, so CI runs them report-only (the `hosted-perf` job) and
+# keeps them out of the functional shards; `scripts/perf-nightly.sh` enforces
+# them on the Mac Mini. One per line: a class, or Class/testMethod.
+# A test asserting what the screen shows, not how fast, doesn't belong here.
+
+# Whole classes: every test is a budget.
+HostedChatKeyboardMotionTests
+HostedHomeListPerfTests
+HostedListRendererPerfTests
+HostedListResizeTests
+HostedNavigationTimingTests
+HostedSendFlightTests
+
+HostedAttachGestureTests/testAFlingOverTwoThousandPicturesStaysInBudget
+HostedAttachGestureTests/testDraggedAwayItShrinksIntoThePlusFromTheFinger
+HostedAttachMenuTests/testASlowUploadFillsEachRingInTheBubble
+HostedAttachMenuTests/testOpenExpandCloseKeepsTheDraftAndGivesTheKeyboardBack
+HostedAttachMenuTests/testTheDimAndEscapeHandTheButtonBackInOneFrame
+HostedAttachMenuTests/testTheMenuGrowsOutOfThePlusAndBackIntoIt
+HostedAttachMenuTests/testWithReduceMotionThePlusStaysAndTheSheetSlides
+HostedChatFollowTests/testAnOlderPageWhileDeceleratingKeepsTheGlide
+HostedChatNavigationTests/testHowLongAChatTakesToOpen
+HostedChatNavigationTests/testPushInstallsOnlyTheShellBeforeReturning
+HostedChatNavigationTests/testRowsPastTheCapLandWithoutMovingAnythingElse
+HostedChatSeedTests/testHowLongTheSeedTakesOverALargeHome
+HostedDocumentEditorTests/testTypingLatencyOnALongDocument
+HostedLiveAvatarTests/testAnAvatarOnScreenMovesWhileItIsOn
+HostedSessionInfoTests/testHowLongOpeningSessionInfoHoldsTheMainThread
+HostedStreamingRevealTests/testALegacyReplyComesOutWordByWordOnTheComposer
+HostedStreamingRevealTests/testAStreamingReplyCostsTheMainThreadLittle
+HostedSystemMonitorTests/testTheMainThreadNeverHitches
+HostedThumbHashPlaceholderTests/testAPlaceholderIsCheapOnTheMainThread

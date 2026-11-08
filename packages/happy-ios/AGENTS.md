@@ -647,6 +647,14 @@ The `Happy` scheme's test action runs `HappyUIKitTests` on a simulator. The
 Linux test targets also run from Xcode: open `Package.swift` and use the
 `HappyIOS-Package` scheme.
 
+CI runs `HappyUIKitHostedTests` in shards (`scripts/hosted-test-shard.py`).
+The numbered shards are the functional tests, each failure retried once.
+Tests whose verdict is a time or frame budget are the perf plan
+(`scripts/hosted-perf-tests.txt`): GitHub's virtual Macs miss a different
+few of them each run, so CI's `perf` shard only reports, and
+`scripts/perf-nightly.sh` enforces them on the Mac Mini. A new budget test
+goes in the plan; a test of what the screen shows stays out of it.
+
 ### Variants
 
 | Variant | Configuration | Bundle id | Name |

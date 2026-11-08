@@ -112,16 +112,20 @@ jobs:
     # The hosted UIKit tests, in shards so each runs to its end; each
     # shard builds the host itself. `scripts/hosted-test-shard.py` says
     # which classes are whose.
+    #
+    # The numbered shards are the functional tests: a test that fails is
+    # run once more, and a second failure fails the shard. `perf` is the
+    # perf plan (`scripts/hosted-perf-tests.txt`): on the hosted VMs a
+    # different handful of budget tests fails each run, however their
+    # budgets stretch, while they pass on a Mac, so it only reports here and
+    # is enforced nightly on a Mac (`scripts/perf-nightly.sh`).
     runs-on: xcode-27
     timeout-minutes: 60
-    # Reports without blocking: on the hosted VMs a different handful of
-    # frame-timing tests fails each run, however their budgets stretch,
-    # while they pass on a Mac. `uikit` is the required check.
-    continue-on-error: true
+    continue-on-error: ${{ matrix.shard == 'perf' }}
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: ['1', '2', '3', perf]
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
       SHARDS: 3
@@ -190,7 +194,10 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/hosted-test-shard.py "${{ matrix.shard }}" "$SHARDS" > build/ci/hosted-shard.txt
-          echo "Shard ${{ matrix.shard }} of $SHARDS: $(wc -l < build/ci/hosted-shard.txt) classes"
+          echo "Shard ${{ matrix.shard }} of $SHARDS: $(grep -c only-testing build/ci/hosted-shard.txt) entries"
+          # A budget measured twice is a different budget: perf runs once.
+          RETRY=""
+          if [[ "${{ matrix.shard }}" != perf ]]; then RETRY="-retry-tests-on-failure -test-iterations 2"; fi
           xcrun simctl bootstatus "$HAPPY_IOS_SIMULATOR_ID" -b
           xargs xcodebuild test-without-building \
             -project Happy.xcodeproj \
@@ -201,6 +208,7 @@ jobs:
             -derivedDataPath build/ci/DerivedData \
             -resultBundlePath build/ci/HappyUIKitHostedTests.xcresult \
             -parallel-testing-enabled NO \
+            $RETRY \
             CODE_SIGNING_ALLOWED=NO \
             < build/ci/hosted-shard.txt \
             | tee build/ci/hosted-xcodebuild.log
