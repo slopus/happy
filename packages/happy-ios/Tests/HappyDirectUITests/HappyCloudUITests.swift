@@ -212,8 +212,9 @@ final class HappyCloudUITests: XCTestCase {
     }
 
     /// "Edit name" on the server's picture renames the server
-    /// (`TEST_RUNNER_RENAME_SERVER`), then puts its name back; a viewer
-    /// (`TEST_RUNNER_ROLE` `viewer`) isn't offered it.
+    /// (`TEST_RUNNER_RENAME_SERVER`), then puts its name back, and "Change
+    /// avatar" opens the photo library; a viewer (`TEST_RUNNER_ROLE`
+    /// `viewer`) has no menu.
     func testEServerIsRenamedFromItsSettings() throws {
         guard let login = env["QA_LOGIN"], let password = env["QA_PASSWORD"], let server = env["RENAME_SERVER"] else { throw XCTSkip("no rename run") }
         let owner = env["ROLE"] != "viewer"
@@ -266,6 +267,23 @@ final class HappyCloudUITests: XCTestCase {
             capture("22-renamed-\(to == server ? "back" : "new")")
         }
         if app.buttons["Change avatar"].exists { app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)).tap() }
+
+        // "Change avatar" opens the photo library for the server's picture,
+        // not a task asking the agent.
+        if owner {
+            picture.tap()
+            require(avatar.waitForExistence(timeout: 5), "no Change avatar")
+            avatar.tap()
+            Thread.sleep(forTimeInterval: 3)
+            capture("23-avatar-picker")
+            XCTAssertFalse(app.textViews["composer"].exists, "Change avatar opened a task")
+            // The simulator's library: its first picture becomes the server's.
+            let photo = app.images.matching(NSPredicate(format: "label CONTAINS[c] 'photo' OR identifier BEGINSWITH 'PXGGridLayout'")).firstMatch
+            require(photo.waitForExistence(timeout: 10), "Change avatar didn't open the photo library")
+            photo.tap()
+            Thread.sleep(forTimeInterval: 8)
+            capture("24-avatar-set")
+        }
 
         // Out of the server, so the other role can connect to it here.
         let rowOut = element("settings:disconnect")

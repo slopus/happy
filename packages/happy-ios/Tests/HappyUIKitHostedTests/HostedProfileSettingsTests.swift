@@ -491,16 +491,6 @@ final class HostedProfileSettingsTests: XCTestCase {
         }
     }
 
-    /// A Happy Cloud member who may not rename the server is offered only
-    /// the picture (`ServerRename`).
-    func testTheMenuWithoutRenamingHasOnlyTheAvatar() {
-        let button = AgentEditButton()
-        XCTAssertEqual(button.menu?.children.compactMap { ($0 as? UIAction)?.identifier.rawValue }, ["agent-change-avatar", "agent-edit-name"])
-        button.nameable = false
-        XCTAssertEqual(button.menu?.children.compactMap { ($0 as? UIAction)?.identifier.rawValue }, ["agent-change-avatar"])
-        XCTAssertFalse(RoleGate.cloud(nil).allows(.configManage))
-    }
-
     /// Home's search finds the asks; picking one runs it over home, as the
     /// menu does, rather than opening Settings at a row that isn't there.
     func testHomeSearchRunsTheAskDirectly() async throws {
