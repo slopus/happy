@@ -191,31 +191,31 @@ class CallReadTest {
         assertEquals(1600, turn.cut("user")?.get("words"))
     }
 
-    // Later, as a cue
+    // Not current
 
-    /** A read that answered `checking` comes as a cue paged as it was asked; two different asks on the way are two cues, the same twice one. */
+    /** A read of a conversation that isn't current is paged as asked at once, marked `refreshing`; what the refresh finds new comes as one cue, its turns cut by the most words a read of it asked for. */
     @Test
-    fun aCheckingReadComesPagedAsAsked() = runBlocking {
-        val targets = FakeCallTargets(listOf(target), mutableMapOf("a" to CallTargetState(target, turns = eight())), null)
+    fun aNotCurrentReadIsPagedAtOnceAndItsUpdateCutAsRead() = runBlocking {
+        val targets = FakeCallTargets(listOf(target), mutableMapOf("a" to CallTargetState(target, turns = eight(), fresh = false)), null)
         targets.refresh["a"] = FakeCallTargets.Refresh.After(150)
-        val context = CallContext(targets, readGraceMillis = 20, refreshMillis = 2_000)
+        val context = CallContext(targets, refreshMillis = 2_000)
         val cues = java.util.Collections.synchronizedList(ArrayList<String>())
-        context.onReading { if (it is CallReading.Read) cues += it.cue.text }
+        context.onReading { if (it is CallReading.Update) cues += it.cue.text }
         context.initial()
-        for (arguments in listOf(""","from":"t:66","words":30""", ""","from":"t:66","words":30""", ""","from":"t:zz"""")) {
-            assertEquals(arguments, "checking", obj(read(context, arguments).text).str("status"))
-        }
-        withTimeout(5_000) { while (cues.size < 2) delay(20) }
+        val answer = obj(read(context, ""","from":"t:66","words":30""").text)
+        assertEquals(true, answer["refreshing"]!!.jsonPrimitive.boolean)
+        assertEquals(listOf("t:22", "t:33", "t:44", "t:55", "t:66"), answer.refs())
+        assertEquals("t:11", answer.str("continueFrom"))
+        assertTrue(read(context, ""","from":"t:zz"""").isError)
+        val long = (1..100).joinToString(" ") { "w$it" }
+        targets.states["a"] = CallTargetState(target, turns = eight() + CallTurn("run-99", "more", long))
+        withTimeout(5_000) { while (cues.isEmpty()) delay(20) }
         delay(100)
-        val told = cues.toList().map(::obj)
-        assertEquals(2, told.size)
-        val paged = told.first()
-        assertEquals("conversation_read", paged.str("event"))
-        assertEquals(listOf("t:22", "t:33", "t:44", "t:55", "t:66"), paged.refs())
-        assertEquals("t:11", paged.str("continueFrom"))
-        val refused = told.last()
-        assertEquals(false, refused["ok"]!!.jsonPrimitive.boolean)
-        assertEquals("No turn t:zz in this conversation. Use a ref from one of its reads.", refused.str("reason"))
-        assertEquals("conversation_read", refused.str("event"))
+        assertEquals(1, cues.size)
+        val update = obj(cues.first())
+        assertEquals("conversation_update", update.str("event"))
+        assertEquals(listOf("t:99"), update.refs())
+        assertEquals(mapOf("words" to 100, "leftOut" to 70), update.turns().first().cut("assistant"))
+        assertEquals("t:88", update.str("continueFrom"))
     }
 }

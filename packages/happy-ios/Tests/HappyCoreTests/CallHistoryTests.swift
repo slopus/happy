@@ -326,18 +326,19 @@ final class CallCuesTests: XCTestCase {
         XCTAssertEqual(endless.next(.init(now: 22, agentSpeaking: true)), .restart)
     }
 
-    /// A read that came in later waits for its moment: never while either
-    /// side speaks, not before the agent has said it is checking (or said
-    /// nothing for 4 s) and been quiet a moment, and not before it answered
-    /// what the person said meanwhile. One at a time, oldest first.
-    func testAReadIsToldOnceTheAgentHasAnsweredWhatCameBefore() {
-        let first = CallCue.conversationRead(#"{"event":"conversation_read","ref":"s1"}"#)
-        let second = CallCue.conversationRead(#"{"event":"conversation_read","ref":"s2"}"#)
-        XCTAssertEqual(first.text, #"{"event":"conversation_read","ref":"s1"}"#)
+    /// An update waits for its moment: never while either side speaks,
+    /// not before the agent has answered from the read (or said nothing
+    /// for 4 s) and been quiet a moment, and not before it answered what
+    /// the person said meanwhile. One at a time, oldest first: the next
+    /// once the agent has told this one.
+    func testAnUpdateIsToldOnceTheAgentHasAnsweredWhatCameBefore() {
+        let first = CallCue.conversationUpdate(#"{"event":"conversation_update","ref":"s1"}"#)
+        let second = CallCue.conversationUpdate(#"{"event":"conversation_update","ref":"s2"}"#)
+        XCTAssertEqual(first.text, #"{"event":"conversation_update","ref":"s1"}"#)
         var cues = CallCues(since: 0)
-        cues.checking(at: 10)
+        cues.refreshing(at: 10)
         cues.later(first)
-        // The agent hasn't said it is checking yet.
+        // The agent hasn't answered from the read yet.
         XCTAssertNil(cues.next(.init(now: 11)))
         XCTAssertNil(cues.next(.init(now: 12, agentSpeaking: true)))
         cues.agentSpoke(at: 12)
@@ -351,24 +352,86 @@ final class CallCuesTests: XCTestCase {
         cues.agentSpoke(at: 18)
         XCTAssertNil(cues.next(.init(now: 19)))
         XCTAssertEqual(cues.next(.init(now: 20)), .cue(first))
-        // The next read waits for the agent's answer to this one.
+        // The next waits for the agent to tell this one.
         cues.later(second)
         XCTAssertNil(cues.next(.init(now: 21)))
-        XCTAssertEqual(cues.next(.init(now: 24)), .cue(second))
-        XCTAssertEqual(cues.waiting, 0)
+        cues.agentSaid(words: 14, event: 7, at: 21)
+        XCTAssertNil(cues.next(.init(now: 22, agentSpeaking: true)))
+        cues.agentSpoke(at: 24)
+        XCTAssertNil(cues.next(.init(now: 25)))
+        XCTAssertEqual(cues.next(.init(now: 26)), .cue(second))
+        XCTAssertEqual(cues.waiting, 1)
         // An agent that says nothing: its silence is its answer after 4 s.
         var silent = CallCues(since: 0)
-        silent.checking(at: 10)
+        silent.refreshing(at: 10)
         silent.later(first)
         XCTAssertNil(silent.next(.init(now: 13)))
         XCTAssertEqual(silent.next(.init(now: 14)), .cue(first))
     }
 
-    /// A read this call never answered `checking` for (one asked before a
-    /// restart) is told to nobody.
-    func testAReadThisCallNeverAskedForGoesNowhere() {
+    /// An update the person talked over goes again once they have had
+    /// their answer: spoken over before the agent answered, or its answer
+    /// cut off short; and one the agent never answered. Twice more at most.
+    func testAnUpdateTalkedOverGoesAgainTwiceAtMost() {
+        let update = CallCue.conversationUpdate(#"{"event":"conversation_update","ref":"s1"}"#)
         var cues = CallCues(since: 0)
-        cues.later(.conversationRead(#"{"event":"conversation_read","ref":"s1"}"#))
+        cues.refreshing(at: 0)
+        cues.agentSpoke(at: 1)
+        cues.later(update)
+        XCTAssertEqual(cues.next(.init(now: 5)), .cue(update))
+        // The person starts talking as it goes: heard before any answer.
+        XCTAssertNil(cues.next(.init(now: 6, personSpeaking: true)))
+        cues.heard(at: 7)
+        XCTAssertEqual(cues.waiting, 1)
+        // The agent answers them, then the update goes again.
+        cues.agentSaid(words: 6, event: 1, at: 8)
+        XCTAssertNil(cues.next(.init(now: 8, agentSpeaking: true)))
+        cues.agentSpoke(at: 10)
+        XCTAssertNil(cues.next(.init(now: 11)))
+        XCTAssertEqual(cues.next(.init(now: 12)), .cue(update))
+        // Its answer begins and is cut off after three words.
+        cues.agentSaid(words: 25, event: 2, at: 12.5)
+        XCTAssertNil(cues.next(.init(now: 13, agentSpeaking: true)))
+        cues.agentCorrected(words: 3, event: 2)
+        cues.agentSpoke(at: 13.5)
+        XCTAssertNil(cues.next(.init(now: 14, personSpeaking: true)))
+        cues.heard(at: 15)
+        cues.agentSaid(words: 5, event: 3, at: 15.5)
+        cues.agentSpoke(at: 17)
+        XCTAssertNil(cues.next(.init(now: 18)))
+        XCTAssertEqual(cues.next(.init(now: 21)), .cue(update))
+        // The third time unanswered: let go, never a fourth.
+        XCTAssertNil(cues.next(.init(now: 25)))
+        XCTAssertNil(cues.next(.init(now: 29)))
+        XCTAssertEqual(cues.waiting, 0)
+        XCTAssertNil(cues.next(.init(now: 60)))
+        // Told, uninterrupted: it never goes again, and the person speaking after changes nothing.
+        var told = CallCues(since: 0)
+        told.refreshing(at: 0)
+        told.agentSpoke(at: 1)
+        told.later(update)
+        XCTAssertEqual(told.next(.init(now: 5)), .cue(update))
+        told.agentSaid(words: 20, event: 1, at: 5.5)
+        XCTAssertNil(told.next(.init(now: 6, agentSpeaking: true)))
+        told.agentSpoke(at: 9)
+        told.heard(at: 10)
+        XCTAssertEqual(told.waiting, 0)
+        XCTAssertNil(told.next(.init(now: 30)))
+        // Never answered at all: again after 8 s of quiet.
+        var unanswered = CallCues(since: 0)
+        unanswered.refreshing(at: 0)
+        unanswered.agentSpoke(at: 1)
+        unanswered.later(update)
+        XCTAssertEqual(unanswered.next(.init(now: 5)), .cue(update))
+        XCTAssertNil(unanswered.next(.init(now: 12)))
+        XCTAssertEqual(unanswered.next(.init(now: 13)), .cue(update))
+    }
+
+    /// An update for a read of another call (asked before a restart) is
+    /// told to nobody.
+    func testAnUpdateThisCallNeverReadForGoesNowhere() {
+        var cues = CallCues(since: 0)
+        cues.later(.conversationUpdate(#"{"event":"conversation_update","ref":"s1"}"#))
         XCTAssertEqual(cues.waiting, 0)
         XCTAssertNil(cues.next(.init(now: 30)))
     }

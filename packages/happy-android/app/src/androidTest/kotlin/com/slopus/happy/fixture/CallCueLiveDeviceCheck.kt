@@ -23,6 +23,7 @@ import com.slopus.happy.call.CallState
 import com.slopus.happy.call.CallTarget
 import com.slopus.happy.call.CallTargetState
 import com.slopus.happy.call.CallTargets
+import com.slopus.happy.call.CallUpdate
 import com.slopus.happy.call.ElevenLabsCallConnection
 import com.slopus.happy.call.FileCallHistoryStore
 import com.slopus.happy.call.PublicAgentCallGrants
@@ -35,6 +36,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
@@ -100,8 +102,9 @@ class CallCueLiveDeviceCheck {
         context.onReading { reading ->
             scope.launch {
                 when (reading) {
-                    CallReading.Checking -> session.checking()
-                    is CallReading.Read -> session.later(reading.cue)
+                    CallReading.Refreshing -> session.refreshing()
+                    is CallReading.Update -> session.later(reading.cue)
+                    is CallReading.Context -> session.deliver(CallUpdate(listOf(reading.line)))
                 }
             }
         }
@@ -250,61 +253,105 @@ class CallCueLiveDeviceCheck {
     }
 
     /**
-     * A read the computer is slow to make current: the tool answers `checking`, the agent says it is checking,
-     * the person asks something else meanwhile and is answered, then the read comes as a `conversation_read` cue
-     * and the agent tells what it found, unasked. Then one that never comes current: told as stale.
+     * A read of a conversation the phone has but not current: the agent answers at once from what the phone has,
+     * saying it is checking, the person asks something else meanwhile and is answered, then the refresh finds a newer
+     * reply and the agent tells it, unasked, from the `conversation_update` cue. Then a read the computer never makes
+     * current: told at once, and only a silent `conversation_unconfirmed` line after, no cue.
      */
     @Test
-    fun aSlowReadAnswersCheckingAndTheAgentTellsTheReadWhenItComes() {
-        assumeTrue("no agent ID in this build", CallAgent.hostedAgentId != null)
-        instrumentation.uiAutomation.grantRuntimePermission(app.packageName, android.Manifest.permission.RECORD_AUDIO)
-        CallProbe.reset()
-        val release = conversations[1]
-        val read = CallTargetState(release, turns = listOf(CallTurn("r1", "Ship the 2.1 notes", "Done: the 2.1 changelog is published, with the pineapple fix listed first.")),
-            checkedAt = System.currentTimeMillis() - 29 * 60_000)
-        var stale = false
-        val slow = object : CallTargets by targets {
-            override suspend fun state(agentId: String): CallTargetState? = if (agentId == release.agentId) read else targets.state(agentId)
-            override suspend fun refreshed(agentId: String, limitMillis: Long): CallTargetState? {
-                if (agentId != release.agentId) return targets.state(agentId)
-                if (stale) { delay(limitMillis); return read.copy(fresh = false) }
-                delay(6_000)
-                return read
-            }
-        }
-        val session = call(history("slow-read"), CallCues.Timing(silenceWarning = 600_000, silenceEnd = 700_000), slow)
+    fun aReadNotCurrentIsAnsweredAtOnceAndWhatIsNewIsToldWhenItComes() {
+        val (session, release, newer) = slowRelease("slow-read")
         fun cues() = CallProbe.sent.value.filter { it.kind == "cue" }
         try {
             assertTrue("never connected: ${session.state.value}", until(30_000) { session.state.value is CallState.Active })
             until(15_000) { agentLines() > 0 }
             type("What's going on in the release notes task?")
-            val checking = CallProbe.tools.value.firstOrNull { it.name == "readConversation" }
-            log.append("FIRST READ: ${checking?.result}\n")
-            assertTrue("the read didn't answer checking: $checking", checking != null && "\"checking\"" in checking.result.toString())
-            log.append("CUES AFTER THE CHECKING ANSWER: ${cues().size}\n")
+            val first = CallProbe.tools.value.firstOrNull { it.name == "readConversation" }
+            log.append("FIRST READ: ${first?.result}\n")
+            assertTrue("the read wasn't marked refreshing: $first", first != null && "\"refreshing\":true" in first.result.toString())
+            assertTrue("the read didn't have the kept turn: $first", "Ship the 2.1 notes" in first!!.result.toString())
+            log.append("ANSWERED AT ONCE: ${CallProbe.lines.value.last { it.role == "agent" }.text}\n")
             // The voice goes on: asked something else meanwhile, it answers.
             type("Also, how many minutes are in an hour?")
-            assertTrue("no read cue", until(20_000) { cues().any { "conversation_read" in it.text } })
-            val cue = cues().first { "conversation_read" in it.text }.text
-            log.append("READ CUE: $cue\n")
-            assertTrue("the read's turn has no ref: $cue", "\"ref\":\"t:r1\"" in cue)
+            assertTrue("no update cue", until(20_000) { cues().any { "conversation_update" in it.text } })
+            val cue = cues().first { "conversation_update" in it.text }.text
+            log.append("UPDATE CUE: $cue\n")
+            assertTrue("the update hasn't the new reply: $cue", "pineapple" in cue && "\"ref\":\"t:r2\"" in cue)
             val beforeTold = agentLines()
-            assertTrue("the agent never told the read", until(20_000) { agentLines() > beforeTold })
+            assertTrue("the agent never told the update", until(20_000) { agentLines() > beforeTold })
             until(4_000) { false }
             log.append("TOLD: ${CallProbe.lines.value.last { it.role == "agent" }.text}\n")
-            // Now the computer doesn't answer in time: the read comes stale, with when it was last checked.
-            stale = true
+            // Now the computer doesn't answer in time: no cue, a silent line.
+            release.never = true
+            release.state = release.state.copy(fresh = false)
             type("Read the release notes task again please.")
-            assertTrue("no stale cue", until(30_000) { cues().count { "conversation_read" in it.text } == 2 })
-            assertTrue("the second cue isn't stale", "\"stale\":true" in cues().last().text)
-            val beforeStale = agentLines()
-            assertTrue("the agent never told the stale read", until(20_000) { agentLines() > beforeStale })
-            until(4_000) { false }
-            log.append("TOLD STALE: ${CallProbe.lines.value.last { it.role == "agent" }.text}\n")
+            assertTrue("no unconfirmed line", until(20_000) { CallProbe.sent.value.any { it.kind == "update" && "conversation_unconfirmed" in it.text } })
+            assertEquals("a second update cue", 1, cues().count { "conversation_update" in it.text })
+            log.append("TOLD AGAIN: ${CallProbe.lines.value.last { it.role == "agent" }.text}\n")
+            log.append("NEWER: ${newer.turns.last().reply}\n")
         } finally {
             runBlocking(Dispatchers.Main) { session.stop() }
             until(2_000) { false }
             write("slow-read")
         }
+    }
+
+    /**
+     * The person talks just as the update cue goes out: the agent answers them, and the update goes again and is
+     * told after.
+     */
+    @Test
+    fun anUpdateTalkedOverIsToldAfterAll() {
+        val (session, _, _) = slowRelease("talk-over")
+        fun cues() = CallProbe.sent.value.filter { it.kind == "cue" && "conversation_update" in it.text }
+        try {
+            assertTrue("never connected: ${session.state.value}", until(30_000) { session.state.value is CallState.Active })
+            until(15_000) { agentLines() > 0 }
+            type("What's going on in the release notes task?")
+            assertTrue("no update cue", until(30_000) { cues().isNotEmpty() })
+            // Talked over: the person's words go as the cue does, before the agent answers it.
+            runBlocking(Dispatchers.Main) { connection?.type("Wait, sorry, how many days are in a week?") }
+            CallProbe.line("user", "Wait, sorry, how many days are in a week?")
+            log.append("TALKED OVER at cue ${cues().size}\n")
+            assertTrue("the update didn't go again", until(40_000) { cues().size >= 2 })
+            val before = agentLines()
+            assertTrue("the agent never told the update", until(20_000) { agentLines() > before })
+            until(5_000) { false }
+            log.append("TOLD AFTER: ${CallProbe.lines.value.last { it.role == "agent" }.text}\n")
+            assertTrue("never said what was new", CallProbe.lines.value.dropWhile { "days" !in it.text }.any { it.role == "agent" && "pineapple" in it.text.lowercase() })
+        } finally {
+            runBlocking(Dispatchers.Main) { session.stop() }
+            until(2_000) { false }
+            write("talk-over")
+        }
+    }
+
+    /** What the release notes task's refresh does: wait, then come current with [state]; or, [never], not in time. */
+    private class Slow(var state: CallTargetState, var never: Boolean = false)
+
+    /**
+     * A call where the phone has the release notes task as it was 29 minutes ago (one turn), and the computer, 6 s
+     * after it is asked, has a newer reply.
+     */
+    private fun slowRelease(name: String): Triple<CallSession, Slow, CallTargetState> {
+        assumeTrue("no agent ID in this build", CallAgent.hostedAgentId != null)
+        instrumentation.uiAutomation.grantRuntimePermission(app.packageName, android.Manifest.permission.RECORD_AUDIO)
+        CallProbe.reset()
+        val release = conversations[1]
+        val shipped = CallTurn("r1", "Ship the 2.1 notes", "Done: the 2.1 changelog is published.")
+        val kept = CallTargetState(release, turns = listOf(shipped), fresh = false, checkedAt = System.currentTimeMillis() - 29 * 60_000)
+        val newer = kept.copy(turns = listOf(shipped, CallTurn("r2", "Add the pineapple fix", "Added: the pineapple fix is now listed first in the 2.1 notes.")), fresh = true)
+        val slow = Slow(kept)
+        val targets = object : CallTargets by targets {
+            override suspend fun state(agentId: String): CallTargetState? = if (agentId == release.agentId) slow.state else targets.state(agentId)
+            override suspend fun refreshed(agentId: String, limitMillis: Long): CallTargetState? {
+                if (agentId != release.agentId) return targets.state(agentId)
+                if (slow.never) { delay(limitMillis); return slow.state.copy(fresh = false) }
+                delay(6_000)
+                slow.state = newer.copy(fresh = false)
+                return newer
+            }
+        }
+        return Triple(call(history(name), CallCues.Timing(silenceWarning = 600_000, silenceEnd = 700_000), targets), slow, newer)
     }
 }

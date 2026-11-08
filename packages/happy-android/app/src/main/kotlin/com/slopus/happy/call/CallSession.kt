@@ -134,10 +134,10 @@ class CallSession(
         })
     }
 
-    /** A tool answered that its answer comes later (`readConversation`'s `checking`): the agent says so before anything is told. */
-    fun checking() {
+    /** A read went out not current (`readConversation`'s `refreshing`): the agent answers from it before anything it finds is told. */
+    fun refreshing() {
         if (connection == null) return
-        cues?.checking(now())
+        cues?.refreshing(now())
     }
 
     /**
@@ -209,6 +209,7 @@ class CallSession(
                     said = { text, event ->
                         // Its first words before anyone else's are the hosted agent's greeting.
                         if (current == generation) {
+                            cues?.agentSaid(words(text), event, now())
                             if (!greeted) {
                                 greeted = true
                             } else {
@@ -217,7 +218,12 @@ class CallSession(
                             }
                         }
                     },
-                    corrected = { text, event -> if (current == generation) history?.corrected(text, event) },
+                    corrected = { text, event ->
+                        if (current == generation) {
+                            cues?.agentCorrected(words(text), event)
+                            history?.corrected(text, event)
+                        }
+                    },
                 )
                 val opened = connect(grant, request, events)
                 if (current != generation) {
@@ -402,5 +408,8 @@ class CallSession(
     companion object {
         /** The most context kept while the call isn't live yet. */
         const val PENDING_BYTES = 32 * 1024
+
+        /** Words as the call counts them: runs of anything but white space. */
+        fun words(text: String): Int = text.split(Regex("\\s+")).count { it.isNotEmpty() }
     }
 }

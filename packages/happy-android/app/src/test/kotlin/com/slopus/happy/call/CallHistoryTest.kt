@@ -337,19 +337,19 @@ class CallCuesTest {
     }
 
     /**
-     * A read that came in later waits for its moment: never while either side speaks, not before the agent has said
-     * it is checking (or said nothing for 4 s) and been quiet a moment, and not before it answered what the person
-     * said meanwhile. One at a time, oldest first.
+     * An update waits for its moment: never while either side speaks, not before the agent has answered from the
+     * read (or said nothing for 4 s) and been quiet a moment, and not before it answered what the person said
+     * meanwhile. One at a time, oldest first: the next once the agent has told this one.
      */
     @Test
-    fun aReadIsToldOnceTheAgentHasAnsweredWhatCameBefore() {
-        val first = CallCue.ConversationRead("""{"event":"conversation_read","ref":"s1"}""")
-        val second = CallCue.ConversationRead("""{"event":"conversation_read","ref":"s2"}""")
-        assertEquals("""{"event":"conversation_read","ref":"s1"}""", first.text)
+    fun anUpdateIsToldOnceTheAgentHasAnsweredWhatCameBefore() {
+        val first = CallCue.ConversationUpdate("""{"event":"conversation_update","ref":"s1"}""")
+        val second = CallCue.ConversationUpdate("""{"event":"conversation_update","ref":"s2"}""")
+        assertEquals("""{"event":"conversation_update","ref":"s1"}""", first.text)
         val cues = CallCues(since = 0)
-        cues.checking(10_000)
+        cues.refreshing(10_000)
         cues.later(first)
-        // The agent hasn't said it is checking yet.
+        // The agent hasn't answered from the read yet.
         assertNull(cues.next(CallCues.Moment(11_000)))
         assertNull(cues.next(CallCues.Moment(12_000, agentSpeaking = true)))
         cues.agentSpoke(12_000)
@@ -363,24 +363,89 @@ class CallCuesTest {
         cues.agentSpoke(18_000)
         assertNull(cues.next(CallCues.Moment(19_000)))
         assertEquals(CallCues.Action.Cue(first), cues.next(CallCues.Moment(20_000)))
-        // The next read waits for the agent's answer to this one.
+        // The next waits for the agent to tell this one.
         cues.later(second)
         assertNull(cues.next(CallCues.Moment(21_000)))
-        assertEquals(CallCues.Action.Cue(second), cues.next(CallCues.Moment(24_000)))
-        assertEquals(0, cues.waiting)
+        cues.agentSaid(14, 7, 21_000)
+        assertNull(cues.next(CallCues.Moment(22_000, agentSpeaking = true)))
+        cues.agentSpoke(24_000)
+        assertNull(cues.next(CallCues.Moment(25_000)))
+        assertEquals(CallCues.Action.Cue(second), cues.next(CallCues.Moment(26_000)))
+        assertEquals(1, cues.waiting)
         // An agent that says nothing: its silence is its answer after 4 s.
         val silent = CallCues(since = 0)
-        silent.checking(10_000)
+        silent.refreshing(10_000)
         silent.later(first)
         assertNull(silent.next(CallCues.Moment(13_000)))
         assertEquals(CallCues.Action.Cue(first), silent.next(CallCues.Moment(14_000)))
     }
 
-    /** A read this call never answered `checking` for (one asked before a restart) is told to nobody. */
+    /**
+     * An update the person talked over goes again once they have had their answer: spoken over before the agent
+     * answered, or its answer cut off short; and one the agent never answered. Twice more at most.
+     */
     @Test
-    fun aReadThisCallNeverAskedForGoesNowhere() {
+    fun anUpdateTalkedOverGoesAgainTwiceAtMost() {
+        val update = CallCue.ConversationUpdate("""{"event":"conversation_update","ref":"s1"}""")
+        val cue = CallCues.Action.Cue(update)
         val cues = CallCues(since = 0)
-        cues.later(CallCue.ConversationRead("""{"event":"conversation_read","ref":"s1"}"""))
+        cues.refreshing(0)
+        cues.agentSpoke(1_000)
+        cues.later(update)
+        assertEquals(cue, cues.next(CallCues.Moment(5_000)))
+        // The person starts talking as it goes: heard before any answer.
+        assertNull(cues.next(CallCues.Moment(6_000, personSpeaking = true)))
+        cues.heard(7_000)
+        assertEquals(1, cues.waiting)
+        // The agent answers them, then the update goes again.
+        cues.agentSaid(6, 1, 8_000)
+        assertNull(cues.next(CallCues.Moment(8_000, agentSpeaking = true)))
+        cues.agentSpoke(10_000)
+        assertNull(cues.next(CallCues.Moment(11_000)))
+        assertEquals(cue, cues.next(CallCues.Moment(12_000)))
+        // Its answer begins and is cut off after three words.
+        cues.agentSaid(25, 2, 12_500)
+        assertNull(cues.next(CallCues.Moment(13_000, agentSpeaking = true)))
+        cues.agentCorrected(3, 2)
+        cues.agentSpoke(13_500)
+        assertNull(cues.next(CallCues.Moment(14_000, personSpeaking = true)))
+        cues.heard(15_000)
+        cues.agentSaid(5, 3, 15_500)
+        cues.agentSpoke(17_000)
+        assertNull(cues.next(CallCues.Moment(18_000)))
+        assertEquals(cue, cues.next(CallCues.Moment(21_000)))
+        // The third time unanswered: let go, never a fourth.
+        assertNull(cues.next(CallCues.Moment(25_000)))
+        assertNull(cues.next(CallCues.Moment(29_000)))
+        assertEquals(0, cues.waiting)
+        assertNull(cues.next(CallCues.Moment(60_000)))
+        // Told, uninterrupted: it never goes again, and the person speaking after changes nothing.
+        val told = CallCues(since = 0)
+        told.refreshing(0)
+        told.agentSpoke(1_000)
+        told.later(update)
+        assertEquals(cue, told.next(CallCues.Moment(5_000)))
+        told.agentSaid(20, 1, 5_500)
+        assertNull(told.next(CallCues.Moment(6_000, agentSpeaking = true)))
+        told.agentSpoke(9_000)
+        told.heard(10_000)
+        assertEquals(0, told.waiting)
+        assertNull(told.next(CallCues.Moment(30_000)))
+        // Never answered at all: again after 8 s of quiet.
+        val unanswered = CallCues(since = 0)
+        unanswered.refreshing(0)
+        unanswered.agentSpoke(1_000)
+        unanswered.later(update)
+        assertEquals(cue, unanswered.next(CallCues.Moment(5_000)))
+        assertNull(unanswered.next(CallCues.Moment(12_000)))
+        assertEquals(cue, unanswered.next(CallCues.Moment(13_000)))
+    }
+
+    /** An update for a read of another call (asked before a restart) is told to nobody. */
+    @Test
+    fun anUpdateThisCallNeverReadForGoesNowhere() {
+        val cues = CallCues(since = 0)
+        cues.later(CallCue.ConversationUpdate("""{"event":"conversation_update","ref":"s1"}"""))
         assertEquals(0, cues.waiting)
         assertNull(cues.next(CallCues.Moment(30_000)))
     }

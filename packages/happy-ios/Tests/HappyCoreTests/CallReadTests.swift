@@ -188,35 +188,40 @@ final class CallReadTests: XCTestCase {
         XCTAssertEqual(((turn["cut"] as? [String: Any])?["user"] as? [String: Int])?["words"], 1600)
     }
 
-    // MARK: Later, as a cue
+    // MARK: Not current
 
-    /// A read that answered `checking` comes as a cue paged as it was
-    /// asked; two different asks on the way are two cues, the same twice one.
-    func testACheckingReadComesPagedAsAsked() async throws {
-        let (_, targets) = await context(CallTargetState(target: target, turns: eight()))
+    /// A read of a conversation that isn't current is paged as asked at
+    /// once, marked `refreshing`; what the refresh finds new comes as one
+    /// cue, its turns cut by the most words a read of it asked for.
+    func testANotCurrentReadIsPagedAtOnceAndItsUpdateCutAsRead() async throws {
+        var state = CallTargetState(target: target, turns: eight())
+        state.fresh = false
+        let (_, targets) = await context(state)
         await targets.setRefresh("a", .after(.milliseconds(150)))
-        let context = CallContext(targets: targets, readGrace: .milliseconds(20), refresh: .seconds(2))
+        let context = CallContext(targets: targets, refresh: .seconds(2))
         let cues = CueBox()
         await context.onReading { reading in
-            if case .read(let cue) = reading { cues.add(cue.text) }
+            if case .update(let cue) = reading { cues.add(cue.text) }
         }
         _ = await context.initial()
-        for arguments in [#","from":"t:66","words":30"#, #","from":"t:66","words":30"#, #","from":"t:zz""#] {
-            let answer = try object(await read(context, arguments))
-            XCTAssertEqual(answer["status"] as? String, "checking", arguments)
-        }
-        for _ in 0..<100 where cues.all.count < 2 { try? await Task.sleep(for: .milliseconds(20)) }
+        let answer = try object(await read(context, #","from":"t:66","words":30"#))
+        XCTAssertEqual(answer["refreshing"] as? Bool, true)
+        XCTAssertEqual(turns(answer).map { $0["ref"] as? String }, ["t:22", "t:33", "t:44", "t:55", "t:66"])
+        XCTAssertEqual(answer["continueFrom"] as? String, "t:11")
+        let refused = await read(context, #","from":"t:zz""#)
+        XCTAssertTrue(refused.isError)
+        let long = (1...100).map { "w\($0)" }.joined(separator: " ")
+        await targets.set("a", CallTargetState(target: target, turns: eight() + [CallTurn(id: "run-99", user: "more", reply: long)]))
+        for _ in 0..<100 where cues.all.isEmpty { try? await Task.sleep(for: .milliseconds(20)) }
         try? await Task.sleep(for: .milliseconds(100))
-        let told = cues.all.map { try? XCTUnwrap(JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any]) }
-        XCTAssertEqual(told.count, 2)
-        let paged = try XCTUnwrap(told.first ?? nil)
-        XCTAssertEqual(paged["event"] as? String, "conversation_read")
-        XCTAssertEqual(turns(paged).map { $0["ref"] as? String }, ["t:22", "t:33", "t:44", "t:55", "t:66"])
-        XCTAssertEqual(paged["continueFrom"] as? String, "t:11")
-        let refused = try XCTUnwrap(told.last ?? nil)
-        XCTAssertEqual(refused["ok"] as? Bool, false)
-        XCTAssertEqual(refused["reason"] as? String, "No turn t:zz in this conversation. Use a ref from one of its reads.")
-        XCTAssertEqual(refused["event"] as? String, "conversation_read")
+        XCTAssertEqual(cues.all.count, 1)
+        let update = try XCTUnwrap(cues.all.first.flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any] })
+        XCTAssertEqual(update["event"] as? String, "conversation_update")
+        let turn = try XCTUnwrap(turns(update).first)
+        XCTAssertEqual(turns(update).count, 1)
+        XCTAssertEqual(turn["ref"] as? String, "t:99")
+        XCTAssertEqual((turn["cut"] as? [String: Any])?["assistant"] as? [String: Int], ["words": 100, "leftOut": 70])
+        XCTAssertEqual(update["continueFrom"] as? String, "t:88")
     }
 }
 

@@ -193,9 +193,11 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
   finger on its row reaches (`WarmChats.intent`), and both a read and a send
   wait for its first page: one never opened on this phone takes a message
   by voice, and a read or send after it finds it kept, not started over.
-  A read waits a second for it to come current; past that it answers
-  `checking` and comes later as a `conversation_read` cue, stale if it
-  isn't current within eight (`SessionCallTargets.refreshed`).
+  A read answers at once with what the phone has; one not current is
+  marked `refreshing` and made current behind it for up to eight seconds
+  (`SessionCallTargets.refreshed`), what is new then told as a
+  `conversation_update` cue (a silent line if nothing is, or it doesn't
+  come current).
   It ends on background, interruption, lost route, account change and when
   the relay's voice starts. For launch it connects to a public agent by its
   ID (`PublicAgentCallGrants`): a connection mechanism, not authentication.

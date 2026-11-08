@@ -159,14 +159,16 @@ class CallController(
         }.launchIn(calling)
         focus = targets.focusedNow
         calling.launch { context.onRestart { withContext(Dispatchers.Main) { call.requestRestart() } } }
-        // A read that answered `checking`: the agent says so first, then the read comes as a cue.
+        // A read of a conversation that wasn't current: the agent answers from it first, then what is new comes as a
+        // cue, or a line of context when nothing is.
         calling.launch {
             context.onReading { reading ->
                 calling.launch {
                     if (session !== call) return@launch
                     when (reading) {
-                        CallReading.Checking -> call.checking()
-                        is CallReading.Read -> call.later(reading.cue)
+                        CallReading.Refreshing -> call.refreshing()
+                        is CallReading.Update -> call.later(reading.cue)
+                        is CallReading.Context -> call.deliver(CallUpdate(listOf(reading.line)))
                     }
                 }
             }

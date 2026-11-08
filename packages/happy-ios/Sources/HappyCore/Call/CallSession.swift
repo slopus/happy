@@ -161,11 +161,11 @@ public final class CallSession {
         return .json(["ok": true, "restarting": true, "note": "The call restarts once you finish speaking; say so in a few words."])
     }
 
-    /// A tool answered that its answer comes later (`readConversation`'s
-    /// `checking`): the agent says so before anything is told.
-    public func checking() {
+    /// A read went out not current (`readConversation`'s `refreshing`):
+    /// the agent answers from it before anything it finds is told.
+    public func refreshing() {
         guard connection != nil else { return }
-        cues?.checking(at: now())
+        cues?.refreshing(at: now())
     }
 
     /// Something the agent asked for, in: told as a cue once neither side
@@ -235,12 +235,14 @@ public final class CallSession {
                     self.history?.heard(text, at: self.wall())
                 }, said: { [weak self] text, event in
                     guard let self, current == self.generation else { return }
+                    self.cues?.agentSaid(words: CallSession.words(text), event: event, at: self.now())
                     // Its first words before anyone else's are the hosted agent's greeting.
                     guard self.greeted else { self.greeted = true; return }
                     self.spoke = true
                     self.history?.said(text, event: event, at: self.wall())
                 }, corrected: { [weak self] text, event in
                     guard let self, current == self.generation else { return }
+                    self.cues?.agentCorrected(words: CallSession.words(text), event: event)
                     self.history?.corrected(text, event: event)
                 })
                 let opened: any CallConnection
@@ -290,6 +292,11 @@ public final class CallSession {
     }
 
     /// The wall clock, for the history, whatever `now` counts.
+    /// Words as the call counts them: runs of anything but white space.
+    nonisolated static func words(_ text: String) -> Int {
+        text.split(whereSeparator: \.isWhitespace).count
+    }
+
     private func wall() -> Double { Date().timeIntervalSince1970 }
 
     /// Voice time left now, counting what isn't written down yet.
