@@ -185,8 +185,15 @@ says it under its name, with the same spinner.
 | No network path (`NetworkPath`, `NWPathMonitor`) | "Waiting for network…" | "waiting for network…" |
 | Reaching the server or computer | "Connecting…" | "connecting…" |
 | Connected, catching up | "Updating…" | "updating…" |
-| Offline for a reason home lists (a paired computer only) | the name | "offline" |
 | Live | the name | the session's own status |
+
+**No link is ever offline.** There is no offline state: whatever account
+kind (a Happy Cloud or team server, a paired computer, a Happy account),
+a link that isn't connected while the phone has a network is
+"Connecting…", and it is asked again with backoff for as long as the
+account is there. What the network can't fix (a pairing to redo, a
+sign-in that ended, an update to install) home's notice says, in its own
+words, while the headers say "Connecting…".
 
 **One model per account, read by every header.** Each kind works its
 `LinkState` out of its own sources and feeds one `LinkIndicator`; home's
@@ -194,11 +201,11 @@ title and every chat of that account watch it, so they change together:
 
 - agent: `Session.headerState(status:snapshot:network:)`, from the
   pairing's check, the engine's snapshot and the path. An open stream is
-  the truth whatever the pairing's check last said; an engine error with
-  the stream down is `offline`. A signed-in server (Happy Cloud's, a
-  team's) is always there to answer, so its stream down is on its way back:
-  "connecting" until it is live again (`HomeSnapshot.reconnecting`), and
-  home lists no reason for it.
+  the truth whatever the pairing's check last said. A stream down, for any
+  account (a server, a paired computer), is on its way back: "connecting"
+  until it is live again (`HomeSnapshot.reconnecting`), and home lists no
+  reason for it. The pairing answered with the stream not yet open is
+  "updating".
 - legacy: `LegacyLink`, the one reader of the session's socket status and
   catch-up streams (`AccountSession.statusUpdates`, `catchUpUpdates`). The
   socket retries for as long as the account is signed in, so a socket that
@@ -226,17 +233,13 @@ With Reduce Motion they only crossfade.
 ("Connecting…, Studio Mac"). A change that stands half a second is
 announced once while home is on screen; back live, "Online".
 
-**One statement per cause.** With no network path, home shows no
-"computer did not answer" notice: the title already says it, and so does
-a chat's, over its session's status. When the network is fine but the
-computer did not answer, home's notice says so in its own words and the
-title keeps the name rather than say "Connecting…" beside it; the notice
-is the clearer of the two, since it says which side is away. When the path
-comes back the account reconnects at once rather than at the end of its
-backoff (agent: `SyncEngine.reconnect`, which also drops the error from
-the offline spell, so the title says "Connecting…" until this try
-answers; legacy: `AccountSession.networkReturned`, a fresh socket), and
-what waited is sent.
+**One statement per cause.** A link that is only away (no network path,
+or a computer or server that doesn't answer) is said by the title alone,
+and a chat's, over its session's status; home shows no notice for it.
+When the path comes back the account reconnects at once rather than at
+the end of its backoff (agent: `SyncEngine.reconnect`; legacy:
+`AccountSession.networkReturned`, a fresh socket), and what waited is
+sent.
 
 ## Tests
 
@@ -256,8 +259,8 @@ what waited is sent.
 - `LinkTitleLayoutTests`, `ChatHeaderSpinnerLayoutTests` (HappyLayout):
   the status in the name's place and under a chat's name, long
   translations and narrow bars.
-- `HostedLinkTitleTests`: both homes through offline, connecting,
-  updating and live, the header held still and the frames mid-change; a
+- `HostedLinkTitleTests`: both homes through connecting, updating and
+  live, the header held still and the frames mid-change; a
   legacy chat's subtitle from the same link.
 - `HostedOfflineAgentTests`: a paired computer read online, then
   airplane mode: a chat read and a task archived offline, the app killed

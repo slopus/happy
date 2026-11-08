@@ -444,7 +444,7 @@ class ProseRowsTest {
         prepare(rows)
         ProseThread.strict = true
         val before = ProseThread.mainBuilds.get()
-        rule.setHappyContent { ConversationScreen(ConversationState(created = true, loaded = true, rows = rows, agent = agent), null, ConversationScreenActions()) }
+        rule.setHappyContent { ConversationScreen(ConversationState(created = true, loaded = true, rows = rows, agent = agent), ConversationScreenActions()) }
         rule.node(ConversationScreenTags.LIST).performScrollToNode(hasTestTag(ConversationScreenTags.OLDER))
         rule.waitForIdle()
         rule.onNodeWithText("Question 0: why does the login page loop back to itself?").assertExists()
@@ -462,7 +462,7 @@ class ProseRowsTest {
         ProseThread.strict = true
         val before = ProseThread.mainBuilds.get()
         rule.setHappyContent {
-            ConversationScreen(ConversationState(created = true, loaded = true, rows = rows, agent = agent, working = true), null, ConversationScreenActions())
+            ConversationScreen(ConversationState(created = true, loaded = true, rows = rows, agent = agent, working = true), ConversationScreenActions())
         }
         rule.waitForIdle()
         repeat(12) { i ->

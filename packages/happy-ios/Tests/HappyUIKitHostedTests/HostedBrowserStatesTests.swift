@@ -313,7 +313,7 @@ final class HostedBrowserStatesTests: XCTestCase {
         try await shots(window, "browser-error-computer-unreachable")
 
         await daemon.setDown(false)
-        browser.linkChanged(.offline)
+        browser.linkChanged(.connecting)
         browser.linkChanged(.online)
         try await until("the page after the computer came back") { await text(browser.web) == "ready" }
         XCTAssertNil(browser.problem)

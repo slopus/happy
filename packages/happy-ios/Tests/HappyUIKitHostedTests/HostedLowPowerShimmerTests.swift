@@ -78,7 +78,7 @@ final class HostedLowPowerShimmerTests: XCTestCase {
         header.frame = CGRect(x: 0, y: 60, width: 393, height: ChatHeaderLayout.Metrics.height)
         window.addSubview(header)
         header.titleView.text = "Fix the login"
-        header.status = Strings.HeaderStatus.all[4]
+        header.status = Strings.HeaderStatus.all[3]
         header.statusShimmers = true
         header.layoutIfNeeded()
         XCTAssertFalse(header.statusSweeps)

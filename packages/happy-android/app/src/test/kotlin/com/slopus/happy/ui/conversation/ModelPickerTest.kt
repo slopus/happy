@@ -76,7 +76,7 @@ class ModelPickerTest {
         rule.setHappyContent(dark) {
             ConversationScreen(
                 ConversationState(created = true, loaded = true, rows = rows, agent = agent, mode = current, catalog = catalog),
-                null, ConversationScreenActions(onModeChange = { picks += it }),
+                ConversationScreenActions(onModeChange = { picks += it }),
                 usage = usage,
                 onRefreshUsage = { asked += it },
             )
@@ -167,7 +167,7 @@ class ModelPickerTest {
         )
         val current = Mode("p", "m18", "low", null, "auto")
         rule.setHappyContent {
-            ConversationScreen(ConversationState(created = true, loaded = true, rows = rows, agent = agent, mode = current, catalog = many), null, ConversationScreenActions())
+            ConversationScreen(ConversationState(created = true, loaded = true, rows = rows, agent = agent, mode = current, catalog = many), ConversationScreenActions())
         }
         rule.node(ConversationComposerTags.INPUT).performSemanticsAction(SemanticsActions.RequestFocus)
         rule.waitForIdle()

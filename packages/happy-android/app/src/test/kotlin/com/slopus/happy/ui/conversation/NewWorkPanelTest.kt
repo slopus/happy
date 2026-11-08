@@ -61,7 +61,6 @@ class NewWorkPanelTest {
     private fun show() = rule.setHappyContent {
         ConversationScreen(
             state,
-            null,
             ConversationScreenActions(onChoiceChange = { choice ->
                 choices += choice
                 state = state.copy(newWork = NewWork(choice))

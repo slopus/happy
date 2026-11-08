@@ -41,9 +41,9 @@ final class HostedHomeNoticeRowTests: XCTestCase {
         capture(app.window, "1-without")
 
         // It comes: the rows move down to make its room, through frames between.
-        let arriving = try await watch(sidebar, app.window) { home.applyConnection(Self.snapshot(error: "")) }
+        let arriving = try await watch(sidebar, app.window) { home.applyConnection(Self.snapshot(error: Self.unpaired)) }
         let notice = try XCTUnwrap(noticeView(sidebar))
-        XCTAssertEqual(notice.title.text, Strings.unanswered)
+        XCTAssertEqual(notice.title.text, Self.unpaired)
         let height = try XCTUnwrap(sidebar.list.settledFrame(at: 0)).height
         XCTAssertEqual(height, notice.item.notice.layout.size.height)
         XCTAssertGreaterThan(height, 40)
@@ -55,7 +55,7 @@ final class HostedHomeNoticeRowTests: XCTestCase {
         assertMoves(arriving, from: top, to: top + height, "coming")
         // VoiceOver reads it as the list's first thing.
         XCTAssertTrue(notice.isAccessibilityElement)
-        XCTAssertEqual(notice.accessibilityLabel, Strings.unanswered)
+        XCTAssertEqual(notice.accessibilityLabel, Self.unpaired)
         capture(app.window, "2-with-notice")
 
         // It goes: the rows move back up.
@@ -101,13 +101,16 @@ final class HostedHomeNoticeRowTests: XCTestCase {
         let sidebar = try XCTUnwrap(app.sidebar)
         let home = try XCTUnwrap(app.root.children.compactMap { $0 as? HomeViewController }.first)
         capture(app.window, "1-without")
-        let arriving = try await watch(sidebar, app.window) { home.applyConnection(Self.snapshot(error: "")) }
+        let arriving = try await watch(sidebar, app.window) { home.applyConnection(Self.snapshot(error: Self.unpaired)) }
         XCTAssertGreaterThan(arriving.count, 3)
         XCTAssertNotNil(noticeView(sidebar))
         capture(app.window, "2-with-notice")
     }
 
     // MARK: Reading
+
+    /// What home says of a pairing to redo, as `SyncEngine` words it.
+    private static let unpaired = "This device was disconnected. Pair it again."
 
     private static func snapshot(error: String?) -> HomeSnapshot {
         var snapshot = HomeSnapshot()

@@ -56,7 +56,6 @@ fun FixtureScreens(transport: FixtureTransport, scope: CoroutineScope, onConvers
             DisposableEffect(conversation) { onDispose { conversation.setVisible(false) } }
             ConversationScreen(
                 state = state,
-                connection = null,
                 actions = remember(conversation, nav) {
                     ConversationScreenActions(
                         onBack = {},

@@ -6,8 +6,6 @@
 <resources>
     <string name="conversation_details">聊天详情</string>
     <string name="conversation_offline">离线</string>
-    <string name="conversation_revoked">此设备已被移除</string>
-    <string name="conversation_update_required">需要更新</string>
     <string name="conversation_unavailable">此设备上无法使用此智能体连接。</string>
     <string name="conversation_empty">还没有消息。</string>
     <string name="conversation_read_only">此对话由另一个智能体驱动，无法接收消息。</string>

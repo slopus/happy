@@ -69,7 +69,7 @@ import kotlin.random.Random
 
 /** How an agent connection's live link stands, as its home and chats show it. */
 enum class AgentLinkStatus {
-    Connecting, Connected, Offline, Revoked, UpdateRequired,
+    Connecting, Connected, Revoked, UpdateRequired,
     /** A team server's sign-in expired (edge SSO): the person signs in again, then the link resumes. */
     SignInRequired,
 }
@@ -666,17 +666,13 @@ class AgentSession internal constructor(
     /**
      * The phone has a network again (iOS's `SyncEngine.reconnect`): a link
      * not live starts over now, not when its backoff says, and an attempt
-     * made without a network is dropped. What failed meanwhile says nothing
-     * of the computer, so the header says connecting until this try answers.
+     * made without a network is dropped.
      */
     fun networkReturned() {
         // Every tunnel kept checks its relay and every path first, replacing only what doesn't answer.
         scope.launch {
             linkLock.withLock { route?.second }?.networkChanged()
-            val status = statusState.value
-            if (!linking) return@launch
-            if (status != AgentLinkStatus.Connecting && status != AgentLinkStatus.Offline) return@launch
-            statusState.value = AgentLinkStatus.Connecting
+            if (!linking || statusState.value != AgentLinkStatus.Connecting) return@launch
             redials.update { it + 1 }
         }
     }
@@ -706,11 +702,7 @@ class AgentSession internal constructor(
         var snapshotRead = catalogState.value.let { it.loaded && it.cursor != null }
         while (true) {
             awaitSignedIn()
-            // A computer that did not answer stays offline while it's asked again (iOS's `Session.headerState`):
-            // home's notice says so until the stream opens, rather than coming and going with every retry.
-            if (statusState.value != AgentLinkStatus.Connected && statusState.value != AgentLinkStatus.Offline) {
-                statusState.value = AgentLinkStatus.Connecting
-            }
+            if (statusState.value != AgentLinkStatus.Connected) statusState.value = AgentLinkStatus.Connecting
             // The sign-in this attempt runs under: a refusal it meets signs out only that one.
             val grant = connections.grant(connectionId)
             try {
@@ -739,14 +731,14 @@ class AgentSession internal constructor(
                         backoff = INITIAL_BACKOFF
                         continue
                     }
-                    else -> unanswered()
+                    else -> reconnecting()
                 }
             } catch (e: AgentApiException) {
                 // A 409 cursor_unavailable or any refused read: read the snapshot again.
                 snapshotRead = false
-                unanswered()
+                reconnecting()
             } catch (_: Exception) {
-                unanswered()
+                reconnecting()
             }
             delay(backoff + (backoff * JITTER * (random.nextDouble() * 2 - 1)).toLong())
             backoff = (backoff * 2).coerceAtMost(MAX_BACKOFF)
@@ -754,14 +746,13 @@ class AgentSession internal constructor(
     }
 
     /**
-     * An attempt failed: a stream that was open is on its way back; one that
-     * never opened did not answer. A server (Happy Cloud's, a team's) is
-     * always there to answer, so its link is on its way back however the
-     * attempt failed, as a Happy account's socket is (iOS's
-     * `HomeSnapshot.reconnecting`): its headers say connecting, not offline.
+     * An attempt failed, however it failed: the link is asked again with
+     * backoff for as long as it is open, so it is on its way back, as a Happy
+     * account's socket is (iOS's `HomeSnapshot.reconnecting`). No link is
+     * ever offline: its headers say connecting.
      */
-    private fun unanswered() {
-        statusState.value = if (statusState.value == AgentLinkStatus.Connected || server != null) AgentLinkStatus.Connecting else AgentLinkStatus.Offline
+    private fun reconnecting() {
+        statusState.value = AgentLinkStatus.Connecting
     }
 
     /**

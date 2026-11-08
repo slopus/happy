@@ -17,11 +17,10 @@ public struct HomeSnapshot: Equatable, Sendable {
     /// The person's own picture's ThumbHash, for the faces that are theirs.
     public var profilePhoto: String?
     public var error: String?
-    /// A signed-in server's stream is down and being opened again. A
-    /// server (Happy Cloud's, a team's) is always there to answer, so a
-    /// failed or dropped stream is on its way back, "connecting…", as a
-    /// Happy account's socket is, never an `error` home says. Android's
-    /// `AgentSession.unanswered`.
+    /// The stream is down and being opened again, however it failed: it is
+    /// asked again with backoff for as long as the engine runs, so it is on
+    /// its way back, "connecting…", as a Happy account's socket is, never
+    /// an `error` home says. Android's `AgentSession.reconnecting`.
     public var reconnecting = false
     /// An action the computer refused, said for a moment while it rolls back.
     public var notice: String?
@@ -316,7 +315,8 @@ public actor SyncEngine {
             await spaces.startExternal()
             await artifacts.start()
         } catch {
-            snapshot.error = Store.describe(error)
+            // What this phone keeps could not be read: nothing to do with the link.
+            snapshot.error = "Could not open this connection on this device."
             publish()
             return
         }
@@ -439,13 +439,13 @@ public actor SyncEngine {
             } catch {
                 guard current(generation) else { return }
                 snapshot.live = false
-                if client.signsIn { snapshot.reconnecting = true } else { snapshot.error = Store.describe(error) }
+                snapshot.reconnecting = true
                 publish()
             }
             await documents.closed()
             guard current(generation) else { return }
             snapshot.live = false
-            if client.signsIn { snapshot.reconnecting = true }
+            snapshot.reconnecting = true
             publish()
             // A signed-in server's edge closes idle connections; come back
             // quickly (edge SSO contract §5: 0.1 s doubling to 10 s).
@@ -689,9 +689,13 @@ public actor SyncEngine {
             } catch {
                 // Retain the original timestamp and ID, including across
                 // suspension and relaunch. Reconnect retries the same intent.
-                snapshot.error = Store.describe(error)
-                publish()
-                if let error = error as? AgentClientError, error == .revoked || (error.status.map { (400..<500).contains($0) } ?? false) { return }
+                // A refusal is said; one that only didn't reach the computer
+                // is the link's, which the title says.
+                if let error = error as? AgentClientError, error == .revoked || (error.status.map { (400..<500).contains($0) } ?? false) {
+                    snapshot.error = Store.describe(error)
+                    publish()
+                    return
+                }
                 do { try await Task.sleep(for: .seconds(min(30, 1 << min(attempt, 5)))) } catch { return }
                 attempt += 1
             }

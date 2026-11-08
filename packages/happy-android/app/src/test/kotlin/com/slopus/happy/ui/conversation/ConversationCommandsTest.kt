@@ -75,7 +75,6 @@ class ConversationCommandsTest {
             ProvideWindowLayout {
                 ConversationScreen(
                     state,
-                    null,
                     ConversationScreenActions(
                         onDraftChange = { drafts += it },
                         onSend = { words, _ -> sent += words; true },

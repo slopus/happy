@@ -9,6 +9,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
@@ -17,6 +19,7 @@ import com.slopus.happy.agent.AgentSession
 import com.slopus.happy.auth.AndroidKeyStoreKeys
 import com.slopus.happy.auth.ExpoSecureStore
 import com.slopus.happy.connection.AccessToken
+import com.slopus.happy.connection.AgentConnectionCredentials
 import com.slopus.happy.connection.AgentConnections
 import com.slopus.happy.connection.AgentOrigin
 import com.slopus.happy.connection.ByteSource
@@ -32,6 +35,7 @@ import com.slopus.happy.conversation.ConversationApi
 import com.slopus.happy.ui.chat.rememberShownLinkState
 import com.slopus.happy.ui.connection.AgentHomeActions
 import com.slopus.happy.ui.connection.AgentHomeScreen
+import com.slopus.happy.ui.connection.AgentHomeTags
 import com.slopus.happy.ui.conversation.ConversationScreen
 import com.slopus.happy.ui.conversation.ConversationScreenActions
 import com.slopus.happy.ui.conversation.linkState
@@ -57,13 +61,16 @@ import java.io.File
 import java.io.IOException
 
 /**
- * A Happy Cloud server's link in its headers on a device: the real
- * [AgentSession] of a server connection, over a server that exists only in
- * this test's memory, feeding the real link pipeline ([linkState],
- * [rememberShownLinkState]) into the real home and chat screens. Its home
- * comes slowly first ("Updating…"), then it goes away while the phone has
- * its network ("Connecting…", never offline), then it comes back. Captured
- * to the app's files under `device-evidence/cloud-link/`.
+ * An agent connection's link in its headers on a device: the real
+ * [AgentSession] of a Happy Cloud server's connection, or of a paired
+ * computer's, over a server or computer that exists only in this test's
+ * memory, feeding the real link pipeline ([linkState],
+ * [rememberShownLinkState]) into the real home and chat screens. The
+ * server's home comes slowly first ("Updating…"), then it goes away while
+ * the phone has its network ("Connecting…", never offline), then it comes
+ * back. The computer never answers at all, then answers, then drops: it is
+ * connecting throughout, with no notice and no page saying it is offline.
+ * Captured to the app's files under `device-evidence/cloud-link/`.
  *
  * Not covered: AppGraph and the app's own routes, which this mirrors
  * (`SignedInAgentHome`, `ConversationEntry`); a real Happy Cloud server.
@@ -155,35 +162,27 @@ class CloudLinkDeviceShots {
         device.takeScreenshot(File(evidence, "$name.png"))
     }
 
-    @Test fun cloudServerSaysUpdatingThenConnectingNeverOffline() = runBlocking {
-        rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
+    private fun connections(): AgentConnections {
         val prefs = { name: String -> app.getSharedPreferences("cloud-link-shots-$name", Context.MODE_PRIVATE).also { it.edit().clear().commit() } }
-        val connections = AgentConnections(ExpoSecureStore(prefs("secrets"), AndroidKeyStoreKeys(strongBox = false), keychainService = "cloud-link-shots"), prefs("registry"))
-        val server = FlakyServer()
-        val origin = AgentOrigin.parse("https://acme.${HappyCloud.base ?: "happy-clusters.com"}")
-        val credential = OAuthCredential("jwt", "happy", "${origin.value}/refresh", "refresh", origin.value, userId = "u1")
-        val id = connections.addServer(origin, credential, AccessToken("access", null), fallbackName = "Acme").id
-        server.held = CompletableDeferred()
-        val shown = mutableStateOf(LinkState.Online)
-        val session = AgentSession(id, connections, null, MutableStateFlow(true), scope, { server })
-        describe = { "status ${session.status.value}, syncing ${session.isSyncing.value}, shown ${shown.value}, calls ${server.calls}" }
+        return AgentConnections(ExpoSecureStore(prefs("secrets"), AndroidKeyStoreKeys(strongBox = false), keychainService = "cloud-link-shots"), prefs("registry"))
+    }
+
+    /** Home, or the chat while [chat] says, as `SignedInAgentHome` and `ConversationEntry` show [session]; [shown] is what the headers show. */
+    private fun screens(session: AgentSession, id: String, name: String, chat: androidx.compose.runtime.MutableState<Boolean>, shown: androidx.compose.runtime.MutableState<LinkState>) {
         val fixture = FixtureTransport()
         val conversation = Conversation(api = ConversationApi(fixture.request), signals = emptyFlow(), scope = scope, agentId = FixtureTransport.AGENT)
-        val chat = mutableStateOf(false)
-        val accounts = AccountMenu(listOf(AccountMenuEntry(id, "Acme", agent = true, active = true)))
+        val accounts = AccountMenu(listOf(AccountMenuEntry(id, name, agent = true, active = true)))
         rule.setContent {
             HappyTheme {
                 val status by session.status.collectAsState()
                 val syncing by session.isSyncing.collectAsState()
                 val feed by session.feed.collectAsState()
-                // As SignedInAgentHome and ConversationEntry work it out.
                 val link = rememberShownLinkState(status.linkState(syncing, network = true))
                 shown.value = link
                 if (chat.value) {
                     val state by conversation.state.collectAsState()
                     ConversationScreen(
                         state = state,
-                        connection = if (link == LinkState.Offline) "offline" else null,
                         actions = remember {
                             ConversationScreenActions(
                                 onBack = {}, onDraftChange = conversation::setDraft, onSend = { _, _ -> false }, onAnswer = conversation::answer,
@@ -193,10 +192,33 @@ class CloudLinkDeviceShots {
                         link = link,
                     )
                 } else {
-                    AgentHomeScreen("Acme", feed, status, accounts, AgentHomeActions({}, {}, {}, {}, {}, {}), link = link)
+                    AgentHomeScreen(name, feed, status, accounts, AgentHomeActions({}, {}, {}, {}, {}, {}), link = link)
                 }
             }
         }
+    }
+
+    /** Nothing on screen says offline: no notice heading home, no page in its place. */
+    private fun assertNoOffline() {
+        for (tag in listOf(AgentHomeTags.BANNER, AgentHomeTags.UNAVAILABLE)) {
+            assertEquals(tag, 0, rule.onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes().size)
+        }
+        assertEquals(0, rule.onAllNodesWithText("offline", substring = true, ignoreCase = true, useUnmergedTree = true).fetchSemanticsNodes().size)
+    }
+
+    @Test fun cloudServerSaysUpdatingThenConnectingNeverOffline() = runBlocking {
+        rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
+        val connections = connections()
+        val server = FlakyServer()
+        val origin = AgentOrigin.parse("https://acme.${HappyCloud.base ?: "happy-clusters.com"}")
+        val credential = OAuthCredential("jwt", "happy", "${origin.value}/refresh", "refresh", origin.value, userId = "u1")
+        val id = connections.addServer(origin, credential, AccessToken("access", null), fallbackName = "Acme").id
+        server.held = CompletableDeferred()
+        val shown = mutableStateOf(LinkState.Online)
+        val session = AgentSession(id, connections, null, MutableStateFlow(true), scope, { server })
+        describe = { "status ${session.status.value}, syncing ${session.isSyncing.value}, shown ${shown.value}, calls ${server.calls}" }
+        val chat = mutableStateOf(false)
+        screens(session, id, "Acme", chat, shown)
 
         // Its home read slowly: the server answered, so this is catching up.
         eventually("updating…") { shown.value == LinkState.Syncing }
@@ -214,6 +236,7 @@ class CloudLinkDeviceShots {
         repeat(80) { pass(50) }
         assertEquals(AgentLinkStatus.Connecting, session.status.value)
         assertEquals(LinkState.Connecting, shown.value)
+        assertNoOffline()
         shot("4-cloud-home-connecting")
         chat.value = true
         shot("5-cloud-chat-connecting")
@@ -224,6 +247,45 @@ class CloudLinkDeviceShots {
         eventually("live again", 20) { session.status.value == AgentLinkStatus.Connected && shown.value == LinkState.Online }
         shot("6-cloud-home-back")
         assertTrue(File(evidence, "4-cloud-home-connecting.png").exists())
+        session.close()
+    }
+
+    @Test fun pairedComputerThatNeverAnswersSaysConnectingNeverOffline() = runBlocking {
+        rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
+        val connections = connections()
+        val computer = FlakyServer().apply { online = false }
+        val id = connections.add(AgentConnectionCredentials("192.168.1.20", 7777, "studio-device", "token"), "Studio").id
+        val shown = mutableStateOf(LinkState.Online)
+        val session = AgentSession(id, connections, null, MutableStateFlow(true), scope, { computer })
+        describe = { "status ${session.status.value}, syncing ${session.isSyncing.value}, shown ${shown.value}, calls ${computer.calls.size}" }
+        val chat = mutableStateOf(false)
+        screens(session, id, "Studio", chat, shown)
+
+        // Never answered, nothing kept: asked again and again, it is connecting, and home waits for it.
+        eventually("connecting…") { shown.value == LinkState.Connecting }
+        eventually("asked again", 20) { computer.calls.size >= 3 }
+        assertEquals(AgentLinkStatus.Connecting, session.status.value)
+        assertEquals(LinkState.Connecting, shown.value)
+        assertNoOffline()
+        shot("7-computer-home-connecting-never-answered")
+        chat.value = true
+        shot("8-computer-chat-connecting-never-answered")
+        chat.value = false
+
+        computer.online = true
+        session.networkReturned()
+        eventually("live", 30) { session.status.value == AgentLinkStatus.Connected && shown.value == LinkState.Online && session.feed.value.loaded }
+        shot("9-computer-home-online")
+
+        // Dropped, with its home kept: still connecting while asked again, with no notice over the list.
+        computer.goAway()
+        eventually("connecting… after the drop") { shown.value == LinkState.Connecting }
+        val asked = computer.calls.size
+        eventually("asked again after the drop", 20) { computer.calls.size >= asked + 2 }
+        assertEquals(AgentLinkStatus.Connecting, session.status.value)
+        assertEquals(LinkState.Connecting, shown.value)
+        assertNoOffline()
+        shot("10-computer-home-connecting-after-drop")
         session.close()
     }
 

@@ -121,7 +121,7 @@ final class HostedShimmerLabelTests: XCTestCase {
         header.frame = CGRect(x: 0, y: 60, width: 393, height: ChatHeaderLayout.Metrics.height)
         root.view.addSubview(header)
         header.titleView.text = "Fix the login"
-        header.status = Strings.HeaderStatus.all[4]
+        header.status = Strings.HeaderStatus.all[3]
         header.layoutIfNeeded()
         XCTAssertFalse(header.statusSweeps)
         header.statusShimmers = true
@@ -238,7 +238,7 @@ final class HostedShimmerLabelTests: XCTestCase {
             header.frame = CGRect(x: 0, y: y, width: 393, height: ChatHeaderLayout.Metrics.height)
             page.addSubview(header)
             header.titleView.text = "Fix the login redirect"
-            header.status = Strings.HeaderStatus.all[4]
+            header.status = Strings.HeaderStatus.all[3]
             header.statusShimmers = true
             y += ChatHeaderLayout.Metrics.height + 12
 

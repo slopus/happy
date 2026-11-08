@@ -7,8 +7,6 @@
     <string name="agent_home_working">Treballant…</string>
     <string name="agent_home_empty_title">Encara no hi ha converses</string>
     <string name="agent_home_empty_body">Comença un xat amb aquest agent i apareixerà aquí.</string>
-    <string name="agent_home_offline_title">No es pot contactar amb %1$s</string>
-    <string name="agent_home_offline_body">Comprova que l\'agent s\'executa i està en línia. Happy es torna a connectar sol.</string>
     <string name="agent_home_revoked">Aquest telèfon s\'ha eliminat a Happy Agent. Torna a connectar l\'agent per fer-lo servir.</string>
     <string name="agent_home_update_required">Aquest agent necessita una versió més nova de Happy. Actualitza l\'app per fer-lo servir.</string>
     <string name="agent_artifacts_untitled">Sense títol</string>
@@ -47,7 +45,6 @@
     <string name="agent_settings_edit_avatar_prefix">"Canvia el teu avatar a "</string>
     <string name="agent_settings_connected">Connectat</string>
     <string name="agent_settings_connecting">Connectant</string>
-    <string name="agent_settings_offline">Fora de línia</string>
     <string name="agent_settings_revoked">Eliminat de Happy Agent</string>
     <string name="agent_settings_update">Cal actualitzar</string>
     <string name="agent_settings_remove_message">Happy oblida aquest agent en aquest telèfon. Happy Agent continuarà mostrant el telèfon fins que també l\'eliminis allà.</string>

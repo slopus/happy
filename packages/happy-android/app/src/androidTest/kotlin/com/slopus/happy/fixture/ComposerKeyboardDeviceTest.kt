@@ -139,7 +139,7 @@ class ComposerKeyboardDeviceTest {
                 CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
                     ConversationScreen(
                         ConversationState(created = created, loaded = true, knownTitle = if (created) "A long chat title that must leave room for both header actions" else null, mode = current, catalog = ModeCatalog(models, mode), draft = draft, draftArrivals = 1, composerFocus = ComposerFocus(1, 8)),
-                        null, ConversationScreenActions(onModeChange = { current = it }, onCompose = { composed++ }, onDetails = { details++ }),
+                        ConversationScreenActions(onModeChange = { current = it }, onCompose = { composed++ }, onDetails = { details++ }),
                     )
                 }
             }

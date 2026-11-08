@@ -227,7 +227,7 @@ final class HomeViewController: UIViewController {
         snapshot.live = agentHome.live
         snapshot.rows = agentHome.rows
         snapshot.allRows = agentHome.allRows
-        // A refused action says why for a moment, where a lost connection would.
+        // A refused action says why for a moment, as a pairing to redo does.
         snapshot.error = (waitingForNetwork ? nil : agentHome.error) ?? agentHome.notice.map { $0.isEmpty ? Strings.refused : $0 }
         onSnapshot?(snapshot)
         if previous != snapshot.rows {
@@ -245,8 +245,9 @@ final class HomeViewController: UIViewController {
         empty.message = !hasAgentConnection ? Strings.noAgentConnection : Strings.unsupported
         empty.showsPair = !hasAgentConnection
         sidebar.isHidden = !empty.isHidden
-        let reason = { (text: String) in text.isEmpty ? Strings.unanswered : text }
-        let notice = snapshot.error.map(reason)
+        // Only what the link can't fix on its own (a refusal, a pairing to
+        // redo): a link on its way back says so in the title alone.
+        let notice = snapshot.error.map { $0.isEmpty ? Strings.refused : $0 }
         // Prioritizing being off is Settings' business: home says nothing of it.
         sidebar.notice = notice
         view.setNeedsLayout()

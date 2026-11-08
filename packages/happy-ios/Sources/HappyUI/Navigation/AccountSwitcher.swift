@@ -96,14 +96,12 @@ final class AccountSwitcher: NSObject {
     }
 
     /// The status first while it stands in the name's place: "Connecting…,
-    /// Steve". A computer that did not answer says so in home's list, and
-    /// the name stands, but VoiceOver hears "offline" after it.
+    /// Steve".
     private func describe() {
         guard let active = current(in: context.account.accounts) else { return }
         button.accessibilityLabel = Strings.AccountSwitcher.switcher
         let status = Strings.HeaderStatus.title(link)
-        let after = link == .offline ? Strings.HeaderStatus.text(.offline) : nil
-        button.accessibilityValue = [status, name(active), after].compactMap { $0 }.joined(separator: ", ")
+        button.accessibilityValue = [status, name(active)].compactMap { $0 }.joined(separator: ", ")
     }
 
     /// Says the change aloud once it has stood half a second, and only
@@ -122,7 +120,7 @@ final class AccountSwitcher: NSObject {
     }
 
     /// What VoiceOver hears for a change: the status, or that the account
-    /// is online again. Offline is said by the notice that explains it.
+    /// is online again.
     static func announcement(for link: LinkState) -> String? {
         if let title = Strings.HeaderStatus.title(link) { return title }
         guard link == .online else { return nil }

@@ -51,7 +51,7 @@ class ComposerCompactTest {
 
     private fun show() {
         rule.setHappyContent {
-            ConversationScreen(ConversationState(created = true, loaded = true, rows = rows, agent = agent, mode = mode, catalog = catalog), null, ConversationScreenActions())
+            ConversationScreen(ConversationState(created = true, loaded = true, rows = rows, agent = agent, mode = mode, catalog = catalog), ConversationScreenActions())
         }
         rule.node(ConversationComposerTags.INPUT).performSemanticsAction(SemanticsActions.RequestFocus)
         rule.waitForIdle()

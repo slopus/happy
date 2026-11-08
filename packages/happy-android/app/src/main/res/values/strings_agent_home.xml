@@ -7,8 +7,6 @@
     <string name="agent_home_working">Working…</string>
     <string name="agent_home_empty_title">No conversations yet</string>
     <string name="agent_home_empty_body">Start a chat with this agent and it shows here.</string>
-    <string name="agent_home_offline_title">Can\'t reach %1$s</string>
-    <string name="agent_home_offline_body">Check that the agent is running and online. Happy reconnects by itself.</string>
     <string name="agent_home_revoked">This phone was removed in Happy Agent. Connect the agent again to use it.</string>
     <string name="agent_home_update_required">This agent needs a newer Happy. Update the app to use it.</string>
 
@@ -54,7 +52,6 @@
     <string name="agent_settings_edit_avatar_prefix">"Change your avatar to "</string>
     <string name="agent_settings_connected">Connected</string>
     <string name="agent_settings_connecting">Connecting</string>
-    <string name="agent_settings_offline">Offline</string>
     <string name="agent_settings_revoked">Removed from Happy Agent</string>
     <string name="agent_settings_update">Update required</string>
     <string name="agent_settings_remove_message">Happy forgets this agent on this phone. Happy Agent keeps listing the phone until you remove it there too.</string>

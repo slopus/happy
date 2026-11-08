@@ -398,7 +398,6 @@ internal fun statusText(status: AgentLinkStatus): String = stringResource(
     when (status) {
         AgentLinkStatus.Connected -> R.string.agent_settings_connected
         AgentLinkStatus.Connecting -> R.string.agent_settings_connecting
-        AgentLinkStatus.Offline -> R.string.agent_settings_offline
         AgentLinkStatus.Revoked -> R.string.agent_settings_revoked
         AgentLinkStatus.UpdateRequired -> R.string.agent_settings_update
         AgentLinkStatus.SignInRequired -> R.string.team_server_settings_signed_out
@@ -466,7 +465,7 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
     // Disconnecting from here, the page stays as it was until the next account's takes its place.
     val agent = rememberLast(agents.firstOrNull { it.id == connectionId })?.takeIf { it.id == connectionId } ?: return
     val session = remember(connectionId) { graph.agentSessions.session(connectionId) }
-    val status = session?.status?.collectAsStateWithLifecycle()?.value ?: AgentLinkStatus.Offline
+    val status = session?.status?.collectAsStateWithLifecycle()?.value ?: AgentLinkStatus.Connecting
     val personState = session?.profile?.state?.collectAsStateWithLifecycle()?.value ?: AgentProfileState()
     val personPhoto = rememberPhoto(session?.profile?.photo?.collectAsStateWithLifecycle()?.value)
     val theme by graph.localSettings.themePreference.collectAsStateWithLifecycle()

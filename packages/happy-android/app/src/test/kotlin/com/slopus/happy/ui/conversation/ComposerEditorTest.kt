@@ -65,7 +65,7 @@ class ComposerEditorTest {
         rule.setHappyContent(dark) {
             ConversationScreen(
                 ConversationState(created = true, loaded = true, rows = rows, agent = agent, mode = mode, catalog = catalog, draft = draft),
-                null, ConversationScreenActions(onDraftChange = { drafts += it }),
+                ConversationScreenActions(onDraftChange = { drafts += it }),
             )
         }
         rule.node(ConversationComposerTags.INPUT).performSemanticsAction(SemanticsActions.RequestFocus)

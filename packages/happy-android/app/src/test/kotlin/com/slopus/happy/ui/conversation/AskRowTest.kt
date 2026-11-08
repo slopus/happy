@@ -82,7 +82,6 @@ class AskRowTest {
         rule.setHappyContent {
             ConversationScreen(
                 ConversationState(created = true, loaded = true, rows = waiting(), agent = agent, question = question, activity = Activity.AwaitingAnswer),
-                null,
                 ConversationScreenActions(onAnswer = { _, a -> answers += a }, onSend = { w, _ -> sent += w; true }),
             )
         }
@@ -117,7 +116,6 @@ class AskRowTest {
         rule.setHappyContent {
             ConversationScreen(
                 ConversationState(created = true, loaded = true, rows = waiting(), agent = agent, question = question, activity = Activity.AwaitingAnswer),
-                null,
                 ConversationScreenActions(onAnswer = { _, a -> answers += a }, onSend = { w, _ -> sent += w; true }, onDraftChange = { drafts += it }),
             )
         }
@@ -136,7 +134,6 @@ class AskRowTest {
         rule.setHappyContent {
             ConversationScreen(
                 ConversationState(created = true, loaded = true, rows = waiting(phase), agent = agent, question = question, activity = Activity.AwaitingAnswer),
-                null,
                 ConversationScreenActions(),
             )
         }
@@ -152,7 +149,7 @@ class AskRowTest {
         val answered = question.copy(status = "answered", answers = mapOf("db" to listOf("PostgreSQL"), "extras" to emptyList()))
         val rows = (asked + ConversationRow.Ask(ConversationRowBuilder.askKey("q1"), answered, AskPhase.Answered) +
             ConversationRowBuilder.build(Message("m2", "agent", 2, listOf(Block.Text("Setting up PostgreSQL."))), "a1", null, false)).asReversed()
-        rule.setHappyContent(dark) { ConversationScreen(ConversationState(created = true, loaded = true, rows = rows, agent = agent), null, ConversationScreenActions()) }
+        rule.setHappyContent(dark) { ConversationScreen(ConversationState(created = true, loaded = true, rows = rows, agent = agent), ConversationScreenActions()) }
         rule.waitForIdle()
         rule.onNodeWithText("Answered").assertExists()
         // An unanswered prompt says so, under its rule and as its answer.

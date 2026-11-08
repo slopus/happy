@@ -6,8 +6,6 @@
 <resources>
     <string name="conversation_details">Detalhes do chat</string>
     <string name="conversation_offline">Offline</string>
-    <string name="conversation_revoked">Este dispositivo foi removido</string>
-    <string name="conversation_update_required">Atualização necessária</string>
     <string name="conversation_unavailable">Esta conexão de agente não está disponível neste dispositivo.</string>
     <string name="conversation_empty">Nenhuma mensagem ainda.</string>
     <string name="conversation_read_only">Esta conversa é conduzida por outro agente e não aceita mensagens.</string>

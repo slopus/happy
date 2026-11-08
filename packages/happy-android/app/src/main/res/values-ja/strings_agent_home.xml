@@ -7,8 +7,6 @@
     <string name="agent_home_working">作業中…</string>
     <string name="agent_home_empty_title">まだ会話はありません</string>
     <string name="agent_home_empty_body">このエージェントとチャットを始めると、ここに表示されます。</string>
-    <string name="agent_home_offline_title">%1$s に接続できません</string>
-    <string name="agent_home_offline_body">エージェントが起動していてオンラインか確認してください。Happy は自動で再接続します。</string>
     <string name="agent_home_revoked">このスマートフォンは Happy Agent で削除されました。使うにはエージェントをもう一度接続してください。</string>
     <string name="agent_home_update_required">このエージェントには新しいバージョンの Happy が必要です。使うにはアプリを更新してください。</string>
     <string name="agent_artifacts_untitled">無題</string>
@@ -45,7 +43,6 @@
     <string name="agent_settings_edit_avatar_prefix">"アバターを次に変えて: "</string>
     <string name="agent_settings_connected">接続済み</string>
     <string name="agent_settings_connecting">接続中</string>
-    <string name="agent_settings_offline">オフライン</string>
     <string name="agent_settings_revoked">Happy Agent から削除されました</string>
     <string name="agent_settings_update">アップデートが必要です</string>
     <string name="agent_settings_remove_message">Happy はこのスマートフォン上でこのエージェントを忘れます。Happy Agent 側でも削除するまで、スマートフォンは一覧に残ります。</string>

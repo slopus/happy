@@ -68,7 +68,7 @@ class ConversationComposerGlassTest {
 
     private fun show(state: ConversationState, dark: Boolean = false, blur: Boolean? = null) {
         rule.setHappyContent(dark) {
-            CompositionLocalProvider(LocalGlassBlur provides blur) { ConversationScreen(state, null, ConversationScreenActions()) }
+            CompositionLocalProvider(LocalGlassBlur provides blur) { ConversationScreen(state, ConversationScreenActions()) }
         }
     }
 

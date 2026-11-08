@@ -147,7 +147,7 @@ struct ConnectionPage: Equatable {
         case .direct?: return Text.direct
         case nil:
             if inputs.snapshot.tunnels > 0 { return Text.dash }
-            return inputs.state == .offline || inputs.state == .waitingForNetwork ? Text.notConnected : Text.connecting
+            return inputs.state == .waitingForNetwork ? Text.notConnected : Text.connecting
         }
     }
 

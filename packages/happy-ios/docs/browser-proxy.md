@@ -148,7 +148,7 @@ address that failed, not the last one that worked (`BrowserProblem`):
 | Cause | Shown as |
 | --- | --- |
 | No network path (`LinkState.waitingForNetwork`) | You're Offline |
-| The agent connection offline, or the proxy's tunnel to the computer failed (`browser_proxy_upstream_transport`) | Can't Reach <computer>; retried by itself when the link is back |
+| The proxy's tunnel to the computer failed (`browser_proxy_upstream_transport`) | Can't Reach <computer>; retried by itself when the link is back |
 | No session or route (`BrowserError.unavailable`) | Can't Open This Page |
 | A live artifact's own proxy refused (`BrowserError.liveUnavailable`, `browser_proxy_live_unavailable`) | This Page's Computer Isn't Available |
 | The computer refused the target (502/503/504 on CONNECT), connection refused or lost | Server Isn't Responding, naming host:port |

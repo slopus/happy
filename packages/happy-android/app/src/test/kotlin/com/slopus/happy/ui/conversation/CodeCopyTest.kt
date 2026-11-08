@@ -81,7 +81,7 @@ class CodeCopyTest {
 
     private fun showScreen(dark: Boolean = false) {
         rule.setHappyContent(dark) {
-            ConversationScreen(ConversationState(created = true, loaded = true, rows = listOf(answer), agent = agent), null, ConversationScreenActions())
+            ConversationScreen(ConversationState(created = true, loaded = true, rows = listOf(answer), agent = agent), ConversationScreenActions())
         }
     }
 

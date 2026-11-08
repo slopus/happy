@@ -62,7 +62,6 @@ public enum BrowserProblem: Equatable, Sendable {
             let url = error.userInfo[NSURLErrorFailingURLErrorKey] as? URL
             return .unsupported(scheme: url?.scheme ?? "")
         }
-        if link == .offline { return .computerUnreachable }
         if let refusal { return refusal.problem }
         if error.domain == NSURLErrorDomain {
             switch error.code {
@@ -86,7 +85,6 @@ public enum BrowserProblem: Equatable, Sendable {
         guard status >= 400 else { return nil }
         if let proxyError {
             if BrowserProxyRefusal(status: status, code: proxyError).problem == .liveUnavailable { return .liveUnavailable }
-            if link == .offline { return .computerUnreachable }
             if (502...504).contains(status) { return .serverNotResponding }
         }
         return hasBody && proxyError == nil ? nil : .http(status: status)
@@ -96,7 +94,6 @@ public enum BrowserProblem: Equatable, Sendable {
     /// workspace, or starting the proxy.
     public static func opening(_ error: any Error, link: LinkState?) -> BrowserProblem {
         if link == .waitingForNetwork { return .noNetwork }
-        if link == .offline { return .computerUnreachable }
         switch error {
         case BrowserError.tunnelsBlocked: return .tunnelsBlocked
         case BrowserError.liveUnavailable: return .liveUnavailable

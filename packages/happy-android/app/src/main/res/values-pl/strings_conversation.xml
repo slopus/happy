@@ -6,8 +6,6 @@
 <resources>
     <string name="conversation_details">Szczegóły czatu</string>
     <string name="conversation_offline">Offline</string>
-    <string name="conversation_revoked">To urządzenie zostało usunięte</string>
-    <string name="conversation_update_required">Wymagana aktualizacja</string>
     <string name="conversation_unavailable">To połączenie z agentem jest niedostępne na tym urządzeniu.</string>
     <string name="conversation_empty">Brak wiadomości.</string>
     <string name="conversation_read_only">Tą rozmową steruje inny agent i nie przyjmuje ona wiadomości.</string>

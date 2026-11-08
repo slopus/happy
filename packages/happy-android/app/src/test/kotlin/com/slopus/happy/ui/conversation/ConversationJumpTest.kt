@@ -61,7 +61,7 @@ class ConversationJumpTest {
     private var activity by mutableStateOf<Activity?>(null)
 
     private fun show() {
-        rule.setHappyContent { ConversationScreen(ConversationState(created = true, loaded = true, rows = rows, agent = agent, activity = activity), null, ConversationScreenActions()) }
+        rule.setHappyContent { ConversationScreen(ConversationState(created = true, loaded = true, rows = rows, agent = agent, activity = activity), ConversationScreenActions()) }
     }
 
     private fun jumps() = rule.onAllNodesWithTag(ConversationJumpTags.JUMP, useUnmergedTree = true).fetchSemanticsNodes().size

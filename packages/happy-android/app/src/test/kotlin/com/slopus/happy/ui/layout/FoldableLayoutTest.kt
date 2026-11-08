@@ -314,7 +314,7 @@ abstract class FoldableLayoutTest(
             agent = AgentInfo("a1", "w1", null, "Fix the login redirect", "idle", null, null, 1_755_300_000_000, 1_755_400_000_000, 0, 2),
             mode = Mode("claude", "anthropic/opus-5", "high", null, "auto"),
         )
-        show { ConversationScreen(state, null, ConversationScreenActions()) }
+        show { ConversationScreen(state, ConversationScreenActions()) }
         val text = first(MessageTags.AGENT)
         assertOnKeylines("agent chat", glyph(ConversationScreenTags.BACK, 24.dp), glyph(ConversationScreenTags.COMPOSE, 24.dp), text)
         // The composer is the column's, 12 in, as on a phone.

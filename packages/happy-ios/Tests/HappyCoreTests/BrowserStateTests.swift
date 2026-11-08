@@ -75,7 +75,7 @@ final class BrowserProblemTests: XCTestCase {
     }
 
     func testCancelledAndReplacedLoadsSayNothing() {
-        XCTAssertNil(BrowserProblem.navigation(url(NSURLErrorCancelled), refusal: nil, link: .offline))
+        XCTAssertNil(BrowserProblem.navigation(url(NSURLErrorCancelled), refusal: nil, link: .connecting))
         XCTAssertNil(BrowserProblem.navigation(NSError(domain: "WebKitErrorDomain", code: 102), refusal: nil, link: nil))
         XCTAssertNil(BrowserProblem.navigation(NSError(domain: "WebKitErrorDomain", code: 204), refusal: nil, link: nil))
         XCTAssertNil(BrowserProblem.navigation(CancellationError(), refusal: nil, link: nil))
@@ -85,7 +85,7 @@ final class BrowserProblemTests: XCTestCase {
         XCTAssertEqual(BrowserProblem.navigation(url(NSURLErrorCannotFindHost), refusal: nil, link: .online), .hostNotFound)
         XCTAssertEqual(BrowserProblem.navigation(url(NSURLErrorCannotConnectToHost), refusal: nil, link: .online), .serverNotResponding)
         XCTAssertEqual(BrowserProblem.navigation(url(NSURLErrorTimedOut), refusal: nil, link: nil), .timedOut)
-        XCTAssertEqual(BrowserProblem.navigation(url(NSURLErrorServerCertificateUntrusted), refusal: nil, link: .offline), .insecure)
+        XCTAssertEqual(BrowserProblem.navigation(url(NSURLErrorServerCertificateUntrusted), refusal: nil, link: .connecting), .insecure)
         XCTAssertEqual(BrowserProblem.navigation(url(NSURLErrorNotConnectedToInternet), refusal: nil, link: nil), .noNetwork)
         XCTAssertEqual(BrowserProblem.navigation(url(NSURLErrorUnsupportedURL, "ftp://files.local/a"), refusal: nil, link: .online), .unsupported(scheme: "ftp"))
         XCTAssertEqual(BrowserProblem.navigation(NSError(domain: "kCFErrorDomainCFNetwork", code: 310), refusal: nil, link: .online), .computerUnreachable)
@@ -96,7 +96,6 @@ final class BrowserProblemTests: XCTestCase {
     func testTheConnectionAndTheProxySayWhy() {
         let refused = url(NSURLErrorCannotConnectToHost)
         XCTAssertEqual(BrowserProblem.navigation(refused, refusal: nil, link: .waitingForNetwork), .noNetwork)
-        XCTAssertEqual(BrowserProblem.navigation(refused, refusal: nil, link: .offline), .computerUnreachable)
         XCTAssertEqual(BrowserProblem.navigation(refused, refusal: BrowserProxyRefusal(status: 502, code: "browser_proxy_upstream_refused"), link: .online), .serverNotResponding)
         XCTAssertEqual(BrowserProblem.navigation(refused, refusal: BrowserProxyRefusal(status: 502, code: "browser_proxy_upstream_transport"), link: .syncing), .computerUnreachable)
         XCTAssertEqual(BrowserProblem.navigation(refused, refusal: BrowserProxyRefusal(status: 504, code: "browser_proxy_upstream_timeout"), link: nil), .timedOut)
@@ -116,13 +115,12 @@ final class BrowserProblemTests: XCTestCase {
         XCTAssertEqual(BrowserProblem.response(status: 404, proxyError: nil, hasBody: false, link: nil), .http(status: 404))
         XCTAssertEqual(BrowserProblem.response(status: 502, proxyError: "browser_proxy_upstream_transport", hasBody: true, link: .online), .serverNotResponding)
         XCTAssertEqual(BrowserProblem.response(status: 504, proxyError: "browser_proxy_upstream_timeout", hasBody: true, link: nil), .serverNotResponding)
-        XCTAssertEqual(BrowserProblem.response(status: 502, proxyError: "browser_proxy_upstream_transport", hasBody: true, link: .offline), .computerUnreachable)
+        XCTAssertEqual(BrowserProblem.response(status: 502, proxyError: "browser_proxy_upstream_transport", hasBody: true, link: .connecting), .serverNotResponding)
         XCTAssertEqual(BrowserProblem.response(status: 403, proxyError: "browser_proxy_forbidden", hasBody: true, link: nil), .http(status: 403))
     }
 
     func testOpening() {
         XCTAssertEqual(BrowserProblem.opening(BrowserError.unavailable, link: nil), .unavailable)
-        XCTAssertEqual(BrowserProblem.opening(BrowserError.unavailable, link: .offline), .computerUnreachable)
         XCTAssertEqual(BrowserProblem.opening(BrowserError.liveUnavailable, link: .online), .liveUnavailable)
         XCTAssertEqual(BrowserProblem.opening(URLError(.timedOut), link: .connecting), .computerUnreachable)
         XCTAssertEqual(BrowserProblem.opening(URLError(.timedOut), link: .waitingForNetwork), .noNetwork)

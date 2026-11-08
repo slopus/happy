@@ -110,15 +110,15 @@ class ConversationLayoutTest {
         File(dir, "$name.png").outputStream().use { rule.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
-    private fun show(state: ConversationState, connection: String? = null, dark: Boolean = false, actions: ConversationScreenActions = ConversationScreenActions()) {
-        rule.setHappyContent(dark) { ConversationScreen(state, connection, actions) }
+    private fun show(state: ConversationState, dark: Boolean = false, actions: ConversationScreenActions = ConversationScreenActions()) {
+        rule.setHappyContent(dark) { ConversationScreen(state, actions) }
     }
 
     @Test
     @Config(qualifiers = "w900dp-h731dp-xhdpi")
     fun `at 900 the composer and the bar are held to the messages' 800 column`() {
         val state = ConversationState(created = true, loaded = true, rows = history, agent = agent, mode = mode)
-        rule.setHappyContent { ProvideWindowLayout { ConversationScreen(state, null, ConversationScreenActions()) } }
+        rule.setHappyContent { ProvideWindowLayout { ConversationScreen(state, ConversationScreenActions()) } }
         val composer = rule.node(ConversationComposerTags.COMPOSER).bounds
         assertDp("composer width", 800, composer.width)
         assertDp("composer centred", 50, composer.left)
@@ -162,7 +162,6 @@ class ConversationLayoutTest {
         rule.setHappyContent {
             ConversationScreen(
                 ConversationState(created = created, loaded = true, knownTitle = "Fix it", newWork = if (created) null else com.slopus.happy.conversation.NewWork(com.slopus.happy.conversation.WorkChoice())),
-                null,
                 ConversationScreenActions(),
             )
         }
@@ -191,18 +190,18 @@ class ConversationLayoutTest {
         rule.node(ConversationScreenTags.COMPOSE).assertIsDisplayed()
     }
 
-    @Test fun `history renders text, tools, media and a failure, with the connection state in the header`() {
-        show(ConversationState(created = true, loaded = true, rows = history, agent = agent, mode = mode), connection = "Offline")
+    @Test fun `history renders text, tools, media and a failure, with the status line in the header`() {
+        show(ConversationState(created = true, loaded = true, rows = history, agent = agent, mode = mode))
         rule.onNodeWithText("Fix the login redirect").assertIsDisplayed()
         rule.node(ConversationScreenTags.SUBTITLE).assertIsDisplayed()
-        rule.onNodeWithText("Offline").assertIsDisplayed()
+        rule.onNodeWithText("online").assertIsDisplayed()
         // Compose alone: the details open from the name, the permission mode is on them (iOS da5fda505).
         rule.node(ConversationScreenTags.COMPOSE).assertIsDisplayed()
         rule.onNode(hasContentDescription("More") and hasAnyAncestor(hasTestTag(ConversationScreenTags.BAR))).assertDoesNotExist()
         rule.node(ConversationRowTags.FAILURE).assertIsDisplayed()
         // The header is the standard 64 bar.
         assertDp("header", 64, rule.node(ConversationScreenTags.BAR).bounds.height)
-        shot("history-offline")
+        shot("history")
     }
 
     @Test fun `history in dark`() {
@@ -239,7 +238,7 @@ class ConversationLayoutTest {
 
     @Test fun `the working line is the bar's, and starting work doesn't move the transcript`() {
         var state by mutableStateOf(ConversationState(created = true, loaded = true, rows = history, agent = agent))
-        rule.setHappyContent { ConversationScreen(state, null, ConversationScreenActions()) }
+        rule.setHappyContent { ConversationScreen(state, ConversationScreenActions()) }
         val bar = rule.node(ConversationScreenTags.BAR).bounds
         val list = rule.node(ConversationScreenTags.LIST).bounds
         rule.node(ConversationScreenTags.SUBTITLE).assertExists()
@@ -257,24 +256,22 @@ class ConversationLayoutTest {
 
     @Test fun `the link and the work coming and going move neither the title nor the transcript`() {
         var state by mutableStateOf(ConversationState(created = true, loaded = true, rows = history, agent = agent))
-        var connection by mutableStateOf<String?>(null)
         var link by mutableStateOf(LinkState.Online)
-        rule.setHappyContent { ConversationScreen(state, connection, ConversationScreenActions(), link = link) }
+        rule.setHappyContent { ConversationScreen(state, ConversationScreenActions(), link = link) }
         val bar = rule.node(ConversationScreenTags.BAR).bounds
         val title = rule.node(ConversationScreenTags.TITLE).bounds
         val list = rule.node(ConversationScreenTags.LIST).bounds
         val idle = state
-        // (offline words, link, activity, chat syncing)
+        // (link, activity, chat syncing)
         val flips = listOf<Flip>(
-            Flip(null, LinkState.Connecting, null, false), Flip(null, LinkState.Online, null, false),
-            Flip("offline", LinkState.Offline, Activity.Thinking, false), Flip(null, LinkState.Online, Activity.Thinking, true),
-            Flip(null, LinkState.WaitingForNetwork, Activity.Thinking, false), Flip(null, LinkState.Online, Activity.AwaitingAnswer, false),
-            Flip(null, LinkState.Syncing, Activity.AwaitingAnswer, false), Flip(null, LinkState.Online, null, false),
+            Flip(LinkState.Connecting, null, false), Flip(LinkState.Online, null, false),
+            Flip(LinkState.Connecting, Activity.Thinking, false), Flip(LinkState.Online, Activity.Thinking, true),
+            Flip(LinkState.WaitingForNetwork, Activity.Thinking, false), Flip(LinkState.Online, Activity.AwaitingAnswer, false),
+            Flip(LinkState.Syncing, Activity.AwaitingAnswer, false), Flip(LinkState.Online, null, false),
         )
         for (flip in flips) {
             val at = "${flip.link}, ${flip.activity ?: "idle"}, syncing ${flip.syncing}"
             rule.mainClock.autoAdvance = false
-            connection = flip.words
             link = flip.link
             state = idle.copy(working = flip.activity != null, activity = flip.activity, syncing = flip.syncing)
             Snapshot.sendApplyNotifications()
@@ -289,7 +286,7 @@ class ConversationLayoutTest {
             assertEquals("title, $at", title, rule.node(ConversationScreenTags.TITLE).bounds)
             assertEquals("transcript, $at", list, rule.node(ConversationScreenTags.LIST).bounds)
             rule.node(ConversationScreenTags.SUBTITLE).assertExists()
-            val label = flip.words ?: when {
+            val label = when {
                 flip.link == LinkState.Connecting -> "connecting…"
                 flip.link == LinkState.WaitingForNetwork -> "waiting for network…"
                 flip.link == LinkState.Syncing || flip.syncing -> "updating…"
@@ -304,11 +301,11 @@ class ConversationLayoutTest {
         }
     }
 
-    private data class Flip(val words: String?, val link: LinkState, val activity: Activity?, val syncing: Boolean)
+    private data class Flip(val link: LinkState, val activity: Activity?, val syncing: Boolean)
 
     @Test fun `a link on its way says so with a 14 spinner 5 before its words`() {
         rule.setHappyContent {
-            ConversationScreen(ConversationState(created = true, loaded = true, rows = history, agent = agent), null, ConversationScreenActions(), link = LinkState.Connecting)
+            ConversationScreen(ConversationState(created = true, loaded = true, rows = history, agent = agent), ConversationScreenActions(), link = LinkState.Connecting)
         }
         val spinner = rule.node(LinkStatusTags.SPINNER).bounds
         val words = rule.onNodeWithText("connecting…", useUnmergedTree = true).bounds
@@ -322,7 +319,7 @@ class ConversationLayoutTest {
     @Test fun `a sent message stays in view, and reading older history is left alone`() {
         var rows by mutableStateOf(history)
         rule.setHappyContent {
-            ConversationScreen(ConversationState(created = true, loaded = true, rows = rows, agent = agent, hasMore = true), null, ConversationScreenActions())
+            ConversationScreen(ConversationState(created = true, loaded = true, rows = rows, agent = agent, hasMore = true), ConversationScreenActions())
         }
         // At the newest end: the message just sent is the one on screen.
         val sent = ConversationRow.User("s:user", "s", "Ship it", parseMarkdown("Ship it"), emptyList(), Delivery.Sending)
@@ -376,7 +373,7 @@ class ConversationLayoutTest {
             com.slopus.happy.ui.theme.HappyTheme(preference = if (dark) com.slopus.happy.ui.theme.ThemePreference.Dark else com.slopus.happy.ui.theme.ThemePreference.Light) {
                 surface = com.slopus.happy.ui.theme.HappyTheme.colors.surface.toArgb()
                 // The newest rows only, so no row lies under the bar's right edge, where its colour is read.
-                ConversationScreen(ConversationState(created = true, loaded = true, rows = history.take(2), agent = agent), null, ConversationScreenActions())
+                ConversationScreen(ConversationState(created = true, loaded = true, rows = history.take(2), agent = agent), ConversationScreenActions())
             }
         }
         for (mode in listOf(false, true)) {
@@ -416,14 +413,14 @@ class ConversationLayoutTest {
     }
 
     @Test fun `a role that only reads gets a line saying so in the composer's place, in a new chat too`() {
-        rule.setHappyContent { ConversationScreen(ConversationState(created = true, loaded = true, rows = history, agent = agent), null, ConversationScreenActions(), roleCanSend = false) }
+        rule.setHappyContent { ConversationScreen(ConversationState(created = true, loaded = true, rows = history, agent = agent), ConversationScreenActions(), roleCanSend = false) }
         rule.node(ConversationScreenTags.READ_ONLY).assertIsDisplayed()
         rule.onNodeWithText("You can read this conversation, but your role can't send messages.").assertIsDisplayed()
         rule.node(ConversationComposerTags.COMPOSER).assertDoesNotExist()
     }
 
     @Test fun `a new chat a role can't send in has no composer`() {
-        rule.setHappyContent { ConversationScreen(ConversationState(created = false, loaded = true), null, ConversationScreenActions(), roleCanSend = false) }
+        rule.setHappyContent { ConversationScreen(ConversationState(created = false, loaded = true), ConversationScreenActions(), roleCanSend = false) }
         rule.node(ConversationScreenTags.READ_ONLY).assertIsDisplayed()
         rule.node(ConversationComposerTags.COMPOSER).assertDoesNotExist()
     }

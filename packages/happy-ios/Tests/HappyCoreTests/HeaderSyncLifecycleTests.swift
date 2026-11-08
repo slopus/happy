@@ -94,18 +94,26 @@ final class HeaderSyncLifecycleTests: XCTestCase {
         await transport.releaseDesktop()
         try await wait { let value = await self.current(engine); return value.live && !value.syncing }
         await transport.disconnect()
-        try await wait { let value = await self.current(engine); return !value.live && value.error != nil }
-        let offline = await current(engine)
-        XCTAssertFalse(offline.reconnecting, "a computer that didn't answer is offline, home says why")
+        try await wait { let value = await self.current(engine); return !value.live && value.reconnecting }
+        let away = await current(engine)
+        XCTAssertNil(away.error, "a computer that didn't answer is on its way back, nothing for home to say")
         await engine.stop()
     }
 
-    /// A signed-in server (Happy Cloud's, a team's) is always there to
-    /// answer: its stream down is on its way back, never an error home says,
-    /// until it is live again.
+    /// No link is ever offline: a stream down, a paired computer's or a
+    /// signed-in server's (Happy Cloud's, a team's), is asked again and is
+    /// on its way back, never an error home says, until it is live again.
+    func testAComputerDownIsReconnectingNotAnError() async throws {
+        try await assertReconnecting(signsIn: false)
+    }
+
     func testASignedInServerDownIsReconnectingNotAnError() async throws {
+        try await assertReconnecting(signsIn: true)
+    }
+
+    private func assertReconnecting(signsIn: Bool) async throws {
         let transport = HeaderSyncTransport()
-        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test", signsIn: true), directory: nil)
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test", signsIn: signsIn), directory: nil)
         defer { Task { await engine.stop() } }
         await engine.start()
         try await wait { let value = await self.current(engine); return value.live && !value.syncing }

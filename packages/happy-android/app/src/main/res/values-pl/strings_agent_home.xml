@@ -7,8 +7,6 @@
     <string name="agent_home_working">Pracuje…</string>
     <string name="agent_home_empty_title">Brak rozmów</string>
     <string name="agent_home_empty_body">Rozpocznij czat z tym agentem, a pojawi się tutaj.</string>
-    <string name="agent_home_offline_title">Nie można połączyć się z %1$s</string>
-    <string name="agent_home_offline_body">Sprawdź, czy agent działa i jest online. Happy połączy się ponownie samodzielnie.</string>
     <string name="agent_home_revoked">Ten telefon został usunięty w Happy Agent. Połącz agenta ponownie, aby z niego korzystać.</string>
     <string name="agent_home_update_required">Ten agent wymaga nowszej wersji Happy. Zaktualizuj aplikację, aby z niego korzystać.</string>
     <string name="agent_artifacts_untitled">Bez tytułu</string>
@@ -48,7 +46,6 @@
     <string name="agent_settings_edit_avatar_prefix">"Zmień swój awatar na "</string>
     <string name="agent_settings_connected">Połączono</string>
     <string name="agent_settings_connecting">Łączenie</string>
-    <string name="agent_settings_offline">Offline</string>
     <string name="agent_settings_revoked">Usunięto z Happy Agent</string>
     <string name="agent_settings_update">Wymagana aktualizacja</string>
     <string name="agent_settings_remove_message">Happy zapomni tego agenta na tym telefonie. Happy Agent będzie wyświetlać telefon, dopóki nie usuniesz go także tam.</string>

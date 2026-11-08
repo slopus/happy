@@ -94,15 +94,6 @@ class BarTitleTest {
         assertDp("6 after the spinner", spinner.right + 6.dp, words("Connecting…").left)
     }
 
-    @Test
-    fun offlineKeepsTheName() {
-        link = LinkState.Offline
-        show()
-        rule.node(TITLE).assertExists()
-        rule.onAllNodesWithTag(STATUS, useUnmergedTree = true).assertCountEquals(0)
-        rule.onAllNodesWithText("offline", useUnmergedTree = true).assertCountEquals(0)
-    }
-
     private companion object {
         const val TITLE = "title"
         const val STATUS = "status"

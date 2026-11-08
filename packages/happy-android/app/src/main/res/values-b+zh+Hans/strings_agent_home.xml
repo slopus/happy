@@ -7,8 +7,6 @@
     <string name="agent_home_working">工作中…</string>
     <string name="agent_home_empty_title">还没有对话</string>
     <string name="agent_home_empty_body">与此智能体开始聊天，对话会显示在这里。</string>
-    <string name="agent_home_offline_title">无法连接 %1$s</string>
-    <string name="agent_home_offline_body">请确认智能体正在运行且在线。Happy 会自动重新连接。</string>
     <string name="agent_home_revoked">此手机已在 Happy Agent 中移除。请重新连接智能体后再使用。</string>
     <string name="agent_home_update_required">此智能体需要更新版本的 Happy。请更新应用后再使用。</string>
     <string name="agent_artifacts_untitled">无标题</string>
@@ -45,7 +43,6 @@
     <string name="agent_settings_edit_avatar_prefix">把你的头像改成</string>
     <string name="agent_settings_connected">已连接</string>
     <string name="agent_settings_connecting">正在连接</string>
-    <string name="agent_settings_offline">离线</string>
     <string name="agent_settings_revoked">已从 Happy Agent 中移除</string>
     <string name="agent_settings_update">需要更新</string>
     <string name="agent_settings_remove_message">Happy 会在此手机上忘记此智能体。在你也从 Happy Agent 中移除之前，它会继续列出此手机。</string>

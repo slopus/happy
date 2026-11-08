@@ -5,6 +5,8 @@ import Foundation
 /// account kinds work it out from their own sources: the agent from its
 /// connection and sync snapshot, the legacy account from its socket and
 /// catch-up; home's title and every chat's subtitle read the same one.
+/// No link is ever offline: one not connected is asked again with backoff
+/// for as long as the account is there, so it is connecting.
 public enum LinkState: CaseIterable, Equatable, Sendable {
     /// Connected and caught up.
     case online
@@ -12,9 +14,6 @@ public enum LinkState: CaseIterable, Equatable, Sendable {
     case syncing
     /// Reaching the server or computer ("connecting…").
     case connecting
-    /// Not reaching it, for a reason a screen says on its own: a computer
-    /// that did not answer, a revoked pairing, the app in the background.
-    case offline
     /// No network path at all ("waiting for network…").
     case waitingForNetwork
 }

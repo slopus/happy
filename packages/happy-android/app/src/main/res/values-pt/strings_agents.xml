@@ -33,5 +33,4 @@
     <string name="agent_search_new_task">Nova tarefa</string>
     <string name="agent_search_new_task_picture">Nova tarefa com uma imagem</string>
     <string name="agent_search_connect_agent">Conectar Happy Agent</string>
-    <string name="agent_home_unanswered">O computador não respondeu.</string>
 </resources>

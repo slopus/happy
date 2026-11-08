@@ -78,11 +78,11 @@ private actor FlakyCloudServer: AgentTransport {
     func close() {}
 }
 
-/// A Happy Cloud server's link in its headers (docs/offline-first.md,
-/// "The title while away"): "Updating…" while its home is read,
-/// "Connecting…" while it is away and asked again, never offline with a
-/// notice as a computer that didn't answer is; home's title and a chat's
-/// subtitle say the same. Stills go to the repository's
+/// An agent connection's link in its headers (docs/offline-first.md,
+/// "The title while away"), a Happy Cloud server's and a paired
+/// computer's: "Updating…" while its home is read, "Connecting…" while it
+/// is away and asked again, never offline and with no notice; home's title
+/// and a chat's subtitle say the same. Stills go to the repository's
 /// `.context/cloud-link` when that folder's parent exists, and are
 /// attached to the result either way, for a run on a phone.
 @MainActor
@@ -206,6 +206,82 @@ final class HostedCloudLinkTests: XCTestCase {
         XCTAssertFalse(session.home.reconnecting)
         try await Task.sleep(for: .milliseconds(400))
         capture(window, "6-cloud-home-back")
+        await session.engine.stop()
+    }
+
+    /// A paired computer that never answers, then answers, then drops:
+    /// connecting throughout, with no notice and no word of offline.
+    func testAPairedComputerThatNeverAnswersSaysConnectingNeverOffline() async throws {
+        let computer = FlakyCloudServer()
+        await computer.set(online: false)
+        defer { NetworkPath.shared.force(nil) }
+        NetworkPath.shared.force(true)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("computer-link-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let controller = AccountController(
+            serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
+            credentialStore: InMemoryCredentialStore(), storeDirectory: directory,
+            agentConnectionCredentialStore: InMemoryAgentConnectionCredentialStore(),
+            agentTransport: { _ in computer },
+            rnServerImport: { .confirmed(ServerConfig.defaultServerURL) },
+            transport: NoRelay(), connector: NoSockets()
+        )
+        await controller.agentConnections.setForeground(false)
+        let connection = try await controller.agentConnections.add(
+            JSONDecoder().decode(AgentConnectionCredentials.self, from: Data(#"{"address":"studio.local","port":7777,"deviceID":"\#(UUID().uuidString)","deviceToken":"token"}"#.utf8)),
+            name: "Studio"
+        )
+        addTeardownBlock { @MainActor in Session.forget(connection.id) }
+        let context = AppContext(account: controller, variant: .preview, version: "test")
+        let home = AgentHomeViewController(context: context, id: connection.id)
+        let navigation = UINavigationController(rootViewController: home)
+        AppCoordinator.applyAppearance(to: navigation.navigationBar)
+        let window = hostedKeyWindow(in: try await hostedActiveScene(), root: navigation)
+        defer { window.isHidden = true }
+        let session = try XCTUnwrap(Session.session(for: connection.id, context: context))
+        XCTAssertFalse(session.isCloud)
+        let sidebar = try XCTUnwrap(Self.subviews(SidebarList.self, in: home.view).first)
+        func assertNoOffline(_ at: String) {
+            XCTAssertNil(session.home.error, at)
+            XCTAssertNil(sidebar.notice, "a notice at \(at)")
+            XCTAssertFalse(Self.subviews(UILabel.self, in: window).contains { $0.text?.localizedCaseInsensitiveContains("offline") == true }, "offline said at \(at)")
+        }
+
+        // Never answered, nothing kept: its check retries, its stream is
+        // asked again and again, and the title says connecting throughout.
+        session.receive(status: .retrying)
+        await session.engine.start()
+        try await until("connecting…", 10) { home.headerState == .connecting && session.home.reconnecting }
+        try await Task.sleep(for: .seconds(3))
+        XCTAssertEqual(home.headerState, .connecting)
+        assertNoOffline("never answered")
+        capture(window, "7-computer-home-connecting-never-answered")
+        let chat = ChatViewController(session: session, agentId: "old-agent", title: "Old notes", spaceId: nil, intro: nil)
+        navigation.pushViewController(chat, animated: false)
+        try await until("the chat says connecting…") { self.chatStatus(chat) == "connecting…" }
+        try await Task.sleep(for: .milliseconds(400))
+        capture(window, "8-computer-chat-connecting-never-answered")
+        navigation.popViewController(animated: false)
+
+        // It answers.
+        await computer.set(online: true)
+        session.receive(status: .connected)
+        await session.engine.reconnect()
+        try await until("live", 15) { session.home.live && home.headerState == .online }
+        await sidebar.settle()
+        try await Task.sleep(for: .milliseconds(400))
+        capture(window, "9-computer-home-online")
+
+        // It drops, its home kept: connecting again, with no notice over the list.
+        await computer.set(online: false)
+        session.receive(status: .retrying)
+        try await until("connecting… after the drop", 10) { home.headerState == .connecting }
+        try await Task.sleep(for: .seconds(3))
+        XCTAssertEqual(home.headerState, .connecting)
+        XCTAssertTrue(session.home.reconnecting)
+        assertNoOffline("after the drop")
+        capture(window, "10-computer-home-connecting-after-drop")
         await session.engine.stop()
     }
 }

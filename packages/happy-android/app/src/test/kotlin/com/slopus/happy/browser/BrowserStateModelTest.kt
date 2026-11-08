@@ -53,7 +53,6 @@ class BrowserStateModelTest {
         assertNull(nav(WebViewClient.ERROR_UNKNOWN, "net::ERR_ABORTED"))
         assertNull(nav(WebViewClient.ERROR_UNKNOWN, "net::ERR_ABORTED", link = BrowserLink.NoNetwork))
         assertEquals(BrowserProblem.NoNetwork, nav(WebViewClient.ERROR_CONNECT, "net::ERR_TUNNEL_CONNECTION_FAILED", link = BrowserLink.NoNetwork))
-        assertEquals(BrowserProblem.ComputerUnreachable, nav(WebViewClient.ERROR_CONNECT, "net::ERR_TUNNEL_CONNECTION_FAILED", link = BrowserLink.Offline))
         assertEquals(BrowserProblem.ComputerUnreachable, nav(WebViewClient.ERROR_CONNECT, "net::ERR_TUNNEL_CONNECTION_FAILED"))
         assertEquals(
             BrowserProblem.ServerNotResponding,
@@ -100,7 +99,7 @@ class BrowserStateModelTest {
         assertEquals(BrowserProblem.LiveUnavailable, BrowserProblem.response(503, "browser_proxy_live_unavailable", hasBody = true, link = BrowserLink.NoNetwork))
         // A page's own error status is its own, network or not.
         assertNull(BrowserProblem.response(503, null, hasBody = true, link = BrowserLink.NoNetwork))
-        assertEquals(BrowserProblem.ComputerUnreachable, BrowserProblem.response(502, "browser_proxy_upstream_transport", hasBody = true, link = BrowserLink.Offline))
+        assertEquals(BrowserProblem.ComputerUnreachable, BrowserProblem.response(502, "browser_proxy_upstream_transport", hasBody = true, link = null))
         assertEquals(BrowserProblem.Http(403), BrowserProblem.response(403, "browser_proxy_forbidden", hasBody = true, link = null))
     }
 
@@ -109,7 +108,6 @@ class BrowserStateModelTest {
         assertEquals(BrowserProblem.Unavailable, BrowserProblem.opening(AgentApiException(404, "not_found", "gone"), null))
         assertEquals(BrowserProblem.LiveUnavailable, BrowserProblem.opening(BrowserException(BrowserException.Kind.LiveUnavailable, 404), BrowserLink.Online))
         assertEquals(BrowserProblem.ComputerUnreachable, BrowserProblem.opening(IllegalStateException("no connection"), null))
-        assertEquals(BrowserProblem.ComputerUnreachable, BrowserProblem.opening(BrowserException(BrowserException.Kind.Unavailable), BrowserLink.Offline))
         assertEquals(BrowserProblem.NoNetwork, BrowserProblem.opening(IllegalStateException(), BrowserLink.NoNetwork))
     }
 
@@ -126,12 +124,12 @@ class BrowserStateModelTest {
     }
 
     @Test fun theLinkIsTheAgentsUnlessThePhoneHasNoNetwork() {
-        assertEquals(BrowserLink.NoNetwork, BrowserLink.of(AgentLinkStatus.Offline, network = false))
+        assertEquals(BrowserLink.NoNetwork, BrowserLink.of(AgentLinkStatus.Connecting, network = false))
         assertEquals(BrowserLink.NoNetwork, BrowserLink.of(null, network = false))
         // A connected computer is proof of a network the phone's own check missed.
         assertEquals(BrowserLink.Online, BrowserLink.of(AgentLinkStatus.Connected, network = false))
         assertEquals(BrowserLink.Online, BrowserLink.of(AgentLinkStatus.Connected, network = true))
-        assertEquals(BrowserLink.Offline, BrowserLink.of(AgentLinkStatus.Offline, network = true))
+        assertNull(BrowserLink.of(AgentLinkStatus.Revoked, network = true))
         assertNull(BrowserLink.of(AgentLinkStatus.Connecting, network = true))
         assertNull(BrowserLink.of(null, network = true))
     }

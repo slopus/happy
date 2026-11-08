@@ -402,7 +402,6 @@ class AgentSessionTest {
             } })
             try {
                 agent.frames.send(Wire.hello("c0"))
-                eventually({ session.status.value }) { it == AgentLinkStatus.Offline }
                 eventually({ session.status.value }) { it == AgentLinkStatus.Connected }
                 assertTrue(health.get() >= 2)
                 agent.resources[path] = buildJsonObject { put("setting", Wire.projectsHidden(true, "v1")) }
@@ -421,51 +420,23 @@ class AgentSessionTest {
     }
 
     @Test
-    fun aComputerThatDoesNotAnswerStaysOfflineUntilItDoes() = runBlocking {
-        val down = java.util.concurrent.atomic.AtomicBoolean(true)
-        val asked = java.util.concurrent.atomic.AtomicInteger()
-        val session = AgentSession(id, connections, null, foreground, scope, { object : Transport by agent {
-            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
-                if (down.get()) {
-                    asked.incrementAndGet()
-                    throw java.io.IOException("no answer")
-                }
-                return agent.request(method, path, credential, body, headers)
-            }
-        } })
-        val seen = java.util.Collections.synchronizedList(mutableListOf<AgentLinkStatus>())
-        val watching = scope.launch { session.status.collect { seen += it } }
-        try {
-            // Asked again and again, it stays offline (iOS's Session.headerState): home's notice doesn't come and go.
-            eventually({ asked.get() }) { it >= 3 }
-            val since = seen.toList().dropWhile { it != AgentLinkStatus.Offline }
-            assertEquals(listOf(AgentLinkStatus.Offline), since)
-            down.set(false)
-            agent.frames.send(Wire.hello("c0"))
-            eventually({ session.status.value }) { it == AgentLinkStatus.Connected }
-            // An open stream that drops is on its way back first; offline only once asking again fails.
-            seen.clear()
-            down.set(true)
-            val dropped = agent.frames
-            agent.frames = Channel(Channel.UNLIMITED)
-            dropped.close()
-            eventually({ seen.toList() }) { it.lastOrNull() == AgentLinkStatus.Offline }
-            assertEquals(listOf(AgentLinkStatus.Connecting, AgentLinkStatus.Offline), seen.toList())
-        } finally {
-            watching.cancel()
-            session.close()
-        }
+    fun aComputerThatDoesNotAnswerIsConnectingUntilItDoes() = runBlocking {
+        assertConnectingWhileDown(id)
     }
 
     @Test
-    fun aServerThatDoesNotAnswerIsOnItsWayBack() = runBlocking {
-        // Happy Cloud's server, or a team's: always there to answer, so a link down is one coming back.
+    fun aServerThatDoesNotAnswerIsConnectingUntilItDoes() = runBlocking {
+        // Happy Cloud's server, or a team's.
         val origin = com.slopus.happy.connection.AgentOrigin.parse("https://acme.happy.example")
         val credential = com.slopus.happy.connection.OAuthCredential("jwt", "happy", "https://acme.happy.example/refresh", "refresh-1", origin.value, userId = "u1")
-        val server = connections.addServer(origin, credential, com.slopus.happy.connection.AccessToken("access-1", null), fallbackName = "acme").id
+        assertConnectingWhileDown(connections.addServer(origin, credential, com.slopus.happy.connection.AccessToken("access-1", null), fallbackName = "acme").id)
+    }
+
+    /** No link is ever offline: asked again and again while [connection] doesn't answer, before it ever has and after a drop, it says connecting throughout. */
+    private suspend fun assertConnectingWhileDown(connection: String) {
         val down = java.util.concurrent.atomic.AtomicBoolean(true)
         val asked = java.util.concurrent.atomic.AtomicInteger()
-        val session = AgentSession(server, connections, null, foreground, scope, { object : Transport by agent {
+        val session = AgentSession(connection, connections, null, foreground, scope, { object : Transport by agent {
             override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
                 if (down.get()) {
                     asked.incrementAndGet()
@@ -477,13 +448,11 @@ class AgentSessionTest {
         val seen = java.util.Collections.synchronizedList(mutableListOf<AgentLinkStatus>())
         val watching = scope.launch { session.status.collect { seen += it } }
         try {
-            // Asked again and again, it says connecting throughout, never offline.
             eventually({ asked.get() }) { it >= 3 }
             assertEquals(listOf(AgentLinkStatus.Connecting), seen.toList().distinct())
             down.set(false)
             agent.frames.send(Wire.hello("c0"))
             eventually({ session.status.value }) { it == AgentLinkStatus.Connected }
-            // Dropped, and asked again while down: still on its way back.
             seen.clear()
             down.set(true)
             val again = asked.get()
@@ -535,7 +504,7 @@ class AgentSessionTest {
     }
 
     @Test
-    fun v2EndpointRemovalUsesNormalOfflineStateWithoutTailcat() = runBlocking {
+    fun v2EndpointRemovalKeepsConnectingWithoutTailcat() = runBlocking {
         val credentials = AgentConnectionCredentials("https://agent.example", 443, "v2device", "token", "https://agent.example", false)
         val account = connections.add(credentials, "V2")
         val session = AgentSession(account.id, connections, null, foreground, scope, { value ->
@@ -549,9 +518,11 @@ class AgentSessionTest {
                     else agent.request(method, path, credential, body, headers)
             }
         })
-        eventually({ session.status.value }) { it == AgentLinkStatus.Offline }
-        assertEquals(false, connections.credentials(account.id)?.tailcatAvailable)
-        assertNull(connections.credentials(account.id)?.publicUrl)
+        kotlinx.coroutines.withTimeout(5_000) {
+            while (connections.credentials(account.id).let { it?.tailcatAvailable != false || it.publicUrl != null }) kotlinx.coroutines.delay(20)
+        }
+        // The endpoint gone is no reason to stop: asked again, it is connecting.
+        assertEquals(AgentLinkStatus.Connecting, session.status.value)
         session.close()
     }
 

@@ -362,8 +362,10 @@ fun AgentHomeScreen(
     // The bar is glass over the page: the cards scroll on under it, softened.
     val ground = colors.surface
     val phase = when {
-        !feed.loaded && status == AgentLinkStatus.Connecting -> HomePhase.Loading
-        !feed.loaded -> HomePhase.Offline
+        // Nothing read yet: it loads while the link is on its way, which it always is unless something
+        // other than the network keeps it away (a pairing to redo, an update, a sign-in), which says so.
+        !feed.loaded && !status.needsAction -> HomePhase.Loading
+        !feed.loaded -> HomePhase.Unavailable
         // Fixed places alone are no home yet: the first chat is.
         feed.rows.all { it is AgentFeedRow.Section || it == AgentFeedRow.Artifacts || it is AgentFeedRow.Feed || it == AgentFeedRow.Todos } -> HomePhase.Empty
         else -> HomePhase.List
@@ -417,16 +419,12 @@ fun AgentHomeScreen(
                 Crossfade(phase, label = "agentHome") { shown ->
                     when (shown) {
                         HomePhase.Loading -> LoadingIndicator(Modifier.padding(top = barFoot).testTag(AgentHomeTags.SPINNER))
-                        // Offline and removed keep a plain glyph, as desktop's errors do.
-                        HomePhase.Offline -> StatePage(
-                            tag = AgentHomeTags.OFFLINE,
-                            icon = if (status == AgentLinkStatus.Offline) Ionicon.CloudOfflineOutline else Ionicon.AlertCircleOutline,
-                            title = when (status) {
-                                AgentLinkStatus.Revoked -> null
-                                AgentLinkStatus.UpdateRequired -> null
-                                else -> stringResource(R.string.agent_home_offline_title, name)
-                            },
-                            body = statusMessage(status, profileRequired) ?: stringResource(R.string.agent_home_offline_body),
+                        // Removed keeps a plain glyph, as desktop's errors do.
+                        HomePhase.Unavailable -> StatePage(
+                            tag = AgentHomeTags.UNAVAILABLE,
+                            icon = Ionicon.AlertCircleOutline,
+                            title = null,
+                            body = statusMessage(status, profileRequired),
                             action = signInAction(status, actions, profileRequired),
                             modifier = Modifier.padding(top = barFoot),
                         )
@@ -608,7 +606,7 @@ private fun LeaveSurfaceDialogs(
 }
 
 /** What home's page shows under the bar. */
-private enum class HomePhase { Loading, Offline, Empty, List }
+private enum class HomePhase { Loading, Unavailable, Empty, List }
 
 /** How long the typing rests before the daemon is asked (the design's ~120 ms). */
 private const val SEARCH_DEBOUNCE_MS = 120L
@@ -751,15 +749,18 @@ private fun statusMessage(status: AgentLinkStatus, profileRequired: Boolean = fa
 }
 
 /**
- * The notice heading home's list: why the agent can't be reached for good,
- * the computer's refusal of something done here (iOS SyncEngine's
- * `notice`), or "The computer did not answer." while it doesn't (iOS's
- * `Strings.unanswered`); the title keeps the name meanwhile ([BarTitle]).
+ * The notice heading home's list: why the agent can't be reached until
+ * something is done, or the computer's refusal of something done here (iOS
+ * SyncEngine's `notice`). A link that is only on its way says so in the
+ * title alone ([BarTitle]).
  */
 @Composable
 private fun noticeMessage(status: AgentLinkStatus, profileRequired: Boolean, refusal: String?): String? =
     statusMessage(status, profileRequired) ?: refusal?.takeIf { it.isNotBlank() }?.let { LocalResources.current.refusalText(it) }
-        ?: if (status == AgentLinkStatus.Offline) stringResource(R.string.agent_home_unanswered) else null
+
+/** Kept away by something other than the network, which [statusMessage] says: the link waits on the person. */
+private val AgentLinkStatus.needsAction: Boolean
+    get() = this == AgentLinkStatus.Revoked || this == AgentLinkStatus.UpdateRequired || this == AgentLinkStatus.SignInRequired
 
 /** The notice row's motion, the rows' own ([agentHomeRows]). */
 private val BANNER_FADE_IN = tween<Float>(180)

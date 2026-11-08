@@ -29,7 +29,7 @@ private struct NoComputer: AgentTransport {
 }
 
 /// Home's title through a link that goes and comes back, on both homes:
-/// offline, connecting, updating, live. At each step the title says what
+/// connecting, updating, live, never offline. At each step the title says what
 /// it should, the picture, the bar and its other items stay where they
 /// are, and mid-change both the name and the status are partly there.
 /// Stills (light and dark) and mid-change frames go to the repository's
@@ -300,19 +300,19 @@ final class HostedLinkTitleTests: XCTestCase {
             XCTAssertNil(shows(switcher))
         }
 
-        // The network is fine but the computer did not answer: the list
-        // says so, and the title keeps the name rather than say it twice.
+        // The network is fine but the computer does not answer: never
+        // offline. It is asked again, so the title says connecting, and the
+        // list says nothing of it.
         snapshot.live = false
-        snapshot.error = ""
+        snapshot.reconnecting = true
         session.receive(status: .retrying)
         session.receive(home: snapshot)
         content.applyConnection(snapshot)
-        try await until("offline", 2) { home.headerState == .offline }
-        try await Task.sleep(for: .milliseconds(400))
-        XCTAssertNil(shows(switcher), "the title said connecting beside the notice")
-        XCTAssertEqual(sidebar.notice, Strings.unanswered)
-        XCTAssertEqual(switcher.accessibilityValue, "Studio Mac, offline")
-        try await captureBoth(window, "agent-6-computer-did-not-answer")
+        try await until("connecting", 2) { home.headerState == .connecting }
+        try await until("the status", 2) { self.shows(switcher) == "Connecting…" }
+        XCTAssertNil(sidebar.notice, "a notice said the computer is away")
+        XCTAssertEqual(switcher.accessibilityValue, "Connecting…, Studio Mac")
+        try await captureBoth(window, "agent-6-computer-did-not-answer-connecting")
         note("agent-frames", log)
         try await account.agentConnections.remove(connection.id)
     }
@@ -444,14 +444,12 @@ final class HostedLinkTitleTests: XCTestCase {
     }
 
     /// What VoiceOver hears as the title changes: the status as the title
-    /// says it, "Online" once back, nothing for an offline the list says.
+    /// says it, "Online" once back.
     func testVoiceOverHearsTheTitlesWords() {
         XCTAssertEqual(AccountSwitcher.announcement(for: .waitingForNetwork), "Waiting for network…")
         XCTAssertEqual(AccountSwitcher.announcement(for: .connecting), "Connecting…")
         XCTAssertEqual(AccountSwitcher.announcement(for: .syncing), "Updating…")
         XCTAssertEqual(AccountSwitcher.announcement(for: .online), "Online")
-        XCTAssertNil(AccountSwitcher.announcement(for: .offline))
-        XCTAssertNil(Strings.HeaderStatus.title(.offline))
         XCTAssertNil(Strings.HeaderStatus.title(.online))
     }
 

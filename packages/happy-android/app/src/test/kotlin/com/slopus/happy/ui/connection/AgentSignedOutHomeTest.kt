@@ -39,7 +39,7 @@ class AgentSignedOutHomeTest {
         rule.onNodeWithTag(AgentHomeTags.SIGNED_OUT).assertIsDisplayed()
         rule.onNodeWithTag(AccountMenuTags.BUTTON).assertIsDisplayed()
         rule.onNodeWithText("Acme").assertIsDisplayed()
-        for (tag in listOf(AgentHomeTags.LIST, AgentHomeTags.SEARCH, AgentHomeTags.SETTINGS, AgentHomeTags.COMPOSE, AgentHomeTags.VOICE, AgentHomeTags.BANNER, AgentHomeTags.OFFLINE)) {
+        for (tag in listOf(AgentHomeTags.LIST, AgentHomeTags.SEARCH, AgentHomeTags.SETTINGS, AgentHomeTags.COMPOSE, AgentHomeTags.VOICE, AgentHomeTags.BANNER, AgentHomeTags.UNAVAILABLE)) {
             rule.onAllNodesWithTag(tag).fetchSemanticsNodes().let { assertEquals(tag, 0, it.size) }
         }
         rule.onNodeWithText("Sign in again").performClick()

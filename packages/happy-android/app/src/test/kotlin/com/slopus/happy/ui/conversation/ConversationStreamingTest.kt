@@ -76,7 +76,7 @@ class ConversationStreamingTest {
 
     @Test fun `a delta recomposes its own row's text and nothing else`() {
         val state = streaming()
-        rule.setHappyContent { ConversationScreen(state, null, ConversationScreenActions()) }
+        rule.setHappyContent { ConversationScreen(state, ConversationScreenActions()) }
         rule.waitForIdle()
         val counts = HashMap<String, Int>()
         RecomposeProbe.counts = counts
@@ -96,7 +96,7 @@ class ConversationStreamingTest {
 
     @Test fun `deltas between two frames compose once`() {
         val state = streaming()
-        rule.setHappyContent { ConversationScreen(state, null, ConversationScreenActions()) }
+        rule.setHappyContent { ConversationScreen(state, ConversationScreenActions()) }
         rule.waitForIdle()
         val counts = HashMap<String, Int>()
         RecomposeProbe.counts = counts
@@ -109,7 +109,7 @@ class ConversationStreamingTest {
 
     @Test fun `the end of the stream shows every word at once and the copy button`() {
         var state by mutableStateOf(streaming())
-        rule.setHappyContent { ConversationScreen(state, null, ConversationScreenActions()) }
+        rule.setHappyContent { ConversationScreen(state, ConversationScreenActions()) }
         rule.waitForIdle()
         rule.mainClock.autoAdvance = false
         delta(" The last words.")
@@ -138,7 +138,7 @@ class ConversationStreamingTest {
 
     @Test fun `a fresh answer grows from nothing, smoothly, and settles at its whole height`() {
         var state by mutableStateOf(ConversationState(created = true, loaded = true, agent = agent, working = true, activity = Activity.Working, rows = history))
-        rule.setHappyContent { ConversationScreen(state, null, ConversationScreenActions()) }
+        rule.setHappyContent { ConversationScreen(state, ConversationScreenActions()) }
         rule.waitForIdle()
         // The answer before it rests on the list's newest end; the streaming row's drawn height lifts it.
         val rest = answers().last().bottom
@@ -171,7 +171,7 @@ class ConversationStreamingTest {
         message = message.copy(content = listOf(Block.Text(words.toString())))
         val state = streaming()
         now += 10_000
-        rule.setHappyContent { ConversationScreen(state, null, ConversationScreenActions()) }
+        rule.setHappyContent { ConversationScreen(state, ConversationScreenActions()) }
         rule.waitForIdle()
         val foot = answer().bottom
         repeat(4) {

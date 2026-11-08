@@ -53,7 +53,7 @@ private fun ConnectionDiagnostics(graph: AppGraph, accountId: String, onBack: ()
     }
     val state = if (agent != null) {
         val session = remember(graph, accountId) { graph.agentSessions.session(accountId) }
-        val status = session?.status?.collectAsStateWithLifecycle()?.value ?: AgentLinkStatus.Offline
+        val status = session?.status?.collectAsStateWithLifecycle()?.value ?: AgentLinkStatus.Connecting
         val kind = transports.map { it.kind }.distinct().singleOrNull()
         ConnectionPageState(
             status = statusText(status),
@@ -77,8 +77,8 @@ private fun ConnectionDiagnostics(graph: AppGraph, accountId: String, onBack: ()
         ConnectionPageState(
             status = statusText(when (status) {
                 ConnectionStatus.CONNECTED -> AgentLinkStatus.Connected
-                ConnectionStatus.CONNECTING -> AgentLinkStatus.Connecting
-                ConnectionStatus.DISCONNECTED, ConnectionStatus.ERROR -> AgentLinkStatus.Offline
+                // The socket retries for as long as the account is signed in ([com.slopus.happy.connection.accountLinkState]).
+                ConnectionStatus.CONNECTING, ConnectionStatus.DISCONNECTED, ConnectionStatus.ERROR -> AgentLinkStatus.Connecting
             }),
             type = "Socket.IO",
             networkAvailable = network,

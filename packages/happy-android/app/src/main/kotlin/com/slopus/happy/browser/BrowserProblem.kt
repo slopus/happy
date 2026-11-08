@@ -5,11 +5,11 @@ import com.slopus.happy.agent.AgentLinkStatus
 
 /**
  * How the way to the computer stands, as the browser reads it (iOS's
- * `LinkState`, the cases it uses): the phone has no network, the agent
- * connection is offline, or it is up.
+ * `LinkState`, the cases it uses): the phone has no network, or the agent
+ * connection is up.
  */
 enum class BrowserLink {
-    Online, Offline, NoNetwork;
+    Online, NoNetwork;
 
     companion object {
         /** [status] of the agent connection, or no network when it isn't connected and the phone has none; null while neither says. */
@@ -17,7 +17,6 @@ enum class BrowserLink {
             // A connected computer is proof of a network, whatever the phone's check of it says.
             status == AgentLinkStatus.Connected -> Online
             !network -> NoNetwork
-            status == AgentLinkStatus.Offline -> Offline
             else -> null
         }
     }
@@ -80,7 +79,6 @@ sealed interface BrowserProblem {
             if (code == WebViewClient.ERROR_UNSUPPORTED_SCHEME || net == "ERR_UNKNOWN_URL_SCHEME") {
                 return Unsupported(url?.substringBefore(':', "")?.takeIf { it.isNotEmpty() && ':' in url }.orEmpty())
             }
-            if (link == BrowserLink.Offline) return ComputerUnreachable
             // What the proxy said wins over WebView's code, which reports a refused tunnel under the TLS one.
             refusal?.let { return it.problem }
             if (code == WebViewClient.ERROR_FAILED_SSL_HANDSHAKE) return Insecure
@@ -110,7 +108,6 @@ sealed interface BrowserProblem {
             if (proxyError != null) {
                 if (BrowserProxyRefusal(status, proxyError).problem == LiveUnavailable) return LiveUnavailable
                 if (link == BrowserLink.NoNetwork) return NoNetwork
-                if (link == BrowserLink.Offline) return ComputerUnreachable
                 // The proxy's own answer says which side failed (docs/browser-proxy.md: a failed tunnel to the computer is Can't Reach).
                 BrowserProxyRefusal(status, proxyError).problem.takeIf { it != Unavailable }?.let { return it }
                 if (status in 502..504) return ServerNotResponding
@@ -121,7 +118,6 @@ sealed interface BrowserProblem {
         /** Opening the page failed before WebView had it: finding the workspace, or starting the proxy. */
         fun opening(error: Throwable, link: BrowserLink?): BrowserProblem = when {
             link == BrowserLink.NoNetwork -> NoNetwork
-            link == BrowserLink.Offline -> ComputerUnreachable
             error is BrowserException && error.kind == BrowserException.Kind.LiveUnavailable -> LiveUnavailable
             error is BrowserException || error is com.slopus.happy.agent.AgentApiException -> Unavailable
             else -> ComputerUnreachable
