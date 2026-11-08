@@ -118,6 +118,7 @@ class AgentClient private constructor(private val link: suspend () -> Link) {
         val link = link()
         val response = authorized(link) { token -> link.transport.request(method, path, token, null, headers, category) }
         if (link.oauth && SignInRule.requiresSignIn(response)) signInRequired(link)
+        if (link.oauth && SignInRule.requiresProfile(response)) signInRequired(link, profileRequired = true)
         response
     }
 
@@ -277,6 +278,7 @@ class AgentClient private constructor(private val link: suspend () -> Link) {
 
     private suspend fun check(link: Link, response: TransportResponse): TransportResponse {
         if (link.oauth && SignInRule.requiresSignIn(response)) signInRequired(link)
+        if (link.oauth && SignInRule.requiresProfile(response)) signInRequired(link, profileRequired = true)
         if (!link.oauth && response.status == 401) throw AgentConnectionException(AgentConnectionException.Reason.Revoked)
         if (response.status in 200..299 || response.status == 304) return response
         val failure = try {
