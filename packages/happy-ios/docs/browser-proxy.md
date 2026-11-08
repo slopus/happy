@@ -57,10 +57,25 @@ append a second HTTP error response to its bytes.
   resources use the artifact source's workspace (or host fallback) over CONNECT.
   A bundled artifact can still serve its own files/API without a workspace,
   but external requests then fail closed.
-- Older HTTP `live.url` artifacts preserve the target origin: `/api/*` gets the
-  artifact capability; everything else goes through the workspace. Ordinary
-  HTTP requests close after one response to classify every request separately;
-  WebSocket upgrades remain duplex.
+- A live artifact (`live.url`, made with `create_artifact` and `url`) opens
+  the URL of the version shown, a pinned version its own, http or https.
+  Every tunnel its page opens, to its own origin or any other host, is
+  `CONNECT /v0/artifacts/:id/proxy` then nested `CONNECT host:port`
+  (`BrowserNetwork.artifact`). That route reaches the network the artifact
+  was made on (`live.networkId`, say the creating agent's own container), and
+  the daemon checks every destination against the artifact's current URL;
+  the phone names no network and no allowlist. No workspace is looked up for
+  it, and nothing falls back to a workspace, the network or another proxy. The
+  page gets no data bridge: its `/api/*` is the site's own and reaches the site
+  with no daemon credential. HTTPS stays end to end, as for any link. Its
+  store is the page's own nonpersistent one. A refusal of the artifact route
+  itself (404: the artifact is gone or not live, or its network isn't served;
+  501; 503) is `BrowserError.liveUnavailable`, shown as "This Page's Computer
+  Isn't Available"; a destination refused inside the open tunnel (the
+  daemon's 403, or a dev server that isn't running) stays what it was.
+  Over Tailcat the route is CONNECT to the daemon; over HTTPS it is the
+  route's WebSocket twin (`/v0/artifacts/:id/proxy/websocket`) when health
+  offers twins, through the same `proxyTunnel` as every other route.
 
 ## Security rules
 
@@ -135,6 +150,7 @@ address that failed, not the last one that worked (`BrowserProblem`):
 | No network path (`LinkState.waitingForNetwork`) | You're Offline |
 | The agent connection offline, or the proxy's tunnel to the computer failed (`browser_proxy_upstream_transport`) | Can't Reach <computer>; retried by itself when the link is back |
 | No session or route (`BrowserError.unavailable`) | Can't Open This Page |
+| A live artifact's own proxy refused (`BrowserError.liveUnavailable`, `browser_proxy_live_unavailable`) | This Page's Computer Isn't Available |
 | The computer refused the target (502/503/504 on CONNECT), connection refused or lost | Server Isn't Responding, naming host:port |
 | The proxy's own 502/503/504 response (`X-Happy-Proxy-Error`), whatever its body | Server Isn't Responding |
 | An error status with no body | Page Error <status>; one with a body shows as the page |
@@ -175,11 +191,10 @@ content). Nothing but the request is sent, with no cookies or cache.
 
 ## Contract gaps and limits
 
-The inspected current happy-agent API and artifact schema no longer contain a
-URL artifact type or `live.url`. iOS keeps the older decoded field and supports
-HTTP instances without inventing a daemon API. HTTPS live artifacts are refused:
-intercepting their `/api` path would require TLS interception. Ordinary HTTPS
-browser links still use an end-to-end encrypted tunnel.
+Live artifacts follow happy-agent API.md, "Live URLs" and
+`CONNECT /v0/artifacts/:artifactId/proxy`. The route has no version selector:
+the daemon checks a pinned version's URL against the artifact's current one, so
+a pinned version whose URL has since changed is refused inside the tunnel.
 
 The daemon exposes no unscoped host CONNECT endpoint, so host fallback needs a
 local host workspace. Legacy relay chats have no workspace-to-agent-connection
@@ -187,8 +202,9 @@ mapping: the active agent connection can supply a host fallback, or the browser
 shows the unavailable state. No device-local localhost or public fallback occurs.
 
 Hosted tests use real WebKit and the loopback listener against a byte-level fake
-daemon: artifact PUT and live SSE, relative JavaScript and WebSocket, live URL
-artifact API separation, chat workspace selection, and
+daemon: artifact PUT and live SSE, relative JavaScript and WebSocket, a live
+artifact through its own proxy with no API bridge (and its pinned version's
+URL, and its unavailable page), chat workspace selection, and
 public pages/resources on fake-only domains that cannot resolve on the phone.
 They assert no failover/domain exclusions and no view when no connection exists.
 Core tests cover framing, errors, credential boundaries and streaming; pure

@@ -66,8 +66,14 @@ class BrowserProxy(parent: CoroutineScope) {
             val network: (suspend () -> BrowserNetwork)?,
         ) : Scope
 
-        /** An older artifact running at an http URL: its own origin, `/api/…` to the artifact, the rest through [network]. */
-        class Live(override val client: AgentClient, val id: String, val network: BrowserNetwork, val authority: BrowserPolicy.Authority) : Scope
+        /**
+         * A live artifact at its URL ([authority] is the page's own origin, http or https): everything it asks for,
+         * there or anywhere, goes through the artifact's own proxy ([BrowserNetwork.artifact]), whose daemon decides
+         * what it may reach. Its `/api/…` is the site's own; nothing bridges it to the daemon.
+         */
+        class Live(override val client: AgentClient, val id: String, val authority: BrowserPolicy.Authority) : Scope {
+            val network = BrowserNetwork.artifact(id)
+        }
 
         /** A web page: the web through [network], and no daemon or artifact API. */
         class Web(override val client: AgentClient, val network: suspend () -> BrowserNetwork) : Scope
@@ -248,18 +254,6 @@ class BrowserProxy(parent: CoroutineScope) {
                         BrowserPolicy.checkArtifactOrigin(inner, authority)
                         artifact(local, owner.pool, scope.id, scope.version, inner, body, scope.vault) { started = true }
                     }
-                    is Scope.Live if scope.authority == authority -> {
-                        local.write(ESTABLISHED)
-                        if (rest.isNotEmpty()) throw BrowserException(BrowserException.Kind.Malformed)
-                        val (inner, body) = BrowserRelay.head(local)
-                        val target = inner.line.split(' ').getOrNull(1).orEmpty()
-                        if (target.startsWith("/api/")) {
-                            BrowserPolicy.checkArtifactOrigin(inner, authority)
-                            artifact(local, owner.pool, scope.id, 1, inner, body) { started = true }
-                        } else {
-                            forward(local, scope.client, scope.network, authority, inner, body) { started = true }
-                        }
-                    }
                     else -> {
                         val network = owner.network()
                         val remote = upstream { BrowserTunnel.open(owner.scope.client, network, authority) }
@@ -286,10 +280,6 @@ class BrowserProxy(parent: CoroutineScope) {
                 is Scope.Artifact if scope.authority == authority -> {
                     BrowserPolicy.checkArtifactOrigin(inner, authority)
                     artifact(local, owner.pool, scope.id, scope.version, inner, rest, scope.vault) { started = true }
-                }
-                is Scope.Live if scope.authority == authority && target.startsWith("/api/") -> {
-                    BrowserPolicy.checkArtifactOrigin(inner, authority)
-                    artifact(local, owner.pool, scope.id, 1, inner, rest) { started = true }
                 }
                 else -> forward(local, owner.scope.client, owner.network(), authority, inner, rest) { started = true }
             }
@@ -542,6 +532,7 @@ data class BrowserFailure(val status: Int, val reason: String, val code: String)
                 val cause = error.cause
                 return when {
                     cause is BrowserException && cause.kind == BrowserException.Kind.Timeout -> failure(504, "Gateway Timeout", "upstream_timeout")
+                    cause is BrowserException && cause.kind == BrowserException.Kind.LiveUnavailable -> failure(503, "Service Unavailable", "live_unavailable")
                     cause is BrowserException && (cause.kind == BrowserException.Kind.Malformed || cause.kind == BrowserException.Kind.TooLarge) ->
                         failure(502, "Bad Gateway", "upstream_response_invalid")
                     cause is BrowserException && cause.kind == BrowserException.Kind.Upstream && cause.status in 400..599 ->
@@ -557,6 +548,7 @@ data class BrowserFailure(val status: Int, val reason: String, val code: String)
                     BrowserException.Kind.Malformed -> failure(400, "Bad Request", "request_invalid")
                     BrowserException.Kind.TooLarge -> failure(413, "Content Too Large", "request_too_large")
                     BrowserException.Kind.Unavailable -> failure(503, "Service Unavailable", "route_unavailable")
+                    BrowserException.Kind.LiveUnavailable -> failure(503, "Service Unavailable", "live_unavailable")
                     BrowserException.Kind.Timeout -> failure(408, "Request Timeout", "request_timeout")
                     BrowserException.Kind.Upstream ->
                         if (error.status in 400..599) failure(error.status, "Upstream Refused", "upstream_refused") else failure(502, "Bad Gateway", "upstream_transport")

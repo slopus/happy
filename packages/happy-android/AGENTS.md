@@ -1919,6 +1919,19 @@ iOS's `docs/browser-proxy.md` is the contract; `browser/` ports it
   pass, so the link's own click, a bubble's copy menu and text selection
   never also fire; a drag past the touch slop lets go and scrolls
   (`LinksTest`, which covers each site).
+- **Live artifacts** (`ArtifactShow.Live`, `ArtifactLoader.livePage`) open
+  the URL of the version shown, a pinned version its own, http or https, with
+  `BrowserProxy.Scope.Live`: every tunnel, to the page's origin or any other
+  host, is `CONNECT /v0/artifacts/:id/proxy` (`BrowserNetwork.artifact`), in
+  the network the artifact was made on, where the daemon checks each
+  destination against its URL (happy-agent API.md, "Live URLs"). No workspace
+  is looked up and nothing falls back to another network. There is no data
+  bridge: the page's `/api/…` is the site's own. Its WebView has a profile of
+  its own (below), as every page does. A refusal of the route itself (404, 501,
+  503) is `BrowserException.Kind.LiveUnavailable` (`browser_proxy_live_unavailable`),
+  shown as "This Page's Computer Isn't Available"; a refusal inside the open
+  tunnel is what it was. Over HTTPS the route is its WebSocket twin, as every
+  tunnel's is (`BrowserTunnel.outer`).
 - **Remote only.** Every WebView request goes through `ProxyController`'s
   override to the loopback `BrowserProxy`, with no bypass rules, applied
   before the first load; a WebView without `PROXY_OVERRIDE` shows
@@ -1947,6 +1960,7 @@ iOS's `docs/browser-proxy.md` is the contract; `browser/` ports it
     sees it. iOS allows them in web content only; Android has no
     WebView-only switch, and a base-config allowance would also open
     cleartext to the app's native clients.
+    A live artifact at plain http off localhost hits the same refusal.
   - The listener binds 127.0.0.1 by address: Android's
     `getLoopbackAddress()` is `::1`, which WebView's `127.0.0.1` rule
     can't reach.

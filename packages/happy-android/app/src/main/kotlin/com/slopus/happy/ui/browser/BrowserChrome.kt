@@ -166,6 +166,7 @@ fun browserProblemWords(problem: BrowserProblem, computer: String, host: String?
     BrowserProblem.ComputerUnreachable ->
         stringResource(R.string.browser_problem_unreachable_title, computer) to stringResource(R.string.browser_problem_unreachable_message, computer)
     BrowserProblem.Unavailable -> stringResource(R.string.browser_problem_unavailable_title) to stringResource(R.string.browser_problem_unavailable_message)
+    BrowserProblem.LiveUnavailable -> stringResource(R.string.browser_problem_live_unavailable_title) to stringResource(R.string.browser_problem_live_unavailable_message)
     BrowserProblem.HostNotFound -> stringResource(R.string.browser_problem_host_not_found_title) to
         (if (host != null) stringResource(R.string.browser_problem_host_not_found_message, computer, host) else stringResource(R.string.browser_problem_host_not_found_message_no_host, computer))
     BrowserProblem.ServerNotResponding -> stringResource(R.string.browser_problem_server_title) to
@@ -187,7 +188,7 @@ fun browserProblemWords(problem: BrowserProblem, computer: String, host: String?
 /** The error page's glyph for [problem] (iOS's `BrowserFailureView.glyph`). */
 fun browserProblemGlyph(problem: BrowserProblem): Ionicon = when (problem) {
     BrowserProblem.NoNetwork, BrowserProblem.ComputerUnreachable -> Ionicon.CloudOfflineOutline
-    BrowserProblem.Unavailable -> Ionicon.LaptopOutline
+    BrowserProblem.Unavailable, BrowserProblem.LiveUnavailable -> Ionicon.LaptopOutline
     BrowserProblem.HostNotFound -> Ionicon.GlobeOutline
     BrowserProblem.ServerNotResponding -> Ionicon.ServerOutline
     BrowserProblem.TimedOut -> Ionicon.TimeOutline

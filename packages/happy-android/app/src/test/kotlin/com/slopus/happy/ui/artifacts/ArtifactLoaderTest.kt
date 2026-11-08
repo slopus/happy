@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.agent.AgentClient
 import com.slopus.happy.artifacts.ArtifactClient
+import com.slopus.happy.browser.BrowserPolicy
+import com.slopus.happy.browser.BrowserProxy
 import com.slopus.happy.artifacts.ArtifactFile
 import com.slopus.happy.artifacts.ArtifactRef
 import com.slopus.happy.artifacts.Extent
@@ -168,6 +170,40 @@ class ArtifactLoaderTest {
         assertEquals(ArtifactUi.Openable(ArtifactFile("b.pdf", "application/pdf", 10)), settled(created))
         assertTrue(asked.single().endsWith("/versions/latest"))
         assertEquals("following the latest, the version read is it", 3, created.latest.value)
+    }
+
+    /** happy-agent API.md, "Live URLs": the version's URL through the artifact's own proxy, with no workspace looked up. */
+    @Test fun aLiveVersionOpensItsOwnUrlThroughTheArtifactsProxy() {
+        fun live(number: Int, url: String) =
+            """{"artifactId":"a1","number":$number,"title":"Preview $number","live":{"url":"$url","networkId":"c-agent1"},"entry":{"path":"index.html"},"files":[{"path":"index.html","mimeType":"text/html","size":1}]}"""
+        val versions = mapOf(1 to live(1, "http://localhost:4100/"), 3 to live(3, "https://preview.example.com/"))
+        val agentAsked = Collections.synchronizedList(ArrayList<String>())
+        val agent = AgentClient(
+            object : Transport {
+                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
+                    agentAsked += path
+                    return json("""{"error":"no"}""", 404)
+                }
+
+                override suspend fun close() {}
+            },
+            "t",
+        )
+        fun page(ref: ArtifactRef): com.slopus.happy.ui.browser.BrowserPage {
+            val ui = settled(ArtifactLoader(files(versions), agent, scope, ref, sizeWait = 2_000).also(ArtifactLoader::load)) as ArtifactUi.Page
+            return runBlocking { ui.prepare() }
+        }
+        val pinned = page(ArtifactRef("a1", 1, "", "Preview", followsLatest = false, pinned = true))
+        assertEquals("http://localhost:4100/", pinned.url)
+        assertEquals("a1", pinned.artifactId)
+        val through = pinned.scope as BrowserProxy.Scope.Live
+        assertEquals("/v0/artifacts/a1/proxy", through.network.path)
+        assertEquals(BrowserPolicy.Authority.of("http://localhost:4100/"), through.authority)
+        // Following the latest, an https URL opens too: its TLS stays end to end in the tunnel.
+        assertEquals("https://preview.example.com/", page(ArtifactRef("a1", 3, "", "Preview", followsLatest = true)).url)
+        assertEquals(emptyList<String>(), agentAsked)
+        // The artifact itself is read only for the History banner's latest; no workspace or agent is asked for a network.
+        assertTrue(asked.none { it.startsWith("/v0/workspaces") || it.startsWith("/v0/agents") })
     }
 
     @Test fun aFreshMarkdownVersionCarriesTheOneBeforeToDiff() {

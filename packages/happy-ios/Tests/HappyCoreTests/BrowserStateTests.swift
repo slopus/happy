@@ -102,6 +102,11 @@ final class BrowserProblemTests: XCTestCase {
         XCTAssertEqual(BrowserProblem.navigation(refused, refusal: BrowserProxyRefusal(status: 504, code: "browser_proxy_upstream_timeout"), link: nil), .timedOut)
         XCTAssertEqual(BrowserProblem.navigation(refused, refusal: BrowserProxyRefusal(status: 503, code: "browser_proxy_route_unavailable"), link: nil), .unavailable)
         XCTAssertEqual(BrowserProblem.navigation(refused, refusal: BrowserProxyRefusal(status: 403, code: "browser_proxy_upstream_refused"), link: nil), .unavailable)
+        XCTAssertEqual(BrowserProblem.navigation(refused, refusal: BrowserProxyRefusal(status: 503, code: "browser_proxy_live_unavailable"), link: .online), .liveUnavailable)
+        XCTAssertEqual(BrowserProblem.navigation(refused, refusal: BrowserProxyRefusal(status: 503, code: "browser_proxy_live_unavailable"), link: .waitingForNetwork), .liveUnavailable, "The daemon answered it")
+        XCTAssertEqual(BrowserProblem.response(status: 503, proxyError: "browser_proxy_live_unavailable", hasBody: true, link: .online), .liveUnavailable)
+        XCTAssertEqual(BrowserProblem.navigation(refused, refusal: BrowserProxyRefusal(status: 503, code: "browser_proxy_live_unavailable"), link: .waitingForNetwork), .liveUnavailable, "The daemon answered it")
+        XCTAssertEqual(BrowserProblem.response(status: 503, proxyError: "browser_proxy_live_unavailable", hasBody: true, link: .online), .liveUnavailable)
     }
 
     func testMainFrameStatuses() {
@@ -118,6 +123,7 @@ final class BrowserProblemTests: XCTestCase {
     func testOpening() {
         XCTAssertEqual(BrowserProblem.opening(BrowserError.unavailable, link: nil), .unavailable)
         XCTAssertEqual(BrowserProblem.opening(BrowserError.unavailable, link: .offline), .computerUnreachable)
+        XCTAssertEqual(BrowserProblem.opening(BrowserError.liveUnavailable, link: .online), .liveUnavailable)
         XCTAssertEqual(BrowserProblem.opening(URLError(.timedOut), link: .connecting), .computerUnreachable)
         XCTAssertEqual(BrowserProblem.opening(URLError(.timedOut), link: .waitingForNetwork), .noNetwork)
     }

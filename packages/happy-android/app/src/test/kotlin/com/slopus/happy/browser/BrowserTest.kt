@@ -226,6 +226,40 @@ class BrowserTest {
         assertTrue(bytes.closed)
     }
 
+    @Test fun aLiveArtifactTunnelsThroughItsOwnProxyForHttpAndHttps() = runBlocking {
+        for ((url, target) in listOf("http://127.0.0.1:4191/" to "127.0.0.1:4191", "https://preview.example.com/app" to "preview.example.com:443")) {
+            val bytes = Bytes("HTTP/1.1 200 OK\r\n\r\n", "HTTP/1.1 200 OK\r\n\r\n")
+            val client = AgentClient(Sockets(bytes), "native-token")
+            BrowserTunnel.open(client, BrowserNetwork.artifact("art1"), BrowserPolicy.Authority.of(url)!!).close()
+            val written = bytes.writes.map { it.decodeToString() }
+            assertTrue(written[0].startsWith("CONNECT /v0/artifacts/art1/proxy HTTP/1.1\r\n"))
+            assertTrue(written[0].contains("Authorization: Bearer native-token"))
+            assertTrue(written[1].startsWith("CONNECT $target HTTP/1.1\r\n"))
+            assertFalse(written[1].contains("native-token"))
+        }
+        throwsBrowser(BrowserException.Kind.Forbidden) { BrowserNetwork.artifact("../agents") }
+    }
+
+    @Test fun aLiveArtifactsProxyRefusingToOpenMeansItsComputerIsUnavailable() = runBlocking {
+        val target = BrowserPolicy.Authority.of("http://localhost:4191")!!
+        suspend fun refusal(network: BrowserNetwork, vararg answers: String) =
+            runCatching { BrowserTunnel.open(AgentClient(Sockets(Bytes(*answers)), "token"), network, target) }.exceptionOrNull() as BrowserException
+        for (status in listOf(404, 501, 503)) {
+            assertEquals(BrowserException.Kind.LiveUnavailable, refusal(BrowserNetwork.artifact("gone1"), "HTTP/1.1 $status Refused\r\n\r\n").kind)
+        }
+        // The same refusal from a workspace's proxy is only its status.
+        refusal(BrowserNetwork.workspace("work1"), "HTTP/1.1 404 Not Found\r\n\r\n").let {
+            assertEquals(BrowserException.Kind.Upstream, it.kind)
+            assertEquals(404, it.status)
+        }
+        // A destination refused inside the open tunnel (the daemon's policy, or no dev server) is not the computer's absence.
+        refusal(BrowserNetwork.artifact("art1"), "HTTP/1.1 200 OK\r\n\r\n", "HTTP/1.1 403 Forbidden\r\n\r\n").let {
+            assertEquals(BrowserException.Kind.Upstream, it.kind)
+            assertEquals(403, it.status)
+        }
+        assertEquals(BrowserFailure(503, "Service Unavailable", "browser_proxy_live_unavailable"), BrowserFailure.of(BrowserUpstreamException(BrowserException(BrowserException.Kind.LiveUnavailable, 404))))
+    }
+
     @Test fun chunkedRequestIsBoundedAndCannotSmuggleAnotherRequest() = runBlocking {
         val chunked = head("PUT /api/v1/kv/entry HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n")
         val stream = Bytes("2\r\n{}\r\n0\r\n\r\nGET /v0/config HTTP/1.1\r\n\r\n")

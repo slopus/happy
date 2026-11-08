@@ -12,6 +12,8 @@
     <string name="browser_problem_unreachable_message">ページは %1$s を経由して開きますが、応答がありません。スリープしておらず、Happy が起動していることを確認してください。</string>
     <string name="browser_problem_unavailable_title">このページを開けません</string>
     <string name="browser_problem_unavailable_message">ページは Happy Agent が動いているコンピュータを経由して開きますが、このページを開くための接続がありません。</string>
+    <string name="browser_problem_live_unavailable_title">このページのコンピュータを利用できません</string>
+    <string name="browser_problem_live_unavailable_message">このページは、共有したエージェントが作業しているコンピュータで動いています。そのコンピュータを今は利用できないか、ページの共有が終了しています。</string>
     <string name="browser_problem_host_not_found_title">サーバが見つかりません</string>
     <string name="browser_problem_host_not_found_message">%1$s は「%2$s」を見つけられませんでした。アドレスを確認してください。</string>
     <string name="browser_problem_host_not_found_message_no_host">%1$s はサーバを見つけられませんでした。アドレスを確認してください。</string>

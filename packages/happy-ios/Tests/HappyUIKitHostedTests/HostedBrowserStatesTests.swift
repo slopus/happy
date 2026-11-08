@@ -37,8 +37,11 @@ actor BrowserStateDaemon: AgentTransport {
         return Socket(self)
     }
     func close() async {}
+    /// API answers by path; everything else is `{}`.
+    var responses: [String: String] = ["/v0/config": #"{"config":{"node":{"name":"Studio Mac"}}}"#]
+    func respond(_ path: String, _ json: String) { responses[path] = json }
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
-        HTTP1Response(status: 200, body: Data("{}".utf8))
+        HTTP1Response(status: 200, body: Data((responses[path] ?? "{}").utf8))
     }
 
     enum Answer {
@@ -52,10 +55,10 @@ actor BrowserStateDaemon: AgentTransport {
         let parts = head.line.split(separator: " ")
         let target = parts.count > 1 ? String(parts[1]) : "/"
         if head.line.hasPrefix("CONNECT ") {
-            if target.hasPrefix("/v0/") { return .established(tls: false) }
             if let status = refused[target] {
                 return .respond(head: Data("HTTP/1.1 \(status) Refused\r\nContent-Length: 0\r\n\r\n".utf8), body: Data(), delay: .zero, gap: .zero)
             }
+            if target.hasPrefix("/v0/") { return .established(tls: false) }
             return .established(tls: target.hasSuffix(":8443"))
         }
         let path = target.components(separatedBy: "/files").last ?? target
@@ -343,6 +346,65 @@ final class HostedBrowserStatesTests: XCTestCase {
         browser.failureView.retry.sendActions(for: .primaryActionTriggered)
         try await until("the page after Try Again") { await text(browser.web) == "ready" }
         XCTAssertTrue(browser.failureView.isHidden)
+    }
+
+    func testALiveArtifactWhoseComputerIsGoneSaysSoAndOpensWhenItIsBack() async throws {
+        let daemon = BrowserStateDaemon()
+        await daemon.refuse("/v0/artifacts/art1/proxy", 404)
+        let page = try await BrowserPage.live(client: AgentClient(transport: daemon, token: "native-secret"), url: XCTUnwrap(URL(string: "http://127.0.0.1:4191/")), artifactID: "art1")
+        let browser = BrowserViewController(url: page.url, artifactID: "art1", page: page)
+        let window = try await show(browser)
+        defer { window.isHidden = true }
+        try await failed(browser, .liveUnavailable)
+        XCTAssertEqual(browser.failureView.shownTitle, "This Page’s Computer Isn’t Available")
+        try await shots(window, "browser-error-live-unavailable")
+        let requests = await daemon.requests
+        XCTAssertFalse(requests.contains { $0.contains("/v0/workspaces/") }, "Never another network")
+
+        await daemon.refuse("/v0/artifacts/art1/proxy", nil)
+        browser.failureView.retry.sendActions(for: .primaryActionTriggered)
+        try await until("the page after Try Again") { await text(browser.web) == "ready" }
+        let again = await daemon.requests
+        XCTAssertTrue(again.contains("CONNECT 127.0.0.1:4191 HTTP/1.1"))
+    }
+
+    func testALiveArtifactOpensTheURLOfTheVersionShown() async throws {
+        func version(_ number: Int, _ url: String) -> String {
+            #"{"version":{"artifactId":"art1","number":\#(number),"title":"Preview \#(number)","entry":{"path":"index.html","mimeType":"text/html","size":1},"files":[{"path":"index.html","mimeType":"text/html","size":1}],"live":{"url":"\#(url)","networkId":"c-agent1"}}}"#
+        }
+        let daemon = BrowserStateDaemon()
+        await daemon.respond("/v0/artifacts/art1/versions/1", version(1, "http://localhost:4100/"))
+        await daemon.respond("/v0/artifacts/art1/versions/latest", version(2, "http://localhost:4200/"))
+        let account = AccountController(serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "live-artifact-test", credentialStore: InMemoryCredentialStore(), storeDirectory: nil, agentTransport: { _ in daemon })
+        await account.agentConnections.setForeground(false)
+        let connection = try await account.agentConnections.add(JSONDecoder().decode(AgentConnectionCredentials.self,
+            from: Data(#"{"address":"live-artifact-test","port":1,"deviceID":"\#(UUID().uuidString)","deviceToken":"native-secret"}"#.utf8)), name: "Studio Mac")
+        defer { Session.forget(connection.id); Task { try? await account.agentConnections.remove(connection.id) } }
+        let session = try XCTUnwrap(Session.session(for: connection.id, context: AppContext(account: account, variant: .preview, version: "test")))
+
+        // Pinned to version 1: its own URL, not the latest's.
+        var pinned = Artifact(id: "art1", version: 1, type: "html", title: "Preview", followsLatest: false)
+        pinned.pinned = true
+        let navigation = UINavigationController(rootViewController: UIViewController())
+        let window = hostedKeyWindow(in: try await hostedActiveScene(), root: navigation)
+        defer { window.isHidden = true }
+        navigation.pushViewController(ArtifactViewController(session: session, artifact: pinned), animated: false)
+        try await until("the pinned version's page") {
+            let tunneled = await daemon.requests.contains("CONNECT localhost:4100 HTTP/1.1")
+            let loaded = await daemon.gets("/")
+            return tunneled && loaded > 0
+        }
+        var requests = await daemon.requests
+        XCTAssertTrue(requests.contains("CONNECT /v0/artifacts/art1/proxy HTTP/1.1"))
+        XCTAssertFalse(requests.contains { $0.contains("localhost:4200") })
+        XCTAssertFalse(requests.contains { $0.contains("/v0/workspaces/") })
+        try await shots(window, "live-artifact-pinned")
+
+        // Following the latest: the latest version's URL.
+        navigation.pushViewController(ArtifactViewController(session: session, artifact: Artifact(id: "art1", version: 2, type: "html", title: "Preview", followsLatest: true)), animated: false)
+        try await until("the latest version's page") { await daemon.requests.contains("CONNECT localhost:4200 HTTP/1.1") }
+        requests = await daemon.requests
+        XCTAssertFalse(requests.contains { $0.contains("/v0/workspaces/") })
     }
 
     func testProxyGatewayErrorIsFlaggedEvenWithABody() async throws {

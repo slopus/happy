@@ -37,6 +37,8 @@ sealed interface BrowserProblem {
     data object ComputerUnreachable : BrowserProblem
     /** There is no agent connection or route to open the page through. */
     data object Unavailable : BrowserProblem
+    /** A live artifact's page: the computer it was made on isn't there for it now, or it is no longer live (its proxy refused). */
+    data object LiveUnavailable : BrowserProblem
     /** The computer couldn't find the site's address. */
     data object HostNotFound : BrowserProblem
     /** The server on the computer refused the connection or isn't answering. */
@@ -70,6 +72,8 @@ sealed interface BrowserProblem {
         fun navigation(code: Int, description: String, url: String?, refusal: BrowserProxyRefusal?, link: BrowserLink?): BrowserProblem? {
             val net = description.substringAfter("net::", "")
             if (isCancellation(net)) return null
+            // The daemon itself refused the live artifact's route: whatever the phone thinks of its network, the computer answered.
+            if (refusal?.problem == LiveUnavailable) return LiveUnavailable
             if (link == BrowserLink.NoNetwork) return NoNetwork
             if (net == "ERR_CLEARTEXT_NOT_PERMITTED") return Cleartext
             if (net.startsWith("ERR_CERT_") || net.startsWith("ERR_SSL_")) return Insecure
@@ -104,6 +108,7 @@ sealed interface BrowserProblem {
         fun response(status: Int, proxyError: String?, hasBody: Boolean, link: BrowserLink?, reason: String? = null): BrowserProblem? {
             if (status < 400) return null
             if (proxyError != null) {
+                if (BrowserProxyRefusal(status, proxyError).problem == LiveUnavailable) return LiveUnavailable
                 if (link == BrowserLink.NoNetwork) return NoNetwork
                 if (link == BrowserLink.Offline) return ComputerUnreachable
                 // The proxy's own answer says which side failed (docs/browser-proxy.md: a failed tunnel to the computer is Can't Reach).
@@ -117,6 +122,7 @@ sealed interface BrowserProblem {
         fun opening(error: Throwable, link: BrowserLink?): BrowserProblem = when {
             link == BrowserLink.NoNetwork -> NoNetwork
             link == BrowserLink.Offline -> ComputerUnreachable
+            error is BrowserException && error.kind == BrowserException.Kind.LiveUnavailable -> LiveUnavailable
             error is BrowserException || error is com.slopus.happy.agent.AgentApiException -> Unavailable
             else -> ComputerUnreachable
         }
@@ -137,6 +143,7 @@ data class BrowserProxyRefusal(val status: Int, val code: String) {
         "browser_proxy_upstream_timeout" -> BrowserProblem.TimedOut
         "browser_proxy_upstream_response_invalid" -> BrowserProblem.ServerNotResponding
         "browser_proxy_upstream_refused" if status in 502..504 -> BrowserProblem.ServerNotResponding
+        "browser_proxy_live_unavailable" -> BrowserProblem.LiveUnavailable
         else -> BrowserProblem.Unavailable
     }
 }

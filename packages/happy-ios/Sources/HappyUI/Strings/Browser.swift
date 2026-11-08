@@ -30,6 +30,8 @@ extension Strings {
                 return ("Can’t Reach \(computer)", "Pages open through \(computer), and it isn’t answering. Make sure it’s awake and Happy is running there.")
             case .unavailable:
                 return ("Can’t Open This Page", "Pages open through a computer running Happy Agent, and there’s no connection to open this one through.")
+            case .liveUnavailable:
+                return ("This Page’s Computer Isn’t Available", "This page runs on the computer where the agent that shared it works. That computer isn’t available right now, or the page is no longer shared.")
             case .hostNotFound:
                 return ("Can’t Find the Server", "\(computer) couldn’t find \(site). Check the address.")
             case .serverNotResponding:

@@ -92,6 +92,12 @@ class BrowserStateModelTest {
         assertEquals(BrowserProblem.TimedOut, BrowserProblem.response(504, "browser_proxy_upstream_timeout", hasBody = true, link = BrowserLink.Online))
         assertEquals(BrowserProblem.ServerNotResponding, BrowserProblem.response(503, "browser_proxy_route_unavailable", hasBody = true, link = BrowserLink.Online))
         assertEquals(BrowserProblem.NoNetwork, BrowserProblem.response(503, "browser_proxy_route_unavailable", hasBody = true, link = BrowserLink.NoNetwork))
+        // A live page's plain http is answered by the proxy itself: its computer isn't there, not a server that isn't answering.
+        assertEquals(BrowserProblem.LiveUnavailable, BrowserProblem.response(503, "browser_proxy_live_unavailable", hasBody = true, link = BrowserLink.Online))
+        // The daemon answered it, so it is no sign the phone is offline.
+        assertEquals(BrowserProblem.LiveUnavailable, BrowserProblem.response(503, "browser_proxy_live_unavailable", hasBody = true, link = BrowserLink.NoNetwork))
+        // The daemon answered it, so it is no sign the phone is offline.
+        assertEquals(BrowserProblem.LiveUnavailable, BrowserProblem.response(503, "browser_proxy_live_unavailable", hasBody = true, link = BrowserLink.NoNetwork))
         // A page's own error status is its own, network or not.
         assertNull(BrowserProblem.response(503, null, hasBody = true, link = BrowserLink.NoNetwork))
         assertEquals(BrowserProblem.ComputerUnreachable, BrowserProblem.response(502, "browser_proxy_upstream_transport", hasBody = true, link = BrowserLink.Offline))
@@ -101,6 +107,7 @@ class BrowserStateModelTest {
     @Test fun openingFailuresSayWhetherThereIsARoute() {
         assertEquals(BrowserProblem.Unavailable, BrowserProblem.opening(BrowserException(BrowserException.Kind.Unavailable), BrowserLink.Online))
         assertEquals(BrowserProblem.Unavailable, BrowserProblem.opening(AgentApiException(404, "not_found", "gone"), null))
+        assertEquals(BrowserProblem.LiveUnavailable, BrowserProblem.opening(BrowserException(BrowserException.Kind.LiveUnavailable, 404), BrowserLink.Online))
         assertEquals(BrowserProblem.ComputerUnreachable, BrowserProblem.opening(IllegalStateException("no connection"), null))
         assertEquals(BrowserProblem.ComputerUnreachable, BrowserProblem.opening(BrowserException(BrowserException.Kind.Unavailable), BrowserLink.Offline))
         assertEquals(BrowserProblem.NoNetwork, BrowserProblem.opening(IllegalStateException(), BrowserLink.NoNetwork))
@@ -114,6 +121,7 @@ class BrowserStateModelTest {
         assertEquals(BrowserProblem.ServerNotResponding, BrowserProxyRefusal(502, "browser_proxy_upstream_response_invalid").problem)
         assertEquals(BrowserProblem.ServerNotResponding, BrowserProxyRefusal(503, "browser_proxy_upstream_refused").problem)
         assertEquals(BrowserProblem.Unavailable, BrowserProxyRefusal(404, "browser_proxy_upstream_refused").problem)
+        assertEquals(BrowserProblem.LiveUnavailable, BrowserProxyRefusal(503, "browser_proxy_live_unavailable").problem)
         assertEquals(BrowserProblem.Unavailable, BrowserProxyRefusal(403, "browser_proxy_forbidden").problem)
     }
 

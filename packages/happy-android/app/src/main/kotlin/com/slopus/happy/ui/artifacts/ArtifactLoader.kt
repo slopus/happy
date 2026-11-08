@@ -165,7 +165,7 @@ class ArtifactLoader(
     private suspend fun show(version: ArtifactVersion, show: ArtifactShow): ArtifactUi {
         val agent = agent
         return when (show) {
-            is ArtifactShow.Live -> ArtifactUi.Page { livePage(agent, version, show.url) }
+            is ArtifactShow.Live -> ArtifactUi.Page { livePage(agent, show.url) }
             ArtifactShow.Unavailable -> ArtifactUi.Message(deleted = false)
             is ArtifactShow.Document -> document(version, show.file)
             is ArtifactShow.Gallery -> gallery(version, show.files)
@@ -182,16 +182,15 @@ class ArtifactLoader(
     }
 
     /**
-     * An older artifact at its live URL: http only, its API through the
-     * artifact and the rest through its workspace. HTTPS would need
-     * intercepting TLS to add the API, so it isn't shown (iOS refuses it too).
+     * A live artifact at the URL of the version shown, http or https,
+     * through the artifact's own proxy in the network it was made on
+     * (happy-agent API.md, "Live URLs"): no workspace is looked up for it,
+     * and its `/api/…` is the site's own.
      */
-    private suspend fun livePage(agent: AgentClient?, version: ArtifactVersion, url: String): BrowserPage {
+    private fun livePage(agent: AgentClient?, url: String): BrowserPage {
         agent ?: throw BrowserException(BrowserException.Kind.Unavailable)
         val authority = BrowserPolicy.Authority.of(url) ?: throw BrowserException(BrowserException.Kind.Malformed)
-        if (!url.startsWith("http://", ignoreCase = true)) throw BrowserException(BrowserException.Kind.Forbidden)
-        val network = agent.browserNetwork(artifactId = version.artifactId.ifEmpty { ref.id })
-        return BrowserPage(url, BrowserProxy.Scope.Live(agent, ref.id, network, authority), ref.id)
+        return BrowserPage(url, BrowserProxy.Scope.Live(agent, ref.id, authority), ref.id)
     }
 
     private fun media(version: ArtifactVersion): ArtifactMedia = media ?: ArtifactMedia(files, ref.id, version.number, library) {
