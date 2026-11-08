@@ -70,10 +70,14 @@ class HappyMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
-        presentPush(
-            this,
-            RemotePush.from(message.data, message.messageId, message.notification?.title, message.notification?.body),
-        )
+        val push = RemotePush.from(message.data, message.messageId, message.notification?.title, message.notification?.body)
+        if (CloudPushNotification.owns(push.body)) {
+            // FCM invokes this on its worker thread. Finish the local credential check before returning;
+            // launching detached work would let Android end the process before the alert is posted.
+            kotlinx.coroutines.runBlocking {
+                presentCloudPush(this@HappyMessagingService, push, (applicationContext as HappyApplication).graph.agentConnections)
+            }
+        } else presentPush(this, push)
     }
 
     override fun onNewToken(token: String) {

@@ -49,7 +49,7 @@ class HappyLinks internal constructor(
     /** A link [DeepLinks] handed over: an external one, or one waiting for its connection to open. */
     fun take(link: DeepLink) {
         when (link) {
-            is DeepLink.Instance -> open(link.instanceId, link.link)
+            is DeepLink.Instance -> open(link.instanceId, link.link, link.pushUserId)
             is DeepLink.OnConnection -> go(link.connectionId, link.link)
             else -> Unit
         }
@@ -81,8 +81,9 @@ class HappyLinks internal constructor(
         return SettingsLinks.place(graph, id, settings.page) != null
     }
 
-    private fun open(instanceId: String, link: HappyLink) {
-        val id = connectionFor(graph.agentConnections.accounts.value, instanceId, openConnection)
+    private fun open(instanceId: String, link: HappyLink, pushUserId: String? = null) {
+        val id = if (pushUserId == null) connectionFor(graph.agentConnections.accounts.value, instanceId, openConnection)
+        else com.slopus.happy.push.cloudPushConnection(graph.agentConnections.accounts.value, instanceId, pushUserId, openConnection)?.id
         when (id) {
             null -> unknownServer = true
             openConnection -> go(id, link)

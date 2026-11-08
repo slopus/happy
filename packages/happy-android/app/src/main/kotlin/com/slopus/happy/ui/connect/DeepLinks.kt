@@ -70,8 +70,9 @@ sealed interface DeepLink {
     /**
      * `happy://<instanceId>/…` (edge SSO contract §7): [link] on the
      * connection whose installation is [instanceId], and on no other.
+     * [pushUserId] additionally pins a Cloud notification to its exact server member.
      */
-    data class Instance(val instanceId: String, val link: HappyLink) : DeepLink
+    data class Instance(val instanceId: String, val link: HappyLink, val pushUserId: String? = null) : DeepLink
 
     /** [link] on [connectionId], taken by that connection's back stack once it is open (an [Instance] link's, after switching to it). */
     data class OnConnection(val connectionId: String, val link: HappyLink) : DeepLink
@@ -218,6 +219,11 @@ object DeepLinks {
     /** Takes a VIEW intent's link or a notification tap's session. True if it was one the app handles. */
     fun offer(intent: Intent?): Boolean {
         if (intent?.action == ACTION_OPEN_PUSH) {
+            if (intent.hasExtra(com.slopus.happy.push.EXTRA_PUSH_CLOUD)) {
+                val notice = com.slopus.happy.push.CloudPushNotification.parse(intent.getStringExtra(com.slopus.happy.push.EXTRA_PUSH_CLOUD)) ?: return false
+                offer(DeepLink.Instance(notice.instanceId, HappyLink.Reference(com.slopus.happy.agent.HappyReferenceKind.Agent, notice.agentId), notice.userId))
+                return true
+            }
             val sessionId = intent.getStringExtra(EXTRA_PUSH_SESSION_ID) ?: return false
             offer(DeepLink.Session(sessionId))
             return true
