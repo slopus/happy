@@ -80,6 +80,19 @@ final class AgentInputDictationTests: XCTestCase {
         XCTAssertEqual(card.selectedRange, NSRange(location: 13, length: 0))
     }
 
+    /// Another language won at the pause: one reading replaces the whole
+    /// of what was said, shorter and settled, nothing of the old kept.
+    func testAWholeReplacementLeavesNothingBehind() {
+        let card = card()
+        card.text = "Note:"
+        card.setDictatedText("Note: Write a short haiku about", volatileLength: 25)
+        card.setDictatedText("Note: Écris un haïku", volatileLength: 0)
+        XCTAssertEqual(card.text, "Note: Écris un haïku")
+        XCTAssertEqual(card.selectedRange, NSRange(location: 20, length: 0))
+        XCTAssertEqual(alpha(card, at: 19), 1, accuracy: 0.01)
+        XCTAssertEqual(card.textMirrorResets, 0)
+    }
+
     func testACaretElsewhereStaysPut() async {
         let card = card()
         card.text = "Original draft: a long misrecognition"
