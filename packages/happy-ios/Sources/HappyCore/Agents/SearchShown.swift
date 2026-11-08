@@ -96,24 +96,6 @@ extension Search {
         }
     }
 
-    /// What one of the phone's own results says under its title, as
-    /// desktop's own rows do: what kind of thing it is.
-    public static func detail(_ found: Found) -> String? {
-        switch found {
-        case .row(let row):
-            if row.kind == .session { return agentKindLabel("subtask") }
-            return switch row.targetKind {
-            case "task": agentKindLabel("task")
-            case "bot": agentKindLabel("bot")
-            case "agent": agentKindLabel("chat")
-            case "surface": surfaceTypeLabel(row.surfaceType)
-            default: nil
-            }
-        case .surface(let surface): return surfaceTypeLabel(surface.type)
-        case .artifact(let artifact): return artifactTypeLabel(artifact.type)
-        }
-    }
-
     /// The words a match in the content was found in, on one line; nil for
     /// any other match.
     private static func snippet(_ result: Result) -> String? {

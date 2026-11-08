@@ -196,6 +196,21 @@ public enum SidebarRows {
         return .image(path: TeamUser.photoPath(author), thumbhash: photo.thumbhash)
     }
 
+    /// The active tasks the person isn't in, as rows that open their
+    /// conversations: what desktop's palette finds among its task
+    /// directory, which home doesn't list.
+    public static func unjoinedTasks(_ desktop: DesktopSnapshot) -> [Row] {
+        let joined = Set((desktop.taskMemberships ?? []).map(\.taskId))
+        return (desktop.tasks ?? []).compactMap { task in
+            guard !joined.contains(task.id), task.status != "archived", let agent = task.agent, agent.archivedAt == nil else { return nil }
+            var row = Row(id: "unjoined:\(task.id)", nodeId: "unjoined:\(task.id)", kind: .space, label: task.name ?? agent.title ?? "",
+                          agentId: agent.id, workspaceId: agent.workspaceId, targetKind: "task")
+            row.targetId = task.id
+            row.activityTime = agent.activityAt
+            return row
+        }
+    }
+
     /// The members whose faces the listed tasks wear, other than the
     /// signed-in person, whose own is the profile's; none outside a team.
     public static func authors(_ desktop: DesktopSnapshot) -> Set<String> {

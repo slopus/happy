@@ -19,7 +19,7 @@ final class HomeViewController: UIViewController {
     private let context: AppContext
     /// The computer this screen always shows; nil to follow the choice.
     private let fixedAgentConnection: String?
-    private let sidebar = SidebarList()
+    let sidebar = SidebarList()
     private let empty = EmptyView()
     private var session: Session?
     private var accountsObservation: AccountsObservation?
@@ -57,6 +57,8 @@ final class HomeViewController: UIViewController {
     private var catalogWatches: [Task<Void, Never>] = []
     private var surfaces: [AgentWire.Surface] = []
     private var artifacts: [ArtifactSummary] = []
+    /// The open todos of the sidebar's lists, by list, read when search opens.
+    private var todos: [String: [TodoItem]] = [:]
 
     /// One of desktop's palette actions (`actionRows`), as a phone has them.
     private struct QuickAction {
@@ -301,7 +303,27 @@ final class HomeViewController: UIViewController {
                     if search != nil { showResults() }
                 }
             },
+            readTodos(),
         ]
+    }
+
+    /// The open todos of the lists in the sidebar, which search finds by
+    /// what they say, as desktop's palette does (`listTodos`, active).
+    private func readTodos() -> Task<Void, Never> {
+        let lists = snapshot.allRows.compactMap { $0.targetKind == "surface" && $0.surfaceType == "todo" ? $0.targetId : nil }
+        let client = session?.engine.client
+        return Task { [weak self] in
+            guard let client else { return }
+            let read = await withTaskGroup(of: (String, [TodoItem]?).self) { group in
+                for id in Set(lists) { group.addTask { (id, try? await client.todos(id, scope: .active)) } }
+                var read: [String: [TodoItem]] = [:]
+                for await (id, todos) in group { read[id] = todos }
+                return read
+            }
+            guard let self, !Task.isCancelled, !read.isEmpty else { return }
+            todos = read
+            if search != nil { showResults() }
+        }
     }
 
     private func stopCatalogs() {
@@ -309,6 +331,7 @@ final class HomeViewController: UIViewController {
         catalogWatches = []
         if let feed = surfaceCatalog { Task { await feed.stop() } }
         surfaceCatalog = nil
+        todos = [:]
     }
 
     /// The bar's field opened. Home stays exactly as it is, and so does the
@@ -394,7 +417,7 @@ final class HomeViewController: UIViewController {
     /// it. A sidebar row opens as the sidebar opens it. `best` is where the
     /// list stands among the other sections (`Search.foundBest`).
     private func foundResults(for query: String, remote answer: [HappyCore.Search.Result]?) -> (rows: [Row], runs: [String: () -> Void], best: Int) {
-        let local = Array(HappyCore.Search.local(rows: snapshot.allRows, surfaces: surfaces, artifacts: artifacts, query: query).prefix(HappyCore.Search.foundLimit))
+        let local = Array(HappyCore.Search.local(rows: snapshot.allRows, unjoined: agentHome.unjoinedTasks, surfaces: surfaces, artifacts: artifacts, todos: todos, query: query).prefix(HappyCore.Search.foundLimit))
         let names = searchNames()
         let remote = (answer ?? []).compactMap { result in HappyCore.Search.shown(result, names: names).map { (result: result, shown: $0) } }
         let fused = HappyCore.Search.found(local: local.map(\.key), remote: remote.map { ($0.result.key, $0.result.rank) })
@@ -415,9 +438,12 @@ final class HomeViewController: UIViewController {
                 case .artifact(let artifact):
                     row = Row(id: id, nodeId: id, kind: .result, label: artifact.title, mark: .glyph(artifact.live ? "globe-outline" : HappyCore.Search.artifactGlyph(artifact.type)))
                     runs[id] = { [weak self] in self?.openArtifact(id: artifact.id, type: artifact.type, title: artifact.title, row: id) }
+                case .todo(let todo, let list):
+                    row = Row(id: id, nodeId: id, kind: .result, label: todo.text, mark: .glyph("tasks"))
+                    runs[id] = { [weak self] in self?.openSurface(list, row: id) }
                 }
                 // What the computer found in the content, where it found the thing too.
-                row.detail = one.remote.flatMap { remote[$0].shown.snippet } ?? HappyCore.Search.detail(found)
+                row.detail = one.remote.flatMap { remote[$0].shown.snippet } ?? local[index].detail
                 rows.append(row)
             } else if let index = one.remote {
                 let shown = remote[index].shown
@@ -473,6 +499,8 @@ final class HomeViewController: UIViewController {
             openArtifact(id: id, type: type, title: title, row: row)
         case .vaultItem(let surfaceId, let id, let folder, let vaultName):
             let vaultName = vaultName ?? Strings.Vaults.title
+            // The vault opens on the item and takes its place in the sidebar, as desktop's `onVaultItemOpen` opens it.
+            Task { [engine = session.engine] in await engine.join(surfaceId: surfaceId) }
             Task { [weak self] in
                 do {
                     let place = try await session.engine.vaults.location(surfaceId, id, folder: folder)

@@ -83,14 +83,26 @@ public enum Search {
         case row(Row)
         case surface(AgentWire.Surface)
         case artifact(ArtifactSummary)
+        /// An open todo of a list in the sidebar, and its list.
+        case todo(TodoItem, list: AgentWire.Surface)
 
         public var label: String {
             switch self {
             case .row(let row): row.label
             case .surface(let surface): surface.name
             case .artifact(let artifact): artifact.title
+            case .todo(let todo, _): todo.text
             }
         }
+    }
+
+    /// One of the phone's own results: its key, what it is, how well its
+    /// name answers (`rank`), and the line under it (desktop's meta).
+    public struct Local: Equatable, Sendable {
+        public var key: String
+        public var found: Found
+        public var rank: Int
+        public var detail: String?
     }
 
     /// A sidebar row's key: a conversation is its agent's, a Surface its
@@ -113,58 +125,111 @@ public enum Search {
         surface.type == "document" ? "document:\(surface.id)" : "surface:\(surface.id)"
     }
 
-    /// The computer's provider order (API.md "Result types"), which breaks
-    /// ties between equally good names here as it does there; spaces,
-    /// which it has no type for, last.
-    private static let providers = ["vault_file", "vault_folder", "document", "message", "todo", "calendar_event", "artifact", "surface", "agent", "project", "workspace", "user", "skill"]
+    /// The Surface kinds found by their own name (desktop's `surfaceRows`):
+    /// one that only points at an artifact, a bot or a task is found under
+    /// that thing's name, and a kind this build doesn't know isn't found.
+    static let surfaceKinds: Set<String> = ["todo", "document", "calendar", "system_monitor", "chat", "vault"]
 
-    private static func provider(_ key: String) -> Int {
-        let type = key.prefix { $0 != ":" }
-        return providers.firstIndex { $0 == type } ?? providers.count
-    }
-
-    /// What the phone finds for `query` in what it holds: the sidebar's
-    /// conversations and Surfaces, the Surface catalog and the artifacts,
-    /// one result per key, best name first (`rank`, a Surface also by its
-    /// kind and an artifact by its type, as desktop's are), then in the
-    /// computer's provider order, then in their own. A key the sidebar
-    /// holds is its row, which opens as the sidebar does.
-    public static func local(rows: [Row], surfaces: [AgentWire.Surface] = [], artifacts: [ArtifactSummary] = [], query: String) -> [(key: String, found: Found, rank: Int)] {
-        var candidates: [(key: String, found: Found)] = []
-        for row in rows where row.kind == .space || row.kind == .session {
-            guard let key = key(row) else { continue }
-            var row = row
-            row.depth = 0
-            row.collapsed = nil
-            row.hasHiddenSessions = false
-            candidates.append((key, .row(row)))
+    /// What the phone finds for `query` in what it holds, as desktop's
+    /// palette finds its own (`localFound`): the sidebar's bots, tasks and
+    /// conversations, each also by its subtasks' titles (which aren't
+    /// found apart), and the tasks the person isn't in (`unjoined`); its
+    /// Surfaces, and the catalog's it isn't in; the open todos of its lists
+    /// (`todos`, by list, as read); and the artifacts.
+    /// Best name first (`rank`, a Surface also by its kind and an artifact
+    /// by its type), then what is the person's own before what isn't
+    /// (desktop's tier: a project's conversation or a Surface not joined,
+    /// then a todo), then the latest changed. A key the sidebar holds is
+    /// its row, which opens as the sidebar does.
+    public static func local(rows: [Row], unjoined: [Row] = [], surfaces: [AgentWire.Surface] = [], artifacts: [ArtifactSummary] = [], todos: [String: [TodoItem]] = [:], query: String) -> [Local] {
+        struct Candidate {
+            var key: String
+            var found: Found
+            var secondary: [String] = []
+            var tier = 0
+            var updatedAt: Double = 0
+            var detail: String?
         }
-        candidates += surfaces.map { (key($0), .surface($0)) }
-        candidates += artifacts.filter { !$0.deleted }.map { ("artifact:\($0.id)", .artifact($0)) }
-        var best: [String: (rank: Int, provider: Int, index: Int, found: Found)] = [:]
-        for (index, candidate) in candidates.enumerated() {
-            guard let rank = rank(candidate.found.label, query, secondary: secondary(candidate.found)) else { continue }
-            let entry = (rank: rank, provider: provider(candidate.key), index: index, found: candidate.found)
-            guard let held = best[candidate.key] else {
-                best[candidate.key] = entry
+        let catalog = Dictionary(surfaces.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let line = { (parts: [String?]) -> String? in
+            let shown = parts.compactMap { $0 }.joined(separator: " · ")
+            return shown.isEmpty ? nil : shown
+        }
+        var candidates: [Candidate] = []
+        var lists: [AgentWire.Surface] = []
+        var joined: Set<String> = []
+        // The rows above this one, and the bot's or task's result a subtask under it adds its title to.
+        var above: [(row: Row, work: Int?)] = []
+        for row in rows where row.kind == .space || row.kind == .session {
+            while let last = above.last, last.row.depth >= row.depth { above.removeLast() }
+            let parent = above.last
+            if row.kind == .session, let work = parent?.work {
+                candidates[work].secondary.append(row.label)
+                above.append((row, work))
                 continue
             }
-            // The sidebar's row stands for the key, at the better of the two places.
-            let found: Found = if case .row = held.found { held.found } else { entry.found }
-            let placed = (held.rank, held.index) <= (entry.rank, entry.index) ? held : entry
-            best[candidate.key] = (placed.rank, placed.provider, placed.index, found)
+            var flat = row
+            flat.depth = 0
+            flat.collapsed = nil
+            flat.hasHiddenSessions = false
+            guard let key = key(row) else { continue }
+            var candidate = Candidate(key: key, found: .row(flat), updatedAt: row.activityTime ?? 0)
+            switch row.targetKind {
+            case "surface":
+                guard let id = row.targetId else { continue }
+                joined.insert(id)
+                let type = row.surfaceType ?? catalog[id]?.type
+                guard surfaceKinds.contains(type ?? "") else { continue }
+                if type == "todo" { lists.append(AgentWire.Surface(id: id, type: "todo", name: catalog[id]?.name ?? row.label)) }
+                candidate.secondary = [surfaceTypeLabel(type)]
+                candidate.updatedAt = catalog[id]?.updatedAt ?? 0
+                candidate.detail = line([surfaceTypeLabel(type), type == "todo" ? todos[id].map { "\(open($0).count) open" } : nil])
+            case "task", "bot", "agent":
+                candidate.detail = agentKindLabel(row.targetKind == "agent" ? "chat" : row.targetKind)
+            default:
+                if row.kind == .session {
+                    // A project's conversation is one of its tabs on desktop, after what the sidebar lists.
+                    let project = parent?.row.targetKind == "project" ? parent?.row.label : nil
+                    candidate.tier = project == nil ? 0 : 1
+                    candidate.detail = project ?? agentKindLabel("chat")
+                }
+            }
+            above.append((row, ["task", "bot", "agent"].contains(row.targetKind ?? "") ? candidates.count : nil))
+            candidates.append(candidate)
         }
-        return best.sorted { ($0.value.rank, $0.value.provider, $0.value.index) < ($1.value.rank, $1.value.provider, $1.value.index) }
-            .map { ($0.key, $0.value.found, $0.value.rank) }
+        for row in unjoined {
+            guard let agentId = row.agentId else { continue }
+            candidates.append(Candidate(key: "agent:\(agentId)", found: .row(row), tier: 1, updatedAt: row.activityTime ?? 0, detail: "Task you have not joined"))
+        }
+        for surface in surfaces where !joined.contains(surface.id) && surfaceKinds.contains(surface.type) {
+            candidates.append(Candidate(key: key(surface), found: .surface(surface), secondary: [surfaceTypeLabel(surface.type)], tier: 1,
+                                        updatedAt: surface.updatedAt ?? 0, detail: line([surfaceTypeLabel(surface.type), "not joined"])))
+        }
+        // A todo is found by what it says, never by its list's name, under its list's own row.
+        for list in lists {
+            for todo in open(todos[list.id] ?? []) {
+                candidates.append(Candidate(key: "todo:\(todo.id)", found: .todo(todo, list: list), tier: 2, updatedAt: todo.updatedAt, detail: list.name))
+            }
+        }
+        for artifact in artifacts where !artifact.deleted {
+            candidates.append(Candidate(key: "artifact:\(artifact.id)", found: .artifact(artifact), secondary: [artifactTypeLabel(artifact.type)],
+                                        updatedAt: artifact.updatedAt, detail: artifactTypeLabel(artifact.type)))
+        }
+        var seen: Set<String> = []
+        return candidates.enumerated()
+            .compactMap { entry -> (order: (Int, Int, Double, Int), local: Local)? in
+                let candidate = entry.element
+                guard let rank = rank(candidate.found.label, query, secondary: candidate.secondary) else { return nil }
+                return ((rank, candidate.tier, -candidate.updatedAt, entry.offset), Local(key: candidate.key, found: candidate.found, rank: rank, detail: candidate.detail))
+            }
+            .sorted { $0.order < $1.order }
+            .filter { seen.insert($0.local.key).inserted }
+            .map(\.local)
     }
 
-    /// What a Surface or an artifact also answers to: its kind's name.
-    private static func secondary(_ found: Found) -> [String] {
-        switch found {
-        case .row(let row): row.targetKind == "surface" ? [surfaceTypeLabel(row.surfaceType)] : []
-        case .surface(let surface): [surfaceTypeLabel(surface.type)]
-        case .artifact(let artifact): [artifactTypeLabel(artifact.type)]
-        }
+    /// A list's open todos, as desktop counts them: no heading among them.
+    private static func open(_ todos: [TodoItem]) -> [TodoItem] {
+        todos.filter { $0.status == .active && $0.heading == nil }
     }
 
     /// How many bots and tasks an empty search shows.

@@ -11,6 +11,8 @@ public struct Intent: Codable, Equatable, Sendable {
         case archive
         case unarchive
         case leave
+        /// A Surface opened without being in it (`Store.join`).
+        case join
         case delete
         case rename
         case answer
@@ -34,6 +36,7 @@ public struct Intent: Codable, Equatable, Sendable {
         var slot: String {
             switch self {
             case .unarchive: Kind.archive.rawValue
+            case .join: Kind.leave.rawValue
             default: rawValue
             }
         }
@@ -405,7 +408,7 @@ public struct IntentOverlay: Equatable, Sendable {
             case .unarchive: restored.insert(intent.target)
             case .rename: if let title = intent.value["title"]?.stringValue ?? intent.value.stringValue { titles[intent.target] = title }
             case .answer: answers[intent.target] = intent.value
-            case .todoCreate, .todoText, .todoStatus, .todoMove, .feedSeen, .feedReadAll: break
+            case .join, .todoCreate, .todoText, .todoStatus, .todoMove, .feedSeen, .feedReadAll: break
             }
         }
     }

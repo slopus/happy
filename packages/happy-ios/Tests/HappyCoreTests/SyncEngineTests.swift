@@ -144,6 +144,19 @@ private actor SyncFixture: AgentTransport {
             acts.append("archive:" + path.split(separator: "/")[2])
             return .init(status: 200, body: Data("{}".utf8))
         }
+        if method == "POST", path.hasPrefix("/v0/surfaces/"), path.hasSuffix("/join") {
+            let id = String(path.split(separator: "/")[2])
+            acts.append("join:" + id)
+            var object = value.objectValue!
+            object["surfaces"] = .array(object["surfaces"]!.arrayValue!.map { surface in
+                guard surface["id"]?.stringValue == id, var whole = surface.objectValue else { return surface }
+                whole["members"] = .array((whole["members"]?.arrayValue ?? []) + [.object(["userId": .null, "orderKey": .string("z")])])
+                return .object(whole)
+            })
+            value = .object(object)
+            emit(.object(["type": .string("surface.updated"), "payload": .object(["surfaceId": .string(id)])]))
+            return .init(status: 200, body: Data("{}".utf8))
+        }
         if method == "POST", path.hasSuffix("/send") {
             sends.append(try JSONDecoder().decode(JSONValue.self, from: body!))
             if loseSendAck { loseSendAck = false; throw URLError(.networkConnectionLost) }
@@ -305,6 +318,8 @@ final class SyncEngineTests: XCTestCase {
         XCTAssertEqual(all.map { $0.kind == .separator ? "—" : $0.label }, ["Artifacts", "Todos", "Notes", "Groceries", "—", "Happy", "Delegated task", "—", "Last created", "First created", "—", "App", "Root chat", "Feature"])
         XCTAssertEqual(all.map(\.id).count, Set(all.map(\.id)).count)
         XCTAssertEqual(all.first { $0.label == "Delegated task" }?.depth, 1)
+        // The task the person isn't in isn't listed, but search finds it, and it opens its conversation.
+        XCTAssertEqual(SidebarRows.unjoinedTasks(desktop).map { [$0.label, $0.agentId ?? "", $0.targetKind ?? ""] }, [["Not joined", "unjoined-agent", "task"]])
         let settings: [String: JSONValue] = [DesktopSettingKeys.projectsVisibility: .object(["projectsHidden": .bool(true)]), "happy-desktop.bot.happy": .object(["hidden": .bool(true)])]
         let hidden = SidebarRows.make(desktop, settings: settings)
         XCTAssertEqual(hidden.map { $0.kind == .separator ? "—" : $0.label }, ["Artifacts", "Todos", "Notes", "Groceries", "—", "—", "Last created", "First created"])
@@ -455,6 +470,24 @@ final class SyncEngineTests: XCTestCase {
         await engine.start()
         let stale = try await wait(engine) { $0.live && $0.loaded }
         XCTAssertEqual(stale.rows.first { $0.label == "Last created" }?.unread, false)
+        await engine.stop()
+    }
+
+    /// Opening a Surface the person isn't in joins it, as desktop's
+    /// opening does (de78af49), and home lists it once the computer says
+    /// so; one already in their list, or one home doesn't know, sends nothing.
+    func testOpeningASurfaceThePersonIsntInJoinsIt() async throws {
+        let transport = SyncFixture()
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        await engine.start()
+        let before = try await wait(engine) { $0.live && $0.loaded }
+        XCTAssertFalse(before.rows.contains { $0.label == "Other person's document" })
+        await engine.join(surfaceId: "doc")
+        await engine.join(surfaceId: "missing")
+        await engine.join(surfaceId: "other")
+        _ = try await wait(engine) { $0.rows.contains { $0.label == "Other person's document" } }
+        let heard = await transport.heardActs()
+        XCTAssertEqual(heard, ["join:other"])
         await engine.stop()
     }
 

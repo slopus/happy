@@ -8,10 +8,12 @@ import UIKit
 @MainActor
 enum SurfaceScreens {
     /// The screen for `surface`, which the person is opening: the Feed
-    /// counts it seen.
+    /// counts it seen, and one they aren't in is joined.
     static func make(session: Session, surface: AgentWire.Surface) -> UIViewController {
         let subject = FeedSubject(type: "surface", id: surface.id)
         Task { [feed = session.engine.feed] in await feed.seen(subject) }
+        // It takes its place in their sidebar, as desktop's opening does (de78af49).
+        Task { [engine = session.engine] in await engine.join(surfaceId: surface.id) }
         switch surface.type {
         case "document":
             return DocumentScreens.make(session: session, surfaceId: surface.id, name: surface.name)

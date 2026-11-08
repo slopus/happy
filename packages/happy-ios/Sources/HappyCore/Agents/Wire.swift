@@ -306,14 +306,17 @@ extension AgentWire {
         /// (`none`, `read`, `write`), and whether it is the Policy vault.
         public var access: String?
         public var policyVault: Bool?
+        /// When it last changed (ms since 1970): what breaks search's ties.
+        public var updatedAt: Double?
 
-        public init(id: String, type: String, name: String, version: String? = nil, access: String? = nil, policyVault: Bool? = nil) {
+        public init(id: String, type: String, name: String, version: String? = nil, access: String? = nil, policyVault: Bool? = nil, updatedAt: Double? = nil) {
             self.id = id
             self.type = type
             self.name = name
             self.version = version
             self.access = access
             self.policyVault = policyVault
+            self.updatedAt = updatedAt
         }
 
         public var vaultAccess: VaultAccess { VaultAccess(access: access, policyVault: policyVault) }

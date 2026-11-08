@@ -133,6 +133,6 @@ final class SearchShownTests: XCTestCase {
         XCTAssertEqual(Search.rank("Groceries", "gro", secondary: ["Todo list"]), 0)
         let list = AgentWire.Surface(id: "t1", type: "todo", name: "Groceries")
         XCTAssertEqual(Search.local(rows: [], surfaces: [list], query: "todo").map(\.key), ["surface:t1"])
-        XCTAssertEqual(Search.detail(.surface(list)), "Todo list")
+        XCTAssertEqual(Search.local(rows: [], surfaces: [list], query: "todo").map(\.detail), ["Todo list · not joined"])
     }
 }

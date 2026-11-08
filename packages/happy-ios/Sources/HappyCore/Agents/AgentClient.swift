@@ -250,6 +250,11 @@ public final class AgentClient: Sendable {
 
     // MARK: Surfaces
 
+    /// Puts a Surface in the reader's sidebar, at its end; one already there stays where it is.
+    public func joinSurface(_ surfaceId: String, mutationId: String = ClientID.make()) async throws {
+        _ = try await send("POST", "/v0/surfaces/\(Self.escape(surfaceId))/join", json: .object(["mutationId": .string(mutationId)]))
+    }
+
     /// Takes a Surface out of the reader's sidebar; its content stays for everyone.
     public func leaveSurface(_ surfaceId: String, mutationId: String = ClientID.make()) async throws {
         _ = try await send("POST", "/v0/surfaces/\(Self.escape(surfaceId))/leave", json: .object(["mutationId": .string(mutationId)]))

@@ -9,6 +9,8 @@ public struct HomeSnapshot: Equatable, Sendable {
     public var syncing = true
     public var rows: [Row] = []
     public var allRows: [Row] = []
+    /// The active tasks the person isn't in, which search finds too.
+    public var unjoinedTasks: [Row] = []
     public var settings: [String: JSONValue] = [:]
     /// The person signed in as a team user; nil outside a team.
     public var userId: String?
@@ -711,6 +713,7 @@ public actor SyncEngine {
                 if SidebarRows.drawsAgent(snapshot.allRows[index]), let agentId = snapshot.allRows[index].agentId { agentRows[agentId] = index }
             }
             snapshot.rows = Rows.visible(snapshot.allRows)
+            snapshot.unjoinedTasks = SidebarRows.unjoinedTasks(desktop)
             shownRows = Dictionary(snapshot.rows.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
             snapshot.userId = desktop.profile?.userId
             snapshot.profilePhoto = desktop.profile?.photo?.thumbhash
@@ -953,6 +956,18 @@ public actor SyncEngine {
         return try? await intents.enqueue(.leave, target: id, value: .object(["kind": .string(kind)]))
     }
 
+    /// Joins a Surface the person opened without being in it (desktop
+    /// de78af49's `happyAgentRouterSurfaceOpen`): its row comes once the
+    /// computer has it, as the `surface.updated` that says so reads home
+    /// again. One already in their list, or one home doesn't know, sends
+    /// nothing.
+    public func join(surfaceId: String) async {
+        guard !stopped, let desktop, let surface = desktop.surfaces?.first(where: { $0.id == surfaceId }),
+              !surface.members.contains(where: { $0.userId == desktop.profile?.userId }),
+              !waiting.contains(where: { $0.kind == .join && $0.target == surfaceId }) else { return }
+        _ = try? await intents.enqueue(.join, target: surfaceId, value: .object(["kind": .string("surface")]))
+    }
+
     /// Names a task or bot (`kind`): the row wears it at once.
     @discardableResult
     public func rename(kind: String, id: String, title: String) async -> Intent? {
@@ -1069,6 +1084,8 @@ public actor SyncEngine {
                 }
             case .leave:
                 if kind == "surface" { try await client.leaveSurface(intent.target, mutationId: intent.id) } else { try await client.leaveTask(intent.target, mutationId: intent.id) }
+            case .join:
+                try await client.joinSurface(intent.target, mutationId: intent.id)
             case .answer:
                 guard let agentId = intent.value["agentId"]?.stringValue, let answers = answers(intent.value) else { return }
                 _ = try await client.answerQuestion(agentId, questionId: intent.target, answers: answers, mutationId: intent.id)
