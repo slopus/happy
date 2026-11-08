@@ -247,6 +247,12 @@ public struct CloudCredentialRefusal: Error, Equatable, Sendable {
     public var message: String
 }
 
+public struct CloudSignInDestinationConflict: LocalizedError, Equatable, Sendable {
+    public var errorDescription: String? {
+        "The sign-in is for a different connection. Finish or cancel it before choosing another connection."
+    }
+}
+
 extension AgentClient {
     public func cloudProviders() async throws -> [CloudProvider] {
         try await cloudProviderListing().providers
@@ -289,9 +295,11 @@ extension AgentClient {
     /// Starts (or joins the person's running) sign-in for `cli` into
     /// `container`. A server without it answers 404 or 501.
     public func startCloudSignIn(_ cli: CloudSignIn.CLI, container: String) async throws -> CloudSignIn {
-        try await signIn(cli, "POST", "/v0/provider-clis/\(cli.rawValue)/sign-in", json: .object([
+        let started = try await signIn(cli, "POST", "/v0/provider-clis/\(cli.rawValue)/sign-in", json: .object([
             "method": .string(cli.method), "target": Self.target(container), "mutationId": Self.mutation(),
         ]))
+        guard started.providerId == container else { throw CloudSignInDestinationConflict() }
+        return started
     }
 
     public func cloudSignIn(_ cli: CloudSignIn.CLI) async throws -> CloudSignIn {

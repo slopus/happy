@@ -122,6 +122,10 @@ final class ProvidersViewController: SettingsPageViewController {
 
     /// The chooser: the sign-ins the server offers, then an API key.
     func choose(destination: CloudProvider.Destination? = nil) {
+        present(chooser(destination: destination), animated: true)
+    }
+
+    func chooser(destination: CloudProvider.Destination? = nil) -> UIAlertController {
         typealias Text = Strings.Providers
         let sheet = UIAlertController(title: Text.add, message: nil, preferredStyle: .actionSheet)
         if offer.signIns.contains(.codex) {
@@ -146,13 +150,17 @@ final class ProvidersViewController: SettingsPageViewController {
             popover.sourceView = view
             popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1)
         }
-        present(sheet, animated: true)
+        return sheet
     }
 
     /// One way of adding, after asking where it goes when the role leaves
     /// a choice and the link didn't make it.
     func open(_ page: HappyLink.SettingsPage, vendor: String? = nil, destination: CloudProvider.Destination? = nil) {
         let allowed = CloudProvider.destinations(session.gate)
+        if let destination, !allowed.contains(destination) {
+            Alerts.show(Strings.Providers.destinationRefused, Strings.Providers.destinationRefusedHint, on: self)
+            return
+        }
         guard !allowed.isEmpty else { return }
         if page == .providersAdd || page == .providers { return page == .providers ? () : choose(destination: destination) }
         // A way this server doesn't offer (a link from elsewhere): the chooser.
@@ -163,7 +171,7 @@ final class ProvidersViewController: SettingsPageViewController {
         default: false
         }
         guard offered else { return choose(destination: destination) }
-        let picked = destination.flatMap { allowed.contains($0) ? $0 : nil } ?? (allowed.count == 1 ? allowed[0] : nil)
+        let picked = destination ?? (allowed.count == 1 ? allowed[0] : nil)
         guard let picked else {
             let sheet = UIAlertController(title: Strings.Providers.saveTo, message: nil, preferredStyle: .actionSheet)
             for option in allowed {
@@ -178,7 +186,10 @@ final class ProvidersViewController: SettingsPageViewController {
             }
             return present(sheet, animated: true)
         }
-        let flows = ProviderFlows(client: session.client, destination: picked, host: self) { [weak self] in self?.load() }
+        let flows = ProviderFlows(client: session.client, destination: picked, host: self, unavailable: { [weak self] cli in
+            self?.offer.signIns.remove(cli)
+            self?.reload()
+        }) { [weak self] in self?.load() }
         switch page {
         case .providersAddOpenAI:
             navigationController?.pushViewController(DeviceSignInViewController(flows: flows), animated: true)

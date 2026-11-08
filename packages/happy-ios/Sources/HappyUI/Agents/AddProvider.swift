@@ -12,11 +12,13 @@ struct ProviderFlows {
     let client: AgentClient
     let destination: CloudProvider.Destination
     weak var host: UIViewController?
+    let unavailable: (CloudSignIn.CLI) -> Void
     /// The list, read again once something was added.
     let added: () -> Void
 
-    init(client: AgentClient, destination: CloudProvider.Destination, host: UIViewController, added: @escaping () -> Void) {
+    init(client: AgentClient, destination: CloudProvider.Destination, host: UIViewController, unavailable: @escaping (CloudSignIn.CLI) -> Void = { _ in }, added: @escaping () -> Void) {
         self.client = client; self.destination = destination; self.host = host; self.added = added
+        self.unavailable = unavailable
     }
 
     /// An API key for `vendor` (`openai`, `anthropic`, `grok`).
@@ -187,8 +189,9 @@ class ProviderSignInViewController: UIViewController {
         }
     }
 
-    func failedToStart(_ error: any Error) {
+    func failedToStart(_ error: any Error, cli: CloudSignIn.CLI) {
         spinner.stopAnimating()
+        if AgentClient.unavailable(error) { flows.unavailable(cli) }
         let message = AgentClient.unavailable(error) ? Strings.Providers.notAvailable : ProviderFlows.words(error)
         status.text = message
         let alert = UIAlertController(title: Strings.Providers.signInFailed, message: message, preferredStyle: .alert)
@@ -236,6 +239,10 @@ final class DeviceSignInViewController: ProviderSignInViewController {
         follow = Task { @MainActor [weak self] in
             do {
                 let started = try await client.startCloudSignIn(.codex, container: container)
+                guard !Task.isCancelled else {
+                    await client.cancelCloudSignIn(.codex)
+                    return
+                }
                 self?.show(started)
                 // The code comes a moment after the start, from the server's
                 // CLI: each poll shows what has come.
@@ -243,10 +250,12 @@ final class DeviceSignInViewController: ProviderSignInViewController {
                     Task { @MainActor [weak self] in if !Task.isCancelled { self?.show(next) } }
                 })
                 guard !Task.isCancelled else { return }
+                self?.signIn = end
                 self?.finished(end, success: Strings.Providers.chatGPTConnected) { self?.start() }
             } catch is CancellationError {
             } catch {
-                self?.failedToStart(error)
+                guard !Task.isCancelled else { return }
+                self?.failedToStart(error, cli: .codex)
             }
         }
     }
@@ -267,9 +276,16 @@ final class DeviceSignInViewController: ProviderSignInViewController {
 
     private func cancel() {
         follow?.cancel()
-        let client = flows.client
-        if signIn != nil { Task { await client.cancelCloudSignIn(.codex) } }
         navigationController?.popViewController(animated: true)
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        guard navigationController?.viewControllers.contains(where: { $0 === self }) != true else { return }
+        follow?.cancel()
+        guard let signIn, !signIn.ended else { return }
+        let client = flows.client
+        Task { await client.cancelCloudSignIn(.codex) }
     }
 }
 
@@ -334,7 +350,8 @@ final class ClaudeSignInViewController: ProviderSignInViewController {
                 self?.watch(started)
             } catch is CancellationError {
             } catch {
-                self?.failedToStart(error)
+                guard !Task.isCancelled else { return }
+                self?.failedToStart(error, cli: .claude)
             }
         }
     }

@@ -31,6 +31,8 @@ extension Strings {
         static let anthropic = "Anthropic"
         static let grok = "Grok"
         static let saveTo = "Save to"
+        static let destinationRefused = "Can’t add to this connection"
+        static let destinationRefusedHint = "You don’t have permission to save providers to the requested connection. Nothing was added."
 
         static let deviceInstructions = "Enter this code at OpenAI"
         static let copy = "Copy"

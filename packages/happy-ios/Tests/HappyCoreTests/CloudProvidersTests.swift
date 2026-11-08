@@ -115,6 +115,18 @@ final class CloudProvidersTests: XCTestCase {
         XCTAssertEqual(CloudProvider.Credential(id: "k", vendor: "grok", kind: "api_key").title, "Grok API key")
     }
 
+    func testJoiningASignInCannotChangeItsDestination() async throws {
+        for cli in [CloudSignIn.CLI.codex, .claude] {
+            let server = ProvidersServer()
+            await server.answer("POST /v0/provider-clis/\(cli.rawValue)/sign-in", 200, Self.cli("waiting", code: "ABCD-1234"))
+            do {
+                _ = try await AgentClient(transport: server, token: "t").startCloudSignIn(cli, container: "team-connection")
+                XCTFail("a sign-in already bound to private was accepted for another connection")
+            } catch is CloudSignInDestinationConflict {
+            }
+        }
+    }
+
     func testClaudesCodeIsPastedBackAndAFailureReadsAsTheServerSays() async throws {
         let server = ProvidersServer()
         await server.answer("POST /v0/provider-clis/claude/sign-in/code", 200, Self.cli("failed", code: nil, error: #"{"code":"sign_in_failed","message":null}"#))
