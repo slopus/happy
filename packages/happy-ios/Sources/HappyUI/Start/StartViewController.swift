@@ -40,9 +40,13 @@ final class StartViewController: UIViewController {
     private let gallery = StartGalleryView()
     private let start = RoundButton(title: Strings.Start.button)
     private let more = UIButton(type: .system)
+    /// Happy Cloud, beside Start rather than under ⋯, where it is offered:
+    /// a phone needs no computer for it.
+    private let cloud = RoundButton(title: Strings.Start.cloud)
     private var busy = false {
         didSet { start.isLoading = busy; more.isEnabled = !busy }
     }
+    private var offersCloud: Bool { HappyCloud.isOffered(in: context.variant) }
 
     init(context: AppContext) {
         self.context = context
@@ -71,6 +75,13 @@ final class StartViewController: UIViewController {
         start.onTap = { [weak self] in self?.next() }
         scroll.addSubview(gallery)
         scroll.addSubview(start)
+        cloud.accessibilityIdentifier = "start-cloud"
+        cloud.onTap = { [weak self] in
+            guard let self, !busy else { return }
+            AccountAdding.connectToCloud(context: context, from: self)
+        }
+        cloud.isHidden = !offersCloud
+        scroll.addSubview(cloud)
         more.setImage(UIImage(systemName: "ellipsis", withConfiguration: UIImage.SymbolConfiguration(pointSize: 20, weight: .semibold)), for: .normal)
         more.tintColor = Colors.text
         more.accessibilityLabel = Strings.Start.more
@@ -111,6 +122,7 @@ final class StartViewController: UIViewController {
             size: bounds.size,
             safeArea: LayoutInsets(view.safeAreaInsets),
             button: start.layout(width: StartLayout.Metrics.buttonMinWidth).size,
+            cloud: offersCloud ? cloud.layout(width: min(bounds.width - 48, 280)).size : .zero,
             slides: gallery.slides,
             dots: gallery.dotsSize
         )
@@ -120,6 +132,7 @@ final class StartViewController: UIViewController {
         gallery.setLayoutFrame(layout.gallery)
         gallery.apply(layout)
         start.frame = layout.button
+        cloud.frame = layout.cloud
         more.frame = layout.more
     }
 

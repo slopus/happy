@@ -7,6 +7,8 @@ extension Strings {
         public static let logo = "Happy"
         public static let button = "Start"
         public static let more = "More"
+        /// Beside Start: Happy Cloud needs no computer.
+        public static let cloud = "Use Happy Cloud"
         public static let enterLink = "Enter link manually"
         public static let enterLinkTitle = "Enter Link"
         public static var enterLinkMessage: String { AccountKind.enterLinkMessage }

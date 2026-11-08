@@ -23,6 +23,8 @@ public struct StartLayout: Equatable, Sendable {
         public static let buttonMinWidth: CGFloat = 200
         public static let bottomPadding: CGFloat = 48
         public static let controlsPadding: CGFloat = 4
+        /// Between Happy Cloud's button and Start under it.
+        public static let buttonGap: CGFloat = 12
         public static let control: CGFloat = 48
 
         /// The art's square: a phone's, a tablet's, and a short window's.
@@ -61,6 +63,8 @@ public struct StartLayout: Equatable, Sendable {
 
     public var logo: CGRect
     public var button: CGRect
+    /// Happy Cloud's button, over Start, where it is offered; zero otherwise.
+    public var cloud: CGRect = .zero
     public var more: CGRect
     /// The slides and their dots, in the scrolled content.
     public var gallery: CGRect
@@ -83,7 +87,7 @@ public struct StartLayout: Equatable, Sendable {
     /// `button` is Start's own size, as wide as its label; it is widened
     /// to the minimum and kept inside the safe area. `dots` is the page
     /// control's own size for the slides.
-    public init(size: CGSize, safeArea: LayoutInsets, button buttonSize: CGSize, slides: [Slide] = [], dots dotsSize: CGSize = .zero) {
+    public init(size: CGSize, safeArea: LayoutInsets, button buttonSize: CGSize, cloud cloudSize: CGSize = .zero, slides: [Slide] = [], dots dotsSize: CGSize = .zero) {
         typealias M = Metrics
         let left = safeArea.left, width = max(0, size.width - safeArea.left - safeArea.right)
         let viewport = max(0, size.height - safeArea.top - safeArea.bottom)
@@ -104,12 +108,17 @@ public struct StartLayout: Equatable, Sendable {
 
         // Under ⋯'s row, over Start.
         let top = M.controlsPadding + M.control
-        let buttonWidth = min(width, max(M.buttonMinWidth, buttonSize.width))
-        let fixed = top + M.galleryMargin * 2 + galleryHeight + buttonSize.height + M.bottomPadding
+        // Both buttons as wide as the wider, so neither reads as the lesser.
+        let buttonWidth = min(width, max(M.buttonMinWidth, buttonSize.width, cloudSize.width))
+        let cloudRoom = cloudSize.height > 0 ? cloudSize.height + M.buttonGap : 0
+        let fixed = top + M.galleryMargin * 2 + galleryHeight + cloudRoom + buttonSize.height + M.bottomPadding
         let height = max(viewport, fixed)
         let buttonY = safeArea.top + height - M.bottomPadding - buttonSize.height
         button = CGRect(x: left + (width - buttonWidth) / 2, y: buttonY, width: buttonWidth, height: buttonSize.height)
-        let free = max(0, buttonY - safeArea.top - top - galleryHeight)
+        if cloudSize.height > 0 {
+            cloud = CGRect(x: button.minX, y: buttonY - cloudRoom, width: buttonWidth, height: cloudSize.height)
+        }
+        let free = max(0, buttonY - cloudRoom - safeArea.top - top - galleryHeight)
         gallery = CGRect(x: left, y: safeArea.top + top + free / 2, width: width, height: galleryHeight)
         pager = CGRect(x: 0, y: 0, width: width, height: pagerHeight)
         dots = CGRect(x: (width - dotsWidth) / 2, y: pagerHeight + dotsGap, width: dotsWidth, height: dotsSize.height)

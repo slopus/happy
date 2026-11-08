@@ -66,6 +66,10 @@ final class StartUITests: XCTestCase {
         let start = app.buttons["start-button"]
         XCTAssertTrue(start.waitForExistence(timeout: 15), "no Start: the simulator has an account or a connection")
         XCTAssertFalse(app.navigationBars.firstMatch.exists, "the first screen has no bar")
+        // Happy Cloud is as plain a way in as Start, not under ⋯.
+        let cloud = app.buttons["start-cloud"]
+        XCTAssertTrue(cloud.exists && cloud.isHittable, "no Happy Cloud beside Start")
+        XCTAssertEqual(cloud.frame.width, start.frame.width, accuracy: 1)
         pause(1)
         capture("1-start")
 
