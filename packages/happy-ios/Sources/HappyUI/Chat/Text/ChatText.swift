@@ -141,6 +141,28 @@ enum ChatSpans {
         }
         return result
     }
+
+    /// A person's message as typed (desktop's `messagePlainTextSegments`):
+    /// its words as they are, each reference that opens underlined as a
+    /// link to it, and a person in the strong face, opening nothing.
+    static func plain(_ segments: [HappyReferences.PlainSegment], style: ChatTextStyle, color: ColorToken, in environment: TextEnvironment?) -> NSAttributedString {
+        let result = NSMutableAttributedString()
+        let uiColor = UIColor(color)
+        for segment in segments {
+            switch segment {
+            case .text(let words):
+                result.append(NSAttributedString(string: words, attributes: style.attributes(color: uiColor, in: environment)))
+            case .link(let words, let link) where HappyReferences.mention(link: link) != nil:
+                result.append(NSAttributedString(string: words, attributes: style.attributes(color: uiColor, font: style.with(style.strongFace).font(in: environment), in: environment)))
+            case .link(let words, let link):
+                var attributes = style.attributes(color: uiColor, in: environment)
+                attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
+                attributes[.chatLink] = link
+                result.append(NSAttributedString(string: words, attributes: attributes))
+            }
+        }
+        return result
+    }
 }
 
 extension NSAttributedString.Key {

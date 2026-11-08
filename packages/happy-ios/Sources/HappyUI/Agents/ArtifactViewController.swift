@@ -62,6 +62,11 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
     private var app: (version: Int, entry: String, close: ArtifactAppClose)?
     private var openButton: UIButton?
     private var loading: Task<Void, Never>?
+    /// What the Happy links in the document read as now, and the rows a
+    /// conversation one opens is found in (`openReference`).
+    private var references = References()
+    private var rows: [Row] = []
+    private var watch: Watch?
     /// How long the first drawing waits for the pictures' sizes, so it
     /// doesn't jump as they arrive.
     static let sizeWait: Duration = .seconds(1)
@@ -126,6 +131,7 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
         let documentTap = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
         scrollView.addGestureRecognizer(documentTap)
         self.documentTap = documentTap
+        watch = session.watch { [weak self] snapshot in self?.follow(snapshot) }
         // The artifact, at the version it was pinned to; a file a link
         // opened inside it has no link of its own.
         if opened == nil, vault == nil {
@@ -223,6 +229,30 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
 
     // MARK: Markdown
 
+    /// The Happy links in the document read as the names they have now,
+    /// as a conversation's do.
+    private func follow(_ snapshot: Snapshot) {
+        rows = snapshot.allRows
+        var known = snapshot.references
+        known.instanceId = session.instanceId
+        guard known != references else { return }
+        references = known
+        readNamed()
+        guard documentPlan != nil else { return }
+        plannedWidth = nil
+        Task { [weak self] in await self?.plan() }
+    }
+
+    /// The titles and names the document's links need, read once each.
+    private func readNamed() {
+        guard let text = documentText else { return }
+        let store = session.store
+        let artifacts = references.unread(in: text)
+        let users = references.unknownUsers(in: text)
+        if !artifacts.isEmpty { Task { await store.readArtifacts(artifacts) } }
+        if !users.isEmpty { Task { await store.readUsers(users) } }
+    }
+
     /// The Markdown with each picture it shows registered with the media
     /// source, drawn once their sizes are in (or a second has gone by), and
     /// drawn again as the rest arrive.
@@ -250,6 +280,7 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
             if let shown { pictures[raw] = MarkdownDocument.Picture(media: shown, size: nil) }
         }
         documentText = prepared.0
+        readNamed()
         let keys = Array(Set(pictures.values.map(\.media.key)))
         let sizes = Task { [weak self] in
             await withTaskGroup(of: Void.self) { group in
@@ -306,8 +337,11 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
         let key = ChatPlanner.Key(width: width, maxContentWidth: ContentWidth.maxWidth, environment: traitCollection.textEnvironment)
         let syntax = session.syntax
         let id = "artifact:\(artifact.id):\(documentPath)"
+        let references = references
         let plan = await Task.detached(priority: .userInitiated) {
-            Self.plan(text, id: id, key: key, syntax: syntax, document: MarkdownDocument(pictures: shown))
+            // Its Happy links (and share links naming this server) read as a message's: by their live names.
+            let resolved = HappyReferences.markdown(text, instanceId: references.instanceId, view: references.view)
+            return Self.plan(resolved, id: id, key: key, syntax: syntax, document: MarkdownDocument(pictures: shown))
         }.value
         // Only the newest plan is drawn.
         guard generation == planning else { return }
@@ -366,9 +400,20 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
         openViewer(all, index: all.firstIndex { $0.key == key } ?? 0)
     }
 
-    /// A link in the document: another of the artifact's files opens here,
+    /// A link in the document: what a Happy link names opens in the app, as
+    /// one in a message does; another of the artifact's files opens here,
     /// pushed; an address on the web in the browser, through the computer.
     func open(link: String) {
+        if let reference = HappyReferences.reference(link: link) {
+            return openReference(reference, references: references, rows: rows, session: session)
+        }
+        // Any other Happy link (a file, a settings page) as the instance link it means here.
+        if HappyLink.isHappyURL(link) {
+            guard let parsed = HappyLink(link) else { return }
+            let instanceId = parsed.instanceId ?? session.instanceId
+            if let instanceId, let url = HappyLink(parsed.target, instanceId: instanceId).url { openHappyLink(url) }
+            return
+        }
         switch ArtifactMarkdown.resolve(link, from: documentPath) {
         case .file(let path, _):
             guard let version, let media, let file = version.files.first(where: { $0.path == path }) else { return show(alert: Strings.ArtifactMedia.fileUnavailable) }

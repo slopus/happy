@@ -136,6 +136,37 @@ private actor GroupedHomeTransport: AgentTransport {
         return (try? JSONSerialization.data(withJSONObject: ["runs": [run], "hasMore": false])) ?? Data()
     }
 
+    /// `-linkChips`: as `-shareLinks`, and Landing page copy's conversation
+    /// names a task, a bot, an artifact, a Surface, an agent this phone
+    /// doesn't hold and another server's task, the person's message one
+    /// task, and the artifact is a Markdown brief whose links name them too.
+    var linkChips = false
+    func setLinkChips(_ on: Bool) { linkChips = on }
+    private static var linkChipsRuns: Data {
+        let page = "https://link.happy.page/#1/\(instanceId)/agents"
+        let reply = "<happy-artifact id=\"brief\"/> is ready to read.\n\n"
+            + "- Task: \(page)/crash-agent?as=task is bisecting.\n"
+            + "- Bot: [the researcher](happy://agents/research-agent) has the papers.\n"
+            + "- Surface: [the list](happy://\(instanceId)/surfaces/groceries)\n"
+            + "- Archived: \(page)/gone-agent?as=session\n"
+            + "- Theirs: https://link.happy.page/#1/m1n2b3v4c5x6z7l8k9j0h1g2/agents/t7bgxjt05aexj73frl6ul37e?as=task"
+        let run: [String: Any] = ["id": "r1", "status": "completed", "startedAt": now - 60_000, "endedAt": now - 50_000, "reason": "completed", "messages": [
+            ["id": "u1", "role": "user", "createdAt": now - 60_000, "metadata": [:], "content": [["type": "text", "text": "How is \(page)/crash-agent?as=task going?"]]],
+            ["id": "m1", "role": "agent", "createdAt": now - 55_000, "metadata": [:], "content": [["type": "text", "text": reply]]],
+        ]]
+        return (try? JSONSerialization.data(withJSONObject: ["runs": [run], "hasMore": false])) ?? Data()
+    }
+    static let brief = """
+        # Launch brief
+
+        Owner: https://link.happy.page/#1/\(instanceId)/agents/crash-agent?as=task
+
+        Ask [the researcher](happy://agents/research-agent) for sources, and tick off [the list](happy://\(instanceId)/surfaces/groceries).
+
+        Their plan: https://link.happy.page/#1/m1n2b3v4c5x6z7l8k9j0h1g2/agents/t7bgxjt05aexj73frl6ul37e?as=task
+        """
+    private static var briefFile: [String: Any] { ["path": "brief.md", "mimeType": "text/markdown", "size": brief.utf8.count] }
+
     /// One step of a computer whose agents work: line counts tick, a run
     /// starts or ends, an agent does something, a new task arrives on top.
     func churn(_ step: Int) {
@@ -226,6 +257,18 @@ private actor GroupedHomeTransport: AgentTransport {
             tell("task.created", ["task": made])
             return .init(status: 200, body: try JSONSerialization.data(withJSONObject: ["task": made, "membership": ["taskId": made["id"]!]]))
         }
+        if linkChips, route.hasPrefix("/v0/artifacts/brief") {
+            switch route {
+            case "/v0/artifacts/brief":
+                return .init(status: 200, body: try JSONSerialization.data(withJSONObject: ["artifact": ["id": "brief", "type": "markdown", "title": "Launch brief", "status": "active", "latestVersion": 1]]))
+            case "/v0/artifacts/brief/versions/latest", "/v0/artifacts/brief/versions/1":
+                return .init(status: 200, body: try JSONSerialization.data(withJSONObject: ["version": ["artifactId": "brief", "number": 1, "title": "Launch brief", "entry": Self.briefFile, "files": [Self.briefFile]]]))
+            case "/v0/artifacts/brief/versions/1/files/brief.md":
+                return .init(status: 200, body: Data(Self.brief.utf8))
+            default:
+                return .init(status: 404, body: Data("{}".utf8))
+            }
+        }
         if route.hasPrefix("/v0/agents/") {
             let agentId = route.split(separator: "/")[2]
             if method == "POST", route.hasSuffix("/send") {
@@ -243,6 +286,7 @@ private actor GroupedHomeTransport: AgentTransport {
                 return .init(status: 200, body: Data("{}".utf8))
             }
             if route.hasSuffix("/messages") {
+                if linkChips, agentId == "landing-agent" { return .init(status: 200, body: Self.linkChipsRuns) }
                 if shareLinks, agentId == "landing-agent" { return .init(status: 200, body: Self.shareLinksRuns) }
                 return .init(status: 200, body: Data(#"{"runs":[],"hasMore":false}"#.utf8))
             }
@@ -254,7 +298,7 @@ private actor GroupedHomeTransport: AgentTransport {
         switch route {
         case "/v0/health":
             var health: [String: Any] = ["ready": true, "version": ["protocol": 27], "capabilities": ["sidebarOperations": true]]
-            if shareLinks { health["instanceId"] = Self.instanceId }
+            if shareLinks || linkChips { health["instanceId"] = Self.instanceId }
             object = health
         case "/v0/config": object = ["config": [
             "node": ["name": "Personal MacBook Pro"],
@@ -309,11 +353,12 @@ final class GroupedHomeHarness {
         let bottom = arguments.contains("-bottom")
         let churns = arguments.contains("-churn")
         let shareLinks = arguments.contains("-shareLinks")
+        let linkChips = arguments.contains("-linkChips")
         if let index = arguments.firstIndex(of: "-drawDelay"), arguments.indices.contains(index + 1) {
             SidebarItemDrawing.testDrawDelay = Double(arguments[index + 1]) ?? 0
         }
         Task {
-            await open(window: window, churns: churns, shareLinks: shareLinks)
+            await open(window: window, churns: churns, shareLinks: shareLinks, linkChips: linkChips)
             if churns { await churn(window: window, jumps: !arguments.contains("-noJumps"), flips: !arguments.contains("-noFlips")) }
             // With `-bottom`, the list's end, where the projects are.
             guard bottom else { return }
@@ -338,10 +383,11 @@ final class GroupedHomeHarness {
 
     private var transport: GroupedHomeTransport?
 
-    private func open(window: UIWindow, churns: Bool, shareLinks: Bool) async {
+    private func open(window: UIWindow, churns: Bool, shareLinks: Bool, linkChips: Bool = false) async {
         let transport = GroupedHomeTransport(avatar: Self.repoPicture(), lineCounts: lineCounts, longTitles: longTitles)
         await transport.setChurns(churns)
         await transport.setShareLinks(shareLinks)
+        await transport.setLinkChips(linkChips)
         self.transport = transport
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/grouped-home",

@@ -144,14 +144,24 @@ public enum HappyReferences {
             let reference: Reference
             switch link.target {
             case .settings, .file:
-                // Opened by the screen as written; one naming this installation reads as the plain form.
-                guard link.instanceId != nil, let url = HappyLink(link.target).url else { return nil }
-                return "[\(match.label)](\(url)\(match.button ? " \"button\"" : ""))"
+                // Opened by the screen as written; one naming this installation reads as the plain form,
+                // and one with no words of its own (a bare share link) as its path, as desktop fills it in.
+                let unnamed = written(match).isEmpty && !match.source.hasPrefix("!")
+                guard link.instanceId != nil || unnamed, let url = HappyLink(link.target).url else { return nil }
+                let name: String
+                if !unnamed {
+                    name = match.label
+                } else if case .file(let file) = link.target {
+                    name = label(file.path)
+                } else {
+                    name = "Settings"
+                }
+                return "[\(name)](\(url)\(match.button ? " \"button\"" : ""))"
             case .reference(let named):
                 reference = Reference(kind: named.kind.rawValue, id: named.id, version: named.version, workspaceId: named.workspaceId)
             }
             let shown = view(reference)
-            let written = label(match.label)
+            let written = written(match)
             let name: String
             switch shown {
             case .link(_, true) where !written.isEmpty: name = written
@@ -180,26 +190,90 @@ public enum HappyReferences {
     /// (`messageReferencesPlainText`).
     public static func plain(_ text: String, instanceId: String? = nil, view: (Reference) -> References.View) -> String {
         let linked = HappyMarkdownLinks.replace(shareLinksHere(text, instanceId: instanceId)) { match in
-            guard let link = match.link else { return label(match.label) }
-            if let named = link.instanceId, named != instanceId { return words(match, link) }
-            guard case .reference(let named) = link.target else {
-                let written = label(match.label)
-                if !written.isEmpty { return written }
-                if case .file(let file) = link.target { return file.path }
-                return "Settings"
-            }
-            let reference = Reference(kind: named.kind.rawValue, id: named.id, version: named.version, workspaceId: named.workspaceId)
-            let shown = view(reference)
-            let written = label(match.label)
-            switch shown {
-            case .link(_, true) where !written.isEmpty: return written
-            case .text(let words) where words == placeholder(reference) && !written.isEmpty: return written
-            default: return shown.label
-            }
+            plainWords(match, instanceId: instanceId, view: view)
         }
         return replace(linked) { reference in
             knownKinds.contains(reference.kind) ? view(reference).label : placeholder(reference)
         }
+    }
+
+    /// One run of a person's message as typed: its own words, or a
+    /// reference that reads as a link (or a person's tag) under the words
+    /// it reads as, `link` being what `markdown` writes for it.
+    public enum PlainSegment: Equatable, Sendable {
+        case text(String)
+        case link(String, link: String)
+    }
+
+    /// A person's message split around the references it names
+    /// (desktop's `messagePlainTextSegments`): each that opens, and each
+    /// person, a link under the words it reads as; any other its words.
+    /// Joined, the runs read exactly as `plain` does.
+    public static func segments(_ text: String, instanceId: String? = nil, view: (Reference) -> References.View) -> [PlainSegment] {
+        var out: [PlainSegment] = []
+        func add(_ words: String) {
+            guard !words.isEmpty else { return }
+            if case .text(let last)? = out.last { out[out.count - 1] = .text(last + words) } else { out.append(.text(words)) }
+        }
+        func named(_ reference: Reference, _ words: String) {
+            switch knownKinds.contains(reference.kind) ? view(reference) : .text(placeholder(reference)) {
+            case .link: out.append(.link(words, link: link(reference)))
+            case .mention(_, let me): out.append(.link(words, link: mentionLink(reference, me: me)))
+            case .text: add(words)
+            }
+        }
+        func tags(_ chunk: String) {
+            guard chunk.contains("<") else { return add(chunk) }
+            for segment in parse(chunk) {
+                switch segment {
+                case .text(let words): add(words)
+                case .reference(let reference, _):
+                    named(reference, knownKinds.contains(reference.kind) ? view(reference).label : placeholder(reference))
+                }
+            }
+        }
+        let source = shareLinksHere(text, instanceId: instanceId)
+        let units = Array(source.utf16)
+        var position = 0
+        for match in HappyMarkdownLinks.matches(source) {
+            tags(String(decoding: units[position..<match.start], as: UTF16.self))
+            position = match.end
+            let words = plainWords(match, instanceId: instanceId, view: view)
+            if let link = match.link, link.instanceId == nil || link.instanceId == instanceId, case .reference(let target) = link.target {
+                named(Reference(kind: target.kind.rawValue, id: target.id, version: target.version, workspaceId: target.workspaceId), words)
+            } else {
+                add(words)
+            }
+        }
+        tags(String(decoding: units[position...], as: UTF16.self))
+        return out
+    }
+
+    /// The words one Happy link reads as in plain text (desktop's `linkPlainWords`).
+    static func plainWords(_ match: HappyMarkdownLinks.Match, instanceId: String?, view: (Reference) -> References.View) -> String {
+        guard let link = match.link else { return label(match.label) }
+        if let named = link.instanceId, named != instanceId { return words(match, link) }
+        let written = written(match)
+        guard case .reference(let named) = link.target else {
+            if !written.isEmpty { return written }
+            if case .file(let file) = link.target { return file.path }
+            return "Settings"
+        }
+        let reference = Reference(kind: named.kind.rawValue, id: named.id, version: named.version, workspaceId: named.workspaceId)
+        let shown = view(reference)
+        switch shown {
+        case .link(_, true) where !written.isEmpty: return written
+        case .text(let words) where words == placeholder(reference) && !written.isEmpty: return written
+        default: return shown.label
+        }
+    }
+
+    /// The words a link was written with, as a name: none when they are
+    /// only an address, as a bare share link's are once it reads as the
+    /// Happy link it carries (desktop's documents read it so).
+    static func written(_ match: HappyMarkdownLinks.Match) -> String {
+        let written = label(match.label)
+        return HappyShareLink.parse(written) != nil || HappyLink.isHappyURL(written) ? "" : written
     }
 
     /// `text` with every share link naming `instanceId` written as the

@@ -94,9 +94,53 @@ final class HappyMarkdownLinksTests: XCTestCase {
         references.closedFiles = ["happy://agents/a1/files/src/main.ts#L4"]
         XCTAssertEqual(markdown(text, references), "See main.ts.")
         XCTAssertEqual(markdown("[main.ts](happy://agents/a1/files/src/main.ts#L4-L4 \"button\")", references), "[main.ts](happy://agents/a1/files/src/main.ts#L4 \"button\")")
-        XCTAssertEqual(markdown("[](happy-file://workspaces/w1/a%20b.md)", References()), "[](happy-file://workspaces/w1/a%20b.md)")
+        // One with no words of its own reads as its path, as desktop fills it in.
+        XCTAssertEqual(markdown("[](happy-file://workspaces/w1/a%20b.md)", References()), "[a b.md](happy://workspaces/w1/files/a%20b.md)")
+        XCTAssertEqual(markdown("![](happy://workspaces/w1/files/a.png)", References()), "![](happy://workspaces/w1/files/a.png)")
         XCTAssertEqual(markdown("[](happy://\(Self.there)/workspaces/w1/files/a%20b.md)", References()), "a b.md")
         XCTAssertNil(ChatLinks.file("happy://\(Self.there)/workspaces/w1/files/a.md"))
+    }
+
+    func testALabelThatIsOnlyItsAddressIsNoName() {
+        var references = References.entities(owners: Self.owners)
+        references.instanceId = Self.here
+        let share = "https://link.happy.page/#1/\(Self.here)/agents/zz?as=task"
+        // A bare share link written as a link to itself names nothing: its placeholder, not its address.
+        XCTAssertEqual(markdown("See [\(share)](\(share)).", references), "See an unavailable agent.")
+        XCTAssertEqual(markdown("[happy://agents/zz](happy://agents/zz)", references), "an unavailable agent")
+        XCTAssertEqual(markdown("[\(share)](https://link.happy.page/#1/\(Self.here)/agents/ab?as=bot)", references), "[Chef](ref:agent/ab)")
+        XCTAssertEqual(HappyReferences.plain("[\(share)](\(share))", instanceId: Self.here, view: references.view), "an unavailable agent")
+        // A bare share link to a file reads as its path.
+        let file = HappyShareLink.format("happy://\(Self.here)/agents/ab/files/src/main.ts#L4")!
+        XCTAssertEqual(markdown("Open \(file)", references), "Open [src/main.ts](happy://agents/ab/files/src/main.ts#L4)")
+    }
+
+    func testAPersonsMessageNamesWhatOpensAsLinks() {
+        var references = References.entities(owners: Self.owners)
+        references.instanceId = Self.here
+        references.users = ["u1": "Steve"]
+        references.artifacts["r1"] = .active(title: "Q3 revenue", type: "markdown", latestVersion: 2)
+        func segments(_ text: String) -> [HappyReferences.PlainSegment] {
+            HappyReferences.segments(text, instanceId: Self.here, view: references.view).map {
+                switch $0 {
+                case .text: $0
+                case .link(let words, let link): .link(words, link: link.replacingOccurrences(of: HappyReferences.linkPrefix, with: "ref:"))
+                }
+            }
+        }
+        let share = "https://link.happy.page/#1/\(Self.here)/agents/ab?as=bot"
+        let text = "Ask \(share) about [the plan](happy://artifacts/r1), <happy-user id=\"u1\"/> and [old](happy://agents/zz)."
+        XCTAssertEqual(segments(text), [
+            .text("Ask "), .link("Chef", link: "ref:agent/ab"), .text(" about "), .link("Q3 revenue", link: "ref:artifact/r1"),
+            .text(", "), .link("@Steve", link: "ref:user/u1"), .text(" and old."),
+        ])
+        // Joined, it reads as the plain text does.
+        let joined = segments(text).map { if case .text(let words) = $0 { words } else if case .link(let words, _) = $0 { words } else { "" } }.joined()
+        XCTAssertEqual(joined, HappyReferences.plain(text, instanceId: Self.here, view: references.view))
+        // Another server's links stay as written: an address, or its words.
+        let foreign = "https://link.happy.page/#1/\(Self.there)/agents/ab?as=bot"
+        XCTAssertEqual(segments("See \(foreign) and [theirs](happy://\(Self.there)/agents/ab)"), [.text("See \(foreign) and theirs")])
+        XCTAssertEqual(segments("plain words"), [.text("plain words")])
     }
 
     func testAFileReadsAsTheServerAnswers() {

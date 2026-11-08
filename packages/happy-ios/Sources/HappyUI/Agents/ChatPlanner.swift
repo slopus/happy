@@ -232,7 +232,10 @@ actor ChatPlanner {
                 return media
             }
             let written = ([text] + named).filter { !$0.isEmpty }.joined(separator: "\n\n")
-            let string = ChatTextStyles.text.string(written, color: Palette.userMessageText, in: environment)
+            // What it names reads as desktop's: a link under its live name.
+            var segments = text.isEmpty ? [] : HappyReferences.segments(item.text, instanceId: key.references.instanceId, view: key.references.view)
+            if !named.isEmpty { segments.append(.text((text.isEmpty ? "" : "\n\n") + named.joined(separator: "\n\n"))) }
+            let string = ChatSpans.plain(segments, style: ChatTextStyles.text, color: Palette.userMessageText, in: environment)
             let body = written.isEmpty ? nil : MeasuredText(string)
             let preview = MeasuredText(string, maxLines: M.foldLines)
             let toggles = opened ? Strings.showLess : Strings.showFull
