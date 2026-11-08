@@ -17,6 +17,9 @@ public enum SettingsLinkPlace: Equatable, Sendable {
     case servers
     /// The page in the web app, in the system browser.
     case web(URL)
+    /// A Happy Cloud server's AI providers: the list, the chooser or one
+    /// way of adding (`HappyLink.SettingsPage.providers…`).
+    case providers(HappyLink.SettingsPage)
 
     /// `page` on a connection to `server`; nil where it's inert.
     public static func place(_ page: HappyLink.SettingsPage, server: String?) -> SettingsLinkPlace? {
@@ -26,6 +29,11 @@ public enum SettingsLinkPlace: Equatable, Sendable {
         case .account: return .profile
         case .voice: return .voice
         case .servers: return cloud ? .servers : .general
+        case .providers, .providersAdd, .providersAddOpenAI, .providersAddAnthropic, .providersAddAPIKey:
+            return cloud ? .providers(page) : HappyCloud.webSettings(server: server, page: page).map(SettingsLinkPlace.web)
+        // Reading this phone's files is the desktop's: here, the chooser.
+        case .providersImport:
+            return cloud ? .providers(.providersAdd) : HappyCloud.webSettings(server: server, page: page).map(SettingsLinkPlace.web)
         default: return HappyCloud.webSettings(server: server, page: page).map(SettingsLinkPlace.web)
         }
     }

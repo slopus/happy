@@ -65,9 +65,11 @@ public final class AgentClient: Sendable {
         }
         if response.status == 401 { throw AgentClientError.revoked }
         guard (200..<300).contains(response.status) || response.status == 304 || response.status == 206 else {
-            struct Failure: Decodable { let error: String?; let code: String? }
-            let failure = try? JSONDecoder().decode(Failure.self, from: response.body)
-            throw AgentClientError.status(response.status, code: failure?.code, message: failure?.error)
+            // Flat (`{error, code}`) or nested (`{error: {code, message}}`).
+            let failure = try? JSONValue.decode(response.body)
+            let nested = failure?["error"]?.objectValue
+            throw AgentClientError.status(response.status, code: failure?["code"]?.stringValue ?? nested?["code"]?.stringValue,
+                                          message: failure?["error"]?.stringValue ?? nested?["message"]?.stringValue)
         }
         return response
     }

@@ -33,6 +33,9 @@ public struct Permissions: Decodable, Equatable, Sendable {
         case botsManage = "bots.manage"
         /// The server's own settings, its name among them.
         case configManage = "config.manage"
+        /// The team's inference providers; the person's own take `providers.own`.
+        case providersManage = "providers.manage"
+        case providersOwn = "providers.own"
     }
 
     public static let refreshEvents = ["role."]

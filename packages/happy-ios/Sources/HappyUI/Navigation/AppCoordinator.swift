@@ -243,7 +243,7 @@ public final class AppCoordinator {
         instanceTarget = nil
         shell.presentedViewController?.dismiss(animated: false)
         if case .settings(let page) = target.link.target, let top = shell.topViewController {
-            return SettingsLinks.open(page, session: session, from: top)
+            return SettingsLinks.open(page, options: target.link.providerOptions, session: session, from: top)
         }
         guard case .reference(let reference) = target.link.target, let navigation = shell.topViewController?.navigationController else { return }
         switch reference.kind {

@@ -51,6 +51,13 @@ public struct HappyLink: Equatable, Sendable {
     public enum SettingsPage: String, CaseIterable, Sendable {
         case general, account, sharing, servers, instructions, secrets, providers
         case providersImport = "providers/import"
+        /// Adding a provider: the chooser, ChatGPT's device sign-in,
+        /// Claude's sign-in, an API key form (`?vendor=`). Each may name
+        /// where it goes (`to=private|team`); nothing else rides along.
+        case providersAdd = "providers/add"
+        case providersAddOpenAI = "providers/add/openai"
+        case providersAddAnthropic = "providers/add/anthropic"
+        case providersAddAPIKey = "providers/add/api-key"
         case usage, voice
         case mobileAccess = "mobile-access"
         case members, roles, policy, mcp, computes
@@ -65,9 +72,19 @@ public struct HappyLink: Equatable, Sendable {
     public var target: Target
     /// Present only on an instance link: the installation it names.
     public var instanceId: String?
+    /// An add-provider page's choices: navigation only, never a secret.
+    public var providerOptions = ProviderOptions()
 
-    public init(_ target: Target, instanceId: String? = nil) {
-        self.target = target; self.instanceId = instanceId
+    public struct ProviderOptions: Equatable, Sendable {
+        /// `openai` or `anthropic`, on the API key form.
+        public var vendor: String?
+        /// `private` or `team`.
+        public var destination: String?
+        public init(vendor: String? = nil, destination: String? = nil) { self.vendor = vendor; self.destination = destination }
+    }
+
+    public init(_ target: Target, instanceId: String? = nil, providerOptions: ProviderOptions = ProviderOptions()) {
+        self.target = target; self.instanceId = instanceId; self.providerOptions = providerOptions
     }
 
     public static let maxLength = 4096
@@ -107,8 +124,36 @@ public struct HappyLink: Equatable, Sendable {
                 return
             }
         }
+        if let (page, options) = Self.addProvider(text) {
+            self.init(.settings(page), providerOptions: options)
+            return
+        }
         guard let target = Self.parse(text) else { return nil }
         self.init(target)
+    }
+
+    /// An add-provider link with its query: `to` on any of them, `vendor`
+    /// (required) only on the key form; any other key, value or repeat
+    /// isn't a link.
+    private static func addProvider(_ text: String) -> (SettingsPage, ProviderOptions)? {
+        guard let parts = groups(settings, text), let rest = parts[1] else { return nil }
+        let split = rest.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)
+        guard let page = SettingsPage(rawValue: String(split[0])),
+              [.providersAdd, .providersAddOpenAI, .providersAddAnthropic, .providersAddAPIKey].contains(page) else { return nil }
+        var options = ProviderOptions()
+        if split.count == 2 {
+            for pair in split[1].split(separator: "&", omittingEmptySubsequences: false) {
+                let kv = pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+                guard kv.count == 2 else { return nil }
+                let value = String(kv[1])
+                switch kv[0] {
+                case "to" where options.destination == nil && ["private", "team"].contains(value): options.destination = value
+                case "vendor" where page == .providersAddAPIKey && options.vendor == nil && ["openai", "anthropic"].contains(value): options.vendor = value
+                default: return nil
+                }
+            }
+        }
+        return (page, options)
     }
 
     /// The canonical URL; nil for a link the grammar can't express.
@@ -117,7 +162,9 @@ public struct HappyLink: Equatable, Sendable {
         switch target {
         case .reference(let reference): inner = Self.format(reference)
         case .file(let file): inner = Self.format(file)
-        case .settings(let page): inner = "happy://settings/\(page.rawValue)"
+        case .settings(let page):
+            let query = [providerOptions.vendor.map { "vendor=\($0)" }, providerOptions.destination.map { "to=\($0)" }].compactMap { $0 }
+            inner = "happy://settings/\(page.rawValue)" + (query.isEmpty ? "" : "?" + query.joined(separator: "&"))
         }
         guard let inner else { return nil }
         guard let instanceId else { return inner }

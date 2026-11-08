@@ -486,11 +486,11 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
     }
 
     /// The Chief of Staff's, on a Happy Cloud server: where its greeting
-    /// sends the person to connect a provider, Settings' Agents.
+    /// sends the person to connect a provider, AI providers.
     private func providersRow() -> SettingsRow {
-        SettingsRow(SettingsIndex.agents, action: { [weak self] in
-            guard let self, let context = session.context else { return }
-            SettingsViewController.open(context: context, computer: session.accountID, reveal: "agents-model", from: self)
+        SettingsRow(SettingsIndex.providers, action: { [weak self] in
+            guard let self else { return }
+            ProvidersViewController.open(.providers, session: session, from: self)
         })
     }
 
