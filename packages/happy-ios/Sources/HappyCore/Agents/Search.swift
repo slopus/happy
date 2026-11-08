@@ -8,13 +8,48 @@ public enum Search {
     /// How many quick actions or settings a query shows: desktop's `SECTION_LIMIT`.
     public static let sectionLimit = 6
 
-    /// How well `text` answers `query`, as desktop's `textRank`: 0 it starts
-    /// with it, 1 a word in it does, 2 it holds it anywhere; nil it doesn't.
-    /// Case and accents don't count.
-    public static func rank(_ text: String, _ query: String) -> Int? {
+    /// What a match in anything but the title loses: it ranks under every
+    /// title match (desktop's `SECONDARY_PENALTY`).
+    public static let secondaryPenalty = 3
+
+    /// How well `text` answers `query`, as desktop's `rowRank`: 0 it starts
+    /// with it, 1 a word in it does, 2 it holds it anywhere; a query of
+    /// several words ranks, in any order, as its weakest word does, never
+    /// 0. What a row answers to below its title (`secondary`, a Surface's
+    /// kind) ranks `secondaryPenalty` lower, and the words may be split
+    /// between the two. Nil: it doesn't answer. Case and accents don't count.
+    public static func rank(_ text: String, _ query: String, secondary: [String] = []) -> Int? {
         let needle = fold(query.trimmingCharacters(in: .whitespacesAndNewlines))
         guard !needle.isEmpty else { return nil }
-        let haystack = fold(text)
+        let words = needle.split(whereSeparator: \.isWhitespace).map(String.init)
+        let title = fold(text)
+        let primary = textRank(title, needle) ?? wordsRank(title, words)
+        if primary == 0 { return 0 }
+        var best = primary
+        func demote(_ rank: Int?) {
+            guard let rank else { return }
+            if best == nil || rank + secondaryPenalty < best! { best = rank + secondaryPenalty }
+        }
+        let supporting = secondary.map(fold)
+        supporting.forEach { demote(textRank($0, needle)) }
+        if !supporting.isEmpty { demote(wordsRank(([title] + supporting).joined(separator: " "), words)) }
+        return best
+    }
+
+    /// Several `words` all in `haystack`, in any order, as the weakest
+    /// ranks; never a prefix, which only the whole query can be.
+    private static func wordsRank(_ haystack: String, _ words: [String]) -> Int? {
+        guard words.count > 1 else { return nil }
+        var worst = 1
+        for word in words {
+            guard let rank = textRank(haystack, word) else { return nil }
+            worst = max(worst, rank)
+        }
+        return worst
+    }
+
+    /// `needle` in `haystack`, both folded: 0 at its start, 1 at a word's, 2 anywhere.
+    private static func textRank(_ haystack: String, _ needle: String) -> Int? {
         if haystack.hasPrefix(needle) { return 0 }
         var from = haystack.startIndex
         var holds = false
@@ -90,10 +125,11 @@ public enum Search {
 
     /// What the phone finds for `query` in what it holds: the sidebar's
     /// conversations and Surfaces, the Surface catalog and the artifacts,
-    /// one result per key, best name first (`rank`), then in the
+    /// one result per key, best name first (`rank`, a Surface also by its
+    /// kind and an artifact by its type, as desktop's are), then in the
     /// computer's provider order, then in their own. A key the sidebar
     /// holds is its row, which opens as the sidebar does.
-    public static func local(rows: [Row], surfaces: [AgentWire.Surface] = [], artifacts: [ArtifactSummary] = [], query: String) -> [(key: String, found: Found)] {
+    public static func local(rows: [Row], surfaces: [AgentWire.Surface] = [], artifacts: [ArtifactSummary] = [], query: String) -> [(key: String, found: Found, rank: Int)] {
         var candidates: [(key: String, found: Found)] = []
         for row in rows where row.kind == .space || row.kind == .session {
             guard let key = key(row) else { continue }
@@ -107,7 +143,7 @@ public enum Search {
         candidates += artifacts.filter { !$0.deleted }.map { ("artifact:\($0.id)", .artifact($0)) }
         var best: [String: (rank: Int, provider: Int, index: Int, found: Found)] = [:]
         for (index, candidate) in candidates.enumerated() {
-            guard let rank = rank(candidate.found.label, query) else { continue }
+            guard let rank = rank(candidate.found.label, query, secondary: secondary(candidate.found)) else { continue }
             let entry = (rank: rank, provider: provider(candidate.key), index: index, found: candidate.found)
             guard let held = best[candidate.key] else {
                 best[candidate.key] = entry
@@ -119,7 +155,16 @@ public enum Search {
             best[candidate.key] = (placed.rank, placed.provider, placed.index, found)
         }
         return best.sorted { ($0.value.rank, $0.value.provider, $0.value.index) < ($1.value.rank, $1.value.provider, $1.value.index) }
-            .map { ($0.key, $0.value.found) }
+            .map { ($0.key, $0.value.found, $0.value.rank) }
+    }
+
+    /// What a Surface or an artifact also answers to: its kind's name.
+    private static func secondary(_ found: Found) -> [String] {
+        switch found {
+        case .row(let row): row.targetKind == "surface" ? [surfaceTypeLabel(row.surfaceType)] : []
+        case .surface(let surface): [surfaceTypeLabel(surface.type)]
+        case .artifact(let artifact): [artifactTypeLabel(artifact.type)]
+        }
     }
 
     /// How many bots and tasks an empty search shows.

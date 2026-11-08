@@ -48,7 +48,9 @@ final class HomeViewController: UIViewController {
         var asking: Task<Void, Never>?
     }
 
-    /// Whether this computer answers search; nil until asked.
+    /// Whether this computer answers search; nil until asked. A no is asked
+    /// again the next time search opens, so a computer upgraded meanwhile
+    /// is searched without the app starting over.
     private var servesSearch: Bool?
     /// The Surfaces and artifacts the phone keeps, searched as it types.
     private var surfaceCatalog: SurfaceCatalogFeed?
@@ -314,6 +316,7 @@ final class HomeViewController: UIViewController {
     /// until something is typed.
     func beginSearch() {
         guard session != nil, search == nil, !sidebar.isHidden else { return }
+        if servesSearch == false { servesSearch = nil }
         search = Search()
         resultsView.clear()
         watchCatalogs()
@@ -354,8 +357,9 @@ final class HomeViewController: UIViewController {
     }
 
 
-    /// What answers the query, in the results over home: the rows that
-    /// answer it, then the quick actions and settings that do. Nothing
+    /// What answers the query, in the results over home: what was found,
+    /// the quick actions and the settings that answer it, each section where
+    /// its best answer puts it, as desktop's ⌘K palette orders them. Nothing
     /// typed: the conversations last active.
     private func showResults() {
         guard var search else { return }
@@ -366,72 +370,79 @@ final class HomeViewController: UIViewController {
             resultsView.show(HappyCore.Search.recent(snapshot.allRows), query: "")
             return
         }
-        let found = results(for: query)
-        let fused = fusedResults(for: query, remote: search.remote?.query == search.query ? search.remote?.results ?? [] : [])
-        search.results = found.runs.merging(fused.runs) { first, _ in first }
+        let fused = foundResults(for: query, remote: search.remote?.query == search.query ? search.remote?.results : nil)
+        let sections = results(for: query)
+        var runs = fused.runs
+        var shown: [(rows: [Row], best: Int)] = [(fused.rows, fused.best)]
+        for section in sections {
+            runs.merge(section.runs) { first, _ in first }
+            shown.append((section.rows, section.best))
+        }
+        search.results = runs
         self.search = search
-        resultsView.show(fused.rows + found.rows, query: query)
+        // A stable sort: equals keep found, actions, settings.
+        let ordered = shown.enumerated().filter { !$0.element.rows.isEmpty }.sorted { ($0.element.best, $0.offset) < ($1.element.best, $1.offset) }
+        resultsView.show(ordered.flatMap(\.element.rows), query: query)
     }
 
-    /// One flat list of what answers `query`: what the phone holds, at
-    /// once, fused with what the computer found once it answers
-    /// (`Search.fuse`). A row the phone found keeps its place in the
-    /// list when the computer's results come in around it. Every result
-    /// draws alike, a glyph before its title, wherever it came from; a
-    /// sidebar row opens as the sidebar opens it.
-    private func fusedResults(for query: String, remote: [HappyCore.Search.Result]) -> (rows: [Row], runs: [String: () -> Void]) {
-        let local = HappyCore.Search.local(rows: snapshot.allRows, surfaces: surfaces, artifacts: artifacts, query: query)
-        let fused = HappyCore.Search.fuse(remote: remote.map { ($0.key, $0.rank) }, local: local.map(\.key))
+    /// One flat list of what was found for `query`, at most
+    /// `Search.foundLimit`: what the phone holds, at once, fused with what
+    /// the computer found once it answers (`Search.found`), as desktop's
+    /// palette lists it. Every result draws alike, a glyph before its
+    /// title and the line desktop gives it under; a thing both found is
+    /// the phone's row, with the words a content match was found in under
+    /// it. A sidebar row opens as the sidebar opens it. `best` is where the
+    /// list stands among the other sections (`Search.foundBest`).
+    private func foundResults(for query: String, remote answer: [HappyCore.Search.Result]?) -> (rows: [Row], runs: [String: () -> Void], best: Int) {
+        let local = Array(HappyCore.Search.local(rows: snapshot.allRows, surfaces: surfaces, artifacts: artifacts, query: query).prefix(HappyCore.Search.foundLimit))
+        let names = searchNames()
+        let remote = (answer ?? []).compactMap { result in HappyCore.Search.shown(result, names: names).map { (result: result, shown: $0) } }
+        let fused = HappyCore.Search.found(local: local.map(\.key), remote: remote.map { ($0.result.key, $0.result.rank) })
         var rows: [Row] = []
         var runs: [String: () -> Void] = [:]
         for one in fused {
             let id = "found:\(one.key)"
-            // What the computer found in the content, under the title, wherever the row came from.
-            let detail = one.remote.flatMap { Self.detail(remote[$0]) }
             if let index = one.local {
+                let found = local[index].found
                 var row: Row
-                switch local[index].found {
-                case .row(let found):
-                    row = Row(id: id, nodeId: id, kind: .result, label: found.label, mark: .glyph(Self.glyph(found)))
-                    runs[id] = { [weak self] in self?.open(found) }
+                switch found {
+                case .row(let held):
+                    row = Row(id: id, nodeId: id, kind: .result, label: held.label, mark: .glyph(Self.glyph(held)))
+                    runs[id] = { [weak self] in self?.open(held) }
                 case .surface(let surface):
                     row = Row(id: id, nodeId: id, kind: .result, label: surface.name, mark: .glyph(Rows.surfaceGlyph(surface.type)))
                     runs[id] = { [weak self] in self?.openSurface(AgentWire.Surface(id: surface.id, type: surface.type, name: surface.name), row: id) }
                 case .artifact(let artifact):
-                    row = Row(id: id, nodeId: id, kind: .result, label: artifact.title, mark: .glyph(artifact.live || artifact.type == "html" ? "globe-outline" : "doc"))
+                    row = Row(id: id, nodeId: id, kind: .result, label: artifact.title, mark: .glyph(artifact.live ? "globe-outline" : HappyCore.Search.artifactGlyph(artifact.type)))
                     runs[id] = { [weak self] in self?.openArtifact(id: artifact.id, type: artifact.type, title: artifact.title, row: id) }
                 }
-                row.detail = detail
+                // What the computer found in the content, where it found the thing too.
+                row.detail = one.remote.flatMap { remote[$0].shown.snippet } ?? HappyCore.Search.detail(found)
                 rows.append(row)
             } else if let index = one.remote {
-                let result = remote[index]
-                var row = Row(id: id, nodeId: id, kind: .result, label: label(result), mark: .glyph(Self.glyph(result)))
-                row.detail = detail
+                let shown = remote[index].shown
+                var row = Row(id: id, nodeId: id, kind: .result, label: shown.title, mark: .glyph(shown.glyph))
+                row.detail = shown.detail
                 rows.append(row)
-                runs[id] = { [weak self] in self?.open(result, row: id) }
+                runs[id] = { [weak self] in self?.open(shown.opens, row: id) }
             }
         }
-        return (rows, runs)
+        let best = HappyCore.Search.foundBest(localRanks: local.map(\.rank), answered: !remote.isEmpty)
+        return (rows, runs, best)
     }
 
-    /// The line under a result's title: the words it matched in the
-    /// content, or a message's; for a vault item, the folders it is in,
-    /// which say why a match only in them found it.
-    private static func detail(_ result: HappyCore.Search.Result) -> String? {
-        if result.match == "content" || result.type == "message", let snippet = result.snippet?.trimmingCharacters(in: .whitespacesAndNewlines), !snippet.isEmpty { return snippet }
-        guard result.type == "vault_file" || result.type == "vault_folder", let path = result.path else { return nil }
-        let folders = path.split(separator: "/").dropLast()
-        return folders.isEmpty ? nil : folders.joined(separator: " › ")
-    }
-
-    private func label(_ result: HappyCore.Search.Result) -> String {
-        switch result.type {
-        // A vault app shows without its `.artifact`, as the vault shows it.
-        case "vault_file": VaultEntry.shownName(result.label)
-        // A message is titled by its conversation; what it says is under it.
-        case "message": result.agentId.flatMap(conversationTitle) ?? Strings.untitledSession
-        default: result.label
+    /// What the phone holds to name what the computer found.
+    private func searchNames() -> HappyCore.Search.Names {
+        var named: [String: AgentWire.Surface] = [:]
+        for row in snapshot.allRows where row.targetKind == "surface" {
+            if let id = row.targetId { named[id] = AgentWire.Surface(id: id, type: row.surfaceType ?? "", name: row.label) }
         }
+        for surface in surfaces { named[surface.id] = surface }
+        var conversations: [String: String] = [:]
+        for row in snapshot.allRows where row.targetKind != "surface" {
+            if let agentId = row.agentId, conversations[agentId] == nil { conversations[agentId] = row.label }
+        }
+        return HappyCore.Search.Names(surfaces: named, conversations: conversations)
     }
 
     /// A sidebar row's glyph among the results, as the computer's result
@@ -447,57 +458,21 @@ final class HomeViewController: UIViewController {
         }
     }
 
-    private static func glyph(_ result: HappyCore.Search.Result) -> String {
-        switch result.type {
-        case "vault_file": result.kind == "artifact" ? "globe-outline" : "doc"
-        case "vault_folder": "folder-outline"
-        case "document": "doc"
-        case "message": "chatbubbles-outline"
-        case "todo": "tasks"
-        case "calendar_event": "calendar"
-        case "artifact": result.artifactType == "html" ? "globe-outline" : "doc"
-        case "surface": Rows.surfaceGlyph(result.surfaceType)
-        case "agent": result.kind == "chat" || result.kind == "subtask" ? "chatbubbles-outline" : "agents"
-        default: "search"
-        }
-    }
-
-    /// A Surface's name as the phone knows it, for a result that names only its ID.
-    private func surfaceName(_ surfaceId: String) -> String? {
-        surfaces.first { $0.id == surfaceId }?.name ?? snapshot.allRows.first { $0.targetKind == "surface" && $0.targetId == surfaceId }?.label
-    }
-
-    /// A conversation's title as the sidebar shows it.
-    private func conversationTitle(_ agentId: String) -> String? {
-        snapshot.allRows.first { $0.agentId == agentId }?.label
-    }
-
     /// Opens what the computer found, where the phone shows it: a message
-    /// opens its conversation.
-    private func open(_ result: HappyCore.Search.Result, row: String) {
+    /// opens its conversation, a todo or an event its list or calendar, a
+    /// vault's folder or file its place in the vault.
+    private func open(_ opens: HappyCore.Search.Opens, row: String) {
         guard let session else { return }
-        switch result.type {
-        case "agent", "message":
-            guard let agentId = result.agentId else { return }
+        switch opens {
+        case .conversation(let agentId, let title):
             session.warm.tap(agentId)
-            show(ChatViewController(session: session, agentId: agentId, title: label(result), spaceId: nil, intro: nil), for: row)
-        case "document", "surface", "todo", "calendar_event":
-            guard let surfaceId = result.surfaceId else { return }
-            let type = switch result.type {
-            case "document": "document"
-            case "todo": "todo"
-            case "calendar_event": "calendar"
-            default: result.surfaceType ?? ""
-            }
-            let named = result.type == "document" || result.type == "surface"
-            openSurface(AgentWire.Surface(id: surfaceId, type: type, name: named ? result.label : surfaceName(surfaceId) ?? ""), row: row)
-        case "artifact":
-            guard let artifactId = result.artifactId else { return }
-            openArtifact(id: artifactId, type: result.artifactType ?? "", title: result.label, row: row)
-        case "vault_file", "vault_folder":
-            let folder = result.type == "vault_folder"
-            guard let surfaceId = result.surfaceId, let id = folder ? result.folderId : result.fileId else { return }
-            let vaultName = surfaceName(surfaceId) ?? Strings.Vaults.title
+            show(ChatViewController(session: session, agentId: agentId, title: title.isEmpty ? Strings.untitledSession : title, spaceId: nil, intro: nil), for: row)
+        case .surface(let id, let type, let name):
+            openSurface(AgentWire.Surface(id: id, type: type, name: name), row: row)
+        case .artifact(let id, let type, let title):
+            openArtifact(id: id, type: type, title: title, row: row)
+        case .vaultItem(let surfaceId, let id, let folder, let vaultName):
+            let vaultName = vaultName ?? Strings.Vaults.title
             Task { [weak self] in
                 do {
                     let place = try await session.engine.vaults.location(surfaceId, id, folder: folder)
@@ -511,8 +486,6 @@ final class HomeViewController: UIViewController {
                     Alerts.show(Strings.Vaults.failedTitle, VaultActions.message(error), on: self)
                 }
             }
-        default:
-            break
         }
     }
 
@@ -533,32 +506,35 @@ final class HomeViewController: UIViewController {
         navigationController?.pushViewController(controller, animated: true)
     }
 
-    /// The quick actions and settings that answer `query`, at most six of
-    /// each, best first, each under its heading, and what each does.
-    private func results(for query: String) -> (rows: [Row], runs: [String: () -> Void]) {
-        var rows: [Row] = []
-        var runs: [String: () -> Void] = [:]
-        func section(_ id: String, _ label: String, _ found: [(id: String, title: String, glyph: String, run: () -> Void)]) {
-            guard !found.isEmpty else { return }
-            rows.append(Row(id: "search:\(id)", nodeId: "search:\(id)", kind: .section, label: label))
+    /// The quick actions and the settings that answer `query`, at most six
+    /// of each, best first, each section under its heading, with what each
+    /// row does and its best answer's rank.
+    private func results(for query: String) -> [(rows: [Row], runs: [String: () -> Void], best: Int)] {
+        func section(_ id: String, _ label: String, _ found: [(id: String, title: String, glyph: String, run: () -> Void)]) -> (rows: [Row], runs: [String: () -> Void], best: Int) {
+            guard !found.isEmpty else { return ([], [:], .max) }
+            var rows = [Row(id: "search:\(id)", nodeId: "search:\(id)", kind: .section, label: label)]
+            var runs: [String: () -> Void] = [:]
             for one in found {
                 let rowId = "search:\(id):\(one.id)"
                 rows.append(Row(id: rowId, nodeId: rowId, kind: .result, label: one.title, mark: .glyph(one.glyph)))
                 runs[rowId] = one.run
             }
+            let best = found.compactMap { HappyCore.Search.rank($0.title, query) }.min() ?? .max
+            return (rows, runs, best)
         }
         let actions = HappyCore.Search.ranked(quickActions().filter { !$0.id.hasPrefix("new-work") || session?.gate.allows(.contentWrite) ?? true }, query: query) { $0.title }
-        section("actions", Strings.quickActions, actions.map { ($0.id, $0.title, $0.glyph, $0.run) })
         let computer = session?.accountID
         let entries = SettingsIndex.computer
         let settings = HappyCore.Search.ranked(entries, query: query) { $0.title }
-        section("settings", Strings.settingsResults, settings.map { entry in
-            (entry.id, entry.title, entry.glyph, { [weak self] in
-                guard let self else { return }
-                SettingsViewController.open(context: context, computer: computer, reveal: entry.id, from: parent ?? self)
-            })
-        })
-        return (rows, runs)
+        return [
+            section("actions", Strings.quickActions, actions.map { ($0.id, $0.title, $0.glyph, $0.run) }),
+            section("settings", Strings.settingsResults, settings.map { entry in
+                (entry.id, entry.title, entry.glyph, { [weak self] in
+                    guard let self else { return }
+                    SettingsViewController.open(context: context, computer: computer, reveal: entry.id, from: parent ?? self)
+                })
+            }),
+        ]
     }
 
     /// What desktop's palette offers to do from anywhere, as a phone does it.

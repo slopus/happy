@@ -53,7 +53,8 @@ final class RealVaultHarness {
             window.rootViewController = navigation
             if arguments.contains("-dark") { window.overrideUserInterfaceStyle = .dark }
             await script.run(session: session, navigation: navigation, surfaceId: vault, name: Self.value("-name", arguments) ?? "Demo vault",
-                             searchOnly: arguments.contains("-searchOnly"))
+                             searchOnly: arguments.contains("-searchOnly"),
+                             queries: Self.value("-searchQueries", arguments).map { $0.split(separator: ",").map(String.init) } ?? [])
         } catch {
             script.fail("\(error)")
         }
@@ -227,13 +228,17 @@ private final class RealVaultScript {
 
     // MARK: The walk
 
-    func run(session: Session, navigation: UINavigationController, surfaceId: String, name: String, searchOnly: Bool = false) async {
+    func run(session: Session, navigation: UINavigationController, surfaceId: String, name: String, searchOnly: Bool = false, queries: [String] = []) async {
         self.session = session
         self.navigation = navigation
         self.surfaceId = surfaceId
         self.name = name
         await sleep(6)
         await shoot("01-home")
+        if !queries.isEmpty {
+            await searchShots(queries)
+            return note("DONE")
+        }
         await homeSearch()
         if searchOnly { return note("DONE") }
 
@@ -318,6 +323,50 @@ private final class RealVaultScript {
             await sleep(0.5)
         } else {
             note("no message says launch: \(labels())")
+        }
+        bar.end()
+        await sleep(0.5)
+    }
+
+    /// Home's search for each of `queries`, typed into the bar's field: once
+    /// the computer has answered, the results are listed and shot as
+    /// `search-<query>`, then the first found row of each kind is opened.
+    private func searchShots(_ queries: [String]) async {
+        guard let agentHome = navigation.viewControllers.first as? AgentHomeViewController,
+              let home = agentHome.children.compactMap({ $0 as? HomeViewController }).first else {
+            check("home search", false, "no home")
+            return
+        }
+        let rows = { home.resultsView.list.rows }
+        let bar = agentHome.search
+        let remote = { rows().contains { row in ["vault_file", "vault_folder", "message", "todo", "calendar_event", "document"].contains { row.id.hasPrefix("found:\($0):") } } }
+        for query in queries {
+            if !bar.isActive {
+                bar.begin()
+                await sleep(1.5)
+            }
+            bar.bar.searchTextField.text = ""
+            bar.bar.searchTextField.insertText(query)
+            check("\(query): the computer's results come in", await until(15) { remote() })
+            await sleep(0.5)
+            for row in rows() { note("\(query) ROW \(row.kind == .section ? "## " : "")\(row.label)\(row.detail.map { " — \($0)" } ?? "")  [\(row.id)]") }
+            check("\(query): at most twelve found", rows().filter { $0.id.hasPrefix("found:") }.count <= HappyCore.Search.foundLimit)
+            await shoot("search-\(query)")
+        }
+        for kind in ["vault_file", "message", "calendar_event"] {
+            guard let query = queries.first else { break }
+            bar.bar.searchTextField.text = ""
+            bar.bar.searchTextField.insertText(kind == "vault_file" ? query : queries.last ?? query)
+            guard await until(15, { rows().contains { $0.id.hasPrefix("found:\(kind):") } }), let row = rows().first(where: { $0.id.hasPrefix("found:\(kind):") }) else {
+                note("no \(kind) found")
+                continue
+            }
+            home.resultsView.list.onSelect?(row)
+            check("a found \(kind) opens", await until(15) { navigation.viewControllers.count > 1 }, String(describing: top))
+            await sleep(2)
+            await shoot("search-opened-\(kind)")
+            navigation.popToRootViewController(animated: false)
+            await sleep(0.8)
         }
         bar.end()
         await sleep(0.5)

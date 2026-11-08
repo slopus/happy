@@ -9,10 +9,20 @@ extension Search {
     /// The fusion's constant: a result at position `p` scores `1 / (k + p)`.
     public static let k = 60.0
 
-    /// What the phone asks for: what it can open. Projects and workspaces
-    /// open nothing here, as their sidebar rows don't; people and skills
-    /// have no screen on the phone.
-    public static let types = ["vault_file", "vault_folder", "document", "message", "todo", "calendar_event", "artifact", "surface", "agent"]
+    /// How many results the computer is asked for: desktop's palette's `LIMIT`.
+    public static let remoteLimit = 20
+
+    /// Every result type the contract names, in the computer's provider
+    /// order (API.md "Result types"). The phone asks for all of them, as
+    /// desktop does, and leaves out at showing what it has no screen for
+    /// (`shown`); a type it doesn't know is passed over.
+    public static let resultTypes = ["vault_file", "vault_folder", "document", "message", "todo", "calendar_event", "artifact", "surface", "agent", "project", "workspace", "user", "skill"]
+
+    /// `POST /v0/search`'s body for `query`, as desktop's palette sends it:
+    /// no `types`, so every type is searched.
+    public static func request(_ query: String, limit: Int = remoteLimit) -> JSONValue {
+        .object(["q": .string(query), "limit": .number(Double(limit))])
+    }
 
     /// One thing the computer found. Every result has `type`, `key` and
     /// `rank`; the rest are its type's (API.md "Result types"), and fields
@@ -50,6 +60,9 @@ extension Search {
         public var artifactType: String?
         public var surfaceType: String?
         public var archived: Bool?
+        /// A calendar event's next start, in epoch milliseconds, and whether it is all day.
+        public var start: Double?
+        public var allDay: Bool?
 
         public init(type: String, key: String, rank: Int) {
             self.type = type
@@ -113,12 +126,12 @@ extension AgentClient {
         try await decode(JSONValue.self, "GET", "/v0/health")["capabilities"]?["search"]?.boolValue == true
     }
 
-    /// What the computer finds for `query`, best first. Results of a type
-    /// the phone doesn't know are left out.
-    public func search(_ query: String, types: [String] = Search.types, limit: Int = 30) async throws -> Search.Answer {
-        let body: JSONValue = .object(["q": .string(query), "types": .array(types.map(JSONValue.string)), "limit": .number(Double(limit))])
-        let answer = try await decode(JSONValue.self, "POST", "/v0/search", json: body)
-        let known = Set(types)
+    /// What the computer finds for `query`, best first, asked as desktop
+    /// asks (`{q, limit}`, every type). Results of a type the phone doesn't
+    /// know are left out.
+    public func search(_ query: String, limit: Int = Search.remoteLimit) async throws -> Search.Answer {
+        let answer = try await decode(JSONValue.self, "POST", "/v0/search", json: Search.request(query, limit: limit))
+        let known = Set(Search.resultTypes)
         let results = (answer["results"]?.arrayValue ?? []).compactMap { value -> Search.Result? in
             guard let data = try? JSONEncoder().encode(value), let result = try? JSONDecoder().decode(Search.Result.self, from: data) else { return nil }
             return known.contains(result.type) ? result : nil
