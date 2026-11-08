@@ -32,6 +32,8 @@
     <string name="agent_search_kind_image_series">画像シリーズ</string>
     <string name="agent_search_kind_video">動画</string>
     <string name="agent_search_kind_artifact">アーティファクト</string>
+    <string name="agent_search_kind_shared">共有</string>
+    <string name="agent_search_by_agent">エージェント</string>
     <string name="agent_settings_edit_name">エージェントの名前を変更</string>
     <string name="agent_settings_edit_avatar">エージェントのアバターを変更</string>
     <string name="agent_settings_edit_name_prefix">"名前を次に変えて: "</string>

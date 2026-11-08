@@ -36,6 +36,9 @@
     <string name="agent_search_kind_image_series">Image series</string>
     <string name="agent_search_kind_video">Video</string>
     <string name="agent_search_kind_artifact">Artifact</string>
+    <string name="agent_search_kind_shared">Shared</string>
+    <!-- A message in a found result's line: an agent wrote it, not the person. -->
+    <string name="agent_search_by_agent">Agent</string>
 
     <string name="agent_settings_edit_name">Change agent name</string>
     <string name="agent_settings_edit_avatar">Change agent avatar</string>

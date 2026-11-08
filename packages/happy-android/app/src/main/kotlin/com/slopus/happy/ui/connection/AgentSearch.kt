@@ -69,6 +69,7 @@ import com.slopus.happy.search.SearchAnswer
 import com.slopus.happy.search.SearchFusion
 import com.slopus.happy.search.SearchHit
 import com.slopus.happy.ui.components.HomeCardPlace
+import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.vaults.VaultNames
 import com.slopus.happy.ui.layout.LocalWindowLayout
@@ -91,6 +92,9 @@ import java.util.Locale
  */
 object AgentSearch {
     const val SECTION_LIMIT = 6
+
+    /** How many found things search lists, and how many of its own the phone offers to the fusion: desktop's `FOUND_LIMIT`. */
+    const val FOUND_LIMIT = 12
 
     /** How many bots and tasks an empty search shows. */
     const val RECENT_LIMIT = 8
@@ -245,21 +249,24 @@ sealed interface AgentSearchResult {
     }
 
     /**
-     * One result of search under its [key] (`<type>:<id>`): [local]
-     * as the phone draws it, where it holds it; [hit] what the daemon said
-     * of it. A content match's line is the daemon's alone, so it shows the
-     * daemon's row; otherwise the phone's row stays as it was when the
-     * daemon's answer comes in.
+     * One result of search under its [key] (`<type>:<id>`), as desktop's
+     * palette draws it: its [title] and, under it, [detail], what it is and
+     * where, or the words a content match was found in. [local] is the
+     * phone's own result, where it holds it, which opens as home opens it;
+     * [hit] what the daemon said of it. A thing both found is the phone's
+     * row with the daemon's words under it.
      */
     data class Found(
         override val key: String,
         val local: AgentSearchResult?,
         val hit: SearchHit?,
         val place: HomeCardPlace,
-        /** A message's conversation, by the title home gives it; null where the phone doesn't hold it. */
-        val conversation: String? = null,
+        val title: String = "",
+        val detail: String? = null,
     ) : AgentSearchResult {
-        val drawn: AgentSearchResult? get() = local.takeIf { hit == null || searchHitDetail(hit) == null }
+        /** Home's own pages (Artifacts, Activity, Todos), which only the phone has, draw as home draws them. */
+        val drawn: AgentSearchResult?
+            get() = local.takeIf { (it as? Home)?.item?.row.let { row -> row == AgentFeedRow.Artifacts || row is AgentFeedRow.Feed || row == AgentFeedRow.Todos } }
     }
 }
 
@@ -320,14 +327,34 @@ data class AgentSearchSources(
     }
 }
 
-/** What search's sections are called, and the names of the kinds a query also finds a row by. */
+/**
+ * What search's sections are called, the names of the kinds a query also
+ * finds a row by, and the words of the line under a found thing (desktop's
+ * meta): a conversation's kind, a done todo, an agent's message, a day.
+ */
 @Immutable
 class AgentSearchWords(
     val actions: String,
     val settings: String,
     val surfaceType: (String) -> String,
     val artifactType: (String) -> String,
+    val task: String = "Task",
+    val subtask: String = "Subtask",
+    val bot: String = "Bot",
+    val chat: String = "Chat",
+    val shared: String = "Shared",
+    val done: String = "Done",
+    val agent: String = "Agent",
+    /** A day as a row's line says it, "Nov 8", with its time when [time]; an all-day event's ([utc]) is a date the same anywhere. */
+    val day: (millis: Long, time: Boolean, utc: Boolean) -> String = ::searchDay,
 )
+
+/** "Nov 8", or "Nov 8, 2:00 PM", in the person's language. */
+fun searchDay(millis: Long, time: Boolean, utc: Boolean, locale: Locale = Locale.getDefault()): String {
+    val format = java.text.SimpleDateFormat(android.text.format.DateFormat.getBestDateTimePattern(locale, if (time) "MMMdjmm" else "MMMd"), locale)
+    if (utc) format.timeZone = java.util.TimeZone.getTimeZone("UTC")
+    return format.format(java.util.Date(millis))
+}
 
 /**
  * One thing the phone's own search found, under the key the daemon gives
@@ -335,7 +362,15 @@ class AgentSearchWords(
  * answers to below that, its tier among equals, and how it is drawn at its
  * place in the card.
  */
-private class Local(val key: String, val title: String, val secondary: List<String>, val tier: Int, val result: (HomeCardPlace) -> AgentSearchResult)
+private class Local(
+    val key: String,
+    val title: String,
+    val secondary: List<String>,
+    val tier: Int,
+    /** What it is and where, under its title (desktop's own rows' meta). */
+    val detail: String? = null,
+    val result: (HomeCardPlace) -> AgentSearchResult,
+)
 
 /**
  * The phone's half of search for [query], ranked as the daemon ranks
@@ -355,26 +390,29 @@ private fun localSearch(feed: AgentFeed, query: String, label: (AgentFeedRow) ->
         row.name,
         listOf(words.surfaceType(row.type)),
         if (joined) 0 else 1,
+        words.surfaceType(row.type),
     ) { place -> AgentSearchResult.Home(AgentHomeItem.Row(row, place.first, place.last)) }
-    fun home(row: AgentFeedRow, key: String) = label(row)?.let { title ->
-        // A flat list: a subtask or a worktree stands at the card's edge like the rest.
-        val flat = when (row) {
-            is AgentFeedRow.Conversation -> row.copy(depth = 0)
-            is AgentFeedRow.Folder -> row.copy(depth = 0)
-            else -> row
-        }
-        Local(key, title, emptyList(), 0) { place -> AgentSearchResult.Home(AgentHomeItem.Row(flat, place.first, place.last)) }
+    val folders = conversationFolders(feed)
+    fun home(row: AgentFeedRow, key: String, detail: String? = null) = label(row)?.let { title ->
+        // A flat list: a subtask stands at the card's edge like the rest.
+        val flat = if (row is AgentFeedRow.Conversation) row.copy(depth = 0) else row
+        Local(key, title, emptyList(), 0, detail) { place -> AgentSearchResult.Home(AgentHomeItem.Row(flat, place.first, place.last)) }
     }
+    fun kind(row: AgentFeedRow.Conversation): String = when (row.kind) {
+        ConversationKind.Bot -> words.bot
+        ConversationKind.Task -> words.task
+        ConversationKind.Subtask -> words.subtask
+        ConversationKind.Project -> folders[row.agentId] ?: words.chat
+    }
+    // Projects and worktrees open nothing on the phone, as their home rows don't: what they hold is found by its own name.
     val providers: Map<String, List<Local>> = mapOf(
         "document" to surfaces.filter { it.first.type == SurfaceReader.DOCUMENT }.map { surface(it.first, it.second) },
-        "todo" to sources.todos.map { todo -> Local("todo:${todo.id}", todo.text, emptyList(), 0) { AgentSearchResult.Todo(todo, it) } },
+        "todo" to sources.todos.map { todo -> Local("todo:${todo.id}", todo.text, emptyList(), 0, todo.list.name.ifEmpty { null }) { AgentSearchResult.Todo(todo, it) } },
         "artifact" to sources.artifacts.map { artifact ->
-            Local("artifact:${artifact.id}", artifact.title, listOf(words.artifactType(artifact.type)), 0) { AgentSearchResult.Artifact(artifact, it) }
+            Local("artifact:${artifact.id}", artifact.title, listOf(words.artifactType(artifact.type)), 0, words.artifactType(artifact.type)) { AgentSearchResult.Artifact(artifact, it) }
         },
         "surface" to surfaces.filter { it.first.type != SurfaceReader.DOCUMENT }.map { surface(it.first, it.second) },
-        "agent" to feed.rows.filterIsInstance<AgentFeedRow.Conversation>().mapNotNull { home(it, "agent:${it.agentId}") },
-        "project" to feed.rows.filterIsInstance<AgentFeedRow.Folder>().filter { it.depth == 0 }.mapNotNull { home(it, "project:${it.id}") },
-        "workspace" to feed.rows.filterIsInstance<AgentFeedRow.Folder>().filter { it.depth > 0 }.mapNotNull { home(it, "workspace:${it.id}") },
+        "agent" to feed.rows.filterIsInstance<AgentFeedRow.Conversation>().mapNotNull { home(it, "agent:${it.agentId}", kind(it)) },
         HOME_PAGES to feed.rows.filter { it == AgentFeedRow.Artifacts || it is AgentFeedRow.Feed || it == AgentFeedRow.Todos }.mapNotNull { home(it, "home:${it.key}") },
     )
     val order = SearchHit.TYPES + HOME_PAGES
@@ -392,13 +430,47 @@ private fun localSearch(feed: AgentFeed, query: String, label: (AgentFeedRow) ->
 /** Home's own pages (Artifacts, Activity, Todos): only the phone has them, after the daemon's kinds. */
 private const val HOME_PAGES = "home"
 
+/** Where each project conversation is, as desktop's `groupMeta` says it: its project, and its worktree after a slash. */
+private fun conversationFolders(feed: AgentFeed): Map<String, String> {
+    val out = HashMap<String, String>()
+    val path = ArrayList<String>()
+    for (row in feed.rows) {
+        when (row) {
+            is AgentFeedRow.Folder -> {
+                while (path.size > row.depth) path.removeAt(path.lastIndex)
+                path += row.name
+            }
+            is AgentFeedRow.Conversation -> if (row.kind == ConversationKind.Project && path.isNotEmpty()) out[row.agentId] = path.joinToString(" / ")
+            is AgentFeedRow.Section -> path.clear()
+            else -> Unit
+        }
+    }
+    return out
+}
+
 /**
- * What search shows for [query]: one card of what it finds, the phone's
- * own results ([localSearch]) fused with the daemon's ([remote], for
- * this query) as every client fuses them ([SearchFusion]); then the
- * quick actions and the settings that answer, each under its heading, at
- * most six, best first, which only the phone has. Nothing typed: the bots
- * and tasks last active, one card with no title.
+ * Whether the phone can open what the daemon found (desktop's `remoteRow`
+ * leaves out what it has nowhere to open): not a project or a worktree,
+ * which open nothing on the phone, nothing archived, and no conversation,
+ * or message of one, in no workspace. People and skills never parse.
+ */
+internal fun searchHitOpens(hit: SearchHit): Boolean = when (hit) {
+    is SearchHit.Project, is SearchHit.Workspace -> false
+    is SearchHit.Agent -> !hit.archived && hit.workspaceId != null
+    is SearchHit.Message -> hit.workspaceId != null
+    else -> true
+}
+
+/**
+ * What search shows for [query], as desktop's ⌘K palette lists it: one
+ * card of at most [AgentSearch.FOUND_LIMIT] things found, the phone's own
+ * best ([localSearch]) fused with the daemon's ([remote], for this query)
+ * as every client fuses them ([SearchFusion]); and the quick actions and
+ * the settings that answer, each under its heading, at most six, best
+ * first, which only the phone has. Each section stands where its best
+ * answer puts it; what was found comes first once the daemon has answered
+ * with anything. Nothing typed: the bots and tasks last active, one card
+ * with no title.
  */
 fun agentSearchResults(
     feed: AgentFeed,
@@ -416,22 +488,86 @@ fun agentSearchResults(
         recent.forEachIndexed { index, row -> out += AgentSearchResult.Home(AgentHomeItem.Row(row, first = index == 0, last = index == recent.lastIndex)) }
         return out
     }
-    val fused = SearchFusion.fuse(remote?.hits.orEmpty(), localSearch(feed, query, label, words, sources), { it.key }, { it.rank }, { it.key })
-    val conversations = feed.rows.filterIsInstance<AgentFeedRow.Conversation>().associateBy { it.agentId }
-    fused.forEachIndexed { index, found ->
+    val local = localSearch(feed, query, label, words, sources).take(AgentSearch.FOUND_LIMIT)
+    val hits = remote?.hits.orEmpty().filter(::searchHitOpens)
+    val fused = SearchFusion.fuse(hits, local, { it.key }, { it.rank }, { it.key }).take(AgentSearch.FOUND_LIMIT)
+    val names = SearchNames(feed, label, sources, words)
+    val found = ArrayList<AgentSearchResult>()
+    fused.forEachIndexed { index, one ->
         val place = HomeCardPlace(first = index == 0, last = index == fused.lastIndex)
-        val conversation = (found.remote as? SearchHit.Message)?.let { message -> conversations[message.agentId]?.let(label) }
-        out += AgentSearchResult.Found(found.key, found.local?.result?.invoke(place), found.remote, place, conversation)
+        val hit = one.remote
+        val mine = one.local
+        // A thing both found is the phone's row, with the words the daemon found it by under it.
+        val snippet = hit?.let(::searchHitSnippet)
+        found += AgentSearchResult.Found(
+            one.key,
+            mine?.result?.invoke(place),
+            hit,
+            place,
+            title = mine?.title ?: hit?.let(names::title).orEmpty(),
+            detail = snippet ?: mine?.detail ?: hit?.let(names::detail),
+        )
     }
-    fun section(title: String, entries: List<AgentSearchEntry>) {
-        val found = AgentSearch.ranked(entries, query, AgentSearch.SECTION_LIMIT) { it.title }
-        if (found.isEmpty()) return
-        out += AgentSearchResult.Heading(title)
-        found.forEachIndexed { index, entry -> out += AgentSearchResult.Entry(entry, HomeCardPlace(first = index == 0, last = index == found.lastIndex)) }
+    fun section(title: String, entries: List<AgentSearchEntry>): Pair<List<AgentSearchResult>, Int> {
+        val ranked = AgentSearch.ranked(entries, query, AgentSearch.SECTION_LIMIT) { it.title }
+        if (ranked.isEmpty()) return emptyList<AgentSearchResult>() to Int.MAX_VALUE
+        val rows = listOf(AgentSearchResult.Heading(title)) +
+            ranked.mapIndexed { index, entry -> AgentSearchResult.Entry(entry, HomeCardPlace(first = index == 0, last = index == ranked.lastIndex)) }
+        return rows to ranked.minOf { AgentSearch.rank(it.title, query) ?: Int.MAX_VALUE }
     }
-    section(words.actions, actions)
-    section(words.settings, settings)
+    val foundBest = if (hits.isNotEmpty()) Int.MIN_VALUE else local.minOfOrNull { AgentSearch.rank(it.title, query, it.secondary) ?: Int.MAX_VALUE } ?: Int.MAX_VALUE
+    listOf(found to foundBest, section(words.actions, actions), section(words.settings, settings))
+        .filter { it.first.isNotEmpty() }
+        // Stable: among equals, what was found, then the actions, then the settings.
+        .sortedBy { it.second }
+        .forEach { out += it.first }
     return out
+}
+
+/** What the phone holds to name what the daemon found by ID, and the words for it. */
+private class SearchNames(feed: AgentFeed, label: (AgentFeedRow) -> String?, sources: AgentSearchSources, private val words: AgentSearchWords) {
+    private val surfaces: Map<String, AgentFeedRow.Surface> =
+        feed.rows.filterIsInstance<AgentFeedRow.Surface>().associateBy { it.id } + sources.surfaces.associate { it.row.id to it.row }
+    private val conversations: Map<String, String> =
+        feed.rows.filterIsInstance<AgentFeedRow.Conversation>().mapNotNull { row -> label(row)?.let { row.agentId to it } }.toMap()
+    private val projects: Map<String, String> = feed.rows.filterIsInstance<AgentFeedRow.Folder>().filter { it.depth == 0 }.associate { it.id to it.name }
+
+    fun surfaceName(id: String): String? = surfaces[id]?.name?.ifEmpty { null }
+
+    /** A daemon's result's name as its row shows it (desktop's `remoteRow` title); a message is its words. */
+    fun title(hit: SearchHit): String = when (hit) {
+        is SearchHit.Message -> searchLine(hit.snippet).orEmpty()
+        else -> searchHitTitle(hit)
+    }
+
+    /** The line under a daemon's result that matched by name: what it is and where (desktop's `remoteRow` meta). */
+    fun detail(hit: SearchHit): String? {
+        fun joined(vararg parts: String?) = parts.filterNotNull().filter { it.isNotEmpty() }.joinToString(" · ").ifEmpty { null }
+        return when (hit) {
+            is SearchHit.VaultFile -> joined(surfaceName(hit.surfaceId), VaultNames.shownPath(hit.path))
+            is SearchHit.VaultFolder -> joined(surfaceName(hit.surfaceId), VaultNames.shownPath(hit.path))
+            is SearchHit.Document -> words.surfaceType(SurfaceReader.DOCUMENT)
+            is SearchHit.Todo -> joined(if (hit.status == "completed") words.done else null, surfaceName(hit.surfaceId))
+            is SearchHit.CalendarEvent -> joined(surfaceName(hit.surfaceId), hit.start.takeIf { it > 0 }?.let { words.day(it, !hit.allDay, hit.allDay) })
+            is SearchHit.Message -> joined(
+                conversations[hit.agentId] ?: words.chat,
+                if (hit.role == "agent") words.agent else null,
+                hit.createdAt.takeIf { it > 0 }?.let { words.day(it, false, false) },
+            )
+            is SearchHit.Artifact -> words.artifactType(hit.artifactType)
+            is SearchHit.Surface -> (surfaces[hit.surfaceId]?.type ?: hit.surfaceType).takeIf { it in AgentSearchSources.KINDS }?.let(words.surfaceType) ?: words.shared
+            is SearchHit.Agent -> joined(
+                when (hit.kind) {
+                    "task" -> words.task
+                    "subtask" -> words.subtask
+                    "bot" -> words.bot
+                    else -> words.chat
+                },
+                hit.projectId?.let(projects::get),
+            )
+            is SearchHit.Project, is SearchHit.Workspace -> null
+        }
+    }
 }
 
 object AgentSearchTags {
@@ -583,15 +719,29 @@ fun AgentSearchResults(
                         result.place,
                         tag,
                     ) { onOpenArtifact(result.artifact) }
-                    is AgentSearchResult.Found -> result.hit?.let { hit ->
-                        AgentSearchEntryRow(
-                            (result.conversation ?: searchHitTitle(hit)).ifBlank { stringResource(if (hit is SearchHit.Artifact) R.string.agent_artifacts_untitled else R.string.session_new_chat) },
-                            searchHitGlyph(hit),
-                            result.place,
-                            tag,
-                            detail = searchHitDetail(hit),
-                            onClick = onOpenHit(hit),
-                        )
+                    is AgentSearchResult.Found -> {
+                        val hit = result.hit
+                        val untitled = stringResource(if (hit is SearchHit.Artifact || result.local is AgentSearchResult.Artifact) R.string.agent_artifacts_untitled else R.string.session_new_chat)
+                        // The phone's own result opens as home opens it, and wears home's mark; the daemon's its kind's glyph.
+                        when (val local = result.local) {
+                            is AgentSearchResult.Home -> when (val row = local.item.row) {
+                                is AgentFeedRow.Conversation -> AgentSearchEntryRow(
+                                    result.title.ifBlank { untitled }, Ionicon.ChatbubbleEllipsesOutline, result.place, tag, result.detail,
+                                    onClick = { onOpenConversation(row.agentId) },
+                                    mark = { if (AgentHomeSpec.hasMark(row.kind)) ConversationMark(row, AgentHomeSpec.mark) else Icon(Ionicon.ChatbubbleEllipsesOutline, 22.dp, colors.text) },
+                                )
+                                is AgentFeedRow.Surface -> {
+                                    val (glyph, tile) = RowTile.surface(row.type).let { if (row.locked) Ionicon.LockClosedOutline to it.second else it }
+                                    AgentSearchEntryRow(result.title, glyph, result.place, tag, result.detail, onClick = { onOpenSurface(row) }, mark = { TileMark(glyph, tile) })
+                                }
+                                else -> Unit
+                            }
+                            is AgentSearchResult.Todo -> AgentSearchEntryRow(result.title, Ionicon.CheckmarkCircleOutline, result.place, tag, result.detail) { onOpenSurface(local.todo.list) }
+                            is AgentSearchResult.Artifact -> AgentSearchEntryRow(result.title.ifBlank { untitled }, artifactGlyph(local.artifact.type), result.place, tag, result.detail) {
+                                onOpenArtifact(local.artifact)
+                            }
+                            else -> if (hit != null) AgentSearchEntryRow(result.title.ifBlank { untitled }, searchHitGlyph(hit), result.place, tag, result.detail, onClick = onOpenHit(hit))
+                        }
                     }
                 }
             }
@@ -647,28 +797,20 @@ internal fun searchHitTitle(hit: SearchHit): String = when (hit) {
 }
 
 /**
- * A daemon's result's second line: a content match's line, where a vault
- * item is, or when an event next is; null where it has none, and the row
- * is one line as the phone's own are.
+ * The words a content match was found in, on one line, which take the line
+ * under its title; null for any other match. A message's words are its
+ * title ([searchLine]).
  */
-internal fun searchHitDetail(hit: SearchHit): String? {
-    fun line(text: String?) = text?.replace(Regex("\\s+"), " ")?.trim()?.takeIf { it.isNotEmpty() }
-    fun folder(path: String) = VaultNames.shownPath(path.substringBeforeLast('/')).ifEmpty { "/" }
-    return when (hit) {
-        is SearchHit.VaultFile -> line(hit.snippet) ?: folder(hit.path)
-        is SearchHit.VaultFolder -> folder(hit.path)
-        is SearchHit.Document -> line(hit.snippet)
-        is SearchHit.Message -> line(hit.snippet)
-        is SearchHit.Artifact -> line(hit.snippet)
-        is SearchHit.CalendarEvent -> line(hit.snippet) ?: hit.start.takeIf { it > 0 }?.let {
-            val format = if (hit.allDay) java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM) else java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT)
-            // An all-day event is a date, the same wherever the phone is.
-            if (hit.allDay) format.timeZone = java.util.TimeZone.getTimeZone("UTC")
-            format.format(java.util.Date(it))
-        }
-        else -> null
-    }
+internal fun searchHitSnippet(hit: SearchHit): String? = when (hit) {
+    is SearchHit.VaultFile -> searchLine(hit.snippet).takeIf { hit.match == "content" }
+    is SearchHit.Document -> searchLine(hit.snippet).takeIf { hit.match == "content" }
+    is SearchHit.Artifact -> searchLine(hit.snippet).takeIf { hit.match == "content" }
+    is SearchHit.CalendarEvent -> searchLine(hit.snippet).takeIf { hit.match == "content" }
+    else -> null
 }
+
+/** [text] on one line; null when there is none. */
+internal fun searchLine(text: String?): String? = text?.replace(Regex("\\s+"), " ")?.trim()?.takeIf { it.isNotEmpty() }
 
 /** A daemon's result's glyph, as the phone draws the same kind of thing. */
 private fun searchHitGlyph(hit: SearchHit): Ionicon = when (hit) {

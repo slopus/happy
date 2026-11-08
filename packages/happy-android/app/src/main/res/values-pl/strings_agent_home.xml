@@ -32,6 +32,8 @@
     <string name="agent_search_kind_image_series">Seria obrazów</string>
     <string name="agent_search_kind_video">Wideo</string>
     <string name="agent_search_kind_artifact">Artefakt</string>
+    <string name="agent_search_kind_shared">Udostępnione</string>
+    <string name="agent_search_by_agent">Agent</string>
     <string name="agent_settings_edit_name">Zmień nazwę agenta</string>
     <string name="agent_settings_edit_avatar">Zmień awatar agenta</string>
     <string name="agent_settings_edit_name_prefix">"Zmień swoją nazwę na "</string>

@@ -435,7 +435,16 @@ internal fun AgentHomeCardRow(
  * its title as a home row's.
  */
 @Composable
-internal fun AgentSearchEntryRow(title: String, glyph: Ionicon, place: HomeCardPlace, tag: String, detail: String? = null, onClick: (() -> Unit)?) {
+internal fun AgentSearchEntryRow(
+    title: String,
+    glyph: Ionicon,
+    place: HomeCardPlace,
+    tag: String,
+    detail: String? = null,
+    /** What stands in the mark's lane in place of [glyph]: a found home row's own mark. */
+    mark: (@Composable () -> Unit)? = null,
+    onClick: (() -> Unit)?,
+) {
     val colors = HappyTheme.colors
     HomeCardRow(
         place = place,
@@ -450,7 +459,7 @@ internal fun AgentSearchEntryRow(title: String, glyph: Ionicon, place: HomeCardP
                 .padding(start = AgentHomeSpec.markInset, end = AgentHomeSpec.paddingEnd),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(modifier = Modifier.size(AgentHomeSpec.mark), contentAlignment = Alignment.Center) { Icon(glyph, 22.dp, colors.text) }
+            Box(modifier = Modifier.size(AgentHomeSpec.mark), contentAlignment = Alignment.Center) { if (mark != null) mark() else Icon(glyph, 22.dp, colors.text) }
             if (detail == null) {
                 Text(
                     title,

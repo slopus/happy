@@ -431,9 +431,9 @@ class AgentHomeLayoutTest {
 
         rule.node(AgentSearchTags.FIELD).performTextInput("number 3")
         rule.waitForIdle()
-        // Home's rows, drawn as home draws them: the grouped list's 8 under the bar.
+        // A found row, the grouped list's 8 under the bar, says what it is under its title, as desktop's palette does.
         val found = rule.node(AgentSearchTags.result("agent:at3")).bounds
-        assertBox("a found row", found, 0.dp, results.top + 8.dp, 411.dp, 48.dp)
+        assertBox("a found row", found, 0.dp, results.top + 8.dp, 411.dp, 66.dp)
         // Home stays composed under the results, rows and scroll as they were.
         assertEquals(row, rule.node(AgentHomeTags.row("agent-at20")).bounds)
 
@@ -509,7 +509,11 @@ class AgentHomeLayoutTest {
         rule.onAllNodesWithTag(AgentSearchTags.RESULTS, useUnmergedTree = true).assertCountEquals(0)
     }
 
-    /** Search's one flat card: a worktree's chat stands at the card's edge, without its project and worktree over it. */
+    /**
+     * Search's one flat card: a worktree's chat stands at the card's edge,
+     * without its project and worktree over it, and says where it is under
+     * its title, as desktop's palette does.
+     */
     @Test
     fun aNestedMatchStandsAlone() {
         show(feed())
@@ -517,7 +521,8 @@ class AgentHomeLayoutTest {
         rule.node(AgentSearchTags.FIELD).performTextInput("jumps")
         rule.waitForIdle()
         val chat = rule.node(AgentSearchTags.result("agent:aw1")).bounds
-        assertBox("the chat, the card's only row", chat, 0.dp, rule.node(AgentSearchTags.RESULTS).bounds.top + 8.dp, 411.dp, 48.dp)
+        assertBox("the chat, the card's only row", chat, 0.dp, rule.node(AgentSearchTags.RESULTS).bounds.top + 8.dp, 411.dp, 66.dp)
+        rule.onNodeWithText("happy / fix-scroll").assertExists()
         rule.onAllNodesWithTag(AgentSearchTags.result("project:p1"), useUnmergedTree = true).assertCountEquals(0)
         rule.onAllNodesWithTag(AgentSearchTags.result("agent:ap1"), useUnmergedTree = true).assertCountEquals(0)
     }
@@ -580,8 +585,9 @@ class AgentHomeLayoutTest {
         val artifact = rule.node(AgentSearchTags.result("artifact:a1")).bounds
         val home = rule.node(AgentSearchTags.result("agent:at3")).bounds
         assertTrue(document.bottom <= todo.top && todo.bottom <= artifact.top && artifact.bottom <= home.top)
-        // iOS's rows: 48 high, as home's.
-        for (row in listOf(document, todo, artifact)) assertDp("result row height", 48, row.height)
+        // Each says what it is, or where, on a second line: 66 high.
+        for (row in listOf(document, todo, artifact)) assertDp("result row height", 66, row.height)
+        rule.onNodeWithText("Errands").assertExists()
         rule.node(AgentSearchTags.result("todo:todo1")).performClick()
         assertEquals(listOf(errands), surfaces)
         rule.node(AgentSearchTags.result("artifact:a1")).performClick()

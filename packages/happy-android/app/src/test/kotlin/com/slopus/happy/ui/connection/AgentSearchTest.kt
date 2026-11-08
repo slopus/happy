@@ -40,6 +40,7 @@ class AgentSearchTest {
         settings = "Settings",
         surfaceType = { if (it == "todo") "Todo list" else it.replaceFirstChar(Char::uppercase) },
         artifactType = { if (it == "html") "Web page" else it },
+        day = { millis, time, utc -> "day $millis${if (time) " at" else ""}${if (utc) " utc" else ""}" },
     )
 
     private fun keys(rows: List<AgentFeedRow>) = rows.map { it.key }
@@ -74,8 +75,9 @@ class AgentSearchTest {
     fun aQueryFindsHomesThingsFlatUnderTheDaemonsKeys() {
         // A subtask and a worktree's chat stand alone, without what they nest under on home.
         assertEquals(listOf("agent:as1"), found("review"))
-        // The worktree named for it too, after the conversations in provider order.
-        assertEquals(listOf("agent:aw1", "workspace:w1"), found("scroll"))
+        // The worktree named for it too opens nothing on the phone, so isn't offered.
+        assertEquals(listOf("agent:aw1"), found("scroll"))
+        assertTrue(found("happy").none { it.startsWith("project:") })
         // Each kind's best first, the kinds in the daemon's provider order: the document before the task.
         assertEquals(listOf("document:s1", "agent:at3"), found("plan"))
         // Home's own pages, which only the phone has.
@@ -156,7 +158,7 @@ class AgentSearchTest {
             listOf(
                 SearchHit.VaultFile("vault_file:f1", 1, "v1", "f1", "Launch plan.md", "/Docs/Launch plan.md", match = "content", line = 4, snippet = "The launch   plan moves"),
                 SearchHit.Document("document:d2", 2, "d2", "Plan for Q3", match = "content", line = 2, snippet = "Plan the quarter"),
-                SearchHit.Agent("agent:at3", 3, "at3", "Plan the launch", "task"),
+                SearchHit.Agent("agent:at3", 3, "at3", "Plan the launch", "task", workspaceId = "wt3"),
             ),
         )
         val results = agentSearchResults(feed, "plan", label, words, emptyList(), emptyList(), sources, remote).map { it as AgentSearchResult.Found }
@@ -164,13 +166,18 @@ class AgentSearchTest {
         // Then 1/61 each, the daemon's before the phone's.
         assertEquals(listOf("document:d2", "agent:at3", "vault_file:f1", "document:d1"), results.take(4).map { it.key })
         val byKey = results.associateBy { it.key }
-        // A content match shows the daemon's row, with its line; the phone's row stays otherwise.
-        assertEquals(null, byKey.getValue("document:d2").drawn)
-        assertEquals("Plan the quarter", searchHitDetail(byKey.getValue("document:d2").hit!!))
-        assertTrue(byKey.getValue("agent:at3").drawn is AgentSearchResult.Home)
-        assertEquals("The launch plan moves", searchHitDetail(byKey.getValue("vault_file:f1").hit!!))
+        // A thing both found is the phone's row, with the words the daemon found it by under it, as on desktop.
+        assertEquals("Plan for Q3", byKey.getValue("document:d2").title)
+        assertEquals("Plan the quarter", byKey.getValue("document:d2").detail)
+        assertTrue(byKey.getValue("document:d2").local is AgentSearchResult.Home)
+        // Otherwise the line says what it is: the phone's task a task, its document a document.
+        assertEquals("Task", byKey.getValue("agent:at3").detail)
+        assertEquals("Document", byKey.getValue("document:d1").detail)
+        assertEquals(null, byKey.getValue("agent:at3").drawn)
+        assertEquals("The launch plan moves", byKey.getValue("vault_file:f1").detail)
         assertEquals("Launch plan", searchHitTitle(SearchHit.VaultFile("vault_file:f2", 1, "v1", "f2", "Launch plan.artifact", "/Apps/Launch plan.artifact", kind = "artifact")))
-        assertEquals("/Apps", searchHitDetail(SearchHit.VaultFolder("vault_folder:f3", 1, "v1", "f3", "Old", "/Apps/Old")))
+        // Home's own pages draw as home draws them.
+        assertTrue(agentSearchResults(feed, "artif", label, words, emptyList(), emptyList()).filterIsInstance<AgentSearchResult.Found>().single().drawn is AgentSearchResult.Home)
         // What the daemon found only for an earlier query isn't the caller's to fuse in: nothing else changes.
         assertEquals(found("plan", sources), agentSearchResults(feed, "plan", label, words, emptyList(), emptyList(), sources).map { it.key })
     }
@@ -178,25 +185,74 @@ class AgentSearchTest {
     @Test
     fun aMessageIsFoundUnderItsConversation() {
         val at3 = feed.rows.filterIsInstance<AgentFeedRow.Conversation>().single { it.agentId == "at3" }
-        val remote = SearchAnswer("launch", listOf(SearchHit.Message("message:m1", 1, "at3", "m1", "user", "when is the   launch?", 1, null, null)))
-        val found = agentSearchResults(feed, "launch", label, words, emptyList(), emptyList(), remote = remote)
-            .filterIsInstance<AgentSearchResult.Found>().single { it.key == "message:m1" }
-        // Titled by its conversation as home names it, its line under that, drawn as the daemon's row.
-        assertEquals(label(at3), found.conversation)
-        assertEquals("when is the launch?", searchHitDetail(found.hit!!))
-        assertEquals(null, found.drawn)
-        // One the phone doesn't hold has no title of its own; the row says "New chat".
-        val elsewhere = SearchAnswer("launch", listOf(SearchHit.Message("message:m2", 1, "gone", "m2", snippet = "launch")))
-        assertEquals(null, agentSearchResults(feed, "launch", label, words, emptyList(), emptyList(), remote = elsewhere).filterIsInstance<AgentSearchResult.Found>().single { it.key == "message:m2" }.conversation)
-        // An event found by its notes shows them; by its title, when it is.
-        assertEquals("Bring the banner", searchHitDetail(SearchHit.CalendarEvent("calendar_event:e1", 1, "c1", "e1", "Launch", start = 1, match = "content", snippet = "Bring the banner")))
+        val remote = SearchAnswer(
+            "launch",
+            listOf(
+                SearchHit.Message("message:m1", 1, "at3", "m1", "user", "when is the   launch?", 1, "w9", null),
+                SearchHit.Message("message:m2", 2, "gone", "m2", "agent", snippet = "launch day", createdAt = 2, workspaceId = "w9"),
+                // In no workspace, as desktop leaves it out.
+                SearchHit.Message("message:m3", 3, "at3", "m3", snippet = "launch", workspaceId = null),
+            ),
+        )
+        val found = agentSearchResults(feed, "launch", label, words, emptyList(), emptyList(), remote = remote).filterIsInstance<AgentSearchResult.Found>().associateBy { it.key }
+        // Its words are its title, its conversation as home names it and its day under them (desktop's `remoteRow`).
+        assertEquals("when is the launch?", found.getValue("message:m1").title)
+        assertEquals("${label(at3)} · day 1", found.getValue("message:m1").detail)
+        assertEquals(null, found.getValue("message:m1").drawn)
+        // One the phone doesn't hold is a chat; an agent's says so.
+        assertEquals("Chat · Agent · day 2", found.getValue("message:m2").detail)
+        assertFalse("message:m3" in found)
     }
 
     @Test
-    fun theCardHoldsEveryMatchAndEachSectionSix() {
-        val many = AgentSearchSources(artifacts = (0 until 9).map { com.slopus.happy.artifacts.ArtifactRef("a$it", 1, "html", "Chart $it", followsLatest = true) })
+    fun theDaemonsResultsSayWhatAndWhereTheyAreAsOnDesktop() {
+        val remote = SearchAnswer(
+            "launch",
+            listOf(
+                SearchHit.VaultFolder("vault_folder:f3", 1, "c1", "f3", "Old", "/Apps/Old.artifact"),
+                SearchHit.Todo("todo:t1", 2, "l1", "t1", "Book the launch venue", "completed"),
+                SearchHit.CalendarEvent("calendar_event:e1", 3, "c1", "e1", "Launch", allDay = true, start = 5),
+                SearchHit.CalendarEvent("calendar_event:e2", 4, "c1", "e2", "Launch party", start = 6, match = "content", snippet = "Bring the banner"),
+                SearchHit.Surface("surface:x1", 5, "x1", "whiteboard", "Launch sketches"),
+                SearchHit.Agent("agent:ap9", 6, "ap9", "Launch chat", "chat", workspaceId = "p1", projectId = "p1"),
+                SearchHit.Artifact("artifact:r1", 7, "r1", "Launch site", "html"),
+                // What the phone has nowhere to open.
+                SearchHit.Agent("agent:old", 8, "old", "Launch retro", "task", archived = true, workspaceId = "w"),
+                SearchHit.Project("project:p1", 9, "p1", "launch"),
+                SearchHit.Workspace("workspace:w1", 10, "w1", "p1", "launch-fix"),
+            ),
+        )
+        val found = agentSearchResults(feed, "launch", label, words, emptyList(), emptyList(), sources, remote).filterIsInstance<AgentSearchResult.Found>()
+        val lines = found.filter { it.hit != null && it.local == null }.associate { it.key to (it.title to it.detail) }
+        assertEquals("Old" to "Team · /Apps/Old", lines["vault_folder:f3"])
+        assertEquals("Book the launch venue" to "Done · Planning", lines["todo:t1"])
+        assertEquals("Launch" to "Team · day 5 utc", lines["calendar_event:e1"])
+        assertEquals("Launch party" to "Bring the banner", lines["calendar_event:e2"])
+        assertEquals("Launch sketches" to "Shared", lines["surface:x1"])
+        assertEquals("Launch chat" to "Chat · happy", lines["agent:ap9"])
+        assertEquals("Launch site" to "Web page", lines["artifact:r1"])
+        assertEquals(emptyList<String>(), found.map { it.key }.filter { it in setOf("agent:old", "project:p1", "workspace:w1") })
+    }
+
+    @Test
+    fun eachSectionStandsWhereItsBestAnswerPutsIt() {
+        val setting = AgentSearchEntry("theme", "Theme", com.slopus.happy.ui.components.Ionicon.SettingsOutline) {}
+        val held = AgentSearchSources(surfaces = listOf(AgentSearchSources.Surface(AgentFeedRow.Surface("z2", "Rethemed notes", "document"), joined = true)))
+        // "theme" is inside a word of a title the phone holds, but starts the setting: the settings come first, as on desktop.
+        assertEquals(listOf("heading-Settings", "entry-theme", "document:z2"), agentSearchResults(feed, "theme", label, words, emptyList(), listOf(setting), held).map { it.key })
+        // Once the daemon has answered with anything, what was found comes first: nothing has been chosen yet.
+        val answered = SearchAnswer("theme", listOf(SearchHit.Document("document:z1", 1, "z1", "Themes", match = "name")))
+        assertEquals(
+            listOf("document:z1", "document:z2", "heading-Settings", "entry-theme"),
+            agentSearchResults(feed, "theme", label, words, emptyList(), listOf(setting), held, answered).map { it.key },
+        )
+    }
+
+    @Test
+    fun theCardHoldsTwelveAndEachSectionSix() {
+        val many = AgentSearchSources(artifacts = (0 until 15).map { com.slopus.happy.artifacts.ArtifactRef("a$it", 1, "html", "Chart $it", followsLatest = true) })
         val found = agentSearchResults(feed, "chart", label, words, emptyList(), emptyList(), many)
-        assertEquals((0 until 9).map { "artifact:a$it" }, found.map { it.key })
+        assertEquals((0 until 12).map { "artifact:a$it" }, found.map { it.key })
         val places = found.filterIsInstance<AgentSearchResult.Found>().map { it.place }
         assertTrue(places.first().first && places.last().last && places.drop(1).dropLast(1).none { it.first || it.last })
         val entries = (0 until 9).map { AgentSearchEntry("e$it", "Chart setting $it", com.slopus.happy.ui.components.Ionicon.SettingsOutline) {} }

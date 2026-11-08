@@ -32,6 +32,8 @@
     <string name="agent_search_kind_image_series">图片系列</string>
     <string name="agent_search_kind_video">视频</string>
     <string name="agent_search_kind_artifact">工件</string>
+    <string name="agent_search_kind_shared">共享</string>
+    <string name="agent_search_by_agent">智能体</string>
     <string name="agent_settings_edit_name">更改智能体名称</string>
     <string name="agent_settings_edit_avatar">更改智能体头像</string>
     <string name="agent_settings_edit_name_prefix">把你的名字改成</string>

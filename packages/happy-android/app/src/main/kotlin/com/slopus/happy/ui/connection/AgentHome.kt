@@ -633,6 +633,13 @@ private fun rememberAgentSearchWords(): AgentSearchWords {
             settings = resources.getString(R.string.settings_title),
             surfaceType = { type -> resources.getString(surfaceTypeName(type)) },
             artifactType = { type -> resources.getString(artifactTypeName(type)) },
+            task = resources.getString(R.string.new_work_task),
+            subtask = resources.getString(R.string.agent_page_subtask),
+            bot = resources.getString(R.string.new_work_bot),
+            chat = resources.getString(R.string.agent_search_kind_chat),
+            shared = resources.getString(R.string.agent_search_kind_shared),
+            done = resources.getString(R.string.todo_done),
+            agent = resources.getString(R.string.agent_search_by_agent),
         )
     }
 }

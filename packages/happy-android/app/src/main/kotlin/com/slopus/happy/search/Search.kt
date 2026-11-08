@@ -163,7 +163,7 @@ class SearchClient(private val client: AgentClient) {
     }
 
     companion object {
-        const val DEFAULT_LIMIT = 30
+        const val DEFAULT_LIMIT = 20
         const val MAX_QUERY = 256
     }
 }

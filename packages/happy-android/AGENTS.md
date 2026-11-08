@@ -350,34 +350,50 @@ win:
   `openAgentSettingsRow` opens the agent's Settings or Appearance page with
   `reveal`, or Chief of Staff with the ask for name and avatar.
 - **Agent home search** looks and moves as iOS's
-  (`HappyCore/Agents/Search.swift`, `ui/connection/AgentSearch.kt`): the
-  results fade in over home (200 ms ease-out) on its own ground, drawn as
-  home is, and home never moves under them. Nothing typed shows the eight
-  bots and tasks last active (`AgentSearch.recent`). A query is the node's
-  one search (happy-agent API.md, "Search"): one flat card fusing the
-  phone's half with the daemon's, then quick actions and settings (local
-  only), each under its heading, at most six, or "Nothing found" in a
-  capsule. It is the only search over vaults; a vault has none of its own.
+  (`HappyCore/Agents/Search.swift`, `SearchShown.swift`,
+  `ui/connection/AgentSearch.kt`) and lists what desktop's ⌘K palette
+  lists (happy-desktop `commandPaletteResults.ts`): the results fade in
+  over home (200 ms ease-out) on its own ground, and home never moves under
+  them. Nothing typed shows the eight bots and tasks last active
+  (`AgentSearch.recent`). A query is the node's one search (happy-agent
+  API.md, "Search"): one flat card of at most 12 things found
+  (`FOUND_LIMIT`), the phone's half fused with the daemon's, and quick
+  actions and settings (local only), each under its heading, at most six,
+  or "Nothing found" in a capsule. Each section stands where its best
+  answer puts it, as desktop's do; what was found comes first once the
+  daemon has answered with anything. It is the only search over vaults; a
+  vault has none of its own.
   - The phone's half (`localSearch`), at keystroke speed, from what it
-    holds: home's conversations (`agent:`), projects and worktrees, the
-    catalog's documents (`document:`) and other Surfaces (`surface:`),
-    joined or not (`AgentSearchSources`, read only while search is open),
-    the open todos kept (`todo:`), the kept artifact page (`artifact:`),
-    and home's own pages (`home:`, phone only). Each kind is ranked by
-    desktop's `AgentSearch.rank` (words in any order, a kind's name three
-    below a title match, joined before not), then the kinds fused as the
-    daemon fuses its providers: by place, then provider order.
-  - The daemon's half: `POST /v0/search` with `{q, limit}`
-    (`search/Search.kt`), 120 ms after the typing rests, cancelled by the
-    next keystroke, only where health says `capabilities.search`; offline
-    or older, the phone's alone. `SearchFusion` is the shared RRF (k = 60)
-    over `key`, the client package's vectors in `test/resources/search/`
-    (from happy-agent c67719baf, client 0.0.158). A daemon's answer joins
-    only the query it was for. A result found by both keeps the phone's
-    row unless the daemon has a content line for it; vault items, messages
-    (titled by their conversation, opening it), events and content matches
-    are the daemon's rows, with a second line (66 high). People and skills
-    have no page on the phone and are left out with unknown types.
+    holds: home's conversations (`agent:`), the catalog's documents
+    (`document:`) and other Surfaces (`surface:`), joined or not
+    (`AgentSearchSources`, read only while search is open), the open todos
+    kept (`todo:`), the kept artifact page (`artifact:`), and home's own
+    pages (`home:`, phone only). Each kind is ranked by desktop's
+    `AgentSearch.rank` (words in any order, a kind's name three below a
+    title match, joined before not), then the kinds fused as the daemon
+    fuses its providers: by place, then provider order; its best 12 go to
+    the fusion.
+  - The daemon's half: `POST /v0/search` with `{q, limit: 20}` and no
+    `types`, as desktop asks (`search/Search.kt`), 120 ms after the typing
+    rests, cancelled by the next keystroke, only where health says
+    `capabilities.search`; offline or older, the phone's alone.
+    `SearchFusion` is the shared RRF (k = 60) over `key`, the client
+    package's vectors in `test/resources/search/` (from happy-agent
+    c67719baf, client 0.0.158). A daemon's answer joins only the query it
+    was for. What the phone has nowhere to open is left out before the
+    fusion, as desktop's `remoteRow` leaves out what it can't open:
+    projects and worktrees (they open nothing on the phone, as their home
+    headings don't), anything archived, a conversation or message in no
+    workspace, and people and skills, which don't parse.
+  - Every found row is a title and desktop's meta under it (66 high): a
+    conversation's kind (Bot, Task, Subtask) or, for a project's chat, its
+    project and worktree; a Surface's kind; an artifact's type; a todo's
+    list, "Done" first when done; a vault item's vault and path; an
+    event's calendar and day; a message is its words, under its
+    conversation, "Agent" when an agent wrote it, and its day. A content
+    match's words take that line, on the phone's row too when both found
+    it. The phone's own rows wear home's marks and open as home opens
+    them; home's own pages draw as home draws them.
   What a result opens leaves the search for coming back; new work, Cancel
   or back, and a pull down from the results' top end it.
   The Happy CLI home has no search, as on iOS.

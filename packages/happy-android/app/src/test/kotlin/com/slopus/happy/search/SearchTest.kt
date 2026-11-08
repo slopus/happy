@@ -78,7 +78,7 @@ class SearchTest {
         assertEquals("café & launch", answer.query)
         // The query in a JSON body, never the URL.
         assertEquals("POST /v0/search", daemon.paths.single())
-        assertEquals(Json.parseToJsonElement("""{"q":"café & launch","limit":30}"""), Json.parseToJsonElement(daemon.bodies.single()!!))
+        assertEquals(Json.parseToJsonElement("""{"q":"café & launch","limit":20}"""), Json.parseToJsonElement(daemon.bodies.single()!!))
         // People and skills have no page on the phone, so they're left out with the type it doesn't know.
         assertEquals(listOf("vault_file:f1", "todo:t1", "agent:a1", "agent:a2", "calendar_event:e1", "message:m1"), answer.hits.map { it.key })
         // Each keeps the rank the daemon gave it in its whole list.

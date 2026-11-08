@@ -32,6 +32,8 @@
     <string name="agent_search_kind_image_series">Sèrie d\'imatges</string>
     <string name="agent_search_kind_video">Vídeo</string>
     <string name="agent_search_kind_artifact">Artefacte</string>
+    <string name="agent_search_kind_shared">Compartit</string>
+    <string name="agent_search_by_agent">Agent</string>
     <string name="agent_settings_edit_name">Canvia el nom de l\'agent</string>
     <string name="agent_settings_edit_avatar">Canvia l\'avatar de l\'agent</string>
     <string name="agent_settings_edit_name_prefix">"Canvia el teu nom a "</string>
