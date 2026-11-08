@@ -29,7 +29,9 @@ final class ConnectionViewController: UIViewController {
     /// Snapshots read and applied, for tests.
     private(set) var refreshes = 0
     private var timer: Timer?
-    private var refreshing = false
+    private var visible = false
+    /// The recorder read in flight, cancelled when this appearance ends.
+    private(set) var refreshTask: Task<Void, Never>?
     private var copiedUntil: Date?
 
     private let scroll = UIScrollView()
@@ -72,6 +74,7 @@ final class ConnectionViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        visible = true
         refresh()
         guard timer == nil else { return }
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
@@ -85,8 +88,11 @@ final class ConnectionViewController: UIViewController {
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
+        visible = false
         timer?.invalidate()
         timer = nil
+        refreshTask?.cancel()
+        refreshTask = nil
     }
 
     /// Whether the page is reading the recorder: only while it shows.
@@ -100,12 +106,13 @@ final class ConnectionViewController: UIViewController {
 
     /// Reads the recorder off the main thread, then shows what it said.
     func refresh() {
-        guard !refreshing, let metrics else { return }
-        refreshing = true
-        Task { @MainActor [weak self] in
+        guard visible, refreshTask == nil, let metrics else { return }
+        refreshTask = Task { @MainActor [weak self] in
             let snapshot = await Task.detached(priority: .utility) { await metrics.snapshot() }.value
-            guard let self else { return }
-            refreshing = false
+            // The recorder's tunnel may finish even after cancellation. An
+            // old appearance must not apply or clear a newer read's handle.
+            guard !Task.isCancelled, let self, visible else { return }
+            refreshTask = nil
             refreshes += 1
             self.snapshot = snapshot
             rebuild()
