@@ -137,6 +137,31 @@ data class ModeCatalog(
                 ModeProvider(id, listed[0].providerName, listed[0].providerType ?: id, enabled = true, hidden = false, models = listed)
             }
 
+        /**
+         * [catalog] on a Happy Cloud server, whose pickers offer connections
+         * (onboarding contract §1), not `/v0/config`'s vendors: each of
+         * [connections] is an account whose id goes out as the mode's
+         * `providerId` exactly, with the models it lists as the computer
+         * defines them. One that can't serve now is listed switched off.
+         */
+        fun withConnections(catalog: ModeCatalog, connections: List<com.slopus.happy.agent.CloudConnection>): ModeCatalog {
+            val providers = connections.map { connection ->
+                val type = connection.models.firstOrNull()?.substringBefore('/', "")?.takeIf { it.isNotEmpty() } ?: connection.vendors.firstOrNull() ?: connection.id
+                ModeProvider(
+                    id = connection.id,
+                    name = connection.name,
+                    type = type,
+                    enabled = connection.enabled,
+                    hidden = false,
+                    models = connection.models.map { modelId ->
+                        (catalog.defined[modelId] ?: ModelChoice("", "", null, modelId, modelId, emptyList(), null, emptyList()))
+                            .copy(providerId = connection.id, providerName = connection.name, providerType = type)
+                    },
+                )
+            }
+            return catalog.copy(models = providers.filter { it.enabled }.flatMap { it.models }, providers = providers)
+        }
+
         /** The service a provider type names ("Claude", "Codex"), titled when unknown. */
         fun providerName(type: String): String = when (type) {
             "bedrock" -> "Bedrock"

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_providers_title">AI プロバイダ</string>
+    <string name="cloud_providers_included">付属</string>
+    <string name="cloud_providers_team">チーム</string>
+    <string name="cloud_providers_mine">マイアカウント</string>
+    <string name="cloud_providers_free">Happy（無料）</string>
+    <string name="cloud_providers_off">オフ</string>
+    <string name="cloud_providers_attention">要確認</string>
+    <string name="cloud_providers_empty">まだ何も追加されていません</string>
+    <string name="cloud_providers_add">追加</string>
+    <string name="cloud_providers_add_chatgpt">ChatGPT でサインイン</string>
+    <string name="cloud_providers_add_claude">Claude でサインイン</string>
+    <string name="cloud_providers_add_setup_token">Claude のセットアップトークンを追加</string>
+    <string name="cloud_providers_add_key">API キーを追加</string>
+    <string name="cloud_providers_save_to">保存先</string>
+    <string name="cloud_providers_device_enter">このコードを OpenAI で入力してください</string>
+    <string name="cloud_providers_open_openai">OpenAI を開く</string>
+    <string name="cloud_providers_waiting">完了を待っています…</string>
+    <string name="cloud_providers_claude_body">ブラウザで Claude にサインインし、表示されたコードを貼り付けてください。</string>
+    <string name="cloud_providers_open_claude">Claude を開く</string>
+    <string name="cloud_providers_code">コード</string>
+    <string name="cloud_providers_connect">接続</string>
+    <string name="cloud_providers_use_token">セットアップトークンを使う</string>
+    <string name="cloud_providers_setup_token">セットアップトークン</string>
+    <string name="cloud_providers_setup_token_hint">コンピュータで `claude setup-token` を実行して取得します。</string>
+    <string name="cloud_providers_key">API キー</string>
+    <string name="cloud_providers_checking">キーを確認しています…</string>
+    <string name="cloud_providers_chatgpt_done">ChatGPT を接続しました</string>
+    <string name="cloud_providers_claude_done">Claude を接続しました</string>
+    <string name="cloud_providers_key_done">API キーを追加しました</string>
+    <string name="cloud_providers_expired">コードの有効期限切れ</string>
+    <string name="cloud_providers_failed">サインインできませんでした</string>
+    <string name="cloud_providers_key_failed">キーを追加できませんでした</string>
+    <string name="cloud_providers_try_again">もう一度</string>
+    <string name="cloud_providers_unavailable">プロバイダを読み込めませんでした。</string>
+    <plurals name="cloud_providers_credentials">
+        <item quantity="other">認証情報 %1$d 件</item>
+    </plurals>
+</resources>

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_providers_title">Provider di IA</string>
+    <string name="cloud_providers_included">Incluso</string>
+    <string name="cloud_providers_team">Team</string>
+    <string name="cloud_providers_mine">Il mio account</string>
+    <string name="cloud_providers_free">Happy (gratis)</string>
+    <string name="cloud_providers_off">Disattivato</string>
+    <string name="cloud_providers_attention">Richiede attenzione</string>
+    <string name="cloud_providers_empty">Ancora nulla</string>
+    <string name="cloud_providers_add">Aggiungi</string>
+    <string name="cloud_providers_add_chatgpt">Accedi con ChatGPT</string>
+    <string name="cloud_providers_add_claude">Accedi con Claude</string>
+    <string name="cloud_providers_add_setup_token">Aggiungi token di Claude</string>
+    <string name="cloud_providers_add_key">Aggiungi chiave API</string>
+    <string name="cloud_providers_save_to">Salva in</string>
+    <string name="cloud_providers_device_enter">Inserisci questo codice su OpenAI</string>
+    <string name="cloud_providers_open_openai">Apri OpenAI</string>
+    <string name="cloud_providers_waiting">In attesa che tu finisca…</string>
+    <string name="cloud_providers_claude_body">Accedi a Claude nel browser, poi incolla il codice mostrato.</string>
+    <string name="cloud_providers_open_claude">Apri Claude</string>
+    <string name="cloud_providers_code">Codice</string>
+    <string name="cloud_providers_connect">Collega</string>
+    <string name="cloud_providers_use_token">Usa un token di configurazione</string>
+    <string name="cloud_providers_setup_token">Token di configurazione</string>
+    <string name="cloud_providers_setup_token_hint">Da `claude setup-token` sul tuo computer.</string>
+    <string name="cloud_providers_key">Chiave API</string>
+    <string name="cloud_providers_checking">Verifica della chiave…</string>
+    <string name="cloud_providers_chatgpt_done">ChatGPT collegato</string>
+    <string name="cloud_providers_claude_done">Claude collegato</string>
+    <string name="cloud_providers_key_done">Chiave API aggiunta</string>
+    <string name="cloud_providers_expired">Codice scaduto</string>
+    <string name="cloud_providers_failed">Accesso non riuscito</string>
+    <string name="cloud_providers_key_failed">Impossibile aggiungere la chiave</string>
+    <string name="cloud_providers_try_again">Riprova</string>
+    <string name="cloud_providers_unavailable">Impossibile caricare i provider.</string>
+    <plurals name="cloud_providers_credentials">
+        <item quantity="one">%1$d credenziale</item>
+        <item quantity="many">%1$d credenziali</item>
+        <item quantity="other">%1$d credenziali</item>
+    </plurals>
+</resources>

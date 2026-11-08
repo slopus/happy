@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_providers_title">Proveïdors d\'IA</string>
+    <string name="cloud_providers_included">Inclòs</string>
+    <string name="cloud_providers_team">Equip</string>
+    <string name="cloud_providers_mine">El meu compte</string>
+    <string name="cloud_providers_free">Happy (gratuït)</string>
+    <string name="cloud_providers_off">Desactivat</string>
+    <string name="cloud_providers_attention">Cal revisar-ho</string>
+    <string name="cloud_providers_empty">Encara no hi ha res</string>
+    <string name="cloud_providers_add">Afegeix</string>
+    <string name="cloud_providers_add_chatgpt">Inicia sessió amb ChatGPT</string>
+    <string name="cloud_providers_add_claude">Inicia sessió amb Claude</string>
+    <string name="cloud_providers_add_setup_token">Afegeix un token de Claude</string>
+    <string name="cloud_providers_add_key">Afegeix una clau d\'API</string>
+    <string name="cloud_providers_save_to">Desa a</string>
+    <string name="cloud_providers_device_enter">Introdueix aquest codi a OpenAI</string>
+    <string name="cloud_providers_open_openai">Obre OpenAI</string>
+    <string name="cloud_providers_waiting">Esperant que acabis…</string>
+    <string name="cloud_providers_claude_body">Inicia sessió a Claude al navegador i enganxa el codi que mostra.</string>
+    <string name="cloud_providers_open_claude">Obre Claude</string>
+    <string name="cloud_providers_code">Codi</string>
+    <string name="cloud_providers_connect">Connecta</string>
+    <string name="cloud_providers_use_token">Fes servir un token de configuració</string>
+    <string name="cloud_providers_setup_token">Token de configuració</string>
+    <string name="cloud_providers_setup_token_hint">De `claude setup-token` al teu ordinador.</string>
+    <string name="cloud_providers_key">Clau d\'API</string>
+    <string name="cloud_providers_checking">Comprovant la clau…</string>
+    <string name="cloud_providers_chatgpt_done">ChatGPT connectat</string>
+    <string name="cloud_providers_claude_done">Claude connectat</string>
+    <string name="cloud_providers_key_done">Clau d\'API afegida</string>
+    <string name="cloud_providers_expired">El codi ha caducat</string>
+    <string name="cloud_providers_failed">No s\'ha pogut iniciar sessió</string>
+    <string name="cloud_providers_key_failed">No s\'ha pogut afegir la clau</string>
+    <string name="cloud_providers_try_again">Torna-ho a provar</string>
+    <string name="cloud_providers_unavailable">No s\'han pogut carregar els proveïdors.</string>
+    <plurals name="cloud_providers_credentials">
+        <item quantity="one">%1$d credencial</item>
+        <item quantity="many">%1$d credencials</item>
+        <item quantity="other">%1$d credencials</item>
+    </plurals>
+</resources>

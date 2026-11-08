@@ -1,0 +1,149 @@
+package com.slopus.happy.ui.connection
+
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.agent.CloudConnection
+import com.slopus.happy.agent.CloudCredential
+import com.slopus.happy.agent.CloudDestination
+import com.slopus.happy.agent.CloudProviders
+import com.slopus.happy.agent.CloudProvidersSource
+import com.slopus.happy.agent.CloudSignInRun
+import com.slopus.happy.ui.PHONE
+import com.slopus.happy.ui.setHappyContent
+import org.junit.Assert.assertEquals
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
+
+/** The AI providers screens as iOS words them: the list's sections, ChatGPT's device code, a key's check and its refusal. */
+@RunWith(AndroidJUnit4::class)
+@Config(qualifiers = PHONE)
+class CloudProvidersScreenTest {
+    @get:Rule val rule = createComposeRule()
+
+    private fun connection(id: String, name: String, scope: String, source: String, vendors: List<String>, credentials: List<CloudCredential> = emptyList(), enabled: Boolean = true) =
+        CloudConnection(id, name, scope, source, vendors, listOf("m"), credentials.size, credentials, enabled)
+
+    @Test
+    fun theListGroupsIncludedTeamAndMine() {
+        var adds = 0
+        val loaded = CloudProvidersSource.State.Loaded(
+            listOf(
+                connection("operator:openai", "Happy (free)", "team", "operator", listOf("openai")),
+                connection("private", "My account", "private", "tenant", listOf("codex", "anthropic"), listOf(CloudCredential("k1", "anthropic", "api_key", "Old key", true, "invalid"))),
+            ),
+        )
+        rule.setHappyContent { CloudProvidersScreen(loaded, canAdd = true, onAdd = { adds++ }, onRetry = {}, onBack = {}) }
+        rule.onNodeWithText("INCLUDED").assertIsDisplayed()
+        rule.onNodeWithText("Happy (free)").assertIsDisplayed()
+        // No team connection yet.
+        rule.onNodeWithText("Nothing added yet").assertIsDisplayed()
+        rule.onNodeWithText("ChatGPT · Anthropic").assertIsDisplayed()
+        rule.onNodeWithText("1 credential").assertIsDisplayed()
+        rule.onNodeWithText("Needs attention").assertIsDisplayed()
+        rule.onNodeWithTag(CloudProvidersTags.ADD).performClick()
+        assertEquals(1, adds)
+    }
+
+    @Test
+    fun noneToAddWithoutTheRole() {
+        rule.setHappyContent { CloudProvidersScreen(CloudProvidersSource.State.Loaded(emptyList()), canAdd = false, onAdd = {}, onRetry = {}, onBack = {}) }
+        assertEquals(0, rule.onAllNodesWithTag(CloudProvidersTags.ADD).fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun theChooserOffersOnlyTheSignInsTheServerRuns() {
+        rule.setHappyContent { CloudAddChooser(signIns = emptySet(), onPick = {}, onDismiss = {}) }
+        assertEquals(0, rule.onAllNodesWithText("Sign in with ChatGPT").fetchSemanticsNodes().size)
+        rule.onNodeWithText("Add Claude setup token").assertIsDisplayed()
+        rule.onNodeWithText("Add API key").assertIsDisplayed()
+    }
+
+    @Test
+    fun chatGptsCodeShowsWithCopyAndOpen() {
+        var opened: String? = null
+        rule.setHappyContent {
+            CloudDeviceScreen(
+                state = CloudSignInRun.State.Waiting("https://auth.openai.com/codex/device", "ABCD-1234", acceptsCode = false),
+                allowed = listOf(CloudDestination.Private, CloudDestination.Team),
+                destination = CloudDestination.Private,
+                onDestination = {},
+                onOpen = { opened = it },
+                onRetry = {},
+                onBack = {},
+            )
+        }
+        rule.onNodeWithText("Enter this code at OpenAI").assertIsDisplayed()
+        rule.onNodeWithTag(CloudProvidersTags.CODE).assertTextEquals("ABCD-1234")
+        rule.onNodeWithText("Waiting for you to finish…").assertIsDisplayed()
+        rule.onNodeWithText("SAVE TO").assertIsDisplayed()
+        rule.onNodeWithTag(CloudProvidersTags.OPEN).performClick()
+        assertEquals("https://auth.openai.com/codex/device", opened)
+    }
+
+    @Test
+    fun anExpiredCodeSaysSoAndTriesAgain() {
+        var retries = 0
+        rule.setHappyContent {
+            CloudDeviceScreen(
+                state = CloudSignInRun.State.Failed("expired", "The sign-in code expired. Start again."),
+                allowed = listOf(CloudDestination.Private),
+                destination = CloudDestination.Private,
+                onDestination = {},
+                onOpen = {},
+                onRetry = { retries++ },
+                onBack = {},
+            )
+        }
+        rule.onNodeWithText("Code expired").assertIsDisplayed()
+        rule.onNodeWithText("The sign-in code expired. Start again.").assertIsDisplayed()
+        // Only one place it may go: no picker.
+        assertEquals(0, rule.onAllNodesWithText("SAVE TO").fetchSemanticsNodes().size)
+        rule.onNodeWithText("Try again").performClick()
+        assertEquals(1, retries)
+    }
+
+    @Test
+    fun aKeyIsAddedOnlyOnceTypedAndARefusalShowsTheServersWords() {
+        val sent = mutableListOf<String>()
+        var phase: SecretPhase = SecretPhase.Editing
+        rule.setHappyContent {
+            CloudSecretScreen(
+                title = "Add API key", field = "API key", hint = null, done = "API key added",
+                allowed = listOf(CloudDestination.Private), destination = CloudDestination.Private, onDestination = {},
+                vendors = listOf(CloudProviders.OPENAI, CloudProviders.ANTHROPIC), vendor = CloudProviders.OPENAI, onVendor = {},
+                phase = phase, onSubmit = { sent += it }, onRetry = {}, onBack = {},
+            )
+        }
+        rule.onNodeWithText("OpenAI").assertIsDisplayed()
+        rule.onNodeWithText("Anthropic").assertIsDisplayed()
+        rule.onNodeWithTag(CloudProvidersTags.SUBMIT).assertIsNotEnabled()
+        rule.onNodeWithTag(CloudProvidersTags.FIELD).performTextInput("sk-test")
+        rule.onNodeWithTag(CloudProvidersTags.SUBMIT).performClick()
+        assertEquals(listOf("sk-test"), sent)
+    }
+
+    @Test
+    fun aRefusedKeySaysWhy() {
+        rule.setHappyContent {
+            CloudSecretScreen(
+                title = "Add API key", field = "API key", hint = null, done = "API key added",
+                allowed = listOf(CloudDestination.Private), destination = CloudDestination.Private, onDestination = {},
+                vendors = listOf(CloudProviders.OPENAI), vendor = CloudProviders.OPENAI, onVendor = {},
+                phase = SecretPhase.Failed("The vendor rejected the credential."), onSubmit = {}, onRetry = {}, onBack = {},
+            )
+        }
+        rule.onNodeWithText("Couldn't add the key").assertIsDisplayed()
+        rule.onNodeWithText("The vendor rejected the credential.").assertIsDisplayed()
+    }
+}
