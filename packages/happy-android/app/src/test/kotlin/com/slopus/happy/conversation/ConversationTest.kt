@@ -1196,12 +1196,14 @@ class ConversationTest {
         advanceUntilIdle()
         assertTrue(agent.requests.none { it.second.endsWith("/send") })
         assertEquals(Delivery.Failed(Problem.FilesUnavailable), chat.state.value.rows.filterIsInstance<ConversationRow.User>().single().delivery)
+        assertEquals(Problem.FilesUnavailable, chat.state.value.alert)
         agent.attachments = ArrayList()
         val big = java.io.File(dir, "film.mov").apply { writeBytes(byteArrayOf(1)) }
         assertTrue(chat.send("", listOf(preview(big.toURI().toString(), "video/quicktime", 26L * 1024 * 1024, name = "film.mov"))) { emptyList() })
         advanceUntilIdle()
         assertTrue(agent.attachments!!.isEmpty())
         assertEquals(Delivery.Failed(Problem.FileTooLarge("film.mov")), chat.state.value.rows.filterIsInstance<ConversationRow.User>().single { it.text.contains("film.mov") }.delivery)
+        assertEquals(Problem.FileTooLarge("film.mov"), chat.state.value.alert)
         // Pictures alone still go inline.
         assertTrue(chat.send("Just a picture", listOf(preview("a.jpg", "image/jpeg", 10))) { list -> list.map { Block.Image("image/jpeg", it.name) } })
         advanceUntilIdle()

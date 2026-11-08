@@ -1100,6 +1100,8 @@ class Conversation(
                 } catch (e: Exception) {
                     uploads.clear(next.id)
                     next.failure = describe(e)
+                    // The failed bubble has only a delivery mark; explain a file refusal as well.
+                    if (e is FilesUnavailable || e is FileTooLarge) publish { it.copy(alert = next.failure) }
                     if (made) errorShown(ErrorArea.MessageSend, AnalyticsReasons.error(e))
                 } finally {
                     writing = null
