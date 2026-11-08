@@ -216,6 +216,44 @@ final class AgentConnectionsTests: XCTestCase {
         XCTAssertEqual(try JSONSerialization.jsonObject(with: sent[0]) as? [String: [String: String]], ["node": ["name": "Studio Mac"]])
     }
 
+    /// A signed-in server's session ending erases what this phone kept of
+    /// it, its tokens included, and shows only the way back in; another
+    /// server is untouched; signing in again starts afresh.
+    func testAnEndedSessionErasesThatServerOnly() async throws {
+        let transport = IdentityTransport()
+        let manager = AgentConnections(credentials: KeychainAgentConnectionCredentialStore(backend: AccountsKeychain()), directory: try directory(), makeTransport: { _ in transport })
+        await manager.setForeground(false)
+        let method = OAuthMethod(id: "jwt", name: "Happy Cloud", authorizationUrl: "https://auth.example/authorize", tokenUrl: "https://auth.example/token", clientId: "happy")
+        func record(_ refresh: String) -> ServerSignInRecord {
+            ServerSignInRecord(method: method, grant: OAuthGrant(refreshToken: refresh, clientId: "happy"), userId: "u1")
+        }
+        let access = OAuthAccess(token: "a", expiresAt: nil)
+        let ended = try await manager.addServer(try AgentOrigin("https://ended.example"), signIn: record("r-ended"), access: access, name: "ended")
+        let kept = try await manager.addServer(try AgentOrigin("https://kept.example"), signIn: record("r-kept"), access: access, name: "kept")
+        XCTAssertNotNil(manager.syncEngine(for: ended.id))
+        let folder = try XCTUnwrap(OfflineFile.directory(for: ended.id))
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("kept".utf8).write(to: folder.appendingPathComponent("direct.sqlite"))
+
+        let authorization = try XCTUnwrap(manager.credential(for: ended.id).map { manager.authorization($0, for: ended.id) })
+        await authorization.signInRequired()
+        for _ in 0..<200 where !manager.signedOut(ended.id) { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertTrue(manager.signedOut(ended.id))
+        XCTAssertNil(manager.credential(for: ended.id)?.signIn?.grant.refreshToken, "the refresh token was kept")
+        XCTAssertEqual(manager.credential(for: ended.id)?.publicUrl, "https://ended.example", "the way back in was lost")
+        XCTAssertNil(manager.syncEngine(for: ended.id), "a signed-out server still syncs")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path), "what was kept of it is still on the phone")
+        XCTAssertFalse(manager.signedOut(kept.id))
+        XCTAssertEqual(manager.credential(for: kept.id)?.signIn?.grant.refreshToken, "r-kept")
+        XCTAssertNotNil(manager.syncEngine(for: kept.id))
+
+        let again = try await manager.addServer(try AgentOrigin("https://ended.example"), signIn: record("r-new"), access: access, name: "ended")
+        XCTAssertEqual(again.id, ended.id, "signing in again made another account")
+        XCTAssertFalse(manager.signedOut(ended.id))
+        XCTAssertEqual(manager.credential(for: ended.id)?.signIn?.grant.refreshToken, "r-new")
+        XCTAssertNotNil(manager.syncEngine(for: ended.id))
+    }
+
     func testRevocationStopsRetryAndBackgroundPauses() async throws {
         let transport = IdentityTransport()
         let manager = AgentConnections(credentials: InMemoryAgentConnectionCredentialStore(), directory: nil, makeTransport: { _ in transport })
@@ -450,4 +488,24 @@ private final class FailingAgentCredentialStore: AgentConnectionCredentialStore,
         try base.save(credentials, id: id)
     }
     func remove(id: String) throws { try base.remove(id: id) }
+}
+/// A server whose member has no profile yet: connected, asked their name,
+/// never marked as needing to sign in again.
+final class ProfileRequiredIdentityTests: XCTestCase {
+    private actor Server: AgentTransport {
+        func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) throws -> HTTP1Response {
+            if path == "/v0/health" { return HTTP1Response(status: 200, body: Data(#"{"ready":true,"version":{"protocol":27}}"#.utf8)) }
+            return HTTP1Response(status: 403, headers: ["content-type": "application/json"], body: Data(#"{"error":"Name needed","code":"profile_required"}"#.utf8))
+        }
+        func browserConnection() async throws -> any BrowserStream { throw BrowserError.unavailable }
+        func close() {}
+    }
+
+    func testAMemberWithNoProfileStaysConnected() async throws {
+        let account = AgentConnection(id: "server", name: "Acme")
+        let read = try await AgentIdentity.refresh(account, transport: Server(), token: "t")
+        XCTAssertFalse(read.revoked)
+        XCTAssertEqual(read.status, .connected)
+        XCTAssertEqual(read.name, "Acme")
+    }
 }

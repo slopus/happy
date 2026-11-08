@@ -20,12 +20,14 @@ public actor ServerAuthorization {
     private let save: @Sendable (OAuthGrant) async throws -> Void
     private let now: @Sendable () -> Date
     private var observers: [UUID: @Sendable (State) -> Void] = [:]
+    private let ended: @Sendable () -> Void
     /// How long before expiry a token is replaced.
     static let margin: TimeInterval = 60
 
+    /// `ended` is called whenever the server comes to need signing in again.
     public init(grant: OAuthGrant, access: OAuthAccess? = nil, tokens: OAuthTokenClient = OAuthTokenClient(), now: @escaping @Sendable () -> Date = Date.init,
-                save: @escaping @Sendable (OAuthGrant) async throws -> Void) {
-        self.grant = grant; self.access = access; self.tokens = tokens; self.now = now; self.save = save
+                ended: @escaping @Sendable () -> Void = {}, save: @escaping @Sendable (OAuthGrant) async throws -> Void) {
+        self.grant = grant; self.access = access; self.tokens = tokens; self.now = now; self.ended = ended; self.save = save
     }
 
     public func observe(_ callback: @escaping @Sendable (State) -> Void) -> UUID {
@@ -119,5 +121,6 @@ public actor ServerAuthorization {
         guard state != next else { return }
         state = next
         for observer in observers.values { observer(next) }
+        if next == .needsSignIn { ended() }
     }
 }

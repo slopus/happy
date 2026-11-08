@@ -93,6 +93,11 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
     private var headerWatch: Watch?
     private var accessWatch: Watch?
     private var onboardingWatch: Watch?
+    private var accountsWatch: AccountsObservation?
+    /// The server's session ended: only the way to sign in again shows
+    /// (`ServerSignedOutView`).
+    private var signedOutView: ServerSignedOutView?
+    var showsSignedOut: Bool { signedOutView != nil }
     /// "What's your name?" was offered on this screen: once a launch, so
     /// "Not Now" holds until the next.
     private var askedName = false
@@ -162,6 +167,49 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         onboardingWatch = Session.session(for: id, context: context)?.watchOnboarding { [weak self] _ in self?.askNameIfNeeded() }
         updateTitle()
         applyChrome()
+        accountsWatch = context.account.observeAccounts { [weak self] _ in self?.followSignIn() }
+    }
+
+    /// A server whose session ended shows nothing but the way back in: its
+    /// lists, chats, search and composer go, and what was kept of it on
+    /// this phone (`Session.forget`). Signed in again, home starts afresh.
+    private func followSignIn() {
+        let out = context.account.agentConnections.signedOut(id)
+        guard out != showsSignedOut else { return }
+        guard out else { return restart() }
+        Session.forget(id)
+        headerWatch = nil; accessWatch = nil; onboardingWatch = nil
+        search.end()
+        sidebarSearch.end()
+        presentedViewController?.dismiss(animated: false)
+        if let navigation = navigationController, navigation.viewControllers.contains(self), navigation.topViewController !== self {
+            navigation.popToViewController(self, animated: false)
+        }
+        let name = context.account.agentConnections.accounts.first { $0.id == id }.flatMap { account in
+            HappyCloud.handle(server: account.server) ?? account.name
+        } ?? Strings.agentConnection
+        let signedOut = ServerSignedOutView(server: name) { [weak self] in self?.signIn() }
+        signedOut.frame = view.bounds
+        signedOut.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        view.addSubview(signedOut)
+        signedOutView = signedOut
+        v2.view.isHidden = true
+        applyChrome()
+    }
+
+    private func signIn() {
+        guard let server = context.account.agentConnections.server(for: id) else { return }
+        if HappyCloud.isCloud(server) { return AccountAdding.connectToCloud(context: context, from: self) }
+        let instanceId = context.account.agentConnections.accounts.first { $0.id == id }?.instanceId
+        AccountAdding.signInToServer(context: context, from: self, server: server, instanceId: instanceId)
+    }
+
+    /// Signed in again: a new home, synced from scratch, in this one's place.
+    private func restart() {
+        guard let navigation = navigationController, let index = navigation.viewControllers.firstIndex(of: self) else { return }
+        var stack = navigation.viewControllers
+        stack[index] = AgentHomeViewController(context: context, id: id)
+        navigation.setViewControllers(stack, animated: false)
     }
 
     /// A Happy Cloud member whose profile onboarding says isn't saved
@@ -208,6 +256,15 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         let sidebar = traitCollection.isSidebarColumn
         search.end()
         sidebarSearch.end()
+        if showsSignedOut {
+            sidebarSearch.isHidden = true
+            bottomBar.isHidden = true
+            navigationItem.searchController = nil
+            toolbarItems = nil
+            updateBar()
+            navigationController?.setToolbarHidden(true, animated: false)
+            return
+        }
         sidebarSearch.isHidden = !sidebar
         bottomBar.isHidden = !sidebar
         let mayWrite = mayWrite

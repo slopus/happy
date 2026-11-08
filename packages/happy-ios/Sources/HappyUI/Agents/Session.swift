@@ -108,7 +108,11 @@ final class Session {
 
     /// The session for a paired computer, made once and kept while the app runs.
     static func session(for accountID: String, context: AppContext) -> Session? {
-        guard let engine = context.account.agentConnections.syncEngine(for: accountID) else { return nil }
+        guard let engine = context.account.agentConnections.syncEngine(for: accountID) else {
+            // A server signed out of: what was kept of it goes too.
+            if sessions[accountID] != nil, context.account.agentConnections.signedOut(accountID) { forget(accountID) }
+            return nil
+        }
         if let existing = sessions[accountID] {
             if existing.engine === engine { return existing }
             // The same computer on a new engine. The old session's engine
