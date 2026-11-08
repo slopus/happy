@@ -585,7 +585,8 @@ final class HostedComposeTests: XCTestCase {
         window.layoutIfNeeded()
         XCTAssertNil(Self.subview(AgentInputCardView.self, in: home.view), "home has no composer")
         XCTAssertNil(Self.subview(UITextView.self, in: home.view), "nothing is typed on home")
-        XCTAssertEqual(home.navigationItem.rightBarButtonItems?.compactMap(\.accessibilityIdentifier), ["settings"])
+        // The bar lists right to left: Settings, then the call.
+        XCTAssertEqual(home.navigationItem.rightBarButtonItems?.compactMap(\.accessibilityIdentifier), ["settings", "voice-call"])
         XCTAssertTrue(home.toolbarItems?.contains { $0.accessibilityIdentifier == "compose" } == true)
         XCTAssertFalse(navigation.isToolbarHidden)
         // iOS 26 moves the field into its floating toolbar; the owning
