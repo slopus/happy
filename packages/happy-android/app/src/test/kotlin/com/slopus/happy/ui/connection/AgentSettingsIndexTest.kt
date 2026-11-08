@@ -32,6 +32,7 @@ import com.slopus.happy.ui.settings.SettingsProfile
 import com.slopus.happy.ui.settings.SettingsTags
 import com.slopus.happy.ui.theme.ThemePreference
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -97,6 +98,24 @@ class AgentSettingsIndexTest {
         val rows = index.filter { it.place == AgentSettingsPlace.Appearance }
         assertTrue(rows.isNotEmpty())
         for (row in rows) rule.onNode(hasTestTag(row.id) and hasAnyDescendant(hasText(row.title)), useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun cloudAppearanceAndBothSearchIndexesHaveNoProjectSettings() {
+        var index = emptyList<AgentSettingsRow>()
+        var rows = emptyList<com.slopus.happy.ui.settings.SettingsEntry>()
+        rule.setHappyContent {
+            index = agentSettingsIndex(projectsAvailable = false)
+            rows = agentAppearanceSections(ThemePreference.Adaptive, {}, false, {}, projectsAvailable = false).flatMap { it.rows }
+            AgentAppearanceScreen(ThemePreference.Adaptive, {}, false, {}, {}, projectsAvailable = false)
+        }
+        rule.waitForIdle()
+        assertFalse(index.any { it.id == AgentPagesTags.HIDE_PROJECTS_ROW })
+        assertFalse(rows.any { it.id == AgentPagesTags.HIDE_PROJECTS_ROW })
+        rule.onNode(hasTestTag(AgentPagesTags.HIDE_PROJECTS_ROW), useUnmergedTree = true).assertDoesNotExist()
+        rule.onNode(hasTestTag(AgentPagesTags.HIDE_PROJECTS), useUnmergedTree = true).assertDoesNotExist()
+        rule.onNode(hasTestTag(AgentPagesTags.theme(ThemePreference.Adaptive)), useUnmergedTree = true).assertExists()
+        rule.onNode(hasTestTag(AgentPagesTags.sound(com.slopus.happy.agent.CompletionSound.Always)), useUnmergedTree = true).assertExists()
     }
 
     @Test
