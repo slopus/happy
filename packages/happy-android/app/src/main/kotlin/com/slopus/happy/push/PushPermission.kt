@@ -141,6 +141,11 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
 @Composable
 fun PushRegistrationEffect(graph: AppGraph) {
     val context = LocalContext.current
+    val afterStart = LocalAfterStart.current
+    LaunchedEffect(graph) {
+        afterStart.await()
+        withContext(Dispatchers.IO) { graph.cloudPush.start() }
+    }
     val services = remember(context) { PushServices.get(context) }
     val auth by graph.auth.state.collectAsStateWithLifecycle()
     PushRegistrationEffect(

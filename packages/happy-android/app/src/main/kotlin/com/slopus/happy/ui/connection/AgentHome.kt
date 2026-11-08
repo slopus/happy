@@ -183,6 +183,7 @@ class AgentHomeActions(
     val canAskChief: Boolean = true,
     /** Projects belong to self-hosted connections, never Cloud. */
     val projectsAvailable: Boolean = true,
+    val notificationsAvailable: Boolean = false,
 )
 
 /** The colours of every bar on an agent connection's screens: the page's own [container], scrolled or not. */
@@ -690,7 +691,7 @@ private fun rememberSearchEntries(actions: AgentHomeActions, endSearch: () -> Un
     val connect = stringResource(R.string.agent_search_connect_agent)
     val scan = stringResource(R.string.onboarding_scan_button)
     val openSettings = stringResource(R.string.agent_search_open_settings)
-    val index = agentSettingsIndex(projectsAvailable = actions.projectsAvailable)
+    val index = agentSettingsIndex(projectsAvailable = actions.projectsAvailable, notificationsAvailable = actions.notificationsAvailable)
     return remember(actions, newTask, newTaskPicture, connect, scan, openSettings, index) {
         // happy-ios HomeViewController.quickActions (7a605f6ce). Connect and Scan both open the
         // scanner here: Android's one Add scanner takes a computer's, a terminal's or an agent's code.
@@ -948,6 +949,7 @@ private fun SignedInAgentHome(
             canCompose = canCompose,
             canAskChief = canAskChief,
             projectsAvailable = !session.client.cloud,
+            notificationsAvailable = session.client.cloud,
         )
     }
     CompositionLocalProvider(LocalAgentPictures provides session.pictures) {

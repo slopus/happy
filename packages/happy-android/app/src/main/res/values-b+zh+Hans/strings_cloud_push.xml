@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_push_title">通知</string>
+    <string name="cloud_push_server">来自此服务器的通知</string>
+    <string name="cloud_push_footer">适用于你在此服务器上的账户。智能体选择通知的标题和内容。</string>
+    <string name="cloud_push_permission">设备通知权限</string>
+    <string name="cloud_push_device">在此设备上启用</string>
+</resources>

@@ -606,6 +606,15 @@ class AppGraph(
         chime = CompletionChime(appContext)::play,
     )
 
+    val cloudPush = com.slopus.happy.push.CloudPushRuntime(
+        appContext, agentConnections, { agentSessions.session(it)?.client }, isForeground, scope,
+        ExpoSecureStore(
+            prefs = context.getSharedPreferences(com.slopus.happy.push.CloudPushRuntime.PREFS, Context.MODE_PRIVATE),
+            keys = secureStoreKeys,
+            keychainService = com.slopus.happy.push.CloudPushRuntime.KEYCHAIN_SERVICE,
+        ),
+    )
+
     init {
         analyticsTarget?.let(::startAnalytics)
     }

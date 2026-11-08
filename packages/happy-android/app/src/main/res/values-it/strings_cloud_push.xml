@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_push_title">Notifiche</string>
+    <string name="cloud_push_server">Notifiche da questo server</string>
+    <string name="cloud_push_footer">Si applica al tuo account su questo server. Gli agenti scelgono i titoli e i messaggi delle notifiche.</string>
+    <string name="cloud_push_permission">Autorizzazione del dispositivo</string>
+    <string name="cloud_push_device">Attiva su questo dispositivo</string>
+</resources>

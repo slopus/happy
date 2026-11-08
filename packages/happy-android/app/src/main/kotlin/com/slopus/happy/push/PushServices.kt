@@ -83,6 +83,7 @@ class HappyMessagingService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         val services = PushServices.get(this)
         val graph = (applicationContext as HappyApplication).graph
+        graph.cloudPush.nativeTokenChanged()
         val account = graph.auth.state.value as? AuthState.SignedIn ?: return
         // syncCurrentPushToken registers nothing while notifications are off.
         if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) return

@@ -110,7 +110,7 @@ data class AgentSettingsRow(val id: String, val title: String, val icon: Ionicon
  * connection away. The titles are the page's own (`AgentSettingsIndexTest`).
  */
 @Composable
-fun agentSettingsIndex(projectsAvailable: Boolean = true): List<AgentSettingsRow> {
+fun agentSettingsIndex(projectsAvailable: Boolean = true, notificationsAvailable: Boolean = false): List<AgentSettingsRow> {
     fun row(id: String, title: String, icon: Ionicon, place: AgentSettingsPlace = AgentSettingsPlace.Settings, ask: String? = null) =
         AgentSettingsRow(id, title, icon, place, ask)
     return listOfNotNull(
@@ -124,6 +124,7 @@ fun agentSettingsIndex(projectsAvailable: Boolean = true): List<AgentSettingsRow
         row(AgentAgentsTags.ROW, stringResource(R.string.settings_agents), Ionicon.OptionsOutline),
         row(DataStorageTags.ROW, stringResource(R.string.data_storage_title), Ionicon.ServerOutline),
         row(AgentSharingTags.ROW, stringResource(R.string.sharing_title), Ionicon.PeopleOutline),
+        row(CloudPushTags.ROW, stringResource(R.string.cloud_push_title), Ionicon.NotificationsOutline).takeIf { notificationsAvailable },
         row(SettingsPageTags.ADD_AGENT, stringResource(R.string.settings_add_agent), Ionicon.Add),
         row(SettingsTags.WHATS_NEW, stringResource(R.string.settings_whats_new), Ionicon.SparklesOutline),
         row(SettingsTags.GITHUB, stringResource(R.string.settings_github), Ionicon.LogoGithub),
@@ -181,6 +182,8 @@ class AgentSettingsActions(
     val onProviders: (() -> Unit)? = null,
     /** Cloud pool monitoring and node management; absent without pools.manage. */
     val onComputePools: (() -> Unit)? = null,
+    /** Every Cloud member can manage their own notifications, including read-only members. */
+    val onNotifications: (() -> Unit)? = null,
     /** Disconnects this connection; asked for only after the person confirmed. */
     val onRemove: () -> Unit = {},
     /** Opens this connection's Chief of Staff with [prefix] typed, unsent; null where the person's role can't write to it. */
@@ -306,6 +309,14 @@ fun AgentConnectionSettingsScreen(
                         onClick = open,
                     )
                 },
+                actions.onNotifications?.let { open ->
+                    SettingsEntry(
+                        id = CloudPushTags.ROW,
+                        title = stringResource(R.string.cloud_push_title),
+                        icon = { SettingsTile(Ionicon.NotificationsOutline, SettingsTiles.red) },
+                        onClick = open,
+                    )
+                },
             ),
         ),
         SettingsSection(
@@ -405,6 +416,7 @@ internal suspend fun removeAgentConnection(graph: AppGraph, id: String) = graph.
     val next = graph.accountStore.registry.value.ordered.firstOrNull()?.id
         ?: graph.agentConnections.accounts.value.filter { it.id != id }.minByOrNull { it.addedAt }?.id
     if (HappyCloud.isServer(graph.agentConnections.accounts.value.firstOrNull { it.id == id }?.server)) {
+        graph.cloudPush.beforeRemoval(id)
         graph.agentConnections.credentials(id)?.oauth?.let { graph.cloudAccount?.revoke(it) }
     }
     graph.agentConnections.remove(id)
@@ -482,6 +494,7 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
             onMembers = if (cloud) ({ nav.navigate(CloudMembersRoute(connectionId)) }) else null,
             onProviders = if (cloud) ({ nav.openCloudProviders(connectionId) }) else null,
             onComputePools = if (pools) ({ nav.navigate(CloudComputePoolsRoute(connectionId)) }) else null,
+            onNotifications = if (cloud) ({ nav.navigate(CloudPushSettingsRoute(connectionId)) }) else null,
             onAskChief = if (askChief) ({ prefix -> nav.openChiefOfStaff(connectionId, prefix) }) else null,
             onRemove = {
                 if (switcher != null) switcher.removingFromSettings { removeAgentConnection(graph, connectionId) }

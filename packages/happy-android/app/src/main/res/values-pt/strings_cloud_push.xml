@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_push_title">Notificações</string>
+    <string name="cloud_push_server">Notificações deste servidor</string>
+    <string name="cloud_push_footer">Aplica-se à sua conta neste servidor. Os agentes escolhem os títulos e as mensagens das notificações.</string>
+    <string name="cloud_push_permission">Permissão do dispositivo</string>
+    <string name="cloud_push_device">Ativar neste dispositivo</string>
+</resources>

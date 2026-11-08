@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_push_title">Уведомления</string>
+    <string name="cloud_push_server">Уведомления с этого сервера</string>
+    <string name="cloud_push_footer">Для вашей учётной записи на этом сервере. Агенты выбирают заголовки и текст уведомлений.</string>
+    <string name="cloud_push_permission">Разрешение на устройстве</string>
+    <string name="cloud_push_device">Включить на этом устройстве</string>
+</resources>
