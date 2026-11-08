@@ -214,6 +214,55 @@ final class HappyCloudUITests: XCTestCase {
     /// "Edit name" on the server's picture renames the server
     /// (`TEST_RUNNER_RENAME_SERVER`), then puts its name back; a viewer
     /// (`TEST_RUNNER_ROLE` `viewer`) isn't offered it.
+    /// AI providers on a live server (`PROVIDERS_SERVER`): the list, the
+    /// chooser offering what the server runs, and a refused key answered
+    /// with the server's words. The key is a made-up one.
+    func testGProvidersAreListedAndARefusedKeySaysWhy() throws {
+        guard let login = env["QA_LOGIN"], let password = env["QA_PASSWORD"], let server = env["PROVIDERS_SERVER"] else { throw XCTSkip("no providers run") }
+        app.launch()
+        signInWithTestAccount(login: login, password: password)
+        let card = element("cloud-server-\(server)")
+        require(card.waitForExistence(timeout: 30), "@\(server) isn't among \(login)'s servers")
+        card.tap()
+        let switcher = element("account-switcher")
+        require(switcher.waitForExistence(timeout: 120), "no home of @\(server)")
+        Thread.sleep(forTimeInterval: 4)
+        let gear = app.buttons["settings"].firstMatch
+        require(gear.waitForExistence(timeout: 5), "no settings on the home")
+        gear.tap()
+        let row = app.descendants(matching: .any).matching(NSPredicate(format: "label == 'AI providers'")).firstMatch
+        for _ in 0..<4 where !row.isHittable { app.swipeUp() }
+        require(row.waitForExistence(timeout: 10), "no AI providers in Settings")
+        capture("40-settings")
+        row.tap()
+        let free = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Happy (free)'")).firstMatch
+        require(free.waitForExistence(timeout: 20), "no Happy (free) connection")
+        Thread.sleep(forTimeInterval: 1)
+        capture("41-providers")
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == 'Add a provider'")).firstMatch.tap()
+        let key = app.buttons["Add API key · OpenAI"]
+        require(key.waitForExistence(timeout: 10), "no chooser")
+        Thread.sleep(forTimeInterval: 1)
+        capture("42-chooser")
+        key.tap()
+        let mine = app.buttons["My account"]
+        if mine.waitForExistence(timeout: 5) {
+            capture("43-save-to")
+            mine.tap()
+        }
+        let field = app.secureTextFields["provider-secret"]
+        require(field.waitForExistence(timeout: 10), "no key field")
+        field.tap()
+        field.typeText("sk-not-a-real-key")
+        capture("44-key")
+        app.alerts.buttons["Connect"].tap()
+        let refused = app.alerts["Couldn’t add the key"]
+        require(refused.waitForExistence(timeout: 40), "no refusal")
+        Thread.sleep(forTimeInterval: 1)
+        capture("45-refused")
+        refused.buttons["Cancel"].tap()
+    }
+
     func testEServerIsRenamedFromItsSettings() throws {
         guard let login = env["QA_LOGIN"], let password = env["QA_PASSWORD"], let server = env["RENAME_SERVER"] else { throw XCTSkip("no rename run") }
         let owner = env["ROLE"] != "viewer"
