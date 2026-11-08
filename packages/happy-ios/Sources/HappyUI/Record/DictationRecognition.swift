@@ -23,10 +23,11 @@ import HappyCore
 /// one's words are shown. At the first pause both are asked to settle what
 /// came before it (`DictationLanguage.Pauses`); the language is chosen by
 /// the recognizer's confidence in what each settled
-/// (`DictationLanguage.Probe`), the other is dropped from the analyzer, and
-/// the winner's words are shown from then on; one that settles nothing
-/// there heard nothing. Without a clear choice by the end, the end decides. DictationTranscriber tells languages apart
-/// far better than SpeechTranscriber, so both candidates use it.
+/// (`DictationLanguage.Probe`), the winner's words are shown from then on,
+/// and the other is dropped from the analyzer at the next pause; one that
+/// settles nothing there heard nothing. Without a clear choice by the end,
+/// the end decides. DictationTranscriber tells languages apart far better
+/// than SpeechTranscriber, so both candidates use it.
 @MainActor
 final class DictationRecognition {
     enum Engine: String {
@@ -163,6 +164,8 @@ private final class AnalyzerReader: DictationReader {
     private var analyzer: SpeechAnalyzer?
     private var feed: AsyncStream<AnalyzerInput>.Continuation?
     private var accepting = true
+    /// The losing languages are out of the analyzer.
+    private var dropped = false
 
     private init(candidates: [Candidate], audio: DictationAudio, changed: @escaping @MainActor (DictationTranscript) -> Void) {
         self.candidates = candidates
@@ -333,7 +336,8 @@ private final class AnalyzerReader: DictationReader {
     /// Asks every language to settle what came before the pause, so each
     /// reading of it comes with its confidence and the probe can choose.
     private func paused(at time: Double) {
-        guard accepting, probe.winner == nil, let analyzer else { return }
+        guard accepting, let analyzer else { return }
+        if let winner = probe.winner { return drop(allBut: winner) }
         DictationLog.note("pause at \(time)")
         Task { [weak self] in
             try? await analyzer.finalize(through: CMTime(seconds: time, preferredTimescale: 1000))
@@ -348,7 +352,6 @@ private final class AnalyzerReader: DictationReader {
     private func pauseSettled() {
         guard accepting, let decided = probe.pauseSettled() else { return }
         DictationLog.note("pause settled, winner \(candidates[decided].locale.identifier)")
-        drop(allBut: decided)
         changed(candidates[decided].transcript)
     }
 
@@ -364,14 +367,21 @@ private final class AnalyzerReader: DictationReader {
             decided = probe.settle(index, confidence: reading.confidence, characters: reading.scored)
             DictationLog.note("settled \(candidates[index].locale.identifier) \(String(format: "%.2f", reading.confidence))×\(reading.scored) [\(reading.text)] mean \(String(format: "%.2f", probe.confidence(of: index)))\(decided.map { " winner \(self.candidates[$0].locale.identifier)" } ?? "")")
         }
-        if let decided { drop(allBut: decided) }
         // The shown words change once, to the winner's, when it isn't the
         // one shown so far.
         if index == probe.shown || decided != nil { changed(candidates[probe.shown].transcript) }
     }
 
-    /// The other languages stop listening, and stop costing.
+    /// The other languages stop listening, and stop costing, at the pause
+    /// after the choice, in quiet: changing the analyzer's modules may lose
+    /// what it is hearing then. Dropped as soon as a pause chose, as the
+    /// next sentence began, its first words were lost on the iPhone ("I
+    /// think it never hears the Russian language" came out as "I think the
+    /// Russian language"). Until then their readings are ignored.
     private func drop(allBut winner: Int) {
+        guard !dropped else { return }
+        dropped = true
+        DictationLog.note("dropped all but \(candidates[winner].locale.identifier)")
         for index in candidates.indices where index != winner { candidates[index].reading?.cancel() }
         guard let analyzer else { return }
         let module = candidates[winner].module
