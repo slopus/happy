@@ -150,6 +150,15 @@ final class FakeMusic {
             player.numberOfLoops = -1
             player.play()
             self.player = player
+            // As a music app is: the system's Now Playing, with play and pause.
+            if !arguments.contains("-noNowPlaying") {
+                MPNowPlayingInfoCenter.default().nowPlayingInfo = [MPMediaItemPropertyTitle: "Fake Music", MPMediaItemPropertyPlaybackDuration: 4.0,
+                                                                   MPNowPlayingInfoPropertyPlaybackRate: 1.0]
+                let commands = MPRemoteCommandCenter.shared()
+                commands.playCommand.addTarget { [weak self] _ in MainActor.assumeIsolated { self?.player?.play() }; return .success }
+                commands.pauseCommand.addTarget { [weak self] _ in MainActor.assumeIsolated { self?.player?.pause() }; return .success }
+                UIApplication.shared.beginReceivingRemoteControlEvents()
+            }
             log.write("playing")
         } catch {
             log.write("can't play: \(error)")
