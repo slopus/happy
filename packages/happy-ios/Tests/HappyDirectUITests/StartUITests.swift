@@ -62,10 +62,43 @@ final class StartUITests: XCTestCase {
 
     private func pause(_ seconds: TimeInterval) { Thread.sleep(forTimeInterval: seconds) }
 
+    func testPreviewStartsCloudWithoutOpeningTheComputerFlow() {
+        let cloud = app.buttons["start-cloud"]
+        let start = app.buttons["start-button"]
+        XCTAssertTrue(cloud.waitForExistence(timeout: 20), "Run on a fresh preview install with no accounts")
+        XCTAssertTrue(cloud.isHittable)
+        XCTAssertTrue(start.isHittable)
+        XCTAssertEqual(cloud.frame.width, start.frame.width, accuracy: 1)
+        capture("preview-start")
+
+        for _ in 0..<2 {
+            cloud.tap()
+            let welcome = app.descendants(matching: .any)["cloud-logo"]
+            XCTAssertTrue(welcome.waitForExistence(timeout: 10))
+            XCTAssertFalse(app.buttons["install-desktop-scan"].exists)
+            capture("preview-cloud-welcome")
+            let back = app.navigationBars.buttons.element(boundBy: 0)
+            XCTAssertTrue(back.waitForExistence(timeout: 5))
+            back.tap()
+            XCTAssertTrue(cloud.waitForExistence(timeout: 5))
+            XCTAssertTrue(cloud.isHittable)
+            XCTAssertFalse(app.navigationBars.firstMatch.exists)
+        }
+
+        start.tap()
+        XCTAssertTrue(app.buttons["install-desktop-scan"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Open Happy on your computer"].exists)
+        capture("preview-computer-path")
+    }
+
     func testStartItsMenuRestoreAndTheScanner() {
         let start = app.buttons["start-button"]
         XCTAssertTrue(start.waitForExistence(timeout: 15), "no Start: the simulator has an account or a connection")
         XCTAssertFalse(app.navigationBars.firstMatch.exists, "the first screen has no bar")
+        // Happy Cloud is as plain a way in as Start, not under ⋯.
+        let cloud = app.buttons["start-cloud"]
+        XCTAssertTrue(cloud.exists && cloud.isHittable, "no Happy Cloud beside Start")
+        XCTAssertEqual(cloud.frame.width, start.frame.width, accuracy: 1)
         pause(1)
         capture("1-start")
 
