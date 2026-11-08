@@ -34,6 +34,14 @@
     <string name="agent_search_kind_artifact">Artefakt</string>
     <string name="agent_search_kind_shared">Udostępnione</string>
     <string name="agent_search_by_agent">Agent</string>
+    <string name="agent_search_task_not_joined">Zadanie, do którego nie dołączono</string>
+    <string name="agent_search_not_joined">nie dołączono</string>
+    <plurals name="agent_search_open_todos">
+        <item quantity="one">%d otwarte</item>
+        <item quantity="few">%d otwarte</item>
+        <item quantity="many">%d otwartych</item>
+        <item quantity="other">%d otwartego</item>
+    </plurals>
     <string name="agent_settings_edit_name">Zmień nazwę agenta</string>
     <string name="agent_settings_edit_avatar">Zmień awatar agenta</string>
     <string name="agent_settings_edit_name_prefix">"Zmień swoją nazwę na "</string>

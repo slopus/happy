@@ -39,6 +39,13 @@
     <string name="agent_search_kind_shared">Shared</string>
     <!-- A message in a found result's line: an agent wrote it, not the person. -->
     <string name="agent_search_by_agent">Agent</string>
+    <!-- A found Surface's line: one the person isn't in (desktop's "not joined"), and a list's open todos ("Todo list · 5 open"). -->
+    <string name="agent_search_task_not_joined">Task you have not joined</string>
+    <string name="agent_search_not_joined">not joined</string>
+    <plurals name="agent_search_open_todos">
+        <item quantity="one">%d open</item>
+        <item quantity="other">%d open</item>
+    </plurals>
 
     <string name="agent_settings_edit_name">Change agent name</string>
     <string name="agent_settings_edit_avatar">Change agent avatar</string>

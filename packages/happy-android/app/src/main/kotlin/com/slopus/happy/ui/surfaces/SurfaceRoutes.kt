@@ -60,8 +60,12 @@ fun NavGraphBuilder.surfaceRoutes(graph: AppGraph, nav: NavHostController) {
 fun NavHostController.openSurface(graph: AppGraph, connectionId: String, surfaceId: String) {
     val session = graph.agentSessions.session(connectionId)
     val surface = session?.surfaces?.value?.get(surfaceId)
-    // An artifact, bot or task kept here opens where it always does (desktop's `surfaceTargetOpen`).
-    surface?.let { surfaceTarget(connectionId, it, session.catalog.value) }?.let { navigate(it); return }
+    // An artifact, bot or task kept here opens where it always does (desktop's `surfaceTargetOpen`), joined on the way too.
+    surface?.let { surfaceTarget(connectionId, it, session.catalog.value) }?.let {
+        session.joinSurface(surfaceId)
+        navigate(it)
+        return
+    }
     navigate(SurfaceRoute(connectionId, surfaceId, surface?.name.orEmpty()))
 }
 

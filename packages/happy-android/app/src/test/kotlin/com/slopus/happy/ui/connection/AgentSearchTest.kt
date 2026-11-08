@@ -73,18 +73,28 @@ class AgentSearchTest {
 
     @Test
     fun aQueryFindsHomesThingsFlatUnderTheDaemonsKeys() {
-        // A subtask and a worktree's chat stand alone, without what they nest under on home.
-        assertEquals(listOf("agent:as1"), found("review"))
-        // The worktree named for it too opens nothing on the phone, so isn't offered.
+        // A worktree's chat stands alone, without what it nests under on home.
         assertEquals(listOf("agent:aw1"), found("scroll"))
+        // The worktree named for it too opens nothing on the phone, so isn't offered.
         assertTrue(found("happy").none { it.startsWith("project:") })
-        // Each kind's best first, the kinds in the daemon's provider order: the document before the task.
-        assertEquals(listOf("document:s1", "agent:at3"), found("plan"))
+        // The best name first: the task that starts with it before the document a word of which does.
+        assertEquals(listOf("agent:at3", "document:s1"), found("plan"))
         // Home's own pages, which only the phone has.
         assertEquals(listOf("home:artifacts"), found("artif"))
         assertTrue(found("zzzz").isEmpty())
-        val subtask = agentSearchResults(feed, "review", label, words, emptyList(), emptyList()).single() as AgentSearchResult.Found
-        assertEquals(0, ((subtask.local as AgentSearchResult.Home).item.row as AgentFeedRow.Conversation).depth)
+    }
+
+    /** Desktop's `workOffers`: a subtask isn't found apart, its title finds its bot or task, under every title match. */
+    @Test
+    fun aSubtasksTitleFindsItsBotOrTask() {
+        assertEquals(listOf("agent:ab1"), found("review"))
+        val bot = agentSearchResults(feed, "review", label, words, emptyList(), emptyList()).single() as AgentSearchResult.Found
+        val row = (bot.local as AgentSearchResult.Home).item.row as AgentFeedRow.Conversation
+        assertEquals("ab1" to 0, row.agentId to row.depth)
+        assertEquals("Bot", bot.detail)
+        // Under a title that answers as well.
+        val settings = listOf(AgentSearchEntry("review", "Review", com.slopus.happy.ui.components.Ionicon.SettingsOutline) {})
+        assertEquals(listOf("heading-Settings", "entry-review", "agent:ab1"), agentSearchResults(feed, "review", label, words, emptyList(), settings).map { it.key })
     }
 
     @Test
@@ -122,28 +132,34 @@ class AgentSearchTest {
         surfaces = listOf(
             AgentSearchSources.Surface(AgentFeedRow.Surface("d2", "Plan for Q3", "document"), joined = false),
             AgentSearchSources.Surface(AgentFeedRow.Surface("s1", "Launch plan", "document"), joined = true),
-            AgentSearchSources.Surface(AgentFeedRow.Surface("d1", "Plans archive", "document"), joined = true),
-            AgentSearchSources.Surface(AgentFeedRow.Surface("l1", "Planning", "todo"), joined = true),
+            AgentSearchSources.Surface(AgentFeedRow.Surface("d1", "Plans archive", "document"), joined = true, updatedAt = 50),
+            AgentSearchSources.Surface(AgentFeedRow.Surface("l1", "Planning", "todo"), joined = true, updatedAt = 40),
             AgentSearchSources.Surface(AgentFeedRow.Surface("c1", "Team", "calendar"), joined = true),
         ),
         todos = listOf(AgentSearchSources.Todo("todo1", "Plan the offsite", AgentFeedRow.Surface("l2", "Errands", "todo"))),
         artifacts = listOf(
-            com.slopus.happy.artifacts.ArtifactRef("a1", 2, "html", "Sprint plan", followsLatest = true),
-            com.slopus.happy.artifacts.ArtifactRef("a2", 1, "markdown", "Notes", followsLatest = true),
+            AgentSearchSources.Artifact(com.slopus.happy.artifacts.ArtifactRef("a1", 2, "html", "Sprint plan", followsLatest = true)),
+            AgentSearchSources.Artifact(com.slopus.happy.artifacts.ArtifactRef("a2", 1, "markdown", "Notes", followsLatest = true)),
         ),
+        openTodos = mapOf("l1" to 3),
     )
 
     @Test
-    fun aQueryFindsDocumentsTodosArtifactsAndSurfacesRankedAsTheDaemonRanks() {
+    fun aQueryFindsDocumentsTodosArtifactsAndSurfacesRankedAsDesktopRanksThem() {
         assertEquals(
             listOf(
-                // First of each kind, in provider order: equally good, joined before not.
-                "document:d1", "todo:todo1", "artifact:a1", "surface:l1", "agent:at3",
-                // Then the second of each, and so on.
-                "document:d2", "document:s1",
+                // Names that start with it: the person's own, the latest changed first; then a Surface they aren't in; then a todo.
+                "document:d1", "surface:l1", "agent:at3", "document:d2", "todo:todo1",
+                // A word in the name starts with it.
+                "document:s1", "artifact:a1",
             ),
             found("plan", sources),
         )
+        val lines = agentSearchResults(feed, "plan", label, words, emptyList(), emptyList(), sources).filterIsInstance<AgentSearchResult.Found>().associate { it.key to it.detail }
+        // Desktop's meta: a list with its open todos, a Surface the person isn't in, a todo's list.
+        assertEquals("Todo list · 3 open", lines["surface:l1"])
+        assertEquals("Document · not joined", lines["document:d2"])
+        assertEquals("Errands", lines["todo:todo1"])
         // The kind's name finds a Surface; an artifact by its type too.
         assertEquals(listOf("surface:c1"), found("calendar", sources))
         assertEquals(listOf("artifact:a1"), found("web page", sources))
@@ -162,7 +178,7 @@ class AgentSearchTest {
             ),
         )
         val results = agentSearchResults(feed, "plan", label, words, emptyList(), emptyList(), sources, remote).map { it as AgentSearchResult.Found }
-        // document:d2 and agent:at3 are in both lists, their scores added: 1/62 + 1/66 over 1/63 + 1/65.
+        // document:d2 and agent:at3 are in both lists, their scores added: 1/62 + 1/64 over 1/63 + 1/63.
         // Then 1/61 each, the daemon's before the phone's.
         assertEquals(listOf("document:d2", "agent:at3", "vault_file:f1", "document:d1"), results.take(4).map { it.key })
         val byKey = results.associateBy { it.key }
@@ -250,7 +266,7 @@ class AgentSearchTest {
 
     @Test
     fun theCardHoldsTwelveAndEachSectionSix() {
-        val many = AgentSearchSources(artifacts = (0 until 15).map { com.slopus.happy.artifacts.ArtifactRef("a$it", 1, "html", "Chart $it", followsLatest = true) })
+        val many = AgentSearchSources(artifacts = (0 until 15).map { AgentSearchSources.Artifact(com.slopus.happy.artifacts.ArtifactRef("a$it", 1, "html", "Chart $it", followsLatest = true)) })
         val found = agentSearchResults(feed, "chart", label, words, emptyList(), emptyList(), many)
         assertEquals((0 until 12).map { "artifact:a$it" }, found.map { it.key })
         val places = found.filterIsInstance<AgentSearchResult.Found>().map { it.place }
@@ -291,12 +307,104 @@ class AgentSearchTest {
         assertEquals(listOf("s1" to true, "s2" to false), read.surfaces.map { it.row.id to it.joined }.sortedBy { it.first })
         assertEquals(listOf("Milk"), read.todos.map { it.text })
         assertEquals("s1", read.todos.single().list.id)
-        assertEquals(listOf("a1"), read.artifacts.map { it.id })
+        assertEquals(listOf("a1"), read.artifacts.map { it.ref.id })
+        // A list read says how many of its todos are open; one not read says nothing.
+        assertEquals(mapOf("s1" to 1), read.openTodos)
         val create = com.slopus.happy.todos.TodoOp("s1", "local", com.slopus.happy.todos.TodoOp.Kind.Create("Bread", "1"), 5.0)
         val complete = com.slopus.happy.todos.TodoOp("s1", "t1", com.slopus.happy.todos.TodoOp.Kind.Status(com.slopus.happy.todos.TodoItem.Status.Completed), 6.0)
         val pending = listOf(create, complete).mapIndexed { i, op -> com.slopus.happy.agent.Intent("i$i", op.intentKind, op.todoId, op.value, i.toLong()) }
         val offline = AgentSearchSources.read(current, AgentFeed.derive(current), kept::get, pending)
         assertEquals("search sees the same optimistic list as the editor", listOf("Bread"), offline.todos.map { it.text })
+    }
+
+    /**
+     * Desktop's ⌘K for "launch" on a computer with a Launch FAQ, a Launch
+     * countdown page and a Launch checklist (happy-desktop e8bf9931,
+     * `commandPaletteResults`): equally good names, the latest changed
+     * first, then the computer's, fused.
+     */
+    @Test
+    fun launchListsAsDesktopListsIt() {
+        val launch = AgentSearchSources(
+            surfaces = listOf(
+                AgentSearchSources.Surface(AgentFeedRow.Surface("faq", "Launch FAQ", "document"), joined = true, updatedAt = 1_794_160_538_666),
+                AgentSearchSources.Surface(AgentFeedRow.Surface("list", "Launch checklist", "todo"), joined = true, updatedAt = 1_794_160_514_714),
+                AgentSearchSources.Surface(AgentFeedRow.Surface("drive", "Company Drive", "vault"), joined = true, updatedAt = 1_794_160_538_338),
+            ),
+            artifacts = listOf(AgentSearchSources.Artifact(com.slopus.happy.artifacts.ArtifactRef("cd", 1, "html", "Launch countdown", followsLatest = true), 1_794_160_515_695)),
+            openTodos = mapOf("list" to 5),
+        )
+        val remote = SearchAnswer(
+            "launch",
+            listOf(
+                SearchHit.VaultFolder("vault_folder:lm", 1, "drive", "lm", "Launch materials", "/Launch materials"),
+                SearchHit.Document("document:faq", 2, "faq", "Launch FAQ"),
+                SearchHit.Artifact("artifact:cd", 3, "cd", "Launch countdown", "html"),
+                SearchHit.Surface("surface:list", 4, "list", "todo", "Launch checklist"),
+                SearchHit.VaultFile("vault_file:lp", 5, "drive", "lp", "Launch plan.md", "/Launch materials/Launch plan.md"),
+                SearchHit.VaultFile("vault_file:b", 6, "drive", "b", "Budget 2027.md", "/Budget 2027.md", match = "content", snippet = "Marketing spend for the launch week is capped at \$40k."),
+                SearchHit.VaultFile("vault_file:pk", 7, "drive", "pk", "Press kit.md", "/Launch materials/Press kit.md", match = "path"),
+            ),
+        )
+        // That computer's home holds nothing else that says launch.
+        val home = AgentFeed(loaded = true)
+        assertEquals(listOf("document:faq", "artifact:cd", "surface:list"), agentSearchResults(home, "launch", label, words, emptyList(), emptyList(), launch).map { it.key })
+        val results = agentSearchResults(home, "launch", label, words, emptyList(), emptyList(), launch, remote).filterIsInstance<AgentSearchResult.Found>()
+        assertEquals(
+            listOf(
+                "Launch FAQ" to "Document",
+                "Launch countdown" to "Web page",
+                "Launch checklist" to "Todo list · 5 open",
+                "Launch materials" to "Company Drive · /Launch materials",
+                "Launch plan.md" to "Company Drive · /Launch materials/Launch plan.md",
+                "Budget 2027.md" to "Marketing spend for the launch week is capped at \$40k.",
+                "Press kit.md" to "Company Drive · /Launch materials/Press kit.md",
+            ),
+            results.map { it.title to it.detail },
+        )
+    }
+
+    /**
+     * A task the person isn't in isn't on home, but search finds it, after
+     * the ones they are in, and opens its conversation without joining it
+     * (desktop c6982095).
+     */
+    @Test
+    fun aTaskThePersonIsntInIsFoundAfterTheirOwn() {
+        val current = catalog(
+            Wire.bootstrap(
+                tasks = listOf(
+                    Wire.task("t1", "Plan the launch", Wire.agent("at1", updatedAt = 5)),
+                    Wire.task("t2", "Plan the retro", Wire.agent("at2", updatedAt = 9)),
+                    Wire.task("t3", "Plan the old one", Wire.agent("at3"), archived = true),
+                ),
+                memberships = listOf(Wire.membership("t1", "1")),
+            ),
+        )
+        val home = AgentFeed.derive(current)
+        val read = AgentSearchSources.read(current, home, { null })
+        assertEquals(listOf("t2" to "at2"), read.tasks.map { it.id to it.agentId })
+        val found = agentSearchResults(home, "plan", label, words, emptyList(), emptyList(), read).filterIsInstance<AgentSearchResult.Found>()
+        assertEquals(listOf("agent:at1" to "Task", "agent:at2" to "Task you have not joined"), found.map { it.key to it.detail })
+        val row = (found[1].local as AgentSearchResult.Home).item.row as AgentFeedRow.Conversation
+        assertEquals("at2" to "Plan the retro", row.agentId to row.title)
+    }
+
+    /** What search reads from the computer as it opens: only what the phone hasn't kept, and never what failed. */
+    @Test
+    fun searchReadsWhatThePhoneHasntKept() {
+        val current = catalog(Wire.bootstrap(surfaces = listOf(Wire.surface("s1", "Groceries", "todo"), Wire.surface("s2", "Errands", "todo"), Wire.surface("s3", "Chores", "todo"), Wire.surface("d1", "Notes", "document"))))
+        val kept = mapOf(com.slopus.happy.todos.TodoLibrary.resource("s1") to kotlinx.serialization.json.JsonObject(emptyMap()))
+        val asked = java.util.Collections.synchronizedList(ArrayList<String>())
+        val read = kotlinx.coroutines.runBlocking {
+            AgentSearchSources.reads(AgentFeed.derive(current), kept::get) { path ->
+                asked += path
+                if ("s3" in path) error("offline")
+                kotlinx.serialization.json.buildJsonObject { put("path", kotlinx.serialization.json.JsonPrimitive(path)) }
+            }
+        }
+        assertEquals(setOf("/v0/artifacts?limit=100", "/v0/surfaces/todo/s2?scope=active", "/v0/surfaces/todo/s3?scope=active"), asked.toSet())
+        assertEquals(setOf(com.slopus.happy.artifacts.ArtifactCatalogFeed.RESOURCE, com.slopus.happy.todos.TodoLibrary.resource("s2")), read.keys)
     }
 
     @Test

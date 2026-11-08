@@ -34,6 +34,14 @@
     <string name="agent_search_kind_artifact">Артефакт</string>
     <string name="agent_search_kind_shared">Общее</string>
     <string name="agent_search_by_agent">Агент</string>
+    <string name="agent_search_task_not_joined">Задача, в которой вы не участвуете</string>
+    <string name="agent_search_not_joined">вы не участник</string>
+    <plurals name="agent_search_open_todos">
+        <item quantity="one">%d открыта</item>
+        <item quantity="few">%d открыты</item>
+        <item quantity="many">%d открыто</item>
+        <item quantity="other">%d открыто</item>
+    </plurals>
     <string name="agent_settings_edit_name">Изменить имя агента</string>
     <string name="agent_settings_edit_avatar">Изменить аватар агента</string>
     <string name="agent_settings_edit_name_prefix">"Смени своё имя на "</string>

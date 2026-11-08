@@ -34,6 +34,11 @@
     <string name="agent_search_kind_artifact">工件</string>
     <string name="agent_search_kind_shared">共享</string>
     <string name="agent_search_by_agent">智能体</string>
+    <string name="agent_search_task_not_joined">你未加入的任务</string>
+    <string name="agent_search_not_joined">未加入</string>
+    <plurals name="agent_search_open_todos">
+        <item quantity="other">%d 项未完成</item>
+    </plurals>
     <string name="agent_settings_edit_name">更改智能体名称</string>
     <string name="agent_settings_edit_avatar">更改智能体头像</string>
     <string name="agent_settings_edit_name_prefix">把你的名字改成</string>

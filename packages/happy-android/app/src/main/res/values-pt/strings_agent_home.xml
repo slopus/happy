@@ -34,6 +34,13 @@
     <string name="agent_search_kind_artifact">Artefato</string>
     <string name="agent_search_kind_shared">Compartilhado</string>
     <string name="agent_search_by_agent">Agente</string>
+    <string name="agent_search_task_not_joined">Tarefa em que você não entrou</string>
+    <string name="agent_search_not_joined">sem participar</string>
+    <plurals name="agent_search_open_todos">
+        <item quantity="one">%d pendente</item>
+        <item quantity="many">%d pendentes</item>
+        <item quantity="other">%d pendentes</item>
+    </plurals>
     <string name="agent_settings_edit_name">Alterar o nome do agente</string>
     <string name="agent_settings_edit_avatar">Alterar o avatar do agente</string>
     <string name="agent_settings_edit_name_prefix">"Mude seu nome para "</string>

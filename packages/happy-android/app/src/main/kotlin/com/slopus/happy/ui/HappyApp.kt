@@ -188,6 +188,8 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                                 onOpenArtifact = { go.open(null) { nav.openArtifact(account.id, it) } },
                                 onOpenFeed = { go.open(MainPanelKey.FEED) { nav.navigate(AgentFeedRoute(account.id)) } },
                                 onOpenVaultItem = { surfaceId, itemId, folder, name ->
+                                    // The vault opens on the item and takes its place in the list, as desktop's `onVaultItemOpen` opens it.
+                                    graph.agentSessions.session(account.id)?.let { session -> if (session.surfaces.value.loaded) session.joinSurface(surfaceId) }
                                     go.open(null) {
                                         nav.navigate(
                                             if (folder) com.slopus.happy.ui.vaults.VaultFolderRoute(account.id, surfaceId, itemId, name)

@@ -104,6 +104,7 @@ import com.slopus.happy.ui.conversation.ConversationRowActions
 import com.slopus.happy.ui.chat.userMessageBubblePalette
 import com.slopus.happy.ui.chat.MessageCallbacks
 import com.slopus.happy.agent.AgentSession
+import com.slopus.happy.agent.decode
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.DisposableEffect
@@ -140,6 +141,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonObject
 
 /** Everything an agent connection's home asks of the app. */
 @Immutable
@@ -265,8 +267,10 @@ fun AgentHomeScreen(
     preview: (@Composable (AgentFeedRow.Conversation) -> Unit)? = null,
     /** Home's list; [AgentHome] keeps its place across the tablet's breakpoint and the sidebar's hiding ([rememberAgentHomeListState]). */
     listState: LazyListState = rememberLazyListState(),
-    /** What search finds beyond home's rows, read while it is open ([AgentSearchSources.read]). */
-    searchSources: suspend () -> AgentSearchSources = { AgentSearchSources.None },
+    /** What search finds beyond home's rows, read while it is open ([AgentSearchSources.read]), with what [searchReads] read. */
+    searchSources: suspend (read: Map<String, JsonObject>) -> AgentSearchSources = { AgentSearchSources.None },
+    /** What search reads from the computer as it opens that the phone hasn't kept ([AgentSearchSources.reads]). */
+    searchReads: suspend () -> Map<String, JsonObject> = { emptyMap() },
     /** Search's daemon half for a query ([AgentSession.search]); null, or answering null, searches the phone alone. */
     search: (suspend (String) -> SearchAnswer?)? = null,
 ) {
@@ -310,9 +314,12 @@ fun AgentHomeScreen(
     val feedTitle = stringResource(R.string.feed_title)
     val todos = stringResource(R.string.agent_search_todos)
     val words = rememberAgentSearchWords()
-    // Read as search opens, and again as home changes under it.
-    val sources by produceState(AgentSearchSources.None, searching, feed) {
-        if (searching) value = searchSources()
+    // What the phone hasn't kept, read once as search opens; then the sources, again as home changes under it.
+    val read by produceState(emptyMap<String, JsonObject>(), searching) {
+        value = if (searching) searchReads() else emptyMap()
+    }
+    val sources by produceState(AgentSearchSources.None, searching, feed, read) {
+        if (searching) value = searchSources(read)
     }
     // The daemon's half, asked a moment after the typing stops; a new query cancels the one in flight.
     val remote by produceState<SearchAnswer?>(null, searching, query, search) {
@@ -640,6 +647,9 @@ private fun rememberAgentSearchWords(): AgentSearchWords {
             shared = resources.getString(R.string.agent_search_kind_shared),
             done = resources.getString(R.string.todo_done),
             agent = resources.getString(R.string.agent_search_by_agent),
+            notJoined = resources.getString(R.string.agent_search_not_joined),
+            taskNotJoined = resources.getString(R.string.agent_search_task_not_joined),
+            openTodos = { count -> resources.getQuantityString(R.plurals.agent_search_open_todos, count, count) },
         )
     }
 }
@@ -950,7 +960,10 @@ private fun SignedInAgentHome(
             preview = { row -> ConversationPreview(session, row, settings.userMessageBubbleColor) },
             listState = rememberAgentHomeListState(graph, id),
             searchSources = remember(session) {
-                { withContext(Dispatchers.IO) { AgentSearchSources.read(session.catalog.value, session.feed.value, session::cachedResource, session.intents.pending.value) } }
+                { read -> withContext(Dispatchers.IO) { AgentSearchSources.read(session.catalog.value, session.feed.value, { key -> session.cachedResource(key) ?: read[key] }, session.intents.pending.value) } }
+            },
+            searchReads = remember(session) {
+                { withContext(Dispatchers.IO) { AgentSearchSources.reads(session.feed.value, session::cachedResource) { path -> session.client.decode<JsonObject>("GET", path) } } }
             },
             search = remember(session) { { query -> session.search(query) } },
         )

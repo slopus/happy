@@ -571,7 +571,7 @@ class AgentHomeLayoutTest {
         val sources = AgentSearchSources(
             surfaces = listOf(AgentSearchSources.Surface(AgentFeedRow.Surface("d2", "Plan for Q3", "document"), joined = false)),
             todos = listOf(AgentSearchSources.Todo("todo1", "Plan the offsite", errands)),
-            artifacts = listOf(com.slopus.happy.artifacts.ArtifactRef("a1", 2, "html", "Sprint plan", followsLatest = true)),
+            artifacts = listOf(AgentSearchSources.Artifact(com.slopus.happy.artifacts.ArtifactRef("a1", 2, "html", "Sprint plan", followsLatest = true))),
         )
         rule.setHappyContent { AgentHomeScreen("Studio", feed(), AgentLinkStatus.Connected, accounts, actions, searchSources = { reads++; sources }) }
         assertEquals(0, reads)
@@ -579,12 +579,12 @@ class AgentHomeLayoutTest {
         rule.node(AgentSearchTags.FIELD).performTextInput("plan")
         rule.waitForIdle()
         assertTrue(reads >= 1)
-        // One card, first of each kind in the daemon's provider order: document, todo, artifact, conversation.
+        // One card, as desktop ranks it: the task that starts with it, the document not joined, the todo; then the artifact a word of which does.
+        val home = rule.node(AgentSearchTags.result("agent:at3")).bounds
         val document = rule.node(AgentSearchTags.result("document:d2")).bounds
         val todo = rule.node(AgentSearchTags.result("todo:todo1")).bounds
         val artifact = rule.node(AgentSearchTags.result("artifact:a1")).bounds
-        val home = rule.node(AgentSearchTags.result("agent:at3")).bounds
-        assertTrue(document.bottom <= todo.top && todo.bottom <= artifact.top && artifact.bottom <= home.top)
+        assertTrue(home.bottom <= document.top && document.bottom <= todo.top && todo.bottom <= artifact.top)
         // Each says what it is, or where, on a second line: 66 high.
         for (row in listOf(document, todo, artifact)) assertDp("result row height", 66, row.height)
         rule.onNodeWithText("Errands").assertExists()

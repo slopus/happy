@@ -34,6 +34,11 @@
     <string name="agent_search_kind_artifact">アーティファクト</string>
     <string name="agent_search_kind_shared">共有</string>
     <string name="agent_search_by_agent">エージェント</string>
+    <string name="agent_search_task_not_joined">参加していないタスク</string>
+    <string name="agent_search_not_joined">未参加</string>
+    <plurals name="agent_search_open_todos">
+        <item quantity="other">未完了 %d 件</item>
+    </plurals>
     <string name="agent_settings_edit_name">エージェントの名前を変更</string>
     <string name="agent_settings_edit_avatar">エージェントのアバターを変更</string>
     <string name="agent_settings_edit_name_prefix">"名前を次に変えて: "</string>

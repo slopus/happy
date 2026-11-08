@@ -10,7 +10,6 @@ import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -149,7 +148,8 @@ class SidebarChromeTest {
         rule.waitForIdle()
         val results = rule.node(AgentSearchTags.RESULTS).bounds
         assertDp("results 4 under the field", open.bottom + 4.dp, results.top)
-        rule.onNode(hasText("Review the PR") and hasAnyAncestorTag(AgentSearchTags.RESULTS), useUnmergedTree = true).assertExists()
+        // The bot whose subtask is "Review the PR"; a subtask is never a result of its own, as on the computer.
+        rule.onNode(hasTestTag(AgentSearchTags.result("agent:ab1")) and hasAnyAncestorTag(AgentSearchTags.RESULTS), useUnmergedTree = true).assertExists()
 
         rule.node(SidebarTags.SEARCH_CANCEL).performClick()
         rule.waitForIdle()
