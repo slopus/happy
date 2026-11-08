@@ -12,7 +12,8 @@ final class ComputeViewController: SettingsPageViewController {
     private var expandedRevoked = false
     private var accessWatch: Watch?
     private var accountWatch: AccountsObservation?
-    private var events: Task<Void, Never>?
+    /// Owned event subscription, exposed internally for lifecycle tests.
+    private(set) var events: Task<Void, Never>?
 
     init(session: Session, page: ComputeMonitor.Page = .pools) {
         self.session = session
@@ -56,6 +57,9 @@ final class ComputeViewController: SettingsPageViewController {
         session.refreshPermissions()
         monitor.appear(allowed: Self.offered(session))
         let store = session.store
+        // A cancelled interactive pop can announce another appearance
+        // without disappearing first. Keep exactly one owned subscription.
+        events?.cancel()
         events = Task { [weak self] in
             for await _ in await store.events(matching: ComputeMonitor.refreshEvents) {
                 guard !Task.isCancelled, let self, visible, !invalidated else { return }
@@ -147,6 +151,7 @@ final class ComputeViewController: SettingsPageViewController {
     private func nodeFacts(_ node: ComputeNode) -> [[SettingsRow]] {
         typealias Text = Strings.Compute
         let lastSeen = node.lastSeenAt.map { Date(timeIntervalSince1970: $0 / 1000).formatted(date: .abbreviated, time: .shortened) } ?? Text.unknown
+        let system = [node.os, node.osVersion, node.arch].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
         var capacity = fact("compute-capacity", Text.capacity, Text.capacity(node.sandboxCapacity))
         capacity.footer = Text.placementNote
         var disk = fact("compute-host-disk", Text.disk, Self.bytes(node.host?.totalDiskBytes))
@@ -155,7 +160,7 @@ final class ComputeViewController: SettingsPageViewController {
             fact("compute-node-status", node.displayName, node.status),
             fact("compute-last-seen", Text.lastSeen, lastSeen),
             fact("compute-version", Text.version, node.version ?? Text.unknown),
-            fact("compute-os", Text.operatingSystem, [node.os, node.osVersion, node.arch].compactMap { $0 }.joined(separator: " · ")),
+            fact("compute-os", Text.operatingSystem, system.isEmpty ? Text.unknown : system),
             fact("compute-backend", Text.backend, node.backend ?? Text.unknown),
         ], [capacity], [
             fact("compute-host-cpu", Text.cpu, node.host?.cpuCores.map { $0.formatted() } ?? Text.unknown),

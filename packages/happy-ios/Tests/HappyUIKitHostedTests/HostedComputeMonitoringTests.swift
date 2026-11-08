@@ -140,6 +140,7 @@ final class HostedComputeMonitoringTests: XCTestCase {
         XCTAssertEqual(node.shownRow("compute-host-cpu")?.value, "Unknown")
         XCTAssertEqual(node.shownRow("compute-host-memory")?.value, "Unknown")
         XCTAssertEqual(node.shownRow("compute-host-disk")?.value, "Unknown")
+        XCTAssertEqual(node.shownRow("compute-os")?.value, "Unknown")
         XCTAssertEqual(node.shownRow("compute-placement-sandbox-1")?.title, "agent-1")
         XCTAssertFalse(node.shownRowIDs.joined().contains { $0.contains("drain") || $0.contains("attach") || $0.contains("join") })
         try screenshot(node, name: "Compute machine — unknown host facts")
@@ -174,6 +175,40 @@ final class HostedComputeMonitoringTests: XCTestCase {
         try await until { !session.gate.allows(.poolsManage) }
         XCTAssertFalse(results.list.shownRows.contains { $0.id == "search:settings:computes" })
         XCTAssertNil(settings.shownRow("computes"))
+    }
+
+    func testRepeatedAppearanceOwnsExactlyOneEventSubscription() async throws {
+        let (_, session, _) = try await rig()
+        let page = ComputeViewController(session: session)
+        _ = try await host(page)
+        try await until { page.shownRow("compute-pool-default") != nil }
+        var tasks: [Task<Void, Never>] = []
+        defer { tasks.forEach { $0.cancel() } }
+        for _ in 0..<3 {
+            let previous = try XCTUnwrap(page.events)
+            tasks.append(previous)
+            // A cancelled interactive back swipe can announce another
+            // appearance without a preceding viewDidDisappear.
+            page.viewWillAppear(false)
+            XCTAssertTrue(previous.isCancelled)
+            if previous.isCancelled { await previous.value }
+            let deadline = ContinuousClock.now + .seconds(3)
+            while await session.store.eventListenerCount(matching: ComputeMonitor.refreshEvents) != 1, ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            let active = await session.store.eventListenerCount(matching: ComputeMonitor.refreshEvents)
+            XCTAssertEqual(active, 1)
+        }
+        let last = try XCTUnwrap(page.events)
+        tasks.append(last)
+        page.viewDidDisappear(false)
+        await last.value
+        let deadline = ContinuousClock.now + .seconds(3)
+        while await session.store.eventListenerCount(matching: ComputeMonitor.refreshEvents) != 0, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let hidden = await session.store.eventListenerCount(matching: ComputeMonitor.refreshEvents)
+        XCTAssertEqual(hidden, 0)
     }
 }
 #endif
