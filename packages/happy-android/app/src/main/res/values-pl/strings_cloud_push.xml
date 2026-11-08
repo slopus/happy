@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_push_title">Powiadomienia</string>
+    <string name="cloud_push_server">Powiadomienia z tego serwera</string>
+    <string name="cloud_push_footer">Dotyczy Twojego konta na tym serwerze. Agenci wybierają tytuły i treść powiadomień.</string>
+    <string name="cloud_push_permission">Uprawnienie na urządzeniu</string>
+    <string name="cloud_push_device">Włącz na tym urządzeniu</string>
+</resources>

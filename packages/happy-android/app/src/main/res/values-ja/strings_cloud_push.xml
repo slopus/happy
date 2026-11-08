@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_push_title">通知</string>
+    <string name="cloud_push_server">このサーバーからの通知</string>
+    <string name="cloud_push_footer">このサーバーのあなたのアカウントに適用されます。通知のタイトルとメッセージはエージェントが決めます。</string>
+    <string name="cloud_push_permission">端末の通知権限</string>
+    <string name="cloud_push_device">この端末で有効にする</string>
+</resources>
