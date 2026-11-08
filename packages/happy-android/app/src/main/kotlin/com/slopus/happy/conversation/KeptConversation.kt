@@ -93,6 +93,13 @@ data class KeptConversation(
             is Block.Text -> buildJsonObject { put("type", "text"); put("text", block.text) }
             is Block.Reasoning -> buildJsonObject { put("type", "reasoning"); put("text", block.text) }
             is Block.Image -> buildJsonObject { put("type", "image"); put("mimeType", block.mimeType); put("data", block.data) }
+            is Block.File -> buildJsonObject {
+                put("type", "file")
+                put("attachment", block.attachment)
+                put("name", block.name)
+                block.mimeType?.let { put("mimeType", it) }
+                block.size?.let { put("size", it) }
+            }
             is Block.ToolCall -> buildJsonObject {
                 put("type", "tool_call")
                 block.id?.let { put("id", it) }

@@ -30,6 +30,9 @@ typealias AgentRequest = suspend (method: String, path: String, body: JsonElemen
 /** [AgentRequest] with a JSON body already made as bytes: a workspace file's upload, built once ([WorkspaceUploads.body]). */
 typealias AgentBytesRequest = suspend (method: String, path: String, body: ByteArray, category: RequestCategory) -> TransportResponse
 
+/** A file's own bytes as the body, sent as [contentType]: a Happy Cloud attachment's upload. */
+typealias AgentFileRequest = suspend (method: String, path: String, body: ByteArray, contentType: String) -> TransportResponse
+
 /**
  * The client-chosen ids of new work made on first send (`POST /v0/tasks` or
  * `/v0/bots`); the same ids again are the same task or bot.
@@ -70,6 +73,8 @@ open class ConversationApi(
     private val request: AgentRequest,
     /** A Happy Cloud server's: its models run on connections ([catalog]). */
     private val cloud: Boolean = false,
+    /** Sends [uploadAttachment]'s bytes; without it they go as [request] can't, and the upload fails. */
+    private val fileRequest: AgentFileRequest? = null,
 ) {
     constructor(request: AgentRequest) : this(null, request)
 
@@ -134,15 +139,32 @@ open class ConversationApi(
      * is the same message. Always steering, as desktop sends: mid-turn it is
      * taken at the next boundary; idle, it starts a run.
      */
-    open suspend fun send(agentId: String, id: String, text: String, images: List<Block.Image>, mode: Mode, toolRequest: ToolRequest? = null): Message? {
+    open suspend fun send(
+        agentId: String,
+        id: String,
+        text: String,
+        images: List<Block.Image>,
+        mode: Mode,
+        toolRequest: ToolRequest? = null,
+        attachments: List<SentAttachment> = emptyList(),
+    ): Message? {
         val body = buildJsonObject {
             put("id", id)
-            // The API requires top-level text; a picture alone goes with a short caption.
-            put("text", if (text.isEmpty() && images.isNotEmpty()) (if (images.size == 1) "Attached image." else "Attached images.") else text)
+            // The API requires top-level text; a picture or a file alone goes with a short caption.
+            put(
+                "text",
+                when {
+                    text.isNotEmpty() -> text
+                    images.isNotEmpty() && attachments.isEmpty() -> if (images.size == 1) "Attached image." else "Attached images."
+                    attachments.isNotEmpty() -> if (images.size + attachments.size == 1) "Attached file." else "Attached files."
+                    else -> text
+                },
+            )
             put("delivery", "steer")
             put("clientMetadata", buildJsonObject { put("composer", "mobile") })
-            if (images.isNotEmpty() || toolRequest != null) put("content", buildJsonArray {
+            if (images.isNotEmpty() || attachments.isNotEmpty() || toolRequest != null) put("content", buildJsonArray {
                 images.forEach { add(buildJsonObject { put("type", "image"); put("mimeType", it.mimeType); put("data", it.data) }) }
+                attachments.forEach { add(buildJsonObject { put("type", "file"); put("attachment", it.id); put("name", it.name) }) }
                 // A tool request rides the words (desktop aa8a2529); the words go once, as `text`.
                 toolRequest?.let { request ->
                     add(
@@ -159,6 +181,22 @@ open class ConversationApi(
         // Pictures make it a file's size: a file's client and deadline.
         val category = if (images.isEmpty()) RequestCategory.Query else RequestCategory.File
         return Message.parse(call("POST", "/v0/agents/${escape(agentId)}/send", body, category)["message"])
+    }
+
+    /**
+     * Uploads [file] as an attachment of [agentId] (Happy Cloud, `PUT
+     * …/attachments?name=`): its own bytes, as its type. The answer's id is
+     * the bytes' digest, so a retry whose answer was lost gets the same one.
+     * The disk is read on [io].
+     */
+    open suspend fun uploadAttachment(agentId: String, file: OutgoingFile, io: kotlin.coroutines.CoroutineContext = kotlinx.coroutines.Dispatchers.IO): String {
+        val send = fileRequest ?: throw ConversationApiException(501, "unsupported", null)
+        val bytes = kotlinx.coroutines.withContext(io) { file.file.readBytes() }
+        val path = "/v0/agents/${escape(agentId)}/attachments?name=${escape(file.name)}"
+        val response = kotlinx.coroutines.withContext(com.slopus.happy.connection.BodyProgress { _, _ -> }) {
+            send("PUT", path, bytes, file.mimeType.ifBlank { "application/octet-stream" })
+        }
+        return decode(response)["attachment"].obj?.get("id").str ?: throw invalid()
     }
 
     /**

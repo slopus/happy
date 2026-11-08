@@ -95,6 +95,7 @@
     <string name="conversation_problem_unknown">Algo salió mal.</string>
     <string name="conversation_problem_pictures">No se pudieron leer las imágenes para enviar.</string>
     <string name="conversation_problem_files_unavailable">Los archivos adjuntos aún no están disponibles en este servidor.</string>
+    <string name="conversation_problem_file_too_large">%1$s supera los 25 MB y no se puede enviar aquí.</string>
     <string name="conversation_failure_signin_missing">%1$s no ha iniciado sesión. Ejecuta `%2$s` y vuelve a intentarlo.</string>
     <string name="conversation_failure_cannot_authenticate">%1$s no pudo autenticarse. Revisa su configuración de inicio de sesión y vuelve a intentarlo.</string>
     <string name="conversation_failure_usage_limit">Se alcanzó el límite de uso de %1$s.</string>

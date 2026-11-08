@@ -229,6 +229,15 @@ internal fun AgentSession.conversationBytesRequest(): com.slopus.happy.conversat
     }
 }
 
+/** [conversationRequest] for a file's own bytes, as their type: a Happy Cloud attachment's upload. */
+internal fun AgentSession.conversationFileRequest(): com.slopus.happy.conversation.AgentFileRequest = { method, path, body, contentType ->
+    try {
+        client.sendBytes(method, path, body, mapOf("Content-Type" to contentType))
+    } catch (e: AgentApiException) {
+        throw ConversationApiException(e.status, e.code, e.message, e.body as? kotlinx.serialization.json.JsonObject)
+    }
+}
+
 /**
  * [agentId]'s conversation as each of its holders has it
  * ([AgentSession.conversations]): the connection's requests, keeper, read and
@@ -243,7 +252,7 @@ internal fun AgentSession.makeConversation(
     initialChoice: WorkChoice = WorkChoice(),
     created: () -> Unit = {},
 ): Conversation = Conversation(
-    api = ConversationApi(bytesRequest = conversationBytesRequest(), request = conversationRequest(), cloud = client.cloud),
+    api = ConversationApi(bytesRequest = conversationBytesRequest(), request = conversationRequest(), cloud = client.cloud, fileRequest = conversationFileRequest()),
     signals = events.signalsFor(agentId),
     // No screen's or call's: a send or draft save in flight finishes after they go.
     scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
@@ -263,7 +272,7 @@ internal fun AgentSession.makeConversation(
     read = ::markRead,
     references = references,
     hasSettingsPage = settingsPages(),
-    filesUnavailable = client.cloud,
+    cloudFiles = client.cloud,
     preferences = modelPreferences,
     onStarted = ::recordStart,
     address = { ChatAddress.of(catalog.value, agentId) },

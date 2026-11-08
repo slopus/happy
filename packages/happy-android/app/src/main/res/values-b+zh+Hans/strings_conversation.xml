@@ -95,6 +95,7 @@
     <string name="conversation_problem_unknown">出了点问题。</string>
     <string name="conversation_problem_pictures">无法读取要发送的图片。</string>
     <string name="conversation_problem_files_unavailable">此服务器尚不支持附加文件。</string>
+    <string name="conversation_problem_file_too_large">%1$s 超过 25 MB，无法在此发送。</string>
     <string name="conversation_failure_signin_missing">%1$s 未登录。请运行 `%2$s`，然后重试。</string>
     <string name="conversation_failure_cannot_authenticate">%1$s 无法完成身份验证。请检查其登录设置，然后重试。</string>
     <string name="conversation_failure_usage_limit">已达到 %1$s 的使用上限。</string>

@@ -95,6 +95,7 @@
     <string name="conversation_problem_unknown">Coś poszło nie tak.</string>
     <string name="conversation_problem_pictures">Nie udało się odczytać obrazów do wysłania.</string>
     <string name="conversation_problem_files_unavailable">Załączniki plików nie są jeszcze dostępne na tym serwerze.</string>
+    <string name="conversation_problem_file_too_large">%1$s ma ponad 25 MB i nie można go tu wysłać.</string>
     <string name="conversation_failure_signin_missing">%1$s nie jest zalogowany. Uruchom `%2$s` i spróbuj ponownie.</string>
     <string name="conversation_failure_cannot_authenticate">%1$s nie mógł się uwierzytelnić. Sprawdź ustawienia logowania i spróbuj ponownie.</string>
     <string name="conversation_failure_usage_limit">Osiągnięto limit użycia %1$s.</string>

@@ -95,6 +95,7 @@
     <string name="conversation_problem_unknown">Alguna cosa ha anat malament.</string>
     <string name="conversation_problem_pictures">No s\'han pogut llegir les imatges per enviar.</string>
     <string name="conversation_problem_files_unavailable">Els fitxers adjunts encara no estan disponibles en aquest servidor.</string>
+    <string name="conversation_problem_file_too_large">%1$s supera els 25 MB i no es pot enviar aquí.</string>
     <string name="conversation_failure_signin_missing">%1$s no ha iniciat la sessió. Executa `%2$s` i torna-ho a provar.</string>
     <string name="conversation_failure_cannot_authenticate">%1$s no s\'ha pogut autenticar. Revisa la configuració d\'inici de sessió i torna-ho a provar.</string>
     <string name="conversation_failure_usage_limit">S\'ha arribat al límit d\'ús de %1$s.</string>
