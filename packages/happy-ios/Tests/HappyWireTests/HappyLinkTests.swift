@@ -94,6 +94,7 @@ final class HappyLinkTests: XCTestCase {
         let instance = "k3x9q2m7p0a4b8c1d5e6f7g2"
         XCTAssertEqual(HappyLink.SettingsPage.allCases.map(\.rawValue), [
             "general", "account", "sharing", "servers", "instructions", "secrets", "providers", "providers/import",
+            "providers/add", "providers/add/openai", "providers/add/anthropic", "providers/add/api-key",
             "usage", "voice", "mobile-access", "members", "roles", "policy", "mcp", "computes",
         ])
         for page in HappyLink.SettingsPage.allCases {

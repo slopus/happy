@@ -234,7 +234,10 @@ final class MarkdownParserTests: XCTestCase {
         XCTAssertEqual(SettingsLinkPlace.place(.voice, server: nil), .voice)
         XCTAssertEqual(SettingsLinkPlace.place(.servers, server: cloud), .servers)
         XCTAssertEqual(SettingsLinkPlace.place(.servers, server: "https://team.example"), .general)
-        XCTAssertEqual(SettingsLinkPlace.place(.providersImport, server: cloud), .web(URL(string: "https://acme.happybases.com/#/settings/providers/import")!))
+        // The phone has its own providers screens; importing falls back to adding.
+        XCTAssertEqual(SettingsLinkPlace.place(.providers, server: cloud), .providers(.providers))
+        XCTAssertEqual(SettingsLinkPlace.place(.providersAddOpenAI, server: cloud), .providers(.providersAddOpenAI))
+        XCTAssertEqual(SettingsLinkPlace.place(.providersImport, server: cloud), .providers(.providersAdd))
         XCTAssertEqual(SettingsLinkPlace.place(.members, server: cloud), .web(URL(string: "https://acme.happybases.com/#/settings/members")!))
         XCTAssertNil(SettingsLinkPlace.place(.providers, server: nil))
         XCTAssertNil(SettingsLinkPlace.place(.providers, server: "https://team.example"))

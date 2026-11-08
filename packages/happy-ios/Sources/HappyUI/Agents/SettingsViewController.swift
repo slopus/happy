@@ -499,6 +499,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                     Row(Index.appearance, action: { [weak self] in self?.open(.appearance) }),
                     Row(Index.agentVoice, value: voiceValue(), action: { [weak self] in self?.open(.agentVoice) }),
                     Row(Index.agents, action: { [weak self] in self?.open(.agents) }),
+                ] + providersRows(id) + [
                     Row(Index.dataStorage, action: { [weak self] in self?.open(.dataStorage) }),
                 ],
                 [analyticsRow()],
@@ -752,6 +753,15 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             Row(Index.eula, action: { [weak self] in self?.openBrowser(Strings.Links.eula) }),
             Row(Index.version, value: SettingsIndexModel.versionDetail(version: context.version, variant: context.variant), accessory: .none, action: { [weak self] in self?.versionTapped() }),
         ].withFooter(aboutFooter)
+    }
+
+    /// A Happy Cloud server's AI providers: the connections its chats run on.
+    private func providersRows(_ id: String) -> [SettingsRow] {
+        guard let session = Session.session(for: id, context: context), session.isCloud else { return [] }
+        return [SettingsRow(SettingsIndex.providers, action: { [weak self] in
+            guard let self else { return }
+            ProvidersViewController.open(.providers, session: session, from: self)
+        })]
     }
 
     /// The relay app's words, about keys kept on this phone, aren't true

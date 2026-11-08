@@ -214,6 +214,89 @@ final class HappyCloudUITests: XCTestCase {
     /// "Edit name" on the server's picture renames the server
     /// (`TEST_RUNNER_RENAME_SERVER`), then puts its name back; a viewer
     /// (`TEST_RUNNER_ROLE` `viewer`) isn't offered it.
+    /// AI providers on a live server (`PROVIDERS_SERVER`): the list, the
+    /// chooser offering what the server runs, and a refused key answered
+    /// with the server's words. The key is a made-up one.
+    func testGProvidersAreListedAndARefusedKeySaysWhy() throws {
+        guard let login = env["QA_LOGIN"], let password = env["QA_PASSWORD"], let server = env["PROVIDERS_SERVER"] else { throw XCTSkip("no providers run") }
+        app.launch()
+        signInWithTestAccount(login: login, password: password)
+        let card = element("cloud-server-\(server)")
+        require(card.waitForExistence(timeout: 30), "@\(server) isn't among \(login)'s servers")
+        card.tap()
+        let switcher = element("account-switcher")
+        require(switcher.waitForExistence(timeout: 120), "no home of @\(server)")
+        Thread.sleep(forTimeInterval: 4)
+        let gear = app.buttons["settings"].firstMatch
+        require(gear.waitForExistence(timeout: 5), "no settings on the home")
+        gear.tap()
+        let row = app.descendants(matching: .any).matching(NSPredicate(format: "label == 'AI providers'")).firstMatch
+        for _ in 0..<4 where !row.isHittable { app.swipeUp() }
+        require(row.waitForExistence(timeout: 10), "no AI providers in Settings")
+        capture("40-settings")
+        row.tap()
+        let free = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Happy (free)'")).firstMatch
+        require(free.waitForExistence(timeout: 20), "no Happy (free) connection")
+        Thread.sleep(forTimeInterval: 1)
+        capture("41-providers")
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == 'Add a provider'")).firstMatch.tap()
+        let key = app.buttons["Add API key · OpenAI"]
+        require(key.waitForExistence(timeout: 10), "no chooser")
+        XCTAssertTrue(app.buttons["Add API key · Grok"].exists, "no Grok key form in the chooser")
+        Thread.sleep(forTimeInterval: 1)
+        capture("42-chooser")
+        key.tap()
+        let mine = app.buttons["My account"]
+        if mine.waitForExistence(timeout: 5) {
+            capture("43-save-to")
+            mine.tap()
+        }
+        let field = app.secureTextFields["provider-secret"]
+        require(field.waitForExistence(timeout: 10), "no key field")
+        field.tap()
+        field.typeText("sk-not-a-real-key")
+        capture("44-key")
+        app.alerts.buttons["Connect"].tap()
+        let refused = app.alerts["Couldn’t add the key"]
+        require(refused.waitForExistence(timeout: 40), "no refusal")
+        Thread.sleep(forTimeInterval: 1)
+        capture("45-refused")
+        refused.buttons["Cancel"].tap()
+
+        // ChatGPT's device sign-in, on the server: a code to enter at
+        // OpenAI, then cancelled. No token ever reaches the phone.
+        let add = app.descendants(matching: .any).matching(NSPredicate(format: "label == 'Add a provider'")).firstMatch
+        require(add.waitForExistence(timeout: 10), "no Add after the refusal")
+        add.tap()
+        let chatGPT = app.buttons["Sign in with ChatGPT"]
+        require(chatGPT.waitForExistence(timeout: 10), "the server's ChatGPT sign-in isn't offered")
+        chatGPT.tap()
+        if mine.waitForExistence(timeout: 5) { mine.tap() }
+        let code = app.staticTexts["provider-device-code"]
+        require(code.waitForExistence(timeout: 20), "no device screen")
+        let shown = NSPredicate(format: "label MATCHES '[A-Z0-9]{3,}-[A-Z0-9]{3,}'")
+        require(XCTWaiter.wait(for: [expectation(for: shown, evaluatedWith: code)], timeout: 120) == .completed, "no code from OpenAI: \(code.label)")
+        XCTAssertTrue(app.buttons["provider-device-open"].isEnabled, "Open OpenAI is off")
+        capture("46-device-code")
+        app.buttons["provider-device-cancel"].tap()
+        require(add.waitForExistence(timeout: 10), "cancel didn't come back to the list")
+
+        // Claude's: its page to open, and a field for the code it shows.
+        add.tap()
+        let claude = app.buttons["Sign in with Claude"]
+        require(claude.waitForExistence(timeout: 10), "the server's Claude sign-in isn't offered")
+        claude.tap()
+        if mine.waitForExistence(timeout: 5) { mine.tap() }
+        let open = app.buttons["provider-claude-open"]
+        require(open.waitForExistence(timeout: 20), "no Claude screen")
+        require(XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: open)], timeout: 120) == .completed, "Claude's page never came")
+        XCTAssertTrue(app.textFields["provider-claude-code"].exists, "no code field")
+        XCTAssertTrue(app.buttons["provider-claude-token"].exists, "the live server offers setup tokens")
+        capture("47-claude")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        require(add.waitForExistence(timeout: 10), "back didn't come to the list")
+    }
+
     func testEServerIsRenamedFromItsSettings() throws {
         guard let login = env["QA_LOGIN"], let password = env["QA_PASSWORD"], let server = env["RENAME_SERVER"] else { throw XCTSkip("no rename run") }
         let owner = env["ROLE"] != "viewer"

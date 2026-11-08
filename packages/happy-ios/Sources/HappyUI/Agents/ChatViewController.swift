@@ -2037,7 +2037,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     /// A link in a row: the reference it names, else the web.
     private func open(link: String) {
         if let reference = HappyReferences.reference(link: link) { open(reference) }
-        else if let page = SettingsLinkPlace.page(link) { SettingsLinks.open(page, session: session, from: self) }
+        else if let page = SettingsLinkPlace.page(link) { SettingsLinks.open(page, options: HappyLink(link)?.providerOptions ?? .init(), session: session, from: self) }
         else if let file = ChatLinks.file(link) { open(file) }
         else if HappyLink.isHappyURL(link) { return }
         else if let url = URL(string: link) { openBrowser(url, session: session, agentID: media.agentId) }

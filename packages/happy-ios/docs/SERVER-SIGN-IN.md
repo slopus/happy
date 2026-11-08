@@ -436,7 +436,13 @@ ported from happy-agent-client's `happyLinks.ts`.
   agent's message one is drawn as a link and opens where
   `SettingsLinkPlace` says: `general` Settings, `account` Profile, `voice`
   the computer's Voice row, `servers` Happy Cloud's servers (Settings off
-  Happy Cloud); every other page opens
+  Happy Cloud). `providers` opens the native AI providers list on Cloud.
+  Its `add` chooser offers the server's ChatGPT and Claude sign-ins,
+  Claude setup tokens when enabled, and OpenAI, Anthropic and Grok API
+  keys. `providers/add/api-key?vendor=openai|anthropic|grok` opens the
+  secure key form. Every add link accepts `to=private|team`, subject to
+  the member's permissions. Bedrock setup remains on desktop.
+  Every other page opens
   `https://<name>.happybases.com/#/settings/<page>` in the system browser
   on a Happy Cloud server, and nothing elsewhere. Opening one only
   navigates. A malformed or blank-labelled settings link is its words.

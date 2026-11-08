@@ -26,6 +26,7 @@ enum SettingsIndex {
     static var language: Entry { Entry(id: "language", title: Strings.SettingsLanguage.title, glyph: "language-outline", tile: .green) }
     static var voice: Entry { Entry(id: "voice", title: Strings.Voice.title, glyph: "mic-outline", tile: .orange) }
     static var agents: Entry { Entry(id: "agents", title: Strings.Settings.agents, glyph: "options-outline", tile: .teal) }
+    static var providers: Entry { Entry(id: "providers", title: Strings.Providers.title, glyph: "key-outline", tile: .indigo) }
     /// On Agents, this phone's own: whether home's microphone opens the task it starts.
     static var dictationOpensTask: Entry { Entry(id: "dictation-opens-task", title: Strings.Record.opensTask, glyph: "mic-outline", tile: .blue) }
     /// On Agents, this phone's own: whether dictation listens in two languages.
