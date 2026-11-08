@@ -81,14 +81,14 @@ private struct ProvidersTimedOut: Error {}
 final class HostedProvidersTests: XCTestCase {
     func testTheListChatGPTsDeviceSignInAndGrokKeys() async throws {
         let server = CloudProvidersServer()
-        let (list, navigation, window) = try await host(server)
+        let (list, navigation, window, session) = try await host(server)
 
         XCTAssertEqual(list.shownRowIDs, [["providers-add"], ["provider-operator:openai"], ["provider-anthropic", "credential-k1"], ["providers-mine-empty"]])
         XCTAssertEqual(list.shownRow("credential-k1")?.value, "Needs attention")
         XCTAssertEqual(list.shownFooters.last, "Only you can use these.")
         capture(window, "providers-list")
 
-        list.open(.providersAddOpenAI, destination: .mine)
+        try openLink("happy://settings/providers/add/openai", session: session, from: list)
         let device = try await until { navigation.topViewController as? DeviceSignInViewController }
         let code = try XCTUnwrap(Self.find(UILabel.self, in: device.view) { $0.accessibilityIdentifier == "provider-device-code" })
         _ = try await until(seconds: 8) { code.text == "ABCD-1234" ? true : nil }
@@ -109,8 +109,12 @@ final class HostedProvidersTests: XCTestCase {
         XCTAssertTrue(chooser.actions.contains { $0.title == "Add API key · Grok" })
         await withCheckedContinuation { done in list.dismiss(animated: false) { done.resume() } }
         for (destination, container) in [(CloudProvider.Destination.mine, "private"), (.team, "grok")] {
-            list.open(.providersAddAPIKey, vendor: "grok", destination: destination)
-            let form = try XCTUnwrap(list.presentedViewController as? UIAlertController)
+            if destination == .mine {
+                try openLink("happy://settings/providers/add/api-key?vendor=grok", session: session, from: list)
+            } else {
+                list.open(.providersAddAPIKey, vendor: "grok", destination: destination)
+            }
+            let form = try await until { list.presentedViewController as? UIAlertController }
             _ = try await until { form.transitionCoordinator == nil ? true : nil }
             XCTAssertEqual(form.message, "Grok")
             let field = try XCTUnwrap(form.textFields?.first)
@@ -133,10 +137,10 @@ final class HostedProvidersTests: XCTestCase {
 
     func testPrivateLinksNeverFallBackToTheTeam() async throws {
         let server = CloudProvidersServer(grants: ["providers.manage"])
-        let (list, navigation, _) = try await host(server)
-        for page in [HappyLink.SettingsPage.providersAddAPIKey, .providersAddOpenAI] {
-            list.open(page, vendor: page == .providersAddAPIKey ? "grok" : nil, destination: .mine)
-            let refusal = try XCTUnwrap(list.presentedViewController as? UIAlertController)
+        let (list, navigation, _, session) = try await host(server)
+        for suffix in ["api-key?vendor=grok&to=private", "openai?to=private"] {
+            try openLink("happy://settings/providers/add/\(suffix)", session: session, from: list)
+            let refusal = try await until { list.presentedViewController as? UIAlertController }
             XCTAssertEqual(refusal.title, "Can’t add to this connection")
             XCTAssertTrue(refusal.textFields?.isEmpty ?? true)
             XCTAssertTrue(navigation.topViewController === list)
@@ -148,9 +152,27 @@ final class HostedProvidersTests: XCTestCase {
         XCTAssertTrue(starts.isEmpty)
     }
 
+    func testDefaultPrivateLinksRequireAnExplicitTeamChoiceWithoutPrivateAccess() async throws {
+        let server = CloudProvidersServer(grants: ["providers.manage"])
+        let (list, navigation, _, session) = try await host(server)
+        for suffix in ["", "/api-key?vendor=grok", "/openai"] {
+            try openLink("happy://settings/providers/add\(suffix)", session: session, from: list)
+            let choice = try await until { list.presentedViewController as? UIAlertController }
+            XCTAssertEqual(choice.title, "Save to")
+            XCTAssertEqual(choice.actions.map(\.title), [Strings.Providers.team, Strings.Common.cancel])
+            XCTAssertTrue(choice.textFields?.isEmpty ?? true)
+            XCTAssertTrue(navigation.topViewController === list)
+            _ = try await until { choice.transitionCoordinator == nil ? true : nil }
+            await withCheckedContinuation { done in list.dismiss(animated: false) { done.resume() } }
+        }
+        let keys = await server.keys, starts = await server.started
+        XCTAssertTrue(keys.isEmpty)
+        XCTAssertTrue(starts.isEmpty)
+    }
+
     func testNativeBackCancelsChatGPTOnTheServer() async throws {
         let server = CloudProvidersServer(succeeds: false)
-        let (list, navigation, _) = try await host(server)
+        let (list, navigation, _, _) = try await host(server)
         list.open(.providersAddOpenAI, destination: .mine)
         let device = try await until { navigation.topViewController as? DeviceSignInViewController }
         let code = try XCTUnwrap(Self.find(UILabel.self, in: device.view) { $0.accessibilityIdentifier == "provider-device-code" })
@@ -162,7 +184,7 @@ final class HostedProvidersTests: XCTestCase {
 
     func testClaudesSetupTokenOpensFromItsOwnScreen() async throws {
         let server = CloudProvidersServer()
-        let (list, navigation, window) = try await host(server)
+        let (list, navigation, window, _) = try await host(server)
         let flows = ProviderFlows(client: AgentClient(transport: server, token: "t"), destination: .mine, host: list, added: {})
         let claude = ClaudeSignInViewController(flows: flows, offered: false, setupToken: true)
         navigation.pushViewController(claude, animated: false)
@@ -178,7 +200,7 @@ final class HostedProvidersTests: XCTestCase {
     func test501HidesTheSignInUntilCapabilitiesRefresh() async throws { try await unavailable(501) }
 
     private func unavailable(_ status: Int) async throws {
-        let (list, navigation, _) = try await host(CloudProvidersServer(startFailure: status))
+        let (list, navigation, _, _) = try await host(CloudProvidersServer(startFailure: status))
         XCTAssertTrue(list.chooser().actions.contains { $0.title == "Sign in with ChatGPT" })
         list.open(.providersAddOpenAI, destination: .mine)
         let device = try await until { navigation.topViewController as? DeviceSignInViewController }
@@ -189,7 +211,13 @@ final class HostedProvidersTests: XCTestCase {
         _ = try await until { list.chooser().actions.contains { $0.title == "Sign in with ChatGPT" } ? true : nil }
     }
 
-    private func host(_ server: CloudProvidersServer) async throws -> (ProvidersViewController, UINavigationController, UIWindow) {
+    private func openLink(_ url: String, session: Session, from list: ProvidersViewController) throws {
+        let link = try XCTUnwrap(HappyLink(url))
+        guard case .settings(let page) = link.target else { return XCTFail("not a settings link") }
+        ProvidersViewController.open(page, options: link.providerOptions, session: session, from: list)
+    }
+
+    private func host(_ server: CloudProvidersServer) async throws -> (ProvidersViewController, UINavigationController, UIWindow, Session) {
         let controller = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
@@ -220,7 +248,7 @@ final class HostedProvidersTests: XCTestCase {
 
         let deadline = Date().addingTimeInterval(5)
         while list.shownRow("provider-anthropic") == nil || list.shownRow("providers-add") == nil, Date() < deadline { try await Task.sleep(for: .milliseconds(20)) }
-        return (list, navigation, window)
+        return (list, navigation, window, session)
     }
 
     private func until<T>(seconds: Double = 5, _ value: () async -> T?) async throws -> T {

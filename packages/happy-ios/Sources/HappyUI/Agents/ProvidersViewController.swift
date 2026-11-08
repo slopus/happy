@@ -172,20 +172,7 @@ final class ProvidersViewController: SettingsPageViewController {
         }
         guard offered else { return choose(destination: destination) }
         let picked = destination ?? (allowed.count == 1 ? allowed[0] : nil)
-        guard let picked else {
-            let sheet = UIAlertController(title: Strings.Providers.saveTo, message: nil, preferredStyle: .actionSheet)
-            for option in allowed {
-                sheet.addAction(UIAlertAction(title: option == .mine ? Strings.Providers.mine : Strings.Providers.team, style: .default) { [weak self] _ in
-                    self?.open(page, vendor: vendor, destination: option)
-                })
-            }
-            sheet.addAction(UIAlertAction(title: Strings.Common.cancel, style: .cancel))
-            if let popover = sheet.popoverPresentationController {
-                popover.sourceView = view
-                popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1)
-            }
-            return present(sheet, animated: true)
-        }
+        guard let picked else { return chooseDestination(page, vendor: vendor) }
         let flows = ProviderFlows(client: session.client, destination: picked, host: self, unavailable: { [weak self] cli in
             self?.offer.signIns.remove(cli)
             self?.reload()
@@ -202,16 +189,37 @@ final class ProvidersViewController: SettingsPageViewController {
         }
     }
 
+    private func chooseDestination(_ page: HappyLink.SettingsPage, vendor: String?) {
+        let sheet = UIAlertController(title: Strings.Providers.saveTo, message: nil, preferredStyle: .actionSheet)
+        for option in CloudProvider.destinations(session.gate) {
+            sheet.addAction(UIAlertAction(title: option == .mine ? Strings.Providers.mine : Strings.Providers.team, style: .default) { [weak self] _ in
+                self?.open(page, vendor: vendor, destination: option)
+            })
+        }
+        sheet.addAction(UIAlertAction(title: Strings.Common.cancel, style: .cancel))
+        if let popover = sheet.popoverPresentationController {
+            popover.sourceView = view
+            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1)
+        }
+        present(sheet, animated: true)
+    }
+
     /// Opens a providers link (`happy://settings/providers…`) on `session`.
     static func open(_ page: HappyLink.SettingsPage, options: HappyLink.ProviderOptions = .init(), session: Session, from controller: UIViewController) {
         guard let navigation = controller.navigationController ?? (controller as? UINavigationController) else { return }
         let list = navigation.viewControllers.last as? ProvidersViewController ?? ProvidersViewController(session: session)
         if navigation.viewControllers.last !== list { navigation.pushViewController(list, animated: true) }
         guard page != .providers else { return }
-        let destination = options.destination.flatMap(CloudProvider.Destination.init(rawValue:))
+        // Add links default to private (§9); nil is reserved for the manual chooser.
+        let destination = options.destination.flatMap(CloudProvider.Destination.init(rawValue:)) ?? .mine
         Task { @MainActor in
             // The chooser offers only what the server runs: read that first.
             list.offer = await offer((try? await session.client.cloudProviderListing())?.offer, session.client)
+            let allowed = CloudProvider.destinations(session.gate)
+            if options.destination == nil, !allowed.contains(.mine), !allowed.isEmpty {
+                // A private default never silently becomes a shared credential.
+                return list.chooseDestination(page, vendor: options.vendor)
+            }
             list.open(page, vendor: options.vendor, destination: destination)
         }
     }
