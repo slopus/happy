@@ -65,7 +65,12 @@ data class UnsentWork(val task: NewTask, val choice: WorkChoice, val draft: Stri
  * [AgentConnectionException.Reason.Revoked]; any other non-2xx is a
  * [ConversationApiException].
  */
-open class ConversationApi(private val bytesRequest: AgentBytesRequest?, private val request: AgentRequest) {
+open class ConversationApi(
+    private val bytesRequest: AgentBytesRequest?,
+    private val request: AgentRequest,
+    /** A Happy Cloud server's: its models run on connections ([catalog]). */
+    private val cloud: Boolean = false,
+) {
     constructor(request: AgentRequest) : this(null, request)
 
     private suspend fun call(method: String, path: String, body: JsonElement? = null, category: RequestCategory = RequestCategory.Query): JsonObject =
@@ -117,7 +122,12 @@ open class ConversationApi(private val bytesRequest: AgentBytesRequest?, private
     }
 
     /** The models a message can run with, and the mode new work is sent with when nothing was picked. */
-    open suspend fun catalog(): ModeCatalog = ModeCatalog.parse(call("GET", "/v0/config"))
+    open suspend fun catalog(): ModeCatalog {
+        val catalog = ModeCatalog.parse(call("GET", "/v0/config"))
+        if (!cloud) return catalog
+        val connections = call("GET", "/v0/cloud/providers")["providers"].arr.orEmpty().mapNotNull { it.obj }.mapNotNull(com.slopus.happy.agent.CloudConnection::parse)
+        return ModeCatalog.withConnections(catalog, connections)
+    }
 
     /**
      * Sends [text] (and pictures) under the client's [id]: the same id again

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_providers_title">ИИ-провайдеры</string>
+    <string name="cloud_providers_included">Включено</string>
+    <string name="cloud_providers_team">Команда</string>
+    <string name="cloud_providers_mine">Мой аккаунт</string>
+    <string name="cloud_providers_free">Happy (бесплатно)</string>
+    <string name="cloud_providers_off">Выкл.</string>
+    <string name="cloud_providers_attention">Требует внимания</string>
+    <string name="cloud_providers_empty">Пока ничего не добавлено</string>
+    <string name="cloud_providers_add">Добавить</string>
+    <string name="cloud_providers_add_chatgpt">Войти через ChatGPT</string>
+    <string name="cloud_providers_add_claude">Войти через Claude</string>
+    <string name="cloud_providers_add_setup_token">Добавить токен Claude</string>
+    <string name="cloud_providers_add_key">Добавить API-ключ</string>
+    <string name="cloud_providers_save_to">Сохранить в</string>
+    <string name="cloud_providers_device_enter">Введите этот код на сайте OpenAI</string>
+    <string name="cloud_providers_open_openai">Открыть OpenAI</string>
+    <string name="cloud_providers_waiting">Ждём, пока вы закончите…</string>
+    <string name="cloud_providers_claude_body">Войдите в Claude в браузере, затем вставьте показанный код.</string>
+    <string name="cloud_providers_open_claude">Открыть Claude</string>
+    <string name="cloud_providers_code">Код</string>
+    <string name="cloud_providers_connect">Подключить</string>
+    <string name="cloud_providers_use_token">Использовать токен настройки</string>
+    <string name="cloud_providers_setup_token">Токен настройки</string>
+    <string name="cloud_providers_setup_token_hint">Из `claude setup-token` на вашем компьютере.</string>
+    <string name="cloud_providers_key">API-ключ</string>
+    <string name="cloud_providers_checking">Проверяем ключ…</string>
+    <string name="cloud_providers_chatgpt_done">ChatGPT подключён</string>
+    <string name="cloud_providers_claude_done">Claude подключён</string>
+    <string name="cloud_providers_key_done">API-ключ добавлен</string>
+    <string name="cloud_providers_expired">Код истёк</string>
+    <string name="cloud_providers_failed">Не удалось войти</string>
+    <string name="cloud_providers_key_failed">Не удалось добавить ключ</string>
+    <string name="cloud_providers_try_again">Повторить</string>
+    <string name="cloud_providers_unavailable">Не удалось загрузить провайдеров.</string>
+    <plurals name="cloud_providers_credentials">
+        <item quantity="one">%1$d ключ</item>
+        <item quantity="few">%1$d ключа</item>
+        <item quantity="many">%1$d ключей</item>
+        <item quantity="other">%1$d ключа</item>
+    </plurals>
+</resources>

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Happy Cloud's AI providers (ui/connection/CloudProviders.kt): the connections, and adding
+  ChatGPT, Claude and API keys. Copy shared with iOS (a77e1ac8).
+  Translated in values-*/ (AndroidStringsTranslatedTest).
+-->
+<resources>
+    <string name="cloud_providers_title">AI providers</string>
+    <string name="cloud_providers_included">Included</string>
+    <string name="cloud_providers_team">Team</string>
+    <string name="cloud_providers_mine">My account</string>
+    <string name="cloud_providers_free">Happy (free)</string>
+    <string name="cloud_providers_off">Off</string>
+    <string name="cloud_providers_attention">Needs attention</string>
+    <string name="cloud_providers_empty">Nothing added yet</string>
+    <string name="cloud_providers_add">Add</string>
+    <string name="cloud_providers_add_chatgpt">Sign in with ChatGPT</string>
+    <string name="cloud_providers_add_claude">Sign in with Claude</string>
+    <string name="cloud_providers_add_setup_token">Add Claude setup token</string>
+    <string name="cloud_providers_add_key">Add API key</string>
+    <string name="cloud_providers_save_to">Save to</string>
+    <string name="cloud_providers_device_enter">Enter this code at OpenAI</string>
+    <string name="cloud_providers_open_openai">Open OpenAI</string>
+    <string name="cloud_providers_waiting">Waiting for you to finish…</string>
+    <string name="cloud_providers_claude_body">Sign in to Claude in the browser, then paste the code it shows.</string>
+    <string name="cloud_providers_open_claude">Open Claude</string>
+    <string name="cloud_providers_code">Code</string>
+    <string name="cloud_providers_connect">Connect</string>
+    <string name="cloud_providers_use_token">Use a setup token instead</string>
+    <string name="cloud_providers_setup_token">Setup token</string>
+    <string name="cloud_providers_setup_token_hint">From `claude setup-token` on your computer.</string>
+    <string name="cloud_providers_key">API key</string>
+    <string name="cloud_providers_checking">Checking the key…</string>
+    <string name="cloud_providers_chatgpt_done">ChatGPT connected</string>
+    <string name="cloud_providers_claude_done">Claude connected</string>
+    <string name="cloud_providers_key_done">API key added</string>
+    <string name="cloud_providers_expired">Code expired</string>
+    <string name="cloud_providers_failed">Sign-in failed</string>
+    <string name="cloud_providers_key_failed">Couldn\'t add the key</string>
+    <string name="cloud_providers_try_again">Try again</string>
+    <string name="cloud_providers_unavailable">Couldn\'t load the providers.</string>
+    <plurals name="cloud_providers_credentials">
+        <item quantity="one">%1$d credential</item>
+        <item quantity="other">%1$d credentials</item>
+    </plurals>
+</resources>

@@ -95,7 +95,7 @@ class HappyLinks internal constructor(
     }
 
     private fun go(connectionId: String, link: HappyLink) {
-        if (link is HappyLink.Settings) nav.openSettingsLink(graph, connectionId, link.page, openWeb) else nav.openHappyLink(connectionId, link)
+        if (link is HappyLink.Settings) nav.openSettingsLink(graph, connectionId, link.page, openWeb, link.query) else nav.openHappyLink(connectionId, link)
     }
 
     companion object {

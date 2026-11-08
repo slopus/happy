@@ -177,6 +177,8 @@ class AgentSettingsActions(
     val onAgents: (() -> Unit)? = null,
     /** Members: who is on this Happy Cloud server, and leaving it; null for any other connection. */
     val onMembers: (() -> Unit)? = null,
+    /** AI providers: the Happy Cloud server's connections, and adding ChatGPT, Claude and API keys; null for any other connection. */
+    val onProviders: (() -> Unit)? = null,
     /** Disconnects this connection; asked for only after the person confirmed. */
     val onRemove: () -> Unit = {},
     /** Opens this connection's Chief of Staff with [prefix] typed, unsent; null where the person's role can't write to it. */
@@ -275,6 +277,14 @@ fun AgentConnectionSettingsScreen(
                         id = AgentSharingTags.ROW,
                         title = stringResource(R.string.sharing_title),
                         icon = { SettingsTile(Ionicon.PeopleOutline, SettingsTiles.blue) },
+                        onClick = open,
+                    )
+                },
+                actions.onProviders?.let { open ->
+                    SettingsEntry(
+                        id = CloudProvidersTags.ROW,
+                        title = stringResource(R.string.cloud_providers_title),
+                        icon = { SettingsTile(Ionicon.SparklesOutline, SettingsTiles.orange) },
                         onClick = open,
                     )
                 },
@@ -458,6 +468,7 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
             onSharing = { nav.navigate(AgentSharingRoute(connectionId)) },
             onAgents = { nav.navigate(AgentAgentsRoute(connectionId)) },
             onMembers = if (cloud) ({ nav.navigate(CloudMembersRoute(connectionId)) }) else null,
+            onProviders = if (cloud) ({ nav.openCloudProviders(connectionId) }) else null,
             onAskChief = if (askChief) ({ prefix -> nav.openChiefOfStaff(connectionId, prefix) }) else null,
             onRemove = {
                 if (switcher != null) switcher.removingFromSettings { removeAgentConnection(graph, connectionId) }

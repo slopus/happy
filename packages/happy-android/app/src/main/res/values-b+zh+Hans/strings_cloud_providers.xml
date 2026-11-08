@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_providers_title">AI 提供方</string>
+    <string name="cloud_providers_included">已包含</string>
+    <string name="cloud_providers_team">团队</string>
+    <string name="cloud_providers_mine">我的账户</string>
+    <string name="cloud_providers_free">Happy（免费）</string>
+    <string name="cloud_providers_off">已关闭</string>
+    <string name="cloud_providers_attention">需要处理</string>
+    <string name="cloud_providers_empty">尚未添加任何内容</string>
+    <string name="cloud_providers_add">添加</string>
+    <string name="cloud_providers_add_chatgpt">使用 ChatGPT 登录</string>
+    <string name="cloud_providers_add_claude">使用 Claude 登录</string>
+    <string name="cloud_providers_add_setup_token">添加 Claude 设置令牌</string>
+    <string name="cloud_providers_add_key">添加 API 密钥</string>
+    <string name="cloud_providers_save_to">保存到</string>
+    <string name="cloud_providers_device_enter">在 OpenAI 输入此代码</string>
+    <string name="cloud_providers_open_openai">打开 OpenAI</string>
+    <string name="cloud_providers_waiting">正在等待你完成…</string>
+    <string name="cloud_providers_claude_body">在浏览器中登录 Claude，然后粘贴显示的代码。</string>
+    <string name="cloud_providers_open_claude">打开 Claude</string>
+    <string name="cloud_providers_code">代码</string>
+    <string name="cloud_providers_connect">连接</string>
+    <string name="cloud_providers_use_token">改用设置令牌</string>
+    <string name="cloud_providers_setup_token">设置令牌</string>
+    <string name="cloud_providers_setup_token_hint">在你的电脑上运行 `claude setup-token` 获取。</string>
+    <string name="cloud_providers_key">API 密钥</string>
+    <string name="cloud_providers_checking">正在检查密钥…</string>
+    <string name="cloud_providers_chatgpt_done">已连接 ChatGPT</string>
+    <string name="cloud_providers_claude_done">已连接 Claude</string>
+    <string name="cloud_providers_key_done">已添加 API 密钥</string>
+    <string name="cloud_providers_expired">代码已过期</string>
+    <string name="cloud_providers_failed">登录失败</string>
+    <string name="cloud_providers_key_failed">无法添加密钥</string>
+    <string name="cloud_providers_try_again">重试</string>
+    <string name="cloud_providers_unavailable">无法加载提供方。</string>
+    <plurals name="cloud_providers_credentials">
+        <item quantity="other">%1$d 个凭据</item>
+    </plurals>
+</resources>

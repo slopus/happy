@@ -57,7 +57,7 @@ internal class AgentPageModel(private val session: AgentSession, private val age
     data class Read(val detail: AgentDetail? = null, val reading: Boolean = true, val error: Problem? = null)
 
     private val request = session.conversationRequest()
-    private val api = ConversationApi(request)
+    private val api = ConversationApi(bytesRequest = null, request = request, cloud = session.client.cloud)
     private val readState = MutableStateFlow(Read())
     val read: StateFlow<Read> = readState.asStateFlow()
     private val sharedFeed = SharedFeed(api, agentId) { readState.value.detail?.agent?.parentAgentId }

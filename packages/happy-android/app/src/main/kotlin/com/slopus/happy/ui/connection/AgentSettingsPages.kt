@@ -169,7 +169,7 @@ internal fun NavGraphBuilder.agentSettingsPages(graph: AppGraph, nav: NavHostCon
         // The computer's models, read each time the page opens, as a new chat reads them.
         val catalog by produceState<AgentModelsCatalog>(AgentModelsCatalog.Loading, session) {
             value = try {
-                AgentModelsCatalog.Ready(com.slopus.happy.conversation.ConversationApi(session.conversationRequest()).catalog())
+                AgentModelsCatalog.Ready(com.slopus.happy.conversation.ConversationApi(bytesRequest = null, request = session.conversationRequest(), cloud = session.client.cloud).catalog())
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
