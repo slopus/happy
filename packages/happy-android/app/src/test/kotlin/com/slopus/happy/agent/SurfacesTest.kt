@@ -11,6 +11,18 @@ import org.junit.Test
 /** Surfaces as the wire describes them, and the catalog of every one on the computer. */
 class SurfacesTest {
     @Test
+    fun policyVaultLockIsIndependentOfAccessAndNeverInferredFromTheName() {
+        for (access in listOf("none", "read", "write")) {
+            val wire = Wire.surface("v1", "Renamed", "vault").with("access", access).with("policyVault", true)
+            assertTrue(Surface.parse(wire)!!.showsLock)
+        }
+        assertFalse(Surface.parse(Wire.surface("v2", "Policy", "vault"))!!.showsLock)
+        assertFalse(Surface.parse(Wire.surface("v3", "Ordinary", "vault").with("policyVault", false))!!.showsLock)
+        assertFalse(Surface.parse(Wire.surface("d1", "Policy", "document").with("policyVault", true))!!.showsLock)
+        assertTrue(Surface.parse(Wire.surface("v4", "Private", "vault").with("access", "none"))!!.showsLock)
+    }
+
+    @Test
     fun aSingleUserAgentUsesNullForItsPersonsMembership() {
         val wire = Wire.surface("s1", "Plan", "document", mapOf("u1" to "1"))
         val original = AgentCatalog(surfaces = mapOf("s1" to wire), userId = null)

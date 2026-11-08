@@ -28,13 +28,23 @@ class SettingsLinksTest {
 
     @Test
     fun theRestAreTheServersWebSettingsOnHappyCloudAndNothingElsewhere() {
-        val web = HappyUrls.SETTINGS_PAGES - setOf("general", "account", "sharing", "voice", "servers", "members") - PROVIDERS
+        val web = HappyUrls.SETTINGS_PAGES - setOf("general", "account", "sharing", "voice", "servers", "members", "instructions", "mobile-access") - PROVIDERS
         for (page in web) {
             assertEquals(page, SettingsPlace.Web(HappyCloud.webSettings(cloud, page)!!), SettingsLinks.place(page, cloud, cloud = true))
             assertEquals("https://acme.${BuildConfig.HAPPY_CLOUD_WEB}/#/settings/$page", HappyCloud.webSettings(cloud, page))
             assertNull(page, SettingsLinks.place(page, desktop, cloud = false))
         }
         assertNull(SettingsLinks.place("members", desktop, cloud = false))
+    }
+
+    @Test
+    fun cloudInstructionsOpenDocumentsAndRemovedPagesNeverOpenTheWeb() {
+        assertEquals(SettingsPlace.Instructions, SettingsLinks.place("instructions", cloud, cloud = true))
+        assertNull(SettingsLinks.place("instructions", desktop, cloud = false))
+        for (page in listOf("mobile-access", "experimental", "dev", "server")) {
+            assertNull(page, SettingsLinks.place(page, cloud, cloud = true))
+            assertNull(page, SettingsLinks.place(page, desktop, cloud = false))
+        }
     }
 
     private val PROVIDERS = setOf("providers", "providers/import", "providers/add", "providers/add/openai", "providers/add/anthropic", "providers/add/api-key")

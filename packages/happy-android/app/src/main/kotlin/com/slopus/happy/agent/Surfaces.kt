@@ -74,6 +74,9 @@ data class Surface(
     /** The team's Policy vault (`policyVault`): its instructions and security rules, which keep their places. */
     val policyVault: Boolean = false,
 ) {
+    /** A Policy vault is marked even for its writers; an ordinary inaccessible vault is marked too. */
+    val showsLock: Boolean get() = type == SurfaceType.VAULT && (policyVault || access == VaultAccess.None)
+
     /** Whether [userId] is in it; for the paired person, whether it is in their list. */
     fun joinedBy(userId: String?): Boolean = members.any { it.userId == userId }
 

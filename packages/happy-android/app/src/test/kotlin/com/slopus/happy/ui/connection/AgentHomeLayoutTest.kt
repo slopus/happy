@@ -171,6 +171,19 @@ class AgentHomeLayoutTest {
         rule.setHappyContent(dark) { AgentHomeScreen("Studio", feed, status, accounts, actions) }
 
     @Test
+    fun aPolicyVaultKeepsTheNormalRowAndOpensItsDocuments() {
+        val policy = AgentFeedRow.Surface("policy", "Policy", "vault", locked = true)
+        show(AgentFeed(loaded = true, rows = listOf(policy)))
+        val row = rule.node(AgentHomeTags.row(policy.key))
+        assertDp("vault row height", 48, row.bounds.height)
+        val mark = rule.node(AgentHomeTags.ROW_MARK).bounds
+        assertDp("lock tile width", AgentHomeSpec.mark, mark.width)
+        assertDp("lock tile height", AgentHomeSpec.mark, mark.height)
+        row.performClick()
+        assertEquals(listOf(policy), surfaces)
+    }
+
+    @Test
     fun rowsHaveTheirHeightAndNoComposer() {
         show(feed())
         val top = rule.node(AgentHomeTags.row("section-places")).bounds
