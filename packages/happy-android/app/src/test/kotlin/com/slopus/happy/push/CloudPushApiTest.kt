@@ -13,7 +13,7 @@ class CloudPushApiTest {
     private val id = "4470b26d-5c8b-4921-9aad-b0a9a62a17a3"
     private val version = "24e65a60-b9a8-4ba4-9605-05d942595948"
     private val token = "HappyPushToken[0123456789ABCDEFGHIJKL]"
-    private val settings = """{"enabled":true,"hideMessageContent":true,"turnComplete":true,"needsInput":false,"messages":true}"""
+    private val settings = """{"enabled":true}"""
     private val registration = CloudPushRegistration(id, version, 1_796_688_000_000)
     private fun registered() = """{"registration":{"id":"$id","version":"$version","expiresAt":1796688000000}}"""
 
@@ -39,26 +39,24 @@ class CloudPushApiTest {
         assertEquals(Asked("PUT", "/v0/cloud/push/registrations/$id", """{"token":"$token","platform":"android","appId":"com.slopus.happy.dev","locale":"en-US"}""", emptyMap()), server.asked.single())
     }
 
-    @Test fun unregisterAndViewUseExactOpaqueVersionAndExplicitNull() = runTest {
+    @Test fun unregisterUsesExactOpaqueVersion() = runTest {
         val server = Server().apply { status = 204 }
         val api = api(server)
         api.unregister(registration)
-        api.view(registration, "agent-1")
-        api.view(registration, null)
-        assertEquals(listOf("DELETE", "PUT", "PUT"), server.asked.map { it.method })
-        assertEquals(listOf(null, """{"agentId":"agent-1"}""", """{"agentId":null}"""), server.asked.map { it.body })
+        assertEquals(listOf("DELETE"), server.asked.map { it.method })
+        assertNull(server.asked.single().body)
         assertTrue(server.asked.all { it.headers == mapOf("If-Match" to version) })
-        assertTrue(server.asked.drop(1).all { it.path == "/v0/cloud/push/registrations/$id/view" })
+        assertEquals("/v0/cloud/push/registrations/$id", server.asked.single().path)
     }
 
-    @Test fun settingsRequireAllFiveBooleansAndRoundTripUnchanged() = runTest {
+    @Test fun settingsRequireOnlyMasterSwitchAndRoundTripUnchanged() = runTest {
         val server = Server().apply { body = settings }
         val api = api(server)
         val result = api.settings()
-        assertEquals(CloudPushSettings(true, true, true, false, true), result)
+        assertEquals(CloudPushSettings(true), result)
         assertEquals(result, api.settings(result))
         assertEquals(settings, server.asked.last().body)
-        for (invalid in listOf("{}", settings.replace("\"hideMessageContent\":true,", ""), settings.replace("\"hideMessageContent\":true", "\"hideMessageContent\":null"))) {
+        for (invalid in listOf("{}", """{"enabled":null}""", """{"enabled":true,"hideMessageContent":true}""")) {
             server.body = invalid
             assertThrows(CloudPushException::class.java) { kotlinx.coroutines.runBlocking { api.settings() } }
         }
@@ -76,10 +74,10 @@ class CloudPushApiTest {
         }
     }
 
-    @Test fun staleViewConflictIsExposedWithoutBlindRetryOrServerErrorBody() = runTest {
-        val server = Server().apply { status = 409; body = """{"error":{"code":"stale","message":"$token"}}""" }
-        val error = assertThrows(CloudPushException::class.java) { kotlinx.coroutines.runBlocking { api(server).view(registration, "a1") } }
-        assertEquals(409, error.status)
+    @Test fun failedCleanupIsExposedWithoutBlindRetryOrServerErrorBody() = runTest {
+        val server = Server().apply { status = 503; body = """{"error":{"code":"unavailable","message":"$token"}}""" }
+        val error = assertThrows(CloudPushException::class.java) { kotlinx.coroutines.runBlocking { api(server).unregister(registration) } }
+        assertEquals(503, error.status)
         assertEquals("Cloud push request failed", error.message)
         assertNull(error.cause)
         assertEquals(1, server.asked.size)
