@@ -99,6 +99,7 @@ final class ConnectionRefreshLifecycleTests: XCTestCase {
         await delayed.release(0)
         await old.value
         XCTAssertEqual(page.refreshes, 0, "the old appearance supplied the new page")
+        XCTAssertNotNil(page.refreshTask, "the old appearance cleared the new read's handle")
         XCTAssertFalse(current.isCancelled)
         await delayed.release(1, path: .direct(endpoint: "192.0.2.1:1"))
         await current.value
