@@ -422,7 +422,9 @@ They carry its reference too (`"ref":"s3"`) when that leaves it unclear
 (another conversation has the same title under the same parents, or it has
 no name of its own yet: "New Task", "New Bot", "Untitled"), or the agent
 has no reference for it yet. No message IDs, block indexes or the
-computer's IDs reach the agent.
+computer's IDs reach the agent, but for one thing: a read gives each turn
+a reference (`t:3f`, below), the end of its ID, to page with, which never
+looks like a conversation's (`s3`).
 
 A piece is the agent's words between two of its steps: the words before a
 tool call, or after the last one (on iOS a `ChatItem` of role `.agent`;
@@ -522,26 +524,66 @@ the agent last answered (`lastAgentReply`, the end of the newest run with
 words), its `workspace` (the project and worktree headings it sits under,
 `App / Feature`; a bot or task has a workspace of its own and none is
 given, and the computer gives the phone no folder paths), its `model`
-(`{id,name,effort}`, what its next message goes with), then the last five
-turns, five in all. Never its reference, kind or status: the directory has
+(`{id,name,effort}`, what its next message goes with), the `models` it can
+switch to (`[{id,name,efforts}]`, at most 30: the composer's model
+picker's, each shown account's switched-on models less those it hides),
+then its turns. Never its reference, kind or status: the directory has
 those. Each turn is the person's message that started it and the agent's
 last words (the turn's copy text, never its commentary between steps, tool
 output or words still streaming), or as much of that pair as there is: a
 turn steered or stopped before an answer has only the person's message, one
 with no message of the person's only the agent's words, one an error ended
 its `error`. The person's latest message, when no finished turn answers it
-yet, is the fifth, labelled `pendingUserMessage`, so then four finished
-turns come with it. The agent's words are cut at 8 KB, about 1,000 words
-(two pages), and the person's at 2 KB, each after a whole word, ending
-`… (cut, N more words)`, with `"truncated":true` on the turn. The whole is
-within 56 KB as it goes on the wire, counted with each character as escaped
-in the call SDK's own JSON (`escapedSize`; a data channel message is at most
-64 KB): the oldest turns give way, `olderTurns` says more exist, and the
-newest stays whole. Five turns of 1,000 words of prose (about 6 KB each) all
-fit. It also lists
-the `models` the conversation can switch to (`[{id,name,efforts}]`, at most
-30: the composer's model picker's, each shown account's switched-on models
-less those it hides).
+yet, is the newest turn, apart as `pendingUserMessage`.
+
+**Paging.** A read goes backwards, from the newest turn into older ones,
+and the unit is the turn (the pair above, or the message waiting for an
+answer), never a single message: a turn is what the person thinks of as one
+exchange, and the agent's words between its steps are never read, so
+counting messages would count what can't be seen.
+
+- Every turn carries its `ref`: `t:` and the end of its ID on the computer
+  (its run's, or the waiting message's own), two characters, or as many
+  more as tell it from every other turn the phone has of that
+  conversation. `t:` keeps it apart from a conversation's `s3`; a ref given
+  as `from` or `backTo` that is an `s` ref is refused as one.
+- `from` is where the read starts: a turn's ref, or a number of turns back
+  from the newest, `0` the newest (a JSON integer or digits in a string).
+  `backTo` is where it stops, older than `from`, the same way. No `from`:
+  the newest. No `backTo`: five turns in all. With both, that range, its
+  ends included in either order, at most 50 turns. `backTo` past the oldest
+  reads to the oldest; `from` past it is refused, with how many there are.
+- A ref that fits no turn, or several, is refused (`ok` false): `No turn
+  t:zz in this conversation. Use a ref from one of its reads.`, or `t:3f
+  fits several turns: t:a3f, t:b3f. Use one of those.`
+- `turns` is oldest first. `olderTurns` says older turns exist;
+  `continueFrom`, the ref of the next older one, is where a read further
+  back starts, given whenever the phone has it. The phone reads back
+  through the turns it holds of a conversation, its newest page (100 runs
+  on both platforms, as the chat keeps them); past those, `olderTurns`
+  with no `continueFrom` says the rest are in the app only.
+- No arguments is the five newest turns, as before paging.
+
+**Words.** `words` (default 500, 20 to 5,000; a number outside is taken as
+the nearest end) bounds each message, the person's and the agent's alike,
+in place of the old 8 KB and 2 KB cuts. A message past it, or past ten
+bytes of UTF-8 a word (code, long names, text with no spaces), is cut in
+the middle: its first half of `words` and its last half, each at a whole
+word (a single word too long for half the bytes is cut between
+characters), with `… (N words left out) …` between them. The turn says
+so in `cut`, by message: `"cut":{"assistant":{"words":3400,"leftOut":2900}}`
+(`pendingUserMessage.cut` is `{words,leftOut}`), so the agent knows how
+much more there is and can read that turn alone (`from` and `backTo` its
+ref) with a higher `words`. Words are runs of anything but spaces, tabs
+and line breaks; `words` 500 is about two pages. An error is cut at 1 KB,
+as before.
+
+**On the wire.** The whole read is within 56 KB as it goes on the wire,
+counted with each character as escaped in the call SDK's own JSON
+(`escapedSize`; a data channel message is at most 64 KB): the oldest turns
+of the range give way first, `continueFrom` then naming the newest of
+those left out; one turn alone too big has its `words` halved until it
+fits. Five turns of 500-word messages take about 30 KB.
 
 **A read is current, or says it may not be.** What the phone keeps of a
 conversation (its kept runs and outbox, shown at once when it opens) is
@@ -564,13 +606,16 @@ a moment ago, is current already and answers at once. Otherwise:
   held: the person can go on talking, and the agent answers them meanwhile.
 - The refresh goes on in the background for up to 8 s more (`refresh`),
   then the read goes as a cue (`conversation_read`, below) with the same
-  fields as a read, current or as the phone has it then.
+  fields as a read, current or as the phone has it then, paged as it was
+  asked (`from`, `backTo`, `words`, refs and `continueFrom` alike). A ref
+  that fits no turn once it is in makes the cue `ok` false, with why.
 - A read the computer didn't make current in time carries `"stale":true`
   and `checked`, when the phone last read it from the computer (`{ago,at}`,
   kept with the conversation; absent if never). The prompt has the agent
   say it may be out of date, and how old it is.
 - Another read of the same conversation while one is on its way answers
-  `checking` too and joins it: one refresh, one cue. A read that comes in
+  `checking` too and joins it: one refresh, and one cue for each different
+  ask (the same `from`, `backTo` and `words` twice is one). A read that comes in
   after the call ended or restarted is told to nobody.
 
 Why a cue and not a slower answer: the hosted tools are `execution_mode`
@@ -791,7 +836,17 @@ setting, never an edit of the one a shipped build calls. A new tool is
 created (`POST /v1/convai/tools`) and attached through the agent's
 `conversation_config.agent.prompt.tool_ids`, which lists them all. As of
 2026-11-06 v3's descriptions and parameters are the ones below, word for
-word.
+word, but for `readConversation`'s: below is its paged version (the
+description, and `from`, `backTo` and `words`), which the phone answers
+and which is not on the hosted tool yet. The hosted one has `ref` alone and
+the description "Read one conversation before you summarise it: whether it
+is working or needs the person, its last five turns, when the person last
+wrote and the agent last replied, its workspace, its model and effort and
+the ones it can switch to. On a team, who wrote each message. It doesn't
+open the conversation or change the screen." Until it is uploaded the agent
+never pages, and every read is the five newest turns, 500 words a message.
+A build from before paging that is handed the new parameters reads only
+`ref` and answers as it did: five turns, no refs, its old cuts.
 
 ### Settings
 
@@ -834,7 +889,7 @@ What you know comes from {{initialConversationContext}} and from contextual upda
 
 Tools:
 - listConversations: find conversations, ones started since the call began too, with when each last did something; query is a case-insensitive substring of the title.
-- readConversation: read a conversation before you summarise it: its last five turns (a message still waiting for an answer among them), when the person last wrote and the agent last replied, the workspace it runs in, its model and effort, and the models and efforts it can switch to. On a team, several people may write in one conversation: userBy and by say who wrote each message, "the person" being the one on this call. If it answers "checking", it is fetching the latest from the computer: say in a few words that you're checking and carry on with whatever the person says meanwhile; the read comes later as an [app] conversation_read.
+- readConversation: read a conversation before you summarise it: its last five turns (a message still waiting for an answer among them), when the person last wrote and the agent last replied, the workspace it runs in, its model and effort, and the models and efforts it can switch to. On a team, several people may write in one conversation: userBy and by say who wrote each message, "the person" being the one on this call. Each turn has a ref (t:3f), never a conversation's: to read further back, pass from (a turn's ref, or how many turns back with 0 the newest; continueFrom gives the next) and, for a range, backTo. A message cut in the middle has cut with its whole length in words: to hear it all, read that turn alone (from and backTo its ref) with a higher words. If it answers "checking", it is fetching the latest from the computer: say in a few words that you're checking and carry on with whatever the person says meanwhile; the read comes later as an [app] conversation_read.
 - message: send words to a conversation's agent, or start new work with them. to is the conversation's ref, new-task or new-bot; leave it out for the conversation on screen.
 - navigate: change the screen. to is one of the context's destinations: happy://home, happy://back, or happy://conversation/ followed by a ref, such as happy://conversation/s3. happy://call/restart restarts the call instead (see Cues).
 
@@ -907,7 +962,7 @@ and the code differ.
 {
   "type": "client",
   "name": "readConversation",
-  "description": "Read one conversation before you summarise it: whether it is working or needs the person, its last five turns, when the person last wrote and the agent last replied, its workspace, its model and effort and the ones it can switch to. On a team, who wrote each message. It doesn't open the conversation or change the screen.",
+  "description": "Read one conversation before you summarise it: whether it is working or needs the person, when the person last wrote and the agent last replied, its workspace, its model and effort and the ones it can switch to, and its turns, by default its last five. It reads backwards: each turn has a ref (t:3f) to read further back from, and continueFrom says where the next read back starts. A message longer than words is cut in the middle, and cut says how long it is. On a team, who wrote each message. It doesn't open the conversation or change the screen.",
   "expects_response": true,
   "response_timeout_secs": 10,
   "parameters": {
@@ -916,6 +971,18 @@ and the code differ.
       "ref": {
         "type": "string",
         "description": "A conversation ref (s1, s2, ...) from the context or listConversations. Never a title."
+      },
+      "from": {
+        "type": "string",
+        "description": "Where to start reading, going back: a turn's ref (t:3f) from an earlier read, or a number of turns back from the newest (0, the default, is the newest)."
+      },
+      "backTo": {
+        "type": "string",
+        "description": "Where to stop, older than from: a turn's ref or a number of turns back, as from. Omit for five turns in all. At most 50 turns a read."
+      },
+      "words": {
+        "type": "integer",
+        "description": "The most words of each message; past that it is cut in the middle. Default 500, at most 5000: raise it to read a cut message whole."
       }
     },
     "required": [
@@ -991,7 +1058,7 @@ What the phone answers (JSON in the tool result):
 | Tool | Success | Refusal (`isError`) |
 | --- | --- | --- |
 | listConversations | `{"conversations":[{ref,title,kind,status,parents?,workspace?,lastActivity?:{ago,at}}],"now","nextCursor"?}`; `kind` is `bot`, `task`, `subtask` or `conversation` | query or cursor not a string, a cursor it didn't give |
-| readConversation | `{title,parents,working,needsInput,turns:[{user?,userBy?,assistant?,ended,error?,truncated?}],olderTurns,pendingUserMessage?:{text,by?,delivery?,truncated?}}`, also `lastUserMessage?:{ago,at,by?}`, `lastAgentReply?`, `workspace?`, `model?:{id,name,effort}`, `models?:[{id,name,efforts}]`, `stale?`, `checked?:{ago,at}`; or, not current within 1 s, `{"status":"checking","ref":…,"title":…,"note":…}`, the read following as a `conversation_read` cue | no such conversation (or not listed now), can't be read now, a new-work ref |
+| readConversation | `{title,parents,working,needsInput,turns:[{ref,user?,userBy?,assistant?,ended,error?,cut?:{user?:{words,leftOut},assistant?:{words,leftOut}}}],olderTurns,continueFrom?,pendingUserMessage?:{ref,text,by?,delivery?,cut?:{words,leftOut}}}`, also `lastUserMessage?:{ago,at,by?}`, `lastAgentReply?`, `workspace?`, `model?:{id,name,effort}`, `models?:[{id,name,efforts}]`, `stale?`, `checked?:{ago,at}`; or, not current within 1 s, `{"status":"checking","ref":…,"title":…,"note":…}`, the read following as a `conversation_read` cue | no such conversation (or not listed now), can't be read now, a new-work ref; `from` or `backTo` not a turn's ref or a number (or an `s` ref), a ref that fits no turn or several, `from` past the oldest; `words` not a number |
 | message | `{"status":"queued","ref":…,"delivery":"on the person's device, not confirmed delivered or read"}`, with `model` and `effort` when it switched them, and the `title` when `to` was left out; to `new-task` or `new-bot` also `"started":"task"\|"bot"`, the `title`, the new work's own `ref`, and always the `model` and `effort` it starts on | `{"status":"uncertain",…}` after 8 s; no conversation on screen and no `to`; no such conversation; can't take a message; waits for the person; empty; over 8 KiB; call ended; a model or effort it doesn't offer, with the `models` it does (nothing is sent) |
 | navigate to `happy://conversation/<ref>` | `{"opened":true,"ref":…,"focusRevision":…}`, the revision the next step takes | stale focus, no such conversation, a new-work ref, didn't open |
 | navigate to `happy://back` | `{"home":…,"focusRevision":…,"title":…\|null,"parents"?,"ref"?}`: where it landed | stale focus; at home, nothing to go back to; an alert is open |

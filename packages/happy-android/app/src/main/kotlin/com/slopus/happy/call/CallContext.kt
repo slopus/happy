@@ -20,6 +20,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import java.time.Instant
@@ -90,17 +91,17 @@ class CallContext(
         /**
          * A read (`readConversation`), as it goes on the wire ([escapedSize]):
          * one escaped string in a data channel message, which LiveKit takes up
-         * to 65,535 bytes (64,000 on iOS), its envelope beside it. Five turns of
-         * a whole reply each fit as prose does.
+         * to 65,535 bytes (64,000 on iOS), its envelope beside it. A read pages
+         * and cuts its messages by words ([CallRead]) within it.
          */
         const val READ_BYTES = 56 * 1024
         /**
-         * Turns a read shows, the person's message still waiting for an answer
+         * Turns the first context shows, the person's message still waiting for an answer
          * counted as one: each the person's message and the agent's last
          * words, or as much of the pair as there is.
          */
         const val TURNS = 5
-        /** One of the agent's messages: a thousand words of technical prose, Markdown and all (6.3 to 7.3 bytes a word in this repository's docs). */
+        /** One of the agent's messages in the first context and in updates: a thousand words of technical prose, Markdown and all (6.3 to 7.3 bytes a word in this repository's docs). */
         const val REPLY_BYTES = 8 * 1024
         /** One of the person's own, a third of that. */
         const val USER_BYTES = 2 * 1024
@@ -166,8 +167,13 @@ class CallContext(
     private var tail: Job? = null
     private var closed = false
     private var restart: (suspend () -> CallToolResult)? = null
-    /** Reads that answered `checking`, by conversation, still on their way: another read of one joins it, and the one cue answers both. */
-    private val reading = HashMap<String, Deferred<CallTargetState?>>()
+    /**
+     * Reads that answered `checking`, by conversation, still on their way, with what each asked for: another read of
+     * one joins its refresh, and one cue answers each different ask.
+     */
+    private val reading = HashMap<String, Pending>()
+
+    private class Pending(val refresh: Deferred<CallTargetState?>, val requests: MutableList<CallRead.Request>)
     private var onReading: ((CallReading) -> Unit)? = null
 
     /**
@@ -201,7 +207,7 @@ class CallContext(
     suspend fun close() = withContext(lane) {
         closed = true
         for (task in results.values) task.cancel()
-        for (task in reading.values) task.cancel()
+        for (pending in reading.values) pending.refresh.cancel()
         reading.clear()
         scope.cancel()
     }
@@ -698,21 +704,27 @@ class CallContext(
             CallTool.ReadConversation -> {
                 unmade(arguments["ref"])?.let { return it }
                 val id = resolve(arguments["ref"]) ?: return CallToolResult.refused("No such conversation.")
+                val (request, refusal) = CallRead.request(arguments)
+                if (request == null) return CallToolResult.refused(refusal ?: "")
                 // One on its way already: its cue answers this read too.
-                if (reading[id] != null) return checking(id)
+                reading[id]?.let { pending ->
+                    if (request !in pending.requests) pending.requests += request
+                    return checking(id)
+                }
                 // Made current first, as opening it would; what doesn't come in time is told when it does, and the
                 // voice goes on meanwhile.
                 val refresh = scope.async { targets.refreshed(id, refreshMillis) }
                 val early = withTimeoutOrNull(readGraceMillis) { Arrived(refresh.await()) }
                 if (early != null) {
                     val state = early.state ?: return CallToolResult.refused("That conversation can't be read now.")
-                    return CallToolResult.json(read(state))
+                    val value = read(state, request)
+                    return CallToolResult.json(value, isError = (value["ok"] as? JsonPrimitive)?.booleanOrNull == false)
                 }
                 if (closed) {
                     refresh.cancel()
                     return CallToolResult.refused("The call has ended.")
                 }
-                reading[id] = refresh
+                reading[id] = Pending(refresh, mutableListOf(request))
                 scope.launch {
                     val state = try { refresh.await() } catch (_: kotlinx.coroutines.CancellationException) { return@launch }
                     tell(id, state)
@@ -935,26 +947,37 @@ class CallContext(
     private class Arrived(val state: CallTargetState?)
 
     /**
-     * A read as `readConversation` gives it, [extra] going with it (a cue's event and ref): its name, state and last
-     * turns, within [Limits.READ_BYTES] on the wire, the older turns giving way first and the newest whole. One that
-     * isn't current says so (`stale`), with when this phone last read it from the computer (`checked`).
+     * A read as `readConversation` gives it, [extra] going with it (a cue's event and ref): its name, state and the
+     * turns [request] asks for ([CallRead]), each message cut in the middle past its words, within
+     * [Limits.READ_BYTES] on the wire: the older turns give way first, then the newest's words. One that isn't current
+     * says so (`stale`), with when this phone last read it from the computer (`checked`). A reference that fits no
+     * turn, or several, is refused (`ok` false).
      */
-    private fun read(state: CallTargetState, extra: Map<String, JsonElement> = emptyMap()): JsonObject {
+    private fun read(state: CallTargetState, request: CallRead.Request = CallRead.Request(), extra: Map<String, JsonElement> = emptyMap()): JsonObject {
         // Asked for by its reference, it is named by its title alone.
         val name = linkedMapOf<String, JsonElement>(
             "title" to JsonPrimitive(state.target.title),
             "parents" to JsonArray(state.target.parents.map { JsonPrimitive(it.title) }),
         )
         name.putAll(extra)
+        val items = CallRead.items(state)
+        val references = CallRead.references(items.map { it.id })
+        val range = when (val found = CallRead.range(request, items, references, state.hasMore)) {
+            is CallRead.Refusal -> return JsonObject(extra + mapOf("ok" to JsonPrimitive(false), "reason" to JsonPrimitive(found.reason)))
+            else -> found as IntRange?
+        }
         if (!state.fresh) {
             name["stale"] = JsonPrimitive(true)
             state.checkedAt?.takeIf { it > 0 }?.let { name["checked"] = moment(it) }
         }
-        val turns = recent(state).toMutableList()
-        var value = body(state, turns, name, options = true)
-        while (escapedSize(CallJson.encode(value)) > Limits.READ_BYTES && turns.size > 1) {
-            turns.removeAt(0)
-            value = body(state, turns, name, options = true)
+        var shown = range ?: IntRange.EMPTY
+        var words = request.words
+        var value = body(state, items, references, shown, words, name)
+        while (escapedSize(CallJson.encode(value)) > Limits.READ_BYTES) {
+            if (shown.count() > 1) shown = shown.first + 1..shown.last
+            else if (words > CallRead.MIN_WORDS) words = maxOf(CallRead.MIN_WORDS, words / 2)
+            else break
+            value = body(state, items, references, shown, words, name)
         }
         return value
     }
@@ -968,15 +991,17 @@ class CallContext(
 
     /** A read that answered `checking`, in: told as a cue, stale if it didn't come current in time; nothing once the call has ended. */
     private fun tell(id: String, state: CallTargetState?) {
-        reading.remove(id)
+        val requests = reading.remove(id)?.requests.orEmpty()
         if (closed) return
         val event = linkedMapOf<String, JsonElement>("event" to JsonPrimitive("conversation_read"), "ref" to JsonPrimitive(ref(id)))
-        val value = if (state != null) {
-            read(state, event)
-        } else {
-            JsonObject(event + mapOf("ok" to JsonPrimitive(false), "reason" to JsonPrimitive("That conversation can't be read now.")))
+        for (request in requests) {
+            val value = if (state != null) {
+                read(state, request, event)
+            } else {
+                JsonObject(event + mapOf("ok" to JsonPrimitive(false), "reason" to JsonPrimitive("That conversation can't be read now.")))
+            }
+            onReading?.invoke(CallReading.Read(CallCue.ConversationRead(CallJson.encode(value))))
         }
-        onReading?.invoke(CallReading.Read(CallCue.ConversationRead(CallJson.encode(value))))
     }
 
     /** The conversation a reference names, while home lists it: one that went away isn't reached, and is again if it comes back, under the same reference. */
@@ -1033,11 +1058,12 @@ class CallContext(
         JsonObject(mapOf("ago" to JsonPrimitive(ago((now() - millis) / 1000)), "at" to JsonPrimitive(local(millis, zone))))
 
     /**
-     * A conversation as read: [name], then whether it works or waits for the
-     * person, and its turns. Never its kind, status or reference beyond what
-     * [name] holds: the directory has those.
+     * A conversation as read: [name], then whether it works or waits for the person, and the turns [shown] of [items],
+     * each with its reference, oldest first, the one waiting for an answer apart; where to read on back from
+     * (`continueFrom`) when older ones are here. Never its kind, status or reference beyond what [name] holds: the
+     * directory has those.
      */
-    private fun body(state: CallTargetState, turns: List<CallTurn>, name: Map<String, JsonElement>, options: Boolean): JsonObject {
+    private fun body(state: CallTargetState, items: List<CallRead.Item>, references: List<String>, shown: IntRange, words: Int, name: Map<String, JsonElement>): JsonObject {
         val value = LinkedHashMap(name)
         value["working"] = JsonPrimitive(state.working)
         value["needsInput"] = JsonPrimitive(state.needsInput)
@@ -1048,17 +1074,23 @@ class CallContext(
         state.turns.filter { !it.reply.isNullOrEmpty() }.mapNotNull { it.endedAt }.filter { it > 0 }.maxOrNull()?.let { value["lastAgentReply"] = moment(it) }
         if (state.target.workspace.isNotEmpty()) value["workspace"] = JsonPrimitive(state.target.workspace.joinToString(" / "))
         state.mode?.let { value["model"] = JsonObject(mapOf("id" to JsonPrimitive(it.modelId), "name" to JsonPrimitive(it.model), "effort" to JsonPrimitive(it.effort))) }
-        if (options && state.models.isNotEmpty()) value["models"] = models(state.models)
-        value["turns"] = JsonArray(turns.map(::turn))
-        value["olderTurns"] = JsonPrimitive(state.hasMore || answering(state).size > turns.size)
-        state.unanswered?.let { pending ->
-            val text = clipped(pending.text, Limits.USER_BYTES)
-            val message = linkedMapOf<String, JsonElement>("text" to JsonPrimitive(text))
-            if (text != pending.text) message["truncated"] = JsonPrimitive(true)
-            pending.delivery?.let { message["delivery"] = JsonPrimitive(it.wire) }
-            pending.by?.let { message["by"] = JsonPrimitive(it) }
-            value["pendingUserMessage"] = JsonObject(message)
+        if (state.models.isNotEmpty()) value["models"] = models(state.models)
+        val turns = ArrayList<JsonObject>()
+        for (index in shown) {
+            items[index].turn?.let { turns += turn(it, references[index], words) }
+            items[index].pending?.let { pending ->
+                val message = linkedMapOf<String, JsonElement>("ref" to JsonPrimitive(references[index]))
+                val cuts = linkedMapOf<String, JsonElement>()
+                message["text"] = JsonPrimitive(cut(pending.text, words, "text", cuts))
+                cuts["text"]?.let { message["cut"] = it }
+                pending.delivery?.let { message["delivery"] = JsonPrimitive(it.wire) }
+                pending.by?.let { message["by"] = JsonPrimitive(it) }
+                value["pendingUserMessage"] = JsonObject(message)
+            }
         }
+        value["turns"] = JsonArray(turns)
+        value["olderTurns"] = JsonPrimitive((!shown.isEmpty() && shown.first > 0) || state.hasMore)
+        if (!shown.isEmpty() && shown.first > 0) value["continueFrom"] = JsonPrimitive(references[shown.first - 1])
         return JsonObject(value)
     }
 
@@ -1251,21 +1283,28 @@ class CallContext(
         private fun answering(state: CallTargetState): List<CallTurn> =
             state.turns.filter { !it.user.isNullOrEmpty() || !it.reply.isNullOrEmpty() || it.ended == "error" }
 
-        fun turn(turn: CallTurn): JsonObject {
-            val value = linkedMapOf<String, JsonElement>("ended" to JsonPrimitive(turn.ended))
-            var cut = false
-            fun text(words: String?, key: String, bytes: Int) {
-                if (words.isNullOrEmpty()) return
-                val kept = clipped(words, bytes)
-                value[key] = JsonPrimitive(kept)
-                if (kept != words) cut = true
+        /**
+         * One turn as a read gives it: its reference, the person's message and the agent's last words, each cut in the
+         * middle past [words] with its whole size in `cut`, and how it ended.
+         */
+        fun turn(turn: CallTurn, ref: String, words: Int): JsonObject {
+            val value = linkedMapOf<String, JsonElement>("ref" to JsonPrimitive(ref), "ended" to JsonPrimitive(turn.ended))
+            val cuts = linkedMapOf<String, JsonElement>()
+            if (!turn.user.isNullOrEmpty()) {
+                value["user"] = JsonPrimitive(cut(turn.user, words, "user", cuts))
+                turn.userBy?.let { value["userBy"] = JsonPrimitive(it) }
             }
-            text(turn.user, "user", Limits.USER_BYTES)
-            if (!turn.user.isNullOrEmpty()) turn.userBy?.let { value["userBy"] = JsonPrimitive(it) }
-            text(turn.reply, "assistant", Limits.REPLY_BYTES)
+            if (!turn.reply.isNullOrEmpty()) value["assistant"] = JsonPrimitive(cut(turn.reply, words, "assistant", cuts))
             if (turn.ended == "error") turn.error?.takeIf { it.isNotEmpty() }?.let { value["error"] = JsonPrimitive(truncated(it, Limits.ERROR_BYTES)) }
-            if (cut) value["truncated"] = JsonPrimitive(true)
+            if (cuts.isNotEmpty()) value["cut"] = JsonObject(cuts)
             return JsonObject(value)
+        }
+
+        /** [text] within [words] ([CallRead.cut]), its whole size and what was left out put in [cuts] under [key] when it was cut. */
+        private fun cut(text: String, words: Int, key: String, cuts: MutableMap<String, JsonElement>): String {
+            val cut = CallRead.cut(text, words) ?: return text
+            cuts[key] = JsonObject(mapOf("words" to JsonPrimitive(cut.words), "leftOut" to JsonPrimitive(cut.leftOut)))
+            return cut.text
         }
 
         /**

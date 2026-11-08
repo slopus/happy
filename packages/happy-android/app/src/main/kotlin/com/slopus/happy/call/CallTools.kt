@@ -27,7 +27,7 @@ enum class CallTool(val wire: String) {
     /** The client tool's description, as the hosted agent shows it to the model. */
     val summary: String get() = when (this) {
         ListConversations -> "List the conversations the person sees in the app (bots, tasks, subtasks and project conversations), in the sidebar's order, with their ref, title, kind, status, parents and when each last did something. Use it to find conversations started or renamed since the call began. query keeps those whose title contains it as a case-insensitive substring. Page with nextCursor."
-        ReadConversation -> "Read one conversation before you summarise it: whether it is working or needs the person, its last five turns, when the person last wrote and the agent last replied, its workspace, its model and effort and the ones it can switch to. On a team, who wrote each message. It doesn't open the conversation or change the screen."
+        ReadConversation -> "Read one conversation before you summarise it: whether it is working or needs the person, when the person last wrote and the agent last replied, its workspace, its model and effort and the ones it can switch to, and its turns, by default its last five. It reads backwards: each turn has a ref (t:3f) to read further back from, and continueFrom says where the next read back starts. A message longer than words is cut in the middle, and cut says how long it is. On a team, who wrote each message. It doesn't open the conversation or change the screen."
         Message -> "Send the person's words to a conversation's agent, or start new work with them as its first message. Call it only when the person has explicitly asked you to send (\"send it\", \"send that to ...\", \"tell the backend bot to ...\"), never because you think they would want it sent. A working agent takes it too. It doesn't change the screen. \"queued\" means queued on the person's device, not confirmed delivered; after \"uncertain\", never send it again."
         Navigate -> "Change what is on the person's screen, as tapping would. Only when the person asks. to is one of the destinations listed in the context: happy://home (the home list), happy://back (one screen back, refused at home), or happy://conversation/<ref> (show that conversation)."
     }
@@ -39,7 +39,16 @@ enum class CallTool(val wire: String) {
             "cursor" to string("The nextCursor of the previous page; omit for the first."),
             required = emptyList(),
         )
-        ReadConversation -> schema("ref" to string("A conversation ref (s1, s2, ...) from the context or listConversations. Never a title."), required = listOf("ref"))
+        ReadConversation -> schema(
+            "ref" to string("A conversation ref (s1, s2, ...) from the context or listConversations. Never a title."),
+            "from" to string("Where to start reading, going back: a turn's ref (t:3f) from an earlier read, or a number of turns back from the newest (0, the default, is the newest)."),
+            "backTo" to string("Where to stop, older than from: a turn's ref or a number of turns back, as from. Omit for five turns in all. At most 50 turns a read."),
+            "words" to buildJsonObject {
+                put("type", "integer")
+                put("description", "The most words of each message; past that it is cut in the middle. Default 500, at most 5000: raise it to read a cut message whole.")
+            },
+            required = listOf("ref"),
+        )
         Message -> schema(
             "to" to string("Where to send: a conversation ref (s1, s2, ...) from the context or listConversations; new-task or new-bot to start new work, optionally named after a colon (new-bot:Release helper); omit for the conversation on screen."),
             "text" to string("The person's message, exactly as they asked to send it. At most 8 KiB of UTF-8."),
@@ -85,7 +94,7 @@ object CallPrompt {
 
         Tools:
         - listConversations: find conversations, ones started since the call began too, with when each last did something; query is a case-insensitive substring of the title.
-        - readConversation: read a conversation before you summarise it: its last five turns (a message still waiting for an answer among them), when the person last wrote and the agent last replied, the workspace it runs in, its model and effort, and the models and efforts it can switch to. On a team, several people may write in one conversation: userBy and by say who wrote each message, "the person" being the one on this call. If it answers "checking", it is fetching the latest from the computer: say in a few words that you're checking and carry on with whatever the person says meanwhile; the read comes later as an [app] conversation_read.
+        - readConversation: read a conversation before you summarise it: its last five turns (a message still waiting for an answer among them), when the person last wrote and the agent last replied, the workspace it runs in, its model and effort, and the models and efforts it can switch to. On a team, several people may write in one conversation: userBy and by say who wrote each message, "the person" being the one on this call. Each turn has a ref (t:3f), never a conversation's: to read further back, pass from (a turn's ref, or how many turns back with 0 the newest; continueFrom gives the next) and, for a range, backTo. A message cut in the middle has cut with its whole length in words: to hear it all, read that turn alone (from and backTo its ref) with a higher words. If it answers "checking", it is fetching the latest from the computer: say in a few words that you're checking and carry on with whatever the person says meanwhile; the read comes later as an [app] conversation_read.
         - message: send words to a conversation's agent, or start new work with them. to is the conversation's ref, new-task or new-bot; leave it out for the conversation on screen.
         - navigate: change the screen. to is one of the context's destinations: happy://home, happy://back, or happy://conversation/ followed by a ref, such as happy://conversation/s3. happy://call/restart restarts the call instead (see Cues).
 

@@ -171,26 +171,27 @@ final class CallContextTests: XCTestCase {
         // Each reply within its own limit, but escaped six bytes a character on the wire.
         let heavy = String(repeating: "<<<< ", count: 1600)
         await targets.set("a", CallTargetState(target: backendTarget, turns: (0..<6).map { CallTurn(id: "l\($0)", user: "ask \($0)", reply: heavy) }))
-        let big = await tool(context, "readConversation", #"{"ref":"s1"}"#)
+        let big = await tool(context, "readConversation", #"{"ref":"s1","words":5000}"#)
         XCTAssertLessThanOrEqual(CallContext.escapedSize(Data(big.text.utf8)), CallContext.Limits.readBytes)
         let shown = try XCTUnwrap(try object(big.text)["turns"] as? [[String: Any]])
         XCTAssertEqual(shown.map { $0["user"] as? String }, ["ask 5"])
         XCTAssertEqual(shown.first?["assistant"] as? String, heavy)
-        XCTAssertNil(shown.first?["truncated"])
+        XCTAssertNil(shown.first?["cut"])
     }
 
-    /// About a thousand words of the agent's come back whole: in a read,
-    /// five turns of them, and told as they come.
+    /// About a thousand words of the agent's come back whole: in a read
+    /// asking for a thousand words a message, five turns of them, and told
+    /// as they come.
     func testAThousandWordReplyComesBackWhole() async throws {
         XCTAssertEqual(thousandWords.split(separator: " ").count, 1000)
         let turns = (1...5).map { CallTurn(id: "r\($0)", user: "ask \($0)", reply: thousandWords) }
         let context = CallContext(targets: FakeCallTargets(directory: [backendTarget], states: ["a": CallTargetState(target: backendTarget, turns: turns)], focus: nil))
         _ = await context.initial()
-        let read = await tool(context, "readConversation", #"{"ref":"s1"}"#)
+        let read = await tool(context, "readConversation", #"{"ref":"s1","words":1000}"#)
         XCTAssertLessThanOrEqual(CallContext.escapedSize(Data(read.text.utf8)), CallContext.Limits.readBytes)
         let shown = try XCTUnwrap(try object(read.text)["turns"] as? [[String: Any]])
         XCTAssertEqual(shown.map { $0["assistant"] as? String }, Array(repeating: thousandWords, count: 5))
-        XCTAssertTrue(shown.allSatisfy { $0["truncated"] == nil })
+        XCTAssertTrue(shown.allSatisfy { $0["cut"] == nil })
         let live = CallContext(targets: backend())
         _ = await live.initial()
         _ = await live.targetChanged(CallTargetState(target: backendTarget))

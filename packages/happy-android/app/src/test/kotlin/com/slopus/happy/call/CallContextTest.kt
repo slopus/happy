@@ -192,26 +192,26 @@ class CallContextTest {
         // Each reply within its own limit, but escaped six bytes a character on the wire.
         val heavy = "<<<< ".repeat(1600)
         targets.states["a"] = CallTargetState(backendTarget, turns = (0 until 6).map { CallTurn("l$it", "ask $it", heavy) })
-        val big = context.tool("readConversation", """{"ref":"s1"}""")
+        val big = context.tool("readConversation", """{"ref":"s1","words":5000}""")
         assertTrue(CallContext.escapedSize(big.text) <= CallContext.Limits.READ_BYTES)
         val shown = obj(big.text).turns()
         assertEquals(listOf("ask 5"), shown.map { it.str("user") })
         assertEquals(heavy, shown.single().str("assistant"))
-        assertNull(shown.single()["truncated"])
+        assertNull(shown.single()["cut"])
     }
 
-    /** About a thousand words of the agent's come back whole: in a read, five turns of them, and told as they come. */
+    /** About a thousand words of the agent's come back whole: in a read asking for a thousand words a message, five turns of them, and told as they come. */
     @Test
     fun aThousandWordReplyComesBackWhole() = runBlocking {
         assertEquals(1000, thousandWords.split(" ").size)
         val turns = (1..5).map { CallTurn("r$it", "ask $it", thousandWords) }
         val context = CallContext(FakeCallTargets(listOf(backendTarget), mutableMapOf("a" to CallTargetState(backendTarget, turns = turns)), null))
         context.initial()
-        val read = context.tool("readConversation", """{"ref":"s1"}""")
+        val read = context.tool("readConversation", """{"ref":"s1","words":1000}""")
         assertTrue(CallContext.escapedSize(read.text) <= CallContext.Limits.READ_BYTES)
         val shown = obj(read.text).turns()
         assertEquals(List(5) { thousandWords }, shown.map { it.str("assistant") })
-        assertTrue(shown.all { it["truncated"] == null })
+        assertTrue(shown.all { it["cut"] == null })
         val live = CallContext(backend())
         live.initial()
         live.targetChanged(CallTargetState(backendTarget))

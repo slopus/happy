@@ -285,6 +285,9 @@ class CallCueLiveDeviceCheck {
             // The voice goes on: asked something else meanwhile, it answers.
             type("Also, how many minutes are in an hour?")
             assertTrue("no read cue", until(20_000) { cues().any { "conversation_read" in it.text } })
+            val cue = cues().first { "conversation_read" in it.text }.text
+            log.append("READ CUE: $cue\n")
+            assertTrue("the read's turn has no ref: $cue", "\"ref\":\"t:r1\"" in cue)
             val beforeTold = agentLines()
             assertTrue("the agent never told the read", until(20_000) { agentLines() > beforeTold })
             until(4_000) { false }
