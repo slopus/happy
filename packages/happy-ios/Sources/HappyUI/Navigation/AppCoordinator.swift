@@ -38,6 +38,9 @@ public final class AppCoordinator {
     private var notificationSessionID: String?
     private var accountRestored = false
     private var backgrounded = false
+    /// What the agent connections were last told (`appStateChanged`).
+    private var connectionsForeground = false
+    private var callObservation: NSObjectProtocol?
     private var switchingForNotification = false
     private var lookingUpNotification = false
     /// Decides the language of the screens about to be built, holding the
@@ -168,14 +171,32 @@ public final class AppCoordinator {
         }
     }
 
-    /// Foreground/background, for the server's push suppression.
+    /// Foreground/background, for the server's push suppression. The agent
+    /// connections follow their computers in the foreground, and in the
+    /// background while a call is live, which hears its conversations and
+    /// acts in them through them; they pause when it ends.
     public func appStateChanged(active: Bool) {
-        Task { await context.account.agentConnections.setForeground(active) }
+        let foreground = active || CallController.shared.state.isLive
+        // Into the background with a call on: they carry on as they are.
+        if active || !foreground || !connectionsForeground { setConnectionsForeground(foreground) }
         // Back from the background: what the store and RevenueCat say now (launch asks on its own).
         if active, backgrounded { Offers.shared.foreground() }
         backgrounded = !active
+        if callObservation == nil {
+            callObservation = NotificationCenter.default.addObserver(forName: CallController.stateDidChange, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, self.backgrounded, self.connectionsForeground, !CallController.shared.state.isLive else { return }
+                    self.setConnectionsForeground(false)
+                }
+            }
+        }
         guard let session = context.account.session else { return }
         Task { await session.sendAppState(active ? "active" : "background") }
+    }
+
+    private func setConnectionsForeground(_ foreground: Bool) {
+        connectionsForeground = foreground
+        Task { await context.account.agentConnections.setForeground(foreground) }
     }
 
     /// Opens a Happy link from outside the app, routed as a scanned code

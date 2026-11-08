@@ -6,10 +6,16 @@ import UIKit
 
 /// The agent connection's voice call: started from home's voice button,
 /// shown as the bar across the window's top (`ShellViewController`), bound
-/// to the one connection it started on. It ends in the background, on an
-/// audio interruption or a lost route, and when the connection changes.
-/// What each call said is kept for the connection's next one
-/// (`CallHistory`), and a call that ends unasked plays `CallDropSound`.
+/// to the one connection it started on. It goes on in the background (the
+/// `audio` background mode; the system's microphone indicator shows it)
+/// until it is ended, with the connection's conversations still followed
+/// (`AppCoordinator.appStateChanged`). An audio interruption (a phone
+/// call, Siri, another app's audio) holds it for up to `holdLimit`, and it
+/// carries on when the interruption ends with `.shouldResume`; otherwise,
+/// and on a lost route, a reset of the media services or another
+/// connection, it ends. What each call said is kept for the connection's
+/// next one (`CallHistory`), and a call that ends unasked plays
+/// `CallDropSound`. Its audio session is `CallAudioSession`'s.
 /// Apart from the relay's `VoiceCoordinator`: one call at a time, the newer wins.
 @MainActor
 final class CallController {
@@ -44,16 +50,12 @@ final class CallController {
 
     private init() {
         let center = NotificationCenter.default
-        let stops: [(Notification.Name, CallEnding)] = [(UIApplication.didEnterBackgroundNotification, .background),
-                                                        (AVAudioSession.mediaServicesWereResetNotification, .interrupted)]
-        for (name, ending) in stops {
-            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.hangUp(ending) }
-            })
-        }
+        observers.append(center.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.hangUp(.interrupted) }
+        })
         observers.append(center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
-            let began = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt) == AVAudioSession.InterruptionType.began.rawValue
-            MainActor.assumeIsolated { if began { self?.hangUp(.interrupted) } }
+            let interruption = CallInterruption(note.userInfo ?? [:])
+            MainActor.assumeIsolated { if let interruption { self?.interrupted(interruption) } }
         })
         observers.append(center.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] note in
             let lost = (note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt) == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue
@@ -202,6 +204,7 @@ final class CallController {
 
     /// What the call followed, let go of: its context and the conversations it held.
     private func letGo() {
+        letGoOfHold()
         let context = self.context
         self.context = nil
         Task { await context?.close() }
@@ -214,6 +217,52 @@ final class CallController {
     private func hangUp(_ ending: CallEnding) {
         guard state.isShown else { return }
         close(ending)
+    }
+
+    /// How long a call waits out an interruption, kept running meanwhile
+    /// in the background by a task of its own (which iOS gives about 30 s).
+    static let holdLimit: Duration = .seconds(25)
+    private var onHold: (call: CallSession, wait: Task<Void, Never>, task: UIBackgroundTaskIdentifier)?
+
+    /// The system took the call's audio, or gave it back. Its engine stops
+    /// and starts again on its own (`CallAudioSession`); this decides
+    /// whether the call waits for it.
+    private func interrupted(_ interruption: CallInterruption) {
+        switch interruption {
+        case .began:
+            guard state.isLive, onHold == nil, let call = session else { return }
+            let task = UIApplication.shared.beginBackgroundTask(withName: "happy.call.hold") { [weak self] in
+                MainActor.assumeIsolated {
+                    self?.hangUp(.interrupted)
+                    self?.letGoOfHold()
+                }
+            }
+            let wait = Task { [weak self] in
+                try? await Task.sleep(for: Self.holdLimit)
+                guard !Task.isCancelled, let self, self.session === call else { return }
+                self.hangUp(.interrupted)
+            }
+            onHold = (call, wait, task)
+        case .ended(let resume):
+            guard let held = onHold?.call else { return }
+            letGoOfHold()
+            guard session === held else { return }
+            guard resume else { return hangUp(.interrupted) }
+            // The engine starts again on its own; one that can't (another
+            // app kept the audio) leaves a call nobody hears.
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(3))
+                guard let self, self.session === held, self.state.isLive, !CallAudioSession.isEngineRunning else { return }
+                self.hangUp(.interrupted)
+            }
+        }
+    }
+
+    private func letGoOfHold() {
+        guard let hold = onHold else { return }
+        onHold = nil
+        hold.wait.cancel()
+        if hold.task != .invalid { UIApplication.shared.endBackgroundTask(hold.task) }
     }
 
     private func show(_ state: CallState) {
@@ -366,5 +415,22 @@ final class CallController {
         }
     }
     #endif
+}
+
+/// An `AVAudioSession.interruptionNotification`, as the call reads it.
+private enum CallInterruption {
+    case began
+    /// With whether the system says the audio may resume (`.shouldResume`).
+    case ended(resume: Bool)
+
+    init?(_ info: [AnyHashable: Any]) {
+        switch (info[AVAudioSessionInterruptionTypeKey] as? UInt).flatMap(AVAudioSession.InterruptionType.init(rawValue:)) {
+        case .began?: self = .began
+        case .ended?:
+            let options = AVAudioSession.InterruptionOptions(rawValue: info[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0)
+            self = .ended(resume: options.contains(.shouldResume))
+        default: return nil
+        }
+    }
 }
 #endif

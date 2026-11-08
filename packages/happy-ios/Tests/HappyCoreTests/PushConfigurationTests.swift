@@ -19,7 +19,7 @@ final class PushConfigurationTests: XCTestCase {
 
     func testEveryVariantHasTheRemoteNotificationBackgroundMode() throws {
         for name in ["Info-Development", "Info-Preview", "Info-Production"] {
-            XCTAssertEqual(try plist("App/\(name).plist")["UIBackgroundModes"] as? [String], ["remote-notification"], name)
+            XCTAssertTrue((try plist("App/\(name).plist")["UIBackgroundModes"] as? [String] ?? []).contains("remote-notification"), name)
         }
     }
 

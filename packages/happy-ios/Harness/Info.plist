@@ -23,6 +23,8 @@
 	<string>Allow Happy Chat Harness to access your camera to scan QR codes and share photos with AI.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Allow Happy to use your microphone to talk with your coding agents.</string>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>Allow Happy Chat Harness to see whether Music is playing during a call check.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Allow Happy Chat Harness to find and connect to local devices on your network.</string>
 	<key>UIApplicationSceneManifest</key>
@@ -30,6 +32,10 @@
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
 	</dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

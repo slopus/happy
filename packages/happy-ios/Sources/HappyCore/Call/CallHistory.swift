@@ -19,7 +19,8 @@ public enum CallEnding: String, Codable, Equatable, Sendable, CaseIterable {
     case silence
     /// The phone took the audio: another call, or the audio route went.
     case interrupted
-    /// The app left the screen.
+    /// The app left the screen. Earlier builds ended a call there; a call
+    /// goes on in the background now, and this only reads kept history.
     case background
 
     /// An end the person didn't ask for and may not have heard coming:

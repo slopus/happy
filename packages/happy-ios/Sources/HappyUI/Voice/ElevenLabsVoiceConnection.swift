@@ -45,6 +45,8 @@ final class ElevenLabsVoiceConnection: VoiceConnection {
                 disconnected()
             }
         }
+        // The call's audio session, which every LiveKit room in the app shares.
+        CallAudioSession.install()
         let conversation: ElevenLabsConversation
         if let grant {
             conversation = try await ElevenLabs.startConversation(conversationToken: grant.conversationToken, config: config, onDisconnect: onDisconnect)

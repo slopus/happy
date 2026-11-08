@@ -303,6 +303,7 @@ final class SplitAppHarness {
     private var pageProbe: PageScrollProbe?
     #if DEBUG
     private var liveCall: CallLiveCheck?
+    private var callAudio: CallAudioCheck?
     #endif
 
     init(window: UIWindow, arguments: [String]) {
@@ -315,9 +316,10 @@ final class SplitAppHarness {
             do { liveCall = try CallLiveCheck(directory: URL(fileURLWithPath: directory)) }
             catch { print("[call-live] \(error)") }
         }
+        if let seconds = option("-callAudio").flatMap(Double.init) { callAudio = CallAudioCheck(seconds: seconds) }
         #endif
         if arguments.contains("-composeMachine") { SplitComposeMachine.install() }
-        let computer = DemoComputer(rounds: arguments.contains("-long") ? 60 : 0, live: option("-callLive") != nil || arguments.contains("-voiceTouch"))
+        let computer = DemoComputer(rounds: arguments.contains("-long") ? 60 : 0, live: option("-callLive") != nil || option("-callAudio") != nil || arguments.contains("-voiceTouch"))
         let controller = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/split-harness",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,

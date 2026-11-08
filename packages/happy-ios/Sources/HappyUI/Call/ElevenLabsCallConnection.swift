@@ -2,6 +2,7 @@
 import Combine
 import ElevenLabs
 import HappyCore
+import LiveKit
 import UIKit
 
 /// The hosted call agent over the official SDK. Apart from the relay's
@@ -30,7 +31,7 @@ final class ElevenLabsCallConnection: CallConnection {
             agentOverrides: AgentOverrides(prompt: request.prompt, language: request.language.flatMap(Language.init(rawValue:))),
             dynamicVariables: ["initialConversationContext": request.context],
             userId: grant.userId,
-            // Foreground only: recording is let go when the call ends.
+            // The microphone is let go when the call ends (`releaseMicrophone`).
             audioConfiguration: AudioPipelineConfiguration(recordingAlwaysPrepared: false),
             // What was said aloud, for the call's history: never a cue, which comes back as none of these.
             onAgentResponse: { text, event in Task { @MainActor in events.said(text, event) } },
@@ -47,11 +48,21 @@ final class ElevenLabsCallConnection: CallConnection {
                 if reason == .user { events.hungUp() } else { events.disconnected() }
             }
         }
+        CallAudioSession.install()
+        // The session is the call's before its room connects: music stops once, here.
+        CallAudioSession.shared.hold()
         // A minted token when a Happy service grants one; a public agent by its ID otherwise.
-        let conversation = if let token = grant.conversationToken {
-            try await ElevenLabs.startConversation(conversationToken: token, config: config, onDisconnect: disconnected)
-        } else {
-            try await ElevenLabs.startConversation(agentId: grant.agentId, config: config, onDisconnect: disconnected)
+        let conversation: ElevenLabsConversation
+        do {
+            conversation = if let token = grant.conversationToken {
+                try await ElevenLabs.startConversation(conversationToken: token, config: config, onDisconnect: disconnected)
+            } else {
+                try await ElevenLabs.startConversation(agentId: grant.agentId, config: config, onDisconnect: disconnected)
+            }
+        } catch {
+            await Self.releaseMicrophone()
+            await CallAudioSession.shared.release()
+            throw error
         }
         let connection = ElevenLabsCallConnection(conversation, teardown: teardown)
         #if DEBUG
@@ -89,6 +100,18 @@ final class ElevenLabsCallConnection: CallConnection {
         await conversation.endConversation()
         // A provider disconnect may already be tearing down; wait for it.
         await teardown.wait()
+        await Self.releaseMicrophone()
+        // The music plays on.
+        await CallAudioSession.shared.release()
+    }
+
+    /// The SDK turns LiveKit's always-prepared recording on for every
+    /// conversation from a task of its own (`ConversationAudioManager`),
+    /// racing the configuration's off. Left on, the engine would keep the
+    /// microphone open past the call, and with it the session that holds
+    /// other apps' music paused.
+    private static func releaseMicrophone() async {
+        try? await AudioManager.shared.setRecordingAlwaysPreparedMode(false)
     }
 
     func setMuted(_ muted: Bool) async throws { try await conversation.setMuted(muted) }

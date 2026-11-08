@@ -519,8 +519,9 @@ contextual updates, tool calls, tool results or cues, and the agent's
 greeting is skipped. It is a rolling list of the latest 30 slots, each a
 person line, an agent line or an ending, each with its time; an ending
 counts as a slot. A call nobody said anything in leaves nothing behind when
-it ends plainly (the person's End, the agent's `end_call`, the app going to
-the background); any other ending is kept. It is written after every slot.
+it ends plainly (the person's End, the agent's `end_call`; earlier builds
+also ended a call when the app went to the background, still read as
+plain); any other ending is kept. It is written after every slot.
 iOS keeps it in the connection's own folder as `private/call-history.json`
 (`OfflineCallHistoryStore`, complete file protection, excluded from
 backup); Android beside the connection's cache, under `noBackupFilesDir`
@@ -595,8 +596,25 @@ ends as cued.
 **A call that ends unasked.** A dropped connection, the one-call limit,
 used-up voice time, silence or an error plays a short "call dropped"
 sound, with no speech, and leaves an ending slot. The person's End, the
-agent's `end_call` (its goodbye was heard), a restart, a phone
-interruption and the app leaving the foreground play none.
+agent's `end_call` (its goodbye was heard), a restart and a phone
+interruption play none.
+
+**In the background, and beside music (iOS).** A call goes on with the
+app in the background, the screen locked or another app in front, until
+it is ended: the `audio` background mode keeps it running, and iOS shows
+its microphone indicator; no CallKit. The agent connection keeps
+following its computer while a call is live, so the call still hears its
+conversations and acts in them. Music playing when the call starts is
+paused, never mixed or ducked, and resumes when the call ends: the call's
+audio session (`CallAudioSession`) is one non-mixable `.playAndRecord` for
+the whole call, activated once before the room connects and deactivated
+once, with `.notifyOthersOnDeactivation`, after its engine stops.
+LiveKit's own session follows the engine, which starts and stops several
+times while a conversation connects: each stop told the music to resume,
+the next start interrupted it again, and the music was left paused after
+the call. An interruption (a phone call, Siri) holds the call for up to
+25 s; it carries on if the interruption ends with `.shouldResume` and
+its engine starts again, and ends as `interrupted` otherwise.
 
 - iOS: `CallDropSound`, a two-note falling tone, the app's completion
   chime turned down, played as a system sound

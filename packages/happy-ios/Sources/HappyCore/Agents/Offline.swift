@@ -133,7 +133,9 @@ public actor OfflineFile {
     }
 
     /// The folder for what the person said (`call-history.json`): never
-    /// backed up, its files readable only while the phone is unlocked.
+    /// backed up, its files readable only while the phone is unlocked, and
+    /// written while it is locked too, as a call in the background goes on
+    /// (`completeUnlessOpen`: a locked phone can make a file, not open one).
     public nonisolated var privateURL: URL { directory.appendingPathComponent("private", isDirectory: true) }
 
     /// As `writeExtra`, into `privateURL`.
@@ -146,7 +148,7 @@ public actor OfflineFile {
             var values = URLResourceValues()
             values.isExcludedFromBackup = true
             try? url.setResourceValues(values)
-            try? data.write(to: folder.appendingPathComponent(name), options: [.atomic, .completeFileProtection])
+            try? data.write(to: folder.appendingPathComponent(name), options: [.atomic, .completeFileProtectionUnlessOpen])
             #else
             try? data.write(to: folder.appendingPathComponent(name), options: .atomic)
             #endif

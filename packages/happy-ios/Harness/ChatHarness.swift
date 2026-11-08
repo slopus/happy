@@ -79,6 +79,9 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
     private var realVault: RealVaultHarness?
     private var agentTools: AgentToolsHarness?
     private var splitApp: SplitAppHarness?
+    #if DEBUG
+    private var fakeMusic: FakeMusic?
+    #endif
     #endif
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
@@ -92,6 +95,12 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         if arguments.contains("-chatDark") { window.overrideUserInterfaceStyle = .dark }
         if arguments.contains("-chatLight") { window.overrideUserInterfaceStyle = .light }
         #if DEBUG || HAPPY_FIXTURES
+        #if DEBUG
+        if arguments.contains("-fakeMusic") {
+            fakeMusic = FakeMusic(arguments: arguments)
+            return
+        }
+        #endif
         if arguments.contains("-homeScrollDiagnostic") {
             homeScrollDiagnostic = HomeScrollDiagnosticHarness(window: window, arguments: arguments)
             return

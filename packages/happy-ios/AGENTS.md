@@ -192,8 +192,18 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
   finger on its row reaches (`WarmChats.intent`), and both a read and a send
   wait for its first page: one never opened on this phone takes a message
   by voice, and a read or send after it finds it kept, not started over.
-  It ends on background, interruption, lost route, account change and when
-  the relay's voice starts. For launch it connects to a public agent by its
+  It goes on in the background (the `audio` background mode, the
+  system's microphone indicator) until it is ended, and the connection
+  keeps following its computer meanwhile (`AppCoordinator.appStateChanged`).
+  Its audio session is one `.playAndRecord` (LiveKit's speaker preset,
+  never mixable) held from before the room connects until the engine has
+  stopped (`CallAudioSession`, in place of LiveKit's own): music playing
+  is paused once when the call starts, and the session is let go with
+  `.notifyOthersOnDeactivation` when it ends, so the music plays on. An
+  interruption (a phone call, Siri) holds the call up to 25 s and it
+  carries on after one that ends with `.shouldResume`; it ends on any
+  other interruption, a lost route, a media services reset, an account
+  change and when the relay's voice starts. For launch it connects to a public agent by its
   ID (`PublicAgentCallGrants`): a connection mechanism, not authentication.
   The ID is injected at build time (`HAPPY_CALL_AGENT_V3_ID`, from the ignored
   `Config/Call.local.xcconfig`, the command line or the environment) and is
