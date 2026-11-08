@@ -87,20 +87,26 @@ final class Dictation {
         DictationLanguages.recognizer(allowUnavailableOnDevice: simulatorScript != nil)
     }
 
-    /// The languages to listen for at once, best ranked first; the
-    /// recording's words decide between them (`DictationRecognition`).
-    private static func candidates() -> [Locale] {
-        DictationLanguages.probeLocales(supported: Array(SFSpeechRecognizer.supportedLocales()))
+    /// Settings › Agents › Multilingual dictation, as the next recording
+    /// should use it.
+    var multilingual = true
+
+    /// The languages a recording listens in, best ranked first: two, for
+    /// the recording's words to decide between (`DictationRecognition`),
+    /// only when `multilingual` and the person has two.
+    private static func candidates(multilingual: Bool) -> [Locale] {
+        DictationLanguages.listeningLocales(supported: Array(SFSpeechRecognizer.supportedLocales()), multilingual: multilingual)
     }
 
     private static var prefetched: [Locale] = []
 
-    /// Downloads, in the background, the models for the languages a
-    /// recording would listen for, once speech recognition is allowed, so
-    /// the first recording in each can already choose. Nothing is heard.
-    static func prefetch() {
-        guard SFSpeechRecognizer.authorizationStatus() == .authorized else { return }
-        let locales = candidates()
+    /// Downloads, in the background, the models for listening in two
+    /// languages, so the first recording can already choose. Only with
+    /// `multilingual` on, speech recognition allowed and a second language
+    /// of the person's; nothing otherwise. Nothing is heard.
+    static func prefetch(multilingual: Bool) {
+        guard multilingual, SFSpeechRecognizer.authorizationStatus() == .authorized else { return }
+        let locales = candidates(multilingual: true)
         guard locales.count > 1, locales != prefetched else { return }
         prefetched = locales
         DictationRecognition.prefetch(locales)
@@ -111,7 +117,7 @@ final class Dictation {
         guard !isRunning, recognition == nil else { throw Failure.audio }
         guard let recognizer = Self.recognizer() else { throw Failure.unavailable }
         publish(DictationTranscript())
-        let recognition = DictationRecognition(recognizer: recognizer, candidates: Self.candidates())
+        let recognition = DictationRecognition(recognizer: recognizer, candidates: Self.candidates(multilingual: multilingual))
         let audio = recognition.audio
         let level: @Sendable (CGFloat) -> Void = { [weak self] value in
             Task { @MainActor in self?.onLevel?(value) }

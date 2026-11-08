@@ -110,6 +110,14 @@ public final class LocalSettings: Sendable {
         set { storage.set(newValue ? nil : "true", forKey: Keys.dictationStaysHome) }
     }
 
+    /// Settings › Agents › Multilingual dictation: a recording listens in
+    /// the person's two most likely languages and keeps the one spoken
+    /// (the default), or only in the most likely one.
+    public var multilingualDictation: Bool {
+        get { storage.string(forKey: Keys.dictationOneLanguage) != "true" }
+        set { storage.set(newValue ? nil : "true", forKey: Keys.dictationOneLanguage) }
+    }
+
     /// The projects showing every worktree on the grouped home list
     /// (localSettings.ts `expandedProjects`, keyed by project id).
     public var expandedProjects: Set<String> {
@@ -182,5 +190,6 @@ public final class LocalSettings: Sendable {
         static let registeredPushToken = "registered-push-token-v1"
         static let zenMode = "zenMode"
         static let dictationStaysHome = "dictationStaysHome"
+        static let dictationOneLanguage = "dictationOneLanguage"
     }
 }

@@ -66,6 +66,9 @@ final class RecordButton: UIControl {
     var binSpot: (() -> RecordBinSpot?)?
     /// Whether a press may record now.
     var canRecord: () -> Bool = { true }
+    /// Settings › Agents › Multilingual dictation, read at each press and
+    /// each time the button appears.
+    var multilingual: () -> Bool = { true }
 
     private let style: Style
     private let glyph: IconView
@@ -181,6 +184,7 @@ final class RecordButton: UIControl {
             return false
         }
         do {
+            dictation.multilingual = multilingual()
             try dictation.start()
         } catch {
             refuse(Strings.Record.unavailableTitle, Strings.Record.unavailableMessage, settings: false)
@@ -327,7 +331,7 @@ final class RecordButton: UIControl {
     override func didMoveToWindow() {
         super.didMoveToWindow()
         if window == nil, phase == .holding || phase == .locked { finish(.draft) }
-        if window != nil { Dictation.prefetch() }
+        if window != nil { Dictation.prefetch(multilingual: multilingual()) }
     }
 
     private func refuse(_ title: String, _ message: String, settings: Bool) {

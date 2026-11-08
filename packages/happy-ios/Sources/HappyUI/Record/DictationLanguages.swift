@@ -42,21 +42,29 @@ final class DictationLanguages: NSObject {
 
     /// Ranked candidates also allow the pipeline to retry a buffered recording later.
     static func rankedLocales(supported: [Locale]) -> [Locale] {
-        observeKeyboard()
-        captureKeyboard()
+        let signals = signals()
         return DictationLanguage.ranked(
-            keyboard: UserDefaults.standard.string(forKey: keyboardKey),
-            successful: UserDefaults.standard.string(forKey: successKey),
-            preferred: Locale.preferredLanguages,
-            installed: UITextInputMode.activeInputModes.compactMap(\.primaryLanguage),
-            supported: supported.map(\.identifier)
+            keyboard: signals.keyboard, successful: signals.successful, preferred: signals.preferred,
+            installed: signals.installed, supported: supported.map(\.identifier)
         ).map { Locale(identifier: $0) }
     }
 
-    /// At most two locales of different languages, for one SpeechAnalyzer
-    /// to run side by side; `DictationLanguage.choose` keeps one reading.
-    static func probeLocales(supported: [Locale]) -> [Locale] {
-        DictationLanguage.probes(rankedLocales(supported: supported).map(\.identifier)).map { Locale(identifier: $0) }
+    /// The languages one recording listens in (`DictationLanguage.listening`):
+    /// the person's two of different languages when `multilingual` and they
+    /// have two, else one. One SpeechAnalyzer runs them side by side.
+    static func listeningLocales(supported: [Locale], multilingual: Bool) -> [Locale] {
+        let signals = signals()
+        return DictationLanguage.listening(
+            keyboard: signals.keyboard, successful: signals.successful, preferred: signals.preferred,
+            installed: signals.installed, supported: supported.map(\.identifier), multilingual: multilingual
+        ).map { Locale(identifier: $0) }
+    }
+
+    private static func signals() -> (keyboard: String?, successful: String?, preferred: [String], installed: [String]) {
+        observeKeyboard()
+        captureKeyboard()
+        return (UserDefaults.standard.string(forKey: keyboardKey), UserDefaults.standard.string(forKey: successKey),
+                Locale.preferredLanguages, UITextInputMode.activeInputModes.compactMap(\.primaryLanguage))
     }
 
     static func recognizer(allowUnavailableOnDevice: Bool = false) -> SFSpeechRecognizer? {

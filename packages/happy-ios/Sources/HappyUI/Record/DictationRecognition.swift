@@ -56,11 +56,11 @@ final class DictationRecognition {
     private var cancelled = false
 
     /// `candidates`: the languages to listen for at once, best ranked first
-    /// (`DictationLanguages.probeLocales`). With fewer than two, or without
+    /// (`DictationLanguages.listeningLocales`). With fewer than two, or without
     /// their models, `recognizer`'s language is the only one.
     init(recognizer: SFSpeechRecognizer, candidates: [Locale] = []) {
         self.recognizer = recognizer
-        self.candidates = candidates
+        self.candidates = Array(candidates.prefix(DictationLanguage.maximumListening))
     }
 
     /// The language of the words: the chosen one, once there is a choice.

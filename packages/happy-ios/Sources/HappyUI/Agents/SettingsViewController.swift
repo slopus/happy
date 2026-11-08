@@ -694,6 +694,9 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             [Row(SettingsIndex.dictationOpensTask, accessory: .toggle, isOn: context.account.localSettings.dictationOpensTask, toggled: { [weak self] on in
                 self?.context.account.localSettings.dictationOpensTask = on
             })].withFooter(Strings.Record.opensTaskFooter),
+            [Row(SettingsIndex.multilingualDictation, accessory: .toggle, isOn: context.account.localSettings.multilingualDictation, toggled: { [weak self] on in
+                self?.context.account.localSettings.multilingualDictation = on
+            })].withFooter(Strings.Record.multilingualFooter),
         ]
     }
 

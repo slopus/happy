@@ -17,6 +17,9 @@ extension Strings {
         /// microphone opens.
         static var opensTask: String { "Open task after dictating" }
         static var opensTaskFooter: String { "Hold the microphone on home and let go to start a task with what you said. When this is off, you stay on home and the task starts in the background." }
+        /// Settings › Agents: whether a recording listens in two languages.
+        static var multilingual: String { "Multilingual dictation" }
+        static var multilingualFooter: String { "Detect which of your two languages you’re speaking. When this is off, dictation uses your most likely language." }
         static var lock: String { "Slide up to lock" }
         static var microphoneTitle: String { "Microphone access is off" }
         static var microphoneMessage: String { "Allow Happy to use the microphone in Settings to dictate." }

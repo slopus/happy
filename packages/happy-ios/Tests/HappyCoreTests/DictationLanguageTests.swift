@@ -154,6 +154,50 @@ final class DictationLanguageTests: XCTestCase {
         XCTAssertEqual(found[1], 4.2 + 0.1, accuracy: 0.001)
     }
 
+    // MARK: How many languages a recording listens in
+
+    func testMultilingualOffListensInTheFirstOnly() {
+        XCTAssertEqual(listen(keyboard: "ru", installed: ["ru-RU", "en-US"], multilingual: false), ["ru-RU"])
+    }
+
+    func testOneLanguageListensInIt() {
+        // One Russian keyboard and Russian system: the English fallback is
+        // not a second language of theirs.
+        XCTAssertEqual(listen(keyboard: "ru-RU", preferred: ["ru-RU"], installed: ["ru-RU"]), ["ru-RU"])
+        XCTAssertEqual(listen(preferred: ["en-US"], installed: ["en-US", "emoji"]), ["en-US"])
+        // Two regions of one language are one language.
+        XCTAssertEqual(listen(preferred: ["en-GB"], installed: ["en-US"]), ["en-GB"])
+        // A second language that doesn't run here doesn't count.
+        XCTAssertEqual(listen(keyboard: "ru", preferred: ["ru-RU"], installed: ["xx-XX"]), ["ru-RU"])
+        // Nothing of theirs runs here: English alone.
+        XCTAssertEqual(listen(preferred: ["xx-XX"]), ["en-US"])
+    }
+
+    func testTwoLanguagesListenInBoth() {
+        XCTAssertEqual(listen(keyboard: "en-US", preferred: ["ru-RU"], installed: ["ru-RU", "en-US"]), ["en-US", "ru-RU"])
+        XCTAssertEqual(listen(successful: "ru-RU", preferred: ["en-US"]), ["ru-RU", "en-US"])
+    }
+
+    func testThreeOrMoreListenInTheTopTwo() {
+        XCTAssertEqual(listen(keyboard: "de", preferred: ["ru-RU", "en-US"], installed: ["en-GB"]), ["de-DE", "ru-RU"])
+        XCTAssertEqual(DictationLanguage.probes(["en-US", "ru-RU", "de-DE"], limit: 3), ["en-US", "ru-RU"], "never more than two")
+        XCTAssertEqual(DictationLanguage.maximumListening, 2)
+    }
+
+    func testMultilingualIsOnUntilTurnedOff() {
+        let storage = InMemoryKeyValueStore()
+        let settings = LocalSettings(storage: storage)
+        XCTAssertTrue(settings.multilingualDictation)
+        settings.multilingualDictation = false
+        XCTAssertFalse(LocalSettings(storage: storage).multilingualDictation)
+        settings.multilingualDictation = true
+        XCTAssertTrue(LocalSettings(storage: storage).multilingualDictation)
+    }
+
+    private func listen(keyboard: String? = nil, successful: String? = nil, preferred: [String] = [], installed: [String] = [], multilingual: Bool = true) -> [String] {
+        DictationLanguage.listening(keyboard: keyboard, successful: successful, preferred: preferred, installed: installed, supported: supported, multilingual: multilingual)
+    }
+
     func testProbeOfOneHasItsWinner() {
         let probe = DictationLanguage.Probe(locales: ["en-US"])
         XCTAssertEqual(probe.winner, 0)

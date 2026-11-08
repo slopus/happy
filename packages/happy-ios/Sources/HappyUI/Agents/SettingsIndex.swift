@@ -26,6 +26,8 @@ enum SettingsIndex {
     static var agents: Entry { Entry(id: "agents", title: Strings.Settings.agents, glyph: "options-outline", tile: .teal) }
     /// On Agents, this phone's own: whether home's microphone opens the task it starts.
     static var dictationOpensTask: Entry { Entry(id: "dictation-opens-task", title: Strings.Record.opensTask, glyph: "mic-outline", tile: .blue) }
+    /// On Agents, this phone's own: whether dictation listens in two languages.
+    static var multilingualDictation: Entry { Entry(id: "multilingual-dictation", title: Strings.Record.multilingual, glyph: "language-outline", tile: .green) }
     static var scanTerminal: Entry { Entry(id: "scan-terminal", title: Strings.connectTerminal, glyph: "qr-code-outline", tile: .indigo) }
     static var enterTerminal: Entry { Entry(id: "enter-terminal", title: Strings.enterTerminalURL, glyph: "link-outline", tile: .indigo) }
     /// An agent connection's Support Happy row, under Profile, and its Voice page.
@@ -52,7 +54,7 @@ enum SettingsIndex {
     /// is Data and Storage's. Disconnect is left
     /// out: a search doesn't offer to take the computer away.
     static var computer: [Entry] {
-        [profile, changeAgentName, changeAgentAvatar, supportBoba, appearance, hideProjects, agentVoice, agents, dictationOpensTask, dataStorage, connection, analytics, connectAgent, addAccount] + aboutRows
+        [profile, changeAgentName, changeAgentAvatar, supportBoba, appearance, hideProjects, agentVoice, agents, dictationOpensTask, multilingualDictation, dataStorage, connection, analytics, connectAgent, addAccount] + aboutRows
     }
 
     /// What a Happy account's settings show under its accounts card, in

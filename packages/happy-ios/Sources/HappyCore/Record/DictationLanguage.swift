@@ -2,11 +2,33 @@ import Foundation
 
 /// Preference ordering only: recognition availability belongs to the platform.
 public enum DictationLanguage {
+    /// The most languages one recording listens in.
+    public static let maximumListening = 2
+
     public static func ranked(
         keyboard: String?, successful: String?, preferred: [String], installed: [String], supported: [String]
     ) -> [String] {
+        rank([keyboard, successful].compactMap { $0 } + preferred + installed + ["en-US"], preferred: preferred, supported: supported)
+    }
+
+    /// The languages one recording listens in, best first. Two only when
+    /// `multilingual` (Settings › Agents › Multilingual dictation) is on and
+    /// the person has a second language, other than the first, that runs
+    /// here; else just the first ranked, as with one keyboard and one system
+    /// language. The English every ranking falls back to is not one of
+    /// theirs. Never more than `maximumListening`.
+    public static func listening(
+        keyboard: String?, successful: String?, preferred: [String], installed: [String], supported: [String], multilingual: Bool
+    ) -> [String] {
+        let first = Array(ranked(keyboard: keyboard, successful: successful, preferred: preferred, installed: installed, supported: supported).prefix(1))
+        guard multilingual else { return first }
+        let theirs = rank([keyboard, successful].compactMap { $0 } + preferred + installed, preferred: preferred, supported: supported)
+        let two = probes(theirs, limit: maximumListening)
+        return two.count == maximumListening ? two : first
+    }
+
+    private static func rank(_ preferences: [String], preferred: [String], supported: [String]) -> [String] {
         let available = Array(Set(supported)).sorted()
-        let preferences = [keyboard, successful].compactMap { $0 } + preferred + installed + ["en-US"]
         var result: [String] = []
         for preference in preferences {
             let wanted = Locale(identifier: preference.replacingOccurrences(of: "_", with: "-"))
@@ -39,7 +61,8 @@ public enum DictationLanguage {
 
     /// The locales to listen with at once: the first ranked, then the next
     /// of a different language. Two regions of one language never compete.
-    public static func probes(_ ranked: [String], limit: Int = 2) -> [String] {
+    public static func probes(_ ranked: [String], limit: Int = maximumListening) -> [String] {
+        let limit = min(limit, maximumListening)
         var languages: Set<String> = []
         var result: [String] = []
         for identifier in ranked where result.count < limit {

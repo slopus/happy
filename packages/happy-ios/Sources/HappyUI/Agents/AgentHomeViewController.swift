@@ -48,6 +48,7 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
             return RecordBar(frame: toolbar.convert(layout.bar, to: nil), cornerRadius: layout.bar.height / 2, ground: .host)
         }
         button.onRecording = { [weak self] recording in self?.morphToolbar(recording: recording) }
+        button.multilingual = { [weak self] in self?.context.account.localSettings.multilingualDictation ?? true }
         // A cancel's bin stands in for search's magnifier, as Telegram's
         // stands in for the attach button: the dot is right over it.
         button.binSpot = { [weak self] in
