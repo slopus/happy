@@ -23,6 +23,12 @@ final class RecordButtonUITests: XCTestCase {
         }
         // Settings › Agents › Open task after dictating, for this run only.
         if name.contains("StaysHome") { app.launchArguments += ["-dictationStaysHome", "true"] }
+        // A call's bar drawn from a script, live until it is ended: no
+        // microphone, provider or grant (`CallController.showFixture`).
+        if name.contains("CallButton") {
+            app.launchEnvironment["HAPPY_CALL_FIXTURE"] = "listening"
+            app.launchEnvironment["HAPPY_CALL_DELAY"] = "8"
+        }
         app.launch()
     }
 
@@ -226,8 +232,9 @@ final class RecordButtonUITests: XCTestCase {
 
     /// The morph, filmed for slow motion: home's toolbar turning into the
     /// bar and back, held and slid away, then tapped (locked) and
-    /// cancelled; then the same in a chat's composer, where the bar
-    /// stretches out of the microphone under the text. Nothing is sent.
+    /// cancelled, then slid up past the lock and cancelled; then the same
+    /// in a chat's composer, where the bar stretches out of the microphone
+    /// under the text. Nothing is sent.
     func testMorph() {
         home()
         allowAlerts(for: 3)
@@ -249,6 +256,11 @@ final class RecordButtonUITests: XCTestCase {
         app.buttons["record-cancel"].tap()
         pause(2)
         capture("morph-2-home-back")
+        print("RECORD_MORPH mark lift")
+        lockBySliding(record)
+        capture("morph-2b-home-slid-locked")
+        app.buttons["record-cancel"].tap()
+        pause(2)
 
         openBugTriage()
         let composer = app.textViews["composer"]
@@ -268,6 +280,45 @@ final class RecordButtonUITests: XCTestCase {
         chatCenter.press(forDuration: 2.5, thenDragTo: chatCenter.withOffset(CGVector(dx: -220, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.3)
         pause(2)
         capture("morph-5-chat-back")
+        print("RECORD_MORPH mark chatlift")
+        lockBySliding(chatRecord)
+        capture("morph-6-chat-slid-locked")
+        app.buttons["record-cancel"].tap()
+        pause(2)
+    }
+
+    /// Held, then slid slowly straight up past the lock (110 up locks
+    /// while still held) and held there a moment before letting go:
+    /// hands-free, Cancel in the bar and stop in the pill.
+    private func lockBySliding(_ button: XCUIElement) {
+        let center = button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        center.press(forDuration: 1.2, thenDragTo: center.withOffset(CGVector(dx: 0, dy: -170)), withVelocity: 120, thenHoldForDuration: 0.8)
+        XCTAssertTrue(app.buttons["record-cancel"].waitForExistence(timeout: 3), "sliding up didn't lock")
+        XCTAssertEqual(app.buttons["record-stop"].label, "Stop and edit")
+        pause(1.5)
+    }
+
+    /// The header's call button while a call is live: the phone turns into
+    /// the red hang-up, a tap on it ends the call, and it is the phone
+    /// again. The call is the fixture's (`setUp`).
+    func testCallButton() {
+        home()
+        allowAlerts(for: 2)
+        let call = app.buttons["voice-call"].firstMatch
+        XCTAssertTrue(call.waitForExistence(timeout: 5))
+        XCTAssertEqual(call.label, "Start voice call")
+        capture("call-0-phone")
+        print("RECORD_CALL mark live")
+        let live = NSPredicate(format: "label == 'End call'")
+        wait(for: [XCTNSPredicateExpectation(predicate: live, object: call)], timeout: 10)
+        pause(2)
+        capture("call-1-hang-up")
+        print("RECORD_CALL mark end")
+        call.tap()
+        let idle = NSPredicate(format: "label == 'Start voice call'")
+        wait(for: [XCTNSPredicateExpectation(predicate: idle, object: call)], timeout: 5)
+        pause(2)
+        capture("call-2-phone")
     }
 
     /// A chat's composer, filmed for slow motion: the microphone at rest;

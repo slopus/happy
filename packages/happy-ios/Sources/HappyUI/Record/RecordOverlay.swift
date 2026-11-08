@@ -76,8 +76,6 @@ final class RecordOverlay {
     private let lockPanel = UIControl()
     private let lockGlass = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
     private let lockGlyph = RecordLockView()
-    private let lockArrow = IconView(.ionicons("chevron-up"), size: RecordOverlayLayout.Metrics.arrowSize, tint: Palette.Record.lock)
-    private let stopGlyph = StopGlyphView(glyphSize: 16)
     /// A cancel's bin (Telegram's `BinRed`), while it plays, and the icon
     /// it stands in for, hidden till it shuts.
     private var bin: LottieAnimationView?
@@ -140,10 +138,6 @@ final class RecordOverlay {
         lockPanel.addSubview(lockGlass)
         lockGlyph.isUserInteractionEnabled = false
         lockPanel.addSubview(lockGlyph)
-        lockPanel.addSubview(lockArrow)
-        stopGlyph.tintColor = UIColor(Palette.Record.dot)
-        stopGlyph.alpha = 0
-        lockPanel.addSubview(stopGlyph)
         lockPanel.accessibilityLabel = Strings.Record.lock
         lockPanel.accessibilityIdentifier = "record-stop"
         lockPanel.isAccessibilityElement = true
@@ -255,8 +249,6 @@ final class RecordOverlay {
         micGlyph.alpha = 1
         micGlyph.transform = .identity
         sendGlyph.alpha = 0
-        stopGlyph.alpha = 0
-        lockGlyph.alpha = 1
         startDisplayLink()
     }
 
@@ -270,9 +262,11 @@ final class RecordOverlay {
         middleBlob.hear(level)
     }
 
-    /// Hands-free (`animateLock`): the lock shuts, the pill becomes a
-    /// circle with stop in it, the glyph on the circle turns to send and
-    /// "Slide to cancel" gives way to Cancel.
+    /// Hands-free (`animateLock`): the lock shuts and its body turns into
+    /// stop (Telegram's `Lock`, played to its end over the pill's 0.2 s),
+    /// the pill becomes a circle round it, the glyph on the circle turns
+    /// to send and "Slide to cancel" gives way to Cancel. The circle, let
+    /// go of, settles back down onto the button.
     func lock() {
         guard !isLocked, !isDismissing else { return }
         isLocked = true
@@ -290,10 +284,6 @@ final class RecordOverlay {
         UIView.animate(withDuration: 0.2, delay: 0, options: [.allowUserInteraction]) {
             self.sendGlyph.alpha = 1
             self.micGlyph.alpha = 0
-        }
-        UIView.animate(withDuration: 0.25, delay: 0.2, options: [.allowUserInteraction]) {
-            self.lockGlyph.alpha = 0
-            self.stopGlyph.alpha = 1
         }
         lockPanel.accessibilityLabel = Strings.Record.stop
 
@@ -557,9 +547,6 @@ final class RecordOverlay {
         lockGlass.layer.cornerRadius = lockPanel.bounds.width / 2
         lockGlyph.frame = layout.lockGlyph
         lockGlyph.lockness = lockness
-        lockArrow.frame = layout.arrow
-        lockArrow.alpha = layout.arrowAlpha
-        stopGlyph.frame = lockPanel.bounds
     }
 
     private static func path(_ curves: [RecordBlob.Curve]) -> CGPath {
@@ -660,23 +647,32 @@ final class RecordOverlayWindow: UIWindow {
     }
 }
 
-/// Telegram's drawn lock (`RecordLockGlyph`), stroked in the lock colour.
+/// Telegram's `LockView`: its `LockWait` bobbing while the lock is open
+/// and untouched, and its `Lock` following the finger up, the shackle
+/// closing and the chevron flying up and away as the body turns into
+/// stop. Both in the lock colour (`panelControlColor`).
 final class RecordLockView: UIView {
     var lockness: CGFloat = 0 {
-        didSet { if lockness != oldValue { redraw() } }
+        didSet { if lockness != oldValue { update() } }
     }
 
-    private let shape = CAShapeLayer()
-    private let keyhole = CAShapeLayer()
+    // Drawn on the main thread, as Telegram's are: `Lock` is scrubbed
+    // every frame the finger moves.
+    private let idle = LottieAnimationView(animation: RecordLockView.idleAnimation, configuration: LottieConfiguration(renderingEngine: .mainThread))
+    private let locking = LottieAnimationView(animation: RecordLockView.lockAnimation, configuration: LottieConfiguration(renderingEngine: .mainThread))
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        shape.fillColor = nil
-        shape.lineCap = .round
-        layer.addSublayer(shape)
-        layer.addSublayer(keyhole)
-        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.redraw() }
-        redraw()
+        for view in [idle, locking] {
+            view.contentMode = .scaleAspectFit
+            view.backgroundColor = .clear
+            view.isUserInteractionEnabled = false
+            addSubview(view)
+        }
+        idle.loopMode = .autoReverse
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.paint() }
+        paint()
+        update()
     }
 
     @available(*, unavailable)
@@ -684,30 +680,45 @@ final class RecordLockView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        redraw()
+        idle.frame = bounds
+        locking.frame = bounds
     }
 
-    private func redraw() {
-        let glyph = RecordLockGlyph(side: max(bounds.width, 1), lockness: lockness, scale: traitCollection.displayScale)
-        let color = UIColor(Palette.Record.lock).resolvedColor(with: traitCollection).cgColor
-        let path = CGMutablePath()
-        let box = glyph.shackle
-        let radius = box.width / 2
-        path.move(to: CGPoint(x: box.minX, y: glyph.leftLegEnd))
-        path.addArc(tangent1End: CGPoint(x: box.minX, y: box.minY), tangent2End: CGPoint(x: box.midX, y: box.minY), radius: radius)
-        path.addArc(tangent1End: CGPoint(x: box.maxX, y: box.minY), tangent2End: CGPoint(x: box.maxX, y: glyph.leftLegEnd), radius: radius)
-        path.addLine(to: CGPoint(x: box.maxX, y: glyph.rightLegEnd))
-        path.addEllipse(in: glyph.body)
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        shape.frame = bounds
-        shape.path = path
-        shape.strokeColor = color
-        shape.lineWidth = glyph.lineWidth
-        keyhole.frame = bounds
-        keyhole.path = CGPath(ellipseIn: glyph.keyhole, transform: nil)
-        keyhole.fillColor = color
-        CATransaction.commit()
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        update()
+    }
+
+    /// `updateLockness`: the idle loop only while the lock is untouched.
+    private func update() {
+        let still = lockness <= 0
+        idle.isHidden = !still
+        locking.isHidden = still
+        if still, window != nil {
+            if !idle.isAnimationPlaying { idle.play() }
+        } else if idle.isAnimationPlaying {
+            idle.stop()
+        }
+        locking.currentProgress = min(1, max(0, lockness))
+    }
+
+    private func paint() {
+        let color = UIColor(Palette.Record.lock).resolvedColor(with: traitCollection).lottieColorValue
+        for view in [idle, locking] {
+            view.setValueProvider(ColorValueProvider(color), keypath: AnimationKeypath(keypath: "**.Color"))
+        }
+    }
+
+    /// Telegram's `Lock` and `LockWait`, read once.
+    private static let lockAnimation = animation("record-lock")
+    private static let idleAnimation = animation("record-lock-wait")
+
+    private static func animation(_ name: String) -> LottieAnimation? {
+        guard let url = Bundle.module.url(forResource: name, withExtension: "json")
+            ?? Bundle.module.url(forResource: name, withExtension: "json", subdirectory: "Animations"),
+            let data = try? Data(contentsOf: url)
+        else { return nil }
+        return try? LottieAnimation.from(data: data)
     }
 }
 #endif

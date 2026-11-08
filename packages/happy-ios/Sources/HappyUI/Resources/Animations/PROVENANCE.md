@@ -92,3 +92,15 @@ recording's red dot jumping into a bin that closes on it, which
 `RecordOverlay` plays where a cancelled recording's dot was, as
 `ChatTextInputPanelNode` does. Telegram-iOS is GPL-2.0; adapted with
 permission from Steve, as the rest of the microphone is.
+
+## `record-lock.json` and `record-lock-wait.json`, the recording's lock
+
+Not desktop's, and not under `LICENSE` here. Telegram-iOS's
+`submodules/TelegramUI/Resources/Animations/Lock.json` (SHA-256
+`7f54014258403eae59daad48098be0d221d2c8085500d9461c8d8b7613a1bcd6`) and
+`LockWait.json` (SHA-256
+`60ce28150af8210c0090f0b37f766e38484fc8e2a7302a31fa3c6863f707c1db`), master,
+fetched 7 November 2026 and committed byte for byte: `LockView`'s lock,
+bobbing while it waits and closing into stop as the finger slides up, which
+`RecordOverlay`'s pill draws as Telegram's does. Telegram-iOS is GPL-2.0;
+adapted with permission from Steve, as the rest of the microphone is.

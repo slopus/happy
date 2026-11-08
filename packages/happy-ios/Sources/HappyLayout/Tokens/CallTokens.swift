@@ -33,4 +33,10 @@ extension Palette {
         /// The words and glyphs on it.
         public static let text = RGBA(hex: "#FFFFFF") ?? .invalid
     }
+
+    /// The header's call button as a hang-up: iOS's system red, Apple's
+    /// destructive tint for ending a call.
+    public enum CallButton {
+        public static let hangUp = ColorToken("#FF3B30", "#FF453A")
+    }
 }

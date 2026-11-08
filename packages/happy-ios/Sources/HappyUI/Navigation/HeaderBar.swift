@@ -63,12 +63,10 @@ enum HeaderBar {
     }
 
     /// Starts a voice call with the connection's agents: HappyIcons'
-    /// phone, drawn as Settings is beside it.
-    static func callItem(_ action: @escaping () -> Void) -> UIBarButtonItem {
-        let item = UIBarButtonItem(image: .icon(.ionicons("call"), size: 22), primaryAction: UIAction { _ in action() })
-        item.accessibilityLabel = Strings.Call.start
-        item.accessibilityIdentifier = "voice-call"
-        return item
+    /// phone, drawn as Settings is beside it. While a call is live it is
+    /// the hang-up instead (`CallBarButtonItem`).
+    static func callItem(_ start: @escaping () -> Void) -> UIBarButtonItem {
+        CallBarButtonItem(start: start)
     }
 
     static func settingsItem(_ action: @escaping () -> Void) -> UIBarButtonItem {
@@ -76,6 +74,53 @@ enum HeaderBar {
         item.accessibilityLabel = Strings.openSettings
         item.accessibilityIdentifier = "settings"
         return item
+    }
+}
+
+/// The header's call button. With no call, the phone starts one; while one
+/// is connecting or live it is Apple's red `phone.down.fill`, the call bar's
+/// own hang-up, and a tap ends the call. It follows `CallController`
+/// itself, so any header showing it is right. The glyph changes on SF
+/// Symbols' `.replace`, as the composer's send and microphone do
+/// (`AgentInputPrimaryGlyphMotion`).
+final class CallBarButtonItem: UIBarButtonItem {
+    private var live = false
+
+    convenience init(start: @escaping () -> Void) {
+        self.init(image: Self.phone, primaryAction: UIAction { _ in
+            if CallController.shared.state.isLive {
+                CallController.shared.close()
+            } else {
+                start()
+            }
+        })
+        accessibilityIdentifier = "voice-call"
+        NotificationCenter.default.addObserver(self, selector: #selector(callChanged), name: CallController.stateDidChange, object: nil)
+        update(animated: false)
+    }
+
+    @objc private func callChanged() {
+        update(animated: true)
+    }
+
+    private func update(animated: Bool) {
+        let live = CallController.shared.state.isLive
+        accessibilityLabel = live ? Strings.Call.end : Strings.Call.start
+        tintColor = live ? UIColor(Palette.CallButton.hangUp) : nil
+        guard live != self.live else { return }
+        self.live = live
+        let image = live ? Self.hangUp : Self.phone
+        if animated {
+            setSymbolImage(image, contentTransition: .replace)
+        } else {
+            self.image = image
+        }
+    }
+
+    private static var phone: UIImage { .icon(.ionicons("call"), size: 22) }
+
+    private static var hangUp: UIImage {
+        UIImage(systemName: "phone.down.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .medium)) ?? UIImage()
     }
 }
 

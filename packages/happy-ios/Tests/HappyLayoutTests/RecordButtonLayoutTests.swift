@@ -132,6 +132,13 @@ final class RecordMotionTests: XCTestCase {
         XCTAssertEqual(oneTwenty.lift, sixty.lift, accuracy: 1e-9)
     }
 
+    func testALateFrameStepsOnceAsTelegramsDisplayLinkDoes() {
+        var late = RecordMotion()
+        late.step(level: 0, lift: -100, slide: 0)
+        late.step(level: 0, lift: 0, slide: 0, frames: 5)
+        XCTAssertEqual(late.lift, -21, accuracy: 1e-9)
+    }
+
     func testTheAppearingSpringOvershootsAndSettles() {
         XCTAssertEqual(RecordMotion.appear(at: 0), 0)
         let peak = stride(from: 0.0, through: 0.5, by: 0.005).map { RecordMotion.appear(at: $0) }.max() ?? 0
@@ -223,20 +230,18 @@ final class RecordOverlayLayoutTests: XCTestCase {
         let layout = layout()
         XCTAssertEqual(layout.lockWrapper, CGRect(x: 332, y: 644, width: 40, height: 72))
         XCTAssertEqual(layout.lockPanel, CGRect(x: 0, y: 0, width: 40, height: 72))
-        XCTAssertEqual(layout.lockGlyph, CGRect(x: 0, y: 6, width: 40, height: 40))
-        XCTAssertEqual(layout.arrow, CGRect(x: 14, y: 50, width: 12, height: 12))
-        XCTAssertEqual(layout.arrowAlpha, 1)
+        XCTAssertEqual(layout.lockGlyph, CGRect(x: 0, y: 6, width: 40, height: 60))
     }
 
-    func testLockedThePillIsACircleAndTheChevronIsGone() {
+    func testLockedThePillIsACircleWithTheStopInItsMiddle() {
         let layout = layout(lockness: 1)
         XCTAssertEqual(layout.lockPanel, CGRect(x: 0, y: 40, width: 40, height: 40))
-        XCTAssertEqual(layout.lockGlyph, CGRect(x: 0, y: -5, width: 40, height: 40))
-        XCTAssertEqual(layout.arrow.minY, 11)
-        XCTAssertEqual(layout.arrowAlpha, 0)
+        XCTAssertEqual(layout.lockGlyph, CGRect(x: 0, y: -10, width: 40, height: 60))
+        // The animation's middle on the circle's, in the wrapper's space.
+        XCTAssertEqual(layout.lockPanel.minY + layout.lockGlyph.midY, layout.lockPanel.midY)
         let halfway = self.layout(lockness: 0.5)
         XCTAssertEqual(halfway.lockPanel, CGRect(x: 0, y: 20, width: 40, height: 56))
-        XCTAssertEqual(halfway.arrowAlpha, 0.2, accuracy: 1e-9)
+        XCTAssertEqual(halfway.lockGlyph.minY, -2)
     }
 
     func testTheDotAndTheClockAtTheBarsLeftOnTheButtonsLine() {
@@ -326,25 +331,6 @@ final class RecordToolbarLayoutTests: XCTestCase {
         let layout = RecordToolbarLayout(width: 100, microphone: CGRect(x: 40, y: 10, width: 38, height: 38))
         XCTAssertEqual(layout.bar.width, 48)
         XCTAssertEqual(layout.barView, CGSize(width: 38, height: 38))
-    }
-}
-
-final class RecordLockGlyphTests: XCTestCase {
-    func testOpenTheShackleStandsHighWithItsRightLegShort() {
-        let glyph = RecordLockGlyph(lockness: 0, scale: 2)
-        XCTAssertEqual(glyph.shackle, CGRect(x: 14, y: 6, width: 12, height: 33))
-        XCTAssertEqual(glyph.leftLegEnd, 22.5)
-        XCTAssertEqual(glyph.rightLegEnd, 16.5)
-        XCTAssertEqual(glyph.body, CGRect(x: 12, y: 22, width: 16, height: 16))
-        XCTAssertEqual(glyph.keyhole, CGRect(x: 18, y: 28, width: 4, height: 4))
-        XCTAssertEqual(glyph.lineWidth, 1.5)
-    }
-
-    func testShutTheShackleComesDownAndBothLegsMeetTheBody() {
-        let glyph = RecordLockGlyph(lockness: 1, scale: 3)
-        XCTAssertEqual(glyph.shackle.minY, 12)
-        XCTAssertEqual(glyph.rightLegEnd, glyph.leftLegEnd)
-        XCTAssertEqual(glyph.lineWidth, 5.0 / 3.0)
     }
 }
 

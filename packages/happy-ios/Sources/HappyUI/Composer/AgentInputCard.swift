@@ -1517,11 +1517,11 @@ public final class AgentInputCardView: UIView {
     }
 
     /// Send or the microphone (`ChatTextInputPanelNode`'s swap), in place:
-    /// send's arrow shrinks and fades out as the microphone grows in over
-    /// the same fill, on the glyph's spring (`AgentInputPrimaryGlyphMotion`),
-    /// and back. Only empty to not and back changes it, so typing doesn't;
-    /// a change caught halfway turns back from where it is. A recording
-    /// under way keeps the microphone.
+    /// send's arrow fades out, then the microphone fades in over the same
+    /// fill (`AgentInputPrimaryGlyphMotion`), and back. Only empty to not
+    /// and back changes it, so typing doesn't; a change caught halfway
+    /// turns back from where it is. A recording under way keeps the
+    /// microphone.
     private func updateRecord(animated: Bool) {
         guard let recordButton else { return }
         let shows = configuration.primaryAction == .record || recordButton.isRecording
@@ -1530,16 +1530,12 @@ public final class AgentInputCardView: UIView {
         showsRecord = shows
         primaryButton.isUserInteractionEnabled = !shows
         recordButton.isUserInteractionEnabled = shows
-        let apply = {
-            recordButton.alpha = shows ? 1 : 0
-            recordButton.transform = shows ? .identity : AgentInputPrimaryGlyphMotion.shrunk
-        }
         guard animated, !first else {
             recordButton.layer.removeAllAnimations()
-            apply()
+            recordButton.alpha = shows ? 1 : 0
             return
         }
-        AgentInputPrimaryGlyphMotion.animate(apply)
+        AgentInputPrimaryGlyphMotion.fade(recordButton, in: shows)
     }
 
     /// What of the flat panel moves its frames: whether it is there, the
@@ -2008,7 +2004,7 @@ final class ComposerPrimaryButton: ComposerPressableButton {
     func configure(action: AgentInputPrimaryAction, style: AgentInputPrimaryStyle, busy: Bool, accessibilityLabel: String?) {
         // Send to stop, or to the microphone, and back is the one button
         // changing its glyph, so the glyph changes in place: the old one
-        // shrinks away as the new one grows in.
+        // fades out, then the new one fades in.
         let old = configured ? glyph : nil
         let wasBusy = self.busy
         let wasConfigured = configured
@@ -2019,7 +2015,7 @@ final class ComposerPrimaryButton: ComposerPressableButton {
         switch action {
         case .stop, .record:
             // Stop draws its square; the microphone over the button its
-            // own glyph. Send's arrow is left to shrink away.
+            // own glyph. Send's arrow is left to fade away.
             break
         case .blocked:
             iconView.icon = .ionicons("lock-closed")
@@ -2042,8 +2038,8 @@ final class ComposerPrimaryButton: ComposerPressableButton {
         }
         self.accessibilityLabel = accessibilityLabel ?? (action == .stop ? Strings.Composer.stop : Strings.Composer.send)
         if wasConfigured, glyph === old, busy == wasBusy {
-            // The same glyph (a keystroke more to send): one still growing
-            // in keeps growing.
+            // The same glyph (a keystroke more to send): one still fading
+            // in keeps fading.
             applyColors()
         } else {
             showGlyph(from: old, animated: wasConfigured && !busy && !wasBusy && window != nil)
@@ -2062,40 +2058,43 @@ final class ComposerPrimaryButton: ComposerPressableButton {
     }
 
     /// The glyph the action draws, in place. `old`, the one going away,
-    /// shrinks and fades out as the new one grows in, centred, and the
-    /// fill changes with them. A glyph caught on its way out turns back
-    /// from where it is, so typing and deleting fast never jumps.
+    /// fades out, and only then the new one fades in, so the two never
+    /// overlap; the fill changes across both. A glyph caught on its way
+    /// out turns back from where it is, so typing and deleting fast never
+    /// jumps.
     private func showGlyph(from old: UIView?, animated: Bool) {
         let new = glyph
         guard animated, old !== new else {
             for view in [iconView, stopView] as [UIView] {
                 view.layer.removeAllAnimations()
                 view.alpha = 1
-                view.transform = .identity
                 view.isHidden = busy || view !== new
             }
             applyColors()
             return
         }
-        let shrunk = AgentInputPrimaryGlyphMotion.shrunk
-        if let new, new.isHidden {
-            new.isHidden = false
-            new.alpha = 0
-            new.transform = shrunk
+        if let new {
+            let fresh = new.isHidden
+            if fresh {
+                new.isHidden = false
+                new.alpha = 0
+            }
+            AgentInputPrimaryGlyphMotion.fade(new, in: true, fromCurrentState: !fresh)
         }
-        AgentInputPrimaryGlyphMotion.animate {
-            new?.alpha = 1
-            new?.transform = .identity
-            old?.alpha = 0
-            old?.transform = shrunk
-            self.applyColors()
-        } completion: {
-            // A later change may have made the old glyph the shown one again.
-            guard let old, old !== self.glyph else { return }
-            old.isHidden = true
-            old.alpha = 1
-            old.transform = .identity
+        if let old {
+            AgentInputPrimaryGlyphMotion.fade(old, in: false) {
+                // A later change may have made the old glyph the shown one again.
+                guard old !== self.glyph else { return }
+                old.isHidden = true
+                old.alpha = 1
+            }
         }
+        UIView.animate(
+            withDuration: AgentInputPrimaryGlyphMotion.fadeOut + AgentInputPrimaryGlyphMotion.fadeIn,
+            delay: 0,
+            options: [.beginFromCurrentState, .allowUserInteraction],
+            animations: applyColors
+        )
     }
 
     private func applyColors() {
@@ -2153,23 +2152,19 @@ final class ComposerPrimaryButton: ComposerPressableButton {
 }
 
 extension AgentInputPrimaryGlyphMotion {
-    /// Where a glyph going away ends and one coming in starts; Reduce
-    /// Motion keeps only the fade.
-    static var shrunk: CGAffineTransform {
-        UIAccessibility.isReduceMotionEnabled ? .identity : CGAffineTransform(scaleX: scale, y: scale)
-    }
-
-    /// The change on the glyph's spring, from wherever an earlier one left
-    /// it.
+    /// `view` fading out at once, or in once the glyph it replaces is gone,
+    /// from wherever an earlier change left it. A glyph just unhidden at
+    /// zero fades from zero: its layer on screen still has the alpha it
+    /// was hidden with.
     @MainActor
-    static func animate(_ changes: @escaping () -> Void, completion: (() -> Void)? = nil) {
+    static func fade(_ view: UIView, in shows: Bool, fromCurrentState: Bool = true, completion: (() -> Void)? = nil) {
+        var options: UIView.AnimationOptions = [.allowUserInteraction, shows ? .curveEaseOut : .curveEaseIn]
+        if fromCurrentState { options.insert(.beginFromCurrentState) }
         UIView.animate(
-            withDuration: duration,
-            delay: 0,
-            usingSpringWithDamping: damping,
-            initialSpringVelocity: 0,
-            options: [.beginFromCurrentState, .allowUserInteraction],
-            animations: changes,
+            withDuration: shows ? fadeIn : fadeOut,
+            delay: shows ? fadeOut : 0,
+            options: options,
+            animations: { view.alpha = shows ? 1 : 0 },
             completion: { _ in completion?() }
         )
     }

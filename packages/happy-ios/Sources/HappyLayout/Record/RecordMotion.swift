@@ -18,6 +18,11 @@ public struct RecordMotion: Equatable, Sendable {
         public static let levelKeep: CGFloat = 0.9
         /// How much of the last drag each 60 Hz frame keeps.
         public static let dragKeep: CGFloat = 0.7
+        /// The most 60 Hz frames one tick steps. Telegram's display link
+        /// steps once whatever the gap, so a late frame (locking posts to
+        /// VoiceOver and plays a haptic) eases on rather than jumping the
+        /// circle most of the way back down in one go.
+        public static let maxStepFrames: CGFloat = 1
         /// The circles' appearing spring (`animateIn`): 0.5 s, damping 0.55.
         public static let springDuration: Double = 0.5
         public static let springDamping: CGFloat = 0.55
@@ -60,7 +65,7 @@ public struct RecordMotion: Equatable, Sendable {
 
     /// One tick toward the targets.
     public mutating func step(level target: CGFloat, lift liftTarget: CGFloat, slide slideTarget: CGFloat, frames: CGFloat = 1) {
-        let frames = max(0, frames)
+        let frames = min(Metrics.maxStepFrames, max(0, frames))
         let levelKeep = pow(Metrics.levelKeep, frames)
         let dragKeep = pow(Metrics.dragKeep, frames)
         level = level * levelKeep + min(1, max(0, target)) * (1 - levelKeep)

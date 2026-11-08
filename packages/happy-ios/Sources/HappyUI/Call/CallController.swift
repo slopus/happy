@@ -14,6 +14,9 @@ import UIKit
 @MainActor
 final class CallController {
     static let shared = CallController()
+    /// Posted as `state` changes, for what shows it outside the bar: the
+    /// header's call button (`CallBarButtonItem`).
+    static let stateDidChange = Notification.Name("CallController.stateDidChange")
 
     private var session: CallSession?
     private var context: CallContext?
@@ -214,7 +217,9 @@ final class CallController {
     }
 
     private func show(_ state: CallState) {
+        let changed = self.state != state
         self.state = state
+        if changed { NotificationCenter.default.post(name: Self.stateDidChange, object: self) }
         updateClock()
         guard let shell else { return }
         let bar = shell.callBar
