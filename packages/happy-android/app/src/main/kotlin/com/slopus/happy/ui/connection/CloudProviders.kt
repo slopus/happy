@@ -69,8 +69,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
-/** Happy Cloud's AI providers for connection [connectionId]; [choose] opens the add chooser over them. */
-@Serializable data class CloudProvidersRoute(val connectionId: String, val choose: Boolean = false)
+/** Happy Cloud's AI providers for connection [connectionId]; [choose] opens the add chooser over them, its pick kept in [to] when it says. */
+@Serializable data class CloudProvidersRoute(val connectionId: String, val choose: Boolean = false, val to: String? = null)
 
 /** ChatGPT's device sign-in, kept in [to] (a [CloudDestination] id) when it says. */
 @Serializable data class CloudChatGptRoute(val connectionId: String, val to: String? = null)
@@ -107,7 +107,7 @@ object CloudProvidersTags {
 fun NavGraphBuilder.cloudProviderRoutes(graph: AppGraph, nav: NavHostController) {
     page<CloudProvidersRoute> { entry ->
         val route = entry.toRoute<CloudProvidersRoute>()
-        CloudProvidersPage(graph, nav, route.connectionId, route.choose)
+        CloudProvidersPage(graph, nav, route.connectionId, route.choose, route.to)
     }
     page<CloudChatGptRoute> { entry ->
         val route = entry.toRoute<CloudChatGptRoute>()
@@ -126,7 +126,7 @@ fun NavGraphBuilder.cloudProviderRoutes(graph: AppGraph, nav: NavHostController)
 /** Opens the providers of [connectionId], with [add]'s flow over them, into [destination] where it says. */
 fun NavHostController.openCloudProviders(connectionId: String, add: CloudProviderFlow? = null, destination: CloudDestination? = null) {
     val to = destination?.id
-    navigate(CloudProvidersRoute(connectionId, choose = add == CloudProviderFlow.Choose))
+    navigate(CloudProvidersRoute(connectionId, choose = add == CloudProviderFlow.Choose, to = to.takeIf { add == CloudProviderFlow.Choose }))
     when (add) {
         CloudProviderFlow.ChatGpt -> navigate(CloudChatGptRoute(connectionId, to))
         CloudProviderFlow.Claude -> navigate(CloudClaudeRoute(connectionId, to))
@@ -149,7 +149,7 @@ internal fun destinationFor(allowed: List<CloudDestination>, asked: CloudDestina
     asked?.takeIf { it in allowed } ?: allowed.firstOrNull() ?: CloudDestination.Private
 
 @Composable
-private fun CloudProvidersPage(graph: AppGraph, nav: NavHostController, connectionId: String, choose: Boolean) {
+private fun CloudProvidersPage(graph: AppGraph, nav: NavHostController, connectionId: String, choose: Boolean, to: String?) {
     val session = remember(connectionId) { graph.agentSessions.session(connectionId) } ?: return
     val scope = rememberCoroutineScope()
     val source = remember(session, scope) {
@@ -166,9 +166,9 @@ private fun CloudProvidersPage(graph: AppGraph, nav: NavHostController, connecti
             onPick = { flow ->
                 choosing = false
                 when (flow) {
-                    CloudProviderFlow.ChatGpt -> nav.navigate(CloudChatGptRoute(connectionId))
-                    CloudProviderFlow.Claude -> nav.navigate(CloudClaudeRoute(connectionId, token = capabilities?.claudeSignIn != true))
-                    is CloudProviderFlow.ApiKey -> nav.navigate(CloudApiKeyRoute(connectionId, flow.vendor))
+                    CloudProviderFlow.ChatGpt -> nav.navigate(CloudChatGptRoute(connectionId, to))
+                    CloudProviderFlow.Claude -> nav.navigate(CloudClaudeRoute(connectionId, to, token = capabilities?.claudeSignIn != true))
+                    is CloudProviderFlow.ApiKey -> nav.navigate(CloudApiKeyRoute(connectionId, flow.vendor, to))
                     CloudProviderFlow.Choose -> Unit
                 }
             },
