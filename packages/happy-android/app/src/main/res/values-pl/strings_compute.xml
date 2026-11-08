@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="compute_cpu_count">Procesory logiczne</string>
+    <string name="compute_total_memory">Całkowita pamięć RAM</string>
+    <string name="compute_total_disk">Rozmiar woluminu obszarów roboczych</string>
+    <string name="compute_revoked_count">Unieważnione: %1$d</string>
     <string name="compute_pools_title">Pule obliczeniowe</string>
     <string name="compute_permission">Zarządzanie pulami obliczeniowymi wymaga uprawnienia pools.manage.</string>
     <string name="compute_empty">Brak pul obliczeniowych</string>

@@ -23,6 +23,8 @@ import kotlinx.serialization.json.longOrNull
 data class SandboxCapacity(val used: Int, val total: Int?)
 data class ComputePool(val id: String, val name: String, val counts: Map<String, Int>, val capacity: SandboxCapacity)
 data class ComputePlacement(val sandboxId: String, val agentId: String, val title: String?)
+/** Startup host totals, not utilization or per-sandbox limits; disk is the workspace volume. */
+data class ComputeHost(val cpuCores: Long?, val totalMemoryBytes: Long?, val totalDiskBytes: Long?)
 data class ComputeNode(
     val id: String,
     val pool: String,
@@ -32,6 +34,7 @@ data class ComputeNode(
     val version: String?,
     val capacity: SandboxCapacity,
     val agents: List<ComputePlacement>,
+    val host: ComputeHost? = null,
 ) {
     val canDrain: Boolean get() = status in setOf("online", "offline", "draining")
 }
@@ -58,6 +61,7 @@ object ComputePools {
                 status = n.text("status"), lastSeenAt = n.millis("lastSeenAt"), version = n["version"].str,
                 capacity = n.capacity(),
                 agents = n.objects("activeSandboxes").map { ComputePlacement(it.text("sandboxId"), it.text("agentId"), it["agentTitle"].str) },
+                host = n["host"].obj?.let { ComputeHost(it.hostCount("cpuCores"), it.hostCount("totalMemoryBytes"), it.hostCount("totalDiskBytes")) },
             )
         }
         return ComputeSnapshot(pools, nodes)
@@ -78,6 +82,7 @@ object ComputePools {
     private fun JsonObject.text(key: String): String = requireNotNull(this[key].str).also { require(it.isNotBlank()) }
     private fun JsonObject.count(key: String): Int = requireNotNull((this[key] as? JsonPrimitive)?.intOrNull).also { require(it >= 0) }
     private fun JsonObject.millis(key: String): Long? = (this[key] as? JsonPrimitive)?.longOrNull
+    private fun JsonObject.hostCount(key: String): Long? = (this[key] as? JsonPrimitive)?.takeUnless { it.isString }?.longOrNull?.takeIf { it > 0 }
     private fun JsonObject.objects(key: String): List<JsonObject> = requireNotNull(this[key].arr).map { requireNotNull(it.obj) }
     private fun JsonObject.capacity(): SandboxCapacity {
         val capacity = requireNotNull(this["sandboxCapacity"].obj)

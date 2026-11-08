@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.width
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.agent.ComputeJoinCommand
+import com.slopus.happy.agent.ComputeHost
 import com.slopus.happy.agent.ComputeNode
 import com.slopus.happy.agent.ComputePlacement
 import com.slopus.happy.agent.ComputePool
@@ -76,8 +77,35 @@ class ComputePoolsScreenTest {
     @Test
     fun revokedMachinesHaveNoLifecycleAction() {
         rule.setHappyContent { ComputePoolsScreen(loaded(node.copy(status = "revoked")), false, {}, {}, {}, {}) }
+        rule.onAllNodesWithTag(ComputePoolsTags.node("n1")).assertCountEquals(0)
+        rule.onNodeWithText("1 revoked").performClick()
         rule.onNodeWithTag(ComputePoolsTags.node("n1")).performClick()
         rule.onAllNodesWithTag(ComputePoolsTags.drain("n1")).assertCountEquals(0)
+        rule.onNodeWithTag(ComputePoolsTags.revoked("p1")).performScrollTo().performClick()
+        rule.onAllNodesWithTag(ComputePoolsTags.node("n1")).assertCountEquals(0)
+    }
+
+    @Test
+    fun hostFactsShowReadableTotalsAndHideUnknownRows() {
+        val host = ComputeHost(4, 8_326_934_528, null)
+        rule.setHappyContent { ComputePoolsScreen(loaded(node.copy(host = host)), false, {}, {}, {}, {}) }
+        rule.onNodeWithTag(ComputePoolsTags.node("n1")).performClick()
+        rule.onNodeWithText("Logical CPUs").assertIsDisplayed()
+        rule.onNodeWithText("4").assertIsDisplayed()
+        rule.onNodeWithText("Total RAM").assertIsDisplayed()
+        rule.onNodeWithText("GB", substring = true).assertIsDisplayed()
+        rule.onAllNodesWithText("Workspace volume size").assertCountEquals(0)
+    }
+
+    @Test
+    fun onlyActiveStatusesAreListedUntilRevokedToggleOpens() {
+        val nodes = listOf("online", "offline", "draining", "enrolling", "revoked").map { node.copy(id = it, status = it) }
+        rule.setHappyContent { ComputePoolsScreen(ComputePoolsSource.State.Loaded(ComputeSnapshot(listOf(pool), nodes)), false, {}, {}, {}, {}) }
+        for (status in listOf("online", "offline", "draining")) rule.onNodeWithTag(ComputePoolsTags.node(status)).assertIsDisplayed()
+        for (status in listOf("enrolling", "revoked")) rule.onAllNodesWithTag(ComputePoolsTags.node(status)).assertCountEquals(0)
+        rule.onNodeWithTag(ComputePoolsTags.revoked("p1")).performScrollTo().performClick()
+        rule.onNodeWithTag(ComputePoolsTags.node("revoked")).performScrollTo().assertIsDisplayed()
+        rule.onAllNodesWithTag(ComputePoolsTags.node("enrolling")).assertCountEquals(0)
     }
 
     @Test

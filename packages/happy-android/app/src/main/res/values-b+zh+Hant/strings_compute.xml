@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="compute_cpu_count">邏輯 CPU 數量</string>
+    <string name="compute_total_memory">記憶體總量</string>
+    <string name="compute_total_disk">工作區磁碟區容量</string>
+    <string name="compute_revoked_count">已撤銷：%1$d</string>
     <string name="compute_pools_title">運算集區</string>
     <string name="compute_permission">管理運算集區需要 pools.manage 權限。</string>
     <string name="compute_empty">沒有運算集區</string>

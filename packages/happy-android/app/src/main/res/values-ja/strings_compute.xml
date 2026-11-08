@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="compute_cpu_count">論理CPU数</string>
+    <string name="compute_total_memory">合計RAM</string>
+    <string name="compute_total_disk">ワークスペースのボリューム容量</string>
+    <string name="compute_revoked_count">失効済み: %1$d</string>
     <string name="compute_pools_title">コンピュートプール</string>
     <string name="compute_permission">コンピュートプールの管理には pools.manage 権限が必要です。</string>
     <string name="compute_empty">コンピュートプールはありません</string>

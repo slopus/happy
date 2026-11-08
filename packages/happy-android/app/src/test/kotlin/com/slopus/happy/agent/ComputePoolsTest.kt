@@ -49,6 +49,21 @@ class ComputePoolsTest {
     }
 
     @Test
+    fun hostFactsPreserveLargeByteTotalsWithoutInventingMissingValues() = runTest {
+        suspend fun host(fragment: String): ComputeHost? {
+            val server = Server { path -> answer(path).let { (status, text) ->
+                status to if (path.endsWith("/nodes")) text.replace("\"version\":", "$fragment\"version\":") else text
+            } }
+            return ComputePools.read(client(server)).nodes.single().host
+        }
+        assertNull(host(""))
+        assertNull(host("\"host\":null,"))
+        assertEquals(ComputeHost(4, 8_326_934_528, 165_295_407_104), host("\"host\":{\"cpuCores\":4,\"totalMemoryBytes\":8326934528,\"totalDiskBytes\":165295407104},"))
+        assertEquals(ComputeHost(4, null, null), host("\"host\":{\"cpuCores\":4,\"totalMemoryBytes\":null},"))
+        assertEquals(ComputeHost(null, null, null), host("\"host\":{\"cpuCores\":0,\"totalMemoryBytes\":-1,\"totalDiskBytes\":\"123\"},"))
+    }
+
+    @Test
     fun missingMonitoringFieldsAreNotInventedAsEmptyData() = runTest {
         val server = Server { path -> if (path.endsWith("/pools")) 200 to """{"pools":[{"id":"default","name":"Team"}]}""" else answer(path) }
         val source = ComputePoolsSource(client(server))

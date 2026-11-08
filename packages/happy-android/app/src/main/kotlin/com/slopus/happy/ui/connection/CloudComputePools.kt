@@ -2,6 +2,7 @@ package com.slopus.happy.ui.connection
 
 import android.content.ClipData
 import android.os.PersistableBundle
+import android.text.format.Formatter
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -9,6 +10,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -16,6 +18,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -69,6 +72,7 @@ object ComputePoolsTags {
     fun node(id: String) = "computePools.node.$id"
     fun add(id: String) = "computePools.add.$id"
     fun drain(id: String) = "computePools.drain.$id"
+    fun revoked(id: String) = "computePools.revoked.$id"
 }
 
 internal fun canManagePools(cloud: Boolean, permissions: ServerPermissions): Boolean =
@@ -171,41 +175,60 @@ internal fun ComputePoolsScreen(
                 is ComputePoolsSource.State.Loaded -> {
                     if (state.snapshot.pools.isEmpty()) ItemGroup { Item(stringResource(R.string.compute_empty), showChevron = false) }
                     for (pool in state.snapshot.pools) {
+                        var showRevoked by remember(pool.id) { mutableStateOf(false) }
+                        val nodes = state.snapshot.nodes.filter { it.pool == pool.id }
+                        val revoked = nodes.filter { it.status == "revoked" }
                         val summary = ComputePools.statuses.filter { (pool.counts[it] ?: 0) > 0 }.map { status ->
                             "${pool.counts[status]} ${statusLabel(status)}"
                         }.joinToString(" · ")
                         ItemGroup(title = pool.name, footer = summary.ifEmpty { stringResource(R.string.compute_no_nodes) }) {
                             Item(capacityLabel(pool.capacity), showChevron = false)
-                            for (node in state.snapshot.nodes.filter { it.pool == pool.id }) {
-                                var expanded by remember(node.id) { mutableStateOf(false) }
-                                Item(
-                                    node.name, subtitle = statusLabel(node.status), onClick = { expanded = !expanded },
-                                    rightElement = { Icon(if (expanded) Ionicon.ChevronUp else Ionicon.ChevronDown, 20.dp, HappyTheme.colors.textSecondary) },
-                                    modifier = Modifier.testTag(ComputePoolsTags.node(node.id)),
-                                )
-                                if (expanded) {
-                                    Item(capacityLabel(node.capacity), showChevron = false)
-                                    Item(stringResource(R.string.compute_last_seen), subtitle = node.lastSeenAt?.let(::timestamp) ?: stringResource(R.string.status_unknown), showChevron = false)
-                                    Item(stringResource(R.string.common_version), subtitle = node.version ?: stringResource(R.string.status_unknown), showChevron = false)
-                                    Item(
-                                        stringResource(R.string.settings_agents),
-                                        subtitle = node.agents.joinToString("\n\n") { agent ->
-                                            agent.title?.takeIf { it.isNotBlank() }?.let { "$it\n${agent.agentId}" } ?: agent.agentId
-                                        }.ifEmpty { stringResource(R.string.compute_no_agents) },
-                                        subtitleLines = Int.MAX_VALUE, showChevron = false,
-                                    )
-                                    if (node.canDrain) Item(
-                                        stringResource(if (node.status == "draining") R.string.compute_undrain else R.string.compute_drain),
-                                        onClick = { onDrain(node) }, enabled = !busy, showChevron = false, modifier = Modifier.testTag(ComputePoolsTags.drain(node.id)),
-                                    )
-                                }
+                            for (node in nodes.filter { it.status in setOf("online", "offline", "draining") }) key(node.id) {
+                                ComputeNodeRows(node, busy, onDrain)
                             }
                             Item(stringResource(R.string.compute_add), onClick = { onAdd(pool) }, enabled = !busy, showChevron = false, modifier = Modifier.testTag(ComputePoolsTags.add(pool.id)))
+                            if (revoked.isNotEmpty()) {
+                                Item(stringResource(R.string.compute_revoked_count, revoked.size), onClick = { showRevoked = !showRevoked },
+                                    rightElement = { Icon(if (showRevoked) Ionicon.ChevronUp else Ionicon.ChevronDown, 20.dp, HappyTheme.colors.textSecondary) },
+                                    modifier = Modifier.testTag(ComputePoolsTags.revoked(pool.id)))
+                                if (showRevoked) for (node in revoked) key(node.id) { ComputeNodeRows(node, busy, onDrain) }
+                            }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/** Settings rows with 48 dp minimum targets; nullable host totals never produce placeholder rows. */
+@Composable
+private fun ComputeNodeRows(node: ComputeNode, busy: Boolean, onDrain: (ComputeNode) -> Unit) {
+    var expanded by remember(node.id) { mutableStateOf(false) }
+    Item(
+        node.name, subtitle = statusLabel(node.status), onClick = { expanded = !expanded },
+        rightElement = { Icon(if (expanded) Ionicon.ChevronUp else Ionicon.ChevronDown, 20.dp, HappyTheme.colors.textSecondary) },
+        modifier = Modifier.testTag(ComputePoolsTags.node(node.id)),
+    )
+    if (expanded) {
+        Item(capacityLabel(node.capacity), showChevron = false)
+        val context = LocalContext.current
+        node.host?.cpuCores?.let { Item(stringResource(R.string.compute_cpu_count), titleLines = 0, detail = java.text.NumberFormat.getIntegerInstance().format(it), showChevron = false) }
+        node.host?.totalMemoryBytes?.let { Item(stringResource(R.string.compute_total_memory), titleLines = 0, detail = Formatter.formatShortFileSize(context, it), showChevron = false) }
+        node.host?.totalDiskBytes?.let { Item(stringResource(R.string.compute_total_disk), titleLines = 0, detail = Formatter.formatShortFileSize(context, it), showChevron = false) }
+        Item(stringResource(R.string.compute_last_seen), subtitle = node.lastSeenAt?.let(::timestamp) ?: stringResource(R.string.status_unknown), showChevron = false)
+        Item(stringResource(R.string.common_version), subtitle = node.version ?: stringResource(R.string.status_unknown), showChevron = false)
+        Item(
+            stringResource(R.string.settings_agents),
+            subtitle = node.agents.joinToString("\n\n") { agent ->
+                agent.title?.takeIf { it.isNotBlank() }?.let { "$it\n${agent.agentId}" } ?: agent.agentId
+            }.ifEmpty { stringResource(R.string.compute_no_agents) },
+            subtitleLines = Int.MAX_VALUE, showChevron = false,
+        )
+        if (node.canDrain) Item(
+            stringResource(if (node.status == "draining") R.string.compute_undrain else R.string.compute_drain),
+            onClick = { onDrain(node) }, enabled = !busy, showChevron = false, modifier = Modifier.testTag(ComputePoolsTags.drain(node.id)),
+        )
     }
 }
 
