@@ -117,7 +117,9 @@ final class Dictation {
         guard !isRunning, recognition == nil else { throw Failure.audio }
         guard let recognizer = Self.recognizer() else { throw Failure.unavailable }
         publish(DictationTranscript())
-        let recognition = DictationRecognition(recognizer: recognizer, candidates: Self.candidates(multilingual: multilingual))
+        let candidates = Self.candidates(multilingual: multilingual)
+        DictationLog.note("start multilingual \(multilingual) signals \(DictationLanguages.signals()) ranked \(DictationLanguages.rankedLocales(supported: Array(SFSpeechRecognizer.supportedLocales())).map(\.identifier)) listening \(candidates.map(\.identifier)) recognizer \(recognizer.locale.identifier) onDevice \(recognizer.supportsOnDeviceRecognition)")
+        let recognition = DictationRecognition(recognizer: recognizer, candidates: candidates)
         let audio = recognition.audio
         let level: @Sendable (CGFloat) -> Void = { [weak self] value in
             Task { @MainActor in self?.onLevel?(value) }
@@ -160,6 +162,7 @@ final class Dictation {
         stopAudio()
         if let recognition {
             _ = await recognition.finish()
+            DictationLog.note("finished \(recognition.engine?.rawValue ?? "none") \(recognition.locale.identifier) [\(transcript.text)]")
             self.recognition = nil
             if !transcript.text.isEmpty { DictationLanguages.rememberSuccess(locale: recognition.locale) }
         } else if let script = Self.simulatorScript, let words = try? String(contentsOf: script, encoding: .utf8) {
@@ -241,6 +244,34 @@ final class Dictation {
 
     // MARK: A recording in place of the microphone (DEBUG)
 
+    #if DEBUG
+    private static var trial: Dictation?
+
+    /// `HAPPY_DICTATION_TRIAL=<seconds>`: at launch, one recording of
+    /// `HAPPY_DICTATION_AUDIO` that long, with no one pressing anything;
+    /// what it chose and heard goes to Documents/dictation.log.
+    static func trialIfAsked() {
+        guard let seconds = ProcessInfo.processInfo.environment["HAPPY_DICTATION_TRIAL"].flatMap(Double.init) else { return }
+        let multilingual = ProcessInfo.processInfo.environment["HAPPY_DICTATION_MULTILINGUAL"] != "0"
+        Task { @MainActor in
+            let access = await ask()
+            DictationLog.note("trial access \(access) speech \(SFSpeechRecognizer.authorizationStatus().rawValue)")
+            if ProcessInfo.processInfo.environment["HAPPY_DICTATION_PREFETCH"] == "1" {
+                prefetch(multilingual: multilingual)
+                try? await Task.sleep(for: .seconds(2))
+            }
+            let dictation = Dictation()
+            dictation.multilingual = multilingual
+            trial = dictation
+            do { try dictation.start() } catch { return DictationLog.note("trial start failed \(error)") }
+            try? await Task.sleep(for: .seconds(seconds))
+            let text = await dictation.finish()
+            DictationLog.note("trial done [\(text)]")
+            trial = nil
+        }
+    }
+    #endif
+
     /// `HAPPY_DICTATION_AUDIO`: a sound file, in Documents or a full path,
     /// played into the recognizer at its own pace in place of the
     /// microphone, so a device run hears the same words every time.
@@ -299,5 +330,13 @@ final class Dictation {
             try? line.write(to: log)
         }
     }
+}
+#endif
+
+#if canImport(UIKit) && DEBUG
+/// The app's way in to `Dictation.trialIfAsked`.
+@MainActor
+public enum DictationTrial {
+    public static func startIfAsked() { Dictation.trialIfAsked() }
 }
 #endif

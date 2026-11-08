@@ -24,8 +24,8 @@ import HappyCore
 /// came before it (`DictationLanguage.Pauses`); the language is chosen by
 /// the recognizer's confidence in what each settled
 /// (`DictationLanguage.Probe`), the other is dropped from the analyzer, and
-/// the winner's words are shown from then on. Without a clear choice by
-/// the end, the end decides. DictationTranscriber tells languages apart
+/// the winner's words are shown from then on; one that settles nothing
+/// there heard nothing. Without a clear choice by the end, the end decides. DictationTranscriber tells languages apart
 /// far better than SpeechTranscriber, so both candidates use it.
 @MainActor
 final class DictationRecognition {
@@ -88,6 +88,7 @@ final class DictationRecognition {
                         guard let self, !self.cancelled else { return analyzer.cancel() }
                         self.active = analyzer
                         self.engine = analyzer.probing ? .probe : .analyzer
+                        DictationLog.note("engine \(self.engine!.rawValue) \(analyzer.candidateLocales)")
                         return
                     } catch {
                         analyzer.cancel()
@@ -99,6 +100,7 @@ final class DictationRecognition {
             reader.start()
             self.active = reader
             self.engine = .recognizer
+            DictationLog.note("engine recognizer \(recognizer.locale.identifier)")
         }
     }
 
@@ -170,6 +172,7 @@ private final class AnalyzerReader: DictationReader {
     }
 
     var probing: Bool { candidates.count > 1 }
+    var candidateLocales: [String] { candidates.map(\.locale.identifier) }
     var locale: Locale? { candidates[probe.shown].locale }
 
     /// A reader for the language when its model is on the phone. When it
@@ -190,7 +193,9 @@ private final class AnalyzerReader: DictationReader {
         } else {
             return nil
         }
-        switch await AssetInventory.status(forModules: [module]) {
+        let status = await AssetInventory.status(forModules: [module])
+        DictationLog.note("make \(locale.identifier) \(type(of: module)) status \(status)")
+        switch status {
         case .installed:
             let candidate = Candidate(locale: locale, module: module, readings: readings)
             return AnalyzerReader(candidates: [candidate], audio: audio, changed: changed)
@@ -211,8 +216,13 @@ private final class AnalyzerReader: DictationReader {
         var candidates: [Candidate] = []
         var missing = false
         for locale in locales {
-            guard let transcriber = await probeTranscriber(locale) else { continue }
-            switch await AssetInventory.status(forModules: [transcriber]) {
+            guard let transcriber = await probeTranscriber(locale) else {
+                DictationLog.note("probe \(locale.identifier) no DictationTranscriber locale")
+                continue
+            }
+            let status = await AssetInventory.status(forModules: [transcriber])
+            DictationLog.note("probe \(locale.identifier) status \(status)")
+            switch status {
             case .installed:
                 let readings = Self.readings(of: transcriber.results) { Self.scored($0.text, isFinal: $0.isFinal) }
                 candidates.append(Candidate(locale: locale, module: transcriber, readings: readings))
@@ -223,6 +233,10 @@ private final class AnalyzerReader: DictationReader {
                 missing = true
             }
         }
+        #if DEBUG
+        let reserved = await AssetInventory.reservedLocales.map(\.identifier)
+        DictationLog.note("probe reserved \(reserved) of \(AssetInventory.maximumReservedLocales)")
+        #endif
         guard !missing, candidates.count > 1 else { return nil }
         return AnalyzerReader(candidates: candidates, audio: audio, changed: changed)
     }
@@ -230,7 +244,9 @@ private final class AnalyzerReader: DictationReader {
     static func prefetch(_ locales: [Locale]) async {
         for locale in locales {
             guard let transcriber = await probeTranscriber(locale) else { continue }
-            if case .supported = await AssetInventory.status(forModules: [transcriber]) { Self.download(transcriber) }
+            let status = await AssetInventory.status(forModules: [transcriber])
+            DictationLog.note("prefetch \(locale.identifier) status \(status)")
+            if case .supported = status { Self.download(transcriber) }
         }
     }
 
@@ -273,8 +289,18 @@ private final class AnalyzerReader: DictationReader {
 
     nonisolated private static func download(_ module: any SpeechModule) {
         Task.detached(priority: .utility) {
-            guard let request = try? await AssetInventory.assetInstallationRequest(supporting: [module]) else { return }
-            try? await request.downloadAndInstall()
+            let name = "\(type(of: module))"
+            do {
+                guard let request = try await AssetInventory.assetInstallationRequest(supporting: [module]) else {
+                    DictationLog.note("download \(name): nothing to install")
+                    return
+                }
+                DictationLog.note("download \(name): started")
+                try await request.downloadAndInstall()
+                DictationLog.note("download \(name): installed")
+            } catch {
+                DictationLog.note("download \(name): failed \(error)")
+            }
         }
     }
 
@@ -308,7 +334,22 @@ private final class AnalyzerReader: DictationReader {
     /// reading of it comes with its confidence and the probe can choose.
     private func paused(at time: Double) {
         guard accepting, probe.winner == nil, let analyzer else { return }
-        Task { try? await analyzer.finalize(through: CMTime(seconds: time, preferredTimescale: 1000)) }
+        DictationLog.note("pause at \(time)")
+        Task { [weak self] in
+            try? await analyzer.finalize(through: CMTime(seconds: time, preferredTimescale: 1000))
+            // What was settled reaches `read` a moment after.
+            try? await Task.sleep(for: .milliseconds(300))
+            self?.pauseSettled()
+        }
+    }
+
+    /// Every language has settled what came before the pause, or heard
+    /// nothing in it.
+    private func pauseSettled() {
+        guard accepting, let decided = probe.pauseSettled() else { return }
+        DictationLog.note("pause settled, winner \(candidates[decided].locale.identifier)")
+        drop(allBut: decided)
+        changed(candidates[decided].transcript)
     }
 
     private func read(_ reading: Reading, from index: Int) {
@@ -321,6 +362,7 @@ private final class AnalyzerReader: DictationReader {
         var decided: Int?
         if probing, reading.isFinal {
             decided = probe.settle(index, confidence: reading.confidence, characters: reading.scored)
+            DictationLog.note("settled \(candidates[index].locale.identifier) \(String(format: "%.2f", reading.confidence))×\(reading.scored) [\(reading.text)] mean \(String(format: "%.2f", probe.confidence(of: index)))\(decided.map { " winner \(self.candidates[$0].locale.identifier)" } ?? "")")
         }
         if let decided { drop(allBut: decided) }
         // The shown words change once, to the winner's, when it isn't the
@@ -350,6 +392,9 @@ private final class AnalyzerReader: DictationReader {
         accepting = false
         for candidate in candidates { candidate.reading?.cancel() }
         let chosen = probe.finish(texts: candidates.map(\.transcript.text))
+        if probing {
+            DictationLog.note("finish chose \(candidates[chosen].locale.identifier); " + candidates.indices.map { "\(candidates[$0].locale.identifier) \(String(format: "%.2f", probe.confidence(of: $0))) [\(candidates[$0].transcript.text)]" }.joined(separator: "; "))
+        }
         // Whatever wasn't settled in time is the best reading there is.
         candidates[chosen].transcript.endSegment()
         changed(candidates[chosen].transcript)
@@ -601,6 +646,34 @@ final class DictationAudio: @unchecked Sendable {
             target = nil
             waiting = []
         }
+    }
+}
+
+/// What dictation saw while choosing its language: in DEBUG, the console
+/// and Documents/dictation.log, which a device run pulls back; in the Mac
+/// harness, its output; nothing in a release.
+enum DictationLog {
+    private static let lock = NSLock()
+
+    static func note(_ line: @autoclosure () -> String) {
+        #if DICTATION_HARNESS
+        print("dictation:", line())
+        #elseif DEBUG
+        let text = line()
+        print("dictation:", text)
+        let folder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let data = Data("\(Date().timeIntervalSince1970) \(text)\n".utf8)
+        lock.withLock {
+            let url = folder.appendingPathComponent("dictation.log")
+            if let handle = try? FileHandle(forWritingTo: url) {
+                handle.seekToEndOfFile()
+                handle.write(data)
+                try? handle.close()
+            } else {
+                try? data.write(to: url)
+            }
+        }
+        #endif
     }
 }
 

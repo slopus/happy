@@ -170,8 +170,11 @@ final class RecordButton: UIControl {
         case .granted:
             break
         case .needsAsking:
-            // The system asks; the next press records.
-            Task { _ = await Dictation.ask() }
+            // The system asks; the next press records. Allowed, the models
+            // for two languages start downloading at once, not on the
+            // next visit, so the next presses can already choose.
+            let multilingual = multilingual()
+            Task { if await Dictation.ask() == .granted { Dictation.prefetch(multilingual: multilingual) } }
             return false
         case .microphoneDenied:
             refuse(Strings.Record.microphoneTitle, Strings.Record.microphoneMessage, settings: true)

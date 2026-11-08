@@ -149,6 +149,27 @@ public enum DictationLanguage {
             // The candidates' readings of one stretch don't arrive together:
             // a wrong one first must not win against nothing.
             guard settled.allSatisfy({ $0 > 0 }) else { return nil }
+            return decide(margin: margin)
+        }
+
+        /// Every candidate was asked to settle through a pause and has had
+        /// the time to: one that settled nothing so far heard nothing. On
+        /// the iPhone's microphone, English gave no reading at all of
+        /// Russian speech, and the probe waited on it to the end. Against
+        /// one that heard nothing, the leader needs `alone` as well, in
+        /// case the other's reading is only late.
+        public mutating func pauseSettled(margin: Double = 0.15) -> Int? {
+            guard winner == nil else { return nil }
+            let leader = locales.indices.max { confidence(of: $0) < confidence(of: $1) } ?? 0
+            guard settled.allSatisfy({ $0 > 0 }) || confidence(of: leader) >= Self.alone else { return nil }
+            return decide(margin: margin)
+        }
+
+        /// The confidence that wins against a language that heard nothing.
+        /// The wrong language scored at most 0.49 on the iPhone 12.
+        public static let alone = 0.6
+
+        private mutating func decide(margin: Double) -> Int? {
             let ranked = locales.indices.sorted { self.confidence(of: $0) > self.confidence(of: $1) }
             guard characters[ranked[0]] >= Self.enough,
                   self.confidence(of: ranked[0]) > self.confidence(of: ranked[1]) + margin else { return nil }
@@ -156,12 +177,20 @@ public enum DictationLanguage {
             return ranked[0]
         }
 
-        /// The recording is over: the candidate `choose` keeps from what
-        /// each heard, else the best ranked.
+        /// The recording is over: the most confident candidate that heard
+        /// anything, however close, as there is no more to wait for; the
+        /// best ranked when none was. A short Russian command full of
+        /// English words ("Сделай коммит и запушь в мейн") scored 0.39
+        /// against English's 0.28 on the iPhone 12, closer than `choose`'s
+        /// margin, and came out as English. One that settled `enough`
+        /// counts over one that didn't: English settling only "Sushi", at
+        /// 0.89, beat 55 characters of Russian at 0.61.
         public mutating func finish(texts: [String]) -> Int {
             if let winner { return winner }
             let readings = texts.indices.map { Reading(locale: locales[$0], text: texts[$0], confidence: confidence(of: $0)) }
-            let chosen = DictationLanguage.choose(readings).flatMap { reading in readings.firstIndex(of: reading) } ?? 0
+            let heard = texts.indices.filter { characters[$0] >= Self.enough }
+            let counted = heard.isEmpty ? readings : heard.map { readings[$0] }
+            let chosen = DictationLanguage.choose(counted, margin: 0).flatMap { reading in readings.firstIndex(of: reading) } ?? 0
             winner = chosen
             return chosen
         }

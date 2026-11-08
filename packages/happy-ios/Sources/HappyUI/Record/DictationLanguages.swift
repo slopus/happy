@@ -60,11 +60,20 @@ final class DictationLanguages: NSObject {
         ).map { Locale(identifier: $0) }
     }
 
-    private static func signals() -> (keyboard: String?, successful: String?, preferred: [String], installed: [String]) {
+    static func signals() -> (keyboard: String?, successful: String?, preferred: [String], installed: [String]) {
         observeKeyboard()
         captureKeyboard()
-        return (UserDefaults.standard.string(forKey: keyboardKey), UserDefaults.standard.string(forKey: successKey),
-                Locale.preferredLanguages, UITextInputMode.activeInputModes.compactMap(\.primaryLanguage))
+        var result = (keyboard: UserDefaults.standard.string(forKey: keyboardKey), successful: UserDefaults.standard.string(forKey: successKey),
+                      preferred: Locale.preferredLanguages, installed: UITextInputMode.activeInputModes.compactMap(\.primaryLanguage))
+        #if DEBUG
+        // `HAPPY_DICTATION_KEYBOARDS=en-US,ru-RU`: the keyboards a device
+        // run pretends to have, the first the one in use.
+        if let keyboards = ProcessInfo.processInfo.environment["HAPPY_DICTATION_KEYBOARDS"]?.split(separator: ",").map(String.init), !keyboards.isEmpty {
+            result.keyboard = keyboards[0]
+            result.installed = keyboards
+        }
+        #endif
+        return result
     }
 
     static func recognizer(allowUnavailableOnDevice: Bool = false) -> SFSpeechRecognizer? {

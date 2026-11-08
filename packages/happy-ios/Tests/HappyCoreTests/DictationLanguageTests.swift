@@ -102,11 +102,15 @@ final class DictationLanguageTests: XCTestCase {
         XCTAssertEqual(probe.confidence(of: 1), 0)
     }
 
-    func testProbeFinishKeepsTheFirstOnACloseCallOrSilence() {
+    func testProbeFinishTakesTheMoreConfidentHoweverClose() {
         var close = DictationLanguage.Probe(locales: ["de-DE", "en-US"])
         _ = close.settle(0, confidence: 0.83, characters: 72)
         _ = close.settle(1, confidence: 0.93, characters: 68)
-        XCTAssertEqual(close.finish(texts: ["Please open", "Please open"]), 0)
+        XCTAssertEqual(close.finish(texts: ["Please open", "Please open"]), 1)
+        var tie = DictationLanguage.Probe(locales: ["de-DE", "en-US"])
+        _ = tie.settle(0, confidence: 0.5, characters: 20)
+        _ = tie.settle(1, confidence: 0.5, characters: 20)
+        XCTAssertEqual(tie.finish(texts: ["Bitte", "Please"]), 0, "a tie keeps the best ranked")
         var silent = DictationLanguage.Probe(locales: ["ru-RU", "en-US"])
         XCTAssertEqual(silent.finish(texts: ["", ""]), 0)
         var onlySecond = DictationLanguage.Probe(locales: ["ru-RU", "en-US"])
@@ -122,6 +126,58 @@ final class DictationLanguageTests: XCTestCase {
         var silent = DictationLanguage.Probe(locales: ["ru-RU", "en-US"])
         XCTAssertNil(silent.settle(1, confidence: 0, characters: 0))
         XCTAssertEqual(silent.settle(0, confidence: 0.73, characters: 55), 0)
+    }
+
+    /// The iPhone 12, English keyboard in use, a short Russian command
+    /// let go of as it ended: no pause, and both readings poor.
+    func testProbeFinishKeepsAShortRussianCommandFullOfEnglishWords() {
+        var probe = DictationLanguage.Probe(locales: ["en-US", "ru-RU"])
+        XCTAssertNil(probe.settle(1, confidence: 0.39, characters: 25))
+        XCTAssertNil(probe.settle(0, confidence: 0.28, characters: 23), "0.11 apart is not clear mid-recording")
+        XCTAssertEqual(probe.finish(texts: ["Is Julie commit is mean", "Сделай комменты замуж man"]), 1)
+    }
+
+    /// The iPhone 12's microphone, a Russian sentence without a pause:
+    /// English settled one confident word.
+    func testProbeFinishPrefersTheOneThatHeardEnough() {
+        var probe = DictationLanguage.Probe(locales: ["en-US", "ru-RU"])
+        XCTAssertNil(probe.settle(0, confidence: 0.89, characters: 5))
+        XCTAssertNil(probe.settle(1, confidence: 0.61, characters: 55))
+        XCTAssertEqual(probe.finish(texts: ["Sushi", "Слушай я хочу чтобы ты открыл настройки потом проверила"]), 1)
+    }
+
+    /// The iPhone 12's microphone hearing Russian: English settled nothing
+    /// at either pause, so only the pause tells it heard nothing.
+    func testPauseDecidesAgainstALanguageThatHeardNothing() {
+        var probe = DictationLanguage.Probe(locales: ["en-US", "ru-RU"])
+        XCTAssertNil(probe.settle(1, confidence: 0.90, characters: 39))
+        XCTAssertNil(probe.winner, "English might only be late")
+        XCTAssertEqual(probe.pauseSettled(), 1)
+        XCTAssertEqual(probe.shown, 1)
+        var unsure = DictationLanguage.Probe(locales: ["en-US", "ru-RU"])
+        XCTAssertNil(unsure.settle(1, confidence: 0.38, characters: 39))
+        XCTAssertNil(unsure.pauseSettled(), "too unsure to win alone")
+        var short = DictationLanguage.Probe(locales: ["en-US", "ru-RU"])
+        XCTAssertNil(short.settle(1, confidence: 0.95, characters: 6))
+        XCTAssertNil(short.pauseSettled(), "too little to win")
+    }
+
+    /// The wrong language's reading came, the right one's is late: wrong
+    /// readings scored at most 0.49 on the iPhone, short of `alone`.
+    func testPauseNeverPicksTheWrongLanguageAgainstALateReading() {
+        var probe = DictationLanguage.Probe(locales: ["en-US", "ru-RU"])
+        XCTAssertNil(probe.settle(0, confidence: 0.49, characters: 37))
+        XCTAssertNil(probe.pauseSettled())
+        XCTAssertNil(probe.settle(0, confidence: 0.48, characters: 30), "Russian still hasn't settled")
+        XCTAssertEqual(probe.settle(1, confidence: 0.99, characters: 66), 1)
+        XCTAssertNil(probe.pauseSettled(), "a decided probe stays decided")
+    }
+
+    func testPauseWithEveryReadingDecidesAsSettlingDoes() {
+        var probe = DictationLanguage.Probe(locales: ["ru-RU", "en-US"])
+        XCTAssertNil(probe.settle(0, confidence: 0.83, characters: 72))
+        XCTAssertNil(probe.settle(1, confidence: 0.93, characters: 68))
+        XCTAssertNil(probe.pauseSettled(), "0.10 apart is not clear")
     }
 
     func testProbeWaitsForEveryCandidateToSettle() {
