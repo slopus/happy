@@ -8,6 +8,9 @@ public enum CallCue: Equatable, Sendable {
     /// The call ends in `seconds`: at the one-call limit, a fresh call can carry it over
     /// (`restart`); with the voice time used up, nothing can.
     case callEnding(reason: Reason, in: Double, restart: Bool)
+    /// A `readConversation` that answered `checking` is in: the read, as
+    /// `CallContext` made it (`conversation_read`).
+    case conversationRead(String)
 
     /// What a cue starts with, sent as a user message: the prompt says it is the app's.
     public static let mark = "[app] "
@@ -24,6 +27,8 @@ public enum CallCue: Equatable, Sendable {
             return #"{"event":"silence","endsIn":"\#(Self.spoken(endsIn))"}"#
         case .callEnding(let reason, let seconds, let restart):
             return #"{"event":"call_ending","reason":"\#(reason.rawValue)","in":"\#(Self.spoken(seconds))","restart":\#(restart)}"#
+        case .conversationRead(let read):
+            return read
         }
     }
 
@@ -51,6 +56,12 @@ public enum CallCue: Equatable, Sendable {
 /// ends. The agent's answer to a cue doesn't put off the end it warned of;
 /// the person speaking after it does, and the agent is told
 /// (`silenceOver`). Muted time counts: the provider hears silence then too.
+///
+/// A read that came in later (`conversationRead`) waits its turn: not
+/// while either side speaks, nor until the agent has answered what came
+/// before it (its "let me check" after the `checking` answer, the person's
+/// words since, the read before it) and been quiet `answerSettle`, or said
+/// nothing for `answerWait`. Reads go one at a time, oldest first.
 public struct CallCues: Equatable, Sendable {
     public struct Timing: Equatable, Sendable {
         /// Quiet this long, the agent warns the call will end.
@@ -71,6 +82,12 @@ public struct CallCues: Equatable, Sendable {
         public var restartMinimum: Double = 60
         /// After the agent agreed to restart: the longest its last words may take.
         public var restartDeadline: Double = 12
+        /// A read waits this long for the agent to answer what came before
+        /// it; past that, its silence is its answer.
+        public var answerWait: Double = 4
+        /// And this long after the agent stops speaking, so it isn't cut
+        /// off between a filler and what it says after its tool.
+        public var answerSettle: Double = 1.5
 
         public init() {}
 
@@ -122,6 +139,14 @@ public struct CallCues: Equatable, Sendable {
     private var allowanceCued = false
     private var restartAsked: Double?
     private var spokeSinceRestart = false
+    /// Reads waiting to be told, oldest first.
+    private var reads: [CallCue] = []
+    /// A tool of this call answered `checking`: only then is a read told.
+    private var asked = false
+    /// Since when the agent owes an answer: to a `checking`, the person's
+    /// words or a read told; nil once it has spoken.
+    private var owed: Double?
+    private var agentDone: Double = -.infinity
 
     public init(timing: Timing = Timing(), since: Double) {
         self.timing = timing
@@ -134,13 +159,33 @@ public struct CallCues: Equatable, Sendable {
         lastHeard = max(lastHeard, time)
         if warned != nil { silenceEnded = true }
         warned = nil
+        owed = time
     }
 
     /// The agent finished speaking.
     public mutating func agentSpoke(at time: Double) {
         lastHeard = max(lastHeard, time)
         if restartAsked != nil { spokeSinceRestart = true }
+        owed = nil
+        agentDone = time
     }
+
+    /// A tool answered that what it asked for comes later (`checking`):
+    /// the agent says so first.
+    public mutating func checking(at time: Double) {
+        owed = time
+        asked = true
+    }
+
+    /// A read to tell once the moment is right; one this call never
+    /// answered `checking` for (it came after a restart) goes nowhere.
+    public mutating func later(_ cue: CallCue) {
+        guard asked else { return }
+        reads.append(cue)
+    }
+
+    /// Reads still waiting to be told.
+    public var waiting: Int { reads.count }
 
     /// Whether the call can be carried over to a fresh one now: not with
     /// under a minute of voice time left.
@@ -173,6 +218,7 @@ public struct CallCues: Equatable, Sendable {
             if now - warned >= timing.silenceEnd - timing.silenceWarning, moment.quiet { return .end(.silence) }
         } else if now - lastHeard >= timing.silenceWarning, moment.quiet {
             warned = now
+            owed = now
             return .cue(.silence(endsIn: timing.silenceEnd - timing.silenceWarning))
         }
         guard moment.quiet else { return nil }
@@ -181,12 +227,18 @@ public struct CallCues: Equatable, Sendable {
            left <= timing.allowanceLead(total: total), left <= limitLeft + timing.restartMinimum {
             allowanceCued = true
             limitCued = true
+            owed = now
             return .cue(.callEnding(reason: .timeUsed, in: left, restart: false))
         }
         if !limitCued, limitLeft <= timing.callLimitLead {
             limitCued = true
+            owed = now
             let restart = moment.allowanceLeft.map { $0 > limitLeft + timing.restartMinimum } ?? true
             return .cue(.callEnding(reason: .callLimit, in: limitLeft, restart: restart))
+        }
+        if !reads.isEmpty, now - agentDone >= timing.answerSettle, owed.map({ now - $0 >= timing.answerWait }) ?? true {
+            owed = now
+            return .cue(reads.removeFirst())
         }
         return nil
     }

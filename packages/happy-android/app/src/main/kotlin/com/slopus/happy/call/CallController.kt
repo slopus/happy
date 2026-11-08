@@ -159,9 +159,26 @@ class CallController(
         }.launchIn(calling)
         focus = targets.focusedNow
         calling.launch { context.onRestart { withContext(Dispatchers.Main) { call.requestRestart() } } }
+        // A read that answered `checking`: the agent says so first, then the read comes as a cue.
+        calling.launch {
+            context.onReading { reading ->
+                calling.launch {
+                    if (session !== call) return@launch
+                    when (reading) {
+                        CallReading.Checking -> call.checking()
+                        is CallReading.Read -> call.later(reading.cue)
+                    }
+                }
+            }
+        }
         call.start(language = null, context = {
             context.initial(history.slots, person(account)).also { hold(context.followed(), targets) }
-        }, tool = { context.handle(it) })
+        }, tool = {
+            context.handle(it).also {
+                // A message makes where it went one the call hears from.
+                withContext(Dispatchers.Main.immediate) { if (session === call) hold(context.followed(), targets) }
+            }
+        })
     }
 
     /** Who the call talks to, in a team: the person's name on this computer; null outside one, or while it can't be read. */

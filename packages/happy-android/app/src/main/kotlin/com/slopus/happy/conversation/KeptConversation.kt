@@ -36,6 +36,8 @@ data class KeptConversation(
     val mode: Mode?,
     /** The agent's slash commands as last read; null when none were. */
     val slashCommands: List<SlashCommand>? = null,
+    /** When the computer's history was last read in full (ms since 1970); null if never, or kept before it was. */
+    val syncedAt: Long? = null,
 ) {
     fun json(): JsonObject = buildJsonObject {
         put("version", VERSION)
@@ -45,6 +47,7 @@ data class KeptConversation(
         agent?.let { put("agent", agentJson(it)) }
         mode?.let { put("mode", it.json()) }
         slashCommands?.let { put("slashCommands", SlashCommand.json(it)) }
+        syncedAt?.let { put("syncedAt", it) }
     }
 
     companion object {
@@ -62,6 +65,7 @@ data class KeptConversation(
                 agent = AgentInfo.parse(o["agent"]),
                 mode = Mode.parse(o["mode"]),
                 slashCommands = SlashCommand.parseAll(o["slashCommands"]),
+                syncedAt = (o["syncedAt"] as? JsonPrimitive)?.content?.toLongOrNull(),
             )
         }
 

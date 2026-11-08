@@ -14,6 +14,9 @@ sealed interface CallCue {
     /** The call ends in [inMillis]: at the one-call limit a fresh call can carry it over ([restart]); with the voice time used up, nothing can. */
     data class Ending(val reason: Reason, val inMillis: Long, val restart: Boolean) : CallCue
 
+    /** A `readConversation` that answered `checking` is in: the read, as [CallContext] made it (`conversation_read`). */
+    data class ConversationRead(val read: String) : CallCue
+
     enum class Reason(val wire: String) { CallLimit("call_limit"), TimeUsed("time_used") }
 
     /** The JSON the agent gets, after the [MARK]. */
@@ -21,6 +24,7 @@ sealed interface CallCue {
         get() = when (this) {
             is Silence -> """{"event":"silence","endsIn":"${spoken(endsInMillis)}"}"""
             is Ending -> """{"event":"call_ending","reason":"${reason.wire}","in":"${spoken(inMillis)}","restart":$restart}"""
+            is ConversationRead -> read
         }
 
     companion object {
@@ -51,6 +55,12 @@ sealed interface CallCue {
  * agent's answer to a cue doesn't put off the end it warned of; the person
  * speaking after it does, and the agent is told ([SILENCE_OVER]). Muted
  * time counts: the provider hears silence then too.
+ *
+ * A read that came in later ([CallCue.ConversationRead]) waits its turn: not
+ * while either side speaks, nor until the agent has answered what came before
+ * it (its "let me check" after the `checking` answer, the person's words since,
+ * the read before it) and been quiet [Timing.answerSettle], or said nothing for
+ * [Timing.answerWait]. Reads go one at a time, oldest first.
  */
 class CallCues(val timing: Timing = Timing(), val since: Long) {
     data class Timing(
@@ -71,6 +81,10 @@ class CallCues(val timing: Timing = Timing(), val since: Long) {
         val restartMinimum: Long = 60_000,
         /** After the agent agreed to restart: the longest its last words may take. */
         val restartDeadline: Long = 12_000,
+        /** A read waits this long for the agent to answer what came before it; past that, its silence is its answer. */
+        val answerWait: Long = 4_000,
+        /** And this long after the agent stops speaking, so it isn't cut off between a filler and what it says after its tool. */
+        val answerSettle: Long = 1_500,
     ) {
         fun allowanceLead(total: Long): Long = if (total <= 30 * 60_000L) shortAllowanceLead else longAllowanceLead
     }
@@ -103,19 +117,43 @@ class CallCues(val timing: Timing = Timing(), val since: Long) {
     private var allowanceCued = false
     private var restartAsked: Long? = null
     private var spokeSinceRestart = false
+    /** Reads waiting to be told, oldest first. */
+    private val reads = ArrayDeque<CallCue>()
+    /** A tool of this call answered `checking`: only then is a read told. */
+    private var asked = false
+    /** Since when the agent owes an answer: to a `checking`, the person's words or a read told; null once it has spoken. */
+    private var owed: Long? = null
+    private var agentDone = Long.MIN_VALUE / 2
 
     /** The person's finished words, or their voice. */
     fun heard(at: Long) {
         lastHeard = maxOf(lastHeard, at)
         if (warned != null) silenceEnded = true
         warned = null
+        owed = at
     }
 
     /** The agent finished speaking. */
     fun agentSpoke(at: Long) {
         lastHeard = maxOf(lastHeard, at)
         if (restartAsked != null) spokeSinceRestart = true
+        owed = null
+        agentDone = at
     }
+
+    /** A tool answered that what it asked for comes later (`checking`): the agent says so first. */
+    fun checking(at: Long) {
+        owed = at
+        asked = true
+    }
+
+    /** A read to tell once the moment is right; one this call never answered `checking` for (it came after a restart) goes nowhere. */
+    fun later(cue: CallCue) {
+        if (asked) reads.addLast(cue)
+    }
+
+    /** Reads still waiting to be told. */
+    val waiting: Int get() = reads.size
 
     /** Whether the call can be carried over to a fresh one now: not with under a minute of voice time left. */
     fun canRestart(allowanceLeft: Long?): Boolean = allowanceLeft?.let { it >= timing.restartMinimum } ?: true
@@ -145,6 +183,7 @@ class CallCues(val timing: Timing = Timing(), val since: Long) {
             if (now - warnedAt >= timing.silenceEnd - timing.silenceWarning && moment.quiet) return Action.End(CallEnding.Silence)
         } else if (now - lastHeard >= timing.silenceWarning && moment.quiet) {
             warned = now
+            owed = now
             return Action.Cue(CallCue.Silence(timing.silenceEnd - timing.silenceWarning))
         }
         if (!moment.quiet) return null
@@ -154,12 +193,18 @@ class CallCues(val timing: Timing = Timing(), val since: Long) {
         if (left != null && total != null && !allowanceCued && left <= timing.allowanceLead(total) && left <= limitLeft + timing.restartMinimum) {
             allowanceCued = true
             limitCued = true
+            owed = now
             return Action.Cue(CallCue.Ending(CallCue.Reason.TimeUsed, left, restart = false))
         }
         if (!limitCued && limitLeft <= timing.callLimitLead) {
             limitCued = true
+            owed = now
             val restart = left?.let { it > limitLeft + timing.restartMinimum } ?: true
             return Action.Cue(CallCue.Ending(CallCue.Reason.CallLimit, limitLeft, restart))
+        }
+        if (reads.isNotEmpty() && now - agentDone >= timing.answerSettle && (owed?.let { now - it >= timing.answerWait } ?: true)) {
+            owed = now
+            return Action.Cue(reads.removeFirst())
         }
         return null
     }

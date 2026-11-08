@@ -91,20 +91,61 @@ final class SessionCallTargets: CallTargets {
                 var state = CallTargetState.from(started.snapshot, target: Self.target(agentId, started.task.choice))
                 // Empty until its first message: nothing to read, and it takes one.
                 state.writable = started.snapshot.error == nil
+                state.fresh = true
                 return await named(await withModels(state, mode: started.snapshot.mode))
             }
             guard let draft = draftChat(agentId), let choice = draft.unmadeChoice else { return nil }
             var state = CallTargetState.from(draft.callSnapshot, target: Self.target(agentId, choice))
             // Empty until its first message: nothing to read, and it takes one.
             state.writable = draft.callSnapshot.error == nil
+            state.fresh = true
             return await withModels(state, mode: draft.callMode)
         }
         let read: (CallTargetState, AgentWire.Mode?)? = await borrowing(agentId) { chat in
             guard await Self.loaded(chat) else { return nil }
-            return (.from(chat.snapshot, target: target), chat.snapshot.mode)
+            return (current(chat, target: target), chat.snapshot.mode)
         }
         guard let read else { return nil }
         return await named(await withModels(read.0, mode: read.1))
+    }
+
+    /// As opening it would: its kept chat held, a failed read asked for
+    /// again (`Conversation.catchUp`), until the computer's history is in
+    /// and the account's events stream is live, or `limit` runs out. Let go
+    /// of after, it stays kept as a finger's reach keeps it (`borrowing`),
+    /// following, so a read again soon finds it current. New work has
+    /// nothing on the computer to read: as it is.
+    func refreshed(_ agentId: String, within limit: Duration) async -> CallTargetState? {
+        guard let target = target(agentId) else { return await state(of: agentId) }
+        let deadline = ContinuousClock.now + limit
+        let read: (CallTargetState, AgentWire.Mode?)? = await borrowing(agentId) { chat in
+            var asked = ContinuousClock.now
+            await chat.conversation.catchUp()
+            while !isCurrent(chat), ContinuousClock.now < deadline, !Task.isCancelled, !closed {
+                try? await Task.sleep(for: .milliseconds(50))
+                // A read that failed meanwhile is asked for again, once a second at most.
+                if ContinuousClock.now - asked >= .seconds(1) {
+                    asked = ContinuousClock.now
+                    await chat.conversation.catchUp()
+                }
+            }
+            guard chat.snapshot.loaded else { return nil }
+            return (current(chat, target: self.target(agentId) ?? target), chat.snapshot.mode)
+        }
+        guard let read else { return nil }
+        return await named(await withModels(read.0, mode: read.1))
+    }
+
+    /// Read from the computer and following the account's live events.
+    private func isCurrent(_ chat: WarmChats.Chat) -> Bool {
+        chat.snapshot.synced && session.snapshot.live
+    }
+
+    /// `chat` as the call reads it, `fresh` only while it is current.
+    private func current(_ chat: WarmChats.Chat, target: CallTarget) -> CallTargetState {
+        var state = CallTargetState.from(chat.snapshot, target: target)
+        state.fresh = isCurrent(chat)
+        return state
     }
 
     /// `state` with who wrote each message said, the members it doesn't

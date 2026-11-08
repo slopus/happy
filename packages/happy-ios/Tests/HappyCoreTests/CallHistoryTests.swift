@@ -325,6 +325,53 @@ final class CallCuesTests: XCTestCase {
         endless.restartAsked(at: 10)
         XCTAssertEqual(endless.next(.init(now: 22, agentSpeaking: true)), .restart)
     }
+
+    /// A read that came in later waits for its moment: never while either
+    /// side speaks, not before the agent has said it is checking (or said
+    /// nothing for 4 s) and been quiet a moment, and not before it answered
+    /// what the person said meanwhile. One at a time, oldest first.
+    func testAReadIsToldOnceTheAgentHasAnsweredWhatCameBefore() {
+        let first = CallCue.conversationRead(#"{"event":"conversation_read","ref":"s1"}"#)
+        let second = CallCue.conversationRead(#"{"event":"conversation_read","ref":"s2"}"#)
+        XCTAssertEqual(first.text, #"{"event":"conversation_read","ref":"s1"}"#)
+        var cues = CallCues(since: 0)
+        cues.checking(at: 10)
+        cues.later(first)
+        // The agent hasn't said it is checking yet.
+        XCTAssertNil(cues.next(.init(now: 11)))
+        XCTAssertNil(cues.next(.init(now: 12, agentSpeaking: true)))
+        cues.agentSpoke(at: 12)
+        // Quiet a moment first, so it isn't cut off between its words.
+        XCTAssertNil(cues.next(.init(now: 13)))
+        // The person speaks meanwhile, and the agent answers them first.
+        XCTAssertNil(cues.next(.init(now: 14, personSpeaking: true)))
+        cues.heard(at: 15)
+        XCTAssertNil(cues.next(.init(now: 16)))
+        XCTAssertNil(cues.next(.init(now: 17, agentSpeaking: true)))
+        cues.agentSpoke(at: 18)
+        XCTAssertNil(cues.next(.init(now: 19)))
+        XCTAssertEqual(cues.next(.init(now: 20)), .cue(first))
+        // The next read waits for the agent's answer to this one.
+        cues.later(second)
+        XCTAssertNil(cues.next(.init(now: 21)))
+        XCTAssertEqual(cues.next(.init(now: 24)), .cue(second))
+        XCTAssertEqual(cues.waiting, 0)
+        // An agent that says nothing: its silence is its answer after 4 s.
+        var silent = CallCues(since: 0)
+        silent.checking(at: 10)
+        silent.later(first)
+        XCTAssertNil(silent.next(.init(now: 13)))
+        XCTAssertEqual(silent.next(.init(now: 14)), .cue(first))
+    }
+
+    /// A read this call never answered `checking` for (one asked before a
+    /// restart) is told to nobody.
+    func testAReadThisCallNeverAskedForGoesNowhere() {
+        var cues = CallCues(since: 0)
+        cues.later(.conversationRead(#"{"event":"conversation_read","ref":"s1"}"#))
+        XCTAssertEqual(cues.waiting, 0)
+        XCTAssertNil(cues.next(.init(now: 30)))
+    }
 }
 
 final class CallRecapTests: XCTestCase {

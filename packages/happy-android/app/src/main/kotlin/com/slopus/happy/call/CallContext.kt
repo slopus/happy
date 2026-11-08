@@ -34,11 +34,20 @@ data class CallUpdate(val context: List<String> = emptyList()) {
 }
 
 /**
+ * How a `readConversation` that answered `checking` goes on ([CallContext.onReading], iOS `CallReading`): the agent
+ * was told it is checking, then the read is in, as a cue to tell once the moment is right.
+ */
+sealed interface CallReading {
+    data object Checking : CallReading
+    data class Read(val cue: CallCue) : CallReading
+}
+
+/**
  * Lives only during one call, bound to one connection (iOS `CallContext`).
  * It owns the opaque references the hosted agent knows conversations by, the
- * focus, and the last four conversations the person visited during the
+ * focus, and the last four conversations visited or messaged during the
  * call, which are the ones it hears from; it runs the tools one at a
- * time. A visited conversation says only what its agent writes from then on,
+ * time. A followed conversation says only what its agent writes from then on,
  * each piece once it is complete and whole, and an error that stopped it:
  * never its words as they stream, its tools, its state or the person's
  * messages.
@@ -66,6 +75,10 @@ class CallContext(
     /** The person's clock, which times are said in. */
     private val zone: ZoneId = ZoneId.systemDefault(),
     private val lane: CoroutineContext = Dispatchers.Default.limitedParallelism(1),
+    /** How long a read waits to make a conversation current before it answers `checking`. */
+    private val readGraceMillis: Long = Limits.READ_GRACE_MS,
+    /** How long it goes on after that before what it has is told as stale. */
+    private val refreshMillis: Long = Limits.REFRESH_MS,
 ) {
     object Limits {
         /**
@@ -101,12 +114,15 @@ class CallContext(
         /** How long home's changes settle before they go, from the first: "New Task" and the name it gets a moment later go as one. */
         const val SETTLE_MS = 1_000L
         const val PAGE = 50
-        /** Conversations the call hears from: the last ones visited, the one on screen included. */
+        /** Conversations the call hears from: the last ones visited or messaged, the one on screen included. */
         const val VISITED = 4
         /** The agent's messages looked at per change, newest last. */
         const val MESSAGES = 20
         const val TEXT_BYTES = 8 * 1024
         const val TOOL_DEADLINE_MS = 8_000L
+        /** How long a read waits to make a conversation current before it answers `checking`, and how long it goes on after that before what it has is told as stale. */
+        const val READ_GRACE_MS = 1_000L
+        const val REFRESH_MS = 8_000L
         /** Models a read or a refusal lists. */
         const val MODELS = 30
         /** What earlier calls said, in the first context ([CallHistory]), and each of its lines' words. */
@@ -150,6 +166,9 @@ class CallContext(
     private var tail: Job? = null
     private var closed = false
     private var restart: (suspend () -> CallToolResult)? = null
+    /** Reads that answered `checking`, by conversation, still on their way: another read of one joins it, and the one cue answers both. */
+    private val reading = HashMap<String, Deferred<CallTargetState?>>()
+    private var onReading: ((CallReading) -> Unit)? = null
 
     /**
      * What the agent has of one visited conversation: its agent's complete
@@ -176,14 +195,22 @@ class CallContext(
         constructor(target: CallTarget) : this(target.agentId, target.title, target.kind, target.parents.map { it.agentId ?: it.id })
     }
 
-    /** The conversations the call hears from now, the latest visited first. */
+    /** The conversations the call hears from now, the latest visited or messaged first. */
     suspend fun followed(): List<String> = withContext(lane) { visited.toList() }
 
     suspend fun close() = withContext(lane) {
         closed = true
         for (task in results.values) task.cancel()
+        for (task in reading.values) task.cancel()
+        reading.clear()
         scope.cancel()
     }
+
+    /**
+     * Where a read that answered `checking` goes on: that the agent was told so, then the read itself as a cue
+     * (`conversation_read`). Nothing once the call has ended.
+     */
+    suspend fun onReading(handler: (CallReading) -> Unit) = withContext(lane) { onReading = handler }
 
     /** What `navigate` to [RESTART_URL] does: the call's to say. */
     suspend fun onRestart(handler: suspend () -> CallToolResult) = withContext(lane) { restart = handler }
@@ -671,20 +698,27 @@ class CallContext(
             CallTool.ReadConversation -> {
                 unmade(arguments["ref"])?.let { return it }
                 val id = resolve(arguments["ref"]) ?: return CallToolResult.refused("No such conversation.")
-                val state = targets.state(id) ?: return CallToolResult.refused("That conversation can't be read now.")
-                // Within the snapshot's budget too: the oldest turns give way. Asked for by its reference, it is named by its title alone.
-                val name = linkedMapOf<String, JsonElement>(
-                    "title" to JsonPrimitive(state.target.title),
-                    "parents" to JsonArray(state.target.parents.map { JsonPrimitive(it.title) }),
-                )
-                val turns = recent(state).toMutableList()
-                var value = body(state, turns, name, options = true)
-                // The older turns give way first; the newest stays whole.
-                while (escapedSize(CallJson.encode(value)) > Limits.READ_BYTES && turns.size > 1) {
-                    turns.removeAt(0)
-                    value = body(state, turns, name, options = true)
+                // One on its way already: its cue answers this read too.
+                if (reading[id] != null) return checking(id)
+                // Made current first, as opening it would; what doesn't come in time is told when it does, and the
+                // voice goes on meanwhile.
+                val refresh = scope.async { targets.refreshed(id, refreshMillis) }
+                val early = withTimeoutOrNull(readGraceMillis) { Arrived(refresh.await()) }
+                if (early != null) {
+                    val state = early.state ?: return CallToolResult.refused("That conversation can't be read now.")
+                    return CallToolResult.json(read(state))
                 }
-                CallToolResult.json(value)
+                if (closed) {
+                    refresh.cancel()
+                    return CallToolResult.refused("The call has ended.")
+                }
+                reading[id] = refresh
+                scope.launch {
+                    val state = try { refresh.await() } catch (_: kotlinx.coroutines.CancellationException) { return@launch }
+                    tell(id, state)
+                }
+                onReading?.invoke(CallReading.Checking)
+                checking(id)
             }
 
             CallTool.Message -> message(arguments, call)
@@ -789,6 +823,8 @@ class CallContext(
         return when (val outcome = targets.send(id, text, messageId, asked.change)) {
             CallSendOutcome.Queued -> {
                 told += id
+                // Heard from from now on, as a visited one is: its reply comes as it is written.
+                visit(id)
                 CallToolResult.json(JsonObject(linkedMapOf<String, JsonElement>(
                     "status" to JsonPrimitive("queued"), "ref" to JsonPrimitive(ref(id)), "delivery" to JsonPrimitive(QUEUED),
                 ).apply {
@@ -895,6 +931,54 @@ class CallContext(
         }
     }
 
+    /** A refresh that came in, [state] null when it couldn't be read. */
+    private class Arrived(val state: CallTargetState?)
+
+    /**
+     * A read as `readConversation` gives it, [extra] going with it (a cue's event and ref): its name, state and last
+     * turns, within [Limits.READ_BYTES] on the wire, the older turns giving way first and the newest whole. One that
+     * isn't current says so (`stale`), with when this phone last read it from the computer (`checked`).
+     */
+    private fun read(state: CallTargetState, extra: Map<String, JsonElement> = emptyMap()): JsonObject {
+        // Asked for by its reference, it is named by its title alone.
+        val name = linkedMapOf<String, JsonElement>(
+            "title" to JsonPrimitive(state.target.title),
+            "parents" to JsonArray(state.target.parents.map { JsonPrimitive(it.title) }),
+        )
+        name.putAll(extra)
+        if (!state.fresh) {
+            name["stale"] = JsonPrimitive(true)
+            state.checkedAt?.takeIf { it > 0 }?.let { name["checked"] = moment(it) }
+        }
+        val turns = recent(state).toMutableList()
+        var value = body(state, turns, name, options = true)
+        while (escapedSize(CallJson.encode(value)) > Limits.READ_BYTES && turns.size > 1) {
+            turns.removeAt(0)
+            value = body(state, turns, name, options = true)
+        }
+        return value
+    }
+
+    /** `readConversation`'s answer while the read goes on. */
+    private fun checking(id: String): CallToolResult {
+        val value = linkedMapOf<String, JsonElement>("status" to JsonPrimitive("checking"), "ref" to JsonPrimitive(ref(id)), "note" to JsonPrimitive(CHECKING_NOTE))
+        (directory[id] ?: drafts[id])?.let { value["title"] = JsonPrimitive(it.title) }
+        return CallToolResult.json(JsonObject(value))
+    }
+
+    /** A read that answered `checking`, in: told as a cue, stale if it didn't come current in time; nothing once the call has ended. */
+    private fun tell(id: String, state: CallTargetState?) {
+        reading.remove(id)
+        if (closed) return
+        val event = linkedMapOf<String, JsonElement>("event" to JsonPrimitive("conversation_read"), "ref" to JsonPrimitive(ref(id)))
+        val value = if (state != null) {
+            read(state, event)
+        } else {
+            JsonObject(event + mapOf("ok" to JsonPrimitive(false), "reason" to JsonPrimitive("That conversation can't be read now.")))
+        }
+        onReading?.invoke(CallReading.Read(CallCue.ConversationRead(CallJson.encode(value))))
+    }
+
     /** The conversation a reference names, while home lists it: one that went away isn't reached, and is again if it comes back, under the same reference. */
     private suspend fun resolve(value: JsonElement?): String? =
         (value as? JsonPrimitive)?.takeIf { it.isString }?.content?.let { resolve(it) }
@@ -905,11 +989,17 @@ class CallContext(
         return id.takeIf { directory[it] != null || drafts[it] != null }
     }
 
-    /** [agentId] becomes the latest visited; the oldest past the limit is forgotten, so visiting it again starts from what is there then. */
+    /**
+     * [agentId] becomes the latest visited or messaged; the oldest past the limit is forgotten, so following it again
+     * starts from what is there then. The one on screen never drops out while it is in front.
+     */
     private fun visit(agentId: String) {
         visited.remove(agentId)
         visited.add(0, agentId)
-        while (visited.size > Limits.VISITED) heard.remove(visited.removeAt(visited.lastIndex))
+        while (visited.size > Limits.VISITED) {
+            val oldest = visited.indexOfLast { it != focus }.takeIf { it >= 0 } ?: break
+            heard.remove(visited.removeAt(oldest))
+        }
     }
 
     /**
@@ -1147,6 +1237,7 @@ class CallContext(
 
         /** What "queued" is, in the result as well as the tool's description: told only the status, the agent says "sent". */
         const val QUEUED = "on the person's device, not confirmed delivered or read"
+        const val CHECKING_NOTE = "Fetching the latest from the computer. Say you're checking; the read comes as an [app] conversation_read."
 
         /** The last finished turns a read shows: five with the person's message still waiting for an answer, which is the fifth. */
         fun recent(state: CallTargetState): List<CallTurn> =

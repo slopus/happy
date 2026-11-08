@@ -15,10 +15,18 @@ public struct CallUpdate: Equatable, Sendable {
     public var isEmpty: Bool { context.isEmpty }
 }
 
+/// How a `readConversation` that answered `checking` goes on
+/// (`CallContext.onReading`): the agent was told it is checking, then the
+/// read is in, as a cue to tell once the moment is right.
+public enum CallReading: Equatable, Sendable {
+    case checking
+    case read(CallCue)
+}
+
 /// Lives only during one call, bound to one account. It owns the opaque
 /// references the hosted agent knows conversations by, the focus, and the
-/// last four conversations the person visited during the call, which are
-/// the ones it hears from; it runs the tools one at a time. A visited
+/// last four conversations visited or messaged during the call, which are
+/// the ones it hears from; it runs the tools one at a time. A followed
 /// conversation says only what its agent writes from then on, each piece
 /// once it is complete and whole, and an error that stopped it: never its
 /// words as they stream, its tools, its state or the person's messages.
@@ -64,12 +72,18 @@ public actor CallContext {
         /// first: "New Task" and the name it gets a moment later go as one.
         public static let settle: Duration = .seconds(1)
         public static let page = 50
-        /// Conversations the call hears from: the last ones visited, the one on screen included.
+        /// Conversations the call hears from: the last ones visited or
+        /// messaged, the one on screen included.
         public static let visited = 4
         /// The agent's messages looked at per change, newest last.
         public static let messages = 20
         public static let textBytes = 8 * 1024
         public static let toolDeadline: Duration = .seconds(8)
+        /// How long a read waits to make a conversation current before it
+        /// answers `checking`, and how long it goes on after that before
+        /// what it has is told as stale.
+        public static let readGrace: Duration = .seconds(1)
+        public static let refresh: Duration = .seconds(8)
         /// Models a read or a refusal lists.
         public static let models = 30
         /// What earlier calls said, in the first context (`CallHistory`),
@@ -134,6 +148,12 @@ public actor CallContext {
     private var tail: Task<Void, Never>?
     private var closed = false
     private var restart: (@Sendable () async -> CallToolResult)?
+    private let readGrace: Duration
+    private let refreshLimit: Duration
+    /// Reads that answered `checking`, by conversation, still on their way:
+    /// another read of one joins it, and the one cue answers both.
+    private var reading: [String: Task<CallTargetState?, Never>] = [:]
+    private var onReading: (@Sendable (CallReading) -> Void)?
 
     /// What the agent has of one visited conversation: its agent's complete
     /// messages, those there when it was first seen counted as had, and the
@@ -166,19 +186,31 @@ public actor CallContext {
     }
 
     public init(targets: any CallTargets, now: @escaping @Sendable () -> Double = { Date().timeIntervalSince1970 },
-                timeZone: TimeZone = .current, toolDeadline: Duration = Limits.toolDeadline) {
+                timeZone: TimeZone = .current, toolDeadline: Duration = Limits.toolDeadline,
+                readGrace: Duration = Limits.readGrace, refresh: Duration = Limits.refresh) {
         self.targets = targets
         self.now = now
         self.timeZone = timeZone
         self.toolDeadline = toolDeadline
+        self.readGrace = readGrace
+        self.refreshLimit = refresh
     }
 
-    /// The conversations the call hears from now, the latest visited first.
+    /// The conversations the call hears from now, the latest visited or messaged first.
     public var followed: [String] { visited }
 
     public func close() {
         closed = true
         for task in results.values { task.cancel() }
+        for task in reading.values { task.cancel() }
+        reading.removeAll()
+    }
+
+    /// Where a read that answered `checking` goes on: that the agent was
+    /// told so, then the read itself as a cue (`conversation_read`). Nothing
+    /// once the call has ended.
+    public func onReading(_ handler: @escaping @Sendable (CallReading) -> Void) {
+        onReading = handler
     }
 
     /// What `navigate` to `restartURL` does: the call's to say.
@@ -725,18 +757,24 @@ public actor CallContext {
         case .readConversation:
             if let unmade = Self.unmade(arguments["ref"]) { return unmade }
             guard let id = await resolve(arguments["ref"]) else { return .refused("No such conversation.") }
-            guard let state = await targets.state(of: id) else { return .refused("That conversation can't be read now.") }
-            // Within the snapshot's budget too: the oldest turns give way.
-            // Asked for by its reference, it is named by its title alone.
-            let name: [String: Any] = ["title": state.target.title, "parents": state.target.parents.map(\.title)]
-            var turns = Self.recent(state)
-            var value = body(state, turns: turns, as: name, options: true)
-            // The older turns give way first; the newest stays whole.
-            while Self.escapedSize(Self.data(value)) > Limits.readBytes, turns.count > 1 {
-                turns.removeFirst()
-                value = body(state, turns: turns, as: name, options: true)
+            // One on its way already: its cue answers this read too.
+            if reading[id] != nil { return checking(id) }
+            // Made current first, as opening it would; what doesn't come in
+            // time is told when it does, and the voice goes on meanwhile.
+            let targets = targets, limit = refreshLimit
+            let refresh = Task { await targets.refreshed(id, within: limit) }
+            if let state = await Self.within(readGrace, refresh) {
+                guard let state else { return .refused("That conversation can't be read now.") }
+                return .json(read(state))
             }
-            return .json(value)
+            guard !closed else { refresh.cancel(); return .refused("The call has ended.") }
+            reading[id] = refresh
+            Task { [weak self] in
+                let state = await refresh.value
+                await self?.tell(id, state)
+            }
+            onReading?(.checking)
+            return checking(id)
 
         case .message:
             return await message(arguments, call: call)
@@ -785,6 +823,77 @@ public actor CallContext {
                     return .json(value)
                 }
             }
+        }
+    }
+
+    /// A read as `readConversation` gives it, `adding` what goes with it
+    /// (a cue's event and ref): its name, state and last turns, within
+    /// `Limits.readBytes` on the wire, the older turns giving way first and
+    /// the newest whole. One that isn't current says so (`stale`), with
+    /// when this phone last read it from the computer (`checked`).
+    private func read(_ state: CallTargetState, adding extra: [String: Any] = [:]) -> [String: Any] {
+        // Asked for by its reference, it is named by its title alone.
+        var name: [String: Any] = ["title": state.target.title, "parents": state.target.parents.map(\.title)]
+        name.merge(extra) { _, new in new }
+        if !state.fresh {
+            name["stale"] = true
+            if let at = state.checkedAt, at > 0 { name["checked"] = when(at) }
+        }
+        var turns = Self.recent(state)
+        var value = body(state, turns: turns, as: name, options: true)
+        while Self.escapedSize(Self.data(value)) > Limits.readBytes, turns.count > 1 {
+            turns.removeFirst()
+            value = body(state, turns: turns, as: name, options: true)
+        }
+        return value
+    }
+
+    /// `readConversation`'s answer while the read goes on.
+    private func checking(_ id: String) -> CallToolResult {
+        var value: [String: Any] = ["status": "checking", "ref": ref(id), "note": Self.checkingNote]
+        if let title = directory[id]?.title ?? drafts[id]?.title { value["title"] = title }
+        return .json(value)
+    }
+
+    static let checkingNote = "Fetching the latest from the computer. Say you're checking; the read comes as an [app] conversation_read."
+
+    /// A read that answered `checking`, in: told as a cue, stale if it
+    /// didn't come current in time; nothing once the call has ended.
+    private func tell(_ id: String, _ state: CallTargetState?) {
+        reading[id] = nil
+        guard !closed else { return }
+        let event: [String: Any] = ["event": "conversation_read", "ref": ref(id)]
+        let value: [String: Any]
+        if let state {
+            value = read(state, adding: event)
+        } else {
+            value = event.merging(["ok": false, "reason": "That conversation can't be read now."]) { _, new in new }
+        }
+        onReading?(.read(.conversationRead(Self.string(value))))
+    }
+
+    /// `task`'s value if it comes within `limit`, else nil, leaving it to go on.
+    static func within<T: Sendable>(_ limit: Duration, _ task: Task<T, Never>) async -> T? {
+        let first = First<T?>()
+        return await withCheckedContinuation { continuation in
+            Task { first.resume(continuation, with: await task.value) }
+            Task {
+                try? await Task.sleep(for: limit)
+                first.resume(continuation, with: nil)
+            }
+        }
+    }
+
+    private final class First<T: Sendable>: @unchecked Sendable {
+        private let lock = NSLock()
+        private var done = false
+
+        func resume(_ continuation: CheckedContinuation<T, Never>, with value: T) {
+            lock.lock()
+            let first = !done
+            done = true
+            lock.unlock()
+            if first { continuation.resume(returning: value) }
         }
     }
 
@@ -843,6 +952,8 @@ public actor CallContext {
         settling[call] = key
         switch await targets.send(id, text: text, id: messageId, change: asked.change) {
         case .queued:
+            // Heard from from now on, as a visited one is: its reply comes as it is written.
+            visit(id)
             var value: [String: Any] = ["status": "queued", "ref": ref(id), "delivery": Self.queued]
             // Sent to what was on screen: named, so the agent can say where it went.
             if target.isEmpty { value["title"] = state.target.title }
@@ -1080,13 +1191,15 @@ public actor CallContext {
         return directory[id] == nil && drafts[id] == nil ? nil : id
     }
 
-    /// `agentId` becomes the latest visited; the oldest past the limit is
-    /// forgotten, so visiting it again starts from what is there then.
+    /// `agentId` becomes the latest visited or messaged; the oldest past
+    /// the limit is forgotten, so following it again starts from what is
+    /// there then. The one on screen never drops out while it is in front.
     private func visit(_ agentId: String) {
         visited.removeAll { $0 == agentId }
         visited.insert(agentId, at: 0)
-        for dropped in visited.dropFirst(Limits.visited) { heard[dropped] = nil }
-        visited = Array(visited.prefix(Limits.visited))
+        while visited.count > Limits.visited, let oldest = visited.lastIndex(where: { $0 != focus }) {
+            heard[visited.remove(at: oldest)] = nil
+        }
     }
 
     /// What is there when the call first sees a conversation is had: the

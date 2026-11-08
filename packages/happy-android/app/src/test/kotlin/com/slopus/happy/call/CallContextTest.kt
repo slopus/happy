@@ -502,7 +502,7 @@ class CallContextTest {
     // Tools
 
     @Test
-    fun messageQueuesTheExactTextOnceAndHearsNothingMore() = runBlocking {
+    fun messageQueuesTheExactTextOnceAndHearsItsReply() = runBlocking {
         val targets = backend()
         val context = CallContext(targets)
         context.initial()
@@ -514,11 +514,127 @@ class CallContextTest {
         assertEquals(first, context.handle(send))
         assertEquals(listOf("  run the checks "), targets.sends.map { it.text })
         assertEquals(listOf("b"), targets.sends.map { it.agentId })
-        // Sending neither opens it nor adds it to what the call hears.
-        assertEquals(listOf("a"), context.followed())
+        // Sending doesn't open it, but the call hears from it from then on.
+        assertEquals(listOf("b", "a"), context.followed())
         assertTrue(targets.opened.isEmpty())
-        assertTrue(targets.follows.isEmpty())
-        assertTrue(context.targetChanged(CallTargetState(docsTarget, listOf(CallMessage("r", CallMessage.Role.Assistant, "Done")))).isEmpty)
+        // What is there when it is first seen is had; its reply, once complete, goes.
+        assertTrue(context.targetChanged(CallTargetState(docsTarget, working = true)).isEmpty)
+        val reply = events(context.targetChanged(CallTargetState(docsTarget, listOf(CallMessage("r", CallMessage.Role.Assistant, "Done")))))
+        assertEquals(listOf("Done"), reply.map { it.str("text") })
+    }
+
+    /** Messaged conversations count among the four, but the one on screen never drops out while it is in front. */
+    @Test
+    fun messagedConversationsAreAmongTheFourButNeverPushOutTheScreen() = runBlocking {
+        val list = (1..5).map { CallTarget("v$it", "V$it", CallTarget.Kind.Task, CallTarget.Status.Idle) }
+        val targets = FakeCallTargets(list, list.associateTo(HashMap()) { it.agentId to CallTargetState(it) }, "v1")
+        val context = CallContext(targets)
+        context.initial()
+        context.focusChanged("v1")
+        for (ref in listOf("s2", "s3", "s4", "s5")) context.tool("message", """{"to":"$ref","text":"go"}""")
+        assertEquals(listOf("v5", "v4", "v3", "v1"), context.followed())
+    }
+
+    // Reading current state
+
+    /** Each [CallReading] the context hands on, in order. */
+    private suspend fun readings(context: CallContext): MutableList<CallReading> {
+        val all = java.util.Collections.synchronizedList(ArrayList<CallReading>())
+        context.onReading { all += it }
+        return all
+    }
+
+    private suspend fun waitFor(condition: () -> Boolean) = withTimeout(5_000) { while (!condition()) delay(5) }
+
+    private fun cue(reading: CallReading?): JsonObject = obj((reading as CallReading.Read).cue.text)
+
+    /** A conversation that is current answers at once, with no cue to follow. */
+    @Test
+    fun aCurrentConversationIsReadAtOnce() = runBlocking {
+        val context = CallContext(backend(focus = null), readGraceMillis = 50)
+        val all = readings(context)
+        context.initial()
+        val read = obj(context.tool("readConversation", """{"ref":"s1"}""").text)
+        assertNull(read["status"])
+        assertNull(read["stale"])
+        assertEquals(4, read.turns().size)
+        delay(100)
+        assertTrue(all.isEmpty())
+    }
+
+    /** One that isn't current answers `checking` within the grace, and the read, once in, comes as a `conversation_read` cue, current. */
+    @Test
+    fun aConversationNotCurrentAnswersCheckingThenComesAsACue() = runBlocking {
+        val targets = backend(focus = null)
+        targets.refresh["a"] = FakeCallTargets.Refresh.After(200)
+        val context = CallContext(targets, readGraceMillis = 30, refreshMillis = 2_000)
+        val all = readings(context)
+        context.initial()
+        val result = context.tool("readConversation", """{"ref":"s1"}""")
+        assertFalse(result.isError)
+        val answer = obj(result.text)
+        assertEquals("checking", answer.str("status"))
+        assertEquals("s1", answer.str("ref"))
+        assertEquals("Backend", answer.str("title"))
+        assertNull(answer["turns"])
+        waitFor { all.size == 2 }
+        assertEquals(CallReading.Checking, all.first())
+        val read = cue(all.last())
+        assertEquals("conversation_read", read.str("event"))
+        assertEquals("s1", read.str("ref"))
+        assertEquals("Backend", read.str("title"))
+        assertEquals(4, read.turns().size)
+        assertNull(read["stale"])
+    }
+
+    /** A conversation the computer doesn't answer for in time is told as this phone has it, marked stale, with when it was last read. */
+    @Test
+    fun aReadThatDoesntComeCurrentInTimeIsToldStale() = runBlocking {
+        val targets = backend(focus = null)
+        targets.states["a"] = targets.states["a"]!!.copy(checkedAt = 1_700_000_000_000 - 29 * 60_000)
+        targets.refresh["a"] = FakeCallTargets.Refresh.Never
+        val context = CallContext(targets, now = { 1_700_000_000_000 }, readGraceMillis = 30, refreshMillis = 150)
+        val all = readings(context)
+        context.initial()
+        assertEquals("checking", obj(context.tool("readConversation", """{"ref":"s1"}""").text).str("status"))
+        waitFor { all.size == 2 }
+        val read = cue(all.last())
+        assertEquals(true, read["stale"]!!.jsonPrimitive.boolean)
+        assertEquals("29 minutes ago", read["checked"]!!.jsonObject.str("ago"))
+        assertEquals("still waiting", read["pendingUserMessage"]!!.jsonObject.str("text"))
+    }
+
+    /** Asked again while the first is on its way, the read joins it: one refresh, one cue, both answered `checking`. */
+    @Test
+    fun readsOfOneConversationOnTheirWayAreOne() = runBlocking {
+        val targets = backend(focus = null)
+        targets.refresh["a"] = FakeCallTargets.Refresh.After(200)
+        val context = CallContext(targets, readGraceMillis = 30, refreshMillis = 2_000)
+        val all = readings(context)
+        context.initial()
+        assertEquals("checking", obj(context.tool("readConversation", """{"ref":"s1"}""").text).str("status"))
+        assertEquals("checking", obj(context.tool("readConversation", """{"ref":"s1"}""").text).str("status"))
+        waitFor { all.any { it is CallReading.Read } }
+        delay(100)
+        assertEquals(1, all.count { it is CallReading.Read })
+        assertEquals(listOf("a"), targets.refreshes.toList())
+        // Once it is in, a read again is a read of its own.
+        targets.refresh.remove("a")
+        assertNull(obj(context.tool("readConversation", """{"ref":"s1"}""").text)["status"])
+    }
+
+    /** A read that comes in after the call ended is told to nobody. */
+    @Test
+    fun aReadThatComesAfterTheCallEndedSaysNothing() = runBlocking {
+        val targets = backend(focus = null)
+        targets.refresh["a"] = FakeCallTargets.Refresh.After(500)
+        val context = CallContext(targets, readGraceMillis = 20, refreshMillis = 2_000)
+        val all = readings(context)
+        context.initial()
+        assertEquals("checking", obj(context.tool("readConversation", """{"ref":"s1"}""").text).str("status"))
+        context.close()
+        delay(800)
+        assertEquals(listOf<CallReading>(CallReading.Checking), all.toList())
     }
 
     @Test
@@ -1451,6 +1567,21 @@ class FakeCallTargets(
     override suspend fun state(agentId: String): CallTargetState? {
         onRead?.let { onRead = null; it() }
         return lock.withLock { states[agentId] }
+    }
+    /** How [refreshed] goes for a conversation: at once as it is (absent, the default), current after a wait, or never current within its limit. */
+    sealed interface Refresh {
+        data class After(val millis: Long) : Refresh
+        data object Never : Refresh
+    }
+    val refresh = java.util.concurrent.ConcurrentHashMap<String, Refresh>()
+    val refreshes = java.util.Collections.synchronizedList(ArrayList<String>())
+    override suspend fun refreshed(agentId: String, limitMillis: Long): CallTargetState? {
+        refreshes += agentId
+        return when (val how = refresh[agentId]) {
+            null -> state(agentId)
+            is Refresh.After -> { delay(how.millis); lock.withLock { states[agentId] }?.copy(fresh = true) }
+            Refresh.Never -> { delay(limitMillis); lock.withLock { states[agentId] }?.copy(fresh = false) }
+        }
     }
     override suspend fun focused() = focus
     override suspend fun open(agentId: String): Boolean { opened += agentId; return states[agentId] != null }

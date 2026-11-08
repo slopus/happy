@@ -278,6 +278,13 @@ public struct Activity: Equatable, Sendable {
 public struct ChatSnapshot: Equatable, Sendable {
     /// History has been read, or there is none to read yet.
     public var loaded = false
+    /// The computer's history has been read since this conversation began
+    /// following its events, and none were lost since: what shows is
+    /// current, not only what this phone kept (`loaded` is true for that too).
+    public var synced = false
+    /// When the computer's history was last read in full (ms since 1970),
+    /// here or by what was kept on this phone; nil if never.
+    public var syncedAt: Double?
     public var items: [ChatItem] = []
     /// The agent is at work on a run.
     public var working = false
@@ -395,6 +402,8 @@ public actor Conversation {
         var mode: AgentWire.Mode?
         var hasMore: Bool
         var slashCommands: [AgentWire.SlashCommand]?
+        /// When the computer's history was last read in full, in ms; absent in what was kept before it was.
+        var syncedAt: Double?
     }
     private var agentId: String { didSet { itemContext += 1 } }
     private let continuation: AsyncStream<ChatSnapshot>.Continuation
@@ -616,6 +625,14 @@ public actor Conversation {
         self.readsNewest = readsNewest
     }
 
+    /// Someone needs it current (a voice call's read): a history read that
+    /// failed is asked for again now, rather than at the next resync. One
+    /// on its way, or one that went, is left alone.
+    public func catchUp() {
+        guard following != nil, creation == nil, heldEvents == nil, !snapshot.synced, snapshot.error != nil else { return }
+        reload()
+    }
+
     /// desktop's `trimHistory`: a conversation nobody reads keeps only its
     /// newest `keptRuns` runs in memory, as on disk; scrolling back pages
     /// the rest in again. One on screen is trimmed the same way only past
@@ -704,6 +721,8 @@ public actor Conversation {
             if Task.isCancelled { return }
             switch event {
             case .resync:
+                // Some were lost: not current again until the read below is in.
+                snapshot.synced = false
                 reload()
                 for send in outgoing where !send.accepted && send.failure == nil { deliver(send.id) }
             case .event(let envelope):
@@ -731,6 +750,7 @@ public actor Conversation {
             } catch {
                 if Task.isCancelled { return }
                 reads += 1
+                snapshot.synced = false
                 snapshot.error = Store.describe(error)
                 Happenings.errorShown(.conversationLoad, error)
                 snapshot.loaded = true
@@ -791,6 +811,8 @@ public actor Conversation {
             snapshot.subagentTitles = Dictionary(subagents.map { ($0.id, $0.title ?? "") }, uniquingKeysWith: { first, _ in first })
         }
         snapshot.loaded = true
+        snapshot.synced = true
+        snapshot.syncedAt = Date().timeIntervalSince1970 * 1000
         snapshot.error = nil
         let held = heldEvents ?? []
         heldEvents = nil
@@ -1314,6 +1336,7 @@ public actor Conversation {
         mode = picked ?? kept.mode
         snapshot.mode = mode
         snapshot.hasMore = kept.hasMore
+        snapshot.syncedAt = kept.syncedAt
         snapshot.loaded = true
         lastKept = kept
         publish()
@@ -1378,8 +1401,11 @@ public actor Conversation {
         let window = Self.kept(runs: transcript.runs.map { ($0.id, $0.messageIds) }, messages: transcript.messages, pending: transcript.pending)
         let kept = KeptConversation(runs: window.runs.map { .init(id: $0.id, messageIds: $0.messageIds, time: transcript.times[$0.id]) }, messages: window.messages, pending: transcript.pending,
             outgoing: outgoing.filter({ held[$0.id] == nil }).map { .init(id: $0.id, text: $0.text, pictures: $0.pictures.map { .init(mimeType: $0.mimeType, data: $0.data) }, accepted: $0.accepted, failure: $0.failure, mode: outgoingModes[$0.id], files: outgoingFiles[$0.id], at: outgoingTimes[$0.id],
-                toolRequest: outgoingTools[$0.id], quickReply: outgoingReplies[$0.id]) }, mode: mode, hasMore: snapshot.hasMore || window.trimmed, slashCommands: snapshot.slashCommands)
-        guard kept != lastKept || conversationWrite != nil else { return true }
+                toolRequest: outgoingTools[$0.id], quickReply: outgoingReplies[$0.id]) }, mode: mode, hasMore: snapshot.hasMore || window.trimmed, slashCommands: snapshot.slashCommands, syncedAt: snapshot.syncedAt)
+        // When it was last read rides along with what changed, never a write of its own.
+        var compared = kept
+        compared.syncedAt = lastKept?.syncedAt
+        guard compared != lastKept || conversationWrite != nil else { return true }
         let key = "conversation:\(agentId)"
         let claim = checkpointClaim(for: key)
         let owner = checkpointOwner

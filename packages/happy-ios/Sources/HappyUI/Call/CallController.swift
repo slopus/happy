@@ -110,6 +110,17 @@ final class CallController {
                 await MainActor.run { call?.requestRestart() } ?? CallToolResult(text: #"{"ok":false,"reason":"The call has ended."}"#, isError: true)
             }
         }
+        // A read that answered `checking`: the agent says so first, then the read comes as a cue.
+        Task { [weak call] in
+            await context.onReading { reading in
+                Task { @MainActor in
+                    switch reading {
+                    case .checking: call?.checking()
+                    case .read(let cue): call?.later(cue)
+                    }
+                }
+            }
+        }
         self.targets = targets
         self.context = context
         session = call
@@ -164,7 +175,12 @@ final class CallController {
             let initial = await context.initial(previous: history.slots, person: await Self.person(account))
             await Self.hold(await context.followed, in: targets)
             return initial
-        }, tool: { call in await context.handle(call) })
+        }, tool: { call in
+            let result = await context.handle(call)
+            // A message makes where it went one the call hears from.
+            await Self.hold(await context.followed, in: targets)
+            return result
+        })
         // A call that can't start says so in the bar; one that can starts connecting there.
         show(call.state)
     }

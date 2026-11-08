@@ -220,10 +220,15 @@ public struct CallTargetState: Equatable, Sendable {
     /// What it may switch to (`CallModel.options`); empty while the
     /// computer's models aren't known.
     public var models: [CallModel]
+    /// What it says is current: read from the computer, whose events it
+    /// follows live. False for what this phone kept, until the computer answers.
+    public var fresh: Bool
+    /// When this phone last read it from the computer (ms since 1970); nil if never.
+    public var checkedAt: Double?
 
     public init(target: CallTarget, messages: [CallMessage] = [], turns: [CallTurn] = [], unanswered: CallMessage? = nil,
                 working: Bool = false, needsInput: Bool = false, writable: Bool = true, hasDraft: Bool = false, hasMore: Bool = false,
-                mode: CallMode? = nil, models: [CallModel] = []) {
+                mode: CallMode? = nil, models: [CallModel] = [], fresh: Bool = true, checkedAt: Double? = nil) {
         self.target = target
         self.messages = messages
         self.turns = turns
@@ -235,6 +240,8 @@ public struct CallTargetState: Equatable, Sendable {
         self.hasMore = hasMore
         self.mode = mode
         self.models = models
+        self.fresh = fresh
+        self.checkedAt = checkedAt
     }
 
     /// A conversation's snapshot, as the call reads it. Turns are the
@@ -300,7 +307,7 @@ public struct CallTargetState: Equatable, Sendable {
         return CallTargetState(
             target: target, messages: messages, turns: turns, unanswered: unanswered, working: snapshot.working,
             needsInput: needsInput, writable: snapshot.loaded && snapshot.error == nil, hasDraft: !snapshot.draft.isEmpty,
-            hasMore: snapshot.hasMore
+            hasMore: snapshot.hasMore, fresh: snapshot.synced, checkedAt: snapshot.syncedAt
         )
     }
 }
@@ -428,8 +435,13 @@ public protocol CallTargets: Sendable {
     /// Every conversation the sidebar lists, in its order.
     func directory() async -> [CallTarget]
     /// One conversation, read if it must be (a bounded page); nil if the
-    /// account has none by that ID.
+    /// account has none by that ID. What this phone has, `fresh` or not.
     func state(of agentId: String) async -> CallTargetState?
+    /// One conversation made current, as opening it would make it but off
+    /// screen: read from the computer and followed live, waiting up to
+    /// `limit` for that. As it is then, `fresh` or not; nil if the account
+    /// has none by that ID or it can't be read at all.
+    func refreshed(_ agentId: String, within limit: Duration) async -> CallTargetState?
     /// The conversation on screen, if one is.
     func focused() async -> String?
     /// Opens it on screen; true once it shows.

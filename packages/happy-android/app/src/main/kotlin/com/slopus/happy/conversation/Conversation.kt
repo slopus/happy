@@ -87,6 +87,13 @@ data class ConversationState(
     val loaded: Boolean = false,
     /** Bootstrap and newest history are being refreshed, including after a reconnect. */
     val syncing: Boolean = false,
+    /**
+     * The agent's history has been read since this conversation began following its events, and none were lost
+     * since: what shows is current, not only what this phone kept ([loaded] is true for that too).
+     */
+    val synced: Boolean = false,
+    /** When the agent's history was last read in full (ms since 1970), here or by what was kept; null if never. */
+    val syncedAt: Long? = null,
     val rows: List<ConversationRow> = emptyList(),
     val hasMore: Boolean = false,
     val loadingOlder: Boolean = false,
@@ -339,7 +346,11 @@ class Conversation(
                     return@collect
                 }
                 when (signal) {
-                    ConversationSignal.Resync -> reload()
+                    ConversationSignal.Resync -> {
+                        // Some were lost: not current again until the read is in.
+                        publish { it.copy(synced = false) }
+                        reload()
+                    }
                     is ConversationSignal.Event -> held?.add(signal) ?: receive(signal)
                 }
             }
@@ -366,7 +377,8 @@ class Conversation(
                 reconciling?.cancel()
                 skillsReading?.cancel()
                 held = null
-                publish { it.copy(syncing = false, loadingOlder = false) }
+                // No longer following its events: not current until it reads again.
+                publish { it.copy(syncing = false, synced = false, loadingOlder = false) }
             }
         }
     }
@@ -439,8 +451,20 @@ class Conversation(
                 events.forEach(::receive)
                 // Kept rows show over a failed read; only an empty chat says it.
                 if (_state.value.rows.isEmpty()) errorShown(ErrorArea.ConversationLoad, AnalyticsReasons.error(e))
-                publish { it.copy(loaded = true, syncing = false, error = describe(e)) }
+                publish { it.copy(loaded = true, syncing = false, synced = false, error = describe(e)) }
             }
+        }
+    }
+
+    /**
+     * Someone needs it current (a voice call's read): a history read that failed is asked for again now, rather than
+     * at the next resync. One on its way, or one that went, is left alone.
+     */
+    fun catchUp() {
+        scope.launch(lane) {
+            if (!created || closed || !observing || reading?.isActive == true) return@launch
+            if (snapshot.synced || snapshot.error == null) return@launch
+            reload()
         }
     }
 
@@ -503,7 +527,7 @@ class Conversation(
         }
         agent = agent ?: kept.agent
         mode = picked ?: mode ?: kept.mode
-        publish { it.copy(loaded = true, hasMore = kept.hasMore, commands = kept.slashCommands ?: it.commands) }
+        publish { it.copy(loaded = true, hasMore = kept.hasMore, commands = kept.slashCommands ?: it.commands, syncedAt = kept.syncedAt ?: it.syncedAt) }
     }
 
     private fun putRun(run: Run) {
@@ -554,7 +578,7 @@ class Conversation(
         val events = held.orEmpty()
         held = null
         events.forEach(::receive)
-        publish { it.copy(loaded = true, syncing = false, hasMore = read.hasMore, error = null, commands = start.slashCommands ?: it.commands) }
+        publish { it.copy(loaded = true, syncing = false, synced = true, syncedAt = now(), hasMore = read.hasMore, error = null, commands = start.slashCommands ?: it.commands) }
         if (start.agent.pendingQuestionId != null) readQuestion() else publish { it.copy(question = null) }
         if (visible) markRead()
         keepSoon()
@@ -585,6 +609,7 @@ class Conversation(
             agent = agent,
             mode = mode,
             slashCommands = snapshot.commands,
+            syncedAt = snapshot.syncedAt,
         )
         try {
             withContext(disk + NonCancellable) { keeper.write(kept.json()) }

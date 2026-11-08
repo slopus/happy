@@ -33,7 +33,8 @@ Preserve credential and push compatibility on upgrades.
   hosted ElevenLabs agent, its system prompt sent from the phone
   (`CallPrompt`) and v3's four client tools (`CallTool`), no permission
   or question tool, hearing only new words and stopping errors from the last
-  four conversations visited. Home's three-bar button sits immediately left of compose
+  four conversations visited or messaged, and a read brings one up to date
+  first or says it may be stale. Home's three-bar button sits immediately left of compose
   (`ComposeFab(onVoice)`); the call's bar (`CallFrame`, after Telegram-iOS's
   in-call status bar) slides down over the status bar and pushes the whole
   window, the top app bar first, down by its height, taking the top inset.

@@ -204,6 +204,10 @@ data class CallTargetState(
     val mode: CallMode? = null,
     /** What it may switch to ([CallModel.options]); empty while the computer's models aren't known. */
     val models: List<CallModel> = emptyList(),
+    /** What it says is current: read from the computer, whose events it follows live. False for what this phone kept, until the computer answers. */
+    val fresh: Boolean = true,
+    /** When this phone last read it from the computer (ms since 1970); null if never. */
+    val checkedAt: Long? = null,
 ) {
     companion object {
         /**
@@ -282,6 +286,8 @@ data class CallTargetState(
                 writable = state.created && state.loaded && state.error == null && state.canSend,
                 hasDraft = state.draft.isNotEmpty(),
                 hasMore = state.hasMore,
+                fresh = state.synced,
+                checkedAt = state.syncedAt,
             )
         }
     }
@@ -379,8 +385,14 @@ sealed interface CallSendOutcome {
 interface CallTargets {
     /** Every conversation home lists, in its order, with what each sits under. */
     suspend fun directory(): List<CallTarget>
-    /** One conversation, read if it must be (a bounded page); null if the connection has none by that ID. */
+    /** One conversation, read if it must be (a bounded page); null if the connection has none by that ID. What this phone has, `fresh` or not. */
     suspend fun state(agentId: String): CallTargetState?
+    /**
+     * One conversation made current, as opening it would make it but off screen: read from the computer and followed
+     * live, waiting up to [limitMillis] for that. As it is then, `fresh` or not; null if the connection has none by
+     * that ID or it can't be read at all.
+     */
+    suspend fun refreshed(agentId: String, limitMillis: Long): CallTargetState? = state(agentId)
     /** The conversation on screen, if one is. */
     suspend fun focused(): String?
     /** Opens it on screen; true once it shows. */

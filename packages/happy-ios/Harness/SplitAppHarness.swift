@@ -38,15 +38,21 @@ private actor DemoComputer: AgentTransport {
     /// four, enough to scroll. `live`, for a live call (`CallLiveCheck`):
     /// 60 more tasks, three turns in every conversation, the last with
     /// commentary ahead of its answer, and a reply streamed to each message
-    /// sent, or for Release notes a failure.
+    /// sent, or for Release notes a failure. `slowReads`, Fixture task
+    /// 30's messages come that many seconds after they are asked for, as from a
+    /// computer slow to answer: the first value until one read is in, the
+    /// next until another is, and so on, the last for the rest.
     private let rounds: Int
     private let live: Bool
     /// `working`: these agents think, their last turn still running.
     private let working: Set<String>
-    init(rounds: Int = 0, live: Bool = false, working: Set<String> = []) {
+    private let slowReads: [Double]
+    private var slowReadsDone = 0
+    init(rounds: Int = 0, live: Bool = false, working: Set<String> = [], slowReads: [Double] = []) {
         self.rounds = rounds
         self.live = live
         self.working = working
+        self.slowReads = slowReads
     }
 
     private func status(_ agentId: String) -> String { working.contains(agentId) ? "thinking" : "idle" }
@@ -115,7 +121,14 @@ private actor DemoComputer: AgentTransport {
         ]),
     ])
 
-    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) throws -> HTTP1Response {
+    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
+        if let delay = slowReads.isEmpty ? nil : slowReads[min(slowReadsDone, slowReads.count - 1)],
+           path.hasPrefix("/v0/agents/fixture30-agent/messages?") {
+            print("[computer] reading Fixture task 30 slowly, \(delay) s")
+            try? await Task.sleep(for: .seconds(delay))
+            slowReadsDone += 1
+            print("[computer] read Fixture task 30")
+        }
         var value: JSONValue
         if path == "/v0/bootstrap/desktop" {
             var home = Self.home
@@ -308,7 +321,9 @@ private struct SplitComposeMachine: HomeOps, HomeSessionOps {
 /// (`PageScrollProbe`), `-long` gives the agent's conversation 60 more
 /// rounds, `-composeMachine` lets compose's first send make a session on
 /// the seeded computer (`SplitComposeMachine`), `-callLive <directory>`
-/// talks to the build's hosted voice agent from files (`CallLiveCheck`).
+/// talks to the build's hosted voice agent from files (`CallLiveCheck`; a
+/// relative directory is in the app's Documents), `-slowReads <seconds,…>`
+/// has the computer that long reading Fixture task 30.
 /// `-working` has iPad split view, Ship the cache and Research Assistant
 /// think, `-lowPower` stands in for Low Power Mode with Shimmer in Low
 /// Power Mode off (on with `-shimmerInLowPower`; `ShimmerClock`), `-shimmerAfter <seconds>` turns that
@@ -332,13 +347,15 @@ final class SplitAppHarness {
         let agent = arguments.contains("-agent")
         #if DEBUG
         if let directory = option("-callLive") {
-            do { liveCall = try CallLiveCheck(directory: URL(fileURLWithPath: directory)) }
+            let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            do { liveCall = try CallLiveCheck(directory: directory.hasPrefix("/") ? URL(fileURLWithPath: directory) : documents.appendingPathComponent(directory)) }
             catch { print("[call-live] \(error)") }
         }
         #endif
         if arguments.contains("-composeMachine") { SplitComposeMachine.install() }
         let computer = DemoComputer(rounds: arguments.contains("-long") ? 60 : 0, live: option("-callLive") != nil || arguments.contains("-voiceTouch"),
-                                    working: arguments.contains("-working") ? ["ipad-agent", "cache-agent", "research-agent"] : [])
+                                    working: arguments.contains("-working") ? ["ipad-agent", "cache-agent", "research-agent"] : [],
+                                    slowReads: (option("-slowReads") ?? "").split(separator: ",").compactMap { Double($0) })
         if arguments.contains("-lowPower") {
             ShimmerClock.shared.lowPowerOverride = true
             ShimmerClock.shared.shimmersInLowPower = arguments.contains("-shimmerInLowPower")

@@ -134,6 +134,21 @@ class CallSession(
         })
     }
 
+    /** A tool answered that its answer comes later (`readConversation`'s `checking`): the agent says so before anything is told. */
+    fun checking() {
+        if (connection == null) return
+        cues?.checking(now())
+    }
+
+    /**
+     * Something the agent asked for, in: told as a cue once neither side speaks and the agent has answered what came
+     * before ([CallCues]). Nothing, once the call has ended or restarted.
+     */
+    fun later(cue: CallCue) {
+        if (connection == null) return
+        cues?.later(cue)
+    }
+
     private fun begin() {
         val (language, context, tool) = request ?: return
         val current = ++generation

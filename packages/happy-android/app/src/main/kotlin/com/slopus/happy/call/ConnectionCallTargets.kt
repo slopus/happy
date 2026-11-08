@@ -1,5 +1,6 @@
 package com.slopus.happy.call
 
+import com.slopus.happy.agent.AgentLinkStatus
 import com.slopus.happy.agent.AgentSession
 import com.slopus.happy.agent.teamUsers
 import com.slopus.happy.conversation.NewTask
@@ -15,6 +16,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -107,21 +109,57 @@ class ConnectionCallTargets(
             // New work the call started or its screen holds: empty until its first message, which it takes.
             val draft = unmade(agentId) ?: return@onMain null
             val state = draft.state.value
-            return@onMain named(withModels(CallTargetState.from(state, draftTarget(agentId, state), failureText).copy(writable = state.error == null), state))
+            return@onMain named(withModels(CallTargetState.from(state, draftTarget(agentId, state), failureText).copy(writable = state.error == null, fresh = true), state))
         }
         // Held by the call, its screen or anyone: as it is now.
-        session.conversations.peek(agentId)?.state?.value?.takeIf { it.loaded }?.let { return@onMain named(withModels(CallTargetState.from(it, target, failureText), it)) }
+        session.conversations.peek(agentId)?.state?.value?.takeIf { it.loaded }?.let { return@onMain named(withModels(read(it, target), it)) }
         // One bounded read: about three seconds for its first page, and the computer's models, read beside it,
         // which a send that changes the model needs; without them, the page alone.
         val hold = make(agentId)
         try {
             val state = withTimeoutOrNull(READ_MILLIS) { hold.conversation.state.first { it.loaded && it.catalog != null } }
                 ?: hold.conversation.state.value.takeIf { it.loaded } ?: return@onMain null
-            named(withModels(CallTargetState.from(state, target, failureText), state))
+            named(withModels(read(state, target), state))
         } finally {
             release(hold)
         }
     }
+
+    /**
+     * As opening it would: the connection's one conversation of it held, a failed read asked for again
+     * ([Conversation.catchUp]), until the computer's history is in and the live link is up, or [limitMillis] runs
+     * out. One the call doesn't hear from is let go of after. New work has nothing on the computer to read: as it is.
+     */
+    override suspend fun refreshed(agentId: String, limitMillis: Long): CallTargetState? = onMain {
+        val target = target(agentId) ?: return@onMain state(agentId)
+        val own = held[agentId] ?: make(agentId)
+        try {
+            val conversation = own.conversation
+            val deadline = System.nanoTime() + limitMillis * 1_000_000
+            var asked = System.nanoTime()
+            conversation.catchUp()
+            // Current, and the computer's models beside it if they come in the time.
+            while (!(isCurrent(conversation.state.value) && conversation.state.value.catalog != null) && System.nanoTime() < deadline && !closed) {
+                delay(50)
+                // A read that failed meanwhile is asked for again, once a second at most.
+                if (System.nanoTime() - asked >= 1_000_000_000L) {
+                    asked = System.nanoTime()
+                    conversation.catchUp()
+                }
+            }
+            val state = conversation.state.value.takeIf { it.loaded } ?: return@onMain null
+            named(withModels(read(state, target(agentId) ?: target), state))
+        } finally {
+            if (held[agentId] !== own) release(own)
+        }
+    }
+
+    /** Read from the computer and following the connection's live events. */
+    private fun isCurrent(state: ConversationState): Boolean = state.synced && session.status.value == AgentLinkStatus.Connected
+
+    /** [state] as the call reads it, `fresh` only while it is current. */
+    private fun read(state: ConversationState, target: CallTarget): CallTargetState =
+        CallTargetState.from(state, target, failureText).copy(fresh = isCurrent(state))
 
     /**
      * [state] with who wrote each message said, the members it doesn't know yet asked for once

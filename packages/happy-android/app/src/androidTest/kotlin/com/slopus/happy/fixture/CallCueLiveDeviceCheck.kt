@@ -14,6 +14,8 @@ import com.slopus.happy.call.CallHistory
 import com.slopus.happy.call.CallModeChange
 import com.slopus.happy.call.CallProbe
 import com.slopus.happy.call.CallProblem
+import com.slopus.happy.call.CallReading
+import com.slopus.happy.call.CallTurn
 import com.slopus.happy.call.CallScreenMove
 import com.slopus.happy.call.CallSendOutcome
 import com.slopus.happy.call.CallSession
@@ -28,6 +30,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.junit.After
@@ -79,8 +83,8 @@ class CallCueLiveDeviceCheck {
     private val contexts = ArrayList<String>()
     private val endings = ArrayList<CallEnding>()
 
-    /** A call as the app makes one: history in a file, the drop sound on an unasked end, restarts through navigate. */
-    private fun call(history: CallHistory, timing: CallCues.Timing): CallSession = runBlocking(Dispatchers.Main) {
+    /** A call as the app makes one: history in a file, the drop sound on an unasked end, restarts through navigate, reads that come later as cues. */
+    private fun call(history: CallHistory, timing: CallCues.Timing, targets: CallTargets = this.targets): CallSession = runBlocking(Dispatchers.Main) {
         val agentId = CallAgent.hostedAgentId!!
         val context = CallContext(targets)
         val sound = CallDropSound(app)
@@ -93,6 +97,14 @@ class CallCueLiveDeviceCheck {
             if (ending.isUnexpected) sound.play()
         }
         context.onRestart { withContext(Dispatchers.Main) { session.requestRestart() } }
+        context.onReading { reading ->
+            scope.launch {
+                when (reading) {
+                    CallReading.Checking -> session.checking()
+                    is CallReading.Read -> session.later(reading.cue)
+                }
+            }
+        }
         session.start(null, { context.initial(history.slots) }, { call -> context.handle(call) })
         session
     }
@@ -234,6 +246,62 @@ class CallCueLiveDeviceCheck {
             runBlocking(Dispatchers.Main) { second.stop() }
             until(2_000) { false }
             write("drop")
+        }
+    }
+
+    /**
+     * A read the computer is slow to make current: the tool answers `checking`, the agent says it is checking,
+     * the person asks something else meanwhile and is answered, then the read comes as a `conversation_read` cue
+     * and the agent tells what it found, unasked. Then one that never comes current: told as stale.
+     */
+    @Test
+    fun aSlowReadAnswersCheckingAndTheAgentTellsTheReadWhenItComes() {
+        assumeTrue("no agent ID in this build", CallAgent.hostedAgentId != null)
+        instrumentation.uiAutomation.grantRuntimePermission(app.packageName, android.Manifest.permission.RECORD_AUDIO)
+        CallProbe.reset()
+        val release = conversations[1]
+        val read = CallTargetState(release, turns = listOf(CallTurn("r1", "Ship the 2.1 notes", "Done: the 2.1 changelog is published, with the pineapple fix listed first.")),
+            checkedAt = System.currentTimeMillis() - 29 * 60_000)
+        var stale = false
+        val slow = object : CallTargets by targets {
+            override suspend fun state(agentId: String): CallTargetState? = if (agentId == release.agentId) read else targets.state(agentId)
+            override suspend fun refreshed(agentId: String, limitMillis: Long): CallTargetState? {
+                if (agentId != release.agentId) return targets.state(agentId)
+                if (stale) { delay(limitMillis); return read.copy(fresh = false) }
+                delay(6_000)
+                return read
+            }
+        }
+        val session = call(history("slow-read"), CallCues.Timing(silenceWarning = 600_000, silenceEnd = 700_000), slow)
+        fun cues() = CallProbe.sent.value.filter { it.kind == "cue" }
+        try {
+            assertTrue("never connected: ${session.state.value}", until(30_000) { session.state.value is CallState.Active })
+            until(15_000) { agentLines() > 0 }
+            type("What's going on in the release notes task?")
+            val checking = CallProbe.tools.value.firstOrNull { it.name == "readConversation" }
+            log.append("FIRST READ: ${checking?.result}\n")
+            assertTrue("the read didn't answer checking: $checking", checking != null && "\"checking\"" in checking.result.toString())
+            log.append("CUES AFTER THE CHECKING ANSWER: ${cues().size}\n")
+            // The voice goes on: asked something else meanwhile, it answers.
+            type("Also, how many minutes are in an hour?")
+            assertTrue("no read cue", until(20_000) { cues().any { "conversation_read" in it.text } })
+            val beforeTold = agentLines()
+            assertTrue("the agent never told the read", until(20_000) { agentLines() > beforeTold })
+            until(4_000) { false }
+            log.append("TOLD: ${CallProbe.lines.value.last { it.role == "agent" }.text}\n")
+            // Now the computer doesn't answer in time: the read comes stale, with when it was last checked.
+            stale = true
+            type("Read the release notes task again please.")
+            assertTrue("no stale cue", until(30_000) { cues().count { "conversation_read" in it.text } == 2 })
+            assertTrue("the second cue isn't stale", "\"stale\":true" in cues().last().text)
+            val beforeStale = agentLines()
+            assertTrue("the agent never told the stale read", until(20_000) { agentLines() > beforeStale })
+            until(4_000) { false }
+            log.append("TOLD STALE: ${CallProbe.lines.value.last { it.role == "agent" }.text}\n")
+        } finally {
+            runBlocking(Dispatchers.Main) { session.stop() }
+            until(2_000) { false }
+            write("slow-read")
         }
     }
 }
