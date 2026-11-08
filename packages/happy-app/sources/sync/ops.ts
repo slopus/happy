@@ -1183,3 +1183,16 @@ export type {
     SessionRipgrepResponse,
     SessionKillResponse
 };
+
+
+/** Workspace methods require a CLI with canonical-path containment and bounded reads. */
+export async function sessionWorkspaceReadFile(sessionId: string, path: string): Promise<SessionReadFileResponse> {
+    return apiSocket.sessionRPC(sessionId, 'workspaceReadFile', { path });
+}
+export async function sessionWorkspaceWriteFile(sessionId: string, path: string, content: string, expectedHash: string): Promise<SessionWriteFileResponse> {
+    return apiSocket.sessionRPC(sessionId, 'workspaceWriteFile', { path, content, expectedHash });
+}
+export async function sessionWorkspaceListDirectory(sessionId: string, path: string): Promise<SessionListDirectoryResponse> {
+    try { return await apiSocket.sessionRPC(sessionId, 'workspaceListDirectory', { path }); }
+    catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) }; }
+}

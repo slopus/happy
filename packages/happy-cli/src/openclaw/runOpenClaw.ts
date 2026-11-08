@@ -153,6 +153,7 @@ export async function runOpenClaw(opts: RunOpenClawOptions): Promise<void> {
     throw new Error('No machine ID found in settings');
   }
 
+  if (api.assertUnmanagedArtifactRunner) await api.assertUnmanagedArtifactRunner(settings.machineId, process.cwd());
   await api.getOrCreateMachine({
     machineId: settings.machineId,
     metadata: initialMachineMetadata,

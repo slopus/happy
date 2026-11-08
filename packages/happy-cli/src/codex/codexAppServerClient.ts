@@ -589,13 +589,16 @@ export class CodexAppServerClient {
         return true;
     }
 
+    /** Native transport process identity, used to keep an orphaned writer excluded after worker death. */
+    get artifactWriterPid(): number | undefined { return this.connection.type === 'spawn' ? this.process?.pid : undefined; }
+
     private emitRawTurnCompletion(
         turnId: string | null,
         status: string | null,
         error: unknown,
         source: string,
     ): void {
-        const aborted = status === 'cancelled' || status === 'canceled' || status === 'aborted' || status === 'interrupted';
+        const aborted = (error !== undefined && error !== null) || status === 'failed' || status === 'cancelled' || status === 'canceled' || status === 'aborted' || status === 'interrupted';
 
         // A timed-out turn may acknowledge its interrupt after a new start
         // request, before that request has supplied its own turnId.
@@ -2435,7 +2438,7 @@ export class CodexAppServerClient {
                         this.completedTurnIds.add(turnId);
                     }
                     this.tryResolvePendingTurn(
-                        msg.type === 'turn_aborted',
+                        msg.type === 'turn_aborted' || msg.status === 'failed' || (msg.error !== undefined && msg.error !== null),
                         turnId,
                         `codex/event/${msg.type}`,
                     );

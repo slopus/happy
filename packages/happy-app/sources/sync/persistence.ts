@@ -1,3 +1,4 @@
+import { ArtifactRequests } from '@slopus/happy-wire';
 import { MMKV } from 'react-native-mmkv';
 import { accountStorageId } from '@/auth/accountRuntime';
 import { clearComposeDraft } from './composeDraft';
@@ -540,4 +541,76 @@ export function clearPersistence() {
     clearComposeDraft();
     mmkv.clearAll();
     clearPublicSessionShareQueueStorage();
+}
+
+export type FileWorkspaceUI = { tabs: string[]; active: string | null; open: boolean; width: number };
+export function loadFileWorkspaceUI(scope: string): FileWorkspaceUI {
+    try {
+        const raw = JSON.parse(mmkv.getString(`file-workspace-v1:${scope}`) ?? '{}');
+        const tabs = Array.isArray(raw.tabs) ? raw.tabs.filter((path: unknown): path is string => typeof path === 'string' && path.length < 8192).slice(0, 20) : [];
+        return { tabs, active: typeof raw.active === 'string' && tabs.includes(raw.active) ? raw.active : tabs[0] ?? null, open: raw.open === true, width: typeof raw.width === 'number' ? Math.max(310, Math.min(800, raw.width)) : 430 };
+    } catch { return { tabs: [], active: null, open: false, width: 430 }; }
+}
+export function saveFileWorkspaceUI(scope: string, ui: FileWorkspaceUI) {
+    // Persist navigation only; file contents remain on the session machine.
+    mmkv.set(`file-workspace-v1:${scope}`, JSON.stringify(ui));
+}
+
+
+export type WorkspaceDrafts = Record<string, { draft: string; hash: string }>;
+export function loadFileWorkspaceDrafts(scope: string): WorkspaceDrafts {
+    try {
+        const value = JSON.parse(mmkv.getString('file-workspace-drafts:' + scope) ?? '{}');
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+        const entries = Object.entries(value).slice(0, 20).filter(([path, entry]: [string, any]) => path.length <= 4096 && entry && typeof entry.draft === 'string' && typeof entry.hash === 'string');
+        return JSON.stringify(entries).length <= 4 * 1024 * 1024 ? Object.fromEntries(entries) as WorkspaceDrafts : {};
+    } catch { return {}; }
+}
+export function saveFileWorkspaceDrafts(scope: string, drafts: WorkspaceDrafts) {
+    const encoded = JSON.stringify(drafts);
+    if (encoded.length > 4 * 1024 * 1024) return false;
+    mmkv.set('file-workspace-drafts:' + scope, encoded);
+    return true;
+}
+
+
+/** Pending composer context belongs to the same private scope as workspace drafts. */
+export function loadFileWorkspaceReference(scope: string): import('@/components/fileWorkspace/context').FileReference | null {
+    try {
+        const value = JSON.parse(mmkv.getString('file-workspace-reference:' + scope) ?? 'null');
+        if (!value || typeof value.path !== 'string' || value.path.length > 8192 || !value.path
+            || typeof value.hash !== 'string' || !/^[a-f0-9]{64}$/i.test(value.hash)
+            || (value.quote !== undefined && (typeof value.quote !== 'string' || value.quote.length > 4000))) return null;
+        const a = value.artifact;
+        const artifact = a && /^[a-zA-Z0-9_-]{1,128}$/.test(a.workspaceId) && /^[a-zA-Z0-9_-]{1,128}$/.test(a.artifactId) && /^[a-f0-9]{64}$/.test(a.expectedRevision) ? {workspaceId:a.workspaceId,artifactId:a.artifactId,expectedRevision:a.expectedRevision,...(typeof a.versionId === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(a.versionId) ? {versionId:a.versionId} : {})} : undefined;
+        return { path: value.path, hash: value.hash, ...(value.quote === undefined ? {} : { quote: value.quote }), ...(artifact ? {artifact} : {}) };
+    } catch { return null; }
+}
+export function saveFileWorkspaceReference(scope: string, reference: import('@/components/fileWorkspace/context').FileReference | null) {
+    const key = 'file-workspace-reference:' + scope;
+    if (reference) mmkv.set(key, JSON.stringify(reference)); else mmkv.delete(key);
+}
+
+/** Uncertain operations survive refresh in the same private account/session scope. */
+export function loadWorkspaceVersionOperations(scope: string): Record<string, import('@/components/fileWorkspace/versionController').PendingVersionOperation> {
+    try {
+        const value = JSON.parse(mmkv.getString('file-workspace-operations:' + scope) ?? '{}');
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+        return Object.fromEntries(Object.entries(value).slice(0,20).filter(([path, v]: [string, any]) => {
+            if (path.length > 8192 || !v || typeof v.operationId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(v.operationId) || typeof v.workspaceId !== 'string' || !['restore','save','register'].includes(v.kind)) return false;
+            if (v.managedPaths !== undefined && (!Array.isArray(v.managedPaths) || v.managedPaths.length > 128 || !v.managedPaths.every((p: unknown) => typeof p === 'string' && p.length > 0 && p.length <= 8192))) return false;
+            if (v.resolution !== undefined && (!v.resolution || typeof v.resolution.id !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(v.resolution.id) || !['resume','rollback'].includes(v.resolution.action))) return false;
+            if (v.request !== undefined) {
+                const method: unknown = v.request?.method;
+                if (method !== 'artifactSave' && method !== 'artifactRestore') return false;
+                const request = ArtifactRequests[method].safeParse(v.request.input);
+                if (!request.success || request.data.operationId !== v.operationId || request.data.workspaceId !== v.workspaceId) return false;
+                v.request = { method, input: request.data };
+            }
+            return true;
+        })) as any;
+    } catch { return {}; }
+}
+export function saveWorkspaceVersionOperations(scope: string, value: Record<string, import('@/components/fileWorkspace/versionController').PendingVersionOperation>) {
+    mmkv.set('file-workspace-operations:' + scope, JSON.stringify(value));
 }

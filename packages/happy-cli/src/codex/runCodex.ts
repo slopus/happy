@@ -1,3 +1,5 @@
+import { ARTIFACT_PROTOCOL } from '@slopus/happy-wire';
+import { prepareCodexArtifactScope } from '@/modules/artifacts/turn';
 import { nativeLaunchPolicy, nativeCodexMode } from '@/daemon/appDelegation/nativeLaunchPolicy';
 import { immediateCodexCommandEnvelopes } from './codexImmediateCommand';
 import { createCodexSteerHandler, type CodexSteerRequest, type CodexSteerResponse } from './codexSteerRpc';
@@ -405,6 +407,11 @@ export async function runCodex(opts: {
     const forkedFromSessionId = process.env.HAPPY_FORKED_FROM_SESSION_ID;
     const forkedFromMessageId = process.env.HAPPY_FORKED_FROM_MESSAGE_ID;
 
+    // Shared/attached native clients can execute autonomously; their lifetime is not this worker's.
+    const artifactLeaseSupported = await prepareCodexArtifactScope({ connection: applicationPolicy ? 'spawn' : resolveCodexAppServerConnection().type, attached: Boolean(opts.resumeThreadId) }, async () => {
+        if (api.assertUnmanagedArtifactRunner) await api.assertUnmanagedArtifactRunner(machineId, process.cwd());
+    });
+
     const { state, metadata: localMetadata } = createSessionMetadata({
         flavor: 'codex',
         machineId,
@@ -439,7 +446,7 @@ export async function runCodex(opts: {
         ...hydratedMetadata,
         ...(applicationPolicy ? { application: { appId: applicationPolicy.binding.appId, bindingId: applicationPolicy.binding.id } } : {}),
         ...codexAccountSessionMetadata(),
-        capabilities: { ...hydratedMetadata.capabilities, codexSteer: true, codexCredentialRecovery: Boolean(process.env.HAPPY_CODEX_ACCOUNT_PROFILE_ID && process.env.CODEX_HOME
+        capabilities: { ...hydratedMetadata.capabilities, artifactLeases: artifactLeaseSupported ? ARTIFACT_PROTOCOL : undefined, codexSteer: true, codexCredentialRecovery: Boolean(process.env.HAPPY_CODEX_ACCOUNT_PROFILE_ID && process.env.CODEX_HOME
             && basename(process.env.CODEX_HOME).startsWith('happy-codex-home-')) },
         codexPawsOriginToken,
         ...(!hydratedMetadata.summary?.text?.trim() && importedSessionTitle
@@ -1625,9 +1632,10 @@ export async function runCodex(opts: {
                 }
 
                 const initialAbortGeneration = turnAbortGeneration;
-                const result = await runTurnWithCredentialRecovery({
+                const executeArtifactTurn = () => runTurnWithCredentialRecovery({
                     prompt: turnPayload.prompt,
                     sendTurn: async (prompt, attempt, continuing) => {
+                        if (session.trackArtifactWriter) await session.trackArtifactWriter(client.artifactWriterPid);
                         activeCredentialTurn = attempt;
                         try {
                             return await client.sendTurnAndWait(
@@ -1649,6 +1657,9 @@ export async function runCodex(opts: {
                     onWaitController: controller => { credentialWaitAbort = controller; },
                     shouldExit: () => shouldExit || turnAbortGeneration !== initialAbortGeneration,
                 });
+                const result = artifactLeaseSupported && session.withArtifactTurn
+                    ? await session.withArtifactTurn(opts.prompt, executeArtifactTurn, client.artifactWriterPid ? [client.artifactWriterPid] : [])
+                    : await executeArtifactTurn();
                 if (includeSkillPathResolutionInstruction) {
                     skillPathResolutionInstruction.markPromptSent();
                 }
@@ -1672,13 +1683,13 @@ export async function runCodex(opts: {
         ) => {
             sendStatusMessage(statusMessage);
             try {
-                const result = await start();
+                const result = artifactLeaseSupported && session.withArtifactTurn ? await session.withArtifactTurn(statusMessage, start, client.artifactWriterPid ? [client.artifactWriterPid] : []) : await start();
                 if (result.aborted) {
                     logger.debug('[Codex] Server-started turn aborted');
                 }
             } catch (error) {
                 logger.warn('Error in codex session:', error);
-                sendStatusMessage('Process exited unexpectedly');
+                sendStatusMessage(error instanceof Error ? error.message : 'Process exited unexpectedly');
             } finally {
                 finalizeCodexTurn();
             }
@@ -1866,7 +1877,7 @@ export async function runCodex(opts: {
                         });
                     } catch (error) {
                         logger.warn('Error in codex session:', error);
-                        sendStatusMessage('Process exited unexpectedly');
+                        sendStatusMessage(error instanceof Error ? error.message : 'Process exited unexpectedly');
                     } finally {
                         finalizeCodexTurn();
                     }
@@ -1885,7 +1896,7 @@ export async function runCodex(opts: {
                 } catch (error) {
                     // Only actual errors reach here (process crash, connection failure, etc.)
                     logger.warn('Error in codex session:', error);
-                    sendStatusMessage('Process exited unexpectedly');
+                    sendStatusMessage(error instanceof Error ? error.message : 'Process exited unexpectedly');
                 } finally {
                     // Reset permission handler, reasoning processor, and diff processor
                     finalizeCodexTurn();

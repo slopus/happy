@@ -2135,7 +2135,7 @@ class Sync {
         try { trackMessageSent(source, session.metadata); } catch { /* best effort */ }
 
         try {
-            const fallbackTitle = deriveSessionFallbackTitle(text, effectiveAttachments);
+            const fallbackTitle = deriveSessionFallbackTitle(displayText ?? text, effectiveAttachments);
             if (
                 fallbackTitle
                 && session.metadata

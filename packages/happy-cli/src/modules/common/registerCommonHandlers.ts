@@ -1,3 +1,5 @@
+import { ArtifactError } from '../artifacts/files';
+import { registerWorkspaceFileHandlers } from './workspaceFiles';
 import { logger } from '@/ui/logger';
 import { exec, ExecOptions } from 'child_process';
 import { promisify } from 'util';
@@ -183,7 +185,10 @@ export type SpawnSessionResult =
 export function registerCommonHandlers(
     rpcHandlerManager: RpcHandlerManager,
     workingDirectory: string,
+    getArtifactStore?: () => Promise<import('../artifacts/store').ArtifactStore>,
 ) {
+    registerWorkspaceFileHandlers(rpcHandlerManager, workingDirectory, getArtifactStore);
+
     // Shell command handler - executes commands in the default shell
     rpcHandlerManager.registerHandler<BashRequest, BashResponse>('bash', async (data) => {
         logger.debug('Shell command request:', data.command);
@@ -300,11 +305,12 @@ export function registerCommonHandlers(
             return { success: false, error: validation.error };
         }
 
+        const perform = async (target = validation.resolvedPath!) => {
         try {
             // If expectedHash is provided (not null), verify existing file
             if (data.expectedHash !== null && data.expectedHash !== undefined) {
                 try {
-                    const existingBuffer = await readFile(validation.resolvedPath!);
+                    const existingBuffer = await readFile(target);
                     const existingHash = createHash('sha256').update(existingBuffer).digest('hex');
 
                     if (existingHash !== data.expectedHash) {
@@ -327,7 +333,7 @@ export function registerCommonHandlers(
             } else {
                 // expectedHash is null - expecting new file
                 try {
-                    await stat(validation.resolvedPath!);
+                    await stat(target);
                     // File exists but we expected it to be new
                     return {
                         success: false,
@@ -344,7 +350,7 @@ export function registerCommonHandlers(
 
             // Write the file
             const buffer = Buffer.from(data.content, 'base64');
-            await writeFile(validation.resolvedPath!, buffer);
+            await writeFile(target, buffer);
 
             // Calculate and return hash of written file
             const hash = createHash('sha256').update(buffer).digest('hex');
@@ -354,6 +360,9 @@ export function registerCommonHandlers(
             logger.debug('Failed to write file:', error);
             return { success: false, error: error instanceof Error ? error.message : 'Failed to write file' };
         }
+        };
+        try { return getArtifactStore ? await (await getArtifactStore()).workspaceWrite(workingDirectory, data, perform) : await perform(); }
+        catch (error) { return { success: false, error: error instanceof ArtifactError ? error.message : 'Managed save failed', ...(error instanceof ArtifactError ? { code: error.code, operationId: error.operationId } : {}) }; }
     });
 
     // List directory handler

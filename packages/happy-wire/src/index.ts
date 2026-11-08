@@ -14,3 +14,4 @@ export * from './aiServices';
 export * from './applicationSession';
 
 export * from './goalBoard';
+export * from './artifacts';

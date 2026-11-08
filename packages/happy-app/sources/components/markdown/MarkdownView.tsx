@@ -1,3 +1,5 @@
+import { useFileWorkspace } from '@/components/fileWorkspace/context';
+import { splitSessionFileText, parseSessionFileLink } from '@/utils/sessionFileLinks';
 import { IndependentSessionCard } from '@/components/IndependentSessionCard';
 import { MarkdownSpan, parseMarkdown, parseReadOnlyMarkdown } from './parseMarkdown';
 import * as React from 'react';
@@ -43,6 +45,8 @@ export type Option = {
 
 export type MarkdownViewVariant = 'default' | 'foldedPrompt';
 
+const MarkdownImagesContext = React.createContext<Record<string, string | null> | undefined>(undefined);
+const MarkdownFileLinksContext = React.createContext(false);
 const MarkdownTypographyContext = React.createContext<MarkdownTypographyMode>('default');
 
 function useMarkdownTypographyMode(): MarkdownTypographyMode {
@@ -60,8 +64,9 @@ export const MarkdownView = React.memo((props: {
     typography?: MarkdownTypographyMode;
     variant?: MarkdownViewVariant;
     readOnly?: boolean;
+    imageUrls?: Record<string, string | null>;
 }) => {
-    const blocks = React.useMemo(() => props.readOnly ? parseReadOnlyMarkdown(props.markdown) : parseMarkdown(props.markdown), [props.markdown, props.readOnly]);
+    const blocks = React.useMemo(() => props.readOnly ? parseReadOnlyMarkdown(props.markdown, {allowImages: !!props.imageUrls}) : parseMarkdown(props.markdown), [props.markdown, props.readOnly, props.imageUrls]);
     const variant = props.variant ?? 'default';
     
     // Backwards compatibility: The original version just returned the view, wrapping the list of blocks.
@@ -72,14 +77,14 @@ export const MarkdownView = React.memo((props: {
     const markdownCopyV2 = useLocalSetting('markdownCopyV2');
     const selectable = Platform.OS === 'web' || !markdownCopyV2;
     const router = useRouter();
+    const workspace = useFileWorkspace();
 
     const handleLinkPress = React.useCallback((url: string) => {
-        if (!isHttpMarkdownLink(url)) {
-            return;
-        }
+        if (workspace?.enabled && !props.readOnly && parseSessionFileLink(url, { sessionRoot: workspace.root })?.withinSessionRoot) { void workspace.openReference(url); return; }
+        if (!isHttpMarkdownLink(url)) { return; }
 
         void openExternalUrl(url);
-    }, []);
+    }, [workspace, props.readOnly]);
 
     const handleLongPress = React.useCallback(() => {
         try {
@@ -92,7 +97,7 @@ export const MarkdownView = React.memo((props: {
     }, [props.markdown, router]);
     const renderContent = () => {
         return (
-            <MarkdownTypographyContext.Provider value={props.typography ?? 'default'}>
+            <MarkdownImagesContext.Provider value={props.imageUrls}><MarkdownFileLinksContext.Provider value={!!workspace?.enabled && !!props.sessionId && !props.readOnly}><MarkdownTypographyContext.Provider value={props.typography ?? 'default'}>
                 <View style={{ width: '100%' }}>
                     {blocks.map((block, index) => {
                     const nextBlock = blocks[index + 1];
@@ -133,7 +138,7 @@ export const MarkdownView = React.memo((props: {
                     }
                     })}
                 </View>
-            </MarkdownTypographyContext.Provider>
+            </MarkdownTypographyContext.Provider></MarkdownFileLinksContext.Provider></MarkdownImagesContext.Provider>
         );
     }
 
@@ -225,6 +230,9 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
     const typographyMode = useMarkdownTypographyMode();
     const typography = getMarkdownTypography(typographyMode);
     const [isHovered, setIsHovered] = React.useState(false);
+    const workspace = useFileWorkspace();
+    const linkFiles = React.useContext(MarkdownFileLinksContext);
+    const segments = linkFiles && workspace ? splitSessionFileText(props.content, workspace.root) : [];
     const foldedPrompt = props.variant === 'foldedPrompt';
 
     return (
@@ -240,14 +248,14 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
                 contentContainerStyle={foldedPrompt ? style.foldedCodeContent : style.codeContent}
                 testID="markdown-code-scroll"
             >
-                <SimpleSyntaxHighlighter
+                {segments.some(segment => segment.link?.withinSessionRoot) ? <Text selectable style={{ ...Typography.mono(), fontSize: 13, lineHeight: 20, color: theme.colors.text }}><WorkspaceLinkedText text={props.content} /></Text> : <SimpleSyntaxHighlighter
                     code={props.content}
                     language={props.language}
                     selectable={props.selectable}
                     textStyle={foldedPrompt ? style.foldedCodeText : undefined}
                     monochromeColor={foldedPrompt ? theme.colors.textSecondary : undefined}
                     typography={typographyMode}
-                />
+                />}
             </HorizontalScrollView>
             <CodeBlockCopyButton
                 content={props.content}
@@ -259,19 +267,22 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
 }
 
 function RenderImageBlock(props: { url: string, alt: string, first: boolean, last: boolean }) {
+    const urls = React.useContext(MarkdownImagesContext);
+    const imageUrl = urls ? urls[props.url] : props.url;
     const accessibleLabel = props.alt || 'Markdown image';
     const typography = useMarkdownTypography();
 
+    if (!imageUrl) return <Text accessibilityRole="alert">{props.alt + ' — ' + t('fileWorkspace.previewFailed')}</Text>;
     return (
         <View style={[style.imageBlock, props.first && style.first, props.last && style.last]}>
             {/* Tap to open the fullscreen zoomable viewer. */}
             <Pressable
-                onPress={() => imageViewer.open({ uri: props.url })}
+                onPress={() => imageViewer.open({ uri: imageUrl })}
                 accessibilityRole="button"
                 accessibilityLabel={accessibleLabel}
             >
                 <Image
-                    source={{ uri: props.url }}
+                    source={{ uri: imageUrl }}
                     style={style.image}
                     accessibilityLabel={accessibleLabel}
                     resizeMode="contain"
@@ -567,10 +578,12 @@ function RenderImageStyleOptionsBlock(props: {
 function RenderSpans(props: RenderSpanProps) {
     const variant = props.variant ?? 'default';
     const typography = useMarkdownTypography();
+    const workspace = useFileWorkspace();
+    const linkFiles = React.useContext(MarkdownFileLinksContext);
     return (<>
         {props.spans.map((span, index) => {
             if (span.url) {
-                const isExternalLink = isHttpMarkdownLink(span.url);
+                const isExternalLink = isHttpMarkdownLink(span.url) || !!(linkFiles && workspace && parseSessionFileLink(span.url, { sessionRoot: workspace.root })?.withinSessionRoot);
                 return (
                     <Text
                         key={index}
@@ -586,10 +599,19 @@ function RenderSpans(props: RenderSpanProps) {
                     </Text>
                 );
             } else {
-                return <Text key={index} selectable={props.selectable} style={[props.baseStyle, span.styles.map(s => [getSpanStyle(s, variant), getSpanTypographyStyle(s, typography)])]}>{span.text}</Text>
+                return <Text key={index} selectable={props.selectable} style={[props.baseStyle, span.styles.map(s => [getSpanStyle(s, variant), getSpanTypographyStyle(s, typography)])]}>{linkFiles && workspace?.enabled ? <WorkspaceLinkedText text={span.text} /> : span.text}</Text>
             }
         })}
     </>)
+}
+
+function WorkspaceLinkedText({ text }: { text: string }) {
+    const workspace = useFileWorkspace();
+    const enabled = React.useContext(MarkdownFileLinksContext);
+    const { theme } = useUnistyles();
+    if (!enabled || !workspace?.enabled) return <>{text}</>;
+    return <>{splitSessionFileText(text, workspace.root).map((segment, index) => segment.link?.withinSessionRoot ?
+        <Text key={index} accessibilityRole="link" onPress={() => { void workspace.openReference(segment.link!.path); }} style={{ color: theme.colors.textLink, textDecorationLine: 'underline' }}>{segment.text}</Text> : <React.Fragment key={index}>{segment.text}</React.Fragment>)}</>;
 }
 
 function getTextStyle(variant: MarkdownViewVariant) {

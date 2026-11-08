@@ -54,12 +54,12 @@ export function parseMarkdown(markdown: string) {
 }
 
 /** External history is inert: keep formatting without network images or actionable Paws cards. */
-export function parseReadOnlyMarkdown(markdown: string): MarkdownBlock[] {
+export function parseReadOnlyMarkdown(markdown: string, options: {allowImages?: boolean} = {}): MarkdownBlock[] {
     return parseMarkdown(markdown).map(block => {
         switch (block.type) {
             case 'text': case 'header': case 'list': case 'numbered-list': case 'code-block': case 'horizontal-rule': case 'table':
                 return block;
-            case 'image': return { type: 'text', content: [{ text: `![${block.alt}](${block.url})`, styles: [], url: null }] };
+            case 'image': if (options.allowImages) return block; return { type: 'text', content: [{ text: `![${block.alt}](${block.url})`, styles: [], url: null }] };
             case 'mermaid': return { type: 'code-block', language: 'mermaid', content: block.content };
             case 'options': return { type: 'text', content: [{ text: block.items.join('\n'), styles: [], url: null }] };
             case 'ota-preview': return { type: 'code-block', language: null, content: JSON.stringify(block.preview, null, 2) };

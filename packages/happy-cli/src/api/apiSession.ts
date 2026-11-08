@@ -1,3 +1,6 @@
+import { createArtifactRuntime } from '@/modules/artifacts/runtime';
+import { registerArtifactHandlers } from '@/modules/artifacts/rpc';
+import { runArtifactTurn } from '@/modules/artifacts/turn';
 import { logger } from '@/ui/logger'
 import { EventEmitter } from 'node:events'
 import { readFile, stat, unlink } from 'node:fs/promises'
@@ -119,6 +122,7 @@ export class ApiSessionClient extends EventEmitter {
     private readonly startupLifecycle: WorkerSessionStartupLifecycle | undefined;
     private readonly token: string;
     readonly sessionId: string;
+    readonly artifactRuntime: ReturnType<typeof createArtifactRuntime>;
     private metadata: Metadata | null;
     private metadataVersion: number;
     private agentState: AgentState | null;
@@ -145,6 +149,7 @@ export class ApiSessionClient extends EventEmitter {
     private ignoreArchiveSignal = false;
     private skipInitialMessages = false;
     private hasObservedRootTurnLifecycle = false;
+    private artifactRunId?: string;
     private claudeSessionProtocolState: ClaudeSessionProtocolState = {
         currentTurnId: null,
         uuidToProviderSubagent: new Map<string, string>(),
@@ -164,7 +169,7 @@ export class ApiSessionClient extends EventEmitter {
     private readonly sendSync: InvalidateSync;
     private readonly receiveSync: InvalidateSync;
 
-    constructor(token: string, session: Session, startupLifecycle?: WorkerSessionStartupLifecycle) {
+    constructor(token: string, session: Session, startupLifecycle?: WorkerSessionStartupLifecycle, artifactIdentity?: Uint8Array) {
         super()
         this.startupLifecycle = startupLifecycle;
         this.token = token;
@@ -185,7 +190,9 @@ export class ApiSessionClient extends EventEmitter {
             encryptionVariant: this.encryptionVariant,
             logger: (msg, data) => logger.debug(msg, data)
         });
-        registerCommonHandlers(this.rpcHandlerManager, this.metadata.path);
+        this.artifactRuntime = createArtifactRuntime(artifactIdentity, this.metadata.machineId);
+        registerArtifactHandlers(this.rpcHandlerManager, this.artifactRuntime.getStore, this.metadata.path);
+        registerCommonHandlers(this.rpcHandlerManager, this.metadata.path, this.artifactRuntime.supported && artifactIdentity && this.metadata.machineId ? this.artifactRuntime.getStore : undefined);
         this.goalBoardController = registerGoalBoardHandlers(this.rpcHandlerManager, this.metadata.path, {
             homeDirectory: this.metadata.homeDir,
             initialFeaturePath: this.metadata.goalBoard?.featurePath,
@@ -695,6 +702,22 @@ export class ApiSessionClient extends EventEmitter {
         if (invalidate) {
             this.sendSync.invalidate();
         }
+    }
+
+    async withArtifactTurn<T extends { aborted: boolean }>(prompt: string, run: () => Promise<T>, writerPids?: number[]): Promise<T> {
+        if (!this.artifactRuntime.supported) return run();
+        const store = await this.artifactRuntime.getStore();
+        const runId = randomUUID(); this.artifactRunId = runId;
+        try { return await runArtifactTurn(store, { directory: this.metadata!.path, sessionId: this.sessionId, prompt, writerPids, runId }, run); }
+        finally { this.artifactRunId = undefined; }
+    }
+
+    async trackArtifactWriter(pid: number | undefined): Promise<void> {
+        if (this.artifactRunId && pid) await (await this.artifactRuntime.getStore()).trackWriterProcess(this.artifactRunId, pid);
+    }
+
+    async assertUnmanagedArtifactRunner(): Promise<void> {
+        await (await this.artifactRuntime.getStore()).assertUnmanagedRunner(this.metadata!.path);
     }
 
     /** Link each accepted native input batch to the next durable Claude turn. */

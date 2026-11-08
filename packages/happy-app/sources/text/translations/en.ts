@@ -30,6 +30,8 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * - New translation keys must be added to ALL language files
  */
 export const en: TranslationStructure = {
+    fileWorkspace: { ...baseEn.fileWorkspace },
+
     goalBoard: {
         title: "Task board",
         back: "Back to tasks",

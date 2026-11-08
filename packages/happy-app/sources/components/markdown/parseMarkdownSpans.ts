@@ -1,7 +1,7 @@
 import type { MarkdownSpan } from "./parseMarkdown";
 
 // Updated pattern to handle nested markdown and asterisks
-const pattern = /(\*\*(.*?)(?:\*\*|$))|(\*(.*?)(?:\*|$))|(\[([^\]]+)\](?:\(([^)]+)\))?)|(`(.*?)(?:`|$))/g;
+const pattern = /(\*\*(.*?)(?:\*\*|$))|(\*(.*?)(?:\*|$))|(\[([^\]]+)\](?:\((<[^>\r\n]+>|[^)]+)\))?)|(`(.*?)(?:`|$))/g;
 
 function pushTextWithAutoLinks(spans: MarkdownSpan[], text: string, styles: MarkdownSpan['styles']) {
     const urlPattern = /https?:\/\/[^\s<]+/g;
@@ -66,7 +66,9 @@ export function parseMarkdownSpans(markdown: string, header: boolean) {
         } else if (match[5]) {
             // Link - handle incomplete links (no URL part)
             if (match[7]) {
-                spans.push({ styles: [], text: match[6], url: match[7] });
+                const destination = match[7];
+                const url = destination.startsWith('<') && destination.endsWith('>') ? destination.slice(1, -1) : destination;
+                spans.push({ styles: [], text: match[6], url });
             } else {
                 // If no URL part, treat as plain text with brackets
                 pushTextWithAutoLinks(spans, `[${match[6]}]`, []);

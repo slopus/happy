@@ -76,3 +76,26 @@ describe('archive behavior of the wired message staging runtime', () => {
         await vi.waitFor(() => expect(mocks.send).toHaveBeenCalledTimes(1));
     });
 });
+
+describe('workspace context in the real staging runtime', () => {
+    it('retains original input and file identity when recovering a queued model payload', async () => {
+        mocks.activeAccount = true;
+        mocks.state = { socketStatus: 'connected', applyPendingMessageSessions: () => {}, settings: {}, sessions: { workspace: { id: 'workspace', presence: 'online', metadata: {}, agentState: { turnStatus: { status: 'running', turnId: 'busy' } } } } };
+        const { stageSessionMessage } = await import('./messageStagingQueueRuntime');
+        const fileReference = { path: '/work/方案.md', hash: 'baseline' };
+        await stageSessionMessage('workspace', 'original\n[Workspace file context]', undefined, 'queue', { draftText: 'original', fileReference });
+        const queued = messageStagingQueue.getSnapshot().messages.find(message => message.sessionId === 'workspace');
+        expect(queued?.text).toContain('[Workspace file context]');
+        const recovered = messageStagingQueue.take(queued!.id);
+        expect(recovered).toMatchObject({ draftText: 'original', fileReference });
+    });
+});
+
+it('uses the existing displayText contract so workspace hashes stay out of visible chat', async () => {
+    mocks.activeAccount = true; mocks.send.mockClear();
+    mocks.state = { socketStatus: 'connected', applyPendingMessageSessions: () => {}, settings: {}, sessions: { 'workspace-display': { id: 'workspace-display', presence: 'online', metadata: {}, agentState: { turnStatus: { status: 'idle' } } } } };
+    const { stageSessionMessage } = await import('./messageStagingQueueRuntime');
+    await stageSessionMessage('workspace-display', 'visible\n[Workspace file context] hash=private-baseline', undefined, 'queue', { draftText: 'visible', fileReference: { path: '/work/file.md', hash: 'private-baseline' } });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(mocks.send).toHaveBeenCalledWith('workspace-display', expect.stringContaining('[Workspace file context]'), expect.objectContaining({ displayText: 'visible' }));
+});

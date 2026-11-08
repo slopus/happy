@@ -986,3 +986,8 @@ describe('SessionView deep-link hydration', () => {
         }
     });
 });
+
+// File workspace transport/ownership is covered in its dedicated tests and real App fixture.
+vi.mock('@/components/fileWorkspace/SessionFileWorkspaceProvider', () => ({ SessionFileWorkspaceProvider: ({ children }: { children: React.ReactNode }) => children }));
+vi.mock('@/components/fileWorkspace/FileWorkspace', () => ({ FileWorkspace: () => null, FileWorkspaceResizeHandle: () => null }));
+vi.mock('@/components/fileWorkspace/WorkspaceDirectoryTree', () => ({ WorkspaceDirectoryTree: () => null }));

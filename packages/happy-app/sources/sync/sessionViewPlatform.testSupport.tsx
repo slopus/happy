@@ -130,6 +130,13 @@ vi.mock('@/components/EmptyMessages', () => ({ EmptyMessages: 'EmptyMessages' })
 vi.mock('@/components/FilesSidebar', () => ({ FilesSidebar: 'FilesSidebar' }));
 vi.mock('@/components/AllFilesDiffView', () => ({ AllFilesDiffView: 'AllFilesDiffView' }));
 vi.mock('@/components/FileViewPanel', () => ({ FileViewPanel: 'FileViewPanel' }));
+// This phone transcript harness does not host the PC workspace. Its real file
+// owner and editor lifecycle are exercised by fileWorkspace's integration tests.
+vi.mock('@/components/fileWorkspace/SessionFileWorkspaceProvider', () => ({
+    SessionFileWorkspaceProvider: ({children}: {children: React.ReactNode}) => React.createElement(React.Fragment, {}, children),
+}));
+vi.mock('@/components/fileWorkspace/FileWorkspace', () => ({ FileWorkspace: () => null, FileWorkspaceResizeHandle: () => null }));
+vi.mock('@/components/fileWorkspace/context', () => ({ useFileWorkspace: () => null }));
 vi.mock('@/components/agents/SessionAgentSpaceBoundary', () => ({
     AgentSpaceExitButton: 'AgentSpaceExitButton',
     SessionRightPanelContent: 'SessionRightPanelContent',

@@ -180,6 +180,31 @@ const sandboxConfig: SandboxConfig = {
 };
 
 describe('CodexAppServerClient sandbox integration', () => {
+    it('does not acknowledge a failed native turn as a successful artifact-producing completion', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const raw = client as any;
+        raw._threadId = 'root';
+        const events: any[] = [];
+        client.setEventHandler(event => events.push(event));
+        raw.handleRawNotification('turn/started', { threadId: 'root', turn: { id: 'failed-turn' } });
+        raw.handleRawNotification('turn/completed', { threadId: 'root', turn: { id: 'failed-turn', status: 'failed', error: { message: 'disk failure' } } });
+        expect(events.some(event => event.type === 'task_complete')).toBe(false);
+        expect(events).toContainEqual(expect.objectContaining({ type: 'turn_aborted', status: 'failed' }));
+        await client.disconnect();
+    });
+
+    it('does not turn failed legacy completions into successful artifact versions', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(); const raw = client as any;
+        raw._threadId = 'root'; raw._turnId = 'failed-turn';
+        let aborted: boolean | undefined;
+        raw.pendingTurnCompletion = { turnId: 'failed-turn', resolve: (value: boolean) => { aborted = value; } };
+        raw.handleNotification('codex/event/task_complete', { msg: { type: 'task_complete', turn_id: 'failed-turn', status: 'failed', error: { message: 'provider failed' } } });
+        expect(aborted).toBe(true);
+        await client.disconnect();
+    });
+
     it('allows thread startup to outlast Codex shell snapshot without relaxing other RPC timeouts', async () => {
         const { CodexAppServerClient } = await import('./codexAppServerClient');
         const client = new CodexAppServerClient(undefined, { type: 'spawn' }, {});

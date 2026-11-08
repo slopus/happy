@@ -23,7 +23,7 @@ export function MessageStagingQueueView(props: {
         <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
             {props.messages.map(message => <View key={message.id} style={styles.row} testID={`queued-message-${message.id}`}>
                 <View style={styles.content}>
-                    <Text numberOfLines={2} style={styles.text}>{message.text || t('messageQueue.attachments')}</Text>
+                    <Text numberOfLines={2} style={styles.text}>{(message.draftText ?? message.text) || t('messageQueue.attachments')}</Text>
                     {!!message.attachments?.length && <Text style={styles.secondary}>{t('messageQueue.attachments')} · {message.attachments.length}</Text>}
                     {message.status === 'failed' && <Text style={styles.secondary}>{t('messageQueue.failed')}</Text>}
                 </View>

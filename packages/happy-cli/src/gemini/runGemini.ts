@@ -85,6 +85,7 @@ export async function runGemini(opts: {
     console.error(`[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/slopus/happy-cli/issues`);
     process.exit(1);
   }
+  if (api.assertUnmanagedArtifactRunner) await api.assertUnmanagedArtifactRunner(machineId, process.cwd());
   logger.debug(`Using machineId: ${machineId}`);
   await api.getOrCreateMachine({
     machineId,

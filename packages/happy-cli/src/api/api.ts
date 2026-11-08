@@ -1,3 +1,4 @@
+import { createArtifactRuntime } from '@/modules/artifacts/runtime';
 import axios from 'axios'
 import { logger } from '@/ui/logger'
 import type { AgentState, CreateSessionResponse, Metadata, Session, Machine, MachineMetadata, DaemonState } from '@/api/types'
@@ -283,12 +284,18 @@ export class ApiClient {
     }
   }
 
+  async assertUnmanagedArtifactRunner(machineId: string, directory: string) {
+    const identity = this.credential.encryption.type === 'legacy' ? this.credential.encryption.secret : this.credential.encryption.publicKey;
+    const runtime = createArtifactRuntime(identity, machineId);
+    if (runtime.supported) await (await runtime.getStore()).assertUnmanagedRunner(directory);
+  }
+
   sessionSyncClient(session: Session): ApiSessionClient {
-    return new ApiSessionClient(this.credential.token, session, this.startupLifecycle);
+    return new ApiSessionClient(this.credential.token, session, this.startupLifecycle, this.credential.encryption.type === 'legacy' ? this.credential.encryption.secret : this.credential.encryption.publicKey);
   }
 
   machineSyncClient(machine: Machine): ApiMachineClient {
-    return new ApiMachineClient(this.credential.token, machine);
+    return new ApiMachineClient(this.credential.token, machine, this.credential.encryption.type === 'legacy' ? this.credential.encryption.secret : this.credential.encryption.publicKey);
   }
 
   push(): PushNotificationClient {

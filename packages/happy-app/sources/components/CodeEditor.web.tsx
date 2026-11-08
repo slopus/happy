@@ -82,7 +82,7 @@ export const CodeEditor = React.memo(function CodeEditor({
     const highlight = React.useCallback((code: string) => {
         const prismLang = language ? (LANG_MAP[language] ?? null) : null;
         const grammar = prismLang ? Prism.languages[prismLang] : null;
-        if (!grammar || !prismLang) return escapeHtml(code);
+        if (code.length > 100_000 || !grammar || !prismLang) return escapeHtml(code);
         try {
             return Prism.highlight(code, grammar, prismLang);
         } catch {

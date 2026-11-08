@@ -7,6 +7,14 @@ const item = (spans: { styles: string[]; text: string; url: string | null }[]) =
 });
 
 describe('parseMarkdown', () => {
+    it('unwraps angle-delimited link destinations with spaces and parentheses', () => {
+        expect(parseMarkdown('[报告](</Volumes/Work Disk/docs/report (final).md:12>)')).toEqual([
+            { type: 'text', content: [{ styles: [], text: '报告', url: '/Volumes/Work Disk/docs/report (final).md:12' }] },
+        ]);
+        expect(parseMarkdown('[external](<https://example.com/docs>)')).toEqual([
+            { type: 'text', content: [{ styles: [], text: 'external', url: 'https://example.com/docs' }] },
+        ]);
+    });
     it('parses unordered lists across common markdown bullet markers and preserves clickable links', () => {
         const blocks = parseMarkdown([
             '* first item',
@@ -97,4 +105,9 @@ it('keeps external history inert while retaining ordinary formatting', async () 
     expect(blocks.every(block => !['image', 'mermaid', 'options', 'ota-preview', 'finance-chart'].includes(block.type))).toBe(true);
     expect(JSON.stringify(blocks)).toContain('tracking.example');
     expect(JSON.stringify(blocks)).toContain('External update');
+});
+it('keeps image blocks only when a caller provides a frozen image resolver',async()=>{
+ const {parseReadOnlyMarkdown}=await import('./parseMarkdown');
+ expect(parseReadOnlyMarkdown('![local](diagram.svg)',{allowImages:true})).toEqual([{type:'image',url:'diagram.svg',alt:'local'}]);
+ expect(parseReadOnlyMarkdown('![remote](https://example.com/image.png)').some(b=>b.type==='image')).toBe(false);
 });

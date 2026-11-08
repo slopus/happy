@@ -1,3 +1,9 @@
+import { WorkspaceDirectoryTree } from '@/components/fileWorkspace/WorkspaceDirectoryTree';
+import { SessionFileWorkspaceProvider } from '@/components/fileWorkspace/SessionFileWorkspaceProvider';
+import { FileWorkspace, FileWorkspaceResizeHandle } from '@/components/fileWorkspace/FileWorkspace';
+import { useFileWorkspace } from '@/components/fileWorkspace/context';
+import { buildFileContextMessage } from '@/components/fileWorkspace/fileContext';
+import { FileReferencePill } from '@/components/fileWorkspace/FileReferencePill';
 import { AgentContentView } from '@/components/AgentContentView';
 import { MessageComposer } from '@/components/MessageComposer';
 import { AnnotationComposer, useMessageAnnotations, prepareAnnotatedMessage } from '@/components/annotations/MessageAnnotations';
@@ -530,7 +536,7 @@ function DesktopReadingWidthControl() {
 
 export const SessionView = React.memo((props: { id: string }) => (
     <SubagentInspectorProvider sessionId={props.id}>
-        <SessionViewContent key={props.id} {...props} />
+        <SessionFileWorkspaceProvider sessionId={props.id}><SessionViewContent key={props.id} {...props} /></SessionFileWorkspaceProvider>
     </SubagentInspectorProvider>
 ));
 
@@ -539,6 +545,7 @@ const GoalArtifactWindow = React.lazy(() => import('@/components/GoalArtifactWin
 
 const SessionViewContent = React.memo((props: { id: string }) => {
     const sessionId = props.id;
+    const fileWorkspace = useFileWorkspace();
     const router = useRouter();
     const navigation = useNavigation();
     const isFocused = useIsFocused();
@@ -684,7 +691,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
         });
         return () => { cancelled = true; cancelAnimationFrame(frame); };
     }, [sessionId, paintOwnerEpoch, routeOwner]);
-    const canShowFilePanel = desktopRightPanelAvailable && fileDiffsSidebarEnabled;
+    const canShowFilePanel = desktopRightPanelAvailable && (fileDiffsSidebarEnabled || !!fileWorkspace?.enabled);
     const desktopRightPanelPresentation = getDesktopRightPanelPresentation({
         available: desktopRightPanelAvailable,
         collapsed: desktopRightPanelCollapsed,
@@ -722,7 +729,10 @@ const SessionViewContent = React.memo((props: { id: string }) => {
         opacity: Platform.OS === 'web' ? 1 : rightPanelAnim.value,
     }));
 
-    const [sidebarMode, setSidebarMode] = React.useState<SidebarMode>('changes');
+    const [sidebarMode, setSidebarMode] = React.useState<SidebarMode>(fileWorkspace?.enabled ? 'allFiles' : 'changes');
+    React.useEffect(() => {
+        if (fileWorkspace?.enabled && fileWorkspace.snapshot.open) { setDesktopPanelMode('files'); setSidebarMode('allFiles'); }
+    }, [fileWorkspace?.enabled, fileWorkspace?.snapshot.open]);
     const [desktopPanelMode, setDesktopPanelMode] = React.useState<'capabilities' | 'files' | 'tasks'>('capabilities');
     const goalBoardOpen = desktopPanelMode === 'tasks' && !subagentSelection
         && (desktopRightPanelAvailable ? showDesktopRightPanel : rightDrawerOpen);
@@ -831,8 +841,9 @@ const SessionViewContent = React.memo((props: { id: string }) => {
         pushOverlay({ kind: 'diff', file: file.fullPath });
     }, [pushOverlay]);
     const handleAllFilesFilePress = React.useCallback((filePath: string) => {
+        if (fileWorkspace?.enabled) { void fileWorkspace.openReference(filePath); return; }
         pushOverlay({ kind: 'file', path: filePath });
-    }, [pushOverlay]);
+    }, [pushOverlay, fileWorkspace]);
 
     // Clear unavailable views only on the active route. A modal changes the
     // global workspace pathname while retaining this session underneath it.
@@ -978,7 +989,9 @@ const SessionViewContent = React.memo((props: { id: string }) => {
         || session?.metadata?.host
         || null;
     const showChip = isDataReady && !!session;
-    const compactSessionHeader = shouldUseCompactSessionHeader({ isTablet, windowWidth });
+    const splitFileHeader = !!fileWorkspace?.enabled && fileWorkspace.snapshot.open && (desktopMainWidth || fileWorkspace.chatWidth) < 700;
+    const fileHeaderTopInset = splitFileHeader ? 40 : 0;
+    const compactSessionHeader = splitFileHeader || shouldUseCompactSessionHeader({ isTablet, windowWidth });
     const sessionOrganization = sidebarOrganization.sessions[sessionId] ?? { listId: null, tagIds: [] };
     const sessionTags = sessionOrganization.tagIds
         .map((tagId) => sidebarOrganization.tags.find((tag) => tag.id === tagId))
@@ -1006,7 +1019,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
     }, [sessionId, updateSidebarOrganization]);
     const constrainedDrawerHeader = compactSessionHeader && compactRightDrawerAvailable && rightDrawerOpen;
     workspaceStyles.useVariants({
-        agentChipDensity: constrainedDrawerHeader ? 'constrained' : 'regular',
+        agentChipDensity: constrainedDrawerHeader || splitFileHeader ? 'constrained' : 'regular',
         headerDensity: compactSessionHeader ? 'compact' : 'regular',
     });
 
@@ -1218,7 +1231,8 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                         folderName={headerProps.folderName}
                         isConnected={headerProps.isConnected}
                         extraPathSegment={fileViewPath ?? undefined}
-                        headerContentLeftInset={persistentHeaderContentInset}
+                        headerContentLeftInset={splitFileHeader ? 0 : persistentHeaderContentInset}
+                        headerContentTopInset={fileHeaderTopInset}
                         compactRightSlot={compactSessionHeader}
                         titleSlot={headerTitleSlot}
                         rightSlot={(diffViewOpen || !!fileViewPath) ? overlayHeaderRightSlot : defaultHeaderRightSlot}
@@ -1229,7 +1243,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
             )}
 
             {/* Content based on state */}
-            <View style={{ flex: 1, paddingTop: showSessionHeader ? safeArea.top + headerHeight : 0 }}>
+            <View style={{ flex: 1, paddingTop: showSessionHeader ? safeArea.top + headerHeight + fileHeaderTopInset : 0 }}>
                 {!showSessionHeader && goalParentAction && <View testID="goal-board-parent-floating-action" pointerEvents="box-none"
                     style={{ position: 'absolute', top: safeArea.top + 8, right: safeArea.right + 8, zIndex: 2 }}>
                     {goalParentAction}
@@ -1401,6 +1415,8 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                 }}
                 style={[
                     workspaceStyles.desktopMain,
+                    fileWorkspace?.enabled && fileWorkspace.snapshot.open && { flexGrow: 0, flexShrink: 0, flexBasis: fileWorkspace.chatWidth, width: fileWorkspace.chatWidth, minWidth: 310, maxWidth: '50%' },
+                    fileWorkspace?.enabled && fileWorkspace.snapshot.open && fileWorkspace.maximized && { display: 'none' },
                     dreamskin && { backgroundColor: 'transparent' },
                     // Web-only: isolate the chat subtree's layout from the
                     // parent flex-row so right-panel layout work stays local.
@@ -1414,7 +1430,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                     pointerEvents="box-none"
                     style={{
                         position: 'absolute',
-                        top: safeArea.top + headerHeight,
+                        top: safeArea.top + headerHeight + fileHeaderTopInset,
                         left: 0,
                         right: 0,
                         bottom: 0,
@@ -1446,6 +1462,10 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                     </DesktopPresenceTransition>
                 </View>
             </View>
+            {fileWorkspace?.enabled && fileWorkspace.snapshot.open && <>
+                {!fileWorkspace.maximized && <FileWorkspaceResizeHandle />}
+                <FileWorkspace sessionId={sessionId} />
+            </>}
             <Animated.View
                 {...(Platform.OS === 'web' ? { inert: showDesktopRightPanel ? undefined : true } as any : {})}
                 aria-hidden={!showDesktopRightPanel}
@@ -1495,11 +1515,12 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                         >
                             {desktopPanelMode === 'files' && canShowFilePanel ? (
                                 <FilesSidebar
+                                    allFilesContent={fileWorkspace?.enabled ? <WorkspaceDirectoryTree sessionId={sessionId} /> : undefined}
                                     mode={sidebarMode}
                                     onAllFilesFilePress={handleAllFilesFilePress}
                                     onFilePress={handleSidebarFilePress}
                                     onModeChange={setSidebarMode}
-                                    selectedPath={sidebarMode === 'changes' ? scrollToFile : fileViewPath}
+                                    selectedPath={sidebarMode === 'changes' ? scrollToFile : fileWorkspace?.snapshot.active ?? fileViewPath}
                                     sessionId={sessionId}
                                 />
                             ) : (
@@ -1645,6 +1666,7 @@ function SessionViewLoaded({
     tags: readonly SidebarTag[];
 }) {
     const { theme } = useUnistyles();
+    const fileWorkspace = useFileWorkspace();
     const router = useRouter();
     const isFocused = useIsFocused();
     const safeArea = useSafeAreaInsets();
@@ -1786,6 +1808,8 @@ function SessionViewLoaded({
         const composer = composerHandleRef.current;
         const liveMessage = composer?.getMessage() ?? '';
         const annotated = prepareAnnotatedMessage(sessionId, liveMessage);
+        const submittedReference = fileWorkspace?.reference;
+        const fileMessage = buildFileContextMessage(annotated.text, submittedReference ?? null);
         if (annotated.text.trim() || selectedImages.length > 0) {
             const attachments = selectedImages.length > 0 ? selectedImages : undefined;
             sendInFlight.current = true;
@@ -1794,7 +1818,10 @@ function SessionViewLoaded({
                     // CLI slash commands are handled between turns, rather
                     // than inserted literally into the model's current turn.
                     try {
-                        await stageSessionMessage(sessionId, annotated.text, attachments, annotated.text.trimStart().startsWith('/') ? 'queue' : delivery);
+                        const stageDelivery = annotated.text.trimStart().startsWith('/') ? 'queue' : delivery;
+                        if (fileMessage.fileReference) await stageSessionMessage(sessionId, fileMessage.text, attachments, stageDelivery, { draftText: liveMessage, fileReference: fileMessage.fileReference });
+                        else await stageSessionMessage(sessionId, fileMessage.text, attachments, stageDelivery);
+                        if (fileMessage.fileReference) fileWorkspace?.setReference(current => current === submittedReference ? null : current);
                     } catch {
                         Modal.alert(t('common.error'), t('common.retry'));
                         return;
@@ -1810,7 +1837,7 @@ function SessionViewLoaded({
                 } finally { sendInFlight.current = false; }
             })();
         }
-    }, [composerHandleRef, sessionId, selectedImages, removeImage]);
+    }, [composerHandleRef, sessionId, selectedImages, removeImage, fileWorkspace]);
     // Keep ordinary submissions staged on every turn, including after Send now.
     // Only the explicit queue-row action inserts guidance into the active turn.
     const handleSend = React.useCallback(() => submitComposer('queue'), [submitComposer]);
@@ -1946,8 +1973,8 @@ function SessionViewLoaded({
             sessionId={sessionId}
             connectionStatus={connectionStatus}
             blockSend={false}
-            hasContext={annotations.length > 0}
-            contextContent={<AnnotationComposer sessionId={sessionId} />}
+            hasContext={annotations.length > 0 || !!fileWorkspace?.reference}
+            contextContent={<><AnnotationComposer sessionId={sessionId} /><FileReferencePill /></>}
             onSend={handleSend}
             onQueue={isTaskRunning ? handleSend : undefined}
             sendLabel={isTaskRunning ? t('messageQueue.enqueueSend') : undefined}
@@ -2034,7 +2061,8 @@ function SessionViewLoaded({
                         if (!composerHandleRef.current) return;
                         const recovered = messageStagingQueue.take(message.id);
                         if (!recovered) return;
-                        composerHandleRef.current.setMessage(recovered.text);
+                        composerHandleRef.current.setMessage(recovered.draftText ?? recovered.text);
+                        if (recovered.fileReference) fileWorkspace?.setReference(recovered.fileReference);
                         if (recovered.attachments?.length) addImages(recovered.attachments);
                     }}
                 />

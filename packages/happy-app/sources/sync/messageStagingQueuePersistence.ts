@@ -57,7 +57,9 @@ export const messageStagingPersistence = {
                 && !Array.isArray(value.barriers)
                 && Object.values(value.barriers).every((b: any) => b && typeof b.sawRunning === 'boolean' && (b.turnId === undefined || typeof b.turnId === 'string'))
                 && value.messages.every((m: any) => m && typeof m.id === 'string' && typeof m.sessionId === 'string'
-                    && typeof m.text === 'string' && m.modeMeta && typeof m.modeMeta === 'object'
+                    && typeof m.text === 'string' && (m.draftText === undefined || typeof m.draftText === 'string')
+                    && (m.fileReference === undefined || (m.fileReference && typeof m.fileReference.path === 'string' && typeof m.fileReference.hash === 'string' && (m.fileReference.quote === undefined || typeof m.fileReference.quote === 'string')))
+                    && m.modeMeta && typeof m.modeMeta === 'object'
                     && ['queued', 'sending', 'failed'].includes(m.status)
                     && (m.attachments === undefined || (Array.isArray(m.attachments) && m.attachments.every((a: any) => a && typeof a.uri === 'string' && typeof a.id === 'string'))))) return value;
         } catch { /* Start empty if the local cache is invalid. */ }

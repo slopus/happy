@@ -1,3 +1,4 @@
+import { ArtifactChangedSchema, ARTIFACT_PROTOCOL } from '@slopus/happy-wire';
 import { z } from 'zod'
 import type { GoalBoardBinding, GoalBoardSnapshot, Update, UpdateMachineBody, SessionStreamEnvelope } from '@slopus/happy-wire';
 import { UsageSchema } from '@/claude/types'
@@ -225,6 +226,7 @@ export const DaemonStateSchema = z.object({
       z.enum(['mobile-app', 'cli', 'os-signal', 'unknown']),
       z.string() // Forward compatibility
     ]).optional(),
+  artifactChanges: z.array(ArtifactChangedSchema).max(64).optional(),
   codexUsage: CodexUsageSnapshotSchema.optional(),
   codexAccountUsage: z.array(CodexAccountUsageSnapshotSchema).optional(),
 })
@@ -388,6 +390,7 @@ export type Metadata = {
   capabilities?: {
     regenerateTitle?: boolean
     codexCredentialRecovery?: boolean
+    artifactLeases?: 1 | typeof ARTIFACT_PROTOCOL
     codexSteer?: boolean
   },
   machineId?: string,

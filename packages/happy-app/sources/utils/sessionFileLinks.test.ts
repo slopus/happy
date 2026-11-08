@@ -110,3 +110,9 @@ describe('sessionFileLinks', () => {
         });
     });
 });
+
+it('keeps separate code-block lines as distinct file references', () => {
+    const segments = splitSessionFileText('docs/产品方案.md\ndemo/index.html', '/workspace');
+    expect(segments.filter(segment => segment.link).map(segment => segment.link!.path)).toEqual(['docs/产品方案.md', 'demo/index.html']);
+    expect(segments.map(segment => segment.text).join('')).toBe('docs/产品方案.md\ndemo/index.html');
+});

@@ -82,6 +82,17 @@ export function startDaemonControlServer({
       return { status: 'ok' as const };
     });
 
+    // Do not filter idle or initializing workers: either can write on its next input.
+    typed.post('/artifact-worker-inventory', async () => ({
+      protocol: 1,
+      workers: getChildren().map(child => ({
+        pid: child.pid,
+        directory: child.happySessionMetadataFromLocalWebhook?.path,
+        protocol: child.happySessionMetadataFromLocalWebhook?.capabilities?.artifactLeases,
+        sessionId: child.happySessionId,
+      })),
+    }));
+
     // List all tracked sessions
     typed.post('/list', {
       schema: {

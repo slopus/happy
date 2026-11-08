@@ -545,6 +545,14 @@ describe('real session writer composition', () => {
         await expect(sync.checkSessionExists('unreachable')).rejects.toThrow('network');
     });
 
+    it('derives the automatic title from displayed user text rather than workspace metadata', async () => {
+        await sync.ensureSessionHydrated('writer-session');
+        vi.spyOn(subject, 'getSendSync').mockReturnValue({ invalidate: () => undefined });
+        const derive = vi.spyOn(sessionFallbackTitle, 'deriveSessionFallbackTitle');
+        await sync.sendMessage('writer-session', 'Short request\n[Workspace file context] sensitive-baseline', { displayText: 'Short request' });
+        expect(derive.mock.calls.at(-1)?.[0]).toBe('Short request');
+    });
+
     it('delivers the saved continuation context with the user turn while preserving the displayed prompt', async () => {
         await sync.ensureSessionHydrated('writer-session');
         const current = storage.getState().sessions['writer-session'];

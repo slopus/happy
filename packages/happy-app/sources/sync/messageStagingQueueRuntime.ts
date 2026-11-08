@@ -30,6 +30,7 @@ export const messageStagingQueue = createMessageStagingQueue({
         const credentials = sync.getCredentials();
         return sync.sendMessage(message.sessionId, message.text, {
             source: 'chat', attachments: message.attachments, modeMeta: message.modeMeta,
+            ...(message.draftText !== undefined ? { displayText: message.draftText || (message.fileReference ? '@ ' + message.fileReference.path.split('/').pop() : message.draftText) } : {}),
             isCurrent: () => accountRuntimeCurrent() && sync.getCredentials() === credentials,
         });
     },
@@ -78,7 +79,7 @@ export async function clearMessageStagingQueue() {
     clearMessageStagingStorage();
 }
 
-export async function stageSessionMessage(sessionId: string, text: string, attachments?: AttachmentPreview[], delivery: 'queue' | 'steer' = 'queue') {
+export async function stageSessionMessage(sessionId: string, text: string, attachments?: AttachmentPreview[], delivery: 'queue' | 'steer' = 'queue', context?: { draftText?: string; fileReference?: { path: string; hash: string; quote?: string } }) {
     const state = storage.getState();
     const session = state.sessions[sessionId];
     if (!session || !accountRuntimeCurrent()) throw new Error('Session unavailable');
@@ -88,7 +89,7 @@ export async function stageSessionMessage(sessionId: string, text: string, attac
     if (!storage.getState().sessions[sessionId] || !accountRuntimeCurrent()) throw new Error('Session unavailable');
     const id = uuid();
     messageStagingQueue.enqueue({
-        id, sessionId, text,
+        id, sessionId, text, draftText: context?.draftText, fileReference: context?.fileReference,
         attachments: selected,
         modeMeta,
     });

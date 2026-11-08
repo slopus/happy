@@ -1,3 +1,5 @@
+import { createArtifactRuntime, authorizeArtifactRoot, watchArtifactChanges } from '@/modules/artifacts/runtime';
+import { registerArtifactHandlers } from '@/modules/artifacts/rpc';
 import type { NativeSessionHooks } from '@/daemon/appDelegation/nativeSessionRuntime';
 /**
  * WebSocket client for machine/daemon communication with Happy server
@@ -160,6 +162,7 @@ export class ApiMachineClient {
     private lastKnownCLIAvailability: CLIAvailability | null = null;
     private lastKnownResumeSupport: ResumeSupport | null = null;
     private rpcHandlerManager: RpcHandlerManager;
+    private artifactWatcher: { dispose(): void };
     private resumeSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string; effort?: string | null; codexSessionGrant?: string; expectedFailedTurn?: { turnId?: string; updatedAt: number }; expectedWorkerPid?: number }) => Promise<SpawnSessionResult>) | null = null;
     private reconnectInterval: NodeJS.Timeout | null = null;
     private readonly codexAttachCandidates = createCodexAttachCandidateService({
@@ -169,7 +172,8 @@ export class ApiMachineClient {
 
     constructor(
         private token: string,
-        private machine: Machine
+        private machine: Machine,
+        artifactIdentity?: Uint8Array
     ) {
         // Initialize RPC handler manager
         this.rpcHandlerManager = new RpcHandlerManager({
@@ -179,7 +183,12 @@ export class ApiMachineClient {
             logger: (msg, data) => logger.debug(msg, data)
         });
 
-        registerCommonHandlers(this.rpcHandlerManager, process.cwd());
+        const artifacts = createArtifactRuntime(artifactIdentity, this.machine.id);
+        registerArtifactHandlers(this.rpcHandlerManager, artifacts.getStore, undefined, authorizeArtifactRoot);
+        registerCommonHandlers(this.rpcHandlerManager, process.cwd(), artifactIdentity && artifacts.supported ? artifacts.getStore : undefined);
+        this.artifactWatcher = watchArtifactChanges(artifacts.getStore, async events => {
+            await this.updateDaemonState(state => ({ ...state, status: state?.status ?? 'running', artifactChanges: events }));
+        });
 
         // Keep issued previews and apply locks alive across socket reconnections.
         const runner = createProcessRunner();
@@ -817,6 +826,7 @@ export class ApiMachineClient {
 
     shutdown() {
         logger.debug('[API MACHINE] Shutting down');
+        this.artifactWatcher.dispose();
         this.stopAppChatWorker?.();
         this.stopAppChatWorker = null;
         this.stopKeepAlive();

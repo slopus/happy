@@ -5,6 +5,8 @@ export type StagedMessage = {
     id: string;
     sessionId: string;
     text: string;
+    draftText?: string;
+    fileReference?: { path: string; hash: string; quote?: string };
     attachments?: AttachmentPreview[];
     modeMeta: MessageModeMeta;
     status: 'queued' | 'sending' | 'failed';

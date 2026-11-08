@@ -102,6 +102,13 @@ export async function notifyDaemonSessionStarted(
   }
 }
 
+/** Single explicit inventory read; older daemons fail closed instead of returning an empty list. */
+export async function readArtifactWorkerInventory(): Promise<import('@/modules/artifacts/store').ArtifactWorker[]> {
+  const result = await daemonPost('/artifact-worker-inventory');
+  if (result?.protocol !== 1 || !Array.isArray(result.workers)) throw new Error('Artifact inventory unavailable');
+  return result.workers;
+}
+
 export async function listDaemonSessions(): Promise<any[]> {
   const result = await daemonPost('/list');
   return result.children || [];

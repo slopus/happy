@@ -347,6 +347,7 @@ export function splitSessionFileText(text: string, sessionRoot?: string | null):
 
         for (let candidateIndex = tokenIndex; candidateIndex < tokens.length; candidateIndex += 1) {
             const candidate = text.slice(token.start, tokens[candidateIndex].end);
+            if (/[\r\n]/.test(candidate)) break;
             const stripped = stripToken(candidate);
             if (!stripped.core) {
                 continue;

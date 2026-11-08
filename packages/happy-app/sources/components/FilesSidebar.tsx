@@ -27,6 +27,7 @@ interface FilesSidebarProps {
     mode?: SidebarMode;
     onModeChange?: (mode: SidebarMode) => void;
     onAllFilesFilePress?: (filePath: string) => void;
+    allFilesContent?: React.ReactNode;
 }
 
 type FileNode<T = GitFileStatus> = {
@@ -154,6 +155,7 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
     mode = 'changes',
     onModeChange,
     onAllFilesFilePress,
+    allFilesContent,
 }) => {
     const router = useRouter();
     const { theme } = useUnistyles();
@@ -309,7 +311,7 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
                 testID="session-files-mode-transition"
                 transitionKey={mode}
             >
-                {mode === 'changes' ? changesContent : (
+                {mode === 'changes' ? changesContent : allFilesContent ? allFilesContent : (
                     <AllFilesTab
                         onFilePress={onAllFilesFilePress}
                         selectedPath={selectedPath ?? null}

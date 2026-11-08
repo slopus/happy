@@ -292,7 +292,7 @@ describe('ApiMachineClient socket reconnection', () => {
         try {
             mockSocket.connected = true;
             emitSocketEvent('connect');
-            expect(mockSocket.emit.mock.calls.filter(([event]: [string]) => event === 'rpc-register')).toEqual([
+            expect(mockSocket.emit.mock.calls.filter(([event, payload]: [string, { method?: string }]) => event === 'rpc-register' && payload.method?.startsWith('test-machine-id:environment-'))).toEqual([
                 ['rpc-register', { method: 'test-machine-id:environment-inspect' }],
                 ['rpc-register', { method: 'test-machine-id:environment-inspect-v2' }],
                 ['rpc-register', { method: 'test-machine-id:environment-apply' }],
@@ -313,7 +313,7 @@ describe('ApiMachineClient socket reconnection', () => {
             expect(response.result).toMatchObject({
                 status: 'succeeded', changed: true, after: { installedVersion: '2.80.0' },
             });
-            expect(mockSocket.emit.mock.calls.filter(([event]: [string]) => event === 'rpc-register')).toHaveLength(6);
+            expect(mockSocket.emit.mock.calls.filter(([event, payload]: [string, { method?: string }]) => event === 'rpc-register' && payload.method?.startsWith('test-machine-id:environment-'))).toHaveLength(6);
             expect(registerEnvironmentHandlers).toHaveBeenCalledOnce();
             const registration = vi.mocked(registerEnvironmentHandlers).mock.calls[0]!;
             expect(typeof registration[0].registerHandler).toBe('function');

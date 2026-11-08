@@ -280,6 +280,16 @@ describe('ApiSessionClient v3 messages API migration', () => {
         vi.restoreAllMocks();
     });
 
+    it('keeps ordinary turns usable on hosts where artifact leases are unsupported', async () => {
+        const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+        Object.defineProperty(process, 'platform', { ...platform, value: 'win32' });
+        try {
+            const client = new ApiSessionClient('fake-token', session);
+            const result = await client.withArtifactTurn('ordinary conversation', async () => ({ aborted: false, answer: 'done' }));
+            expect(result).toEqual({ aborted: false, answer: 'done' });
+        } finally { Object.defineProperty(process, 'platform', platform); }
+    });
+
     it('registers core socket handlers and connects', () => {
         new ApiSessionClient('fake-token', session);
 

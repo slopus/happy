@@ -117,6 +117,7 @@ export async function runClaude(
     // Get machine ID from settings (should already be set up)
     const settings = await readSettings();
     let machineId = settings?.machineId
+    if (machineId && api.assertUnmanagedArtifactRunner) await api.assertUnmanagedArtifactRunner(machineId, workingDirectory);
     const sandboxConfig = options.noSandbox ? undefined : settings?.sandboxConfig;
     const sandboxEnabled = Boolean(sandboxConfig?.enabled);
     const initialPermissionMode = applySandboxPermissionPolicy(

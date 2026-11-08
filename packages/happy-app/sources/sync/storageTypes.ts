@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ApplicationSessionMetadataSchema, GoalBoardBindingSchema, GoalBoardSnapshotSchema } from "@slopus/happy-wire";
+import { ApplicationSessionMetadataSchema, GoalBoardBindingSchema, GoalBoardSnapshotSchema, ARTIFACT_PROTOCOL } from "@slopus/happy-wire";
 
 //
 // Agent states
@@ -46,6 +46,7 @@ export const MetadataSchema = z.object({
         regenerateTitle: z.boolean().optional(),
         codexCredentialRecovery: z.boolean().optional(),
         codexSteer: z.boolean().optional(),
+        artifactLeases: z.union([z.literal(1),z.literal(ARTIFACT_PROTOCOL)]).optional(),
     }).optional(),
     machineId: z.string().optional(),
     claudeSessionId: z.string().optional(), // Claude Code session ID
