@@ -5,6 +5,7 @@ import HappyWire
 /// browser, the system) opens, per the edge SSO contract: only on the
 /// connection whose installation it names (`happy://<instanceId>/…`),
 /// never on another one. A link naming no installation isn't opened at all.
+/// A link.happy.page share link opens as the instance link it carries.
 public enum InstanceLinkRoute: Equatable, Sendable {
     /// Not a Happy entity or file link: someone else's to read.
     case notALink
@@ -19,6 +20,7 @@ public enum InstanceLinkRoute: Equatable, Sendable {
     /// `connections` with the instance IDs they last reported; `active`
     /// wins when more than one is the same installation.
     public static func route(_ text: String, connections: [AgentConnection], active: String?) -> InstanceLinkRoute {
+        let text = HappyShareLink.parse(text)?.url ?? text
         guard let link = HappyLink(text) else {
             // The app's own `happy://` routes (pairing, OAuth) aren't these.
             guard let host = URLComponents(string: text)?.host, HappyLink.isInstanceID(host) || text.lowercased().hasPrefix("happy-file:") else { return .notALink }

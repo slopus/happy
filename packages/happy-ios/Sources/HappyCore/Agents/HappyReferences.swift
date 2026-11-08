@@ -126,11 +126,12 @@ public enum HappyReferences {
     /// stands in while the name is read and for what can't be looked up.
     /// `instanceId` is the installation the conversation is on: a link to
     /// another one is its label as words, as is a file link `files` says
-    /// can't be opened here.
+    /// can't be opened here. A link.happy.page share link naming it reads
+    /// as the instance link it carries; another server's stays an address.
     public static func markdown(
         _ text: String, instanceId: String? = nil, files: (HappyLink.File) -> Bool = { _ in true }, view: (Reference) -> References.View
     ) -> String {
-        let linked = HappyMarkdownLinks.replace(text) { match in
+        let linked = HappyMarkdownLinks.replace(shareLinksHere(text, instanceId: instanceId)) { match in
             guard let link = match.link else { return nil }
             // A button stays one, which the screen draws as its words where
             // it opens nothing, in its place among the others.
@@ -178,7 +179,7 @@ public enum HappyReferences {
     /// The same words as plain text, for what is read aloud or copied
     /// (`messageReferencesPlainText`).
     public static func plain(_ text: String, instanceId: String? = nil, view: (Reference) -> References.View) -> String {
-        let linked = HappyMarkdownLinks.replace(text) { match in
+        let linked = HappyMarkdownLinks.replace(shareLinksHere(text, instanceId: instanceId)) { match in
             guard let link = match.link else { return label(match.label) }
             if let named = link.instanceId, named != instanceId { return words(match, link) }
             guard case .reference(let named) = link.target else {
@@ -199,6 +200,13 @@ public enum HappyReferences {
         return replace(linked) { reference in
             knownKinds.contains(reference.kind) ? view(reference).label : placeholder(reference)
         }
+    }
+
+    /// `text` with every share link naming `instanceId` written as the
+    /// `happy://` link it carries (desktop's `shareLinksHere`).
+    static func shareLinksHere(_ text: String, instanceId: String?) -> String {
+        guard let instanceId else { return text }
+        return HappyShareLink.rewrite(text) { $0 == instanceId }
     }
 
     /// A link to what this conversation's installation doesn't hold: its

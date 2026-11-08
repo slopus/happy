@@ -478,6 +478,10 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         guard let url = action.request.url else { return .cancel }
         let mainFrame = action.targetFrame?.isMainFrame != false
         if BrowserPolicy.isInPage(url) { return .allow }
+        if mainFrame, action.navigationType == .linkActivated, HappyShareLink.parse(url.absoluteString) != nil {
+            openHappyLink(url.absoluteString)
+            return .cancel
+        }
         if BrowserPolicy.route(url) == .system {
             guard mainFrame, action.navigationType == .linkActivated || webView.backForwardList.currentItem == nil else { return .cancel }
             let nothingShown = webView.backForwardList.currentItem == nil
@@ -521,6 +525,8 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
 
 extension UIViewController {
     func openBrowser(_ url: URL, session: Session? = nil, agentID: String? = nil) {
+        // A share link is a Happy link, opened in the app and never in a browser.
+        if HappyShareLink.parse(url.absoluteString) != nil { return openHappyLink(url.absoluteString) }
         guard BrowserPolicy.route(url) != .system else { UIApplication.shared.open(url); return }
         let browser = BrowserViewController(url: url, session: session ?? browserConnection(), agentID: agentID)
         if let navigationController { navigationController.pushViewController(browser, animated: true) }
@@ -560,6 +566,15 @@ extension UIView {
             if let controller = current as? UIViewController { controller.openBrowser(url); return }
             responder = current.next
         }
+    }
+}
+
+extension UIViewController {
+    /// A Happy link, `happy://<instanceId>/…` or a link.happy.page share
+    /// link, opened as one from outside the app opens (`InstanceLinkRoute`):
+    /// on the connection to the server it names, or not at all.
+    func openHappyLink(_ text: String) {
+        NotificationCenter.default.post(name: AppCoordinator.openLinkRequested, object: view.window, userInfo: ["link": text])
     }
 }
 #endif

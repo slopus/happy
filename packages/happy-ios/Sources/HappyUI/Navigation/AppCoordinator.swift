@@ -33,6 +33,8 @@ public final class AppCoordinator {
     private var pendingInstanceLink: String?
     /// A Happy Cloud invite link, waiting for the stored accounts.
     private var pendingInvite: CloudInvite?
+    /// Links a screen hands over to open as links from outside open (`openHappyLink`).
+    private var linkRequests: NSObjectProtocol?
     /// What an instance link opens once its connection is home.
     private var instanceTarget: (connection: String, link: HappyLink)?
     /// The session a tapped notification named, until a signed-in home can
@@ -59,6 +61,13 @@ public final class AppCoordinator {
         window.makeKeyAndVisible()
         context.account.onChange = { [weak self] state in
             self?.show(state)
+        }
+        linkRequests = NotificationCenter.default.addObserver(forName: Self.openLinkRequested, object: window, queue: .main) { [weak self] note in
+            guard let text = note.userInfo?["link"] as? String else { return }
+            MainActor.assumeIsolated {
+                self?.pendingInstanceLink = text
+                self?.openPendingInstanceLink()
+            }
         }
         // language.tsx reloads the app after a new language; here the
         // screens are built again in it, from the root, as a reload leaves
@@ -452,6 +461,11 @@ public final class AppCoordinator {
     /// are its root. Whatever was shown over the old ones went with them,
     /// so a flow that changed the account says what it did after this.
     static let rootDidChange = Notification.Name("AppCoordinator.rootDidChange")
+
+    /// Posted by a screen, with its window as the object and the link as
+    /// `userInfo["link"]`, for a Happy link to open as one from outside
+    /// does (`openHappyLink`).
+    static let openLinkRequested = Notification.Name("AppCoordinator.openLinkRequested")
 
     /// How long one home takes to dissolve into the next on a switch. A
     /// dissolve is already the reduced-motion form, so it stays.

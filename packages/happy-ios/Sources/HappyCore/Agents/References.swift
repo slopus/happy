@@ -197,8 +197,8 @@ public struct References: Equatable, Sendable {
 
     /// The IDs of `kind` the Happy links in `text` name on this installation.
     private func linked(_ kind: HappyLink.Kind, in text: String) -> [String] {
-        guard Self.holds(text, "happy://") else { return [] }
-        return HappyMarkdownLinks.matches(text).compactMap { match in
+        guard Self.holds(text, "happy://") || Self.holds(text, "https://link.happy.page/#") else { return [] }
+        return HappyMarkdownLinks.matches(HappyReferences.shareLinksHere(text, instanceId: instanceId)).compactMap { match in
             guard let link = match.link, link.instanceId == nil || link.instanceId == instanceId,
                   case .reference(let reference) = link.target, reference.kind == kind else { return nil }
             return reference.id
@@ -213,7 +213,7 @@ public struct References: Equatable, Sendable {
     /// The people `text` mentions whose names haven't been read.
     public func unknownUsers(in text: String) -> [String] {
         var ids: [String] = []
-        guard Self.holds(text, "<happy-user") || Self.holds(text, "happy://") else { return [] }
+        guard Self.holds(text, "<happy-user") || Self.holds(text, "happy://") || Self.holds(text, "https://link.happy.page/#") else { return [] }
         for case .reference(let reference, _) in HappyReferences.parse(text) where reference.kind == "user" && users[reference.id] == nil && !ids.contains(reference.id) {
             ids.append(reference.id)
         }

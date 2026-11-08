@@ -10,6 +10,8 @@ extension Strings {
         static let notOpenedTitle = "Can’t Open Link"
         static let notOpened = "This link doesn’t say which Happy server it belongs to, so it can’t be opened from outside Happy."
         static let copyLink = "Copy Link"
+        /// Desktop's words: "Copy link to task", "… to artifact".
+        static func copyLink(to noun: String) -> String { "Copy link to \(noun)" }
         static let copied = "Link copied"
     }
 }

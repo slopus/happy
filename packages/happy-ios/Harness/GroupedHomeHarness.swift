@@ -119,6 +119,23 @@ private actor GroupedHomeTransport: AgentTransport {
     private var fresh = 0
     func setChurns(_ on: Bool) { churns = on }
 
+    /// `-shareLinks`: the computer names its installation, so links copy
+    /// as link.happy.page share links, and Landing page copy's reply holds
+    /// three: Happy's, a task's and another server's.
+    var shareLinks = false
+    func setShareLinks(_ on: Bool) { shareLinks = on }
+    static let instanceId = "k3x9q2m7p0a4b8c1d5e6f7g2"
+    private static var shareLinksRuns: Data {
+        let page = "https://link.happy.page/#1/\(instanceId)/agents"
+        let reply = "Ask \(page)/happy-agent?as=bot about the tone, and read [the crash](\(page)/crash-agent?as=task) first. "
+            + "Theirs: https://link.happy.page/#1/m1n2b3v4c5x6z7l8k9j0h1g2/agents/t7bgxjt05aexj73frl6ul37e?as=task"
+        let run: [String: Any] = ["id": "r1", "status": "completed", "startedAt": now - 60_000, "endedAt": now - 50_000, "reason": "completed", "messages": [
+            ["id": "u1", "role": "user", "createdAt": now - 60_000, "metadata": [:], "content": [["type": "text", "text": "Who should I ask about the headlines?"]]],
+            ["id": "m1", "role": "agent", "createdAt": now - 55_000, "metadata": [:], "content": [["type": "text", "text": reply]]],
+        ]]
+        return (try? JSONSerialization.data(withJSONObject: ["runs": [run], "hasMore": false])) ?? Data()
+    }
+
     /// One step of a computer whose agents work: line counts tick, a run
     /// starts or ends, an agent does something, a new task arrives on top.
     func churn(_ step: Int) {
@@ -225,14 +242,20 @@ private actor GroupedHomeTransport: AgentTransport {
                 }
                 return .init(status: 200, body: Data("{}".utf8))
             }
-            if route.hasSuffix("/messages") { return .init(status: 200, body: Data(#"{"runs":[],"hasMore":false}"#.utf8)) }
+            if route.hasSuffix("/messages") {
+                if shareLinks, agentId == "landing-agent" { return .init(status: 200, body: Self.shareLinksRuns) }
+                return .init(status: 200, body: Data(#"{"runs":[],"hasMore":false}"#.utf8))
+            }
             if route.hasSuffix("/bootstrap") {
                 return .init(status: 200, body: try JSONSerialization.data(withJSONObject: ["agent": ["id": String(agentId), "workspaceId": "w-\(agentId)", "status": "idle"], "pending": []]))
             }
         }
         let object: [String: Any]
         switch route {
-        case "/v0/health": object = ["ready": true, "version": ["protocol": 27], "capabilities": ["sidebarOperations": true]]
+        case "/v0/health":
+            var health: [String: Any] = ["ready": true, "version": ["protocol": 27], "capabilities": ["sidebarOperations": true]]
+            if shareLinks { health["instanceId"] = Self.instanceId }
+            object = health
         case "/v0/config": object = ["config": [
             "node": ["name": "Personal MacBook Pro"],
             "defaults": ["providerId": "claude", "modelId": "anthropic/opus-5", "permissionMode": "auto"],
@@ -285,11 +308,12 @@ final class GroupedHomeHarness {
         if arguments.contains("-light") { window.overrideUserInterfaceStyle = .light }
         let bottom = arguments.contains("-bottom")
         let churns = arguments.contains("-churn")
+        let shareLinks = arguments.contains("-shareLinks")
         if let index = arguments.firstIndex(of: "-drawDelay"), arguments.indices.contains(index + 1) {
             SidebarItemDrawing.testDrawDelay = Double(arguments[index + 1]) ?? 0
         }
         Task {
-            await open(window: window, churns: churns)
+            await open(window: window, churns: churns, shareLinks: shareLinks)
             if churns { await churn(window: window, jumps: !arguments.contains("-noJumps"), flips: !arguments.contains("-noFlips")) }
             // With `-bottom`, the list's end, where the projects are.
             guard bottom else { return }
@@ -314,9 +338,10 @@ final class GroupedHomeHarness {
 
     private var transport: GroupedHomeTransport?
 
-    private func open(window: UIWindow, churns: Bool) async {
+    private func open(window: UIWindow, churns: Bool, shareLinks: Bool) async {
         let transport = GroupedHomeTransport(avatar: Self.repoPicture(), lineCounts: lineCounts, longTitles: longTitles)
         await transport.setChurns(churns)
+        await transport.setShareLinks(shareLinks)
         self.transport = transport
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/grouped-home",

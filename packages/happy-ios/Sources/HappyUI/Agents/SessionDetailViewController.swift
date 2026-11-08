@@ -158,7 +158,7 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
         }())
 
         navigationItem.largeTitleDisplayMode = .never
-        navigationItem.rightBarButtonItem = CopyLinkItem.make(.reference(.init(kind: .agent, id: agentId)), instanceId: session.instanceId, identifier: "detail-copy-link")
+        applyLink()
 
         watch = session.watch { [weak self] snapshot in
             guard let self else { return }
@@ -266,6 +266,18 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
         header.subtitle.text = row.map { Self.subtitle($0) } ?? Self.subtitle(subtask: detail?.subtask == true, working: detail?.working == true)
         // The name is as wide as its text, its pencil just after it.
         view.setNeedsLayout()
+        applyLink()
+    }
+
+    private var linkRole: HappyShareLink.Role?
+
+    /// Copy Link, named for what it is once that is known: its row's kind,
+    /// else, for a subagent the sidebar doesn't hold, the daemon's word.
+    private func applyLink() {
+        let role = row.flatMap { HappyShareLink.Role($0) } ?? detail.map { $0.subtask ? .subtask : .subagent }
+        guard role != linkRole || navigationItem.rightBarButtonItem == nil else { return }
+        linkRole = role
+        navigationItem.rightBarButtonItem = CopyLinkItem.make(.reference(.init(kind: .agent, id: agentId)), as: role, instanceId: session.instanceId, identifier: "detail-copy-link")
     }
 
     /// A task or a bot is renamed; Happy only on a Happy Cloud server, whose

@@ -187,10 +187,11 @@ final class ArtifactsViewController: UIViewController, UISearchResultsUpdating {
     private func menu(_ id: String) -> UIMenu? {
         guard let artifact = artifacts[id] else { return nil }
         let title = artifact.title.isEmpty ? Strings.untitledArtifact : artifact.title
+        let link = CopyLinkItem.action(.reference(.init(kind: .artifact, id: id)), instanceId: session.instanceId, identifier: "artifact-copy-link")
         return UIMenu(children: [
             UIAction(title: Strings.Artifacts.open, image: Glyphs.image("chevron-forward", size: 20)) { [weak self] _ in self?.open(id) },
             UIAction(title: Strings.Artifacts.copyTitle, image: Glyphs.image("copy-outline", size: 20)) { _ in UIPasteboard.general.string = title },
-        ])
+        ] + [link].compactMap { $0 })
     }
 
     /// A row's picture, still: the daemon's preview of its cover, else of
