@@ -10,6 +10,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.R
 import com.slopus.happy.accounts.AccountStore
 import com.slopus.happy.connection.AgentConnections
+import com.slopus.happy.push.CloudPushRuntime
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -28,9 +29,10 @@ import org.xmlpull.v1.XmlPullParser
 class CredentialStorageTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
 
-    /** The preference files that hold credentials, by the names the stores use. */
+    /** Credentials and installation-bound registration state, by the names the stores use. */
     private val secretFiles = listOf(
         ExpoSecureStore.PREFS_NAME, AccountStore.CREDENTIALS_PREFS_NAME, AgentConnections.SECRETS_PREFS, KeystoreGuestStorage.PREFS_NAME,
+        CloudPushRuntime.PREFS,
     ).map { "$it.xml" }
 
     @Test
