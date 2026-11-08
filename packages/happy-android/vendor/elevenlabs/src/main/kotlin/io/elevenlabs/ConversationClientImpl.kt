@@ -77,9 +77,9 @@ internal object ConversationClientImpl {
                 )
             }
 
-        // One AudioSwitchHandler owns focus (transient) and routing, observed for interruptions when asked.
+        // One AudioSwitchHandler owns focus (transient) and routing, observed for holds or interruptions when asked.
         val outputType = if (finalConfig.useMediaStream) AudioType.MediaAudioType() else AudioType.CallAudioType()
-        val audioHandler = ConversationAudioHandler(context, outputType, finalConfig.onAudioInterruption)
+        val audioHandler = ConversationAudioHandler(context, outputType, finalConfig.onAudioInterruption, finalConfig.onAudioHold)
         // Create LiveKit room
         val room = LiveKit.create(
             appContext = context,

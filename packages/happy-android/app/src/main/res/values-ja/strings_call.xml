@@ -3,6 +3,7 @@
     <string name="call_start">音声通話を開始</string>
     <string name="call_voice_call">音声通話</string>
     <string name="call_muted">ミュート中</string>
+    <string name="call_on_hold">保留中</string>
     <string name="call_mute">マイクをミュート</string>
     <string name="call_unmute">マイクのミュートを解除</string>
     <string name="call_end">通話を終了</string>

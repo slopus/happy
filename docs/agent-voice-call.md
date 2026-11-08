@@ -519,7 +519,7 @@ greeting is skipped. It is a rolling list of the latest 30 slots, each a
 person line, an agent line or an ending, each with its time; an ending
 counts as a slot. A call nobody said anything in leaves nothing behind when
 it ends plainly (the person's End, the agent's `end_call`, the app going to
-the background, where that still ends a call); any other ending is kept. It is written after every slot.
+the background); any other ending is kept. It is written after every slot.
 iOS keeps it in the connection's own folder as `private/call-history.json`
 (`OfflineCallHistoryStore`, complete file protection, excluded from
 backup); Android beside the connection's cache, under `noBackupFilesDir`
@@ -620,22 +620,64 @@ resumes on the `GAIN` the abandon gives it. LiveKit's own default,
 `AUDIOFOCUS_GAIN`, gave it `LOSS`, which music apps read as "stop for good",
 so the music never came back.
 
-**Another app taking the audio mid-call** (a phone call ringing, music
-started) ends the call with no bar and no drop sound, as iOS's interruption
-does (`CallEnding.Interrupted`), and so does the selected headset going. A
-sound that only ducks (a notification, navigation) doesn't.
+**Another app taking the audio mid-call doesn't end the call**, as it
+doesn't end a phone call (`AudioHold` in `ConversationAudioHandler`):
+
+- *For a while* (`LOSS_TRANSIENT`: a phone call ringing or answered, an
+  alarm, another VoIP call): the call is on hold for as long as it lasts.
+  The microphone is off and the agent's voice is silent (playback volume
+  0), whatever the person's own mute says; the bar and the notification
+  say "On hold"; no silence or limit cue is spoken or ended on, and the
+  silence counts again only from the hold's end. When the audio comes back
+  (`GAIN`), the call goes on as it was. If its connection went during the
+  hold or within 15 s after it (`CallSession.HOLD_GRACE`; the provider's
+  120 s silence timeout, data off during a phone call), the call is made
+  again with this one carried over, as a restart is: an `interrupted` slot,
+  no bar, no drop sound. The hold's end can't be heard once the connection
+  is gone, so the new call waits while the phone's audio mode says a phone
+  call is ringing or on (`phoneBusy`).
+- *For good* (`LOSS`: music or a video started): a phone call refuses that
+  request (Android denies focus to media while one is on). The call can't
+  refuse it, so it takes the audio back at once with a second
+  `GAIN_TRANSIENT` request; the other app gets a transient loss, pauses, and
+  plays on when the call ends. AudioSwitch's own request left the focus
+  stack with the loss, so the call still holds one request at a time, and
+  the second goes with the call. If taking it back has to wait (a phone call
+  has the audio), the call holds until it can. An app that takes it again
+  more than three times in 30 s is let be, and the call goes on beside it.
+- *A duck* (`LOSS_TRANSIENT_CAN_DUCK`: a notification, navigation) changes
+  nothing.
+
+**A headset going** (Bluetooth or wired) leaves the call on, routed by
+LiveKit's AudioSwitch to the next device in its order (Bluetooth, wired,
+speaker, earpiece): the speaker the call uses with nothing plugged in, as a
+phone call goes back to its route from before the headset. One plugged in
+or connected mid-call takes the call, as it does a phone call
+(`AudioRouteTest`).
 
 **The background.** A live call goes on with the app behind others, the
 screen off or another app in front, until the person ends it. `CallKeeper`
 starts `CallService`, a foreground service of type `microphone`, once the
 microphone is granted, while the app is still in front (Android lets such a
 service start only then). Its notification is the ongoing call
-(`CallStyle.forOngoingCall`: Happy, the call's clock, Muted or Connecting,
+(`CallStyle.forOngoingCall`: Happy, the call's clock, On hold, Muted or Connecting,
 and Hang up, which is End); a tap opens the app. The call's connection keeps
 its link up in the background (`AgentSessions`' `calling`), so the call
 still hears and sends. The service goes when the call stops being live; if
 the system stops it first, the call ends. A call the service couldn't start
-for still hangs up when the app leaves the foreground, as before.
+for still hangs up when the app leaves the foreground, as before: without
+the service Android silences its microphone there.
+
+- Swiping the app away from recents leaves the call on, as it leaves a
+  phone call (`stopWithTask="false"`): the service keeps the process, and
+  the call, its notification and its Hang up with it.
+- Doze: a foreground service's network and microphone go on, so the call
+  does.
+- Notifications switched off: the service still runs and the call goes on,
+  but Android shows the ongoing call only in its list of running apps, not
+  in the shade (only a self-managed Telecom call is exempt). The bar and the
+  system's microphone indicator still show it. The app asks for
+  notifications as it does for pushes; a call asks for nothing more.
 
 Why `microphone` and not `phoneCall` with a `ConnectionService`: the call is
 not a telephony call, and a self-managed `ConnectionService` brings Telecom's
@@ -644,10 +686,23 @@ for no gain here. `mediaPlayback` would not keep the microphone. Play's
 foreground service declaration lists `microphone` for voice chat in
 communication apps.
 
+Where Android's own Phone app does better, without Telecom:
+
+- A phone call coming in rings over the call with Answer and Decline, not
+  "hold and answer"; Telecom doesn't know of the call, so it isn't in the
+  call log and Bluetooth car kits don't show it. Answering it holds ours.
+- Media started in front can take the audio; the call takes it back, but
+  a phone call never loses it in the first place.
+- The provider ends a call after 120 s of silence
+  (`silence_end_call_timeout`), and the app 20 s earlier; a phone call
+  never does. A hold longer than that is made again after it.
+
 `CallBackgroundDeviceCheck` (androidTest, an emulator, the agent ID in the
 build) runs it: music playing, a call started in front, then home, screen
 off and the notification's Hang up, writing `dumpsys audio`, the services and
-the shade at each step; another app taking the audio mid-call; and the
+the shade at each step; music started mid-call; a phone call rung by the
+host (`adb emu gsm call`) and cancelled, or answered and kept 150 s;
+Doze (`dumpsys deviceidle force-idle`); notifications revoked; and the
 service and its notification with no provider. Its music is a stand-in app
 (`dev.check.player`, not in the repository: media focus, paused on a
 transient loss and played on at the gain, as Spotify does) or Chrome playing

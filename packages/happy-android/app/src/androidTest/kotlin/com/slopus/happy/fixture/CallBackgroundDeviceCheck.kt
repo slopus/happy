@@ -123,12 +123,14 @@ class CallBackgroundDeviceCheck {
 
     private fun pause(millis: Long) = Thread.sleep(millis)
 
-    /** A session wired as CallController wires one: kept once the microphone is granted, let go once it isn't live. */
+    /** A session wired as CallController wires one: kept once the microphone is granted, let go once it isn't live, waiting out a phone call to be made again. */
     private fun session(agentId: String): CallSession {
         lateinit var session: CallSession
         val context = CallContext(targets)
         instrumentation.runOnMainSync {
-            session = CallSession(scope, PublicAgentCallGrants(agentId), permission = { true.also { keeper.keep(session.state) { session.stop() } } }, now = SystemClock::elapsedRealtime) { grant, request, events ->
+            val audio = app.getSystemService(android.media.AudioManager::class.java)
+            val busy = { audio.mode == android.media.AudioManager.MODE_RINGTONE || audio.mode == android.media.AudioManager.MODE_IN_CALL || audio.mode == android.media.AudioManager.MODE_CALL_SCREENING }
+            session = CallSession(scope, PublicAgentCallGrants(agentId), permission = { true.also { keeper.keep(session.state) { session.stop() } } }, now = SystemClock::elapsedRealtime, phoneBusy = busy) { grant, request, events ->
                 ElevenLabsCallConnection.connect(app, scope, grant, request, events).also { connection = it }
             }
             session.onEnded = { endings += it }
@@ -153,7 +155,6 @@ class CallBackgroundDeviceCheck {
         val agentId = CallAgent.hostedAgentId
         assumeTrue("no agent ID in this build", agentId != null)
         instrumentation.uiAutomation.grantRuntimePermission(app.packageName, android.Manifest.permission.RECORD_AUDIO)
-        instrumentation.uiAutomation.grantRuntimePermission(app.packageName, android.Manifest.permission.POST_NOTIFICATIONS)
         CallProbe.reset()
         return agentId!!
     }
@@ -242,9 +243,9 @@ class CallBackgroundDeviceCheck {
         device.pressBack()
     }
 
-    /** Another app takes the audio mid-call: the call ends as interrupted, and its focus goes. */
+    /** Music started mid-call: as a phone call refuses it, the call takes the audio back and goes on; the music plays after. */
     @Test
-    fun anotherAppTakingTheAudioEndsTheCall() {
+    fun anotherAppsMusicDoesNotEndTheCall() {
         assumeTrue("no music app", music != null || "package:$PLAYER" in shell("pm list packages $PLAYER"))
         val agentId = prepare()
         try {
@@ -253,12 +254,109 @@ class CallBackgroundDeviceCheck {
             until(15_000) { CallProbe.lines.value.any { it.role == "agent" } }
             step("6-call", session)
             playMusic()
-            assertTrue("music didn't end the call: ${session.state.value}", until(15_000) { session.state.value == CallState.Idle })
+            pause(10_000)
+            step("7-music-started", session)
+            assertTrue("music ended the call: ${session.state.value}", session.state.value is CallState.Active)
+            assertEquals(emptyList<CallEnding>(), endings)
+            instrumentation.runOnMainSync { session.stop() }
             pause(4_000)
-            step("7-music-took-it", session)
-            assertEquals(listOf(CallEnding.Interrupted), endings)
+            step("8-after", session)
         } finally {
             File(dir, "steps.txt").writeText(steps.toString() + CallProbe.lines.value.joinToString("\n") { "${it.role}: ${it.text}" })
         }
+    }
+
+    /**
+     * A phone call while the call is live, the call kept as in the
+     * background. The host rings the emulator once this logs
+     * `ready for a phone call` (`adb emu gsm call`), and either cancels it
+     * after 8 s, or ([answered]) accepts it and hangs up 150 s later, past
+     * the provider's 120 s silence timeout. Either way the call is held
+     * meanwhile and goes on after, made again with this one carried over if
+     * its connection went. Each state change is in `steps.txt`.
+     */
+    private fun phoneCall(name: String, answered: Boolean) {
+        val agentId = prepare()
+        try {
+            val session = session(agentId)
+            assertTrue("never connected: ${session.state.value}", until(30_000) { session.state.value is CallState.Active })
+            until(15_000) { CallProbe.lines.value.any { it.role == "agent" } }
+            device.pressHome()
+            pause(2_000)
+            step("$name-0-before", session)
+            android.util.Log.i("CallBackground", "ready for a phone call")
+            assertTrue("never held: ${session.state.value}", until(30_000) { (session.state.value as? CallState.Active)?.held == true })
+            step("$name-1-held", session)
+            if (answered) {
+                pause(60_000)
+                step("$name-2-on-the-phone", session)
+                assertTrue("ended on hold: ${session.state.value}", session.state.value.isLive)
+            }
+            assertTrue("never back: ${session.state.value}", until(if (answered) 150_000 else 30_000) { (session.state.value as? CallState.Active)?.held == false })
+            pause(3_000)
+            step("$name-3-back", session)
+            assertTrue("ended unasked: $endings", endings.all { it == CallEnding.Interrupted })
+            if (!answered) assertEquals(emptyList<CallEnding>(), endings)
+            instrumentation.runOnMainSync { connection?.type("Are you still there? Answer in a few words.") }
+            val before = CallProbe.lines.value.count { it.role == "agent" }
+            assertTrue("no answer after the hold", until(30_000) { CallProbe.lines.value.count { it.role == "agent" } > before })
+            step("$name-4-answered", session)
+            instrumentation.runOnMainSync { session.stop() }
+        } finally {
+            File(dir, "steps.txt").writeText(steps.toString() + CallProbe.lines.value.joinToString("\n") { "${it.role}: ${it.text}" })
+        }
+    }
+
+    @Test
+    fun aRingingPhoneCallHoldsTheCallUntilItStops() = phoneCall("ring", answered = false)
+
+    @Test
+    fun aLongAnsweredPhoneCallHoldsTheCallUntilItEnds() = phoneCall("answer", answered = true)
+
+    /** The phone in Doze with the screen off: the call still hears and answers, through its foreground service. */
+    @Test
+    fun aCallGoesOnInDoze() {
+        val agentId = prepare()
+        try {
+            val session = session(agentId)
+            assertTrue("never connected: ${session.state.value}", until(30_000) { session.state.value is CallState.Active })
+            until(15_000) { CallProbe.lines.value.any { it.role == "agent" } }
+            device.pressHome()
+            device.sleep()
+            pause(2_000)
+            shell("dumpsys battery unplug")
+            val idle = shell("dumpsys deviceidle force-idle")
+            pause(40_000)
+            step("doze-0-idle", session)
+            File(dir, "doze-deviceidle.txt").writeText(idle + "\n" + shell("dumpsys deviceidle"))
+            assertTrue("ended in Doze: ${session.state.value}", session.state.value is CallState.Active)
+            val before = CallProbe.lines.value.count { it.role == "agent" }
+            instrumentation.runOnMainSync { connection?.type("Say the word banana.") }
+            assertTrue("no answer in Doze", until(30_000) { CallProbe.lines.value.count { it.role == "agent" } > before })
+            step("doze-1-answered", session)
+            instrumentation.runOnMainSync { session.stop() }
+        } finally {
+            shell("dumpsys deviceidle unforce")
+            shell("dumpsys battery reset")
+            device.wakeUp()
+            File(dir, "steps.txt").writeText(steps.toString() + CallProbe.lines.value.joinToString("\n") { "${it.role}: ${it.text}" })
+        }
+    }
+
+    /**
+     * Notifications switched off (the host revokes POST_NOTIFICATIONS first):
+     * the service still keeps the call, with no notification in the shade.
+     */
+    @Test
+    fun withoutNotificationsTheServiceStillKeepsTheCall() {
+        assumeTrue("notifications allowed", androidx.core.app.NotificationManagerCompat.from(app).areNotificationsEnabled().not())
+        val state = MutableStateFlow<CallState>(CallState.Active(com.slopus.happy.call.CallActivity.Listening, muted = false, since = SystemClock.elapsedRealtime()))
+        instrumentation.runOnMainSync { keeper.keep(state) { state.value = CallState.Idle } }
+        device.pressHome()
+        pause(5_000)
+        val services = shell("dumpsys activity services ${app.packageName}")
+        File(dir, "no-notifications-services.txt").writeText(services)
+        assertTrue(services, "CallService" in services && "isForeground=true" in services)
+        instrumentation.runOnMainSync { state.value = CallState.Idle }
     }
 }

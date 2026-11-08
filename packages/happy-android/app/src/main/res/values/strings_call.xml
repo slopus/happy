@@ -8,6 +8,7 @@
     <string name="call_start">Start voice call</string>
     <string name="call_voice_call">Voice call</string>
     <string name="call_muted">Muted</string>
+    <string name="call_on_hold">On hold</string>
     <string name="call_mute">Mute microphone</string>
     <string name="call_unmute">Unmute microphone</string>
     <string name="call_end">End call</string>

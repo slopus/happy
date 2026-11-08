@@ -3,6 +3,7 @@
     <string name="call_start">Avvia chiamata vocale</string>
     <string name="call_voice_call">Chiamata vocale</string>
     <string name="call_muted">Silenziato</string>
+    <string name="call_on_hold">In attesa</string>
     <string name="call_mute">Silenzia microfono</string>
     <string name="call_unmute">Riattiva microfono</string>
     <string name="call_end">Termina chiamata</string>

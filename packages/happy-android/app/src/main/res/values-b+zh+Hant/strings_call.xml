@@ -3,6 +3,7 @@
     <string name="call_start">開始語音通話</string>
     <string name="call_voice_call">語音通話</string>
     <string name="call_muted">已靜音</string>
+    <string name="call_on_hold">通話保留中</string>
     <string name="call_mute">將麥克風靜音</string>
     <string name="call_unmute">取消麥克風靜音</string>
     <string name="call_end">結束通話</string>

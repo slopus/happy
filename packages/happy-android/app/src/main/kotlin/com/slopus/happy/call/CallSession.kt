@@ -36,8 +36,8 @@ class CallEvents(
     val said: (String, Int) -> Unit = { _, _ -> },
     /** The agent's words for an event as they were heard: the person cut in. */
     val corrected: (String, Int) -> Unit = { _, _ -> },
-    /** The phone took the audio: another app's (a phone call ringing, music started), or the headset it played on went. */
-    val interrupted: () -> Unit = {},
+    /** Another app has the audio for a while (a phone call, an alarm): the call on hold (true) until it is back (false). */
+    val held: (Boolean) -> Unit = {},
 )
 
 /** The SDK stays in its adapter ([ElevenLabsCallConnection]); this is all of it the call needs. */
@@ -45,6 +45,8 @@ interface CallConnection {
     /** Ends the call and returns once its audio is let go. */
     suspend fun end()
     suspend fun setMuted(muted: Boolean)
+    /** On hold: the microphone and the agent's voice off, whatever [setMuted] says; off hold, as it says. */
+    suspend fun hold(held: Boolean)
     /** Context the agent reads without answering. */
     fun update(context: String)
     /** Facts the agent answers aloud ([CallCue]), marked as the app's: never the person's words, never kept as theirs. */
@@ -77,6 +79,8 @@ class CallSession(
     private val history: CallHistory? = null,
     private val timing: CallCues.Timing = CallCues.Timing(),
     private val tickMillis: Long = 1_000,
+    /** A phone call has the phone's audio: a call made again after a hold waits for it ([lost]). */
+    private val phoneBusy: () -> Boolean = { false },
     private val connect: suspend (CallGrant, CallStart, CallEvents) -> CallConnection,
 ) {
     private val mutableState = MutableStateFlow<CallState>(CallState.Idle)
@@ -85,7 +89,7 @@ class CallSession(
     var onLevel: ((Float) -> Unit)? = null
     /** Context waiting for the call went past [PENDING_BYTES] and was let go whole: the call's context sends what puts it right ([CallContext.resync]). */
     var onOverflow: (() -> Unit)? = null
-    /** The agent hung up, or the audio was interrupted, after the call went idle: whoever holds it ends it as End would. */
+    /** The agent hung up, or a hold went on too long, after the call went idle: whoever holds it ends it as End would. */
     var onHangUp: (() -> Unit)? = null
     /** A call that went live ended, and its audio is let go: how. */
     var onEnded: ((CallEnding) -> Unit)? = null
@@ -98,6 +102,10 @@ class CallSession(
     private var activity = CallActivity.Listening
     private var muted = false
     private var changingMute = false
+    /** Another app has the audio ([CallEvents.held]): neither side is heard, for as long as it lasts, and silence isn't counted. */
+    private var held = false
+    /** When the last hold ended: a connection lost within [HOLD_GRACE] of it is the hold's too. */
+    private var resumedAt = Long.MIN_VALUE / 2
     private var since = 0L
     private val pendingContext = ArrayList<String>()
     private var counted: Pair<String, Long>? = null
@@ -173,11 +181,11 @@ class CallSession(
                             if (this@CallSession.activity == CallActivity.AgentSpeaking && activity != CallActivity.AgentSpeaking) cues?.agentSpoke(now())
                             if (activity == CallActivity.UserSpeaking) lastVoice = now()
                             this@CallSession.activity = activity
-                            onLevel?.invoke(CallLevel.level(activity, vad, audio, muted))
-                            if (connection != null) mutableState.value = CallState.Active(activity, muted, since)
+                            onLevel?.invoke(if (held) 0f else CallLevel.level(activity, vad, audio, muted))
+                            if (connection != null) mutableState.value = CallState.Active(activity, muted, since, held)
                         }
                     },
-                    disconnected = { if (current == generation) end(CallProblem.Connection, dropped()) },
+                    disconnected = { if (current == generation) lost() },
                     hungUp = {
                         if (current == generation) {
                             stop(CallEnding.AgentHungUp)
@@ -205,13 +213,7 @@ class CallSession(
                         }
                     },
                     corrected = { text, event -> if (current == generation) history?.corrected(text, event) },
-                    // As iOS's interruption: the call ends with no bar and no drop sound, as End would.
-                    interrupted = {
-                        if (current == generation) {
-                            stop(CallEnding.Interrupted)
-                            onHangUp?.invoke()
-                        }
-                    },
+                    held = { value -> if (current == generation) hold(current, value) },
                 )
                 val opened = connect(grant, request, events)
                 if (current != generation) {
@@ -222,7 +224,9 @@ class CallSession(
                 muted = false
                 since = now()
                 cues = CallCues(timing, since)
-                mutableState.value = CallState.Active(activity, false, since)
+                // Held while it connected: it starts on hold.
+                if (held) runCatching { opened.hold(true) }
+                mutableState.value = CallState.Active(activity, false, since, held)
                 count(current)
                 cue(current)
                 flushContext()
@@ -239,13 +243,43 @@ class CallSession(
 
     /** Hangs up, or closes the bar of a call that ended; [ending] says why, for a call that was live. */
     fun stop(ending: CallEnding = CallEnding.HungUp) {
+        unhold()
         tearDown(ending)
         mutableState.value = CallState.Idle
     }
 
     private fun end(problem: CallProblem, ending: CallEnding) {
+        unhold()
         tearDown(ending)
         mutableState.value = CallState.Ended(problem)
+    }
+
+    private fun unhold() {
+        held = false
+        resumedAt = Long.MIN_VALUE / 2
+    }
+
+    /**
+     * The connection went: a drop, unless the phone had the audio or gave it
+     * back under [HOLD_GRACE] ago (iOS `lost`). Then the call is made again,
+     * this one carried over in its first context, as a restart is, once no
+     * phone call has the audio: the hold's own end can't be heard with the
+     * connection gone, so a phone call ringing or on ([phoneBusy]) is what
+     * it waits for.
+     */
+    private fun lost() {
+        if (!held && now() - resumedAt >= HOLD_GRACE) return end(CallProblem.Connection, dropped())
+        if (!state.value.isLive || request == null) return
+        tearDown(CallEnding.Interrupted)
+        mutableState.value = CallState.Connecting
+        val current = generation
+        starting = scope.launch {
+            while (phoneBusy()) delay(tickMillis)
+            if (current != generation) return@launch
+            held = false
+            resumedAt = now()
+            begin()
+        }
     }
 
     /** What ended a call the provider let go of unasked: its limit, its own silence timeout (never first, [CallCues]), or a drop. */
@@ -267,6 +301,8 @@ class CallSession(
                 val connection = connection
                 val cues = cues
                 if (current != generation || connection == null || cues == null) return@launch
+                // Nothing is said or ended on hold: what is due comes once the audio is back.
+                if (held) continue
                 val at = now()
                 val moment = CallCues.Moment(
                     at, agentSpeaking = activity == CallActivity.AgentSpeaking,
@@ -338,6 +374,33 @@ class CallSession(
         }
     }
 
+    /**
+     * As a phone call on hold (iOS `hold`, `resume`): neither side heard
+     * while another app has the audio, however long, and back as it was when
+     * the audio is, its silence counted from then.
+     */
+    private fun hold(current: Int, value: Boolean) {
+        if (held == value) return
+        held = value
+        if (!value) {
+            resumedAt = now()
+            cues?.heard(now())
+            lastVoice = now()
+        }
+        val connection = connection ?: return
+        if (value) onLevel?.invoke(0f)
+        mutableState.value = CallState.Active(activity, muted, since, held)
+        scope.launch {
+            try {
+                connection.hold(value)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (current == generation) lost()
+            }
+        }
+    }
+
     fun toggleMute() {
         val connection = connection ?: return
         if (changingMute) return
@@ -349,11 +412,11 @@ class CallSession(
                 connection.setMuted(target)
                 if (current != generation) return@launch
                 muted = target
-                mutableState.value = CallState.Active(activity, muted, since)
+                mutableState.value = CallState.Active(activity, muted, since, held)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                if (current == generation) end(CallProblem.Connection, CallEnding.Dropped)
+                if (current == generation) lost()
             } finally {
                 if (current == generation) changingMute = false
             }
@@ -384,12 +447,15 @@ class CallSession(
         try {
             connection.update(text)
         } catch (e: Exception) {
-            end(CallProblem.Connection, CallEnding.Dropped)
+            lost()
         }
     }
 
     companion object {
         /** The most context kept while the call isn't live yet. */
         const val PENDING_BYTES = 32 * 1024
+
+        /** How long after a hold a lost connection is still the hold's (iOS `holdGrace`). */
+        const val HOLD_GRACE = 15_000L
     }
 }

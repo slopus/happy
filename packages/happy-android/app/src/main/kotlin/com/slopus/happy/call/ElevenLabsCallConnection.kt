@@ -44,7 +44,19 @@ class ElevenLabsCallConnection private constructor(
         withContext(NonCancellable) { session.endSession() }
     }
 
-    override suspend fun setMuted(muted: Boolean) = session.setMicMuted(muted)
+    private var muted = false
+    private var held = false
+
+    override suspend fun setMuted(muted: Boolean) {
+        this.muted = muted
+        session.setMicMuted(muted || held)
+    }
+
+    override suspend fun hold(held: Boolean) {
+        this.held = held
+        session.setMicMuted(muted || held)
+        session.setVolume(if (held) 0f else 1f)
+    }
     override fun update(context: String) {
         if (com.slopus.happy.BuildConfig.DEBUG) CallProbe.sent("update", context)
         session.sendContextualUpdate(context)
@@ -165,8 +177,9 @@ class ElevenLabsCallConnection private constructor(
                     scope.launch { if (hungUp) events.hungUp() else events.disconnected() }
                 },
                 onError = { _, _ -> scope.launch { events.disconnected() } },
-                // Another app took the audio focus, or the selected headset went (ConversationAudioHandler).
-                onAudioInterruption = { scope.launch { events.interrupted() } },
+                // Another app has the audio for a while: on hold until it is back (ConversationAudioHandler).
+                // A loss for good is taken back and a headset going is routed past there; neither ends the call.
+                onAudioHold = { held -> scope.launch { events.held(held) } },
             )
             var opened: ConversationSession? = null
             try {

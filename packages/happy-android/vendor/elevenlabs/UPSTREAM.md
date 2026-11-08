@@ -38,9 +38,13 @@ Local changes:
   default `AUDIOFOCUS_GAIN`: music playing when a call starts gets a transient
   loss, pauses, and plays on when focus is abandoned at disconnect (with
   `GAIN`, music apps took the loss as permanent and stayed stopped). With
-  `onAudioInterruption` it observes LiveKit's own focus/device listeners: a
-  focus loss (not a duck) or disappearance of the selected wired/Bluetooth
-  headset reports one interruption. It preserves the
+  `onAudioHold` (the agent call) it acts as a phone call (`AudioHold`): a
+  transient loss reports a hold until the gain, a permanent loss is taken
+  back at once with its own transient request (abandoned at stop), and a
+  headset going is left to AudioSwitch's routing; nothing ends the call.
+  With `onAudioInterruption` alone (the relay's voice) it observes LiveKit's
+  own focus/device listeners: a focus loss (not a duck) or disappearance of
+  the selected wired/Bluetooth headset reports one interruption. It preserves the
   configured audio type, disarms before focus is abandoned, and adds no focus
   owner. Happy uses its normal disconnect path to cancel startup or end the call
   (iOS `VoiceCoordinator` interruption/route/background behavior).

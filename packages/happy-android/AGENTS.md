@@ -43,9 +43,11 @@ Preserve credential and push compatibility on upgrades.
   service with the ongoing call's notification, started by `CallKeeper` once
   the microphone is granted; the connection's link stays up meanwhile), and
   ends when the person ends it (the bar or the notification's Hang up),
-  another account opens, the relay's voice starts or another app takes the
-  audio. Its focus is transient, so music pauses and plays on after; see
-  "Audio focus and the background" in the doc below. For launch it connects to a public agent by its ID
+  another account opens or the relay's voice starts. Another app taking the
+  audio holds it or has the audio taken back, and a headset going reroutes
+  it; see "Audio focus and the background (Android)" in the doc below.
+  A call behaves exactly like a regular phone call; that rule, at the top of
+  the doc, decides anything not written here. For launch it connects to a public agent by its ID
   (`PublicAgentCallGrants`), a connection mechanism and not authentication;
   the ID comes from `HAPPY_CALL_AGENT_V3_ID`, `-Phappy.callAgentV3Id` or the
   ignored `local.properties` (`happy.callAgentV3Id`) into

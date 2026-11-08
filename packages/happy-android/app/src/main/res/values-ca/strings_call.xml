@@ -3,6 +3,7 @@
     <string name="call_start">Inicia una trucada de veu</string>
     <string name="call_voice_call">Trucada de veu</string>
     <string name="call_muted">Silenciat</string>
+    <string name="call_on_hold">En espera</string>
     <string name="call_mute">Silencia el micròfon</string>
     <string name="call_unmute">Activa el micròfon</string>
     <string name="call_end">Finalitza la trucada</string>

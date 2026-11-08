@@ -159,6 +159,7 @@ class CallService : Service() {
             .setContentText(
                 when {
                     active == null -> getString(R.string.voice_status_bar_connecting)
+                    active.held -> getString(R.string.call_on_hold)
                     active.muted -> getString(R.string.call_muted)
                     else -> null
                 },
@@ -187,7 +188,7 @@ class CallService : Service() {
         /** What the notification shows; null once the call isn't live. */
         private fun shown(state: CallState?): Any? = when (state) {
             CallState.Connecting -> state
-            is CallState.Active -> state.muted to state.since
+            is CallState.Active -> Triple(state.muted, state.held, state.since)
             else -> null
         }
 

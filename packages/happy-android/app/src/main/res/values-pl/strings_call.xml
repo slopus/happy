@@ -3,6 +3,7 @@
     <string name="call_start">Rozpocznij rozmowę głosową</string>
     <string name="call_voice_call">Rozmowa głosowa</string>
     <string name="call_muted">Wyciszono</string>
+    <string name="call_on_hold">Wstrzymane</string>
     <string name="call_mute">Wycisz mikrofon</string>
     <string name="call_unmute">Włącz mikrofon</string>
     <string name="call_end">Zakończ rozmowę</string>

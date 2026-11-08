@@ -104,11 +104,13 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
-        <!-- The live voice call's ongoing notification, keeping its microphone in the background (call/CallService.kt). -->
+        <!-- The live voice call's ongoing notification, keeping its microphone in the background (call/CallService.kt).
+             Swiping the app away from recents leaves the call on, as a phone call stays. -->
         <service
             android:name=".call.CallService"
             android:exported="false"
-            android:foregroundServiceType="microphone" />
+            android:foregroundServiceType="microphone"
+            android:stopWithTask="false" />
         <!-- sync.ts's scheduled "Message not sent" (push/BackgroundSendNotifications.kt). -->
         <receiver
             android:name=".push.BackgroundSendReceiver"

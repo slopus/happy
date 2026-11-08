@@ -23,8 +23,11 @@ enum class CallProblem {
 sealed interface CallState {
     data object Idle : CallState
     data object Connecting : CallState
-    /** Live; [since] is `SystemClock.elapsedRealtime()` when it connected, for its clock. */
-    data class Active(val activity: CallActivity, val muted: Boolean, val since: Long) : CallState
+    /**
+     * Live; [since] is `SystemClock.elapsedRealtime()` when it connected, for its clock. [held]: another
+     * app has the audio for a while (a phone call), so neither side is heard until it is back.
+     */
+    data class Active(val activity: CallActivity, val muted: Boolean, val since: Long, val held: Boolean = false) : CallState
     /** It couldn't start or it stopped for a reason to read; the bar stays until closed. */
     data class Ended(val problem: CallProblem) : CallState
 

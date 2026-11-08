@@ -105,6 +105,11 @@ data class ConversationConfig(
     val useMediaStream: Boolean = false,
     /** Happy patch: focus loss (not a duck) or removal of the selected headset ends this call. */
     val onAudioInterruption: (() -> Unit)? = null,
+    /**
+     * Happy patch: the call on hold (true) while another app has the audio for a while, and off it (false)
+     * when it is back. With it, a focus loss or a headset going never ends the call, and [onAudioInterruption] isn't called.
+     */
+    val onAudioHold: ((Boolean) -> Unit)? = null,
 ) {
     init {
         agentId?.let { require(it.isNotBlank()) { "agentId cannot be blank" } }

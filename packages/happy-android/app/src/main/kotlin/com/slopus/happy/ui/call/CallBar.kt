@@ -143,7 +143,7 @@ object CallBarSpec {
     fun colors(state: CallState): List<Color> = when (state) {
         CallState.Idle, CallState.Connecting -> connecting
         is CallState.Active -> when {
-            state.muted -> muted
+            state.muted || state.held -> muted
             state.activity == CallActivity.Listening -> listening
             else -> speaking
         }
@@ -308,12 +308,16 @@ fun CallBar(
     }
     val subtitle = when (state) {
         CallState.Idle, CallState.Connecting -> stringResource(R.string.voice_status_bar_connecting)
-        is CallState.Active -> if (state.muted) listOfNotNull(stringResource(R.string.call_muted), clock).joinToString(" · ") else clock
+        is CallState.Active -> when {
+            state.held -> listOfNotNull(stringResource(R.string.call_on_hold), clock).joinToString(" · ")
+            state.muted -> listOfNotNull(stringResource(R.string.call_muted), clock).joinToString(" · ")
+            else -> clock
+        }
         is CallState.Ended -> null
     }
     val spoken = when (state) {
         CallState.Idle, CallState.Connecting -> stringResource(R.string.voice_status_bar_connecting)
-        is CallState.Active -> if (state.muted) stringResource(R.string.call_muted) else stringResource(
+        is CallState.Active -> if (state.held) stringResource(R.string.call_on_hold) else if (state.muted) stringResource(R.string.call_muted) else stringResource(
             when (state.activity) {
                 CallActivity.Listening -> R.string.call_listening
                 CallActivity.UserSpeaking -> R.string.call_user_speaking

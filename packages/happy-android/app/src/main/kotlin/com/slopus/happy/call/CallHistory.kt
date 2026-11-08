@@ -23,9 +23,9 @@ enum class CallEnding(val said: String) {
     @SerialName("timeUsed") TimeUsed("the call ended: the person's voice time ran out"),
     /** Nobody spoke for a while ([CallCues.Timing.silenceEnd]). */
     @SerialName("silence") Silence("the call ended after a long silence"),
-    /** The phone took the audio: another call, or the audio route went. */
-    @SerialName("interrupted") Interrupted("the call was cut off: the phone took the audio (another call, or the audio route went)"),
-    /** The app left the screen. */
+    /** The phone took the audio (another call) and the call had to be made again. Said as iOS's says it: change both or neither. */
+    @SerialName("interrupted") Interrupted("the call was cut off: the phone took the audio (another call)"),
+    /** The app left the screen: only a call the background service couldn't keep ends there now. */
     @SerialName("background") Background("the call ended when the app left the screen");
 
     /** An end the person didn't ask for and may not have heard coming: the drop sound plays for these. */

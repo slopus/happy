@@ -3,6 +3,7 @@
     <string name="call_start">Начать голосовой звонок</string>
     <string name="call_voice_call">Голосовой звонок</string>
     <string name="call_muted">Микрофон выключен</string>
+    <string name="call_on_hold">На удержании</string>
     <string name="call_mute">Выключить микрофон</string>
     <string name="call_unmute">Включить микрофон</string>
     <string name="call_end">Завершить звонок</string>

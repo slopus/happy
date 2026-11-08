@@ -177,30 +177,152 @@ class CallSessionTest {
         assertEquals(1, hangUps)
     }
 
-    /** Another app took the audio: the call ends with no bar, as iOS's interruption does, its history says so, and no drop sound plays. */
+    /** Another app has the audio for a while (a phone call): the call holds, neither side heard, and comes back as it was. */
     @Test
-    fun anInterruptionEndsTheCallWithNoBar() {
+    fun aHoldKeepsTheCallAndTheAudioComingBackResumesIt() {
         val connection = FakeCallConnection()
         var events: CallEvents? = null
-        val history = CallHistory(null)
-        val call = CallSession(test, granted, { true }, now = { 42 }, history = history) { _, _, callEvents -> events = callEvents; connection }
+        val call = CallSession(test, granted, { true }, now = { 42 }) { _, _, callEvents -> events = callEvents; connection }
         var hangUps = 0
-        val endings = ArrayList<CallEnding>()
         call.onHangUp = { hangUps += 1 }
-        call.onEnded = { endings += it }
         call.start(null, { "" }, { CallToolResult("") })
         test.runCurrent()
-        events!!.interrupted()
-        assertEquals(CallState.Idle, call.state.value)
-        assertEquals(1, hangUps)
+        call.toggleMute()
         test.runCurrent()
-        assertTrue(connection.ended)
+        events!!.held(true)
+        test.runCurrent()
+        assertEquals(CallState.Active(CallActivity.Listening, muted = true, since = 42, held = true), call.state.value)
+        assertTrue(connection.held)
+        test.testScheduler.advanceTimeBy(20_000)
+        test.runCurrent()
+        events!!.held(false)
+        test.runCurrent()
+        assertEquals("back as it was: still muted by the person", CallState.Active(CallActivity.Listening, muted = true, since = 42, held = false), call.state.value)
+        assertFalse(connection.held)
+        assertTrue(connection.muted)
+        // Held again for a while: still on.
+        events!!.held(true)
+        test.testScheduler.advanceTimeBy(20_000)
+        test.runCurrent()
+        assertTrue(call.state.value is CallState.Active)
+        assertEquals(0, hangUps)
+        assertFalse(connection.ended)
+        call.stop()
+        test.runCurrent()
+    }
+
+    /** A hold has no limit, and its silence isn't counted: the silence cue comes only once the call is back and quiet again. */
+    @Test
+    fun aLongHoldNeitherEndsTheCallNorCountsItsSilence() {
+        val connection = FakeCallConnection()
+        var events: CallEvents? = null
+        var clock = 0L
+        val call = CallSession(test, granted, { true }, now = { clock }) { _, _, callEvents -> events = callEvents; connection }
+        var hangUps = 0
+        call.onHangUp = { hangUps += 1 }
+        call.start(null, { "" }, { CallToolResult("") })
+        test.runCurrent()
+        events!!.held(true)
+        repeat(600) { clock += 1_000; test.testScheduler.advanceTimeBy(1_000); test.runCurrent() }
+        assertEquals(true, (call.state.value as CallState.Active).held)
+        assertTrue(connection.cues.isEmpty())
+        events!!.held(false)
+        test.runCurrent()
+        val warning = CallCues.Timing().silenceWarning
+        repeat((warning / 1_000).toInt() - 5) { clock += 1_000; test.testScheduler.advanceTimeBy(1_000); test.runCurrent() }
+        assertTrue("silence counted from the hold's end, not its start", connection.cues.isEmpty())
+        repeat(10) { clock += 1_000; test.testScheduler.advanceTimeBy(1_000); test.runCurrent() }
+        assertEquals(1, connection.cues.size)
+        assertEquals(0, hangUps)
+        call.stop()
+        test.runCurrent()
+    }
+
+    /**
+     * The connection going while held (the provider's silence timeout, data
+     * off during a phone call): the call is made again once the phone call is
+     * over, this one carried over, with no bar and no drop sound (iOS `lost`).
+     */
+    @Test
+    fun aConnectionLostOnHoldIsMadeAgainOnceThePhoneCallIsOver() {
+        val connections = ArrayList<FakeCallConnection>()
+        val starts = ArrayList<CallStart>()
+        var events: CallEvents? = null
+        var busy = true
+        val history = CallHistory(null)
+        val call = CallSession(test, granted, { true }, now = { test.testScheduler.currentTime }, history = history, phoneBusy = { busy }) { _, start, callEvents ->
+            events = callEvents
+            starts += start
+            FakeCallConnection().also { connections += it }
+        }
+        val endings = ArrayList<CallEnding>()
+        var hangUps = 0
+        call.onEnded = { endings += it }
+        call.onHangUp = { hangUps += 1 }
+        var made = 0
+        call.start(null, { "context ${++made}" }, { CallToolResult("") })
+        test.runCurrent()
+        events!!.heard("what's new")
+        events!!.held(true)
+        events!!.disconnected()
+        test.runCurrent()
+        assertEquals(CallState.Connecting, call.state.value)
+        assertTrue(connections[0].ended)
         assertEquals(listOf(CallEnding.Interrupted), endings)
-        assertFalse(CallEnding.Interrupted.isUnexpected)
         assertEquals(CallEnding.Interrupted, history.slots.last().ending)
-        // A second report from the dying connection changes nothing.
-        events!!.interrupted()
-        assertEquals(1, hangUps)
+        test.testScheduler.advanceTimeBy(10_000)
+        test.runCurrent()
+        assertEquals("waits while the phone call is on", 1, connections.size)
+        busy = false
+        test.testScheduler.advanceTimeBy(1_000)
+        test.runCurrent()
+        assertEquals(2, connections.size)
+        assertEquals("the new call's first context is made again, with the history", "context 2", starts[1].context)
+        assertEquals(false, (call.state.value as CallState.Active).held)
+        assertEquals(0, hangUps)
+        call.stop()
+        test.runCurrent()
+    }
+
+    /** Lost under 15 s after a hold, the connection went with it: made again. Later, it is a drop. */
+    @Test
+    fun aConnectionLostJustAfterAHoldIsTheHolds() {
+        var events: CallEvents? = null
+        var made = 0
+        val call = CallSession(test, granted, { true }, now = { test.testScheduler.currentTime }) { _, _, callEvents -> events = callEvents; made += 1; FakeCallConnection() }
+        call.start(null, { "" }, { CallToolResult("") })
+        test.runCurrent()
+        events!!.held(true)
+        events!!.held(false)
+        test.testScheduler.advanceTimeBy(CallSession.HOLD_GRACE - 1_000)
+        events!!.disconnected()
+        test.runCurrent()
+        test.testScheduler.advanceTimeBy(1_000)
+        test.runCurrent()
+        assertEquals(2, made)
+        assertTrue(call.state.value is CallState.Active)
+        test.testScheduler.advanceTimeBy(CallSession.HOLD_GRACE + 1_000)
+        test.runCurrent()
+        events!!.disconnected()
+        test.runCurrent()
+        assertEquals(CallState.Ended(CallProblem.Connection), call.state.value)
+        assertEquals(2, made)
+    }
+
+    /** Held while it connected: it goes live on hold. */
+    @Test
+    fun aHoldWhileConnectingStartsTheCallOnHold() {
+        val connection = FakeCallConnection()
+        val opened = CompletableDeferred<Unit>()
+        val call = session { _, _, events -> events.held(true); opened.await(); connection }
+        call.start(null, { "" }, { CallToolResult("") })
+        test.runCurrent()
+        opened.complete(Unit)
+        test.runCurrent()
+        assertEquals(true, (call.state.value as CallState.Active).held)
+        assertTrue(connection.held)
+        call.stop()
+        test.runCurrent()
     }
 
     @Test
@@ -307,10 +429,12 @@ class FakeCallConnection : CallConnection {
     val updates = ArrayList<String>()
     val cues = ArrayList<String>()
     var muted = false
+    var held = false
     var ended = false
     override suspend fun end() { ended = true }
     override fun cue(facts: String) { cues += facts }
     override suspend fun setMuted(muted: Boolean) { this.muted = muted }
+    override suspend fun hold(held: Boolean) { this.held = held }
     override fun update(context: String) { updates += context }
 }
 

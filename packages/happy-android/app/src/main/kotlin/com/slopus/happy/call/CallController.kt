@@ -38,8 +38,8 @@ import kotlinx.coroutines.withContext
  * (`ui/call/CallFrame`), bound to the one connection it started on. It goes
  * on with the app behind others, the screen off or another app in front
  * ([CallKeeper]'s service and notification, whose Hang up is End), with its
- * connection's link kept up ([liveConnection]). It ends when another account opens,
- * or when another app takes the audio ([CallEnding.Interrupted]). What each
+ * connection's link kept up ([liveConnection]), and holds while another app
+ * has the audio, as a phone call does. It ends when another account opens. What each
  * call said is kept for the connection's next one ([CallHistory]), and a
  * call that ends unasked plays [CallDropSound]. Apart from the relay's voice
  * ([stopRelayVoice]), whose call it stops first.
@@ -81,6 +81,13 @@ class CallController(
     private var focus: String? = null
     private var report: CallReport? = null
     private val dropSound = CallDropSound(appContext)
+    private val audio = appContext.getSystemService(android.media.AudioManager::class.java)
+
+    /** A phone call has the phone's audio: ringing, on it, or being screened. */
+    @android.annotation.SuppressLint("InlinedApi")
+    private fun phoneBusy(): Boolean = audio?.mode.let {
+        it == android.media.AudioManager.MODE_RINGTONE || it == android.media.AudioManager.MODE_IN_CALL || it == android.media.AudioManager.MODE_CALL_SCREENING
+    }
     /** Set by the screen while it is up. */
     var screen: CallScreen? = null
 
@@ -122,7 +129,7 @@ class CallController(
             microphone().also { granted -> if (granted && made != null && session === made) keeper.keep(state) { if (session === made) close() } }
         }
         val call = CallSession(
-            scope, grants, permission = permission, now = SystemClock::elapsedRealtime, allowance = allowance, history = history,
+            scope, grants, permission = permission, now = SystemClock::elapsedRealtime, allowance = allowance, history = history, phoneBusy = ::phoneBusy,
         ) { grant, request, events ->
             ElevenLabsCallConnection.connect(appContext, scope, grant, request, events)
         }
