@@ -6,9 +6,7 @@ import com.slopus.happy.connection.TransportResponse
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.io.IOException
@@ -17,15 +15,9 @@ import java.util.UUID
 @Serializable
 data class CloudPushRegistration(val id: String, val version: String, val expiresAt: Long)
 
-/** All fields are required on the wire: missing privacy preferences never enable previews. */
+/** Explicit agent notifications have only a per-member/server master switch. */
 @Serializable
-data class CloudPushSettings(
-    val enabled: Boolean,
-    val hideMessageContent: Boolean,
-    val turnComplete: Boolean,
-    val needsInput: Boolean,
-    val messages: Boolean,
-)
+data class CloudPushSettings(val enabled: Boolean)
 
 class CloudPushException(val status: Int? = null) : IOException("Cloud push request failed")
 
@@ -53,12 +45,6 @@ class CloudPushApi(private val client: AgentClient) {
 
     suspend fun unregister(registration: CloudPushRegistration) {
         request("DELETE", path(registration.id), headers = version(registration))
-    }
-
-    suspend fun view(registration: CloudPushRegistration, agentId: String?) {
-        request("PUT", "${path(registration.id)}/view", buildJsonObject {
-            put("agentId", agentId?.let(::JsonPrimitive) ?: JsonNull)
-        }, version(registration))
     }
 
     suspend fun settings(): CloudPushSettings = readSettings(request("GET", "$ROOT/settings"))
