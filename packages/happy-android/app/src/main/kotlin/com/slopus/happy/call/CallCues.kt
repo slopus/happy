@@ -19,7 +19,7 @@ sealed interface CallCue {
     /** The JSON the agent gets, after the [MARK]. */
     val text: String
         get() = when (this) {
-            is Silence -> """{"event":"silence","endsIn":"${(endsInMillis / 1000.0).roundToInt()} seconds"}"""
+            is Silence -> """{"event":"silence","endsIn":"${spoken(endsInMillis)}"}"""
             is Ending -> """{"event":"call_ending","reason":"${reason.wire}","in":"${spoken(inMillis)}","restart":$restart}"""
         }
 
@@ -43,19 +43,21 @@ sealed interface CallCue {
  * the caller's; [CallSession] asks it every second.
  *
  * Silence is the app's to end, before ElevenLabs' own
- * `silence_end_call_timeout` (120 s on the hosted agent) could: that clock
+ * `silence_end_call_timeout` (300 s on the hosted agent) could: that clock
  * restarts when the agent finishes speaking or the person is heard, and so
- * does this one, so the warning always comes first, the end 20 s before
- * theirs. The person's finished words (their transcript) restart it; the
- * agent's answer to a cue doesn't put off the end it warned of. Muted time
- * counts: the provider hears silence then too.
+ * does this one, so the warning always comes first, the end 10 s before
+ * theirs. The person's voice restarts it as it is heard, not only their
+ * finished words: one long turn has no transcript until it ends. The
+ * agent's answer to a cue doesn't put off the end it warned of; the person
+ * speaking after it does, and the agent is told ([SILENCE_OVER]). Muted
+ * time counts: the provider hears silence then too.
  */
 class CallCues(val timing: Timing = Timing(), val since: Long) {
     data class Timing(
         /** Quiet this long, the agent warns the call will end. */
-        val silenceWarning: Long = 75_000,
+        val silenceWarning: Long = 180_000,
         /** Quiet this long, the call ends. */
-        val silenceEnd: Long = 100_000,
+        val silenceEnd: Long = 290_000,
         /** The hosted agent's `max_duration_seconds`. */
         val callLimit: Long = 3_600_000,
         /** Ended this long before the provider would, so it ends as ours. */
@@ -77,9 +79,12 @@ class CallCues(val timing: Timing = Timing(), val since: Long) {
         data class Cue(val cue: CallCue) : Action
         data class End(val ending: CallEnding) : Action
         data object Restart : Action
+
+        /** The person spoke after a silence warning: the agent is told, as a contextual update, never a cue ([SILENCE_OVER]). */
+        data object SilenceOver : Action
     }
 
-    /** Who is speaking now; voice time left and in all, null without an allowance. */
+    /** Who is speaking now, the person's voice restarting the silence clock; voice time left and in all, null without an allowance. */
     data class Moment(
         val now: Long,
         val agentSpeaking: Boolean = false,
@@ -92,14 +97,17 @@ class CallCues(val timing: Timing = Timing(), val since: Long) {
 
     private var lastHeard = since
     private var warned: Long? = null
+    /** A warning the person spoke after, not yet said to be over. */
+    private var silenceEnded = false
     private var limitCued = false
     private var allowanceCued = false
     private var restartAsked: Long? = null
     private var spokeSinceRestart = false
 
-    /** The person's finished words. */
+    /** The person's finished words, or their voice. */
     fun heard(at: Long) {
         lastHeard = maxOf(lastHeard, at)
+        if (warned != null) silenceEnded = true
         warned = null
     }
 
@@ -127,6 +135,11 @@ class CallCues(val timing: Timing = Timing(), val since: Long) {
             val unanswered = !spokeSinceRestart && !moment.agentSpeaking && now - asked >= 4_000
             return if (said || unanswered || now - asked >= timing.restartDeadline) Action.Restart else null
         }
+        if (moment.personSpeaking) heard(now)
+        if (silenceEnded) {
+            silenceEnded = false
+            return Action.SilenceOver
+        }
         val warnedAt = warned
         if (warnedAt != null) {
             if (now - warnedAt >= timing.silenceEnd - timing.silenceWarning && moment.quiet) return Action.End(CallEnding.Silence)
@@ -149,5 +162,10 @@ class CallCues(val timing: Timing = Timing(), val since: Long) {
             return Action.Cue(CallCue.Ending(CallCue.Reason.CallLimit, limitLeft, restart))
         }
         return null
+    }
+
+    companion object {
+        /** The update that says a silence warning no longer holds. */
+        const val SILENCE_OVER = """{"event":"silence_over"}"""
     }
 }

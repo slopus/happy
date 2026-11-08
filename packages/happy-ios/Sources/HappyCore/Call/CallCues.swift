@@ -21,7 +21,7 @@ public enum CallCue: Equatable, Sendable {
     public var text: String {
         switch self {
         case .silence(let endsIn):
-            return #"{"event":"silence","endsIn":"\#(Int(endsIn.rounded())) seconds"}"#
+            return #"{"event":"silence","endsIn":"\#(Self.spoken(endsIn))"}"#
         case .callEnding(let reason, let seconds, let restart):
             return #"{"event":"call_ending","reason":"\#(reason.rawValue)","in":"\#(Self.spoken(seconds))","restart":\#(restart)}"#
         }
@@ -43,18 +43,20 @@ public enum CallCue: Equatable, Sendable {
 /// `CallSession` asks it every second.
 ///
 /// Silence is the app's to end, before ElevenLabs' own
-/// `silence_end_call_timeout` (120 s on the hosted agent) could: that
+/// `silence_end_call_timeout` (300 s on the hosted agent) could: that
 /// clock restarts when the agent finishes speaking or the person is
 /// heard, and so does this one, so the warning always comes first, the
-/// end 20 s before theirs. The person's finished words (their transcript)
-/// restart it; the agent's answer to a cue doesn't put off the end it
-/// warned of. Muted time counts: the provider hears silence then too.
+/// end 10 s before theirs. The person's voice restarts it as it is heard,
+/// not only their finished words: one long turn has no transcript until it
+/// ends. The agent's answer to a cue doesn't put off the end it warned of;
+/// the person speaking after it does, and the agent is told
+/// (`silenceOver`). Muted time counts: the provider hears silence then too.
 public struct CallCues: Equatable, Sendable {
     public struct Timing: Equatable, Sendable {
         /// Quiet this long, the agent warns the call will end.
-        public var silenceWarning: Double = 75
+        public var silenceWarning: Double = 180
         /// Quiet this long, the call ends.
-        public var silenceEnd: Double = 100
+        public var silenceEnd: Double = 290
         /// The hosted agent's `max_duration_seconds`.
         public var callLimit: Double = 3600
         /// Ended this long before the provider would, so it ends as ours.
@@ -81,12 +83,19 @@ public struct CallCues: Equatable, Sendable {
         case cue(CallCue)
         case end(CallEnding)
         case restart
+        /// The person spoke after a silence warning: the agent is told, as a
+        /// contextual update, never a cue (`CallCues.silenceOver`).
+        case silenceOver
     }
+
+    /// The update that says a silence warning no longer holds.
+    public static let silenceOver = #"{"event":"silence_over"}"#
 
     /// Who is speaking now.
     public struct Moment: Equatable, Sendable {
         public var now: Double
         public var agentSpeaking: Bool
+        /// The person's voice is heard: it restarts the silence clock.
         public var personSpeaking: Bool
         /// Seconds of voice time left and in all; nil without an allowance.
         public var allowanceLeft: Double?
@@ -107,6 +116,8 @@ public struct CallCues: Equatable, Sendable {
     public let since: Double
     private var lastHeard: Double
     private var warned: Double?
+    /// A warning the person spoke after, not yet said to be over.
+    private var silenceEnded = false
     private var limitCued = false
     private var allowanceCued = false
     private var restartAsked: Double?
@@ -118,9 +129,10 @@ public struct CallCues: Equatable, Sendable {
         lastHeard = since
     }
 
-    /// The person's finished words.
+    /// The person's finished words, or their voice.
     public mutating func heard(at time: Double) {
         lastHeard = max(lastHeard, time)
+        if warned != nil { silenceEnded = true }
         warned = nil
     }
 
@@ -151,6 +163,11 @@ public struct CallCues: Equatable, Sendable {
             let unanswered = !spokeSinceRestart && !moment.agentSpeaking && now - asked >= 4
             if said || unanswered || now - asked >= timing.restartDeadline { return .restart }
             return nil
+        }
+        if moment.personSpeaking { heard(at: now) }
+        if silenceEnded {
+            silenceEnded = false
+            return .silenceOver
         }
         if let warned {
             if now - warned >= timing.silenceEnd - timing.silenceWarning, moment.quiet { return .end(.silence) }

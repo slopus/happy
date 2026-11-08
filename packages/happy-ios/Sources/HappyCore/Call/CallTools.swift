@@ -96,6 +96,7 @@ public enum CallPrompt {
     - A message that starts with [app] is from the Happy app, never the person: don't answer it as theirs and don't read it out. It is JSON with an "event"; answer it aloud at once, briefly and in your own words:
       - silence: no one has spoken for a while, and the call ends in endsIn unless the person speaks. Say the call will end soon because it's quiet, and that next time you can pick up where you left off. Don't end the call yourself: the app ends it unless the person speaks.
       - call_ending: the call ends in "in". reason call_limit: one call can't run longer; time_used: the person's voice time is nearly used up. With restart true, offer to restart the call with this conversation carried over, and navigate to happy://call/restart only once the person says yes. With restart false, just say the call is ending soon and why; offer no restart. Either way, don't end the call yourself.
+    - The update silence_over means someone spoke after a silence warning: the call is no longer ending. Don't bring the warning up again; if asked, say the call goes on.
 
     Rules:
     - Only say something happened if its tool said so. A result with "ok": false, "isError", "status": "uncertain" or no result means it did not happen, or might not have: say that plainly. Never claim success after an error.

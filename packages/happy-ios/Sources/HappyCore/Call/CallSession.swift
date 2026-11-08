@@ -284,7 +284,8 @@ public final class CallSession {
         return max(0, allowance.remaining(at: at) - (counted.map { at - $0.at } ?? 0))
     }
 
-    /// Asks the cues every `tick` what to do while the call is live.
+    /// Asks the cues every `tick` what to do while the call is live. The
+    /// person's voice counts only unmuted: muted, the provider hears silence.
     private func cue(_ current: Int) {
         cueing = Task { [weak self] in
             while !Task.isCancelled {
@@ -292,7 +293,7 @@ public final class CallSession {
                 try? await Task.sleep(for: self.tick)
                 guard current == self.generation, self.connection != nil, var cues = self.cues else { return }
                 let moment = CallCues.Moment(now: self.now(), agentSpeaking: self.activity == .agentSpeaking,
-                                             personSpeaking: self.activity == .userSpeaking || self.now() - self.lastVoice < 1.5,
+                                             personSpeaking: !self.muted && (self.activity == .userSpeaking || self.now() - self.lastVoice < 1.5),
                                              allowanceLeft: self.allowanceLeft(), allowanceTotal: self.allowance?.total)
                 let action = cues.next(moment)
                 self.cues = cues
@@ -305,6 +306,10 @@ public final class CallSession {
                 case .restart?:
                     self.tearDown(.restarted)
                     return self.begin()
+                case .silenceOver?:
+                    // Read without an answer: the person is speaking.
+                    self.pendingContext.append(CallCues.silenceOver)
+                    self.flushContext()
                 case nil:
                     break
                 }

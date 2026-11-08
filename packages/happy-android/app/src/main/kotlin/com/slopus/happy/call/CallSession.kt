@@ -250,7 +250,7 @@ class CallSession(
         return maxOf(0L, allowance.remaining(at) - (if (counted != null) at - countedAt else 0L))
     }
 
-    /** Asks the cues every [tickMillis] what to do while the call is live. */
+    /** Asks the cues every [tickMillis] what to do while the call is live. The person's voice counts only unmuted: muted, the provider hears silence. */
     private fun cue(current: Int) {
         cueing = scope.launch {
             while (current == generation) {
@@ -261,7 +261,7 @@ class CallSession(
                 val at = now()
                 val moment = CallCues.Moment(
                     at, agentSpeaking = activity == CallActivity.AgentSpeaking,
-                    personSpeaking = activity == CallActivity.UserSpeaking || at - lastVoice < 1_500,
+                    personSpeaking = !muted && (activity == CallActivity.UserSpeaking || at - lastVoice < 1_500),
                     allowanceLeft = allowanceLeft(), allowanceTotal = allowance?.total(),
                 )
                 when (val action = cues.next(moment)) {
@@ -270,6 +270,11 @@ class CallSession(
                     CallCues.Action.Restart -> {
                         tearDown(CallEnding.Restarted)
                         return@launch begin()
+                    }
+                    // Read without an answer: the person is speaking.
+                    CallCues.Action.SilenceOver -> {
+                        pendingContext += CallCues.SILENCE_OVER
+                        flushContext()
                     }
                     null -> Unit
                 }

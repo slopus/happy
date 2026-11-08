@@ -124,10 +124,44 @@ final class CallHistoryTests: XCTestCase {
         call.start(language: nil, context: { "" }, tool: { _ in CallToolResult(text: "") })
         await live(call)
         await waitUntil { ended != nil }
-        XCTAssertEqual(connection.cues, [#"{"event":"silence","endsIn":"0 seconds"}"#])
+        XCTAssertEqual(connection.cues, [#"{"event":"silence","endsIn":"less than a minute"}"#])
         XCTAssertEqual(call.state, .idle)
         XCTAssertEqual(ended, .silence)
         XCTAssertEqual(history.slots, [.ended(.silence, at: history.slots.first?.at ?? 0)])
+    }
+
+    /// The person's voice after a warning: the call goes on, and the agent
+    /// is told once, as an update it reads without answering, never a cue.
+    /// Muted, the voice doesn't count.
+    func testVoiceAfterAWarningKeepsTheCallAndSaysTheSilenceIsOver() async throws {
+        var timing = CallCues.Timing()
+        timing.silenceWarning = 0.2
+        timing.silenceEnd = 0.6
+        let connection = FakeCallConnection()
+        var events: CallEvents?
+        var ended: CallEnding?
+        let call = session(CallHistory(store: nil), timing: timing, connection: connection) { events = $0 }
+        call.onEnded = { ended = $0 }
+        call.start(language: nil, context: { "" }, tool: { _ in CallToolResult(text: "") })
+        await live(call)
+        await waitUntil { !connection.cues.isEmpty }
+        events?.activity(.userSpeaking, 0.9)
+        await waitUntil { connection.updates.contains(CallCues.silenceOver) }
+        await call.delivered()
+        XCTAssertEqual(connection.updates, [CallCues.silenceOver])
+        XCTAssertEqual(connection.cues.count, 1)
+        XCTAssertNil(ended)
+        // Talking on past the end it warned of: the call goes on, told once.
+        try await Task.sleep(for: .milliseconds(400))
+        events?.activity(.userSpeaking, 0.9)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertNil(ended)
+        XCTAssertEqual(connection.updates, [CallCues.silenceOver])
+        // Muted, the person's voice is silence to the provider, and to the app.
+        await call.toggleMute()
+        await waitUntil { ended != nil }
+        XCTAssertEqual(ended, .silence)
+        XCTAssertEqual(connection.updates, [CallCues.silenceOver])
     }
 
     /// The agent agreed to restart: once it has said so, the call ends and a
@@ -180,7 +214,7 @@ final class CallHistoryTests: XCTestCase {
 
 final class CallCuesTests: XCTestCase {
     func testTheCuesAreFactsAsJSON() {
-        XCTAssertEqual(CallCue.silence(endsIn: 25).text, #"{"event":"silence","endsIn":"25 seconds"}"#)
+        XCTAssertEqual(CallCue.silence(endsIn: 110).text, #"{"event":"silence","endsIn":"about 2 minutes"}"#)
         XCTAssertEqual(CallCue.callEnding(reason: .callLimit, in: 300, restart: true).text,
                        #"{"event":"call_ending","reason":"call_limit","in":"about 5 minutes","restart":true}"#)
         XCTAssertEqual(CallCue.callEnding(reason: .timeUsed, in: 70, restart: false).text,
@@ -189,25 +223,60 @@ final class CallCuesTests: XCTestCase {
         XCTAssertEqual(CallCue.mark, "[app] ")
     }
 
-    /// Warned at 75 s of quiet, ended at 100 s: always before the
-    /// provider's own 120 s. The person's words start it over; the agent's
+    /// Warned at 180 s of quiet, ended at 290 s: always before the
+    /// provider's own 300 s. The person's words start it over; the agent's
     /// answer to the warning doesn't put the end off.
     func testSilenceWarnsThenEndsBeforeTheProviderWould() {
         var cues = CallCues(since: 0)
-        XCTAssertNil(cues.next(.init(now: 74)))
-        // Not while someone speaks.
-        XCTAssertNil(cues.next(.init(now: 75, personSpeaking: true)))
-        XCTAssertEqual(cues.next(.init(now: 76)), .cue(.silence(endsIn: 25)))
-        cues.agentSpoke(at: 80)
-        XCTAssertNil(cues.next(.init(now: 100)))
-        XCTAssertEqual(cues.next(.init(now: 101)), .end(.silence))
-        XCTAssertLessThan(cues.timing.silenceEnd, 120)
-        // Heard after the warning: no end, and the clock starts over.
+        XCTAssertNil(cues.next(.init(now: 179)))
+        // Not while the agent speaks.
+        XCTAssertNil(cues.next(.init(now: 180, agentSpeaking: true)))
+        XCTAssertEqual(cues.next(.init(now: 181)), .cue(.silence(endsIn: 110)))
+        cues.agentSpoke(at: 190)
+        XCTAssertNil(cues.next(.init(now: 290)))
+        XCTAssertEqual(cues.next(.init(now: 291)), .end(.silence))
+        XCTAssertLessThan(cues.timing.silenceEnd, 300)
+        // Heard after the warning: no end, the agent told once, and the clock starts over.
         var again = CallCues(since: 0)
-        _ = again.next(.init(now: 75))
-        again.heard(at: 90)
-        XCTAssertNil(again.next(.init(now: 120)))
-        XCTAssertEqual(again.next(.init(now: 165)), .cue(.silence(endsIn: 25)))
+        _ = again.next(.init(now: 180))
+        again.heard(at: 200)
+        XCTAssertEqual(again.next(.init(now: 201)), .silenceOver)
+        XCTAssertNil(again.next(.init(now: 300)))
+        XCTAssertNil(again.next(.init(now: 379)))
+        XCTAssertEqual(again.next(.init(now: 380)), .cue(.silence(endsIn: 110)))
+    }
+
+    /// One long turn has no transcript until it ends: the person's voice
+    /// restarts the clock, so talking never reads as quiet, and the quiet
+    /// after it counts from the last of the voice.
+    func testTheVoiceRestartsTheSilenceClock() {
+        var cues = CallCues(since: 0)
+        for second in stride(from: 10.0, through: 400, by: 1) {
+            XCTAssertNil(cues.next(.init(now: second, personSpeaking: true)), "at \(second)")
+        }
+        XCTAssertNil(cues.next(.init(now: 402)))
+        XCTAssertNil(cues.next(.init(now: 579)))
+        XCTAssertEqual(cues.next(.init(now: 580)), .cue(.silence(endsIn: 110)))
+    }
+
+    /// Voice after a warning: the warning is over, said once, and the call
+    /// never ends while the person talks, however long.
+    func testVoiceAfterAWarningEndsItOnceAndNeverTheCall() {
+        var cues = CallCues(since: 0)
+        XCTAssertEqual(cues.next(.init(now: 180)), .cue(.silence(endsIn: 110)))
+        var actions: [CallCues.Action] = []
+        for second in stride(from: 200.0, through: 700, by: 1) {
+            if let action = cues.next(.init(now: second, personSpeaking: true)) { actions.append(action) }
+        }
+        XCTAssertEqual(actions, [.silenceOver])
+        // A breath after it is no reason to warn, nor a transcript to say it is over again.
+        cues.heard(at: 701)
+        XCTAssertNil(cues.next(.init(now: 702)))
+        XCTAssertNil(cues.next(.init(now: 880)))
+        XCTAssertEqual(cues.next(.init(now: 881)), .cue(.silence(endsIn: 110)))
+        // Each warning its own end of it.
+        XCTAssertEqual(cues.next(.init(now: 900, personSpeaking: true)), .silenceOver)
+        XCTAssertNil(cues.next(.init(now: 901, personSpeaking: true)))
     }
 
     /// Five minutes before the one-call limit the agent offers a fresh

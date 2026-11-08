@@ -566,18 +566,27 @@ is speaking:
 
 | Event | When | The call then |
 | --- | --- | --- |
-| `{"event":"silence","endsIn":"25 seconds"}` | 75 s with nobody speaking | ends at 100 s unless the person speaks |
+| `{"event":"silence","endsIn":"about 2 minutes"}` | 180 s with nobody speaking | ends at 290 s unless the person speaks |
 | `{"event":"call_ending","reason":"call_limit","in":"about 5 minutes","restart":true}` | 5 min before the one-call limit | ends 10 s before ElevenLabs' 3,600 s |
 | `{"event":"call_ending","reason":"time_used","in":"about 2 minutes","restart":false}` | 2 min before the free 20 min run out, 5 min before the paid 5 h | ends when the time is used |
 
-- Silence is the app's. ElevenLabs ends a call after 120 s of silence
-  (`silence_end_call_timeout`), and its clock restarts when the agent
-  finishes speaking (measured on v3: a cue at 60 s, answered, moved its end
-  from 123 s to 187 s). The app's clock restarts at the same moments and
-  when the person's words are heard, so it always ends the call 20 s
-  first, and needs no change to the agent. The agent's answer to the
-  warning doesn't put the end off; the person speaking does. Muted time
-  counts: ElevenLabs hears silence then too.
+- Silence is the app's. ElevenLabs ends a call after 300 s of silence
+  (`silence_end_call_timeout`, which the hosted agent must have at 300 s,
+  ElevenLabs' most), and its clock restarts when the agent finishes
+  speaking (measured on v3: a cue at 60 s, answered, moved its end from
+  123 s to 187 s) and while the person's voice is heard. The app's clock
+  restarts at the same moments: when the agent finishes, when the person's
+  voice activity says they speak, and when their words are heard, so it
+  always ends the call 10 s first. Voice, not only words: with a patient
+  turn a long monologue has no transcript until it ends, and a clock fed
+  only by transcripts warned at the person's first breath (a real call:
+  the warning came 127 s into one turn). The agent's answer to the warning
+  doesn't put the end off; the person speaking does. Muted time counts:
+  ElevenLabs hears silence then too, so muted voice activity doesn't.
+- When the person speaks after a warning, the warning is over: the agent
+  gets the contextual update `{"event":"silence_over"}`, once per warning,
+  sent with the other updates and never as a cue, so it doesn't answer it
+  over the person. The prompt says not to bring the warning up again.
 - At the one-call limit the agent offers a fresh call with this
   conversation carried over (`restart` is true when more than 60 s of voice
   time would be left past the limit). Voice time running out offers none.
@@ -672,6 +681,8 @@ word.
   conversation whose override the agent doesn't allow.
 - Dynamic variable: `initialConversationContext` (a string): the first
   context as plain text, above. It is limited to 32 KB.
+- Silence: `silence_end_call_timeout` 300 s, ElevenLabs' most. The app
+  warns at 180 s and ends the call at 290 s itself (`CallCues`).
 - Client tools: the four below, each with "Wait for response" on and
   a response timeout of 10 s. The phone answers within 8 s and says
   `uncertain` if a send is still in doubt at that point.
@@ -722,6 +733,7 @@ Cues:
 - A message that starts with [app] is from the Happy app, never the person: don't answer it as theirs and don't read it out. It is JSON with an "event"; answer it aloud at once, briefly and in your own words:
   - silence: no one has spoken for a while, and the call ends in endsIn unless the person speaks. Say the call will end soon because it's quiet, and that next time you can pick up where you left off. Don't end the call yourself: the app ends it unless the person speaks.
   - call_ending: the call ends in "in". reason call_limit: one call can't run longer; time_used: the person's voice time is nearly used up. With restart true, offer to restart the call with this conversation carried over, and navigate to happy://call/restart only once the person says yes. With restart false, just say the call is ending soon and why; offer no restart. Either way, don't end the call yourself.
+- The update silence_over means someone spoke after a silence warning: the call is no longer ending. Don't bring the warning up again; if asked, say the call goes on.
 
 Rules:
 - Only say something happened if its tool said so. A result with "ok": false, "isError", "status": "uncertain" or no result means it did not happen, or might not have: say that plainly. Never claim success after an error.

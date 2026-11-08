@@ -134,17 +134,58 @@ class CallHistoryTest {
         call.onEnded = { ended = it }
         call.start(null, { "" }, { CallToolResult("") })
         test.runCurrent()
-        test.testScheduler.advanceTimeBy(74_500)
+        test.testScheduler.advanceTimeBy(179_500)
         test.runCurrent()
         assertTrue(connection.cues.isEmpty())
         test.testScheduler.advanceTimeBy(1_000)
         test.runCurrent()
-        assertEquals(listOf("""{"event":"silence","endsIn":"25 seconds"}"""), connection.cues)
-        test.testScheduler.advanceTimeBy(25_000)
+        assertEquals(listOf("""{"event":"silence","endsIn":"about 2 minutes"}"""), connection.cues)
+        test.testScheduler.advanceTimeBy(109_000)
+        test.runCurrent()
+        assertTrue(call.state.value is CallState.Active)
+        test.testScheduler.advanceTimeBy(1_000)
         test.runCurrent()
         assertEquals(CallState.Idle, call.state.value)
         assertEquals(CallEnding.Silence, ended)
         assertEquals(listOf(CallEnding.Silence), history.slots.map { it.ending })
+    }
+
+    /**
+     * The person's voice after a warning: the call goes on, and the agent is
+     * told once, as an update it reads without answering, never a cue.
+     * Muted, the voice doesn't count.
+     */
+    @Test
+    fun voiceAfterAWarningKeepsTheCallAndSaysTheSilenceIsOver() {
+        val connection = FakeCallConnection()
+        var events: CallEvents? = null
+        var ended: CallEnding? = null
+        val call = session(CallHistory(null), connection = connection) { events = it }
+        call.onEnded = { ended = it }
+        call.start(null, { "" }, { CallToolResult("") })
+        test.runCurrent()
+        test.testScheduler.advanceTimeBy(180_500)
+        test.runCurrent()
+        assertEquals(1, connection.cues.size)
+        events!!.activity(CallActivity.UserSpeaking, 0.9f, null)
+        test.testScheduler.advanceTimeBy(1_000)
+        test.runCurrent()
+        assertEquals(listOf(CallCues.SILENCE_OVER), connection.updates)
+        // Talking on past the end it warned of: the call goes on, told once.
+        test.testScheduler.advanceTimeBy(400_000)
+        test.runCurrent()
+        assertNull(ended)
+        assertTrue(call.state.value is CallState.Active)
+        assertEquals(listOf(CallCues.SILENCE_OVER), connection.updates)
+        assertEquals(1, connection.cues.size)
+        // Muted, the person's voice is silence to the provider, and to the app.
+        call.toggleMute()
+        test.runCurrent()
+        test.testScheduler.advanceTimeBy(291_000)
+        test.runCurrent()
+        assertEquals(CallEnding.Silence, ended)
+        assertEquals(2, connection.cues.size)
+        assertEquals(listOf(CallCues.SILENCE_OVER), connection.updates)
     }
 
     /** The agent agreed to restart: once it has said so, the call ends and a new one starts with what was said in its context. */
@@ -193,29 +234,59 @@ class CallHistoryTest {
 class CallCuesTest {
     @Test
     fun theCuesAreFactsAsJson() {
-        assertEquals("""{"event":"silence","endsIn":"25 seconds"}""", CallCue.Silence(25_000).text)
+        assertEquals("""{"event":"silence","endsIn":"about 2 minutes"}""", CallCue.Silence(110_000).text)
         assertEquals("""{"event":"call_ending","reason":"call_limit","in":"about 5 minutes","restart":true}""", CallCue.Ending(CallCue.Reason.CallLimit, 300_000, true).text)
         assertEquals("""{"event":"call_ending","reason":"time_used","in":"about a minute","restart":false}""", CallCue.Ending(CallCue.Reason.TimeUsed, 70_000, false).text)
         assertEquals("less than a minute", CallCue.spoken(20_000))
         assertEquals("[app] ", CallCue.MARK)
     }
 
-    /** Warned at 75 s of quiet, ended at 100 s: always before the provider's own 120 s. */
+    /** Warned at 180 s of quiet, ended at 290 s: always before the provider's own 300 s. */
     @Test
     fun silenceWarnsThenEndsBeforeTheProviderWould() {
         val cues = CallCues(since = 0)
-        assertNull(cues.next(CallCues.Moment(74_000)))
-        assertNull(cues.next(CallCues.Moment(75_000, personSpeaking = true)))
-        assertEquals(CallCues.Action.Cue(CallCue.Silence(25_000)), cues.next(CallCues.Moment(76_000)))
-        cues.agentSpoke(80_000)
-        assertNull(cues.next(CallCues.Moment(100_000)))
-        assertEquals(CallCues.Action.End(CallEnding.Silence), cues.next(CallCues.Moment(101_000)))
-        assertTrue(cues.timing.silenceEnd < 120_000)
+        assertNull(cues.next(CallCues.Moment(179_000)))
+        assertNull(cues.next(CallCues.Moment(180_000, agentSpeaking = true)))
+        assertEquals(CallCues.Action.Cue(CallCue.Silence(110_000)), cues.next(CallCues.Moment(181_000)))
+        cues.agentSpoke(190_000)
+        assertNull(cues.next(CallCues.Moment(290_000)))
+        assertEquals(CallCues.Action.End(CallEnding.Silence), cues.next(CallCues.Moment(291_000)))
+        assertTrue(cues.timing.silenceEnd < 300_000)
+        // Heard after the warning: no end, the agent told once, and the clock starts over.
         val again = CallCues(since = 0)
-        again.next(CallCues.Moment(75_000))
-        again.heard(90_000)
-        assertNull(again.next(CallCues.Moment(120_000)))
-        assertEquals(CallCues.Action.Cue(CallCue.Silence(25_000)), again.next(CallCues.Moment(165_000)))
+        again.next(CallCues.Moment(180_000))
+        again.heard(200_000)
+        assertEquals(CallCues.Action.SilenceOver, again.next(CallCues.Moment(201_000)))
+        assertNull(again.next(CallCues.Moment(300_000)))
+        assertNull(again.next(CallCues.Moment(379_000)))
+        assertEquals(CallCues.Action.Cue(CallCue.Silence(110_000)), again.next(CallCues.Moment(380_000)))
+    }
+
+    /** One long turn has no transcript until it ends: the person's voice restarts the clock, so talking never reads as quiet, and the quiet after it counts from the last of the voice. */
+    @Test
+    fun theVoiceRestartsTheSilenceClock() {
+        val cues = CallCues(since = 0)
+        for (second in 10L..400L) assertNull("at $second", cues.next(CallCues.Moment(second * 1_000, personSpeaking = true)))
+        assertNull(cues.next(CallCues.Moment(402_000)))
+        assertNull(cues.next(CallCues.Moment(579_000)))
+        assertEquals(CallCues.Action.Cue(CallCue.Silence(110_000)), cues.next(CallCues.Moment(580_000)))
+    }
+
+    /** Voice after a warning: the warning is over, said once, and the call never ends while the person talks, however long. */
+    @Test
+    fun voiceAfterAWarningEndsItOnceAndNeverTheCall() {
+        val cues = CallCues(since = 0)
+        assertEquals(CallCues.Action.Cue(CallCue.Silence(110_000)), cues.next(CallCues.Moment(180_000)))
+        val actions = (200L..700L).mapNotNull { cues.next(CallCues.Moment(it * 1_000, personSpeaking = true)) }
+        assertEquals(listOf(CallCues.Action.SilenceOver), actions)
+        // A breath after it is no reason to warn, nor a transcript to say it is over again.
+        cues.heard(701_000)
+        assertNull(cues.next(CallCues.Moment(702_000)))
+        assertNull(cues.next(CallCues.Moment(880_000)))
+        assertEquals(CallCues.Action.Cue(CallCue.Silence(110_000)), cues.next(CallCues.Moment(881_000)))
+        // Each warning its own end of it.
+        assertEquals(CallCues.Action.SilenceOver, cues.next(CallCues.Moment(900_000, personSpeaking = true)))
+        assertNull(cues.next(CallCues.Moment(901_000, personSpeaking = true)))
     }
 
     /** Five minutes before the one-call limit the agent offers a fresh call; it ends ours 10 s before the provider's. */
