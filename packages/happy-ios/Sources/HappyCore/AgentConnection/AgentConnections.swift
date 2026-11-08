@@ -20,6 +20,9 @@ public final class AgentConnections {
     private var foreground = true
     private var loaded = false
     private var engines: [String: SyncEngine] = [:]
+    /// Engines kept through the last suspension whose tunnels haven't
+    /// looked for the computer again since (`resume`).
+    private var suspended: Set<String> = []
     private var selecting: Task<Void, Never>?
     /// Agents disconnected whose cleanup a kill interrupted: never listed
     /// again, while `finishRemoval` forgets them.
@@ -239,7 +242,7 @@ public final class AgentConnections {
         try await storage.select(id)
         activeID = id; onChange?()
         for (accountID, engine) in engines {
-            if foreground && accountID == id { await engine.start() }
+            if foreground && accountID == id { await resume(accountID, engine) }
             else { await engine.pause() }
         }
     }
@@ -351,7 +354,7 @@ public final class AgentConnections {
             try? await self.storage.select(id)
             guard self.activeID == id else { return }
             for (accountID, engine) in self.engines {
-                if self.foreground && accountID == id { await engine.start() }
+                if self.foreground && accountID == id { await self.resume(accountID, engine) }
                 else { await engine.pause() }
             }
         }
@@ -359,13 +362,14 @@ public final class AgentConnections {
 
     public func setForeground(_ active: Bool) async {
         foreground = active; generation &+= 1
+        if !active { suspended = Set(engines.keys) }
         let pending = jobs; jobs.removeAll()
         pending.values.forEach { $0.cancel() }
         for job in pending.values { await job.value }
         guard foreground == active else { return }
         for (id, engine) in engines {
             guard foreground == active else { return }
-            if active && id == activeID { await engine.start() }
+            if active && id == activeID { await resume(id, engine) }
             else { await engine.pause() }
         }
         guard foreground == active else { return }
@@ -374,6 +378,15 @@ public final class AgentConnections {
             for index in accounts.indices where !accounts[index].revoked { accounts[index].status = .paused }
             onChange?()
         }
+    }
+
+    /// Starts `id`'s engine. One kept through a suspension holds tunnels
+    /// that may have gone stale with nothing to say so; first they look for
+    /// every way to the computer again, as after a network change on
+    /// screen, before the stream asks them for anything.
+    private func resume(_ id: String, _ engine: SyncEngine) async {
+        if suspended.remove(id) != nil { await engine.client.resumed() }
+        await engine.start()
     }
 
     private func stop(_ id: String) async {

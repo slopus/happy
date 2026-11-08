@@ -34,6 +34,8 @@ public final class AgentClient: Sendable {
     }
 
     public func close() async { await transport.close() }
+    /// Back from the background: see `AgentTransport.resumed`.
+    public func resumed() async { await transport.resumed() }
 
     // MARK: Requests
 

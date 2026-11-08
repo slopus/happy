@@ -36,6 +36,10 @@ public protocol AgentTransport: Sendable {
     func reset() async
     /// Lets go of `category`'s connections; the other categories' stay.
     func reset(_ category: RequestCategory) async
+    /// Back from the background: every way to the computer is checked at
+    /// once (the relay and every direct path), and only what doesn't answer
+    /// is replaced; tunnels, requests under way and sessions stay.
+    func resumed() async
     func close() async
     /// The bearer to write into a request this transport doesn't frame
     /// itself (an artifact request on a browser connection): `credential`,
@@ -93,6 +97,8 @@ extension AgentTransport {
     public func reset() async {}
 
     public func reset(_ category: RequestCategory) async { await reset() }
+
+    public func resumed() async {}
 
     public func bearer(_ credential: String) async throws -> String { credential }
 
@@ -211,6 +217,17 @@ public final class AgentHTTPTransport: SelfMeteringTransport {
     public func reset(_ category: RequestCategory) async {
         await clients.reset(category)
         await publicFlows.close(category)
+    }
+
+    /// A tunnel kept through a suspension may or may not still work: its
+    /// relay connection, socket and direct paths, and a WireGuard session
+    /// past its 180 seconds. Each tunnel is woken: the relay is pinged and
+    /// replaced only if it doesn't answer within two seconds, every direct
+    /// path is probed and one that stopped answering dropped, a dead socket
+    /// rebound, and an expired session rekeyed at once rather than at the
+    /// next 30-second idle mark.
+    public func resumed() async {
+        for tunnel in clients.connected() { await tunnel.client.wake() }
     }
 
     /// The way a `category` request goes: a lease on one of that

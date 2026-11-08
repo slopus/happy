@@ -51,7 +51,13 @@ it, so its Tailcat clients don't sit on the radio between checks; an open
 account's own event stream says whether its computer is there.
 Transient failures reconnect with 1–30 second backoff. Background cancels and
 awaits the loops; 401/403 marks the device revoked and prevents retries across
-relaunch. Disconnecting takes the agent off the list and out of the open
+relaunch. An engine kept through a suspension is resumed before its stream
+asks for anything (`AgentTransport.resumed`): each Tailcat client is woken
+(`TailcatClient.wake`), which checks rather than assumes anything broke. The
+relay is pinged and replaced only if it doesn't answer within two seconds,
+every direct path is probed and one that stopped answering dropped, a dead
+socket rebound, and a session past WireGuard's 180 seconds rekeyed at once
+instead of at the next 30-second idle mark. Disconnecting takes the agent off the list and out of the open
 slot at once (`AgentConnections.forget`): its identity loop and engine can
 no longer publish or save anything of it, so nothing waits for them.
 `finishRemoval` then erases the credentials and cached identity, gives the
