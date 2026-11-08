@@ -403,6 +403,33 @@ public final class AgentClient: Sendable {
         return AgentWire.SlashCommand.catalog(answer["slashCommands"])
     }
 
+    /// The connection's global skills new work's `/` offers before it has
+    /// an agent (`GET /v0/skills`, every page; a page cursor a change made
+    /// stale starts the list again), as `SlashCommands.globalSkills` keeps
+    /// them. Nil from a computer without skill management (404, 501).
+    public func globalSkills() async throws -> [AgentWire.SlashCommand]? {
+        var summaries: [JSONValue] = []
+        var page: String?
+        var restarts = 0
+        while true {
+            let answer: JSONValue
+            do {
+                answer = try await decode(JSONValue.self, "GET", "/v0/skills?limit=100" + (page.map { "&pageCursor=\(Self.escape($0))" } ?? ""))
+            } catch AgentClientError.status(let status, _, _) where status == 404 || status == 501 {
+                return nil
+            } catch AgentClientError.status(409, _, _) where page != nil && restarts < 3 {
+                summaries = []
+                page = nil
+                restarts += 1
+                continue
+            }
+            summaries += answer["skills"]?.arrayValue ?? []
+            guard let next = answer["nextPageCursor"]?.stringValue else { break }
+            page = next
+        }
+        return SlashCommands.globalSkills(summaries)
+    }
+
     /// The composer's draft as the computer keeps it for this person.
     public func draft(_ agentId: String) async throws -> AgentWire.Draft {
         struct Response: Decodable { var draft: AgentWire.Draft }

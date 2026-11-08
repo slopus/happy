@@ -86,6 +86,11 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     let card = AgentInputCardView(configuration: AgentInputCardConfiguration(placeholder: Strings.Composer.inputPlaceholder))
     /// The agent's slash commands over the card, while the draft is one.
     private lazy var slash = SlashPalette(images: session.images)
+    /// New work's `/` before its agent is made: the connection's enabled,
+    /// ready global skills, read as the screen opens and again on each
+    /// `skills.updated`.
+    private var globalSkills: [AgentWire.SlashCommand] = []
+    private var skillsFollow: Task<Void, Never>?
     /// How much of the context window the conversation has spent, under
     /// the card at its far end, as desktop's under its composer.
     let meter = ContextMeterView()
@@ -257,6 +262,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
                 guard let id = try? await newTask.made() else { return }
                 self?.media.agentId = id
                 self?.creating = false
+                self?.skillsFollow?.cancel()
                 for await home in await engine.snapshots() {
                     guard let self, !Task.isCancelled else { return }
                     guard let row = home.allRows.first(where: { $0.agentId == id && $0.depth == 0 }) else { continue }
@@ -334,6 +340,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             }
             updatePrimary()
         }
+        if newWorkPanel != nil { followGlobalSkills() }
         if let newWorkPanel, let newTask {
             newWorkPanel.choice = newTask.choice
             newWorkPanel.onChange = { [newTask] choice in newTask.choice = choice }
@@ -539,6 +546,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             ultraKeyboard = nil
             following?.cancel()
             made?.cancel()
+            skillsFollow?.cancel()
             #if DEBUG
             probe?.link.invalidate()
             #endif
@@ -1743,6 +1751,9 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         if picked.isEmpty, previews.isEmpty, let invocation = SlashCommands.invocation(text, in: chat.slashCommands) {
             return run(invocation.command, arguments: invocation.arguments)
         }
+        // New work's first message as one of the connection's skills: sent
+        // as a skill goes in any chat, making the task as any first message.
+        let skill = picked.isEmpty && previews.isEmpty && offersGlobalSkills ? SlashCommands.invocation(text, in: globalSkills) : nil
         // A question waiting takes what is typed as its answer, as on
         // desktop: each prompt its ticked options, else the words. Words
         // no prompt needed still go as a message.
@@ -1782,7 +1793,11 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             await store.attentionInput()
             // New work's first message is drawn at once; the task is made
             // behind it, and a refusal leaves it failed, to retry.
-            let accepted = await conversation.send(id: id, text: text, attachments: picked, previews: previews)
+            let accepted = if let skill {
+                await conversation.sendFirstSkill(id: id, skill.command, arguments: skill.arguments)
+            } else {
+                await conversation.send(id: id, text: text, attachments: picked, previews: previews)
+            }
             acceptingSend = false
             if !accepted, !newWorkPanelGone { newWorkPanel?.isLocked = false }
             if accepted {
@@ -1815,7 +1830,29 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     // MARK: Slash commands
 
     private func updateSlash() {
-        slash.update(draft: card.text, catalog: chat.slashCommands, agentId: media.agentId)
+        slash.update(draft: card.text, catalog: offersGlobalSkills ? globalSkills : chat.slashCommands, agentId: media.agentId)
+    }
+
+    /// New work with nothing in it and no commands of its own yet: `/`
+    /// offers the connection's skills.
+    private var offersGlobalSkills: Bool {
+        newWorkPanel != nil && chat.items.isEmpty && chat.slashCommands.isEmpty
+    }
+
+    /// Reads the connection's skills, and again whenever they change, until
+    /// the agent is made. A computer without them offers nothing, and a
+    /// failed read keeps what was read before; neither says anything.
+    private func followGlobalSkills() {
+        skillsFollow = Task { [weak self, store = session.store, client = session.client] in
+            var changes = await store.events(matching: ["skills.updated"]).makeAsyncIterator()
+            repeat {
+                let skills: [AgentWire.SlashCommand]
+                do { skills = try await client.globalSkills() ?? [] } catch { continue }
+                guard let self, !Task.isCancelled else { return }
+                globalSkills = skills
+                updateSlash()
+            } while await changes.next() != nil && !Task.isCancelled
+        }
     }
 
     private func placeSlash() {

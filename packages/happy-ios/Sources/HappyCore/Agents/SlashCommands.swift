@@ -1,4 +1,5 @@
 import Foundation
+import HappyWire
 
 /// How the agent composer reads a draft against the agent's slash commands
 /// (desktop's composerState.ts `commandQueryOf` and `commandInvocationOf`,
@@ -62,6 +63,19 @@ public enum SlashCommands {
     /// The command as typed: `/name`, then its arguments after a space.
     public static func text(_ command: AgentWire.SlashCommand, arguments: String?) -> String {
         arguments.map { "/\(command.name) \($0)" } ?? "/\(command.name)"
+    }
+
+    /// New work's commands, before it has an agent (`GET /v0/skills`): each
+    /// enabled, ready global skill as the skill command an agent offers for
+    /// it, in the catalog's order, the first of a repeated name only.
+    /// Disabled, broken and unreadable skills are not offered.
+    public static func globalSkills(_ summaries: [JSONValue]) -> [AgentWire.SlashCommand] {
+        var seen = Set<String>()
+        return summaries.compactMap { summary in
+            guard summary["enabled"] == .bool(true), summary["status"]?.stringValue == "ready",
+                  let name = summary["name"]?.stringValue, !name.isEmpty, seen.insert(name).inserted else { return nil }
+            return AgentWire.SlashCommand(name: name, hasArguments: true, description: summary["description"]?.stringValue ?? "", kind: "skill")
+        }
     }
 
     /// `[A-Za-z0-9._:-]`.

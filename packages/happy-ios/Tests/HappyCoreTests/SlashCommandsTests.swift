@@ -209,6 +209,101 @@ final class SlashCommandsTests: XCTestCase {
         XCTAssertNil(try JSONDecoder().decode(QueuedMessage.self, from: Data(older.utf8)).toolRequest, "a row kept before it decodes")
     }
 
+    // MARK: New work's skills
+
+    private static func skill(_ name: String, description: String = "Does it.", enabled: Bool = true, status: String = "ready") -> JSONValue {
+        .object(["id": .string("s-\(name)"), "path": .string(name), "name": .string(name), "description": .string(description),
+                 "enabled": .bool(enabled), "status": .string(status), "error": .null])
+    }
+
+    private static func skillPage(_ skills: [JSONValue], next: String?) -> (Int, JSONValue) {
+        (200, .object(["skills": .array(skills), "nextPageCursor": next.map(JSONValue.string) ?? .null, "cursor": .string("e")]))
+    }
+
+    func testNewWorkOffersOnlyEnabledReadySkillsOnceEach() {
+        let offered = SlashCommands.globalSkills([
+            Self.skill("code-review", description: "Review the current changes."),
+            Self.skill("off", enabled: false),
+            Self.skill("broken", description: "", status: "invalid"),
+            Self.skill("gone", status: "unreadable"),
+            Self.skill("code-review", description: "A second install of the same name."),
+            .object(["name": .string("half")]),
+        ])
+        XCTAssertEqual(offered, [AgentWire.SlashCommand(name: "code-review", hasArguments: true, description: "Review the current changes.", kind: "skill")])
+    }
+
+    func testTheSkillCatalogIsReadPageByPageAndAgainWhenAPageGoesStale() async throws {
+        let server = SlashServer(catalog: [], invoke: .status(500), skills: [
+            Self.skillPage([Self.skill("a")], next: "p 2"),
+            (409, .object(["error": .string("stale"), "code": .string("conflict")])),
+            Self.skillPage([Self.skill("a"), Self.skill("b", enabled: false)], next: "p2"),
+            Self.skillPage([Self.skill("c")], next: nil),
+        ])
+        let skills = try await AgentClient(transport: server, token: "t").globalSkills()
+        XCTAssertEqual(skills?.map(\.name), ["a", "c"])
+        let reads = await server.skillReads
+        XCTAssertEqual(reads, ["/v0/skills?limit=100", "/v0/skills?limit=100&pageCursor=p%202", "/v0/skills?limit=100", "/v0/skills?limit=100&pageCursor=p2"])
+    }
+
+    func testAComputerWithoutSkillsOffersNoneAndSaysNothing() async throws {
+        for status in [404, 501] {
+            let server = SlashServer(catalog: [], invoke: .status(500), skills: [(status, .object(["error": .string("no")]))])
+            let skills = try await AgentClient(transport: server, token: "t").globalSkills()
+            XCTAssertNil(skills, "\(status)")
+        }
+    }
+
+    func testNewWorksFirstSkillGoesAsASkillMessageOnceTheTaskIsMade() async throws {
+        let server = SlashServer(catalog: Self.catalog, invoke: .status(500))
+        let (conversation, updates) = await openNewWork(server)
+        let accepted = await conversation.sendFirstSkill(Self.review, arguments: "focus on auth")
+        XCTAssertTrue(accepted)
+        let drawn = await updates.next { $0.items.contains { $0.role == .user && $0.text == "/code-review focus on auth" } }
+        XCTAssertNotNil(drawn, "drawn at once, as any first message")
+        let sends = try await sent(server)
+        XCTAssertEqual(sends.map { $0["text"]?.stringValue }, ["/code-review focus on auth"])
+        XCTAssertEqual(sends.first?["content"], .array([
+            .object(["type": .string("tool_call_request"), "name": .string("read_skill"), "arguments": .object(["name": .string("code-review")])]),
+        ]), "as a skill goes in any chat")
+        XCTAssertEqual(sends.first?["mode"]?["permissionMode"]?.stringValue, "auto", "under the composer's mode")
+        let made = await server.created
+        XCTAssertEqual(made.count, 1, "the task is made as a first message makes it")
+        let invoked = await server.invocations
+        XCTAssertEqual(invoked.count, 0, "not asked of the command route")
+        await conversation.stop()
+    }
+
+    func testNewWorksSkillGoesAsTheDraftWhenTheNewAgentLacksIt() async throws {
+        let server = SlashServer(catalog: [Self.compact, Self.deploy], invoke: .status(500))
+        let (conversation, _) = await openNewWork(server)
+        let accepted = await conversation.sendFirstSkill(Self.review, arguments: "focus\non auth")
+        XCTAssertTrue(accepted)
+        let sends = try await sent(server)
+        XCTAssertEqual(sends.map { $0["text"]?.stringValue }, ["/code-review focus\non auth"], "the draft as typed")
+        XCTAssertNil(sends.first?["content"], "an ordinary message, with no read_skill request")
+        await conversation.stop()
+    }
+
+    private func openNewWork(_ server: SlashServer) async -> (Conversation, Updates) {
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+        let task = NewTask(client: client)
+        let conversation = Conversation(client: client, store: engine.spaces, agentId: task.agentId, newTask: task, mode: Self.mode)
+        let updates = Updates(conversation.updates)
+        await conversation.start()
+        return (conversation, updates)
+    }
+
+    /// What reached `/send`, once something has.
+    private func sent(_ server: SlashServer) async throws -> [JSONValue] {
+        for _ in 0..<300 {
+            let sends = await server.sends
+            if !sends.isEmpty { return sends }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        return []
+    }
+
     // MARK: The catalog over time
 
     func testTheCatalogIsReplacedWholeByItsEventAndOnlyThisAgents() async throws {
@@ -324,14 +419,19 @@ actor SlashServer: AgentTransport {
     private let invoke: Invoke
     private let offline: Bool
     private let runs: [JSONValue]
+    /// `GET /v0/skills`'s answers, in order.
+    private var skills: [(Int, JSONValue)]
     private(set) var invocations: [(path: String, body: JSONValue)] = []
     private(set) var sends: [JSONValue] = []
+    private(set) var skillReads: [String] = []
+    private(set) var created: [JSONValue] = []
 
-    init(catalog: [AgentWire.SlashCommand], invoke: Invoke, offline: Bool = false, runs: [JSONValue] = []) {
+    init(catalog: [AgentWire.SlashCommand], invoke: Invoke, offline: Bool = false, runs: [JSONValue] = [], skills: [(Int, JSONValue)] = []) {
         self.catalog = catalog
         self.invoke = invoke
         self.offline = offline
         self.runs = runs
+        self.skills = skills
     }
 
     private static func json<T: Encodable>(_ value: T) throws -> JSONValue {
@@ -342,7 +442,16 @@ actor SlashServer: AgentTransport {
         if offline { throw URLError(.notConnectedToInternet) }
         let sent = body.flatMap { try? JSONDecoder().decode(JSONValue.self, from: $0) } ?? .null
         let value: JSONValue
-        if path.contains("/messages?") {
+        if path.hasPrefix("/v0/skills") {
+            skillReads.append(path)
+            let (status, answer) = skills.isEmpty ? (404, JSONValue.object([:])) : skills.removeFirst()
+            return .init(status: status, body: try JSONEncoder().encode(answer))
+        } else if path == "/v0/tasks", method == "POST" {
+            created.append(sent)
+            return .init(status: 201, body: try JSONEncoder().encode(JSONValue.object([
+                "task": .object(["id": sent["id"] ?? .null, "agent": .object(["id": sent["agentId"] ?? .null])]), "membership": .object([:]),
+            ])))
+        } else if path.contains("/messages?") {
             value = .object(["hasMore": .bool(false), "runs": .array(runs)])
         } else if path.hasSuffix("/bootstrap") {
             value = .object([

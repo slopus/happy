@@ -476,6 +476,10 @@ public actor Conversation {
     /// The mode its first message made it with went to the person's
     /// preferences, once.
     private var startRecorded = false
+    /// First messages that are one of the connection's skills
+    /// (`sendFirstSkill`), by ID, until the made agent's own commands say
+    /// whether it offers that skill too.
+    private var skillChecks: [String: String] = [:]
     /// Sends waiting for pictures still being read (`previews`), by ID:
     /// drawn from the previews, delivered once `prepared` has them.
     private var held: [String: [PreviewAttachment]] = [:]
@@ -1111,9 +1115,10 @@ public actor Conversation {
         }
         if let persistence {
             let send = outgoing[index]
-            let payload = queuedMessage(id: id, text: send.text, pictures: send.pictures)
             Task {
                 guard await saveConversationNow() else { failed(id, "Could not save this message on this device."); return }
+                guard await checkSkill(id) else { return }
+                let payload = queuedMessage(id: id, text: send.text, pictures: send.pictures)
                 do {
                     try await persistence.enqueueMessage(payload)
                     try await persistence.retryMessage(id)
@@ -1200,6 +1205,7 @@ public actor Conversation {
                         startRecorded = true
                         try? await persistence?.sessionStarted(started)
                     }
+                    guard await checkSkill(id) else { return }
                 }
                 if let persistence, !(await persistence.deliveryAllowed) { return }
                 guard let outgoingIndex = outgoing.firstIndex(where: { $0.id == id }) else { return }
@@ -1385,6 +1391,45 @@ public actor Conversation {
     }
 
     // MARK: Slash commands
+
+    /// New work's first message as one of the connection's global skills
+    /// (`AgentClient.globalSkills`), sent as a skill always goes in a chat
+    /// (`run`): `/name args` with its `read_skill` request, drawn at once,
+    /// making the task or bot as any first message does. Once it is made,
+    /// the new agent's own commands are read: one without that skill (a
+    /// project skill took the name, or it was turned off meanwhile) gets
+    /// the words alone, as an ordinary message.
+    @discardableResult
+    public func sendFirstSkill(id: String = ClientID.make(), _ command: AgentWire.SlashCommand, arguments: String?) async -> Bool {
+        let message = SlashCommands.skillMessage(command, arguments: arguments)
+        skillChecks[id] = command.name
+        let accepted = await send(id: id, text: message.text, toolRequest: message.toolRequest)
+        if !accepted { skillChecks[id] = nil }
+        return accepted
+    }
+
+    /// The made agent's commands against the skill message `id` asks for,
+    /// if it is one (`sendFirstSkill`): missing, its request is taken off
+    /// and the words go alone. An older computer that sends no catalog is
+    /// taken at its word. False when the message can't go yet: the
+    /// commands couldn't be read, and it shows failed, to retry.
+    private func checkSkill(_ id: String) async -> Bool {
+        guard let name = skillChecks[id] else { return true }
+        let commands: [AgentWire.SlashCommand]?
+        do { commands = try await client.bootstrap(agentId).slashCommands }
+        catch {
+            failed(id, Store.describe(error))
+            return false
+        }
+        skillChecks[id] = nil
+        guard let commands, !commands.contains(where: { $0.name == name && $0.isSkill }) else { return true }
+        outgoingTools[id] = nil
+        guard await saveConversationNow() else {
+            failed(id, "Could not save this message on this device.")
+            return false
+        }
+        return true
+    }
 
     /// Runs one of the agent's commands. A skill goes as a message (desktop
     /// aa8a2529), drawn at once and kept like any other; every other command
