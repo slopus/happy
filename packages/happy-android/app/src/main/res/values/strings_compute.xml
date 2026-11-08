@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="compute_pools_title">Compute pools</string>
+    <string name="compute_permission">Managing compute pools requires pools.manage permission.</string>
+    <string name="compute_empty">No compute pools</string>
+    <string name="compute_no_nodes">No machines</string>
+    <string name="compute_last_seen">Last seen</string>
+    <string name="compute_no_agents">No agents placed here</string>
+    <string name="compute_drain">Drain machine</string>
+    <string name="compute_undrain">Resume placements</string>
+    <string name="compute_drain_confirm">Stop placing new work on %1$s?</string>
+    <string name="compute_undrain_confirm">Allow new work on %1$s?</string>
+    <string name="compute_add">Add machine</string>
+    <string name="compute_capacity_unknown">Sandboxes: %1$d · capacity unknown</string>
+    <string name="compute_capacity">Sandboxes: %1$d / %2$d</string>
+    <string name="compute_draining">draining</string>
+    <string name="compute_enrolling">enrolling</string>
+    <string name="compute_revoked">revoked</string>
+    <string name="compute_command_note">Run this command on the machine you want to add. It contains a single-use secret; keep it private.</string>
+    <string name="compute_expired">Command expired at %1$s</string>
+    <string name="compute_expires">Expires at %1$s</string>
+    <string name="compute_installer_missing">The server has no installer configured.</string>
+</resources>

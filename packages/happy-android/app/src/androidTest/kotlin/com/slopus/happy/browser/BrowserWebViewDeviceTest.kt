@@ -176,7 +176,7 @@ class BrowserWebViewDeviceTest {
     @Test fun twoArtifactPagesInTheirOwnProfilesLoadTheirOwnFilesAndApi() {
         assumeTrue("WebView has profiles", WebViewProfiles.supported)
         val pages = listOf("aone", "atwo").map { id ->
-            val page = BrowserPage.artifact({ authority -> BrowserProxy.Scope.Artifact(client, id, 1, authority, workspace = null) }, id, "index.html")
+            val page = BrowserPage.artifact({ authority -> BrowserProxy.Scope.Artifact(client, id, 1, authority, network = null) }, id, "index.html")
             id to (page to proxy.open(page.scope, isolated = true))
         }
         assertTrue(runBlocking(Dispatchers.Main) { WebViewProxyOverride.acquire(proxy.port) })
@@ -192,7 +192,7 @@ class BrowserWebViewDeviceTest {
 
     /** The computer's dev server, at the address the agent gave: localhost there, never the phone's. */
     @Test fun localhostIsTheComputersReachedThroughTheWorkspace() {
-        val page = BrowserPage("http://localhost:3000/", BrowserProxy.Scope.Workspace(client) { "wsone" })
+        val page = BrowserPage("http://localhost:3000/", BrowserProxy.Scope.Web(client) { BrowserNetwork.workspace("wsone") })
         val session = proxy.open(page.scope, isolated = WebViewProfiles.supported)
         assertTrue(runBlocking(Dispatchers.Main) { WebViewProxyOverride.acquire(proxy.port) })
         show("public", page, session)
@@ -210,7 +210,7 @@ class BrowserWebViewDeviceTest {
      * content). Nothing reaches the computer, and nothing the phone's network.
      */
     @Test fun plainHttpElsewhereIsRefusedBeforeTheProxy() {
-        val page = BrowserPage("http://public.example.com/", BrowserProxy.Scope.Workspace(client) { "wsone" })
+        val page = BrowserPage("http://public.example.com/", BrowserProxy.Scope.Web(client) { BrowserNetwork.workspace("wsone") })
         val session = proxy.open(page.scope, isolated = WebViewProfiles.supported)
         assertTrue(runBlocking(Dispatchers.Main) { WebViewProxyOverride.acquire(proxy.port) })
         show("public", page, session)

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="compute_pools_title">计算池</string>
+    <string name="compute_permission">管理计算池需要 pools.manage 权限。</string>
+    <string name="compute_empty">没有计算池</string>
+    <string name="compute_no_nodes">没有机器</string>
+    <string name="compute_last_seen">最后连接</string>
+    <string name="compute_no_agents">没有分配到此处的智能体</string>
+    <string name="compute_drain">停止新任务分配</string>
+    <string name="compute_undrain">恢复任务分配</string>
+    <string name="compute_drain_confirm">停止向 %1$s 分配新任务？</string>
+    <string name="compute_undrain_confirm">允许向 %1$s 分配新任务？</string>
+    <string name="compute_add">添加机器</string>
+    <string name="compute_capacity_unknown">沙盒：%1$d · 容量未知</string>
+    <string name="compute_capacity">沙盒：%1$d / %2$d</string>
+    <string name="compute_draining">停止分配中</string>
+    <string name="compute_enrolling">注册中</string>
+    <string name="compute_revoked">已撤销</string>
+    <string name="compute_command_note">在要添加的机器上运行此命令。其中包含一次性密钥，请勿与他人分享。</string>
+    <string name="compute_expired">命令已于 %1$s 过期</string>
+    <string name="compute_expires">到期时间：%1$s</string>
+    <string name="compute_installer_missing">服务器未配置安装程序。</string>
+</resources>

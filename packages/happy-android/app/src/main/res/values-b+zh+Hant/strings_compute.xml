@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="compute_pools_title">運算集區</string>
+    <string name="compute_permission">管理運算集區需要 pools.manage 權限。</string>
+    <string name="compute_empty">沒有運算集區</string>
+    <string name="compute_no_nodes">沒有機器</string>
+    <string name="compute_last_seen">最後連線</string>
+    <string name="compute_no_agents">沒有配置至此處的代理</string>
+    <string name="compute_drain">停止新工作配置</string>
+    <string name="compute_undrain">恢復工作配置</string>
+    <string name="compute_drain_confirm">停止向 %1$s 配置新工作？</string>
+    <string name="compute_undrain_confirm">允許向 %1$s 配置新工作？</string>
+    <string name="compute_add">新增機器</string>
+    <string name="compute_capacity_unknown">沙箱：%1$d · 容量未知</string>
+    <string name="compute_capacity">沙箱：%1$d / %2$d</string>
+    <string name="compute_draining">停止配置中</string>
+    <string name="compute_enrolling">註冊中</string>
+    <string name="compute_revoked">已撤銷</string>
+    <string name="compute_command_note">在要新增的機器上執行此命令。其中包含一次性密鑰，請勿與他人分享。</string>
+    <string name="compute_expired">命令已於 %1$s 到期</string>
+    <string name="compute_expires">到期時間：%1$s</string>
+    <string name="compute_installer_missing">伺服器尚未設定安裝程式。</string>
+</resources>

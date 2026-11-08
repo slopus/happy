@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="compute_pools_title">Pule obliczeniowe</string>
+    <string name="compute_permission">Zarządzanie pulami obliczeniowymi wymaga uprawnienia pools.manage.</string>
+    <string name="compute_empty">Brak pul obliczeniowych</string>
+    <string name="compute_no_nodes">Brak maszyn</string>
+    <string name="compute_last_seen">Ostatni kontakt</string>
+    <string name="compute_no_agents">Brak przypisanych agentów</string>
+    <string name="compute_drain">Wycofaj maszynę z przydziału</string>
+    <string name="compute_undrain">Wznów przydzielanie</string>
+    <string name="compute_drain_confirm">Zatrzymać przydzielanie nowych zadań do %1$s?</string>
+    <string name="compute_undrain_confirm">Zezwolić na nowe zadania na %1$s?</string>
+    <string name="compute_add">Dodaj maszynę</string>
+    <string name="compute_capacity_unknown">Piaskownice: %1$d · pojemność nieznana</string>
+    <string name="compute_capacity">Piaskownice: %1$d / %2$d</string>
+    <string name="compute_draining">wycofywanie z przydziału</string>
+    <string name="compute_enrolling">rejestracja</string>
+    <string name="compute_revoked">dostęp cofnięty</string>
+    <string name="compute_command_note">Uruchom to polecenie na dodawanej maszynie. Zawiera jednorazowy sekret; zachowaj je dla siebie.</string>
+    <string name="compute_expired">Polecenie wygasło: %1$s</string>
+    <string name="compute_expires">Wygasa: %1$s</string>
+    <string name="compute_installer_missing">Na serwerze nie skonfigurowano instalatora.</string>
+</resources>

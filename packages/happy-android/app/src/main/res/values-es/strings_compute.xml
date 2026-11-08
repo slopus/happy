@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="compute_pools_title">Grupos de cómputo</string>
+    <string name="compute_permission">Se necesita el permiso pools.manage para gestionar los grupos de cómputo.</string>
+    <string name="compute_empty">No hay grupos de cómputo</string>
+    <string name="compute_no_nodes">No hay máquinas</string>
+    <string name="compute_last_seen">Último contacto</string>
+    <string name="compute_no_agents">No hay agentes asignados aquí</string>
+    <string name="compute_drain">Retirar máquina de la rotación</string>
+    <string name="compute_undrain">Reanudar asignaciones</string>
+    <string name="compute_drain_confirm">¿Dejar de asignar trabajo nuevo a %1$s?</string>
+    <string name="compute_undrain_confirm">¿Permitir trabajo nuevo en %1$s?</string>
+    <string name="compute_add">Añadir máquina</string>
+    <string name="compute_capacity_unknown">Entornos aislados: %1$d · capacidad desconocida</string>
+    <string name="compute_capacity">Entornos aislados: %1$d / %2$d</string>
+    <string name="compute_draining">fuera de rotación</string>
+    <string name="compute_enrolling">registrándose</string>
+    <string name="compute_revoked">acceso revocado</string>
+    <string name="compute_command_note">Ejecuta este comando en la máquina que quieras añadir. Contiene un secreto de un solo uso; mantenlo privado.</string>
+    <string name="compute_expired">El comando caducó el %1$s</string>
+    <string name="compute_expires">Caduca el %1$s</string>
+    <string name="compute_installer_missing">El servidor no tiene un instalador configurado.</string>
+</resources>
