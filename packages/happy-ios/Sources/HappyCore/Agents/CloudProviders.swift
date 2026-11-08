@@ -116,6 +116,34 @@ public struct CloudProvider: Decodable, Equatable, Sendable {
     }
 }
 
+extension CloudProvider {
+    /// What a picker calls it: the operator's is "Happy (free)", the
+    /// person's own "My account", the rest their own names.
+    public var displayName: String {
+        if source == .operator { return name.isEmpty ? "Happy (free)" : name }
+        if id == CloudProvider.personal { return "My account" }
+        return name
+    }
+}
+
+extension ModelCatalog {
+    /// On Happy Cloud a chat runs on a named connection (ONBOARDING-API §1):
+    /// the pickers offer the connections, each with the models it serves,
+    /// and send its exact ID as `Mode.providerId`. A model the
+    /// configuration doesn't define is left out. A list with no connection
+    /// keeps the configuration's own accounts.
+    public func connections(_ listed: [CloudProvider]) -> ModelCatalog {
+        guard !listed.isEmpty else { return self }
+        var catalog = self
+        catalog.providers = CloudProvider.sorted(listed).map { connection in
+            let offered = connection.models.compactMap { id in models.first { $0.id == id } }
+            let vendor = connection.vendors.first ?? connection.id.replacingOccurrences(of: "operator:", with: "")
+            return Provider(id: connection.id, name: connection.displayName, type: vendor, enabled: connection.enabled, hidden: false, models: offered)
+        }
+        return catalog
+    }
+}
+
 /// A sign-in the server runs for a subscription (`/v0/provider-clis`,
 /// ONBOARDING-API §4–5): ChatGPT's device code (`codex`), or Claude's page
 /// whose code is pasted back (`claude`). The server keeps every token; the

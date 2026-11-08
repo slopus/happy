@@ -24,6 +24,23 @@ final class CloudProvidersTests: XCTestCase {
         XCTAssertEqual(providers[2].credentials?.first?.title, "ChatGPT")
     }
 
+    func testThePickersOfferConnectionsAndSendTheirExactIDs() {
+        let terra = ModelCatalog.Model(id: "openai/gpt-6.1-terra", name: "GPT-6.1 Terra", efforts: ["low", "medium"], defaultEffort: "medium", serviceTiers: [])
+        let base = ModelCatalog(defaultProviderId: "openai", defaultModelId: terra.id, models: [terra],
+                                providers: [.init(id: "openai", name: nil, type: "openai", enabled: true, hidden: false, models: [terra])])
+        let catalog = base.connections([
+            CloudProvider(id: "private", name: "Personal", scope: .private, source: .tenant, vendors: ["codex"], models: [terra.id, "unknown/model"]),
+            CloudProvider(id: "operator:openai", name: "Happy (free)", scope: .team, source: .operator, vendors: ["openai"], models: [terra.id]),
+        ])
+        XCTAssertEqual(catalog.providers.map(\.id), ["operator:openai", "private"])
+        XCTAssertEqual(catalog.providers.map(\.name), ["Happy (free)", "My account"])
+        XCTAssertEqual(catalog.providers[1].models.map(\.id), [terra.id], "a model the configuration doesn't define was offered")
+        // The declared default isn't a connection: the first that serves.
+        XCTAssertEqual(catalog.defaultMode().providerId, "operator:openai")
+        XCTAssertEqual(catalog.select(providerId: "private", modelId: terra.id, from: catalog.defaultMode()).providerId, "private")
+        XCTAssertEqual(base.connections([]), base)
+    }
+
     func testDestinationsFollowTheRole() {
         let both = RoleGate.cloud(Permissions(granted: ["providers.own", "providers.manage"]))
         XCTAssertEqual(CloudProvider.destinations(both), [.mine, .team])

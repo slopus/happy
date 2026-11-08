@@ -24,10 +24,14 @@ final class ModelState {
     private var reading: Task<Void, Never>?
     private var readAgain = false
 
-    init(client: AgentClient, offline: OfflineFile? = nil, store: Store? = nil) {
+    /// A Happy Cloud server's: its pickers offer named connections.
+    private let cloud: Bool
+
+    init(client: AgentClient, offline: OfflineFile? = nil, store: Store? = nil, cloud: Bool = false) {
         self.client = client
         self.offline = offline
         self.store = store
+        self.cloud = cloud
     }
 
     /// Follows the accounts' readings for as long as the returned watch is
@@ -113,13 +117,18 @@ final class ModelState {
         guard loading == nil else { loadAgain = loadAgain || again; return }
         let client = client
         let offline = offline
+        let cloud = cloud
         loading = Task { [weak self] in
             if self?.catalog == nil, let kept = await offline?.read() {
                 let catalog = kept.config.flatMap { ModelCatalog(response: Data($0.utf8)) }
                 guard let self else { return }
                 if self.catalog == nil, let catalog { self.catalog = catalog; changed() }
             }
-            let read = try? await client.modelCatalogResponse()
+            var read = try? await client.modelCatalogResponse()
+            // A server without the list keeps its configuration's accounts.
+            if cloud, let base = read?.catalog, let listed = try? await client.cloudProviders() {
+                read?.catalog = base.connections(listed)
+            }
             guard let self else { return }
             loading = nil
             // The configuration changed while this read was out: read it again.

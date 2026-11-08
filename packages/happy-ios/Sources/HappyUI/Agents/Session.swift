@@ -186,7 +186,7 @@ final class Session {
         warm = WarmChats(client: client, store: store, syntax: syntax, persistence: engine)
         warm.server = server
         warm.instanceId = instanceId
-        models = ModelState(client: client, offline: offline, store: store)
+        models = ModelState(client: client, offline: offline, store: store, cloud: isCloud)
         drafts = Drafts(offline: offline)
         models.load()
         let updates = store.updates
