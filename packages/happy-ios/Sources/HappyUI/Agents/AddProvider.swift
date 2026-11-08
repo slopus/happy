@@ -19,9 +19,9 @@ struct ProviderFlows {
         self.client = client; self.destination = destination; self.host = host; self.added = added
     }
 
-    /// An API key for `vendor` (`openai`, `anthropic`).
+    /// An API key for `vendor` (`openai`, `anthropic`, `grok`).
     func addKey(vendor: String) {
-        let name = vendor == "anthropic" ? Strings.Providers.anthropic : Strings.Providers.openAI
+        let name = ProvidersViewController.vendorName(vendor)
         ask(title: Strings.Providers.addAPIKey, message: name, placeholder: Strings.Providers.apiKey) { secret in
             store(vendor: vendor, kind: "api_key", secret: secret, done: Strings.Providers.keyAdded) { addKey(vendor: vendor) }
         }
@@ -165,7 +165,15 @@ class ProviderSignInViewController: UIViewController {
             status.text = success
             if let navigation = navigationController {
                 navigation.popViewController(animated: true)
-                if let top = navigation.topViewController { Alerts.show(success, nil, on: top) }
+                let showSuccess = { [weak navigation] in
+                    guard let top = navigation?.topViewController, top.viewIfLoaded?.window != nil else { return }
+                    Alerts.show(success, nil, on: top)
+                }
+                if let transition = navigation.transitionCoordinator {
+                    transition.animate(alongsideTransition: nil) { _ in showSuccess() }
+                } else {
+                    showSuccess()
+                }
             }
         case .cancelled:
             navigationController?.popViewController(animated: true)

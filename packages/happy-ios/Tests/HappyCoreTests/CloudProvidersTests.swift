@@ -103,6 +103,18 @@ final class CloudProvidersTests: XCTestCase {
         XCTAssertEqual(done.providerId, "private")
     }
 
+    func testGrokKeysGoToMyAccountOrTheTeamsGrokConnection() async throws {
+        let server = ProvidersServer()
+        let client = AgentClient(transport: server, token: "t")
+        for (destination, expected) in [(CloudProvider.Destination.mine, "private"), (.team, "grok")] {
+            await server.answer("POST /v0/cloud/providers/\(expected)/credentials", 201, "{}")
+            try await client.addCloudCredential(container: destination.container(vendor: "grok"), vendor: "grok", kind: "api_key", secret: "xai-test")
+            let sent = await server.bodies.last
+            XCTAssertEqual(sent, ["vendor": "grok", "kind": "api_key", "secret": "xai-test"])
+        }
+        XCTAssertEqual(CloudProvider.Credential(id: "k", vendor: "grok", kind: "api_key").title, "Grok API key")
+    }
+
     func testClaudesCodeIsPastedBackAndAFailureReadsAsTheServerSays() async throws {
         let server = ProvidersServer()
         await server.answer("POST /v0/provider-clis/claude/sign-in/code", 200, Self.cli("failed", code: nil, error: #"{"code":"sign_in_failed","message":null}"#))
@@ -140,8 +152,15 @@ final class CloudProvidersTests: XCTestCase {
         XCTAssertEqual(key?.providerOptions, .init(vendor: "anthropic", destination: "team"))
         XCTAssertEqual(key?.url, "happy://settings/providers/add/api-key?vendor=anthropic&to=team")
         XCTAssertEqual(HappyLink("happy://settings/providers/add/openai?to=private")?.providerOptions.destination, "private")
+        for destination in ["private", "team"] {
+            let url = "happy://settings/providers/add/api-key?vendor=grok&to=\(destination)"
+            let grok = HappyLink(url)
+            XCTAssertEqual(grok?.target, .settings(.providersAddAPIKey))
+            XCTAssertEqual(grok?.providerOptions, .init(vendor: "grok", destination: destination))
+            XCTAssertEqual(grok?.url, url)
+        }
         for url in ["happy://settings/providers/add?code=x", "happy://settings/providers/add/openai?vendor=openai",
-                    "happy://settings/providers/add/api-key?vendor=grok", "happy://settings/providers/add?to=team&to=private",
+                    "happy://settings/providers/add/api-key?vendor=bedrock", "happy://settings/providers/add?to=team&to=private",
                     "happy://settings/providers?to=team"] {
             XCTAssertNil(HappyLink(url), url)
         }

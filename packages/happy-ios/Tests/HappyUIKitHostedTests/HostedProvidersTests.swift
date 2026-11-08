@@ -19,6 +19,7 @@ private struct NoSocket: WebSocketConnector {
 private actor CloudProvidersServer: AgentTransport {
     private var polls = 0
     private(set) var started: [String] = []
+    private(set) var keys: [String: JSONValue] = [:]
 
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         func ok(_ text: String) -> HTTP1Response { .init(status: 200, headers: ["content-type": "application/json"], body: Data(text.utf8)) }
@@ -42,6 +43,9 @@ private actor CloudProvidersServer: AgentTransport {
         case ("GET", "/v0/provider-clis/codex"):
             polls += 1
             return ok(Self.cli(polls < 2 ? "waiting" : "succeeded"))
+        case ("POST", "/v0/cloud/providers/private/credentials"), ("POST", "/v0/cloud/providers/grok/credentials"):
+            keys[path] = try JSONValue.decode(body ?? Data())
+            return ok("{}")
         default:
             return .init(status: 404, headers: ["content-type": "application/json"], body: Data(#"{"error":"Not found.","code":"not_found"}"#.utf8))
         }
@@ -61,7 +65,7 @@ private struct ProvidersTimedOut: Error {}
 
 @MainActor
 final class HostedProvidersTests: XCTestCase {
-    func testTheListAndChatGPTsDeviceSignIn() async throws {
+    func testTheListChatGPTsDeviceSignInAndGrokKeys() async throws {
         let server = CloudProvidersServer()
         let controller = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
@@ -110,7 +114,36 @@ final class HostedProvidersTests: XCTestCase {
         // Polled to `succeeded`: back on the list, which says so.
         _ = try await until(seconds: 12) { navigation.topViewController === list ? true : nil }
         _ = try await until { (list.presentedViewController as? UIAlertController)?.title == "ChatGPT connected" ? true : nil }
+        _ = try await until { list.presentedViewController?.transitionCoordinator == nil ? true : nil }
         capture(window, "providers-connected")
+        await withCheckedContinuation { done in list.dismiss(animated: false) { done.resume() } }
+
+        list.choose()
+        let chooser = try XCTUnwrap(list.presentedViewController as? UIAlertController)
+        _ = try await until { chooser.transitionCoordinator == nil ? true : nil }
+        XCTAssertTrue(chooser.actions.contains { $0.title == "Add API key · Grok" })
+        await withCheckedContinuation { done in list.dismiss(animated: false) { done.resume() } }
+        for (destination, container) in [(CloudProvider.Destination.mine, "private"), (.team, "grok")] {
+            list.open(.providersAddAPIKey, vendor: "grok", destination: destination)
+            let form = try XCTUnwrap(list.presentedViewController as? UIAlertController)
+            _ = try await until { form.transitionCoordinator == nil ? true : nil }
+            XCTAssertEqual(form.message, "Grok")
+            let field = try XCTUnwrap(form.textFields?.first)
+            XCTAssertTrue(field.isSecureTextEntry)
+            field.text = "xai-test"
+            capture(window, "providers-grok-\(container)")
+            let connect = try XCTUnwrap(form.actions.first { $0.title == "Connect" })
+            // UIAlertAction exposes no public invocation API to hosted tests.
+            typealias Handler = @convention(block) (UIAlertAction) -> Void
+            let handler = unsafeBitCast(try XCTUnwrap(connect.value(forKey: "handler") as AnyObject?), to: Handler.self)
+            await withCheckedContinuation { done in list.dismiss(animated: false) { done.resume() } }
+            handler(connect)
+            _ = try await until { (list.presentedViewController as? UIAlertController)?.title == "API key added" ? true : nil }
+            _ = try await until { list.presentedViewController?.transitionCoordinator == nil ? true : nil }
+            let sent = await server.keys["/v0/cloud/providers/\(container)/credentials"]
+            XCTAssertEqual(sent, .object(["vendor": .string("grok"), "kind": .string("api_key"), "secret": .string("xai-test")]))
+            await withCheckedContinuation { done in list.dismiss(animated: false) { done.resume() } }
+        }
     }
 
     private func until<T>(seconds: Double = 5, _ value: () -> T?) async throws -> T {

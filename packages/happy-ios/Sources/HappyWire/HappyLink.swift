@@ -148,7 +148,7 @@ public struct HappyLink: Equatable, Sendable {
                 let value = String(kv[1])
                 switch kv[0] {
                 case "to" where options.destination == nil && ["private", "team"].contains(value): options.destination = value
-                case "vendor" where page == .providersAddAPIKey && options.vendor == nil && ["openai", "anthropic"].contains(value): options.vendor = value
+                case "vendor" where page == .providersAddAPIKey && options.vendor == nil && ["openai", "anthropic", "grok"].contains(value): options.vendor = value
                 default: return nil
                 }
             }

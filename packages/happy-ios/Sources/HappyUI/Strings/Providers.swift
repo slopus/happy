@@ -29,6 +29,7 @@ extension Strings {
         static let addAPIKey = "Add API key"
         static let openAI = "OpenAI"
         static let anthropic = "Anthropic"
+        static let grok = "Grok"
         static let saveTo = "Save to"
 
         static let deviceInstructions = "Enter this code at OpenAI"

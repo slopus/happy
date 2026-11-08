@@ -242,6 +242,7 @@ final class HappyCloudUITests: XCTestCase {
         app.descendants(matching: .any).matching(NSPredicate(format: "label == 'Add a provider'")).firstMatch.tap()
         let key = app.buttons["Add API key · OpenAI"]
         require(key.waitForExistence(timeout: 10), "no chooser")
+        XCTAssertTrue(app.buttons["Add API key · Grok"].exists, "no Grok key form in the chooser")
         Thread.sleep(forTimeInterval: 1)
         capture("42-chooser")
         key.tap()
@@ -290,7 +291,7 @@ final class HappyCloudUITests: XCTestCase {
         require(open.waitForExistence(timeout: 20), "no Claude screen")
         require(XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: open)], timeout: 120) == .completed, "Claude's page never came")
         XCTAssertTrue(app.textFields["provider-claude-code"].exists, "no code field")
-        XCTAssertFalse(app.buttons["provider-claude-token"].exists && app.buttons["provider-claude-token"].isHittable, "the setup token is offered before the server takes it")
+        XCTAssertTrue(app.buttons["provider-claude-token"].exists, "the live server offers setup tokens")
         capture("47-claude")
         app.navigationBars.buttons.element(boundBy: 0).tap()
         require(add.waitForExistence(timeout: 10), "back didn't come to the list")

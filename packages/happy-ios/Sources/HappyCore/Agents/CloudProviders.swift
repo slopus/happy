@@ -47,6 +47,7 @@ public struct CloudProvider: Decodable, Equatable, Sendable {
             case ("claude-code", _): return "Claude"
             case ("openai", _): return "OpenAI API key"
             case ("anthropic", _): return "Anthropic API key"
+            case ("grok", _): return "Grok API key"
             default: return vendor ?? "Credential"
             }
         }

@@ -137,6 +137,9 @@ final class ProvidersViewController: SettingsPageViewController {
             sheet.addAction(UIAlertAction(title: "\(Text.addAPIKey) · \(Text.anthropic)", style: .default) { [weak self] _ in
                 self?.open(.providersAddAPIKey, vendor: "anthropic", destination: destination)
             })
+            sheet.addAction(UIAlertAction(title: "\(Text.addAPIKey) · \(Text.grok)", style: .default) { [weak self] _ in
+                self?.open(.providersAddAPIKey, vendor: "grok", destination: destination)
+            })
         }
         sheet.addAction(UIAlertAction(title: Strings.Common.cancel, style: .cancel))
         if let popover = sheet.popoverPresentationController {
