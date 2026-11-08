@@ -1,6 +1,5 @@
 package com.slopus.happy.ui.connection
 
-import com.slopus.happy.agent.VaultAccess
 import com.slopus.happy.agent.SurfaceType
 import com.slopus.happy.chat.arr
 import com.slopus.happy.agent.Intent
@@ -351,7 +350,7 @@ data class AgentSearchSources(
                     if (joined && id !in listed) return@mapNotNull null
                     val updatedAt = (surface["updatedAt"] as? JsonPrimitive)?.longOrNull ?: 0L
                     val type = surface.string("type").orEmpty()
-                    val locked = type == SurfaceType.VAULT && VaultAccess.of(surface.string("access")) == VaultAccess.None
+                    val locked = com.slopus.happy.agent.Surface.parse(surface)?.showsLock == true
                     Surface(AgentFeedRow.Surface(id, surface.string("name").orEmpty(), type, locked), joined, updatedAt)
                 }
                 .sortedByDescending { it.updatedAt }

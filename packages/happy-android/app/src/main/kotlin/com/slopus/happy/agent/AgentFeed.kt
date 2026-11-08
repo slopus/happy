@@ -265,7 +265,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     .forEach { (surface, _) ->
                         val id = surface.string("id")?.takeIf { it !in leaving && it !in removed } ?: return@forEach
                         val type = surface.string("type").orEmpty()
-                        val locked = type == SurfaceType.VAULT && VaultAccess.of(surface.string("access")) == VaultAccess.None
+                        val locked = Surface.parse(surface)?.showsLock == true
                         rows += AgentFeedRow.Surface(id, surface.string("name").orEmpty(), type, locked)
                     }
             }

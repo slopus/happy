@@ -4,6 +4,7 @@ import androidx.compose.ui.unit.dp
 import com.slopus.happy.agent.AgentFeed
 import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.agent.Wire
+import com.slopus.happy.agent.with
 import com.slopus.happy.search.SearchAnswer
 import com.slopus.happy.search.SearchHit
 import com.slopus.happy.ui.connection.AgentHomeLayoutTest.Companion.NOW
@@ -21,6 +22,19 @@ import org.junit.Test
  * the daemon's, and the pull that closes search.
  */
 class AgentSearchTest {
+    @Test
+    fun policyVaultLockReachesHomeAndSearchEvenForWriters() {
+        val state = catalog(Wire.bootstrap(surfaces = listOf(
+            Wire.surface("policy", "Company policy", "vault").with("policyVault", true).with("access", "write"),
+            Wire.surface("ordinary", "Policy", "vault").with("policyVault", false).with("access", "write"),
+        )))
+        val home = AgentFeed.derive(state)
+        val locks = home.rows.filterIsInstance<AgentFeedRow.Surface>().associate { it.id to it.locked }
+        assertEquals(mapOf("policy" to true, "ordinary" to false), locks)
+        val search = AgentSearchSources.read(state, home, { null })
+        assertEquals(locks, search.surfaces.associate { it.row.id to it.row.locked })
+    }
+
     private val feed = AgentFeed.derive(catalog(sample))
 
     private val label = { row: AgentFeedRow ->
