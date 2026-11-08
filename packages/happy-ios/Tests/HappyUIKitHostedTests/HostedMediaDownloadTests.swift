@@ -72,6 +72,97 @@ final class HostedMediaDownloadTests: XCTestCase {
         func download(_ key: String) -> ChatDownload? { keys[key] }
     }
 
+    /// An old poster request can finish failing after the computer returns.
+    private final class InterruptedPoster: ChatMediaSource {
+        private(set) var requests = 0
+        var pending: CheckedContinuation<UIImage?, Never>?
+        let picture = UIGraphicsImageRenderer(size: CGSize(width: 20, height: 20)).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 20, height: 20))
+        }
+
+        func cachedImage(_ key: String, pixels: Int) -> UIImage? { nil }
+        func image(_ key: String, pixels: Int) async -> UIImage? {
+            requests += 1
+            if requests > 1 { return picture }
+            return await withCheckedContinuation { pending = $0 }
+        }
+
+        func failPending() {
+            finishPending(with: nil)
+        }
+
+        func finishPending(with picture: UIImage?) {
+            let pending = pending
+            self.pending = nil
+            pending?.resume(returning: picture)
+        }
+    }
+
+    func testAReconnectWhileTheOldPosterIsFailingStillLoadsItsPicture() async throws {
+        let source = InterruptedPoster()
+        defer { source.failPending() }
+        let host = try await host(source)
+        let tile = ChatMediaView(frame: CGRect(x: 16, y: 120, width: 176, height: 140))
+        host.view.addSubview(tile)
+        tile.apply(ChatMedia(key: "video", isVideo: true, thumbhash: nil, label: "recording"))
+        try await wait { source.pending != nil }
+
+        // A reconnect is an edge, not a repeated poll. Even several edges
+        // while the old read unwinds need only one fresh read when it fails.
+        for _ in 0..<3 { NotificationCenter.default.post(name: MediaLoader.retry, object: source) }
+        source.failPending()
+
+        try await wait { tile.pictureImage != nil }
+        XCTAssertEqual(source.requests, 2)
+        XCTAssertTrue(tile.pictureImage === source.picture)
+    }
+
+    func testAReconnectKeepsThePictureFromAnOldRequestThatSucceeds() async throws {
+        let source = InterruptedPoster()
+        defer { source.failPending() }
+        let host = try await host(source)
+        let tile = ChatMediaView(frame: CGRect(x: 16, y: 120, width: 176, height: 140))
+        host.view.addSubview(tile)
+        tile.apply(ChatMedia(key: "video", isVideo: true, thumbhash: nil, label: "recording"))
+        try await wait { source.pending != nil }
+
+        for _ in 0..<3 { NotificationCenter.default.post(name: MediaLoader.retry, object: source) }
+        source.finishPending(with: source.picture)
+
+        try await wait { tile.pictureImage != nil }
+        XCTAssertTrue(tile.pictureImage === source.picture)
+        XCTAssertEqual(source.requests, 1)
+    }
+
+    func testReplacingMediaDoesNotCarryTheOldRequestsQueuedRetry() async throws {
+        let old = InterruptedPoster()
+        let replacement = InterruptedPoster()
+        defer { old.failPending(); replacement.failPending() }
+        let host = try await host(old)
+        let tile = ChatMediaView(frame: CGRect(x: 16, y: 120, width: 176, height: 140))
+        host.view.addSubview(tile)
+        tile.apply(ChatMedia(key: "old", isVideo: true, thumbhash: nil, label: "old recording"))
+        try await wait { old.pending != nil }
+        NotificationCenter.default.post(name: MediaLoader.retry, object: old)
+
+        host.source = replacement
+        tile.apply(ChatMedia(key: "replacement", isVideo: true, thumbhash: nil, label: "new recording"))
+        try await wait { replacement.pending != nil }
+        old.failPending()
+        replacement.failPending()
+
+        try await wait { tile.accessibilityValue == "failed" }
+        XCTAssertNil(tile.pictureImage)
+        XCTAssertEqual(old.requests, 1)
+        XCTAssertEqual(replacement.requests, 1)
+
+        NotificationCenter.default.post(name: MediaLoader.retry, object: replacement)
+        try await wait { tile.pictureImage != nil }
+        XCTAssertTrue(tile.pictureImage === replacement.picture)
+        XCTAssertEqual(replacement.requests, 2)
+    }
+
     private func host(_ source: ChatMediaSource) async throws -> Host {
         let host = Host()
         host.source = source

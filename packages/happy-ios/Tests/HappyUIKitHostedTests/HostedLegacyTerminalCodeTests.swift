@@ -98,7 +98,11 @@ final class HostedLegacyTerminalCodeTests: XCTestCase {
         return condition()
     }
 
-    private func run(_ here: Here) async throws {
+    func testNewAccountWaitsForItsWindowWhileSettingsIsAttaching() async throws {
+        try await run(.agentConnection, delayedRoot: true)
+    }
+
+    private func run(_ here: Here, delayedRoot: Bool = false) async throws {
         let computer = try terminal()
         let relay = Relay(terminal: computer.publicKey)
         let account = AccountController(
@@ -142,6 +146,16 @@ final class HostedLegacyTerminalCodeTests: XCTestCase {
         XCTAssertTrue(firstRoot, "\(here): the window never showed what's here: \(navigation.viewControllers)")
         // Restore, which start() runs again, holds the account controller.
         try await Task.sleep(for: .milliseconds(500))
+        if delayedRoot {
+            // Installing the new root can lag behind activation while its language loads.
+            let show = account.onChange
+            account.onChange = { state in
+                Task { @MainActor in
+                    try await Task.sleep(for: .milliseconds(250))
+                    show?(state)
+                }
+            }
+        }
 
         // With something here, Add Agent is on Settings; with nothing, on Start.
         var settings: SettingsViewController?
@@ -152,6 +166,10 @@ final class HostedLegacyTerminalCodeTests: XCTestCase {
             settings = page
         }
         let host = try XCTUnwrap(navigation.topViewController)
+        if delayedRoot {
+            XCTAssertNil(host.view.window)
+            XCTAssertTrue(navigation.view.window === window)
+        }
         let code = LegacyPairingLink.terminal(publicKey: computer.publicKey).urlString
         let result = await HappyScan.open(code, intent: .addAccount, context: context, on: host, start: .scan)
         XCTAssertEqual(result, .accountAdded, "\(here)")

@@ -58,7 +58,8 @@ enum FixtureScenarios {
     }
 
     static func scenario(for sessionId: String) -> FixtureScenario {
-        FixtureScenario(rawValue: String(sessionId.dropFirst(prefix.count))) ?? .markdown
+        // A test can give the scenario its own instance after a slash.
+        FixtureScenario(rawValue: String(sessionId.dropFirst(prefix.count).prefix { $0 != "/" })) ?? .markdown
     }
 
     /// The store has no record for a fixture session; this stands in.

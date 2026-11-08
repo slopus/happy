@@ -140,8 +140,9 @@ enum HappyScan {
         on controller: UIViewController,
         busy: (Bool) -> Void
     ) async -> Result {
-        // The window outlives the screens signIn replaces.
-        let window = controller.view.window
+        // The window outlives signIn's screens; a newly pushed page may
+        // still be attaching to its navigation controller's window.
+        let window = controller.view.window ?? controller.navigationController?.viewIfLoaded?.window
         let root = RootChange(window: window)
         busy(true)
         let outcome: LegacyPairingFlow.Outcome
