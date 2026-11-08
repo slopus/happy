@@ -270,12 +270,19 @@ final class HostedArtifactMediaTests: XCTestCase {
         ], remote: Self.png(CGSize(width: 160, height: 80), .systemPurple))
         let (window, navigation, screen) = try await open(daemon, type: "markdown", title: "Q3 report")
 
-        try await wait("the three pictures") { documentMedia(screen).filter { $0.pictureImage != nil }.count == 3 }
+        let column = screen.view.bounds.width - 32
+        let sizes = [CGSize(width: column, height: (column / 2).rounded()), CGSize(width: 300, height: 300), CGSize(width: 160, height: 80)]
+        // Decoding the images precedes the document's debounced replan.
+        // Wait for the layout being asserted, within the same time budget.
+        try await wait("the three pictures at their measured sizes") {
+            let views = documentMedia(screen)
+            return views.filter { $0.pictureImage != nil }.count == 3
+                && views.prefix(3).map { $0.frame.size } == sizes
+        }
         let views = documentMedia(screen)
         XCTAssertEqual(views.count, 4)
         // Each in its own shape: the chart 2:1 across the column, the photo
         // and the web logo at their own sizes.
-        let column = screen.view.bounds.width - 32
         XCTAssertEqual(views[0].frame.size, CGSize(width: column, height: (column / 2).rounded()))
         XCTAssertEqual(views[1].frame.size, CGSize(width: 300, height: 300))
         XCTAssertEqual(views[2].frame.size, CGSize(width: 160, height: 80))
