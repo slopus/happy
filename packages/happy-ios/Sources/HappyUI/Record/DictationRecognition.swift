@@ -92,6 +92,7 @@ final class DictationRecognition {
                         DictationLog.note("engine \(self.engine!.rawValue) \(analyzer.candidateLocales)")
                         return
                     } catch {
+                        DictationLog.note("analyzer failed \(error)")
                         analyzer.cancel()
                     }
                 }
@@ -196,20 +197,11 @@ private final class AnalyzerReader: DictationReader {
         } else {
             return nil
         }
-        let status = await AssetInventory.status(forModules: [module])
-        DictationLog.note("make \(locale.identifier) \(type(of: module)) status \(status)")
-        switch status {
-        case .installed:
-            let candidate = Candidate(locale: locale, module: module, readings: readings)
-            return AnalyzerReader(candidates: [candidate], audio: audio, changed: changed)
-        case .supported:
-            Self.download(module)
-            return nil
-        case .downloading, .unsupported:
-            return nil
-        @unknown default:
-            return nil
-        }
+        let installed = await Self.installed(module)
+        DictationLog.note("make \(locale.identifier) \(type(of: module)) installed \(installed)")
+        guard installed else { return nil }
+        let candidate = Candidate(locale: locale, module: module, readings: readings)
+        return AnalyzerReader(candidates: [candidate], audio: audio, changed: changed)
     }
 
     /// A reader listening in every one of `locales`, when all their models
@@ -223,18 +215,14 @@ private final class AnalyzerReader: DictationReader {
                 DictationLog.note("probe \(locale.identifier) no DictationTranscriber locale")
                 continue
             }
-            let status = await AssetInventory.status(forModules: [transcriber])
-            DictationLog.note("probe \(locale.identifier) status \(status)")
-            switch status {
-            case .installed:
-                let readings = Self.readings(of: transcriber.results) { Self.scored($0.text, isFinal: $0.isFinal) }
-                candidates.append(Candidate(locale: locale, module: transcriber, readings: readings))
-            case .supported:
-                Self.download(transcriber)
+            let installed = await Self.installed(transcriber)
+            DictationLog.note("probe \(locale.identifier) installed \(installed)")
+            guard installed else {
                 missing = true
-            default:
-                missing = true
+                continue
             }
+            let readings = Self.readings(of: transcriber.results) { Self.scored($0.text, isFinal: $0.isFinal) }
+            candidates.append(Candidate(locale: locale, module: transcriber, readings: readings))
         }
         #if DEBUG
         let reserved = await AssetInventory.reservedLocales.map(\.identifier)
@@ -287,6 +275,35 @@ private final class AnalyzerReader: DictationReader {
                 }
             }
             continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    /// Whether the module's model is on the phone for this app. One already
+    /// on the phone (another app's, or from before a reinstall) reads as
+    /// `supported` until the app asks for it, and asking has nothing to
+    /// download: it is ready at once, for this recording. Without that, the
+    /// first recording listened in one language with both models there.
+    /// A model that does need downloading starts, for the next recording.
+    private static func installed(_ module: any SpeechModule) async -> Bool {
+        switch await AssetInventory.status(forModules: [module]) {
+        case .installed:
+            return true
+        case .supported:
+            guard let request = try? await AssetInventory.assetInstallationRequest(supporting: [module]) else {
+                return await AssetInventory.status(forModules: [module]) == .installed
+            }
+            Task.detached(priority: .utility) {
+                DictationLog.note("download \(type(of: module)): started")
+                do {
+                    try await request.downloadAndInstall()
+                    DictationLog.note("download \(type(of: module)): installed")
+                } catch {
+                    DictationLog.note("download \(type(of: module)): failed \(error)")
+                }
+            }
+            return false
+        default:
+            return false
         }
     }
 
