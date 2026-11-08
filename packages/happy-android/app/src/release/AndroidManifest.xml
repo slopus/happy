@@ -5,6 +5,12 @@
   https://app.happy.engineering/.well-known/assetlinks.json already lists
   com.ex3ndr.happy (happy-app's public/.well-known/assetlinks.json), so a
   Play-signed build verifies as the React Native app does.
+
+  link.happy.page share links (agent/HappyShareLinks.kt) open the app too:
+  their payload is the fragment, so the page's one path, `/`, is all a filter
+  can name. That host's assetlinks.json (slopus/happy-link,
+  link.happy.page/src/wellKnown.ts) lists com.ex3ndr.happy with the same Play
+  app-signing fingerprint.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
@@ -17,6 +23,12 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="https" android:host="app.happy.engineering" android:pathPrefix="/" />
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="https" android:host="link.happy.page" android:path="/" />
             </intent-filter>
         </activity>
     </application>

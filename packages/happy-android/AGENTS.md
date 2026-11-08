@@ -1457,9 +1457,14 @@ change its wire behaviour on Android alone.
   copy. Tapped anywhere in the app (chat, artifacts, documents, the in-app
   browser), a share link goes to `HappyLinks` as the instance link it carries,
   so the same instance match and "not connected" apply; it has no browser
-  menu. `DeepLinks` takes one too, though no intent filter claims
-  link.happy.page (verified App Links need hosting and signing decisions
-  first).
+  menu. From outside, production's overlay (`src/release/AndroidManifest.xml`)
+  claims `https://link.happy.page` path `/` with `autoVerify` (the payload is
+  the fragment, which no filter can match), and `DeepLinks` opens what parses
+  as a share link; anything else there opens nothing. The host's
+  `assetlinks.json` (slopus/happy-link, `link.happy.page/src/wellKnown.ts`)
+  names `com.ex3ndr.happy` with the Play app-signing fingerprint
+  app.happy.engineering uses. Debug and preview leave share links to the
+  browser (`AppLinksManifestTest`).
 - **Links in messages and documents** (Kirill's rules, the same on desktop
   and iOS): nothing shown or copied carries a private scheme, and a link keeps
   the address it was written with. A Happy link written as Markdown, a share
