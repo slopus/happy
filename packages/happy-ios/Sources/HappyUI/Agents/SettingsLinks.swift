@@ -20,6 +20,9 @@ enum SettingsLinks {
             SettingsViewController.open(context: context, computer: session.accountID, reveal: SettingsIndex.agentVoice.id, from: controller)
         case .servers:
             AccountAdding.connectToCloud(context: context, from: controller)
+        case .computes:
+            guard ComputeViewController.offered(session) else { return }
+            controller.navigationController?.pushViewController(ComputeViewController(session: session), animated: true)
         case .web(let url):
             UIApplication.shared.open(url)
         case .providers(let page):

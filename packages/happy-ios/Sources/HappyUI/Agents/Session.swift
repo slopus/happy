@@ -246,7 +246,7 @@ final class Session {
                 }
                 var parts: Set<CloudPart> = []
                 if Onboarding.refreshEvents.contains(where: { type == $0 || ($0.hasSuffix(".") && type.hasPrefix($0)) }) { parts.insert(.onboarding) }
-                if type.hasPrefix("role.") { parts.insert(.permissions) }
+                if Permissions.refreshEvents.contains(where: { type == $0 || ($0.hasSuffix(".") && type.hasPrefix($0)) }) { parts.insert(.permissions) }
                 if type.hasPrefix("surface.") || type == "vault.settings.updated" { parts.insert(.vaults) }
                 read(parts)
             }
@@ -254,6 +254,11 @@ final class Session {
     }
 
     private enum CloudPart { case onboarding, permissions, vaults }
+    /// A protected settings page gaining focus checks current grants.
+    func refreshPermissions() {
+        guard isCloud else { return }
+        read([.permissions])
+    }
     /// One read of each part at a time; asked again meanwhile, it reads
     /// once more when that lands.
     private var reading: Set<CloudPart> = []

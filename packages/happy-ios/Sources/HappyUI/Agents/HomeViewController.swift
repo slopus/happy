@@ -27,6 +27,7 @@ final class HomeViewController: UIViewController {
     private var agentHome = HomeSnapshot()
     private var connectionWatch: Task<Void, Never>?
     private var headerWatch: Watch?
+    private var accessWatch: Watch?
     /// No network at all: the header says so, so the list doesn't too.
     private var waitingForNetwork = false
     /// A new task on its way to the screen: a second tap meanwhile opens nothing more.
@@ -189,6 +190,7 @@ final class HomeViewController: UIViewController {
         servesSearch = nil
         connectionWatch?.cancel(); connectionWatch = nil
         headerWatch = nil; waitingForNetwork = false
+        accessWatch?.invalidate(); accessWatch = nil
         session = id.flatMap { Session.session(for: $0, context: context) }
         sidebar.images = session?.images
         resultsView.list.images = session?.images
@@ -196,6 +198,7 @@ final class HomeViewController: UIViewController {
         snapshot = Snapshot()
         agentHome = HomeSnapshot()
         if let session {
+            accessWatch = session.watchAccess { [weak self] in self?.showResults() }
             connectionWatch = Task { [weak self, engine = session.engine] in
                 for await snapshot in await engine.snapshots() {
                     guard !Task.isCancelled, let self else { return }
@@ -552,7 +555,7 @@ final class HomeViewController: UIViewController {
         }
         let actions = HappyCore.Search.ranked(quickActions().filter { !$0.id.hasPrefix("new-work") || session?.gate.allows(.contentWrite) ?? true }, query: query) { $0.title }
         let computer = session?.accountID
-        let entries = SettingsIndex.computer
+        let entries = SettingsIndex.computer + (session.map(ComputeViewController.offered) == true ? [SettingsIndex.computes] : [])
         let settings = HappyCore.Search.ranked(entries, query: query) { $0.title }
         return [
             section("actions", Strings.quickActions, actions.map { ($0.id, $0.title, $0.glyph, $0.run) }),
