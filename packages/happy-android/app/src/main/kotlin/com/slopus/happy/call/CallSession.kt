@@ -209,7 +209,7 @@ class CallSession(
                     said = { text, event ->
                         // Its first words before anyone else's are the hosted agent's greeting.
                         if (current == generation) {
-                            cues?.agentSaid(words(text), event, now())
+                            cues?.agentSaid(text, event, now())
                             if (!greeted) {
                                 greeted = true
                             } else {
@@ -220,7 +220,7 @@ class CallSession(
                     },
                     corrected = { text, event ->
                         if (current == generation) {
-                            cues?.agentCorrected(words(text), event)
+                            cues?.agentCorrected(text, event)
                             history?.corrected(text, event)
                         }
                     },
@@ -408,8 +408,5 @@ class CallSession(
     companion object {
         /** The most context kept while the call isn't live yet. */
         const val PENDING_BYTES = 32 * 1024
-
-        /** Words as the call counts them: runs of anything but white space. */
-        fun words(text: String): Int = text.split(Regex("\\s+")).count { it.isNotEmpty() }
     }
 }

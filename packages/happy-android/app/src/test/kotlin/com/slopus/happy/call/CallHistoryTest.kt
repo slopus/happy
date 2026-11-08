@@ -366,7 +366,7 @@ class CallCuesTest {
         // The next waits for the agent to tell this one.
         cues.later(second)
         assertNull(cues.next(CallCues.Moment(21_000)))
-        cues.agentSaid(14, 7, 21_000)
+        cues.agentSaid("word ".repeat(14), 7, 21_000)
         assertNull(cues.next(CallCues.Moment(22_000, agentSpeaking = true)))
         cues.agentSpoke(24_000)
         assertNull(cues.next(CallCues.Moment(25_000)))
@@ -398,19 +398,19 @@ class CallCuesTest {
         cues.heard(7_000)
         assertEquals(1, cues.waiting)
         // The agent answers them, then the update goes again.
-        cues.agentSaid(6, 1, 8_000)
+        cues.agentSaid("word ".repeat(6), 1, 8_000)
         assertNull(cues.next(CallCues.Moment(8_000, agentSpeaking = true)))
         cues.agentSpoke(10_000)
         assertNull(cues.next(CallCues.Moment(11_000)))
         assertEquals(cue, cues.next(CallCues.Moment(12_000)))
         // Its answer begins and is cut off after three words.
-        cues.agentSaid(25, 2, 12_500)
+        cues.agentSaid("word ".repeat(25), 2, 12_500)
         assertNull(cues.next(CallCues.Moment(13_000, agentSpeaking = true)))
-        cues.agentCorrected(3, 2)
+        cues.agentCorrected("word ".repeat(3), 2)
         cues.agentSpoke(13_500)
         assertNull(cues.next(CallCues.Moment(14_000, personSpeaking = true)))
         cues.heard(15_000)
-        cues.agentSaid(5, 3, 15_500)
+        cues.agentSaid("word ".repeat(5), 3, 15_500)
         cues.agentSpoke(17_000)
         assertNull(cues.next(CallCues.Moment(18_000)))
         assertEquals(cue, cues.next(CallCues.Moment(21_000)))
@@ -425,7 +425,7 @@ class CallCuesTest {
         told.agentSpoke(1_000)
         told.later(update)
         assertEquals(cue, told.next(CallCues.Moment(5_000)))
-        told.agentSaid(20, 1, 5_500)
+        told.agentSaid("word ".repeat(20), 1, 5_500)
         assertNull(told.next(CallCues.Moment(6_000, agentSpeaking = true)))
         told.agentSpoke(9_000)
         told.heard(10_000)
@@ -439,6 +439,64 @@ class CallCuesTest {
         assertEquals(cue, unanswered.next(CallCues.Moment(5_000)))
         assertNull(unanswered.next(CallCues.Moment(12_000)))
         assertEquals(cue, unanswered.next(CallCues.Moment(13_000)))
+    }
+
+    /** A newer update of a conversation takes the place of one still waiting, and of one that wasn't told; another conversation's waits. */
+    @Test
+    fun aNewerUpdateOfAConversationTakesTheWaitingOnesPlace() {
+        val old = CallCue.ConversationUpdate("""{"event":"conversation_update","ref":"s1","turns":[1]}""")
+        val new = CallCue.ConversationUpdate("""{"event":"conversation_update","ref":"s1","turns":[1,2]}""")
+        val other = CallCue.ConversationUpdate("""{"event":"conversation_update","ref":"s2"}""")
+        assertEquals("s1", new.conversation)
+        assertNull(CallCue.Silence(25_000).conversation)
+        val cues = CallCues(since = 0)
+        cues.refreshing(0)
+        cues.agentSpoke(1_000)
+        cues.later(old)
+        cues.later(other)
+        cues.later(new)
+        assertEquals(2, cues.waiting)
+        assertEquals(CallCues.Action.Cue(other), cues.next(CallCues.Moment(5_000)))
+        // The person talks over it; meanwhile s2 has news again: the untold one goes no more.
+        cues.heard(6_000)
+        cues.agentSpoke(7_000)
+        val newer = CallCue.ConversationUpdate("""{"event":"conversation_update","ref":"s2","turns":[3]}""")
+        cues.later(newer)
+        assertNull(cues.next(CallCues.Moment(8_000)))
+        assertEquals(CallCues.Action.Cue(new), cues.next(CallCues.Moment(11_000)))
+        cues.agentSaid("word ".repeat(20), 1, 11_500)
+        cues.agentSpoke(14_000)
+        assertEquals(CallCues.Action.Cue(newer), cues.next(CallCues.Moment(16_000)))
+        assertEquals(1, cues.waiting)
+    }
+
+    /** Talked over, an update the agent folds into its answer to the person is told: it goes no more. An answer that doesn't say it isn't. */
+    @Test
+    fun anUpdateFoldedIntoTheAnswerAfterATalkOverIsTold() {
+        val update = CallCue.ConversationUpdate("""{"event":"conversation_update","ref":"s2","turns":[{"ref":"t:r2","assistant":"Added: the pineapple fix is now listed first in the 2.1 notes."}]}""")
+        assertEquals(setOf("added", "pineapple", "listed", "first", "notes"), update.gist)
+        val cues = CallCues(since = 0)
+        cues.refreshing(0)
+        cues.agentSpoke(1_000)
+        cues.later(update)
+        assertEquals(CallCues.Action.Cue(update), cues.next(CallCues.Moment(5_000)))
+        cues.heard(6_000)
+        cues.agentSaid("Seven days in a week. And there's a small update on the Release notes task: the pineapple fix was added to the version two point one notes.", 1, 7_000)
+        assertNull(cues.next(CallCues.Moment(8_000, agentSpeaking = true)))
+        cues.agentSpoke(12_000)
+        assertNull(cues.next(CallCues.Moment(14_000)))
+        assertEquals(0, cues.waiting)
+        assertNull(cues.next(CallCues.Moment(40_000)))
+        // The same, its answer only about the week: not told, so it goes again.
+        val plain = CallCues(since = 0)
+        plain.refreshing(0)
+        plain.agentSpoke(1_000)
+        plain.later(update)
+        assertEquals(CallCues.Action.Cue(update), plain.next(CallCues.Moment(5_000)))
+        plain.heard(6_000)
+        plain.agentSaid("Seven days in a week, as always, every single week of the year.", 1, 7_000)
+        plain.agentSpoke(10_000)
+        assertEquals(CallCues.Action.Cue(update), plain.next(CallCues.Moment(12_000)))
     }
 
     /** An update for a read of another call (asked before a restart) is told to nobody. */

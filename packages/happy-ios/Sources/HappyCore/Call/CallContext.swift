@@ -161,6 +161,9 @@ public actor CallContext {
     /// words a message of it was read with. Another read of one joins its
     /// refresh.
     private var reading: [String: (refresh: Task<CallTargetState?, Never>, given: CallTargetState, words: Int)] = [:]
+    /// Each conversation as its last refresh in this call found it, current
+    /// then: what a read gives when the phone can't read it in time again.
+    private var refreshedLast: [String: CallTargetState] = [:]
     private var onReading: (@Sendable (CallReading) -> Void)?
 
     /// What the agent has of one visited conversation: its agent's complete
@@ -776,6 +779,9 @@ public actor CallContext {
             if let found = await Self.within(Limits.keptWait, kept) {
                 guard let found else { return .refused("That conversation can't be read now.") }
                 state = found
+            } else if var last = refreshedLast[id] {
+                last.fresh = false
+                state = last
             } else if let entry = directory[id] ?? drafts[id] {
                 state = CallTargetState(target: entry, working: entry.status == .running, needsInput: entry.status == .needsInput, fresh: false)
             } else {
@@ -874,9 +880,13 @@ public actor CallContext {
         if !state.fresh {
             name["refreshing"] = true
             if let at = state.checkedAt, at > 0 { name["checked"] = when(at) }
+            name["note"] = items.isEmpty ? Self.refreshingEmptyNote : Self.refreshingNote
         }
         let shown: Range<Int> = range.map { $0.lowerBound..<($0.upperBound + 1) } ?? 0..<0
-        return within(state, items: items, references: references, shown: shown, words: request.words, as: name)
+        var value = within(state, items: items, references: references, shown: shown, words: request.words, as: name)
+        // None of its turns on this phone: no empty list to take for an empty conversation.
+        if !state.fresh, items.isEmpty { value["turns"] = nil; value["olderTurns"] = nil }
+        return value
     }
 
     /// `shown` of `items` within `Limits.readBytes` on the wire: the older
@@ -904,6 +914,11 @@ public actor CallContext {
         guard let pending = reading.removeValue(forKey: id), !closed else { return }
         var event: [String: Any] = ["ref": ref(id)]
         if let title = directory[id]?.title ?? drafts[id]?.title { event["title"] = title }
+        if let state, state.fresh {
+            var kept = state
+            kept.checkedAt = now() * 1000
+            refreshedLast[id] = kept
+        }
         guard let state, state.fresh else {
             event["event"] = "conversation_unconfirmed"
             if let at = (state ?? pending.given).checkedAt, at > 0 { event["checked"] = when(at) }
@@ -920,6 +935,8 @@ public actor CallContext {
         onReading?(.update(.conversationUpdate(Self.string(update))))
     }
 
+    static let refreshingNote = "What this phone had: answer from it, and say you're checking the computer for anything newer, which comes as an [app] conversation_update."
+    static let refreshingEmptyNote = "This phone has none of its turns yet, so this says nothing of what is in it: say you're checking; its turns come as an [app] conversation_update."
     static let unconfirmedNote = "The computer didn't answer in time: what you read may be out of date. Nothing to say unless asked."
     static let currentNote = "Checked: nothing new since you read it. Nothing to say unless asked."
 

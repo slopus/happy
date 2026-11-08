@@ -605,12 +605,15 @@ become current:
 - Current: the read answers as it is, at once, with nothing added, and
   nothing follows.
 - Not current: the read answers at once all the same, with what the phone
-  has, plus `"refreshing":true` and `checked`, when the phone last read it
+  has, plus `"refreshing":true`, `checked`, when the phone last read it
   from the computer (`{ago,at}`, kept with the conversation; absent if
-  never). The agent answers from it and says it is checking for anything
-  newer. One the phone keeps nothing of, or can't read from its store in
-  0.5 s (`keptWait`), answers as the directory has it: its name,
-  `working` and `needsInput` from its status, no turns.
+  never), and a `note` telling the agent to answer from it and say it is
+  checking for anything newer. One the phone can't read from its store in
+  0.5 s (`keptWait`) answers as this call's last refresh of it found it,
+  or, with none, as the directory has it: its name, `working` and
+  `needsInput` from its status, no `turns` at all, and a `note` that the
+  phone has none of its turns yet (in a live call the agent took an empty
+  list for an empty conversation).
 - Behind that answer it is made current, as opening it would but off
   screen (`CallTargets.refreshed`): its kept chat held and a failed history
   read asked for again, for up to 8 s (`refresh`). Another read of the same
@@ -778,10 +781,16 @@ is speaking:
   8 words as the person heard them (an `agent_response_correction` cuts
   that to what was heard), finished, with the person not speaking first.
   Talked over (the person's words heard before such an answer: they spoke
-  as it went, or cut the answer off short), or with no answer in 8 s of
+  as it went, or cut the answer off short), it is told if the agent's
+  answer to them says it anyway (three of the update's words of five
+  letters or more, from its agent words and waiting message; in a live
+  call the agent folded the update into its answer and then, cued again,
+  said it had already told it). Otherwise, or with no answer in 8 s of
   quiet, it goes again once the agent has answered them and the moment is
   right, the same cue, twice more at most. Updates go one at a time, oldest
-  first: the next waits until this one is told or let go. The prompt says
+  first: the next waits until this one is told or let go. A newer update of
+  a conversation takes the place of one of it still waiting, or of one not
+  told, so the agent never hears the same news twice over. The prompt says
   an update already told needs only a few words.
 
 **Restart.** When the person agrees, the agent navigates to
@@ -1080,7 +1089,7 @@ What the phone answers (JSON in the tool result):
 | Tool | Success | Refusal (`isError`) |
 | --- | --- | --- |
 | listConversations | `{"conversations":[{ref,title,kind,status,parents?,workspace?,lastActivity?:{ago,at}}],"now","nextCursor"?}`; `kind` is `bot`, `task`, `subtask` or `conversation` | query or cursor not a string, a cursor it didn't give |
-| readConversation | `{title,parents,working,needsInput,turns:[{ref,user?,userBy?,assistant?,ended,error?,cut?:{user?:{words,leftOut},assistant?:{words,leftOut}}}],olderTurns,continueFrom?,pendingUserMessage?:{ref,text,by?,delivery?,cut?:{words,leftOut}}}`, also `lastUserMessage?:{ago,at,by?}`, `lastAgentReply?`, `workspace?`, `model?:{id,name,effort}`, `models?:[{id,name,efforts}]`; not current, also `refreshing:true` and `checked?:{ago,at}`, what is new following as a `conversation_update` cue | no such conversation (or not listed now), can't be read now, a new-work ref; `from` or `backTo` not a turn's ref or a number (or an `s` ref), a ref that fits no turn or several, `from` past the oldest; `words` not a number |
+| readConversation | `{title,parents,working,needsInput,turns:[{ref,user?,userBy?,assistant?,ended,error?,cut?:{user?:{words,leftOut},assistant?:{words,leftOut}}}],olderTurns,continueFrom?,pendingUserMessage?:{ref,text,by?,delivery?,cut?:{words,leftOut}}}`, also `lastUserMessage?:{ago,at,by?}`, `lastAgentReply?`, `workspace?`, `model?:{id,name,effort}`, `models?:[{id,name,efforts}]`; not current, also `refreshing:true`, `checked?:{ago,at}` and `note`, what is new following as a `conversation_update` cue | no such conversation (or not listed now), can't be read now, a new-work ref; `from` or `backTo` not a turn's ref or a number (or an `s` ref), a ref that fits no turn or several, `from` past the oldest; `words` not a number |
 | message | `{"status":"queued","ref":…,"delivery":"on the person's device, not confirmed delivered or read"}`, with `model` and `effort` when it switched them, and the `title` when `to` was left out; to `new-task` or `new-bot` also `"started":"task"\|"bot"`, the `title`, the new work's own `ref`, and always the `model` and `effort` it starts on | `{"status":"uncertain",…}` after 8 s; no conversation on screen and no `to`; no such conversation; can't take a message; waits for the person; empty; over 8 KiB; call ended; a model or effort it doesn't offer, with the `models` it does (nothing is sent) |
 | navigate to `happy://conversation/<ref>` | `{"opened":true,"ref":…,"focusRevision":…}`, the revision the next step takes | stale focus, no such conversation, a new-work ref, didn't open |
 | navigate to `happy://back` | `{"home":…,"focusRevision":…,"title":…\|null,"parents"?,"ref"?}`: where it landed | stale focus; at home, nothing to go back to; an alert is open |
@@ -1248,8 +1257,9 @@ each one is a billed conversation.
 
 With `-callLive`, the fixture computer has 60 extra "Fixture task N" rows
 (enough for `listConversations` to page), a subtask under Ship the cache
-("Measure the hit rate"), three turns in every conversation (the last with
-commentary before its answer), and a reply streamed in pieces to each
+("Measure the hit rate"), four turns in every conversation (the third with
+commentary before its answer, the last a 230-word answer that a read with
+few `words` cuts), and a reply streamed in pieces to each
 message sent. For Release notes it sends a failure that ends the turn
 instead. Ship the cache's first answer makes new work: a "New Task" that
 is named "Benchmark the cache" 0.4 s later (the agent hears of it, by

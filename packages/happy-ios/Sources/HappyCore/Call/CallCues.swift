@@ -33,6 +33,24 @@ public enum CallCue: Equatable, Sendable {
         }
     }
 
+    /// The conversation an update is of (its `ref`), so a newer one of it
+    /// takes the place of one still waiting; nil for the other cues.
+    var conversation: String? {
+        guard case .conversationUpdate(let update) = self,
+              let value = try? JSONSerialization.jsonObject(with: Data(update.utf8)) as? [String: Any] else { return nil }
+        return value["ref"] as? String
+    }
+
+    /// What an update says, to know an answer told it: the words of five
+    /// letters or more of its turns' agent words and its waiting message.
+    var gist: Set<String> {
+        guard case .conversationUpdate(let update) = self,
+              let value = try? JSONSerialization.jsonObject(with: Data(update.utf8)) as? [String: Any] else { return [] }
+        var texts = ((value["turns"] as? [[String: Any]]) ?? []).compactMap { $0["assistant"] as? String }
+        if let pending = (value["pendingUserMessage"] as? [String: Any])?["text"] as? String { texts.append(pending) }
+        return Set(texts.flatMap { CallCues.words($0) }.filter { $0.count >= 5 })
+    }
+
     /// "less than a minute", "about a minute", "about 5 minutes".
     static func spoken(_ seconds: Double) -> String {
         switch seconds {
@@ -62,13 +80,16 @@ public enum CallCue: Equatable, Sendable {
 /// while either side speaks, nor until the agent has answered what came
 /// before it (the read it answered from, the person's words since, the
 /// update before it) and been quiet `answerSettle`, or said nothing for
-/// `answerWait`. Updates go one at a time, oldest first, and each is told
+/// `answerWait`. Updates go one at a time, oldest first (a newer one of a
+/// conversation in place of one still waiting), and each is told
 /// before the next goes: told is an answer of the agent's, begun after
 /// the cue, of at least `toldWords` words as the person heard them, with
-/// the person not speaking first. One the person talked over (they spoke
-/// before the agent answered, or cut it off short), or the agent didn't
-/// answer within `tellWait` of quiet, goes again once the moment is right,
-/// `retells` times at most.
+/// the person not speaking first; or, the person having spoken over it,
+/// an answer since that says what the update does (three of its longer
+/// words). One talked over and not told so (they spoke before the agent
+/// answered, or cut it off short), or the agent didn't answer within
+/// `tellWait` of quiet, goes again once the moment is right, `retells`
+/// times at most.
 public struct CallCues: Equatable, Sendable {
     public struct Timing: Equatable, Sendable {
         /// Quiet this long, the agent warns the call will end.
@@ -163,15 +184,15 @@ public struct CallCues: Equatable, Sendable {
     /// Since when the agent owes an answer: to a read, the person's words
     /// or an update told; nil once it has spoken.
     private var owed: Double?
-    /// The update sent and not yet known told: when it went, the words of
-    /// each of the agent's answers since, as heard, and whether the person
-    /// spoke before the agent answered.
+    /// The update sent and not yet known told: when it went, each of the
+    /// agent's answers since as heard, and when the person spoke before
+    /// the agent told it.
     private struct Telling: Equatable, Sendable {
         var cue: CallCue
         var at: Double
         var tries: Int
-        var words: [Int: Int] = [:]
-        var talkedOver = false
+        var answers: [Int: String] = [:]
+        var talkedOver: Double?
     }
     private var telling: Telling?
     private var agentDone: Double = -.infinity
@@ -189,24 +210,37 @@ public struct CallCues: Equatable, Sendable {
         warned = nil
         owed = time
         if let telling, time >= telling.at {
-            if told(telling) { self.telling = nil } else { self.telling?.talkedOver = true }
+            if told(telling) { self.telling = nil } else { self.telling?.talkedOver = time }
         }
     }
 
-    /// The agent's answer `event`, of `words` words, begun.
-    public mutating func agentSaid(words: Int, event: Int, at time: Double) {
+    /// The agent's answer `event`, `text`, begun.
+    public mutating func agentSaid(_ text: String, event: Int, at time: Double) {
         guard let telling, time >= telling.at else { return }
-        self.telling?.words[event] = words
+        self.telling?.answers[event] = text
     }
 
-    /// The person cut the agent's answer `event` off: `words` of it were heard.
-    public mutating func agentCorrected(words: Int, event: Int) {
-        guard telling?.words[event] != nil else { return }
-        telling?.words[event] = words
+    /// The person cut the agent's answer `event` off: `text` of it was heard.
+    public mutating func agentCorrected(_ text: String, event: Int) {
+        guard telling?.answers[event] != nil else { return }
+        telling?.answers[event] = text
     }
 
+    /// Told: an answer of `toldWords` words or more, the person not
+    /// speaking first; or, talked over, an answer since that says what the
+    /// update does (its words of five letters or more, three of them, or
+    /// as many as it has).
     private func told(_ telling: Telling) -> Bool {
-        !telling.talkedOver && (telling.words.values.max() ?? 0) >= timing.toldWords
+        let answers = telling.answers.values.filter { Self.words($0).count >= timing.toldWords }
+        if telling.talkedOver == nil, !answers.isEmpty { return true }
+        let gist = telling.cue.gist
+        guard !gist.isEmpty else { return false }
+        return answers.contains { gist.intersection(Self.words($0).filter { $0.count >= 5 }).count >= min(3, gist.count) }
+    }
+
+    /// `text`'s words, lowercased, letters and digits only.
+    static func words(_ text: String) -> [String] {
+        text.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
     }
 
     /// The agent finished speaking.
@@ -228,6 +262,8 @@ public struct CallCues: Equatable, Sendable {
     /// another call (it came after a restart) goes nowhere.
     public mutating func later(_ cue: CallCue) {
         guard asked else { return }
+        // A newer update of a conversation takes the place of one still waiting.
+        if let conversation = cue.conversation { reads.removeAll { $0.cue.conversation == conversation } }
         reads.append(Queued(cue: cue, tries: 0))
     }
 
@@ -269,13 +305,16 @@ public struct CallCues: Equatable, Sendable {
             return .cue(.silence(endsIn: timing.silenceEnd - timing.silenceWarning))
         }
         if let sent = telling {
-            let settled = !moment.agentSpeaking && agentDone > sent.at && now - agentDone >= timing.answerSettle
+            // Decided once the agent has answered since the cue, or since the person spoke over it.
+            let since = sent.talkedOver ?? sent.at
+            let settled = !moment.agentSpeaking && agentDone > since && now - agentDone >= timing.answerSettle
             if told(sent), settled {
                 telling = nil
-            } else if sent.talkedOver || (settled && !sent.words.isEmpty) || (sent.words.isEmpty && moment.quiet && now - max(sent.at, agentDone) >= timing.tellWait) {
+            } else if settled || (moment.quiet && now - max(since, agentDone) >= timing.tellWait) {
                 // Not told: again, once the person has had their answer.
                 telling = nil
-                if sent.tries < timing.retells { reads.insert(Queued(cue: sent.cue, tries: sent.tries + 1), at: 0) }
+                let superseded = sent.cue.conversation.map { conversation in reads.contains { $0.cue.conversation == conversation } } ?? false
+                if sent.tries < timing.retells, !superseded { reads.insert(Queued(cue: sent.cue, tries: sent.tries + 1), at: 0) }
             }
         }
         guard moment.quiet else { return nil }

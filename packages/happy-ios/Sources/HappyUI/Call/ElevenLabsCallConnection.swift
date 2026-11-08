@@ -56,6 +56,11 @@ final class ElevenLabsCallConnection: CallConnection {
         let connection = ElevenLabsCallConnection(conversation, teardown: teardown)
         #if DEBUG
         CallProbe.watch(conversation, context: request.context, store: &connection.observations)
+        CallProbe.type = { [weak conversation] text in
+            CallProbe.sent("typed", text)
+            Task { try? await conversation?.sendMessage(text) }
+            events.heard(text)
+        }
         #endif
         conversation.$agentState.removeDuplicates().sink { state in
             tracker.agentSpeaking(state == .speaking)

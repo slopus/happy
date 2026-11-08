@@ -12,9 +12,11 @@ import Foundation
 @MainActor
 enum CallDropSound {
     private static var sound: SystemSoundID?
+    /// A live check's run (`CallLiveCheck`): nothing plays.
+    static var muted = false
 
     static func play() {
-        guard let id = sound ?? made() else { return }
+        guard !muted, let id = sound ?? made() else { return }
         sound = id
         AudioServicesPlaySystemSound(id)
     }

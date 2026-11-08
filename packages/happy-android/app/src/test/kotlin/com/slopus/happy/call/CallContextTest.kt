@@ -591,6 +591,7 @@ class CallContextTest {
         assertEquals("29 minutes ago", read["checked"]!!.jsonObject.str("ago"))
         assertEquals("Backend", read.str("title"))
         assertEquals(4, read.turns().size)
+        assertEquals(CallContext.REFRESHING_NOTE, read.str("note"))
         assertNull(read["status"])
         waitFor { all.size == 1 }
         assertEquals(listOf<CallReading>(CallReading.Refreshing), all.toList())
@@ -695,12 +696,21 @@ class CallContextTest {
         assertTrue((System.nanoTime() - started) / 1_000_000 < 800)
         assertEquals(true, read["refreshing"]!!.jsonPrimitive.boolean)
         assertEquals("Backend", read.str("title"))
-        assertEquals(0, read.turns().size)
-        targets.stateDelay = 0
+        assertNull(read["turns"])
+        assertNull(read["olderTurns"])
+        assertEquals(CallContext.REFRESHING_EMPTY_NOTE, read.str("note"))
         waitFor { all.size == 2 }
         val cue = cue(all.last())
         assertEquals(4, cue.turns().size)
         assertEquals("still waiting", cue["pendingUserMessage"]!!.jsonObject.str("text"))
+        // Read again, the phone still slow: what that refresh found, marked, and nothing new after.
+        targets.refresh["a"] = FakeCallTargets.Refresh.After(100)
+        val again = obj(context.tool("readConversation", """{"ref":"s1"}""").text)
+        assertEquals(true, again["refreshing"]!!.jsonPrimitive.boolean)
+        assertEquals(4, again.turns().size)
+        assertTrue(again["checked"] != null)
+        waitFor { all.size == 4 }
+        assertEquals("conversation_current", line(all.last()).str("event"))
         context.close()
     }
 

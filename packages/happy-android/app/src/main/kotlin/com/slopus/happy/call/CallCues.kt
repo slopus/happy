@@ -27,6 +27,25 @@ sealed interface CallCue {
             is ConversationUpdate -> update
         }
 
+    /** What an update says, to know an answer told it: the words of five letters or more of its turns' agent words and its waiting message. */
+    val gist: Set<String>
+        get() {
+            val value = (this as? ConversationUpdate)?.let { runCatching { kotlinx.serialization.json.Json.parseToJsonElement(it.update) as? kotlinx.serialization.json.JsonObject }.getOrNull() }
+                ?: return emptySet()
+            fun text(element: kotlinx.serialization.json.JsonElement?, key: String) =
+                ((element as? kotlinx.serialization.json.JsonObject)?.get(key) as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content
+            val texts = ((value["turns"] as? kotlinx.serialization.json.JsonArray) ?: emptyList()).mapNotNull { text(it, "assistant") } +
+                listOfNotNull(text(value["pendingUserMessage"], "text"))
+            return texts.flatMap { CallCues.words(it) }.filter { it.length >= 5 }.toSet()
+        }
+
+    /** The conversation an update is of (its `ref`), so a newer one of it takes the place of one still waiting; null for the other cues. */
+    val conversation: String?
+        get() = (this as? ConversationUpdate)?.let {
+            runCatching { (kotlinx.serialization.json.Json.parseToJsonElement(it.update) as? kotlinx.serialization.json.JsonObject)?.get("ref") }
+                .getOrNull()?.let { ref -> (ref as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+        }
+
     companion object {
         /** What a cue starts with, sent as a user message: the prompt says it is the app's. */
         const val MARK = "[app] "
@@ -60,13 +79,15 @@ sealed interface CallCue {
  * while either side speaks, nor until the agent has answered what came before
  * it (the read it answered from, the person's words since, the update before
  * it) and been quiet [Timing.answerSettle], or said nothing for
- * [Timing.answerWait]. Updates go one at a time, oldest first, and each is told
+ * [Timing.answerWait]. Updates go one at a time, oldest first (a newer one of a conversation in place of one still
+ * waiting), and each is told
  * before the next goes: told is an answer of the agent's, begun after the cue,
  * of at least [Timing.toldWords] words as the person heard them, with the
- * person not speaking first. One the person talked over (they spoke before the
- * agent answered, or cut it off short), or the agent didn't answer within
- * [Timing.tellWait] of quiet, goes again once the moment is right,
- * [Timing.retells] times at most.
+ * person not speaking first; or, the person having spoken over it, an answer
+ * since that says what the update does (three of its longer words). One talked
+ * over and not told so (they spoke before the agent answered, or cut it off
+ * short), or the agent didn't answer within [Timing.tellWait] of quiet, goes
+ * again once the moment is right, [Timing.retells] times at most.
  */
 class CallCues(val timing: Timing = Timing(), val since: Long) {
     data class Timing(
@@ -137,12 +158,12 @@ class CallCues(val timing: Timing = Timing(), val since: Long) {
     private var owed: Long? = null
 
     /**
-     * The update sent and not yet known told: when it went, the words of each of the agent's answers since, as heard,
-     * and whether the person spoke before the agent answered.
+     * The update sent and not yet known told: when it went, each of the agent's answers since as heard, and when the
+     * person spoke before the agent told it.
      */
     private class Telling(val cue: CallCue, val at: Long, val tries: Int) {
-        val words = HashMap<Int, Int>()
-        var talkedOver = false
+        val answers = HashMap<Int, String>()
+        var talkedOver: Long? = null
     }
     private var telling: Telling? = null
     private var agentDone = Long.MIN_VALUE / 2
@@ -153,20 +174,30 @@ class CallCues(val timing: Timing = Timing(), val since: Long) {
         if (warned != null) silenceEnded = true
         warned = null
         owed = at
-        telling?.takeIf { at >= it.at }?.let { if (told(it)) telling = null else it.talkedOver = true }
+        telling?.takeIf { at >= it.at }?.let { if (told(it)) telling = null else it.talkedOver = at }
     }
 
-    /** The agent's answer [event], of [words] words, begun. */
-    fun agentSaid(words: Int, event: Int, at: Long) {
-        telling?.takeIf { at >= it.at }?.words?.set(event, words)
+    /** The agent's answer [event], [text], begun. */
+    fun agentSaid(text: String, event: Int, at: Long) {
+        telling?.takeIf { at >= it.at }?.answers?.set(event, text)
     }
 
-    /** The person cut the agent's answer [event] off: [words] of it were heard. */
-    fun agentCorrected(words: Int, event: Int) {
-        telling?.takeIf { event in it.words }?.words?.set(event, words)
+    /** The person cut the agent's answer [event] off: [text] of it was heard. */
+    fun agentCorrected(text: String, event: Int) {
+        telling?.takeIf { event in it.answers }?.answers?.set(event, text)
     }
 
-    private fun told(telling: Telling): Boolean = !telling.talkedOver && (telling.words.values.maxOrNull() ?: 0) >= timing.toldWords
+    /**
+     * Told: an answer of [Timing.toldWords] words or more, the person not speaking first; or, talked over, an answer
+     * since that says what the update does (its words of five letters or more, three of them, or as many as it has).
+     */
+    private fun told(telling: Telling): Boolean {
+        val answers = telling.answers.values.filter { words(it).size >= timing.toldWords }
+        if (telling.talkedOver == null && answers.isNotEmpty()) return true
+        val gist = telling.cue.gist
+        if (gist.isEmpty()) return false
+        return answers.any { answer -> (gist intersect words(answer).filter { it.length >= 5 }.toSet()).size >= minOf(3, gist.size) }
+    }
 
     /** The agent finished speaking. */
     fun agentSpoke(at: Long) {
@@ -184,7 +215,10 @@ class CallCues(val timing: Timing = Timing(), val since: Long) {
 
     /** An update to tell once the moment is right; one for a read of another call (it came after a restart) goes nowhere. */
     fun later(cue: CallCue) {
-        if (asked) reads.addLast(cue to 0)
+        if (!asked) return
+        // A newer update of a conversation takes the place of one still waiting.
+        cue.conversation?.let { conversation -> reads.removeAll { it.first.conversation == conversation } }
+        reads.addLast(cue to 0)
     }
 
     /** Updates still waiting to be told, the one sent and not yet told among them. */
@@ -222,14 +256,16 @@ class CallCues(val timing: Timing = Timing(), val since: Long) {
             return Action.Cue(CallCue.Silence(timing.silenceEnd - timing.silenceWarning))
         }
         telling?.let { sent ->
-            val settled = !moment.agentSpeaking && agentDone > sent.at && now - agentDone >= timing.answerSettle
+            // Decided once the agent has answered since the cue, or since the person spoke over it.
+            val since = sent.talkedOver ?: sent.at
+            val settled = !moment.agentSpeaking && agentDone > since && now - agentDone >= timing.answerSettle
             if (told(sent) && settled) {
                 telling = null
-            } else if (sent.talkedOver || (settled && sent.words.isNotEmpty()) ||
-                (sent.words.isEmpty() && moment.quiet && now - maxOf(sent.at, agentDone) >= timing.tellWait)) {
+            } else if (settled || (moment.quiet && now - maxOf(since, agentDone) >= timing.tellWait)) {
                 // Not told: again, once the person has had their answer.
                 telling = null
-                if (sent.tries < timing.retells) reads.addFirst(sent.cue to sent.tries + 1)
+                val superseded = sent.cue.conversation?.let { conversation -> reads.any { it.first.conversation == conversation } } ?: false
+                if (sent.tries < timing.retells && !superseded) reads.addFirst(sent.cue to sent.tries + 1)
             }
         }
         if (!moment.quiet) return null
@@ -260,5 +296,8 @@ class CallCues(val timing: Timing = Timing(), val since: Long) {
     companion object {
         /** The update that says a silence warning no longer holds. */
         const val SILENCE_OVER = """{"event":"silence_over"}"""
+
+        /** [text]'s words, lowercased, letters and digits only. */
+        fun words(text: String): List<String> = text.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
     }
 }

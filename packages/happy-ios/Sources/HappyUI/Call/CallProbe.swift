@@ -33,6 +33,9 @@ enum CallProbe {
     static var onChange: (() -> Void)?
     /// Every contextual update and prompt sent, as sent, and when.
     private(set) static var sent: [(kind: String, text: String, at: Date)] = []
+    /// The person's words typed into the live call, as a user message the
+    /// call hears as theirs (`ElevenLabsCallConnection`): no voice at all.
+    static var type: ((String) -> Void)?
 
     static func watch(_ conversation: ElevenLabsConversation, context: String, store: inout Set<AnyCancellable>) {
         transcript = []

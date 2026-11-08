@@ -36,8 +36,8 @@ private actor DemoComputer: AgentTransport {
 
     /// With `rounds`, that many more questions and answers after the
     /// four, enough to scroll. `live`, for a live call (`CallLiveCheck`):
-    /// 60 more tasks, three turns in every conversation, the last with
-    /// commentary ahead of its answer, and a reply streamed to each message
+    /// 60 more tasks, four turns in every conversation, the third with
+    /// commentary ahead of its answer and the last a 230-word answer, and a reply streamed to each message
     /// sent, or for Release notes a failure. `slowReads`, Fixture task
     /// 30's messages come that many seconds after they are asked for, as from a
     /// computer slow to answer: the first value until one read is in, the
@@ -81,6 +81,9 @@ private actor DemoComputer: AgentTransport {
         run("r2", 1_600, 2_000, [message("u2", "user", 3, "And when the sidebar is hidden?"),
                                  message("c2", "agent", 3.5, "Let me check how the sidebar hides."),
                                  message("m2", "agent", 4, "The main panel takes the whole window, and the transcript stays centred at its readable width.")]),
+        // A reply long enough to be cut when a read asks for few words.
+        run("r3", 2_100, 2_600, [message("u3", "user", 5, "What's left on the release checklist?"),
+                                 message("m3", "agent", 6, (1...12).map { "Step \($0): check item \($0) of the release, note who owns it, and confirm it is done before the build goes out." }.joined(separator: " "))]),
     ]
 
     private func history(_ agentId: String) -> [JSONValue] {

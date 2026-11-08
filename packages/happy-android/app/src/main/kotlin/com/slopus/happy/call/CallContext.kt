@@ -179,6 +179,9 @@ class CallContext(
     private val reading = HashMap<String, Pending>()
 
     private class Pending(val refresh: Deferred<CallTargetState?>, var given: CallTargetState, var words: Int)
+
+    /** Each conversation as its last refresh in this call found it, current then: what a read gives when the phone can't read it in time again. */
+    private val refreshedLast = HashMap<String, CallTargetState>()
     private var onReading: ((CallReading) -> Unit)? = null
 
     /**
@@ -719,6 +722,7 @@ class CallContext(
                 val entry = directory[id] ?: drafts[id]
                 val state = when {
                     found != null -> found.state ?: return CallToolResult.refused("That conversation can't be read now.")
+                    refreshedLast[id] != null -> refreshedLast.getValue(id).copy(fresh = false)
                     entry != null -> CallTargetState(entry, working = entry.status == CallTarget.Status.Running,
                         needsInput = entry.status == CallTarget.Status.NeedsInput, fresh = false)
                     else -> return CallToolResult.refused("That conversation can't be read now.")
@@ -980,8 +984,11 @@ class CallContext(
         if (!state.fresh) {
             name["refreshing"] = JsonPrimitive(true)
             state.checkedAt?.takeIf { it > 0 }?.let { name["checked"] = moment(it) }
+            name["note"] = JsonPrimitive(if (items.isEmpty()) REFRESHING_EMPTY_NOTE else REFRESHING_NOTE)
         }
-        return within(state, items, references, range ?: IntRange.EMPTY, request.words, name)
+        val value = within(state, items, references, range ?: IntRange.EMPTY, request.words, name)
+        // None of its turns on this phone: no empty list to take for an empty conversation.
+        return if (!state.fresh && items.isEmpty()) JsonObject(value - "turns" - "olderTurns") else value
     }
 
     /** [range] of [items] within [Limits.READ_BYTES] on the wire: the older turns give way first, then the newest's words. */
@@ -1009,6 +1016,7 @@ class CallContext(
         if (closed) return
         val event = linkedMapOf<String, JsonElement>("ref" to JsonPrimitive(ref(id)))
         (directory[id] ?: drafts[id])?.let { event["title"] = JsonPrimitive(it.title) }
+        if (state != null && state.fresh) refreshedLast[id] = state.copy(checkedAt = now())
         if (state == null || !state.fresh) {
             val line = linkedMapOf<String, JsonElement>("event" to JsonPrimitive("conversation_unconfirmed"))
             line.putAll(event)
@@ -1316,6 +1324,8 @@ class CallContext(
 
         /** What "queued" is, in the result as well as the tool's description: told only the status, the agent says "sent". */
         const val QUEUED = "on the person's device, not confirmed delivered or read"
+        const val REFRESHING_NOTE = "What this phone had: answer from it, and say you're checking the computer for anything newer, which comes as an [app] conversation_update."
+        const val REFRESHING_EMPTY_NOTE = "This phone has none of its turns yet, so this says nothing of what is in it: say you're checking; its turns come as an [app] conversation_update."
         const val UNCONFIRMED_NOTE = "The computer didn't answer in time: what you read may be out of date. Nothing to say unless asked."
         const val CURRENT_NOTE = "Checked: nothing new since you read it. Nothing to say unless asked."
 
