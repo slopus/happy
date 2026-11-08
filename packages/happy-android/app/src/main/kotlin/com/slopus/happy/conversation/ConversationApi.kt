@@ -211,14 +211,45 @@ open class ConversationApi(
      * composer's whole [mode]. 404 is a command unknown or just removed, 409
      * one that can't run now. The answer carries the catalog as it now is.
      */
-    open suspend fun invokeCommand(agentId: String, name: String, arguments: String?, mode: Mode): CommandInvoked {
+    open suspend fun invokeCommand(agentId: String, name: String, arguments: String?, mode: Mode, mutationId: String = clientId()): CommandInvoked {
         val body = buildJsonObject {
             arguments?.let { put("arguments", it) }
             put("mode", mode.json())
-            put("mutationId", clientId())
+            put("mutationId", mutationId)
         }
         val answer = call("POST", "/v0/agents/${escape(agentId)}/slash-commands/${escape(name)}", body)
         return CommandInvoked(AgentInfo.parse(answer["agent"]), SlashCommand.parseAll(answer["slashCommands"]))
+    }
+
+    /**
+     * The computer's global skills a new chat offers before it has an agent
+     * (API.md `GET /v0/skills`), as skill commands: only the enabled, ready
+     * ones, in the catalog's order, each name once (two folders may share
+     * one; an agent offers it once). Read 100 a page; a catalog that changed
+     * between pages (`409`) is read again from the start. `404` or `501` is
+     * a computer without skills: none.
+     */
+    open suspend fun skills(): List<SlashCommand> {
+        repeat(SKILL_READS) {
+            val skills = ArrayList<SlashCommand>()
+            var cursor: String? = null
+            try {
+                do {
+                    val query = "limit=100" + (cursor?.let { "&pageCursor=${escape(it)}" } ?: "")
+                    val page = call("GET", "/v0/skills?$query")
+                    page["skills"].arr.orEmpty().mapNotNullTo(skills, SlashCommand::globalSkill)
+                    cursor = page["nextPageCursor"].str
+                } while (cursor != null)
+                return skills.distinctBy { it.name }
+            } catch (e: ConversationApiException) {
+                when (e.status) {
+                    404, 501 -> return emptyList()
+                    409 -> Unit
+                    else -> throw e
+                }
+            }
+        }
+        throw ConversationApiException(409, "conflict", null)
     }
 
     open suspend fun abort(agentId: String) {
@@ -313,6 +344,8 @@ open class ConversationApi(
         private val json = Json { ignoreUnknownKeys = true }
         private val random = SecureRandom()
         private const val ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
+        /** Reads of the skills catalog before one that keeps changing under its pages is given up. */
+        private const val SKILL_READS = 3
 
         fun escape(component: String): String = URLEncoder.encode(component, "UTF-8").replace("+", "%20")
 

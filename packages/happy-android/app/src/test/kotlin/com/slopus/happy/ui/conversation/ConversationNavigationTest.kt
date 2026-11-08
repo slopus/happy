@@ -135,9 +135,11 @@ class ConversationNavigationTest {
             event("message.created", """{"agentId":"a1","message":{"id":"m"}}"""),
             event("message.created", """{"agentId":"a2","message":{"id":"n"}}"""),
             event("question.created", """{"question":{"id":"q","agentId":"a1"}}"""),
+            // The computer's skills, which a new chat offers.
+            event("skills.updated", """{"skillIds":null,"paths":[]}"""),
         ).signalsFor("a1").toList()
         assertEquals(ConversationSignal.Resync, signals[0])
-        assertEquals(listOf("message.created", "question.created"), signals.drop(1).map { (it as ConversationSignal.Event).type })
-        assertNull(signals.getOrNull(3))
+        assertEquals(listOf("message.created", "question.created", "skills.updated"), signals.drop(1).map { (it as ConversationSignal.Event).type })
+        assertNull(signals.getOrNull(4))
     }
 }

@@ -17,7 +17,9 @@ import com.slopus.happy.conversation.Block
 import com.slopus.happy.conversation.ConversationRowBuilder
 import com.slopus.happy.conversation.ConversationState
 import com.slopus.happy.conversation.Message
+import com.slopus.happy.conversation.NewWork
 import com.slopus.happy.conversation.SlashCommand
+import com.slopus.happy.conversation.WorkChoice
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.assertBox
 import com.slopus.happy.ui.assertDp
@@ -44,6 +46,8 @@ import java.io.File
  * begins, a path or a second word is ordinary text and closes it. A tap
  * runs a command at once and clears the draft; a skill becomes "/name "
  * for its arguments, and Send runs it with them. Nothing goes as a message.
+ * A new chat offers the computer's skills the same way; its first, sent,
+ * is its first message, which the conversation runs once the agent is made.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)
@@ -161,6 +165,27 @@ class ConversationCommandsTest {
         rule.waitForIdle()
         assertEquals(listOf<Pair<String, String?>>("code-review" to "focus on auth"), ran)
         assertTrue(sent.isEmpty())
+    }
+
+    @Test
+    fun aNewChatOffersTheComputersSkillsAndSendsTheFirstAsItsMessage() {
+        val skills = listOf(SlashCommand("code-review", true, "Review the current changes.", "skill"))
+        setScreen(state = ConversationState(loaded = true, newWork = NewWork(WorkChoice()), commands = skills))
+        val input = rule.node(ConversationComposerTags.INPUT)
+        input.performTextInput("/")
+        rule.waitUntil(5_000) { listRows().fetchSemanticsNodes().size == 1 }
+        val pill = rule.node(ConversationComposerTags.PILL).bounds
+        val list = rule.node(AutocompleteTags.LIST).bounds
+        assertBox("list", list, pill.left + 8.dp, pill.top - 8.dp - 48.dp, pill.right - pill.left - 16.dp, 48.dp)
+        shot("commands-new-chat")
+        listRows()[0].performClick()
+        rule.waitForIdle()
+        assertEquals("/code-review ", drafts.last())
+        input.performTextInput("focus on auth")
+        rule.node(ConversationComposerTags.PRIMARY).performClick()
+        rule.waitForIdle()
+        assertEquals(listOf("/code-review focus on auth"), sent)
+        assertTrue(ran.isEmpty())
     }
 
     @Test

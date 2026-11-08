@@ -54,6 +54,17 @@ data class SlashCommand(
             )
         }
 
+        /**
+         * One of `GET /v0/skills`'s summaries as the skill command an agent
+         * would offer for it (API.md "Slash commands"); null unless it is
+         * enabled and ready, as only those are offered to agents.
+         */
+        fun globalSkill(value: JsonElement?): SlashCommand? {
+            val o = value.obj ?: return null
+            if (o["enabled"].bool != true || o["status"].str != "ready") return null
+            return SlashCommand(o["name"].str?.takeIf { it.isNotEmpty() } ?: return null, true, o["description"].str.orEmpty(), SKILL)
+        }
+
         /** A catalog as sent (`slashCommands`); null when the answer carries none, so what is known stays. */
         fun parseAll(value: JsonElement?): List<SlashCommand>? = value.arr?.mapNotNull(::parse)
 

@@ -2068,3 +2068,17 @@ command runs at once and the draft clears) and `draft` (a skill becomes
 `Problem.CommandGone`/`CommandBusy`); a skill is a user message `/name args`
 carrying one `read_skill` tool_call_request, as desktop sends it. The command's
 words never go out as a message otherwise.
+
+A new chat, before it has an agent, offers the computer's global skills in the
+same list (`ConversationApi.skills`: `GET /v0/skills` 100 a page, read again
+from the start on 409, enabled and ready ones only; 404/501 offer none). They
+are read as the new chat starts and again on `skills.updated` or a reconnect.
+A first message that is `/skill args` with an offered name (`Conversation.send`)
+is drawn as the person's message, makes the task or bot as any first message
+does, then runs on the new agent with `POST /slash-commands/:name` under the
+composer's mode, the send's id as its `mutationId`, so the bubble gives way to
+the daemon's message when its `message.created` echoes that `mutationId` (or a
+reread history holds a person's message). The new agent's
+catalog (its bootstrap) decides: without that name, or with attachments, the
+words go as an ordinary message. A failure leaves the message failed with
+Retry, as a first send's does. Other commands wait for an agent.

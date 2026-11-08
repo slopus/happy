@@ -11,10 +11,11 @@ import com.slopus.happy.conversation.SlashCommands
  * them ([SlashCommands]): only while the whole draft is `/` and a word some
  * command begins, commands before skills. A picked command runs at once
  * ([run]); a skill instead becomes `/name ` in the draft, for what it is
- * asked to do, as desktop's palette has it (4078fd44).
+ * asked to do, as desktop's palette has it (4078fd44). A new chat has no
+ * [agentId] yet and offers the computer's skills.
  */
 class ConversationCommands(
-    private val agentId: String,
+    private val agentId: String?,
     private val commands: () -> List<SlashCommand>,
     private val run: (SlashCommand) -> Boolean,
 ) : SuggestionSource {

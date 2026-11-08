@@ -58,6 +58,10 @@ private class FakeAgent {
     /** What `GET /v0/config` answers. */
     var config = CONFIG
     var commandsAfter = """[{"name":"compact","hasArguments":false,"description":"Summarize.","kind":"compaction"}]"""
+    /** `GET /v0/skills`'s pages by `pageCursor`, null the first; with none it answers 404, a computer without skills. */
+    var skillPages: Map<String?, String> = emptyMap()
+    /** The next reads of a later skills page answer 409: the catalog changed under them. */
+    var skillConflicts = 0
 
     val request: AgentRequest = { method, path, body, _ ->
         requests += Triple(method, path, body as? JsonObject)
@@ -100,6 +104,13 @@ private class FakeAgent {
                 TransportResponse(commandStatus, body = """{"error":"The daemon's own words.","code":"conflict"}""".toByteArray())
             }
             route == "/v0/config" -> ok(config)
+            route == "/v0/skills" -> {
+                val cursor = path.substringAfter("pageCursor=", "").takeIf { it.isNotEmpty() }
+                when {
+                    cursor != null && skillConflicts > 0 -> { skillConflicts--; TransportResponse(409, body = """{"error":"Changed.","code":"conflict"}""".toByteArray()) }
+                    else -> skillPages[cursor]?.let(::ok) ?: TransportResponse(404, body = """{"error":"Not found.","code":"not_found"}""".toByteArray())
+                }
+            }
             route.endsWith("/draft") -> ok("""{"draft":${(body as JsonObject).let { """{"value":${it["draft"]},"updatedAt":${it["updatedAt"]}}""" }}}""")
             else -> ok("{}")
         }
@@ -503,13 +514,13 @@ class ConversationTest {
         // A task unless a bot is picked, unnamed, and the keyboard up in the composer.
         assertEquals(NewWork(WorkChoice(WorkKind.Task, "")), chat.state.value.newWork)
         assertEquals(ComposerFocus(1, 0), chat.state.value.composerFocus)
-        // Only the picker's models are read.
-        assertEquals(listOf("/v0/config"), agent.paths("GET"))
+        // Only the picker's models and the computer's skills are read.
+        assertEquals(setOf("/v0/config", "/v0/skills"), agent.paths("GET").toSet())
         assertTrue(agent.paths("POST").isEmpty())
         chat.setDraft("typed")
         advanceUntilIdle()
         // Nothing is saved for an agent that doesn't exist yet.
-        assertEquals(listOf("/v0/config"), agent.requests.map { it.second })
+        assertEquals(setOf("/v0/config", "/v0/skills"), agent.requests.map { it.second.substringBefore('?') }.toSet())
         // Both are drawn at once and go once the task is made (iOS c344a0cb3).
         assertTrue(chat.send("First"))
         assertTrue(chat.send("Second"))
@@ -1726,6 +1737,149 @@ class ConversationTest {
         val second = conversation(offline, keeper = store)
         advanceUntilIdle()
         assertEquals(listOf("compact", "code-review"), second.state.value.commands.map { it.name })
+    }
+
+    private fun skillPage(skills: String, next: String? = null) =
+        """{"skills":[$skills],"nextPageCursor":${next?.let { "\"$it\"" } ?: "null"},"cursor":"c0"}"""
+
+    private fun skill(name: String, enabled: Boolean = true, status: String = "ready") =
+        """{"id":"s-$name","path":"$name","name":"$name","description":"$name it.","enabled":$enabled,"status":"$status","error":null}"""
+
+    /** A computer offering /code-review, a made agent offering it too, and its bootstrap. */
+    private fun FakeAgent.withSkill(offered: Boolean = true) = apply {
+        skillPages = mapOf(null to skillPage(skill("code-review")))
+        val commands = if (offered) ""","slashCommands":[{"name":"code-review","hasArguments":true,"description":"Review.","kind":"skill"}]""" else ""
+        bootstrap = """{"agent":{"id":"a9","workspaceId":"w1","status":"idle"},"draft":{"value":null,"updatedAt":null},"pending":[]$commands}"""
+    }
+
+    @Test fun `a new chat offers the computer's enabled ready skills, read again when they change`() = runTest {
+        val agent = FakeAgent().apply {
+            skillPages = mapOf(
+                null to skillPage(skill("code-review") + "," + skill("off", enabled = false) + "," + skill("broken", status = "invalid"), next = "p2"),
+                // Two folders of one name: the agent offers it once, and so does the list.
+                "p2" to skillPage(skill("deploy") + "," + skill("code-review")),
+            )
+            // The catalog changed under its pages: read again from the start.
+            skillConflicts = 1
+        }
+        val chat = conversation(agent, NewTask("t1", "w1", "a9", "m1"))
+        advanceUntilIdle()
+        assertEquals(
+            listOf(SlashCommand("code-review", true, "code-review it.", "skill"), SlashCommand("deploy", true, "deploy it.", "skill")),
+            chat.state.value.commands,
+        )
+        assertEquals(
+            listOf("/v0/skills?limit=100", "/v0/skills?limit=100&pageCursor=p2", "/v0/skills?limit=100", "/v0/skills?limit=100&pageCursor=p2"),
+            agent.requests.map { it.second }.filter { it.startsWith("/v0/skills") },
+        )
+        agent.skillPages = mapOf(null to skillPage(skill("deploy", enabled = false)))
+        signals.emit(event("skills.updated", """{"skillIds":null,"paths":[]}"""))
+        advanceUntilIdle()
+        assertTrue(chat.state.value.commands.isEmpty())
+        // An agent's chat offers its own catalog, not these.
+        val existing = FakeAgent().apply { skillPages = agent.skillPages }
+        conversation(existing)
+        advanceUntilIdle()
+        assertTrue(existing.requests.none { it.second.startsWith("/v0/skills") })
+    }
+
+    @Test fun `a computer without skills offers a new chat none and says nothing`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent, NewTask("t1", "w1", "a9", "m1"))
+        advanceUntilIdle()
+        assertEquals(1, agent.requests.count { it.second.startsWith("/v0/skills") })
+        assertTrue(chat.state.value.commands.isEmpty())
+        assertNull(chat.state.value.alert)
+        assertNull(chat.state.value.error)
+    }
+
+    @Test fun `a new chat's first skill makes the task, then runs on its agent under the composer's mode`() = runTest {
+        val agent = FakeAgent().withSkill()
+        val chat = conversation(agent, NewTask("t1", "w1", "a9", "m1"))
+        advanceUntilIdle()
+        val picked = Mode("codex", "openai/gpt-5.6-luna", "low", null, "read_only")
+        chat.setMode(picked)
+        assertTrue(chat.send("/code-review  focus on auth"))
+        advanceUntilIdle()
+        assertTrue(chat.state.value.created)
+        assertEquals(listOf("/v0/tasks", "/v0/agents/a9/slash-commands/code-review"), agent.paths("POST"))
+        val body = agent.requests.single { "/slash-commands/" in it.second }.third!!
+        assertEquals("focus on auth", body["arguments"]!!.jsonPrimitive.content)
+        assertEquals(picked, Mode.parse(body["mode"]))
+        // Drawn as the person's words until the daemon's message, known by the send's id, comes.
+        val row = chat.state.value.rows.single() as ConversationRow.User
+        assertEquals("/code-review  focus on auth", row.text)
+        assertEquals(Delivery.Pending, row.delivery)
+        assertEquals(row.messageId, body["mutationId"]!!.jsonPrimitive.content)
+        signals.emit(
+            event(
+                "message.created",
+                """{"agentId":"a9","runId":"r1","message":{"id":"daemon1","role":"user","createdAt":2,"content":[{"type":"text","text":"Use the /code-review skill.\n\nfocus on auth"}],"metadata":{}},"mutationId":"${row.messageId}"}""",
+            ),
+        )
+        advanceUntilIdle()
+        val shown = chat.state.value.rows.filterIsInstance<ConversationRow.User>()
+        assertEquals(listOf("daemon1"), shown.map { it.messageId })
+    }
+
+    @Test fun `a first skill's bubble gives way to the daemon's message read again after a reconnect`() = runTest {
+        val agent = FakeAgent().withSkill()
+        val chat = conversation(agent, NewTask("t1", "w1", "a9", "m1"))
+        advanceUntilIdle()
+        chat.send("/code-review")
+        advanceUntilIdle()
+        assertEquals(Delivery.Pending, (chat.state.value.rows.single() as ConversationRow.User).delivery)
+        // The echo was missed; history has the daemon's message, under its own id and with no mutation.
+        agent.page = """{"runs":[{"id":"r1","status":"running","messages":[{"id":"daemon1","role":"user","createdAt":2,"content":[{"type":"text","text":"Use the /code-review skill."}],"metadata":{}}]}],"hasMore":false}"""
+        signals.emit(ConversationSignal.Resync)
+        advanceUntilIdle()
+        assertEquals(listOf("daemon1"), chat.state.value.rows.filterIsInstance<ConversationRow.User>().map { it.messageId })
+    }
+
+    @Test fun `a first skill the new agent doesn't offer goes as the words`() = runTest {
+        val agent = FakeAgent().withSkill(offered = false)
+        agent.sendStatus = 202
+        val chat = conversation(agent, NewTask("t1", "w1", "a9", "m1"))
+        advanceUntilIdle()
+        chat.send("/code-review focus on auth")
+        advanceUntilIdle()
+        assertTrue(agent.requests.none { "/slash-commands/" in it.second })
+        assertEquals("/code-review focus on auth", agent.requests.single { it.second.endsWith("/send") }.third!!["text"]!!.jsonPrimitive.content)
+    }
+
+    @Test fun `a first skill with a picture goes as a message`() = runTest {
+        val agent = FakeAgent().withSkill()
+        agent.sendStatus = 202
+        val chat = conversation(agent, NewTask("t1", "w1", "a9", "m1"))
+        advanceUntilIdle()
+        chat.send("/code-review this", listOf(Block.Image("image/jpeg", "AAAA")))
+        advanceUntilIdle()
+        assertTrue(agent.requests.none { "/slash-commands/" in it.second })
+        assertEquals("/code-review this", agent.requests.single { it.second.endsWith("/send") }.third!!["text"]!!.jsonPrimitive.content)
+    }
+
+    @Test fun `a first skill refused stays failed and Retry runs it again under the same id`() = runTest {
+        val agent = FakeAgent().withSkill()
+        // A daemon's fault is not tried again by itself: the same run twice would run the skill twice.
+        agent.commandStatus = 503
+        val chat = conversation(agent, NewTask("t1", "w1", "a9", "m1"))
+        advanceUntilIdle()
+        chat.send("/code-review")
+        advanceUntilIdle()
+        val row = chat.state.value.rows.single() as ConversationRow.User
+        assertEquals("/code-review", row.text)
+        assertEquals(Delivery.Failed(Problem.Said("The daemon's own words.")), row.delivery)
+        assertEquals(1, agent.requests.count { "/slash-commands/" in it.second })
+        agent.commandStatus = 202
+        chat.retrySend(row.messageId)
+        advanceUntilIdle()
+        val runs = agent.requests.filter { "/slash-commands/" in it.second }.map { it.third!! }
+        assertEquals(2, runs.size)
+        assertEquals(listOf(row.messageId, row.messageId), runs.map { it["mutationId"]!!.jsonPrimitive.content })
+        // No arguments were typed: none go.
+        assertFalse("arguments" in runs[1])
+        assertTrue(agent.requests.none { it.second.endsWith("/send") })
+        assertEquals(Delivery.Pending, (chat.state.value.rows.single() as ConversationRow.User).delivery)
     }
 
 

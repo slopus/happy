@@ -442,17 +442,18 @@ private fun RowScope.FileMentionSuggestion(suggestion: Suggestion.FileMention) {
 private fun RowScope.AgentCommandSuggestion(suggestion: Suggestion.AgentCommand) {
     val colors = HappyTheme.colors
     val command = suggestion.command
+    val artworkAgent = suggestion.agentId?.takeIf { command.image }
     Box(
         modifier = Modifier
             .padding(end = AutocompleteSpec.iconGap)
             .testTag(AutocompleteTags.ICON)
             .requiredSize(AutocompleteSpec.iconCircle)
-            .clip(if (command.image) RoundedCornerShape(AutocompleteSpec.artworkRadius) else CircleShape)
+            .clip(if (artworkAgent != null) RoundedCornerShape(AutocompleteSpec.artworkRadius) else CircleShape)
             .background(colors.surfaceHigh),
         contentAlignment = Alignment.Center,
     ) {
-        if (command.image) {
-            AgentPicture(SlashCommand.imagePath(suggestion.agentId, command.name), command.thumbhash, AutocompleteSpec.iconCircle, AutocompleteSpec.artworkRadius)
+        if (artworkAgent != null) {
+            AgentPicture(SlashCommand.imagePath(artworkAgent, command.name), command.thumbhash, AutocompleteSpec.iconCircle, AutocompleteSpec.artworkRadius)
         } else {
             Icon(
                 when (command.kind) {

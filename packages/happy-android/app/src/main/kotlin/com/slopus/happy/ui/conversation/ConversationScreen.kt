@@ -265,10 +265,10 @@ fun ConversationScreen(
     val bubble = userMessageBubblePalette(bubbleColor, colors.dark)
     val workspaceId = state.agent?.workspaceId
     val workspace = remember(actions, workspaceId) { workspaceId?.let { id -> actions.workspace?.invoke(id) } }
-    // "/" opens the agent's commands over the composer, as desktop's palette does.
+    // "/" opens the agent's commands over the composer, as desktop's palette does; a new chat's, the computer's skills.
     val commands by rememberUpdatedState(state.commands)
     val onCommand by rememberUpdatedState(actions.onCommand)
-    val commandSource = remember(state.agent?.id) { state.agent?.id?.let { id -> ConversationCommands(id, { commands }) { command -> onCommand(command.name, null) } } }
+    val commandSource = remember(state.agent?.id) { ConversationCommands(state.agent?.id, { commands }) { command -> onCommand(command.name, null) } }
     val autocomplete = com.slopus.happy.ui.autocomplete.rememberComposerAutocomplete(
         text,
         onTextChange = {
@@ -567,7 +567,7 @@ fun ConversationScreen(
                                 maxHeight = minOf(ConversationQuestionSpec.maxHeight, androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp / 2),
                             )
                         }
-                        if (state.created && state.canSend && roleCanSend) {
+                        if (state.canSend && roleCanSend) {
                             // Over the transcript, in the pill's width and 8 above it (the composer's own margin under it).
                             Box(
                                 Modifier
@@ -601,8 +601,9 @@ fun ConversationScreen(
                                 text = text,
                                 onTextChange = onComposerText,
                                 onSend = { words, attachments ->
-                                    // "/name" and what follows runs that command; its words are never a message.
-                                    val invoked = if (attachments.isEmpty()) SlashCommands.invocation(words.trim(), state.commands) else null
+                                    // "/name" and what follows runs that command; its words are never a message. A new chat's
+                                    // first skill is its first message, drawn as one while the agent is made (Conversation.send).
+                                    val invoked = if (attachments.isEmpty() && state.created) SlashCommands.invocation(words.trim(), state.commands) else null
                                     if (invoked != null) {
                                         flight.grounded = true
                                         return@ConversationComposer actions.onCommand(invoked.command.name, invoked.arguments)

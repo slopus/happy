@@ -282,13 +282,15 @@ internal fun AgentSession.conversationKeeper(agentId: String): ConversationKeepe
     override fun write(value: JsonObject) = keepResource(key, value)
 }
 
-/** The connection's journal as one conversation hears it: its own events, configuration changes, and a resync on every (re)connect. */
+/** The connection's journal as one conversation hears it: its own events, configuration and skill changes, and a resync on every (re)connect. */
 internal fun Flow<AgentEvent>.signalsFor(agentId: String): Flow<ConversationSignal> = mapNotNull { event ->
     when {
         event.type == AgentEvent.HELLO -> ConversationSignal.Resync
         event.agentId == agentId -> ConversationSignal.Event(event.type, event.data)
         // The computer's configuration (its models) changed: every conversation's pickers follow.
         event.type == "config.updated" -> ConversationSignal.Event(event.type, event.data)
+        // Its skills changed: a new chat's "/" list follows.
+        event.type == Conversation.SKILLS_UPDATED -> ConversationSignal.Event(event.type, event.data)
         else -> null
     }
 }

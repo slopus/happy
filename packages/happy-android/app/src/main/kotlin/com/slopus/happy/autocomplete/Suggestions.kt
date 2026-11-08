@@ -14,8 +14,12 @@ sealed interface Suggestion {
         override val text get() = "/$command"
     }
 
-    /** A Happy Agent's own command ([SlashCommand]): its artwork or kind's glyph, what it does, and its kind. */
-    data class AgentCommand(val command: SlashCommand, val agentId: String) : Suggestion {
+    /**
+     * A Happy Agent's own command ([SlashCommand]): its artwork or kind's
+     * glyph, what it does, and its kind. [agentId] serves the artwork; null
+     * for a new chat's skills, offered before there is an agent.
+     */
+    data class AgentCommand(val command: SlashCommand, val agentId: String?) : Suggestion {
         override val key get() = "agent-cmd-${command.name}"
         override val text get() = "/${command.name}"
     }
