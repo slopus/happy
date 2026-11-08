@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="compute_pools_title">Grupos de computação</string>
+    <string name="compute_permission">Gerenciar grupos de computação exige a permissão pools.manage.</string>
+    <string name="compute_empty">Nenhum grupo de computação</string>
+    <string name="compute_no_nodes">Nenhuma máquina</string>
+    <string name="compute_last_seen">Último contato</string>
+    <string name="compute_no_agents">Nenhum agente alocado aqui</string>
+    <string name="compute_drain">Retirar máquina da rotação</string>
+    <string name="compute_undrain">Retomar alocações</string>
+    <string name="compute_drain_confirm">Parar de alocar novos trabalhos em %1$s?</string>
+    <string name="compute_undrain_confirm">Permitir novos trabalhos em %1$s?</string>
+    <string name="compute_add">Adicionar máquina</string>
+    <string name="compute_capacity_unknown">Sandboxes: %1$d · capacidade desconhecida</string>
+    <string name="compute_capacity">Sandboxes: %1$d / %2$d</string>
+    <string name="compute_draining">fora da rotação</string>
+    <string name="compute_enrolling">cadastrando</string>
+    <string name="compute_revoked">acesso revogado</string>
+    <string name="compute_command_note">Execute este comando na máquina que deseja adicionar. Ele contém um segredo de uso único; mantenha-o privado.</string>
+    <string name="compute_expired">O comando expirou em %1$s</string>
+    <string name="compute_expires">Expira em %1$s</string>
+    <string name="compute_installer_missing">O servidor não tem um instalador configurado.</string>
+</resources>

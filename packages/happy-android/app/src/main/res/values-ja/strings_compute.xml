@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="compute_pools_title">コンピュートプール</string>
+    <string name="compute_permission">コンピュートプールの管理には pools.manage 権限が必要です。</string>
+    <string name="compute_empty">コンピュートプールはありません</string>
+    <string name="compute_no_nodes">マシンはありません</string>
+    <string name="compute_last_seen">最終接続</string>
+    <string name="compute_no_agents">配置されたエージェントはありません</string>
+    <string name="compute_drain">新規配置を停止</string>
+    <string name="compute_undrain">配置を再開</string>
+    <string name="compute_drain_confirm">%1$s への新しい作業の配置を停止しますか？</string>
+    <string name="compute_undrain_confirm">%1$s への新しい作業を許可しますか？</string>
+    <string name="compute_add">マシンを追加</string>
+    <string name="compute_capacity_unknown">サンドボックス: %1$d · 容量不明</string>
+    <string name="compute_capacity">サンドボックス: %1$d / %2$d</string>
+    <string name="compute_draining">新規配置停止中</string>
+    <string name="compute_enrolling">登録中</string>
+    <string name="compute_revoked">アクセス取消済み</string>
+    <string name="compute_command_note">追加するマシンでこのコマンドを実行してください。一度だけ使える秘密情報が含まれるため、他人に共有しないでください。</string>
+    <string name="compute_expired">コマンドの有効期限切れ: %1$s</string>
+    <string name="compute_expires">有効期限: %1$s</string>
+    <string name="compute_installer_missing">サーバーにインストーラーが設定されていません。</string>
+</resources>

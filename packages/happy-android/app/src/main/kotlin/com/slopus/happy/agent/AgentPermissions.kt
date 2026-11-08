@@ -22,6 +22,8 @@ object Permission {
     const val PROVIDERS_OWN = "providers.own"
     /** Adding providers to the team's connections. */
     const val PROVIDERS_MANAGE = "providers.manage"
+    /** Monitoring pools and managing their nodes and enrollment commands. */
+    const val POOLS_MANAGE = "pools.manage"
 
     /**
      * A team server's refusal for want of a permission (`403 { "error":
