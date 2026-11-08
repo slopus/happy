@@ -204,13 +204,13 @@ class ShareLinksDeviceShots {
         device.findObject(By.pkg("com.android.systemui").desc("Dismiss"))?.click()
         device.wait(Until.gone(By.pkg("com.android.systemui").res("com.android.systemui", "clipboard_preview")), 8_000)
 
-        // 3. The chat: the bare link here by its live title, a labelled one, another server's.
+        // 3. The chat: the bare link here by its live title, a labelled one by it too, another server's.
         rule.runOnUiThread { navigator!!.navigate("chat") }
         rule.waitUntil(15_000) { rule.onAllNodes(hasTestTag(PROSE) and hasText("They are here: Fixture notes"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         capture("3-chat")
 
-        // 4. A tap on the labelled share link opens the artifact in the app.
-        tapRowStart("Open the notes")
+        // 4. A tap on the labelled share link, which reads as the artifact's live title, opens it in the app.
+        tapRowStart("Fixture notes, labelled")
         rule.waitUntil(15_000) { navigator!!.currentBackStackEntry?.destination?.route?.contains("ArtifactRoute") == true }
         rule.waitUntil(15_000) { rule.onAllNodes(hasText("A test fixture", substring = true), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         capture("4-opened-artifact")
@@ -262,7 +262,7 @@ class ShareLinksDeviceShots {
             {"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"Where did we put the notes?"}],"metadata":{}},
             {"id":"m2","role":"agent","createdAt":2,"content":[
                 {"type":"text","text":"They are here: $NOTES"},
-                {"type":"text","text":"[Open the notes]($NOTES)"},
+                {"type":"text","text":"[Open the notes]($NOTES), labelled."},
                 {"type":"text","text":"[The other team's plan]($PLAN) is on a server this phone isn't connected to."}
             ],"metadata":{}}
         ]}]}"""

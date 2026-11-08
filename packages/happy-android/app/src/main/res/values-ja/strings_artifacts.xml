@@ -67,6 +67,7 @@
     <string name="reference_unavailable_project">利用できないプロジェクト</string>
     <string name="reference_unavailable_service">利用できないサービス</string>
     <string name="reference_unavailable_user">利用できないユーザー</string>
+    <string name="reference_unavailable_surface">利用できないスペース</string>
     <string name="reference_unavailable">利用できない参照</string>
 
     <string name="artifact_history">履歴</string>

@@ -35,6 +35,8 @@ data class References(
     /** People the computer doesn't know; any other unnamed one is still being read. */
     val missingUsers: Set<String> = emptySet(),
     val words: ReferenceWords = ReferenceWords.English,
+    /** The Surfaces the person is in, by ID, as named ("" unnamed): a Surface link opens one. */
+    val surfaces: Map<String, String> = emptyMap(),
 ) {
     /** Something a reference can open: a conversation. */
     data class Entity(val label: String, val agentId: String)
@@ -97,6 +99,7 @@ data class References(
                     else -> View.Mention("@…", me = reference.id == me)
                 }
             }
+            "surface" -> surfaces[reference.id]?.let { name -> View.Link(name.trim().ifEmpty { words.untitledSurface }) } ?: inert
             // Projects aren't on this phone; services open nowhere yet.
             else -> inert
         }
@@ -126,13 +129,25 @@ data class References(
     }
 
     companion object {
-        /** Whether [text] may hold a reference at all, or a share link that may read as one: most messages don't, and are never parsed for one. */
-        fun mayHold(text: String): Boolean = text.contains("<happy-") || text.contains(com.slopus.happy.agent.HappyShareLinks.PREFIX)
+        /** Whether [text] may hold a reference at all, a Happy link or a share link that may read as one: most messages don't, and are never parsed for one. */
+        fun mayHold(text: String): Boolean =
+            text.contains("<happy-") || text.contains("happy:", ignoreCase = true) || text.contains("happy-file:", ignoreCase = true) ||
+                text.contains(com.slopus.happy.agent.HappyShareLinks.PREFIX)
 
         /**
          * `messageReferenceEntities`, from the bots and tasks [catalog] holds,
          * each owner's agent as the catalog has it newest, with its active subtasks.
          */
+        /**
+         * The Surfaces a reference can name, by ID, as named: the ones the
+         * person is in and hasn't archived (desktop's catalog names, home's list).
+         */
+        fun surfaces(catalog: AgentCatalog): Map<String, String> = catalog.surfaces.values
+            .filter { it["status"].str != "archived" && (it["archivedAt"] ?: JsonNull) == JsonNull }
+            .filter { surface -> (surface["members"] as? JsonArray).orEmpty().any { (it as? JsonObject)?.get("userId").str == catalog.userId } }
+            .mapNotNull { surface -> surface["id"].str?.let { it to surface["name"].str.orEmpty() } }
+            .toMap()
+
         fun entities(catalog: AgentCatalog): Pair<Map<String, Entity>, Map<String, Entity>> {
             val agents = HashMap<String, Entity>()
             val workspaces = HashMap<String, Entity>()
@@ -215,6 +230,8 @@ data class ReferenceWords(
     /** By kind; [unavailableReference] for any other. */
     val unavailableKinds: Map<String, String>,
     val unavailableReference: String,
+    /** A Surface with no name (desktop's). */
+    val untitledSurface: String = "Untitled",
 ) {
     fun unavailable(kind: String): String = unavailableKinds[kind] ?: unavailableReference
 

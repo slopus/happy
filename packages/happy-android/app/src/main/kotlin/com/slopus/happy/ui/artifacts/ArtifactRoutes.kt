@@ -1,5 +1,7 @@
 package com.slopus.happy.ui.artifacts
 
+import com.slopus.happy.references.HappyReferences
+import com.slopus.happy.ui.references.ReferenceOpener
 import com.slopus.happy.ui.page
 import android.content.res.Resources
 import androidx.compose.runtime.Composable
@@ -132,6 +134,11 @@ private class ArtifactHolder(session: AgentSession?, route: ArtifactRoute, resou
                 resources.getString(R.string.artifact_media_label, resources.getString(if (isVideo) R.string.artifact_video else R.string.artifact_picture), name)
             },
             library = it.media,
+            // Its Happy links read as a message's: by their live names, what they name read once each.
+            resolve = { text ->
+                it.references.read(HappyReferences.linkTags(text, it::isHere))
+                HappyReferences.markdown(text, it.references.references.value, here = it::isHere)
+            },
         ).also(ArtifactLoader::load)
     }
 
@@ -186,6 +193,10 @@ private fun ArtifactEntry(graph: AppGraph, nav: NavHostController, route: Artifa
                     ArtifactClient(session!!.client).bytes(route.artifactId, version.number, file.path, chunk = ArtifactClient.PROGRESS_CHUNK, progress = progress)
                 },
                 artifactKey = "artifact-${route.artifactId}",
+                references = session?.references?.references,
+                resolve = { text, references -> HappyReferences.markdown(text, references, here = session!!::isHere) },
+                // What a Happy link names opens in the app, as one in a message does.
+                openApp = { url -> ReferenceOpener(nav, route.connectionId, session?.references, happyLinks).open(url) },
                 // The artifact itself, not one file of it a link opened.
                 onDelete = if (route.path == null) ({ ArtifactClient(session!!.client).delete(route.artifactId) }) else null,
                 genUiSecrets = session?.client?.let { GenUiSecretApi(it) },

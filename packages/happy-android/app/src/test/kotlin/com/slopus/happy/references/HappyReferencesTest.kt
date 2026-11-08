@@ -216,4 +216,24 @@ class HappyReferencesTest {
         assertEquals("Done <happy-agent id=\"a\"/>", HappyReferences.droppingPartialTag("Done <happy-agent id=\"a\"/>"))
         assertEquals("Started ", HappyReferences.markdown("Started <happy-agent id=\"a", References(), streaming = true))
     }
+
+    @Test
+    fun aSurfaceThePersonIsInIsNamedAndOpens() {
+        fun surface(id: String, name: String, member: String, archived: Boolean = false) = buildJsonObject {
+            put("id", id)
+            put("type", "todo")
+            put("name", name)
+            if (archived) put("status", "archived")
+            put("members", JsonArray(listOf(buildJsonObject { put("userId", member) })))
+        }
+        val catalog = AgentCatalog(
+            userId = "u1",
+            surfaces = mapOf("s1" to surface("s1", "Groceries", "u1"), "s2" to surface("s2", "Theirs", "u2"), "s3" to surface("s3", "Old", "u1", archived = true)),
+        )
+        val surfaces = References.surfaces(catalog)
+        assertEquals(mapOf("s1" to "Groceries"), surfaces)
+        val references = References(surfaces = surfaces + ("s4" to " "))
+        assertEquals("[Groceries](ref:surface/s1) and [Untitled](ref:surface/s4) but an unavailable surface",
+            HappyReferences.markdown("[list](happy://surfaces/s1) and <happy-surface id=\"s4\"/> but [](happy://surfaces/s2)", references).replace(HappyReferences.linkPrefix, "ref:"))
+    }
 }

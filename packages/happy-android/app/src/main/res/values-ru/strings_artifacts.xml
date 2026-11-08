@@ -73,6 +73,7 @@
     <string name="reference_unavailable_project">недоступный проект</string>
     <string name="reference_unavailable_service">недоступный сервис</string>
     <string name="reference_unavailable_user">недоступный пользователь</string>
+    <string name="reference_unavailable_surface">недоступное пространство</string>
     <string name="reference_unavailable">недоступная ссылка</string>
 
     <string name="artifact_history">История</string>

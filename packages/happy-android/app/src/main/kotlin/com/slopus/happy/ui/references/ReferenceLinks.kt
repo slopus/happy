@@ -17,8 +17,8 @@ import com.slopus.happy.ui.conversation.openConversation
 /**
  * Where the app's own links in a connection's screens go (iOS
  * ChatViewController's `open(link:)`): a reference a message named opens
- * what it names, an artifact at the version it pinned and a conversation
- * as its row would; a mention opens nothing; a Happy URL goes to
+ * what it names, an artifact at the version it pinned, a Surface, and a
+ * conversation as its row would; a mention opens nothing; a Happy URL goes to
  * [HappyLinks]. Anything else is the caller's.
  */
 class ReferenceOpener(
@@ -70,6 +70,11 @@ class ReferenceOpener(
             )
             return
         }
+        if (reference.kind == "surface") {
+            val name = references.surfaces[reference.id] ?: return
+            nav.navigate(com.slopus.happy.ui.surfaces.SurfaceRoute(connectionId, reference.id, name))
+            return
+        }
         val entity = references.entity(reference) ?: return
         nav.openConversation(connectionId, entity.agentId)
     }
@@ -90,10 +95,12 @@ fun rememberReferenceWords(): ReferenceWords {
         "project" to stringResource(R.string.reference_unavailable_project),
         "service" to stringResource(R.string.reference_unavailable_service),
         "user" to stringResource(R.string.reference_unavailable_user),
+        "surface" to stringResource(R.string.reference_unavailable_surface),
     )
     val other = stringResource(R.string.reference_unavailable)
-    return remember(artifact, untitledArtifact, untitledAgent, untitledWorkspace, subagent, kinds, other) {
-        ReferenceWords(artifact, untitledArtifact, untitledAgent, untitledWorkspace, subagent, kinds, other)
+    val untitledSurface = stringResource(R.string.document_untitled)
+    return remember(artifact, untitledArtifact, untitledAgent, untitledWorkspace, subagent, kinds, other, untitledSurface) {
+        ReferenceWords(artifact, untitledArtifact, untitledAgent, untitledWorkspace, subagent, kinds, other, untitledSurface)
     }
 }
 

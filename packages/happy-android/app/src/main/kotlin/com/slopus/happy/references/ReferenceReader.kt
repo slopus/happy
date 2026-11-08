@@ -55,23 +55,30 @@ class ReferenceReader(
     private val artifactReads = HashSet<String>()
     private val userReads = HashSet<String>()
 
-    private class Entities(val agents: Map<String, References.Entity>, val workspaces: Map<String, References.Entity>, val me: String?) {
-        override fun equals(other: Any?) = other is Entities && other.agents == agents && other.workspaces == workspaces && other.me == me
+    private class Entities(
+        val agents: Map<String, References.Entity>,
+        val workspaces: Map<String, References.Entity>,
+        val me: String?,
+        val surfaces: Map<String, String>,
+    ) {
+        override fun equals(other: Any?) =
+            other is Entities && other.agents == agents && other.workspaces == workspaces && other.me == me && other.surfaces == surfaces
         override fun hashCode() = agents.hashCode() * 31 + workspaces.hashCode()
     }
 
-    private fun entities(catalog: AgentCatalog) = References.entities(catalog).let { (agents, workspaces) -> Entities(agents, workspaces, catalog.userId) }
+    private fun entities(catalog: AgentCatalog) =
+        References.entities(catalog).let { (agents, workspaces) -> Entities(agents, workspaces, catalog.userId, References.surfaces(catalog)) }
 
     /** What references read as now; equal readings are the same instance, so a row built with one is built again only when it changes. */
     val references: StateFlow<References> = combine(
         catalog.map(::entities).distinctUntilChanged(),
         combine(artifacts, pages, ::Pair), users, missingUsers, wordState,
     ) { entities, (artifacts, pages), users, missing, words ->
-        References(entities.agents, entities.workspaces, artifacts, pages, users = users, me = entities.me, missingUsers = missing, words = words)
+        References(entities.agents, entities.workspaces, artifacts, pages, users = users, me = entities.me, missingUsers = missing, words = words, surfaces = entities.surfaces)
     }
         .distinctUntilChanged()
         .flowOn(compute)
-        .stateIn(scope, SharingStarted.Eagerly, entities(catalog.value).let { References(it.agents, it.workspaces, me = it.me) })
+        .stateIn(scope, SharingStarted.Eagerly, entities(catalog.value).let { References(it.agents, it.workspaces, me = it.me, surfaces = it.surfaces) })
 
     init {
         scope.launch { events.collect(::take) }

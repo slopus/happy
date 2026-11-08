@@ -49,9 +49,11 @@ sealed interface ArtifactUi {
 
     /**
      * A Markdown file, its pictures by the address it wrote, in the order
-     * they show. A version made in the last [ArtifactLoader.FRESH_DIFF_MILLIS]
-     * also carries its [text] and the version before's ([previous], labelled
-     * [previousLabel]), so it opens on what changed (desktop e10d6444).
+     * they show, and its [text] as written, which its Happy links are read
+     * from again as what they name changes. A version made in the last
+     * [ArtifactLoader.FRESH_DIFF_MILLIS] also carries the version before's
+     * ([previous], labelled [previousLabel]), so it opens on what changed
+     * (desktop e10d6444).
      */
     data class Document(
         val path: String,
@@ -124,6 +126,8 @@ class ArtifactLoader(
     /** The connection's kept media, where the version's files are read once. */
     private val library: MediaLibrary? = null,
     private val now: () -> Long = System::currentTimeMillis,
+    /** A document's Markdown with its Happy links as they read now ([com.slopus.happy.references.HappyReferences.markdown]). */
+    private val resolve: (String) -> String = { it },
 ) {
     private val stateFlow = MutableStateFlow<ArtifactUi>(ArtifactUi.Loading)
     val state: StateFlow<ArtifactUi> = stateFlow.asStateFlow()
@@ -219,9 +223,9 @@ class ArtifactLoader(
         val media = media(version)
         val self = media.media(file, labels(false, file.name))
         val body = media.data(self.key) ?: throw IllegalStateException("unreadable")
-        val (raws, blocks) = withContext(Dispatchers.Default) {
+        val (text, raws, blocks) = withContext(Dispatchers.Default) {
             val text = ArtifactMarkdown.prepare(String(body, Charsets.UTF_8))
-            ArtifactMarkdown.pictures(text) to parseMarkdownBlocks(text)
+            Triple(text, ArtifactMarkdown.pictures(text), parseMarkdownBlocks(resolve(text)))
         }
         val pictures = LinkedHashMap<String, ArtifactMediaItem>()
         for (raw in raws) {
@@ -237,8 +241,8 @@ class ArtifactLoader(
         val order = raws.mapNotNull { pictures[it] }.distinctBy { it.key }
         val before = previous(version)
         awaitSizes(media, order)
-        return if (before == null) ArtifactUi.Document(file.path, blocks, pictures, order)
-        else ArtifactUi.Document(file.path, blocks, pictures, order, ArtifactMarkdown.prepare(String(body, Charsets.UTF_8)), before.second, before.first)
+        return if (before == null) ArtifactUi.Document(file.path, blocks, pictures, order, text)
+        else ArtifactUi.Document(file.path, blocks, pictures, order, text, before.second, before.first)
     }
 
     /**

@@ -71,6 +71,7 @@
     <string name="reference_unavailable_project">un proyecto no disponible</string>
     <string name="reference_unavailable_service">un servicio no disponible</string>
     <string name="reference_unavailable_user">un usuario no disponible</string>
+    <string name="reference_unavailable_surface">un espacio no disponible</string>
     <string name="reference_unavailable">una referencia no disponible</string>
 
     <string name="artifact_history">Historial</string>

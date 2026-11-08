@@ -349,7 +349,10 @@ fun spansToAnnotatedString(spans: List<MarkdownSpan>, onLink: ((String) -> Unit)
             fontFamily = if (SpanStyle.Code in span.styles) AppMono else null,
         )
         val url = span.url
-        if (url != null && onLink != null) {
+        if (url != null && com.slopus.happy.references.HappyReferences.mention(url) != null) {
+            // A person this phone named: in the strong face, opening nothing, as in a conversation.
+            withStyle(style.copy(fontWeight = FontWeight.SemiBold)) { append(span.text) }
+        } else if (url != null && onLink != null) {
             withLink(LinkAnnotation.Clickable(url, LinkStyles) { onLink(url) }) { withStyle(style) { append(span.text) } }
         } else if (url != null && isHttpMarkdownLink(url)) {
             withLink(LinkAnnotation.Url(url, LinkStyles)) { withStyle(style) { append(span.text) } }

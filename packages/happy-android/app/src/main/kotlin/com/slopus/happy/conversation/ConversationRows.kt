@@ -259,7 +259,7 @@ class ConversationRowBuilder(
         val rows = build(message, agentId, parentAgentId, streaming, if (streaming) ::live else null, references, hasPage, here)
         val shown = message.content.mapNotNull { block -> (block as? Block.ToolCall)?.presentation?.let(::inlineCandidate) }
         val names = shown.isNotEmpty() || message.content.any { it is Block.Text && References.mayHold(it.text) }
-        if (names) named?.let { tell -> message.content.forEach { if (it is Block.Text) tell(here?.let { h -> HappyReferences.shareLinkTags(it.text, h) } ?: it.text) } }
+        if (names) named?.let { tell -> message.content.forEach { if (it is Block.Text) tell(HappyReferences.linkTags(it.text, here)) } }
         if (references != null) shown.filter { references.artifacts[it] == null }.takeIf { it.isNotEmpty() }?.let { pages?.invoke(it) }
         // The pictures are read here, on the lane, so the rows find them read on the main thread.
         for (row in rows) when (row) {
@@ -342,19 +342,21 @@ class ConversationRowBuilder(
             val sender = message.senderAgentId
             if (sender != null && sender != agentId && sender != parentAgentId) {
                 val text = inboundText(message.text, sender).trim()
-                return listOf(ConversationRow.Collaborator("$id:from", sender, plain(text, references), parseMarkdown(resolved(text, references, false, here), hasPage)))
+                return listOf(ConversationRow.Collaborator("$id:from", sender, plain(text, references, here), parseMarkdown(resolved(text, references, false, here), hasPage)))
             }
             // The agent that manages this one gives it its work: it reads as the person's lane.
             val fromManager = message.role == "agent" && sender != null && sender != agentId
             if (message.role == "user" || fromManager) {
-                val text = message.content.filterIsInstance<Block.Text>().joinToString("\n") { it.text }
+                val written = message.content.filterIsInstance<Block.Text>().joinToString("\n") { it.text }
                     .let { if (fromManager && sender != null) inboundText(it, sender) else it }.trim()
-                    .let { plain(it, references) }
+                val text = plain(written, references, here)
                 val pictures = message.content.filterIsInstance<Block.Image>()
                 val files = message.content.mapIndexedNotNull { index, block -> (block as? Block.File)?.ref(id, index) }
                 if (text.isEmpty() && pictures.isEmpty() && files.isEmpty()) return emptyList()
                 val delivery = if (message.status == "pending") Delivery.Pending else Delivery.Sent
-                return listOf(ConversationRow.User("$id:user", id, text, parseMarkdown(text, hasPage), pictures, delivery, message.createdAt, author = message.userId, files = files))
+                // What it names reads as an agent's does (desktop's `messagePlainTextSegments`): a link under its live name.
+                val blocks = parseMarkdown(resolved(written, references, false, here), hasPage)
+                return listOf(ConversationRow.User("$id:user", id, text, blocks, pictures, delivery, message.createdAt, author = message.userId, files = files))
             }
             val rows = ArrayList<ConversationRow>()
             message.content.forEachIndexed { index, block ->
@@ -365,7 +367,7 @@ class ConversationRowBuilder(
                     is Block.Text -> block.text.trim().takeIf { it.isNotEmpty() }?.let { text ->
                         val shown = resolved(text, references, growing != null, here)
                         val holder = growing?.invoke(key, shown, true)
-                        rows += ConversationRow.Text(key, plain(text, references), holder?.content?.value?.blocks ?: parseMarkdown(shown, hasPage), holder)
+                        rows += ConversationRow.Text(key, plain(text, references, here), holder?.content?.value?.blocks ?: parseMarkdown(shown, hasPage), holder)
                     }
                     is Block.Reasoning -> block.text.trim().takeIf { it.isNotEmpty() }?.let {
                         rows += ConversationRow.Reasoning(key, it, streaming && index == message.content.lastIndex, growing?.invoke(key, it, false))
@@ -414,22 +416,18 @@ class ConversationRowBuilder(
         }
 
         /**
-         * [text]'s Markdown with its references as [references] reads them, and the share links naming
+         * [text]'s Markdown with its references and Happy links as [references] reads them, and the share links naming
          * [here]'s installation as the Happy links they carry; still [streaming], a tag only partly come is held back.
          */
-        internal fun resolved(text: String, references: References?, streaming: Boolean, here: ((String) -> Boolean)? = null): String {
-            val shown = if (here == null) text else HappyReferences.shareLinks(text, references, here, streaming)
-            return when {
-                references == null -> shown
-                streaming -> HappyReferences.markdown(shown, references, streaming = true)
-                References.mayHold(shown) -> HappyReferences.markdown(shown, references)
-                else -> shown
-            }
+        internal fun resolved(text: String, references: References?, streaming: Boolean, here: ((String) -> Boolean)? = null): String = when {
+            references == null -> text
+            streaming || References.mayHold(text) -> HappyReferences.markdown(text, references, streaming, here)
+            else -> text
         }
 
-        /** [text] with its references as words: what the person wrote, and what is copied. */
-        internal fun plain(text: String, references: References?): String =
-            if (references == null || !References.mayHold(text)) text else HappyReferences.plain(text, references)
+        /** [text] with its references as words: what is copied and read aloud. */
+        internal fun plain(text: String, references: References?, here: ((String) -> Boolean)? = null): String =
+            if (references == null || !References.mayHold(text)) text else HappyReferences.plain(text, references, here = here)
 
         /** A question's row, one key waiting at the end or settled in its turn, so it moves rather than swaps. */
         fun askKey(questionId: String): String = "ask:$questionId"

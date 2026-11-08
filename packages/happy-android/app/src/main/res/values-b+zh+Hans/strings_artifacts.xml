@@ -67,6 +67,7 @@
     <string name="reference_unavailable_project">不可用的项目</string>
     <string name="reference_unavailable_service">不可用的服务</string>
     <string name="reference_unavailable_user">不可用的用户</string>
+    <string name="reference_unavailable_surface">不可用的空间</string>
     <string name="reference_unavailable">不可用的引用</string>
 
     <string name="artifact_history">历史记录</string>

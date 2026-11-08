@@ -56,6 +56,14 @@ import com.slopus.happy.artifacts.ArtifactMediaItem
 import com.slopus.happy.artifacts.Extent
 import com.slopus.happy.artifacts.documentPictureSize
 import com.slopus.happy.chat.markdown.MarkdownBlock
+import com.slopus.happy.chat.markdown.parseMarkdownBlocks
+import com.slopus.happy.references.HappyReferences
+import com.slopus.happy.references.References
+import androidx.compose.runtime.produceState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withContext
 import com.slopus.happy.conversation.MediaItem
 import com.slopus.happy.ui.browser.BrowserPage
 import com.slopus.happy.ui.browser.BrowserControls
@@ -128,6 +136,12 @@ class ArtifactActions(
     val genUiSecrets: GenUiSecretApi? = null,
     /** Opens a plugin's page for a Gen UI `plugin` button; null where the computer doesn't report `capabilities.plugins`. */
     val onOpenPlugin: ((String) -> Unit)? = null,
+    /** What the Happy links in a document read as now (its connection's); null leaves them as the loader read them. */
+    val references: StateFlow<References>? = null,
+    /** A document's Markdown with its Happy links as [references] read them ([HappyReferences.markdown]). */
+    val resolve: (text: String, references: References) -> String = { text, _ -> text },
+    /** An app's own link in a document (a reference, a Happy URL, a share link), opened in the app; false for any other. */
+    val openApp: (String) -> Boolean = { false },
 )
 
 /**
@@ -201,8 +215,11 @@ fun ArtifactScreen(
                     is ArtifactUi.Document -> ArtifactDocument(
                         ui,
                         media,
+                        references = actions.references?.collectAsStateWithLifecycle()?.value,
+                        resolve = actions.resolve,
                         onPicture = { item -> viewing = ui.order to ui.order.indexOfFirst { it.key == item.key }.coerceAtLeast(0) },
-                        onLink = { raw ->
+                        onLink = onLink@{ raw ->
+                            if (actions.openApp(raw)) return@onLink
                             when (val link = actions.link(raw, ui.path)) {
                                 is ArtifactLink.View -> viewing = listOf(link.item) to 0
                                 is ArtifactLink.File -> actions.onOpenFile(link.version, link.path)
@@ -288,10 +305,18 @@ fun ArtifactScreen(
 private fun ArtifactDocument(
     ui: ArtifactUi.Document,
     media: ArtifactMedia?,
+    references: References?,
+    resolve: (String, References) -> String,
     onPicture: (ArtifactMediaItem) -> Unit,
     onLink: (String) -> Unit,
 ) {
     val links = remember(ui) { { raw: String -> onLink(raw) } }
+    // Its Happy links follow what they name, read again off the main thread as that changes.
+    val blocks by produceState(ui.blocks, ui, references) {
+        if (references != null && References.mayHold(ui.text)) {
+            value = withContext(Dispatchers.Default) { parseMarkdownBlocks(resolve(ui.text, references)) }
+        }
+    }
     val previous = ui.previous
     var diff by rememberSaveable(ui.path, previous != null) { mutableStateOf(previous != null) }
     Column(Modifier.fillMaxSize()) {
@@ -323,7 +348,7 @@ private fun ArtifactDocument(
                 MarkdownDiffView(previous, ui.text)
             } else {
                 MarkdownView(
-                    ui.blocks,
+                    blocks,
                     onLink = links,
                     image = { block -> DocumentPicture(block, ui.pictures[block.url], media, onPicture) },
                 )

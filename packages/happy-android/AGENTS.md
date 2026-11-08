@@ -1444,8 +1444,8 @@ change its wire behaviour on Android alone.
   matching says "This link belongs to a Happy server you're not connected to."
   and never falls back. Internal Happy links and `happy-file://` from outside,
   and malformed ones, open nothing. Inside an artifact a Happy link means that
-  connection; `openOutside` never hands a Happy URL to the system. Chat doesn't
-  render bare `happy://` URLs as links yet.
+  connection; `openOutside` never hands a Happy URL to the system. A bare
+  `happy://` URL in chat (not a Markdown link) isn't a link, as on desktop.
 - **Share links** (desktop 5a4c075c, `agent/HappyShareLinks.kt`): what leaves
   the app is `https://link.happy.page/#1/<instanceId>/<rest>[?as=…|version=…|lines=…]`,
   carrying the instance link; the grammar is link.happy.page's own, ported
@@ -1457,12 +1457,25 @@ change its wire behaviour on Android alone.
   copy. Tapped anywhere in the app (chat, artifacts, documents, the in-app
   browser), a share link goes to `HappyLinks` as the instance link it carries,
   so the same instance match and "not connected" apply; it has no browser
-  menu. In an agent's words (`HappyReferences.shareLinks`, desktop's
-  `shareLinksHere`) one naming the conversation's installation reads as a
-  Happy link: labelled, its words opening the `happy://` link; bare, the
-  reference it names with its live name where that opens, a file as its path,
-  else the address as written, still opening in the app. Another server's stays
-  a web address. What is copied out of a message keeps the link as written.
+  menu. In messages (the agent's, the person's own, other agents') and in a
+  Markdown artifact's document, one naming the conversation's installation
+  reads as the Happy link it carries (`HappyReferences.shareLinksHere`,
+  desktop's `shareLinksHere`). Another server's stays a web address. What is
+  copied out of a message keeps a share link as written.
+- **Happy links in messages and documents** (desktop's
+  `messageReferencesResolve`, iOS `HappyReferences.markdown`): tags, Markdown
+  `happy://` links (`HappyMarkdownLinks`) and share links here all read the
+  same way. What opens (a bot, task or subtask, an artifact, a Surface the
+  person is in) is an underlined link under its live name, which wins over a
+  written label; the label stands in while an artifact's title is read and
+  for what can't be looked up, and a label that is only the link's own
+  address names nothing. What doesn't open is words ("an unavailable
+  agent"); a person is "@name" in the strong face. A file link stays as
+  written, its path where it has no words; a settings link or button stays
+  on its Happy URL. A Happy link naming another installation is its label as
+  words. The person's own bubble reads the same as an agent's (desktop's
+  `messagePlainTextSegments`). Desktop shimmers a busy agent's name; the
+  phone doesn't.
   `DeepLinks` takes one too, though no intent filter claims link.happy.page
   (verified App Links need hosting and signing decisions first).
 - **Settings links and buttons** (API.md "Happy links", `ui/connection/SettingsLinks.kt`):
