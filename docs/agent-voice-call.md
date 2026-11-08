@@ -568,7 +568,7 @@ the call`, `you ended the call`, `the call restarted, carried over`, `the
 call dropped (connection lost)`, `the call reached its one-hour limit and
 ended`, `the call ended: the person's voice time ran out`, `the call ended
 after a long silence`, `the call was cut off: the phone took the audio
-(another call, or the audio route went)` and `the call ended when the app
+(another call)` and `the call ended when the app
 left the screen`. The recap has its own budget of 8 KB within the first
 context's 32 KB, each line cut at 1 KB, the oldest lines first to go
 (`Older lines aren't shown.` says so). When the first context is still too

@@ -47,7 +47,7 @@ public enum CallEnding: String, Codable, Equatable, Sendable, CaseIterable {
         case .timeUsed: "the call ended: the person's voice time ran out"
         case .silence: "the call ended after a long silence"
         // Said as Android's says it (`CallHistory.kt`): change both or neither.
-        case .interrupted: "the call was cut off: the phone took the audio (another call, or the audio route went)"
+        case .interrupted: "the call was cut off: the phone took the audio (another call)"
         case .background: "the call ended when the app left the screen"
         }
     }
