@@ -119,22 +119,25 @@ final class StopGlyphRasterTests: XCTestCase {
         XCTAssertTrue(button.stopView.isHidden)
     }
 
-    /// On screen, send turning into stop fades and scales the glyphs over
-    /// each other rather than swapping them.
+    /// The glyph now fades in after Send fades out, without scaling.
     func testSendToStopAnimatesTheGlyph() throws {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 100, height: 100))
         let button = button(.send, scale: 3)
         window.addSubview(button)
         window.isHidden = false
         defer { window.isHidden = true }
+        let animationsEnabled = UIView.areAnimationsEnabled
         UIView.setAnimationsEnabled(true)
+        defer { UIView.setAnimationsEnabled(animationsEnabled) }
         button.configure(action: .stop, style: .standard, busy: false, accessibilityLabel: nil)
         XCTAssertFalse(button.stopView.isHidden)
         let keys = button.stopView.layer.animationKeys() ?? []
-        XCTAssertTrue(keys.contains { $0.contains("opacity") }, "the square doesn't fade in: \(keys)")
-        if !UIAccessibility.isReduceMotionEnabled {
-            XCTAssertTrue(keys.contains { $0.contains("transform") }, "the square doesn't grow in: \(keys)")
-        }
+        let fade = try XCTUnwrap(button.stopView.layer.animation(forKey: "opacity") as? CABasicAnimation)
+        XCTAssertEqual((fade.fromValue as? NSNumber)?.doubleValue, 0)
+        XCTAssertEqual(button.stopView.layer.opacity, 1)
+        XCTAssertEqual(fade.duration, 0.15, accuracy: 0.0001)
+        XCTAssertFalse(keys.contains { $0.contains("transform") }, "the sequential fade must not scale the square: \(keys)")
+        XCTAssertEqual(button.stopView.transform, .identity)
     }
 }
 #endif
