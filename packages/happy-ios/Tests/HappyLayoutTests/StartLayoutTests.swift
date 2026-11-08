@@ -25,6 +25,27 @@ final class StartLayoutTests: XCTestCase {
         let layout = layout()
         XCTAssertEqual(layout.button.maxY, 852 - 34 - 48)
         XCTAssertEqual(layout.contentHeight, 759)
+        XCTAssertEqual(layout.cloud, .zero)
+    }
+
+    func testCloudAndStartShareTheWiderLabelAndKeepTheirGap() {
+        let layout = StartLayout(size: phone, safeArea: safe, button: CGSize(width: 120, height: 56),
+                                 cloud: CGSize(width: 260, height: 56), slides: slides(), dots: dots)
+        XCTAssertEqual(layout.button, CGRect(x: 66.5, y: 714, width: 260, height: 56))
+        XCTAssertEqual(layout.cloud, CGRect(x: 66.5, y: 646, width: 260, height: 56))
+        XCTAssertEqual(layout.gallery, CGRect(x: 0, y: 231.5, width: 393, height: 294))
+        XCTAssertEqual(layout.contentHeight, 759)
+    }
+
+    func testCloudAndStartScrollTogetherInLandscape() {
+        let layout = StartLayout(size: CGSize(width: 852, height: 393),
+                                 safeArea: LayoutInsets(top: 0, left: 59, bottom: 21, right: 59),
+                                 button: CGSize(width: 120, height: 56), cloud: CGSize(width: 260, height: 56),
+                                 slides: slides(), dots: dots)
+        XCTAssertEqual(layout.button, CGRect(x: 296, y: 386, width: 260, height: 56))
+        XCTAssertEqual(layout.cloud, CGRect(x: 296, y: 318, width: 260, height: 56))
+        XCTAssertEqual(layout.gallery, CGRect(x: 59, y: 68, width: 734, height: 234))
+        XCTAssertEqual(layout.contentHeight, 490)
     }
 
     func testStartIsAsWideAsItsLabelAtLeastTwoHundredAndCentred() {

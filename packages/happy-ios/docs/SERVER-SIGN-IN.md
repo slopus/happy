@@ -90,9 +90,11 @@ accounts and servers v1, with v4's token lifetimes.
 
 - **Where.** "Connect to Happy Cloud" in the account switcher's menu (the
   list of accounts and servers, under Add) and in the scanner's and first
-  screen's ⋯ (`AccountAdding.connectToCloud`). Development and preview
-  builds only (`HappyCloud.isOffered`, from `AppVariant`): production shows
-  neither entry and `connectToCloud` does nothing there.
+  screen's ⋯ (`AccountAdding.connectToCloud`). The first screen also has
+  "Use Happy Cloud" above Start, with the same width and emphasis.
+  Development and preview builds only (`HappyCloud.isOffered`, from
+  `AppVariant`): production shows
+  none of these entries and `connectToCloud` does nothing there.
 - **Screens.** Every Happy Cloud step is a full-screen page in the
   onboarding's look (`CloudStageViewController`: the grain gradient, large
   title, one primary button at the bottom, no tables or alerts): Welcome,
