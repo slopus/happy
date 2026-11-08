@@ -103,7 +103,7 @@ data class ConversationConfig(
     val onError: ((code: Int, message: String?) -> Unit)? = null,
     val audioConfiguration: AudioPipelineConfiguration? = null,
     val useMediaStream: Boolean = false,
-    /** Happy patch: focus loss or removal of the selected headset ends this call. */
+    /** Happy patch: focus loss (not a duck) or removal of the selected headset ends this call. */
     val onAudioInterruption: (() -> Unit)? = null,
 ) {
     init {

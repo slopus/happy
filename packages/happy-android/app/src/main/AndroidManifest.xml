@@ -17,9 +17,10 @@
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <!-- A live voice call goes on in the background (call/CallService.kt): a microphone foreground service. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <!-- Removal markers are absent from the merged manifest; lint still inspects them. -->
-    <!-- Android calls end in the background; strip LiveKit's unused foreground service permission. -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:node="remove" />
     <!-- ElevenLabs uses audio only; remove LiveKit's unused screen capture. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" tools:node="remove" />
 
@@ -103,6 +104,11 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+        <!-- The live voice call's ongoing notification, keeping its microphone in the background (call/CallService.kt). -->
+        <service
+            android:name=".call.CallService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
         <!-- sync.ts's scheduled "Message not sent" (push/BackgroundSendNotifications.kt). -->
         <receiver
             android:name=".push.BackgroundSendReceiver"

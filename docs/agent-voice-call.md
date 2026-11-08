@@ -106,8 +106,7 @@ ID, biometrics, store confirmations) stay above it.
     keep them well below the bar. A sheet's window would set its own status
     bar icons, dark over the bar in the light theme; `SheetStatusIcons()` in
     the sheet keeps them light while the bar shows.
-  - The QR scanner is an activity of its own. It counts as the app being in
-    the foreground, so the call isn't hung up, and it shows the bar too.
+  - The QR scanner is an activity of its own, and it shows the bar too.
   - Mute and End take touches in 48 dp squares (Android's least) around
     glyphs placed as Telegram's 44 pt slots place them. The bar is never
     shorter than 48 dp, so with no status bar above it (landscape,
@@ -520,7 +519,7 @@ greeting is skipped. It is a rolling list of the latest 30 slots, each a
 person line, an agent line or an ending, each with its time; an ending
 counts as a slot. A call nobody said anything in leaves nothing behind when
 it ends plainly (the person's End, the agent's `end_call`, the app going to
-the background); any other ending is kept. It is written after every slot.
+the background, where that still ends a call); any other ending is kept. It is written after every slot.
 iOS keeps it in the connection's own folder as `private/call-history.json`
 (`OfflineCallHistoryStore`, complete file protection, excluded from
 backup); Android beside the connection's cache, under `noBackupFilesDir`
@@ -608,6 +607,51 @@ interruption and the app leaving the foreground play none.
 
 The ended bar offers nothing to resume: it shows how the call ended, as
 before.
+
+## Audio focus and the background (Android)
+
+**Music pauses for the call and plays on after it.** The call takes the
+audio as a phone call does: one transient focus request
+(`AUDIOFOCUS_GAIN_TRANSIENT`, `USAGE_VOICE_COMMUNICATION`), owned by the
+LiveKit room's one `AudioSwitchHandler` (`vendor/elevenlabs`,
+`ConversationAudioHandler`), and abandoned once when the room disconnects,
+whichever way the call ended. A music app gets `LOSS_TRANSIENT`, pauses, and
+resumes on the `GAIN` the abandon gives it. LiveKit's own default,
+`AUDIOFOCUS_GAIN`, gave it `LOSS`, which music apps read as "stop for good",
+so the music never came back.
+
+**Another app taking the audio mid-call** (a phone call ringing, music
+started) ends the call with no bar and no drop sound, as iOS's interruption
+does (`CallEnding.Interrupted`), and so does the selected headset going. A
+sound that only ducks (a notification, navigation) doesn't.
+
+**The background.** A live call goes on with the app behind others, the
+screen off or another app in front, until the person ends it. `CallKeeper`
+starts `CallService`, a foreground service of type `microphone`, once the
+microphone is granted, while the app is still in front (Android lets such a
+service start only then). Its notification is the ongoing call
+(`CallStyle.forOngoingCall`: Happy, the call's clock, Muted or Connecting,
+and Hang up, which is End); a tap opens the app. The call's connection keeps
+its link up in the background (`AgentSessions`' `calling`), so the call
+still hears and sends. The service goes when the call stops being live; if
+the system stops it first, the call ends. A call the service couldn't start
+for still hangs up when the app leaves the foreground, as before.
+
+Why `microphone` and not `phoneCall` with a `ConnectionService`: the call is
+not a telephony call, and a self-managed `ConnectionService` brings Telecom's
+own audio routing and call UI with it, which would fight LiveKit's routing
+for no gain here. `mediaPlayback` would not keep the microphone. Play's
+foreground service declaration lists `microphone` for voice chat in
+communication apps.
+
+`CallBackgroundDeviceCheck` (androidTest, an emulator, the agent ID in the
+build) runs it: music playing, a call started in front, then home, screen
+off and the notification's Hang up, writing `dumpsys audio`, the services and
+the shade at each step; another app taking the audio mid-call; and the
+service and its notification with no provider. Its music is a stand-in app
+(`dev.check.player`, not in the repository: media focus, paused on a
+transient loss and played on at the gain, as Spotify does) or Chrome playing
+an address.
 
 ## The hosted agent
 

@@ -77,9 +77,9 @@ internal object ConversationClientImpl {
                 )
             }
 
-        // Observe the same AudioSwitchHandler that owns focus and routing.
+        // One AudioSwitchHandler owns focus (transient) and routing, observed for interruptions when asked.
         val outputType = if (finalConfig.useMediaStream) AudioType.MediaAudioType() else AudioType.CallAudioType()
-        val audioHandler = finalConfig.onAudioInterruption?.let { ConversationAudioHandler(context, outputType, it) }
+        val audioHandler = ConversationAudioHandler(context, outputType, finalConfig.onAudioInterruption)
         // Create LiveKit room
         val room = LiveKit.create(
             appContext = context,
@@ -106,7 +106,7 @@ internal object ConversationClientImpl {
 
         val toolRegistry = buildToolRegistry(finalConfig)
 
-        // Happy patch: LiveKit's default AudioSwitchHandler owns focus and routing.
+        // Happy patch: ConversationAudioHandler's AudioSwitchHandler owns focus and routing.
         // Its default priority is Bluetooth > wired headset > speakerphone > earpiece.
 
         val session = ConversationSessionImpl(

@@ -292,6 +292,23 @@ class AgentSessionTest {
         eventually({ session.feed.value.conversations }) { it.isNotEmpty() }
     }
 
+    /** A live voice call hears and sends through its connection's link, so the link stays up behind other apps. */
+    @Test
+    fun aLiveCallKeepsItsConnectionsLinkInTheBackground() = runBlocking {
+        foreground.value = false
+        val calling = MutableStateFlow<String?>(null)
+        val session = AgentSessions(connections, scope, cacheDir, open, foreground, calling = calling, makeTransport = { agent }).session(id)!!
+        kotlinx.coroutines.delay(300)
+        assertFalse(agent.calls.contains("STREAM /v0/events/stream"))
+        calling.value = "another-connection"
+        kotlinx.coroutines.delay(300)
+        assertFalse(agent.calls.contains("STREAM /v0/events/stream"))
+        calling.value = id
+        eventually({ agent.calls.contains("STREAM /v0/events/stream") }) { it }
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ session.status.value }) { it == AgentLinkStatus.Connected }
+    }
+
     @Test
     fun periodicIdentityRefreshStopsInBackgroundAndOnDisposal() = runBlocking {
         val discoveryScope = CoroutineScope(SupervisorJob(scope.coroutineContext[kotlinx.coroutines.Job]) + Dispatchers.Default)

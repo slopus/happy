@@ -6,7 +6,7 @@ import org.junit.Test
 
 class AudioInterruptionsTest {
     @Test fun everyFocusLossEndsOnceAndLateCallbacksAfterStopDoNothing() {
-        for (loss in listOf(AudioManager.AUDIOFOCUS_LOSS, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK)) {
+        for (loss in listOf(AudioManager.AUDIOFOCUS_LOSS, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT)) {
             val policy = AudioInterruptions()
             assertFalse(policy.focusChanged(loss))
             policy.start()
@@ -16,6 +16,14 @@ class AudioInterruptionsTest {
             policy.stop()
             assertFalse(policy.focusChanged(loss))
         }
+    }
+
+    @Test fun aSoundThatOnlyDucksDoesNotEndTheCall() {
+        val policy = AudioInterruptions()
+        policy.start()
+        assertFalse(policy.focusChanged(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK))
+        assertFalse(policy.focusChanged(AudioManager.AUDIOFOCUS_GAIN))
+        assertTrue(policy.focusChanged(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT))
     }
 
     @Test fun unpluggingEitherSelectedHeadsetEndsButSpeakerRoutingDoesNot() {

@@ -10,11 +10,15 @@ import io.livekit.android.audio.AudioSwitchHandler
 
 /**
  * Happy patch: LiveKit 2.26.0 still owns the single focus request and routing.
- * Its public listeners report interruptions; the app closes its session through
- * the ordinary generation-guarded disconnect callback. Stopping the handler
- * disarms listeners before abandoning focus, so teardown cannot end a later call.
+ * Its focus is transient, as a phone call's is: music playing when a call
+ * starts pauses and plays on once it ends. LiveKit's own default is
+ * AUDIOFOCUS_GAIN, which other apps take as for good and stay paused.
+ * With [interrupted], its public listeners report interruptions; the app
+ * closes its session through the ordinary generation-guarded disconnect
+ * callback. Stopping the handler disarms listeners before abandoning focus,
+ * so teardown cannot end a later call.
  */
-internal class ConversationAudioHandler(context: Context, output: AudioType, private val interrupted: () -> Unit) : AudioHandler {
+internal class ConversationAudioHandler(context: Context, output: AudioType, private val interrupted: (() -> Unit)?) : AudioHandler {
     private val policy = AudioInterruptions()
     private val handler = AudioSwitchHandler(context).apply {
         // AudioOptions.audioOutputType does not configure a custom handler.
@@ -22,12 +26,13 @@ internal class ConversationAudioHandler(context: Context, output: AudioType, pri
         audioStreamType = output.audioStreamType
         audioAttributeUsageType = output.audioAttributes.usage
         audioAttributeContentType = output.audioAttributes.contentType
+        focusMode = AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
     }
-    private val focus = AudioManager.OnAudioFocusChangeListener { if (policy.focusChanged(it)) interrupted() }
+    private val focus = AudioManager.OnAudioFocusChangeListener { if (policy.focusChanged(it)) interrupted?.invoke() }
     private val devices = object : AudioDeviceChangeListener {
         override fun invoke(audioDevices: List<AudioDevice>, selectedAudioDevice: AudioDevice?) {
             val available = audioDevices.mapNotNull { it.headset() }.toSet()
-            if (policy.devicesChanged(available, selectedAudioDevice?.headset())) interrupted()
+            if (policy.devicesChanged(available, selectedAudioDevice?.headset())) interrupted?.invoke()
         }
     }
 
@@ -67,9 +72,9 @@ internal class AudioInterruptions {
     @Synchronized fun start() { active = true; interrupted = false; headset = null }
     @Synchronized fun stop() { active = false; headset = null }
 
+    /** Another app took the audio, for good or for a while (a phone call ringing). A sound that only ducks (a notification) does not end a call. */
     @Synchronized fun focusChanged(change: Int): Boolean = when (change) {
-        AudioManager.AUDIOFOCUS_LOSS, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
-        AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> interrupt()
+        AudioManager.AUDIOFOCUS_LOSS, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> interrupt()
         else -> false
     }
 

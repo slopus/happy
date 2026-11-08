@@ -36,6 +36,8 @@ class CallEvents(
     val said: (String, Int) -> Unit = { _, _ -> },
     /** The agent's words for an event as they were heard: the person cut in. */
     val corrected: (String, Int) -> Unit = { _, _ -> },
+    /** The phone took the audio: another app's (a phone call ringing, music started), or the headset it played on went. */
+    val interrupted: () -> Unit = {},
 )
 
 /** The SDK stays in its adapter ([ElevenLabsCallConnection]); this is all of it the call needs. */
@@ -83,7 +85,7 @@ class CallSession(
     var onLevel: ((Float) -> Unit)? = null
     /** Context waiting for the call went past [PENDING_BYTES] and was let go whole: the call's context sends what puts it right ([CallContext.resync]). */
     var onOverflow: (() -> Unit)? = null
-    /** The agent hung up, after the call went idle: whoever holds it ends it as End would. */
+    /** The agent hung up, or the audio was interrupted, after the call went idle: whoever holds it ends it as End would. */
     var onHangUp: (() -> Unit)? = null
     /** A call that went live ended, and its audio is let go: how. */
     var onEnded: ((CallEnding) -> Unit)? = null
@@ -203,6 +205,13 @@ class CallSession(
                         }
                     },
                     corrected = { text, event -> if (current == generation) history?.corrected(text, event) },
+                    // As iOS's interruption: the call ends with no bar and no drop sound, as End would.
+                    interrupted = {
+                        if (current == generation) {
+                            stop(CallEnding.Interrupted)
+                            onHangUp?.invoke()
+                        }
+                    },
                 )
                 val opened = connect(grant, request, events)
                 if (current != generation) {

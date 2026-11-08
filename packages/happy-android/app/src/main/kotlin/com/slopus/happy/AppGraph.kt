@@ -592,6 +592,9 @@ class AppGraph(
         foreground.value = started > 0
     }
 
+    /** The connection whose voice call is live: [calls] says, [agentSessions] keeps its link up in the background. */
+    private val callingConnection = MutableStateFlow<String?>(null)
+
     /** Each agent connection's live link and cached home (AgentSessions). */
     val agentSessions = AgentSessions(
         connections = agentConnections,
@@ -600,6 +603,7 @@ class AppGraph(
         stagedFiles = File(appContext.cacheDir, com.slopus.happy.conversation.MediaFiles.DIRECTORY),
         openId = openAgentId,
         foreground = isForeground,
+        calling = callingConnection,
         network = appContext.networkPath(),
         chime = CompletionChime(appContext)::play,
     )
@@ -671,6 +675,7 @@ class AppGraph(
             stopRelayVoice = voice::stop,
             subscription = subscription,
             offers = offers,
+            liveConnection = callingConnection,
         )
     }
 

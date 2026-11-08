@@ -15,6 +15,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
@@ -26,8 +27,9 @@ import java.io.File
 /**
  * Every agent connection's [AgentSession], made on first use and kept while
  * the connection is on the phone. A session's live link runs only while
- * its connection is the open account and the app is in the foreground;
- * otherwise it stays with its cached catalog. Removing a connection, or
+ * its connection is the open account and the app is in the foreground, or
+ * its voice call is live ([calling]), which hears and sends through it in
+ * the background too; otherwise it stays with its cached catalog. Removing a connection, or
  * its team server's session ending, closes its session and deletes its cache.
  */
 class AgentSessions(
@@ -38,6 +40,8 @@ class AgentSessions(
     /** The open agent connection's id ([com.slopus.happy.AppGraph.openAgentId]). */
     private val openId: StateFlow<String?>,
     private val foreground: StateFlow<Boolean>,
+    /** The connection whose voice call is live ([com.slopus.happy.call.CallController]), if any. */
+    private val calling: StateFlow<String?> = MutableStateFlow(null),
     /** Whether the phone has a way out at all ([com.slopus.happy.connection.networkPath]). */
     private val network: Flow<Boolean> = flowOf(true),
     private val identityRefreshMillis: Long = 60_000,
@@ -146,7 +150,7 @@ class AgentSessions(
                     connectionId = connectionId,
                     connections = connections,
                     cacheFile = cacheFile(connectionId),
-                    active = combine(openId, foreground) { open, front -> open == connectionId && front },
+                    active = combine(openId, foreground, calling) { open, front, call -> open == connectionId && (front || call == connectionId) },
                     parent = scope,
                     makeTransport = makeTransport,
                     chime = chime,

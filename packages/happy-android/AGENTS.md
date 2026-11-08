@@ -39,8 +39,13 @@ Preserve credential and push compatibility on upgrades.
   window, the top app bar first, down by its height, taking the top inset.
   A full-screen dialog goes through `PageDialog` or `WindowDialog` so that it
   carries the bar.
-  It ends when the app leaves the foreground, another account opens or the
-  relay's voice starts. For launch it connects to a public agent by its ID
+  It goes on in the background (`CallService`, a `microphone` foreground
+  service with the ongoing call's notification, started by `CallKeeper` once
+  the microphone is granted; the connection's link stays up meanwhile), and
+  ends when the person ends it (the bar or the notification's Hang up),
+  another account opens, the relay's voice starts or another app takes the
+  audio. Its focus is transient, so music pauses and plays on after; see
+  "Audio focus and the background" in the doc below. For launch it connects to a public agent by its ID
   (`PublicAgentCallGrants`), a connection mechanism and not authentication;
   the ID comes from `HAPPY_CALL_AGENT_V3_ID`, `-Phappy.callAgentV3Id` or the
   ignored `local.properties` (`happy.callAgentV3Id`) into
@@ -1407,7 +1412,7 @@ their parameters and use the existing sender/permission RPCs for the bound
 account. Logout, failed start and stop invalidate callbacks and close the call.
 
 `vendor/elevenlabs/UPSTREAM.md` records the pinned MIT source archive and the
-audio lifecycle patch. LiveKit owns audio focus and device routing; call mute
+audio lifecycle patch. LiveKit owns audio focus (transient, as a phone call's) and device routing; call mute
 never changes global microphone mute. Room cleanup completes logically before
 stop returns, and LiveKit's audio thread releases OS focus asynchronously.
 Verify focus, recording and communication mode on a device after changes.

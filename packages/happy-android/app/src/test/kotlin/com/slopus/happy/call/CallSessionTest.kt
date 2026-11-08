@@ -177,6 +177,32 @@ class CallSessionTest {
         assertEquals(1, hangUps)
     }
 
+    /** Another app took the audio: the call ends with no bar, as iOS's interruption does, its history says so, and no drop sound plays. */
+    @Test
+    fun anInterruptionEndsTheCallWithNoBar() {
+        val connection = FakeCallConnection()
+        var events: CallEvents? = null
+        val history = CallHistory(null)
+        val call = CallSession(test, granted, { true }, now = { 42 }, history = history) { _, _, callEvents -> events = callEvents; connection }
+        var hangUps = 0
+        val endings = ArrayList<CallEnding>()
+        call.onHangUp = { hangUps += 1 }
+        call.onEnded = { endings += it }
+        call.start(null, { "" }, { CallToolResult("") })
+        test.runCurrent()
+        events!!.interrupted()
+        assertEquals(CallState.Idle, call.state.value)
+        assertEquals(1, hangUps)
+        test.runCurrent()
+        assertTrue(connection.ended)
+        assertEquals(listOf(CallEnding.Interrupted), endings)
+        assertFalse(CallEnding.Interrupted.isUnexpected)
+        assertEquals(CallEnding.Interrupted, history.slots.last().ending)
+        // A second report from the dying connection changes nothing.
+        events!!.interrupted()
+        assertEquals(1, hangUps)
+    }
+
     @Test
     fun whatAnEndedCallStillSaysGoesNowhere() {
         val connection = FakeCallConnection()

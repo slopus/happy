@@ -165,6 +165,8 @@ class ElevenLabsCallConnection private constructor(
                     scope.launch { if (hungUp) events.hungUp() else events.disconnected() }
                 },
                 onError = { _, _ -> scope.launch { events.disconnected() } },
+                // Another app took the audio focus, or the selected headset went (ConversationAudioHandler).
+                onAudioInterruption = { scope.launch { events.interrupted() } },
             )
             var opened: ConversationSession? = null
             try {

@@ -33,9 +33,14 @@ Local changes:
   SDK keeps it separate as `.agentToolRequest`). Answering it first beat the
   real `client_tool_call` for the same ID with empty arguments
   (`ElevenLabsEventsTest` in the app).
-- `ConversationAudioHandler` observes LiveKit's own focus/device listeners when
-  `onAudioInterruption` is supplied: any focus loss or disappearance of the
-  selected wired/Bluetooth headset reports one interruption. It preserves the
+- `ConversationAudioHandler` is the room's one `AudioSwitchHandler`, for every
+  session, and asks for `AUDIOFOCUS_GAIN_TRANSIENT` rather than LiveKit's
+  default `AUDIOFOCUS_GAIN`: music playing when a call starts gets a transient
+  loss, pauses, and plays on when focus is abandoned at disconnect (with
+  `GAIN`, music apps took the loss as permanent and stayed stopped). With
+  `onAudioInterruption` it observes LiveKit's own focus/device listeners: a
+  focus loss (not a duck) or disappearance of the selected wired/Bluetooth
+  headset reports one interruption. It preserves the
   configured audio type, disarms before focus is abandoned, and adds no focus
   owner. Happy uses its normal disconnect path to cancel startup or end the call
   (iOS `VoiceCoordinator` interruption/route/background behavior).

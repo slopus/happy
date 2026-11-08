@@ -35,9 +35,12 @@ import kotlinx.coroutines.withContext
 /**
  * The agent connection's voice call (iOS `CallController`): started from
  * home's voice button, shown as the bar across the window's top
- * (`ui/call/CallFrame`), bound to the one connection it started on. It ends
- * when the app leaves the foreground, and when another account opens. What
- * each call said is kept for the connection's next one ([CallHistory]), and a
+ * (`ui/call/CallFrame`), bound to the one connection it started on. It goes
+ * on with the app behind others, the screen off or another app in front
+ * ([CallKeeper]'s service and notification, whose Hang up is End), with its
+ * connection's link kept up ([liveConnection]). It ends when another account opens,
+ * or when another app takes the audio ([CallEnding.Interrupted]). What each
+ * call said is kept for the connection's next one ([CallHistory]), and a
  * call that ends unasked plays [CallDropSound]. Apart from the relay's voice
  * ([stopRelayVoice]), whose call it stops first.
  */
@@ -58,6 +61,9 @@ class CallController(
     private val grants: CallGrants = CallAgent.hostedAgentId?.let(::PublicAgentCallGrants) ?: UnconfiguredCallGrants,
     private val preferences: android.content.SharedPreferences = appContext.getSharedPreferences(PreferencesCallUsageStore.PREFS_NAME, Context.MODE_PRIVATE),
     private val allowance: CallAllowance = CallAllowance(PreferencesCallUsageStore(preferences), period = subscription::period),
+    /** The connection whose call is live: its link stays up in the background ([AgentSessions]). */
+    private val liveConnection: MutableStateFlow<String?> = MutableStateFlow(null),
+    private val keeper: CallKeeper = CallKeeper(appContext),
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mutableState = MutableStateFlow<CallState>(CallState.Idle)
@@ -79,8 +85,8 @@ class CallController(
     var screen: CallScreen? = null
 
     init {
-        // Leaving the foreground hangs up: no microphone behind the person's back.
-        foreground.filter { !it }.onEach { hangUp(CallEnding.Background) }.launchIn(scope)
+        // Leaving the foreground hangs up only a call the service doesn't keep: no microphone behind the person's back without the notification saying so.
+        foreground.filter { !it }.onEach { if (!keeper.isKept) hangUp(CallEnding.Background) }.launchIn(scope)
         openAccount.drop(1).distinctUntilChanged().onEach { id -> if (state.value.isShown && id != connectionId) close() }.launchIn(scope)
         relayVoiceActive.distinctUntilChanged().filter { it }.onEach { if (state.value.isLive) close() }.launchIn(scope)
         // Subscribed while the used-up sheet is up: it goes once there is time again.
@@ -109,11 +115,18 @@ class CallController(
         val targets = ConnectionCallTargets(account, appContext.resources::failureText, Typesetter.of(appContext)) { screen }
         val context = CallContext(targets)
         val history = CallHistory(sessions.keptFile(connection, HISTORY_FILE)?.let(::FileCallHistoryStore))
+        var made: CallSession? = null
+        // Kept once the microphone is granted, while the app is still in front: the service can't start behind it.
+        val permission: suspend () -> Boolean = {
+            stopRelayVoice()
+            microphone().also { granted -> if (granted && made != null && session === made) keeper.keep(state) { if (session === made) close() } }
+        }
         val call = CallSession(
-            scope, grants, permission = { stopRelayVoice(); microphone() }, now = SystemClock::elapsedRealtime, allowance = allowance, history = history,
+            scope, grants, permission = permission, now = SystemClock::elapsedRealtime, allowance = allowance, history = history,
         ) { grant, request, events ->
             ElevenLabsCallConnection.connect(appContext, scope, grant, request, events)
         }
+        made = call
         // Not the person's own end, nor the agent's goodbye: those were heard coming.
         call.onEnded = { ending -> if (ending.isUnexpected) dropSound.play() }
         val calling = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job]))
@@ -195,6 +208,7 @@ class CallController(
     private fun show(state: CallState) {
         val before = mutableState.value
         mutableState.value = state
+        liveConnection.value = connectionId.takeIf { state.isLive }
         // The free time is used, on a tap or mid-call: the used-up sheet, once.
         if (state == CallState.Ended(CallProblem.LimitReached) && before != state) showUsed()
     }
@@ -217,6 +231,8 @@ class CallController(
         focus = null
         mutableLevel.value = 0f
         mutableState.value = CallState.Idle
+        liveConnection.value = null
+        keeper.release()
     }
 
     /** The call stops for the system; one that was live leaves no bar. */
