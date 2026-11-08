@@ -117,6 +117,7 @@ internal fun NavGraphBuilder.agentSettingsPages(graph: AppGraph, nav: NavHostCon
                 onBack = { nav.popBackStack() },
                 completionSound = sound,
                 onCompletionSound = { session?.setCompletionSound(it) },
+                projectsAvailable = session?.client?.cloud == false,
             )
         }
     }
@@ -237,7 +238,7 @@ internal fun AgentPage(title: String, onBack: () -> Unit, content: @Composable (
 
 /**
  * A connection's look on this phone (iOS's `appearanceRows`): the theme,
- * Adaptive, Light or Dark with a check on the chosen one; and Hide projects,
+ * Adaptive, Light or Dark with a check on the chosen one; and, self-hosted only, Hide projects,
  * the desktop's own setting, which home follows here and Happy Desktop
  * there. Deliberately no renderer or layout choice. Then desktop's
  * Completion sound (Always, When focused, Never), the connection's own
@@ -252,8 +253,9 @@ fun AgentAppearanceScreen(
     onBack: () -> Unit,
     completionSound: CompletionSound = CompletionSound.Always,
     onCompletionSound: (CompletionSound) -> Unit = {},
+    projectsAvailable: Boolean = true,
 ) {
-    val sections = agentAppearanceSections(theme, onTheme, projectsHidden, onProjectsHidden, completionSound, onCompletionSound)
+    val sections = agentAppearanceSections(theme, onTheme, projectsHidden, onProjectsHidden, completionSound, onCompletionSound, projectsAvailable)
     AgentPage(stringResource(R.string.settings_appearance), onBack) {
         for (section in sections) SettingsCard(section)
     }
@@ -268,7 +270,8 @@ fun agentAppearanceSections(
     onProjectsHidden: (Boolean) -> Unit,
     completionSound: CompletionSound = CompletionSound.Always,
     onCompletionSound: (CompletionSound) -> Unit = {},
-): List<SettingsSection> = listOf(
+    projectsAvailable: Boolean = true,
+): List<SettingsSection> = listOfNotNull(
     SettingsSection(
         listOf(
             ThemePreference.Adaptive to R.string.settings_appearance_theme_options_adaptive,
@@ -297,7 +300,7 @@ fun agentAppearanceSections(
             ),
         ),
         footer = stringResource(R.string.settings_hide_projects_footer),
-    ),
+    ).takeIf { projectsAvailable },
     SettingsSection(
         listOf(
             CompletionSound.Always to R.string.agent_settings_completion_sound_always,
