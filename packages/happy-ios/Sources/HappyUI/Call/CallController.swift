@@ -1,21 +1,25 @@
 #if canImport(UIKit)
 import AVFAudio
+import CallKit
 import HappyCore
 import HappyLayout
 import UIKit
 
 /// The agent connection's voice call: started from home's voice button,
 /// shown as the bar across the window's top (`ShellViewController`), bound
-/// to the one connection it started on. It goes on in the background (the
-/// `audio` background mode; the system's microphone indicator shows it)
-/// until it is ended, with the connection's conversations still followed
-/// (`AppCoordinator.appStateChanged`). An audio interruption (a phone
-/// call, Siri, another app's audio) holds it for up to `holdLimit`, and it
-/// carries on when the interruption ends with `.shouldResume`; otherwise,
-/// and on a lost route, a reset of the media services or another
-/// connection, it ends. What each call said is kept for the connection's
-/// next one (`CallHistory`), and a call that ends unasked plays
-/// `CallDropSound`. Its audio session is `CallAudioSession`'s.
+/// to the one connection it started on. It behaves as a phone call
+/// (docs/agent-voice-call.md, "Behave like a phone call"): it goes on in
+/// the background (the `audio` background mode; the system's microphone
+/// indicator shows it) until it is ended, with the connection's
+/// conversations still followed (`AppCoordinator.appStateChanged`); an
+/// audio interruption (a phone call, Siri, an alarm, another app's audio)
+/// holds it, however long, and it carries on when the interruption ends
+/// (`CallSession.hold`); a headset that goes leaves it on the speaker, and
+/// a reset of the media services reconnects it, carried over. It ends when
+/// it is hung up, drops, or the connection changes. What each call said is
+/// kept for the connection's next one (`CallHistory`), and a call that
+/// ends unasked plays `CallDropSound`. Its audio session is
+/// `CallAudioSession`'s.
 /// Apart from the relay's `VoiceCoordinator`: one call at a time, the newer wins.
 @MainActor
 final class CallController {
@@ -50,16 +54,28 @@ final class CallController {
 
     private init() {
         let center = NotificationCenter.default
+        // Every audio object is gone: a new connection makes new ones.
         observers.append(center.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.hangUp(.interrupted) }
+            MainActor.assumeIsolated {
+                CallAudioSession.shared.reset()
+                self?.session?.reconnect()
+            }
         })
         observers.append(center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
             let interruption = CallInterruption(note.userInfo ?? [:])
             MainActor.assumeIsolated { if let interruption { self?.interrupted(interruption) } }
         })
-        observers.append(center.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] note in
-            let lost = (note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt) == AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue
-            MainActor.assumeIsolated { if lost { self?.hangUp(.interrupted) } }
+        // A headset that goes is no reason to end: iOS moves the call to
+        // its speaker (`.defaultToSpeaker`), as a phone call moves to the
+        // phone, and a headset that comes takes it, as it takes a phone call.
+        // Suspended on hold, the app may never hear the hold end: coming
+        // back is its end, as WebRTC takes it, unless a phone call still
+        // has the audio.
+        observers.append(center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.onHold != nil, !self.phoneCalls.calls.contains(where: { !$0.hasEnded }) else { return }
+                self.interrupted(.ended(resume: true))
+            }
         })
         // One call at a time: the relay's starting ends this one.
         observers.append(center.addObserver(forName: .voiceStateChanged, object: nil, queue: .main) { [weak self] _ in
@@ -213,56 +229,50 @@ final class CallController {
         focus = nil
     }
 
-    /// The call stops for the system; one that was live leaves no bar.
-    private func hangUp(_ ending: CallEnding) {
-        guard state.isShown else { return }
-        close(ending)
-    }
+    private var onHold: (call: CallSession, task: UIBackgroundTaskIdentifier)?
+    /// The phone's own calls, only read: no call of this app is CallKit's.
+    private let phoneCalls = CXCallObserver()
 
-    /// How long a call waits out an interruption, kept running meanwhile
-    /// in the background by a task of its own (which iOS gives about 30 s).
-    static let holdLimit: Duration = .seconds(25)
-    private var onHold: (call: CallSession, wait: Task<Void, Never>, task: UIBackgroundTaskIdentifier)?
-
-    /// The system took the call's audio, or gave it back. Its engine stops
-    /// and starts again on its own (`CallAudioSession`); this decides
-    /// whether the call waits for it.
+    /// The system took the call's audio, or gave it back: the call is held
+    /// meanwhile, however long, as a phone call is. In the background a task
+    /// keeps the app running for as long as iOS gives one (about 30 s); past
+    /// that the app is suspended, its connection may go, and the call is
+    /// made again when the hold ends (`CallSession.resume`).
     private func interrupted(_ interruption: CallInterruption) {
         switch interruption {
         case .began:
             guard state.isLive, onHold == nil, let call = session else { return }
+            call.hold()
             let task = UIApplication.shared.beginBackgroundTask(withName: "happy.call.hold") { [weak self] in
-                MainActor.assumeIsolated {
-                    self?.hangUp(.interrupted)
-                    self?.letGoOfHold()
-                }
+                MainActor.assumeIsolated { self?.endHoldTask() }
             }
-            let wait = Task { [weak self] in
-                try? await Task.sleep(for: Self.holdLimit)
-                guard !Task.isCancelled, let self, self.session === call else { return }
-                self.hangUp(.interrupted)
-            }
-            onHold = (call, wait, task)
-        case .ended(let resume):
+            onHold = (call, task)
+        case .ended:
+            // Ended without `.shouldResume` too: a phone call carries on
+            // whatever the interruption asks of music.
             guard let held = onHold?.call else { return }
             letGoOfHold()
             guard session === held else { return }
-            guard resume else { return hangUp(.interrupted) }
-            // The engine starts again on its own; one that can't (another
-            // app kept the audio) leaves a call nobody hears.
+            held.resume()
+            // Its engine starts again on its own (`CallAudioSession`); one
+            // that doesn't leaves a call nobody hears: a new connection.
             Task { [weak self] in
                 try? await Task.sleep(for: .seconds(3))
-                guard let self, self.session === held, self.state.isLive, !CallAudioSession.isEngineRunning else { return }
-                self.hangUp(.interrupted)
+                guard let self, self.session === held, case .active = self.state, !CallAudioSession.isEngineRunning else { return }
+                held.reconnect()
             }
         }
     }
 
+    private func endHoldTask() {
+        guard let hold = onHold, hold.task != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(hold.task)
+        onHold = (hold.call, .invalid)
+    }
+
     private func letGoOfHold() {
-        guard let hold = onHold else { return }
+        endHoldTask()
         onHold = nil
-        hold.wait.cancel()
-        if hold.task != .invalid { UIApplication.shared.endBackgroundTask(hold.task) }
     }
 
     private func show(_ state: CallState) {

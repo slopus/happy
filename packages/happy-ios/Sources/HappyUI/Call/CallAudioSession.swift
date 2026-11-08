@@ -71,6 +71,12 @@ final class CallAudioSession: AudioEngineObserver, @unchecked Sendable {
         try? activate()
     }
 
+    /// The media services were reset: the session the system had is gone,
+    /// and the next call (or reconnection) sets it up again.
+    func reset() {
+        lock.withLock { active = false }
+    }
+
     /// The call has let its engine go: the session goes too, once the
     /// engine has really stopped (a room's disconnect stops it a moment
     /// after it returns). Deactivated under running I/O, the session

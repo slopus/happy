@@ -13,6 +13,31 @@ Code:
 - Android: `packages/happy-android/app/src/main/kotlin/com/slopus/happy/call/`
   and `ui/call/`.
 
+## Principle: behave like a phone call
+
+A voice call behaves as a regular phone call does, in every situation.
+When something happens to the phone's audio, do what the phone's own
+call would do; where a platform can't match it without a system call
+integration (CallKit, Android's telecom), say so here and in the code.
+
+- **It runs until someone hangs up.** Going to the background, locking the
+  screen or switching apps never ends it.
+- **Music pauses and comes back.** Other audio playing when a call starts
+  is paused, not mixed or ducked under it, and resumes on its own when the
+  call ends.
+- **A lost route falls back.** Headphones, AirPods or a Bluetooth headset
+  that go leave the call on the phone's speaker; a headset that comes
+  takes the call.
+- **Interruptions hold, they don't end.** Another call, Siri, an alarm or
+  another app taking the audio holds the call for as long as it lasts, and
+  the call carries on after, made again with the conversation carried over
+  if its connection went meanwhile. Silence on hold isn't counted.
+- **The audio system resetting reconnects.** The call is made again,
+  carried over, rather than ended.
+- **What ends a call** is the person or the agent hanging up, a dropped
+  connection, the voice time or the one-hour limit, the provider's silence
+  timeout, and starting another call or switching connection.
+
 ## Connecting: a public agent ID, for now
 
 Calls connect to a **public** ElevenLabs agent by its ID. No Happy service
@@ -612,9 +637,31 @@ once, with `.notifyOthersOnDeactivation`, after its engine stops.
 LiveKit's own session follows the engine, which starts and stops several
 times while a conversation connects: each stop told the music to resume,
 the next start interrupted it again, and the music was left paused after
-the call. An interruption (a phone call, Siri) holds the call for up to
-25 s; it carries on if the interruption ends with `.shouldResume` and
-its engine starts again, and ends as `interrupted` otherwise.
+the call.
+
+An interruption holds the call with no limit (`CallSession.hold`): the
+cues don't count its silence, and when it ends the call carries on, with
+or without `.shouldResume`. If the engine hasn't started again 3 s later,
+or the connection went during the hold or within 15 s after it, the call
+is made again with this one carried over (`reconnect`, an `interrupted`
+slot, no drop sound). A media services reset reconnects the same way. A
+headset that goes leaves the call on the speaker (`.defaultToSpeaker`).
+
+Where iOS's Phone app does better, without CallKit:
+
+- Another call, an alarm, Siri or a music app started in front can take
+  the call's audio at all; a phone call keeps it (an alarm only chimes
+  over it). CallKit gives the call a phone call's priority.
+- Held in the background, the app is suspended after about 30 s (the
+  audio that kept it running is gone), so the provider's connection drops
+  and the call is made again afterwards: the agent recaps instead of
+  picking up mid-sentence. CallKit keeps a held call's app running.
+- An incoming call rings over it with Accept and Decline only, not Hold
+  & Accept, and the call isn't on the lock screen or in the call list;
+  the microphone indicator is all the system shows. CallKit adds those.
+- The provider ends a call after 120 s of silence
+  (`silence_end_call_timeout`), and the app 20 s earlier; a phone call
+  never does.
 
 - iOS: `CallDropSound`, a two-note falling tone, the app's completion
   chime turned down, played as a system sound

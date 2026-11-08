@@ -17,7 +17,8 @@ public enum CallEnding: String, Codable, Equatable, Sendable, CaseIterable {
     case timeUsed
     /// Nobody spoke for a while (`CallCues.Timing.silenceEnd`).
     case silence
-    /// The phone took the audio: another call, or the audio route went.
+    /// The phone took the audio (another call, Siri, an alarm) and the call
+    /// had to be made again, or its audio was reset.
     case interrupted
     /// The app left the screen. Earlier builds ended a call there; a call
     /// goes on in the background now, and this only reads kept history.
@@ -45,6 +46,7 @@ public enum CallEnding: String, Codable, Equatable, Sendable, CaseIterable {
         case .callLimit: "the call reached its one-hour limit and ended"
         case .timeUsed: "the call ended: the person's voice time ran out"
         case .silence: "the call ended after a long silence"
+        // Said as Android's says it (`CallHistory.kt`): change both or neither.
         case .interrupted: "the call was cut off: the phone took the audio (another call, or the audio route went)"
         case .background: "the call ended when the app left the screen"
         }

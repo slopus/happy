@@ -72,6 +72,11 @@ public protocol CallConnection: AnyObject {
 /// goes into `history`, and how the call ended; `CallCues` has the agent
 /// speak up before silence or a limit ends it, and a call the agent
 /// agreed to restart (`requestRestart`) starts again at once.
+///
+/// As a phone call, it is held while the phone takes the audio (`hold`,
+/// `resume`): silence isn't counted meanwhile, and a connection lost while
+/// held, or just after, is made again when the hold ends, this call
+/// carried over, rather than ending (`reconnect`).
 @MainActor
 public final class CallSession {
     public typealias Connect = @MainActor (CallGrant, CallStart, CallEvents) async throws -> any CallConnection
@@ -124,6 +129,15 @@ public final class CallSession {
     private var greeted = false
     private var lastVoice: Double = -.infinity
     private var request: (language: String?, context: @MainActor () async -> String, tool: @Sendable (CallToolCall) async -> CallToolResult)?
+    /// Held: the phone has the audio.
+    public private(set) var isHeld = false
+    /// Its connection went while held: a new one is made when the hold ends.
+    private var owed = false
+    /// When the last hold ended: a connection that turns out to have gone
+    /// with it (the app was suspended meanwhile) is made again too.
+    private var resumedAt = -Double.infinity
+    /// How long after a hold a lost connection is still the hold's.
+    public static let holdGrace: Double = 15
 
     public init(grants: any CallGrantSource, allowance: CallAllowance? = nil, permission: @escaping @MainActor () async -> Bool,
                 lifetime: VoiceConnectionLifetime = VoiceConnectionLifetime(), history: CallHistory? = nil,
@@ -207,7 +221,7 @@ public final class CallSession {
                     if self.connection != nil { self.state = .active(activity, muted: self.muted, since: self.since) }
                 }, disconnected: { [weak self] in
                     guard let self, current == self.generation else { return }
-                    self.end(.connection, as: self.dropped())
+                    self.lost()
                 }, hungUp: { [weak self] in
                     guard let self, current == self.generation else { return }
                     self.stop(.agentHungUp)
@@ -258,13 +272,64 @@ public final class CallSession {
     /// Hangs up, or closes the bar of a call that ended; `ending` says why,
     /// for a call that was live.
     public func stop(_ ending: CallEnding = .hungUp) {
+        unhold()
         tearDown(ending)
         state = .idle
     }
 
     private func end(_ problem: CallProblem, as ending: CallEnding) {
+        unhold()
         tearDown(ending)
         state = .ended(problem)
+    }
+
+    private func unhold() {
+        isHeld = false
+        owed = false
+        resumedAt = -.infinity
+    }
+
+    /// The phone took the audio (another call, Siri, an alarm): the call
+    /// waits for it, however long, as a call on hold.
+    public func hold() {
+        guard state.isLive else { return }
+        isHeld = true
+    }
+
+    /// The audio is back: the call carries on, or, if its connection went
+    /// meanwhile, a new one is made with this call carried over.
+    public func resume() {
+        guard isHeld else { return }
+        isHeld = false
+        resumedAt = now()
+        // Its silence starts again from here: nobody could speak while held.
+        cues?.heard(at: now())
+        lastVoice = now()
+        if owed {
+            owed = false
+            begin()
+        }
+    }
+
+    /// The call's audio or connection can't be had back as it is (the
+    /// media services were reset, the engine didn't start again): a new
+    /// connection, this call carried over, at once or when the hold ends.
+    public func reconnect() {
+        guard state.isLive, request != nil else { return }
+        tearDown(.interrupted)
+        if isHeld {
+            owed = true
+            state = .connecting
+        } else {
+            begin()
+        }
+    }
+
+    /// The connection went: a drop, unless the phone had the audio (then
+    /// it is made again once it hasn't).
+    private func lost() {
+        guard isHeld || now() - resumedAt < Self.holdGrace else { return end(.connection, as: dropped()) }
+        reconnect()
     }
 
     /// What ended a call the provider let go of unasked: its limit, its
@@ -291,6 +356,8 @@ public final class CallSession {
                 guard let self, current == self.generation else { return }
                 try? await Task.sleep(for: self.tick)
                 guard current == self.generation, self.connection != nil, var cues = self.cues else { return }
+                // Nobody can speak on hold, and its limits wait for it too.
+                if self.isHeld { continue }
                 let moment = CallCues.Moment(now: self.now(), agentSpeaking: self.activity == .agentSpeaking,
                                              personSpeaking: self.activity == .userSpeaking || self.now() - self.lastVoice < 1.5,
                                              allowanceLeft: self.allowanceLeft(), allowanceTotal: self.allowance?.total)
@@ -377,7 +444,7 @@ public final class CallSession {
             state = .active(activity, muted: muted, since: since)
         } catch {
             guard current == generation else { return }
-            end(.connection, as: .dropped)
+            lost()
         }
     }
 
@@ -415,7 +482,7 @@ public final class CallSession {
             await previous?.value
             guard current == generation else { return }
             do { try await connection.update(text) }
-            catch { if current == generation { end(.connection, as: .dropped) } }
+            catch { if current == generation { lost() } }
         }
     }
 }
