@@ -1,5 +1,6 @@
 package com.slopus.happy.call
 
+import com.slopus.happy.agent.OrderKey
 import com.slopus.happy.conversation.ConversationApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -10,6 +11,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonArray
@@ -42,10 +45,14 @@ data class CallUpdate(val context: List<String> = emptyList()) {
  *
  * The call starts with the directory: home's bots, tasks, subtasks and
  * project conversations, in its order and nesting, as plain lines that give
- * each its reference, in the first context only. It never goes again:
- * `listConversations` finds what came or changed since. Updates name a
- * conversation by its title and what it sits under, and by its reference too
- * when that alone leaves it unclear or the agent hasn't had it yet.
+ * each its reference, in the first context. It never goes whole again: what
+ * came, went, was renamed or moved since follows as a `directory` update of
+ * just that ([directoryUpdate]). A reference is an order key ([OrderKey]):
+ * sorted as text, references give home's order, and a conversation that
+ * comes later gets one between its neighbours', so none ever changes. Updates
+ * name a conversation by its title and what it sits under, and by its
+ * reference too when that alone leaves it unclear or the agent hasn't had it
+ * yet.
  *
  * All state lives on [lane], one coroutine at a time: like iOS's actor, a
  * wait inside a tool lets other changes in, so what was checked before a
@@ -88,6 +95,11 @@ class CallContext(
         /** Conversations the first context lists, and its directory's size. */
         const val DIRECTORY = 100
         const val DIRECTORY_BYTES = 12 * 1024
+        /** What one `directory` update tells at most, and its size. */
+        const val DIRECTORY_CHANGES = 20
+        const val DIRECTORY_UPDATE_BYTES = 4 * 1024
+        /** How long home's changes settle before they go, from the first: "New Task" and the name it gets a moment later go as one. */
+        const val SETTLE_MS = 1_000L
         const val PAGE = 50
         /** Conversations the call hears from: the last ones visited, the one on screen included. */
         const val VISITED = 4
@@ -105,7 +117,8 @@ class CallContext(
     private val scope = CoroutineScope(SupervisorJob() + lane)
     private val refs = HashMap<String, String>()
     private val agents = HashMap<String, String>()
-    private var nextRef = 1
+    /** Every order key handed out this call, sorted: none is handed out twice. */
+    private val keys = ArrayList<String>()
     private var focus: String? = null
     private var focusRevision = 0
     /** Newest first. */
@@ -113,6 +126,11 @@ class CallContext(
     /** Home's conversations as last seen, in order and by ID. */
     private var entries: List<CallTarget> = emptyList()
     private var directory: Map<String, CallTarget> = emptyMap()
+    /** The directory as the agent has it: from the first context, then as each `directory` update left it. */
+    private var listed: List<Listing> = emptyList()
+    /** The first context's, which nothing can lose. */
+    private var first: List<Listing> = emptyList()
+    private var begun = false
     /** Work home doesn't list until its first message makes it: what `message` started, or compose's in front. */
     private val drafts = HashMap<String, CallTarget>()
     /** The conversations whose reference the agent has: from the first context, `listConversations`, a tool's answer or an update. */
@@ -147,6 +165,17 @@ class CallContext(
         var told: Map<String, String> = emptyMap(),
     )
 
+    /** A conversation as the agent's directory has it: what a rename or a move changes. */
+    private data class Listing(
+        val agentId: String,
+        val title: String,
+        val kind: CallTarget.Kind,
+        /** What it sits under, by home's IDs. */
+        val under: List<String>,
+    ) {
+        constructor(target: CallTarget) : this(target.agentId, target.title, target.kind, target.parents.map { it.agentId ?: it.id })
+    }
+
     /** The conversations the call hears from now, the latest visited first. */
     suspend fun followed(): List<String> = withContext(lane) { visited.toList() }
 
@@ -174,6 +203,9 @@ class CallContext(
     suspend fun initial(previous: List<CallSlot> = emptyList()): String = withContext(lane) {
         told.clear()
         see(targets.directory())
+        listed = entries.map(::Listing)
+        first = listed
+        begun = true
         val focused = targets.focused()
         focus = focused
         var state: CallTargetState? = null
@@ -329,14 +361,16 @@ class CallContext(
     /**
      * The context waiting for the call was too much and went unsent
      * ([CallSession.PENDING_BYTES]): what the agent now has wrong is put right
-     * in one go. The focus, marked `resync`, with its reference, then the
-     * errors this call told of and each message it told, as it told it, the
-     * most recent kept first, within half of [Limits.TOTAL_BYTES]. What
-     * doesn't fit is counted in `omitted`; a read (`readConversation`) has
-     * it. The first context is the prompt's, never lost.
+     * in one go. What home changed since the first context (`directory`), then
+     * the focus, marked `resync`, with its reference, then the errors this
+     * call told of and each message it told, as it told it, the most recent
+     * kept first, within half of [Limits.TOTAL_BYTES]. What doesn't fit is
+     * counted in `omitted`; a read (`readConversation`) has it. The first
+     * context is the prompt's, never lost.
      */
     suspend fun resync(): CallUpdate = withContext(lane) {
         if (closed) return@withContext CallUpdate()
+        val news = if (begun) news(first) else null
         val errors = ArrayList<String>()
         val streamed = ArrayList<Pair<Int, String>>()
         for (id in visited) {
@@ -356,7 +390,7 @@ class CallContext(
             focusEvent["ref"] = JsonPrimitive(ref(target.agentId))
         }
         val kept = ArrayList<String>()
-        var bytes = CallJson.encode(JsonObject(focusEvent)).utf8Size() + 32
+        var bytes = CallJson.encode(JsonObject(focusEvent)).utf8Size() + 32 + (news?.utf8Size() ?: 0)
         for (item in items) {
             if (bytes + item.utf8Size() + 1 > Limits.TOTAL_BYTES / 2) continue
             kept += item
@@ -365,19 +399,122 @@ class CallContext(
         if (kept.size < items.size) focusEvent["omitted"] = JsonPrimitive(items.size - kept.size)
         // Oldest first, as they would have come.
         val errorCount = kept.takeWhile { it in errors }.size
-        CallUpdate(listOf(CallJson.encode(JsonObject(focusEvent))) + kept.take(errorCount) + kept.drop(errorCount).reversed())
+        CallUpdate(listOfNotNull(news) + CallJson.encode(JsonObject(focusEvent)) + kept.take(errorCount) + kept.drop(errorCount).reversed())
     }
 
     // The directory
 
-    /** Home's conversations, as just read. */
+    /** Home's conversations, as just read, once each (the first wins), each with its reference. */
     private fun see(now: List<CallTarget>) {
-        entries = now
         val byId = LinkedHashMap<String, CallTarget>()
         for (entry in now) byId.putIfAbsent(entry.agentId, entry)
+        entries = byId.values.toList()
         directory = byId
         // Made by its first message: home's from now on.
         drafts.keys.removeAll { it in byId }
+        place(entries)
+    }
+
+    /**
+     * Home changed, maybe only a status. True when the agent's directory is no
+     * longer what it lists: a conversation came, went, was renamed or moved.
+     * [directoryUpdate] is due then, once [Limits.SETTLE_MS] has passed since
+     * the first such change ([DirectorySettle]).
+     */
+    suspend fun directoryChanged(now: List<CallTarget>): Boolean = withContext(lane) {
+        if (closed || !begun) return@withContext false
+        see(now)
+        entries.map(::Listing) != listed
+    }
+
+    /** Home read again, and what changed since the agent's directory was last put right: one `directory` event, or nothing. Never the whole directory again. */
+    suspend fun directoryUpdate(): CallUpdate = withContext(lane) {
+        if (closed || !begun) return@withContext CallUpdate()
+        val now = targets.directory()
+        if (closed) return@withContext CallUpdate()
+        see(now)
+        CallUpdate(listOfNotNull(news(listed)))
+    }
+
+    /**
+     * The `directory` event that brings the agent's directory, as it was at
+     * [before], to home as last seen; null when nothing came and nothing the
+     * agent was told of changed. `added`: what came, each with its reference,
+     * title, kind and the titles it sits under, and `after` (the reference of
+     * what it follows on home, null for the first) only when its reference
+     * doesn't sort between its neighbours'. `removed`: the references of what
+     * went. `renamed`: a new title. `moved`: where one sits now, `after` and
+     * its `parents`, its reference unchanged; what kept its order among the
+     * rest (the longest run, [kept]) didn't move. Each in home's order, at most
+     * [Limits.DIRECTORY_CHANGES] in all within [Limits.DIRECTORY_UPDATE_BYTES],
+     * the rest counted in `more`.
+     */
+    private fun news(before: List<Listing>): String? {
+        val now = entries
+        listed = now.map(::Listing)
+        val was = HashMap<String, IndexedValue<Listing>>()
+        before.forEachIndexed { at, listing -> was.putIfAbsent(listing.agentId, IndexedValue(at, listing)) }
+        fun key(index: Int): String? = now.getOrNull(index)?.let { ref(it.agentId).drop(1) }
+        fun after(index: Int): JsonElement = if (index > 0) JsonPrimitive(ref(now[index - 1].agentId)) else JsonNull
+        val added = ArrayList<Pair<String, JsonObject>>()
+        val common = ArrayList<Pair<Int, Int>>()
+        now.forEachIndexed { index, entry ->
+            val old = was[entry.agentId]
+            if (old != null) {
+                common += index to old.index
+                return@forEachIndexed
+            }
+            val value = linkedMapOf<String, JsonElement>(
+                "ref" to JsonPrimitive(ref(entry.agentId)), "title" to JsonPrimitive(entry.title), "kind" to JsonPrimitive(entry.kind.wire),
+            )
+            if (entry.parents.isNotEmpty()) value["parents"] = JsonArray(entry.parents.map { JsonPrimitive(it.title) })
+            // Sorted by its reference it would sit elsewhere: new work the call started before home had it, or one
+            // placed by a moved neighbour.
+            val own = key(index)!!
+            if (key(index - 1)?.let { it >= own } == true || key(index + 1)?.let { it <= own } == true) value["after"] = after(index)
+            added += entry.agentId to JsonObject(value)
+        }
+        val steady = kept(common.map { it.second })
+        val renamed = ArrayList<JsonObject>()
+        val moved = ArrayList<JsonObject>()
+        common.forEachIndexed { position, (index, _) ->
+            val entry = now[index]
+            val old = was[entry.agentId]?.value
+            if (entry.agentId !in told || old == null) return@forEachIndexed
+            val listing = Listing(entry)
+            if (listing.title != old.title) renamed += JsonObject(mapOf("ref" to JsonPrimitive(ref(entry.agentId)), "title" to JsonPrimitive(entry.title)))
+            if (position !in steady || listing.under != old.under || listing.kind != old.kind) {
+                val value = linkedMapOf<String, JsonElement>(
+                    "ref" to JsonPrimitive(ref(entry.agentId)), "after" to after(index),
+                    "parents" to JsonArray(entry.parents.map { JsonPrimitive(it.title) }),
+                )
+                if (listing.kind != old.kind) value["kind"] = JsonPrimitive(entry.kind.wire)
+                moved += JsonObject(value)
+            }
+        }
+        val ids = now.mapTo(HashSet()) { it.agentId }
+        val removed = before.filter { it.agentId !in ids && it.agentId in told }.map { it.agentId }
+        val total = added.size + removed.size + renamed.size + moved.size
+        if (total == 0) return null
+        val event = linkedMapOf<String, JsonElement>("event" to JsonPrimitive("directory"))
+        var taken = 0
+        // Room for `more` is kept.
+        fun fits(item: JsonElement, list: String): Boolean {
+            if (taken >= Limits.DIRECTORY_CHANGES) return false
+            val next = LinkedHashMap(event)
+            next[list] = JsonArray(((next[list] as? JsonArray) ?: JsonArray(emptyList())) + item)
+            if (CallJson.encode(JsonObject(next)).utf8Size() + 16 > Limits.DIRECTORY_UPDATE_BYTES) return false
+            event.putAll(next)
+            taken += 1
+            return true
+        }
+        for ((agentId, value) in added) if (fits(value, "added")) told += agentId
+        // Still told: a resync tells it again, and back, it is added.
+        for (agentId in removed) fits(JsonPrimitive(ref(agentId)), "removed")
+        for (item in renamed) fits(item, "renamed")
+        for (item in moved) fits(item, "moved")
+        if (taken < total) event["more"] = JsonPrimitive(total - taken)
+        return CallJson.encode(JsonObject(event))
     }
 
     /**
@@ -714,8 +851,46 @@ class CallContext(
 
     // References and bodies
 
-    private fun ref(agentId: String): String = refs.getOrPut(agentId) {
-        "s${nextRef++}".also { agents[it] = agentId }
+    /** The conversation's reference: `s` and its order key. One home doesn't list (new work on its way) gets the key after every other. */
+    private fun ref(agentId: String): String = refs[agentId] ?: assign(OrderKey.between(keys.lastOrNull(), null) ?: "5", agentId)
+
+    private fun assign(key: String, agentId: String): String {
+        val made = "s$key"
+        refs[agentId] = made
+        agents[made] = agentId
+        val at = keys.indexOfFirst { it > key }
+        keys.add(if (at < 0) keys.size else at, key)
+        return made
+    }
+
+    /**
+     * References for what [list] holds that has none yet. The first time, as
+     * few digits as the list allows, in its order ([spread]); after, each new
+     * one gets a key above the one before it in the list and just below the
+     * next key handed out ([OrderKey.justBefore], as happy-agent places new
+     * work after a fixed row), so arrivals in one place stay short (`49`,
+     * `48`, …), no key changes, none is handed out twice, one that went away
+     * keeps its own for when it comes back, and sorted as text they give the
+     * list's order.
+     */
+    private fun place(list: List<CallTarget>) {
+        if (keys.isEmpty()) {
+            list.zip(spread(list.size)).forEach { (entry, key) -> assign(key, entry.agentId) }
+            return
+        }
+        var previous: String? = null
+        for (entry in list) {
+            val existing = refs[entry.agentId]
+            if (existing != null) {
+                previous = existing.drop(1)
+                continue
+            }
+            val low = previous
+            val next = keys.firstOrNull { low == null || it > low }
+            val key = (if (next != null) OrderKey.justBefore(low, next) else OrderKey.between(low, null)) ?: continue
+            assign(key, entry.agentId)
+            previous = key
+        }
     }
 
     /** The conversation a reference names, while home lists it: one that went away isn't reached, and is again if it comes back, under the same reference. */
@@ -863,6 +1038,54 @@ class CallContext(
             }
             if (lines.isEmpty()) return header + "\n" + cut
             return (listOf(header) + (if (lines.size < slots.size) listOf(cut) else emptyList()) + lines.asReversed()).joinToString("\n")
+        }
+
+        /**
+         * [count] order keys in order, as short as [count] allows: `1` to `9`
+         * for up to nine; else the fewest digits that hold them, counted up from
+         * `11` (or `101`, …), skipping any that ends in 0, as no key does. A
+         * conversation that comes between two of them later adds a digit: `49`
+         * between `4` and `5`.
+         */
+        fun spread(count: Int): List<String> {
+            // 9 of one digit, 81 of two, 810 of three, …
+            var capacity = 9
+            var number = 1
+            while (capacity < count) {
+                capacity = if (number == 1) 81 else capacity * 10
+                number *= 10
+            }
+            if (number > 1) number += 1
+            val keys = ArrayList<String>()
+            while (keys.size < count) {
+                if (number % 10 != 0) keys += number.toString()
+                number += 1
+            }
+            return keys
+        }
+
+        /** The positions of a longest increasing run in [values], its members not necessarily next to each other: what kept its order. The rest moved. */
+        fun kept(values: List<Int>): Set<Int> {
+            // The position ending the smallest-tailed run of each length.
+            val tails = ArrayList<Int>()
+            val previous = IntArray(values.size) { -1 }
+            values.forEachIndexed { position, value ->
+                var low = 0
+                var high = tails.size
+                while (low < high) {
+                    val middle = (low + high) / 2
+                    if (values[tails[middle]] < value) low = middle + 1 else high = middle
+                }
+                if (low > 0) previous[position] = tails[low - 1]
+                if (low == tails.size) tails += position else tails[low] = position
+            }
+            val result = HashSet<Int>()
+            var position = tails.lastOrNull() ?: -1
+            while (position >= 0) {
+                result += position
+                position = previous[position]
+            }
+            return result
         }
 
         /** One of the first context's destinations, any case in the scheme and the place, a trailing slash allowed; null for anything else. */
@@ -1086,6 +1309,35 @@ class CallContext(
         }
 
         private fun JsonObject.string(name: String): String? = (this[name] as? JsonPrimitive)?.takeIf { it.isString }?.content
+    }
+}
+
+/**
+ * A call's one directory update on its way ([CallContext.directoryUpdate]):
+ * due [delayMillis] after the first change it tells, whatever comes after, so
+ * a burst goes as one; a change after it has gone starts the next. Cancelled
+ * with its call's scope (iOS `DirectorySettle`).
+ */
+class DirectorySettle(
+    private val scope: CoroutineScope,
+    private val delayMillis: Long = CallContext.Limits.SETTLE_MS,
+    private val flush: suspend () -> Unit,
+) {
+    private var waiting: Job? = null
+
+    /** The directory changed: the flush in [delayMillis], or the one already due. */
+    fun changed() {
+        if (waiting != null) return
+        waiting = scope.launch {
+            delay(delayMillis)
+            waiting = null
+            flush()
+        }
+    }
+
+    fun cancel() {
+        waiting?.cancel()
+        waiting = null
     }
 }
 

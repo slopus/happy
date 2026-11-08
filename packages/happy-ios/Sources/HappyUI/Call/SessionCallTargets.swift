@@ -441,5 +441,20 @@ final class SessionCallTargets: CallTargets {
             session.warm.release(hold.chat, token: hold.token, opened: false)
         }
     }
+
+    /// The directory as the rows change, home's and the spaces sidebar's:
+    /// on every change, a status too, for the call's context to tell what
+    /// matters.
+    func watchDirectory(_ changed: @escaping ([CallTarget]) -> Void) -> Watch {
+        let home = session.watchHome { [weak self] _ in
+            guard let self, !self.closed else { return }
+            changed(self.rows)
+        }
+        let spaces = session.watch { [weak self] _ in
+            guard let self, !self.closed else { return }
+            changed(self.rows)
+        }
+        return Watch { home.invalidate(); spaces.invalidate() }
+    }
 }
 #endif

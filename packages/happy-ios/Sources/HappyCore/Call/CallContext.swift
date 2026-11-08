@@ -25,10 +25,14 @@ public struct CallUpdate: Equatable, Sendable {
 ///
 /// The call starts with the directory: the sidebar's bots, tasks, subtasks
 /// and project conversations, in its order and nesting, as plain lines
-/// that give each its reference, in the first context only. It never goes
-/// again: `listConversations` finds what came or changed since. Updates name a
-/// conversation by its title and what it sits under, and by its reference
-/// too when that alone leaves it unclear or the agent hasn't had it yet.
+/// that give each its reference, in the first context. It never goes whole
+/// again: what came, went, was renamed or moved since follows as a
+/// `directory` update of just that (`directoryUpdate`). A reference is an
+/// order key (`OrderKey`): sorted as text, references give the sidebar's
+/// order, and a conversation that comes later gets one between its
+/// neighbours', so none ever changes. Updates name a conversation by its
+/// title and what it sits under, and by its reference too when that alone
+/// leaves it unclear or the agent hasn't had it yet.
 public actor CallContext {
     public enum Limits {
         /// The first context, and half of it a resync. The prompt's override
@@ -53,6 +57,12 @@ public actor CallContext {
         /// Conversations the first context lists, and its directory's size.
         public static let directory = 100
         public static let directoryBytes = 12 * 1024
+        /// What one `directory` update tells at most, and its size.
+        public static let directoryChanges = 20
+        public static let directoryUpdateBytes = 4 * 1024
+        /// How long the sidebar's changes settle before they go, from the
+        /// first: "New Task" and the name it gets a moment later go as one.
+        public static let settle: Duration = .seconds(1)
         public static let page = 50
         /// Conversations the call hears from: the last ones visited, the one on screen included.
         public static let visited = 4
@@ -89,7 +99,8 @@ public actor CallContext {
     private let toolDeadline: Duration
     private var refs: [String: String] = [:]
     private var agents: [String: String] = [:]
-    private var nextRef = 1
+    /// Every order key handed out this call, sorted: none is handed out twice.
+    private var keys: [String] = []
     private var focus: String?
     private var focusRevision = 0
     /// Newest first.
@@ -97,6 +108,12 @@ public actor CallContext {
     /// The sidebar's conversations as last seen, in order and by ID.
     private var entries: [CallTarget] = []
     private var directory: [String: CallTarget] = [:]
+    /// The directory as the agent has it: from the first context, then as
+    /// each `directory` update left it.
+    private var listed: [Listing] = []
+    /// The first context's, which nothing can lose.
+    private var first: [Listing] = []
+    private var begun = false
     /// Work the sidebar doesn't list until its first message makes it:
     /// what `message` started, or compose's in front.
     private var drafts: [String: CallTarget] = [:]
@@ -129,6 +146,23 @@ public actor CallContext {
         var errors: Set<String> = []
         /// The errors this call told of, by turn, with the event that told it.
         var told: [String: String] = [:]
+    }
+
+    /// A conversation as the agent's directory has it: what a rename or a
+    /// move changes.
+    private struct Listing: Equatable {
+        var agentId: String
+        var title: String
+        var kind: CallTarget.Kind
+        /// What it sits under, by the sidebar's IDs.
+        var under: [String]
+
+        init(_ target: CallTarget) {
+            agentId = target.agentId
+            title = target.title
+            kind = target.kind
+            under = target.parents.map { $0.agentId ?? $0.id }
+        }
     }
 
     public init(targets: any CallTargets, now: @escaping @Sendable () -> Double = { Date().timeIntervalSince1970 },
@@ -166,6 +200,9 @@ public actor CallContext {
     public func initial(previous: [CallSlot] = []) async -> String {
         told.removeAll()
         see(await targets.directory())
+        listed = entries.map(Listing.init)
+        first = listed
+        begun = true
         focus = await targets.focused()
         var focused: CallTargetState?
         if let focus {
@@ -382,7 +419,8 @@ public actor CallContext {
 
     /// The context waiting for the call was too much and went unsent
     /// (`CallSession.pendingBytes`): what the agent now has wrong is put
-    /// right in one go. The focus, marked `resync`, with its reference,
+    /// right in one go. What the sidebar changed since the first context
+    /// (`directory`), then the focus, marked `resync`, with its reference,
     /// then the errors this call told of and each message it told, as it
     /// told it, the most recent kept first, within half of
     /// `Limits.totalBytes`. What doesn't fit is counted in `omitted`; a
@@ -390,6 +428,7 @@ public actor CallContext {
     /// prompt's, never lost.
     public func resync() -> CallUpdate {
         guard !closed else { return CallUpdate() }
+        let news = begun ? news(since: first) : nil
         var errors: [String] = []
         var streamed: [(at: Int, event: String)] = []
         for id in visited {
@@ -404,7 +443,7 @@ public actor CallContext {
             focusEvent["ref"] = ref(focus)
         }
         var kept: [String] = []
-        var bytes = Self.string(focusEvent).utf8.count + 32
+        var bytes = Self.string(focusEvent).utf8.count + 32 + (news?.utf8.count ?? 0)
         for item in items where bytes + item.utf8.count + 1 <= Limits.totalBytes / 2 {
             kept.append(item)
             bytes += item.utf8.count + 1
@@ -412,17 +451,140 @@ public actor CallContext {
         if kept.count < items.count { focusEvent["omitted"] = items.count - kept.count }
         // Oldest first, as they would have come.
         let errorCount = kept.prefix { errors.contains($0) }.count
-        return CallUpdate(context: [Self.string(focusEvent)] + kept.prefix(errorCount) + kept.dropFirst(errorCount).reversed())
+        return CallUpdate(context: (news.map { [$0] } ?? []) + [Self.string(focusEvent)] + kept.prefix(errorCount) + kept.dropFirst(errorCount).reversed())
     }
 
     // MARK: The directory
 
-    /// The sidebar's conversations, as just read.
+    /// The sidebar's conversations, as just read, once each (the first
+    /// wins), each with its reference.
     private func see(_ now: [CallTarget]) {
-        entries = now
-        directory = Dictionary(now.map { ($0.agentId, $0) }, uniquingKeysWith: { first, _ in first })
+        var seen = Set<String>()
+        entries = now.filter { seen.insert($0.agentId).inserted }
+        directory = Dictionary(entries.map { ($0.agentId, $0) }, uniquingKeysWith: { first, _ in first })
         // Made by its first message: the sidebar's from now on.
         for id in drafts.keys where directory[id] != nil { drafts[id] = nil }
+        place(entries)
+    }
+
+    /// The sidebar changed, maybe only a status. True when the agent's
+    /// directory is no longer what it lists: a conversation came, went, was
+    /// renamed or moved. `directoryUpdate` is due then, once `Limits.settle`
+    /// has passed since the first such change (`DirectorySettle`).
+    public func directoryChanged(_ now: [CallTarget]) -> Bool {
+        guard !closed, begun else { return false }
+        see(now)
+        return entries.map(Listing.init) != listed
+    }
+
+    /// The sidebar read again, and what changed since the agent's
+    /// directory was last put right: one `directory` event, or nothing.
+    /// Never the whole directory again.
+    public func directoryUpdate() async -> CallUpdate {
+        guard !closed, begun else { return CallUpdate() }
+        let now = await targets.directory()
+        guard !closed else { return CallUpdate() }
+        see(now)
+        return CallUpdate(context: news(since: listed).map { [$0] } ?? [])
+    }
+
+    /// The `directory` event that brings the agent's directory, as it was
+    /// at `before`, to the sidebar as last seen; nil when nothing came and
+    /// nothing the agent was told of changed. `added`: what came, each with
+    /// its reference, title, kind and the titles it sits under, and
+    /// `after` (the reference of what it follows in the sidebar, null for
+    /// the first) only when its reference doesn't sort between its
+    /// neighbours'. `removed`: the references of what went. `renamed`: a
+    /// new title. `moved`: where one sits now, `after` and its `parents`,
+    /// its reference unchanged; what kept its order among the rest (the
+    /// longest run, `kept`) didn't move. Each in the sidebar's order, at
+    /// most `Limits.directoryChanges` in all within
+    /// `Limits.directoryUpdateBytes`, the rest counted in `more`.
+    private func news(since before: [Listing]) -> String? {
+        let now = entries
+        listed = now.map(Listing.init)
+        var was: [String: (at: Int, listing: Listing)] = [:]
+        for (at, listing) in before.enumerated() where was[listing.agentId] == nil { was[listing.agentId] = (at, listing) }
+        func key(_ index: Int) -> String? { now.indices.contains(index) ? String(ref(now[index].agentId).dropFirst()) : nil }
+        func after(_ index: Int) -> Any { index > 0 ? ref(now[index - 1].agentId) : NSNull() }
+        var added: [(agentId: String, value: [String: Any])] = []
+        var common: [(index: Int, at: Int)] = []
+        for (index, entry) in now.enumerated() {
+            if let old = was[entry.agentId] {
+                common.append((index, old.at))
+                continue
+            }
+            var value: [String: Any] = ["ref": ref(entry.agentId), "title": entry.title, "kind": entry.kind.rawValue]
+            if !entry.parents.isEmpty { value["parents"] = entry.parents.map(\.title) }
+            // Sorted by its reference it would sit elsewhere: new work the call
+            // started before the sidebar had it, or one placed by a moved neighbour.
+            let own = key(index)!
+            if key(index - 1).map({ $0 >= own }) == true || key(index + 1).map({ $0 <= own }) == true { value["after"] = after(index) }
+            added.append((entry.agentId, value))
+        }
+        let steady = Self.kept(common.map(\.at))
+        var renamed: [[String: Any]] = []
+        var moved: [[String: Any]] = []
+        for (position, pair) in common.enumerated() {
+            let entry = now[pair.index]
+            guard told.contains(entry.agentId), let old = was[entry.agentId]?.listing else { continue }
+            let listing = Listing(entry)
+            if listing.title != old.title { renamed.append(["ref": ref(entry.agentId), "title": entry.title]) }
+            if !steady.contains(position) || listing.under != old.under || listing.kind != old.kind {
+                var value: [String: Any] = ["ref": ref(entry.agentId), "after": after(pair.index), "parents": entry.parents.map(\.title)]
+                if listing.kind != old.kind { value["kind"] = entry.kind.rawValue }
+                moved.append(value)
+            }
+        }
+        let ids = Set(now.map(\.agentId))
+        let removed = before.filter { !ids.contains($0.agentId) && told.contains($0.agentId) }.map(\.agentId)
+        let total = added.count + removed.count + renamed.count + moved.count
+        guard total > 0 else { return nil }
+        var event: [String: Any] = ["event": "directory"]
+        var taken = 0
+        // Room for `more` is kept.
+        func fits(_ item: Any, in list: String) -> Bool {
+            guard taken < Limits.directoryChanges else { return false }
+            var next = event
+            next[list] = ((next[list] as? [Any]) ?? []) + [item]
+            guard Self.string(next).utf8.count + 16 <= Limits.directoryUpdateBytes else { return false }
+            event = next
+            taken += 1
+            return true
+        }
+        for item in added where fits(item.value, in: "added") { told.insert(item.agentId) }
+        // Still told: a resync tells it again, and back, it is added.
+        for agentId in removed { _ = fits(ref(agentId), in: "removed") }
+        for item in renamed { _ = fits(item, in: "renamed") }
+        for item in moved { _ = fits(item, in: "moved") }
+        if taken < total { event["more"] = total - taken }
+        return Self.string(event)
+    }
+
+    /// The positions of a longest increasing run in `values`, its members
+    /// not necessarily next to each other: what kept its order. The rest
+    /// moved.
+    static func kept(_ values: [Int]) -> Set<Int> {
+        // The position ending the smallest-tailed run of each length.
+        var tails: [Int] = []
+        var previous = Array(repeating: -1, count: values.count)
+        for (position, value) in values.enumerated() {
+            var low = 0
+            var high = tails.count
+            while low < high {
+                let middle = (low + high) / 2
+                if values[tails[middle]] < value { low = middle + 1 } else { high = middle }
+            }
+            if low > 0 { previous[position] = tails[low - 1] }
+            if low == tails.count { tails.append(position) } else { tails[low] = position }
+        }
+        var result = Set<Int>()
+        var position = tails.last ?? -1
+        while position >= 0 {
+            result.insert(position)
+            position = previous[position]
+        }
+        return result
     }
 
     /// The directory as the first context has it: a line for each
@@ -838,13 +1000,68 @@ public actor CallContext {
 
     // MARK: References and bodies
 
+    /// The conversation's reference: `s` and its order key. One the sidebar
+    /// doesn't list (new work on its way) gets the key after every other.
     private func ref(_ agentId: String) -> String {
         if let existing = refs[agentId] { return existing }
-        let made = "s\(nextRef)"
-        nextRef += 1
+        return assign(OrderKey.between(keys.last, nil) ?? "5", to: agentId)
+    }
+
+    @discardableResult
+    private func assign(_ key: String, to agentId: String) -> String {
+        let made = "s" + key
         refs[agentId] = made
         agents[made] = agentId
+        keys.insert(key, at: keys.firstIndex { $0 > key } ?? keys.endIndex)
         return made
+    }
+
+    /// References for what `list` holds that has none yet. The first time,
+    /// as few digits as the list allows, in its order (`spread`); after,
+    /// each new one gets a key above the one before it in the list and just
+    /// below the next key handed out (`OrderKey.justBefore`, as happy-agent
+    /// places new work after a fixed row), so arrivals in one place stay
+    /// short (`49`, `48`, …), no key changes, none is handed out twice, one
+    /// that went away keeps its own for when it comes back, and sorted as
+    /// text they give the list's order.
+    private func place(_ list: [CallTarget]) {
+        if keys.isEmpty {
+            for (entry, key) in zip(list, Self.spread(list.count)) { assign(key, to: entry.agentId) }
+            return
+        }
+        var previous: String?
+        for entry in list {
+            if let existing = refs[entry.agentId] {
+                previous = String(existing.dropFirst())
+                continue
+            }
+            let next = keys.first { key in previous.map { key > $0 } ?? true }
+            guard let key = next.map({ OrderKey.justBefore(previous, $0) }) ?? OrderKey.between(previous, nil) else { continue }
+            assign(key, to: entry.agentId)
+            previous = key
+        }
+    }
+
+    /// `count` order keys in order, as short as `count` allows: `1` to `9`
+    /// for up to nine; else the fewest digits that hold them, counted up
+    /// from `11` (or `101`, …), skipping any that ends in 0, as no key does.
+    /// A conversation that comes between two of them later adds a digit:
+    /// `49` between `4` and `5`.
+    static func spread(_ count: Int) -> [String] {
+        // 9 of one digit, 81 of two, 810 of three, …
+        var capacity = 9
+        var number = 1
+        while capacity < count {
+            capacity = number == 1 ? 81 : capacity * 10
+            number *= 10
+        }
+        if number > 1 { number += 1 }
+        var keys: [String] = []
+        while keys.count < count {
+            if number % 10 != 0 { keys.append(String(number)) }
+            number += 1
+        }
+        return keys
     }
 
     /// The conversation a reference names, while the sidebar lists it:
@@ -1092,5 +1309,38 @@ public actor CallContext {
             if first { continuation.resume(returning: result) }
             return first
         }
+    }
+}
+
+/// A call's one directory update on its way (`CallContext.directoryUpdate`):
+/// due `delay` after the first change it tells, whatever comes after, so a
+/// burst goes as one; a change after it has gone starts the next.
+/// Cancelled with its call.
+@MainActor
+public final class DirectorySettle {
+    private let delay: Duration
+    private let flush: @MainActor () async -> Void
+    private var waiting: Task<Void, Never>?
+
+    public init(delay: Duration = CallContext.Limits.settle, flush: @escaping @MainActor () async -> Void) {
+        self.delay = delay
+        self.flush = flush
+    }
+
+    /// The directory changed: the flush in `delay`, or the one already due.
+    public func changed() {
+        guard waiting == nil else { return }
+        let delay = delay
+        waiting = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled, let self else { return }
+            self.waiting = nil
+            await self.flush()
+        }
+    }
+
+    public func cancel() {
+        waiting?.cancel()
+        waiting = nil
     }
 }

@@ -1060,17 +1060,17 @@ class CallContextTest {
         context.initial()
         targets.setDirectory(listOf(backendTarget))
         for ((name, json) in listOf(
-            "readConversation" to """{"ref":"s1"}""",
-            "navigate" to """{"to":"happy://conversation/s1","focusRevision":0}""",
-            "message" to """{"to":"s1","text":"hi"}""",
+            "readConversation" to """{"ref":"s2"}""",
+            "navigate" to """{"to":"happy://conversation/s2","focusRevision":0}""",
+            "message" to """{"to":"s2","text":"hi"}""",
         )) {
             assertTrue(name, context.tool(name, json).isError)
         }
         targets.setDirectory(listOf(backendTarget, docsTarget))
-        assertFalse(context.tool("readConversation", """{"ref":"s1"}""").isError)
+        assertFalse(context.tool("readConversation", """{"ref":"s2"}""").isError)
     }
 
-    /** The directory goes once, at the start: what came since gives its reference with the first update about it, and only then. */
+    /** What came since, before an update told of it, gives its reference with the first update about it, and only then. */
     @Test
     fun whatCameSinceTheStartComesWithItsReference() = runBlocking {
         val targets = FakeCallTargets(listOf(releaseTarget), mutableMapOf("t" to CallTargetState(releaseTarget)), null)
@@ -1141,6 +1141,271 @@ class CallContextTest {
         assertEquals(emptyList<String>(), other.strings("parents"))
         assertEquals("s5", focus("u").str("ref"))
         assertNull(focus("t")["ref"])
+    }
+
+    // The directory's changes
+
+    private fun task(id: String, title: String, kind: CallTarget.Kind = CallTarget.Kind.Task, parents: List<CallTarget.Parent> = emptyList()) =
+        CallTarget(id, title, kind, CallTarget.Status.Idle, parents)
+
+    /** Home as it is now: the `directory` update of what changed, if any. */
+    private suspend fun news(context: CallContext, targets: FakeCallTargets, now: List<CallTarget>): JsonObject? {
+        targets.setDirectory(now)
+        context.directoryChanged(now)
+        val update = context.directoryUpdate()
+        assertTrue(update.context.size <= 1)
+        return update.context.firstOrNull()?.let(::obj)
+    }
+
+    private suspend fun refs(context: CallContext): Map<String, String> =
+        obj(context.tool("listConversations", "{}").text)["conversations"]!!.jsonArray.associate { it.jsonObject.str("title")!! to it.jsonObject.str("ref")!! }
+
+    private fun JsonObject.list(key: String) = this[key]?.jsonArray?.map { it.jsonObject }
+
+    @Test
+    fun theFirstReferencesAreAsShortAsTheListAllows() {
+        assertEquals(emptyList<String>(), CallContext.spread(0))
+        assertEquals(listOf("1", "2", "3"), CallContext.spread(3))
+        assertEquals("9", CallContext.spread(9).last())
+        assertEquals(listOf("11", "12", "13", "14", "15", "16", "17", "18", "19", "21"), CallContext.spread(10))
+        assertEquals("99", CallContext.spread(81).last())
+        assertEquals(listOf("101", "102", "103", "104", "105", "106", "107", "108", "109", "111"), CallContext.spread(82).take(10))
+        for (count in listOf(1, 9, 10, 81, 82, 810, 811)) {
+            val keys = CallContext.spread(count)
+            assertEquals(count, keys.size)
+            assertEquals("$count", keys.sorted(), keys)
+            assertEquals(count, keys.toSet().size)
+            assertFalse("$count", keys.any { it.endsWith("0") })
+        }
+    }
+
+    /** One that comes later sorts into its place between its neighbours' references; none of theirs changes. */
+    @Test
+    fun aNewConversationSortsIntoItsPlaceAndNoReferenceChanges() = runBlocking {
+        val five = listOf("A", "B", "C", "D", "E").map { task(it.lowercase(), it) }
+        val targets = FakeCallTargets(five, mutableMapOf(), null)
+        val context = CallContext(targets)
+        val initial = context.initial()
+        assertTrue(initial, initial.contains("- A — task, ref s1\n- B — task, ref s2\n- C — task, ref s3\n- D — task, ref s4\n- E — task, ref s5"))
+        val now = five.toMutableList()
+        now.add(4, task("x", "X"))
+        val between = news(context, targets, now)!!
+        assertEquals("directory", between.str("event"))
+        val added = between.list("added")!!
+        assertEquals(1, added.size)
+        assertEquals("s49", added[0].str("ref"))
+        assertEquals("X", added[0].str("title"))
+        assertEquals("task", added[0].str("kind"))
+        assertNull(added[0]["after"])
+        assertNull(added[0]["parents"])
+        assertNull(between["removed"])
+        assertNull(between["more"])
+        now.add(4, task("y", "Y"))
+        now.add(0, task("z", "Z"))
+        now.add(task("w", "W"))
+        assertEquals(listOf("s09", "s48", "s6"), news(context, targets, now)!!.list("added")!!.map { it.str("ref") })
+        val refs = refs(context)
+        assertEquals(mapOf("A" to "s1", "B" to "s2", "C" to "s3", "D" to "s4", "E" to "s5", "X" to "s49", "Y" to "s48", "Z" to "s09", "W" to "s6"), refs)
+        // Sorted as text, they are home's order.
+        assertEquals(now.map { refs.getValue(it.title) }.sorted(), now.map { refs.getValue(it.title) })
+        // Nothing else changed: nothing more goes.
+        assertNull(news(context, targets, now))
+    }
+
+    /** Bursts of new work in one place keep their references short. */
+    @Test
+    fun repeatedInsertsInOnePlaceStayShort() = runBlocking {
+        val two = listOf(task("a", "A"), task("b", "B"))
+        val targets = FakeCallTargets(two, mutableMapOf(), null)
+        val context = CallContext(targets)
+        context.initial()
+        val now = two.toMutableList()
+        // New tasks go first among the tasks, under the bot, one after another: s19 to s11, then s1099.
+        repeat(10) { index ->
+            now.add(1, task("n$index", "New $index"))
+            news(context, targets, now)
+        }
+        val refs = refs(context)
+        assertEquals(now.map { refs.getValue(it.title) }.sorted(), now.map { refs.getValue(it.title) })
+        assertTrue("$refs", refs.values.maxOf { it.length } <= 5)
+        assertEquals(refs.size, refs.values.toSet().size)
+    }
+
+    /** A reference stays through a rename and a move, and comes back with its conversation; no other conversation ever gets it. */
+    @Test
+    fun aReferenceStaysThroughRenamesMovesAndComingBack() = runBlocking {
+        val parent = CallTarget.Parent("task:b", "B", "task", "b")
+        val start = listOf(task("a", "A"), task("b", "B"), task("c", "C", CallTarget.Kind.Subtask, listOf(parent)), task("d", "D"), task("e", "E"))
+        val targets = FakeCallTargets(start, mutableMapOf(), null)
+        val context = CallContext(targets)
+        context.initial()
+        // Renamed.
+        var now = start.toMutableList()
+        now[1] = now[1].copy(title = "B2")
+        now[2] = now[2].copy(parents = listOf(parent.copy(title = "B2")))
+        val renamed = news(context, targets, now)!!
+        assertEquals(listOf(mapOf("ref" to "s2", "title" to "B2")), renamed.list("renamed")!!.map { o -> o.mapValues { it.value.jsonPrimitive.content } })
+        // What sits under it isn't renamed, nor moved.
+        assertNull(renamed["moved"])
+        // Moved to the top: that one alone moved, under its reference.
+        now = (listOf(now[4]) + now.take(4)).toMutableList()
+        val moved = news(context, targets, now)!!
+        assertEquals(1, moved.list("moved")!!.size)
+        val move = moved.list("moved")!!.first()
+        assertEquals("s5", move.str("ref"))
+        assertEquals(JsonNull, move["after"])
+        assertEquals(emptyList<String>(), move.strings("parents"))
+        assertNull(moved["added"])
+        // Gone.
+        val withoutC = now.filter { it.agentId != "c" }
+        assertEquals(listOf("s3"), news(context, targets, withoutC)!!.strings("removed"))
+        // Something new where it was gets a key of its own, never its.
+        val fresh = withoutC.toMutableList().apply { add(3, task("f", "F")) }
+        assertEquals("s29", news(context, targets, fresh)!!.list("added")!!.first().str("ref"))
+        // Back, under its own reference, in its place.
+        val back = fresh.toMutableList().apply { add(4, now[3]) }
+        val again = news(context, targets, back)!!.list("added")!!.first()
+        assertEquals("s3", again.str("ref"))
+        assertEquals(listOf("B2"), again.strings("parents"))
+        assertNull(again["after"])
+        // It reaches it again (this fake has nothing to read of it).
+        val read = context.tool("readConversation", """{"ref":"s3"}""")
+        assertTrue(read.text, read.text.contains("can't be read now"))
+    }
+
+    /** New work `message` started is added once home lists it, under the reference its answer gave, with where it sits: its key came before its place. */
+    @Test
+    fun newWorkFromMessageIsAddedOnceHomeListsIt() = runBlocking {
+        val targets = backend()
+        val context = CallContext(targets)
+        context.initial()
+        val started = obj(context.tool("message", """{"to":"new-task","text":"Find papers on caching"}""").text)
+        assertEquals("s3", started.str("ref"))
+        // Nothing yet: home doesn't list it.
+        assertFalse(context.directoryChanged(listOf(backendTarget, docsTarget)))
+        val made = CallTarget("new-1", "Caching papers", CallTarget.Kind.Task, CallTarget.Status.Running)
+        val update = news(context, targets, listOf(backendTarget, made, docsTarget))!!
+        assertEquals(
+            listOf(mapOf("after" to "s1", "kind" to "task", "ref" to "s3", "title" to "Caching papers")),
+            update.list("added")!!.map { o -> o.mapValues { it.value.jsonPrimitive.content } },
+        )
+        assertEquals(setOf("event", "added"), update.keys)
+        // Its words after that, by name alone.
+        context.focusChanged("new-1")
+        context.targetChanged(CallTargetState(made, working = true))
+        val words = events(context.targetChanged(CallTargetState(made, listOf(CallMessage("m", CallMessage.Role.Assistant, "Found three.")))))
+        assertNull(words.first()["ref"])
+    }
+
+    /** "New Task" and the name it gets a moment later settle into one entry; a status changes nothing the directory shows. */
+    @Test
+    fun newWorkFromHomeSettlesIntoOneEntryUnderItsName() = runBlocking {
+        val targets = backend()
+        val context = CallContext(targets)
+        context.initial()
+        val busy = CallTarget("a", "Backend", CallTarget.Kind.Bot, CallTarget.Status.Running, activityAt = 5)
+        assertFalse(context.directoryChanged(listOf(busy, docsTarget)))
+        assertTrue(context.directoryChanged(listOf(backendTarget, task("n", "New Task"), docsTarget)))
+        val named = news(context, targets, listOf(backendTarget, task("n", "Benchmark the cache"), docsTarget))!!
+        assertEquals(
+            listOf(mapOf("kind" to "task", "ref" to "s19", "title" to "Benchmark the cache")),
+            named.list("added")!!.map { o -> o.mapValues { it.value.jsonPrimitive.content } },
+        )
+        assertNull(named["renamed"])
+        // Told, a rename after it is one.
+        val renamed = news(context, targets, listOf(backendTarget, task("n", "Benchmark the LRU cache"), docsTarget))!!
+        assertEquals(
+            listOf(mapOf("ref" to "s19", "title" to "Benchmark the LRU cache")),
+            renamed.list("renamed")!!.map { o -> o.mapValues { it.value.jsonPrimitive.content } },
+        )
+        assertNull(events(context.focusChanged("n")).first()["ref"])
+    }
+
+    /** A burst of changes within the settle goes as one flush; one after it starts the next. */
+    @Test
+    fun changesSettleIntoOneUpdate() = runBlocking {
+        var flushes = 0
+        val scope = kotlinx.coroutines.CoroutineScope(coroutineContext + kotlinx.coroutines.SupervisorJob())
+        val settle = DirectorySettle(scope, delayMillis = 80) { flushes += 1 }
+        settle.changed()
+        delay(20)
+        settle.changed()
+        settle.changed()
+        assertEquals(0, flushes)
+        delay(200)
+        assertEquals(1, flushes)
+        settle.changed()
+        delay(200)
+        assertEquals(2, flushes)
+        settle.changed()
+        settle.cancel()
+        delay(200)
+        assertEquals(2, flushes)
+        scope.coroutineContext[kotlinx.coroutines.Job]!!.cancel()
+    }
+
+    /** Many at once: twenty in all within 4 KB, the rest counted; those not told come with their reference in the first update about them. */
+    @Test
+    fun anUpdateKeepsItsBudget() = runBlocking {
+        val targets = FakeCallTargets(listOf(backendTarget), mutableMapOf(), null)
+        val context = CallContext(targets)
+        context.initial()
+        val many = (0 until 60).map { task("m$it", "Imported $it") }
+        val update = news(context, targets, listOf(backendTarget) + many)!!
+        assertEquals(20, update.list("added")!!.size)
+        assertEquals(40, update["more"]!!.jsonPrimitive.int)
+        val project = CallTarget.Parent("p", "Parent ".repeat(25), "project")
+        val long = (0 until 10).map { task("l$it", "Long title $it ".repeat(12) + "\"".repeat(40), parents = listOf(project)) }
+        val all = listOf(backendTarget) + many + long
+        targets.setDirectory(all)
+        context.directoryChanged(all)
+        val line = context.directoryUpdate().context.first()
+        assertTrue(line.utf8Size() <= CallContext.Limits.DIRECTORY_UPDATE_BYTES)
+        val event = obj(line)
+        val listed = event.list("added")?.size ?: 0
+        assertTrue(listed in 1 until 10)
+        assertEquals(10, listed + (event["more"]?.jsonPrimitive?.int ?: 0))
+        // Past the budget: named with its reference when it first comes up.
+        assertTrue(events(context.focusChanged("l9")).first()["ref"] != null)
+        assertTrue(events(context.focusChanged("m45")).first()["ref"] != null)
+        assertNull(events(context.focusChanged("m0")).first()["ref"])
+    }
+
+    /** What changed of a conversation the agent was never told of says nothing; what came always does. */
+    @Test
+    fun onlyWhatTheAgentHasIsRenamedMovedOrRemoved() = runBlocking {
+        val many = (0 until 120).map { task("x$it", "Task $it") }
+        val targets = FakeCallTargets(many, mutableMapOf(), null)
+        val context = CallContext(targets)
+        context.initial()
+        val now = many.toMutableList()
+        now[110] = now[110].copy(title = "Renamed far down")
+        now.removeAt(115)
+        assertNull(news(context, targets, now))
+        now[0] = now[0].copy(title = "Renamed on top")
+        assertEquals(
+            listOf(mapOf("ref" to "s101", "title" to "Renamed on top")),
+            news(context, targets, now)!!.list("renamed")!!.map { o -> o.mapValues { it.value.jsonPrimitive.content } },
+        )
+    }
+
+    /** Context lost before the call was live: the resync tells what home changed since the first context. */
+    @Test
+    fun aResyncTellsWhatTheDirectoryChangedSinceTheStart() = runBlocking {
+        val targets = backend(focus = null)
+        val context = CallContext(targets)
+        context.initial()
+        val fresh = task("n", "Benchmark the cache")
+        news(context, targets, listOf(backendTarget, fresh, docsTarget))
+        val resync = events(context.resync())
+        assertEquals(listOf("directory", "focus"), resync.map { it.str("event") })
+        assertEquals("s19", resync[0].list("added")!!.first().str("ref"))
+        // Put right, nothing more goes.
+        assertNull(news(context, targets, listOf(backendTarget, fresh, docsTarget)))
+        // Nothing changed since the start: none.
+        val quiet = CallContext(backend(focus = null))
+        quiet.initial()
+        assertEquals(listOf("focus"), events(quiet.resync()).map { it.str("event") })
     }
 
     /** Names full of quotes, backslashes, slashes and control characters keep a resync within what a call keeps waiting. */

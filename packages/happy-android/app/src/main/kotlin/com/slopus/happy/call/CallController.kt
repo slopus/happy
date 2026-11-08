@@ -139,6 +139,15 @@ class CallController(
                 if (session === call) call.deliver(update)
             }
         }
+        // A change to home settles for a second from the first one, never longer, then goes as one update of what changed.
+        val settle = DirectorySettle(calling) {
+            if (session !== call) return@DirectorySettle
+            val update = context.directoryUpdate()
+            if (session === call) call.deliver(update)
+        }
+        account.feed.onEach { feed ->
+            if (session === call && context.directoryChanged(CallTarget.from(feed)) && session === call) settle.changed()
+        }.launchIn(calling)
         call.state.onEach { state ->
             if (session !== call) return@onEach
             report.observe(state)

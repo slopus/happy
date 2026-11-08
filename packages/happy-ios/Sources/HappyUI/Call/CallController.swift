@@ -21,6 +21,8 @@ final class CallController {
     private var session: CallSession?
     private var context: CallContext?
     private var targets: SessionCallTargets?
+    private var directoryWatch: Watch?
+    private var directorySettle: DirectorySettle?
     private var connectionID: String?
     private weak var shell: ShellViewController?
     private var clock: Timer?
@@ -142,6 +144,21 @@ final class CallController {
                 if self.session === call { self.deliver(update) }
             }
         }
+        // A change to the sidebar settles for a second from the first one,
+        // never longer, then goes as one update of what changed.
+        let settle = DirectorySettle { [weak self, weak call] in
+            guard let self, let call, self.session === call else { return }
+            let update = await context.directoryUpdate()
+            if self.session === call { self.deliver(update) }
+        }
+        directorySettle = settle
+        directoryWatch = targets.watchDirectory { [weak self, weak call, weak settle] rows in
+            guard let self, let call, self.session === call else { return }
+            Task {
+                guard await context.directoryChanged(rows), self.session === call else { return }
+                settle?.changed()
+            }
+        }
         focus = targets.focusedNow
         call.start(language: nil, context: {
             let initial = await context.initial(previous: history.slots)
@@ -207,6 +224,10 @@ final class CallController {
         Task { await context?.close() }
         targets?.close()
         targets = nil
+        directoryWatch?.invalidate()
+        directoryWatch = nil
+        directorySettle?.cancel()
+        directorySettle = nil
         focus = nil
     }
 

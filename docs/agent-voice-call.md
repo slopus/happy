@@ -304,7 +304,7 @@ project's conversation. Android reads home's rows the same way
 heading, Surfaces, Artifacts and todos are skipped. Each is named by the sidebar's own label, whatever
 it is: "New Task", "New Bot" or "Untitled" too. The tools reach any of
 them, by reference, whether or not the person opened it; there is no list
-of the call's own. The agent reads it once, in the first context, as
+of the call's own. The agent reads it whole once, in the first context, as
 indented lines in the style Happy Agent's own tools list bots, tasks and
 projects to its agents (`- name — details`):
 
@@ -319,24 +319,88 @@ Conversations in the app, in the sidebar's order:
     - Feature chat — conversation, ref s5
 ```
 
-A project or a worktree is a line without a reference. A reference
-(`s1`, `s2`, …) stays the conversation's for the whole call, through
-renames and moves. It reaches the conversation while the sidebar lists it:
-one that went away (deleted, archived, left) reaches nothing, and reaches
-it again, under the same reference, if it comes back. Within 12 KB and 100
-conversations; the rest are counted on its last line ("… and 40 more;
+A project or a worktree is a line without a reference. Within 12 KB and
+100 conversations; the rest are counted on its last line ("… and 40 more;
 listConversations finds them by title."). One too deep for the lines goes with
 what it sits under on a single line, cut to fit: `(under A > B > …)`.
 
-**The directory goes once.** It is in the first context only, never sent
-again during the call: no update follows the sidebar's changes.
-`listConversations` is how the agent finds what came, went or was renamed since
-(the prompt says so). A conversation the agent has no reference for yet
-(new since the call began, or past the directory's 100) comes with its
-`ref` in the first update about it, usually the `focus` when the person
-opens it; once the agent has a conversation's reference (from the first
-context, `listConversations`, a tool's answer or an update), updates name it by
-title alone again.
+**References are order keys.** A reference is `s` and a decimal
+fractional order key, the kind happy-agent orders its tasks, subtasks,
+projects and Surfaces by (`orderKeyBetween`, ported as `OrderKey` on both
+phones). Compared as plain text, references sort in the sidebar's order:
+`s4` < `s49` < `s5`. Every conversation the sidebar lists when the call
+starts gets one at once, in its order, as short as the list allows: `s1`
+to `s9` for up to nine conversations, else the fewest digits that hold
+them, counted up from `s11` (or `s101`, …) and skipping any that ends in 0,
+which no key does. A conversation that comes later gets a key above that
+of the conversation before it in the sidebar and just below the next key
+handed out (`orderKeyJustBefore`, as happy-agent places new work right
+after a fixed row), so it sorts into its place without any other
+reference changing: between `s4` and `s5` it is `s49`, the next there
+`s48`, after the last `s9` it is `s91`, before the first `s1` it is
+`s09`. Arrivals in one place, as new tasks at the top of the tasks, stay
+at one more digit for eight of them, three more for the next 98. New work `message` starts has no place in the sidebar
+yet: its reference is the key after every other, given in the answer.
+
+A reference stays the conversation's for the whole call, through renames
+and moves, and is never handed to another conversation. It reaches the
+conversation while the sidebar lists it: one that went away (deleted,
+archived, left) reaches nothing, and reaches it again, under the same
+reference, if it comes back. A move keeps the reference, so a moved
+conversation no longer sorts into its place; its update says where it sits
+instead (`after`, below).
+
+**What changes in the directory** reaches the agent as it happens, as one
+silent update of just what changed, never the whole directory again
+(`CallContext.directoryUpdate`):
+
+```text
+{"added":[{"after":"s1","kind":"task","ref":"s6","title":"Draft the release notes"},{"kind":"subtask","parents":["Release notes"],"ref":"s39","title":"Benchmark the cache"}],"event":"directory","removed":["s5"],"renamed":[{"ref":"s3","title":"Fix the cache race"}]}
+```
+
+That is, over the directory above: the task `message` started (`s6`, the
+key after every other) now first among the tasks, a subtask that came
+between `s3` and `s4`, Feature chat gone and Fix cache race renamed. Fix
+cache race moved after Benchmark the cache would then read
+`{"after":"s39","parents":["Release notes"],"ref":"s3"}` in `moved`.
+
+- `added`: a conversation the sidebar lists that the agent's directory
+  doesn't have (new work, a subtask, a project's conversation, or one that
+  came back, under its old reference), with its `ref`, `title`, `kind` and
+  `parents` (the titles it sits under, left out when none). Sorted by its
+  reference it sits in its place; only when it doesn't (new work the call
+  started before the sidebar had it, or one placed beside a moved one) it
+  says `after`: the reference of the conversation it follows in the
+  sidebar, `null` for the first.
+- `removed`: the references of what went away.
+- `renamed`: a conversation's new `title`.
+- `moved`: a conversation that sits elsewhere now, by another order among
+  the rest or under another parent: `after` and its `parents`, and its
+  `kind` if that changed with it. What kept its order among the rest (the
+  longest run of it) didn't move, so moving one conversation names that one.
+
+Each list is in the sidebar's order (`removed` in the order the agent had
+them). `removed`, `renamed` and `moved` are only of conversations the
+agent has the reference of (from the first context, `listConversations`, a
+tool's answer or an update); `added` is every new one. An update tells at
+most 20 changes within 4 KB, `added` first, then `removed`, `renamed` and
+`moved`; the rest are counted in `"more"`, for `listConversations` to
+find. Changes settle for a second from the first one before they go
+(`DirectorySettle`, `Limits.settle`), so a burst is one update: the "New
+Task" compose makes and the name the computer gives it 0.4 s later go as
+one `added` under its name. A status, an activity time or anything else
+the directory doesn't show sends nothing. The phone watches the sidebar's
+rows for this (iOS `SessionCallTargets.watchDirectory`, home's and the
+spaces sidebar's; Android `AgentSession.feed`); new work `message` started
+is `added` once the sidebar lists it, under the reference its answer gave,
+usually with `after`, since that key was chosen before the sidebar placed
+it.
+
+A conversation the agent has no reference for yet (one past the first
+context's 100, or past an update's 20) comes with its `ref` in the first
+update about it, usually the `focus` when the person opens it; once the
+agent has a conversation's reference, updates name it by title alone
+again.
 
 **What a visited conversation says**, as contextual updates (JSON, one per
 line, keys sorted):
@@ -383,9 +447,9 @@ Android has no run on a row: there a turn's rows come together with its
 end after them, so its words are of that run, and words with a step after
 them (a tool call, a picture, more words, a failure, the end) are complete.
 
-Nothing else: no tool calls or results, no working, run, status or
-needs-input changes, no messages of the person's, and no prompt asking the
-agent to speak. A conversation's state is read on demand
+Nothing else (besides the directory's changes, above): no tool calls or
+results, no working, run, status or needs-input changes, no messages of the
+person's, and no prompt asking the agent to speak. A conversation's state is read on demand
 (`readConversation`). Every update is silent: none starts a turn.
 
 The first time the call sees a visited conversation, what is there already
@@ -494,12 +558,14 @@ below, and the newest turn only after that). Five turns of 1,000 words of prose 
 at their 8 KB limit don't, and then the older turns give way, the newest
 stays whole and `readConversation` has the rest. Context that arrives before
 the call is live waits, up to 32 KB. Past that it is let go whole rather
-than cut, and replaced by one resync (`CallContext.resync`): a `focus`
-event with the current `focusRevision`, its `ref` and `"resync":true`, the
-errors the call told of, and each piece it told, as told, the most recent
-first, those within 16 KB (`omitted` counts any that didn't fit). The first
-context is the prompt's variable and is never lost, so the resync doesn't
-repeat the directory. Per call, words are bounded by 8 KB per piece of the
+than cut, and replaced by one resync (`CallContext.resync`): a
+`directory` event of what the sidebar changed since the first context
+(within its own 4 KB), a `focus` event with the current `focusRevision`,
+its `ref` and `"resync":true`, the errors the call told of, and each piece
+it told, as told, the most recent first, those within 16 KB with the
+directory's (`omitted` counts any that didn't fit). The first context is
+the prompt's variable and is never lost, so the resync doesn't repeat the
+directory. Per call, words are bounded by 8 KB per piece of the
 four visited conversations, but not in total: a long call over busy
 conversations still grows the agent's context. ElevenLabs documents no
 size limit on a client tool's result or a contextual update (only the 64 KB
@@ -708,7 +774,7 @@ on: it is still the relay's voice prompt (it names `messageClaudeCode` and
 ```text
 You are Happy, a voice companion for the person's coding agents on their computer. Speak briefly and plainly: one or two sentences unless asked for more.
 
-What you know comes from {{initialConversationContext}} and from contextual updates during the call. The initial context is plain text, given once at the start: the time and focusRevision, what you and the person said in earlier calls, the conversation on screen with its last turns and the models it can switch to, the conversations the person sees in the app as indented lines, each with its ref, the refs that start new work, and the destinations navigate takes. For anything new or changed since, use listConversations. Updates are JSON objects with an "event": focus (the conversation on screen, or a null title for home, Settings or anything else), assistant_text (a complete piece of a conversation's agent's words, whole; finishedTurn when it ended its turn) and session_error. Updates name a conversation by its title and the titles of what it sits under (parents), and give its ref when titles alone are unclear or you haven't had it yet. You hear new replies only from the four conversations the person most recently visited. Use refs (s1, s2, ...) in tools, never titles. Titles like "New Task" are work that hasn't been named yet.
+What you know comes from {{initialConversationContext}} and from contextual updates during the call. The initial context is plain text, given once at the start: the time and focusRevision, what you and the person said in earlier calls, the conversation on screen with its last turns and the models it can switch to, the conversations the person sees in the app as indented lines, each with its ref, the refs that start new work, and the destinations navigate takes. Updates are JSON objects with an "event": directory (the app's conversations changed since: added ones with their ref, title, kind and parents, removed refs, renamed ones with their new title, moved ones with where they sit now; more counts changes left out, which listConversations finds), focus (the conversation on screen, or a null title for home, Settings or anything else), assistant_text (a complete piece of a conversation's agent's words, whole; finishedTurn when it ended its turn) and session_error. A ref stays its conversation's for the whole call, and is an order key: sorted as text, refs give the app's order, so s49 sits between s4 and s5; one with "after" sits right after that ref instead. Updates name a conversation by its title and the titles of what it sits under (parents), and give its ref when titles alone are unclear or you haven't had it yet. You hear new replies only from the four conversations the person most recently visited. Use refs (such as s3 or s49) in tools, never titles. Titles like "New Task" are work that hasn't been named yet.
 
 Tools:
 - listConversations: find conversations, ones started since the call began too, with when each last did something; query is a case-insensitive substring of the title.
@@ -720,7 +786,7 @@ Sending:
 - Call message only when the person explicitly asks you to send: "send it", "send that to the release task", "tell the backend bot to ...". Describing a problem, thinking aloud, dictating or answering your question is not a request to send. If you aren't sure they want it sent, ask, and send only after a yes.
 - Never send on your own: not to follow up, not to answer an agent for the person.
 - Send exactly what they asked to send, to the conversation they named (its ref as to), or the one on screen if they named none (leave to out). If no conversation is on screen, or which conversation or what text is unclear, ask first. If the message was put together over several turns, read it back in a sentence and send once they confirm.
-- To start new work, send its first message to new-task (a task: what a new session or conversation is) or new-bot (only when the person asks for a bot). When the person names it, add a colon and the name: new-bot:Release helper. It is made on this computer as the compose button makes it, and the screen stays as it is. The result's ref is its ref from then on; show it only if the person asks to see it.
+- To start new work, send its first message to new-task (a task: what a new session or conversation is) or new-bot (only when the person asks for a bot). When the person names it, add a colon and the name: new-bot:Release helper. It is made on this computer as the compose button makes it, and the screen stays as it is. The result's ref is its ref from then on, and a directory update adds it under that ref once the app lists it; show it only if the person asks to see it.
 - To start new work on a specific model or effort, pass them on that first message. Without them it starts on the app's default, which the result names.
 - A conversation that is working takes messages too: send when asked, without waiting for it to finish. Only one waiting for the person (needsInput) can't take one.
 - Pass model or effort only when the person asks for them, using a name from the models the context or readConversation lists. They change with a message: there is no switch on its own. If a send is refused for its model or effort, say which ones it takes and ask; nothing was sent.
@@ -1039,8 +1105,8 @@ With `-callLive`, the fixture computer has 60 extra "Fixture task N" rows
 commentary before its answer), and a reply streamed in pieces to each
 message sent. For Release notes it sends a failure that ends the turn
 instead. Ship the cache's first answer makes new work: a "New Task" that
-is named "Benchmark the cache" 0.4 s later (the agent finds it, by
-that name, with listConversations). Every contextual update and tool call goes into `live.json` with its
+is named "Benchmark the cache" 0.4 s later (the agent hears of it, by
+that name, in one `directory` update). Every contextual update and tool call goes into `live.json` with its
 text, size and time.
 
 Android: `CallLiveDeviceCheck` on an emulator, with the ID passed to the
