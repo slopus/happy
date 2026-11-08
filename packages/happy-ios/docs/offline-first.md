@@ -185,7 +185,7 @@ says it under its name, with the same spinner.
 | No network path (`NetworkPath`, `NWPathMonitor`) | "Waiting for network…" | "waiting for network…" |
 | Reaching the server or computer | "Connecting…" | "connecting…" |
 | Connected, catching up | "Updating…" | "updating…" |
-| Offline for a reason home lists (agent only) | the name | "offline" |
+| Offline for a reason home lists (a paired computer only) | the name | "offline" |
 | Live | the name | the session's own status |
 
 **One model per account, read by every header.** Each kind works its
@@ -195,7 +195,10 @@ title and every chat of that account watch it, so they change together:
 - agent: `Session.headerState(status:snapshot:network:)`, from the
   pairing's check, the engine's snapshot and the path. An open stream is
   the truth whatever the pairing's check last said; an engine error with
-  the stream down is `offline`.
+  the stream down is `offline`. A signed-in server (Happy Cloud's, a
+  team's) is always there to answer, so its stream down is on its way back:
+  "connecting" until it is live again (`HomeSnapshot.reconnecting`), and
+  home lists no reason for it.
 - legacy: `LegacyLink`, the one reader of the session's socket status and
   catch-up streams (`AccountSession.statusUpdates`, `catchUpUpdates`). The
   socket retries for as long as the account is signed in, so a socket that

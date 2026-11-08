@@ -349,6 +349,9 @@ final class Session {
         // The stream is open: it is the truth, whatever the pairing's own
         // check (which retries on its own backoff) last said.
         if snapshot.live { return snapshot.loaded && !snapshot.syncing ? .online : .syncing }
+        // A signed-in server's stream on its way back: a server is always
+        // there to answer, so it is connecting, not offline.
+        if snapshot.reconnecting, status != .paused { return .connecting }
         // The computer did not answer: home's notice says so, in its words.
         if snapshot.error != nil { return .offline }
         switch status {

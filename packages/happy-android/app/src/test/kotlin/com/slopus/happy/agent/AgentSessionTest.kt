@@ -458,6 +458,47 @@ class AgentSessionTest {
     }
 
     @Test
+    fun aServerThatDoesNotAnswerIsOnItsWayBack() = runBlocking {
+        // Happy Cloud's server, or a team's: always there to answer, so a link down is one coming back.
+        val origin = com.slopus.happy.connection.AgentOrigin.parse("https://acme.happy.example")
+        val credential = com.slopus.happy.connection.OAuthCredential("jwt", "happy", "https://acme.happy.example/refresh", "refresh-1", origin.value, userId = "u1")
+        val server = connections.addServer(origin, credential, com.slopus.happy.connection.AccessToken("access-1", null), fallbackName = "acme").id
+        val down = java.util.concurrent.atomic.AtomicBoolean(true)
+        val asked = java.util.concurrent.atomic.AtomicInteger()
+        val session = AgentSession(server, connections, null, foreground, scope, { object : Transport by agent {
+            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
+                if (down.get()) {
+                    asked.incrementAndGet()
+                    throw java.io.IOException("no answer")
+                }
+                return agent.request(method, path, credential, body, headers)
+            }
+        } })
+        val seen = java.util.Collections.synchronizedList(mutableListOf<AgentLinkStatus>())
+        val watching = scope.launch { session.status.collect { seen += it } }
+        try {
+            // Asked again and again, it says connecting throughout, never offline.
+            eventually({ asked.get() }) { it >= 3 }
+            assertEquals(listOf(AgentLinkStatus.Connecting), seen.toList().distinct())
+            down.set(false)
+            agent.frames.send(Wire.hello("c0"))
+            eventually({ session.status.value }) { it == AgentLinkStatus.Connected }
+            // Dropped, and asked again while down: still on its way back.
+            seen.clear()
+            down.set(true)
+            val again = asked.get()
+            val dropped = agent.frames
+            agent.frames = Channel(Channel.UNLIMITED)
+            dropped.close()
+            eventually({ asked.get() }) { it >= again + 2 }
+            assertEquals(listOf(AgentLinkStatus.Connecting), seen.toList().dropWhile { it == AgentLinkStatus.Connected }.distinct())
+        } finally {
+            watching.cancel()
+            session.close()
+        }
+    }
+
+    @Test
     fun theNetworkBackALinkNotLiveStartsOverAtOnce() = runBlocking {
         // The first try went out with no network and hangs; the backoff after it would be seconds more.
         val health = java.util.concurrent.atomic.AtomicInteger()

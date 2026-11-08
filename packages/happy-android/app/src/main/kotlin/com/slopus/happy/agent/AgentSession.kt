@@ -753,9 +753,15 @@ class AgentSession internal constructor(
         }
     }
 
-    /** An attempt failed: a stream that was open is on its way back; one that never opened did not answer. */
+    /**
+     * An attempt failed: a stream that was open is on its way back; one that
+     * never opened did not answer. A server (Happy Cloud's, a team's) is
+     * always there to answer, so its link is on its way back however the
+     * attempt failed, as a Happy account's socket is (iOS's
+     * `HomeSnapshot.reconnecting`): its headers say connecting, not offline.
+     */
     private fun unanswered() {
-        statusState.value = if (statusState.value == AgentLinkStatus.Connected) AgentLinkStatus.Connecting else AgentLinkStatus.Offline
+        statusState.value = if (statusState.value == AgentLinkStatus.Connected || server != null) AgentLinkStatus.Connecting else AgentLinkStatus.Offline
     }
 
     /**

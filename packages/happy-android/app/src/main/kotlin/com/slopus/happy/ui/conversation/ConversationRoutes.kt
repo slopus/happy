@@ -410,11 +410,17 @@ private fun failureShown(row: ConversationRow.Failure, address: ChatAddress) {
     Analytics.failureShown(row.messageId, row.createdAt, event)
 }
 
-/** An agent connection's link as its chats' headers say it: a computer that didn't answer, or a pairing to redo, is offline. */
+/**
+ * An agent connection's link as its chats' headers say it: a computer that
+ * didn't answer, or a pairing to redo, is offline. Reading the snapshot
+ * before the stream opens is catching up, not connecting: the computer or
+ * server answered (iOS's `Session.headerState`, `.connected` with the stream
+ * down).
+ */
 internal fun AgentLinkStatus?.linkState(syncing: Boolean, network: Boolean): LinkState = when {
     !network -> LinkState.WaitingForNetwork
     this == null || this == AgentLinkStatus.Connected -> if (syncing) LinkState.Syncing else LinkState.Online
-    this == AgentLinkStatus.Connecting -> LinkState.Connecting
+    this == AgentLinkStatus.Connecting -> if (syncing) LinkState.Syncing else LinkState.Connecting
     else -> LinkState.Offline
 }
 

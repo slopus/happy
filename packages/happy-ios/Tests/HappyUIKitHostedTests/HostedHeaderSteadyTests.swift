@@ -316,6 +316,15 @@ final class HostedHeaderSteadyTests: XCTestCase {
         XCTAssertEqual(Session.headerState(status: .retrying, snapshot: snapshot), .online)
         XCTAssertEqual(Session.headerState(status: .revoked, snapshot: snapshot), .offline)
         XCTAssertEqual(Session.headerState(status: .connecting, snapshot: snapshot, network: false), .waitingForNetwork)
+        // A signed-in server's stream on its way back: connecting, whatever
+        // the server's own check says, until the stream is live again.
+        snapshot.live = false; snapshot.error = nil; snapshot.reconnecting = true
+        XCTAssertEqual(Session.headerState(status: .connected, snapshot: snapshot), .connecting)
+        XCTAssertEqual(Session.headerState(status: .retrying, snapshot: snapshot), .connecting)
+        XCTAssertEqual(Session.headerState(status: .paused, snapshot: snapshot), .offline)
+        XCTAssertEqual(Session.headerState(status: .connected, snapshot: snapshot, network: false), .waitingForNetwork)
+        snapshot.live = true; snapshot.syncing = true
+        XCTAssertEqual(Session.headerState(status: .connected, snapshot: snapshot), .syncing, "live again, it catches up")
     }
 }
 
