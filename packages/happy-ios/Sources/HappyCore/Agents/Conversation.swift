@@ -452,6 +452,12 @@ public actor Conversation {
     /// A mode the person chose here; what the daemon last ran with never
     /// replaces it.
     private var picked: AgentWire.Mode?
+    /// The agent's own mode, as the computer says it last ran: what the
+    /// composer shows unless the person picked one here. A draft always
+    /// carries a mode (the daemon requires one), picked or not, so a
+    /// draft's never stands over this.
+    private var agentMode: AgentWire.Mode?
+    private var modeRefresh: Task<Void, Never>?
     private var defaultMode: Task<AgentWire.Mode, Error>?
     /// The agent's own state, for the working line.
     private var status = "idle"
@@ -550,6 +556,7 @@ public actor Conversation {
         askingRead?.cancel(); askingRead = nil
         reading?.cancel(); reading = nil
         reloadSoon?.cancel(); reloadSoon = nil
+        modeRefresh?.cancel(); modeRefresh = nil
         publishing?.cancel(); publishing = nil
         deliveryWatch?.cancel(); deliveryWatch = nil
         let sends = Array(delivering.values)
@@ -701,10 +708,11 @@ public actor Conversation {
 
     private func adopt(_ start: AgentWire.Bootstrap, _ history: AgentWire.MessagesResponse) {
         reads += 1
-        // The draft carries the mode the next message goes with (the last
-        // pick, on any device), so it stands over what the agent last ran
-        // with; this phone's own draft coming back would otherwise drop it.
-        mode = picked ?? start.draft?.value?.mode ?? start.mode ?? mode
+        // The agent's own mode stands over the draft's: a draft carries
+        // whatever mode its device had, picked or not, and would otherwise
+        // keep one the agent no longer runs with.
+        if let current = start.mode { agentMode = current }
+        mode = picked ?? agentMode ?? start.draft?.value?.mode ?? mode
         snapshot.mode = mode
         if let draft = start.draft { adoptDraft(draft, publishes: false) }
         if mode == nil, defaultMode == nil { defaultMode = readDefaultMode() }
@@ -843,6 +851,7 @@ public actor Conversation {
             snapshot.working = true
             activeRun = (runId, payload["run"]?["startedAt"]?.numberValue)
             transcript.setTime(RunTime(payload["run"]), for: runId)
+            refreshAgentMode()
         case "run.boundary":
             guard let runId = payload["startedRun"]?["id"]?.stringValue else { return }
             transcript.accept(payload["acceptedMessageIds"]?.arrayValue?.compactMap(\.stringValue) ?? [], into: runId)
@@ -850,6 +859,7 @@ public actor Conversation {
             activeRun = (runId, payload["startedRun"]?["startedAt"]?.numberValue)
             if let finished = payload["finishedRun"]?["id"]?.stringValue { transcript.setTime(RunTime(payload["finishedRun"]), for: finished) }
             transcript.setTime(RunTime(payload["startedRun"]), for: runId)
+            refreshAgentMode()
         case "run.finished":
             if let finished = payload["run"]?["id"]?.stringValue { transcript.setTime(RunTime(payload["run"]), for: finished) }
             snapshot.working = false
@@ -1423,6 +1433,23 @@ public actor Conversation {
         saveDraftSoon(after: .zero)
     }
 
+    /// A run began, perhaps sent from elsewhere with another mode: the
+    /// agent's own is read again (`GET /v0/agents/:id/mode`) and shown
+    /// unless the person picked one here.
+    private func refreshAgentMode() {
+        guard creation == nil, modeRefresh == nil else { return }
+        modeRefresh = Task { [client, agentId] in
+            let current = try? await client.agentMode(agentId)
+            modeRefresh = nil
+            guard let current else { return }
+            agentMode = current
+            guard picked == nil, mode != current else { return }
+            mode = current
+            snapshot.mode = current
+            publish()
+        }
+    }
+
     /// What a message goes with when nothing was picked: what the person's
     /// next session starts on (`ModelPreferences`), read from this
     /// computer's settings as this phone last has them.
@@ -1566,9 +1593,9 @@ public actor Conversation {
         draftSave?.cancel()
         draftRevision += 1
         draft = Draft(text: text, updatedAt: stamp, synced: true)
-        // Newer than anything picked here: its mode is the one now.
-        if let mode = remote.value?.mode {
-            if picked != nil { picked = mode }
+        // Its mode only fills in for an agent whose own isn't known, and
+        // never replaces a pick made here.
+        if let mode = remote.value?.mode, picked == nil, agentMode == nil {
             self.mode = mode
             snapshot.mode = mode
         }
