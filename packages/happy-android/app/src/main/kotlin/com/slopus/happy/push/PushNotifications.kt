@@ -126,6 +126,11 @@ fun pushTapIntent(context: Context, sessionId: String?): Intent =
  * tag.
  */
 fun presentPush(context: Context, push: RemotePush) {
+    if (CloudPushNotification.owns(push.body)) return
+    presentNotification(context, push, pushTapIntent(context, push.sessionId))
+}
+
+internal fun presentNotification(context: Context, push: RemotePush, intent: Intent) {
     val manager = NotificationManagerCompat.from(context)
     if (!manager.areNotificationsEnabled()) return
     NotificationChannels.create(context)
@@ -134,7 +139,7 @@ fun presentPush(context: Context, push: RemotePush) {
     val tap = PendingIntent.getActivity(
         context,
         push.tag.hashCode(),
-        pushTapIntent(context, push.sessionId),
+        intent,
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
     val notification = NotificationCompat.Builder(context, channel)
