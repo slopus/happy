@@ -317,6 +317,8 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
                 self?.showDictation(words, volatileLength: (volatile as NSString).length)
             }
             record.onDiscard = { [weak self] in self?.discardDictation() }
+            // A cancel's bin stands in for add, as Telegram's for attach.
+            record.binSpot = { [weak self] in RecordBinSpot(icon: self?.card.addControl) }
             card.recordButton = record
         }
         card.textView.accessibilityIdentifier = "composer"

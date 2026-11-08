@@ -11,7 +11,7 @@ import UIKit
 enum HeaderBar {
     /// The right group as it reads from the left, shared across screens.
     enum Trailing: CaseIterable {
-        case filter, search, compose, settings
+        case filter, search, compose, call, settings
     }
 
     /// Every bar's look, set once on the navigation bar
@@ -59,6 +59,15 @@ enum HeaderBar {
         let item = UIBarButtonItem(image: .composeIcon(), primaryAction: UIAction { _ in action() })
         item.accessibilityLabel = Strings.newWork
         item.accessibilityIdentifier = "compose"
+        return item
+    }
+
+    /// Starts a voice call with the connection's agents: HappyIcons'
+    /// phone, drawn as Settings is beside it.
+    static func callItem(_ action: @escaping () -> Void) -> UIBarButtonItem {
+        let item = UIBarButtonItem(image: .icon(.ionicons("call"), size: 22), primaryAction: UIAction { _ in action() })
+        item.accessibilityLabel = Strings.Call.start
+        item.accessibilityIdentifier = "voice-call"
         return item
     }
 

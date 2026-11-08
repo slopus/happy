@@ -35,6 +35,18 @@ public struct RecordMotion: Equatable, Sendable {
         public static let barDamping: CGFloat = 1
         /// And back into it, the same spring a little quicker.
         public static let barShrinkDuration: Double = 0.3
+        /// A cancel (`ChatTextInputPanelNode`'s `recordingToAttachButton`):
+        /// the bar's clock shrinks to half as it fades, "Slide to cancel"
+        /// fades over `cancelFade`, and the dot's bin travels to the icon
+        /// it stands in for on the panel's spring, `binTravel`.
+        public static let cancelClockScale: CGFloat = 0.5
+        public static let cancelFade: Double = 0.25
+        public static let binTravel: Double = 0.4
+        public static let binDamping: CGFloat = 0.9
+        /// Once the bin has shut, it shrinks away as the icon grows back.
+        public static let binOut: Double = 0.2
+        /// What the bin and the icon shrink to and grow from.
+        public static let binOutScale: CGFloat = 0.001
     }
 
     /// The level shown, 0 to 1.

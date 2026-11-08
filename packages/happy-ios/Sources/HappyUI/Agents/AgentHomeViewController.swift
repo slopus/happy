@@ -32,28 +32,34 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         item.sharesBackground = false
         return item
     }()
-    /// A voice call with this connection's agents, just left of compose
-    /// (`CallController`).
-    private lazy var voiceItem: UIBarButtonItem = {
-        let item = UIBarButtonItem(image: .voiceIcon(), primaryAction: UIAction { [weak self] _ in self?.startCall() })
-        item.accessibilityLabel = Strings.Call.start
-        item.accessibilityIdentifier = "voice-call"
-        item.sharesBackground = false
-        return item
-    }()
-    /// Telegram's microphone, the toolbar's last and primary button: hold
-    /// to say what a new task should do, and it starts with those words;
-    /// stopped while locked, its composer opens with them as a draft.
+    /// A voice call with this connection's agents, before Settings in the
+    /// header (`CallController`).
+    private lazy var callItem = HeaderBar.callItem { [weak self] in self?.startCall() }
+    /// Telegram's microphone, between search and compose: hold to say
+    /// what a new task should do, and it starts with those words; stopped
+    /// while locked, its composer opens with them as a draft.
     private lazy var record: RecordButton = {
         let button = RecordButton(style: .toolbar)
-        // The toolbar becomes the bar: its glass morphs from search, the
-        // call and compose into one item the clock is written over, and
-        // back when the recording ends (`RecordToolbarLayout`).
+        // The toolbar becomes the bar: search's glass morphs into one item
+        // the clock is written over, and back when the recording ends
+        // (`RecordToolbarLayout`).
         button.bar = { [weak self] in
             guard let self, let toolbar = navigationController?.toolbar, let layout = recordingLayout(in: toolbar) else { return nil }
             return RecordBar(frame: toolbar.convert(layout.bar, to: nil), cornerRadius: layout.bar.height / 2, ground: .host)
         }
         button.onRecording = { [weak self] recording in self?.morphToolbar(recording: recording) }
+        // A cancel's bin stands in for search's magnifier, as Telegram's
+        // stands in for the attach button: the dot is right over it.
+        button.binSpot = { [weak self] in
+            guard let bar = self?.navigationItem.searchController?.searchBar,
+                  let magnifier = (bar.searchTextField.leftView as? UIImageView)?.image
+            else { return nil }
+            // The magnifier, clear: the placeholder keeps its place.
+            let clear = magnifier.withTintColor(.clear, renderingMode: .alwaysOriginal)
+            return RecordBinSpot(hide: { hidden in
+                bar.setImage(hidden ? clear : nil, for: .search, state: .normal)
+            })
+        }
         button.onResult = { [weak self] result in
             guard let self else { return }
             endSearch()
@@ -69,8 +75,8 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         item.sharesBackground = false
         return item
     }()
-    /// The toolbar's one item besides the microphone while it records: room
-    /// for the clock, in glass search's field morphs into.
+    /// The toolbar's bar while the microphone records: room for the clock,
+    /// in glass search's field morphs into.
     private let recordBarSpace = RecordBarSpace()
     private lazy var recordBarItem: UIBarButtonItem = {
         let item = UIBarButtonItem(customView: recordBarSpace)
@@ -78,6 +84,8 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         item.identifier = Self.searchIdentifier
         return item
     }()
+    /// Compose's room while the microphone records, so it doesn't move.
+    private let composeRoom = UIBarButtonItem.fixedSpace(RecordToolbarLayout.buttonRoom)
     private static let searchIdentifier = "home-search"
     /// The toolbar's frames while the microphone records; nil at rest.
     private var recordingToolbar: RecordToolbarLayout?
@@ -219,20 +227,20 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         view.setNeedsLayout()
     }
 
-    /// Search, then the call, compose and the microphone, if this person
-    /// may start work.
+    /// Search, then the microphone and compose, if this person may start
+    /// work.
     private var restingToolbarItems: [UIBarButtonItem] {
         let search = navigationItem.searchBarPlacementBarButtonItem
         search.identifier = Self.searchIdentifier
-        return [search, .flexibleSpace()] + (mayWrite ? [voiceItem, composeItem, recordItem] : [])
+        return [search, .flexibleSpace()] + (mayWrite ? [recordItem, composeItem] : [])
     }
 
-    /// The bar's room, then the microphone.
-    private var recordingToolbarItems: [UIBarButtonItem] { [recordBarItem, .flexibleSpace(), recordItem] }
+    /// The bar's room, the microphone, and compose's room.
+    private var recordingToolbarItems: [UIBarButtonItem] { [recordBarItem, .flexibleSpace(), recordItem, composeRoom] }
 
     /// The toolbar morphs into the recording bar and back
     /// (`setToolbarItems(_:animated:)`): the bar's glass grows from
-    /// search's field over the call and compose, the microphone stays.
+    /// search's field, the microphone stays, compose goes.
     private func morphToolbar(recording: Bool) {
         guard let toolbar = navigationController?.toolbar else { return }
         if recording {
@@ -250,11 +258,12 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         setToolbarItems(recording ? recordingToolbarItems : restingToolbarItems, animated: true)
     }
 
+
     /// The toolbar's frames while the microphone records; nil as the
     /// iPad's sidebar, whose toolbar has no microphone.
     private func recordingLayout(in toolbar: UIToolbar) -> RecordToolbarLayout? {
         guard !traitCollection.isSidebarColumn, record.window != nil else { return nil }
-        return RecordToolbarLayout(width: toolbar.bounds.width, microphone: record.convert(record.bounds, to: toolbar))
+        return RecordToolbarLayout(width: toolbar.bounds.width, microphone: record.convert(record.bounds, to: toolbar), after: 1)
     }
 
     private func applyGround() {
@@ -273,8 +282,9 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         guard let switcher else { return }
         navigationItem.leftBarButtonItem = switcher.barItem
         navigationItem.rightBarButtonItems = traitCollection.isSidebarColumn ? [] : HeaderBar.trailing([
+            .call: mayWrite ? callItem : nil,
             .settings: settingsItem,
-        ])
+        ].compactMapValues { $0 })
     }
 
     private lazy var settingsItem = HeaderBar.settingsItem { [weak self] in self?.openSettings() }

@@ -81,3 +81,14 @@ committed byte for byte (SHA-256
 a play from progress 0 starts at its in-point, frame 60. Its author and
 licence are **not verified**: confirm them before a release build ships it.
 Android ships the same bytes for its empty Artifacts list.
+
+## `record-bin.json`, a cancelled recording
+
+Not desktop's, and not under `LICENSE` here. Telegram-iOS's
+`submodules/TelegramUI/Resources/Animations/BinRed.json` (master, fetched
+7 November 2026), committed byte for byte (SHA-256
+`17347187deec39d484a45cac4dbc0c016ea7f8b2422cbfd3708968f9d100d1ab`): the
+recording's red dot jumping into a bin that closes on it, which
+`RecordOverlay` plays where a cancelled recording's dot was, as
+`ChatTextInputPanelNode` does. Telegram-iOS is GPL-2.0; adapted with
+permission from Steve, as the rest of the microphone is.

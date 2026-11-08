@@ -60,6 +60,10 @@ final class RecordButton: UIControl {
     var onRecording: ((Bool) -> Void)?
     /// Where the clock goes while recording, in the window's space.
     var bar: (() -> RecordBar?)?
+    /// What a cancel's bin stands in for while it plays (Telegram's
+    /// attach button); nil plays it where the dot was. Asked a turn after
+    /// the cancel, once the host is back at rest.
+    var binSpot: (() -> RecordBinSpot?)?
     /// Whether a press may record now.
     var canRecord: () -> Bool = { true }
 
@@ -278,7 +282,7 @@ final class RecordButton: UIControl {
         guard phase == .holding || phase == .locked else { return }
         phase = .finishing
         following = false
-        overlay?.dismiss(cancelled: ending == .cancel)
+        overlay?.dismiss(cancelled: ending == .cancel, bin: ending == .cancel ? binSpot : nil)
         onRecording?(false)
         hosting?.recordButton(self, isRecording: false)
         UIView.animate(withDuration: RecordMotion.Metrics.disappearDuration) {

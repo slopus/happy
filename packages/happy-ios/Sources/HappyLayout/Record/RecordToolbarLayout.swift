@@ -4,17 +4,19 @@ import CoreGraphics
 #endif
 
 /// Home's toolbar while the microphone records. UIKit morphs the toolbar
-/// from one set of items to the next, so recording swaps search, the call
-/// and compose for one wide item, the bar, and the glass of the buttons
-/// flows into the bar's and back out of it, as search's glass stretches
-/// into its field:
+/// from one set of items to the next, so recording swaps search for one
+/// wide item, the bar, and search's glass flows into the bar's and back
+/// out of it, as it stretches into its field. Compose, after the
+/// microphone, gives way to an empty space as wide, so the microphone
+/// stays where the finger is:
 ///
-///     ( 🔍 Search          )  ( ⦀ ) ( ✎ ) ( 🎙 )
+///     ( 🔍 Search                )  ( 🎙 ) ( ✎ )
 ///                    ↓ setToolbarItems(animated:)
-///     ( ● 0:02,54     ‹ Slide to cancel   )  ( 🎙 )
-///      ↑ the bar's glass, as far in as the  ↑ the microphone stays,
-///        microphone's glass from its edge,    under the blue circle
-///        to the gap before the microphone
+///     ( ● 0:02,54   ‹ Slide to cancel )  ( 🎙 )
+///      ↑ the bar's glass, as far in as   ↑ the microphone stays,
+///        the last glass is from its        under the blue circle
+///        edge, to the gap before the
+///        microphone
 ///
 /// The toolbar sizes a custom view's glass as the view plus `padding` a
 /// side, so the microphone's view is `button` square to stand as tall as
@@ -39,14 +41,19 @@ public struct RecordToolbarLayout: Equatable, Sendable {
 
     /// - Parameters:
     ///   - width: the toolbar's. Its glass sits as far in from either
-    ///     edge, so the bar starts where the microphone's glass ends.
+    ///     edge, so the bar starts as far in as the last glass ends.
     ///   - microphone: the microphone's view.
-    public init(width: CGFloat, microphone: CGRect) {
+    ///   - after: the glass buttons after the microphone.
+    public init(width: CGFloat, microphone: CGRect, after: Int = 0) {
         typealias M = Metrics
         let glassTop = microphone.midY - M.glass / 2
-        let leading = width - (microphone.midX + M.glass / 2)
+        let leading = width - (microphone.midX + M.glass / 2 + CGFloat(max(0, after)) * (M.gap + M.glass))
         let trailing = microphone.midX - M.glass / 2 - M.gap
         bar = CGRect(x: leading, y: glassTop, width: max(M.glass, trailing - leading), height: M.glass)
         barView = CGSize(width: bar.width - 2 * M.padding, height: M.button)
     }
+
+    /// The room a glass button takes in the toolbar, with the gap before
+    /// it: what stands in for compose while the microphone records.
+    public static let buttonRoom: CGFloat = Metrics.gap + Metrics.glass
 }

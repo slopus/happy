@@ -13,6 +13,8 @@ extension Palette {
         public static let middleWaveAlpha: CGFloat = 0.25
         /// Telegram's recording dot (`0xFF2D55`).
         public static let dot = ColorToken("#FF2D55", "#FF375F")
+        /// A cancel's bin, as Telegram tints its `BinRed` (`0xFF3B30`).
+        public static let bin = ColorToken("#FF3B30", "#FF453A")
         /// The glyph on the circle.
         public static let glyph = ColorToken("#FFFFFF")
         /// The lock and its chevron (`panelControlColor`).

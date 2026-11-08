@@ -151,6 +151,14 @@ final class RecordMotionTests: XCTestCase {
         XCTAssertLessThanOrEqual(steps.max() ?? 0, 1)
     }
 
+    func testACancelThrowsTheDotInTelegramsBin() {
+        XCTAssertEqual(RecordMotion.Metrics.cancelClockScale, 0.5)
+        XCTAssertEqual(RecordMotion.Metrics.cancelFade, 0.25)
+        XCTAssertEqual(RecordMotion.Metrics.binTravel, 0.4)
+        XCTAssertEqual(RecordMotion.Metrics.binOut, 0.2)
+        XCTAssertEqual(RecordOverlayLayout.bin(around: CGPoint(x: 44, y: 820)), CGRect(x: 24, y: 800, width: 40, height: 40))
+    }
+
     func testTheCirclesFadeInFromAFifthInATenth() {
         XCTAssertEqual(RecordMotion.appearAlpha(at: 0), 0.2)
         XCTAssertEqual(RecordMotion.appearAlpha(at: 0.05), 0.6, accuracy: 1e-9)
@@ -302,6 +310,16 @@ final class RecordToolbarLayoutTests: XCTestCase {
         let layout = RecordToolbarLayout(width: 402, microphone: CGRect(x: 331, y: 803, width: 38, height: 38))
         XCTAssertEqual(layout.bar, CGRect(x: 28, y: 798, width: 286, height: 48), "as far in as the microphone's glass")
         XCTAssertEqual(layout.barView, CGSize(width: 276, height: 38))
+    }
+
+    /// The microphone before compose: its glass 266 to 314, compose's 326
+    /// to 374. The bar still starts 28 in, and stops 12 short of the
+    /// microphone.
+    func testWithComposeAfterTheMicrophoneTheBarStartsAsFarInAsComposeEnds() {
+        let layout = RecordToolbarLayout(width: 402, microphone: CGRect(x: 271, y: 803, width: 38, height: 38), after: 1)
+        XCTAssertEqual(layout.bar, CGRect(x: 28, y: 798, width: 226, height: 48))
+        XCTAssertEqual(layout.barView, CGSize(width: 216, height: 38))
+        XCTAssertEqual(RecordToolbarLayout.buttonRoom, 60)
     }
 
     func testANarrowToolbarStillHasAGlassButtonsWidth() {

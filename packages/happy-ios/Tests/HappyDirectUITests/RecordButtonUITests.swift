@@ -89,6 +89,16 @@ final class RecordButtonUITests: XCTestCase {
         XCTAssertTrue(record.waitForExistence(timeout: 90), "no microphone on home after pairing")
     }
 
+    /// The gym's "Bug triage" chat, its row first scrolled clear of the
+    /// toolbar.
+    private func openBugTriage() {
+        let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'row:' AND identifier ENDSWITH ':Bug triage'")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        app.swipeUp()
+        pause(1)
+        row.tap()
+    }
+
     /// The home screen as it is: for checking the phone before a film.
     func testProbe() {
         home()
@@ -240,9 +250,7 @@ final class RecordButtonUITests: XCTestCase {
         pause(2)
         capture("morph-2-home-back")
 
-        let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'row:' AND identifier ENDSWITH ':Bug triage'")).firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 10))
-        row.tap()
+        openBugTriage()
         let composer = app.textViews["composer"]
         XCTAssertTrue(composer.waitForExistence(timeout: 10))
         let chatRecord = app.buttons["record-button"].firstMatch
@@ -270,9 +278,7 @@ final class RecordButtonUITests: XCTestCase {
     func testComposerSwap() {
         home()
         allowAlerts(for: 3)
-        let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'row:' AND identifier ENDSWITH ':Bug triage'")).firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 10))
-        row.tap()
+        openBugTriage()
         let composer = app.textViews["composer"]
         XCTAssertTrue(composer.waitForExistence(timeout: 10))
         composer.tap()
@@ -325,6 +331,57 @@ final class RecordButtonUITests: XCTestCase {
         XCTAssertEqual((composer.value as? String)?.lowercased(), "ok")
         delete()
         delete()
+    }
+
+    /// Telegram's cancel, filmed for slow motion: on home, the bubble
+    /// dragged up and left and let go, then slid away, so each time the
+    /// dot's bin drops in search's magnifier; then the same in a chat,
+    /// where the bin drops in add. The call is in the header before
+    /// Settings; the microphone sits before compose and doesn't move
+    /// while it records.
+    func testCancel() {
+        home()
+        allowAlerts(for: 3)
+        record.tap()
+        allowAlerts(for: 3)
+        if app.buttons["record-cancel"].waitForExistence(timeout: 2) { app.buttons["record-cancel"].tap() }
+        pause(2)
+        // The call in the header before Settings; the microphone before
+        // compose in the toolbar.
+        let call = app.buttons["voice-call"].firstMatch
+        let settings = app.buttons["settings"].firstMatch
+        let compose = app.buttons["compose"].firstMatch
+        print("RECORD_CANCEL bars call=\(call.frame) settings=\(settings.frame) mic=\(record.frame) compose=\(compose.frame)")
+        XCTAssertLessThan(call.frame.maxX, settings.frame.minX, "the call before Settings")
+        XCTAssertEqual(call.frame.midY, settings.frame.midY, accuracy: 1, "the call in the header")
+        XCTAssertEqual(call.frame.size, settings.frame.size, "the call as Settings")
+        XCTAssertLessThan(record.frame.maxX, compose.frame.minX, "the microphone before compose")
+        capture("cancel-bars")
+        let resting = record.frame
+        capture("cancel-0-home")
+        print("RECORD_CANCEL mark drag")
+        let center = record.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        // Up and left, short of either threshold, held, then let go:
+        // past 100 left on release is a cancel.
+        center.press(forDuration: 1.5, thenDragTo: center.withOffset(CGVector(dx: -140, dy: -45)), withVelocity: 120, thenHoldForDuration: 0.8)
+        pause(2.5)
+        print("RECORD_CANCEL mark slide")
+        center.press(forDuration: 1.5, thenDragTo: center.withOffset(CGVector(dx: -240, dy: 0)), withVelocity: 160, thenHoldForDuration: 0.3)
+        pause(0.4)
+        print("RECORD_CANCEL during mic=\(record.frame)")
+        XCTAssertEqual(record.frame.midX, resting.midX, accuracy: 1, "the microphone moved")
+        pause(2.5)
+        capture("cancel-1-home-back")
+
+        openBugTriage()
+        let chatRecord = app.buttons["record-button"].firstMatch
+        XCTAssertTrue(chatRecord.waitForExistence(timeout: 10))
+        pause(2)
+        print("RECORD_CANCEL mark chat")
+        let chatCenter = chatRecord.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        chatCenter.press(forDuration: 1.5, thenDragTo: chatCenter.withOffset(CGVector(dx: -240, dy: 0)), withVelocity: 160, thenHoldForDuration: 0.3)
+        pause(3)
+        capture("cancel-2-chat-back")
     }
 
     /// Settings › Agents › Open task after dictating off: let go, and the

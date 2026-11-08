@@ -182,6 +182,14 @@ public struct RecordOverlayLayout: Equatable, Sendable {
         )
     }
 
+    /// Telegram's bin (`BinRed`, drawn 40 square): it starts centred on
+    /// the dot it grows out of, then centres on the icon it stands in for.
+    public static let binSide: CGFloat = 40
+
+    public static func bin(around center: CGPoint) -> CGRect {
+        CGRect(x: center.x - binSide / 2, y: center.y - binSide / 2, width: binSide, height: binSide)
+    }
+
     /// The bar a button in a toolbar records in: a capsule as tall as the
     /// button, from `leading` to the button's far edge, under the circle.
     public static func capsule(button: CGRect, leading: CGFloat) -> CGRect {
