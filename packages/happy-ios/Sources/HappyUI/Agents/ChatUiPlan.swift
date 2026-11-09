@@ -77,10 +77,12 @@ enum ChatUiPlan {
         }
     }
 
-    /// Quick replies in a person's words' type, one line each.
+    /// Quick replies in a person's words' type, one line each; once one
+    /// is sent, the others' words go quiet, so the sent one stands out.
     static func draft(_ replies: QuickReplies, environment: TextEnvironment?) -> Draft {
-        let labels = replies.options.map {
-            MeasuredText(ChatTextStyles.text.string($0, color: Palette.userMessageText, lineBreakMode: .byTruncatingTail, in: environment), maxLines: 1)
+        let labels = replies.options.enumerated().map { index, option in
+            let quiet = replies.chosen.map { $0 != index } ?? false
+            return MeasuredText(ChatTextStyles.text.string(option, color: quiet ? Palette.textSecondary : Palette.userMessageText, lineBreakMode: .byTruncatingTail, in: environment), maxLines: 1)
         }
         return Draft(shown: .replies(replies), input: .replies(labels.map(\.measurable)), buttons: labels, spoken: replies.options.joined(separator: ", "))
     }

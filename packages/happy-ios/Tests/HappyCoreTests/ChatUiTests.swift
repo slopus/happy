@@ -283,6 +283,21 @@ final class ChatUiTests: XCTestCase {
         await conversation.stop()
     }
 
+    /// Words the agent goes on with after offering replies come above
+    /// them: the stack stays at the foot of what it said.
+    func testWordsTheAgentGoesOnWithComeAboveTheReplies() async throws {
+        let server = ChatUiServer(history: [
+            .object(["id": .string("r1"), "status": .string("completed"), "endedAt": .number(3), "messages": .array([
+                Self.suggesting("a1", at: 1),
+                .object(["id": .string("a2"), "role": .string("agent"), "createdAt": .number(2), "content": .array([.object(["type": .string("text"), "text": .string("My vote is the first.")])])]),
+            ])]),
+        ])
+        var (conversation, updates) = await open(server)
+        let first = await next(&updates) { self.replies($0) != nil && $0.items.contains { $0.id == "r1:status" } }
+        XCTAssertEqual(first?.items.map(\.id), ["a1", "a2", "replies:a1:call1", "r1:status"])
+        await conversation.stop()
+    }
+
     /// A reply steered into the turn that offered the replies, and the
     /// answer streaming in it, go under the stack: it stays right under
     /// the words that offered it, and as the answer grows its row and the

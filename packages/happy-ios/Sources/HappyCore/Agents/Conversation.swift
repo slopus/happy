@@ -1778,12 +1778,13 @@ public actor Conversation {
 
     // MARK: Quick replies
 
-    /// Each suggestion's row, right under the words that offered it and
-    /// above how the turn ended, for good: what comes later in the turn
-    /// (a steer and the answer to it) goes under it, so nothing moves it.
-    /// The option a person's message sent is marked from its `quickReply`
-    /// (a send on its way from here too), and only the newest takes a tap,
-    /// while nobody has written since.
+    /// Each suggestion's row, under the agent's words that offered it (and
+    /// any it went on with) and above how the turn ended, for good: a
+    /// person's message later in the turn (a steer) and the answer to it
+    /// go under it, so from then on nothing moves it. The option a
+    /// person's message sent is marked from its `quickReply` (a send on its
+    /// way from here too), and only the newest takes a tap, while nobody
+    /// has written since.
     private func placeQuickReplies(_ items: inout [ChatItem]) {
         // Each with the last row of its turn made up to it, if any.
         var found: [(run: String, replies: QuickReplies, after: String?)] = []
@@ -1791,14 +1792,22 @@ public actor Conversation {
         var spokeAfter = false
         for run in transcript.runs {
             var after: String?
+            // This turn's suggestions nobody has written under yet.
+            var open: [Int] = []
             for id in run.messageIds {
                 guard let message = transcript[message: id] else { continue }
                 let made = madeMessages[id]
-                if let last = made?.items.last { after = last.id }
                 if message.role == "user" {
                     spokeAfter = true
+                    open = []
                     if let reply = message.quickReply { chosen.append(reply) }
-                } else if let suggestion = made?.suggestion {
+                }
+                if let last = made?.items.last {
+                    after = last.id
+                    for index in open { found[index].after = after }
+                }
+                if message.role != "user", let suggestion = made?.suggestion {
+                    open.append(found.count)
                     found.append((run.id, suggestion, after))
                     spokeAfter = false
                 }
