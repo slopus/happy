@@ -86,7 +86,7 @@ class CloudProvidersTest {
     @Test
     fun whatMayBeAddedIsTheServersWordElseTheListedSignIns() = runBlocking {
         val said = AgentClient(Server(mapOf("GET /v0/cloud/providers" to listOf(200 to """{"providers":[],"capabilities":{"apiKeys":true,"claudeSetupToken":true,"codexSignIn":false,"claudeSignIn":true}}"""))), "t")
-        assertEquals(CloudCapabilities(apiKeys = true, claudeSetupToken = true, codexSignIn = false, claudeSignIn = true), CloudProviders.capabilities(said))
+        assertEquals(CloudCapabilities(apiKeys = true, claudeSetupToken = true, codexSignIn = false), CloudProviders.capabilities(said))
         val silent = AgentClient(
             Server(
                 mapOf(
@@ -96,7 +96,7 @@ class CloudProvidersTest {
             ),
             "t",
         )
-        assertEquals(CloudCapabilities(apiKeys = true, claudeSetupToken = false, codexSignIn = true, claudeSignIn = true), CloudProviders.capabilities(silent))
+        assertEquals(CloudCapabilities(apiKeys = true, claudeSetupToken = false, codexSignIn = true), CloudProviders.capabilities(silent))
     }
 
     @Test
