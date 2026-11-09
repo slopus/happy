@@ -195,20 +195,27 @@ export function useSessionQuickActions(
         sessionManagement.togglePinned(session.id);
     }, [session.id, sessionManagement]);
 
-    const [resumingSession, performResume] = useHappyAction(async () => {
-        if (!resumeAvailability.canResume) {
-            throw new HappyError(resumeAvailability.message, false);
+    const resumeOriginalSession = React.useCallback(async () => {
+        // Restore awaits metadata and refresh first. Another device may have
+        // reconnected the worker during that time; never restart it using the
+        // availability captured when the action was rendered.
+        const currentState = storage.getState();
+        const currentSession = currentState.sessions[session.id];
+        if (!currentSession) {
+            throw new HappyError(t('errors.sessionDeleted'), false);
+        }
+        if (currentSession.presence === 'online') return;
+        const currentMachineId = currentSession.metadata?.machineId ?? '';
+        const availability = getResumeAvailability(currentSession, currentState.machines[currentMachineId], false);
+        if (!availability.canResume) {
+            throw new HappyError(availability.message, false);
         }
 
-        if (!machineId) {
-            throw new HappyError(t('sessionInfo.resumeSessionMissingMachine'), false);
-        }
-
-        const modeMeta = resolveMessageModeMeta(session, storage.getState().settings);
+        const modeMeta = resolveMessageModeMeta(currentSession, currentState.settings);
         const result = await machineResumeSession({
-            machineId,
-            sessionId: session.id,
-            agent: session.metadata?.flavor ?? 'claude',
+            machineId: currentMachineId,
+            sessionId: currentSession.id,
+            agent: currentSession.metadata?.flavor ?? 'claude',
             model: modeMeta.model ?? undefined,
             permissionMode: modeMeta.permissionMode,
             effort: modeMeta.effort,
@@ -220,14 +227,14 @@ export function useSessionQuickActions(
                 // Refresh to pick up the updated session state.
                 await sync.refreshSessions();
 
-                if (session.permissionMode) {
-                    storage.getState().updateSessionPermissionMode(result.sessionId, session.permissionMode);
+                if (currentSession.permissionMode) {
+                    storage.getState().updateSessionPermissionMode(result.sessionId, currentSession.permissionMode);
                 }
-                if (session.modelMode) {
-                    storage.getState().updateSessionModelMode(result.sessionId, session.modelMode);
+                if (currentSession.modelMode) {
+                    storage.getState().updateSessionModelMode(result.sessionId, currentSession.modelMode);
                 }
-                if (session.effortLevel !== undefined) {
-                    storage.getState().updateSessionEffortLevel(result.sessionId, session.effortLevel);
+                if (currentSession.effortLevel !== undefined) {
+                    storage.getState().updateSessionEffortLevel(result.sessionId, currentSession.effortLevel);
                 }
 
                 navigateToSession(result.sessionId);
@@ -238,7 +245,9 @@ export function useSessionQuickActions(
             case 'error':
                 throw new HappyError(result.errorMessage, false);
         }
-    });
+    }, [navigateToSession, session.id]);
+
+    const [resumingSession, performResume] = useHappyAction(resumeOriginalSession);
 
     const canContinue = !sessionStatus.isConnected || sessionStatus.state === 'failed' || Boolean(session.metadata?.continuedBySessionId);
     const [continuingSession, continueSession] = useHappyAction(async () => {
@@ -287,6 +296,13 @@ export function useSessionQuickActions(
     const [restoringSession, performRestore] = useHappyAction(async () => {
         await sessionRestoreMetadata(session);
         await sync.refreshSessions();
+        // Archiving stops the worker. Restoring list membership alone leaves
+        // a disconnected chat whose messages have no execution recipient.
+        // Warm application sessions and unavailable machines keep the existing
+        // metadata-only restore; the inactive hint exposes their next action.
+        if (resumeAvailability.canResume) {
+            await resumeOriginalSession();
+        }
         hapticsSuccess();
     });
 
