@@ -15,9 +15,11 @@ private struct AgentChatSockets: WebSocketConnector {
 
 /// One agent, `harness`, with forty turns of a question and a few lines of
 /// answer, and nothing streaming. With `slash`, it offers slash commands
-/// (one with a picture), and its last turn is a `/compact`.
+/// (one with a picture), and its last turn is a `/compact`. With `replies`,
+/// its last two turns offer quick replies: one taken, one waiting.
 private struct AgentChatComputer: AgentTransport {
     var slash = false
+    var replies = false
 
     private static func text(_ text: String) -> JSONValue { .object(["type": .string("text"), "text": .string(text)]) }
 
@@ -64,6 +66,31 @@ private struct AgentChatComputer: AgentTransport {
         ])]),
     ])
 
+    private static func suggest(_ id: String, _ options: [String]) -> JSONValue {
+        .object(["type": .string("tool_call"), "id": .string(id), "name": .string("suggest_replies"), "status": .string("completed"),
+                 "presentation": .object(["type": .string("quick_replies"), "options": .array(options.map { .string($0) })])])
+    }
+
+    /// A name picked from quick replies, then taglines offered.
+    private static let suggesting: [JSONValue] = [
+        .object([
+            "id": .string("q1"), "status": .string("completed"), "startedAt": .number(5_000), "endedAt": .number(13_000), "reason": .string("completed"),
+            "messages": .array([
+                message("qu1", role: "user", [text("Help me pick a name for my weekend side project, a tiny habit tracker.")]),
+                message("qa1", role: "agent", [text("Which feels right for your tiny habit tracker?"), suggest("pick", ["Sprout", "Tally", "Pebble"])]),
+            ]),
+        ]),
+        .object([
+            "id": .string("q2"), "status": .string("completed"), "startedAt": .number(14_000), "endedAt": .number(19_000), "reason": .string("completed"),
+            "messages": .array([
+                .object(["id": .string("qu2"), "role": .string("user"), "createdAt": .number(14_000), "metadata": .object([:]), "content": .array([text("Tally")]),
+                         "quickReply": .object(["messageId": .string("qa1"), "toolCallId": .string("pick"), "index": .number(1)])]),
+                message("qa2", role: "agent", [text("**Tally** it is: short, friendly, and easy to remember. Now a tagline?"),
+                                               suggest("tagline", ["Small habits. Every day.", "A little progress adds up.", "Make the small things count."])]),
+            ]),
+        ]),
+    ]
+
     /// The code-review command's picture.
     private static let picture: Data = UIGraphicsImageRenderer(size: CGSize(width: 64, height: 64)).pngData { context in
         let colors = [UIColor.systemIndigo.cgColor, UIColor.systemPink.cgColor] as CFArray
@@ -74,7 +101,7 @@ private struct AgentChatComputer: AgentTransport {
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         let value: JSONValue
         if path.contains("/agents/harness/messages?") {
-            value = .object(["hasMore": .bool(false), "runs": .array(Self.runs + (slash ? [Self.compaction] : []))])
+            value = .object(["hasMore": .bool(false), "runs": .array(Self.runs + (slash ? [Self.compaction] : []) + (replies ? Self.suggesting : []))])
         } else if path.hasSuffix("/agents/harness/bootstrap") {
             value = .object(["agent": .object(["id": .string("harness"), "workspaceId": .string("w"), "status": .string("idle")]), "pending": .array([]),
                              "slashCommands": .array(slash ? Self.commands : [])])
@@ -111,7 +138,7 @@ final class AgentChatHarness {
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/agent-chat",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
-            agentConnectionCredentialStore: InMemoryAgentConnectionCredentialStore(), agentTransport: { _ in AgentChatComputer(slash: arguments.contains("-slash")) },
+            agentConnectionCredentialStore: InMemoryAgentConnectionCredentialStore(), agentTransport: { _ in AgentChatComputer(slash: arguments.contains("-slash"), replies: arguments.contains("-replies")) },
             rnServerImport: { .confirmed(ServerConfig.defaultServerURL) }, transport: AgentChatHTTP(), connector: AgentChatSockets()
         )
         self.account = account
