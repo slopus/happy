@@ -16,7 +16,8 @@ object TurnFold {
         if (status < 0) return group
         val ended = group[status] as ConversationRow.TurnEnd
         val anchor = group.indexOfLast { it is ConversationRow.Text }.takeIf { it >= 0 } ?: group.indexOfLast(::isStep).takeIf { it >= 0 }
-        val kept = group.indices.filter { index -> index == anchor || keeps(group[index]) }
+        // Quick replies stay, with the words that offered them right above.
+        val kept = group.indices.filter { index -> index == anchor || keeps(group[index]) || group.getOrNull(index + 1) is ConversationRow.Replies }
         val folded = if (kept.size == group.size) {
             group
         } else {

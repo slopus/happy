@@ -28,6 +28,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
+import com.slopus.happy.ui.chat.BubblePalette
+import com.slopus.happy.ui.chat.MarkdownSpec
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -52,16 +59,17 @@ object UiTags {
     const val FALLBACK = "conversation.ui.fallback"
     const val REPLIES = "conversation.quick_replies"
     const val REPLY = "conversation.quick_replies.option"
+    const val REPLY_TICK = "conversation.quick_replies.tick"
     const val SUGGESTED = "conversation.quick_replies.suggested"
 }
 
 /** Chat UI's measures, and quick replies', on the transcript's 16 column. */
 object UiSpec {
     val gap = 8.dp
-    val pillHeight = 36.dp
-    val pillPaddingH = 14.dp
-    val pillGlyph = 16.dp
-    val pillGlyphGap = 6.dp
+    /** Between quick replies, and their tick's size and gap from the words. */
+    val replyGap = 6.dp
+    val tick = 16.dp
+    val tickGap = 8.dp
     val fieldMinHeight = 40.dp
     val fieldPaddingH = 12.dp
     val fieldPaddingV = 10.dp
@@ -74,7 +82,6 @@ object UiSpec {
     /** Every control the person may not use now. */
     const val DIMMED_ALPHA = 0.48f
 
-    val pill = happyTextStyle(fontSize = 14, lineHeight = 20, weight = FontWeight.Medium)
     val label = happyTextStyle(fontSize = 13, lineHeight = 18, weight = FontWeight.SemiBold)
     val field = happyTextStyle(fontSize = 15, lineHeight = 20)
     val line = happyTextStyle(fontSize = 14, lineHeight = 20)
@@ -109,31 +116,6 @@ fun UiComponentRow(row: ConversationRow.Ui, actions: ConversationRowActions, mod
                 component.fallback.isNotBlank() -> Fallback(component.fallback, inset(UiTags.FALLBACK))
             }
         }
-    }
-}
-
-@Composable
-private fun Pill(label: String, primary: Boolean, enabled: Boolean, alpha: Float, checked: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    val colors = HappyTheme.colors
-    val shape = RoundedCornerShape(UiSpec.pillHeight / 2)
-    val fill = if (primary) colors.button.primaryBackground else colors.surfaceHigh
-    val ink = if (primary) colors.button.primaryTint else colors.text
-    val hairline = with(LocalDensity.current) { 1f.toDp() }
-    Row(
-        modifier
-            .alpha(alpha)
-            .heightIn(min = UiSpec.pillHeight)
-            .background(fill, shape)
-            .then(if (primary) Modifier else Modifier.border(hairline, colors.divider, shape))
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = UiSpec.pillPaddingH),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (checked) {
-            Icon(Ionicon.Checkmark, UiSpec.pillGlyph, ink)
-            Spacer(Modifier.width(UiSpec.pillGlyphGap))
-        }
-        Text(label, style = UiSpec.pill, color = ink, textAlign = TextAlign.Center)
     }
 }
 
@@ -186,47 +168,89 @@ private fun Fallback(text: String, modifier: Modifier) {
 }
 
 /**
- * Replies the agent suggested, under its latest message: 36 high pills, 8
- * apart and wrapping, on the 16 column, in surfaceHigh with a hairline
- * (14/20 medium, text). A tap sends the option at once. Where nothing can
- * be sent here, none shows.
+ * Replies the agent suggested, under all it wrote in the turn and above how
+ * the turn ended. Spec: on the 16 column, 6 above and below as every row,
+ * one under another 6 apart; each as wide as a person's widest bubble
+ * (the column less 16 a side), so all are one width against the right
+ * edge, and drawn as that bubble: radius 12, 12 in, the words' 16/25 type
+ * on one line (cut with an ellipsis) with the bubble's own 4 + 8 above and
+ * 4 + 10 below, a one-line bubble's height. Unsent, a fill halfway from the
+ * bubble's to the ground (`quickReplyBubble`), the words in text colour.
+ * The option a person's message sent ([ConversationRow.Replies.chosen])
+ * takes the bubble's own fill and hairline and a 16 tick 8 from the words
+ * at the right, whose room every pill keeps, so nothing moves; the others
+ * keep their fill, their words textSecondary. Each is a button; only the
+ * newest stack takes a tap ([ConversationRow.Replies.live]), and none for a
+ * person who can't write here.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun QuickRepliesRow(row: ConversationRow.Replies, actions: ConversationRowActions, modifier: Modifier = Modifier) {
-    val send = actions.onQuickReply ?: return
-    if (!actions.uiReplies()) return
-    FlowRow(
+fun QuickRepliesRow(row: ConversationRow.Replies, bubble: BubblePalette, actions: ConversationRowActions, modifier: Modifier = Modifier) {
+    val colors = HappyTheme.colors
+    val send = actions.onQuickReply?.takeIf { row.live && actions.uiReplies() }
+    val shape = RoundedCornerShape(MessageSpec.bubbleRadius)
+    val hairline = with(LocalDensity.current) { 1f.toDp() }
+    val quiet = lerp(bubble.background, colors.surface, 0.5f)
+    val quietBorder = lerp(bubble.border, colors.surface, 0.5f)
+    Column(
         modifier
             .testTag(UiTags.REPLIES)
             .fillMaxWidth()
-            .padding(horizontal = ConversationRowSpec.marginHorizontal, vertical = ConversationRowSpec.marginVertical),
-        horizontalArrangement = Arrangement.spacedBy(UiSpec.gap),
-        verticalArrangement = Arrangement.spacedBy(UiSpec.gap),
+            .padding(horizontal = MessageSpec.userPaddingHorizontal, vertical = ConversationRowSpec.marginVertical),
+        verticalArrangement = Arrangement.spacedBy(UiSpec.replyGap),
     ) {
         row.options.forEachIndexed { index, option ->
-            Pill(option, primary = false, enabled = true, alpha = 1f, checked = false, modifier = Modifier.testTag(UiTags.REPLY)) { send(row, index) }
+            val chosen = row.chosen == index
+            Row(
+                Modifier
+                    .testTag(UiTags.REPLY)
+                    .fillMaxWidth()
+                    .clip(shape)
+                    .background(if (chosen) bubble.background else quiet)
+                    .border(hairline, if (chosen) bubble.border else quietBorder, shape)
+                    .clickable(enabled = send != null, role = Role.Button) { send?.invoke(row, index) }
+                    .semantics { selected = chosen }
+                    .padding(
+                        start = MessageSpec.bubblePaddingHorizontal,
+                        end = MessageSpec.bubblePaddingHorizontal,
+                        top = MessageSpec.bubblePaddingVertical + MarkdownSpec.textMarginTop,
+                        bottom = MessageSpec.bubblePaddingVertical + MarkdownSpec.textMarginBottom,
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    option,
+                    style = MarkdownSpec.text,
+                    color = if (row.chosen == null || chosen) colors.text else colors.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(UiSpec.tickGap))
+                Box(Modifier.size(UiSpec.tick), contentAlignment = Alignment.Center) {
+                    if (chosen) Icon(Ionicon.Checkmark, UiSpec.tick, colors.text, Modifier.testTag(UiTags.REPLY_TICK))
+                }
+            }
         }
     }
 }
 
 /**
- * Over a person's bubble sent from a suggested reply: "↩ Suggested by
- * {agent}" (12/16 textSecondary) against the right edge, 16 in, 6 above
- * the bubble's own top.
+ * Under a person's bubble sent from a suggested reply: "↩ Suggested reply"
+ * (12/16 textSecondary) against the right edge, 16 in, 4 under the bubble's
+ * own foot.
  */
 @Composable
-internal fun SuggestedLine(by: String?) {
+internal fun SuggestedLine() {
     Text(
-        by?.takeIf { it.isNotBlank() }?.let { stringResource(R.string.conversation_quick_reply_by, it) } ?: stringResource(R.string.conversation_quick_reply),
+        stringResource(R.string.conversation_quick_reply),
         style = UiSpec.note,
         color = HappyTheme.colors.textSecondary,
         textAlign = TextAlign.End,
         maxLines = 1,
-        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         modifier = Modifier
             .testTag(UiTags.SUGGESTED)
             .fillMaxWidth()
-            .padding(start = MessageSpec.userPaddingHorizontal, end = MessageSpec.userPaddingHorizontal, top = 6.dp),
+            .padding(horizontal = MessageSpec.userPaddingHorizontal)
+            .padding(bottom = 4.dp),
     )
 }

@@ -2,6 +2,16 @@ package com.slopus.happy.ui.conversation
 
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -9,6 +19,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.conversation.AgentInfo
@@ -62,21 +73,30 @@ class UiComponentRowTest {
     private val phone = """{"id":"app","type":"phone_app","fallback":"Get Happy on your phone","props":{}}"""
     private val tree = """{"id":"files","type":"file_tree","fallback":"14 files","props":{"paths":[${(1..14).joinToString(",") { "\"src/file$it.ts\"" }}]}}"""
 
-    /** An agent message asking in words, with a suggest_replies call. */
-    private fun suggested(): List<ConversationRow> {
+    /** An agent message asking in words, with a suggest_replies call, laid over as the conversation would. */
+    private fun suggested(chosen: Int? = null, live: Boolean = true): List<ConversationRow> {
         val message = Message.parse(
             Json.parseToJsonElement(
                 """{"id":"m2","role":"agent","createdAt":2,"metadata":{},"content":[{"type":"text","text":"What next?"},
-                {"type":"tool_call","id":"c1","name":"suggest_replies","status":"completed","presentation":{"type":"quick_replies","options":["Fix the login redirect","Run the tests"]}}]}""",
+                {"type":"tool_call","id":"c1","name":"suggest_replies","status":"completed","presentation":{"type":"quick_replies","options":["Fix the login redirect","Run the tests","Something much longer than a phone's line can hold in one go"]}}]}""",
             ),
         )!!
-        return ConversationRowBuilder.build(message, "a1", null, streaming = false)
+        return ConversationRowBuilder.build(message, "a1", null, streaming = false).map { if (it is ConversationRow.Replies) it.copy(chosen = chosen, live = live) else it }
     }
 
+    private val sentReply = Message.parse(
+        Json.parseToJsonElement(
+            """{"id":"p1","role":"user","status":"accepted","createdAt":3,"metadata":{},"content":[{"type":"text","text":"Run the tests"}],"quickReply":{"messageId":"m2","toolCallId":"c1","index":1}}""",
+        ),
+    )!!
+
+    private var shownRows by mutableStateOf<List<ConversationRow>>(emptyList())
+
     private fun screen(rows: List<ConversationRow>, canSend: Boolean = true, replied: MutableList<Pair<ConversationRow.Replies, Int>> = ArrayList()) {
+        shownRows = rows
         rule.setHappyContent {
             ConversationScreen(
-                ConversationState(created = true, loaded = true, rows = rows.asReversed(), agent = agent),
+                ConversationState(created = true, loaded = true, rows = shownRows.asReversed(), agent = agent),
                 ConversationScreenActions(onQuickReply = { replies, index -> replied += replies to index }),
                 roleCanSend = canSend,
             )
@@ -84,40 +104,55 @@ class UiComponentRowTest {
         rule.waitForIdle()
     }
 
-    @Test fun `suggested replies are pills on the column, and a tap sends the option`() {
+    private fun pills() = rule.onAllNodesWithTag(UiTags.REPLY, useUnmergedTree = true).let { all -> (0 until all.fetchSemanticsNodes().size).map { all[it] } }
+
+    @Test fun `suggested replies are a stack of person-wide bubbles against the right, and a tap sends the option`() {
         val sent = ArrayList<Pair<ConversationRow.Replies, Int>>()
-        screen(suggested(), replied = sent)
-        val row = rule.node(UiTags.REPLIES).bounds
-        val pills = rule.onAllNodesWithTag(UiTags.REPLY, useUnmergedTree = true)
-        val first = pills[0].bounds
-        val second = pills[1].bounds
-        assertDp("16 in from the side", row.left + 16.dp, first.left)
-        assertDp("36 high", 36.dp, first.bottom - first.top)
-        assertTrue("8 apart, on one line or wrapped", second.left - first.right == 8.dp || second.top - first.bottom == 8.dp)
+        screen(suggested() + ConversationRowBuilder.build(sentReply, "a1", null, streaming = false).map { (it as ConversationRow.User).copy(suggested = false) }, replied = sent)
+        val root = rule.onRoot().bounds
+        val bounds = pills().map { it.bounds }
+        for (pill in bounds) {
+            assertDp("a person's widest bubble: the column less 16 a side", root.right - root.left - 32.dp, pill.right - pill.left)
+            assertDp("against the right, 16 in", root.right - 16.dp, pill.right)
+        }
+        assertDp("6 apart", 6.dp, bounds[1].top - bounds[0].bottom)
+        assertDp("6 apart", 6.dp, bounds[2].top - bounds[1].bottom)
+        val bubble = rule.node(com.slopus.happy.ui.chat.MessageTags.USER_BUBBLE).bounds
+        assertDp("a one-line bubble's height", bubble.bottom - bubble.top, bounds[0].bottom - bounds[0].top)
+        assertDp("the long one stays one line", bounds[0].bottom - bounds[0].top, bounds[2].bottom - bounds[2].top)
         shot("ui-quick-replies")
-        rule.onNodeWithText("Run the tests").performClick()
+        pills()[1].performClick()
         assertEquals(listOf(1), sent.map { it.second })
         assertEquals(QuickReply("m2", "c1", 1), sent.single().first.reply(1))
     }
 
-    @Test fun `a role that can't write sees no pills`() {
-        screen(suggested(), canSend = false)
-        rule.node(UiTags.REPLIES).assertDoesNotExist()
+    @Test fun `the option sent takes the bubble's fill and a tick, and nothing moves`() {
+        screen(suggested())
+        val before = pills().map { it.bounds }
+        rule.node(UiTags.REPLY_TICK).assertDoesNotExist()
+        shownRows = suggested(chosen = 1, live = false) + ConversationRowBuilder.build(sentReply, "a1", null, streaming = false)
+        rule.waitForIdle()
+        // The message sent comes in under them, so the list moves up as one; within it, nothing moves.
+        val after = pills().map { it.bounds }
+        val shift = after[0].top - before[0].top
+        assertEquals("not a pixel moves", before, after.map { DpRect(it.left, it.top - shift, it.right, it.bottom - shift) })
+        pills()[1].assertIsSelected()
+        pills()[0].assertIsNotSelected()
+        val tick = rule.node(UiTags.REPLY_TICK).bounds
+        assertDp("16 in from the pill's right", before[1].right - 12.dp, tick.right)
+        rule.onNodeWithText("↩ Suggested reply").assertExists()
+        shot("ui-quick-reply-sent")
+        // An answered stack takes no more taps.
+        pills()[0].assertIsNotEnabled()
     }
 
-    @Test fun `a bubble sent from a reply says who suggested it`() {
-        val person = Message.parse(
-            Json.parseToJsonElement(
-                """{"id":"p1","role":"user","status":"accepted","createdAt":3,"metadata":{},"content":[{"type":"text","text":"Run the tests"}],"quickReply":{"messageId":"m2","toolCallId":"c1","index":1}}""",
-            ),
-        )!!
-        screen(suggested() + ConversationRowBuilder.build(person, "a1", null, streaming = false))
-        rule.onNodeWithText("↩ Suggested by Onboarding").assertExists()
-        shot("ui-quick-reply-sent")
-        val line = rule.node(UiTags.SUGGESTED).bounds
-        val texts = rule.onAllNodesWithText("Run the tests", useUnmergedTree = true)
-        val bubble = (0 until texts.fetchSemanticsNodes().size).map { texts[it].bounds }.maxBy { it.top }
-        assertTrue("over the bubble", line.bottom <= bubble.top)
+    @Test fun `each pill is a button, and a role that can't write can't tap one`() {
+        val sent = ArrayList<Pair<ConversationRow.Replies, Int>>()
+        screen(suggested(), canSend = false, replied = sent)
+        pills()[0].assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+        pills()[0].assertIsNotEnabled()
+        pills()[0].performClick()
+        assertTrue(sent.isEmpty())
     }
 
     @Test fun `without live sources live components are their fallback line, and phone_app is not on a phone`() {

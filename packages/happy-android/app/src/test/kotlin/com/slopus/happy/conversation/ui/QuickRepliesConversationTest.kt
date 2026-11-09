@@ -29,8 +29,10 @@ import org.junit.Test
 
 /**
  * Suggested replies through a conversation (happy-agent API.md "Quick
- * replies"): pills under the latest agent message until a person's
- * message follows, and a tap an ordinary send naming the option.
+ * replies"): each stack under all its turn's agent wrote before a person's
+ * message, for good, the option sent marked from `quickReply`, only the
+ * newest tappable until someone writes; a tap an ordinary steered send
+ * naming the option.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class QuickRepliesConversationTest {
@@ -78,6 +80,8 @@ class QuickRepliesConversationTest {
         advanceUntilIdle()
         val replies = chat.replies()!!
         assertEquals(listOf("Fix the login redirect", "Run the tests"), replies.options)
+        assertTrue(replies.live)
+        assertEquals(null, replies.chosen)
         // Under the message's words, though the call came first; newest first, so just before them.
         val rows = chat.state.value.rows
         assertEquals(rows.indexOfFirst { it is ConversationRow.Text } - 1, rows.indexOf(replies))
@@ -88,18 +92,21 @@ class QuickRepliesConversationTest {
         val body = requests.last { it.first.endsWith("/send") }.second!!
         assertEquals("\"Run the tests\"", body["text"].toString())
         assertEquals("""{"messageId":"m1","toolCallId":"c1","index":1}""", body["quickReply"].toString())
+        assertEquals("\"steer\"", body["delivery"].toString())
         val bubble = chat.state.value.rows.first() as ConversationRow.User
         assertEquals("Run the tests", bubble.text)
         assertTrue(bubble.suggested)
         assertEquals(Delivery.Sending, bubble.delivery)
-        // Sent, they go at once.
-        assertEquals(null, chat.replies())
+        // Sent, they stay where they were, the option sent marked, and take no more taps.
+        assertEquals(replies.copy(chosen = 1, live = false), chat.replies())
+        assertEquals(rows.indexOf(replies) + 1, chat.state.value.rows.indexOf(chat.replies()!!))
 
         gate.complete(Unit)
         advanceUntilIdle()
         val sent = chat.state.value.rows.first() as ConversationRow.User
         assertTrue("the echo keeps where it came from", sent.suggested)
-        assertEquals(null, chat.replies())
+        assertEquals("marked from the message's quickReply", 1, chat.replies()!!.chosen)
+        assertFalse(chat.replies()!!.live)
         assertEquals("", chat.state.value.draft)
     }
 
@@ -114,16 +121,60 @@ class QuickRepliesConversationTest {
         assertEquals("""{"messageId":"m0","index":0}""", requests.last { it.first.endsWith("/send") }.second!!["quickReply"].toString())
     }
 
-    @Test fun `only the latest agent message's replies show, and a person's message after them hides them`() = runTest {
+    @Test fun `every stack stays, only the newest takes a tap, and only until someone writes`() = runTest {
         page = """{"runs":[{"id":"r1","status":"completed","startedAt":1,"endedAt":3,"messages":[$OPENING]},
-            {"id":"r2","status":"completed","startedAt":4,"endedAt":6,"messages":[${person("t1", "Hi", null)},$SUGGESTED]}],"hasMore":false}"""
+            {"id":"r2","status":"completed","startedAt":4,"endedAt":6,"messages":[${person("t1", "Look at my recent work", """{"messageId":"m0","index":0}""")},$SUGGESTED]}],"hasMore":false}"""
         val chat = conversation()
         advanceUntilIdle()
-        assertEquals("m1", chat.replies()!!.messageId)
+        val stacks = { chat.state.value.rows.filterIsInstance<ConversationRow.Replies>().associateBy { it.messageId } }
+        assertEquals(setOf("m0", "m1"), stacks().keys)
+        assertEquals(0, stacks().getValue("m0").chosen)
+        assertFalse(stacks().getValue("m0").live)
+        assertTrue(stacks().getValue("m1").live)
         signals.emit(event("message.created", """{"message":${person("t2", "Something else", null, "pending")}}"""))
         advanceUntilIdle()
-        assertEquals(null, chat.replies())
+        assertEquals(setOf("m0", "m1"), stacks().keys)
+        assertFalse(stacks().getValue("m1").live)
+        assertEquals(null, stacks().getValue("m1").chosen)
         assertFalse((chat.state.value.rows.first() as ConversationRow.User).suggested)
+    }
+
+    @Test fun `a steer and its answer in the same turn go under the stack, which stays above how the turn ended`() = runTest {
+        page = """{"runs":[{"id":"r1","status":"completed","startedAt":1,"endedAt":9,"messages":[$SUGGESTED,
+            ${person("p1", "Run the tests", """{"messageId":"m1","toolCallId":"c1","index":1}""")},
+            {"id":"m2","role":"agent","createdAt":5,"metadata":{},"content":[{"type":"text","text":"Running them now."}]}]}],"hasMore":false}"""
+        val chat = conversation()
+        advanceUntilIdle()
+        chat.toggleTurn("r1")
+        advanceUntilIdle()
+        // Oldest first: the words that offered them, the stack, the steer, its answer, how the turn ended.
+        val rows = chat.state.value.rows.asReversed().filter { it !is ConversationRow.Trace }
+        assertEquals(
+            listOf("m1:0", "m1:1", "p1:user", "m2:0", "r1:status"),
+            rows.map { it.key },
+        )
+        assertEquals(1, (rows[1] as ConversationRow.Replies).chosen)
+    }
+
+    @Test fun `words the agent goes on with before anyone writes come above the stack`() = runTest {
+        page = """{"runs":[{"id":"r1","status":"running","startedAt":1,"messages":[$SUGGESTED,
+            {"id":"m2","role":"agent","createdAt":5,"metadata":{},"content":[{"type":"text","text":"Or tell me something else."}]}]}],"hasMore":false}"""
+        val chat = conversation()
+        advanceUntilIdle()
+        assertEquals(listOf("m1:0", "m2:0", "m1:1"), chat.state.value.rows.asReversed().map { it.key })
+        assertTrue(chat.replies()!!.live)
+    }
+
+    @Test fun `a folded turn keeps its stack under the words that offered it`() = runTest {
+        page = """{"runs":[{"id":"r1","status":"completed","startedAt":1,"endedAt":9,"messages":[
+            {"id":"m0","role":"agent","createdAt":1,"metadata":{},"content":[{"type":"tool_call","id":"t0","name":"shell","status":"completed","arguments":{"command":"ls"}}]},
+            $SUGGESTED]}],"hasMore":false}"""
+        val chat = conversation()
+        advanceUntilIdle()
+        val keys = chat.state.value.rows.asReversed().map { it.key }
+        assertTrue(keys.toString(), keys.containsAll(listOf("m1:0", "m1:1", "r1:status")))
+        assertEquals(keys.indexOf("m1:0") + 1, keys.indexOf("m1:1"))
+        assertEquals(keys.indexOf("m1:1") + 1, keys.indexOf("r1:status"))
     }
 
     @Test fun `a person's message sent from a reply elsewhere says so`() = runTest {
@@ -132,7 +183,8 @@ class QuickRepliesConversationTest {
         val chat = conversation()
         advanceUntilIdle()
         assertTrue(chat.state.value.rows.filterIsInstance<ConversationRow.User>().single().suggested)
-        assertEquals(null, chat.replies())
+        assertEquals(1, chat.replies()!!.chosen)
+        assertFalse(chat.replies()!!.live)
     }
 
     @Test fun `an attempt record's run is no turn, and a run going on goes on`() = runTest {

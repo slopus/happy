@@ -158,8 +158,6 @@ class ConversationRowActions(
     val onQuickReply: ((ConversationRow.Replies, Int) -> Unit)? = null,
     /** Whether the person may send here now, so suggested replies show: as the composer, not an archived chat. */
     val uiReplies: () -> Boolean = { true },
-    /** Who suggested a reply, for the line over a bubble sent from one; null leaves the name out. */
-    val suggester: () -> String? = { null },
     /** Whether the conversation takes presses now: not an archived chat. */
     val uiPresses: () -> Boolean = { true },
     /** Whether the person's role holds a permission a press needs; only for showing, the computer decides. */
@@ -264,7 +262,7 @@ fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: Co
                 }
             }
             is ConversationRow.Ui -> UiComponentRow(row, actions, content)
-            is ConversationRow.Replies -> QuickRepliesRow(row, actions, content)
+            is ConversationRow.Replies -> QuickRepliesRow(row, bubble, actions, content)
             is ConversationRow.Collaborator -> CollaboratorProse(row, actions.legacy, content)
             is ConversationRow.Failure -> FailureRow(row, actions, content)
             is ConversationRow.Ask -> AskRow(row, actions.asks, content)
@@ -352,7 +350,6 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
     val toggle = stringResource(if (row.opened) R.string.machine_launcher_show_less else R.string.conversation_show_full)
     if (row.text.isNotEmpty() || failed) {
         Column(modifier.fillMaxWidth()) {
-            if (row.suggested) SuggestedLine(actions.suggester())
             UserMessage(
                 ChatRow.User(message, UserDisplay.Text(row.text, row.blocks), delivery = delivery, time = row.createdAt),
                 bubble,
@@ -368,6 +365,7 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
                 tapLabel = toggle,
                 body = if (prose != null) { _ -> UserProse(row, prose, cut, actions.legacy) } else null,
             )
+            if (row.suggested) SuggestedLine()
         }
     } else if (row.pictures.isNotEmpty()) {
         Box(

@@ -143,10 +143,19 @@ sealed interface ConversationRow {
     /**
      * Replies an agent message suggested ([QuickReplies]): its own block
      * ([toolCallId] null) or a `suggest_replies` call's presentation. The
-     * conversation keeps it only under the latest agent message, until a
-     * person's message follows.
+     * conversation puts it under all the agent wrote in its turn before a
+     * person's message, above how the turn ended, for good, and lays over
+     * it the option a person's message sent ([chosen]) and whether it takes
+     * a tap ([live]: the newest, while nobody has written since).
      */
-    data class Replies(override val key: String, val messageId: String, val toolCallId: String?, val options: List<String>) : ConversationRow {
+    data class Replies(
+        override val key: String,
+        val messageId: String,
+        val toolCallId: String?,
+        val options: List<String>,
+        val chosen: Int? = null,
+        val live: Boolean = false,
+    ) : ConversationRow {
         fun reply(index: Int) = QuickReply(messageId, toolCallId, index)
     }
 

@@ -1728,13 +1728,24 @@ saved, emptied once sent.
 
 Quick replies (`conversation/ui/QuickReplies.kt`) are not chat UI: a
 `quick_replies` block of an agent message or the `quick_replies`
-presentation of a `suggest_replies` call becomes `ConversationRow.Replies`,
-which the conversation keeps only for the latest agent message until a
-person's message follows, drawn as pills under that message's last row
-(not for a role that can't write). A tap is `Conversation.sendReply`, an
-ordinary send of the option with `quickReply { messageId, toolCallId?,
-index }`; a person's message carrying `quickReply` shows "↩ Suggested by
-{agent}" over its bubble. Words are in `strings_chat_ui.xml`.
+presentation of a `suggest_replies` call becomes `ConversationRow.Replies`.
+`Conversation.derive` places each stack, for good, after the last row the
+agent wrote before a person's message in the same run (else after the whole
+run) and above "Completed in", so a steered answer streams in below it and
+the pills never move; TurnFold keeps the stack and the row above it. Every
+stack stays: `markReplies` sets `chosen` from the last `quickReply` naming
+it (messages, pending, outgoing, so it survives reloads and other devices)
+and `live` only on the newest stack while nobody has written after it.
+`QuickRepliesRow` stacks one pill per option, each as wide as the user
+bubble may be and right-aligned, with the bubble's radius and padding and a
+fill halfway to the ground; the chosen one takes the bubble fill and a ✓ in
+space that is always reserved, the others turn secondary text, and nothing
+relayouts. Each pill is a button, announced selected when chosen; only a
+live stack takes a tap (not for a role that can't write). A tap is
+`Conversation.sendReply`, a steered send of the option with `quickReply {
+messageId, toolCallId?, index }`; a person's message carrying `quickReply`
+shows "↩ Suggested reply" under its bubble. Words are in
+`strings_chat_ui.xml`.
 
 ### Context meter and usage ring
 

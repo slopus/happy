@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="conversation_quick_reply_by">↩ Zaproponowane przez %1$s</string>
     <string name="conversation_quick_reply">↩ Proponowana odpowiedź</string>
     <string name="conversation_ui_tree_show_all">Pokaż wszystkie (%1$d)</string>
     <string name="ui_live_cli_reading">Sprawdzanie %1$s na tym komputerze…</string>

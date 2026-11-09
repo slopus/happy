@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="conversation_quick_reply_by">↩ 由 %1$s 建议</string>
     <string name="conversation_quick_reply">↩ 建议的回复</string>
     <string name="conversation_ui_tree_show_all">显示全部（%1$d）</string>
     <string name="ui_live_cli_reading">正在检查这台电脑上的 %1$s…</string>

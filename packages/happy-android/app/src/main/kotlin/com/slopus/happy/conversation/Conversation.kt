@@ -1706,19 +1706,23 @@ class Conversation(
     }
 
     /**
-     * Keeps suggested replies only where they may be sent (API.md "Quick
-     * replies", the recommended rule): the latest agent message's, until a
-     * person's message follows it, drawn under that message's last row.
+     * Marks each suggestion (API.md "Quick replies"): the option a person's
+     * message sent, by its `quickReply` (a send on its way from here too),
+     * and whether it takes a tap, only the newest while nobody has written
+     * since. Every suggestion stays where its turn put it.
      */
-    private fun placeReplies(rows: MutableList<ConversationRow>) {
+    private fun markReplies(rows: MutableList<ConversationRow>) {
         val order = runs.flatMap { it.second } + pending
-        val last = order.indexOfLast { messages[it]?.role == "agent" }
-        val open = last >= 0 && outgoing.isEmpty() && order.drop(last + 1).none { messages[it]?.role == "user" }
-        val shown = if (open) rows.lastOrNull { it is ConversationRow.Replies && it.messageId == order[last] } else null
-        rows.removeAll { it is ConversationRow.Replies }
-        if (shown == null) return
-        val after = rows.indexOfLast { it.key.startsWith("${order[last]}:") }
-        rows.add(if (after < 0) rows.size else after + 1, shown)
+        val sent = order.mapNotNull { messages[it]?.quickReply } + outgoing.mapNotNull { it.quickReply }
+        val newest = rows.lastOrNull { it is ConversationRow.Replies } as ConversationRow.Replies?
+        val quiet = newest != null && outgoing.isEmpty() &&
+            order.drop(order.indexOf(newest.messageId) + 1).none { messages[it]?.role == "user" }
+        rows.replaceAll { row ->
+            if (row !is ConversationRow.Replies) return@replaceAll row
+            val chosen = sent.lastOrNull { it.messageId == row.messageId && it.toolCallId == row.toolCallId }?.index
+            val live = quiet && row === newest
+            if (chosen == row.chosen && live == row.live) row else row.copy(chosen = chosen, live = live)
+        }
     }
 
     /** A run that holds only actions' attempt records: no turn, nothing streams in it, and it doesn't end like one. */
@@ -1740,9 +1744,24 @@ class Conversation(
             val streaming = working && runId == lastRun
             val turn = ArrayList<ConversationRow>()
             var tools = 0
+            // Suggested replies, each with the row it goes under: the last the agent wrote before a person's message.
+            val suggested = ArrayList<Pair<ConversationRow.Replies, String?>>()
+            var open = ArrayList<Int>()
             for (id in ids) messages[id]?.let { message ->
                 if (message.role == "agent") tools += message.content.count { it is Block.ToolCall }
-                turn += settled(sentAt(builder.rows(message, agentId, parentAgentId, streaming && message.role == "agent")), waiting)
+                val built = settled(sentAt(builder.rows(message, agentId, parentAgentId, streaming && message.role == "agent")), waiting)
+                if (message.role == "user") open = ArrayList()
+                val words = built.filter { it !is ConversationRow.Replies }
+                turn += words
+                words.lastOrNull()?.key?.let { last -> for (i in open) suggested[i] = suggested[i].first to last }
+                if (message.role != "user") for (replies in built.filterIsInstance<ConversationRow.Replies>()) {
+                    open += suggested.size
+                    suggested += replies to turn.lastOrNull()?.key
+                }
+            }
+            // From the last, so each goes in where the ones still to place expect it.
+            for ((replies, after) in suggested.asReversed()) {
+                turn.add(after?.let { key -> turn.indexOfFirst { it.key == key } + 1 } ?: 0, replies)
             }
             // Ended: how, after how long, and the answer to copy (desktop's `turnStatus`); then it folds.
             val info = runInfo[runId]
@@ -1783,7 +1802,7 @@ class Conversation(
         }
         if (opened.isNotEmpty()) rows.replaceAll { if (it is ConversationRow.User && it.key in opened) it.copy(opened = true) else it }
         if (rows.any { it is ConversationRow.Ui }) workOn(rows)
-        if (rows.any { it is ConversationRow.Replies }) placeReplies(rows)
+        if (rows.any { it is ConversationRow.Replies }) markReplies(rows)
         builder.forget(messages.keys)
         val produced = lastRun != null && running &&
             runs.last { it.first == lastRun }.second.any { id -> messages[id]?.let { it.role == "agent" && it.content.isNotEmpty() } == true }

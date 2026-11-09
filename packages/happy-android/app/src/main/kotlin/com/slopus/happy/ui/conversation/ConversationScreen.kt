@@ -310,7 +310,6 @@ fun ConversationScreen(
     val catalog by rememberUpdatedState(state.catalog)
     // A suggested reply is a send: whoever may write here may tap one.
     val roleSends by rememberUpdatedState(roleCanSend)
-    val suggester by rememberUpdatedState(state.agent?.title)
     val rowActions = remember(actions, legacy, pictures, media, store, pictureLabel, videoLabel, asks, folds, videos, uiLive) {
         ConversationRowActions(
             legacy = legacy,
@@ -340,7 +339,6 @@ fun ConversationScreen(
             onUiAction = { row, action -> if (presses) actions.onUiAction(row.offer, action) else null },
             onQuickReply = { replies, index -> if (presses && roleSends) actions.onQuickReply(replies, index) },
             uiReplies = { presses && roleSends },
-            suggester = { suggester },
             uiPresses = { presses },
             uiAllowed = { permission -> allows(permission) },
             uiLive = uiLive,

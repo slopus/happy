@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="conversation_quick_reply_by">↩ Suggerit per %1$s</string>
     <string name="conversation_quick_reply">↩ Resposta suggerida</string>
     <string name="conversation_ui_tree_show_all">Mostra-ho tot (%1$d)</string>
     <string name="ui_live_cli_reading">Comprovant %1$s en aquest ordinador…</string>
