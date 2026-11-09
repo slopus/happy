@@ -90,7 +90,7 @@ extension AgentWire {
             }
 
             /// Every token of `window`, summed across providers and models,
-            /// for display: input, cache reads and writes, output and reasoning.
+            /// for display: input and output (`Tokens.total`).
             public func tokens(_ window: UsageWindow) -> Int {
                 (usage[window.rawValue] ?? [:]).values.reduce(0) { total, models in
                     models.values.reduce(total) { $0 + $1.total }
@@ -136,7 +136,10 @@ extension AgentWire {
                 reasoning = count(.reasoning)
             }
 
-            public var total: Int { input + cacheRead + cacheWrite + output + reasoning }
+            /// What it used, as desktop and Android count it: `input` already
+            /// holds the cached tokens and `output` the reasoning ones
+            /// (happy-cluster `metering.rs`), so only those two add up.
+            public var total: Int { input + output }
         }
     }
 
@@ -146,7 +149,25 @@ extension AgentWire {
     }
 }
 
+/// One of a Happy Cloud team's roles (`GET /v0/roles`): the built-in
+/// owner, admin, member and viewer, or one the team made, by its name.
+public struct TeamRole: Decodable, Equatable, Sendable {
+    public var id: String
+    public var name: String
+
+    public init(id: String, name: String) {
+        self.id = id
+        self.name = name
+    }
+}
+
 extension AgentClient {
+    /// The team's roles, as desktop and Android name them.
+    public func teamRoles() async throws -> [TeamRole] {
+        struct Response: Decodable { let roles: [Lossy<TeamRole>] }
+        return try await decode(Response.self, "GET", "/v0/roles").roles.compactMap(\.value)
+    }
+
     /// How many recent tasks a profile is read with: the server's default.
     public static let profileTaskLimit = 10
 

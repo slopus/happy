@@ -294,6 +294,19 @@ final class Session {
         }
     }
 
+    /// The team's role names by ID (`GET /v0/roles`, cloud only), read
+    /// once, as desktop and Android read them; a read that fails is nil
+    /// and asked again next time.
+    private var roleNames: [String: String]?
+
+    func teamRoleNames() async -> [String: String]? {
+        if let roleNames { return roleNames }
+        guard isCloud, let roles = try? await client.teamRoles() else { return nil }
+        let names = Dictionary(roles.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        roleNames = names
+        return names
+    }
+
     private func adopt(_ onboarding: Onboarding) {
         self.onboarding = onboarding
         for watcher in onboardingWatchers.values { watcher(onboarding) }

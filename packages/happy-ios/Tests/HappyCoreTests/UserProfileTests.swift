@@ -15,6 +15,11 @@ final class UserProfileTests: XCTestCase {
 
         func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
             paths.append("\(method) \(path)")
+            if path == "/v0/roles" {
+                return HTTP1Response(status: 200, body: Data(#"""
+                {"roles":[{"id":"owner","name":"Owner","builtIn":true},{"id":"r_7f3a","name":"Designers","builtIn":false},{"id":7}]}
+                """#.utf8))
+            }
             switch status {
             case 403: return HTTP1Response(status: 403, body: Data(#"{"error":"Profiles need the profiles permission.","code":"profile_required"}"#.utf8))
             case 404: return HTTP1Response(status: 404, body: Data(#"{"error":"No such user.","code":"not_found"}"#.utf8))
@@ -60,12 +65,32 @@ final class UserProfileTests: XCTestCase {
         XCTAssertEqual(profile.recentTasks.first?.agent?.id, "a1")
     }
 
-    func testTokensAreSummedAcrossProvidersAndModels() async throws {
+    /// Input and output, summed across providers and models: input holds
+    /// the cached tokens and output the reasoning ones (happy-cluster
+    /// `metering.rs`), so neither is counted twice.
+    func testTokensAreInputAndOutputSummedAcrossProvidersAndModels() async throws {
         let stats = try await AgentClient(transport: ProfileServer(), token: "t").userProfile("ada").stats
-        XCTAssertEqual(stats.tokens(.hour), 1635)
-        XCTAssertEqual(stats.tokens(.day), 16350 + 1000)
+        XCTAssertEqual(stats.tokens(.hour), 1000 + 400)
+        XCTAssertEqual(stats.tokens(.day), 10000 + 4000 + 500 + 250)
         XCTAssertEqual(stats.tokens(.week), 0)
         XCTAssertEqual(stats.tokens(.month), 0, "a window it can't read counts nothing")
+    }
+
+    func testCacheAndReasoningNeverAddToTheTotal() throws {
+        let stats = try JSONDecoder().decode(AgentWire.UserProfile.Stats.self, from: Data(#"""
+        {"tasks":{"total":1,"active":0},"activeDays":1,"usage":{"week":{
+          "anthropic":{"claude-opus":{"input":2000,"cacheRead":900000000,"cacheWrite":80000000,"output":300,"reasoning":700000000}},
+          "openai":{"gpt-6":{"input":50,"cacheRead":40,"cacheWrite":0,"output":20,"reasoning":10}}}}}
+        """#.utf8))
+        XCTAssertEqual(stats.tokens(.week), 2000 + 300 + 50 + 20)
+    }
+
+    func testTheTeamsRolesAreReadByName() async throws {
+        let server = ProfileServer()
+        let roles = try await AgentClient(transport: server, token: "t").teamRoles()
+        XCTAssertEqual(roles, [TeamRole(id: "owner", name: "Owner"), TeamRole(id: "r_7f3a", name: "Designers")], "a role it can't read is left out")
+        let paths = await server.paths
+        XCTAssertEqual(paths, ["GET /v0/roles"])
     }
 
     func testAProfileWithoutStatsStillReads() throws {

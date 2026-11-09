@@ -17,6 +17,8 @@ final class UserProfileViewController: UIViewController {
     private let userId: String
     private var user: AgentWire.ProfileUser
     private var profile: AgentWire.UserProfile?
+    /// What the team calls its roles; empty until read, or if it can't be.
+    private var roleNames: [String: String] = [:]
     private var failure: String?
     private var loading: Task<Void, Never>?
 
@@ -73,10 +75,14 @@ final class UserProfileViewController: UIViewController {
     private func load() {
         let client = session.client
         let userId = userId
+        let session = session
         loading = Task { [weak self] in
+            async let names = session.teamRoleNames()
             do {
                 let read = try await client.userProfile(userId)
+                let roleNames = await names
                 guard let self, !Task.isCancelled else { return }
+                self.roleNames = roleNames ?? [:]
                 profile = read
                 user = read.user
                 failure = nil
@@ -101,7 +107,7 @@ final class UserProfileViewController: UIViewController {
 
     private func apply() {
         header.name.text = user.name.isEmpty ? Strings.none : user.name
-        header.subtitle.text = failure ?? [user.role?.trimmingCharacters(in: .whitespacesAndNewlines), profile.map { _ in Strings.UserProfile.teamRole(user.teamRole) }]
+        header.subtitle.text = failure ?? [user.role?.trimmingCharacters(in: .whitespacesAndNewlines), profile.map { _ in Strings.UserProfile.teamRole(user.teamRole, names: roleNames) }]
             .compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: " · ")
         header.avatar = .mark(Self.mark(user, me: session.home.userId, myPhoto: session.home.profilePhoto))
         applyNumbers()

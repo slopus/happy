@@ -65,6 +65,7 @@ private actor PeopleServer: AgentTransport {
         if path.hasPrefix("/v0/users?ids=") {
             return ok(#"{"users":[{"id":"ada","name":"Ada Lovelace","photo":{"thumbhash":"\#(Self.adaHash)"}},{"id":"adam","name":"Adam Novak","photo":null},{"id":"steve","name":"Steve","photo":{"thumbhash":"\#(Self.steveHash)"}}]}"#)
         }
+        if path == "/v0/roles" { return ok(#"{"roles":[{"id":"owner","name":"Owner","builtIn":true},{"id":"member","name":"Member","builtIn":true}]}"#) }
         if path.hasPrefix("/v0/users/ada/profile") { return ok(Self.profile()) }
         if let picture = Self.picture(path) { return HTTP1Response(status: 200, headers: ["content-type": "image/png"], body: picture) }
         return HTTP1Response(status: 404, body: Data(#"{"error":"Not here.","code":"not_found"}"#.utf8))

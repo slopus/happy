@@ -7,8 +7,12 @@ import UIKit
 import XCTest
 
 /// A team server that finds Ada by name (`POST /v0/search`'s `user`
-/// result), names her picture (`GET /v0/users`) and serves her profile.
+/// result), names her picture (`GET /v0/users`) and serves her profile;
+/// her role is one the team made, named by `GET /v0/roles` unless
+/// `rolesFail`.
 private struct PeopleTransport: AgentTransport {
+    var rolesFail = false
+
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         if path == "/v0/health" { return HTTP1Response(status: 200, body: Data(#"{"ok":true,"capabilities":{"search":true}}"#.utf8)) }
         if path == "/v0/search" {
@@ -20,9 +24,13 @@ private struct PeopleTransport: AgentTransport {
         if path.hasPrefix("/v0/users?ids=") {
             return HTTP1Response(status: 200, body: Data(#"{"users":[{"id":"ada","name":"Ada Lovelace","photo":{"thumbhash":"HBkSHYSIeHiPiHh8eJd4eTN0EEQG"}}]}"#.utf8))
         }
+        if path == "/v0/roles" {
+            if rolesFail { return HTTP1Response(status: 500) }
+            return HTTP1Response(status: 200, body: Data(#"{"roles":[{"id":"owner","name":"Owner","builtIn":true},{"id":"r_7f3a","name":"Designers","builtIn":false}]}"#.utf8))
+        }
         if path.hasPrefix("/v0/users/ada/profile") {
             return HTTP1Response(status: 200, body: Data(#"""
-            {"user":{"id":"ada","name":"Ada Lovelace","photo":{"thumbhash":"HBkSHYSIeHiPiHh8eJd4eTN0EEQG"},"role":"Design lead","teamRole":"owner"},
+            {"user":{"id":"ada","name":"Ada Lovelace","photo":{"thumbhash":"HBkSHYSIeHiPiHh8eJd4eTN0EEQG"},"role":"Design lead","teamRole":"r_7f3a"},
              "stats":{"tasks":{"total":12,"active":3},"lastActivityAt":null,"activeDays":14,
                       "usage":{"hour":{},"day":{"anthropic":{"opus":{"input":1000,"cacheRead":0,"cacheWrite":0,"output":200,"reasoning":0}}},"week":{},"month":{}}},
              "recentTasks":[{"id":"t1","name":"Ship the profile","agent":{"id":"a1","workspaceId":"w1","status":"idle"}}]}
@@ -37,10 +45,10 @@ private struct PeopleTransport: AgentTransport {
 
 @MainActor
 final class HostedUserProfileTests: XCTestCase {
-    private func rig(server: String?) async throws -> (AppContext, String) {
+    private func rig(server: String?, rolesFail: Bool = false) async throws -> (AppContext, String) {
         let account = AccountController(serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "people-test",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
-            agentConnectionCredentialStore: InMemoryAgentConnectionCredentialStore(), agentTransport: { _ in PeopleTransport() })
+            agentConnectionCredentialStore: InMemoryAgentConnectionCredentialStore(), agentTransport: { _ in PeopleTransport(rolesFail: rolesFail) })
         await account.agentConnections.setForeground(false)
         let connection: AgentConnection
         if let server {
@@ -74,8 +82,8 @@ final class HostedUserProfileTests: XCTestCase {
         XCTAssertTrue(condition())
     }
 
-    private func search(_ server: String?) async throws -> (HomeViewController, HomeSearchResultsView, UINavigationController) {
-        let (context, id) = try await rig(server: server)
+    private func search(_ server: String?, rolesFail: Bool = false) async throws -> (HomeViewController, HomeSearchResultsView, UINavigationController) {
+        let (context, id) = try await rig(server: server, rolesFail: rolesFail)
         let home = HomeViewController(context: context, computer: id)
         let navigation = try await host(home)
         home.beginSearch()
@@ -101,11 +109,21 @@ final class HostedUserProfileTests: XCTestCase {
         try await until { profile.shownTiles.first == "12" }
         XCTAssertEqual(profile.shownTiles, ["12", "3", "14 of 30", "—"])
         XCTAssertEqual(profile.header.name.text, "Ada Lovelace")
-        XCTAssertEqual(profile.header.subtitle.text, "Design lead · Owner")
+        XCTAssertEqual(profile.header.subtitle.text, "Design lead · Designers", "the team's own role, by the name it gave it")
         XCTAssertEqual(profile.shownTaskCount, 1)
 
         profile.selectTask(0)
         try await until { navigation.topViewController is ChatViewController }
+    }
+
+    func testARoleTheTeamCantNameShowsItsID() async throws {
+        let (_, results, navigation) = try await search(HappyCloud.server(named: "people-roles-test"), rolesFail: true)
+        try await until { results.list.shownRows.contains { $0.id == "search:people:ada" } }
+        let row = try XCTUnwrap(results.list.shownRows.first { $0.id == "search:people:ada" })
+        results.list.onSelect?(row)
+        try await until { (navigation.topViewController as? UserProfileViewController)?.shownTiles.first == "12" }
+        let profile = try XCTUnwrap(navigation.topViewController as? UserProfileViewController)
+        XCTAssertEqual(profile.header.subtitle.text, "Design lead · r_7f3a")
     }
 
     func testAComputerOfOnesOwnShowsNoPeople() async throws {

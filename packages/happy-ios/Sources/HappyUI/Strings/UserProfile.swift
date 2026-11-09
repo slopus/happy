@@ -31,15 +31,18 @@ extension Strings {
             }
         }
 
-        /// Their role on the team: a built-in one by name, a team's own by its ID.
-        public static func teamRole(_ role: String?) -> String {
-            switch role {
-            case nil: leftTeam
+        /// Their role on the team, as the team names it (`names`, from
+        /// `GET /v0/roles`); without that, a built-in one by its usual name
+        /// and a team's own by its ID.
+        public static func teamRole(_ role: String?, names: [String: String] = [:]) -> String {
+            guard let role else { return leftTeam }
+            if let name = names[role], !name.isEmpty { return name }
+            return switch role {
             case "owner": "Owner"
             case "admin": "Admin"
             case "member": "Member"
             case "viewer": "Viewer"
-            case let other?: other
+            default: role
             }
         }
 
