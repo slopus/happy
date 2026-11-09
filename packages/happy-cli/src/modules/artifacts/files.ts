@@ -121,10 +121,6 @@ export async function withMachineLock<T>(storage: string, body: () => Promise<T>
   };
   try {
     if (options.waitTimeoutMs !== undefined) {
-      // Some filesystems report the owner hardlink name instead of machine.lock.
-      // Directory changes are only wakeups; the atomic acquisition remains authoritative.
-      watcher = watch(storage, { persistent: false }, () => { generation++; wake?.(); });
-      watcher.on('error', error => { watchError = error; wake?.(); });
       deadline = setTimeout(() => { timedOut = true; wake?.(); }, options.waitTimeoutMs);
     }
     while (!acquired) {
@@ -133,15 +129,29 @@ export async function withMachineLock<T>(storage: string, body: () => Promise<T>
       const observed = generation;
       try { await acquire(); }
       catch (error) {
-        if (!watcher || !(error instanceof ArtifactError) || error.code !== 'WRITER_ACTIVE') throw error;
+        if (options.waitTimeoutMs === undefined || !(error instanceof ArtifactError) || error.code !== 'WRITER_ACTIVE') throw error;
+        if (!watcher) {
+          try {
+            watcher = watch(lock, { persistent: false }, () => { generation++; wake?.(); });
+            watcher.on('error', error => { watchError = error; wake?.(); });
+          } catch (watchFailure) {
+            if ((watchFailure as NodeJS.ErrnoException).code !== 'ENOENT') throw watchFailure;
+          }
+          continue;
+        }
         if (observed === generation && !timedOut) await new Promise<void>(resolve => { wake = resolve; });
+        watcher.close();
+        watcher = undefined;
       }
     }
     return await body();
   } finally {
     if (deadline) clearTimeout(deadline);
-    watcher?.close();
-    if (acquired) await unlink(lock);
-    await unlink(candidate).catch(() => {});
+    try {
+      if (acquired) await unlink(lock);
+    } finally {
+      try { watcher?.close(); }
+      finally { await unlink(candidate).catch(() => {}); }
+    }
   }
 }
