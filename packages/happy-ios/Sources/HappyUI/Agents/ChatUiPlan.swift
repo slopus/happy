@@ -77,9 +77,12 @@ enum ChatUiPlan {
         }
     }
 
+    /// Quick replies in a person's words' type, one line each.
     static func draft(_ replies: QuickReplies, environment: TextEnvironment?) -> Draft {
-        let pills = replies.options.map { MeasuredText(label.string($0, color: Palette.text, alignment: .center, in: environment), maxLines: 3) }
-        return Draft(shown: .replies(replies), input: .pills(pills.map(\.measurable)), buttons: pills, spoken: replies.options.joined(separator: ", "))
+        let labels = replies.options.map {
+            MeasuredText(ChatTextStyles.text.string($0, color: Palette.userMessageText, lineBreakMode: .byTruncatingTail, in: environment), maxLines: 1)
+        }
+        return Draft(shown: .replies(replies), input: .replies(labels.map(\.measurable)), buttons: labels, spoken: replies.options.joined(separator: ", "))
     }
 
     static func draw(_ draft: Draft, _ layout: ChatUiLayout, origin: CGPoint) -> (items: [ChatDrawItem], hits: [ChatHit]) {
@@ -90,10 +93,14 @@ enum ChatUiPlan {
         func text(_ text: MeasuredText, _ frame: CGRect) { items.append(.text(text.layout(for: frame), at(frame))) }
         switch draft.shown {
         case .replies(let replies):
+            // Sent, it is the person's bubble with a tick; the rest keep
+            // their look, and nothing moves.
             for (index, (placed, label)) in zip(layout.buttons, draft.buttons).enumerated() {
-                items.append(.box(ChatBox(frame: at(placed.frame), fill: Palette.surfaceHigh, border: Palette.legacyDivider, borderWidth: M.border, radius: placed.frame.height / 2)))
+                let sent = replies.chosen == index
+                items.append(.box(ChatBox(frame: at(placed.frame), fill: sent ? Palette.userBubble : Palette.quickReplyBubble, radius: MessageLayout.Metrics.bubbleRadius)))
                 text(label, placed.label)
-                hits.insert(ChatHit(frame: at(placed.frame), action: .ui(ChatUiTap(kind: .reply(replies, index)))), at: 0)
+                if sent, let tick = placed.tick { items.append(.icon(.ionicons("checkmark"), size: M.tick, frame: at(tick), tint: Palette.userMessageText)) }
+                if replies.live { hits.insert(ChatHit(frame: at(placed.frame), action: .ui(ChatUiTap(kind: .reply(replies, index)))), at: 0) }
             }
         case .component(let shown):
             switch shown.kind {

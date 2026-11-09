@@ -189,7 +189,9 @@ public enum TurnFold {
     static func fold(turn: String, _ group: [ChatItem], open: Bool) -> [ChatItem] {
         guard let status = group.firstIndex(where: { if case .turnEnd = $0.role { true } else { false } }),
               case .turnEnd(let ended) = group[status].role else { return group }
-        let finalAgent = group.lastIndex { $0.role == .agent }
+        // Quick replies are no answer; they stay under it.
+        func replies(_ item: ChatItem) -> Bool { item.pieces.contains { if case .quickReplies = $0 { true } else { false } } }
+        let finalAgent = group.lastIndex { $0.role == .agent && !replies($0) }
         let anchor = finalAgent ?? group.lastIndex(where: isStep)
         let kept = group.indices.filter { index in
             if index == anchor { return true }
@@ -198,7 +200,7 @@ public enum TurnFold {
             case .tool(let tool): return tool.isResult
             case .question(let ask): return ask.phase != .answered
             // Chat UI stays: a live control, a tree or images the agent showed.
-            case .agent: return group[index].pieces.contains { if case .ui = $0 { true } else { false } }
+            case .agent: return replies(group[index]) || group[index].pieces.contains { if case .ui = $0 { true } else { false } }
             }
         }
         guard kept.count < group.count else { return group }

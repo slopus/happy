@@ -332,10 +332,10 @@ public struct UiShown: Equatable, Sendable {
 }
 
 /// Suggested replies (happy-agent `API.md`, "Quick replies"): not
-/// components but words the person may send, drawn as pills under the
-/// newest suggestion while nobody has written since. A tap is an ordinary
-/// send of the option, naming where it came from (`QuickReply`). They come
-/// in a daemon-written `quick_replies` block, or the `quick_replies`
+/// components but words the person may send, drawn under the turn that
+/// suggested them for good, the one sent marked. A tap is an ordinary send
+/// of the option, naming where it came from (`QuickReply`). They come in a
+/// daemon-written `quick_replies` block, or the `quick_replies`
 /// presentation of a `suggest_replies` call.
 public struct QuickReplies: Equatable, Sendable {
     public static let max = 6
@@ -345,12 +345,21 @@ public struct QuickReplies: Equatable, Sendable {
     /// The `suggest_replies` call, for a presentation's.
     public var toolCallId: String?
     public var options: [String]
+    /// The option a person's message sent, by its `quickReply`.
+    public var chosen: Int?
+    /// It takes a tap: the newest suggestion, nobody having written since.
+    public var live: Bool
 
-    public init(messageId: String, toolCallId: String? = nil, options: [String]) {
+    public init(messageId: String, toolCallId: String? = nil, options: [String], chosen: Int? = nil, live: Bool = false) {
         self.messageId = messageId
         self.toolCallId = toolCallId
         self.options = options
+        self.chosen = chosen
+        self.live = live
     }
+
+    /// Which suggestion a `quickReply` names.
+    public func names(_ reply: QuickReply) -> Bool { reply.messageId == messageId && reply.toolCallId == toolCallId }
 
     /// Where option `index` came from, as `send` names it.
     public func reply(_ index: Int) -> QuickReply { QuickReply(messageId: messageId, toolCallId: toolCallId, index: index) }

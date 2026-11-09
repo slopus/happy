@@ -34,17 +34,19 @@ final class ChatUiLayoutTests: XCTestCase {
         XCTAssertEqual(ChatUiLayout(width: 768, input: .card(title: .fixed(width: 90, height: 20), lines: [], buttons: [])).size, CGSize(width: 420, height: 44))
     }
 
-    func testPillsAreAsWideAsTheirLabelsAndWrap() {
-        let layout = ChatUiLayout(width: 370, input: .pills([.fixed(width: 100, height: 20), .fixed(width: 150, height: 20), .fixed(width: 90, height: 20)]))
+    /// Every reply is a person's widest bubble against the right, so the
+    /// one sent and the rest stand exactly where they stood.
+    func testRepliesAreOneUnderAnotherAsWideAsAPersonsWidestBubble() {
+        // A 370 column in a 402 row: a person's widest bubble is 402 - 16 - 36 = 350.
+        let layout = ChatUiLayout(width: 370, input: .replies([.fixed(width: 100, height: 24), .fixed(width: 400, height: 24)]))
         XCTAssertEqual(layout.buttons, [
-            .init(frame: CGRect(x: 0, y: 0, width: 128, height: 36), label: CGRect(x: 14, y: 8, width: 100, height: 20)),
-            .init(frame: CGRect(x: 136, y: 0, width: 178, height: 36), label: CGRect(x: 150, y: 8, width: 150, height: 20)),
-            .init(frame: CGRect(x: 0, y: 44, width: 118, height: 36), label: CGRect(x: 14, y: 52, width: 90, height: 20)),
+            .init(frame: CGRect(x: 20, y: 0, width: 350, height: 44), label: CGRect(x: 32, y: 10, width: 302, height: 24), tick: CGRect(x: 342, y: 14, width: 16, height: 16)),
+            .init(frame: CGRect(x: 20, y: 50, width: 350, height: 44), label: CGRect(x: 32, y: 60, width: 302, height: 24), tick: CGRect(x: 342, y: 64, width: 16, height: 16)),
         ])
-        XCTAssertEqual(layout.size, CGSize(width: 314, height: 80))
-        // A label wider than the column wraps inside a column-wide pill.
-        let long = ChatUiLayout(width: 200, input: .pills([Measurable { width in CGSize(width: width, height: 40) }]))
-        XCTAssertEqual(long.buttons, [.init(frame: CGRect(x: 0, y: 0, width: 200, height: 56), label: CGRect(x: 14, y: 8, width: 172, height: 40))])
+        XCTAssertEqual(layout.size, CGSize(width: 370, height: 94))
+        let row = MessageLayout.user(width: 402, text: .fixed(width: 1000, height: 24), showsStatus: false)
+        XCTAssertEqual(row.bubble?.width, 350)
+        XCTAssertEqual(row.bubble?.maxX, 386)
     }
 
     /// In a message, a component stands at the reading column's left, 8

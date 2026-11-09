@@ -12,8 +12,9 @@ import Foundation
 ///                title, its lines 4 apart, then its buttons one under
 ///                another, 8 apart, each at least 44 tall with its label
 ///                centred 16 in
-///     pills      quick replies: each as wide as its label and 14 either
-///                side, at least 36 tall, 8 apart, wrapping to new lines
+///     replies    quick replies one under another, 6 apart, each a person's
+///                bubble as wide as theirs may be, against the right; its
+///                label one line, 12 in, with room on the right for a 16 tick
 public struct ChatUiLayout: Equatable, Sendable {
     public enum Metrics {
         public static let maxWidth: CGFloat = 420
@@ -29,9 +30,9 @@ public struct ChatUiLayout: Equatable, Sendable {
         public static let treeGlyphGap: CGFloat = 6
         public static let cardPadding: CGFloat = 12
         public static let lineGap: CGFloat = 4
-        public static let pillHeight: CGFloat = 36
-        public static let pillPaddingH: CGFloat = 14
-        public static let pillPaddingV: CGFloat = 8
+        public static let replyGap: CGFloat = 6
+        public static let tick: CGFloat = 16
+        public static let tickGap: CGFloat = 8
         /// Controls that can't be used, or no longer.
         public static let disabledAlpha: CGFloat = 0.48
     }
@@ -40,13 +41,21 @@ public struct ChatUiLayout: Equatable, Sendable {
         case tree([(depth: Int, name: Measurable)])
         case line(Measurable)
         case card(title: Measurable, lines: [Measurable], buttons: [Measurable])
-        case pills([Measurable])
+        /// Each label measured on one line.
+        case replies([Measurable])
     }
 
-    /// A button or a pill, and its label.
+    /// A button or a reply, its label, and a reply's tick.
     public struct Button: Equatable, Sendable {
         public var frame: CGRect
         public var label: CGRect
+        public var tick: CGRect?
+
+        public init(frame: CGRect, label: CGRect, tick: CGRect? = nil) {
+            self.frame = frame
+            self.label = label
+            self.tick = tick
+        }
     }
 
     /// A file tree's entry: `mark` is its glyph.
@@ -57,7 +66,7 @@ public struct ChatUiLayout: Equatable, Sendable {
     }
 
     public var size: CGSize
-    /// A card's buttons, or the pills.
+    /// A card's buttons, or the replies.
     public var buttons: [Button] = []
     public var rows: [Row] = []
     /// The line, or a card's title.
@@ -116,28 +125,21 @@ public struct ChatUiLayout: Equatable, Sendable {
             y += M.cardPadding
             card = CGRect(x: 0, y: 0, width: control, height: y)
             size = CGSize(width: control, height: y)
-        case .pills(let labels):
-            var x: CGFloat = 0
-            var lineHeight: CGFloat = 0
-            var widest: CGFloat = 0
-            for one in labels {
-                let measured = one.size(fitting: max(0, width - 2 * M.pillPaddingH))
-                let labelSize = CGSize(width: measured.width.rounded(.up), height: measured.height.rounded(.up))
-                let pill = CGSize(width: min(width, labelSize.width + 2 * M.pillPaddingH), height: max(M.pillHeight, labelSize.height + 2 * M.pillPaddingV))
-                if x > 0, x + pill.width > width {
-                    y += lineHeight + M.gap
-                    x = 0
-                    lineHeight = 0
-                }
-                let frame = CGRect(origin: CGPoint(x: x, y: y), size: pill)
-                let labelFrame = CGRect(x: x + ((pill.width - labelSize.width) / 2).rounded(), y: y + ((pill.height - labelSize.height) / 2).rounded(),
-                                        width: min(labelSize.width, pill.width - 2 * M.pillPaddingH), height: labelSize.height)
-                buttons.append(Button(frame: frame, label: labelFrame))
-                x += pill.width + M.gap
-                lineHeight = max(lineHeight, pill.height)
-                widest = max(widest, frame.maxX)
+        case .replies(let labels):
+            // A person's widest bubble (`MessageLayout.user`), its right edge on theirs.
+            typealias B = MessageLayout.Metrics
+            let reply = max(0, width - (B.bubbleLeading - B.marginH))
+            let labelWidth = max(0, reply - 2 * B.bubblePaddingH - M.tick - M.tickGap)
+            for (index, one) in labels.enumerated() {
+                if index > 0 { y += M.replyGap }
+                let height = one.height(fitting: labelWidth).rounded(.up)
+                let frame = CGRect(x: width - reply, y: y, width: reply, height: height + 2 * B.bubblePaddingV)
+                let label = CGRect(x: frame.minX + B.bubblePaddingH, y: y + B.bubblePaddingV, width: labelWidth, height: height)
+                let tick = CGRect(x: frame.maxX - B.bubblePaddingH - M.tick, y: y + ((frame.height - M.tick) / 2).rounded(), width: M.tick, height: M.tick)
+                buttons.append(Button(frame: frame, label: label, tick: tick))
+                y = frame.maxY
             }
-            size = CGSize(width: widest, height: labels.isEmpty ? 0 : y + lineHeight)
+            size = CGSize(width: width, height: y)
         }
     }
 }

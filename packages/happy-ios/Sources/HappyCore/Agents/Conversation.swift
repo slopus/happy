@@ -1778,28 +1778,53 @@ public actor Conversation {
 
     // MARK: Quick replies
 
-    /// The newest suggestion, while no person's message has come after it:
-    /// none held, waiting, or on its way from here.
-    private func quickReplies() -> QuickReplies? {
-        guard outgoing.isEmpty, transcript.pending.isEmpty else { return nil }
-        for run in transcript.runs.reversed() {
-            for id in run.messageIds.reversed() {
+    /// Each suggestion's row, right under its turn's last words and above
+    /// how the turn ended, for good: the option a person's message sent is
+    /// marked from its `quickReply` (a send on its way from here too), and
+    /// only the newest takes a tap, while nobody has written since.
+    private func placeQuickReplies(_ items: inout [ChatItem]) {
+        var found: [(run: String, replies: QuickReplies)] = []
+        var chosen: [QuickReply] = []
+        var spokeAfter = false
+        for run in transcript.runs {
+            for id in run.messageIds {
                 guard let message = transcript[message: id] else { continue }
-                if message.role == "user" { return nil }
+                if message.role == "user" {
+                    spokeAfter = true
+                    if let reply = message.quickReply { chosen.append(reply) }
+                    continue
+                }
                 guard message.role == "agent" else { continue }
-                for block in message.content.reversed() {
+                for block in message.content {
                     switch block {
                     case .quickReplies(let options) where !options.isEmpty:
-                        return QuickReplies(messageId: message.id, options: options)
+                        found.append((run.id, QuickReplies(messageId: message.id, options: options)))
+                        spokeAfter = false
                     case .toolCall(let callId, _, _, let presentation?, _, _, _, _) where presentation.type == "quick_replies" && !(presentation.options ?? []).isEmpty:
-                        return QuickReplies(messageId: message.id, toolCallId: callId, options: presentation.options ?? [])
+                        found.append((run.id, QuickReplies(messageId: message.id, toolCallId: callId, options: presentation.options ?? [])))
+                        spokeAfter = false
                     default:
                         continue
                     }
                 }
             }
         }
-        return nil
+        guard !found.isEmpty else { return }
+        chosen += outgoing.compactMap { outgoingReplies[$0.id] }
+        let quiet = !spokeAfter && outgoing.isEmpty && transcript.pending.isEmpty
+        // From the end, so each insertion leaves the places still to find.
+        for (offset, entry) in found.enumerated().reversed() {
+            var replies = entry.replies
+            replies.chosen = chosen.last(where: replies.names)?.index
+            replies.live = quiet && offset == found.count - 1
+            let item = ChatItem(id: "replies:\(replies.messageId):\(replies.toolCallId ?? "")", role: .agent, pieces: [.quickReplies(replies)], delivery: .sent, turn: entry.run)
+            let last = items.lastIndex { item in
+                guard item.turn == entry.run else { return false }
+                if case .turnEnd = item.role { return false }
+                return true
+            }
+            items.insert(item, at: last.map { $0 + 1 } ?? items.endIndex)
+        }
     }
 
     /// A tap on a quick reply: an ordinary send of the option, naming
@@ -2272,7 +2297,7 @@ public actor Conversation {
         madeSends = sends
         applyUiStates(&items)
         acting.removeAll { transcript.isPlaced($0.id) }
-        if let replies = quickReplies() { items.append(ChatItem(id: "replies:\(replies.messageId):\(replies.toolCallId ?? "")", role: .agent, pieces: [.quickReplies(replies)], delivery: .sent)) }
+        placeQuickReplies(&items)
         snapshot.items = items
         // Only steering for a run already going: a send that starts one is
         // its first message, not next in line.

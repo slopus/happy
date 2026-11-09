@@ -200,25 +200,32 @@ final class ChatUiTests: XCTestCase {
         ])])
     }
 
-    private func replies(_ snapshot: ChatSnapshot?) -> QuickReplies? {
+    private func replies(_ snapshot: ChatSnapshot?, _ messageId: String? = nil) -> QuickReplies? {
         for item in snapshot?.items ?? [] {
-            for piece in item.pieces { if case .quickReplies(let replies) = piece { return replies } }
+            for piece in item.pieces { if case .quickReplies(let replies) = piece, messageId == nil || replies.messageId == messageId { return replies } }
         }
         return nil
     }
 
-    /// The newest suggestion is pills at the end, with no call line; a tap
-    /// is an ordinary send of the option naming where it came from, with
-    /// `Happy-Protocol: 35`, and the pills go once it is written.
-    func testQuickRepliesArePillsATapSendsAndThenTheyGo() async throws {
+    private func repliesRows(_ snapshot: ChatSnapshot?) -> [ChatItem] {
+        (snapshot?.items ?? []).filter { $0.pieces.contains { if case .quickReplies = $0 { true } else { false } } }
+    }
+
+    /// A suggestion is its own row right under the turn's words and above
+    /// how the turn ended, with no call line; a tap is an ordinary steered
+    /// send of the option naming where it came from, with
+    /// `Happy-Protocol: 35`. Sent, every option stays where it was, the
+    /// one sent marked, and the stack takes no second tap.
+    func testATapSendsAndEveryOptionStaysWithTheSentOneMarked() async throws {
         let server = ChatUiServer(history: [
-            .object(["id": .string("r1"), "status": .string("completed"), "messages": .array([Self.suggesting("a1", at: 1)])]),
+            .object(["id": .string("r1"), "status": .string("completed"), "endedAt": .number(2), "messages": .array([Self.suggesting("a1", at: 1)])]),
         ])
         var (conversation, updates, store) = await openWithStore(server)
-        let first = await next(&updates) { self.replies($0) != nil }
+        let first = await next(&updates) { self.replies($0) != nil && $0.items.contains { $0.id == "r1:status" } }
         let shown = try XCTUnwrap(replies(first))
-        XCTAssertEqual(shown, QuickReplies(messageId: "a1", toolCallId: "call1", options: ["Yes, go ahead", "Not now"]))
-        XCTAssertEqual(first?.items.last?.pieces, [.quickReplies(shown)])
+        XCTAssertEqual(shown, QuickReplies(messageId: "a1", toolCallId: "call1", options: ["Yes, go ahead", "Not now"], live: true))
+        XCTAssertEqual(first?.items.map(\.id), ["a1", "replies:a1:call1", "r1:status"])
+        XCTAssertEqual(first?.items[1].turn, "r1")
         XCTAssertFalse(first?.items.contains { if case .tool = $0.role { true } else { false } } ?? true, "no suggest_replies call line")
 
         let sending = Task { await conversation.sendQuickReply(shown, index: 0) }
@@ -226,7 +233,8 @@ final class ChatUiTests: XCTestCase {
         let bubble = try XCTUnwrap(sent?.items.last { $0.role == .user })
         XCTAssertEqual(bubble.text, "Yes, go ahead")
         XCTAssertTrue(bubble.suggested)
-        XCTAssertNil(replies(sent), "written: the pills go")
+        XCTAssertEqual(replies(sent), QuickReplies(messageId: "a1", toolCallId: "call1", options: ["Yes, go ahead", "Not now"], chosen: 0, live: false))
+        XCTAssertEqual(sent?.items.prefix(3).map(\.id), ["a1", "replies:a1:call1", "r1:status"], "nothing moved")
         _ = await sending.value
         // Without an outbox, a send goes when the stream picks up again.
         await store.externalResync(loadSidebar: false)
@@ -237,15 +245,18 @@ final class ChatUiTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(10))
         }
         XCTAssertEqual(body?["text"], .string("Yes, go ahead"))
+        XCTAssertEqual(body?["delivery"], .string("steer"))
         XCTAssertEqual(body?["quickReply"], .object(["messageId": .string("a1"), "toolCallId": .string("call1"), "index": .number(0)]))
         let protocols = await server.protocols
         XCTAssertTrue(!protocols.isEmpty && protocols.allSatisfy { $0 == "35" }, "\(protocols)")
         await conversation.stop()
     }
 
-    /// A person's message after a suggestion hides it, and says it was one;
-    /// the daemon's own block is a suggestion too.
-    func testAWrittenReplyHidesThePillsAndAStoredOneSaysItWasSuggested() async throws {
+    /// Every suggestion stays, each marked by the person's message that
+    /// sent one (as read back on any device), and only the newest takes a
+    /// tap; a stored reply says it was suggested, and the daemon's own
+    /// block is a suggestion too.
+    func testEverySuggestionStaysMarkedFromHistoryAndOnlyTheNewestTakesATap() async throws {
         let server = ChatUiServer(history: [
             .object(["id": .string("r1"), "status": .string("completed"), "messages": .array([
                 .object(["id": .string("a0"), "role": .string("agent"), "createdAt": .number(0), "content": .array([.object(["type": .string("quick_replies"), "options": .array([.string("Hi")])])])]),
@@ -258,10 +269,11 @@ final class ChatUiTests: XCTestCase {
             ])]),
         ])
         var (conversation, updates) = await open(server)
-        let first = await next(&updates) { $0.items.contains { $0.role == .user } }
+        let first = await next(&updates) { $0.items.contains { $0.role == .user } && self.repliesRows($0).count == 3 }
         XCTAssertEqual(first?.items.first { $0.id == "u1" }?.suggested, true)
-        XCTAssertEqual(replies(first), QuickReplies(messageId: "a2", options: ["Thanks"]), "only the newest, after the person's message")
-        XCTAssertEqual(first?.items.filter { $0.pieces.contains { if case .quickReplies = $0 { true } else { false } } }.count, 1)
+        XCTAssertEqual(replies(first, "a0"), QuickReplies(messageId: "a0", options: ["Hi"]))
+        XCTAssertEqual(replies(first, "a1"), QuickReplies(messageId: "a1", toolCallId: "call1", options: ["Yes, go ahead", "Not now"], chosen: 1))
+        XCTAssertEqual(replies(first, "a2"), QuickReplies(messageId: "a2", options: ["Thanks"], live: true))
         await conversation.stop()
     }
 

@@ -49,6 +49,14 @@ final class AgentTurnsTests: XCTestCase {
         XCTAssertFalse(end.afterStep, "after the answer the status is 32 tall")
     }
 
+    /// Quick replies are no answer: closed, the answer keeps the control
+    /// and the replies stay under it, above how the turn ended.
+    func testAFoldedTurnKeepsItsQuickRepliesUnderItsAnswer() {
+        let replies = ChatItem(id: "replies:a2:c", role: .agent, pieces: [.quickReplies(QuickReplies(messageId: "a2", toolCallId: "c", options: ["Yes"]))], delivery: .sent, turn: "r")
+        let items = [user("u", turn: "r"), tool("t1", "exec_command", type: "exec_command", turn: "r"), agent("a2", "Done.", turn: "r"), replies, ended("r", tools: 1)]
+        XCTAssertEqual(TurnFold.fold(items, expanded: []).map(\.id), ["u", "r:trace", "a2", "replies:a2:c", "r:status"])
+    }
+
     /// Open, every step shows and the control rides the turn's first one.
     func testAnOpenTurnShowsEveryStepWithItsControlFirst() {
         let items = [user("u", turn: "r"), tool("t1", "Bash", turn: "r"), agent("a", "Done.", turn: "r"), tool("t2", "Bash", turn: "r"), ended("r", tools: 2)]
