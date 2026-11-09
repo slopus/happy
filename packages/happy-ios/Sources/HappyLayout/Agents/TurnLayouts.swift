@@ -30,7 +30,7 @@ public struct ToolRowLayout: Equatable, Sendable {
         glyph = CGRect(x: left, y: top + (M.lineHeight - M.glyph) / 2, width: M.glyph, height: M.glyph)
         let verbX = glyph.maxX + M.gap
         verb = CGRect(x: verbX, y: top, width: min(ceil(verbWidth), max(0, right - verbX)), height: M.lineHeight)
-        let x = verb.maxX + M.gap
+        let x = verb.maxX + (verb.width > 0 ? M.gap : 0)
         let counts = [addedWidth, deletedWidth].compactMap { $0.map { ceil($0) } }
         let countsWidth = counts.reduce(0, +) + CGFloat(counts.count) * M.gap
         let room = max(0, right - x - countsWidth)

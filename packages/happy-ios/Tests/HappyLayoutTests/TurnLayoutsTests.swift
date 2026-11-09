@@ -12,6 +12,12 @@ final class TurnLayoutsTests: XCTestCase {
 
     // MARK: Tool rows
 
+    func testAStandaloneSummaryUsesTheVerbLaneWithoutAnEmptyGap() {
+        let row = ToolRowLayout(width: 390, verbWidth: 0, textWidth: 200)
+        XCTAssertEqual(row.text, CGRect(x: 36, y: 6, width: 338, height: 20))
+        XCTAssertEqual(row.glyph, CGRect(x: 16, y: 9, width: 14, height: 14))
+    }
+
     func testAToolRowIsOneLineWithItsSubjectInTheRest() {
         let row = ToolRowLayout(width: 390, verbWidth: 40.3, textWidth: 200)
         XCTAssertEqual(row.size, CGSize(width: 390, height: 32))
