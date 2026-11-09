@@ -300,7 +300,7 @@ final class ClaudeSignInViewController: ProviderSignInViewController {
         super.viewDidLoad()
         view.accessibilityIdentifier = "provider-claude"
         let token = button(Strings.Providers.addSetupToken, prominent: true, id: "provider-claude-token") { [weak self] in
-            self?.flows.addSetupToken { self?.follow?.cancel() }
+            self?.flows.addSetupToken()
         }
         stack.addArrangedSubview(label(Strings.Providers.setupTokenHint))
         stack.addArrangedSubview(token)
