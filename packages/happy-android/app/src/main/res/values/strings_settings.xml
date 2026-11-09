@@ -45,11 +45,6 @@
     <string name="settings_agents_custom_codex_title">Custom Codex model</string>
     <string name="settings_agents_custom_codex_message">Enter an exact model ID. Availability depends on your Codex account or API configuration.</string>
 
-    <!-- settings/connect/claude.tsx. -->
-    <string name="settings_connect_claude_title">Connect to Claude</string>
-    <string name="settings_connect_claude">Connect Claude</string>
-    <string name="settings_connect_claude_run">Run the following command in your terminal:</string>
-
     <!-- formatBuildSubtitle: the build's commit under Version. -->
     <string name="settings_commit">Commit</string>
     <string name="settings_commit_at">Commit %1$s</string>

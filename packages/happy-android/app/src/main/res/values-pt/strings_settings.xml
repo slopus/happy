@@ -38,9 +38,6 @@
     <string name="settings_agents_effort">Esforço</string>
     <string name="settings_agents_custom_codex_title">Modelo do Codex personalizado</string>
     <string name="settings_agents_custom_codex_message">Digite o ID exato do modelo. A disponibilidade depende da sua conta do Codex ou da configuração da API.</string>
-    <string name="settings_connect_claude_title">Conectar ao Claude</string>
-    <string name="settings_connect_claude">Conectar o Claude</string>
-    <string name="settings_connect_claude_run">Execute este comando no seu terminal:</string>
     <string name="settings_commit">Commit</string>
     <string name="settings_commit_at">Commit %1$s</string>
     <string name="settings_manage_subscriptions">Gerir subscrições</string>

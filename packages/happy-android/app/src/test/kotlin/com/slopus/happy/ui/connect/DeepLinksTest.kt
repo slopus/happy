@@ -19,7 +19,6 @@ import com.slopus.happy.ui.settings.AccountRoute
 import com.slopus.happy.ui.settings.AgentsRoute
 import com.slopus.happy.ui.settings.AppearanceRoute
 import com.slopus.happy.ui.settings.ChangelogRoute
-import com.slopus.happy.ui.settings.ConnectClaudeRoute
 import com.slopus.happy.ui.settings.LanguageRoute
 import com.slopus.happy.ui.voice.VoiceSettingsRoute
 import com.slopus.happy.ui.voice.VoiceLanguageRoute
@@ -148,7 +147,6 @@ class DeepLinksTest {
             "happy://settings/language" to screen(LanguageRoute()),
             "happy://settings/voice" to screen(VoiceSettingsRoute()),
             "happy://settings/voice/language" to screen(VoiceLanguageRoute),
-            "https://app.happy.engineering/settings/connect/claude" to screen(ConnectClaudeRoute),
             "happy://server" to signedOut(ServerRoute),
             "happy://restore" to signedOut(RestoreRoute),
             "happy://restore/manual" to signedOut(RestoreManualRoute),
@@ -156,6 +154,8 @@ class DeepLinksTest {
             "happy://changelog" to signedOut(ChangelogRoute),
             "happy://onboarding/settings" to signedOut(OnboardingSettingsRoute),
         ).forEach { (link, route) -> assertEquals(link, route, parseDeepLink(link)) }
+        // The old Connect Claude page is gone; its link opens Home.
+        assertEquals(DeepLink.Home, parseDeepLink("https://app.happy.engineering/settings/connect/claude"))
     }
 
     @Test
