@@ -6,6 +6,7 @@ import { parseReadOnlyMarkdown } from '@/components/markdown/parseMarkdown';
 import { resolvePreviewPath } from './previewResources';
 import { HtmlFilePreview } from './HtmlFilePreview';
 import type { VersionController } from './versionController';
+import { documentBodyStyle, documentScrollStyle } from './documentPresentation';
 /** Both entry and resources come from the same immutable read; no working-file fallback. */
 export function ArtifactPreview({sessionId,versions,value,onReady}:{sessionId:string;versions:VersionController;value:ArtifactReadResult;onReady?:(ready:boolean)=>void}) {
  const reader=React.useMemo(()=>versions.reader(value),[versions,value]);
@@ -28,5 +29,5 @@ export function ArtifactPreview({sessionId,versions,value,onReady}:{sessionId:st
  },[value,path,reader,versions.root,onReady]);
  if(value.artifact.kind==='html')return <HtmlFilePreview sessionId={sessionId} path={path} root={versions.root} content={value.entryContent} readBytes={reader} onReady={onReady}/>;
  if(!images)return <ActivityIndicator/>;
- return <ScrollView style={{flex:1}} contentContainerStyle={{padding:20}}><View><MarkdownView markdown={value.entryContent} readOnly sessionId={sessionId} imageUrls={images}/></View></ScrollView>;
+ return <ScrollView style={{flex:1}} contentContainerStyle={documentScrollStyle}><View testID="workspace-document-body" style={documentBodyStyle}><MarkdownView markdown={value.entryContent} typography="document" readOnly sessionId={sessionId} imageUrls={images}/></View></ScrollView>;
 }

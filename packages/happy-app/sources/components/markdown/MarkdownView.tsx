@@ -189,7 +189,7 @@ function RenderHeaderBlock(props: { level: 1 | 2 | 3 | 4 | 5 | 6, spans: Markdow
     const s = (style as any)[`header${props.level}`];
     const headerStyle = props.variant === 'foldedPrompt'
         ? [style.foldedHeader, typography.strong, props.first && style.first, props.last && style.last]
-        : [style.header, s, typography.strong, props.first && style.first, props.last && style.last];
+        : [style.header, s, typography.strong, typography.headings?.[props.level], props.first && style.first, props.last && style.last];
     return <Text selectable={props.selectable} style={headerStyle}><RenderSpans spans={props.spans} baseStyle={headerStyle} selectable={props.selectable} onLinkPress={props.onLinkPress} variant={props.variant} /></Text>;
 }
 
@@ -589,7 +589,7 @@ function RenderSpans(props: RenderSpanProps) {
                         key={index}
                         selectable={props.selectable}
                         accessibilityRole={isExternalLink ? 'link' : undefined}
-                        style={[props.baseStyle, isExternalLink && getLinkStyle(variant), isExternalLink && typography.body, span.styles.map(s => [getSpanStyle(s, variant), getSpanTypographyStyle(s, typography)])]}
+                        style={[props.baseStyle, isExternalLink && getLinkStyle(variant), isExternalLink && (typography.headings ? props.baseStyle : typography.body), span.styles.map(s => [getSpanStyle(s, variant), getSpanTypographyStyle(s, typography)])]}
                         {...(isExternalLink && Platform.OS === 'web' ? { onClick: () => props.onLinkPress(span.url!) } as any : {})}
                         onPress={isExternalLink && Platform.OS !== 'web'
                             ? () => props.onLinkPress(span.url!)

@@ -21,6 +21,14 @@ describe('getMarkdownTypography', () => {
         expect(typography.strong?.fontWeight).toBe('normal');
     });
 
+    it('gives document headings a clear hierarchy without changing chat typography', () => {
+        const document = getMarkdownTypography('document');
+        expect(document.headings?.[1]?.fontSize).toBeGreaterThan(document.headings?.[2]?.fontSize ?? 0);
+        expect(document.headings?.[2]?.fontSize).toBeGreaterThan(document.body?.fontSize ?? 0);
+        expect(document.body?.lineHeight).toBeGreaterThanOrEqual((document.body?.fontSize ?? 0) * 1.6);
+        expect(getMarkdownTypography('chatMono').body?.fontSize).toBeUndefined();
+    });
+
     it('leaves non-chat Markdown typography unchanged', () => {
         expect(getMarkdownTypography('default')).toEqual({});
     });

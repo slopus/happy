@@ -2,8 +2,6 @@ import * as React from 'react';
 import { View, ScrollView, ActivityIndicator, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { useUnistyles } from 'react-native-unistyles';
-import { useLocalSetting } from '@/sync/storage';
-import { DesktopSkinCanvas } from '@/components/DesktopSkinCanvas';
 import { MarkdownView } from '@/components/markdown/MarkdownView';
 import { CodeEditor } from '@/components/CodeEditor';
 import { Modal } from '@/modal';
@@ -14,11 +12,11 @@ import { VersionHistoryPanel } from './VersionHistoryPanel';
 import { ArtifactPreview } from './ArtifactPreview';
 import { HtmlFilePreview } from './HtmlFilePreview';
 import { WorkspaceButton as Button } from './WorkspaceButton';
+import { documentBodyStyle, documentScrollStyle, workspaceChatMinWidth, workspaceResizeWidth } from './documentPresentation';
 
 const language = (path: string) => ({ md: 'markdown', mdx: 'markdown', html: 'html', htm: 'html', js: 'javascript', jsx: 'jsx', ts: 'typescript', tsx: 'tsx', css: 'css', json: 'json', yml: 'yaml', yaml: 'yaml', py: 'python', sh: 'bash', svg: 'xml' }[path.split('.').pop()?.toLowerCase() ?? ''] ?? null);
 export function FileWorkspace({ sessionId }: { sessionId: string }) {
     const workspace = useFileWorkspace();
-    const skin = useLocalSetting('desktopSkinId');
     const { theme } = useUnistyles();
     const [modes, setModes] = React.useState<Record<string, boolean>>({});
     const [historyPath, setHistoryPath] = React.useState<string | null>(null);
@@ -67,9 +65,8 @@ export function FileWorkspace({ sessionId }: { sessionId: string }) {
         const url = URL.createObjectURL(new Blob([document.phase === 'ready' ? document.draft : cachedDraft?.draft ?? ''], { type: 'text/plain;charset=utf-8' }));
         const anchor = globalThis.document.createElement('a'); anchor.href = url; anchor.download = path.split('/').pop() ?? 'file'; anchor.click(); URL.revokeObjectURL(url);
     };
-    return <View testID="file-workspace" onLayout={event => setWorkspaceWidth(Math.round(event.nativeEvent.layout.width))} style={{ flex: 1, minWidth: 0, paddingTop: workspace.maximized ? 52 : 0, borderLeftWidth: 1, borderColor: theme.colors.divider, backgroundColor: skin === 'default' ? theme.colors.surface : 'transparent' }} {...({ onKeyDown: (event: any) => { if (historyPath === path) return; if ((event.metaKey || event.ctrlKey) && event.key === 's') { event.preventDefault(); void controller.save(path); } } } as any)}>
+    return <View testID="file-workspace" onLayout={event => setWorkspaceWidth(Math.round(event.nativeEvent.layout.width))} style={{ flex: 1, minWidth: 0, paddingTop: workspace.maximized ? 52 : 0, borderLeftWidth: 1, borderColor: theme.colors.divider, backgroundColor: theme.colors.surface, borderRadius: 12, overflow: 'hidden' }} {...({ onKeyDown: (event: any) => { if (historyPath === path) return; if ((event.metaKey || event.ctrlKey) && event.key === 's') { event.preventDefault(); void controller.save(path); } } } as any)}>
         <View style={{flex:1,minHeight:0}} {...(historyPath === path ? {"aria-hidden":true,inert:true} : {}) as any}>
-        {skin !== 'default' && <DesktopSkinCanvas reading photo={false} skin={skin} />}
         <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 46, borderBottomWidth: 1, borderColor: theme.colors.divider }}>
             <ScrollView horizontal style={{ flex: 1, minWidth: 0 }} contentContainerStyle={{ alignItems: 'center', paddingHorizontal: 6 }}>
                 {snapshot.tabs.map(file => <View key={file} style={{ flexDirection: 'row', alignItems: 'center', borderRadius: 7, backgroundColor: file === path ? theme.colors.surfaceSelected : 'transparent' }}>
@@ -96,36 +93,37 @@ export function FileWorkspace({ sessionId }: { sessionId: string }) {
         {document?.phase === 'error' && cachedDraft && <ScrollView contentContainerStyle={{ padding: 16 }}><Text style={{ color: theme.colors.textSecondary }}>{t('fileWorkspace.cachedDraft')}</Text><Text selectable style={{ color: theme.colors.text }}>{cachedDraft.draft}</Text></ScrollView>}
         {!document || document.phase === 'loading' ? <ActivityIndicator style={{ padding: 30 }} color={theme.colors.textSecondary} /> : document.phase === 'ready' ? <>
             {preview && currentArtifact && !dirty ? <ArtifactPreview sessionId={sessionId} versions={workspace.versions} value={currentArtifact}/> : preview && /\.(html?|svg)$/i.test(path) ? <HtmlFilePreview key={path} sessionId={sessionId} path={path} content={document.draft} root={workspace.root} revision={document.revision} /> :
-                <ScrollView ref={scrollView} onScroll={event => { scroll.current[path] = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={100} style={{ flex: 1 }} contentContainerStyle={{ padding: preview ? 24 : 12 }}>
-                    <View ref={contentRef} {...({ onMouseUp: () => {
+                <ScrollView ref={scrollView} onScroll={event => { scroll.current[path] = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={100} style={{ flex: 1 }} contentContainerStyle={preview ? documentScrollStyle : { padding: 12 }}>
+                    <View ref={contentRef} testID={preview ? "workspace-document-body" : undefined} style={preview ? documentBodyStyle : undefined} {...({ onMouseUp: () => {
                         const selected = globalThis.window?.getSelection();
                         if (selected?.anchorNode && contentRef.current?.contains?.(selected.anchorNode)) setQuote(selected.toString().slice(0, 4000));
                     }, onKeyUp: () => {
                         const selected = globalThis.window?.getSelection();
                         if (selected?.anchorNode && contentRef.current?.contains?.(selected.anchorNode)) setQuote(selected.toString().slice(0, 4000));
                     } } as any)}>
-                        {preview ? <MarkdownView markdown={document.draft} readOnly sessionId={sessionId} /> : <CodeEditor value={document.draft} onChange={value => controller.edit(path, value)} language={language(path)} darkMode={theme.dark} />}
+                        {preview ? <MarkdownView markdown={document.draft} typography="document" readOnly sessionId={sessionId} /> : <CodeEditor value={document.draft} onChange={value => controller.edit(path, value)} language={language(path)} darkMode={theme.dark} />}
                     </View>
                 </ScrollView>}
-            <Text style={{ fontSize: 11, padding: 7, color: theme.colors.textSecondary }}>{dirty ? t('fileWorkspace.dirty') : t('fileWorkspace.saved')}</Text>
+            <Text style={{ fontSize: 11, padding: 7, color: theme.colors.textSecondary, borderTopWidth: 1, borderColor: theme.colors.divider }}>{dirty ? t('fileWorkspace.dirty') : t('fileWorkspace.saved')}</Text>
         </> : null}
         </View>
         {historyPath === path && <VersionHistoryPanel key={path} path={path} sessionId={sessionId} onClose={() => {closeHistory(); queueMicrotask(() => globalThis.document?.querySelector<HTMLElement>('[data-testid="workspace-history-open"]')?.focus());}}/>}
     </View>;
 }
 
-export function FileWorkspaceResizeHandle() {
+export function FileWorkspaceResizeHandle({ width, maximumWidth }: { width: number; maximumWidth: number }) {
     const workspace = useFileWorkspace();
     const { theme } = useUnistyles();
     const start = React.useRef<{ x: number; width: number; pointerId: number } | null>(null);
     if (!workspace || Platform.OS !== 'web') return null;
-    const resize = (value: number) => workspace.setChatWidth(Math.max(310, Math.min(800, value)));
+    const resize = (value: number) => workspace.setChatWidth(Math.max(workspaceChatMinWidth, Math.min(maximumWidth, value)));
     return React.createElement('div', {
         role: 'separator', tabIndex: 0, 'aria-label': t('fileWorkspace.resize'), 'aria-orientation': 'vertical',
-        'aria-valuemin': 310, 'aria-valuemax': 800, 'aria-valuenow': workspace.chatWidth,
+        'aria-valuemin': workspaceChatMinWidth, 'aria-valuemax': maximumWidth, 'aria-valuenow': width,
         onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => {
             event.preventDefault();
-            start.current = { x: event.clientX, width: workspace.chatWidth, pointerId: event.pointerId };
+            const renderedWidth = event.currentTarget.previousElementSibling?.getBoundingClientRect().width ?? width;
+            start.current = { x: event.clientX, width: renderedWidth, pointerId: event.pointerId };
             event.currentTarget.setPointerCapture(event.pointerId);
         },
         onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => {
@@ -136,8 +134,11 @@ export function FileWorkspaceResizeHandle() {
         onPointerCancel: () => { start.current = null; },
         onLostPointerCapture: () => { start.current = null; },
         onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => {
-            if (['ArrowLeft', 'ArrowRight'].includes(event.key)) { event.preventDefault(); resize(workspace.chatWidth + (event.key === 'ArrowLeft' ? -16 : 16)); }
+            if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+                event.preventDefault();
+                resize(event.key === 'Home' ? workspaceChatMinWidth : event.key === 'End' ? maximumWidth : width + (event.key === 'ArrowLeft' ? -16 : 16));
+            }
         },
-        style: { flexShrink: 0, width: 6, background: theme.colors.divider, cursor: 'col-resize', touchAction: 'none' },
+        style: { flexShrink: 0, width: workspaceResizeWidth, background: theme.colors.divider, cursor: 'col-resize', touchAction: 'none' },
     });
 }
