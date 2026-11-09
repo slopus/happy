@@ -131,9 +131,6 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     private var foldMoved = false
     /// Each waiting question's ticked options, by question and prompt.
     private var picks: [String: [String: [String]]] = [:]
-    /// Each chat UI checklist's ticks as the person left them here, by its
-    /// offer's key, until it is sent.
-    private var uiTicks: [String: Set<String>] = [:]
     /// Each live chat UI component's last result, by its offer's key:
     /// invite codes, device codes and join commands are secrets, so they
     /// live here alone and go when the screen does.
@@ -1200,50 +1197,24 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
                 }
             }
         }
-        if !uiTicks.isEmpty {
-            for index in items.indices {
-                guard items[index].pieces.contains(where: { if case .ui(let shown) = $0 { uiTicks[shown.offer.key] != nil } else { false } }) else { continue }
-                items[index].pieces = items[index].pieces.map { piece in
-                    guard case .ui(var shown) = piece, !shown.state.settled, let ticked = uiTicks[shown.offer.key] else { return piece }
-                    shown.state.ticked = ticked
-                    return .ui(shown)
-                }
-            }
-        }
         return TurnFold.fold(items, expanded: expandedTurns)
     }
 
-    /// A press on a chat UI component: a tick here, a field's text asked
-    /// for, or an action sent.
+    /// A press on a chat UI component's control, or on a quick reply,
+    /// which is sent as the person's words at once.
     private func press(_ tap: ChatUiTap) {
         guard !previewing else { return }
-        if case .card(let control) = tap.kind { return press(control, on: tap.shown) }
-        guard !tap.shown.state.settled else { return }
         switch tap.kind {
-        case .tick(let option):
-            UISelectionFeedbackGenerator().selectionChanged()
-            var ticked = tap.shown.ticked
-            if ticked.remove(option) == nil { ticked.insert(option) }
-            uiTicks[tap.shown.offer.key] = ticked
-            replan()
-        case .prompt:
-            guard case .textField(let label, let placeholder, let submitLabel) = tap.shown.kind else { return }
-            let alert = UIAlertController(title: label, message: nil, preferredStyle: .alert)
-            alert.addTextField { $0.placeholder = placeholder }
-            alert.addAction(UIAlertAction(title: Strings.cancel, style: .cancel))
-            alert.addAction(UIAlertAction(title: submitLabel, style: .default) { [weak self, weak alert] _ in
-                let text = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                guard !text.isEmpty else { return }
-                self?.press(ChatUiTap(shown: tap.shown, kind: .act(UiAction(type: "text_field.submit", payload: .object(["text": .string(String(text.prefix(2000)))])))))
-            })
-            present(alert, animated: true)
-        case .act(let action):
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            uiTicks[tap.shown.offer.key] = nil
+        case .card(let shown, let control):
+            press(control, on: shown)
+        case .reply(let replies, let index):
+            guard mayWrite != false else { return }
+            // As the composer's send: the reader is carried to the end.
+            Haptics.play(.send)
+            followsNewest = true
+            ultra.revealNextSend(animated: true)
             let conversation = conversation
-            Task { await conversation.act(tap.shown, action: action) }
-        case .card:
-            break
+            Task { await conversation.sendQuickReply(replies, index: index) }
         }
     }
 

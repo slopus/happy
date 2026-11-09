@@ -404,6 +404,8 @@ extension AgentWire {
         public var tokensAfter: Double?
         /// A `show_ui` call's document (`ui`); its `images` name `items` by index.
         public var ui: UiDocument?
+        /// A `suggest_replies` call's options (`quick_replies`).
+        public var options: [String]?
 
         /// One `exploration` step: `list` a `target`, `read` a `name`, or
         /// `search` by `command`, with its `query` and `path` when known.
@@ -506,11 +508,13 @@ extension AgentWire {
         case compaction(Compaction)
         /// A document the daemon wrote itself (protocol 35).
         case ui(UiDocument)
-        /// A chat UI action, in its attempt record or the person's message it became.
+        /// A chat UI action, in its attempt record.
         case action(UiActionBlock)
+        /// Replies the daemon suggested itself (`quick_replies`).
+        case quickReplies([String])
         case unknown(String)
 
-        enum CodingKeys: String, CodingKey { case type, text, mimeType, data, id, name, status, presentation, arguments, result, elevated, review, ui }
+        enum CodingKeys: String, CodingKey { case type, text, mimeType, data, id, name, status, presentation, arguments, result, elevated, review, ui, options }
         enum ResultKeys: String, CodingKey { case output }
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -550,6 +554,8 @@ extension AgentWire {
                 if let document = try? container.decode(UiDocument.self, forKey: .ui) { self = .ui(document) } else { self = .unknown(type) }
             case "action":
                 if let block = try? UiActionBlock(from: decoder) { self = .action(block) } else { self = .unknown(type) }
+            case "quick_replies":
+                if let options = try? container.decode([String].self, forKey: .options) { self = .quickReplies(options) } else { self = .unknown(type) }
             default: self = .unknown(type)
             }
         }
@@ -583,6 +589,9 @@ extension AgentWire {
             case .action(let block):
                 try container.encode("action", forKey: .type)
                 try block.encode(to: encoder)
+            case .quickReplies(let options):
+                try container.encode("quick_replies", forKey: .type)
+                try container.encode(options, forKey: .options)
             case .unknown(let type): try container.encode(type, forKey: .type)
             }
         }
@@ -691,8 +700,10 @@ extension AgentWire {
         /// failure (`failure`), kept as sent; `Failure` reads them.
         public var error: JSONValue?
         public var failure: JSONValue?
+        /// The suggested reply a person's message is (`quickReply`).
+        public var quickReply: QuickReply?
 
-        public init(id: String, role: String, createdAt: Double, content: [Block], status: String? = nil, runId: String? = nil, metadata: MessageMetadata? = nil, error: JSONValue? = nil, failure: JSONValue? = nil) {
+        public init(id: String, role: String, createdAt: Double, content: [Block], status: String? = nil, runId: String? = nil, metadata: MessageMetadata? = nil, error: JSONValue? = nil, failure: JSONValue? = nil, quickReply: QuickReply? = nil) {
             self.id = id
             self.role = role
             self.createdAt = createdAt
@@ -702,6 +713,7 @@ extension AgentWire {
             self.metadata = metadata
             self.error = error
             self.failure = failure
+            self.quickReply = quickReply
         }
     }
 

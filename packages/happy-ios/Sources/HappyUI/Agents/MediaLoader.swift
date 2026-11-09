@@ -84,7 +84,7 @@ final class MediaLoader: NSObject, ChatMediaSource {
                 case .sentFile(let file): local[Self.sentKey(file.id)] = file
                 case .gallery(let media, _), .tree(let media, _): for one in media { tools[one.key] = one }
                 case .file(let one): tools[one.key] = one
-                case .text, .artifact, .sidebarProposal, .ui: break
+                case .text, .artifact, .sidebarProposal, .ui, .quickReplies: break
                 }
             }
         }

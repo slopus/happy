@@ -4,7 +4,8 @@ import HappyWire
 /// Chat UI (happy-agent `API.md`, "Chat UI", protocol 35): a document, a
 /// flat list of typed components, in a `ui` block of a message the daemon
 /// wrote or a `ui` presentation of a `show_ui` call. Every press is one
-/// `POST /v0/agents/:agentId/actions`. The rules here are
+/// silent `POST /v0/agents/:agentId/actions`; suggested replies are not
+/// components but `QuickReplies`, sent as ordinary words. The rules here are
 /// `@slopus/happy-agent-client`'s `sources/ui`, checked against its
 /// `fixtures/ui` (`ChatUiTests`).
 public enum ChatUi {
@@ -13,11 +14,10 @@ public enum ChatUi {
     public static let protocolVersion = 35
     public static let protocolHeader = "Happy-Protocol"
 
-    /// The components the phone draws itself, `live` ones as a card of
-    /// the server's state (`UiCard`); every other one shows its fallback
-    /// line, and `hidden` ones nothing (the phone app's download codes and
-    /// pairing, on the phone).
-    public static let drawn: Set<String> = ["images", "choice", "checklist", "text_field", "file_tree"]
+    /// The components the phone draws itself are `images`, `file_tree`
+    /// and the `live` ones, as a card of the server's state (`UiCard`);
+    /// every other one shows its fallback line, and `hidden` ones nothing
+    /// (the phone app's download codes and pairing, on the phone).
     public static let live: Set<String> = ["provider_sign_in", "default_model", "invite", "github_connect", "compute_join"]
     public static let hidden: Set<String> = ["phone_app", "phone_pair"]
 
@@ -82,19 +82,16 @@ public struct UiOutcome: Equatable, Sendable, Codable {
     public var status: String
     public var code: String?
     public var reason: String?
-    /// The person's message it became; for one refused as `offer_closed`, the one that won.
-    public var messageId: String?
 
-    public init(status: String, code: String? = nil, reason: String? = nil, messageId: String? = nil) {
+    public init(status: String, code: String? = nil, reason: String? = nil) {
         self.status = status
         self.code = code
         self.reason = reason
-        self.messageId = messageId
     }
 }
 
-/// An `action` block: in an attempt record (a service message), or in the
-/// person's message an action became. Its payload has no secret.
+/// An `action` block, in an attempt record (a service message). Its
+/// payload has no secret.
 public struct UiActionBlock: Equatable, Sendable, Codable {
     public var messageId: String
     public var uiId: String
@@ -138,16 +135,11 @@ public enum UiPermission: Equatable, Sendable {
     case conversationRead
 }
 
-/// One action of a bundle: whether it becomes the person's words, whether
-/// it answers its offer, and what it needs.
+/// One action of a bundle, every one silent: what it needs.
 public struct UiActionDefinition: Equatable, Sendable {
-    public var message: Bool
-    public var once: Bool
     public var permission: UiPermission
 
-    public init(message: Bool, once: Bool = false, permission: UiPermission = .id("content.write")) {
-        self.message = message
-        self.once = once
+    public init(permission: UiPermission = .id("content.write")) {
         self.permission = permission
     }
 }
@@ -157,13 +149,10 @@ public enum UiCatalog {
     public static let version = 1
 
     private static let byTarget = UiPermission.byProp(prop: "target", map: ["team": "providers.manage", "private": "providers.own"], default: "providers.own")
-    private static func silent(_ permission: UiPermission) -> UiActionDefinition { UiActionDefinition(message: false, permission: permission) }
+    private static func silent(_ permission: UiPermission) -> UiActionDefinition { UiActionDefinition(permission: permission) }
 
     /// Every action, by `<component>.<action>`, as `ui.schema.json` declares it.
     public static let actions: [String: UiActionDefinition] = [
-        "choice.choose": UiActionDefinition(message: true, once: true),
-        "checklist.submit": UiActionDefinition(message: true, once: true),
-        "text_field.submit": UiActionDefinition(message: true, once: true),
         "provider_sign_in.install": silent(.id("providers.manage")),
         "provider_sign_in.sign_in": silent(byTarget),
         "provider_sign_in.submit_code": silent(byTarget),
@@ -211,42 +200,6 @@ public enum UiCatalog {
         guard let definition = actions[actionType] else { return false }
         guard let needed = permission(definition, props: props), let granted else { return true }
         return granted.contains(needed)
-    }
-
-    /// `uiActionText`: the person's words for a `"message"` action against
-    /// the offer's stored props; nil for a silent one or a payload that
-    /// doesn't fit.
-    public static func text(type: String, props: JSONValue, action: UiAction) -> String? {
-        guard props.objectValue != nil, action.payload.objectValue != nil else { return nil }
-        let options = (props["options"]?.arrayValue ?? []).compactMap { option -> (id: String, label: String)? in
-            guard let id = option["id"]?.stringValue, let label = option["label"]?.stringValue else { return nil }
-            return (id, label)
-        }
-        switch action.type {
-        case "choice.choose":
-            guard type == "choice" else { return nil }
-            return options.first { .string($0.id) == action.payload["optionId"] }?.label
-        case "checklist.submit":
-            guard type == "checklist", let submit = props["submitLabel"]?.stringValue, let selected = action.payload["selected"]?.arrayValue else { return nil }
-            guard selected.allSatisfy({ id in options.contains { .string($0.id) == id } }) else { return nil }
-            let labels = options.filter { selected.contains(.string($0.id)) }.map(\.label)
-            if labels.isEmpty { return props["emptyLabel"]?.stringValue ?? submit }
-            return "\(submit): \(labels.joined(separator: ", "))"
-        case "text_field.submit":
-            guard type == "text_field" else { return nil }
-            return action.payload["text"]?.stringValue
-        default:
-            return nil
-        }
-    }
-
-    public enum OfferState: String, Equatable, Sendable { case open, `repeat`, closed }
-
-    /// `uiOfferState`, the open-offer rule.
-    public static func offerState(once: Bool, accepted: UiAction?, personSpokeAfter: Bool, action: UiAction) -> OfferState {
-        guard once else { return .open }
-        if let accepted { return accepted == action ? .repeat : .closed }
-        return personSpokeAfter ? .closed : .open
     }
 }
 
@@ -300,26 +253,7 @@ public enum UiFileTree {
 /// One component as a conversation draws it: what it is, read from its
 /// props, and how its offer stands.
 public struct UiShown: Equatable, Sendable {
-    public struct Option: Equatable, Sendable {
-        public var id: String
-        public var label: String
-        public var detail: String?
-        public var primary: Bool
-        public var checked: Bool
-
-        public init(id: String, label: String, detail: String? = nil, primary: Bool = false, checked: Bool = false) {
-            self.id = id
-            self.label = label
-            self.detail = detail
-            self.primary = primary
-            self.checked = checked
-        }
-    }
-
     public enum Kind: Equatable, Sendable {
-        case choice([Option])
-        case checklist([Option], submitLabel: String, emptyLabel: String?)
-        case textField(label: String, placeholder: String?, submitLabel: String)
         case fileTree([UiFileTree.Row])
         /// Drawn from the server's state, as a `UiCard`.
         case live
@@ -328,30 +262,14 @@ public struct UiShown: Equatable, Sendable {
         case line(String)
     }
 
-    /// How its offer stands, from its attempt records, the person's
-    /// messages after it, and a press on this phone still on its way.
+    /// How it stands, from its attempt records and a press on this phone
+    /// still on its way: its latest action.
     public struct State: Equatable, Sendable {
-        /// The accepted answer's payload.
-        public var answer: JSONValue?
-        /// A press on its way.
-        public var pending: JSONValue?
-        /// It takes no more answers.
-        public var closed = false
-        /// A checklist's ticks as the person left them here; nil for its props'.
-        public var ticked: Set<String>?
-        /// A live component's latest silent action.
         public var attempt: UiAttempt?
 
-        public init(answer: JSONValue? = nil, pending: JSONValue? = nil, closed: Bool = false, ticked: Set<String>? = nil, attempt: UiAttempt? = nil) {
-            self.answer = answer
-            self.pending = pending
-            self.closed = closed
-            self.ticked = ticked
+        public init(attempt: UiAttempt? = nil) {
             self.attempt = attempt
         }
-
-        /// Nothing more can be sent from it.
-        public var settled: Bool { closed || answer != nil || pending != nil }
     }
 
     public var offer: UiOffer
@@ -376,14 +294,6 @@ public struct UiShown: Equatable, Sendable {
         self.state = state
     }
 
-    /// A checklist's ticks now.
-    public var ticked: Set<String> {
-        if let ticked = state.ticked { return ticked }
-        if let answer = state.answer ?? state.pending, let selected = answer["selected"]?.arrayValue { return Set(selected.compactMap(\.stringValue)) }
-        guard case .checklist(let options, _, _) = kind else { return [] }
-        return Set(options.filter(\.checked).map(\.id))
-    }
-
     /// The pieces a document's component draws as: its own, an `images`
     /// grid of `media` (a `show_ui` call's items) with its captions, its
     /// fallback line, or nothing.
@@ -393,14 +303,6 @@ public struct UiShown: Equatable, Sendable {
         func line(_ text: String) -> [ChatItem.Piece] {
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? [] : [.ui(UiShown(offer: offer, type: component.type, props: props, kind: .line(trimmed)))]
-        }
-        func options(_ value: JSONValue?) -> [Option]? {
-            guard let list = value?.arrayValue, !list.isEmpty else { return nil }
-            let read = list.compactMap { entry -> Option? in
-                guard let id = entry["id"]?.stringValue, let label = entry["label"]?.stringValue else { return nil }
-                return Option(id: id, label: label, detail: entry["detail"]?.stringValue, primary: entry["primary"]?.boolValue ?? false, checked: entry["checked"]?.boolValue ?? false)
-            }
-            return read.count == list.count ? read : nil
         }
         if ChatUi.hidden.contains(component.type) { return [] }
         let kind: Kind?
@@ -414,16 +316,6 @@ public struct UiShown: Equatable, Sendable {
             guard !shown.isEmpty, shown.count == entries.count else { return line(component.fallback) }
             let columns = props["columns"]?.numberValue.map(Int.init).flatMap { (1...3).contains($0) ? $0 : nil } ?? 0
             return [.gallery(shown.map(\.0), columns: columns)] + line(shown.compactMap(\.1).joined(separator: "\n"))
-        case "choice":
-            kind = options(props["options"]).map { .choice($0) }
-        case "checklist":
-            kind = options(props["options"]).flatMap { list in
-                props["submitLabel"]?.stringValue.map { .checklist(list, submitLabel: $0, emptyLabel: props["emptyLabel"]?.stringValue) }
-            }
-        case "text_field":
-            kind = props["label"]?.stringValue.flatMap { label in
-                props["submitLabel"]?.stringValue.map { .textField(label: label, placeholder: props["placeholder"]?.stringValue, submitLabel: $0) }
-            }
         case "file_tree":
             let paths = (props["paths"]?.arrayValue ?? []).compactMap(\.stringValue)
             kind = paths.isEmpty ? nil : .fileTree(UiFileTree.rows(paths))
@@ -436,5 +328,81 @@ public struct UiShown: Equatable, Sendable {
         }
         guard let kind else { return line(component.fallback) }
         return [.ui(UiShown(offer: offer, type: component.type, props: props, kind: kind, fallback: component.fallback))]
+    }
+}
+
+/// Suggested replies (happy-agent `API.md`, "Quick replies"): not
+/// components but words the person may send, drawn as pills under the
+/// newest suggestion while nobody has written since. A tap is an ordinary
+/// send of the option, naming where it came from (`QuickReply`). They come
+/// in a daemon-written `quick_replies` block, or the `quick_replies`
+/// presentation of a `suggest_replies` call.
+public struct QuickReplies: Equatable, Sendable {
+    public static let max = 6
+
+    /// The agent message holding them.
+    public var messageId: String
+    /// The `suggest_replies` call, for a presentation's.
+    public var toolCallId: String?
+    public var options: [String]
+
+    public init(messageId: String, toolCallId: String? = nil, options: [String]) {
+        self.messageId = messageId
+        self.toolCallId = toolCallId
+        self.options = options
+    }
+
+    /// Where option `index` came from, as `send` names it.
+    public func reply(_ index: Int) -> QuickReply { QuickReply(messageId: messageId, toolCallId: toolCallId, index: index) }
+
+    /// `normalizeQuickReply`: whitespace runs (JavaScript's `\s`) to one
+    /// space, trimmed.
+    public static func normalize(_ option: String) -> String {
+        var out = String.UnicodeScalarView()
+        var gap = false
+        for scalar in option.unicodeScalars {
+            if space.contains(scalar.value) { gap = !out.isEmpty; continue }
+            if gap { out.append(" ") }
+            gap = false
+            out.append(scalar)
+        }
+        return String(out)
+    }
+
+    /// `quickRepliesProblems`, over options already normalized.
+    public static func problems(_ options: [String]) -> [String] {
+        var problems: [String] = []
+        if options.isEmpty || options.count > max { problems.append("Suggest 1 to \(max) replies.") }
+        for (index, option) in options.enumerated() where !(1...200).contains(option.utf16.count) || option.unicodeScalars.contains(where: { forbidden($0.value) }) {
+            problems.append("Reply \(index + 1) must be plain text of 1 to 200 characters on one line.")
+        }
+        if let repeated = options.enumerated().first(where: { options.firstIndex(of: $0.element) != $0.offset })?.element {
+            problems.append("Replies must be unique; \"\(repeated)\" repeats.")
+        }
+        return problems
+    }
+
+    /// What JavaScript's `\s` matches.
+    private static let space: Set<UInt32> = Set([0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x20, 0xA0, 0x1680, 0x2028, 0x2029, 0x202F, 0x205F, 0x3000, 0xFEFF] + Array(0x2000...0x200A))
+
+    /// No C0/C1 control, DEL, or bidirectional formatting character.
+    private static func forbidden(_ value: UInt32) -> Bool {
+        value <= 0x1F || (0x7F...0x9F).contains(value) || value == 0x61C || value == 0x200E || value == 0x200F
+            || (0x202A...0x202E).contains(value) || (0x2066...0x2069).contains(value)
+    }
+}
+
+/// Where a sent message's words came from: option `index` of the
+/// suggestion in agent message `messageId`, in its `suggest_replies` call
+/// `toolCallId` when it has one. Set by the daemon on the stored message.
+public struct QuickReply: Equatable, Sendable, Codable {
+    public var messageId: String
+    public var toolCallId: String?
+    public var index: Int
+
+    public init(messageId: String, toolCallId: String? = nil, index: Int) {
+        self.messageId = messageId
+        self.toolCallId = toolCallId
+        self.index = index
     }
 }

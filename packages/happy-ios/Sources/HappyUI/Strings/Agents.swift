@@ -138,8 +138,8 @@ extension Strings {
     }
     public static let sending = "Sending…"
     public static let sendFailed = "Not sent. Tap to retry."
-    /// Under a chat UI press the computer refused, with its reason.
-    public static func uiNotSent(_ reason: String) -> String { reason.isEmpty ? "Not sent" : "Not sent: \(reason)" }
+    /// Under a person's message that is a quick reply.
+    public static let uiSuggested = "↩ Suggested reply"
     /// A live chat UI component's pickers and secret field.
     public static let uiDefaultModel = "Default model"
     public static let uiEffort = "Effort"

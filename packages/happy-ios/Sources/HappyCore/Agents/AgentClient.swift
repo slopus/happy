@@ -369,8 +369,10 @@ public final class AgentClient: Sendable {
     /// Always steering, as desktop sends: mid-turn it is taken at the next
     /// boundary rather than waiting behind the run; idle, it starts one.
     /// `progress` hears each image's share written, in order, as the body goes out.
+    /// `quickReply` names the suggested reply `text` is; the computer
+    /// checks it and refuses a send whose words aren't that option.
     public func sendMessage(_ agentId: String, id: String, text: String, images: [(mimeType: String, data: Data)], toolRequest: AgentWire.ToolCallRequest? = nil,
-        mode: AgentWire.Mode, progress: (@Sendable ([Double]) -> Void)? = nil) async throws {
+        quickReply: QuickReply? = nil, mode: AgentWire.Mode, progress: (@Sendable ([Double]) -> Void)? = nil) async throws {
         guard images.allSatisfy({ $0.data.count <= AttachmentRules.maxInlineImageBytes }),
               images.reduce(0, { $0 + $1.data.count }) <= AttachmentRules.maxInlineImageTotalBytes else {
             throw AttachmentRules.invalid("Inline images exceed the model's image limit.")
@@ -388,6 +390,7 @@ public final class AgentClient: Sendable {
             } + (toolRequest.map { [$0.json] } ?? []))
         }
         object["mode"] = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(mode))
+        if let quickReply { object["quickReply"] = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(quickReply)) }
         let path = "/v0/agents/\(Self.escape(agentId))/send"
         // Pictures make it a file's size: a file's client and deadline.
         let category: RequestCategory = images.isEmpty ? .query : .file
@@ -468,22 +471,15 @@ public final class AgentClient: Sendable {
     }
 
     /// One press on a chat UI component (`POST /v0/agents/:agentId/actions`):
-    /// its attempt record and the person's message it became, if any.
-    /// `mode` only for an action that becomes the person's words.
-    public func act(_ agentId: String, id: String, offer: UiOffer, action: UiAction, mode: AgentWire.Mode?) async throws -> (record: AgentWire.Message, message: AgentWire.Message?, result: JSONValue?) {
-        var object: [String: JSONValue] = [
+    /// its attempt record, and its result, which only the caller gets.
+    public func act(_ agentId: String, id: String, offer: UiOffer, action: UiAction) async throws -> (record: AgentWire.Message, result: JSONValue?) {
+        let object: [String: JSONValue] = [
             "id": .string(id), "messageId": .string(offer.messageId), "uiId": .string(offer.uiId), "componentId": .string(offer.componentId),
             "action": .object(["type": .string(action.type), "payload": action.payload]),
         ]
-        if let mode { object["mode"] = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(mode)) }
         let response = try await decode(JSONValue.self, "POST", "/v0/agents/\(Self.escape(agentId))/actions", json: .object(object))
-        func message(_ value: JSONValue?) throws -> AgentWire.Message? {
-            guard let value, value != .null else { return nil }
-            do { return try value.decode(as: AgentWire.Message.self) } catch { throw AgentClientError.invalidResponse }
-        }
-        guard let record = try message(response["record"]) else { throw AgentClientError.invalidResponse }
-        let result = response["result"].flatMap { $0 == .null ? nil : $0 }
-        return (record, try message(response["message"]), result)
+        guard let value = response["record"], let record = try? value.decode(as: AgentWire.Message.self) else { throw AgentClientError.invalidResponse }
+        return (record, response["result"].flatMap { $0 == .null ? nil : $0 })
     }
 
     /// One assistant's provider CLI object, refreshed (`GET /v0/provider-clis/:cliId`).

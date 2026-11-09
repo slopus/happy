@@ -32,9 +32,6 @@ public struct ChatItem: Equatable, Sendable, Identifiable {
         /// Accepted, waiting for the agent to take it up.
         case pending
         case failed(String)
-        /// A chat UI press the computer refused, and why: drawn greyed,
-        /// never sent again.
-        case refused(String)
     }
 
     public enum Piece: Equatable, Sendable {
@@ -60,6 +57,9 @@ public struct ChatItem: Equatable, Sendable, Identifiable {
         case sidebarProposal(artifactId: String)
         /// One chat UI component (`UiShown`).
         case ui(UiShown)
+        /// Replies the person may send with a tap, under the newest
+        /// suggestion while nobody has written since.
+        case quickReplies(QuickReplies)
     }
 
     /// A file of a message still on its way, by its piece's id
@@ -100,6 +100,8 @@ public struct ChatItem: Equatable, Sendable, Identifiable {
     /// On a team's computer, the member who wrote a person's message, by
     /// their user ID; nil for one still on its way and outside a team.
     public var author: String? { didSet { revision = 0 } }
+    /// A person's message that is a suggested reply: its bubble says so.
+    public var suggested = false { didSet { revision = 0 } }
 
     public init(id: String, role: Role, pieces: [Piece], delivery: Delivery, turn: String? = nil, time: Double? = nil, author: String? = nil) {
         self.id = id
@@ -381,6 +383,7 @@ public actor Conversation {
             /// When it was sent, in ms; absent in what was kept before it was.
             var at: Double?
             var toolRequest: AgentWire.ToolCallRequest?
+            var quickReply: QuickReply?
         }
         var runs: [Run]
         var messages: [String: AgentWire.Message]
@@ -445,10 +448,11 @@ public actor Conversation {
     private var outgoing: [(id: String, text: String, pictures: [(mimeType: String, data: Data)], accepted: Bool, failure: String?)] = []
     private var outgoingFiles: [String: [QueuedFile]] = [:]
     private var outgoingTools: [String: AgentWire.ToolCallRequest] = [:]
+    /// The suggested reply each send is, when it is one.
+    private var outgoingReplies: [String: QuickReply] = [:]
     /// Chat UI presses on their way, or refused before their record is
-    /// held, oldest first, by attempt ID: a press that becomes the
-    /// person's words is their bubble until then.
-    private var acting: [(id: String, offer: UiOffer, action: UiAction, text: String?, outcome: UiOutcome?, at: Double)] = []
+    /// held, oldest first, by attempt ID.
+    private var acting: [(id: String, offer: UiOffer, action: UiAction, outcome: UiOutcome?, at: Double)] = []
     /// The server's state live components draw, by `UiLive.source`; each
     /// source is read once it is shown, then followed by its events.
     private var live: [String: UiLive] = [:]
@@ -653,6 +657,7 @@ public actor Conversation {
                 outgoingModes[queued.id] = queued.mode
                 outgoingFiles[queued.id] = queued.files
                 outgoingTools[queued.id] = queued.toolRequest
+                outgoingReplies[queued.id] = queued.quickReply
                 if outgoingTimes[queued.id] == nil { outgoingTimes[queued.id] = Date().timeIntervalSince1970 * 1000 }
             }
         }
@@ -1026,7 +1031,7 @@ public actor Conversation {
     /// goes until `prepared` hands over the pictures themselves.
     @discardableResult
     public func send(id: String = ClientID.make(), text: String, pictures: [(mimeType: String, data: Data)] = [], attachments: [OutgoingAttachment] = [],
-                     previews: [PreviewAttachment] = [], toolRequest: AgentWire.ToolCallRequest? = nil) async -> Bool {
+                     previews: [PreviewAttachment] = [], toolRequest: AgentWire.ToolCallRequest? = nil, quickReply: QuickReply? = nil) async -> Bool {
         guard !outgoing.contains(where: { $0.id == id }), transcript[message: id] == nil else { return false }
         admitting.insert(id)
         defer { admitting.remove(id) }
@@ -1042,6 +1047,7 @@ public actor Conversation {
         }
         outgoingFiles[id] = files
         outgoingTools[id] = toolRequest
+        outgoingReplies[id] = quickReply
         if !previews.isEmpty { held[id] = previews }
         outgoing.append((id, text, inline, false, nil))
         outgoingModes[id] = mode
@@ -1098,6 +1104,7 @@ public actor Conversation {
             outgoingModes.removeValue(forKey: id)
             outgoingTimes.removeValue(forKey: id)
             outgoingTools.removeValue(forKey: id)
+            outgoingReplies.removeValue(forKey: id)
             outgoingFiles.removeValue(forKey: id)
             attachmentCleanup.insert(id)
             publish()
@@ -1190,6 +1197,7 @@ public actor Conversation {
             outgoingModes.removeValue(forKey: id)
             outgoingTimes.removeValue(forKey: id)
             outgoingTools.removeValue(forKey: id)
+            outgoingReplies.removeValue(forKey: id)
             attachmentCleanup.insert(id)
             publish()
             return
@@ -1277,7 +1285,7 @@ public actor Conversation {
 
     private func queuedMessage(id: String, text: String, pictures: [(mimeType: String, data: Data)]) -> QueuedMessage {
         QueuedMessage(id: id, agentID: agentId, text: text, pictures: pictures.map { .init(mimeType: $0.mimeType, data: $0.data) }, mode: outgoingModes[id], files: outgoingFiles[id],
-                      toolRequest: outgoingTools[id])
+                      toolRequest: outgoingTools[id], quickReply: outgoingReplies[id])
     }
 
     private func restoreConversation() async {
@@ -1291,6 +1299,7 @@ public actor Conversation {
         outgoingFiles = Dictionary(kept.outgoing.compactMap { send in send.files.map { (send.id, $0) } }, uniquingKeysWith: { first, _ in first })
         outgoingTimes = Dictionary(kept.outgoing.compactMap { send in send.at.map { (send.id, $0) } }, uniquingKeysWith: { first, _ in first })
         outgoingTools = Dictionary(kept.outgoing.compactMap { send in send.toolRequest.map { (send.id, $0) } }, uniquingKeysWith: { first, _ in first })
+        outgoingReplies = Dictionary(kept.outgoing.compactMap { send in send.quickReply.map { (send.id, $0) } }, uniquingKeysWith: { first, _ in first })
         if let commands = kept.slashCommands { snapshot.slashCommands = commands }
         mode = picked ?? kept.mode
         snapshot.mode = mode
@@ -1359,7 +1368,7 @@ public actor Conversation {
         let window = Self.kept(runs: transcript.runs.map { ($0.id, $0.messageIds) }, messages: transcript.messages, pending: transcript.pending)
         let kept = KeptConversation(runs: window.runs.map { .init(id: $0.id, messageIds: $0.messageIds, time: transcript.times[$0.id]) }, messages: window.messages, pending: transcript.pending,
             outgoing: outgoing.filter({ held[$0.id] == nil }).map { .init(id: $0.id, text: $0.text, pictures: $0.pictures.map { .init(mimeType: $0.mimeType, data: $0.data) }, accepted: $0.accepted, failure: $0.failure, mode: outgoingModes[$0.id], files: outgoingFiles[$0.id], at: outgoingTimes[$0.id],
-                toolRequest: outgoingTools[$0.id]) }, mode: mode, hasMore: snapshot.hasMore || window.trimmed, slashCommands: snapshot.slashCommands)
+                toolRequest: outgoingTools[$0.id], quickReply: outgoingReplies[$0.id]) }, mode: mode, hasMore: snapshot.hasMore || window.trimmed, slashCommands: snapshot.slashCommands)
         guard kept != lastKept || conversationWrite != nil else { return true }
         let key = "conversation:\(agentId)"
         let claim = checkpointClaim(for: key)
@@ -1695,35 +1704,25 @@ public actor Conversation {
 
     // MARK: Chat UI
 
-    /// One press on a chat UI component, through `/actions`. One that
-    /// becomes the person's words shows as their bubble at once
-    /// (`uiActionText`), and stays, greyed, if the computer refuses it.
-    /// Nothing is sent from a component that is settled or another press
-    /// is on its way from.
-    /// A silent action draws no bubble: its component shows it pending,
-    /// then refused or as the server's state moves. Its result, the only
-    /// place a secret comes back, goes to the caller alone.
+    /// One press on a chat UI component, through `/actions`. It draws no
+    /// bubble: its component shows it pending, then refused or as the
+    /// server's state moves. Its result, the only place a secret comes
+    /// back, goes to the caller alone. Nothing is sent while another press
+    /// on it is on its way.
     @discardableResult
     public func act(_ shown: UiShown, action: UiAction) async -> (accepted: Bool, result: JSONValue?) {
-        guard let definition = UiCatalog.actions[action.type], action.componentType == shown.type, creation == nil else { return (false, nil) }
-        if definition.once, shown.state.settled { return (false, nil) }
+        guard UiCatalog.actions[action.type] != nil, action.componentType == shown.type, creation == nil else { return (false, nil) }
         guard !acting.contains(where: { $0.offer == shown.offer && $0.outcome == nil }) else { return (false, nil) }
         let id = ClientID.make()
-        let text = definition.message ? UiCatalog.text(type: shown.type, props: shown.props, action: action) : nil
-        acting.append((id, shown.offer, UiCatalog.redacted(action), text, nil, Date().timeIntervalSince1970 * 1000))
+        acting.append((id, shown.offer, UiCatalog.redacted(action), nil, Date().timeIntervalSince1970 * 1000))
         publish()
         let outcome: UiOutcome
         var result: JSONValue?
         do {
-            let mode = definition.message ? try await sendingMode() : nil
-            let answer = try await client.act(agentId, id: id, offer: shown.offer, action: action, mode: mode)
+            let answer = try await client.act(agentId, id: id, offer: shown.offer, action: action)
             result = answer.result
-            // Held for every offer's state; drawn once its run is.
+            // Held for its component's state; a record is never drawn.
             transcript.set(answer.record)
-            if let message = answer.message {
-                transcript.set(message)
-                if !transcript.isPlaced(message.id) { transcript.wait(message.id) }
-            }
             outcome = answer.record.content.lazy.compactMap { block -> UiOutcome? in
                 if case .action(let held) = block { held.outcome } else { nil }
             }.first ?? UiOutcome(status: "accepted")
@@ -1737,62 +1736,35 @@ public actor Conversation {
         return outcome.status == "accepted" ? (true, result) : (false, nil)
     }
 
-    /// Each offer's accepted answer and press under way, from the action
-    /// blocks held and the presses on this phone.
+    /// Each component's latest action, from the attempt records held and
+    /// the presses on this phone, by when it was made.
     private func uiStates() -> [UiOffer: UiShown.State] {
-        var states: [UiOffer: UiShown.State] = [:]
-        // A live component's latest silent action, by when it was made.
         var latest: [UiOffer: (at: Double, attempt: UiAttempt)] = [:]
         func attempt(_ offer: UiOffer, _ type: String, _ outcome: UiOutcome, at: Double) {
             if let held = latest[offer], held.at > at { return }
             latest[offer] = (at, UiAttempt(type: type, outcome: outcome))
         }
         for (id, blocks) in transcript.actions {
-            for block in blocks {
-                guard let definition = UiCatalog.actions[block.action.type] else { continue }
-                if !definition.message {
-                    // Only a record: an action block in a person's message was said.
-                    if transcript[message: id]?.role == "service" { attempt(block.offer, block.action.type, block.outcome, at: transcript[message: id]?.createdAt ?? 0) }
-                    continue
-                }
-                guard definition.once else { continue }
-                switch block.outcome.status {
-                case "accepted": states[block.offer, default: .init()].answer = block.action.payload
-                case "pending": states[block.offer, default: .init()].pending = block.action.payload
-                default: break
-                }
-            }
+            guard let record = transcript[message: id], record.role == "service" else { continue }
+            for block in blocks { attempt(block.offer, block.action.type, block.outcome, at: record.createdAt) }
         }
         for press in acting {
-            if UiCatalog.actions[press.action.type]?.message == false {
-                attempt(press.offer, press.action.type, press.outcome ?? UiOutcome(status: "pending"), at: press.at)
-            } else if press.outcome == nil {
-                states[press.offer, default: .init()].pending = press.action.payload
-            }
+            attempt(press.offer, press.action.type, press.outcome ?? UiOutcome(status: "pending"), at: press.at)
         }
-        for (offer, held) in latest { states[offer, default: .init()].attempt = held.attempt }
-        return states
+        return latest.mapValues { UiShown.State(attempt: $0.attempt) }
     }
 
-    /// Each component drawn as its offer stands: answered, a press on its
-    /// way, or closed by a person's message after it (the open-offer rule).
+    /// Each component drawn as it stands: its latest action, and the
+    /// server's state for a live one.
     private func applyUiStates(_ items: inout [ChatItem]) {
         guard items.contains(where: { $0.pieces.contains { if case .ui = $0 { true } else { false } } }) else { return }
         let states = uiStates()
         var sources: Set<String> = []
-        let lastPerson = items.lastIndex { item in
-            guard item.role == .user, transcript[message: item.id]?.role != "service" else { return false }
-            if case .refused = item.delivery { return false }
-            return true
-        } ?? -1
         for index in items.indices {
             guard items[index].pieces.contains(where: { if case .ui = $0 { true } else { false } }) else { continue }
             let pieces = items[index].pieces.map { piece -> ChatItem.Piece in
                 guard case .ui(var shown) = piece else { return piece }
-                var state = states[shown.offer] ?? UiShown.State()
-                // Only an answer closes: live controls stay while shown.
-                state.closed = shown.kind != .live && lastPerson > index
-                shown.state = state
+                shown.state = states[shown.offer] ?? UiShown.State()
                 if shown.kind == .live, let source = UiLive.source(shown.type, props: shown.props) {
                     sources.insert(source)
                     shown.live = live[source]
@@ -1802,6 +1774,40 @@ public actor Conversation {
             if pieces != items[index].pieces { items[index].pieces = pieces }
         }
         followLive(sources)
+    }
+
+    // MARK: Quick replies
+
+    /// The newest suggestion, while no person's message has come after it:
+    /// none held, waiting, or on its way from here.
+    private func quickReplies() -> QuickReplies? {
+        guard outgoing.isEmpty, transcript.pending.isEmpty else { return nil }
+        for run in transcript.runs.reversed() {
+            for id in run.messageIds.reversed() {
+                guard let message = transcript[message: id] else { continue }
+                if message.role == "user" { return nil }
+                guard message.role == "agent" else { continue }
+                for block in message.content.reversed() {
+                    switch block {
+                    case .quickReplies(let options) where !options.isEmpty:
+                        return QuickReplies(messageId: message.id, options: options)
+                    case .toolCall(let callId, _, _, let presentation?, _, _, _, _) where presentation.type == "quick_replies" && !(presentation.options ?? []).isEmpty:
+                        return QuickReplies(messageId: message.id, toolCallId: callId, options: presentation.options ?? [])
+                    default:
+                        continue
+                    }
+                }
+            }
+        }
+        return nil
+    }
+
+    /// A tap on a quick reply: an ordinary send of the option, naming
+    /// where it came from, which the computer checks.
+    @discardableResult
+    public func sendQuickReply(_ replies: QuickReplies, index: Int) async -> Bool {
+        guard replies.options.indices.contains(index) else { return false }
+        return await send(text: replies.options[index], quickReply: replies.reply(index))
     }
 
     // MARK: Live components
@@ -1871,37 +1877,6 @@ public actor Conversation {
         guard live[source] != read else { return }
         live[source] = read
         publish()
-    }
-
-    /// The component a press answers, from the offer's message held.
-    private func component(_ offer: UiOffer) -> UiComponent? {
-        for block in transcript[message: offer.messageId]?.content ?? [] {
-            let document: UiDocument? = switch block {
-            case .ui(let document): document
-            case .toolCall(_, _, _, let presentation, _, _, _, _): presentation?.type == "ui" ? presentation?.ui : nil
-            default: nil
-            }
-            if let document, document.id == offer.uiId, let found = document.components.first(where: { $0.id == offer.componentId }) { return found }
-        }
-        return nil
-    }
-
-    /// An attempt record's bubble: a press that becomes the person's words
-    /// still on its way, or refused; nothing once accepted, when their
-    /// message is shown, or for a silent press.
-    private func recordItem(_ message: AgentWire.Message, turn: String?) -> ChatItem? {
-        guard message.content.count == 1, case .action(let block) = message.content[0],
-              UiCatalog.actions[block.action.type]?.message == true else { return nil }
-        let delivery: ChatItem.Delivery
-        switch block.outcome.status {
-        case "pending": delivery = .sending
-        case "rejected", "failed": delivery = .refused(block.outcome.reason ?? block.outcome.code ?? "")
-        default: return nil
-        }
-        let text = block.action.type == "text_field.submit" ? block.action.payload["text"]?.stringValue
-            : component(block.offer).flatMap { UiCatalog.text(type: $0.type, props: $0.props, action: block.action) }
-        guard let text, !text.isEmpty else { return nil }
-        return ChatItem(id: message.id, role: .user, pieces: [.text(text)], delivery: delivery, turn: turn, time: message.createdAt)
     }
 
     // MARK: Questions
@@ -2158,6 +2133,7 @@ public actor Conversation {
         var streaming: Bool
         var role: ChatItem.Role
         var delivery: ChatItem.Delivery
+        var suggested: Bool
         var time: Double?
         var author: String?
         var turn: String?
@@ -2287,18 +2263,16 @@ public actor Conversation {
                 pieces.append(.sentFile(ChatItem.SentFile(id: UploadProgressBoard.previewKey(send.id, offset), name: "",
                     mimeType: "image/jpeg", file: preview.thumbnail, width: preview.width, height: preview.height)))
             }
-            let item = ChatItem(id: send.id, role: .user, pieces: pieces, delivery: delivery, time: outgoingTimes[send.id]).stamped()
+            var item = ChatItem(id: send.id, role: .user, pieces: pieces, delivery: delivery, time: outgoingTimes[send.id])
+            item.suggested = outgoingReplies[send.id] != nil
+            item = item.stamped()
             sends[send.id] = (key, item)
             items.append(item)
         }
         madeSends = sends
         applyUiStates(&items)
         acting.removeAll { transcript.isPlaced($0.id) }
-        for press in acting {
-            guard let text = press.text, !text.isEmpty else { continue }
-            let delivery: ChatItem.Delivery = press.outcome.map { .refused($0.reason ?? $0.code ?? "") } ?? .sending
-            items.append(ChatItem(id: press.id, role: .user, pieces: [.text(text)], delivery: delivery, time: press.at))
-        }
+        if let replies = quickReplies() { items.append(ChatItem(id: "replies:\(replies.messageId):\(replies.toolCallId ?? "")", role: .agent, pieces: [.quickReplies(replies)], delivery: .sent)) }
         snapshot.items = items
         // Only steering for a run already going: a send that starts one is
         // its first message, not next in line.
@@ -2377,13 +2351,8 @@ public actor Conversation {
     private func items(_ message: AgentWire.Message, old: MadeMessage?, made: inout MadeMessage, shown: inout [String: Media]) {
         let turn = made.turn
         if message.role == "service" {
-            // A chat UI attempt record: a press's bubble, or nothing.
-            if message.content.contains(where: { if case .action = $0 { true } else { false } }) {
-                made.items = recordItem(message, turn: nil).map { [$0.stamped()] } ?? []
-                // Its words are read from the offer's message, which may come later.
-                made.readsShown = true
-                return
-            }
+            // A chat UI attempt record: its component reads it.
+            if message.content.contains(where: { if case .action = $0 { true } else { false } }) { return }
             // A compaction is a step of its run, as desktop's projection
             // makes it a `compact` call.
             let compactions = message.content.compactMap { block -> AgentWire.Compaction? in
@@ -2421,6 +2390,7 @@ public actor Conversation {
         let delivery: ChatItem.Delivery = role == .user && message.status == "pending" ? .pending : .sent
         let time = role == .user ? message.createdAt : nil
         let author = message.role == "user" ? message.metadata?.userId : nil
+        let suggested = message.role == "user" && message.quickReply != nil
         let streaming = made.streaming || message.status == "streaming"
         var pieces: [ChatItem.Piece] = []
         // The words before the first call keep the message's ID; each run
@@ -2432,12 +2402,14 @@ public actor Conversation {
         var proposedBefore: Set<String> = []
         func flush(next: String) {
             if !pieces.isEmpty {
-                let key = SegmentKey(blocks: segmentBlocks, proposed: proposedBefore, manager: manager, streaming: streaming, role: role, delivery: delivery, time: time, author: author, turn: turn)
+                let key = SegmentKey(blocks: segmentBlocks, proposed: proposedBefore, manager: manager, streaming: streaming, role: role, delivery: delivery, suggested: suggested, time: time, author: author, turn: turn)
                 let item: ChatItem
                 if !segmentLayout, let kept = old?.segments[segment], kept.key == key {
                     item = kept.item
                 } else {
-                    item = ChatItem(id: segment, role: role, pieces: pieces, delivery: delivery, turn: turn, time: time, author: author).stamped()
+                    var made = ChatItem(id: segment, role: role, pieces: pieces, delivery: delivery, turn: turn, time: time, author: author)
+                    made.suggested = suggested
+                    item = made.stamped()
                 }
                 // Made from shown media, which may move: made again each time.
                 if !segmentLayout { made.segments[segment] = (key, item) }
@@ -2508,6 +2480,9 @@ public actor Conversation {
                     pieces += UiShown.pieces(component, document: document.id, message: message.id, media: media)
                 }
                 flush(next: "\(message.id)/\(index + 1)")
+            case .toolCall(_, let name, _, let presentation, _, _, _, _) where agentRole && (name == "suggest_replies" || presentation?.type == "quick_replies"):
+                // Suggested replies are drawn as pills at the end, no call line.
+                segmentBlocks.append(revision)
             case .toolCall(let id, let name, let status, let presentation, let arguments, let output, let result, let review):
                 var call = kept ?? MadeBlock(revision: revision, streaming: false, context: itemContext, agentRole: agentRole, callId: id, pieces: [])
                 if kept == nil {
@@ -2562,7 +2537,7 @@ public actor Conversation {
                 for component in document.components {
                     pieces += UiShown.pieces(component, document: document.id, message: message.id, media: [])
                 }
-            case .reasoning, .compaction, .action, .unknown:
+            case .reasoning, .compaction, .action, .quickReplies, .unknown:
                 continue
             }
         }

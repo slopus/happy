@@ -6,7 +6,7 @@ import XCTest
 /// Chat UI against `@slopus/happy-agent-client`'s own vectors
 /// (`fixtures/ui/actions.fixtures.json` and `ui.schema.json`, copied as
 /// `chat-ui-actions.json` and `chat-ui-schema.json` from happy-agent
-/// `chat-ui-actions` 39bb1c512), and a conversation drawing and pressing it.
+/// `chat-ui-actions` 8417cce23), and a conversation drawing and pressing it.
 final class ChatUiTests: XCTestCase {
     private func fixture(_ name: String) throws -> JSONValue {
         let url = try XCTUnwrap(Bundle.module.url(forResource: name, withExtension: "json", subdirectory: "Fixtures"))
@@ -19,35 +19,13 @@ final class ChatUiTests: XCTestCase {
 
     // MARK: The client's vectors
 
-    func testActionTextIsTheClientsWordForWord() throws {
-        let vectors = try XCTUnwrap(fixture("chat-ui-actions")["actionText"]?.arrayValue)
-        XCTAssertEqual(vectors.count, 5)
-        for vector in vectors {
-            let component = try XCTUnwrap(vector["component"])
-            let text = UiCatalog.text(type: component["type"]?.stringValue ?? "", props: component["props"] ?? .null, action: try action(vector["action"]))
-            XCTAssertEqual(text, vector["text"]?.stringValue, "\(vector)")
-        }
-    }
-
-    func testTheOpenOfferRuleIsTheClients() throws {
-        let vectors = try XCTUnwrap(fixture("chat-ui-actions")["openOffer"]?.arrayValue)
-        XCTAssertEqual(vectors.count, 6)
-        for vector in vectors {
-            let state = UiCatalog.offerState(
-                once: vector["once"]?.boolValue ?? false, accepted: try vector["accepted"].map { try $0.decode(as: UiAction.self) },
-                personSpokeAfter: vector["personSpokeAfter"]?.boolValue ?? false, action: try action(vector["action"])
-            )
-            XCTAssertEqual(state.rawValue, vector["state"]?.stringValue, "\(vector)")
-        }
-    }
-
     /// The owner holds every permission, a member the member set, a viewer
     /// none: only reading the conversation is left to them.
     func testPermissionsResolveAsTheClientsForOwnerMemberAndViewer() throws {
         let schema = try fixture("chat-ui-schema")
         let member = Set(try XCTUnwrap(schema["memberPermissions"]?.arrayValue).compactMap(\.stringValue))
         let vectors = try XCTUnwrap(fixture("chat-ui-actions")["permission"]?.arrayValue)
-        XCTAssertEqual(vectors.count, 28)
+        XCTAssertEqual(vectors.count, 25)
         for vector in vectors {
             let type = try XCTUnwrap(vector["action"]?.stringValue)
             let props = vector["props"] ?? .object([:])
@@ -60,8 +38,20 @@ final class ChatUiTests: XCTestCase {
         }
     }
 
-    /// Every action the schema declares, with its transcript, `once` and
-    /// permission, and no other.
+    /// Quick replies normalize and are checked as the client's.
+    func testQuickRepliesAreTheClients() throws {
+        let vectors = try XCTUnwrap(fixture("chat-ui-actions")["quickReplies"]?.arrayValue)
+        XCTAssertEqual(vectors.count, 8)
+        for vector in vectors {
+            let options = try XCTUnwrap(vector["options"]?.arrayValue).compactMap(\.stringValue)
+            let normalized = options.map(QuickReplies.normalize)
+            XCTAssertEqual(normalized.map(JSONValue.string), vector["normalized"]?.arrayValue, "\(vector)")
+            XCTAssertEqual(QuickReplies.problems(normalized).map(JSONValue.string), vector["problems"]?.arrayValue, "\(vector)")
+        }
+        XCTAssertEqual(try fixture("chat-ui-schema")["quickReplies"]?["block"]?["properties"]?["options"]?["maxItems"]?.numberValue, Double(QuickReplies.max))
+    }
+
+    /// Every action the schema declares, with its permission, and no other.
     func testTheCatalogIsTheSchemas() throws {
         let components = try XCTUnwrap(fixture("chat-ui-schema")["components"]?.objectValue)
         var declared: Set<String> = []
@@ -70,8 +60,6 @@ final class ChatUiTests: XCTestCase {
                 let key = "\(type).\(name)"
                 declared.insert(key)
                 let ours = try XCTUnwrap(UiCatalog.actions[key], key)
-                XCTAssertEqual(ours.message, definition["transcript"]?.stringValue == "message", key)
-                XCTAssertEqual(ours.once, definition["once"]?.boolValue ?? false, key)
                 let permission: JSONValue = switch ours.permission {
                 case .id(let id): .string(id)
                 case .conversationRead: .object(["conversation": .string("read")])
@@ -97,25 +85,31 @@ final class ChatUiTests: XCTestCase {
 
     // MARK: Blocks
 
-    func testActionBlocksAndUiPresentationsReadAndKeep() throws {
+    func testActionBlocksUiAndQuickRepliesReadAndKeep() throws {
         let json = #"""
         {"id":"m","role":"agent","createdAt":1,"content":[
-          {"type":"action","messageId":"a1","uiId":"u1","componentId":"pick","action":{"type":"choice.choose","payload":{"optionId":"fix"}},"outcome":{"status":"rejected","code":"offer_closed","reason":"Already answered.","messageId":"m9"}},
+          {"type":"action","messageId":"a1","uiId":"u1","componentId":"sign","action":{"type":"provider_sign_in.submit_token","payload":{}},"outcome":{"status":"rejected","code":"token_rejected","reason":"Claude didn't accept this token."}},
           {"type":"tool_call","id":"c1","name":"show_ui","status":"completed","presentation":{"type":"ui","ui":{"id":"u2","components":[{"id":"x","type":"slideshow","fallback":"Slides","props":{}}]},"items":[]}},
-          {"type":"ui","ui":{"components":[]}}
+          {"type":"ui","ui":{"components":[]}},
+          {"type":"quick_replies","options":["Yes","Not now"]},
+          {"type":"tool_call","id":"c2","name":"suggest_replies","status":"completed","presentation":{"type":"quick_replies","options":["Fix it"]}}
         ]}
         """#
         let message = try JSONDecoder().decode(AgentWire.Message.self, from: Data(json.utf8))
         guard case .action(let block) = message.content[0] else { return XCTFail("no action") }
-        XCTAssertEqual(block.offer, UiOffer(messageId: "a1", uiId: "u1", componentId: "pick"))
-        XCTAssertEqual(block.outcome, UiOutcome(status: "rejected", code: "offer_closed", reason: "Already answered.", messageId: "m9"))
+        XCTAssertEqual(block.offer, UiOffer(messageId: "a1", uiId: "u1", componentId: "sign"))
+        XCTAssertEqual(block.outcome, UiOutcome(status: "rejected", code: "token_rejected", reason: "Claude didn't accept this token."))
         guard case .toolCall(_, _, _, let presentation, _, _, _, _) = message.content[1] else { return XCTFail("no call") }
         XCTAssertEqual(presentation?.ui?.components.first?.type, "slideshow")
         // A document that can't be read is skipped, never the message.
         XCTAssertEqual(message.content[2], .unknown("ui"))
+        XCTAssertEqual(message.content[3], .quickReplies(["Yes", "Not now"]))
+        guard case .toolCall(_, _, _, let suggested, _, _, _, _) = message.content[4] else { return XCTFail("no call") }
+        XCTAssertEqual(suggested?.options, ["Fix it"])
         let kept = try JSONDecoder().decode(AgentWire.Message.self, from: JSONEncoder().encode(message))
-        XCTAssertEqual(kept.content[0], message.content[0])
-        XCTAssertEqual(kept.content[1], message.content[1])
+        XCTAssertEqual(kept.content, message.content)
+        let reply = try JSONDecoder().decode(AgentWire.Message.self, from: Data(#"{"id":"u","role":"user","createdAt":2,"content":[],"quickReply":{"messageId":"m","toolCallId":"c2","index":0}}"#.utf8))
+        XCTAssertEqual(reply.quickReply, QuickReply(messageId: "m", toolCallId: "c2", index: 0))
     }
 
     // MARK: Pieces
@@ -127,6 +121,10 @@ final class ChatUiTests: XCTestCase {
     }
 
     func testAComponentThePhoneDoesntDrawIsItsFallbackLineAndThePhoneAppNothing() {
+        // choice, checklist and text_field are gone from the catalog: a fallback line.
+        guard case .ui(let choice)? = UiShown.pieces(component("choice", .object(["options": .array([.object(["id": .string("a"), "label": .string("A")])])])), document: "u1", message: "a1", media: []).first
+        else { return XCTFail() }
+        XCTAssertEqual(choice.kind, .line("Fallback"))
         let fallback = "Sign in to Claude in Happy on your computer"
         let live = UiShown.pieces(component("provider_sign_in", .object(["provider": .string("claude")]), fallback: fallback), document: "u1", message: "a1", media: [])
         XCTAssertEqual(live, [.ui(UiShown(offer: offer, type: "provider_sign_in", props: .object(["provider": .string("claude")]), kind: .live, fallback: fallback))])
@@ -136,7 +134,7 @@ final class ChatUiTests: XCTestCase {
         XCTAssertEqual(UiShown.pieces(component("phone_app", .object([:])), document: "u1", message: "a1", media: []), [])
         XCTAssertEqual(UiShown.pieces(component("phone_pair", .object([:])), document: "u1", message: "a1", media: []), [])
         // Props a known type can't be drawn from: its fallback too.
-        guard case .ui(let broken)? = UiShown.pieces(component("choice", .object(["options": .array([])])), document: "u1", message: "a1", media: []).first else { return XCTFail() }
+        guard case .ui(let broken)? = UiShown.pieces(component("file_tree", .object(["paths": .array([])])), document: "u1", message: "a1", media: []).first else { return XCTFail() }
         XCTAssertEqual(broken.kind, .line("Fallback"))
     }
 
@@ -165,14 +163,6 @@ final class ChatUiTests: XCTestCase {
 
     // MARK: A conversation
 
-    private static let choiceDocument: JSONValue = .object(["id": .string("u1"), "components": .array([
-        .object(["id": .string("pick"), "type": .string("choice"), "fallback": .string("Fix · Tests"), "props": .object(["options": .array([
-            .object(["id": .string("fix"), "label": .string("Fix the login redirect"), "primary": .bool(true)]),
-            .object(["id": .string("tests"), "label": .string("Run the tests")]),
-        ])])]),
-        .object(["id": .string("sign"), "type": .string("provider_sign_in"), "fallback": .string("Sign in to Claude in Happy on your computer"), "props": .object(["provider": .string("claude")])]),
-    ])])
-
     private func open(_ server: ChatUiServer) async -> (Conversation, AsyncStream<ChatSnapshot>.AsyncIterator) {
         let opened = await openWithStore(server)
         return (opened.0, opened.1)
@@ -200,103 +190,78 @@ final class ChatUiTests: XCTestCase {
         return nil
     }
 
-    /// A choice in the daemon's message is drawn, with the live component
-    /// beside it as its fallback line; a press is the person's bubble at
-    /// once, sent through `/actions` with `Happy-Protocol: 35` like every
-    /// request, and then the answer ticks the option and closes the offer.
-    func testAPressIsTheBubbleAtOnceThenTheAnswer() async throws {
+    // MARK: Quick replies
+
+    private static func suggesting(_ id: String, at: Double) -> JSONValue {
+        .object(["id": .string(id), "role": .string("agent"), "createdAt": .number(at), "content": .array([
+            .object(["type": .string("text"), "text": .string("Shall I fix it?")]),
+            .object(["type": .string("tool_call"), "id": .string("call1"), "name": .string("suggest_replies"), "status": .string("completed"),
+                     "presentation": .object(["type": .string("quick_replies"), "options": .array([.string("Yes, go ahead"), .string("Not now")])])]),
+        ])])
+    }
+
+    private func replies(_ snapshot: ChatSnapshot?) -> QuickReplies? {
+        for item in snapshot?.items ?? [] {
+            for piece in item.pieces { if case .quickReplies(let replies) = piece { return replies } }
+        }
+        return nil
+    }
+
+    /// The newest suggestion is pills at the end, with no call line; a tap
+    /// is an ordinary send of the option naming where it came from, with
+    /// `Happy-Protocol: 35`, and the pills go once it is written.
+    func testQuickRepliesArePillsATapSendsAndThenTheyGo() async throws {
         let server = ChatUiServer(history: [
-            .object(["id": .string("r1"), "status": .string("completed"), "messages": .array([
-                .object(["id": .string("a1"), "role": .string("agent"), "createdAt": .number(1), "content": .array([
-                    .object(["type": .string("text"), "text": .string("What next?")]), .object(["type": .string("ui"), "ui": Self.choiceDocument]),
-                ])]),
-            ])]),
+            .object(["id": .string("r1"), "status": .string("completed"), "messages": .array([Self.suggesting("a1", at: 1)])]),
         ])
-        await server.answer(.object([
-            "record": .object(["id": .string("k1"), "role": .string("service"), "createdAt": .number(2), "content": .array([.object([
-                "type": .string("action"), "messageId": .string("a1"), "uiId": .string("u1"), "componentId": .string("pick"),
-                "action": .object(["type": .string("choice.choose"), "payload": .object(["optionId": .string("fix")])]),
-                "outcome": .object(["status": .string("accepted"), "messageId": .string("m2")]),
-            ])])]),
-            "message": .object(["id": .string("m2"), "role": .string("user"), "createdAt": .number(2), "status": .string("pending"), "content": .array([
-                .object(["type": .string("text"), "text": .string("Fix the login redirect")]),
-            ])]),
-            "result": .null, "cursor": .null,
-        ]))
-        var (conversation, updates) = await open(server)
-        let first = await next(&updates) { self.shown($0) != nil }
-        let choice = try XCTUnwrap(shown(first))
-        XCTAssertEqual(choice.kind, .choice([.init(id: "fix", label: "Fix the login redirect", primary: true), .init(id: "tests", label: "Run the tests")]))
-        XCTAssertEqual(choice.state, UiShown.State())
-        XCTAssertEqual(shown(first, "sign")?.kind, .live)
-        XCTAssertEqual(first?.items.first?.text, "What next?")
+        var (conversation, updates, store) = await openWithStore(server)
+        let first = await next(&updates) { self.replies($0) != nil }
+        let shown = try XCTUnwrap(replies(first))
+        XCTAssertEqual(shown, QuickReplies(messageId: "a1", toolCallId: "call1", options: ["Yes, go ahead", "Not now"]))
+        XCTAssertEqual(first?.items.last?.pieces, [.quickReplies(shown)])
+        XCTAssertFalse(first?.items.contains { if case .tool = $0.role { true } else { false } } ?? true, "no suggest_replies call line")
 
-        await conversation.act(choice, action: UiAction(type: "choice.choose", payload: .object(["optionId": .string("fix")])))
-        let answered = await next(&updates) { self.shown($0)?.state.answer != nil }
-        XCTAssertEqual(shown(answered)?.state.answer, .object(["optionId": .string("fix")]))
-        XCTAssertEqual(shown(answered)?.state.closed, true)
-        let bubble = answered?.items.last
-        XCTAssertEqual(bubble?.id, "m2")
-        XCTAssertEqual(bubble?.text, "Fix the login redirect")
-        XCTAssertEqual(bubble?.delivery, .pending)
-
-        let sent = await server.actions
-        XCTAssertEqual(sent.count, 1)
-        let body = try XCTUnwrap(sent.first)
-        XCTAssertEqual(body["messageId"], .string("a1"))
-        XCTAssertEqual(body["uiId"], .string("u1"))
-        XCTAssertEqual(body["componentId"], .string("pick"))
-        XCTAssertEqual(body["action"], .object(["type": .string("choice.choose"), "payload": .object(["optionId": .string("fix")])]))
-        XCTAssertEqual(body["mode"]?["modelId"], .string("opus"))
+        let sending = Task { await conversation.sendQuickReply(shown, index: 0) }
+        let sent = await next(&updates) { $0.items.contains { $0.role == .user } }
+        let bubble = try XCTUnwrap(sent?.items.last { $0.role == .user })
+        XCTAssertEqual(bubble.text, "Yes, go ahead")
+        XCTAssertTrue(bubble.suggested)
+        XCTAssertNil(replies(sent), "written: the pills go")
+        _ = await sending.value
+        // Without an outbox, a send goes when the stream picks up again.
+        await store.externalResync(loadSidebar: false)
+        var body: JSONValue?
+        for _ in 0..<200 {
+            body = await server.sends.first
+            if body != nil { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(body?["text"], .string("Yes, go ahead"))
+        XCTAssertEqual(body?["quickReply"], .object(["messageId": .string("a1"), "toolCallId": .string("call1"), "index": .number(0)]))
         let protocols = await server.protocols
-        XCTAssertFalse(protocols.isEmpty)
-        XCTAssertTrue(protocols.allSatisfy { $0 == "35" }, "\(protocols)")
-
-        // Answered, it takes no second press.
-        await conversation.act(try XCTUnwrap(shown(answered)), action: UiAction(type: "choice.choose", payload: .object(["optionId": .string("tests")])))
-        let after = await server.actions
-        XCTAssertEqual(after.count, 1)
+        XCTAssertTrue(!protocols.isEmpty && protocols.allSatisfy { $0 == "35" }, "\(protocols)")
         await conversation.stop()
     }
 
-    /// A press the computer refuses stays as its greyed bubble, and so does
-    /// a refused record read from history; a person's message after an
-    /// offer closes it.
-    func testARefusedPressStaysGreyed() async throws {
-        let rejected: JSONValue = .object(["status": .string("rejected"), "code": .string("offer_closed"), "reason": .string("Already answered.")])
-        func record(_ id: String, option: String) -> JSONValue {
-            .object(["id": .string(id), "role": .string("service"), "createdAt": .number(3), "content": .array([.object([
-                "type": .string("action"), "messageId": .string("a1"), "uiId": .string("u1"), "componentId": .string("pick"),
-                "action": .object(["type": .string("choice.choose"), "payload": .object(["optionId": .string(option)])]), "outcome": rejected,
-            ])])])
-        }
+    /// A person's message after a suggestion hides it, and says it was one;
+    /// the daemon's own block is a suggestion too.
+    func testAWrittenReplyHidesThePillsAndAStoredOneSaysItWasSuggested() async throws {
         let server = ChatUiServer(history: [
-            .object(["id": .string("r1"), "status": .string("completed"), "endedAt": .number(2), "messages": .array([
-                .object(["id": .string("a1"), "role": .string("agent"), "createdAt": .number(1), "content": .array([.object(["type": .string("ui"), "ui": Self.choiceDocument])])]),
+            .object(["id": .string("r1"), "status": .string("completed"), "messages": .array([
+                .object(["id": .string("a0"), "role": .string("agent"), "createdAt": .number(0), "content": .array([.object(["type": .string("quick_replies"), "options": .array([.string("Hi")])])])]),
+                Self.suggesting("a1", at: 1),
+                .object(["id": .string("u1"), "role": .string("user"), "createdAt": .number(2), "content": .array([.object(["type": .string("text"), "text": .string("Not now")])]),
+                         "quickReply": .object(["messageId": .string("a1"), "toolCallId": .string("call1"), "index": .number(1)])]),
             ])]),
-            .object(["id": .string("r2"), "status": .string("completed"), "endedAt": .number(3), "messages": .array([
-                .object(["id": .string("u2"), "role": .string("user"), "createdAt": .number(2), "content": .array([.object(["type": .string("text"), "text": .string("Never mind")])])]),
+            .object(["id": .string("r2"), "status": .string("completed"), "messages": .array([
+                .object(["id": .string("a2"), "role": .string("agent"), "createdAt": .number(3), "content": .array([.object(["type": .string("quick_replies"), "options": .array([.string("Thanks")])])])]),
             ])]),
-            .object(["id": .string("r3"), "status": .string("completed"), "endedAt": .number(3), "messages": .array([record("k0", option: "tests")])]),
         ])
-        await server.answer(.object(["record": record("k1", option: "fix"), "message": .null, "result": .null, "cursor": .null]))
         var (conversation, updates) = await open(server)
-        let first = await next(&updates) { self.shown($0) != nil }
-        // The record's run is no turn: no "Completed" row for it.
-        XCTAssertNil(first?.items.first { $0.id == "r3:status" })
-        let old = try XCTUnwrap(first?.items.first { $0.id == "k0" })
-        XCTAssertEqual(old.text, "Run the tests")
-        XCTAssertEqual(old.delivery, .refused("Already answered."))
-        var choice = try XCTUnwrap(shown(first))
-        XCTAssertTrue(choice.state.closed, "the person wrote after it")
-
-        // Pressed anyway (a stale screen): sent, refused, kept greyed.
-        choice.state = UiShown.State()
-        await conversation.act(choice, action: UiAction(type: "choice.choose", payload: .object(["optionId": .string("fix")])))
-        let refused = await next(&updates) { $0.items.contains { $0.text == "Fix the login redirect" && $0.delivery == .refused("Already answered.") } }
-        let bubble = try XCTUnwrap(refused?.items.last)
-        XCTAssertEqual(bubble.text, "Fix the login redirect")
-        XCTAssertEqual(bubble.delivery, .refused("Already answered."))
+        let first = await next(&updates) { $0.items.contains { $0.role == .user } }
+        XCTAssertEqual(first?.items.first { $0.id == "u1" }?.suggested, true)
+        XCTAssertEqual(replies(first), QuickReplies(messageId: "a2", options: ["Thanks"]), "only the newest, after the person's message")
+        XCTAssertEqual(first?.items.filter { $0.pieces.contains { if case .quickReplies = $0 { true } else { false } } }.count, 1)
         await conversation.stop()
     }
 
@@ -474,7 +439,7 @@ final class ChatUiTests: XCTestCase {
                 "action": .object(["type": .string("provider_sign_in.submit_token"), "payload": .object([:])]),
                 "outcome": .object(["status": .string("rejected"), "code": .string("token_rejected"), "reason": .string("Claude didn't accept this token.")]),
             ])])]),
-            "message": .null, "result": .null, "cursor": .null,
+            "result": .null, "cursor": .null,
         ]))
         var (conversation, updates, store) = await openWithStore(server)
         let read = await next(&updates) { self.shown($0, "sign")?.live != nil }
@@ -525,7 +490,7 @@ final class ChatUiTests: XCTestCase {
                 "action": .object(["type": .string("invite.create"), "payload": .object(["role": .string("member")])]),
                 "outcome": .object(["status": .string("accepted")]),
             ])])]),
-            "message": .null, "result": result, "cursor": .null,
+            "result": result, "cursor": .null,
         ]))
         var (conversation, updates) = await open(server)
         let first = await next(&updates) { self.shown($0, "invite") != nil }
@@ -547,6 +512,7 @@ private actor ChatUiServer: AgentTransport {
     var reads: [String: JSONValue] = [:]
     private var answerBody: JSONValue = .object([:])
     private(set) var actions: [JSONValue] = []
+    private(set) var sends: [JSONValue] = []
     private(set) var protocols: [String?] = []
 
     init(history: [JSONValue]) { self.history = history }
@@ -572,6 +538,9 @@ private actor ChatUiServer: AgentTransport {
                 answer = .object(object)
             }
             value = answer
+        } else if path.hasSuffix("/send") {
+            if let body { sends.append(try JSONValue.decode(body)) }
+            value = .object(["message": .object([:])])
         } else if let read = reads.first(where: { path.hasSuffix($0.key) })?.value {
             value = read
         } else {
