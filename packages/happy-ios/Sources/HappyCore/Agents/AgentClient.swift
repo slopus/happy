@@ -470,7 +470,7 @@ public final class AgentClient: Sendable {
     /// One press on a chat UI component (`POST /v0/agents/:agentId/actions`):
     /// its attempt record and the person's message it became, if any.
     /// `mode` only for an action that becomes the person's words.
-    public func act(_ agentId: String, id: String, offer: UiOffer, action: UiAction, mode: AgentWire.Mode?) async throws -> (record: AgentWire.Message, message: AgentWire.Message?) {
+    public func act(_ agentId: String, id: String, offer: UiOffer, action: UiAction, mode: AgentWire.Mode?) async throws -> (record: AgentWire.Message, message: AgentWire.Message?, result: JSONValue?) {
         var object: [String: JSONValue] = [
             "id": .string(id), "messageId": .string(offer.messageId), "uiId": .string(offer.uiId), "componentId": .string(offer.componentId),
             "action": .object(["type": .string(action.type), "payload": action.payload]),
@@ -482,7 +482,22 @@ public final class AgentClient: Sendable {
             do { return try value.decode(as: AgentWire.Message.self) } catch { throw AgentClientError.invalidResponse }
         }
         guard let record = try message(response["record"]) else { throw AgentClientError.invalidResponse }
-        return (record, try message(response["message"]))
+        let result = response["result"].flatMap { $0 == .null ? nil : $0 }
+        return (record, try message(response["message"]), result)
+    }
+
+    /// One assistant's provider CLI object, refreshed (`GET /v0/provider-clis/:cliId`).
+    public func providerCli(_ cliId: String) async throws -> UiProviderCli {
+        let value = try await decode(JSONValue.self, "GET", "/v0/provider-clis/\(Self.escape(cliId))")
+        guard let cli = UiProviderCli(value["providerCli"]) else { throw AgentClientError.invalidResponse }
+        return cli
+    }
+
+    /// The Git credentials the person can see that apply on `host`
+    /// (Happy Cloud's `GET /v0/git/credentials`), without their values.
+    public func gitCredentials(host: String) async throws -> [JSONValue] {
+        let value = try await decode(JSONValue.self, "GET", "/v0/git/credentials?host=\(Self.escape(host))")
+        return value["credentials"]?.arrayValue ?? []
     }
 
     /// A failed turn run again (`…/messages/:id/retry`), or moved to another

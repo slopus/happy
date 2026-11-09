@@ -13,6 +13,8 @@ struct ChatUiTap: Equatable, Sendable {
         case tick(String)
         /// A text field asks for its text.
         case prompt
+        /// A live component's control.
+        case card(UiCard.Tap)
     }
 
     var shown: UiShown
@@ -39,6 +41,9 @@ enum ChatUiPlan {
         var rows: [(label: MeasuredText, detail: MeasuredText?)] = []
         var text: MeasuredText?
         var value: MeasuredText?
+        /// A live component's card, with its lines measured.
+        var card: UiCard?
+        var lines: [MeasuredText] = []
         var spoken: String
     }
 
@@ -48,7 +53,7 @@ enum ChatUiPlan {
         case .choice: "choice.choose"
         case .checklist: "checklist.submit"
         case .textField: "text_field.submit"
-        case .fileTree, .line: nil
+        case .fileTree, .line, .live: nil
         }
     }
 
@@ -92,6 +97,23 @@ enum ChatUiPlan {
         case .line(let words):
             let text = measured(words, line, Palette.textSecondary)
             return Draft(shown: shown, enabled: false, input: .line(text.measurable), text: text, spoken: words)
+        case .live:
+            let card = UiCard.make(shown, granted: granted)
+            let title = measured(card.title, label, Palette.text)
+            let lines = card.lines.map { one -> MeasuredText in
+                switch one.style {
+                case .plain: measured(one.text, line, Palette.text)
+                case .muted: measured(one.text, detail, Palette.textSecondary)
+                case .code: measured(one.text, path, Palette.text)
+                case .error: measured(one.text, detail, Palette.textDestructive)
+                }
+            }
+            let buttons = card.buttons.map { one in
+                measured(one.label, label, !one.enabled ? Palette.textSecondary : (one.primary ? Palette.roundButtonText : Palette.text), alignment: .center, lines: 2)
+            }
+            let input = ChatUiLayout.Input.card(title: title.measurable, lines: lines.map(\.measurable), buttons: buttons.map { ChatUiLayout.ButtonInput(label: $0.measurable) })
+            return Draft(shown: shown, enabled: card.buttons.contains(where: \.enabled), input: input, buttons: buttons, text: title, card: card, lines: lines,
+                         spoken: ([card.title] + card.lines.filter { $0.style != .code }.map(\.text) + card.buttons.map(\.label)).joined(separator: ", "))
         }
     }
 
@@ -158,6 +180,20 @@ enum ChatUiPlan {
             }
         case .line:
             if let line = draft.text, let frame = layout.label { text(line, frame) }
+        case .live:
+            guard let card = draft.card else { break }
+            if let frame = layout.card {
+                items.append(.box(ChatBox(frame: at(frame), fill: Palette.surfaceHigh, border: Palette.legacyDivider, borderWidth: M.border, radius: M.radius)))
+            }
+            if let title = draft.text, let frame = layout.label { text(title, frame) }
+            for (one, frame) in zip(draft.lines, layout.lines) { text(one, frame) }
+            for ((one, placed), label) in zip(zip(card.buttons, layout.buttons), draft.buttons) {
+                let fill = one.primary && one.enabled ? Palette.roundButtonFill : Palette.surface
+                items.append(.box(ChatBox(frame: at(placed.frame), fill: fill, border: one.primary && one.enabled ? nil : Palette.legacyDivider,
+                                          borderWidth: one.primary && one.enabled ? 0 : M.border, radius: M.radius, alpha: one.enabled ? 1 : M.disabledAlpha)))
+                text(label, placed.label)
+                if one.enabled { hits.insert(ChatHit(frame: at(placed.frame), action: .ui(ChatUiTap(shown: shown, kind: .card(one.tap)))), at: 0) }
+            }
         }
         return (items, hits)
     }

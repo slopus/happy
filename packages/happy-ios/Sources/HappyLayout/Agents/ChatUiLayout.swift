@@ -14,6 +14,8 @@ import Foundation
 ///     field      a text field's label, its 44 tall box, then its submit
 ///     tree       a file tree's rows, 24 tall, 16 in per level, a 14 glyph
 ///     line       one plain text line, a fallback or captions, full width
+///     card       a live component: a box at most 420 wide, 12 in, its
+///                title, its lines 4 apart, then its buttons as above
 public struct ChatUiLayout: Equatable, Sendable {
     public enum Metrics {
         public static let maxWidth: CGFloat = 420
@@ -38,6 +40,8 @@ public struct ChatUiLayout: Equatable, Sendable {
         public static let treeIndent: CGFloat = 16
         public static let treeGlyph: CGFloat = 14
         public static let treeGlyphGap: CGFloat = 6
+        public static let cardPadding: CGFloat = 12
+        public static let lineGap: CGFloat = 4
         /// Controls that can't be used, or no longer.
         public static let disabledAlpha: CGFloat = 0.48
     }
@@ -69,6 +73,7 @@ public struct ChatUiLayout: Equatable, Sendable {
         case field(label: Measurable, value: Measurable, submit: ButtonInput)
         case tree([(depth: Int, name: Measurable)])
         case line(Measurable)
+        case card(title: Measurable, lines: [Measurable], buttons: [ButtonInput])
     }
 
     public struct Button: Equatable, Sendable {
@@ -89,8 +94,11 @@ public struct ChatUiLayout: Equatable, Sendable {
     /// A choice's options; a checklist's or a field's submit, last.
     public var buttons: [Button] = []
     public var rows: [Row] = []
-    /// A field's label, or the line.
+    /// A field's label, the line, or a card's title.
     public var label: CGRect?
+    /// A card's box and its lines.
+    public var card: CGRect?
+    public var lines: [CGRect] = []
     public var field: CGRect?
     public var value: CGRect?
 
@@ -101,14 +109,14 @@ public struct ChatUiLayout: Equatable, Sendable {
         let control = min(width, M.maxWidth)
         size = .zero
         var y: CGFloat = 0
-        func button(_ input: ButtonInput) -> Button {
+        func button(_ input: ButtonInput, x: CGFloat = 0, width control: CGFloat = control) -> Button {
             let inner = max(0, control - 2 * M.buttonPaddingH - (input.glyph ? M.glyph + M.glyphGap : 0))
             let measured = input.label.size(fitting: inner)
             let labelWidth = measured.width.rounded(.up)
             let height = max(M.buttonHeight, measured.height.rounded(.up) + 2 * M.buttonPaddingV)
-            let frame = CGRect(x: 0, y: y, width: control, height: height)
+            let frame = CGRect(x: x, y: y, width: control, height: height)
             let group = labelWidth + (input.glyph ? M.glyph + M.glyphGap : 0)
-            let left = ((control - group) / 2).rounded()
+            let left = x + ((control - group) / 2).rounded()
             let labelX = left + (input.glyph ? M.glyph + M.glyphGap : 0)
             let labelFrame = CGRect(x: labelX, y: y + ((height - measured.height.rounded(.up)) / 2).rounded(), width: labelWidth, height: measured.height.rounded(.up))
             let glyph = input.glyph ? CGRect(x: left, y: y + ((height - M.glyph) / 2).rounded(), width: M.glyph, height: M.glyph) : nil
@@ -173,6 +181,25 @@ public struct ChatUiLayout: Equatable, Sendable {
             let height = text.height(fitting: width).rounded(.up)
             label = CGRect(x: 0, y: 0, width: width, height: height)
             size = CGSize(width: width, height: height)
+        case .card(let title, let texts, let inputs):
+            let inner = max(0, control - 2 * M.cardPadding)
+            y = M.cardPadding
+            let titleFrame = CGRect(x: M.cardPadding, y: y, width: inner, height: title.height(fitting: inner).rounded(.up))
+            label = titleFrame
+            y = titleFrame.maxY
+            for text in texts {
+                y += M.lineGap
+                let frame = CGRect(x: M.cardPadding, y: y, width: inner, height: text.height(fitting: inner).rounded(.up))
+                lines.append(frame)
+                y = frame.maxY
+            }
+            for (index, one) in inputs.enumerated() {
+                y += index == 0 ? M.cardPadding : M.gap
+                buttons.append(button(one, x: M.cardPadding, width: inner))
+            }
+            y += M.cardPadding
+            card = CGRect(x: 0, y: 0, width: control, height: y)
+            size = CGSize(width: control, height: y)
         }
     }
 }

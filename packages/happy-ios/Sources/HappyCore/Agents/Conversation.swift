@@ -449,6 +449,11 @@ public actor Conversation {
     /// held, oldest first, by attempt ID: a press that becomes the
     /// person's words is their bubble until then.
     private var acting: [(id: String, offer: UiOffer, action: UiAction, text: String?, outcome: UiOutcome?, at: Double)] = []
+    /// The server's state live components draw, by `UiLive.source`; each
+    /// source is read once it is shown, then followed by its events.
+    private var live: [String: UiLive] = [:]
+    private var liveAsked: Set<String> = []
+    private var liveEvents: Task<Void, Never>?
     /// When each send was made, in ms, for its bubble's time.
     private var outgoingTimes: [String: Double] = [:]
     private var admitting: Set<String> = []
@@ -566,6 +571,8 @@ public actor Conversation {
         following?.cancel(); following = nil
         children?.cancel(); children = nil
         questionEvents?.cancel(); questionEvents = nil
+        liveEvents?.cancel(); liveEvents = nil
+        liveAsked = []
         askingRead?.cancel(); askingRead = nil
         reading?.cancel(); reading = nil
         reloadSoon?.cancel(); reloadSoon = nil
@@ -1693,18 +1700,24 @@ public actor Conversation {
     /// (`uiActionText`), and stays, greyed, if the computer refuses it.
     /// Nothing is sent from a component that is settled or another press
     /// is on its way from.
-    public func act(_ shown: UiShown, action: UiAction) async {
-        guard let definition = UiCatalog.actions[action.type], action.componentType == shown.type, creation == nil else { return }
-        if definition.once, shown.state.settled { return }
-        guard !acting.contains(where: { $0.offer == shown.offer && $0.outcome == nil }) else { return }
+    /// A silent action draws no bubble: its component shows it pending,
+    /// then refused or as the server's state moves. Its result, the only
+    /// place a secret comes back, goes to the caller alone.
+    @discardableResult
+    public func act(_ shown: UiShown, action: UiAction) async -> (accepted: Bool, result: JSONValue?) {
+        guard let definition = UiCatalog.actions[action.type], action.componentType == shown.type, creation == nil else { return (false, nil) }
+        if definition.once, shown.state.settled { return (false, nil) }
+        guard !acting.contains(where: { $0.offer == shown.offer && $0.outcome == nil }) else { return (false, nil) }
         let id = ClientID.make()
         let text = definition.message ? UiCatalog.text(type: shown.type, props: shown.props, action: action) : nil
-        acting.append((id, shown.offer, action, text, nil, Date().timeIntervalSince1970 * 1000))
+        acting.append((id, shown.offer, UiCatalog.redacted(action), text, nil, Date().timeIntervalSince1970 * 1000))
         publish()
         let outcome: UiOutcome
+        var result: JSONValue?
         do {
             let mode = definition.message ? try await sendingMode() : nil
             let answer = try await client.act(agentId, id: id, offer: shown.offer, action: action, mode: mode)
+            result = answer.result
             // Held for every offer's state; drawn once its run is.
             transcript.set(answer.record)
             if let message = answer.message {
@@ -1721,14 +1734,28 @@ public actor Conversation {
             if outcome.status == "accepted" || outcome.status == "pending" { acting.remove(at: index) } else { acting[index].outcome = outcome }
         }
         publish()
+        return outcome.status == "accepted" ? (true, result) : (false, nil)
     }
 
     /// Each offer's accepted answer and press under way, from the action
     /// blocks held and the presses on this phone.
     private func uiStates() -> [UiOffer: UiShown.State] {
         var states: [UiOffer: UiShown.State] = [:]
-        for blocks in transcript.actions.values {
-            for block in blocks where UiCatalog.actions[block.action.type]?.once == true {
+        // A live component's latest silent action, by when it was made.
+        var latest: [UiOffer: (at: Double, attempt: UiAttempt)] = [:]
+        func attempt(_ offer: UiOffer, _ type: String, _ outcome: UiOutcome, at: Double) {
+            if let held = latest[offer], held.at > at { return }
+            latest[offer] = (at, UiAttempt(type: type, outcome: outcome))
+        }
+        for (id, blocks) in transcript.actions {
+            for block in blocks {
+                guard let definition = UiCatalog.actions[block.action.type] else { continue }
+                if !definition.message {
+                    // Only a record: an action block in a person's message was said.
+                    if transcript[message: id]?.role == "service" { attempt(block.offer, block.action.type, block.outcome, at: transcript[message: id]?.createdAt ?? 0) }
+                    continue
+                }
+                guard definition.once else { continue }
                 switch block.outcome.status {
                 case "accepted": states[block.offer, default: .init()].answer = block.action.payload
                 case "pending": states[block.offer, default: .init()].pending = block.action.payload
@@ -1736,9 +1763,14 @@ public actor Conversation {
                 }
             }
         }
-        for press in acting where press.outcome == nil {
-            states[press.offer, default: .init()].pending = press.action.payload
+        for press in acting {
+            if UiCatalog.actions[press.action.type]?.message == false {
+                attempt(press.offer, press.action.type, press.outcome ?? UiOutcome(status: "pending"), at: press.at)
+            } else if press.outcome == nil {
+                states[press.offer, default: .init()].pending = press.action.payload
+            }
         }
+        for (offer, held) in latest { states[offer, default: .init()].attempt = held.attempt }
         return states
     }
 
@@ -1747,6 +1779,7 @@ public actor Conversation {
     private func applyUiStates(_ items: inout [ChatItem]) {
         guard items.contains(where: { $0.pieces.contains { if case .ui = $0 { true } else { false } } }) else { return }
         let states = uiStates()
+        var sources: Set<String> = []
         let lastPerson = items.lastIndex { item in
             guard item.role == .user, transcript[message: item.id]?.role != "service" else { return false }
             if case .refused = item.delivery { return false }
@@ -1757,12 +1790,83 @@ public actor Conversation {
             let pieces = items[index].pieces.map { piece -> ChatItem.Piece in
                 guard case .ui(var shown) = piece else { return piece }
                 var state = states[shown.offer] ?? UiShown.State()
-                state.closed = lastPerson > index
+                // Only an answer closes: live controls stay while shown.
+                state.closed = shown.kind != .live && lastPerson > index
                 shown.state = state
+                if shown.kind == .live, let source = UiLive.source(shown.type, props: shown.props) {
+                    sources.insert(source)
+                    shown.live = live[source]
+                }
                 return .ui(shown)
             }
             if pieces != items[index].pieces { items[index].pieces = pieces }
         }
+        followLive(sources)
+    }
+
+    // MARK: Live components
+
+    /// Reads each source not read yet, and follows the events that move
+    /// any of them.
+    private func followLive(_ sources: Set<String>) {
+        let fresh = sources.subtracting(liveAsked)
+        guard !fresh.isEmpty else { return }
+        liveAsked.formUnion(fresh)
+        for source in fresh { readLive(source) }
+        guard liveEvents == nil else { return }
+        let store = store
+        liveEvents = Task { [weak self] in
+            let events = await store.events(matching: ["provider_cli.updated", "config.updated", "gitCredential."])
+            for await event in events {
+                guard let self, !Task.isCancelled else { return }
+                await self.liveEvent(event)
+            }
+        }
+    }
+
+    private func liveEvent(_ event: Store.ConversationEvent) {
+        switch event {
+        case .resync:
+            for source in liveAsked { readLive(source) }
+        case .event(let envelope):
+            let type = envelope["type"]?.stringValue ?? ""
+            if type == "provider_cli.updated", let cli = UiProviderCli(envelope["payload"]?["providerCli"]) {
+                applyLive(.provider(cli), to: "provider_cli:\(cli.id)")
+            } else if type == "config.updated", liveAsked.contains("config") {
+                readLive("config")
+            } else if type.hasPrefix("gitCredential."), liveAsked.contains("git") {
+                readLive("git")
+            }
+        }
+    }
+
+    /// A source that can't be read (an older server, team mode) stays
+    /// absent, and its component draws its fallback with its controls.
+    private func readLive(_ source: String) {
+        let client = client
+        Task { [weak self] in
+            let read: UiLive?
+            switch source {
+            case "config":
+                read = (try? await client.modelCatalogResponse()).flatMap { UiModelDefaults(response: Data($0.text.utf8)) }.map(UiLive.defaults)
+            case "git":
+                read = (try? await client.gitCredentials(host: "github.com")).map { .github(connected: !$0.isEmpty) }
+            default:
+                guard source.hasPrefix("provider_cli:") else { return }
+                read = (try? await client.providerCli(String(source.dropFirst("provider_cli:".count)))).map(UiLive.provider)
+            }
+            guard let read else { return }
+            await self?.applyLive(read, to: source)
+        }
+    }
+
+    /// A provider CLI keeps the reading with the greater version.
+    private func applyLive(_ read: UiLive, to source: String) {
+        guard liveAsked.contains(source) else { return }
+        if case .provider(let cli) = read, case .provider(let held)? = live[source], held.version > cli.version { return }
+        guard live[source] != read else { return }
+        live[source] = read
+        publish()
     }
 
     /// The component a press answers, from the offer's message held.

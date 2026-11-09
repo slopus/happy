@@ -134,6 +134,10 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     /// Each chat UI checklist's ticks as the person left them here, by its
     /// offer's key, until it is sent.
     private var uiTicks: [String: Set<String>] = [:]
+    /// Each live chat UI component's last result, by its offer's key:
+    /// invite codes, device codes and join commands are secrets, so they
+    /// live here alone and go when the screen does.
+    private var uiResults: [String: JSONValue] = [:]
     /// The sidebar proposals the transcript shows, and their cards by row.
     private let proposals: SidebarProposals
     private var proposalViews: [String: SidebarProposalView] = [:]
@@ -536,6 +540,10 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         #endif
         let conversation = conversation
         Task { await conversation.setVisible(false) }
+        if !uiResults.isEmpty {
+            uiResults = [:]
+            replan()
+        }
         usageWatch?.invalidate()
         usageWatch = nil
         // Covered or gone: the keyboard isn't this screen's to follow, and
@@ -1182,6 +1190,16 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
                 items[index].role = .question(ask)
             }
         }
+        if !uiResults.isEmpty {
+            for index in items.indices {
+                guard items[index].pieces.contains(where: { if case .ui(let shown) = $0 { uiResults[shown.offer.key] != nil } else { false } }) else { continue }
+                items[index].pieces = items[index].pieces.map { piece in
+                    guard case .ui(var shown) = piece, let result = uiResults[shown.offer.key] else { return piece }
+                    shown.result = result
+                    return .ui(shown)
+                }
+            }
+        }
         if !uiTicks.isEmpty {
             for index in items.indices {
                 guard items[index].pieces.contains(where: { if case .ui(let shown) = $0 { uiTicks[shown.offer.key] != nil } else { false } }) else { continue }
@@ -1198,7 +1216,9 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     /// A press on a chat UI component: a tick here, a field's text asked
     /// for, or an action sent.
     private func press(_ tap: ChatUiTap) {
-        guard !previewing, !tap.shown.state.settled else { return }
+        guard !previewing else { return }
+        if case .card(let control) = tap.kind { return press(control, on: tap.shown) }
+        guard !tap.shown.state.settled else { return }
         switch tap.kind {
         case .tick(let option):
             UISelectionFeedbackGenerator().selectionChanged()
@@ -1222,6 +1242,84 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             uiTicks[tap.shown.offer.key] = nil
             let conversation = conversation
             Task { await conversation.act(tap.shown, action: action) }
+        case .card:
+            break
+        }
+    }
+
+    /// A live component's control: an action sent, a secret asked for in a
+    /// secure field and sent, a default model picked, a vendor's page
+    /// opened, or a code copied.
+    private func press(_ control: UiCard.Tap, on shown: UiShown) {
+        switch control {
+        case .act(let action):
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            act(action, on: shown)
+        case .secret(let type, let field, let title):
+            let alert = UIAlertController(title: title, message: nil, preferredStyle: .alert)
+            alert.addTextField { field in
+                field.isSecureTextEntry = true
+                field.autocorrectionType = .no
+                field.autocapitalizationType = .none
+                field.spellCheckingType = .no
+            }
+            alert.addAction(UIAlertAction(title: Strings.cancel, style: .cancel))
+            alert.addAction(UIAlertAction(title: Strings.uiSend, style: .default) { [weak self, weak alert] _ in
+                let secret = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                guard !secret.isEmpty else { return }
+                self?.act(UiAction(type: type, payload: .object([field: .string(secret)])), on: shown)
+            })
+            present(alert, animated: true)
+        case .pickModel:
+            guard case .defaults(let defaults)? = shown.live else { return }
+            let sheet = UIAlertController(title: Strings.uiDefaultModel, message: nil, preferredStyle: .actionSheet)
+            for choice in defaults.choices {
+                let name = [choice.model.name, choice.provider.name].compactMap { $0 }.joined(separator: " · ")
+                sheet.addAction(UIAlertAction(title: name, style: .default) { [weak self] _ in
+                    self?.pickEffort(choice.model, provider: choice.provider.id, on: shown)
+                })
+            }
+            sheet.addAction(UIAlertAction(title: Strings.cancel, style: .cancel))
+            sheet.popoverPresentationController?.sourceView = view
+            sheet.popoverPresentationController?.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
+            present(sheet, animated: true)
+        case .open(let url):
+            UIApplication.shared.open(url)
+        case .copy(let text):
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            // Kept on this phone only, and not for long.
+            UIPasteboard.general.setItems([[UTType.plainText.identifier: text]], options: [.localOnly: true, .expirationDate: Date().addingTimeInterval(120)])
+        }
+    }
+
+    /// The default model's effort, asked for when the model has more than one.
+    private func pickEffort(_ model: ModelCatalog.Model, provider: String, on shown: UiShown) {
+        func set(_ effort: String) {
+            act(UiAction(type: "default_model.set", payload: .object(["providerId": .string(provider), "modelId": .string(model.id), "effort": .string(effort)])), on: shown)
+        }
+        guard model.efforts.count > 1 else { return set(model.efforts.first ?? model.defaultEffort) }
+        let sheet = UIAlertController(title: Strings.uiEffort, message: model.name, preferredStyle: .actionSheet)
+        for effort in model.efforts {
+            sheet.addAction(UIAlertAction(title: effort, style: .default) { _ in set(effort) })
+        }
+        sheet.addAction(UIAlertAction(title: Strings.cancel, style: .cancel))
+        sheet.popoverPresentationController?.sourceView = view
+        sheet.popoverPresentationController?.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
+        present(sheet, animated: true)
+    }
+
+    /// Sends a live action; its result is kept for this screen only, and a
+    /// revoked invite's code goes.
+    private func act(_ action: UiAction, on shown: UiShown) {
+        let conversation = conversation
+        let key = shown.offer.key
+        Task { [weak self] in
+            let answer = await conversation.act(shown, action: action)
+            guard let self, answer.accepted, self.viewIfLoaded?.window != nil else { return }
+            if action.type == "invite.revoke" { self.uiResults[key] = nil }
+            else if let result = answer.result { self.uiResults[key] = result }
+            else { return }
+            self.replan()
         }
     }
 

@@ -61,6 +61,21 @@ final class ChatUiLayoutTests: XCTestCase {
         XCTAssertEqual(layout.size, CGSize(width: 370, height: 48))
     }
 
+    func testACardIsItsTitleItsLinesThenItsButtonsInsideItsBox() {
+        let layout = ChatUiLayout(width: 370, input: .card(title: .fixed(width: 90, height: 20), lines: [.fixed(width: 200, height: 18), .fixed(width: 120, height: 36)],
+                                                          buttons: [button(60), button(80)]))
+        XCTAssertEqual(layout.card, CGRect(x: 0, y: 0, width: 370, height: 214))
+        XCTAssertEqual(layout.label, CGRect(x: 12, y: 12, width: 346, height: 20))
+        XCTAssertEqual(layout.lines, [CGRect(x: 12, y: 36, width: 346, height: 18), CGRect(x: 12, y: 58, width: 346, height: 36)])
+        XCTAssertEqual(layout.buttons, [
+            .init(frame: CGRect(x: 12, y: 106, width: 346, height: 44), label: CGRect(x: 155, y: 118, width: 60, height: 20), glyph: nil),
+            .init(frame: CGRect(x: 12, y: 158, width: 346, height: 44), label: CGRect(x: 145, y: 170, width: 80, height: 20), glyph: nil),
+        ])
+        XCTAssertEqual(layout.size, CGSize(width: 370, height: 214))
+        // Without buttons it closes 12 under its last line.
+        XCTAssertEqual(ChatUiLayout(width: 768, input: .card(title: .fixed(width: 90, height: 20), lines: [], buttons: [])).size, CGSize(width: 420, height: 44))
+    }
+
     /// In a message, a component stands at the reading column's left, 8
     /// under what is before it.
     func testInAMessageItStandsAtTheColumnsLeft() {

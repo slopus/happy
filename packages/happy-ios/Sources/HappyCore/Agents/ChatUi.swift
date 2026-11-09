@@ -13,11 +13,13 @@ public enum ChatUi {
     public static let protocolVersion = 35
     public static let protocolHeader = "Happy-Protocol"
 
-    /// The components the phone draws itself; every other one shows its
-    /// fallback line, and `hidden` ones nothing (the phone app's download
-    /// codes, on the phone).
+    /// The components the phone draws itself, `live` ones as a card of
+    /// the server's state (`UiCard`); every other one shows its fallback
+    /// line, and `hidden` ones nothing (the phone app's download codes and
+    /// pairing, on the phone).
     public static let drawn: Set<String> = ["images", "choice", "checklist", "text_field", "file_tree"]
-    public static let hidden: Set<String> = ["phone_app"]
+    public static let live: Set<String> = ["provider_sign_in", "default_model", "invite", "github_connect", "compute_join"]
+    public static let hidden: Set<String> = ["phone_app", "phone_pair"]
 
     /// `uiDocumentFallback`: each fallback line, blank ones left out.
     public static func fallback(_ document: UiDocument) -> String {
@@ -179,6 +181,19 @@ public enum UiCatalog {
         "compute_join.create": silent(.id("pools.manage")),
     ]
 
+    /// The payload fields `ui.schema.json` marks secret: a press keeps them
+    /// only for its request.
+    public static let secrets: [String: Set<String>] = [
+        "provider_sign_in.submit_code": ["code"],
+        "provider_sign_in.submit_token": ["token"],
+    ]
+
+    /// The action without its secret fields, as a record holds it.
+    public static func redacted(_ action: UiAction) -> UiAction {
+        guard let fields = secrets[action.type], let object = action.payload.objectValue else { return action }
+        return UiAction(type: action.type, payload: .object(object.filter { !fields.contains($0.key) }))
+    }
+
     /// `uiActionPermission`: the permission ID it needs against the offer's
     /// props, or nil when reading the conversation is enough.
     public static func permission(_ definition: UiActionDefinition, props: JSONValue) -> String? {
@@ -306,6 +321,8 @@ public struct UiShown: Equatable, Sendable {
         case checklist([Option], submitLabel: String, emptyLabel: String?)
         case textField(label: String, placeholder: String?, submitLabel: String)
         case fileTree([UiFileTree.Row])
+        /// Drawn from the server's state, as a `UiCard`.
+        case live
         /// A line of plain text: a component the phone doesn't draw, by its
         /// fallback, or an `images` component's captions.
         case line(String)
@@ -322,12 +339,15 @@ public struct UiShown: Equatable, Sendable {
         public var closed = false
         /// A checklist's ticks as the person left them here; nil for its props'.
         public var ticked: Set<String>?
+        /// A live component's latest silent action.
+        public var attempt: UiAttempt?
 
-        public init(answer: JSONValue? = nil, pending: JSONValue? = nil, closed: Bool = false, ticked: Set<String>? = nil) {
+        public init(answer: JSONValue? = nil, pending: JSONValue? = nil, closed: Bool = false, ticked: Set<String>? = nil, attempt: UiAttempt? = nil) {
             self.answer = answer
             self.pending = pending
             self.closed = closed
             self.ticked = ticked
+            self.attempt = attempt
         }
 
         /// Nothing more can be sent from it.
@@ -339,13 +359,20 @@ public struct UiShown: Equatable, Sendable {
     /// As stored, which an action's words and permission are read against.
     public var props: JSONValue
     public var kind: Kind
+    public var fallback: String
     public var state = State()
+    /// The server's state a live component draws.
+    public var live: UiLive?
+    /// A live action's result, held by the screen that asked, secrets
+    /// included, and dropped when it goes away.
+    public var result: JSONValue?
 
-    public init(offer: UiOffer, type: String, props: JSONValue, kind: Kind, state: State = State()) {
+    public init(offer: UiOffer, type: String, props: JSONValue, kind: Kind, fallback: String = "", state: State = State()) {
         self.offer = offer
         self.type = type
         self.props = props
         self.kind = kind
+        self.fallback = fallback
         self.state = state
     }
 
@@ -400,10 +427,14 @@ public struct UiShown: Equatable, Sendable {
         case "file_tree":
             let paths = (props["paths"]?.arrayValue ?? []).compactMap(\.stringValue)
             kind = paths.isEmpty ? nil : .fileTree(UiFileTree.rows(paths))
+        case "provider_sign_in":
+            kind = props["provider"]?.stringValue == nil ? nil : .live
+        case _ where ChatUi.live.contains(component.type):
+            kind = .live
         default:
             kind = nil
         }
         guard let kind else { return line(component.fallback) }
-        return [.ui(UiShown(offer: offer, type: component.type, props: props, kind: kind))]
+        return [.ui(UiShown(offer: offer, type: component.type, props: props, kind: kind, fallback: component.fallback))]
     }
 }
