@@ -408,6 +408,30 @@ final class ChatUiTests: XCTestCase {
         XCTAssertEqual(join.buttons.map(\.label), ["Copy commands"])
     }
 
+    func testAJoinCardListsItsPoolsMachinesLive() throws {
+        func node(_ id: String, _ name: String, _ status: String) -> JSONValue {
+            .object(["id": .string(id), "pool": .string("gpu"), "name": .string(name), "status": .string(status),
+                     "sandboxCapacity": .object(["used": .number(0), "total": .null]), "activeSandboxes": .array([])])
+        }
+        let counts: JSONValue = .object(["total": .number(2), "online": .number(1), "offline": .number(0), "draining": .number(0), "enrolling": .number(1), "revoked": .number(1)])
+        let detail = try JSONValue.object([
+            "pool": .object(["id": .string("gpu"), "name": .string("GPU boxes"), "kind": .string("self_hosted"), "default": .bool(false), "nodeCounts": counts,
+                             "sandboxCapacity": .object(["used": .number(0), "total": .null])]),
+            "nodes": .array([node("n1", "studio", "online"), node("n2", "attic", "enrolling"), node("n3", "old", "revoked")]),
+        ]).decode(as: ComputePoolDetail.self)
+        let pool = UiPool(detail)
+        XCTAssertEqual(UiLive.source("compute_join", props: .object(["pool": .string("gpu")])), "pool:gpu")
+        XCTAssertEqual(UiLive.source("compute_join", props: .object([:])), "pool:")
+        let card = UiCard.make(live("compute_join", .object(["pool": .string("gpu")]), live: .pool(pool),
+                                    result: .object(["commands": .array([.string("happy join abc")]), "expiresAt": .number(0)])), granted: nil)
+        XCTAssertEqual(card.title, "Add a machine to GPU boxes")
+        XCTAssertEqual(Array(card.lines.suffix(3)), [.init("Machines", .muted), .init("studio · online"), .init("attic · enrolling")])
+        let empty = UiCard.make(live("compute_join", live: .pool(UiPool(try JSONValue.object(["pool": .object(["id": .string("d"), "name": .string("Default"), "kind": .string("k"), "default": .bool(true),
+            "nodeCounts": counts, "sandboxCapacity": .object(["used": .number(0), "total": .null])]), "nodes": .array([])]).decode(as: ComputePoolDetail.self)))), granted: nil)
+        XCTAssertEqual(empty.lines.last, .init("No machines yet", .muted))
+        XCTAssertEqual(empty.buttons.map(\.label), ["Create join commands"])
+    }
+
     func testTheDefaultModelCardReadsTheConfiguration() throws {
         let config: JSONValue = .object(["config": .object([
             "defaults": .object(["providerId": .string("claude"), "modelId": .string("opus"), "effort": .string("high"), "permissionMode": .string("auto")]),

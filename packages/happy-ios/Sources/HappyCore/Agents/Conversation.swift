@@ -1816,7 +1816,7 @@ public actor Conversation {
         guard liveEvents == nil else { return }
         let store = store
         liveEvents = Task { [weak self] in
-            let events = await store.events(matching: ["provider_cli.updated", "config.updated", "gitCredential."])
+            let events = await store.events(matching: ["provider_cli.updated", "config.updated", "gitCredential.", "compute.nodes.updated", "compute.pools.updated"])
             for await event in events {
                 guard let self, !Task.isCancelled else { return }
                 await self.liveEvent(event)
@@ -1836,6 +1836,8 @@ public actor Conversation {
                 readLive("config")
             } else if type.hasPrefix("gitCredential."), liveAsked.contains("git") {
                 readLive("git")
+            } else if type.hasPrefix("compute.") {
+                for source in liveAsked where source.hasPrefix("pool:") { readLive(source) }
             }
         }
     }
@@ -1851,6 +1853,8 @@ public actor Conversation {
                 read = (try? await client.modelCatalogResponse()).flatMap { UiModelDefaults(response: Data($0.text.utf8)) }.map(UiLive.defaults)
             case "git":
                 read = (try? await client.gitCredentials(host: "github.com")).map { .github(connected: !$0.isEmpty) }
+            case _ where source.hasPrefix("pool:"):
+                read = (try? await client.joinPool(String(source.dropFirst("pool:".count)))).map { .pool(UiPool($0)) }
             default:
                 guard source.hasPrefix("provider_cli:") else { return }
                 read = (try? await client.providerCli(String(source.dropFirst("provider_cli:".count)))).map(UiLive.provider)

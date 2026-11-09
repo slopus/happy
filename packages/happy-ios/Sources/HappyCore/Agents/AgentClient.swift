@@ -493,6 +493,14 @@ public final class AgentClient: Sendable {
         return cli
     }
 
+    /// The pool a join widget names, or the team's default for "", with its
+    /// machines.
+    public func joinPool(_ id: String) async throws -> ComputePoolDetail {
+        if !id.isEmpty { return try await computePool(id) }
+        guard let pool = try await computePools().first(where: \.isDefault) else { throw AgentClientError.invalidResponse }
+        return try await computePool(pool.id)
+    }
+
     /// The Git credentials the person can see that apply on `host`
     /// (Happy Cloud's `GET /v0/git/credentials`), without their values.
     public func gitCredentials(host: String) async throws -> [JSONValue] {

@@ -12,6 +12,9 @@ public enum UiLive: Equatable, Sendable {
     /// `github_connect`: whether a GitHub credential is in
     /// `GET /v0/git/credentials`, `gitCredential.*`.
     case github(connected: Bool)
+    /// `compute_join`: its pool's machines, from Happy Cloud's
+    /// `GET /v0/compute/pools/:id`, `compute.nodes.updated`.
+    case pool(UiPool)
 
     /// Where each live type reads from, as one key per route; nil for a
     /// component that draws only its own results.
@@ -20,6 +23,8 @@ public enum UiLive: Equatable, Sendable {
         case "provider_sign_in": props["provider"]?.stringValue.map { "provider_cli:\($0)" }
         case "default_model": "config"
         case "github_connect": "git"
+        // The team's default pool when the offer names none.
+        case "compute_join": "pool:\(props["pool"]?.stringValue ?? "")"
         default: nil
         }
     }
@@ -123,6 +128,23 @@ public struct UiModelDefaults: Equatable, Sendable {
     public var title: String {
         let model = catalog.provider(providerId)?.models.first { $0.id == modelId } ?? catalog.models.first { $0.id == modelId }
         return "\(model?.name ?? modelId) · \(effort)"
+    }
+}
+
+/// A compute pool and the machines in it, as a join widget lists them.
+public struct UiPool: Equatable, Sendable {
+    public struct Node: Equatable, Sendable {
+        public var name: String
+        /// `online`, `offline`, `draining`, `enrolling` or `revoked`.
+        public var status: String
+    }
+
+    public var name: String
+    public var nodes: [Node]
+
+    public init(_ detail: ComputePoolDetail) {
+        name = detail.pool.name
+        nodes = detail.nodes.filter { $0.status != "revoked" }.map { Node(name: $0.displayName, status: $0.status) }
     }
 }
 
@@ -287,7 +309,8 @@ public struct UiCard: Equatable, Sendable {
                 control("Link your GitHub account", "github_connect.device_start", act("github_connect.device_start"), primary: true)
             }
         case "compute_join":
-            card.title = props["pool"]?.stringValue.map { "Add a machine to \($0)" } ?? "Add a machine"
+            let pool: UiPool? = if case .pool(let pool) = shown.live { pool } else { nil }
+            card.title = (pool?.name ?? props["pool"]?.stringValue).map { "Add a machine to \($0)" } ?? "Add a machine"
             if let result = shown.result, let commands = result["commands"]?.arrayValue?.compactMap(\.stringValue), !commands.isEmpty {
                 card.lines.append(Line("Run on the machine", .muted))
                 card.lines += commands.map { Line($0, .code) }
@@ -295,6 +318,11 @@ public struct UiCard: Equatable, Sendable {
                 card.buttons.append(Button("Copy commands", .copy(commands.joined(separator: "\n")), primary: true))
             } else {
                 control("Create join commands", "compute_join.create", act("compute_join.create"), primary: true)
+            }
+            // The machines that joined, live, so the person sees theirs arrive.
+            if let pool {
+                card.lines.append(Line(pool.nodes.isEmpty ? "No machines yet" : "Machines", .muted))
+                card.lines += pool.nodes.map { Line("\($0.name) · \($0.status)") }
             }
         default:
             break
