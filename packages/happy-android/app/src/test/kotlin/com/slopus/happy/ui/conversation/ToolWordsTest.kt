@@ -35,6 +35,35 @@ class ToolWordsTest {
         assertEquals("PowerShell", words("powershell").verb)
     }
 
+    @Test fun builtinSummariesReplaceRedundantVerbsButKeepStatusGlyphsAndDiffCounts() {
+        val calls = listOf(
+            ToolUse("python", "completed", summary = "Calculate the answer"),
+            ToolUse("exec_command", "running", Presentation.Command("cargo test", "full output"), summary = "Run account tests"),
+            ToolUse("write_stdin", "completed", Presentation.Terminal("\n", "cargo test"), summary = "Read test results"),
+            ToolUse("stop_shell", "failed", summary = "Stop the test process"),
+            ToolUse("update_document", "completed", summary = "Update account notes"),
+            ToolUse("update_artifact", "completed", Presentation.Artifact("artifact-id", "html", "Old title", 1), summary = "Update account dashboard"),
+            ToolUse("apply_patch", "failed", Presentation.FileDiff(listOf(Presentation.FileDiff.File("a.kt", "update", 3, 1), Presentation.FileDiff.File("b.kt", "add", 2, 0))), summary = "Update account settings"),
+        )
+        for (call in calls) {
+            val words = ToolWords.of(call, res)
+            assertEquals(call.summary, words.subject)
+            assertEquals("", words.verb)
+            assertEquals(false, words.mono)
+            assertEquals(ToolWords.glyph(call.name, call.presentation, call.failed), words.glyph)
+        }
+        val patch = ToolWords.of(calls.last(), res)
+        assertEquals(5, patch.added)
+        assertEquals(1, patch.deleted)
+        assertEquals(ToolGlyph.Oct(Octicon.Alert), patch.glyph)
+        assertEquals("cargo test", (calls[1].presentation as Presentation.Command).command)
+    }
+
+    @Test fun nativeMcpKeepsServerAndWholeToolIdentityEvenWithASemanticDescription() {
+        val name = "mcp__observatory__native_name_with__delimiters_0123456789abcdef"
+        assertEquals("observatory · native_name_with__delimiters_0123456789abcdef", ToolWords.of(ToolUse(name, "completed", summary = "Not builtin metadata"), res).subject)
+    }
+
     @Test fun aRunningCallSaysItInThePresentTense() {
         assertEquals("Exploring a.ts, b.ts", said("read_file", Presentation.Exploration.reads("a.ts", "b.ts", "a.ts"), "running"))
         assertEquals("Explored a.ts, b.ts", said("read_file", Presentation.Exploration.reads("a.ts", "b.ts")))

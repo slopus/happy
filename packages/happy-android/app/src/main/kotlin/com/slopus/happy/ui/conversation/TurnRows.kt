@@ -137,7 +137,7 @@ object TurnRowSpec {
 
 /**
  * A tool call's one line: its mark, or a spinner while it runs, its verb
- * and its subject. [bottom] is what it keeps under itself: its own 6, or
+ * and its subject (a builtin summary starts directly after the glyph lane). [bottom] is what it keeps under itself: its own 6, or
  * less where what it showed follows. A tap opens the call ([onOpen], its
  * own screen), running or done; a long press copies the subject.
  */
@@ -150,6 +150,8 @@ fun ToolLine(tool: ToolUse, modifier: Modifier = Modifier, bottom: Dp = TurnRowS
     val ink = if (tool.failed) TurnRowSpec.failedInk(colors) else colors.textSecondary
     val spoken = if (tool.running) {
         stringResource(R.string.turn_is_running, ToolWords.humanize(tool.name, res)) + ", " + words.subject
+    } else if (words.verb.isEmpty()) {
+        if (tool.failed) stringResource(R.string.turn_failed_call) + ", " + words.subject else words.subject
     } else {
         "${words.verb} ${words.subject}"
     }
@@ -201,8 +203,10 @@ fun ToolLine(tool: ToolUse, modifier: Modifier = Modifier, bottom: Dp = TurnRowS
             }
         }
         Spacer(Modifier.width(TurnRowSpec.gap))
-        Text(words.verb, style = TurnRowSpec.verb, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag(TurnRowTags.TOOL_VERB))
-        Spacer(Modifier.width(TurnRowSpec.gap))
+        if (words.verb.isNotEmpty()) {
+            Text(words.verb, style = TurnRowSpec.verb, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag(TurnRowTags.TOOL_VERB))
+            Spacer(Modifier.width(TurnRowSpec.gap))
+        }
         val counted = words.added != null || words.deleted != null
         Text(
             words.subject,
