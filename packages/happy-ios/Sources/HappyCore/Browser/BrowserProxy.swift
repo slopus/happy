@@ -129,12 +129,18 @@ public actor BrowserProxy {
                 }
                 // Even public CDNs, redirects and WebSockets are resolved and
                 // connected by the computer. There is no phone-network fallback.
-                let remote = try await client.browserTunnel(network, target: authority)
+                // A loopback alias is the computer's own loopback.
+                let loopback = BrowserPolicy.Loopback.target(authority)
+                let remote = try await client.browserTunnel(network, target: loopback ?? authority)
                 do {
                     try await local.write(Data("HTTP/1.1 200 Connection Established\r\n\r\n".utf8))
                     opaqueTunnel = true
-                    if !rest.isEmpty { try await remote.write(rest) }
-                    try await BrowserRelay.duplex(local, remote)
+                    if let loopback {
+                        try await BrowserRelay.loopback(local, remote, initial: rest, alias: authority.host, host: loopback.literal)
+                    } else {
+                        if !rest.isEmpty { try await remote.write(rest) }
+                        try await BrowserRelay.duplex(local, remote)
+                    }
                 } catch { await remote.close(); throw error }
             }
         } catch {

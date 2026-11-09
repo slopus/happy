@@ -76,6 +76,22 @@ append a second HTTP error response to its bytes.
   Over Tailcat the route is CONNECT to the daemon; over HTTPS it is the
   route's WebSocket twin (`/v0/artifacts/:id/proxy/websocket`) when health
   offers twins, through the same `proxyTunnel` as every other route.
+- The phone's own loopback is never a page's. WebKit connects to it directly,
+  proxy or not (measured for `127.0.0.1` and `[::1]` on an iPhone 12, iOS
+  26.1, and for `localhost` there too), so a link or a page to `127.0.0.1`,
+  `[::1]` or `localhost` opens on an alias, `ipv4`, `ipv6` or
+  `name.happy-loopback.invalid` at the same port and scheme
+  (`BrowserPolicy.Loopback`). The page starts there, and a main-frame
+  navigation or redirect to the loopback reloads there. The proxy tunnels
+  the alias as `CONNECT` to the loopback it stands for, so the daemon sees
+  exactly what it did before. Each plain HTTP request's `Host`, plus an
+  `Origin` or `Referer` on the alias, names the loopback again, so dev
+  servers that check them (Vite, Next) answer. TLS passes untouched: its
+  name is the alias. Every page also has a content blocker for anything it
+  loads from the loopback in any other spelling: frames, scripts, fetches,
+  WebSockets, other `127.x`, `0.0.0.0`, `*.localhost`, mapped IPv6. That
+  includes a subresource on the exact loopback, which fails, not reloads.
+  The address bar, errors and Share show the address as the link gave it.
 
 ## Security rules
 

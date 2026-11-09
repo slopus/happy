@@ -67,18 +67,19 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         originalURL = url; self.session = session; self.agentID = agentID; self.artifactID = artifactID; self.page = page
         isApp = app
         super.init(nibName: nil, bundle: nil)
-        title = Self.isSynthetic(url) ? nil : url.host
+        title = Self.isSynthetic(url) ? nil : BrowserPolicy.Loopback.shown(url).host
         navigationItem.largeTitleDisplayMode = .never
     }
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     private var computerName: String { session?.computerName ?? Strings.agentConnection }
     /// A bundled artifact's made-up origin, which means nothing outside.
-    private static func isSynthetic(_ url: URL) -> Bool { url.host?.hasSuffix(".invalid") == true }
+    /// A loopback alias is not: it shows as the address it stands for.
+    private static func isSynthetic(_ url: URL) -> Bool { BrowserPolicy.Loopback.shown(url).host?.hasSuffix(".invalid") == true }
     /// The host and any port, as the error page names a server: a dev
     /// server is told apart by its port. Nothing for a made-up origin.
     private static func address(_ url: URL) -> String? {
-        guard !isSynthetic(url), let host = url.host else { return nil }
+        guard !isSynthetic(url), let host = BrowserPolicy.Loopback.shown(url).host else { return nil }
         return url.port.map { "\(host):\($0)" } ?? host
     }
     /// In another screen rather than a navigation stack of its own.
@@ -313,7 +314,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         reloadItem.accessibilityLabel = stops ? Strings.Browser.stop : Strings.Browser.reload
         guard !isEmbedded else { return }
         let url = problem != nil ? failedURL : web?.url ?? originalURL
-        let host = url.flatMap { Self.isSynthetic($0) ? nil : $0.host }
+        let host = url.flatMap { Self.isSynthetic($0) ? nil : BrowserPolicy.Loopback.shown($0).host }
         let pageTitle = problem == nil ? web?.title.flatMap { $0.isEmpty ? nil : $0 } : nil
         navigationItem.title = pageTitle ?? host ?? title
         navigationItem.subtitle = pageTitle != nil && host != pageTitle ? host : nil
@@ -347,11 +348,12 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
             guard let list = self?.web?.backForwardList else { done([]); return }
             let items = forward ? list.forwardList : list.backList.reversed()
             done(items.map { item in
-                let action = UIAction(title: item.title.flatMap { $0.isEmpty ? nil : $0 } ?? item.url.host ?? item.url.absoluteString) { [weak self] _ in
+                let url = BrowserPolicy.Loopback.shown(item.url)
+                let action = UIAction(title: item.title.flatMap { $0.isEmpty ? nil : $0 } ?? url.host ?? url.absoluteString) { [weak self] _ in
                     self?.clearFailure()
                     self?.web?.go(to: item)
                 }
-                action.subtitle = item.url.host
+                action.subtitle = url.host
                 return action
             })
         }])
@@ -360,7 +362,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
     // MARK: Share
 
     /// The page as it is now: where it went, or the address that failed.
-    private var currentURL: URL { (problem != nil ? failedURL : nil) ?? web?.url ?? originalURL }
+    private var currentURL: URL { BrowserPolicy.Loopback.shown((problem != nil ? failedURL : nil) ?? web?.url ?? originalURL) }
     private var shareURL: URL { artifactID == nil ? currentURL : originalURL }
 
     func shareActions() -> [UIMenuElement] {
@@ -485,9 +487,15 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
             return .cancel
         }
         if mainFrame, let page,
-           BrowserPolicy.Authority(url: url) != BrowserPolicy.Authority(url: page.url),
+           BrowserPolicy.Authority(url: BrowserPolicy.Loopback.alias(url) ?? url) != BrowserPolicy.Authority(url: page.url),
            artifactID != nil, action.navigationType == .linkActivated {
             openBrowser(url, session: session, agentID: agentID)
+            return .cancel
+        }
+        // WebKit would go to the phone's own loopback: the computer's
+        // opens instead, on its alias. Frames and fetches there are blocked.
+        if mainFrame, let alias = BrowserPolicy.Loopback.alias(url) {
+            DispatchQueue.main.async { [weak self, weak webView] in if let webView { self?.load(alias, in: webView) } }
             return .cancel
         }
         if mainFrame { pendingURL = url }

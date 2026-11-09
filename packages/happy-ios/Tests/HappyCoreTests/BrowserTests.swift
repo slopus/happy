@@ -115,6 +115,47 @@ final class BrowserTests: XCTestCase {
         XCTAssertNil(BrowserNetwork.artifact("../agents").path)
     }
 
+    func testTheLoopbackOpensOnAnAliasForTheComputersOwnLoopback() throws {
+        let link = try XCTUnwrap(URL(string: "http://localhost:5173/app?x=1"))
+        let alias = try XCTUnwrap(BrowserPolicy.Loopback.alias(link))
+        XCTAssertEqual(alias.absoluteString, "http://name.happy-loopback.invalid:5173/app?x=1")
+        XCTAssertEqual(BrowserPolicy.Loopback.shown(alias), link)
+        for (url, target) in [("http://127.0.0.1:4191/", "127.0.0.1:4191"), ("http://127.1:4191/", "127.0.0.1:4191"), ("ws://[::1]:24678/", "[::1]:24678"), ("https://LOCALHOST.:8443/", "localhost:8443")] {
+            let alias = try XCTUnwrap(BrowserPolicy.Loopback.alias(XCTUnwrap(URL(string: url))), url)
+            XCTAssertTrue(alias.host?.hasSuffix(".happy-loopback.invalid") == true, url)
+            XCTAssertEqual(BrowserPolicy.Loopback.target(try XCTUnwrap(BrowserPolicy.Authority(url: alias)))?.text, target, url)
+        }
+        XCTAssertEqual(BrowserPolicy.Loopback.shown(try XCTUnwrap(URL(string: "http://ipv6.happy-loopback.invalid:4191/"))).absoluteString, "http://[::1]:4191/")
+        for url in ["http://127.0.0.2/", "http://example.com/", "http://a.localhost/", "http://name.happy-loopback.invalid/", "mailto:a@b.c"] {
+            XCTAssertNil(BrowserPolicy.Loopback.alias(try XCTUnwrap(URL(string: url))), url)
+        }
+        XCTAssertNil(BrowserPolicy.Loopback.target(try XCTUnwrap(BrowserPolicy.Authority(url: XCTUnwrap(URL(string: "http://localhost:80"))))))
+    }
+
+    func testALoopbackAliasNamesTheLoopbackInEachRequestAndPassesTheRest() async throws {
+        let alias = "name.happy-loopback.invalid"
+        let local = Bytes([
+            Data("POST /api HTTP/1.1\r\nHost: \(alias):5173\r\nOrigin: http://\(alias):5173\r\nContent-Length: 5\r\n\r\nhel".utf8),
+            Data("loGET /next HTTP/1.1\r\nHost: \(alias):5173\r\nReferer: http://\(alias):5173/app\r\n\r\n".utf8),
+            Data("GET /hmr HTTP/1.1\r\nHost: \(alias):5173\r\nOrigin: http://\(alias).example.com\r\nUpgrade: websocket\r\n\r\nframe ".utf8),
+            Data("Host: \(alias):5173".utf8),
+        ])
+        let remote = Bytes([], holds: true)
+        try await BrowserRelay.loopback(local, remote, initial: Data(), alias: alias, host: "localhost")
+        let sent = String(decoding: await remote.writes.reduce(Data(), +), as: UTF8.self)
+        XCTAssertEqual(sent, "POST /api HTTP/1.1\r\nHost: localhost:5173\r\nOrigin: http://localhost:5173\r\nContent-Length: 5\r\n\r\nhello"
+            + "GET /next HTTP/1.1\r\nHost: localhost:5173\r\nReferer: http://localhost:5173/app\r\n\r\n"
+            // Another site's Origin stays; after the upgrade nothing is read as HTTP.
+            + "GET /hmr HTTP/1.1\r\nHost: localhost:5173\r\nOrigin: http://\(alias).example.com\r\nUpgrade: websocket\r\n\r\nframe Host: \(alias):5173")
+
+        // TLS carries its own name: its bytes pass as they are.
+        let hello = Data([0x16, 0x03, 0x01]) + Data(alias.utf8)
+        let secure = Bytes([], holds: true)
+        try await BrowserRelay.loopback(Bytes([]), secure, initial: hello, alias: alias, host: "localhost")
+        let passed = await secure.writes.reduce(Data(), +)
+        XCTAssertEqual(passed, hello)
+    }
+
     func testLiveArtifactProxyRefusalsMeanItsComputerIsUnavailable() async throws {
         let target = try XCTUnwrap(BrowserPolicy.Authority(url: XCTUnwrap(URL(string: "http://localhost:4191"))))
         for status in [404, 501, 503] {
@@ -185,8 +226,13 @@ final class BrowserTests: XCTestCase {
         var pending: [Data]
         var writes: [Data] = []
         var closed = false
-        init(_ pending: [Data], authority: String = "server.tailcat") { self.pending = pending; self.authority = authority }
-        func read(maximumBytes: Int) async throws -> Data { pending.isEmpty ? Data() : pending.removeFirst() }
+        /// Once its bytes are read, waits like a server with nothing to say.
+        let holds: Bool
+        init(_ pending: [Data], authority: String = "server.tailcat", holds: Bool = false) { self.pending = pending; self.authority = authority; self.holds = holds }
+        func read(maximumBytes: Int) async throws -> Data {
+            if pending.isEmpty, holds { try await Task.sleep(for: .seconds(60)) }
+            return pending.isEmpty ? Data() : pending.removeFirst()
+        }
         func write(_ data: Data) async throws { writes.append(data) }
         func close() async { closed = true }
     }
