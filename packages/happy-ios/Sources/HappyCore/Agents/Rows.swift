@@ -351,16 +351,19 @@ public enum Rows {
         }
         if space.title == nil { return .seedling(seed: space.id) }
         switch space.target.kind {
-        case "surface": return .glyph(surfaceGlyph(places.surface(space.target.id)?.type, access: places.surface(space.target.id)?.access))
+        case "surface":
+            let surface = places.surface(space.target.id)
+            return .glyph(surfaceGlyph(surface?.type, access: surface?.access, policyVault: surface?.policyVault))
         case "task", "bot", "agent": return .placeholder(seed: space.target.id)
         default: return .glyph("agents")
         }
     }
 
     /// The glyph desktop's Create menu gives each kind of Surface; a vault
-    /// the person's role may not open (`access: "none"`) wears a lock.
-    public static func surfaceGlyph(_ type: String?, access: String? = nil) -> String {
-        if type == "vault", access == VaultAccess.Level.none.rawValue { return lockGlyph }
+    /// the person's role may not open, or the server's Policy vault, wears
+    /// a lock. The mark says nothing about whether its documents can be edited.
+    public static func surfaceGlyph(_ type: String?, access: String? = nil, policyVault: Bool? = nil) -> String {
+        if type == "vault", access == VaultAccess.Level.none.rawValue || policyVault == true { return lockGlyph }
         return switch type {
         case "todo": "tasks"
         case "calendar": "calendar"

@@ -437,8 +437,8 @@ final class HomeViewController: UIViewController {
                     row = Row(id: id, nodeId: id, kind: .result, label: held.label, mark: .glyph(Self.glyph(held)))
                     runs[id] = { [weak self] in self?.open(held) }
                 case .surface(let surface):
-                    row = Row(id: id, nodeId: id, kind: .result, label: surface.name, mark: .glyph(Rows.surfaceGlyph(surface.type)))
-                    runs[id] = { [weak self] in self?.openSurface(AgentWire.Surface(id: surface.id, type: surface.type, name: surface.name), row: id) }
+                    row = Row(id: id, nodeId: id, kind: .result, label: surface.name, mark: .glyph(Rows.surfaceGlyph(surface.type, access: surface.access, policyVault: surface.policyVault)))
+                    runs[id] = { [weak self] in self?.openSurface(surface, row: id) }
                 case .artifact(let artifact):
                     row = Row(id: id, nodeId: id, kind: .result, label: artifact.title, mark: .glyph(artifact.live ? "globe-outline" : HappyCore.Search.artifactGlyph(artifact.type)))
                     runs[id] = { [weak self] in self?.openArtifact(id: artifact.id, type: artifact.type, title: artifact.title, row: id) }
@@ -477,10 +477,12 @@ final class HomeViewController: UIViewController {
 
     /// A sidebar row's glyph among the results, as the computer's result
     /// for it would have.
-    private static func glyph(_ row: Row) -> String {
+    static func glyph(_ row: Row) -> String {
         if row.kind == .session { return "chatbubbles-outline" }
         switch row.targetKind {
-        case "surface": return Rows.surfaceGlyph(row.surfaceType)
+        case "surface":
+            if case .glyph(let glyph) = row.mark { return glyph }
+            return Rows.surfaceGlyph(row.surfaceType)
         case "task", "bot", "agent": return "agents"
         default:
             if case .glyph(let glyph) = row.mark { return glyph }
@@ -556,7 +558,8 @@ final class HomeViewController: UIViewController {
         }
         let actions = HappyCore.Search.ranked(quickActions().filter { !$0.id.hasPrefix("new-work") || session?.gate.allows(.contentWrite) ?? true }, query: query) { $0.title }
         let computer = session?.accountID
-        let entries = SettingsIndex.computer + (session.map(ComputeViewController.offered) == true ? [SettingsIndex.computes] : [])
+        let entries = SettingsIndex.computer(isCloud: session?.isCloud == true)
+            + (session.map(ComputeViewController.offered) == true ? [SettingsIndex.computes] : [])
         let settings = HappyCore.Search.ranked(entries, query: query) { $0.title }
         return [
             section("actions", Strings.quickActions, actions.map { ($0.id, $0.title, $0.glyph, $0.run) }),

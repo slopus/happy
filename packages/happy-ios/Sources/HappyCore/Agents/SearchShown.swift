@@ -168,8 +168,9 @@ extension Search {
         case "surface":
             guard let surfaceId = result.surfaceId else { return nil }
             let name = result.name ?? ""
-            let type = names.surfaces[surfaceId]?.type ?? result.surfaceType
-            shown = Shown(title: name, detail: surfaceTypeLabel(type), glyph: Rows.surfaceGlyph(type),
+            let surface = names.surfaces[surfaceId]
+            let type = surface?.type ?? result.surfaceType
+            shown = Shown(title: name, detail: surfaceTypeLabel(type), glyph: Rows.surfaceGlyph(type, access: surface?.access, policyVault: surface?.policyVault),
                           opens: .surface(id: surfaceId, type: type ?? "", name: name))
         case "agent":
             guard let agentId = result.agentId, result.archived != true, result.workspaceId != nil else { return nil }

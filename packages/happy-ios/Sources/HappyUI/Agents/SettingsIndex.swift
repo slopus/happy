@@ -61,6 +61,11 @@ enum SettingsIndex {
         [profile, changeAgentName, changeAgentAvatar, supportBoba, appearance, hideProjects, shimmerInLowPower, agentVoice, agents, dictationOpensTask, multilingualDictation, dataStorage, connection, analytics, connectAgent, addAccount] + aboutRows
     }
 
+    /// Cloud has no project settings; paired and self-hosted agents keep them.
+    static func computer(isCloud: Bool) -> [Entry] {
+        computer.filter { !isCloud || $0.id != hideProjects.id }
+    }
+
     /// What a Happy account's settings show under its accounts card, in
     /// their order: the same places as a computer's, with the account's own
     /// pages beside them. Sign out is left out, as Disconnect is.
