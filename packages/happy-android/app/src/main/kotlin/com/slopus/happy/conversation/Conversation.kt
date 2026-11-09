@@ -20,6 +20,12 @@ import com.slopus.happy.chat.num
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
 import com.slopus.happy.connection.AgentConnectionException
+import com.slopus.happy.conversation.ui.UiAction
+import com.slopus.happy.conversation.ui.UiActionText
+import com.slopus.happy.conversation.ui.UiComponent
+import com.slopus.happy.conversation.ui.UiDocument
+import com.slopus.happy.conversation.ui.UiOffer
+import com.slopus.happy.conversation.ui.UiPress
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -206,6 +212,8 @@ class Conversation(
         var skill: String? = null,
         /** A voice call's words ([sendAs]). */
         val voice: Boolean = false,
+        /** A press on chat UI ([act]): it goes to the actions route, [text] its words as the person's message will read. */
+        val press: UiPress? = null,
         var accepted: Boolean = false,
         var failure: Problem? = null,
         val sentAt: Long,
@@ -633,7 +641,8 @@ class Conversation(
             "message.created", "message.updated" -> {
                 val message = Message.parse(payload["message"]) ?: return
                 messages[message.id] = message
-                outgoing.removeAll { it.id == message.id }
+                // A press's record comes first, still pending: its bubble stays until the press settles ([settlePresses]).
+                outgoing.removeAll { it.id == message.id && it.press == null }
                 uploads.clear(message.id)
                 val runId = payload["runId"].str
                 if (runId != null) place(message.id, runId)
@@ -681,6 +690,13 @@ class Conversation(
                 runInfo[run["id"].str!!] = RunInfo.of(run, "running")
             }
             "run.finished" -> {
+                // A press's attempt record comes in a run of its own, finished as it appears: the turn going on goes on.
+                val ended = payload["run"].obj?.get("id").str
+                if (ended != null && runs.none { it.first == ended }) {
+                    finish(payload["run"].obj)
+                    if (visible) markRead()
+                    return
+                }
                 finish(payload["run"].obj)
                 activeRunStartedAt = null
                 running = false
@@ -837,6 +853,55 @@ class Conversation(
         publish()
         pump()
         true
+    }
+
+    /**
+     * Presses [component] of an offer ([UiOffer]) with [action]: drawn at
+     * once as the person's words ([UiActionText]) and sent to the actions
+     * route in order with the composer's sends, under an id of its own that
+     * a retry repeats. An accepted press becomes the person's message; a
+     * refused one, its attempt record, greyed ([ConversationRow.Unsent]).
+     * False where nothing can be pressed yet, or the same offer is already
+     * being answered from here.
+     */
+    fun act(offer: UiOffer, component: UiComponent, action: UiAction): Boolean {
+        if (!created || closed) return false
+        // Only a "message" action has words; the rest are no bubble, and this build sends none of them.
+        val text = UiActionText.of(component, action) ?: return false
+        scope.launch(lane) {
+            if (outgoing.any { it.press?.offer == offer && it.failure == null }) return@launch
+            outgoing += Outgoing(ConversationApi.clientId(), text, emptyList(), press = UiPress(offer, action), sentAt = now())
+            publish()
+            pump()
+        }
+        return true
+    }
+
+    /** A press delivered: its record and the person's message it became join history, and its bubble settles. */
+    private suspend fun deliver(send: Outgoing, press: UiPress) {
+        val mode = sendingMode() ?: throw IllegalStateException("No model is set up on this computer.")
+        val acted = withRetries { api.act(agentId, send.id, press.offer, press.action, mode) }
+        send.accepted = true
+        for (message in listOfNotNull(acted.message, acted.record)) {
+            // The answer settles the record its pending copy may have shown already.
+            if (message.id in messages && message !== acted.record) continue
+            messages[message.id] = message
+            if (message.runId != null) place(message.id, message.runId)
+            else if (message.id !in pending && runs.none { message.id in it.second }) pending += message.id
+        }
+        if (acted.message != null && activeRunStartedAt == null) activeRunStartedAt = now()
+    }
+
+    /**
+     * Takes back the bubbles of presses that settled: refused, as their
+     * record shows them, or accepted with the person's message here.
+     */
+    private fun settlePresses() {
+        outgoing.removeAll { send ->
+            if (send.press == null) return@removeAll false
+            val outcome = messages[send.id]?.content?.firstNotNullOfOrNull { it as? Block.Action }?.record?.outcome ?: return@removeAll false
+            outcome.refused || (outcome.accepted && (outcome.messageId == null || outcome.messageId in messages))
+        }
     }
 
     /** Whether [id] is a message here already: one of this phone's sends, or one the computer has. */
@@ -1040,7 +1105,8 @@ class Conversation(
         scope.launch(lane) {
             val send = outgoing.firstOrNull { it.id == id && it.failure != null } ?: return@launch
             outgoing.remove(send)
-            if (draft.isBlank() && send.text.isNotEmpty()) {
+            // A press's words were never typed: nothing goes back to the composer.
+            if (send.press == null && draft.isBlank() && send.text.isNotEmpty()) {
                 setDraftNow(send.text)
                 publish { it.copy(draftArrivals = it.draftArrivals + 1) }
             } else {
@@ -1058,6 +1124,20 @@ class Conversation(
                 // Its photos still being read: it and everything after it wait ([prepared]).
                 if (next.waiting != null) break
                 writing = next.id
+                val press = next.press
+                if (press != null) {
+                    try {
+                        deliver(next, press)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        next.failure = describe(e)
+                    } finally {
+                        writing = null
+                    }
+                    publish()
+                    continue
+                }
                 // A create that fails is told as `task_created` or `bot_created`, not as this send's error too.
                 var made = false
                 try {
@@ -1562,6 +1642,7 @@ class Conversation(
     // Snapshot
 
     private inline fun publish(change: (ConversationState) -> ConversationState = { it }) {
+        settlePresses()
         snapshot = derive(change(snapshot))
         _state.value = snapshot
     }
@@ -1601,14 +1682,72 @@ class Conversation(
         }
     }
 
+    /**
+     * Lays over each chat UI row how its offer stands (the client package's
+     * `uiOfferState`): answered by an accepted press in any copy of history,
+     * closed by a person's message after it, or being answered from here;
+     * and gives a refused press the words it said, from its offer.
+     */
+    private fun answerOffers(rows: MutableList<ConversationRow>) {
+        val answered = HashMap<UiOffer, UiAction>()
+        val documents = HashMap<Pair<String, String>, UiDocument>()
+        // Offers a person's message followed, in history's order.
+        val spokenAfter = HashSet<String>()
+        val unanswered = ArrayList<String>()
+        for (id in runs.flatMap { it.second } + pending) {
+            val message = messages[id] ?: continue
+            if (message.role == "user") {
+                spokenAfter += unanswered
+                unanswered.clear()
+            }
+            for (block in message.content) when (block) {
+                is Block.Action -> if (block.record.outcome.accepted) answered[block.record.offer] = block.record.action
+                is Block.Ui -> documents[message.id to block.document.id] = block.document
+                is Block.ToolCall -> (block.presentation as? Presentation.Ui)?.let { documents[message.id to it.document.id] = it.document }
+                else -> Unit
+            }
+            if (documents.keys.any { it.first == message.id }) unanswered += message.id
+        }
+        val sending = outgoing.mapNotNull { send -> send.press?.takeIf { send.failure == null } }.associate { it.offer to it.action }
+        rows.replaceAll { row ->
+            when (row) {
+                is ConversationRow.Ui -> {
+                    val accepted = answered[row.offer]
+                    val answer = when {
+                        accepted != null -> UiAnswer.Answered(accepted)
+                        sending[row.offer] != null -> UiAnswer.Sending(sending.getValue(row.offer))
+                        row.offer.messageId in spokenAfter -> UiAnswer.Closed
+                        else -> UiAnswer.Open
+                    }
+                    if (answer == row.answer) row else row.copy(answer = answer)
+                }
+                is ConversationRow.Unsent -> {
+                    val offer = row.record.offer
+                    val component = documents[offer.messageId to offer.uiId]?.components?.firstOrNull { it.id == offer.componentId }
+                    val text = component?.let { UiActionText.of(it, row.record.action) }
+                    if (text == row.text) row else row.copy(text = text)
+                }
+                else -> row
+            }
+        }
+    }
+
+    /** A run that holds only presses' attempt records: no turn, nothing streams in it, and it doesn't end like one. */
+    private fun recordsOnly(ids: List<String>): Boolean =
+        ids.isNotEmpty() && ids.all { id -> messages[id]?.let { it.role == "service" && it.content.singleOrNull() is Block.Action } == true }
+
     private fun derive(base: ConversationState): ConversationState {
         val agent = agent
         val working = running || agent?.isWorking == true || outgoing.any { it.accepted }
         val parentAgentId = agent?.parentAgentId
         val rows = ArrayList<ConversationRow>()
-        val lastRun = runs.lastOrNull()?.first
+        val lastRun = runs.lastOrNull { !recordsOnly(it.second) }?.first
         val waiting = base.question
         for ((runId, ids) in runs) {
+            if (recordsOnly(ids)) {
+                for (id in ids) messages[id]?.let { rows += builder.rows(it, agentId, parentAgentId, false) }
+                continue
+            }
             val streaming = working && runId == lastRun
             val turn = ArrayList<ConversationRow>()
             var tools = 0
@@ -1654,9 +1793,10 @@ class Conversation(
             rows += ConversationRow.User("${send.id}:user", send.id, text, com.slopus.happy.chat.markdown.parseMarkdown(text, hasSettingsPage), send.images + send.thumbnails, delivery, time)
         }
         if (opened.isNotEmpty()) rows.replaceAll { if (it is ConversationRow.User && it.key in opened) it.copy(opened = true) else it }
+        if (rows.any { it is ConversationRow.Ui || it is ConversationRow.Unsent }) answerOffers(rows)
         builder.forget(messages.keys)
         val produced = lastRun != null && running &&
-            runs.last().second.any { id -> messages[id]?.let { it.role == "agent" && it.content.isNotEmpty() } == true }
+            runs.last { it.first == lastRun }.second.any { id -> messages[id]?.let { it.role == "agent" && it.content.isNotEmpty() } == true }
         val activity = when {
             base.question != null -> Activity.AwaitingAnswer
             !working -> if ((agent?.subagentsRunning ?: 0) > 0) Activity.Delegating else null

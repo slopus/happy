@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="conversation_ui_not_allowed">你的角色無法在此回覆。</string>
+    <string name="conversation_ui_not_sent">未傳送：%1$s</string>
+    <string name="conversation_ui_not_sent_plain">未傳送</string>
+    <string name="conversation_ui_tree_show_all">顯示全部（%1$d）</string>
+</resources>

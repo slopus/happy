@@ -87,6 +87,7 @@ object ConversationRowTags {
     const val PICTURE = "conversation.picture"
     const val MEDIA = "conversation.media"
     const val MEDIA_FILE = "conversation.media.file"
+    const val MEDIA_CAPTION = "conversation.media.caption"
     const val ARTIFACT = "conversation.artifact"
     const val ARTIFACT_ACTION = "conversation.artifact.action"
     const val COLLABORATOR = "conversation.collaborator"
@@ -147,6 +148,12 @@ class ConversationRowActions(
     val videos: VideoOpening? = null,
     /** HTML artifacts shown inline under their cards; null where none are. */
     val pages: InlinePages? = null,
+    /** Presses a chat UI component; null where nothing can be pressed here, and its controls take nothing. */
+    val onUiAction: ((ConversationRow.Ui, com.slopus.happy.conversation.ui.UiAction) -> Unit)? = null,
+    /** Whether the conversation takes presses now: not an archived chat. */
+    val uiPresses: () -> Boolean = { true },
+    /** Whether the person's role holds a permission a press needs; only for showing, the computer decides. */
+    val uiAllowed: (permission: String) -> Boolean = { true },
 )
 
 /** Plays the recording [ref] whose tile is [key]: in the viewer, once it can ([VideoOpening]). */
@@ -242,6 +249,8 @@ fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: Co
                     }
                 }
             }
+            is ConversationRow.Ui -> UiComponentRow(row, actions, content)
+            is ConversationRow.Unsent -> UnsentRow(row, bubble, content)
             is ConversationRow.Collaborator -> CollaboratorProse(row, actions.legacy, content)
             is ConversationRow.Failure -> FailureRow(row, actions, content)
             is ConversationRow.Ask -> AskRow(row, actions.asks, content)
@@ -408,6 +417,8 @@ private fun InlinePictures(
 private fun MediaRow(row: ConversationRow.Media, actions: ConversationRowActions, modifier: Modifier) {
     val visual = row.items.filter { it.item.isVisual }
     val other = row.items.filter { !it.item.isVisual }
+    // A chat UI images component says what each shows.
+    val label = { ref: MediaRef -> row.labels.getOrNull(row.items.indexOf(ref))?.takeIf { it.isNotBlank() } }
     Column(
         modifier.fillMaxWidth().padding(vertical = ConversationRowSpec.marginVertical).testTag(ConversationRowTags.MEDIA),
         verticalArrangement = Arrangement.spacedBy(MediaFlow.GAP.dp),
@@ -446,7 +457,7 @@ private fun MediaRow(row: ConversationRow.Media, actions: ConversationRowActions
                         MediaTile(
                             bytes = null,
                             cacheKey = key,
-                            contentDescription = ref.item.name.ifEmpty { stringResource(R.string.artifact_video) },
+                            contentDescription = label(ref) ?: ref.item.name.ifEmpty { stringResource(R.string.artifact_video) },
                             failed = false,
                             onClick = { if (kept != null) actions.play(key, ref) else actions.onOpenPicture(key) },
                             placeholder = still ?: thumbhash,
@@ -467,7 +478,7 @@ private fun MediaRow(row: ConversationRow.Media, actions: ConversationRowActions
                         MediaTile(
                             bytes = bytes,
                             cacheKey = key,
-                            contentDescription = ref.item.name.ifEmpty { stringResource(R.string.conversation_picture) },
+                            contentDescription = label(ref) ?: ref.item.name.ifEmpty { stringResource(R.string.conversation_picture) },
                             failed = load?.isFailure == true && !waiting,
                             onClick = bytes?.let { { actions.onOpenPicture(key) } },
                             placeholder = thumbhash,
@@ -477,6 +488,14 @@ private fun MediaRow(row: ConversationRow.Media, actions: ConversationRowActions
                     }
                 }
             }
+        }
+        if (row.captions.isNotEmpty()) {
+            Text(
+                row.captions.joinToString(" · "),
+                style = ConversationRowSpec.notice,
+                color = HappyTheme.colors.textSecondary,
+                modifier = Modifier.padding(horizontal = ConversationRowSpec.marginHorizontal).testTag(ConversationRowTags.MEDIA_CAPTION),
+            )
         }
         other.forEach { ref ->
             val opening = actions.mediaOpening(ref)

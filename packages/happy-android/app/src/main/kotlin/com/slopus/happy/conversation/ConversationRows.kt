@@ -5,6 +5,11 @@ import com.slopus.happy.chat.markdown.MarkdownBlock
 import com.slopus.happy.chat.markdown.parseMarkdown
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
+import com.slopus.happy.conversation.ui.UiAction
+import com.slopus.happy.conversation.ui.UiActionRecord
+import com.slopus.happy.conversation.ui.UiComponent
+import com.slopus.happy.conversation.ui.UiDocument
+import com.slopus.happy.conversation.ui.UiOffer
 import com.slopus.happy.references.HappyReferences
 import com.slopus.happy.references.References
 import kotlinx.serialization.json.JsonObject
@@ -111,7 +116,30 @@ sealed interface ConversationRow {
      * Pictures, videos and files a tool presented, read on demand; [columns]
      * as the tool asked (0: justified rows), under the [tool]'s line.
      */
-    data class Media(override val key: String, val items: List<MediaRef>, val columns: Int = 0, val tool: ToolUse? = null) : ConversationRow
+    data class Media(
+        override val key: String,
+        val items: List<MediaRef>,
+        val columns: Int = 0,
+        val tool: ToolUse? = null,
+        /** A chat UI `images` component's words for its pictures, by item: what each shows ([UiComponent.Images.Image.alt]) and its caption. */
+        val labels: List<String?> = emptyList(),
+        val captions: List<String> = emptyList(),
+    ) : ConversationRow
+
+    /**
+     * One component of chat UI ([UiComponent]), from an agent message's `ui`
+     * block or a `show_ui` call's presentation; [answer] is how it stands,
+     * which the conversation lays over the row as built.
+     */
+    data class Ui(override val key: String, val offer: UiOffer, val component: UiComponent, val answer: UiAnswer = UiAnswer.Open) : ConversationRow
+
+    /**
+     * A press the computer refused or lost ([UiOutcome.refused]), from its
+     * attempt record: its words greyed with why ("Not sent: already
+     * answered"). [text] is what the press said, read from its offer by the
+     * conversation; null where the offer isn't read.
+     */
+    data class Unsent(override val key: String, val record: UiActionRecord, val text: String? = null) : ConversationRow
 
     /**
      * An artifact a tool made or changed, under the [tool]'s line; `shows: "latest"` follows it, else it opens [version].
@@ -193,6 +221,18 @@ sealed interface ConversationRow {
 }
 
 enum class NoticeKind { Compacting, Compacted, CompactionFailed }
+
+/** Where a chat UI offer stands for this person. */
+@Immutable
+sealed interface UiAnswer {
+    data object Open : UiAnswer
+    /** A press from this phone is on its way. */
+    data class Sending(val action: UiAction) : UiAnswer
+    /** Answered, here or elsewhere: closed, showing what was sent. */
+    data class Answered(val action: UiAction) : UiAnswer
+    /** Unanswered, and a person's message came after it: it takes nothing more. */
+    data object Closed : UiAnswer
+}
 
 /** Where a question's answer stands. */
 @Immutable
@@ -317,6 +357,10 @@ class ConversationRowBuilder(
             val id = message.id
             if (message.role == "service") {
                 failureOf(message)?.let { return listOf(it) }
+                // An attempt record is drawn only when it was refused; one accepted is the person's message.
+                message.content.firstNotNullOfOrNull { it as? Block.Action }?.let { block ->
+                    return if (block.record.outcome.refused) listOf(ConversationRow.Unsent("$id:unsent", block.record)) else emptyList()
+                }
                 val compaction = message.content.filterIsInstance<Block.Compaction>().firstOrNull() ?: return emptyList()
                 val kind = when (compaction.status) {
                     "completed" -> NoticeKind.Compacted
@@ -359,8 +403,9 @@ class ConversationRowBuilder(
                         rows += ConversationRow.Reasoning(key, it, streaming && index == message.content.lastIndex, growing?.invoke(key, it, false))
                     }
                     is Block.Image -> rows += ConversationRow.Picture(key, block)
-                    is Block.ToolCall -> rows += toolRows(key, block, references)
-                    is Block.Compaction, is Block.File, is Block.Unknown -> Unit
+                    is Block.ToolCall -> rows += toolRows(key, id, block, references)
+                    is Block.Ui -> rows += uiRows(key, id, block.document, null, emptyList())
+                    is Block.Compaction, is Block.File, is Block.Action, is Block.Unknown -> Unit
                 }
             }
             return rows
@@ -370,7 +415,37 @@ class ConversationRowBuilder(
         private fun inlineCandidate(presentation: Presentation): String? =
             (presentation as? Presentation.Artifact)?.takeIf { it.artifactType == "html" && it.shows == "latest" }?.artifactId
 
-        private fun toolRows(key: String, call: Block.ToolCall, references: References?): List<ConversationRow> {
+        /**
+         * A document's components, one row each, keyed by [key] and the
+         * component's id. `images` points at the call's [items] ([toolCallId]),
+         * and is its fallback line where there are none; `phone_app` shows
+         * nothing on a phone.
+         */
+        private fun uiRows(key: String, messageId: String, document: UiDocument, toolCallId: String?, items: List<MediaItem>): List<ConversationRow> =
+            document.components.mapNotNull { component ->
+                val rowKey = "$key:${component.id}"
+                val offer = UiOffer(messageId, document.id, component.id)
+                when {
+                    component is UiComponent.Other && component.hidden -> null
+                    component is UiComponent.Images -> {
+                        val shown = component.images.filter { it.mediaIndex in items.indices }
+                        if (toolCallId == null || shown.isEmpty()) {
+                            ConversationRow.Ui(rowKey, offer, UiComponent.Other(component.id, component.fallback, component.type))
+                        } else {
+                            ConversationRow.Media(
+                                rowKey,
+                                shown.map { MediaRef(toolCallId, it.mediaIndex, items[it.mediaIndex]) },
+                                component.columns,
+                                labels = shown.map { it.alt ?: it.caption },
+                                captions = shown.mapNotNull { it.caption?.takeIf(String::isNotBlank) },
+                            )
+                        }
+                    }
+                    else -> ConversationRow.Ui(rowKey, offer, component)
+                }
+            }
+
+        private fun toolRows(key: String, messageId: String, call: Block.ToolCall, references: References?): List<ConversationRow> {
             if (call.name == Question.TOOL_NAME && call.id != null) {
                 // Answered, as the card the call keeps says, or else its result: it settles here.
                 // Otherwise the conversation decides (Conversation.derive).
@@ -385,6 +460,8 @@ class ConversationRowBuilder(
             val skill = if (call.name == Conversation.READ_SKILL) (call.arguments as? JsonObject)?.get("name").str else null
             val tool = ToolUse(call.name, call.status, call.presentation, skill, call.id, ToolHint.of(call), ToolSummary.of(call.name, call.arguments))
             return when (val p = call.presentation) {
+                // What show_ui showed stands in its call's place: the components, no line.
+                is Presentation.Ui -> uiRows(key, messageId, p.document, call.id, p.items).ifEmpty { listOf(ConversationRow.Tool(key, call.id, tool)) }
                 is Presentation.Media -> if (call.id == null || p.items.isEmpty()) {
                     listOf(ConversationRow.Tool(key, call.id, tool))
                 } else {

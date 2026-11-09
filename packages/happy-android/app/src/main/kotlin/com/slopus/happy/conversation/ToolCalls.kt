@@ -68,6 +68,7 @@ enum class ToolKind {
             is Presentation.Media -> Media
             is Presentation.Artifact -> Artifact
             is Presentation.UserInput -> Question
+            is Presentation.Ui -> ToolCall
             null -> when (name) {
                 in PLAN -> Plan
                 in SUBAGENT -> Subagent

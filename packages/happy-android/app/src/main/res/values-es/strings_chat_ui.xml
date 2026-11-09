@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="conversation_ui_not_allowed">Tu rol no permite responder aquí.</string>
+    <string name="conversation_ui_not_sent">No enviado: %1$s</string>
+    <string name="conversation_ui_not_sent_plain">No enviado</string>
+    <string name="conversation_ui_tree_show_all">Mostrar todo (%1$d)</string>
+</resources>

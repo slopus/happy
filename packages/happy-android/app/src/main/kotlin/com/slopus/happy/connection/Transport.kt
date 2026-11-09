@@ -425,6 +425,10 @@ class FileDerpMapCache(private val file: File) : DERPMapCache {
 object TailcatHttp {
     private val methods = setOf("GET", "POST", "PATCH", "PUT", "DELETE")
 
+    /** The Happy Agent protocol this build reads, sent on every request and stream: 35 brings chat UI. */
+    const val PROTOCOL = 35
+    const val PROTOCOL_HEADER = "Happy-Protocol"
+
     /** The request line and headers; refuses anything that could split them. */
     fun requestHead(method: String, path: String, port: Int, credential: String, body: ByteArray?, headers: Map<String, String>, authority: String = "server.tailcat:$port"): ByteArray {
         fun unsafe(text: String) = text.contains('\r') || text.contains('\n')
@@ -436,6 +440,8 @@ object TailcatHttp {
             .append("Host: $authority\r\n")
             .append("Authorization: Bearer $credential\r\n")
             .append("Connection: close\r\n")
+            // Read below it, the daemon sends chat UI as its fallback text and hides attempt records (API.md "Versioning").
+            .append("$PROTOCOL_HEADER: $PROTOCOL\r\n")
         if (headers.keys.none { it.equals("Accept", ignoreCase = true) }) head.append("Accept: application/json\r\n")
         head.append("Content-Length: ${body?.size ?: 0}\r\n")
         if (body != null && headers.keys.none { it.equals("Content-Type", ignoreCase = true) }) head.append("Content-Type: application/json\r\n")

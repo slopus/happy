@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="conversation_ui_not_allowed">このロールではここで回答できません。</string>
+    <string name="conversation_ui_not_sent">未送信: %1$s</string>
+    <string name="conversation_ui_not_sent_plain">未送信</string>
+    <string name="conversation_ui_tree_show_all">すべて表示（%1$d）</string>
+</resources>

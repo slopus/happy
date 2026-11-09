@@ -1686,6 +1686,37 @@ secretbox has checked the MAC, and a sent picture is kept at upload, so the
 sender never downloads it. A legacy download is one request with progress
 from the body; it can't pause.
 
+### Chat UI
+
+happy-agent API.md "Chat UI" (protocol 35) is the contract. Every request
+and stream to an agent connection carries `Happy-Protocol: 35`
+(`TailcatHttp.requestHead`, so Tailcat and HTTPS alike); without it the
+daemon sends documents as their fallback text and hides attempt records.
+`conversation/ui/UiWire.kt` holds every wire type: the `ui` block of an
+agent message, the `ui` presentation of a `show_ui` call and the `action`
+block. A type this build doesn't draw, or props that don't read, is
+`UiComponent.Other`, shown as its fallback line; `phone_app` shows
+nothing on a phone. `choice`, `checklist`, `text_field` and `file_tree`
+are drawn natively (`ui/conversation/UiComponentViews.kt`); `images`
+becomes a `ConversationRow.Media` over the call's items, with the viewer,
+kept media and the agent page as any presented picture. The show_ui call
+has no line of its own. `conversation/ui/UiActions.kt` ports the client
+package's `uiActionText`, `uiOfferState` and `uiActionPermission` /
+`uiActionAllowed`; `UiActionsTest` checks them and the action catalog
+against `test/resources/ui/` (`fixtures/ui/` copied unchanged).
+
+A press is `Conversation.act`: an outgoing like a send, drawn at once as
+the person's words, sent in order to `POST /v0/agents/:id/actions` under
+its own id (the attempt record's, so a retry is the same attempt). The
+bubble stays while the record is `pending` and goes once the person's
+message is in or the record says it was refused. A refused or failed record
+is `ConversationRow.Unsent`, the words greyed with "Not sent: why", on
+every device. Records come in finished runs of their own: they are no
+turn, and a `run.finished` for one doesn't end the turn going on. An offer
+is answered (its accepted press ticked), closed (a person's message came
+after it) or open; controls the role may not use (`ServerPermissions`)
+show disabled with one line saying so. Words are in `strings_chat_ui.xml`.
+
 ### Context meter and usage ring
 
 Under an agent connection's composer, `ui/conversation/ContextMeter` draws

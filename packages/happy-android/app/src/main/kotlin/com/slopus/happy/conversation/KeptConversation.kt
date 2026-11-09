@@ -122,6 +122,8 @@ data class KeptConversation(
                 block.elevated?.let { put("elevated", it) }
             }
             is Block.Compaction -> buildJsonObject { put("type", "compaction"); put("status", block.status) }
+            is Block.Ui -> block.raw
+            is Block.Action -> block.raw
             is Block.Unknown -> buildJsonObject { put("type", block.type) }
         }
 
@@ -233,6 +235,7 @@ data class KeptConversation(
                 put("input", presentation.input)
                 presentation.command?.let { put("command", it) }
             }
+            is Presentation.Ui -> presentation.raw
         }
 
         private fun hunkJson(hunk: Presentation.FileDiff.Hunk): JsonObject = buildJsonObject {

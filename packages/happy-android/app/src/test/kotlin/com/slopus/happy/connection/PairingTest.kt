@@ -72,7 +72,7 @@ class PairingTest {
         val head = TailcatHttp.requestHead("POST", "/v0/x", 24781, "tok", "{}".toByteArray(), emptyMap()).toString(Charsets.UTF_8)
         assertEquals(
             "POST /v0/x HTTP/1.1\r\nHost: server.tailcat:24781\r\nAuthorization: Bearer tok\r\nConnection: close\r\n" +
-                "Accept: application/json\r\nContent-Length: 2\r\nContent-Type: application/json\r\n\r\n",
+                "Happy-Protocol: 35\r\nAccept: application/json\r\nContent-Length: 2\r\nContent-Type: application/json\r\n\r\n",
             head,
         )
         assertEquals(AgentConnectionException.Reason.InvalidResponse, reason { TailcatHttp.requestHead("GET", "/a b", 1, "t", null, emptyMap()) })

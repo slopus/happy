@@ -6,6 +6,8 @@ import com.slopus.happy.chat.long
 import com.slopus.happy.chat.num
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
+import com.slopus.happy.conversation.ui.UiActionRecord
+import com.slopus.happy.conversation.ui.UiDocument
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -138,6 +140,8 @@ sealed interface Presentation {
     data class AgentSpawn(val model: String?) : Presentation
     /** What was typed into a background terminal (`background_terminal_interaction`), and the command it runs. */
     data class Terminal(val input: String, val command: String?) : Presentation
+    /** What `show_ui` showed: its document, and the [items] its `images` point at by index; [raw] as sent, which the phone keeps. */
+    data class Ui(val document: UiDocument, val items: List<MediaItem>, val raw: JsonObject) : Presentation
 
     companion object {
         fun parse(value: JsonElement?): Presentation? {
@@ -210,6 +214,7 @@ sealed interface Presentation {
                 )
                 "agent_spawn" -> AgentSpawn(o["model"].obj?.get("name").str)
                 "background_terminal_interaction" -> Terminal(o["input"].str.orEmpty(), o["command"].str)
+                "ui" -> Ui(UiDocument.parse(o["ui"]) ?: return null, o["items"].arr.orEmpty().mapNotNull(MediaItem::parse), o)
                 else -> null
             }
         }
@@ -309,6 +314,10 @@ sealed interface Block {
     data class File(val attachment: String, val name: String, val mimeType: String? = null, val size: Long? = null) : Block
     /** One context compaction, inside a service message: `running`, then `completed` or `failed`. */
     data class Compaction(val status: String) : Block
+    /** Chat UI the daemon wrote into an agent message (`ui`); [raw] the block as sent, which the phone keeps. */
+    data class Ui(val document: UiDocument, val raw: JsonObject) : Block
+    /** A press, in the person's message it became or in its attempt record (`action`); [raw] as [Ui]'s. */
+    data class Action(val record: UiActionRecord, val raw: JsonObject) : Block
     data class Unknown(val type: String) : Block
 
     companion object {
@@ -345,6 +354,8 @@ sealed interface Block {
                     if (attachment != null && name != null) File(attachment, name, o["mimeType"].str, o["size"].num?.toLong()) else Unknown(type)
                 }
                 "compaction" -> Compaction(o["status"].str ?: "running")
+                "ui" -> UiDocument.parse(o["ui"])?.let { Ui(it, o) } ?: Unknown(type)
+                "action" -> UiActionRecord.parse(o)?.let { Action(it, o) } ?: Unknown(type)
                 else -> Unknown(type)
             }
         }
