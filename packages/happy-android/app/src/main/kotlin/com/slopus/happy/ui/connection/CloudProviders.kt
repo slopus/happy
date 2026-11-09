@@ -74,7 +74,7 @@ import kotlinx.serialization.Serializable
 /** ChatGPT's device sign-in, kept in [to] (a [CloudDestination] id) when it says. */
 @Serializable data class CloudChatGptRoute(val connectionId: String, val to: String? = null)
 
-/** Claude's sign-in, or its setup token ([token]). */
+/** Claude's setup token, kept in [to] when it says. */
 @Serializable data class CloudClaudeRoute(val connectionId: String, val to: String? = null)
 
 /** An OpenAI or Anthropic API key; [vendor] picks the vendor first. */
