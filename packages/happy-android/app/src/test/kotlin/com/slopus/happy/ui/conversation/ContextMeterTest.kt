@@ -62,7 +62,7 @@ class ContextMeterTest {
 
     private fun show(state: ConversationState, dark: Boolean = false) {
         shown = state
-        rule.setHappyContent(dark) { ConversationScreen(shown, null, ConversationScreenActions(), usage = usage) }
+        rule.setHappyContent(dark) { ConversationScreen(shown, ConversationScreenActions(), usage = usage) }
         rule.waitForIdle()
     }
 

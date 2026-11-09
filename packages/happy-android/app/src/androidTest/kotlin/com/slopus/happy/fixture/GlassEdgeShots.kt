@@ -141,7 +141,7 @@ class GlassEdgeShots {
         }
         val agent = AgentInfo("fx-agent", "fx-workspace", null, "Fix the login redirect", "idle", null, null, now, now, 0, 0)
         val rows = history.flatMap { builder.rows(it, "fx-agent", null, false) }
-        ConversationScreen(ConversationState(created = true, loaded = true, rows = rows.asReversed(), agent = agent), null, ConversationScreenActions())
+        ConversationScreen(ConversationState(created = true, loaded = true, rows = rows.asReversed(), agent = agent), ConversationScreenActions())
     }
 
     private val session = ChatSessionInfo.from(

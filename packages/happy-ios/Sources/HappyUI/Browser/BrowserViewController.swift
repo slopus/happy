@@ -135,9 +135,14 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         do {
             if page == nil {
                 guard let session else { throw BrowserError.unavailable }
-                let workspace = try await session.client.browserWorkspace(agentID: agentID, artifactID: artifactID)
-                try Task.checkCancellation()
-                page = try await BrowserPage.workspace(client: session.client, url: originalURL, workspaceID: workspace, artifactID: artifactID)
+                if let artifactID {
+                    // A live artifact opens where it was made, never in a workspace guessed for it.
+                    page = try await BrowserPage.live(client: session.client, url: originalURL, artifactID: artifactID)
+                } else {
+                    let workspace = try await session.client.browserWorkspace(agentID: agentID)
+                    try Task.checkCancellation()
+                    page = try await BrowserPage.workspace(client: session.client, url: originalURL, workspaceID: workspace)
+                }
             }
             try Task.checkCancellation()
             guard let page else { return }

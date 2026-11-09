@@ -12,6 +12,8 @@
     <string name="browser_problem_unreachable_message">Pages open through %1$s, and it isn’t answering. Make sure it’s awake and Happy is running there.</string>
     <string name="browser_problem_unavailable_title">Can’t Open This Page</string>
     <string name="browser_problem_unavailable_message">Pages open through a computer running Happy Agent, and there’s no connection to open this one through.</string>
+    <string name="browser_problem_live_unavailable_title">This Page’s Computer Isn’t Available</string>
+    <string name="browser_problem_live_unavailable_message">This page runs on the computer where the agent that shared it works. That computer isn’t available right now, or the page is no longer shared.</string>
     <string name="browser_problem_host_not_found_title">Can’t Find the Server</string>
     <string name="browser_problem_host_not_found_message">%1$s couldn’t find “%2$s”. Check the address.</string>
     <string name="browser_problem_host_not_found_message_no_host">%1$s couldn’t find the server. Check the address.</string>

@@ -25,7 +25,15 @@ import kotlinx.serialization.json.JsonObject
  */
 object BrowserTunnel {
     suspend fun open(client: AgentClient, network: BrowserNetwork, target: BrowserPolicy.Authority): TransportSocket {
-        val stream = outer(client, network.path)
+        val stream = try {
+            outer(client, network.path)
+        } catch (e: BrowserException) {
+            // A live artifact's network that isn't there: never another network instead.
+            if (network.live && e.kind == BrowserException.Kind.Upstream && e.status in BrowserNetwork.unavailable) {
+                throw BrowserException(BrowserException.Kind.LiveUnavailable, e.status)
+            }
+            throw e
+        }
         try {
             connect(stream, target.text, null)
             return stream
@@ -106,13 +114,26 @@ object BrowserTunnel {
 /**
  * Whose network a page reaches the web through, by its proxy route
  * ([path]): a workspace's on a computer, an agent's on Happy Cloud, which
- * has no workspaces. An id that isn't one is refused before any route.
+ * has no workspaces, or a live artifact's own, the network it was made on
+ * (`live.networkId`), where the daemon checks every destination against the
+ * artifact's URL. An id that isn't one is refused before any route.
  */
 @JvmInline
 value class BrowserNetwork private constructor(val path: String) {
+    /** A live artifact's route (`CONNECT /v0/artifacts/:id/proxy`). */
+    val live: Boolean get() = path.startsWith("/v0/artifacts/")
+
     companion object {
         fun workspace(id: String) = BrowserNetwork("/v0/workspaces/${checked(id)}/proxy")
         fun agent(id: String) = BrowserNetwork("/v0/agents/${checked(id)}/proxy")
+        fun artifact(id: String) = BrowserNetwork("/v0/artifacts/${checked(id)}/proxy")
+
+        /**
+         * The artifact route's refusals that mean its page can't open: the
+         * artifact is missing or not live, or its network isn't served (404);
+         * the network's machine opens no connections (501) or is away (503).
+         */
+        val unavailable = setOf(404, 501, 503)
 
         private fun checked(id: String) = id.takeIf(BrowserPolicy::validId) ?: throw BrowserException(BrowserException.Kind.Forbidden)
     }

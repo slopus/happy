@@ -203,7 +203,7 @@ class MessageLiftTest {
     fun selectKeepsAMessageThatMovedUpForItsMenuWhereItIs() {
         // A refused send's menu is four rows long: Copy, Select, Retry, Discard.
         val failed = ConversationRow.User("x:user", "x", "Ship it", parseMarkdown("Ship it"), emptyList(), Delivery.Failed(Problem.Said("Unknown model.")))
-        rule.setHappyContent { ConversationScreen(ConversationState(created = true, loaded = true, rows = listOf(failed), agent = agent), null, ConversationScreenActions()) }
+        rule.setHappyContent { ConversationScreen(ConversationState(created = true, loaded = true, rows = listOf(failed), agent = agent), ConversationScreenActions()) }
         rule.waitForIdle()
         val row = rule.node(MessageTags.USER_BODY).bounds
         rule.node(MessageTags.USER_BODY).performTouchInput { longClick() }
@@ -220,7 +220,7 @@ class MessageLiftTest {
         val retries = ArrayList<String>()
         val failed = ConversationRow.User("x:user", "x", "Ship it", parseMarkdown("Ship it"), emptyList(), Delivery.Failed(Problem.Said("Unknown model.")))
         rule.setHappyContent {
-            ConversationScreen(ConversationState(created = true, loaded = true, rows = listOf(failed), agent = agent), null, ConversationScreenActions(onRetrySend = { retries += it }))
+            ConversationScreen(ConversationState(created = true, loaded = true, rows = listOf(failed), agent = agent), ConversationScreenActions(onRetrySend = { retries += it }))
         }
         rule.waitForIdle()
         rule.node(MessageTags.USER_BODY).performTouchInput { longClick() }
@@ -235,7 +235,7 @@ class MessageLiftTest {
     @Test
     fun anAgentChatsAnswerLiftsToo() {
         val rows = listOf(ConversationRow.Text("m:0", "Looking at the callback first.", parseMarkdown("Looking at the callback first.")))
-        rule.setHappyContent { ConversationScreen(ConversationState(created = true, loaded = true, rows = rows, agent = agent), null, ConversationScreenActions()) }
+        rule.setHappyContent { ConversationScreen(ConversationState(created = true, loaded = true, rows = rows, agent = agent), ConversationScreenActions()) }
         rule.waitForIdle()
         rule.onAllNodesWithTag(MessageTags.AGENT, useUnmergedTree = true)[0].performTouchInput { longClick() }
         rule.waitForIdle()
@@ -266,7 +266,7 @@ class MessageLiftTest {
 
     private fun liftAnAnswerOverTheComposer(dark: Boolean): Triple<Bitmap, Bitmap, androidx.compose.ui.unit.DpRect> {
         val rows = listOf(ConversationRow.Text("m:0", "Looking at the callback first.", parseMarkdown("Looking at the callback first.")))
-        rule.setHappyContent(dark = dark) { ConversationScreen(ConversationState(created = true, loaded = true, rows = rows, agent = agent), null, ConversationScreenActions()) }
+        rule.setHappyContent(dark = dark) { ConversationScreen(ConversationState(created = true, loaded = true, rows = rows, agent = agent), ConversationScreenActions()) }
         rule.waitForIdle()
         val before = rule.onRoot().captureToImage().asAndroidBitmap()
         rule.onAllNodesWithTag(MessageTags.AGENT, useUnmergedTree = true)[0].performTouchInput { longClick() }

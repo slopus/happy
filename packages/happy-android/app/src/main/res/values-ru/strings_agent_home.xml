@@ -7,8 +7,6 @@
     <string name="agent_home_working">Работает…</string>
     <string name="agent_home_empty_title">Пока нет разговоров</string>
     <string name="agent_home_empty_body">Начните чат с этим агентом, и он появится здесь.</string>
-    <string name="agent_home_offline_title">Не удаётся связаться с %1$s</string>
-    <string name="agent_home_offline_body">Проверьте, что агент запущен и в сети. Happy переподключится сам.</string>
     <string name="agent_home_revoked">Этот телефон удалён в Happy Agent. Подключите агента снова, чтобы им пользоваться.</string>
     <string name="agent_home_update_required">Этому агенту нужна более новая версия Happy. Обновите приложение, чтобы им пользоваться.</string>
     <string name="agent_artifacts_untitled">Без названия</string>
@@ -48,7 +46,6 @@
     <string name="agent_settings_edit_avatar_prefix">"Смени свой аватар на "</string>
     <string name="agent_settings_connected">Подключено</string>
     <string name="agent_settings_connecting">Подключение</string>
-    <string name="agent_settings_offline">Не в сети</string>
     <string name="agent_settings_revoked">Удалён из Happy Agent</string>
     <string name="agent_settings_update">Требуется обновление</string>
     <string name="agent_settings_remove_message">Happy забудет этого агента на этом телефоне. Happy Agent будет показывать телефон, пока вы не удалите его и там.</string>

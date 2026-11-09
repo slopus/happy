@@ -99,6 +99,43 @@ final class BrowserTests: XCTestCase {
         XCTAssertTrue(closed)
     }
 
+    func testLiveArtifactTunnelsThroughItsOwnProxyForHTTPAndHTTPS() async throws {
+        for (url, target) in [("http://127.0.0.1:4191/", "127.0.0.1:4191"), ("https://preview.example.com/app", "preview.example.com:443")] {
+            let bytes = Bytes([Data("HTTP/1.1 200 OK\r\n\r\n".utf8), Data("HTTP/1.1 200 OK\r\n\r\n".utf8)])
+            let client = AgentClient(transport: Transport(bytes), token: "native-token")
+            let stream = try await client.browserTunnel(.artifact("art1"), target: XCTUnwrap(BrowserPolicy.Authority(url: XCTUnwrap(URL(string: url)))))
+            await stream.close()
+            let written = await bytes.writes.map { String(decoding: $0, as: UTF8.self) }
+            XCTAssertTrue(written[0].hasPrefix("CONNECT /v0/artifacts/art1/proxy HTTP/1.1\r\n"), url)
+            XCTAssertTrue(written[0].contains("Authorization: Bearer native-token"))
+            XCTAssertTrue(written[1].hasPrefix("CONNECT \(target) HTTP/1.1\r\n"), url)
+            XCTAssertFalse(written[1].contains("native-token"))
+            XCTAssertFalse(written.contains { $0.contains("/v0/workspaces/") || $0.contains("/api/") })
+        }
+        XCTAssertNil(BrowserNetwork.artifact("../agents").path)
+    }
+
+    func testLiveArtifactProxyRefusalsMeanItsComputerIsUnavailable() async throws {
+        let target = try XCTUnwrap(BrowserPolicy.Authority(url: XCTUnwrap(URL(string: "http://localhost:4191"))))
+        for status in [404, 501, 503] {
+            let client = AgentClient(transport: Transport(Bytes([Data("HTTP/1.1 \(status) Refused\r\n\r\n".utf8)])), token: "token")
+            do { _ = try await client.browserTunnel(.artifact("gone1"), target: target); XCTFail() }
+            catch { XCTAssertEqual(error as? BrowserError, .liveUnavailable, "\(status)") }
+        }
+        // The same refusal from a workspace's proxy says only its status.
+        let workspace = AgentClient(transport: Transport(Bytes([Data("HTTP/1.1 404 Not Found\r\n\r\n".utf8)])), token: "token")
+        do { _ = try await workspace.browserTunnel(.workspace("work1"), target: target); XCTFail() }
+        catch { XCTAssertEqual(error as? BrowserError, .upstream(404)) }
+        // A destination the daemon's policy refuses, or a dev server that isn't
+        // running, is answered inside the open tunnel: not the computer's absence.
+        let inner = AgentClient(transport: Transport(Bytes([Data("HTTP/1.1 200 OK\r\n\r\n".utf8), Data("HTTP/1.1 403 Forbidden\r\n\r\n".utf8)])), token: "token")
+        do { _ = try await inner.browserTunnel(.artifact("art1"), target: target); XCTFail() }
+        catch { XCTAssertEqual(error as? BrowserError, .upstream(403)) }
+        let failure = BrowserFailure(BrowserError.liveUnavailable)
+        XCTAssertEqual(failure.code, "browser_proxy_live_unavailable")
+        XCTAssertEqual(BrowserProxyRefusal(status: failure.status, code: failure.code).problem, .liveUnavailable)
+    }
+
     func testPublicAuthoritySurvivesMeteringForConnectAndArtifactUpgrade() async throws {
         let bytes = Bytes([Data("HTTP/1.1 200 OK\r\n\r\n".utf8), Data("HTTP/1.1 200 OK\r\n\r\n".utf8)], authority: "agent.example.com:8443")
         let metered = MeteredStream(bytes, metrics: ConnectionMetrics(), channel: .browser)

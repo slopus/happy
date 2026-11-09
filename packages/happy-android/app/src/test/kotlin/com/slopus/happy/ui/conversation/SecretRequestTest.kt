@@ -332,7 +332,6 @@ class SecretRequestTest {
         rule.setHappyContent {
             ConversationScreen(
                 ConversationState(created = true, loaded = true, agent = agent, question = question(), activity = Activity.AwaitingAnswer),
-                null,
                 ConversationScreenActions(
                     secrets = SecretRequestActions(secrets = { recorder.catalog }, create = { id, _, _ -> "made-$id" }),
                 ),

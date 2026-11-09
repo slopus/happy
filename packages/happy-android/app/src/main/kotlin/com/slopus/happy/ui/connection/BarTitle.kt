@@ -21,15 +21,12 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import com.slopus.happy.R
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slopus.happy.connection.LinkState
 import com.slopus.happy.connection.networkPath
@@ -57,15 +54,12 @@ object BarTitleSpec {
  * ease-in-out, a crossfade alone with reduced motion; one status for
  * another keeps the spinner and swaps only the words. [link] is what shows,
  * already debounced ([com.slopus.happy.ui.chat.rememberShownLinkState]).
- * Offline keeps the name, since what home lists says why; TalkBack hears
- * "offline" after it.
  */
 @Composable
 internal fun BarTitle(name: String, link: LinkState, titleTag: String, statusTag: String) {
     val locale = LocalConfiguration.current.locales[0]
     // iOS's `Strings.HeaderStatus.title`: the header's words begun with a capital, as a title is.
     val words = linkStatusWords(link)?.replaceFirstChar { it.titlecase(locale) }
-    val offline = stringResource(R.string.status_offline)
     val transition = barTitleTransition()
     AnimatedContent(
         targetState = words,
@@ -74,7 +68,6 @@ internal fun BarTitle(name: String, link: LinkState, titleTag: String, statusTag
         // Name or status: a status giving way to the next stays put, its words changing below.
         contentKey = { it != null },
         label = "barTitle",
-        modifier = Modifier.semantics { if (link == LinkState.Offline) stateDescription = offline },
     ) { status ->
         if (status == null) {
             Text(

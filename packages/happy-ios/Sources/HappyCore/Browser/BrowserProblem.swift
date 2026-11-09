@@ -11,6 +11,9 @@ public enum BrowserProblem: Equatable, Sendable {
     case computerUnreachable
     /// There is no agent connection or route to open the page through.
     case unavailable
+    /// A live artifact's page: the computer it was made on isn't there for
+    /// it now, or the artifact is no longer live (its proxy refused).
+    case liveUnavailable
     /// The computer couldn't find the site's address.
     case hostNotFound
     /// The server on the computer refused the connection or isn't answering.
@@ -50,6 +53,8 @@ public enum BrowserProblem: Equatable, Sendable {
     public static func navigation(_ error: any Error, refusal: BrowserProxyRefusal?, link: LinkState?) -> BrowserProblem? {
         if isCancellation(error) { return nil }
         let error = error as NSError
+        // The daemon itself refused the live artifact's route: the computer answered.
+        if refusal?.problem == .liveUnavailable { return .liveUnavailable }
         if link == .waitingForNetwork { return .noNetwork }
         if error.domain == NSURLErrorDomain, isSecurity(error.code) { return .insecure }
         if error.domain == NSURLErrorDomain, error.code == NSURLErrorUnsupportedURL
@@ -57,7 +62,6 @@ public enum BrowserProblem: Equatable, Sendable {
             let url = error.userInfo[NSURLErrorFailingURLErrorKey] as? URL
             return .unsupported(scheme: url?.scheme ?? "")
         }
-        if link == .offline { return .computerUnreachable }
         if let refusal { return refusal.problem }
         if error.domain == NSURLErrorDomain {
             switch error.code {
@@ -79,8 +83,8 @@ public enum BrowserProblem: Equatable, Sendable {
     /// answering, whatever its body says.
     public static func response(status: Int, proxyError: String?, hasBody: Bool, link: LinkState?) -> BrowserProblem? {
         guard status >= 400 else { return nil }
-        if proxyError != nil {
-            if link == .offline { return .computerUnreachable }
+        if let proxyError {
+            if BrowserProxyRefusal(status: status, code: proxyError).problem == .liveUnavailable { return .liveUnavailable }
             if (502...504).contains(status) { return .serverNotResponding }
         }
         return hasBody && proxyError == nil ? nil : .http(status: status)
@@ -90,9 +94,9 @@ public enum BrowserProblem: Equatable, Sendable {
     /// workspace, or starting the proxy.
     public static func opening(_ error: any Error, link: LinkState?) -> BrowserProblem {
         if link == .waitingForNetwork { return .noNetwork }
-        if link == .offline { return .computerUnreachable }
         switch error {
         case BrowserError.tunnelsBlocked: return .tunnelsBlocked
+        case BrowserError.liveUnavailable: return .liveUnavailable
         case AgentClientError.revoked, is TunnelRefusal: return .signInRequired
         case is BrowserError, is AgentClientError: return .unavailable
         default: return .computerUnreachable
@@ -134,6 +138,7 @@ public struct BrowserProxyRefusal: Equatable, Sendable {
         case "browser_proxy_upstream_response_invalid": return .serverNotResponding
         case "browser_proxy_upstream_refused" where (502...504).contains(status): return .serverNotResponding
         case "browser_proxy_tunnels_blocked": return .tunnelsBlocked
+        case "browser_proxy_live_unavailable": return .liveUnavailable
         case "browser_proxy_sign_in_required": return .signInRequired
         default: return .unavailable
         }

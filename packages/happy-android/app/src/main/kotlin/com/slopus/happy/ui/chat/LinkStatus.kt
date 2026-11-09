@@ -37,7 +37,7 @@ fun linkStatusWords(state: LinkState): String? = when (state) {
     LinkState.Syncing -> stringResource(R.string.link_status_updating)
     LinkState.Connecting -> stringResource(R.string.link_status_connecting)
     LinkState.WaitingForNetwork -> stringResource(R.string.link_status_waiting_for_network)
-    LinkState.Online, LinkState.Offline -> null
+    LinkState.Online -> null
 }
 
 /** The spinner turning before a link status's words: [size] 14 in a chat's header, 16 in home's title. */

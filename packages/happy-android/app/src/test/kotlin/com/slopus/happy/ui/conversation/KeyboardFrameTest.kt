@@ -121,7 +121,7 @@ class KeyboardFrameTest {
     }
 
     @Test fun `a frame of the keyboard in a conversation composes and lays out nothing`() {
-        show { ConversationScreen(conversation(), null, ConversationScreenActions()) }
+        show { ConversationScreen(conversation(), ConversationScreenActions()) }
         val restingDock = rule.node(ConversationComposerTags.PILL).bounds
         rule.mainClock.autoAdvance = false
         val counts = HashMap<String, Int>()
@@ -142,7 +142,7 @@ class KeyboardFrameTest {
     }
 
     @Test fun `the conversation is laid out above the keyboard once it is up, and the keyboard's frames draw it higher`() {
-        show { ConversationScreen(conversation(), null, ConversationScreenActions()) }
+        show { ConversationScreen(conversation(), ConversationScreenActions()) }
         val resting = rule.node(ConversationComposerTags.PILL).bounds
         val density = compose.resources.displayMetrics.density
         rule.mainClock.autoAdvance = false

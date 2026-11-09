@@ -69,7 +69,6 @@ class UserFoldTest {
         rule.setHappyContent(dark) {
             ConversationScreen(
                 ConversationState(created = true, loaded = true, rows = shown, agent = agent),
-                null,
                 ConversationScreenActions(
                     onToggleMessage = { key ->
                         opens += key

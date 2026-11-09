@@ -105,7 +105,6 @@ class TurnRowsTest {
             ProvideWindowLayout {
                 ConversationScreen(
                     ConversationState(created = true, loaded = true, rows = rows(open, live), agent = agent),
-                    null,
                     ConversationScreenActions(
                         onToggleTurn = { turn ->
                             toggles += turn

@@ -81,7 +81,7 @@ class ReferenceRowsTest {
         rule.setHappyContent(dark) {
             val opener = LinkOpener.agent(context, "Studio", app = { url -> HappyReferences.opensInApp(url).also { if (it) calls.app += url } }) { calls.browsed += it }
             ProvideLinks(opener) {
-                ConversationScreen(ConversationState(created = true, loaded = true, rows = listOf(row), agent = agent), null, ConversationScreenActions())
+                ConversationScreen(ConversationState(created = true, loaded = true, rows = listOf(row), agent = agent), ConversationScreenActions())
             }
         }
     }

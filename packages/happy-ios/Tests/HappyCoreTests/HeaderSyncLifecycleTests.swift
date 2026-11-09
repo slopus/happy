@@ -17,6 +17,7 @@ private actor HeaderSyncTransport: AgentTransport {
     func releaseDesktop() { holdDesktopAfter = .max; desktopWaiters.forEach { $0.resume() }; desktopWaiters.removeAll() }
     func prepareReconnect() { holdDesktopAfter = desktopReads; gap = false }
     func disconnect() { online = false; streams.forEach { $0.finish(throwing: URLError(.networkConnectionLost)) } }
+    func reconnect() { online = true }
 
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         guard online else { throw URLError(.notConnectedToInternet) }
@@ -93,7 +94,46 @@ final class HeaderSyncLifecycleTests: XCTestCase {
         await transport.releaseDesktop()
         try await wait { let value = await self.current(engine); return value.live && !value.syncing }
         await transport.disconnect()
-        try await wait { let value = await self.current(engine); return !value.live && value.error != nil }
+        try await wait { let value = await self.current(engine); return !value.live && value.reconnecting }
+        let away = await current(engine)
+        XCTAssertNil(away.error, "a computer that didn't answer is on its way back, nothing for home to say")
+        await engine.stop()
+    }
+
+    /// No link is ever offline: a stream down, a paired computer's or a
+    /// signed-in server's (Happy Cloud's, a team's), is asked again and is
+    /// on its way back, never an error home says, until it is live again.
+    func testAComputerDownIsReconnectingNotAnError() async throws {
+        try await assertReconnecting(signsIn: false)
+    }
+
+    func testASignedInServerDownIsReconnectingNotAnError() async throws {
+        try await assertReconnecting(signsIn: true)
+    }
+
+    private func assertReconnecting(signsIn: Bool) async throws {
+        let transport = HeaderSyncTransport()
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test", signsIn: signsIn), directory: nil)
+        defer { Task { await engine.stop() } }
+        await engine.start()
+        try await wait { let value = await self.current(engine); return value.live && !value.syncing }
+        var snapshot = await current(engine)
+        XCTAssertFalse(snapshot.reconnecting)
+        await transport.disconnect()
+        try await wait { let value = await self.current(engine); return !value.live && value.reconnecting }
+        // Asked again while down: still reconnecting, and nothing for home to say.
+        let asked = await transport.reads()
+        try await Task.sleep(for: .milliseconds(400))
+        snapshot = await current(engine)
+        XCTAssertTrue(snapshot.reconnecting)
+        XCTAssertNil(snapshot.error)
+        let read = await transport.reads()
+        XCTAssertEqual(read, asked, "nothing answered, nothing read")
+        await transport.reconnect()
+        try await wait { let value = await self.current(engine); return value.live && !value.syncing }
+        snapshot = await current(engine)
+        XCTAssertFalse(snapshot.reconnecting)
+        XCTAssertNil(snapshot.error)
         await engine.stop()
     }
 }

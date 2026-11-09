@@ -11,6 +11,8 @@ import kotlinx.coroutines.Job
  * Where an account's link to its server or computer stands, as its headers
  * say it (iOS's `LinkState`, 7aee3a9b8). Each account kind works it out from
  * its own sources; home's title and every chat's header read the same one.
+ * No link is ever offline: one not connected is asked again with backoff
+ * for as long as the account is there, so it is connecting.
  */
 enum class LinkState {
     /** Connected and caught up. */
@@ -21,9 +23,6 @@ enum class LinkState {
 
     /** Reaching the server or computer ("Connecting…"). */
     Connecting,
-
-    /** Not reaching it, for a reason a screen says on its own (a computer that did not answer, a revoked pairing). */
-    Offline,
 
     /** No network at all ("Waiting for network…"). */
     WaitingForNetwork,

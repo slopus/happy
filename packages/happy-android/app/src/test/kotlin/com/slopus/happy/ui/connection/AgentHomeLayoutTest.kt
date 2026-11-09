@@ -694,15 +694,15 @@ class AgentHomeLayoutTest {
         // Online says nothing: the name stands alone.
         rule.onAllNodesWithTag(AgentHomeTags.STATUS, useUnmergedTree = true).assertCountEquals(0)
         rule.onAllNodesWithText("online", useUnmergedTree = true).assertCountEquals(0)
-        val flips = listOf(AgentLinkStatus.Connecting, AgentLinkStatus.Connected, AgentLinkStatus.Offline, AgentLinkStatus.Connecting, AgentLinkStatus.Connected)
+        val flips = listOf(AgentLinkStatus.Connecting, AgentLinkStatus.Connected, AgentLinkStatus.Revoked, AgentLinkStatus.Connecting, AgentLinkStatus.Connected)
         for (next in flips) {
             status = next
             rule.waitForIdle()
             assertEquals("bar, on $next", bar, rule.node(AgentHomeTags.BAR).bounds)
-            // A computer that doesn't answer is said by the list's first row, which pushes the rows down (iOS ba0d7da0e).
-            if (next == AgentLinkStatus.Offline) {
+            // A pairing to redo is said by the list's first row, which pushes the rows down (iOS ba0d7da0e).
+            if (next == AgentLinkStatus.Revoked) {
                 val notice = rule.node(AgentHomeTags.BANNER).bounds
-                rule.onNodeWithText("The computer did not answer.", useUnmergedTree = true).assertExists()
+                rule.onNodeWithText("This phone was removed in Happy Agent. Connect the agent again to use it.", useUnmergedTree = true).assertExists()
                 val pushed = rule.node(AgentHomeTags.row("section-places")).bounds
                 assertDp("notice content at the top with its 8 outer and 16 inner padding", first.top + 24.dp, notice.top)
                 assertTrue("the rows pushed under it", pushed.top >= notice.bottom && pushed.top > first.top)
@@ -710,47 +710,48 @@ class AgentHomeLayoutTest {
                 rule.onAllNodesWithTag(AgentHomeTags.BANNER, useUnmergedTree = true).assertCountEquals(0)
                 assertEquals("first row, on $next", first, rule.node(AgentHomeTags.row("section-places")).bounds)
             }
-            // Connecting stands in the name's place; offline keeps the name, which TalkBack hears offline after.
-            if (next == AgentLinkStatus.Connecting) {
+            // Not connected, for whatever reason, is connecting, standing in the name's place: never offline.
+            if (next != AgentLinkStatus.Connected) {
                 rule.onAllNodesWithTag(AgentHomeTags.TITLE, useUnmergedTree = true).assertCountEquals(0)
                 rule.node(AgentHomeTags.STATUS).assertExists()
                 rule.onNodeWithText("Connecting…", useUnmergedTree = true).assertExists()
             } else {
                 assertEquals("title, on $next", title, rule.node(AgentHomeTags.TITLE).bounds)
                 rule.onAllNodesWithTag(AgentHomeTags.STATUS, useUnmergedTree = true).assertCountEquals(0)
-                rule.onAllNodes(hasStateDescription("offline"), useUnmergedTree = true)
-                    .assertCountEquals(if (next == AgentLinkStatus.Offline) 1 else 0)
             }
+            rule.onAllNodes(hasStateDescription("offline"), useUnmergedTree = true).assertCountEquals(0)
         }
     }
 
     @Test
-    fun loadingOfflineAndEmptyHaveTheirOwnPages() {
+    fun loadingUnavailableAndEmptyHaveTheirOwnPages() {
         var status by mutableStateOf(AgentLinkStatus.Connecting)
         var current by mutableStateOf(AgentFeed.Empty)
         rule.setHappyContent { AgentHomeScreen("Studio", current, status, accounts, actions) }
         rule.node(AgentHomeTags.SPINNER).assertExists()
         rule.node(AgentHomeTags.STATUS).assertExists()
-        status = AgentLinkStatus.Offline
+        // A link that only doesn't answer keeps loading, connecting: no page says it is offline, no notice.
+        rule.onAllNodesWithTag(AgentHomeTags.BANNER, useUnmergedTree = true).assertCountEquals(0)
+        status = AgentLinkStatus.Revoked
         rule.waitForIdle()
-        rule.node(AgentHomeTags.OFFLINE).assertExists()
-        // Offline with a cached home: the rows, and the name.
+        rule.node(AgentHomeTags.UNAVAILABLE).assertExists()
+        rule.onNodeWithText("This phone was removed in Happy Agent. Connect the agent again to use it.", useUnmergedTree = true).assertExists()
+        // With a cached home: the rows, the notice, and connecting in the name's place.
         current = feed()
         rule.waitForIdle()
         rule.node(AgentHomeTags.row("agent-ab1")).assertExists()
-        rule.node(AgentHomeTags.TITLE).assertExists()
-        rule.onAllNodesWithTag(AgentHomeTags.STATUS, useUnmergedTree = true).assertCountEquals(0)
         rule.node(AgentHomeTags.BANNER).assertExists()
-        rule.onNodeWithText("The computer did not answer.", useUnmergedTree = true).assertExists()
-        status = AgentLinkStatus.Revoked
+        rule.node(AgentHomeTags.STATUS).assertExists()
+        status = AgentLinkStatus.Connecting
         rule.waitForIdle()
-        rule.node(AgentHomeTags.BANNER).assertExists()
+        rule.onAllNodesWithTag(AgentHomeTags.BANNER, useUnmergedTree = true).assertCountEquals(0)
         status = AgentLinkStatus.Connected
         current = feed(Wire.bootstrap())
         rule.waitForIdle()
         rule.node(AgentHomeTags.EMPTY).assertExists()
         rule.onAllNodesWithTag(AgentHomeTags.STATUS, useUnmergedTree = true).assertCountEquals(0)
     }
+
 
     @Test
     fun rowsGrowWithTheFontButStayFixed() {

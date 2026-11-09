@@ -55,7 +55,7 @@ class ConversationWorkingTest {
     @Test fun `a working bar shimmers and pulses without writing state or composing`() {
         // Frames by hand from the start: waiting for idle would have the test's policy cancel the infinite clock.
         rule.mainClock.autoAdvance = false
-        rule.setHappyContent { ConversationScreen(working, null, ConversationScreenActions()) }
+        rule.setHappyContent { ConversationScreen(working, ConversationScreenActions()) }
         // Past the transcript's crossfade in, and the glass's first recording.
         rule.mainClock.advanceTimeBy(1_000)
         // Robolectric draws only to capture: the first draw records the glass's source once.

@@ -67,7 +67,7 @@ inside another screen's scroll. UltraList is not a scroll view, so
 the bar's soft edge and the indicator follow `SidebarList.edge`, a scroll
 view holding the list that moves with it.
 
-What the computer last refused ("The computer did not answer.") is the
+What the computer last refused, or a pairing to redo, is the
 list's first row (`SidebarList.notice`), never a card over it: it slides
 down from above with the rows it pushes and rises back into the bar as it
 goes, and read further down, the rows on screen stay where they are.

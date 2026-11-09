@@ -9,7 +9,10 @@ public actor BrowserProxy {
     public enum Scope: Sendable {
         case artifact(id: String, version: Int, authority: BrowserPolicy.Authority, workspaceID: String?)
         case workspace(id: String)
-        case liveArtifact(id: String, workspaceID: String, authority: BrowserPolicy.Authority)
+        /// A live artifact's page at its URL: every tunnel goes through the
+        /// artifact's own proxy, whose daemon decides what it may reach.
+        /// No data bridge: its `/api/*` is the site's own.
+        case liveArtifact(id: String)
         /// A vault's artifact entry: its own files and nothing else, no
         /// data bridge and no network beyond them.
         case vaultArtifact(surfaceId: String, entryId: String, version: Int, authority: BrowserPolicy.Authority)
@@ -114,49 +117,19 @@ public actor BrowserProxy {
                 let request = try await BrowserRelay.head(local)
                 try BrowserPolicy.checkArtifactOrigin(request.0, authority: authority)
                 try await artifact(local, client: client, upstream: upstream, files: .vault(surfaceId: surfaceId, entryId: entryId, version: version), initial: request)
-            case .workspace(let id):
-                let remote = try await client.browserTunnel(workspaceID: id, target: authority)
-                do {
-                    try await local.write(Data("HTTP/1.1 200 Connection Established\r\n\r\n".utf8))
-                    opaqueTunnel = true
-                    if !rest.isEmpty { try await remote.write(rest) }
-                    try await BrowserRelay.duplex(local, remote)
-                } catch { await remote.close(); throw error }
-            case .liveArtifact(let artifactID, let workspaceID, let allowed) where allowed == authority:
-                try await local.write(Data("HTTP/1.1 200 Connection Established\r\n\r\n".utf8))
-                guard rest.isEmpty else { throw BrowserError.malformed }
-                let request = try await BrowserRelay.head(local)
-                let target = request.0.line.split(separator: " ").dropFirst().first ?? ""
-                if target.hasPrefix("/api/") {
-                    try BrowserPolicy.checkArtifactOrigin(request.0, authority: authority)
-                    try await artifact(local, client: client, upstream: upstream, files: .artifact(id: artifactID, version: 1), initial: request)
-                } else {
-                    var head = request.0
-                    head.fields.removeAll { ["connection", "proxy-authorization", "proxy-connection", "x-happy-proxy-route"].contains($0.0.lowercased()) }
-                    // Each HTTP connection is classified once. Closing ordinary
-                    // responses prevents a later /api request bypassing the gate.
-                    head.fields.append(("Connection", head.value("upgrade") == nil ? "close" : "Upgrade"))
-                    let remote = try await client.browserTunnel(workspaceID: workspaceID, target: authority)
-                    do {
-                        try await remote.write(head.data)
-                        if !request.1.isEmpty { try await remote.write(request.1) }
-                        opaqueTunnel = true
-                        try await BrowserRelay.duplex(local, remote)
-                    } catch { await remote.close(); throw error }
-                }
             default:
-                let workspaceID: String
+                let network: BrowserNetwork
                 switch scope {
                 case .artifact(_, _, _, let workspace):
                     guard let workspace else { throw BrowserError.unavailable }
-                    workspaceID = workspace
-                case .liveArtifact(_, let workspace, _): workspaceID = workspace
-                case .workspace(let workspace): workspaceID = workspace
+                    network = .workspace(workspace)
+                case .liveArtifact(let id): network = .artifact(id)
+                case .workspace(let workspace): network = .workspace(workspace)
                 case .vaultArtifact: throw BrowserError.unavailable
                 }
                 // Even public CDNs, redirects and WebSockets are resolved and
                 // connected by the computer. There is no phone-network fallback.
-                let remote = try await client.browserTunnel(workspaceID: workspaceID, target: authority)
+                let remote = try await client.browserTunnel(network, target: authority)
                 do {
                     try await local.write(Data("HTTP/1.1 200 Connection Established\r\n\r\n".utf8))
                     opaqueTunnel = true

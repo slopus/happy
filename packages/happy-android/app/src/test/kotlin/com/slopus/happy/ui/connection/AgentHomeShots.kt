@@ -67,8 +67,8 @@ class AgentHomeShots {
     @Test fun searchResults() { show(feed); rule.node(AgentHomeTags.SEARCH).performClick(); rule.node(AgentSearchTags.FIELD).performTextInput("re"); save("search-results") }
     @Test fun searchNone() { show(feed); rule.node(AgentHomeTags.SEARCH).performClick(); rule.node(AgentSearchTags.FIELD).performTextInput("zzzz"); save("search-no-results") }
     @Test fun connecting() { show(AgentFeed.Empty, AgentLinkStatus.Connecting); save("state-connecting") }
-    @Test fun offline() { show(AgentFeed.Empty, AgentLinkStatus.Offline); save("state-offline-no-cache") }
-    @Test fun offlineCached() { show(feed, AgentLinkStatus.Offline); save("state-offline-cached") }
+    @Test fun connectingCached() { show(feed, AgentLinkStatus.Connecting); save("state-connecting-cached") }
+    @Test fun revokedNoCache() { show(AgentFeed.Empty, AgentLinkStatus.Revoked); save("state-revoked-no-cache") }
     @Test fun revoked() { show(feed, AgentLinkStatus.Revoked); save("state-revoked") }
     @Test fun emptyLight() { show(empty); save("state-empty-light") }
     @Test fun emptyDark() { show(empty, dark = true); save("state-empty-dark") }

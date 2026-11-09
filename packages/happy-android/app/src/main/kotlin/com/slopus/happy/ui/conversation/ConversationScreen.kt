@@ -235,7 +235,6 @@ class ConversationScreenActions(
 @Composable
 fun ConversationScreen(
     state: ConversationState,
-    connection: String?,
     actions: ConversationScreenActions,
     modifier: Modifier = Modifier,
     bubbleColor: String? = null,
@@ -382,15 +381,15 @@ fun ConversationScreen(
                         title = {
                             RecomposeProbe.mark(ConversationScreenTags.PROBE_BAR)
                             // One status line, under the title and nowhere else: the
-                            // connection while it isn't live, otherwise what the agent
+                            // link while it isn't live, otherwise what the agent
                             // is doing. Its room is always kept, so neither the title nor
                             // the transcript moves when the link or the work changes.
                             val working = activityLabel(state.activity)
                             val syncing = state.syncing || (state.created && !state.loaded)
                             // The link on its way, or the chat still catching up: said with the spinner, as home's title says it.
-                            val linkWords = if (connection != null) null else linkStatusWords(if (link == LinkState.Online && syncing) LinkState.Syncing else link)
+                            val linkWords = linkStatusWords(if (link == LinkState.Online && syncing) LinkState.Syncing else link)
                             val dot = when {
-                                connection != null || linkWords != null -> null
+                                linkWords != null -> null
                                 state.activity == null -> colors.status.connected
                                 state.activity == Activity.AwaitingAnswer -> SessionStatusColors.attention
                                 else -> SessionStatusColors.thinking
@@ -422,10 +421,10 @@ fun ConversationScreen(
                             ) {
                                 TitleWithStatus(
                                     status = BarStatus(
-                                        connection ?: linkWords ?: working ?: stringResource(R.string.status_online),
+                                        linkWords ?: working ?: stringResource(R.string.status_online),
                                         dot,
-                                        connection == null && linkWords == null && state.activity != null,
-                                        shimmer = connection == null && linkWords == null && running,
+                                        linkWords == null && state.activity != null,
+                                        shimmer = linkWords == null && running,
                                         spins = linkWords != null,
                                     ),
                                     statusStyle = style,

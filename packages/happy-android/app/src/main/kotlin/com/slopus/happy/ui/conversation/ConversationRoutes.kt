@@ -410,22 +410,19 @@ private fun failureShown(row: ConversationRow.Failure, address: ChatAddress) {
     Analytics.failureShown(row.messageId, row.createdAt, event)
 }
 
-/** An agent connection's link as its chats' headers say it: a computer that didn't answer, or a pairing to redo, is offline. */
+/**
+ * An agent connection's link as its chats' headers say it. No link is ever
+ * offline: one not connected is asked again until it is, so it is
+ * connecting, whatever kept it away (a computer that didn't answer, a
+ * pairing to redo: home says those in words of its own). Reading the
+ * snapshot is catching up, not connecting: the computer or server answered
+ * (iOS's `Session.headerState`, `.connected` with the stream down).
+ */
 internal fun AgentLinkStatus?.linkState(syncing: Boolean, network: Boolean): LinkState = when {
     !network -> LinkState.WaitingForNetwork
-    this == null || this == AgentLinkStatus.Connected -> if (syncing) LinkState.Syncing else LinkState.Online
-    this == AgentLinkStatus.Connecting -> LinkState.Connecting
-    else -> LinkState.Offline
-}
-
-@Composable
-internal fun linkStatusText(status: AgentLinkStatus?, syncing: Boolean = false): String? = when (status) {
-    null, AgentLinkStatus.Connected -> if (syncing) stringResource(R.string.status_syncing) else null
-    AgentLinkStatus.Connecting -> stringResource(R.string.status_connecting)
-    AgentLinkStatus.Offline -> stringResource(R.string.status_offline)
-    AgentLinkStatus.Revoked -> stringResource(R.string.conversation_revoked)
-    AgentLinkStatus.UpdateRequired -> stringResource(R.string.conversation_update_required)
-    AgentLinkStatus.SignInRequired -> stringResource(R.string.team_server_error_sign_in_required)
+    syncing -> LinkState.Syncing
+    this == null || this == AgentLinkStatus.Connected -> LinkState.Online
+    else -> LinkState.Connecting
 }
 
 @Composable
@@ -484,8 +481,6 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
             opensAttach = route.attach,
             roleCanSend = roleCanSend,
             roleCanCompose = permissions.canWrite,
-            // Offline says why in words of its own; the link on its way spins (iOS 7aee3a9b8).
-            connection = if (link == LinkState.Offline) linkStatusText(status) ?: stringResource(R.string.status_offline) else null,
             link = link,
             usage = usage,
             onRefreshUsage = session.usage::refresh,

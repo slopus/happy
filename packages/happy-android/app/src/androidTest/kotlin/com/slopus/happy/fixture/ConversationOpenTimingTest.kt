@@ -109,7 +109,7 @@ class ConversationOpenTimingTest {
                             .also { it.start() }
                     }
                     val state by conversation.state.collectAsStateWithLifecycle()
-                    ConversationScreen(state = state, connection = null, actions = remember { ConversationScreenActions() })
+                    ConversationScreen(state = state, actions = remember { ConversationScreenActions() })
                     LaunchedEffect(current) {
                         snapshotFlow { state.rows.isNotEmpty() }.first { it }
                         withFrameNanos { }

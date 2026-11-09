@@ -111,7 +111,7 @@ object AgentHomeTags {
     const val SPINNER = "agentHome.spinner"
     const val STATUS = "agentHome.status"
     const val EMPTY = "agentHome.empty"
-    const val OFFLINE = "agentHome.offline"
+    const val UNAVAILABLE = "agentHome.unavailable"
     /** A team server whose session ended: its Sign in alone ([AgentSignedOutHome]). */
     const val SIGNED_OUT = "agentHome.signedOut"
     const val BANNER = "agentHome.banner"

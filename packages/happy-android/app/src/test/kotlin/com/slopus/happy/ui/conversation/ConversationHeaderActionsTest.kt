@@ -48,7 +48,6 @@ class ConversationHeaderActionsTest {
             CompositionLocalProvider(LocalLayoutDirection provides direction) {
                 ConversationScreen(
                     ConversationState(created = created, loaded = true, knownTitle = "A long chat title that must leave room for both actions", mode = current, catalog = ModeCatalog(emptyList(), current)),
-                    null,
                     ConversationScreenActions(onCompose = { composed++ }, onDetails = { details++ }),
                 )
             }

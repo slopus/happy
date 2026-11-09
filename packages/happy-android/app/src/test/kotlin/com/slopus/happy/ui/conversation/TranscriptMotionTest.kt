@@ -60,7 +60,6 @@ class TranscriptMotionTest {
         rule.setHappyContent {
             ConversationScreen(
                 ConversationState(created = true, loaded = true, rows = rows, agent = agent),
-                null,
                 ConversationScreenActions(onSend = { text, _ -> onSend(text) }),
             )
         }

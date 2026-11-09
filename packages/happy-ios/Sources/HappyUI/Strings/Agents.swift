@@ -100,8 +100,6 @@ extension Strings {
     public static let connectAgent = "Connect Agent"
     public static let unsupported = "This computer's Happy Agent is too old for this app. Update it, then come back."
     public static let connecting = "Connecting…"
-    public static let offline = "Offline — showing what this phone last saw."
-    public static let unanswered = "The computer did not answer."
     /// An action the computer refused, undone here.
     public static let refused = "The computer refused that, so it was undone."
 

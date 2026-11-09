@@ -31,19 +31,51 @@ extension TailcatHTTPTransport {
     }
 }
 
+/// Where a page's tunnels open. A workspace's network is the one its
+/// workspace resolves to now. A live artifact's is the one it was made on
+/// (`live.networkId`), through `CONNECT /v0/artifacts/:id/proxy`, where the
+/// daemon checks every destination against the artifact's URL.
+public enum BrowserNetwork: Equatable, Sendable {
+    case workspace(String)
+    case artifact(String)
+
+    /// The outer CONNECT's route; nil for an ID that isn't one.
+    public var path: String? {
+        switch self {
+        case .workspace(let id): BrowserPolicy.validID(id) ? "/v0/workspaces/\(id)/proxy" : nil
+        case .artifact(let id): BrowserPolicy.validID(id) ? "/v0/artifacts/\(id)/proxy" : nil
+        }
+    }
+
+    /// The artifact route's refusals that mean its page can't open: the
+    /// artifact is missing or not live, or its network isn't served (404);
+    /// the network's machine opens no connections (501) or is away (503).
+    public static let unavailable: Set<Int> = [404, 501, 503]
+}
+
 extension AgentClient {
     /// The computer's recorder, when the client's transport counts.
     var metrics: ConnectionMetrics? { (transport as? MeteredAgentTransport)?.metrics ?? (transport as? AgentEndpointTransport)?.metrics }
 
     /// Authentication is injected here and never returned to the web process.
     public func browserTunnel(workspaceID: String, target: BrowserPolicy.Authority) async throws -> any BrowserStream {
-        guard BrowserPolicy.validID(workspaceID) else { throw BrowserError.forbidden }
+        try await browserTunnel(.workspace(workspaceID), target: target)
+    }
+
+    /// A tunnel to `target` opened in `network`. A live artifact's route
+    /// refusing to open (`BrowserNetwork.unavailable`) is
+    /// `BrowserError.liveUnavailable`; nothing falls back to another network.
+    public func browserTunnel(_ network: BrowserNetwork, target: BrowserPolicy.Authority) async throws -> any BrowserStream {
+        guard let path = network.path else { throw BrowserError.forbidden }
         let start = ConnectionMetrics.uptime()
         let stream: any BrowserStream
-        do { stream = try await transport.proxyTunnel("/v0/workspaces/\(workspaceID)/proxy", credential: token) } catch {
+        do { stream = try await transport.proxyTunnel(path, credential: token) } catch {
             if !(error is CancellationError) {
                 let status: Int? = if case BrowserError.upstream(let code) = error { code } else { nil }
                 metrics?.request(.browser, status: status, duration: ConnectionMetrics.uptime() - start)
+            }
+            if case .artifact = network, case BrowserError.upstream(let status) = error, BrowserNetwork.unavailable.contains(status) {
+                throw BrowserError.liveUnavailable
             }
             // No way to the computer at all is the link failing (502), as
             // a failure inside the tunnel is, not the proxy's own (500).

@@ -64,7 +64,7 @@ object AnalyticsReasons {
     /** An agent connection's link: null while it talks to the agent. */
     fun link(status: AgentLinkStatus): ConnectionCode? = when (status) {
         AgentLinkStatus.Connected -> null
-        AgentLinkStatus.Connecting, AgentLinkStatus.Offline -> ConnectionCode.Unreachable
+        AgentLinkStatus.Connecting -> ConnectionCode.Unreachable
         AgentLinkStatus.Revoked -> ConnectionCode.Revoked
         AgentLinkStatus.UpdateRequired -> ConnectionCode.VersionMismatch
         AgentLinkStatus.SignInRequired -> ConnectionCode.AuthExpired

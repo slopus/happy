@@ -6,8 +6,6 @@
 <resources>
     <string name="conversation_details">聊天詳細資料</string>
     <string name="conversation_offline">離線</string>
-    <string name="conversation_revoked">此裝置已被移除</string>
-    <string name="conversation_update_required">需要更新</string>
     <string name="conversation_unavailable">此裝置上無法使用此代理程式連線。</string>
     <string name="conversation_empty">還沒有訊息。</string>
     <string name="conversation_read_only">此對話由另一個代理程式驅動，無法接收訊息。</string>

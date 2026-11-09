@@ -111,9 +111,9 @@ class AgentHomeTabletTest {
 
     @Test
     fun theStatePagesAreCappedToo() {
-        show(AgentFeed.Empty, AgentLinkStatus.Offline)
+        show(AgentFeed.Empty, AgentLinkStatus.Revoked)
         // The column is the content width less its own 32 of air on each side, and centred in the window.
-        val page = rule.node(AgentHomeTags.OFFLINE).bounds
+        val page = rule.node(AgentHomeTags.UNAVAILABLE).bounds
         assertDp("the state page is capped", cap - 64.dp, page.width)
         assertEquals("the state page is centred", (TABLET_WIDTH.dp - page.width).value / 2, page.left.value, 1f)
     }

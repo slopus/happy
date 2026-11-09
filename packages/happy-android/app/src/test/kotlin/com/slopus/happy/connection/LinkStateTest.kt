@@ -136,14 +136,21 @@ class LinkStateTest {
         assertEquals(Online, accountLinkState(connected = true, catchingUp = false, network = true))
     }
 
-    @Test fun anAgentsLinkSaysOfflineOnItsOwn() {
-        assertEquals(WaitingForNetwork, AgentLinkStatus.Offline.linkState(syncing = false, network = false))
+    @Test fun anAgentsLinkIsNeverOffline() {
+        assertEquals(WaitingForNetwork, AgentLinkStatus.Revoked.linkState(syncing = false, network = false))
         assertEquals(Connecting, AgentLinkStatus.Connecting.linkState(syncing = false, network = true))
         assertEquals(Syncing, AgentLinkStatus.Connected.linkState(syncing = true, network = true))
+        // Reading the snapshot before the stream opens: it answered, and the phone is catching up.
+        assertEquals(Syncing, AgentLinkStatus.Connecting.linkState(syncing = true, network = true))
         assertEquals(Online, (null as AgentLinkStatus?).linkState(syncing = false, network = true))
-        for (away in listOf(AgentLinkStatus.Offline, AgentLinkStatus.Revoked, AgentLinkStatus.UpdateRequired, AgentLinkStatus.SignInRequired)) {
-            assertEquals(away.name, LinkState.Offline, away.linkState(syncing = false, network = true))
+        // Kept away by something other than the network: home says what to do, the headers say connecting.
+        for (away in listOf(AgentLinkStatus.Revoked, AgentLinkStatus.UpdateRequired, AgentLinkStatus.SignInRequired)) {
+            assertEquals(away.name, Connecting, away.linkState(syncing = false, network = true))
         }
+    }
+
+    @Test fun thereIsNoOffline() {
+        assertEquals(listOf(Online, Syncing, Connecting, WaitingForNetwork), LinkState.entries)
     }
 
     @Test fun onlyTheLinkOnItsWaySpins() {

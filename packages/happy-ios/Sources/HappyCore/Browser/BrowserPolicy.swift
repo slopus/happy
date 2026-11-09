@@ -116,6 +116,9 @@ public enum BrowserError: Error, Equatable, Sendable {
     case forbidden, malformed, tooLarge, unavailable, timeout, upstream(Int)
     /// The server's network carries neither CONNECT nor WebSocket tunnels.
     case tunnelsBlocked
+    /// A live artifact's own proxy refused to open: the artifact is gone or
+    /// no longer live, or the network it was made on isn't served now.
+    case liveUnavailable
 }
 
 /// A bounded HTTP head, preserving duplicate response fields (notably Set-Cookie).

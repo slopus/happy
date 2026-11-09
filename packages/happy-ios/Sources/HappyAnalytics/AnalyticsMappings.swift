@@ -190,7 +190,7 @@ extension AnalyticsEvent.ErrorCode {
     public init(_ problem: BrowserProblem) {
         self = switch problem {
         case .noNetwork: .offline
-        case .computerUnreachable, .unavailable, .hostNotFound, .serverNotResponding, .tunnelsBlocked: .refused
+        case .computerUnreachable, .unavailable, .liveUnavailable, .hostNotFound, .serverNotResponding, .tunnelsBlocked: .refused
         case .timedOut: .timeout
         case .signInRequired: .unauthorized
         case .unsupported: .unsupported

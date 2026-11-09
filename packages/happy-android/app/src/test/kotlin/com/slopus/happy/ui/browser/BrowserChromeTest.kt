@@ -128,14 +128,14 @@ class BrowserChromeTest {
     @Test fun theLinkComingBackOpensWhatFailedForWantOfIt() {
         val state = BrowserState()
         state.fail(BrowserProblem.ComputerUnreachable, "https://example.com/a")
-        state.linkChanged(com.slopus.happy.browser.BrowserLink.Offline)
+        state.linkChanged(null)
         assertEquals(BrowserProblem.ComputerUnreachable, state.problem)
         state.linkChanged(com.slopus.happy.browser.BrowserLink.Online)
         assertNull(state.problem)
         assertEquals(1, state.attempt)
         // A page error isn't the link's: it stays.
         state.fail(BrowserProblem.Http(500), "https://example.com/a")
-        state.linkChanged(com.slopus.happy.browser.BrowserLink.Offline)
+        state.linkChanged(null)
         state.linkChanged(com.slopus.happy.browser.BrowserLink.Online)
         assertEquals(BrowserProblem.Http(500), state.problem)
     }

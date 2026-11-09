@@ -6,7 +6,12 @@ import java.net.URI
 
 /** Why the browser's proxy refused or failed a request (iOS's `BrowserError`). */
 class BrowserException(val kind: Kind, val status: Int = 0) : Exception(kind.name) {
-    enum class Kind { Forbidden, Malformed, TooLarge, Unavailable, Timeout, Upstream }
+    enum class Kind {
+        Forbidden, Malformed, TooLarge, Unavailable, Timeout, Upstream,
+
+        /** A live artifact's own proxy refused to open ([BrowserNetwork.unavailable]): the artifact is gone or not live, or its network isn't served. */
+        LiveUnavailable,
+    }
 }
 
 /**

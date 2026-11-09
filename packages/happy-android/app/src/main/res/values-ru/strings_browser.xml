@@ -12,6 +12,8 @@
     <string name="browser_problem_unreachable_message">Страницы открываются через %1$s, но он не отвечает. Убедитесь, что он не спит и на нём запущен Happy.</string>
     <string name="browser_problem_unavailable_title">Не удаётся открыть страницу</string>
     <string name="browser_problem_unavailable_message">Страницы открываются через компьютер с Happy Agent, а подключения, через которое можно открыть эту, нет.</string>
+    <string name="browser_problem_live_unavailable_title">Компьютер этой страницы недоступен</string>
+    <string name="browser_problem_live_unavailable_message">Эта страница работает на компьютере, где работает агент, который ею поделился. Сейчас этот компьютер недоступен, или страница больше не опубликована.</string>
     <string name="browser_problem_host_not_found_title">Сервер не найден</string>
     <string name="browser_problem_host_not_found_message">%1$s не находит «%2$s». Проверьте адрес.</string>
     <string name="browser_problem_host_not_found_message_no_host">%1$s не находит сервер. Проверьте адрес.</string>

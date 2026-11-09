@@ -108,7 +108,6 @@ class ToolViewsDeviceShots {
                 val state by conversation.state.collectAsStateWithLifecycle()
                 ConversationScreen(
                     state = state,
-                    connection = null,
                     actions = remember(nav) {
                         ConversationScreenActions(onBack = {}, onVisible = conversation::setVisible, onOpenTool = { id -> nav.navigate("tool/$id") })
                     },

@@ -88,7 +88,23 @@ class BrowserProxyTest {
                 val body = ByteArray(length).also { var read = 0; while (read < length) read += input.read(it, read, length - read) }
                 val target = text.substringBefore("\r\n").split(' ')[1]
                 val keepAlive = text.contains("Connection: keep-alive")
+                // A live artifact's proxy, and the destinations it opens: localhost:4191 is its dev server.
+                if (text.startsWith("CONNECT /v0/artifacts/live1/proxy ") || text.startsWith("CONNECT localhost:4191 ") || text.startsWith("CONNECT cdn.example.com:80 ")) {
+                    output.write("HTTP/1.1 200 Connection Established\r\n\r\n".toByteArray())
+                    output.flush()
+                    continue
+                }
+                if (text.startsWith("CONNECT secure.example:443 ")) {
+                    // TLS follows, which this daemon doesn't speak.
+                    output.write("HTTP/1.1 200 Connection Established\r\n\r\n".toByteArray())
+                    output.flush()
+                    return
+                }
                 when {
+                    text.contains("Host: localhost:4191") || text.contains("Host: cdn.example.com") -> {
+                        val answer = "site:$target"
+                        output.write("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ${answer.length}\r\n\r\n$answer".toByteArray())
+                    }
                     target.startsWith("/v0/artifacts/a1/api/echo") -> {
                         val answer = "echo:" + body.decodeToString()
                         output.write("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nSet-Cookie: a=1\r\nSet-Cookie: b=2\r\nContent-Length: ${answer.length}\r\n\r\n$answer".toByteArray())
@@ -295,6 +311,49 @@ class BrowserProxyTest {
         other.refusals.clear()
         assertEquals(null, other.refusals.last("https://secure.example/"))
         other.close()
+    }
+
+    /** A live artifact's page (happy-agent API.md, "Live URLs"): every request through the artifact's own proxy, its /api the site's. */
+    @Test fun aLivePageGoesThroughItsArtifactsProxyWithNoApiBridge() {
+        val live = proxy.open(BrowserProxy.Scope.Live(client, "live1", BrowserPolicy.Authority.of("http://localhost:4191/")!!), webView = false)
+        try {
+            val site = through(live)
+            site.newCall(Request.Builder().url("http://localhost:4191/").build()).execute().use { assertEquals("site:/", it.body.string()) }
+            site.newCall(Request.Builder().url("http://localhost:4191/api/v1/kv/entry?key=a").put("{}".toRequestBody()).build()).execute().use {
+                assertEquals("site:/api/v1/kv/entry?key=a", it.body.string())
+            }
+            // Another host the page loads is the artifact proxy's to allow, not another network's.
+            site.newCall(Request.Builder().url("http://cdn.example.com/lib.js").build()).execute().use { assertEquals("site:/lib.js", it.body.string()) }
+            // HTTPS is a tunnel of its own through the same route, its TLS end to end.
+            runCatching { site.newCall(Request.Builder().url("https://secure.example/").build()).execute().close() }
+            val outer = daemon.heads.filter { it.startsWith("CONNECT /v0/") }
+            assertEquals(4, outer.size)
+            assertTrue(outer.all { it.startsWith("CONNECT /v0/artifacts/live1/proxy HTTP/1.1\r\n") && it.contains("Authorization: Bearer device-token") })
+            assertTrue(daemon.heads.any { it.startsWith("CONNECT secure.example:443 ") })
+            assertTrue(daemon.heads.any { it.startsWith("PUT /api/v1/kv/entry?key=a HTTP/1.1\r\n") })
+            // No daemon route but the tunnels, and no credential to the site.
+            assertFalse(daemon.heads.any { it.contains("/v0/artifacts/live1/api") || it.contains("/v0/workspaces/") || it.contains("/versions/") })
+            assertTrue(daemon.heads.filter { !it.startsWith("CONNECT /v0/") }.none { it.contains("device-token") })
+        } finally {
+            live.close()
+        }
+    }
+
+    @Test fun aLivePageWhoseComputerIsGoneSaysSo() {
+        val live = proxy.open(BrowserProxy.Scope.Live(client, "gone1", BrowserPolicy.Authority.of("http://localhost:4191/")!!), webView = false)
+        try {
+            // Plain http: the proxy's own answer, as WebView's main frame sees it.
+            through(live).newCall(Request.Builder().url("http://localhost:4191/").build()).execute().use {
+                assertEquals(503, it.code)
+                assertEquals("browser_proxy_live_unavailable", it.header("X-Happy-Proxy-Error"))
+            }
+            // A tunnel: the refusal is kept for its host.
+            runCatching { through(live).newCall(Request.Builder().url("https://localhost:4191/").build()).execute().close() }
+            assertEquals(BrowserProblem.LiveUnavailable, live.refusals.last("https://localhost:4191/")?.problem)
+            assertTrue(daemon.heads.none { it.contains("/v0/workspaces/") })
+        } finally {
+            live.close()
+        }
     }
 
     private fun response(path: String, check: (okhttp3.Response) -> Unit) = get(path).use(check)

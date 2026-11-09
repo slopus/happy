@@ -185,8 +185,7 @@ class ArtifactsListTest {
         rule.onNodeWithText("Connecting…").assertExists()
         link = com.slopus.happy.connection.LinkState.Syncing
         rule.onNodeWithText("Updating…").assertExists()
-        // Offline keeps the name: the note under it says why.
-        link = com.slopus.happy.connection.LinkState.Offline
+        link = com.slopus.happy.connection.LinkState.Online
         rule.onNodeWithText("Artifacts").assertExists()
     }
 

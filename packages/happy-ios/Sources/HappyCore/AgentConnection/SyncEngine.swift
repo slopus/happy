@@ -17,6 +17,11 @@ public struct HomeSnapshot: Equatable, Sendable {
     /// The person's own picture's ThumbHash, for the faces that are theirs.
     public var profilePhoto: String?
     public var error: String?
+    /// The stream is down and being opened again, however it failed: it is
+    /// asked again with backoff for as long as the engine runs, so it is on
+    /// its way back, "connecting…", as a Happy account's socket is, never
+    /// an `error` home says. Android's `AgentSession.reconnecting`.
+    public var reconnecting = false
     /// An action the computer refused, said for a moment while it rolls back.
     public var notice: String?
     public init() {}
@@ -310,7 +315,8 @@ public actor SyncEngine {
             await spaces.startExternal()
             await artifacts.start()
         } catch {
-            snapshot.error = Store.describe(error)
+            // What this phone keeps could not be read: nothing to do with the link.
+            snapshot.error = "Could not open this connection on this device."
             publish()
             return
         }
@@ -328,6 +334,8 @@ public actor SyncEngine {
                 let resuming = desktop != nil && verifiedDaemon != nil && streamCursor != nil && covered == signalled
                 if !resuming {
                     try await reconcile(generation)
+                    // The server answered: what is left is catching up.
+                    if snapshot.reconnecting { snapshot.reconnecting = false; publish() }
                     streamCursor = cursor
                     beginDelivery(generation)
                     beginMessageDelivery(generation)
@@ -339,7 +347,7 @@ public actor SyncEngine {
                     if frame.event == "hello" {
                         sidebarSyncing = true
                         snapshot.syncing = true
-                        snapshot.live = true; snapshot.error = nil; attempt = 0
+                        snapshot.live = true; snapshot.error = nil; snapshot.reconnecting = false; attempt = 0
                         watchGit()
                         publish()
                         // The bootstrap cursor precedes its reads. Opening from
@@ -424,18 +432,21 @@ public actor SyncEngine {
                     if let id = frame.id { streamCursor = id }
                 }
             } catch AgentClientError.revoked {
-                snapshot.live = false
+                snapshot.live = false; snapshot.reconnecting = false
                 snapshot.error = client.signsIn ? "Your sign-in to this server has ended. Sign in again." : "This device was disconnected. Pair it again."
                 publish()
                 return
             } catch {
                 guard current(generation) else { return }
-                snapshot.live = false; snapshot.error = Store.describe(error)
+                snapshot.live = false
+                snapshot.reconnecting = true
                 publish()
             }
             await documents.closed()
             guard current(generation) else { return }
-            snapshot.live = false; publish()
+            snapshot.live = false
+            snapshot.reconnecting = true
+            publish()
             // A signed-in server's edge closes idle connections; come back
             // quickly (edge SSO contract §5: 0.1 s doubling to 10 s).
             let delay: Duration = client.signsIn ? .milliseconds(min(10_000, 100 << min(attempt, 7))) : .seconds(min(30, 1 << min(attempt, 5)))
@@ -678,9 +689,13 @@ public actor SyncEngine {
             } catch {
                 // Retain the original timestamp and ID, including across
                 // suspension and relaunch. Reconnect retries the same intent.
-                snapshot.error = Store.describe(error)
-                publish()
-                if let error = error as? AgentClientError, error == .revoked || (error.status.map { (400..<500).contains($0) } ?? false) { return }
+                // A refusal is said; one that only didn't reach the computer
+                // is the link's, which the title says.
+                if let error = error as? AgentClientError, error == .revoked || (error.status.map { (400..<500).contains($0) } ?? false) {
+                    snapshot.error = Store.describe(error)
+                    publish()
+                    return
+                }
                 do { try await Task.sleep(for: .seconds(min(30, 1 << min(attempt, 5)))) } catch { return }
                 attempt += 1
             }

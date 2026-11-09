@@ -12,6 +12,8 @@
     <string name="browser_problem_unreachable_message">Les pàgines s’obren a través de %1$s, i no respon. Assegura’t que estigui engegat i que Happy s’hi executi.</string>
     <string name="browser_problem_unavailable_title">No es pot obrir aquesta pàgina</string>
     <string name="browser_problem_unavailable_message">Les pàgines s’obren a través d’un ordinador amb Happy Agent, i no hi ha cap connexió per obrir aquesta.</string>
+    <string name="browser_problem_live_unavailable_title">L’ordinador d’aquesta pàgina no està disponible</string>
+    <string name="browser_problem_live_unavailable_message">Aquesta pàgina s’executa a l’ordinador on treballa l’agent que l’ha compartida. Ara mateix aquest ordinador no està disponible, o la pàgina ja no es comparteix.</string>
     <string name="browser_problem_host_not_found_title">No es troba el servidor</string>
     <string name="browser_problem_host_not_found_message">%1$s no troba «%2$s». Comprova l’adreça.</string>
     <string name="browser_problem_host_not_found_message_no_host">%1$s no troba el servidor. Comprova l’adreça.</string>

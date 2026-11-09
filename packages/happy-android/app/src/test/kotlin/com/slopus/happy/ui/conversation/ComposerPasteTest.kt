@@ -57,7 +57,7 @@ class ComposerPasteTest {
         rule.setHappyContent {
             ConversationScreen(
                 ConversationState(created = true, loaded = true, agent = agent, mode = mode, catalog = catalog),
-                null, ConversationScreenActions(onDraftChange = { drafts += it }),
+                ConversationScreenActions(onDraftChange = { drafts += it }),
             )
         }
         rule.node(ConversationComposerTags.INPUT).performSemanticsAction(SemanticsActions.RequestFocus)

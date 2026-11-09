@@ -21,6 +21,7 @@ enum SettingsIndex {
     /// On Appearance, this phone's own: whether a shimmer still runs in Low Power Mode.
     static var shimmerInLowPower: Entry { Entry(id: "shimmer-in-low-power", title: Strings.LowPowerShimmer.title, glyph: "flash-outline", tile: .orange) }
     static var connection: Entry { Entry(id: "connection", title: Strings.Connection.title, glyph: "pulse-outline", tile: .teal) }
+    static var computes: Entry { Entry(id: "computes", title: Strings.Compute.title, glyph: "server-outline", tile: .teal) }
     static var account: Entry { Entry(id: "account", title: Strings.Settings.account, glyph: "person-circle-outline", tile: .blue) }
     static var backupRestore: Entry { Entry(id: "backup-restore", title: Strings.BackupRestore.title, glyph: "key-outline", tile: .green) }
     static var language: Entry { Entry(id: "language", title: Strings.SettingsLanguage.title, glyph: "language-outline", tile: .green) }

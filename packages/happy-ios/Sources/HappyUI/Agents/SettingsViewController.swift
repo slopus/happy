@@ -105,6 +105,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     /// followed while its page shows, for New Sessions.
     private var modelPreferences = ModelPreferences()
     private var modelsWatch: Watch?
+    private var accessWatch: Watch?
     /// The person's own profile on the computer shown, for its row.
     private var profileWatch: (id: String, watch: Watch)?
     private var profileName = ""
@@ -375,6 +376,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         modelPreferences = ModelPreferences()
         modelsWatch?.invalidate()
         modelsWatch = nil
+        accessWatch?.invalidate()
+        accessWatch = nil
         prioritizingWatch?.invalidate()
         prioritizingWatch = nil
         prioritizing = nil
@@ -392,6 +395,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             return
         }
         guard let session = Session.session(for: profile.id, context: context) else { return }
+        accessWatch = session.watchAccess { [weak self] in self?.rebuild() }
         connectionSettingsWatch = Task { [weak self, engine = session.engine] in
             for await snapshot in await engine.snapshots() {
                 guard !Task.isCancelled, let self else { return }
@@ -490,9 +494,16 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             let removal: [[SettingsRow]] = [[
                 Row(id: "disconnect", title: server == nil ? Strings.disconnect : Strings.ServerSignIn.signOut, accessory: .none, destructive: true, action: { [weak self] in self?.remove(id, direct: true) }),
             ]]
+            let computeRows: [[SettingsRow]]
+            if let session = Session.session(for: id, context: context), ComputeViewController.offered(session) {
+                computeRows = [[Row(Index.computes, action: { [weak self] in
+                    guard let self, ComputeViewController.offered(session) else { return }
+                    navigationController?.pushViewController(ComputeViewController(session: session), animated: true)
+                })]]
+            } else { computeRows = [] }
             return [
                 accountRows(),
-            ] + serverRows + [
+            ] + serverRows + computeRows + [
                 [Row(Index.profile, image: profilePhoto, value: profileName.isEmpty ? nil : profileName, action: { [weak self] in self?.openProfile() })],
                 [supportRow()],
                 [

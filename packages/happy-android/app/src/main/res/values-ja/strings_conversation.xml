@@ -6,8 +6,6 @@
 <resources>
     <string name="conversation_details">チャットの詳細</string>
     <string name="conversation_offline">オフライン</string>
-    <string name="conversation_revoked">このデバイスは削除されました</string>
-    <string name="conversation_update_required">アップデートが必要です</string>
     <string name="conversation_unavailable">このエージェント接続はこのデバイスでは使えません。</string>
     <string name="conversation_empty">まだメッセージはありません。</string>
     <string name="conversation_read_only">この会話は別のエージェントが進めているため、メッセージを送れません。</string>

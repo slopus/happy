@@ -246,7 +246,7 @@ final class Session {
                 }
                 var parts: Set<CloudPart> = []
                 if Onboarding.refreshEvents.contains(where: { type == $0 || ($0.hasSuffix(".") && type.hasPrefix($0)) }) { parts.insert(.onboarding) }
-                if type.hasPrefix("role.") { parts.insert(.permissions) }
+                if Permissions.refreshEvents.contains(where: { type == $0 || ($0.hasSuffix(".") && type.hasPrefix($0)) }) { parts.insert(.permissions) }
                 if type.hasPrefix("surface.") || type == "vault.settings.updated" { parts.insert(.vaults) }
                 read(parts)
             }
@@ -254,6 +254,11 @@ final class Session {
     }
 
     private enum CloudPart { case onboarding, permissions, vaults }
+    /// A protected settings page gaining focus checks current grants.
+    func refreshPermissions() {
+        guard isCloud else { return }
+        read([.permissions])
+    }
     /// One read of each part at a time; asked again meanwhile, it reads
     /// once more when that lands.
     private var reading: Set<CloudPart> = []
@@ -337,20 +342,20 @@ final class Session {
         return Watch { [weak self] in self?.watchers.removeValue(forKey: id) }
     }
 
+    /// No link is ever offline: one not connected is asked again with
+    /// backoff for as long as it is there, so it is connecting, whatever
+    /// kept it away. What is not the network's to fix (a pairing to redo, a
+    /// sign-in that ended) home's notice says, in its own words.
     static func headerState(status: ConnectionStatus, snapshot: HomeSnapshot, network: Bool = true) -> Strings.HeaderStatus.State {
         // No way out at all: nothing to connect to yet, whatever was last heard.
-        if !network, status != .revoked { return .waitingForNetwork }
-        if status == .revoked { return .offline }
+        if !network { return .waitingForNetwork }
         // The stream is open: it is the truth, whatever the pairing's own
         // check (which retries on its own backoff) last said.
         if snapshot.live { return snapshot.loaded && !snapshot.syncing ? .online : .syncing }
-        // The computer did not answer: home's notice says so, in its words.
-        if snapshot.error != nil { return .offline }
-        switch status {
-        case .paused, .revoked: return .offline
-        case .retrying, .connecting: return .connecting
-        case .connected: return .syncing
-        }
+        // The pairing answered and the stream isn't open yet: catching up,
+        // unless the stream is on its way back or stopped for a reason.
+        if status == .connected, !snapshot.reconnecting, snapshot.error == nil { return .syncing }
+        return .connecting
     }
 
     private func updateHeaderState() {

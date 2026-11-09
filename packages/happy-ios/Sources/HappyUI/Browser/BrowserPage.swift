@@ -44,16 +44,20 @@ final class BrowserPage {
         catch { await proxy.stop(); throw error }
     }
 
-    static func workspace(client: AgentClient, url: URL, workspaceID: String, artifactID: String? = nil) async throws -> BrowserPage {
-        guard let authority = BrowserPolicy.Authority(url: url) else { throw BrowserError.malformed }
-        let scope: BrowserProxy.Scope
-        if let artifactID {
-            // HTTPS remains end-to-end encrypted. Never MITM it to insert an
-            // authenticated API. Old live artifacts must expose an HTTP preview.
-            guard url.scheme == "http" else { throw BrowserError.forbidden }
-            scope = .liveArtifact(id: artifactID, workspaceID: workspaceID, authority: authority)
-        } else { scope = .workspace(id: workspaceID) }
-        let proxy = BrowserProxy(client: client, scope: scope)
+    static func workspace(client: AgentClient, url: URL, workspaceID: String) async throws -> BrowserPage {
+        guard BrowserPolicy.Authority(url: url) != nil else { throw BrowserError.malformed }
+        return try await start(url: url, proxy: BrowserProxy(client: client, scope: .workspace(id: workspaceID)))
+    }
+
+    /// A live artifact at its version's URL, http or https, through the
+    /// artifact's own proxy in the network it was made on. Its store is
+    /// this page's alone, and nothing bridges its `/api/*` to the daemon.
+    static func live(client: AgentClient, url: URL, artifactID: String) async throws -> BrowserPage {
+        guard BrowserPolicy.Authority(url: url) != nil, BrowserNetwork.artifact(artifactID).path != nil else { throw BrowserError.malformed }
+        return try await start(url: url, proxy: BrowserProxy(client: client, scope: .liveArtifact(id: artifactID)))
+    }
+
+    private static func start(url: URL, proxy: BrowserProxy) async throws -> BrowserPage {
         do { return BrowserPage(url: url, proxy: proxy, port: try await proxy.start()) }
         catch { await proxy.stop(); throw error }
     }

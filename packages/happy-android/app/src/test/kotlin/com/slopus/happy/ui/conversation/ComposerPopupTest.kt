@@ -48,7 +48,7 @@ class ComposerPopupTest {
         rule.setHappyContent {
             ConversationScreen(
                 ConversationState(created = false, loaded = true, mode = mode, catalog = catalog, draft = draft, draftArrivals = 1, composerFocus = ComposerFocus(1, 5)),
-                null, ConversationScreenActions(onModeChange = { picks += it }),
+                ConversationScreenActions(onModeChange = { picks += it }),
             )
         }
         val pill = rule.node(ConversationComposerTags.PILL).bounds
@@ -79,7 +79,7 @@ class ComposerPopupTest {
         rule.setHappyContent {
             ConversationScreen(
                 ConversationState(created = false, loaded = true, mode = mode, catalog = catalog),
-                null, ConversationScreenActions(), opensAttach = true,
+                ConversationScreenActions(), opensAttach = true,
             )
         }
         rule.waitForIdle()
@@ -107,7 +107,7 @@ class ComposerPopupTest {
         rule.setHappyContent(dark = true) {
             ConversationScreen(
                 ConversationState(created = false, loaded = true, mode = current, catalog = ModeCatalog(models, current), draft = "draft", draftArrivals = 1),
-                null, ConversationScreenActions(),
+                ConversationScreenActions(),
             )
         }
         rule.node(ConversationModeTags.MODEL).performClick()

@@ -242,7 +242,7 @@ class ScrollFlingTest {
         }
         var state by mutableStateOf(state("Starting"))
         val actions = ConversationScreenActions()
-        content { HappyTheme { ConversationScreen(state, null, actions) } }
+        content { HappyTheme { ConversationScreen(state, actions) } }
         log("conversation: ${state.rows.size} rows")
         // While it scrolls: the newest answer streams a few words every 100ms.
         val churn = churn {

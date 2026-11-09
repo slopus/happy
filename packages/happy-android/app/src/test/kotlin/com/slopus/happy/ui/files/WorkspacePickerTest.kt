@@ -67,7 +67,6 @@ class WorkspacePickerTest {
         rule.setHappyContent(dark) {
             ConversationScreen(
                 ConversationState(created = true, loaded = true, agent = agent(workspaceId), mode = mode, catalog = catalog, draft = draft, draftArrivals = 1),
-                null,
                 ConversationScreenActions(onDraftChange = { drafts += it }, workspace = { id -> assertEquals("w1", id); source }),
                 opensAttach = true,
             )

@@ -6,8 +6,6 @@
 <resources>
     <string name="conversation_details">Сведения о чате</string>
     <string name="conversation_offline">Не в сети</string>
-    <string name="conversation_revoked">Это устройство удалено</string>
-    <string name="conversation_update_required">Требуется обновление</string>
     <string name="conversation_unavailable">Это подключение агента недоступно на этом устройстве.</string>
     <string name="conversation_empty">Пока нет сообщений.</string>
     <string name="conversation_read_only">Этим разговором управляет другой агент, и он не принимает сообщения.</string>
