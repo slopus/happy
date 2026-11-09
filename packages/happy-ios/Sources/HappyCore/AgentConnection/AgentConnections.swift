@@ -370,14 +370,18 @@ public final class AgentConnections {
         pending.values.forEach { $0.cancel() }
         for job in pending.values { await job.value }
         guard foreground == active else { return }
-        for (id, engine) in engines {
+        // Back: every pairing's check starts at once, the open one's first,
+        // and the open engine is resumed before any other is paused. None
+        // of them waits on the open engine's wake, nor it on them.
+        if active { startConnections() }
+        let open = active ? activeID.flatMap { id in engines[id].map { (id, $0) } } : nil
+        if case let (id, engine)? = open { await resume(id, engine) }
+        for (id, engine) in engines where id != open?.0 {
             guard foreground == active else { return }
-            if active && id == activeID { await resume(id, engine) }
-            else { await engine.pause() }
+            await engine.pause()
         }
         guard foreground == active else { return }
-        if active { startConnections() }
-        else {
+        if !active {
             for index in accounts.indices where !accounts[index].revoked { accounts[index].status = .paused }
             onChange?()
         }
@@ -392,7 +396,7 @@ public final class AgentConnections {
     /// until then neither the stream nor the pairings' checks started, so
     /// home said "connecting…" for as long as the slowest wake took. The
     /// wake goes on; what the stream sends meanwhile waits in Tailcat for
-    /// the rekey.
+    /// the rekey. The pairings' checks don't wait for it (`setForeground`).
     private func resume(_ id: String, _ engine: SyncEngine) async {
         if suspended.remove(id) != nil { await waitAtMost(wakeLimit) { await engine.client.resumed() } }
         await engine.start()
@@ -405,7 +409,9 @@ public final class AgentConnections {
 
     private func startConnections() {
         guard foreground else { return }
-        for account in accounts where jobs[account.id] == nil && !account.revoked {
+        // The open account's check is started first.
+        let ordered = accounts.filter { $0.id == activeID } + accounts.filter { $0.id != activeID }
+        for account in ordered where jobs[account.id] == nil && !account.revoked {
             guard let credential = credentials[account.id] else { continue }
             let make = maker(credential, for: account.id), meter = meter(account.id), endpoint = endpoint(credential, for: account.id); let generation = generation; let interval = refreshInterval
             jobs[account.id] = Task.detached { [weak self] in

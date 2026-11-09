@@ -15,13 +15,18 @@ final class ForegroundProbeTests: XCTestCase {
         /// How long waking its tunnels takes: a relay iOS reclaimed in the
         /// suspension, connected again over a network still coming back.
         private let waking: Duration
+        /// How long its identity check takes to answer; `slowDown` sets it.
+        private var checking: Duration = .zero
         init(waking: Duration = .zero) { self.waking = waking }
         private(set) var log: [String] = []
         func mark(_ text: String) { log.append(text) }
+        func slowDown(_ checking: Duration) { self.checking = checking }
 
         func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
             switch path {
-            case "/v0/health": return HTTP1Response(status: 200, body: Data(#"{"ready":true,"version":{"protocol":27}}"#.utf8))
+            case "/v0/health":
+                try await Task.sleep(for: checking)
+                return HTTP1Response(status: 200, body: Data(#"{"ready":true,"version":{"protocol":27}}"#.utf8))
             case "/v0/config": return HTTP1Response(status: 200, body: Data(#"{"config":{"node":{"name":"Studio","avatar":null}}}"#.utf8))
             default:
                 log.append(path)
@@ -106,6 +111,35 @@ final class ForegroundProbeTests: XCTestCase {
         try await wait { manager.accounts.first?.status == .connected }
         let after = await since("background", computer)
         XCTAssertEqual(after.first, "resumed", "the tunnels weren't woken first: \(after)")
+    }
+
+    /// Back, the open computer goes first: its check answers while its own
+    /// tunnels are still waking, and while another computer's check and
+    /// wake hang; the other's tunnels aren't woken until it is opened.
+    func testTheOpenComputerGoesFirst() async throws {
+        let other = Computer(waking: .seconds(60)), open = Computer(waking: .seconds(60))
+        let manager = AgentConnections(credentials: InMemoryAgentConnectionCredentialStore(), directory: nil, makeTransport: { $0.deviceID == "other" ? other : open })
+        manager.wakeLimit = .seconds(30)
+        let one = try await manager.add(credentials("other"), name: "Other")
+        let oneEngine = try XCTUnwrap(manager.syncEngine(for: one.id))
+        defer { Task { await oneEngine.stop() } }
+        try await wait { await other.log.contains { $0 != "resumed" } }
+        let two = try await manager.add(credentials("open"), name: "Open")
+        let twoEngine = try XCTUnwrap(manager.syncEngine(for: two.id))
+        defer { Task { await twoEngine.stop() } }
+        try await wait { await open.log.contains { $0 != "resumed" } }
+
+        await manager.setForeground(false)
+        await other.slowDown(.seconds(60))
+        await other.mark("background"); await open.mark("background")
+        let returning = Task { await manager.setForeground(true) }
+        defer { returning.cancel() }
+        try await wait { manager.accounts.first { $0.id == two.id }?.status == .connected }
+        XCTAssertEqual(manager.accounts.first { $0.id == one.id }?.status, .connecting, "the other computer's check should still hang")
+        let woken = await since("background", open)
+        XCTAssertEqual(woken, ["resumed"], "the open engine asked before its wake or the wait: \(woken)")
+        let idle = await since("background", other)
+        XCTAssertFalse(idle.contains("resumed"), "a computer not open woke its tunnels: \(idle)")
     }
 
     func testAComputerKeptThroughTheBackgroundProbesWhenOpenedLater() async throws {
