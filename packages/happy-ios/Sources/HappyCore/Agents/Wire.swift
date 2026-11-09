@@ -523,7 +523,9 @@ extension AgentWire {
                 let presentation = try? container.decodeIfPresent(Presentation.self, forKey: .presentation)
                 let keepsRaw = ToolRaw.keeps(name: name, presentation: presentation?.type)
                 let result = asks ? try? container.nestedContainer(keyedBy: ResultKeys.self, forKey: .result) : nil
-                let rawArguments = asks || keepsRaw ? (try? container.decodeIfPresent(JSONValue.self, forKey: .arguments)) ?? nil : nil
+                let rawArguments = asks || keepsRaw
+                    ? (try? container.decodeIfPresent(JSONValue.self, forKey: .arguments)) ?? nil
+                    : (try? ToolSummary.compactArguments(name: name, from: container.superDecoder(forKey: .arguments))) ?? nil
                 let rawResult = keepsRaw ? (try? container.decodeIfPresent(JSONValue.self, forKey: .result)) ?? nil : nil
                 var review = try? container.decodeIfPresent(ToolReview.self, forKey: .review)
                 review?.elevated = (try? container.decodeIfPresent(Bool.self, forKey: .elevated)) ?? nil

@@ -4,7 +4,8 @@ import HappyWire
 /// Which tool calls keep their raw `arguments` and `result` on the phone,
 /// and how much of them. A presentation that already carries what the call
 /// did (a command and its output, a diff, media, an artifact) makes the raw
-/// data redundant; any other call is shown on its screen from the raw data,
+/// data redundant; only its bounded display fields survive (`ToolSummary`).
+/// Any other call is shown on its screen from the raw data,
 /// so it is kept, every string cut to `maxString` characters so one long
 /// read or output can't swell the kept conversation.
 public enum ToolRaw {

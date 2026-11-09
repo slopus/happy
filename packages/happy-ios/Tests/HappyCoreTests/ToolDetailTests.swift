@@ -150,6 +150,19 @@ final class ToolDetailTests: XCTestCase {
 
     // MARK: Raw arguments
 
+    func testCompactArgumentsStillFetchMissingGenericToolDetails() throws {
+        let call = try tool(#"{"type":"tool_call","id":"c","name":"python","status":"completed","arguments":{"description":"Check account totals"}}"#)
+        XCTAssertTrue(ToolDetail(call).wantsFullData)
+        XCTAssertFalse(ToolDetail(call, full: (.object(["code": .string("print(2)")]), .object(["output": .string("2")]))).wantsFullData)
+    }
+
+    func testRichToolWireKeepsOnlyBoundedDisplayArguments() throws {
+        let call = try tool(#"{"type":"tool_call","id":"c","name":"apply_patch","status":"completed","arguments":{"description":"  Update\naccount tests  ","patch":"large raw patch"},"result":{"output":"raw"},"presentation":{"type":"file_diff","files":[]}}"#)
+        XCTAssertEqual(call.arguments, .object(["description": .string("Update account tests")]))
+        XCTAssertNil(call.result)
+        XCTAssertEqual(call.presentation?.type, "file_diff")
+    }
+
     func testAPlanIsAChecklist() throws {
         let detail = ToolDetail(try tool("""
         {"type":"tool_call","id":"c1","name":"update_plan","status":"completed","arguments":{"explanation":"Two steps.","plan":[{"step":"Read","status":"completed"},{"step":"Fix","status":"in_progress"},{"step":"Ship","status":"pending"}]}}

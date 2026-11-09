@@ -79,13 +79,23 @@ struct ToolWords: Equatable {
                 subject = url.replacingOccurrences(of: "^https?://", with: "", options: .regularExpression)
             } else if name.hasPrefix("mcp__"), presentation == nil {
                 let parts = name.components(separatedBy: "__")
-                subject = parts.count >= 3 ? "\(parts[1]) · \(parts[2...].joined(separator: " "))" : Self.humanize(name)
+                subject = parts.count >= 3 ? "\(parts[1]) · \(parts[2...].joined(separator: "__"))" : Self.humanize(name)
             } else {
                 subject = lower == "wait_agent" ? W.forSubagents : Self.humanize(name)
             }
         }
         glyph = Self.glyph(name, presentation: presentation, failed: tool.failed)
         if !tool.failed, presentation == nil, ["update_plan", "todo_write", "todowrite"].contains(lower) { glyph = .ionicons("checkbox-outline") }
+        if name.hasPrefix("mcp__") {
+            subject = Self.humanize(name)
+            mono = false
+        } else if let summary = ToolSummary.text(name: name, arguments: tool.arguments) {
+            verb = ""
+            mono = false
+            // A plan keeps its progress as well as why it changed.
+            subject = Self.plan(tool).map { "\($0) · \(summary)" } ?? summary
+        }
+        if !name.hasPrefix("mcp__") { subject = ToolSummary.normalized(subject) ?? "" }
     }
 
     /// A plan's line says how far it has got (`ToolDetail`'s checklist).
@@ -160,7 +170,7 @@ struct ToolWords: Equatable {
         if let known = W.toolNames[name] { return known }
         if name.hasPrefix("mcp__") {
             let parts = name.components(separatedBy: "__")
-            if parts.count >= 3 { return "\(parts[1]) · \(parts[2...].joined(separator: " "))" }
+            if parts.count >= 3 { return "\(parts[1]) · \(parts[2...].joined(separator: "__"))" }
         }
         var text = name.replacingOccurrences(of: "[_-]+", with: " ", options: .regularExpression)
         text = text.replacingOccurrences(of: "([a-z0-9])([A-Z])", with: "$1 $2", options: .regularExpression)
@@ -276,7 +286,7 @@ struct ToolLine {
     }
 
     var spoken: String {
-        tool.running ? Strings.Turns.isRunning(ToolWords.humanize(tool.name)) + ", " + words.subject : "\(words.verb) \(words.subject)"
+        tool.running ? Strings.Turns.isRunning(ToolWords.humanize(tool.name)) + ", " + words.subject : [words.verb, words.subject].filter { !$0.isEmpty }.joined(separator: " ")
     }
 }
 

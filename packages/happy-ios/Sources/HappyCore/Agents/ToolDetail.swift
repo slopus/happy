@@ -159,7 +159,7 @@ public struct ToolDetail: Equatable, Sendable {
         if let review = tool.review { sections.append(.review(review)) }
         let complete = tool.presentation.map { ToolRaw.complete.contains($0.type) } ?? false
         wantsFullData = full == nil && !complete && !tool.running
-            && (tool.arguments == nil || ToolRaw.isCut(tool.arguments) || ToolRaw.isCut(tool.result) || (tool.result == nil && tool.presentation != nil))
+            && (tool.arguments == nil || ToolRaw.isCut(tool.arguments) || ToolRaw.isCut(tool.result) || tool.result == nil)
     }
 
     // MARK: Names
