@@ -179,7 +179,9 @@ private fun Fallback(text: String, modifier: Modifier) {
  * The option a person's message sent ([ConversationRow.Replies.chosen])
  * takes the bubble's own fill and hairline and a 16 tick 8 from the words
  * at the right, whose room every pill keeps, so nothing moves; the others
- * keep their fill, their words textSecondary. Each is a button; only the
+ * keep their fill, their words grey (`input.placeholder`, iOS's secondary
+ * #8E8E93; textSecondary is too near black to tell apart at a glance).
+ * Each is a button; only the
  * newest stack takes a tap ([ConversationRow.Replies.live]), and none for a
  * person who can't write here.
  */
@@ -220,7 +222,7 @@ fun QuickRepliesRow(row: ConversationRow.Replies, bubble: BubblePalette, actions
                 Text(
                     option,
                     style = MarkdownSpec.text,
-                    color = if (row.chosen == null || chosen) colors.text else colors.textSecondary,
+                    color = if (row.chosen == null || chosen) colors.text else colors.input.placeholder,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
