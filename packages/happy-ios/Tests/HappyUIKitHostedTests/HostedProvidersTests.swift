@@ -40,7 +40,7 @@ private actor CloudProvidersServer: AgentTransport {
               {"id":"operator:openai","name":"Happy (free)","scope":"team","source":"operator","vendors":["openai"],"models":["openai/gpt-6.1-terra"],"credentialCount":0},
               {"id":"anthropic","name":"Anthropic","scope":"team","source":"tenant","vendors":["anthropic"],"models":[],"credentialCount":1,
                "credentials":[{"id":"k1","vendor":"anthropic","kind":"api_key","label":"Team key","enabled":true,"state":"invalid"}]}
-            ],"capabilities":{"apiKeys":true,"claudeSetupToken":false,"codexSignIn":true,"claudeSignIn":true}}
+            ],"capabilities":{"apiKeys":true,"claudeSetupToken":true,"codexSignIn":true,"claudeSignIn":false}}
             """#)
         case ("GET", "/v0/provider-clis"):
             return ok(#"{"providerClis":[{"id":"codex"},{"id":"claude"}]}"#)
@@ -186,7 +186,7 @@ final class HostedProvidersTests: XCTestCase {
         let server = CloudProvidersServer()
         let (list, navigation, window, _) = try await host(server)
         let flows = ProviderFlows(client: AgentClient(transport: server, token: "t"), destination: .mine, host: list, added: {})
-        let claude = ClaudeSignInViewController(flows: flows, offered: false, setupToken: true)
+        let claude = ClaudeSignInViewController(flows: flows)
         navigation.pushViewController(claude, animated: false)
         window.layoutIfNeeded()
         let token = try XCTUnwrap(Self.find(UIButton.self, in: claude.view) { $0.accessibilityIdentifier == "provider-claude-token" })

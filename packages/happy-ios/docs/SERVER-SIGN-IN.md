@@ -439,9 +439,9 @@ ported from happy-agent-client's `happyLinks.ts`.
   `SettingsLinkPlace` says: `general` Settings, `account` Profile, `voice`
   the computer's Voice row, `servers` Happy Cloud's servers (Settings off
   Happy Cloud). `providers` opens the native AI providers list on Cloud.
-  Its `add` chooser offers the server's ChatGPT and Claude sign-ins,
-  Claude setup tokens when enabled, and OpenAI, Anthropic and Grok API
-  keys. `providers/add/api-key?vendor=openai|anthropic|grok` opens the
+  Its `add` chooser offers the server's ChatGPT sign-in, a Claude setup
+  token when enabled (Claude's only way in: no browser sign-in, whatever
+  the server says), and OpenAI, Anthropic and Grok API keys. `providers/add/api-key?vendor=openai|anthropic|grok` opens the
   secure key form. Every add link accepts `to=private|team`, subject to
   the member's permissions. Bedrock setup remains on desktop.
   Every other page opens

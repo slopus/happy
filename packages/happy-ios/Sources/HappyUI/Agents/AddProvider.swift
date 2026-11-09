@@ -289,122 +289,21 @@ final class DeviceSignInViewController: ProviderSignInViewController {
     }
 }
 
-/// Claude's sign-in (§5): its page, opened in Safari, shows a code that is
-/// pasted back here; or a setup token from `claude setup-token` (§3) where
-/// the server takes one. A server that doesn't run the sign-in yet offers
-/// only the token.
+/// Claude's setup token from `claude setup-token` (§3), its only way in:
+/// no browser sign-in, whatever the server offers.
 final class ClaudeSignInViewController: ProviderSignInViewController {
-    private let field = UITextField()
-    private let offered: Bool
-    private let setupToken: Bool
-    private var signIn: CloudSignIn?
-    private var open: UIButton?
-    private var connect: UIButton?
-
-    init(flows: ProviderFlows, offered: Bool, setupToken: Bool) {
-        self.offered = offered
-        self.setupToken = setupToken
-        super.init(flows: flows, title: Strings.Providers.signInClaude)
+    init(flows: ProviderFlows) {
+        super.init(flows: flows, title: Strings.Providers.claudeSetupToken)
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.accessibilityIdentifier = "provider-claude"
-        let token = button(offered ? Strings.Providers.useSetupToken : Strings.Providers.addSetupToken, prominent: !offered, id: "provider-claude-token") { [weak self] in
+        let token = button(Strings.Providers.addSetupToken, prominent: true, id: "provider-claude-token") { [weak self] in
             self?.flows.addSetupToken { self?.follow?.cancel() }
         }
-        token.isHidden = !setupToken
-        guard offered else {
-            stack.addArrangedSubview(label(Strings.Providers.setupTokenHint))
-            stack.addArrangedSubview(token)
-            return
-        }
-        field.placeholder = Strings.Providers.code
-        field.borderStyle = .roundedRect
-        field.autocapitalizationType = .none
-        field.autocorrectionType = .no
-        field.spellCheckingType = .no
-        field.accessibilityIdentifier = "provider-claude-code"
-        field.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
-        let open = button(Strings.Providers.openClaude, prominent: true, id: "provider-claude-open") { [weak self] in self?.openPage(self?.signIn?.url) }
-        let connect = button(Strings.Providers.connect, id: "provider-claude-connect") { [weak self] in self?.send() }
-        self.open = open; self.connect = connect
-        open.isEnabled = false; connect.isEnabled = false
-        let waiting = UIStackView(arrangedSubviews: [spinner, status])
-        waiting.axis = .vertical
-        waiting.spacing = 8
-        for view in [label(Strings.Providers.claudeInstructions), open, field, connect, waiting, token] as [UIView] { stack.addArrangedSubview(view) }
-        start()
-    }
-
-    private func start() {
-        spinner.startAnimating()
-        status.text = nil
-        field.text = nil
-        follow?.cancel()
-        let client = flows.client, container = flows.destination.container(vendor: "claude-code")
-        follow = Task { @MainActor [weak self] in
-            do {
-                let started = try await client.startCloudSignIn(.claude, container: container)
-                self?.show(started)
-                self?.watch(started)
-            } catch is CancellationError {
-            } catch {
-                guard !Task.isCancelled else { return }
-                self?.failedToStart(error, cli: .claude)
-            }
-        }
-    }
-
-    /// Its page and code field, once the server's CLI has them.
-    private func show(_ signIn: CloudSignIn) {
-        self.signIn = signIn
-        open?.isEnabled = signIn.url != nil
-        connect?.isEnabled = signIn.acceptsCode
-        if signIn.url != nil { spinner.stopAnimating() }
-    }
-
-    /// Follows the sign-in to its end, whoever ends it, showing its page
-    /// when it comes.
-    private func watch(_ signIn: CloudSignIn) {
-        let client = flows.client
-        follow = Task { @MainActor [weak self] in
-            let end = try? await client.waitForCloudSignIn(signIn, tick: { [weak self] next in
-                Task { @MainActor [weak self] in if next.id == signIn.id, !next.ended { self?.show(next) } }
-            })
-            guard let end, !Task.isCancelled else { return }
-            self?.finished(end, success: Strings.Providers.claudeConnected) { self?.start() }
-        }
-    }
-
-    private func send() {
-        let code = (field.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !code.isEmpty, signIn != nil else { return }
-        field.resignFirstResponder()
-        connect?.isEnabled = false
-        spinner.startAnimating()
-        status.text = Strings.Providers.waiting
-        let client = flows.client
-        Task { @MainActor [weak self] in
-            do {
-                let next = try await client.finishCloudSignIn(.claude, code: code)
-                self?.field.text = nil
-                if next.ended { self?.follow?.cancel(); self?.finished(next, success: Strings.Providers.claudeConnected) { self?.start() } }
-            } catch {
-                self?.spinner.stopAnimating()
-                self?.connect?.isEnabled = true
-                self?.status.text = ProviderFlows.words(error)
-            }
-        }
-    }
-
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-        // Leaving with a sign-in still waiting for its code ends it.
-        guard isMovingFromParent, let signIn, !signIn.ended else { return }
-        follow?.cancel()
-        let client = flows.client
-        Task { await client.cancelCloudSignIn(.claude) }
+        stack.addArrangedSubview(label(Strings.Providers.setupTokenHint))
+        stack.addArrangedSubview(token)
     }
 }
 #endif

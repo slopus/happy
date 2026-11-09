@@ -131,8 +131,8 @@ final class ProvidersViewController: SettingsPageViewController {
         if offer.signIns.contains(.codex) {
             sheet.addAction(UIAlertAction(title: Text.signInChatGPT, style: .default) { [weak self] _ in self?.open(.providersAddOpenAI, destination: destination) })
         }
-        if offer.signIns.contains(.claude) || offer.setupToken {
-            sheet.addAction(UIAlertAction(title: Text.signInClaude, style: .default) { [weak self] _ in self?.open(.providersAddAnthropic, destination: destination) })
+        if offer.setupToken {
+            sheet.addAction(UIAlertAction(title: Text.claudeSetupToken, style: .default) { [weak self] _ in self?.open(.providersAddAnthropic, destination: destination) })
         }
         if offer.apiKeys {
             sheet.addAction(UIAlertAction(title: "\(Text.addAPIKey) · \(Text.openAI)", style: .default) { [weak self] _ in
@@ -166,7 +166,7 @@ final class ProvidersViewController: SettingsPageViewController {
         // A way this server doesn't offer (a link from elsewhere): the chooser.
         let offered = switch page {
         case .providersAddOpenAI: offer.signIns.contains(.codex)
-        case .providersAddAnthropic: offer.signIns.contains(.claude) || offer.setupToken
+        case .providersAddAnthropic: offer.setupToken
         case .providersAddAPIKey: offer.apiKeys
         default: false
         }
@@ -181,7 +181,7 @@ final class ProvidersViewController: SettingsPageViewController {
         case .providersAddOpenAI:
             navigationController?.pushViewController(DeviceSignInViewController(flows: flows), animated: true)
         case .providersAddAnthropic:
-            navigationController?.pushViewController(ClaudeSignInViewController(flows: flows, offered: offer.signIns.contains(.claude), setupToken: offer.setupToken), animated: true)
+            navigationController?.pushViewController(ClaudeSignInViewController(flows: flows), animated: true)
         case .providersAddAPIKey:
             flows.addKey(vendor: vendor ?? "openai")
         default:
