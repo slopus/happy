@@ -12,6 +12,10 @@ final class ForegroundProbeTests: XCTestCase {
     /// else, and writes down what the engine asked and when its transport
     /// was told it came back.
     private actor Computer: AgentTransport {
+        /// How long waking its tunnels takes: a relay iOS reclaimed in the
+        /// suspension, connected again over a network still coming back.
+        private let waking: Duration
+        init(waking: Duration = .zero) { self.waking = waking }
         private(set) var log: [String] = []
         func mark(_ text: String) { log.append(text) }
 
@@ -28,7 +32,10 @@ final class ForegroundProbeTests: XCTestCase {
             log.append(path)
             throw PairingError.unavailable
         }
-        func resumed() async { log.append("resumed") }
+        func resumed() async {
+            log.append("resumed")
+            try? await Task.sleep(for: waking)
+        }
         func close() async {}
     }
 
@@ -74,6 +81,31 @@ final class ForegroundProbeTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(50))
         let again = await since("active", computer)
         XCTAssertFalse(again.contains("resumed"), "\(again)")
+    }
+
+    /// A wake that hangs on its relay holds neither the engine nor the
+    /// pairing's check: the header said "connecting…" for as long as the
+    /// wake took.
+    func testASlowWakeHoldsNeitherTheEngineNorTheCheck() async throws {
+        let computer = Computer(waking: .seconds(60))
+        let manager = AgentConnections(credentials: InMemoryAgentConnectionCredentialStore(), directory: nil, makeTransport: { _ in computer })
+        manager.wakeLimit = .milliseconds(200)
+        let account = try await manager.add(credentials("mac"), name: "Mac")
+        let engine = try XCTUnwrap(manager.syncEngine(for: account.id))
+        defer { Task { await engine.stop() } }
+        try await wait { await computer.log.contains { $0 != "resumed" } }
+
+        await manager.setForeground(false)
+        XCTAssertEqual(manager.accounts.first?.status, .paused)
+        await computer.mark("background")
+        let returning = Task { await manager.setForeground(true) }
+        defer { returning.cancel() }
+        // The engine asks the computer, and the pairing's check answers,
+        // while the wake is still on its way.
+        try await wait { await self.since("background", computer).count >= 2 }
+        try await wait { manager.accounts.first?.status == .connected }
+        let after = await since("background", computer)
+        XCTAssertEqual(after.first, "resumed", "the tunnels weren't woken first: \(after)")
     }
 
     func testAComputerKeptThroughTheBackgroundProbesWhenOpenedLater() async throws {

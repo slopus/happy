@@ -225,9 +225,13 @@ public final class AgentHTTPTransport: SelfMeteringTransport {
     /// replaced only if it doesn't answer within two seconds, every direct
     /// path is probed and one that stopped answering dropped, a dead socket
     /// rebound, and an expired session rekeyed at once rather than at the
-    /// next 30-second idle mark.
+    /// next 30-second idle mark. All at once: a wake can wait on its relay
+    /// connecting again, and one at a time the last tunnel woke only after
+    /// every relay before it.
     public func resumed() async {
-        for tunnel in clients.connected() { await tunnel.client.wake() }
+        await withTaskGroup(of: Void.self) { group in
+            for tunnel in clients.connected() { group.addTask { await tunnel.client.wake() } }
+        }
     }
 
     /// The way a `category` request goes: a lease on one of that

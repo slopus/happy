@@ -57,7 +57,10 @@ asks for anything (`AgentTransport.resumed`): each Tailcat client is woken
 relay is pinged and replaced only if it doesn't answer within two seconds,
 every direct path is probed and one that stopped answering dropped, a dead
 socket rebound, and a session past WireGuard's 180 seconds rekeyed at once
-instead of at the next 30-second idle mark. Disconnecting takes the agent off the list and out of the open
+instead of at the next 30-second idle mark. The clients wake together, and
+the engine and the identity checks wait for them five seconds at most: a
+client whose relay iOS reclaimed wakes only once a new relay connection is
+up. Disconnecting takes the agent off the list and out of the open
 slot at once (`AgentConnections.forget`): its identity loop and engine can
 no longer publish or save anything of it, so nothing waits for them.
 `finishRemoval` then erases the credentials and cached identity, gives the

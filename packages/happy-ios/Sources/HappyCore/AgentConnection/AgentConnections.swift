@@ -32,6 +32,9 @@ public final class AgentConnections {
     /// in the foreground. Coming back to the foreground reads them at once,
     /// and an open account's own stream says whether its computer is there.
     var refreshInterval: Duration = .seconds(600)
+    /// How long coming back waits for an engine's tunnels to wake before
+    /// it starts the engine and the pairings' checks anyway (`resume`).
+    var wakeLimit: Duration = .seconds(5)
 
     public init(credentials: any AgentConnectionCredentialStore, directory: URL?, makeTransport: @escaping @Sendable (AgentConnectionCredentials) -> any AgentTransport = { AgentHTTPTransport(address: $0.address, port: $0.port, publicUrl: $0.publicUrl, tailcatAvailable: $0.tailcatAvailable != false) }) {
         storage = AgentConnectionStorage(credentials: credentials, directory: directory)
@@ -383,9 +386,15 @@ public final class AgentConnections {
     /// Starts `id`'s engine. One kept through a suspension holds tunnels
     /// that may have gone stale with nothing to say so; first they look for
     /// every way to the computer again, as after a network change on
-    /// screen, before the stream asks them for anything.
+    /// screen, before the stream asks them for anything. Waited for only
+    /// `wakeLimit`: a tunnel whose relay iOS reclaimed wakes only once a
+    /// new one is up, over a network that may still be coming back, and
+    /// until then neither the stream nor the pairings' checks started, so
+    /// home said "connecting…" for as long as the slowest wake took. The
+    /// wake goes on; what the stream sends meanwhile waits in Tailcat for
+    /// the rekey.
     private func resume(_ id: String, _ engine: SyncEngine) async {
-        if suspended.remove(id) != nil { await engine.client.resumed() }
+        if suspended.remove(id) != nil { await waitAtMost(wakeLimit) { await engine.client.resumed() } }
         await engine.start()
     }
 
