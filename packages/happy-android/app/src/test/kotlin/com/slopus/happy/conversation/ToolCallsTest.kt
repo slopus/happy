@@ -8,6 +8,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -172,10 +173,10 @@ class ToolCallsTest {
         assertEquals(ToolValue.Text("k1", mono = true), parsed.fields[0].value)
     }
 
-    @Test fun `a held call is found in its run and read whole from the page just before the next run`() = runTest {
+    @Test fun `a compact labeled call is found in its run and detail reads the whole call once`() = runTest {
         val requests = ArrayList<String>()
         val history = """{"runs":[
-            {"id":"r1","status":"completed","messages":[{"id":"m1","role":"agent","createdAt":1,"content":[{"type":"tool_call","id":"c1","name":"Bash","status":"completed","presentation":{"type":"exec_command","command":"ls","output":"a"}}]}]},
+            {"id":"r1","status":"completed","messages":[{"id":"m1","role":"agent","createdAt":1,"content":[{"type":"tool_call","id":"c1","name":"Bash","status":"completed","arguments":{"description":"List files"},"presentation":{"type":"exec_command","command":"ls","output":"a"}}]}]},
             {"id":"r2","status":"completed","messages":[{"id":"m2","role":"agent","createdAt":2,"content":[{"type":"text","text":"done"}]}]}
         ],"hasMore":false}"""
         val whole = """{"runs":[{"id":"r1","status":"completed","messages":[{"id":"m1","role":"agent","createdAt":1,"content":[{"type":"tool_call","id":"c1","name":"Bash","status":"completed","arguments":{"cmd":"ls"},"result":{"output":"a"},"presentation":{"type":"exec_command","command":"ls","output":"a"}}]}]}],"hasMore":true}"""
@@ -205,10 +206,14 @@ class ToolCallsTest {
         assertNotNull(located)
         assertEquals("r1", located!!.runId)
         assertEquals("r2", located.nextRunId)
-        assertNull(located.call.arguments)
+        assertEquals(Json.parseToJsonElement("""{"description":"List files"}"""), located.call.arguments)
 
-        val full = conversation.fullToolCall("c1", located)
+        val model = com.slopus.happy.ui.conversation.ToolCallModel(ToolCallReader(ConversationApi(request), "a1"), "c1", conversation)
+        scope.launch { model.observe() }
+        advanceUntilIdle()
+        val full = model.state.value.call
         assertEquals(Json.parseToJsonElement("""{"cmd":"ls"}"""), full!!.arguments)
+        assertEquals(1, requests.count { it.contains("omitToolData=false") })
         val asked = requests.last()
         assertTrue(asked, asked.contains("before=r2") && asked.contains("limit=1") && asked.contains("omitToolData=false"))
         assertNull(conversation.toolCall("missing"))
@@ -236,7 +241,11 @@ class ToolCallsTest {
         val presented = block("""{"type":"tool_call","id":"c","name":"Bash","status":"completed","presentation":{"type":"exec_command","command":"ls"}}""")
         assertTrue(com.slopus.happy.ui.conversation.ToolCallModel.wants(presented))
         assertFalse(com.slopus.happy.ui.conversation.ToolCallModel.wants(presented.copy(status = "running")))
-        assertFalse(com.slopus.happy.ui.conversation.ToolCallModel.wants(presented.copy(arguments = Json.parseToJsonElement("""{"cmd":"ls"}""").jsonObject)))
+        val labeled = presented.copy(arguments = Json.parseToJsonElement("""{"description":"List files"}""").jsonObject)
+        assertTrue(com.slopus.happy.ui.conversation.ToolCallModel.wants(labeled))
+        assertFalse(com.slopus.happy.ui.conversation.ToolCallModel.wants(labeled.copy(status = "running")))
+        assertFalse(com.slopus.happy.ui.conversation.ToolCallModel.wants(labeled.copy(result = JsonObject(emptyMap()))))
+        assertFalse(com.slopus.happy.ui.conversation.ToolCallModel.wants(presented.copy(presentation = null, arguments = Json.parseToJsonElement("""{"cmd":"ls"}""").jsonObject)))
         assertTrue(com.slopus.happy.ui.conversation.ToolCallModel.wants(presented.copy(arguments = JsonObject(emptyMap()), cut = true)))
     }
 }

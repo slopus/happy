@@ -103,7 +103,9 @@ internal class ToolCallModel(
 
     companion object {
         /** A finished call whose raw data the chat doesn't have whole: left out by history, or cut. */
-        fun wants(call: Block.ToolCall): Boolean = !call.running && (call.cut || (call.arguments == null && call.result == null))
+        fun wants(call: Block.ToolCall): Boolean = !call.running && (
+            call.cut || (call.result == null && (call.arguments == null || call.presentation != null))
+        ) // Compact presented history may retain only arguments.description, not the whole input.
     }
 }
 

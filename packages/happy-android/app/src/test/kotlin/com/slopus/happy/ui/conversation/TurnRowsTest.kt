@@ -27,6 +27,7 @@ import com.slopus.happy.conversation.ConversationState
 import com.slopus.happy.conversation.Message
 import com.slopus.happy.conversation.Presentation
 import com.slopus.happy.conversation.TurnFold
+import com.slopus.happy.conversation.ToolUse
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.assertBox
 import com.slopus.happy.ui.assertDp
@@ -61,6 +62,18 @@ class TurnRowsTest {
     val rule = createComposeRule()
 
     private val agent = AgentInfo("a1", "w1", null, "Fix the login redirect", "idle", null, null, 1, 2, 0, 0)
+
+    @Test fun aDescriptionUsesTheVerbSpaceAndKeepsFailureAndNavigation() {
+        var opens = 0
+        rule.setHappyContent { ToolLine(ToolUse("python", "failed", summary = "Calculate the answer"), onOpen = { opens++ }) }
+        val line = rule.node(TurnRowTags.TOOL)
+        assertDp("unchanged tool row height", 32.dp, line.bounds.bottom - line.bounds.top)
+        assertDp("summary starts after the glyph lane", 36.dp, rule.node(TurnRowTags.TOOL_SUBJECT).bounds.left)
+        assertEquals(0, rule.onAllNodesWithTag(TurnRowTags.TOOL_VERB, useUnmergedTree = true).fetchSemanticsNodes().size)
+        assertEquals("Failed, Calculate the answer", lineText(line))
+        line.performClick()
+        assertEquals(1, opens)
+    }
 
     private fun built(vararg messages: Message): List<ConversationRow> = messages.flatMap { ConversationRowBuilder.build(it, "a1", null, false) }
 

@@ -22,7 +22,8 @@ sealed interface ToolGlyph {
  * A tool call's words and mark as desktop's single-line row reads them
  * (AgentActivityRow.tsx `AgentToolActivity`, `toolVerb`, `toolGlyph`; iOS
  * ChatTurnPlans.swift `ToolWords`): "Read README.md", "Edited x.ts +3 −1",
- * "Shell ls -la", in the present tense while it runs.
+ * "Shell ls -la", in the present tense while it runs. A builtin summary is already
+ * a complete label and takes the line without an extra verb; rich details stay unchanged.
  */
 @Immutable
 data class ToolWords(
@@ -40,6 +41,14 @@ data class ToolWords(
             val lower = name.lowercase()
             val p = tool.presentation
             val glyph = glyph(name, p, tool.failed)
+            tool.summary?.takeIf { !name.startsWith("mcp_") }?.let { summary ->
+                val diff = p as? Presentation.FileDiff
+                return ToolWords(
+                    verb = "", subject = summary, mono = false, glyph = glyph,
+                    added = diff?.files?.sumOf { it.added ?: 0 }?.takeIf { it > 0 },
+                    deleted = diff?.files?.sumOf { it.deleted ?: 0 }?.takeIf { it > 0 },
+                )
+            }
             // A skill the agent reads is named: "Read skill: release-notes".
             if (p == null && tool.skill != null) {
                 return ToolWords(res.getString(if (tool.running) R.string.turn_reading_skill else R.string.turn_read_skill), tool.skill, false, glyph)
@@ -197,8 +206,8 @@ data class ToolWords(
         )
 
         private fun mcp(name: String): String? {
-            val parts = name.split("__")
-            return if (parts.size >= 3) "${parts[1]} · ${parts.drop(2).joinToString(" ")}" else null
+            val parts = name.removePrefix("mcp__").split("__", limit = 2)
+            return if (parts.size == 2) "${parts[0]} · ${parts[1]}" else null
         }
 
         /** `humanizeToolName`: its own name where it has one, else its words spaced and capitalised. */
