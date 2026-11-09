@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="conversation_ui_not_allowed">Il tuo ruolo non consente di rispondere qui.</string>
-    <string name="conversation_ui_not_sent">Non inviato: %1$s</string>
-    <string name="conversation_ui_not_sent_plain">Non inviato</string>
+    <string name="conversation_quick_reply_by">↩ Suggerito da %1$s</string>
+    <string name="conversation_quick_reply">↩ Risposta suggerita</string>
     <string name="conversation_ui_tree_show_all">Mostra tutto (%1$d)</string>
     <string name="ui_live_cli_reading">Controllo di %1$s su questo computer…</string>
     <string name="ui_live_cli_missing">Non installato · programma di installazione ufficiale da %1$s</string>

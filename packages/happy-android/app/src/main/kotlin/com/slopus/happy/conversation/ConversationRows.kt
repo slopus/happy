@@ -6,8 +6,7 @@ import com.slopus.happy.chat.markdown.parseMarkdown
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
 import com.slopus.happy.conversation.ui.UiAction
-import com.slopus.happy.conversation.ui.UiActionRecord
-import com.slopus.happy.conversation.ui.UiCatalog
+import com.slopus.happy.conversation.ui.QuickReply
 import com.slopus.happy.conversation.ui.UiComponent
 import com.slopus.happy.conversation.ui.UiDocument
 import com.slopus.happy.conversation.ui.UiOffer
@@ -80,6 +79,8 @@ sealed interface ConversationRow {
         val opened: Boolean = false,
         /** On a team's computer, the member who wrote it, by user ID; null for one still on its way and outside a team. */
         val author: String? = null,
+        /** Sent from a reply the agent suggested ([QuickReply]): the bubble says so. */
+        val suggested: Boolean = false,
     ) : ConversationRow
 
     /**
@@ -129,25 +130,25 @@ sealed interface ConversationRow {
 
     /**
      * One component of chat UI ([UiComponent]), from an agent message's `ui`
-     * block or a `show_ui` call's presentation; [answer] is how it stands,
-     * and [work] how its silent actions go, which the conversation lays over
-     * the row as built.
+     * block or a `show_ui` call's presentation; [work] is how its actions
+     * go, which the conversation lays over the row as built.
      */
     data class Ui(
         override val key: String,
         val offer: UiOffer,
         val component: UiComponent,
-        val answer: UiAnswer = UiAnswer.Open,
         val work: UiWork = UiWork.Idle,
     ) : ConversationRow
 
     /**
-     * A press the computer refused or lost ([UiOutcome.refused]), from its
-     * attempt record: its words greyed with why ("Not sent: already
-     * answered"). [text] is what the press said, read from its offer by the
-     * conversation; null where the offer isn't read.
+     * Replies an agent message suggested ([QuickReplies]): its own block
+     * ([toolCallId] null) or a `suggest_replies` call's presentation. The
+     * conversation keeps it only under the latest agent message, until a
+     * person's message follows.
      */
-    data class Unsent(override val key: String, val record: UiActionRecord, val text: String? = null) : ConversationRow
+    data class Replies(override val key: String, val messageId: String, val toolCallId: String?, val options: List<String>) : ConversationRow {
+        fun reply(index: Int) = QuickReply(messageId, toolCallId, index)
+    }
 
     /**
      * An artifact a tool made or changed, under the [tool]'s line; `shows: "latest"` follows it, else it opens [version].
@@ -229,18 +230,6 @@ sealed interface ConversationRow {
 }
 
 enum class NoticeKind { Compacting, Compacted, CompactionFailed }
-
-/** Where a chat UI offer stands for this person. */
-@Immutable
-sealed interface UiAnswer {
-    data object Open : UiAnswer
-    /** A press from this phone is on its way. */
-    data class Sending(val action: UiAction) : UiAnswer
-    /** Answered, here or elsewhere: closed, showing what was sent. */
-    data class Answered(val action: UiAction) : UiAnswer
-    /** Unanswered, and a person's message came after it: it takes nothing more. */
-    data object Closed : UiAnswer
-}
 
 /**
  * How a live component's silent actions go: one [sending] from this phone,
@@ -379,12 +368,8 @@ class ConversationRowBuilder(
             val id = message.id
             if (message.role == "service") {
                 failureOf(message)?.let { return listOf(it) }
-                // An attempt record is drawn only when a press with words was refused; one accepted is the person's message.
-                // A silent action's shows on its component ([UiWork]).
-                message.content.firstNotNullOfOrNull { it as? Block.Action }?.let { block ->
-                    val words = UiCatalog.actions[block.record.action.type]?.message != false
-                    return if (words && block.record.outcome.refused) listOf(ConversationRow.Unsent("$id:unsent", block.record)) else emptyList()
-                }
+                // An attempt record shows on its component ([UiWork]), not as a row.
+                if (message.content.any { it is Block.Action }) return emptyList()
                 val compaction = message.content.filterIsInstance<Block.Compaction>().firstOrNull() ?: return emptyList()
                 val kind = when (compaction.status) {
                     "completed" -> NoticeKind.Compacted
@@ -410,7 +395,7 @@ class ConversationRowBuilder(
                 val pictures = message.content.filterIsInstance<Block.Image>()
                 if (text.isEmpty() && pictures.isEmpty()) return emptyList()
                 val delivery = if (message.status == "pending") Delivery.Pending else Delivery.Sent
-                return listOf(ConversationRow.User("$id:user", id, text, parseMarkdown(text, hasPage), pictures, delivery, message.createdAt, author = message.userId))
+                return listOf(ConversationRow.User("$id:user", id, text, parseMarkdown(text, hasPage), pictures, delivery, message.createdAt, author = message.userId, suggested = message.quickReply != null))
             }
             val rows = ArrayList<ConversationRow>()
             message.content.forEachIndexed { index, block ->
@@ -429,6 +414,7 @@ class ConversationRowBuilder(
                     is Block.Image -> rows += ConversationRow.Picture(key, block)
                     is Block.ToolCall -> rows += toolRows(key, id, block, references)
                     is Block.Ui -> rows += uiRows(key, id, block.document, null, emptyList())
+                    is Block.QuickReplies -> rows += ConversationRow.Replies(key, id, null, block.options)
                     is Block.Compaction, is Block.File, is Block.Action, is Block.Unknown -> Unit
                 }
             }
@@ -486,6 +472,8 @@ class ConversationRowBuilder(
             return when (val p = call.presentation) {
                 // What show_ui showed stands in its call's place: the components, no line.
                 is Presentation.Ui -> uiRows(key, messageId, p.document, call.id, p.items).ifEmpty { listOf(ConversationRow.Tool(key, call.id, tool)) }
+                // So do suggested replies: the pills, which the conversation keeps only where they may be sent.
+                is Presentation.QuickReplies -> if (call.id == null) listOf(ConversationRow.Tool(key, call.id, tool)) else listOf(ConversationRow.Replies(key, messageId, call.id, p.options))
                 is Presentation.Media -> if (call.id == null || p.items.isEmpty()) {
                     listOf(ConversationRow.Tool(key, call.id, tool))
                 } else {

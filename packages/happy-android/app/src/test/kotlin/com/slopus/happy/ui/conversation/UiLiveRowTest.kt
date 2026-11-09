@@ -100,7 +100,7 @@ class UiLiveRowTest {
             if (shown) {
                 ConversationScreen(
                     ConversationState(created = true, loaded = true, rows = rows.asReversed(), agent = agent, catalog = catalog),
-                    ConversationScreenActions(onUiAction = { offer, _, action -> sent += offer to action; answer }),
+                    ConversationScreenActions(onUiAction = { offer, action -> sent += offer to action; answer }),
                     roleAllows = allows,
                     uiLive = live,
                 )

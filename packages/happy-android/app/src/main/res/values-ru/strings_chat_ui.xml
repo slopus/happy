@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="conversation_ui_not_allowed">Ваша роль не позволяет отвечать здесь.</string>
-    <string name="conversation_ui_not_sent">Не отправлено: %1$s</string>
-    <string name="conversation_ui_not_sent_plain">Не отправлено</string>
+    <string name="conversation_quick_reply_by">↩ Предложено: %1$s</string>
+    <string name="conversation_quick_reply">↩ Предложенный ответ</string>
     <string name="conversation_ui_tree_show_all">Показать все (%1$d)</string>
     <string name="ui_live_cli_reading">Проверяем %1$s на этом компьютере…</string>
     <string name="ui_live_cli_missing">Не установлен · официальный установщик с %1$s</string>

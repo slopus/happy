@@ -536,6 +536,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                     onChoiceChange = holder::setChoice,
                     onCommand = conversation::runCommand,
                     onUiAction = conversation::press,
+                    onQuickReply = { replies, index -> conversation.sendReply(replies, index) },
                     onToggleTurn = conversation::toggleTurn,
                     onToggleMessage = conversation::toggleMessage,
                     onOpenTool = { callId -> nav.navigate(ToolCallRoute(route.connectionId, conversation.agentId, callId)) },

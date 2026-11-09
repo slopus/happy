@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="conversation_ui_not_allowed">Sua função não permite responder aqui.</string>
-    <string name="conversation_ui_not_sent">Não enviado: %1$s</string>
-    <string name="conversation_ui_not_sent_plain">Não enviado</string>
+    <string name="conversation_quick_reply_by">↩ Sugerido por %1$s</string>
+    <string name="conversation_quick_reply">↩ Resposta sugerida</string>
     <string name="conversation_ui_tree_show_all">Mostrar tudo (%1$d)</string>
     <string name="ui_live_cli_reading">Verificando %1$s neste computador…</string>
     <string name="ui_live_cli_missing">Não instalado · instalador oficial de %1$s</string>

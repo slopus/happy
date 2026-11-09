@@ -49,10 +49,10 @@ class LiveUiConversationTest {
         val route = path.substringBefore('?')
         requests += route to (body as? JsonObject)
         when {
-            route.endsWith("/bootstrap") -> ChatUiConversationTest.ok("""{"agent":{"id":"a1","workspaceId":"w1","status":"idle","title":"Team"},"mode":${ChatUiConversationTest.MODE},"draft":{"value":null,"updatedAt":null},"pending":[]}""")
-            route.endsWith("/messages") -> ChatUiConversationTest.ok("""{"runs":[{"id":"r1","status":"completed","startedAt":1,"endedAt":3,"messages":[$OFFER]}],"hasMore":false}""")
+            route.endsWith("/bootstrap") -> QuickRepliesConversationTest.ok("""{"agent":{"id":"a1","workspaceId":"w1","status":"idle","title":"Team"},"mode":${QuickRepliesConversationTest.MODE},"draft":{"value":null,"updatedAt":null},"pending":[]}""")
+            route.endsWith("/messages") -> QuickRepliesConversationTest.ok("""{"runs":[{"id":"r1","status":"completed","startedAt":1,"endedAt":3,"messages":[$OFFER]}],"hasMore":false}""")
             route.endsWith("/actions") -> actions(body as JsonObject)
-            else -> ChatUiConversationTest.ok("{}")
+            else -> QuickRepliesConversationTest.ok("{}")
         }
     }
 
@@ -77,17 +77,17 @@ class LiveUiConversationTest {
         val gate = CompletableDeferred<Unit>()
         actions = { body ->
             gate.await()
-            ChatUiConversationTest.ok("""{"record":${record(body["id"].toString(), "accepted")},"message":null,
+            QuickRepliesConversationTest.ok("""{"record":${record(body["id"].toString(), "accepted")},"message":null,
                 "result":{"inviteId":"i1","code":"$CODE","expiresAt":9,"serverName":"Acme"},"cursor":"c2"}""")
         }
         val chat = conversation()
         advanceUntilIdle()
-        val answer = chat.press(chat.invite().offer, chat.invite().component, create)!!
+        val answer = chat.press(chat.invite().offer, create)!!
         runCurrent()
         assertEquals(UiWork(sending = create), chat.invite().work)
         assertTrue(chat.state.value.rows.none { it is ConversationRow.User })
         val body = requests.last { it.first.endsWith("/actions") }.second!!
-        // A silent action takes no mode.
+        // An action takes no mode.
         assertEquals(listOf("id", "messageId", "uiId", "componentId", "action"), body.keys.toList())
 
         gate.complete(Unit)
@@ -95,31 +95,31 @@ class LiveUiConversationTest {
         assertEquals(CODE, answer.await()?.get("code").toString().trim('"'))
         assertEquals(UiWork.Idle, chat.invite().work)
         val rows = chat.state.value.rows
-        assertTrue(rows.none { it is ConversationRow.User || it is ConversationRow.Unsent })
+        assertTrue(rows.none { it is ConversationRow.User })
         // The code is nowhere in what the screen draws from.
         assertFalse(chat.state.value.toString().contains(CODE))
     }
 
     @Test fun `a refused silent action shows on its component, not as a bubble`() = runTest {
-        actions = { body -> ChatUiConversationTest.ok("""{"record":${record(body["id"].toString(), "rejected", reason = "Invites are off here.")},"message":null,"result":null}""") }
+        actions = { body -> QuickRepliesConversationTest.ok("""{"record":${record(body["id"].toString(), "rejected", reason = "Invites are off here.")},"message":null,"result":null}""") }
         val chat = conversation()
         advanceUntilIdle()
-        assertNull(chat.press(chat.invite().offer, chat.invite().component, create)!!.await())
+        assertNull(chat.press(chat.invite().offer, create)!!.await())
         advanceUntilIdle()
         assertEquals(UiWork(refused = true, reason = "Invites are off here."), chat.invite().work)
-        assertTrue(chat.state.value.rows.none { it is ConversationRow.Unsent || it is ConversationRow.User })
+        assertTrue(chat.state.value.rows.none { it is ConversationRow.User })
     }
 
     @Test fun `a silent action refused outright says the server's words, a permission refusal the phone's`() = runTest {
         actions = { TransportResponse(400, body = """{"error":"That role doesn't exist.","code":"invalid_request"}""".toByteArray()) }
         val chat = conversation()
         advanceUntilIdle()
-        chat.press(chat.invite().offer, chat.invite().component, create)!!.await()
+        chat.press(chat.invite().offer, create)!!.await()
         advanceUntilIdle()
         assertEquals(UiWork(refused = true, reason = "That role doesn't exist."), chat.invite().work)
 
         actions = { TransportResponse(403, body = """{"error":"This needs the members.manage permission.","code":"forbidden"}""".toByteArray()) }
-        chat.press(chat.invite().offer, chat.invite().component, create)!!.await()
+        chat.press(chat.invite().offer, create)!!.await()
         advanceUntilIdle()
         assertEquals(UiWork(refused = true, reason = null), chat.invite().work)
     }
@@ -134,19 +134,13 @@ class LiveUiConversationTest {
         signals.emit(event("message.updated", """{"runId":"r5","message":${record("\"k1\"", "failed", reason = "Timed out")}}"""))
         advanceUntilIdle()
         assertEquals(UiWork(refused = true, reason = "Timed out"), chat.invite().work)
-        assertTrue(chat.state.value.rows.none { it is ConversationRow.Unsent })
-    }
-
-    @Test fun `an action with words the component can't say is not taken`() = runTest {
-        val chat = conversation()
-        advanceUntilIdle()
-        assertNull(chat.press(chat.invite().offer, chat.invite().component, UiAction.choose("a")))
+        assertTrue(chat.state.value.rows.none { it is ConversationRow.User })
     }
 
     private fun event(type: String, payload: String) = ConversationSignal.Event(type, Json.parseToJsonElement(payload).jsonObject)
 
-    private companion object {
-        const val CODE = "INV-7F3K-SECRET"
+    companion object {
+        private const val CODE = "INV-7F3K-SECRET"
 
         /** An agent message whose ui block holds an invite. */
         const val OFFER = """{"id":"m1","role":"agent","createdAt":2,"metadata":{},"content":[

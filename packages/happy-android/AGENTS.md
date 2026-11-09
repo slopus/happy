@@ -1688,52 +1688,53 @@ from the body; it can't pause.
 
 ### Chat UI
 
-happy-agent API.md "Chat UI" (protocol 35) is the contract. Every request
-and stream to an agent connection carries `Happy-Protocol: 35`
-(`TailcatHttp.requestHead`, so Tailcat and HTTPS alike); without it the
-daemon sends documents as their fallback text and hides attempt records.
-`conversation/ui/UiWire.kt` holds every wire type: the `ui` block of an
-agent message, the `ui` presentation of a `show_ui` call and the `action`
-block. A type this build doesn't draw, or props that don't read, is
-`UiComponent.Other`, shown as its fallback line; `phone_app` and
-`phone_pair` show nothing on a phone. `choice`, `checklist`, `text_field` and `file_tree`
-are drawn natively (`ui/conversation/UiComponentViews.kt`); `images`
-becomes a `ConversationRow.Media` over the call's items, with the viewer,
-kept media and the agent page as any presented picture. The show_ui call
-has no line of its own. `conversation/ui/UiActions.kt` ports the client
-package's `uiActionText`, `uiOfferState` and `uiActionPermission` /
-`uiActionAllowed`; `UiActionsTest` checks them and the action catalog
-against `test/resources/ui/` (`fixtures/ui/` copied unchanged).
-
-Every press goes through one function, `Conversation.press`. One with words is an outgoing like a send, drawn at once as
-the person's words, sent in order to `POST /v0/agents/:id/actions` under
-its own id (the attempt record's, so a retry is the same attempt). The
-bubble stays while the record is `pending` and goes once the person's
-message is in or the record says it was refused. A refused or failed record
-is `ConversationRow.Unsent`, the words greyed with "Not sent: why", on
-every device. Records come in finished runs of their own: they are no
-turn, and a `run.finished` for one doesn't end the turn going on. An offer
-is answered (its accepted press ticked), closed (a person's message came
-after it) or open; controls the role may not use (`ServerPermissions`)
-show disabled with one line saying so. Words are in `strings_chat_ui.xml`.
+happy-agent API.md "Chat UI" and "Quick replies" (protocol 35) are the
+contract. Every request and stream to an agent connection carries
+`Happy-Protocol: 35` (`TailcatHttp.requestHead`, so Tailcat and HTTPS
+alike); without it the daemon sends documents and suggested replies as
+text and hides attempt records. `conversation/ui/UiWire.kt` holds the chat
+UI wire types: the `ui` block of an agent message, the `ui` presentation of
+a `show_ui` call and the `action` block. A type this build doesn't draw, or
+props that don't read, is `UiComponent.Other`, shown as its fallback line;
+`phone_app` and `phone_pair` show nothing on a phone. `file_tree` is drawn
+natively (`ui/conversation/UiComponentViews.kt`); `images` becomes a
+`ConversationRow.Media` over the call's items, with the viewer, kept media
+and the agent page as any presented picture. The show_ui call has no line
+of its own. `conversation/ui/UiActions.kt` ports `uiActionPermission` /
+`uiActionAllowed`; `UiActionsTest` checks them, the catalog and the quick
+reply rules against `test/resources/ui/` (`fixtures/ui/` copied unchanged).
 
 Live components (`ui/conversation/UiLiveViews.kt`) are drawn from the
 server's state: `provider_sign_in` from `GET /v0/provider-clis/:cliId` and
 `provider_cli.updated`, the newer version kept (`agent/ProviderClis.kt`;
 `404`/`501` points to Settings), `default_model` from the conversation's
 `ModeCatalog`, and on a Happy Cloud server only `invite` (roles from
-`/v0/roles`), `github_connect` (linked from `GET /v0/git/credentials?host=github.com`,
-re-read on `gitCredential.*`: the device code goes once it is linked) and
-`compute_join`; elsewhere those are fallback lines. Their actions are
-silent: `Conversation.press` sends one per component at a time with no
-bubble and no mode, and lays
-`UiWork` over the row (sending, the newest attempt record from any device
-pending, or refused with the server's reason); their refused records are
-no `Unsent` row. An action's `result` goes back to the widget alone, never
-into state, history, the kept store or a log (`UiActed` is no data class).
-A secret answered with (invite code, device code, join commands) lives in
-the widget's `remember` and is cleared when it leaves composition; a token
-or code typed is a masked field, never saved, emptied once sent.
+`/v0/roles`), `github_connect` (linked from
+`GET /v0/git/credentials?host=github.com`, re-read on `gitCredential.*`: the
+device code goes once it is linked) and `compute_join`; elsewhere those are
+fallback lines. Every action is silent and goes through one function,
+`Conversation.press`: `POST /v0/agents/:id/actions` under its own id (the
+attempt record's, so a retry is the same attempt), one per component at a
+time, no bubble, and `UiWork` laid over the row (sending, the newest
+attempt record from any device pending, or refused with the server's
+reason). Records come in finished runs of their own: they are no turn, and
+a `run.finished` for one doesn't end the turn going on. Controls the role
+may not use (`ServerPermissions`) show disabled. An action's `result` goes
+back to the widget alone, never into state, history, the kept store or a
+log (`UiActed` is no data class). A secret answered with (invite code,
+device code, join commands) lives in the widget's `remember` and is cleared
+when it leaves composition; a token or code typed is a masked field, never
+saved, emptied once sent.
+
+Quick replies (`conversation/ui/QuickReplies.kt`) are not chat UI: a
+`quick_replies` block of an agent message or the `quick_replies`
+presentation of a `suggest_replies` call becomes `ConversationRow.Replies`,
+which the conversation keeps only for the latest agent message until a
+person's message follows, drawn as pills under that message's last row
+(not for a role that can't write). A tap is `Conversation.sendReply`, an
+ordinary send of the option with `quickReply { messageId, toolCallId?,
+index }`; a person's message carrying `quickReply` shows "↩ Suggested by
+{agent}" over its bubble. Words are in `strings_chat_ui.xml`.
 
 ### Context meter and usage ring
 

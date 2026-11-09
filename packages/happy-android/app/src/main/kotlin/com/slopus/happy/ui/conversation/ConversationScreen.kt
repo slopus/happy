@@ -211,8 +211,10 @@ class ConversationScreenActions(
     val onOpenTool: ((String) -> Unit)? = null,
     /** How a workspace's folders read, for naming one of its files from the attach sheet; null where they can't. */
     val workspace: ((workspaceId: String) -> com.slopus.happy.ui.files.WorkspaceSource)? = null,
-    /** Presses a chat UI component with an action ([com.slopus.happy.conversation.Conversation.press]); null where it wasn't taken. */
-    val onUiAction: (com.slopus.happy.conversation.ui.UiOffer, com.slopus.happy.conversation.ui.UiComponent, com.slopus.happy.conversation.ui.UiAction) -> kotlinx.coroutines.Deferred<kotlinx.serialization.json.JsonObject?>? = { _, _, _ -> null },
+    /** Sends a chat UI component's action ([com.slopus.happy.conversation.Conversation.press]); its result, null where it wasn't taken. */
+    val onUiAction: (com.slopus.happy.conversation.ui.UiOffer, com.slopus.happy.conversation.ui.UiAction) -> kotlinx.coroutines.Deferred<kotlinx.serialization.json.JsonObject?>? = { _, _ -> null },
+    /** Sends a suggested reply ([com.slopus.happy.conversation.Conversation.sendReply]). */
+    val onQuickReply: (ConversationRow.Replies, Int) -> Unit = { _, _ -> },
 )
 
 /**
@@ -306,6 +308,9 @@ fun ConversationScreen(
     val presses by rememberUpdatedState(state.created && state.agent?.archivedAt == null)
     val allows by rememberUpdatedState(roleAllows)
     val catalog by rememberUpdatedState(state.catalog)
+    // A suggested reply is a send: whoever may write here may tap one.
+    val roleSends by rememberUpdatedState(roleCanSend)
+    val suggester by rememberUpdatedState(state.agent?.title)
     val rowActions = remember(actions, legacy, pictures, media, store, pictureLabel, videoLabel, asks, folds, videos, uiLive) {
         ConversationRowActions(
             legacy = legacy,
@@ -332,7 +337,10 @@ fun ConversationScreen(
             kept = store.kept,
             videos = videos,
             pages = actions.pages,
-            onUiAction = { row, action -> if (presses) actions.onUiAction(row.offer, row.component, action) else null },
+            onUiAction = { row, action -> if (presses) actions.onUiAction(row.offer, action) else null },
+            onQuickReply = { replies, index -> if (presses && roleSends) actions.onQuickReply(replies, index) },
+            uiReplies = { presses && roleSends },
+            suggester = { suggester },
             uiPresses = { presses },
             uiAllowed = { permission -> allows(permission) },
             uiLive = uiLive,

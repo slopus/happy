@@ -3,158 +3,6 @@
     "catalogVersion": 1,
     "payload": [
         {
-            "component": "choice",
-            "action": {
-                "type": "choice.choose",
-                "payload": {
-                    "optionId": "fix"
-                }
-            },
-            "schemaValid": true,
-            "redacted": {
-                "optionId": "fix"
-            }
-        },
-        {
-            "component": "choice",
-            "action": {
-                "type": "choice.choose",
-                "payload": {}
-            },
-            "schemaValid": false,
-            "redacted": null
-        },
-        {
-            "component": "choice",
-            "action": {
-                "type": "choice.choose",
-                "payload": {
-                    "optionId": "Fix"
-                }
-            },
-            "schemaValid": false,
-            "redacted": null
-        },
-        {
-            "component": "choice",
-            "action": {
-                "type": "choice.choose",
-                "payload": {
-                    "optionId": "fix",
-                    "extra": true
-                }
-            },
-            "schemaValid": false,
-            "redacted": null
-        },
-        {
-            "component": "checklist",
-            "action": {
-                "type": "checklist.submit",
-                "payload": {
-                    "selected": ["claude", "grok"]
-                }
-            },
-            "schemaValid": true,
-            "redacted": {
-                "selected": ["claude", "grok"]
-            }
-        },
-        {
-            "component": "checklist",
-            "action": {
-                "type": "checklist.submit",
-                "payload": {
-                    "selected": []
-                }
-            },
-            "schemaValid": true,
-            "redacted": {
-                "selected": []
-            }
-        },
-        {
-            "component": "checklist",
-            "action": {
-                "type": "checklist.submit",
-                "payload": {
-                    "selected": ["claude", "claude"]
-                }
-            },
-            "schemaValid": false,
-            "redacted": null
-        },
-        {
-            "component": "checklist",
-            "action": {
-                "type": "checklist.submit",
-                "payload": {
-                    "selected": "claude"
-                }
-            },
-            "schemaValid": false,
-            "redacted": null
-        },
-        {
-            "component": "text_field",
-            "action": {
-                "type": "text_field.submit",
-                "payload": {
-                    "text": "Ada"
-                }
-            },
-            "schemaValid": true,
-            "redacted": {
-                "text": "Ada"
-            }
-        },
-        {
-            "component": "text_field",
-            "action": {
-                "type": "text_field.submit",
-                "payload": {
-                    "text": "Two\nlines"
-                }
-            },
-            "schemaValid": true,
-            "redacted": {
-                "text": "Two\nlines"
-            }
-        },
-        {
-            "component": "text_field",
-            "action": {
-                "type": "text_field.submit",
-                "payload": {
-                    "text": ""
-                }
-            },
-            "schemaValid": false,
-            "redacted": null
-        },
-        {
-            "component": "text_field",
-            "action": {
-                "type": "text_field.submit",
-                "payload": {
-                    "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                }
-            },
-            "schemaValid": false,
-            "redacted": null
-        },
-        {
-            "component": "text_field",
-            "action": {
-                "type": "text_field.submit",
-                "payload": {
-                    "text": "bell\u0007"
-                }
-            },
-            "schemaValid": false,
-            "redacted": null
-        },
-        {
             "component": "provider_sign_in",
             "action": {
                 "type": "provider_sign_in.install",
@@ -541,125 +389,6 @@
     "offer": [
         {
             "component": {
-                "type": "choice",
-                "props": {
-                    "options": [
-                        {
-                            "id": "fix",
-                            "label": "Fix the login redirect",
-                            "primary": true
-                        },
-                        {
-                            "id": "tests",
-                            "label": "Run the tests"
-                        }
-                    ]
-                }
-            },
-            "action": {
-                "type": "choice.choose",
-                "payload": {
-                    "optionId": "fix"
-                }
-            },
-            "problem": null
-        },
-        {
-            "component": {
-                "type": "checklist",
-                "props": {
-                    "options": [
-                        {
-                            "id": "claude",
-                            "label": "Claude"
-                        },
-                        {
-                            "id": "codex",
-                            "label": "Codex",
-                            "checked": true
-                        },
-                        {
-                            "id": "grok",
-                            "label": "Grok"
-                        }
-                    ],
-                    "submitLabel": "Use these",
-                    "emptyLabel": "Continue without these"
-                }
-            },
-            "action": {
-                "type": "checklist.submit",
-                "payload": {
-                    "selected": ["claude", "grok"]
-                }
-            },
-            "problem": null
-        },
-        {
-            "component": {
-                "type": "checklist",
-                "props": {
-                    "options": [
-                        {
-                            "id": "claude",
-                            "label": "Claude"
-                        },
-                        {
-                            "id": "codex",
-                            "label": "Codex",
-                            "checked": true
-                        },
-                        {
-                            "id": "grok",
-                            "label": "Grok"
-                        }
-                    ],
-                    "submitLabel": "Use these",
-                    "emptyLabel": "Continue without these"
-                }
-            },
-            "action": {
-                "type": "checklist.submit",
-                "payload": {
-                    "selected": []
-                }
-            },
-            "problem": null
-        },
-        {
-            "component": {
-                "type": "text_field",
-                "props": {
-                    "label": "Your nickname",
-                    "submitLabel": "Save"
-                }
-            },
-            "action": {
-                "type": "text_field.submit",
-                "payload": {
-                    "text": "Ada"
-                }
-            },
-            "problem": null
-        },
-        {
-            "component": {
-                "type": "text_field",
-                "props": {
-                    "label": "Your nickname",
-                    "submitLabel": "Save"
-                }
-            },
-            "action": {
-                "type": "text_field.submit",
-                "payload": {
-                    "text": "Two\nlines"
-                }
-            },
-            "problem": null
-        },
-        {
-            "component": {
                 "type": "provider_sign_in",
                 "props": {
                     "provider": "claude"
@@ -859,148 +588,30 @@
         },
         {
             "component": {
-                "type": "choice",
-                "props": {
-                    "options": [
-                        {
-                            "id": "fix",
-                            "label": "Fix the login redirect",
-                            "primary": true
-                        },
-                        {
-                            "id": "tests",
-                            "label": "Run the tests"
-                        }
-                    ]
-                }
-            },
-            "action": {
-                "type": "choice.choose",
-                "payload": {
-                    "optionId": "deploy"
-                }
-            },
-            "problem": "That option isn't offered."
-        },
-        {
-            "component": {
-                "type": "checklist",
-                "props": {
-                    "options": [
-                        {
-                            "id": "claude",
-                            "label": "Claude"
-                        },
-                        {
-                            "id": "codex",
-                            "label": "Codex",
-                            "checked": true
-                        },
-                        {
-                            "id": "grok",
-                            "label": "Grok"
-                        }
-                    ],
-                    "submitLabel": "Use these",
-                    "emptyLabel": "Continue without these"
-                }
-            },
-            "action": {
-                "type": "checklist.submit",
-                "payload": {
-                    "selected": ["claude", "gemini"]
-                }
-            },
-            "problem": "That option isn't offered."
-        },
-        {
-            "component": {
-                "type": "choice",
-                "props": {
-                    "options": [
-                        {
-                            "id": "fix",
-                            "label": "Fix the login redirect",
-                            "primary": true
-                        },
-                        {
-                            "id": "tests",
-                            "label": "Run the tests"
-                        }
-                    ]
-                }
+                "type": "default_model",
+                "props": {}
             },
             "action": {
                 "type": "provider_sign_in.sign_in",
                 "payload": {}
             },
-            "problem": "A choice component has no action \"provider_sign_in.sign_in\"."
+            "problem": "A default_model component has no action \"provider_sign_in.sign_in\"."
+        },
+        {
+            "component": {
+                "type": "default_model",
+                "props": {}
+            },
+            "action": {
+                "type": "default_model.set",
+                "payload": {
+                    "modelId": "claude-opus-5-5"
+                }
+            },
+            "problem": "That default_model.set payload is invalid."
         }
     ],
     "permission": [
-        {
-            "action": "choice.choose",
-            "props": {
-                "options": [
-                    {
-                        "id": "fix",
-                        "label": "Fix the login redirect",
-                        "primary": true
-                    },
-                    {
-                        "id": "tests",
-                        "label": "Run the tests"
-                    }
-                ]
-            },
-            "permission": "content.write",
-            "allowed": {
-                "owner": true,
-                "member": true,
-                "viewer": false
-            }
-        },
-        {
-            "action": "checklist.submit",
-            "props": {
-                "options": [
-                    {
-                        "id": "claude",
-                        "label": "Claude"
-                    },
-                    {
-                        "id": "codex",
-                        "label": "Codex",
-                        "checked": true
-                    },
-                    {
-                        "id": "grok",
-                        "label": "Grok"
-                    }
-                ],
-                "submitLabel": "Use these",
-                "emptyLabel": "Continue without these"
-            },
-            "permission": "content.write",
-            "allowed": {
-                "owner": true,
-                "member": true,
-                "viewer": false
-            }
-        },
-        {
-            "action": "text_field.submit",
-            "props": {
-                "label": "Your nickname",
-                "submitLabel": "Save"
-            },
-            "permission": "content.write",
-            "allowed": {
-                "owner": true,
-                "member": true,
-                "viewer": false
-            }
-        },
         {
             "action": "provider_sign_in.install",
             "props": {
@@ -1300,214 +911,50 @@
             }
         }
     ],
-    "actionText": [
+    "quickReplies": [
         {
-            "component": {
-                "type": "choice",
-                "props": {
-                    "options": [
-                        {
-                            "id": "fix",
-                            "label": "Fix the login redirect",
-                            "primary": true
-                        },
-                        {
-                            "id": "tests",
-                            "label": "Run the tests"
-                        }
-                    ]
-                }
-            },
-            "action": {
-                "type": "choice.choose",
-                "payload": {
-                    "optionId": "tests"
-                }
-            },
-            "text": "Run the tests"
+            "options": ["Yes, go ahead", "Not now"],
+            "normalized": ["Yes, go ahead", "Not now"],
+            "problems": []
         },
         {
-            "component": {
-                "type": "checklist",
-                "props": {
-                    "options": [
-                        {
-                            "id": "claude",
-                            "label": "Claude"
-                        },
-                        {
-                            "id": "codex",
-                            "label": "Codex",
-                            "checked": true
-                        },
-                        {
-                            "id": "grok",
-                            "label": "Grok"
-                        }
-                    ],
-                    "submitLabel": "Use these",
-                    "emptyLabel": "Continue without these"
-                }
-            },
-            "action": {
-                "type": "checklist.submit",
-                "payload": {
-                    "selected": ["grok", "claude"]
-                }
-            },
-            "text": "Use these: Claude, Grok"
+            "options": ["  Fix   the\tlogin  ", "Run the tests"],
+            "normalized": ["Fix the login", "Run the tests"],
+            "problems": []
         },
         {
-            "component": {
-                "type": "checklist",
-                "props": {
-                    "options": [
-                        {
-                            "id": "claude",
-                            "label": "Claude"
-                        },
-                        {
-                            "id": "codex",
-                            "label": "Codex",
-                            "checked": true
-                        },
-                        {
-                            "id": "grok",
-                            "label": "Grok"
-                        }
-                    ],
-                    "submitLabel": "Use these",
-                    "emptyLabel": "Continue without these"
-                }
-            },
-            "action": {
-                "type": "checklist.submit",
-                "payload": {
-                    "selected": []
-                }
-            },
-            "text": "Continue without these"
+            "options": [],
+            "normalized": [],
+            "problems": ["Suggest 1 to 6 replies."]
         },
         {
-            "component": {
-                "type": "text_field",
-                "props": {
-                    "label": "Your nickname",
-                    "submitLabel": "Save"
-                }
-            },
-            "action": {
-                "type": "text_field.submit",
-                "payload": {
-                    "text": "Ada"
-                }
-            },
-            "text": "Ada"
+            "options": ["a", "b", "c", "d", "e", "f", "g"],
+            "normalized": ["a", "b", "c", "d", "e", "f", "g"],
+            "problems": ["Suggest 1 to 6 replies."]
         },
         {
-            "component": {
-                "type": "provider_sign_in",
-                "props": {
-                    "provider": "claude"
-                }
-            },
-            "action": {
-                "type": "provider_sign_in.sign_in",
-                "payload": {}
-            },
-            "text": null
-        }
-    ],
-    "openOffer": [
-        {
-            "once": false,
-            "accepted": {
-                "type": "choice.choose",
-                "payload": {
-                    "optionId": "fix"
-                }
-            },
-            "personSpokeAfter": true,
-            "action": {
-                "type": "choice.choose",
-                "payload": {
-                    "optionId": "tests"
-                }
-            },
-            "state": "open"
+            "options": ["Same", "Same"],
+            "normalized": ["Same", "Same"],
+            "problems": ["Replies must be unique; \"Same\" repeats."]
         },
         {
-            "once": true,
-            "personSpokeAfter": false,
-            "action": {
-                "type": "choice.choose",
-                "payload": {
-                    "optionId": "fix"
-                }
-            },
-            "state": "open"
+            "options": [
+                "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            ],
+            "normalized": [
+                "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            ],
+            "problems": ["Reply 1 must be plain text of 1 to 200 characters on one line."]
         },
         {
-            "once": true,
-            "personSpokeAfter": true,
-            "action": {
-                "type": "choice.choose",
-                "payload": {
-                    "optionId": "fix"
-                }
-            },
-            "state": "closed"
+            "options": ["bell\u0007"],
+            "normalized": ["bell\u0007"],
+            "problems": ["Reply 1 must be plain text of 1 to 200 characters on one line."]
         },
         {
-            "once": true,
-            "accepted": {
-                "type": "choice.choose",
-                "payload": {
-                    "optionId": "fix"
-                }
-            },
-            "personSpokeAfter": true,
-            "action": {
-                "type": "choice.choose",
-                "payload": {
-                    "optionId": "fix"
-                }
-            },
-            "state": "repeat"
-        },
-        {
-            "once": true,
-            "accepted": {
-                "type": "choice.choose",
-                "payload": {
-                    "optionId": "fix"
-                }
-            },
-            "personSpokeAfter": false,
-            "action": {
-                "type": "choice.choose",
-                "payload": {
-                    "optionId": "tests"
-                }
-            },
-            "state": "closed"
-        },
-        {
-            "once": true,
-            "accepted": {
-                "type": "checklist.submit",
-                "payload": {
-                    "selected": ["claude", "codex"]
-                }
-            },
-            "personSpokeAfter": true,
-            "action": {
-                "type": "checklist.submit",
-                "payload": {
-                    "selected": ["claude", "codex"]
-                }
-            },
-            "state": "repeat"
+            "options": ["right-to-left ‮"],
+            "normalized": ["right-to-left ‮"],
+            "problems": ["Reply 1 must be plain text of 1 to 200 characters on one line."]
         }
     ],
     "result": [
@@ -1566,27 +1013,15 @@
                 "id": "u1",
                 "components": [
                     {
-                        "id": "pick",
-                        "fallback": "Fix · Tests",
-                        "type": "choice",
-                        "props": {
-                            "options": [
-                                {
-                                    "id": "fix",
-                                    "label": "Fix the login redirect",
-                                    "primary": true
-                                },
-                                {
-                                    "id": "tests",
-                                    "label": "Run the tests"
-                                }
-                            ]
-                        }
+                        "id": "model",
+                        "fallback": "Choose your default model",
+                        "type": "default_model",
+                        "props": {}
                     }
                 ]
             },
             "problems": [],
-            "fallback": "Fix · Tests"
+            "fallback": "Choose your default model"
         },
         {
             "document": {
@@ -1639,48 +1074,17 @@
                 "id": "u1",
                 "components": [
                     {
-                        "id": "pick",
+                        "id": "pair",
                         "fallback": "",
-                        "type": "choice",
+                        "type": "phone_pair",
                         "props": {
-                            "options": [
-                                {
-                                    "id": "a",
-                                    "label": "A",
-                                    "primary": true
-                                },
-                                {
-                                    "id": "a",
-                                    "label": "B",
-                                    "primary": true
-                                }
-                            ]
+                            "device": "ios"
                         }
                     }
                 ]
             },
             "problems": [
-                "pick: Option IDs must be unique; \"a\" repeats.",
-                "pick: At most one option may be primary."
-            ],
-            "fallback": ""
-        },
-        {
-            "document": {
-                "id": "u1",
-                "components": [
-                    {
-                        "id": "pick",
-                        "fallback": "",
-                        "type": "choice",
-                        "props": {
-                            "options": []
-                        }
-                    }
-                ]
-            },
-            "problems": [
-                "pick: The choice props are invalid at \"/options\": Expected array length to be greater or equal to 1."
+                "pair: The phone_pair props are invalid at \"/device\": Unexpected property."
             ],
             "fallback": ""
         },

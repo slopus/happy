@@ -149,11 +149,17 @@ class ConversationRowActions(
     /** HTML artifacts shown inline under their cards; null where none are. */
     val pages: InlinePages? = null,
     /**
-     * Presses a chat UI component, every action alike ([com.slopus.happy.conversation.Conversation.press]):
-     * a silent action's result, the widget's alone; null where it wasn't taken. Null where nothing can be
-     * pressed here, and its controls take nothing.
+     * Sends a chat UI component's action, every one alike ([com.slopus.happy.conversation.Conversation.press]):
+     * its result, the widget's alone; null where it wasn't taken. Null where nothing can be pressed here,
+     * and its controls take nothing.
      */
     val onUiAction: ((ConversationRow.Ui, com.slopus.happy.conversation.ui.UiAction) -> kotlinx.coroutines.Deferred<kotlinx.serialization.json.JsonObject?>?)? = null,
+    /** Sends suggested reply `index` ([com.slopus.happy.conversation.Conversation.sendReply]); null where nothing can be sent, and no pill shows. */
+    val onQuickReply: ((ConversationRow.Replies, Int) -> Unit)? = null,
+    /** Whether the person may send here now, so suggested replies show: as the composer, not an archived chat. */
+    val uiReplies: () -> Boolean = { true },
+    /** Who suggested a reply, for the line over a bubble sent from one; null leaves the name out. */
+    val suggester: () -> String? = { null },
     /** Whether the conversation takes presses now: not an archived chat. */
     val uiPresses: () -> Boolean = { true },
     /** Whether the person's role holds a permission a press needs; only for showing, the computer decides. */
@@ -258,7 +264,7 @@ fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: Co
                 }
             }
             is ConversationRow.Ui -> UiComponentRow(row, actions, content)
-            is ConversationRow.Unsent -> UnsentRow(row, bubble, content)
+            is ConversationRow.Replies -> QuickRepliesRow(row, actions, content)
             is ConversationRow.Collaborator -> CollaboratorProse(row, actions.legacy, content)
             is ConversationRow.Failure -> FailureRow(row, actions, content)
             is ConversationRow.Ask -> AskRow(row, actions.asks, content)
@@ -345,21 +351,24 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
     val cut = remember(prose) { prose?.cut(UserFold.FOLD_LINES) }
     val toggle = stringResource(if (row.opened) R.string.machine_launcher_show_less else R.string.conversation_show_full)
     if (row.text.isNotEmpty() || failed) {
-        UserMessage(
-            ChatRow.User(message, UserDisplay.Text(row.text, row.blocks), delivery = delivery, time = row.createdAt),
-            bubble,
-            actions.legacy,
-            modifier.fillMaxWidth(),
-            statusLine = false,
-            onRetry = if (failed) ({ actions.legacy.onRetry(row.messageId) }) else null,
-            onDiscard = if (failed) ({ actions.legacy.onDiscard(row.messageId) }) else null,
-            attachments = if (row.pictures.isEmpty()) null else {
-                { Box(Modifier.padding(top = ConversationRowSpec.photosGap)) { photos(row, actions) } }
-            },
-            onTap = if (cut != null) ({ actions.onToggleMessage(row.key) }) else null,
-            tapLabel = toggle,
-            body = if (prose != null) { _ -> UserProse(row, prose, cut, actions.legacy) } else null,
-        )
+        Column(modifier.fillMaxWidth()) {
+            if (row.suggested) SuggestedLine(actions.suggester())
+            UserMessage(
+                ChatRow.User(message, UserDisplay.Text(row.text, row.blocks), delivery = delivery, time = row.createdAt),
+                bubble,
+                actions.legacy,
+                Modifier.fillMaxWidth(),
+                statusLine = false,
+                onRetry = if (failed) ({ actions.legacy.onRetry(row.messageId) }) else null,
+                onDiscard = if (failed) ({ actions.legacy.onDiscard(row.messageId) }) else null,
+                attachments = if (row.pictures.isEmpty()) null else {
+                    { Box(Modifier.padding(top = ConversationRowSpec.photosGap)) { photos(row, actions) } }
+                },
+                onTap = if (cut != null) ({ actions.onToggleMessage(row.key) }) else null,
+                tapLabel = toggle,
+                body = if (prose != null) { _ -> UserProse(row, prose, cut, actions.legacy) } else null,
+            )
+        }
     } else if (row.pictures.isNotEmpty()) {
         Box(
             modifier

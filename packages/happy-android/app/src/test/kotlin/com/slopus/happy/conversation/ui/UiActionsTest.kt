@@ -6,7 +6,6 @@ import com.slopus.happy.conversation.Message
 import com.slopus.happy.conversation.Presentation
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
@@ -19,8 +18,8 @@ import org.junit.Test
 /**
  * The client package's chat UI rules, against its own vectors.
  * `ui/actions.fixtures.json` and `ui/ui.schema.json` are
- * `packages/happy-agent-client/fixtures/ui/` from happy-agent 39bb1c512
- * (client 0.0.161-preview.12), copied unchanged: take them again from
+ * `packages/happy-agent-client/fixtures/ui/` from happy-agent 8417cce23
+ * (client 0.0.161-preview.14), copied unchanged: take them again from
  * there when the catalog changes, never edit them by hand.
  */
 class UiActionsTest {
@@ -30,7 +29,6 @@ class UiActionsTest {
     private val fixtures = resource("actions.fixtures.json")
     private val schema = resource("ui.schema.json")
 
-    private fun action(value: JsonElement) = UiAction.parse(value)!!
     private fun JsonElement?.string(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.content
 
     @Test fun `the catalog is the schema's version`() {
@@ -39,7 +37,7 @@ class UiActionsTest {
     }
 
     @Test fun `every action of the schema is in the catalog as declared`() {
-        val declared = HashMap<String, UiActionDefinition>()
+        val declared = HashMap<String, UiPermission>()
         for ((type, component) in schema["components"]!!.jsonObject) {
             for ((name, value) in component.jsonObject["actions"]!!.jsonObject) {
                 val definition = value.jsonObject
@@ -52,37 +50,30 @@ class UiActionsTest {
                     )
                     else -> UiPermission.Id("content.write")
                 }
-                declared["$type.$name"] = UiActionDefinition(
-                    message = definition["transcript"]!!.jsonPrimitive.content == "message",
-                    once = definition["once"]?.jsonPrimitive?.content == "true",
-                    permission = permission,
-                )
+                declared["$type.$name"] = permission
             }
         }
         assertEquals(declared, UiCatalog.actions)
     }
 
-    @Test fun `action text matches uiActionText`() {
-        val vectors = fixtures["actionText"]!!.jsonArray
+    @Test fun `quick replies normalize and check as normalizeQuickReply and quickRepliesProblems do`() {
+        val vectors = fixtures["quickReplies"]!!.jsonArray.map { it.jsonObject }
         assertTrue(vectors.isNotEmpty())
-        for (vector in vectors.map { it.jsonObject }) {
-            val component = vector["component"]!!.jsonObject
-            val expected = vector["text"].string()
-            val text = UiActionText.of(component["type"]!!.jsonPrimitive.content, component["props"]!!.jsonObject, action(vector["action"]!!))
-            assertEquals(vector.toString(), expected, text)
+        for (vector in vectors) {
+            val options = vector["options"]!!.jsonArray.map { it.jsonPrimitive.content }
+            val normalized = options.map(QuickReplies::normalize)
+            assertEquals(vector.toString(), vector["normalized"]!!.jsonArray.map { it.jsonPrimitive.content }, normalized)
+            assertEquals(vector.toString(), vector["problems"]!!.jsonArray.map { it.jsonPrimitive.content }, QuickReplies.problems(normalized))
         }
     }
 
-    @Test fun `the open-offer rule matches uiOfferState`() {
-        for (vector in fixtures["openOffer"]!!.jsonArray.map { it.jsonObject }) {
-            val state = UiOfferState.of(
-                once = vector["once"]!!.jsonPrimitive.content == "true",
-                accepted = vector["accepted"]?.takeIf { it !is JsonNull }?.let(::action),
-                personSpokeAfter = vector["personSpokeAfter"]!!.jsonPrimitive.content == "true",
-                action = action(vector["action"]!!),
-            )
-            assertEquals(vector.toString(), vector["state"]!!.jsonPrimitive.content, state.name.lowercase())
-        }
+    @Test fun `quick replies that don't pass are not drawn`() {
+        val block = { options: String -> Json.parseToJsonElement("""{"type":"quick_replies","options":$options}""").jsonObject }
+        assertEquals(listOf("Yes", "No"), QuickReplies.options(block("""["Yes","No"]""")))
+        assertEquals(null, QuickReplies.options(block("""["Same","Same"]""")))
+        assertEquals(null, QuickReplies.options(block("[]")))
+        assertEquals("""{"messageId":"m1","toolCallId":"c1","index":2}""", QuickReply("m1", "c1", 2).json().toString())
+        assertEquals("""{"messageId":"m1","index":0}""", QuickReply("m1", null, 0).json().toString())
     }
 
     @Test fun `permissions resolve as uiActionPermission and uiActionAllowed do`() {
@@ -114,13 +105,6 @@ class UiActionsTest {
             // The fallback older clients read: each line, blank ones left out, a blank line between.
             assertEquals(vector["fallback"].string(), document.components.map { it.fallback.trim() }.filter { it.isNotEmpty() }.joinToString("\n\n"))
         }
-        val empty = UiDocument.parse(fixtures["documents"]!!.jsonArray.map { it.jsonObject }.first { "\"options\":[]" in it.toString() }["document"])!!
-        assertTrue(empty.components.single() is UiComponent.Other)
-    }
-
-    @Test fun `a checklist submit reads its ticks back`() {
-        assertEquals("""{"type":"checklist.submit","payload":{"selected":["a","b"]}}""", UiAction.submitChecklist(listOf("a", "b")).json().toString())
-        assertEquals("""{"type":"text_field.submit","payload":{"text":"Ada"}}""", UiAction.submitText("Ada").json().toString())
     }
 
     @Test fun `a file tree lists each folder once over what it holds`() {
@@ -139,11 +123,15 @@ class UiActionsTest {
         )
     }
 
-    @Test fun `chat UI is kept on the phone exactly as it came`() {
-        val message = Message.parse(Json.parseToJsonElement(ChatUiConversationTest.OFFER))!!
-        val presentation = (message.content.single() as Block.ToolCall).presentation as Presentation.Ui
-        assertEquals("pick", presentation.document.components.single().id)
-        val record = Message.parse(Json.parseToJsonElement(ChatUiConversationTest.record("\"k1\"", "rejected", reason = "Already answered")))!!
-        for (kept in listOf(message, record)) assertEquals(kept, Message.parse(KeptConversation.messageJson(kept)))
+    @Test fun `chat UI and quick replies are kept on the phone exactly as they came`() {
+        val message = Message.parse(Json.parseToJsonElement(QuickRepliesConversationTest.SUGGESTED))!!
+        val presentation = (message.content.last() as Block.ToolCall).presentation as Presentation.QuickReplies
+        assertEquals(listOf("Fix the login redirect", "Run the tests"), presentation.options)
+        val block = Message.parse(Json.parseToJsonElement(QuickRepliesConversationTest.OPENING))!!
+        val person = Message.parse(Json.parseToJsonElement(QuickRepliesConversationTest.person("p1", "Run the tests", """{"messageId":"m1","toolCallId":"c1","index":1}""")))!!
+        assertEquals(QuickReply("m1", "c1", 1), person.quickReply)
+        val record = Message.parse(Json.parseToJsonElement(LiveUiConversationTest.record("\"k1\"", "rejected", reason = "Invites are off here.")))!!
+        val ui = Message.parse(Json.parseToJsonElement(LiveUiConversationTest.OFFER))!!
+        for (kept in listOf(message, block, person, record, ui)) assertEquals(kept, Message.parse(KeptConversation.messageJson(kept)))
     }
 }
