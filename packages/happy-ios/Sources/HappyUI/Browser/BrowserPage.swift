@@ -69,7 +69,8 @@ final class BrowserPage {
     private static func phoneRules() async throws -> WKContentRuleList {
         if let compiledPhoneRules { return compiledPhoneRules }
         // Content blockers match without `|`: each spelling, then each after a user.
-        let hosts = [#"127\."#, #"localhost[:/]"#, #"[^/:]*\.localhost[:/]"#, #"0\.0\.0\.0[:/]"#, #"\[::1?\]"#, #"\[::ffff:127\."#, #"\[::ffff:7f"#]
+        let hosts = [#"127\.[0-9]+\.[0-9]+\.[0-9]+[:/]"#, #"localhost\.?[:/]"#, #"[^/:]*\.localhost\.?[:/]"#, #"0\.0\.0\.0[:/]"#, #"\[::1?\]"#,
+                     #"\[::ffff:127\."#, #"\[::ffff:7f"#, #"\[::ffff:0:0\]"#]
         let rules = hosts.flatMap { [#"^[a-z]+://"# + $0, #"^[a-z]+://[^/]*@"# + $0] }.map { filter in
             #"{"trigger":{"url-filter":""# + filter.replacingOccurrences(of: "\\", with: "\\\\") + #""},"action":{"type":"block"}}"#
         }.joined(separator: ",")

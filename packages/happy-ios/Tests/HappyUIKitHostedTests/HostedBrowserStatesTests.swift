@@ -427,14 +427,24 @@ final class HostedBrowserStatesTests: XCTestCase {
             try await until("the second page on \(host)") { await daemon.gets("/second") > 0 }
             try await loaded(browser)
             XCTAssertEqual(browser.navigationItem.subtitle, host.trimmingCharacters(in: CharacterSet(charactersIn: "[]")), "The address as the link gave it")
-            let fetched = try await web.callAsyncJavaScript("try { await fetch('http://\(host):\(port)/fetched'); return 'fetched' } catch { return 'blocked' }", arguments: [:], in: nil, contentWorld: .page) as? String
-            XCTAssertEqual(fetched, "blocked", host)
+            func fetch(_ address: String, _ path: String) async throws -> String? {
+                try await web.callAsyncJavaScript("try { await fetch('http://\(address)\(path)', {mode: 'no-cors'}); return 'fetched' } catch { return 'blocked' }", arguments: [:], in: nil, contentWorld: .page) as? String
+            }
+            for address in ["\(host):\(port)", "localhost.:\(port)", "a.localhost:\(port)", "a.localhost.:\(port)", "127.0.0.2:\(port)", "0.0.0.0:\(port)",
+                            "[::]:\(port)", "[::ffff:127.0.0.1]:\(port)", "[::ffff:0.0.0.0]:\(port)"] {
+                let fetched = try await fetch(address, "/fetched")
+                XCTAssertEqual(fetched, "blocked", address)
+            }
+            // A host that only starts like a loopback address is the computer's to reach.
+            let named = try await fetch("127.example.com", "/named")
+            XCTAssertEqual(named, "fetched")
 
             let requests = await daemon.requests, hosts = await daemon.hosts, reached = await phone.lines, fetches = await daemon.gets("/fetched")
             XCTAssertEqual(reached, [], "Nothing connects to the phone's \(host)")
             XCTAssertTrue(requests.contains("CONNECT \(host):\(port) HTTP/1.1"), "\(requests)")
+            XCTAssertTrue(requests.contains("CONNECT 127.example.com:80 HTTP/1.1"), "\(requests)")
             XCTAssertFalse(requests.contains { $0.contains("happy-loopback") }, "\(requests)")
-            XCTAssertEqual(Set(hosts), ["\(host):\(port)"], "The dev server is asked for its own name")
+            XCTAssertEqual(Set(hosts), ["\(host):\(port)", "127.example.com"], "The dev server is asked for its own name")
             XCTAssertEqual(fetches, 0)
         }
     }

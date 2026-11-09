@@ -87,10 +87,15 @@ append a second HTTP error response to its bytes.
   exactly what it did before. Each plain HTTP request's `Host`, plus an
   `Origin` or `Referer` on the alias, names the loopback again, so dev
   servers that check them (Vite, Next) answer. TLS passes untouched: its
-  name is the alias. Every page also has a content blocker for anything it
-  loads from the loopback in any other spelling: frames, scripts, fetches,
-  WebSockets, other `127.x`, `0.0.0.0`, `*.localhost`, mapped IPv6. That
-  includes a subresource on the exact loopback, which fails, not reloads.
+  name is the alias. Every page also has a content blocker for anything
+  else it loads (frames, scripts, fetches, WebSockets) from a host that is,
+  as WebKit canonicalizes it: any `127.x.y.z` (so `127.1`, `2130706433`,
+  `0x7f.1`; not a name like `127.example.com`),
+  `localhost`, `*.localhost` (each with or without a trailing dot),
+  `0.0.0.0`, `[::]`, `[::1]`, `[::ffff:127.*]`, `[::ffff:7f…]` or
+  `[::ffff:0:0]`, with or without userinfo. That includes a subresource on
+  the exact loopback, which fails, not reloads. A main-frame form POST to
+  the loopback reloads on the alias as a GET.
   The address bar, errors and Share show the address as the link gave it.
 
 ## Security rules
