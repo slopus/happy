@@ -64,6 +64,16 @@ export class FileWorkspaceController {
         return { ...Object.fromEntries(this.restoredDrafts), ...Object.fromEntries(Object.entries(this.snapshot.documents).filter(([, file]) => documentDirty(file) && file.hash).map(([path, file]) => [path, { draft: file.draft, hash: file.draftBaseHash ?? file.hash! }])) };
     }
     setOpen(open: boolean) { this.commit({ ...this.snapshot, open }); }
+    closeMany(paths: readonly string[], discard = false) {
+        // Check the whole group before removing anything, including cached drafts
+        // whose original file could not be loaded. Saving files are never discarded.
+        if (paths.some(path => {
+            const entry = this.snapshot.documents[path];
+            return entry && (entry.saving || (!discard && (documentDirty(entry) || this.restoredDrafts.has(path))));
+        })) return false;
+        for (const path of paths) this.close(path, discard);
+        return true;
+    }
     close(path: string, discard = false) {
         const entry = this.snapshot.documents[path];
         if (!entry) return true;

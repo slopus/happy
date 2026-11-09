@@ -13,6 +13,7 @@ import {
     PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
 } from '@/utils/desktopNavigationLayout';
 import { SessionView } from './SessionView';
+import { FileWorkspaceContext } from '@/components/fileWorkspace/context';
 import { MessageStagingQueueView } from '@/components/MessageStagingQueueView';
 
 // react-test-renderer does not publish TypeScript declarations with the package.
@@ -1543,6 +1544,34 @@ describe('SessionView Agent-space boundary', () => {
         await act(async () => renderer.unmount());
     });
 
+    it('restores the file tree through the shared layout action while in zen mode', () => {
+        mocks.isDataReady = true; mocks.windowWidth = 1400; mocks.isTablet = true; mocks.platformOS = 'web'; mocks.zenMode = true;
+        let renderer: any;
+        const value = { enabled: true, root: '/work', snapshot: { open: true, active: '/work/a.md', tabs: ['/work/a.md'], documents: {} }, maximized: true, chatWidth: 430 } as any;
+        act(() => { renderer = TestRenderer.create(<FileWorkspaceContext.Provider value={value}><SessionView id="session-1" /></FileWorkspaceContext.Provider>); });
+        const workspace = renderer.root.findByType('FileWorkspace');
+        expect(workspace.props.fileTreeExpanded).toBe(false);
+        act(() => workspace.props.onToggleFileTree());
+        expect(mocks.toggleLayoutRightSidebar).toHaveBeenCalledTimes(1);
+        expect(renderer.root.findByType('FilesSidebar').props.mode).toBe('allFiles');
+        act(() => renderer.unmount());
+    });
+
+    it('restores all files instead of the previous changes list or subagent inspector', () => {
+        mocks.isDataReady = true; mocks.windowWidth = 1400; mocks.isTablet = true; mocks.platformOS = 'web';
+        mocks.sessionMessages = [{ kind: 'agent-text', id: 'message-one', localId: null, createdAt: 1, text: 'Visible message' }];
+        let renderer: any;
+        const value = { enabled: true, root: '/work', snapshot: { open: true, active: '/work/a.md', tabs: ['/work/a.md'], documents: {} }, maximized: false, chatWidth: 430 } as any;
+        act(() => { renderer = TestRenderer.create(<FileWorkspaceContext.Provider value={value}><SessionView id="session-1" /></FileWorkspaceContext.Provider>); });
+        act(() => renderer.root.findByType('FilesSidebar').props.onModeChange('changes'));
+        act(() => mocks.openSubagent?.({ id: 'agent-one', title: 'Implementation agent', status: 'running' }));
+        expect(renderer.root.findAllByType('SubagentInspectorPanel')).toHaveLength(1);
+        act(() => renderer.root.findByType('FileWorkspace').props.onToggleFileTree());
+        expect(renderer.root.findAllByType('SubagentInspectorPanel')).toHaveLength(0);
+        expect(renderer.root.findByType('FilesSidebar').props.mode).toBe('allFiles');
+        act(() => renderer.unmount());
+    });
+
     it('collapses and restores the desktop capability panel independently', () => {
         mocks.isDataReady = true;
         mocks.windowWidth = 1400;
@@ -1553,7 +1582,9 @@ describe('SessionView Agent-space boundary', () => {
         act(() => {
             renderer = TestRenderer.create(<SessionView id="session-1" />);
         });
-        expect(renderer.root.findAllByProps({ testID: 'desktop-right-panel-collapse-button' })).toHaveLength(0);
+        const panelCollapse = renderer.root.findByProps({ testID: 'desktop-right-panel-collapse-button' });
+        act(() => panelCollapse.props.onPress());
+        expect(mocks.setDesktopRightPanelCollapsed).toHaveBeenCalledWith(true);
         const toggle = renderer.root.findByProps({ testID: 'desktop-right-panel-toggle-button' });
         expect(toggle.props['aria-expanded']).toBe(true);
         expect(renderer.root.findByProps({ testID: 'desktop-right-panel-motion' }).props.dataSet).toMatchObject({
@@ -1903,5 +1934,5 @@ describe('SessionView Agent-space boundary', () => {
 
 // File workspace transport/ownership is covered in its dedicated tests and real App fixture.
 vi.mock('@/components/fileWorkspace/SessionFileWorkspaceProvider', () => ({ SessionFileWorkspaceProvider: ({ children }: { children: React.ReactNode }) => children }));
-vi.mock('@/components/fileWorkspace/FileWorkspace', () => ({ FileWorkspace: () => null, FileWorkspaceResizeHandle: () => null }));
+vi.mock('@/components/fileWorkspace/FileWorkspace', () => ({ FileWorkspace: (props: any) => React.createElement('FileWorkspace', props), FileWorkspaceResizeHandle: () => null }));
 vi.mock('@/components/fileWorkspace/WorkspaceDirectoryTree', () => ({ WorkspaceDirectoryTree: () => null }));

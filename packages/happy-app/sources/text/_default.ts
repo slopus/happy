@@ -16,6 +16,14 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const en = {
     fileWorkspace: {
+        tabActions: "Tab actions",
+        closeOtherTabs: "Close other tabs",
+        closeAllTabs: "Close all tabs",
+        closeTabsLeft: "Close tabs to the left",
+        closeTabsRight: "Close tabs to the right",
+        hideFileTree: "Hide file tree",
+        showFileTree: "Show file tree",
+
         fileNotFound: ({ path }: { path: string }) => `File not found: ${path}. Relative links are resolved from the session working directory. Ask for the file's full path or open it from the correct project.`,
         readTimeout: 'Reading the file took too long. Check the session machine connection, then reload the file.',
         retryOperation: "Retry original operation",

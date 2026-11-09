@@ -18,6 +18,14 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const zhHans: TranslationStructure = {
     fileWorkspace: {
+        tabActions: "标签操作",
+        closeOtherTabs: "关闭其他标签",
+        closeAllTabs: "关闭全部标签",
+        closeTabsLeft: "关闭左侧标签",
+        closeTabsRight: "关闭右侧标签",
+        hideFileTree: "收起文件树",
+        showFileTree: "展开文件树",
+
         fileNotFound: ({ path }: { path: string }) => `找不到文件：${path}。相对链接会从当前会话的工作目录查找，请核对文件的完整路径，或从正确的项目打开。`,
         readTimeout: '读取文件超时。请检查会话所在机器的连接，再点击刷新重试。',
         retryOperation: "重试原操作",

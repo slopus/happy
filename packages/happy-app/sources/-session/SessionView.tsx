@@ -1472,7 +1472,12 @@ const SessionViewContent = React.memo((props: { id: string }) => {
             </View>
             {fileWorkspace?.enabled && fileWorkspace.snapshot.open && <>
                 {!fileWorkspace.maximized && <FileWorkspaceResizeHandle width={desktopMainWidth || workspaceChatWidth} maximumWidth={workspaceChatMaximumWidth} />}
-                <FileWorkspace sessionId={sessionId} />
+                <FileWorkspace sessionId={sessionId} fileTreeExpanded={showDesktopRightPanel} onToggleFileTree={() => {
+                    subagentInspector?.close();
+                    setDesktopPanelMode('files');
+                    setSidebarMode('allFiles');
+                    toggleLayoutRightSidebar();
+                }} />
             </>}
             <Animated.View
                 {...(Platform.OS === 'web' ? { inert: showDesktopRightPanel ? undefined : true } as any : {})}
@@ -1512,7 +1517,7 @@ const SessionViewContent = React.memo((props: { id: string }) => {
                         collapseLabel={t('desktopWorkspace.hidePanelShort')}
                         onCollapse={() => setDesktopRightPanelCollapsed(true)}
                         onTabChange={(key) => setDesktopPanelMode(key === 'files' ? 'files' : 'capabilities')}
-                        showCollapseButton={false}
+                        showCollapseButton
                         tabs={desktopPanelTabs}
                     >
                         <DesktopPresenceTransition

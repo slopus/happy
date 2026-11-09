@@ -18,6 +18,14 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const zhHant: TranslationStructure = {
     fileWorkspace: {
+        tabActions: "分頁操作",
+        closeOtherTabs: "關閉其他分頁",
+        closeAllTabs: "關閉全部分頁",
+        closeTabsLeft: "關閉左側分頁",
+        closeTabsRight: "關閉右側分頁",
+        hideFileTree: "收起檔案樹",
+        showFileTree: "展開檔案樹",
+
         fileNotFound: ({ path }: { path: string }) => `找不到檔案：${path}。相對連結會從目前工作階段的工作目錄查找，請核對檔案的完整路徑，或從正確的專案開啟。`,
         readTimeout: '讀取檔案逾時。請檢查工作階段所在機器的連線，再點擊重新整理重試。',
         retryOperation: "重試原操作",

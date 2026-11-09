@@ -1,0 +1,107 @@
+import * as React from 'react';
+import { act } from 'react';
+// @ts-expect-error react-test-renderer has no declarations.
+import TestRenderer from 'react-test-renderer';
+import { beforeEach, expect, it, vi } from 'vitest';
+import { FileWorkspaceController } from './controller';
+const state = vi.hoisted(() => ({ skin: 'gingham', reduced: false, alert: vi.fn() }));
+const theme = vi.hoisted(() => ({ dark: true, colors: {
+    surface: '#101820', surfaceSelected: '#354550', surfacePressed: '#283640', divider: '#445566', text: '#ffffff', textSecondary: '#aabbcc',
+    desktopSkin: { readingSolid: '#151a21', readingCompact: 'rgba(21,26,33,0.70)' },
+} }));
+vi.mock('react-native', () => ({ Platform: { OS: 'web' }, View: 'View', ScrollView: 'ScrollView', ActivityIndicator: 'ActivityIndicator' }));
+vi.mock('react-native-unistyles', () => ({ useUnistyles: () => ({ theme }) }));
+vi.mock('@/sync/storage', () => ({ useLocalSetting: () => state.skin }));
+vi.mock('@/hooks/useReducedTransparency', () => ({ useReducedTransparency: () => state.reduced }));
+vi.mock('@/modal', () => ({ Modal: { alert: state.alert } }));
+vi.mock('@/text', () => ({ t: (key: string) => key }));
+vi.mock('@/components/StyledText', () => ({ Text: 'Text' }));
+vi.mock('@/components/markdown/MarkdownView', () => ({ MarkdownView: 'MarkdownView' }));
+vi.mock('@/components/CodeEditor', () => ({ CodeEditor: 'CodeEditor' }));
+vi.mock('./WorkspaceButton', () => ({ WorkspaceButton: 'WorkspaceButton' }));
+vi.mock('./FileTabContextMenu', () => ({ FileTabContextMenu: 'TabMenu' }));
+vi.mock('./VersionHistoryPanel', () => ({ VersionHistoryPanel: 'VersionHistoryPanel' }));
+vi.mock('./ArtifactPreview', () => ({ ArtifactPreview: 'ArtifactPreview' }));
+vi.mock('./HtmlFilePreview', () => ({ HtmlFilePreview: 'HtmlFilePreview' }));
+import { FileWorkspaceContext } from './context';
+import { FileWorkspace } from './FileWorkspace';
+let controller: FileWorkspaceController;
+let maximized = false;
+let expanded = true;
+const toggleTree = vi.fn();
+function Harness() {
+    const snapshot = React.useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+    const value = { enabled: true, root: '/work', snapshot, controller, maximized, setMaximized: vi.fn(),
+        versions: { currentForHash: () => null }, setReference: vi.fn() } as any;
+    return <FileWorkspaceContext.Provider value={value}><FileWorkspace sessionId="s" fileTreeExpanded={expanded} onToggleFileTree={toggleTree} /></FileWorkspaceContext.Provider>;
+}
+beforeEach(async () => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    controller = new FileWorkspaceController({ root: '/work', read: async () => ({ content: '# Base', hash: 'base' }), write: async () => ({ hash: 'saved' }) });
+    await controller.open('a.md'); await controller.open('b.md'); await controller.open('c.md');
+    maximized = false; expanded = true; state.reduced = false; state.skin = 'gingham'; state.alert.mockReset(); toggleTree.mockReset();
+});
+it('opens actions on the clicked tab without switching the active document', () => {
+    let renderer: any;
+    act(() => { renderer = TestRenderer.create(<Harness />); });
+    act(() => renderer.root.findByProps({ testID: 'workspace-tab:/work/b.md' }).props.onContextMenu({ preventDefault() {}, stopPropagation() {}, clientX: 20, clientY: 30, currentTarget: null }));
+    expect(renderer.root.findByType('TabMenu').props.anchor).toMatchObject({ path: '/work/b.md', x: 20, y: 30 });
+    expect(controller.getSnapshot().active).toBe('/work/c.md');
+    act(() => renderer.root.findByType('TabMenu').props.onAction(['/work/a.md']));
+    expect(controller.getSnapshot().tabs).toEqual(['/work/b.md', '/work/c.md']);
+    act(() => renderer.unmount());
+});
+it('keeps the entire group on cancel and saves before closing when requested', async () => {
+    controller.edit('/work/b.md', '# Draft');
+    let renderer: any;
+    act(() => { renderer = TestRenderer.create(<Harness />); });
+    act(() => renderer.root.findByType('TabMenu').props.onAction(controller.getSnapshot().tabs));
+    expect(controller.getSnapshot().tabs).toHaveLength(3);
+    const buttons = state.alert.mock.calls[0][2];
+    expect(buttons.find((button: any) => button.style === 'cancel')).toBeDefined();
+    await act(async () => { await buttons.find((button: any) => button.text === 'fileWorkspace.save').onPress(); });
+    expect(controller.getSnapshot().tabs).toEqual([]);
+    act(() => renderer.unmount());
+});
+it('discards a group only after the explicit destructive action', () => {
+    controller.edit('/work/b.md', '# Draft');
+    let renderer: any;
+    act(() => { renderer = TestRenderer.create(<Harness />); });
+    act(() => renderer.root.findByType('TabMenu').props.onAction(controller.getSnapshot().tabs));
+    expect(controller.getSnapshot().tabs).toHaveLength(3);
+    act(() => state.alert.mock.calls[0][2].find((button: any) => button.style === 'destructive').onPress());
+    expect(controller.getSnapshot().tabs).toEqual([]);
+    act(() => renderer.unmount());
+});
+it('keeps one full-width themed reading background when maximized and supports reduced transparency', () => {
+    let renderer: any;
+    act(() => { renderer = TestRenderer.create(<Harness />); });
+    const surface = () => renderer.root.findByProps({ testID: 'file-workspace' }).props.style;
+    expect(surface().backgroundColor).toBe(theme.colors.desktopSkin.readingCompact);
+    maximized = true;
+    act(() => renderer.update(<Harness />));
+    expect(surface().backgroundColor).toBe(theme.colors.desktopSkin.readingCompact);
+    expect(surface().paddingTop ?? 0).toBe(0);
+    expect(surface().maxWidth).toBeUndefined();
+    state.reduced = true;
+    act(() => renderer.update(<Harness />));
+    expect(surface().backgroundColor).toBe(theme.colors.desktopSkin.readingSolid);
+    state.skin = 'default';
+    act(() => renderer.update(<Harness />));
+    expect(surface().backgroundColor).toBe(theme.colors.surface);
+    act(() => renderer.unmount());
+});
+it('keeps the file tree toggle available after collapsing it and in full-screen mode', () => {
+    let renderer: any;
+    act(() => { renderer = TestRenderer.create(<Harness />); });
+    const button = () => renderer.root.findByProps({ testID: 'workspace-toggle-file-tree' });
+    expect(button().props.label).toBe('fileWorkspace.hideFileTree');
+    act(() => button().props.onPress());
+    expect(toggleTree).toHaveBeenCalledTimes(1);
+    expanded = false; maximized = true;
+    act(() => renderer.update(<Harness />));
+    expect(button().props.label).toBe('fileWorkspace.showFileTree');
+    act(() => button().props.onPress());
+    expect(toggleTree).toHaveBeenCalledTimes(2);
+    act(() => renderer.unmount());
+});

@@ -7,6 +7,9 @@ import { CodeEditor } from '@/components/CodeEditor';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { documentDirty } from './controller';
+import { useLocalSetting } from '@/sync/storage';
+import { useReducedTransparency } from '@/hooks/useReducedTransparency';
+import { FileTabContextMenu, type TabMenuAnchor } from './FileTabContextMenu';
 import { useFileWorkspace } from './context';
 import { VersionHistoryPanel } from './VersionHistoryPanel';
 import { ArtifactPreview } from './ArtifactPreview';
@@ -15,9 +18,14 @@ import { WorkspaceButton as Button } from './WorkspaceButton';
 import { documentBodyStyle, documentScrollStyle, workspaceChatMinWidth, workspaceResizeWidth } from './documentPresentation';
 
 const language = (path: string) => ({ md: 'markdown', mdx: 'markdown', html: 'html', htm: 'html', js: 'javascript', jsx: 'jsx', ts: 'typescript', tsx: 'tsx', css: 'css', json: 'json', yml: 'yaml', yaml: 'yaml', py: 'python', sh: 'bash', svg: 'xml' }[path.split('.').pop()?.toLowerCase() ?? ''] ?? null);
-export function FileWorkspace({ sessionId }: { sessionId: string }) {
+export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree }: { sessionId: string; fileTreeExpanded?: boolean; onToggleFileTree?: () => void }) {
     const workspace = useFileWorkspace();
     const { theme } = useUnistyles();
+    const desktopSkinId = useLocalSetting('desktopSkinId');
+    const reducedTransparency = useReducedTransparency();
+    const photoSkin = Platform.OS === 'web' && desktopSkinId !== 'default';
+    const [tabMenu, setTabMenu] = React.useState<TabMenuAnchor | null>(null);
+    const dismissTabMenu = React.useCallback(() => setTabMenu(null), []);
     const [modes, setModes] = React.useState<Record<string, boolean>>({});
     const [historyPath, setHistoryPath] = React.useState<string | null>(null);
     const [workspaceWidth, setWorkspaceWidth] = React.useState(0);
@@ -46,13 +54,19 @@ export function FileWorkspace({ sessionId }: { sessionId: string }) {
     const dirty = document ? documentDirty(document) : false;
     const previewable = /\.(md|markdown|html?|svg)$/i.test(path);
     const preview = previewable && modes[path] !== false;
-    const close = (file: string) => {
-        if (controller.close(file)) return;
-        if (snapshot.documents[file]?.saving) return;
-        Modal.alert(t('fileWorkspace.unsavedTitle'), t('fileWorkspace.unsavedMessage'), [
+    const close = (files: string[]) => {
+        if (controller.closeMany(files)) return;
+        const current = controller.getSnapshot();
+        if (files.some(file => current.documents[file]?.saving)) return;
+        const drafts = controller.exportDrafts();
+        const unsaved = files.filter(file => drafts[file]);
+        Modal.alert(t('fileWorkspace.unsavedTitle'), t('fileWorkspace.unsavedMessage') + '\n\n' + unsaved.map(file => file.startsWith(workspace.root + '/') ? file.slice(workspace.root.length + 1) : file).join('\n'), [
             { text: t('common.cancel'), style: 'cancel' },
-            { text: t('fileWorkspace.discard'), style: 'destructive', onPress: () => { controller.close(file, true); } },
-            ...(snapshot.documents[file]?.phase === 'ready' && !snapshot.documents[file].conflict ? [{ text: t('fileWorkspace.save'), onPress: () => { void controller.save(file).then(ok => { if (ok) controller.close(file); }); } }] : []),
+            { text: t('fileWorkspace.discard'), style: 'destructive', onPress: () => { controller.closeMany(files, true); } },
+            ...(unsaved.every(file => current.documents[file]?.phase === 'ready' && !current.documents[file].conflict) ? [{ text: t('fileWorkspace.save'), onPress: async () => {
+                for (const file of unsaved) if (!await controller.save(file)) return;
+                controller.closeMany(files);
+            } }] : []),
         ]);
     };
     const refresh = async () => {
@@ -64,20 +78,33 @@ export function FileWorkspace({ sessionId }: { sessionId: string }) {
         const url = URL.createObjectURL(new Blob([document.phase === 'ready' ? document.draft : cachedDraft?.draft ?? ''], { type: 'text/plain;charset=utf-8' }));
         const anchor = globalThis.document.createElement('a'); anchor.href = url; anchor.download = path.split('/').pop() ?? 'file'; anchor.click(); URL.revokeObjectURL(url);
     };
-    return <View testID="file-workspace" onLayout={event => setWorkspaceWidth(Math.round(event.nativeEvent.layout.width))} style={{ flex: 1, minWidth: 0, paddingTop: workspace.maximized ? 52 : 0, borderLeftWidth: 1, borderColor: theme.colors.divider, backgroundColor: theme.colors.surface, borderRadius: 12, overflow: 'hidden' }} {...({ onKeyDown: (event: any) => { if (historyPath === path) return; if ((event.metaKey || event.ctrlKey) && event.key === 's') { event.preventDefault(); void controller.save(path); } } } as any)}>
+    return <View testID="file-workspace" onLayout={event => setWorkspaceWidth(Math.round(event.nativeEvent.layout.width))} style={{ flex: 1, minWidth: 0, minHeight: 0, borderLeftWidth: workspace.maximized ? 0 : 1, borderColor: theme.colors.divider, backgroundColor: photoSkin ? (reducedTransparency ? theme.colors.desktopSkin.readingSolid : theme.colors.desktopSkin.readingCompact) : theme.colors.surface, borderRadius: 20, overflow: 'hidden' }} {...({ onKeyDown: (event: any) => { if (historyPath === path) return; if ((event.metaKey || event.ctrlKey) && event.key === 's') { event.preventDefault(); void controller.save(path); } } } as any)}>
         <View style={{flex:1,minHeight:0}} {...(historyPath === path ? {"aria-hidden":true,inert:true} : {}) as any}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 46, borderBottomWidth: 1, borderColor: theme.colors.divider }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 46, backgroundColor: theme.colors.surface, borderBottomWidth: 1, borderColor: theme.colors.divider }}>
             <ScrollView horizontal style={{ flex: 1, minWidth: 0 }} contentContainerStyle={{ alignItems: 'center', paddingHorizontal: 6 }}>
-                {snapshot.tabs.map(file => <View key={file} style={{ flexDirection: 'row', alignItems: 'center', borderRadius: 7, backgroundColor: file === path ? theme.colors.surfaceSelected : 'transparent' }}>
+                {snapshot.tabs.map(file => <View key={file} {...(Platform.OS === 'web' ? {
+                    tabIndex: 0,
+                    onContextMenu: (event: React.MouseEvent<HTMLElement>) => {
+                        event.preventDefault(); event.stopPropagation();
+                        setTabMenu({ path: file, x: event.clientX, y: event.clientY, trigger: event.currentTarget });
+                    },
+                    onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
+                        if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+                        event.preventDefault(); event.stopPropagation();
+                        const rect = event.currentTarget.getBoundingClientRect();
+                        setTabMenu({ path: file, x: rect.left, y: rect.bottom, trigger: event.currentTarget });
+                    },
+                } : {}) as any} testID={`workspace-tab:${file}`} style={{ flexDirection: 'row', alignItems: 'center', borderRadius: 7, backgroundColor: file === path ? theme.colors.surfaceSelected : 'transparent' }}>
                     <Button label={(file.split('/').pop() ?? file) + (documentDirty(snapshot.documents[file]) ? ' •' : '')} onPress={() => { void controller.open(file); }} selected={file === path} />
-                    <Button label={`${t('fileWorkspace.closeTab')}: ${file}`} icon="close-outline" compact disabled={snapshot.documents[file]?.saving} onPress={() => close(file)} />
+                    <Button label={`${t('fileWorkspace.closeTab')}: ${file}`} icon="close-outline" compact disabled={snapshot.documents[file]?.saving} onPress={() => close([file])} />
                 </View>)}
             </ScrollView>
             {/\.(md|markdown|html?)$/i.test(path) && <Button label={t('fileWorkspace.history')} icon="time-outline" compact={workspaceWidth > 0 && workspaceWidth < 400} testID="workspace-history-open" onPress={() => setHistoryPath(path)} />}
+            {onToggleFileTree && <Button label={fileTreeExpanded ? t('fileWorkspace.hideFileTree') : t('fileWorkspace.showFileTree')} icon={fileTreeExpanded ? 'chevron-forward-outline' : 'folder-open-outline'} compact testID="workspace-toggle-file-tree" onPress={onToggleFileTree} />}
             <Button label={workspace.maximized ? t('fileWorkspace.restore') : t('fileWorkspace.maximize')} icon={workspace.maximized ? 'contract-outline' : 'expand-outline'} compact onPress={() => workspace.setMaximized(!workspace.maximized)} />
             <Button label={t('fileWorkspace.close')} icon="close-outline" compact onPress={() => controller.setOpen(false)} />
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', padding: 8, gap: 4, borderBottomWidth: 1, borderColor: theme.colors.divider, flexWrap: 'wrap' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', padding: 8, gap: 4, backgroundColor: theme.colors.surface, borderBottomWidth: 1, borderColor: theme.colors.divider, flexWrap: 'wrap' }}>
             <Text numberOfLines={1} selectable style={{ flexGrow: 1, flexShrink: 1, fontSize: 12, color: theme.colors.textSecondary }}>{path.startsWith(workspace.root + '/') ? path.slice(workspace.root.length + 1).replaceAll('/', ' / ') : path}</Text>
             {previewable && <Button label={t('fileWorkspace.preview')} selected={preview} onPress={() => setModes(value => ({ ...value, [path]: true }))} />}
             <Button label={t('fileWorkspace.code')} selected={!preview} onPress={() => setModes(value => ({ ...value, [path]: false }))} />
@@ -106,6 +133,7 @@ export function FileWorkspace({ sessionId }: { sessionId: string }) {
             <Text style={{ fontSize: 11, padding: 7, color: theme.colors.textSecondary, borderTopWidth: 1, borderColor: theme.colors.divider }}>{dirty ? t('fileWorkspace.dirty') : t('fileWorkspace.saved')}</Text>
         </> : null}
         </View>
+        <FileTabContextMenu anchor={tabMenu} tabs={snapshot.tabs} saving={snapshot.tabs.filter(file => snapshot.documents[file]?.saving)} onClose={dismissTabMenu} onAction={close} />
         {historyPath === path && <VersionHistoryPanel key={path} path={path} sessionId={sessionId} onClose={() => {closeHistory(); queueMicrotask(() => globalThis.document?.querySelector<HTMLElement>('[data-testid="workspace-history-open"]')?.focus());}}/>}
     </View>;
 }
