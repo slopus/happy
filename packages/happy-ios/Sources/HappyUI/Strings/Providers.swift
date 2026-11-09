@@ -25,7 +25,7 @@ extension Strings {
         static let loadFailed = "Couldn’t load the providers."
 
         static let signInChatGPT = "Sign in with ChatGPT"
-        static let signInClaude = "Sign in with Claude"
+        static let signInClaude = "Use a Claude setup token"
         static let addAPIKey = "Add API key"
         static let openAI = "OpenAI"
         static let anthropic = "Anthropic"
@@ -45,6 +45,7 @@ extension Strings {
         static let code = "Code"
         static let connect = "Connect"
         static let useSetupToken = "Use a setup token instead"
+        static let addSetupToken = "Add setup token"
         static let setupToken = "Setup token"
         static let setupTokenHint = "From `claude setup-token` on your computer."
 

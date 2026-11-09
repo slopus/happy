@@ -190,6 +190,13 @@ final class HostedProvidersTests: XCTestCase {
         navigation.pushViewController(claude, animated: false)
         window.layoutIfNeeded()
         let token = try XCTUnwrap(Self.find(UIButton.self, in: claude.view) { $0.accessibilityIdentifier == "provider-claude-token" })
+        // A setup token only: no Claude page to open, no code to paste.
+        XCTAssertEqual(claude.title, "Use a Claude setup token")
+        XCTAssertEqual(token.configuration?.title, "Add setup token")
+        XCTAssertNil(Self.find(UIButton.self, in: claude.view) { $0.accessibilityIdentifier == "provider-claude-open" })
+        XCTAssertNil(Self.find(UITextField.self, in: claude.view) { $0.accessibilityIdentifier == "provider-claude-code" })
+        let shot = XCTAttachment(image: UIGraphicsImageRenderer(bounds: window.bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) })
+        shot.name = "claude-setup-token"; shot.lifetime = .keepAlways; add(shot)
         token.sendActions(for: .touchUpInside)
         let form = try await until { claude.presentedViewController as? UIAlertController }
         XCTAssertEqual(form.title, "Setup token")
@@ -206,7 +213,7 @@ final class HostedProvidersTests: XCTestCase {
         let device = try await until { navigation.topViewController as? DeviceSignInViewController }
         _ = try await until { (device.presentedViewController as? UIAlertController)?.title == "Sign-in failed" ? true : nil }
         XCTAssertFalse(list.chooser().actions.contains { $0.title == "Sign in with ChatGPT" })
-        XCTAssertTrue(list.chooser().actions.contains { $0.title == "Sign in with Claude" })
+        XCTAssertTrue(list.chooser().actions.contains { $0.title == "Use a Claude setup token" })
         list.load()
         _ = try await until { list.chooser().actions.contains { $0.title == "Sign in with ChatGPT" } ? true : nil }
     }

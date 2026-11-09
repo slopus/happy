@@ -281,17 +281,16 @@ final class HappyCloudUITests: XCTestCase {
         app.buttons["provider-device-cancel"].tap()
         require(add.waitForExistence(timeout: 10), "cancel didn't come back to the list")
 
-        // Claude's: its page to open, and a field for the code it shows.
+        // Claude's: a setup token only, with no page to open and no code to paste.
         add.tap()
-        let claude = app.buttons["Sign in with Claude"]
-        require(claude.waitForExistence(timeout: 10), "the server's Claude sign-in isn't offered")
+        let claude = app.buttons["Use a Claude setup token"]
+        require(claude.waitForExistence(timeout: 10), "the server's Claude setup token isn't offered")
         claude.tap()
         if mine.waitForExistence(timeout: 5) { mine.tap() }
-        let open = app.buttons["provider-claude-open"]
-        require(open.waitForExistence(timeout: 20), "no Claude screen")
-        require(XCTWaiter.wait(for: [expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: open)], timeout: 120) == .completed, "Claude's page never came")
-        XCTAssertTrue(app.textFields["provider-claude-code"].exists, "no code field")
-        XCTAssertTrue(app.buttons["provider-claude-token"].exists, "the live server offers setup tokens")
+        let token = app.buttons["provider-claude-token"]
+        require(token.waitForExistence(timeout: 20), "no Claude screen")
+        XCTAssertFalse(app.buttons["provider-claude-open"].exists, "no Claude page to open")
+        XCTAssertFalse(app.textFields["provider-claude-code"].exists, "no code field")
         capture("47-claude")
         app.navigationBars.buttons.element(boundBy: 0).tap()
         require(add.waitForExistence(timeout: 10), "back didn't come to the list")

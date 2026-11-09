@@ -310,7 +310,7 @@ final class ClaudeSignInViewController: ProviderSignInViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.accessibilityIdentifier = "provider-claude"
-        let token = button(Strings.Providers.useSetupToken, id: "provider-claude-token") { [weak self] in
+        let token = button(offered ? Strings.Providers.useSetupToken : Strings.Providers.addSetupToken, prominent: !offered, id: "provider-claude-token") { [weak self] in
             self?.flows.addSetupToken { self?.follow?.cancel() }
         }
         token.isHidden = !setupToken
