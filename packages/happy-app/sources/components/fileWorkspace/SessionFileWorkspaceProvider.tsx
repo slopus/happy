@@ -35,13 +35,16 @@ function FileWorkspaceOwner({ sessionId, root, enabled, scope, children }: { ses
     const drafts = React.useRef(loadFileWorkspaceDrafts(scope));
     const controller = React.useMemo(() => new FileWorkspaceController({ root,
         read: async path => {
+            const content = await readWorkspaceText(sessionId, path);
             if (machineId && /\.(md|markdown|html?)$/i.test(path)) {
-                try {const value = await versions.current(path); if (value) return {content: value.entryContent, hash: value.manifest.files.find(f => f.path === value.manifest.entryPath)!.sha256};}
-                catch(error) {if (versions.state(path).artifact) throw error;}
+                void versions.current(path).catch(() => {});
             }
-            return readWorkspaceText(sessionId, path);
+            return content;
         },
-        write: (path, content, hash) => versions.state(path).artifact ? versions.save(path, content, hash) : writeWorkspaceText(sessionId, path, content, hash), isCurrent: accountRuntimeCurrent,
+        write: (path, content, hash) => {
+            if (versions.state(path).pending) throw new Error(t('fileWorkspace.historyPending'));
+            return versions.state(path).artifact ? versions.save(path, content, hash) : writeWorkspaceText(sessionId, path, content, hash);
+        }, isCurrent: accountRuntimeCurrent,
     }), [sessionId, root, versions, machineId]);
     const snapshot = React.useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
     const eventRefresh = React.useMemo(() => new EventRefreshQueue(async path => {
@@ -120,9 +123,11 @@ function FileWorkspaceOwner({ sessionId, root, enabled, scope, children }: { ses
         const success = action === 'inspect' ? await versions.inspect(path) : action === 'retry' ? await versions.retryOperation(path) : action ? await versions.resolve(path, action) : await versions.restore(path, selection);
         if (success) {
             await controller.refresh(path);
-            const current = versions.state(path).current;
+            await versions.waitForCurrent(path).catch(() => null);
+            const document = controller.getSnapshot().documents[path];
+            const current = versions.currentForHash(path, document?.error ? null : document?.hash ?? null);
             const entry = current?.manifest.files.find(f => f.path === current.manifest.entryPath);
-            if (current && entry && controller.getSnapshot().documents[path]?.hash === entry.sha256 && !controller.getSnapshot().documents[path]?.error) setReference({path,hash:entry.sha256,artifact:{workspaceId:current.artifact.workspaceId,artifactId:current.artifact.id,expectedRevision:current.workingRevision,...(current.readRef.kind === 'version' ? {versionId:current.readRef.versionId} : {})}});
+            if (current && entry && controller.getSnapshot().active === path) setReference({path,hash:entry.sha256,artifact:{workspaceId:current.artifact.workspaceId,artifactId:current.artifact.id,expectedRevision:current.workingRevision,...(current.readRef.kind === 'version' ? {versionId:current.readRef.versionId} : {})}});
         }
         return success;
     }, [controller, versions]);

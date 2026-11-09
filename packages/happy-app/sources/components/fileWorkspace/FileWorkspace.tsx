@@ -41,8 +41,7 @@ export function FileWorkspace({ sessionId }: { sessionId: string }) {
     React.useEffect(() => { setQuote(''); const selected=globalThis.window?.getSelection(); if(selected?.anchorNode && contentRef.current?.contains?.(selected.anchorNode)) selected.removeAllRanges(); if (path) scrollView.current?.scrollTo({ y: scroll.current[path] ?? 0, animated: false }); }, [path, document?.hash]);
     if (!workspace?.enabled || !workspace.snapshot.open || !path) return null;
     const { controller, snapshot } = workspace;
-    const versionState = workspace.versions.state(path);
-    const currentArtifact = versionState.current;
+    const currentArtifact = workspace.versions.currentForHash(path, document?.error ? null : document?.hash ?? null);
     const cachedDraft = controller.exportDrafts()[path];
     const dirty = document ? documentDirty(document) : false;
     const previewable = /\.(md|markdown|html?|svg)$/i.test(path);

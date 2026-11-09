@@ -18,6 +18,8 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const zhHans: TranslationStructure = {
     fileWorkspace: {
+        fileNotFound: ({ path }: { path: string }) => `找不到文件：${path}。相对链接会从当前会话的工作目录查找，请核对文件的完整路径，或从正确的项目打开。`,
+        readTimeout: '读取文件超时。请检查会话所在机器的连接，再点击刷新重试。',
         retryOperation: "重试原操作",
         operationRetryConfirm: "未找到操作回执。是否使用相同的 ID 和原版本基准重试原操作？如果文件在该请求后发生了变化，将提示冲突。",
         operationNotFound: "未找到操作回执。你可以确认重试原请求，系统不会自动发送。",

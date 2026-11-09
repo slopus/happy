@@ -15,6 +15,71 @@ function setup(extra: Record<string, any> = {}) {
 }
 const deferred = () => { let resolve!: (v:any)=>void; const promise=new Promise<any>(r=>resolve=r); return {promise,resolve}; };
 describe('history state isolation', () => {
+ it('only attaches a current artifact to the matching displayed file baseline', async () => {
+  const {c}=setup();
+  expect(c.currentForHash('/project/doc.md','a'.repeat(64))).toBeNull();
+  await c.current('/project/doc.md');
+  expect(c.currentForHash('/project/doc.md','a'.repeat(64))?.entryContent).toBe('v3');
+  expect(c.currentForHash('/project/doc.md','c'.repeat(64))).toBeNull();
+  expect(c.currentForHash('/project/doc.md',null)).toBeNull();
+ });
+ it('invalidates a cached preview while refreshing dependencies and after a failed refresh', async () => {
+  let offline=false;
+  const {c}=setup({artifactRead:()=>{if(offline)throw new Error('offline');return read();}});
+  await c.current('/project/doc.md');
+  offline=true;
+  const refresh=c.current('/project/doc.md');
+  const rejected=expect(refresh).rejects.toThrow('offline');
+  expect(c.currentForHash('/project/doc.md','a'.repeat(64))).toBeNull();
+  await rejected;
+  expect(c.currentForHash('/project/doc.md','a'.repeat(64))).toBeNull();
+ });
+ it('waits for the in-flight version baseline before checking a freshly displayed file hash', async () => {
+  const pending=deferred();
+  let reads=0;
+  const updated={...read(),manifest:{...read().manifest,files:[{...read().manifest.files[0],sha256:'c'.repeat(64)}]}};
+  const {c,rpc}=setup({artifactRead:()=>++reads===1?read():reads===2?pending.promise:updated,artifactSave:()=>({version:{id:'v4'}})});
+  await c.current('/project/doc.md');
+  const refresh=c.current('/project/doc.md');
+  const saving=c.save('/project/doc.md','new draft','c'.repeat(64));
+  const result=expect(saving).resolves.toHaveProperty('hash');
+  await Promise.resolve();
+  expect(rpc.mock.calls.some(([method])=>method==='artifactSave')).toBe(false);
+  pending.resolve(updated);
+  await refresh;
+  await result;
+  expect(rpc.mock.calls.filter(([method])=>method==='artifactSave')).toHaveLength(1);
+ });
+ it('lets a newer completed read unblock saving before an older request finishes', async () => {
+  const old=deferred(),newest=deferred();
+  let reads=0;
+  const {c,rpc}=setup({artifactRead:()=>++reads===1?read():reads===2?old.promise:reads===3?newest.promise:read(),artifactSave:()=>({version:{id:'v4'}})});
+  await c.current('/project/doc.md');
+  const first=c.current('/project/doc.md');
+  let saved=false;
+  const saving=c.save('/project/doc.md','draft','a'.repeat(64)).then(()=>{saved=true;});
+  const second=c.current('/project/doc.md');
+  newest.resolve(read());
+  await second;
+  try {
+   await vi.waitFor(()=>expect(saved).toBe(true),{timeout:200});
+   expect(rpc.mock.calls.filter(([method])=>method==='artifactSave')).toHaveLength(1);
+  } finally {
+   old.resolve(read());
+   await first;
+   await saving;
+  }
+ });
+ it('settles an in-flight current read on disposal without publishing or self-resolution', async () => {
+  const pending=deferred();
+  const {c}=setup({artifactRead:()=>pending.promise});
+  await c.discover('/project/doc.md');
+  const request=c.current('/project/doc.md');
+  c.dispose();
+  pending.resolve(read());
+  await expect(request).resolves.toBeNull();
+  expect(c.state('/project/doc.md').current).toBeNull();
+ });
  it('discovers managed entry and reads current without selecting history', async () => { const {c}=setup(); await c.current('/project/doc.md'); expect(c.state('/project/doc.md').current?.entryContent).toBe('v3'); expect(c.state('/project/doc.md').selectedId).toBeNull(); });
  it('ignores late history responses, disables restore during loading', async () => {
   const one=deferred(), two=deferred(); const {c}=setup({artifactRead:({versionId}:any)=>versionId==='v1'?one.promise:versionId==='v2'?two.promise:read()});

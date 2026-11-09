@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ActivityIndicator, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import type { ArtifactReadResult } from '@slopus/happy-wire';
 import { MarkdownView } from '@/components/markdown/MarkdownView';
 import { parseReadOnlyMarkdown } from '@/components/markdown/parseMarkdown';
@@ -28,6 +28,5 @@ export function ArtifactPreview({sessionId,versions,value,onReady}:{sessionId:st
   return()=>{cancelled=true;blobs.forEach(u=>URL.revokeObjectURL(u));};
  },[value,path,reader,versions.root,onReady]);
  if(value.artifact.kind==='html')return <HtmlFilePreview sessionId={sessionId} path={path} root={versions.root} content={value.entryContent} readBytes={reader} onReady={onReady}/>;
- if(!images)return <ActivityIndicator/>;
- return <ScrollView style={{flex:1}} contentContainerStyle={documentScrollStyle}><View testID="workspace-document-body" style={documentBodyStyle}><MarkdownView markdown={value.entryContent} typography="document" readOnly sessionId={sessionId} imageUrls={images}/></View></ScrollView>;
+ return <ScrollView style={{flex:1}} contentContainerStyle={documentScrollStyle}><View testID="workspace-document-body" style={documentBodyStyle}><MarkdownView markdown={value.entryContent} typography="document" readOnly sessionId={sessionId} imageUrls={images ?? undefined}/></View></ScrollView>;
 }

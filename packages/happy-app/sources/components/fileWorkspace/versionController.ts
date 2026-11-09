@@ -20,6 +20,10 @@ export class VersionController {
  private listeners = new Set<()=>void>();
  private selections = new Map<string,object>();
  private currentRequests = new Map<string,Promise<ArtifactReadResult|null>>();
+ private currentWaiters = new Map<string,{
+  resolve:(value:ArtifactReadResult|null|PromiseLike<ArtifactReadResult|null>)=>void;
+  reject:(reason:unknown)=>void;
+ }>();
  private reads = new Map<string,object>();
  private disposed = false;
  private active() {return !this.disposed && this.valid();}
@@ -31,6 +35,11 @@ export class VersionController {
  getSnapshot=()=>this.snapshot;
  subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
  state=(path:string):VersionState=>this.snapshot[path] ?? EMPTY;
+ currentForHash(path:string,hash:string|null):ArtifactReadResult|null {
+  const state=this.state(path),current=state.current;
+  if(!this.active() || !hash || !current || state.pending)return null;
+  return current.manifest.files.find(file=>file.path===current.manifest.entryPath)?.sha256===hash ? current : null;
+ }
  private patch(path:string,change:Partial<VersionState>) {
   if(this.disposed || !this.valid()) return;
   this.snapshot={...this.snapshot,[path]:{...this.state(path),...change}}; this.listeners.forEach(fn=>fn());
@@ -48,14 +57,33 @@ export class VersionController {
   this.patch(path,{artifact}); return artifact;
  }
  current(path:string):Promise<ArtifactReadResult|null> {
+  if(!this.active())return Promise.resolve(null);
   const token={}; this.reads.set(path,token);
-  const request=this.readCurrent(path,token);this.currentRequests.set(path,request);return request;
+  let resolveCurrent!:(value:ArtifactReadResult|null|PromiseLike<ArtifactReadResult|null>)=>void;
+  let rejectCurrent!:(reason:unknown)=>void;
+  const request=new Promise<ArtifactReadResult|null>((resolve,reject)=>{resolveCurrent=resolve;rejectCurrent=reject;});
+  this.currentWaiters.get(path)?.resolve(request);
+  this.currentWaiters.set(path,{resolve:resolveCurrent,reject:rejectCurrent});
+  this.currentRequests.set(path,request);
+  this.patch(path,{current:null});
+  void this.readCurrent(path,token).then(value=>{
+   if(this.reads.get(path)!==token)return;
+   this.currentWaiters.delete(path);resolveCurrent(value);
+  },error=>{
+   if(this.reads.get(path)!==token)return;
+   this.currentWaiters.delete(path);rejectCurrent(error);
+  });
+  return request;
+ }
+ waitForCurrent(path:string):Promise<ArtifactReadResult|null> {
+  if(!this.active())return Promise.resolve(null);
+  return this.currentRequests.get(path) ?? Promise.resolve(this.state(path).current);
  }
  private async readCurrent(path:string,token:object):Promise<ArtifactReadResult|null> {
   const a=this.state(path).artifact ?? await this.discover(path);
-  if(!a) return null;
+  if(!a || !this.active() || this.reads.get(path)!==token) return null;
   const current=await this.rpc('artifactRead',ref(a));
-  if(this.reads.get(path)!==token)return this.currentRequests.get(path)!;
+  if(!this.active() || this.reads.get(path)!==token)return null;
   const pending=this.state(path).pending;
   this.patch(path,{current,artifact:current.artifact,...(current.pendingOperationId ? {pending:pending?.operationId===current.pendingOperationId && pending.workspaceId===current.artifact.workspaceId ? pending : {operationId:current.pendingOperationId,workspaceId:current.artifact.workspaceId,kind:'restore' as const}} : {})});
   return current;
@@ -120,6 +148,7 @@ export class VersionController {
   return this.mutate(path,{operationId,workspaceId:s.artifact!.workspaceId,kind:'restore',request:{method:'artifactRestore',input}},()=>this.rpc('artifactRestore',input));
  }
  async save(path:string,content:string,hash:string) {
+  await this.waitForCurrent(path);
   const s=this.state(path); if(!this.active() || !s.artifact || !s.current || s.busy || s.pending)throw new Error('VERSION_BUSY');
   if(s.current.manifest.files.find(f=>f.path===s.current!.manifest.entryPath)?.sha256!==hash)throw new Error('VERSION_CONFLICT');
   const operationId=crypto.randomUUID();const input={...ref(s.artifact!),operationId,expectedRevision:s.current!.workingRevision,entryContent:content};
@@ -199,6 +228,10 @@ export class VersionController {
    return bytes;
   };
  }
- dispose(){this.disposed=true;this.listeners.clear();this.selections.clear();this.reads.clear();}
+ dispose(){
+  this.disposed=true;this.listeners.clear();this.selections.clear();this.reads.clear();
+  for(const waiter of this.currentWaiters.values())waiter.resolve(null);
+  this.currentWaiters.clear();this.currentRequests.clear();
+ }
 }
 const EMPTY=empty();

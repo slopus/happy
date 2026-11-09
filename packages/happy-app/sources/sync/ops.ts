@@ -12,6 +12,7 @@ import { updateEncryptedSessionMetadata } from './sessionMetadata';
 import { CodexAccountError, createCodexSessionGrant, type CodexAccountErrorCode } from './apiCodexAccounts';
 
 export const SESSION_START_RPC_TIMEOUT_MS = 140_000;
+export const WORKSPACE_READ_TIMEOUT_MS = 10_000;
 
 // Strict type definitions for all operations
 
@@ -1187,7 +1188,10 @@ export type {
 
 /** Workspace methods require a CLI with canonical-path containment and bounded reads. */
 export async function sessionWorkspaceReadFile(sessionId: string, path: string): Promise<SessionReadFileResponse> {
-    return apiSocket.sessionRPC(sessionId, 'workspaceReadFile', { path });
+    return apiSocket.sessionRPC(sessionId, 'workspaceReadFile', { path }, {
+        timeoutMs: WORKSPACE_READ_TIMEOUT_MS,
+        overallTimeoutMs: WORKSPACE_READ_TIMEOUT_MS,
+    });
 }
 export async function sessionWorkspaceWriteFile(sessionId: string, path: string, content: string, expectedHash: string): Promise<SessionWriteFileResponse> {
     return apiSocket.sessionRPC(sessionId, 'workspaceWriteFile', { path, content, expectedHash });

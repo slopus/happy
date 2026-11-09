@@ -1,8 +1,21 @@
 import { sessionWorkspaceReadFile, sessionWorkspaceWriteFile } from '@/sync/ops';
 import { t } from '@/text';
 export async function readWorkspaceBytes(sessionId: string, path: string, limit = 10 * 1024 * 1024): Promise<Uint8Array> {
-    const response = await sessionWorkspaceReadFile(sessionId, path);
-    if (!response.success || typeof response.content !== 'string') throw new Error(response.error || t('fileWorkspace.readError'));
+    let response;
+    try {
+        response = await sessionWorkspaceReadFile(sessionId, path);
+    } catch (error) {
+        if (error instanceof Error && (error.name === 'TimeoutError' || error.message === 'operation has timed out' || error.message === 'RPC call timed out')) {
+            throw new Error(t('fileWorkspace.readTimeout'));
+        }
+        throw error;
+    }
+    if (!response.success || typeof response.content !== 'string') {
+        if (/^(ENOENT|ENOTDIR):/.test(response.error ?? '')) {
+            throw new Error(t('fileWorkspace.fileNotFound', { path }));
+        }
+        throw new Error(response.error || t('fileWorkspace.readError'));
+    }
     if (response.content.length > Math.ceil(limit / 3) * 4 + 4) throw new Error(t('fileWorkspace.tooLarge'));
     const binary = atob(response.content);
     const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));

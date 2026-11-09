@@ -11,7 +11,10 @@ export const CODEX_SKILL_PATH_RESOLUTION_INSTRUCTION =
     'Skill identifiers such as `plugin:skill` are labels, not filesystem paths. Never turn `:` into a directory separator. ' +
     'Read the exact path supplied in the Skills catalog. For an installed Codex Skill without a catalog path, first check the flat entry ' +
     '`$CODEX_HOME/skills/<skill-name>/SKILL.md` (usually `~/.codex/skills/<skill-name>/SKILL.md`); do not guess nested ' +
-    '`.../skills/<plugin>/<skill>/SKILL.md` paths.';
+    '`.../skills/<plugin>/<skill>/SKILL.md` paths. ' +
+    'When reporting a local file, use its verified absolute path as the link target. A shortened label is fine, but never ' +
+    'present a Skill-relative or other-project-relative path as relative to the session working directory. ' +
+    'For files outside the session workspace, state their actual location; do not imply they can be opened in the current file workspace.';
 
 export function createCodexSkillPathResolutionPromptLifecycle() {
     let injected = false;
