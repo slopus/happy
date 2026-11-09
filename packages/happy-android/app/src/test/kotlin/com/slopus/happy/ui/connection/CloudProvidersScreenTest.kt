@@ -67,15 +67,15 @@ class CloudProvidersScreenTest {
         // Before `capabilities`: the listed sign-ins and keys, never a setup token.
         rule.setHappyContent { CloudAddChooser(CloudCapabilities.listed(setOf("codex")), onPick = {}, onDismiss = {}) }
         rule.onNodeWithText("Sign in with ChatGPT").assertIsDisplayed()
-        assertEquals(0, rule.onAllNodesWithText("Sign in with Claude").fetchSemanticsNodes().size)
-        assertEquals(0, rule.onAllNodesWithText("Add Claude setup token").fetchSemanticsNodes().size)
+        assertEquals(0, rule.onAllNodesWithText("Use a Claude setup token").fetchSemanticsNodes().size)
         rule.onNodeWithText("Add API key").assertIsDisplayed()
     }
 
     @Test
-    fun aSetupTokenStandsInForClaudesSignInWhereTheServerTakesOne() {
-        rule.setHappyContent { CloudAddChooser(CloudCapabilities(apiKeys = false, claudeSetupToken = true, codexSignIn = false, claudeSignIn = false), onPick = {}, onDismiss = {}) }
-        rule.onNodeWithText("Add Claude setup token").assertIsDisplayed()
+    fun claudeIsOfferedOnlyAsASetupToken() {
+        rule.setHappyContent { CloudAddChooser(CloudCapabilities(apiKeys = false, claudeSetupToken = true, codexSignIn = false), onPick = {}, onDismiss = {}) }
+        rule.onNodeWithText("Use a Claude setup token").assertIsDisplayed()
+        assertEquals(0, rule.onAllNodesWithText("Sign in with Claude").fetchSemanticsNodes().size)
         assertEquals(0, rule.onAllNodesWithText("Sign in with ChatGPT").fetchSemanticsNodes().size)
         assertEquals(0, rule.onAllNodesWithText("Add API key").fetchSemanticsNodes().size)
     }

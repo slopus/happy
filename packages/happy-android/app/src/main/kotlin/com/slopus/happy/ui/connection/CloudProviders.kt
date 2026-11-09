@@ -14,7 +14,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -76,7 +75,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class CloudChatGptRoute(val connectionId: String, val to: String? = null)
 
 /** Claude's sign-in, or its setup token ([token]). */
-@Serializable data class CloudClaudeRoute(val connectionId: String, val to: String? = null, val token: Boolean = false)
+@Serializable data class CloudClaudeRoute(val connectionId: String, val to: String? = null)
 
 /** An OpenAI or Anthropic API key; [vendor] picks the vendor first. */
 @Serializable data class CloudApiKeyRoute(val connectionId: String, val vendor: String? = null, val to: String? = null)
@@ -115,7 +114,7 @@ fun NavGraphBuilder.cloudProviderRoutes(graph: AppGraph, nav: NavHostController)
     }
     page<CloudClaudeRoute> { entry ->
         val route = entry.toRoute<CloudClaudeRoute>()
-        CloudClaudePage(graph, nav, route.connectionId, CloudDestination.of(route.to), route.token)
+        CloudClaudePage(graph, nav, route.connectionId, CloudDestination.of(route.to))
     }
     page<CloudApiKeyRoute> { entry ->
         val route = entry.toRoute<CloudApiKeyRoute>()
@@ -167,7 +166,7 @@ private fun CloudProvidersPage(graph: AppGraph, nav: NavHostController, connecti
                 choosing = false
                 when (flow) {
                     CloudProviderFlow.ChatGpt -> nav.navigate(CloudChatGptRoute(connectionId, to))
-                    CloudProviderFlow.Claude -> nav.navigate(CloudClaudeRoute(connectionId, to, token = capabilities?.claudeSignIn != true))
+                    CloudProviderFlow.Claude -> nav.navigate(CloudClaudeRoute(connectionId, to))
                     is CloudProviderFlow.ApiKey -> nav.navigate(CloudApiKeyRoute(connectionId, flow.vendor, to))
                     CloudProviderFlow.Choose -> Unit
                 }
@@ -305,9 +304,9 @@ internal fun CloudAddChooser(capabilities: CloudCapabilities?, onPick: (CloudPro
                     onClick = { pick(CloudProviderFlow.ChatGpt) },
                 )
             }
-            if (capabilities?.claudeSignIn == true || capabilities?.claudeSetupToken == true) {
+            if (capabilities?.claudeSetupToken == true) {
                 Item(
-                    title = stringResource(if (capabilities.claudeSignIn) R.string.cloud_providers_add_claude else R.string.cloud_providers_add_setup_token),
+                    title = stringResource(R.string.cloud_providers_add_setup_token),
                     icon = { ProviderIcon(ProviderIconKind.Claude, size = 24.dp) },
                     showChevron = false,
                     onClick = { pick(CloudProviderFlow.Claude) },
@@ -450,112 +449,25 @@ private fun Outcome(title: String, message: String?, onRetry: (() -> Unit)?) {
 private fun failureTitle(code: String?): String =
     stringResource(if (code == "expired") R.string.cloud_providers_expired else R.string.cloud_providers_failed)
 
-// ---- Claude (pasted code, or a setup token) --------------------------------------------------
+// ---- Claude (a setup token) --------------------------------------------------------------------
 
 @Composable
-private fun CloudClaudePage(graph: AppGraph, nav: NavHostController, connectionId: String, asked: CloudDestination?, startWithToken: Boolean) {
+private fun CloudClaudePage(graph: AppGraph, nav: NavHostController, connectionId: String, asked: CloudDestination?) {
     val session = remember(connectionId) { graph.agentSessions.session(connectionId) } ?: return
     val allowed = remember(session) { destinations(session) }
     var destination by rememberSaveable { mutableStateOf(destinationFor(allowed, asked)) }
-    var token by rememberSaveable { mutableStateOf(startWithToken) }
-    val capabilities by produceState<CloudCapabilities?>(null, session) {
-        value = try {
-            CloudProviders.capabilities(session.client)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            null
-        }
-    }
-    // A link to Claude where only its setup token is offered opens that.
-    LaunchedEffect(capabilities) {
-        if (capabilities?.let { !it.claudeSignIn && it.claudeSetupToken } == true) token = true
-    }
-    val scope = rememberCoroutineScope()
-    val context = LocalContext.current
-    val dark = HappyTheme.colors.dark
-    if (token) {
-        CloudSecretFlow(
-            title = stringResource(R.string.cloud_providers_add_setup_token),
-            field = stringResource(R.string.cloud_providers_setup_token),
-            hint = stringResource(R.string.cloud_providers_setup_token_hint),
-            done = stringResource(R.string.cloud_providers_claude_done),
-            allowed = allowed,
-            destination = destination,
-            onDestination = { destination = it },
-            vendors = emptyList(),
-            add = { _, secret, to -> CloudProviders.addCredential(session.client, CloudProviders.container(to, CloudProviders.CLAUDE_CODE), CloudProviders.CLAUDE_CODE, "oauth_token", secret) },
-            nav = nav,
-        )
-        return
-    }
-    val run = remember(session, destination) { CloudSignInRun(session.client, scope, CloudProviders.ANTHROPIC, destination).also { it.start() } }
-    DisposableEffect(run) { onDispose { run.close() } }
-    val state by run.current.collectAsStateWithLifecycle()
-    LeaveWhenDone(state == CloudSignInRun.State.Done, nav)
-    CloudClaudeScreen(
-        state = state,
+    CloudSecretFlow(
+        title = stringResource(R.string.cloud_providers_add_setup_token),
+        field = stringResource(R.string.cloud_providers_setup_token),
+        hint = stringResource(R.string.cloud_providers_setup_token_hint),
+        done = stringResource(R.string.cloud_providers_claude_done),
         allowed = allowed,
         destination = destination,
         onDestination = { destination = it },
-        onOpen = { url -> openSignInPage(context, url, dark) },
-        onCode = run::sendCode,
-        onUseToken = { token = true }.takeIf { capabilities?.claudeSetupToken == true },
-        onRetry = run::start,
-        onBack = { nav.popBackStack() },
+        vendors = emptyList(),
+        add = { _, secret, to -> CloudProviders.addCredential(session.client, CloudProviders.container(to, CloudProviders.CLAUDE_CODE), CloudProviders.CLAUDE_CODE, "oauth_token", secret) },
+        nav = nav,
     )
-}
-
-/**
- * Claude's sign-in: Open Claude (a Custom Tab), then the code its page shows
- * pasted here and sent to the server, which exchanges it. Or a setup token
- * instead, where the server takes them ([onUseToken]). The code is never
- * kept on the phone.
- */
-@Composable
-internal fun CloudClaudeScreen(
-    state: CloudSignInRun.State,
-    allowed: List<CloudDestination>,
-    destination: CloudDestination,
-    onDestination: (CloudDestination) -> Unit,
-    onOpen: (String) -> Unit,
-    onCode: (String) -> Unit,
-    onUseToken: (() -> Unit)?,
-    onRetry: () -> Unit,
-    onBack: () -> Unit,
-) {
-    var code by remember { mutableStateOf("") }
-    Screen(header = { StackHeader(stringResource(R.string.cloud_providers_add_claude), onBack) }) {
-        ItemList {
-            SaveTo(allowed, destination, enabled = state !is CloudSignInRun.State.Done, onPick = onDestination)
-            when (state) {
-                CloudSignInRun.State.Starting -> ItemGroup { Item(title = stringResource(R.string.cloud_providers_add_claude), loading = true, showChevron = false) }
-                is CloudSignInRun.State.Waiting -> ItemGroup {
-                    FlowColumn {
-                        Text(stringResource(R.string.cloud_providers_claude_body), style = happyTextStyle(fontSize = 15, lineHeight = 21), color = HappyTheme.colors.textSecondary, textAlign = TextAlign.Center)
-                        state.url?.let { url ->
-                            RoundButton(title = stringResource(R.string.cloud_providers_open_claude), onClick = { onOpen(url) }, modifier = Modifier.testTag(CloudProvidersTags.OPEN))
-                        }
-                        SecretField(code, { code = it }, stringResource(R.string.cloud_providers_code), enabled = !state.sendingCode, hidden = false)
-                        RoundButton(
-                            title = stringResource(R.string.cloud_providers_connect),
-                            onClick = { onCode(code) },
-                            enabled = code.isNotBlank(),
-                            loading = state.sendingCode,
-                            modifier = Modifier.testTag(CloudProvidersTags.SUBMIT),
-                        )
-                    }
-                }
-                CloudSignInRun.State.Done -> Outcome(stringResource(R.string.cloud_providers_claude_done), null, null)
-                is CloudSignInRun.State.Failed -> Outcome(failureTitle(state.code), state.message ?: stringResource(R.string.cloud_failed), onRetry)
-            }
-            if (state !is CloudSignInRun.State.Done && onUseToken != null) {
-                ItemGroup {
-                    Item(title = stringResource(R.string.cloud_providers_use_token), titleColor = HappyTheme.colors.textLink, showChevron = false, onClick = onUseToken)
-                }
-            }
-        }
-    }
 }
 
 @Composable

@@ -145,7 +145,6 @@ data class CloudCapabilities(
     val apiKeys: Boolean,
     val claudeSetupToken: Boolean,
     val codexSignIn: Boolean,
-    val claudeSignIn: Boolean,
 ) {
     companion object {
         fun parse(json: JsonObject?): CloudCapabilities? = json?.let {
@@ -153,7 +152,6 @@ data class CloudCapabilities(
                 apiKeys = it["apiKeys"].bool == true,
                 claudeSetupToken = it["claudeSetupToken"].bool == true,
                 codexSignIn = it["codexSignIn"].bool == true,
-                claudeSignIn = it["claudeSignIn"].bool == true,
             )
         }
 
@@ -162,7 +160,6 @@ data class CloudCapabilities(
             apiKeys = true,
             claudeSetupToken = false,
             codexSignIn = CloudProviders.CODEX in signIns,
-            claudeSignIn = CloudProviders.CLAUDE in signIns,
         )
     }
 }
