@@ -148,7 +148,7 @@ class UiComponentRowTest {
         assertTrue("at least 40 high with its padding", input.bottom - input.top >= 20.dp)
     }
 
-    @Test fun `live components are their fallback line, and phone_app is not on a phone`() {
+    @Test fun `without live sources live components are their fallback line, and phone_app is not on a phone`() {
         val rows = offer(signIn, phone, tree)
         assertEquals(listOf("provider_sign_in", "file_tree"), rows.filterIsInstance<ConversationRow.Ui>().map { it.component.type })
         screen(rows)

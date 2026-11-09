@@ -1695,8 +1695,8 @@ daemon sends documents as their fallback text and hides attempt records.
 `conversation/ui/UiWire.kt` holds every wire type: the `ui` block of an
 agent message, the `ui` presentation of a `show_ui` call and the `action`
 block. A type this build doesn't draw, or props that don't read, is
-`UiComponent.Other`, shown as its fallback line; `phone_app` shows
-nothing on a phone. `choice`, `checklist`, `text_field` and `file_tree`
+`UiComponent.Other`, shown as its fallback line; `phone_app` and
+`phone_pair` show nothing on a phone. `choice`, `checklist`, `text_field` and `file_tree`
 are drawn natively (`ui/conversation/UiComponentViews.kt`); `images`
 becomes a `ConversationRow.Media` over the call's items, with the viewer,
 kept media and the agent page as any presented picture. The show_ui call
@@ -1716,6 +1716,22 @@ turn, and a `run.finished` for one doesn't end the turn going on. An offer
 is answered (its accepted press ticked), closed (a person's message came
 after it) or open; controls the role may not use (`ServerPermissions`)
 show disabled with one line saying so. Words are in `strings_chat_ui.xml`.
+
+Live components (`ui/conversation/UiLiveViews.kt`) are drawn from the
+server's state: `provider_sign_in` from `GET /v0/provider-clis/:cliId` and
+`provider_cli.updated`, the newer version kept (`agent/ProviderClis.kt`;
+`404`/`501` points to Settings), `default_model` from the conversation's
+`ModeCatalog`, and on a Happy Cloud server only `invite` (roles from
+`/v0/roles`), `github_connect` and `compute_join`; elsewhere those are
+fallback lines. Their actions are silent: `Conversation.actSilently` sends
+one per component at a time with no bubble and no mode, and lays
+`UiWork` over the row (sending, the newest attempt record from any device
+pending, or refused with the server's reason); their refused records are
+no `Unsent` row. An action's `result` goes back to the widget alone, never
+into state, history, the kept store or a log (`UiActed` is no data class).
+A secret answered with (invite code, device code, join commands) lives in
+the widget's `remember` and is cleared when it leaves composition; a token
+or code typed is a masked field, never saved, emptied once sent.
 
 ### Context meter and usage ring
 

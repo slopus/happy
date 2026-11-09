@@ -474,6 +474,12 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
         session.catalog.map { ChatAddress.of(it, conversation.agentId).chiefOfStaff }.distinctUntilChanged()
     }.collectAsStateWithLifecycle(false)
     val roleCanSend = permissions.allows(if (chief) Permission.BOTS_MANAGE else Permission.CONTENT_WRITE)
+    // Live chat UI components follow the computer's state while the chat shows; their clicks go through the conversation.
+    val liveScope = rememberCoroutineScope()
+    val uiLive = remember(session, conversation) {
+        val clis = com.slopus.happy.agent.ProviderCliSource({ com.slopus.happy.agent.ProviderCliSource.read(session.client, it) }, session.events, liveScope)
+        UiLive(conversation::actSilently, clis::follow, team = session.client.cloud, roles = { com.slopus.happy.agent.TeamMembers.roles(session.client) })
+    }
     // A command's artwork is read and kept as the agent's other pictures are.
     ProvideLinks(links) { androidx.compose.runtime.CompositionLocalProvider(com.slopus.happy.ui.connection.LocalAgentPictures provides session.pictures) {
         ConversationScreen(
@@ -482,6 +488,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
             roleCanSend = roleCanSend,
             roleCanCompose = permissions.canWrite,
             roleAllows = permissions::allows,
+            uiLive = uiLive,
             link = link,
             usage = usage,
             onRefreshUsage = session.usage::refresh,

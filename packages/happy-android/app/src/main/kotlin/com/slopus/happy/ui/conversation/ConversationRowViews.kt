@@ -154,6 +154,10 @@ class ConversationRowActions(
     val uiPresses: () -> Boolean = { true },
     /** Whether the person's role holds a permission a press needs; only for showing, the computer decides. */
     val uiAllowed: (permission: String) -> Boolean = { true },
+    /** What live chat UI components draw from and act with; null draws them as their fallback lines. */
+    val uiLive: UiLive? = null,
+    /** The models new chats may start on, and the default, as the conversation has them; null until read. */
+    val uiCatalog: () -> com.slopus.happy.conversation.ModeCatalog? = { null },
 )
 
 /** Plays the recording [ref] whose tile is [key]: in the viewer, once it can ([VideoOpening]). */

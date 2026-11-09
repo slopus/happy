@@ -51,8 +51,12 @@ data class ToolRequest(val name: String, val arguments: Map<String, String>)
 /** What a slash command's invocation answered: the agent, and its commands as they now are. */
 data class CommandInvoked(val agent: AgentInfo?, val slashCommands: List<SlashCommand>?)
 
-/** What a press answered: its attempt [record], and the person's [message] it became, if it became one. */
-data class UiActed(val record: Message, val message: Message?)
+/**
+ * What a press answered: its attempt [record], the person's [message] it
+ * became, if it became one, and what a silent action returned ([result]),
+ * secrets and all: it is the caller's alone, never kept or logged.
+ */
+class UiActed(val record: Message, val message: Message?, val result: JsonObject? = null)
 
 /** What new work is made as. */
 enum class WorkKind { Task, Bot }
@@ -206,7 +210,7 @@ open class ConversationApi(
             mode?.let { put("mode", it.json()) }
         }
         val answer = call("POST", "/v0/agents/${escape(agentId)}/actions", body)
-        return UiActed(Message.parse(answer["record"]) ?: throw invalid(), Message.parse(answer["message"]))
+        return UiActed(Message.parse(answer["record"]) ?: throw invalid(), Message.parse(answer["message"]), answer["result"].obj)
     }
 
     /**

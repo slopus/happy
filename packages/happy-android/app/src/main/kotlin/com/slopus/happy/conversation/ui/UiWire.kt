@@ -109,14 +109,19 @@ sealed interface UiComponent {
         }
     }
 
-    /** Any other type: its fallback line, or nothing where the phone is no place for it ([hidden]). */
+    /**
+     * Any other type: a live one drawn from the server's state (UiLiveViews),
+     * else its fallback line, or nothing where the phone is no place for it
+     * ([hidden]).
+     */
     data class Other(override val id: String, override val fallback: String, override val type: String, override val props: JsonObject = NONE) : UiComponent {
-        /** `phone_app` asks for the app this is. */
-        val hidden: Boolean get() = type == PHONE_APP
+        /** `phone_app` asks for the app this is; `phone_pair` pairs a phone with the computer it runs on. */
+        val hidden: Boolean get() = type == PHONE_APP || type == PHONE_PAIR
     }
 
     companion object {
         const val PHONE_APP = "phone_app"
+        const val PHONE_PAIR = "phone_pair"
         private val NONE = JsonObject(emptyMap())
 
         fun parse(value: JsonElement?): UiComponent? {

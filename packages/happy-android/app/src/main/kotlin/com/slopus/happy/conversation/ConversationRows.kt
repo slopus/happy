@@ -7,6 +7,7 @@ import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
 import com.slopus.happy.conversation.ui.UiAction
 import com.slopus.happy.conversation.ui.UiActionRecord
+import com.slopus.happy.conversation.ui.UiCatalog
 import com.slopus.happy.conversation.ui.UiComponent
 import com.slopus.happy.conversation.ui.UiDocument
 import com.slopus.happy.conversation.ui.UiOffer
@@ -129,9 +130,16 @@ sealed interface ConversationRow {
     /**
      * One component of chat UI ([UiComponent]), from an agent message's `ui`
      * block or a `show_ui` call's presentation; [answer] is how it stands,
-     * which the conversation lays over the row as built.
+     * and [work] how its silent actions go, which the conversation lays over
+     * the row as built.
      */
-    data class Ui(override val key: String, val offer: UiOffer, val component: UiComponent, val answer: UiAnswer = UiAnswer.Open) : ConversationRow
+    data class Ui(
+        override val key: String,
+        val offer: UiOffer,
+        val component: UiComponent,
+        val answer: UiAnswer = UiAnswer.Open,
+        val work: UiWork = UiWork.Idle,
+    ) : ConversationRow
 
     /**
      * A press the computer refused or lost ([UiOutcome.refused]), from its
@@ -232,6 +240,20 @@ sealed interface UiAnswer {
     data class Answered(val action: UiAction) : UiAnswer
     /** Unanswered, and a person's message came after it: it takes nothing more. */
     data object Closed : UiAnswer
+}
+
+/**
+ * How a live component's silent actions go: one [sending] from this phone,
+ * its last attempt record from any device still [pending], or the last one
+ * [refused], with the server's [reason] when it gave one.
+ */
+@Immutable
+data class UiWork(val sending: UiAction? = null, val pending: Boolean = false, val refused: Boolean = false, val reason: String? = null) {
+    val busy: Boolean get() = sending != null || pending
+
+    companion object {
+        val Idle = UiWork()
+    }
 }
 
 /** Where a question's answer stands. */
@@ -357,9 +379,11 @@ class ConversationRowBuilder(
             val id = message.id
             if (message.role == "service") {
                 failureOf(message)?.let { return listOf(it) }
-                // An attempt record is drawn only when it was refused; one accepted is the person's message.
+                // An attempt record is drawn only when a press with words was refused; one accepted is the person's message.
+                // A silent action's shows on its component ([UiWork]).
                 message.content.firstNotNullOfOrNull { it as? Block.Action }?.let { block ->
-                    return if (block.record.outcome.refused) listOf(ConversationRow.Unsent("$id:unsent", block.record)) else emptyList()
+                    val words = UiCatalog.actions[block.record.action.type]?.message != false
+                    return if (words && block.record.outcome.refused) listOf(ConversationRow.Unsent("$id:unsent", block.record)) else emptyList()
                 }
                 val compaction = message.content.filterIsInstance<Block.Compaction>().firstOrNull() ?: return emptyList()
                 val kind = when (compaction.status) {

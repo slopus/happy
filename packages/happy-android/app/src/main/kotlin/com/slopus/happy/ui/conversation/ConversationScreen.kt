@@ -254,6 +254,8 @@ fun ConversationScreen(
     roleCanCompose: Boolean = true,
     /** The person's role holds a permission: chat UI's controls they may not use show disabled. */
     roleAllows: (permission: String) -> Boolean = { true },
+    /** Live chat UI components' sources; null draws them as their fallback lines. */
+    uiLive: UiLive? = null,
 ) {
     RecomposeProbe.mark(ConversationScreenTags.PROBE_SCREEN)
     val colors = HappyTheme.colors
@@ -303,7 +305,8 @@ fun ConversationScreen(
     // An archived chat, or one not made yet, takes no presses.
     val presses by rememberUpdatedState(state.created && state.agent?.archivedAt == null)
     val allows by rememberUpdatedState(roleAllows)
-    val rowActions = remember(actions, legacy, pictures, media, store, pictureLabel, videoLabel, asks, folds, videos) {
+    val catalog by rememberUpdatedState(state.catalog)
+    val rowActions = remember(actions, legacy, pictures, media, store, pictureLabel, videoLabel, asks, folds, videos, uiLive) {
         ConversationRowActions(
             legacy = legacy,
             onRetryFailure = actions.onRetryFailure,
@@ -332,6 +335,8 @@ fun ConversationScreen(
             onUiAction = { row, action -> if (presses) actions.onUiAction(row.offer, row.component, action) },
             uiPresses = { presses },
             uiAllowed = { permission -> allows(permission) },
+            uiLive = uiLive,
+            uiCatalog = { catalog },
         )
     }
     val atNewest by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }

@@ -21,7 +21,9 @@ import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
 import com.slopus.happy.connection.AgentConnectionException
 import com.slopus.happy.conversation.ui.UiAction
+import com.slopus.happy.conversation.ui.UiActionRecord
 import com.slopus.happy.conversation.ui.UiActionText
+import com.slopus.happy.conversation.ui.UiCatalog
 import com.slopus.happy.conversation.ui.UiComponent
 import com.slopus.happy.conversation.ui.UiDocument
 import com.slopus.happy.conversation.ui.UiOffer
@@ -267,6 +269,10 @@ class Conversation(
     private val messages = HashMap<String, Message>()
     private val pending = ArrayList<String>()
     private val outgoing = ArrayList<Outgoing>()
+    /** Silent chat UI actions on their way from here ([actSilently]), by offer. */
+    private val silent = HashMap<UiOffer, UiAction>()
+    /** Silent actions the server refused before recording anything: why, where it said. */
+    private val silentRefusals = HashMap<UiOffer, String?>()
     private var agent: AgentInfo? = null
     private var mode: Mode? = null
     private var picked: Mode? = null
@@ -875,6 +881,48 @@ class Conversation(
             pump()
         }
         return true
+    }
+
+    /**
+     * Sends a silent action of a live component ([UiCatalog], no words):
+     * no bubble, its component busy until it's answered, and what the
+     * server refused shown on it ([UiWork]). The answer's `result` goes to
+     * the caller alone and is never kept here; null where nothing came
+     * back, the action was refused, or one is already on its way for
+     * [offer]. Null at once where nothing can be pressed yet.
+     */
+    fun actSilently(offer: UiOffer, action: UiAction): Deferred<JsonObject?>? {
+        if (!created || closed || UiCatalog.actions[action.type]?.message != false) return null
+        return scope.async(lane) {
+            if (offer in silent) return@async null
+            silent[offer] = action
+            silentRefusals.remove(offer)
+            publish()
+            val id = ConversationApi.clientId()
+            try {
+                val acted = withRetries { api.act(agentId, id, offer, action, null) }
+                join(acted.record)
+                acted.result
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // The server's words for a request it turned down (none echoes a payload); the phone's own for the rest.
+                silentRefusals[offer] = (e as? ConversationApiException)
+                    ?.takeIf { it.status in 400..499 && !com.slopus.happy.agent.Permission.refused(it.status, it.code, it.message) }
+                    ?.message
+                null
+            } finally {
+                silent.remove(offer)
+                publish()
+            }
+        }
+    }
+
+    /** A message the computer answered with joins history in its run, or as pending until its run is known. */
+    private fun join(message: Message) {
+        messages[message.id] = message
+        if (message.runId != null) place(message.id, message.runId)
+        else if (message.id !in pending && runs.none { message.id in it.second }) pending += message.id
     }
 
     /** A press delivered: its record and the person's message it became join history, and its bubble settles. */
@@ -1686,10 +1734,13 @@ class Conversation(
      * Lays over each chat UI row how its offer stands (the client package's
      * `uiOfferState`): answered by an accepted press in any copy of history,
      * closed by a person's message after it, or being answered from here;
-     * and gives a refused press the words it said, from its offer.
+     * and gives a refused press the words it said, from its offer. A live
+     * component gets how its silent actions go ([UiWork]).
      */
     private fun answerOffers(rows: MutableList<ConversationRow>) {
         val answered = HashMap<UiOffer, UiAction>()
+        // Each live component's newest silent attempt, from any device.
+        val attempts = HashMap<UiOffer, UiActionRecord>()
         val documents = HashMap<Pair<String, String>, UiDocument>()
         // Offers a person's message followed, in history's order.
         val spokenAfter = HashSet<String>()
@@ -1701,7 +1752,10 @@ class Conversation(
                 unanswered.clear()
             }
             for (block in message.content) when (block) {
-                is Block.Action -> if (block.record.outcome.accepted) answered[block.record.offer] = block.record.action
+                is Block.Action -> when {
+                    UiCatalog.actions[block.record.action.type]?.message == false -> attempts[block.record.offer] = block.record
+                    block.record.outcome.accepted -> answered[block.record.offer] = block.record.action
+                }
                 is Block.Ui -> documents[message.id to block.document.id] = block.document
                 is Block.ToolCall -> (block.presentation as? Presentation.Ui)?.let { documents[message.id to it.document.id] = it.document }
                 else -> Unit
@@ -1719,7 +1773,15 @@ class Conversation(
                         row.offer.messageId in spokenAfter -> UiAnswer.Closed
                         else -> UiAnswer.Open
                     }
-                    if (answer == row.answer) row else row.copy(answer = answer)
+                    val attempt = attempts[row.offer]?.outcome
+                    val refusal = silentRefusals.containsKey(row.offer)
+                    val work = UiWork(
+                        sending = silent[row.offer],
+                        pending = attempt?.status == "pending",
+                        refused = refusal || attempt?.refused == true,
+                        reason = if (refusal) silentRefusals[row.offer] else attempt?.reason?.takeIf { attempt.refused },
+                    )
+                    if (answer == row.answer && work == row.work) row else row.copy(answer = answer, work = work)
                 }
                 is ConversationRow.Unsent -> {
                     val offer = row.record.offer

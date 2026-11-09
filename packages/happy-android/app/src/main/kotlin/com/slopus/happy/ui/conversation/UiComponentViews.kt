@@ -120,8 +120,9 @@ object UiSpec {
  * use are at 0.48, with "Your role can't answer here." under them. A file
  * tree is a surfaceHigh card (radius 12, padding 12) of 13/20 mono lines,
  * 16 in a level, a folder or document glyph 6 before each name, at most
- * twelve lines until "Show all". Any other type is its fallback line,
- * 14/20 textSecondary, in the same card.
+ * twelve lines until "Show all". A live type is drawn from the server's
+ * state ([UiLiveRow]); any other is its fallback line, 14/20
+ * textSecondary, in the same card.
  */
 @Composable
 fun UiComponentRow(row: ConversationRow.Ui, actions: ConversationRowActions, modifier: Modifier = Modifier) {
@@ -143,7 +144,13 @@ fun UiComponentRow(row: ConversationRow.Ui, actions: ConversationRowActions, mod
         is UiComponent.Checklist -> Gated(allowed, inset(UiTags.CHECKLIST)) { ChecklistView(row.key, component, row.answer, open, send) }
         is UiComponent.TextField -> Gated(allowed, inset(UiTags.TEXT_FIELD)) { TextFieldView(row.key, component, row.answer, open, send) }
         is UiComponent.FileTree -> FileTreeView(row.key, component, inset(UiTags.FILE_TREE))
-        is UiComponent.Images, is UiComponent.Other -> if (component.fallback.isNotBlank()) Fallback(component.fallback, inset(UiTags.FALLBACK))
+        is UiComponent.Images, is UiComponent.Other -> {
+            val live = actions.uiLive
+            when {
+                live != null && UiLive.draws(component.type, live.team) -> UiLiveRow(row, live, actions, inset(UiLiveTags.FIGURE))
+                component.fallback.isNotBlank() -> Fallback(component.fallback, inset(UiTags.FALLBACK))
+            }
+        }
     }
 }
 
