@@ -82,7 +82,7 @@ class LiveUiConversationTest {
         }
         val chat = conversation()
         advanceUntilIdle()
-        val answer = chat.actSilently(chat.invite().offer, create)!!
+        val answer = chat.press(chat.invite().offer, chat.invite().component, create)!!
         runCurrent()
         assertEquals(UiWork(sending = create), chat.invite().work)
         assertTrue(chat.state.value.rows.none { it is ConversationRow.User })
@@ -104,7 +104,7 @@ class LiveUiConversationTest {
         actions = { body -> ChatUiConversationTest.ok("""{"record":${record(body["id"].toString(), "rejected", reason = "Invites are off here.")},"message":null,"result":null}""") }
         val chat = conversation()
         advanceUntilIdle()
-        assertNull(chat.actSilently(chat.invite().offer, create)!!.await())
+        assertNull(chat.press(chat.invite().offer, chat.invite().component, create)!!.await())
         advanceUntilIdle()
         assertEquals(UiWork(refused = true, reason = "Invites are off here."), chat.invite().work)
         assertTrue(chat.state.value.rows.none { it is ConversationRow.Unsent || it is ConversationRow.User })
@@ -114,12 +114,12 @@ class LiveUiConversationTest {
         actions = { TransportResponse(400, body = """{"error":"That role doesn't exist.","code":"invalid_request"}""".toByteArray()) }
         val chat = conversation()
         advanceUntilIdle()
-        chat.actSilently(chat.invite().offer, create)!!.await()
+        chat.press(chat.invite().offer, chat.invite().component, create)!!.await()
         advanceUntilIdle()
         assertEquals(UiWork(refused = true, reason = "That role doesn't exist."), chat.invite().work)
 
         actions = { TransportResponse(403, body = """{"error":"This needs the members.manage permission.","code":"forbidden"}""".toByteArray()) }
-        chat.actSilently(chat.invite().offer, create)!!.await()
+        chat.press(chat.invite().offer, chat.invite().component, create)!!.await()
         advanceUntilIdle()
         assertEquals(UiWork(refused = true, reason = null), chat.invite().work)
     }
@@ -137,10 +137,10 @@ class LiveUiConversationTest {
         assertTrue(chat.state.value.rows.none { it is ConversationRow.Unsent })
     }
 
-    @Test fun `an action with words doesn't go silently`() = runTest {
+    @Test fun `an action with words the component can't say is not taken`() = runTest {
         val chat = conversation()
         advanceUntilIdle()
-        assertNull(chat.actSilently(chat.invite().offer, UiAction.choose("a")))
+        assertNull(chat.press(chat.invite().offer, chat.invite().component, UiAction.choose("a")))
     }
 
     private fun event(type: String, payload: String) = ConversationSignal.Event(type, Json.parseToJsonElement(payload).jsonObject)

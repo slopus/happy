@@ -29,6 +29,7 @@ import com.slopus.happy.conversation.ui.UiDocument
 import com.slopus.happy.conversation.ui.UiOffer
 import com.slopus.happy.conversation.ui.UiPress
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -214,7 +215,7 @@ class Conversation(
         var skill: String? = null,
         /** A voice call's words ([sendAs]). */
         val voice: Boolean = false,
-        /** A press on chat UI ([act]): it goes to the actions route, [text] its words as the person's message will read. */
+        /** A press on chat UI ([press]): it goes to the actions route, [text] its words as the person's message will read. */
         val press: UiPress? = null,
         var accepted: Boolean = false,
         var failure: Problem? = null,
@@ -269,7 +270,7 @@ class Conversation(
     private val messages = HashMap<String, Message>()
     private val pending = ArrayList<String>()
     private val outgoing = ArrayList<Outgoing>()
-    /** Silent chat UI actions on their way from here ([actSilently]), by offer. */
+    /** Silent chat UI actions on their way from here ([press]), by offer. */
     private val silent = HashMap<UiOffer, UiAction>()
     /** Silent actions the server refused before recording anything: why, where it said. */
     private val silentRefusals = HashMap<UiOffer, String?>()
@@ -862,17 +863,26 @@ class Conversation(
     }
 
     /**
-     * Presses [component] of an offer ([UiOffer]) with [action]: drawn at
-     * once as the person's words ([UiActionText]) and sent to the actions
-     * route in order with the composer's sends, under an id of its own that
-     * a retry repeats. An accepted press becomes the person's message; a
-     * refused one, its attempt record, greyed ([ConversationRow.Unsent]).
-     * False where nothing can be pressed yet, or the same offer is already
-     * being answered from here.
+     * Presses [component] of an offer ([UiOffer]) with [action]: every chat
+     * UI action goes through here, to the actions route. One with words
+     * ([UiCatalog] `message`) is drawn at once as the person's words
+     * ([UiActionText]) and sent in order with the composer's sends, under an
+     * id of its own that a retry repeats; accepted, it becomes the person's
+     * message, refused, its attempt record greyed ([ConversationRow.Unsent]).
+     * A silent one draws no bubble: its component is busy until it's
+     * answered, and shows what the server refused ([UiWork]).
+     *
+     * The answer is a silent action's `result`, the caller's alone and never
+     * kept here (null for words, nothing back, or a refusal). Null at once
+     * where nothing can be pressed yet, or the offer is already being
+     * answered from here.
      */
-    fun act(offer: UiOffer, component: UiComponent, action: UiAction): Boolean {
-        if (!created || closed) return false
-        // Only a "message" action has words; the rest are no bubble, and this build sends none of them.
+    fun press(offer: UiOffer, component: UiComponent, action: UiAction): Deferred<JsonObject?>? {
+        if (!created || closed) return null
+        return if (UiCatalog.actions[action.type]?.message == false) silently(offer, action) else if (withWords(offer, component, action)) CompletableDeferred(null) else null
+    }
+
+    private fun withWords(offer: UiOffer, component: UiComponent, action: UiAction): Boolean {
         val text = UiActionText.of(component, action) ?: return false
         scope.launch(lane) {
             if (outgoing.any { it.press?.offer == offer && it.failure == null }) return@launch
@@ -883,16 +893,7 @@ class Conversation(
         return true
     }
 
-    /**
-     * Sends a silent action of a live component ([UiCatalog], no words):
-     * no bubble, its component busy until it's answered, and what the
-     * server refused shown on it ([UiWork]). The answer's `result` goes to
-     * the caller alone and is never kept here; null where nothing came
-     * back, the action was refused, or one is already on its way for
-     * [offer]. Null at once where nothing can be pressed yet.
-     */
-    fun actSilently(offer: UiOffer, action: UiAction): Deferred<JsonObject?>? {
-        if (!created || closed || UiCatalog.actions[action.type]?.message != false) return null
+    private fun silently(offer: UiOffer, action: UiAction): Deferred<JsonObject?> {
         return scope.async(lane) {
             if (offer in silent) return@async null
             silent[offer] = action

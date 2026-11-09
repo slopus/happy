@@ -53,4 +53,6 @@
     <string name="ui_live_working">Trabalhando…</string>
     <string name="ui_live_failed">Não funcionou.</string>
     <string name="ui_live_not_allowed">Sua função não pode mudar isto aqui.</string>
+    <string name="ui_live_github_connected">Conectado como %1$s.</string>
+    <string name="ui_live_github_connected_plain">Conectado.</string>
 </resources>

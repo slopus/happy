@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.agent.GithubLink
 import com.slopus.happy.agent.ProviderCli
 import com.slopus.happy.agent.ProviderCliSource
 import com.slopus.happy.agent.TeamRole
@@ -75,11 +76,13 @@ class UiLiveRowTest {
         return ConversationRowBuilder.build(message, "a1", null, streaming = false)
     }
 
+    private val link = MutableStateFlow<GithubLink>(GithubLink.None)
+
     private val live = UiLive(
-        act = { offer, action -> sent += offer to action; answer },
         providerCli = { cli },
         team = true,
         roles = { listOf(TeamRole("owner", "Owner", true), TeamRole("admin", "Admin", true), TeamRole("member", "Member", true)) },
+        github = { link },
     )
 
     private val catalog = ModeCatalog(
@@ -97,7 +100,7 @@ class UiLiveRowTest {
             if (shown) {
                 ConversationScreen(
                     ConversationState(created = true, loaded = true, rows = rows.asReversed(), agent = agent, catalog = catalog),
-                    ConversationScreenActions(),
+                    ConversationScreenActions(onUiAction = { offer, _, action -> sent += offer to action; answer }),
                     roleAllows = allows,
                     uiLive = live,
                 )
@@ -222,12 +225,28 @@ class UiLiveRowTest {
         assertEquals(listOf("compute_join.create"), sent.map { it.second.type })
     }
 
+    @Test fun `a GitHub device code goes once the server has the credential`() {
+        answer = CompletableDeferred(buildJsonObject { put("userCode", "WDJB-MJHT"); put("verificationUri", "https://github.com/login/device"); put("expiresAt", 9) })
+        screen(offer(github))
+        rule.onNodeWithText("Link GitHub").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("WDJB-MJHT").assertExists()
+        rule.onNodeWithText("Open GitHub").assertExists()
+        shot("ui-live-github-code")
+        link.value = GithubLink.Linked("ada")
+        rule.waitForIdle()
+        rule.onNodeWithText("WDJB-MJHT").assertDoesNotExist()
+        rule.onNodeWithText("Connected as ada.").assertExists()
+        rule.onNodeWithText("Link GitHub").assertDoesNotExist()
+        shot("ui-live-github-connected")
+    }
+
     @Test fun `team components are fallback lines off a team server`() {
         rule.setHappyContent {
             ConversationScreen(
                 ConversationState(created = true, loaded = true, rows = offer(invite, join).asReversed(), agent = agent),
                 ConversationScreenActions(),
-                uiLive = UiLive({ _, _ -> null }, null, team = false, roles = { emptyList() }),
+                uiLive = UiLive(null, team = false, roles = { emptyList() }),
             )
         }
         rule.onNodeWithText("Invite a teammate in Settings").assertExists()

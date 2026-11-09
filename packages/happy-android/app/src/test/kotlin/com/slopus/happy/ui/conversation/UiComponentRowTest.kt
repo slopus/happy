@@ -75,7 +75,7 @@ class UiComponentRowTest {
         rule.setHappyContent {
             ConversationScreen(
                 ConversationState(created = true, loaded = true, rows = rows.asReversed(), agent = agent),
-                ConversationScreenActions(onUiAction = { offer, _, action -> pressed += offer to action; true }),
+                ConversationScreenActions(onUiAction = { offer, _, action -> pressed += offer to action; null }),
                 roleAllows = allows,
             )
         }

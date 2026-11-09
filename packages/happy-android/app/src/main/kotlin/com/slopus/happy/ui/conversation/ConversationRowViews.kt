@@ -148,8 +148,12 @@ class ConversationRowActions(
     val videos: VideoOpening? = null,
     /** HTML artifacts shown inline under their cards; null where none are. */
     val pages: InlinePages? = null,
-    /** Presses a chat UI component; null where nothing can be pressed here, and its controls take nothing. */
-    val onUiAction: ((ConversationRow.Ui, com.slopus.happy.conversation.ui.UiAction) -> Unit)? = null,
+    /**
+     * Presses a chat UI component, every action alike ([com.slopus.happy.conversation.Conversation.press]):
+     * a silent action's result, the widget's alone; null where it wasn't taken. Null where nothing can be
+     * pressed here, and its controls take nothing.
+     */
+    val onUiAction: ((ConversationRow.Ui, com.slopus.happy.conversation.ui.UiAction) -> kotlinx.coroutines.Deferred<kotlinx.serialization.json.JsonObject?>?)? = null,
     /** Whether the conversation takes presses now: not an archived chat. */
     val uiPresses: () -> Boolean = { true },
     /** Whether the person's role holds a permission a press needs; only for showing, the computer decides. */

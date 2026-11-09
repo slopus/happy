@@ -26,6 +26,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -50,6 +51,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
+import com.slopus.happy.agent.GithubLink
 import com.slopus.happy.agent.ProviderCli
 import com.slopus.happy.agent.ProviderCliSource
 import com.slopus.happy.agent.TeamRole
@@ -60,7 +62,6 @@ import com.slopus.happy.conversation.ModeCatalog
 import com.slopus.happy.conversation.UiWork
 import com.slopus.happy.conversation.ui.UiAction
 import com.slopus.happy.conversation.ui.UiCatalog
-import com.slopus.happy.conversation.ui.UiOffer
 import com.slopus.happy.model.settings.ModeOptions
 import com.slopus.happy.ui.components.HappyDropdownMenu
 import com.slopus.happy.ui.components.HappyMenuItem
@@ -77,22 +78,23 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * What live chat UI components draw from, beyond their props, and how
- * they act (happy-agent API.md "Chat UI", live components). Every click is
- * the component's own action through the actions route, so the
- * conversation's checks apply to it; the sources only say how things
- * stand. Null draws them as their fallback lines.
+ * What live chat UI components draw from, beyond their props (happy-agent
+ * API.md "Chat UI", live components). Every click is the component's own
+ * action through the row's one press ([ConversationRowActions.onUiAction])
+ * to the actions route, so the conversation's checks apply to it; the
+ * sources only say how things stand. Null draws them as their fallback
+ * lines.
  */
 @Stable
 class UiLive(
-    /** Sends a silent action ([com.slopus.happy.conversation.Conversation.actSilently]); its result is the widget's alone. */
-    val act: (UiOffer, UiAction) -> Deferred<JsonObject?>?,
     /** An assistant's program on the computer, live; null where the server runs none. */
     val providerCli: ((String) -> StateFlow<ProviderCliSource.State>)?,
     /** A Happy Cloud team server: its components (invite, GitHub, compute) are drawn only there. */
     val team: Boolean,
     /** The team's roles, for an invite; read when an invite is drawn. */
     val roles: suspend () -> List<TeamRole>,
+    /** Whether the person has GitHub linked, live; null where the server keeps no Git credentials. */
+    val github: (() -> StateFlow<GithubLink>)? = null,
 ) {
     companion object {
         const val PROVIDER_SIGN_IN = "provider_sign_in"
@@ -145,20 +147,20 @@ object UiLiveSpec {
 /** How one live component acts: whether it may, how its last action went, and the sending. */
 private class LiveControl(
     val row: ConversationRow.Ui,
-    private val live: UiLive,
+    private val press: ((ConversationRow.Ui, UiAction) -> Deferred<JsonObject?>?)?,
     private val presses: Boolean,
     private val holds: (String) -> Boolean,
 ) {
     val work: UiWork get() = row.work
 
     /** Whether the person may send [type] now; the server decides every click. */
-    fun may(type: String): Boolean = presses && !work.busy && UiCatalog.allowed(type, row.component.props, holds)
+    fun may(type: String): Boolean = press != null && presses && !work.busy && UiCatalog.allowed(type, row.component.props, holds)
 
     /** Whether the person's role allows [type] at all. */
     fun allowed(type: String): Boolean = UiCatalog.allowed(type, row.component.props, holds)
 
     fun send(type: String, payload: JsonObject = JsonObject(emptyMap())): Deferred<JsonObject?>? =
-        if (may(type)) live.act(row.offer, UiAction(type, payload)) else null
+        if (may(type)) press?.invoke(row, UiAction(type, payload)) else null
 }
 
 /**
@@ -171,14 +173,12 @@ private class LiveControl(
  */
 @Composable
 internal fun UiLiveRow(row: ConversationRow.Ui, live: UiLive, actions: ConversationRowActions, modifier: Modifier) {
-    val presses = actions.uiPresses()
-    val holds = actions.uiAllowed
-    val control = LiveControl(row, live, presses, holds)
+    val control = LiveControl(row, actions.onUiAction, actions.uiPresses(), actions.uiAllowed)
     when (row.component.type) {
         UiLive.PROVIDER_SIGN_IN -> ProviderSignIn(control, row.component.props["provider"].str.orEmpty(), live, modifier)
         UiLive.DEFAULT_MODEL -> DefaultModel(control, actions.uiCatalog(), modifier)
         UiLive.INVITE -> Invite(control, row.component.props["role"].str, live, modifier)
-        UiLive.GITHUB_CONNECT -> GithubConnect(control, modifier)
+        UiLive.GITHUB_CONNECT -> GithubConnect(control, live, modifier)
         UiLive.COMPUTE_JOIN -> ComputeJoin(control, row.component.props["pool"].str, modifier)
     }
 }
@@ -380,18 +380,25 @@ private class DeviceCode(val userCode: String, val uri: String)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun GithubConnect(control: LiveControl, modifier: Modifier) {
+private fun GithubConnect(control: LiveControl, live: UiLive, modifier: Modifier) {
     val scope = rememberCoroutineScope()
     val uri = LocalUriHandler.current
+    val source = remember(live) { live.github?.invoke() }
+    val link = source?.collectAsState()?.value
     var device by remember { mutableStateOf<DeviceCode?>(null) }
     DisposableEffect(Unit) { onDispose { device = null } }
-    val shown = device
+    // Linked, by this sign-in or another: the code has done its work and goes.
+    val linked = link as? GithubLink.Linked
+    LaunchedEffect(linked != null) { if (linked != null) device = null }
+    val shown = device.takeIf { linked == null }
     val line = when {
+        linked != null -> linked.account?.let { stringResource(R.string.ui_live_github_connected, it) } ?: stringResource(R.string.ui_live_github_connected_plain)
         shown != null -> stringResource(R.string.ui_live_github_code)
         control.allowed(DEVICE_START) -> stringResource(R.string.ui_live_github_line)
         else -> stringResource(R.string.ui_live_github_not_allowed)
     }
-    LiveFigure(stringResource(R.string.ui_live_github_title), line, control.work, modifier = modifier) {
+    LiveFigure(stringResource(R.string.ui_live_github_title), line, control.work, busy = link == GithubLink.Reading, modifier = modifier) {
+        if (linked != null || link == GithubLink.Reading) return@LiveFigure
         if (shown != null) {
             SecretShown(shown.userCode)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(UiLiveSpec.gap)) {

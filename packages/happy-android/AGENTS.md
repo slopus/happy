@@ -1705,7 +1705,7 @@ package's `uiActionText`, `uiOfferState` and `uiActionPermission` /
 `uiActionAllowed`; `UiActionsTest` checks them and the action catalog
 against `test/resources/ui/` (`fixtures/ui/` copied unchanged).
 
-A press is `Conversation.act`: an outgoing like a send, drawn at once as
+Every press goes through one function, `Conversation.press`. One with words is an outgoing like a send, drawn at once as
 the person's words, sent in order to `POST /v0/agents/:id/actions` under
 its own id (the attempt record's, so a retry is the same attempt). The
 bubble stays while the record is `pending` and goes once the person's
@@ -1722,9 +1722,11 @@ server's state: `provider_sign_in` from `GET /v0/provider-clis/:cliId` and
 `provider_cli.updated`, the newer version kept (`agent/ProviderClis.kt`;
 `404`/`501` points to Settings), `default_model` from the conversation's
 `ModeCatalog`, and on a Happy Cloud server only `invite` (roles from
-`/v0/roles`), `github_connect` and `compute_join`; elsewhere those are
-fallback lines. Their actions are silent: `Conversation.actSilently` sends
-one per component at a time with no bubble and no mode, and lays
+`/v0/roles`), `github_connect` (linked from `GET /v0/git/credentials?host=github.com`,
+re-read on `gitCredential.*`: the device code goes once it is linked) and
+`compute_join`; elsewhere those are fallback lines. Their actions are
+silent: `Conversation.press` sends one per component at a time with no
+bubble and no mode, and lays
 `UiWork` over the row (sending, the newest attempt record from any device
 pending, or refused with the server's reason); their refused records are
 no `Unsent` row. An action's `result` goes back to the widget alone, never

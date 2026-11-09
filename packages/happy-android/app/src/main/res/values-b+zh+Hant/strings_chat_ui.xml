@@ -53,4 +53,6 @@
     <string name="ui_live_working">處理中…</string>
     <string name="ui_live_failed">沒有成功。</string>
     <string name="ui_live_not_allowed">你的角色無法在此變更。</string>
+    <string name="ui_live_github_connected">已連接為 %1$s。</string>
+    <string name="ui_live_github_connected_plain">已連接。</string>
 </resources>

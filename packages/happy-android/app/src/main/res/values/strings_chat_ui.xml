@@ -53,4 +53,6 @@
     <string name="ui_live_working">Working…</string>
     <string name="ui_live_failed">That didn\'t work.</string>
     <string name="ui_live_not_allowed">Your role can\'t change this here.</string>
+    <string name="ui_live_github_connected">Connected as %1$s.</string>
+    <string name="ui_live_github_connected_plain">Connected.</string>
 </resources>

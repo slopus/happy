@@ -478,7 +478,9 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
     val liveScope = rememberCoroutineScope()
     val uiLive = remember(session, conversation) {
         val clis = com.slopus.happy.agent.ProviderCliSource({ com.slopus.happy.agent.ProviderCliSource.read(session.client, it) }, session.events, liveScope)
-        UiLive(conversation::actSilently, clis::follow, team = session.client.cloud, roles = { com.slopus.happy.agent.TeamMembers.roles(session.client) })
+        // Git credentials are a Happy Cloud server's; it reports GitHub linked once a device sign-in it polls is done.
+        val github = if (session.client.cloud) com.slopus.happy.agent.GithubLinkSource({ com.slopus.happy.agent.GithubLinkSource.read(session.client) }, session.events, liveScope)::follow else null
+        UiLive(clis::follow, team = session.client.cloud, roles = { com.slopus.happy.agent.TeamMembers.roles(session.client) }, github = github)
     }
     // A command's artwork is read and kept as the agent's other pictures are.
     ProvideLinks(links) { androidx.compose.runtime.CompositionLocalProvider(com.slopus.happy.ui.connection.LocalAgentPictures provides session.pictures) {
@@ -533,7 +535,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                     onVisible = holder.hold::show,
                     onChoiceChange = holder::setChoice,
                     onCommand = conversation::runCommand,
-                    onUiAction = conversation::act,
+                    onUiAction = conversation::press,
                     onToggleTurn = conversation::toggleTurn,
                     onToggleMessage = conversation::toggleMessage,
                     onOpenTool = { callId -> nav.navigate(ToolCallRoute(route.connectionId, conversation.agentId, callId)) },

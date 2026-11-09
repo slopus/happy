@@ -73,7 +73,7 @@ class ChatUiConversationTest {
 
     private fun Conversation.press(optionId: String) {
         val row = ui()
-        act(row.offer, row.component, UiAction.choose(optionId))
+        press(row.offer, row.component, UiAction.choose(optionId))
     }
 
     @Test fun `a press is the person's words at once, then the message it became`() = runTest {
@@ -173,8 +173,8 @@ class ChatUiConversationTest {
         val chat = conversation()
         advanceUntilIdle()
         val row = chat.ui()
-        chat.act(row.offer, row.component, UiAction.choose("a"))
-        chat.act(row.offer, row.component, UiAction.choose("b"))
+        chat.press(row.offer, row.component, UiAction.choose("a"))
+        chat.press(row.offer, row.component, UiAction.choose("b"))
         runCurrent()
         assertEquals(1, chat.state.value.rows.count { it is ConversationRow.User })
         assertNull(requests.lastOrNull { it.first.endsWith("/actions") && it.second?.get("action").toString().contains("\"b\"") })

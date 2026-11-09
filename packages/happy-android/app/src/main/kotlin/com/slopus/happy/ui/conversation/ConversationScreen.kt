@@ -211,8 +211,8 @@ class ConversationScreenActions(
     val onOpenTool: ((String) -> Unit)? = null,
     /** How a workspace's folders read, for naming one of its files from the attach sheet; null where they can't. */
     val workspace: ((workspaceId: String) -> com.slopus.happy.ui.files.WorkspaceSource)? = null,
-    /** Presses a chat UI component with an action; true when it went. */
-    val onUiAction: (com.slopus.happy.conversation.ui.UiOffer, com.slopus.happy.conversation.ui.UiComponent, com.slopus.happy.conversation.ui.UiAction) -> Boolean = { _, _, _ -> false },
+    /** Presses a chat UI component with an action ([com.slopus.happy.conversation.Conversation.press]); null where it wasn't taken. */
+    val onUiAction: (com.slopus.happy.conversation.ui.UiOffer, com.slopus.happy.conversation.ui.UiComponent, com.slopus.happy.conversation.ui.UiAction) -> kotlinx.coroutines.Deferred<kotlinx.serialization.json.JsonObject?>? = { _, _, _ -> null },
 )
 
 /**
@@ -332,7 +332,7 @@ fun ConversationScreen(
             kept = store.kept,
             videos = videos,
             pages = actions.pages,
-            onUiAction = { row, action -> if (presses) actions.onUiAction(row.offer, row.component, action) },
+            onUiAction = { row, action -> if (presses) actions.onUiAction(row.offer, row.component, action) else null },
             uiPresses = { presses },
             uiAllowed = { permission -> allows(permission) },
             uiLive = uiLive,
