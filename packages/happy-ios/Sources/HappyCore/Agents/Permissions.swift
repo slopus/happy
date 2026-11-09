@@ -36,9 +36,11 @@ public struct Permissions: Decodable, Equatable, Sendable {
         /// The team's inference providers; the person's own take `providers.own`.
         case providersManage = "providers.manage"
         case providersOwn = "providers.own"
+        /// Read-only Compute pools and node monitoring on this phone.
+        case poolsManage = "pools.manage"
     }
 
-    public static let refreshEvents = ["role."]
+    public static let refreshEvents = ["role.", "member.updated", "member.removed"]
 }
 
 /// What a connection lets the person do. A computer, or a server that is

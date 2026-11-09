@@ -337,6 +337,11 @@ public actor Store {
         return stream
     }
 
+    /// Subscription ownership diagnostics: one listener may name several prefixes.
+    func eventListenerCount(matching prefixes: [String]) -> Int {
+        Set(prefixes.flatMap { prefixed[$0] ?? [] }).count
+    }
+
     // MARK: Reads
 
     /// Everything the sidebar is drawn from, read whole. Events that arrive

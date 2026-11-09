@@ -15,6 +15,8 @@ public enum SettingsLinkPlace: Equatable, Sendable {
     case voice
     /// Happy Cloud's servers.
     case servers
+    /// Read-only Happy Cloud compute pools and machines.
+    case computes
     /// The page in the web app, in the system browser.
     case web(URL)
     /// A Happy Cloud server's AI providers: the list, the chooser or one
@@ -34,6 +36,7 @@ public enum SettingsLinkPlace: Equatable, Sendable {
         // Reading this phone's files is the desktop's: here, the chooser.
         case .providersImport:
             return cloud ? .providers(.providersAdd) : HappyCloud.webSettings(server: server, page: page).map(SettingsLinkPlace.web)
+        case .computes: return cloud ? .computes : nil
         default: return HappyCloud.webSettings(server: server, page: page).map(SettingsLinkPlace.web)
         }
     }
