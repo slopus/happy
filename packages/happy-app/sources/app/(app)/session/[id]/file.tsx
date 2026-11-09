@@ -1,3 +1,4 @@
+import { useRedirectSessionFile } from '@/hooks/useRedirectSessionFile';
 import { decodeFilePath } from '@/utils/filePathEncoding';
 import * as React from 'react';
 import { View, ScrollView, ActivityIndicator, Platform, Pressable } from 'react-native';
@@ -88,6 +89,15 @@ const DiffDisplay: React.FC<{ diffContent: string }> = ({ diffContent }) => {
 };
 
 export default React.memo(function FileScreen() {
+    const params = useLocalSearchParams<{ id: string; path?: string; line?: string; column?: string }>();
+    let path = params.path ?? '';
+    try { path = decodeFilePath(path); } catch { /* Preserve legacy malformed-route handling below. */ }
+    const redirect = useRedirectSessionFile(params.id, path, !!(params.line || params.column));
+    if (redirect) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator /></View>;
+    return <StandaloneFileScreen />;
+});
+
+const StandaloneFileScreen = React.memo(function StandaloneFileScreen() {
     const { theme } = useUnistyles();
     const { id: sessionId } = useLocalSearchParams<{ id: string }>();
     const searchParams = useLocalSearchParams();

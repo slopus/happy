@@ -4,7 +4,7 @@ import { act } from 'react';
 import TestRenderer from 'react-test-renderer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
-    socket: 'connecting', session: { metadata: { path: '/work', machineId: 'machine' }, agentState: { turnStatus: { status: 'completed', turnId: 'initial', updatedAt: 1 } } },
+    socket: 'connecting', uiOpen: true, uiTabs: ['/work/方案.md'], session: { metadata: { path: '/work', machineId: 'machine' }, agentState: { turnStatus: { status: 'completed', turnId: 'initial', updatedAt: 1 } } },
     reads: vi.fn(), writes: vi.fn(), artifacts: vi.fn(), persisted: {} as Record<string, unknown>, references: {} as Record<string, { path: string; hash: string; quote?: string } | null>, current: true,
 }));
 vi.mock('react-native', () => ({ Platform: { OS: 'web' } }));
@@ -14,7 +14,7 @@ vi.mock('@/auth/accountRuntime', () => ({ accountRuntimeCurrent: () => mocks.cur
 vi.mock('@/sync/serverConfig', () => ({ getServerUrl: () => 'https://fixture.test' }));
 vi.mock('@/sync/persistence', () => ({
     loadWorkspaceVersionOperations: () => ({}), saveWorkspaceVersionOperations: vi.fn(),
-    loadFileWorkspaceUI: () => ({ tabs: ['/work/方案.md'], active: '/work/方案.md', open: true, width: 430 }), saveFileWorkspaceUI: vi.fn(),
+    loadFileWorkspaceUI: () => ({ tabs: mocks.uiTabs, active: mocks.uiTabs[0], open: mocks.uiOpen, width: 430 }), saveFileWorkspaceUI: vi.fn(),
     loadFileWorkspaceReference: (scope: string) => mocks.references[scope] ?? null,
     saveFileWorkspaceReference: (scope: string, value: any) => { mocks.references[scope] = structuredClone(value); },
     loadFileWorkspaceDrafts: () => mocks.persisted,
@@ -32,7 +32,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 function node() { return <SessionFileWorkspaceProvider sessionId="session"><Probe /></SessionFileWorkspaceProvider>; }
 beforeEach(() => {
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
-    mocks.socket = 'connecting'; mocks.current = true; mocks.session.metadata.path = '/work'; mocks.session.agentState.turnStatus = { status: 'completed', turnId: 'initial', updatedAt: 1 };
+    mocks.socket = 'connecting'; mocks.uiOpen = true; mocks.uiTabs = ['/work/方案.md']; mocks.current = true; mocks.session.metadata.path = '/work'; mocks.session.agentState.turnStatus = { status: 'completed', turnId: 'initial', updatedAt: 1 };
     mocks.persisted = {}; mocks.references = {}; mocks.reads.mockReset().mockResolvedValue({ content: '# Base', hash: 'base' }); mocks.writes.mockReset().mockResolvedValue({ hash: 'saved' });
     mocks.artifacts.mockReset().mockResolvedValue([]);
 });
@@ -184,4 +184,58 @@ it('rebinds a restored file only after matching background version metadata arri
         artifact: { artifactId: 'artifact', expectedRevision: 'revision', versionId: 'restored-version' },
     });
     await act(async () => { renderer.unmount(); await tick(); });
+});
+
+
+it('announces each explicit file open with its owning session, including the active tab', async () => {
+    mocks.socket = 'connected'; let renderer: any;
+    await act(async () => { renderer = TestRenderer.create(node()); await tick(); });
+    expect(value.sessionId).toBe('session'); expect(value.openRequestId).toBe(0);
+    await act(async () => { await value.openReference('/work/方案.md'); });
+    expect(value.openRequestId).toBe(1);
+    await act(async () => { await value.openReference('/work/方案.md'); });
+    expect(value.openRequestId).toBe(2);
+    await act(async () => { await value.openReference('/outside/private.md'); });
+    expect(value.openRequestId).toBe(2);
+    await act(async () => { renderer.unmount(); });
+});
+
+
+it.each([false, true])('keeps a child route handoff selected when cached tabs restore with open=%s', async uiOpen => {
+    mocks.socket = 'connected'; mocks.uiOpen = uiOpen;
+    function Handoff() {
+        const workspace = useFileWorkspace()!;
+        React.useEffect(() => { void workspace.openReference('/work/PRIVACY.md'); }, []);
+        return null;
+    }
+    let renderer: any;
+    await act(async () => {
+        renderer = TestRenderer.create(<SessionFileWorkspaceProvider sessionId="session"><Handoff /><Probe /></SessionFileWorkspaceProvider>);
+        await tick();
+    });
+    expect(value.snapshot).toMatchObject({ active: '/work/PRIVACY.md', open: true });
+    expect(value.snapshot.tabs).toContain('/work/方案.md');
+    expect(value.snapshot.tabs).toContain('/work/PRIVACY.md');
+    await act(async () => { renderer.unmount(); });
+});
+
+
+it('restores all twenty cached tabs and their drafts before attempting a new handoff tab', async () => {
+    mocks.socket = 'connected'; mocks.uiTabs = Array.from({ length: 20 }, (_, index) => `/work/old-${index}.md`);
+    const last = mocks.uiTabs[19]; mocks.persisted = { [last]: { draft: '# Unsaved last tab', hash: 'base' } };
+    function Handoff() {
+        const workspace = useFileWorkspace()!;
+        React.useEffect(() => { void workspace.openReference('/work/new.md'); }, []);
+        return null;
+    }
+    let renderer: any;
+    await act(async () => {
+        renderer = TestRenderer.create(<SessionFileWorkspaceProvider sessionId="session"><Handoff /><Probe /></SessionFileWorkspaceProvider>);
+        await tick();
+    });
+    expect(value.snapshot.tabs).toEqual(mocks.uiTabs);
+    expect(value.snapshot.documents[last].draft).toBe('# Unsaved last tab');
+    expect(mocks.persisted[last]).toEqual({ draft: '# Unsaved last tab', hash: 'base' });
+    expect(value.snapshot.tabs).not.toContain('/work/new.md');
+    await act(async () => { renderer.unmount(); });
 });

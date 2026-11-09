@@ -1,4 +1,4 @@
-import { encodeFilePath } from '@/utils/filePathEncoding';
+import { useOpenSessionFile } from '@/hooks/useOpenSessionFile';
 import { TranscriptReadOnlyContext } from "../TranscriptReadOnlyContext";
 import * as React from 'react';
 import { Text, View, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
@@ -33,6 +33,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     const { tool, onPress, sessionId, messageId } = props;
     const readOnly = React.useContext(TranscriptReadOnlyContext);
     const router = useRouter();
+    const openFile = useOpenSessionFile(sessionId);
     const { theme } = useUnistyles();
 
     // For file-editing tools, navigate to file route instead of message detail
@@ -45,11 +46,11 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         if (onPress) {
             onPress();
         } else if (sessionId && filePath) {
-            router.push(`/session/${sessionId}/file?path=${encodeFilePath(filePath)}`);
+            openFile(filePath);
         } else if (sessionId && messageId) {
             router.push(`/session/${sessionId}/message/${messageId}`);
         }
-    }, [onPress, sessionId, messageId, filePath, router]);
+    }, [onPress, sessionId, messageId, filePath, router, openFile]);
 
     // Enable pressable if either onPress is provided or we have navigation params
     const isPressable = !!(onPress || (sessionId && filePath) || (sessionId && messageId));

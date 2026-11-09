@@ -1572,6 +1572,52 @@ describe('SessionView Agent-space boundary', () => {
         act(() => renderer.unmount());
     });
 
+    it('consumes a desktop file handoff once and opens repeated requests for the same path', () => {
+        mocks.isDataReady = true; mocks.windowWidth = 1400; mocks.isTablet = true; mocks.platformOS = 'web';
+        const openReference = vi.fn();
+        const value = { sessionId: 'session-1', enabled: true, root: '/work', snapshot: { open: true, active: '/work/a.md', tabs: ['/work/a.md'], documents: {} }, maximized: false, chatWidth: 430, openRequestId: 0, openReference } as any;
+        let renderer: any;
+        const node = (requestId: string) => <FileWorkspaceContext.Provider value={value}><SessionView id="session-1" fileOpenRequest={{ path: '/work/PRIVACY.md', requestId }} /></FileWorkspaceContext.Provider>;
+        act(() => { renderer = TestRenderer.create(node('first')); });
+        expect(openReference).toHaveBeenCalledWith('/work/PRIVACY.md');
+        act(() => renderer.update(node('first'))); expect(openReference).toHaveBeenCalledTimes(1);
+        act(() => renderer.update(node('second'))); expect(openReference).toHaveBeenCalledTimes(2);
+        act(() => renderer.unmount());
+    });
+
+    it('reveals the file tree for an explicit file open when the right sidebar was collapsed', () => {
+        mocks.isDataReady = true; mocks.windowWidth = 1400; mocks.isTablet = true; mocks.platformOS = 'web'; mocks.desktopRightPanelCollapsed = true;
+        const value = { sessionId: 'session-1', enabled: true, root: '/work', snapshot: { open: true, active: '/work/a.md', tabs: ['/work/a.md'], documents: {} }, maximized: false, chatWidth: 430, openRequestId: 1 } as any;
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<FileWorkspaceContext.Provider value={value}><SessionView id="session-1" /></FileWorkspaceContext.Provider>); });
+        expect(mocks.setDesktopRightPanelCollapsed).toHaveBeenCalledWith(false);
+        expect(renderer.root.findByType('FilesSidebar').props.mode).toBe('allFiles');
+        act(() => renderer.unmount());
+    });
+
+    it('retains the legacy reader for a desktop handoff outside the project root', () => {
+        mocks.isDataReady = true; mocks.windowWidth = 1400; mocks.isTablet = true; mocks.platformOS = 'web';
+        const openReference = vi.fn();
+        const value = { sessionId: 'session-1', enabled: true, root: '/work', snapshot: { open: true, active: '/work/a.md', tabs: ['/work/a.md'], documents: {} }, maximized: false, chatWidth: 430, openRequestId: 0, openReference } as any;
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<FileWorkspaceContext.Provider value={value}><SessionView id="session-1" fileOpenRequest={{ path: '/outside/a.md', requestId: 'outside' }} /></FileWorkspaceContext.Provider>); });
+        expect(openReference).not.toHaveBeenCalled(); expect(mocks.routerPush.mock.calls[0][0]).toContain('/session/session-1/file?path=');
+        act(() => renderer.unmount());
+    });
+
+    it('does not replay an old file-tree reveal after returning to the conversation', () => {
+        mocks.isDataReady = true; mocks.windowWidth = 1400; mocks.isTablet = true; mocks.platformOS = 'web';
+        let value = { sessionId: 'session-1', enabled: true, root: '/work', snapshot: { open: true, active: '/work/a.md', tabs: ['/work/a.md'], documents: {} }, maximized: false, chatWidth: 430, openRequestId: 1 } as any;
+        const node = (focused: boolean) => <mocks.focusContext.Provider value={focused}><FileWorkspaceContext.Provider value={value}><SessionView id="session-1" /></FileWorkspaceContext.Provider></mocks.focusContext.Provider>;
+        let renderer: any; act(() => { renderer = TestRenderer.create(node(true)); });
+        mocks.setDesktopRightPanelCollapsed.mockClear(); mocks.desktopRightPanelCollapsed = true;
+        act(() => renderer.update(node(false))); act(() => renderer.update(node(true)));
+        expect(mocks.setDesktopRightPanelCollapsed).not.toHaveBeenCalledWith(false);
+        value = { ...value, openRequestId: 2 }; act(() => renderer.update(node(true)));
+        expect(mocks.setDesktopRightPanelCollapsed).toHaveBeenCalledWith(false);
+        act(() => renderer.unmount());
+    });
+
     it('collapses and restores the desktop capability panel independently', () => {
         mocks.isDataReady = true;
         mocks.windowWidth = 1400;

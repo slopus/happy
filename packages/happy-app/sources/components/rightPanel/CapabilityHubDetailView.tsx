@@ -1,4 +1,4 @@
-import { encodeFilePath } from '@/utils/filePathEncoding';
+import { useOpenSessionFile } from '@/hooks/useOpenSessionFile';
 import * as React from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { Image } from 'expo-image';
@@ -235,10 +235,11 @@ const TaskResourceTextItemRow = React.memo(function TaskResourceTextItemRow(prop
     sessionId: string;
 }) {
     const router = useRouter();
+    const openFile = useOpenSessionFile(props.sessionId);
     const { theme } = useUnistyles();
     const event = props.item.event;
     const onPress = event.resourceType === 'file'
-        ? () => router.push(`/session/${props.sessionId}/file?path=${encodeFilePath(event.path)}` as any)
+        ? () => openFile(event.path)
         : event.resourceType === 'artifact' && event.artifactId
             ? () => router.push(`/artifacts/${event.artifactId}` as any)
             : event.resourceType === 'web'
@@ -582,12 +583,12 @@ const FileItemRow = React.memo(function FileItemRow(props: {
     item: FileCapabilityItem;
     sessionId: string;
 }) {
-    const router = useRouter();
+    const openFile = useOpenSessionFile(props.sessionId);
     const { theme } = useUnistyles();
 
     return (
         <Pressable
-            onPress={() => router.push(`/session/${props.sessionId}/file?path=${encodeFilePath(props.item.path)}` as any)}
+            onPress={() => openFile(props.item.path)}
             style={({ pressed }) => [
                 styles.rowCard,
                 {

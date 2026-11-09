@@ -94,3 +94,5 @@ describe('SessionCapabilityHub browser progress routing', () => {
         expect(renderer.root.findAll((node: any) => node.props.testID?.startsWith('browser-progress-trigger-'))).toHaveLength(0);
     });
 });
+
+vi.mock('@/hooks/useDesktopFileWorkspaceAvailable', () => ({ useDesktopFileWorkspaceAvailable: () => false }));

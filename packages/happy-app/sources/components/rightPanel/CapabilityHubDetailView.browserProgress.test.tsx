@@ -91,3 +91,5 @@ describe('SkillItemRow browser progress', () => {
         expect(renderer.root.findAllByType('BrowserStepsPopover')).toHaveLength(0);
     });
 });
+
+vi.mock('@/hooks/useDesktopFileWorkspaceAvailable', () => ({ useDesktopFileWorkspaceAvailable: () => false }));

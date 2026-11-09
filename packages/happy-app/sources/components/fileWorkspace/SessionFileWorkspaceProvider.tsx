@@ -60,22 +60,28 @@ function FileWorkspaceOwner({ sessionId, root, enabled, scope, children }: { ses
     });
     const [chatWidth, setChatWidth] = React.useState(initial.width);
     const [maximized, setMaximized] = React.useState(false);
+    const [openRequestId, setOpenRequestId] = React.useState(0);
     const restored = React.useRef(false);
+    const restoration = React.useMemo(() => {
+        let finish!: () => void;
+        const ready = new Promise<void>(resolve => { finish = resolve; });
+        return { ready, finish };
+    }, [controller]);
     const [restoring, setRestoring] = React.useState(true);
     React.useEffect(() => {
         if (!enabled || !root || socketStatus !== 'connected' || restored.current) return;
         restored.current = true;
         // Restore only previously opened tabs, bounded to twenty by persistence.
         const reads = initial.tabs.map(path => { const draft = drafts.current[path]; return controller.open(path).then(() => { if (draft) controller.restoreDraft(path, draft); }); });
-        void Promise.allSettled(reads).then(() => setRestoring(false));
+        void Promise.allSettled(reads).then(() => { setRestoring(false); restoration.finish(); });
         if (initial.active) void controller.open(initial.active);
         if (!initial.open) controller.setOpen(false);
-    }, [controller, enabled, initial, root, socketStatus]);
+    }, [controller, enabled, initial, root, socketStatus, restoration]);
     const lifetime = React.useRef<object | null>(null);
     React.useEffect(() => {
         const token = {}; lifetime.current = token;
-        return () => { queueMicrotask(() => { if (lifetime.current === token) {eventRefresh.dispose(); controller.dispose(); versions.dispose();} }); };
-    }, [controller, versions, eventRefresh]);
+        return () => { queueMicrotask(() => { if (lifetime.current === token) {lifetime.current = null; eventRefresh.dispose(); controller.dispose(); versions.dispose(); restoration.finish();} }); };
+    }, [controller, versions, eventRefresh, restoration]);
     React.useEffect(() => {
         if (restored.current && !restoring && accountRuntimeCurrent()) saveFileWorkspaceUI(scope, { tabs: snapshot.tabs, active: snapshot.active, open: snapshot.open, width: chatWidth });
     }, [scope, restoring, snapshot.tabs, snapshot.active, snapshot.open, chatWidth]);
@@ -141,8 +147,13 @@ function FileWorkspaceOwner({ sessionId, root, enabled, scope, children }: { ses
         }
         const resolved = resolveSessionFilePath(path, root);
         if (!resolved?.withinSessionRoot) { Modal.alert(t('fileWorkspace.title'), t('fileWorkspace.rootUnavailable')); return; }
+        // Child navigation effects run before this owner's restoration effect.
+        // Finish restoring every cached draft before a new tab can use a slot.
+        await restoration.ready;
+        if (!lifetime.current || !accountRuntimeCurrent()) return;
         setMaximized(false);
+        setOpenRequestId(value => value + 1);
         try { await controller.open(resolved.absolutePath); } catch (error) { Modal.alert(t('fileWorkspace.title'), error instanceof Error && error.message === 'FILE_WORKSPACE_TAB_LIMIT' ? t('fileWorkspace.tooManyTabs') : String(error)); }
-    }, [controller, enabled, root, sessionId]);
-    return <FileWorkspaceContext.Provider value={{ versions, versionSnapshot, restoreVersion, draftCacheError: draftCacheError || referenceCacheError, enabled, root, controller, snapshot, reference, setReference, openReference, chatWidth, setChatWidth, maximized, setMaximized }}>{children}</FileWorkspaceContext.Provider>;
+    }, [controller, enabled, root, sessionId, restoration]);
+    return <FileWorkspaceContext.Provider value={{ sessionId, openRequestId, versions, versionSnapshot, restoreVersion, draftCacheError: draftCacheError || referenceCacheError, enabled, root, controller, snapshot, reference, setReference, openReference, chatWidth, setChatWidth, maximized, setMaximized }}>{children}</FileWorkspaceContext.Provider>;
 }

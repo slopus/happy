@@ -3,6 +3,8 @@ import type { VersionController, RestoreSelection } from './versionController';
 import type { FileWorkspaceController, FileWorkspaceSnapshot } from './controller';
 export type FileReference = { path: string; hash: string; quote?: string; artifact?: { workspaceId: string; artifactId: string; expectedRevision: string; versionId?: string } };
 export type FileWorkspaceContextValue = {
+    sessionId: string;
+    openRequestId: number;
     versions: VersionController;
     versionSnapshot: ReturnType<VersionController['getSnapshot']>;
     restoreVersion: (path: string, action?: 'inspect' | 'resume' | 'rollback' | 'retry', selection?: RestoreSelection) => Promise<boolean>;

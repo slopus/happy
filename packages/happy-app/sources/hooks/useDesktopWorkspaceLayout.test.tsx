@@ -3,11 +3,12 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // @ts-expect-error react-test-renderer ships without declarations.
 import TestRenderer from 'react-test-renderer';
+import { useDesktopFileWorkspaceAvailable } from './useDesktopFileWorkspaceAvailable';
 import { DesktopWorkspaceLayoutProvider, useDesktopWorkspaceLayout } from './useDesktopWorkspaceLayout';
 
-const storage = vi.hoisted(() => ({ values: {} as Record<string, boolean | number>, writes: vi.fn() }));
-vi.mock('react-native', () => ({ Platform: { OS: 'web' }, useWindowDimensions: () => ({ width: 1100, height: 900 }) }));
-vi.mock('expo-router', () => ({ usePathname: () => '/', useRootNavigationState: () => undefined }));
+const storage = vi.hoisted(() => ({ values: {} as Record<string, boolean | number>, writes: vi.fn(), pathname: '/', width: 1100 }));
+vi.mock('react-native', () => ({ Platform: { OS: 'web' }, useWindowDimensions: () => ({ width: storage.width, height: 900 }) }));
+vi.mock('expo-router', () => ({ usePathname: () => storage.pathname, useRootNavigationState: () => undefined }));
 vi.mock('@/navigation/desktopModalRouter', () => ({ getDesktopModalBackgroundPath: () => undefined }));
 vi.mock('@/hooks/useGlobalKeyboard', () => ({ useGlobalKeyboard: vi.fn() }));
 vi.mock('@/utils/platform', () => ({ isRunningOnMac: () => false }));
@@ -29,17 +30,30 @@ vi.mock('@/sync/storage', async () => {
 describe('desktop workspace sidebar integration', () => {
     let renderer: any;
     let layout: ReturnType<typeof useDesktopWorkspaceLayout>;
-    function Consumer() { layout = useDesktopWorkspaceLayout(); return null; }
+    let fileAvailable = false;
+    function Consumer() { layout = useDesktopWorkspaceLayout(); fileAvailable = useDesktopFileWorkspaceAvailable(); return null; }
     function mount() {
         act(() => { renderer = TestRenderer.create(<DesktopWorkspaceLayoutProvider enabled><Consumer /></DesktopWorkspaceLayoutProvider>); });
     }
     beforeEach(() => {
         vi.useFakeTimers();
+        storage.pathname = '/'; storage.width = 1100;
         storage.writes.mockClear();
         storage.values = { zenMode: false, desktopLeftSidebarCollapsed: true, desktopRightPanelCollapsed: false, desktopLeftSidebarWidth: 360, desktopRightPanelWidth: 320 };
         mount();
     });
     afterEach(() => { act(() => renderer.unmount()); vi.useRealTimers(); });
+
+    it.each(['/session/s/file', '/session/s/files'])('can hand files back to the desktop workspace from %s even without a right panel on that route', pathname => {
+        act(() => renderer.unmount()); storage.pathname = pathname; mount();
+        expect(layout.rightPanelAvailable).toBe(false);
+        expect(fileAvailable).toBe(true);
+    });
+
+    it('does not hand narrow-screen file routes to the desktop workspace', () => {
+        act(() => renderer.unmount()); storage.pathname = '/session/s/file'; storage.width = 700; mount();
+        expect(fileAvailable).toBe(false);
+    });
 
     it('grows the unpinned overlay with keyboard and pointer at 1100px without shrinking chat or the right panel', () => {
         act(() => layout.setLeftSidebarHovered(true));

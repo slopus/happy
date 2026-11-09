@@ -1,8 +1,7 @@
-import { encodeFilePath } from '@/utils/filePathEncoding';
+import { useOpenSessionFile } from '@/hooks/useOpenSessionFile';
 import * as React from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { FileIcon } from '@/components/FileIcon';
 import { sessionListDirectory } from '@/sync/ops';
@@ -24,7 +23,7 @@ export const SessionFolderBrowserView = React.memo(function SessionFolderBrowser
 }) {
     const { sessionId, rootPath, homeDir, onExit } = props;
     const { theme } = useUnistyles();
-    const router = useRouter();
+    const openFile = useOpenSessionFile(sessionId);
     const panel = useRightSwipePanel();
     const [currentPath, setCurrentPath] = React.useState(rootPath);
     const [entries, setEntries] = React.useState<Entry[]>([]);
@@ -77,10 +76,10 @@ export const SessionFolderBrowserView = React.memo(function SessionFolderBrowser
         if (entry.type === 'directory') {
             setCurrentPath(childPath);
         } else {
-            // 打开文件查看器但**不关闭右侧面板**——看完文件返回后仍停在当前文件夹，可继续浏览。
-            router.push(`/session/${sessionId}/file?path=${encodeFilePath(childPath)}` as any);
+            // Desktop stays in the conversation workspace; native retains the file viewer.
+            openFile(childPath);
         }
-    }, [currentPath, router, sessionId]);
+    }, [currentPath, openFile]);
 
     const upEnabled = canGoUp(currentPath, homeDir, rootPath);
 

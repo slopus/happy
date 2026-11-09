@@ -1,8 +1,7 @@
-import { encodeFilePath } from '@/utils/filePathEncoding';
+import { useOpenSessionFile } from '@/hooks/useOpenSessionFile';
 import * as React from 'react';
 import { View, Text, ScrollView, Pressable, Platform, TextInput, ActivityIndicator } from 'react-native';
 import { Octicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import Animated, {
     useAnimatedStyle,
     useSharedValue,
@@ -157,7 +156,7 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
     onAllFilesFilePress,
     allFilesContent,
 }) => {
-    const router = useRouter();
+    const openFile = useOpenSessionFile(sessionId);
     const { theme } = useUnistyles();
     const gitStatusFiles = useSessionGitStatusFiles(sessionId);
     const gitStatus = useSessionGitStatus(sessionId);
@@ -183,9 +182,8 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
             onFilePress(file);
             return;
         }
-        const encodedPath = encodeFilePath(file.fullPath);
-        router.push(`/session/${sessionId}/file?path=${encodedPath}`);
-    }, [router, sessionId, onFilePress]);
+        openFile(file.fullPath);
+    }, [openFile, onFilePress]);
 
     const allFiles = React.useMemo(() => {
         const staged = gitStatusFiles?.stagedFiles ?? [];

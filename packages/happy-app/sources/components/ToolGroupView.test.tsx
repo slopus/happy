@@ -121,3 +121,5 @@ describe('AgentWorkGroupView', () => {
         act(() => renderer.unmount());
     });
 });
+
+vi.mock('@/hooks/useDesktopFileWorkspaceAvailable', () => ({ useDesktopFileWorkspaceAvailable: () => false }));

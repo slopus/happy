@@ -60,3 +60,5 @@ describe('ToolView interactive preview title', () => {
         act(() => renderer.unmount());
     });
 });
+
+vi.mock('@/hooks/useDesktopFileWorkspaceAvailable', () => ({ useDesktopFileWorkspaceAvailable: () => false }));

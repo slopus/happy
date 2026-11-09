@@ -169,3 +169,5 @@ describe('FilesSidebar desktop tabs', () => {
         act(() => renderer.unmount());
     });
 });
+
+vi.mock('@/hooks/useDesktopFileWorkspaceAvailable', () => ({ useDesktopFileWorkspaceAvailable: () => false }));

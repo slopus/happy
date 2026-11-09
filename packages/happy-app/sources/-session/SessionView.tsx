@@ -1,4 +1,6 @@
 import { WorkspaceDirectoryTree } from '@/components/fileWorkspace/WorkspaceDirectoryTree';
+import { resolveSessionFilePath } from '@/utils/sessionFileLinks';
+import { legacySessionFileHref } from '@/utils/sessionFileNavigation';
 import { SessionFileWorkspaceProvider } from '@/components/fileWorkspace/SessionFileWorkspaceProvider';
 import { FileWorkspace, FileWorkspaceResizeHandle } from '@/components/fileWorkspace/FileWorkspace';
 import { getWorkspaceChatWidth, getWorkspaceChatMaximumWidth, workspaceChatMinWidth } from '@/components/fileWorkspace/documentPresentation';
@@ -535,7 +537,9 @@ function DesktopReadingWidthControl() {
     </View>;
 }
 
-export const SessionView = React.memo((props: { id: string }) => (
+type SessionViewProps = { id: string; fileOpenRequest?: { path: string; requestId: string } };
+
+export const SessionView = React.memo((props: SessionViewProps) => (
     <SubagentInspectorProvider sessionId={props.id}>
         <SessionFileWorkspaceProvider sessionId={props.id}><SessionViewContent key={props.id} {...props} /></SessionFileWorkspaceProvider>
     </SubagentInspectorProvider>
@@ -544,7 +548,7 @@ export const SessionView = React.memo((props: { id: string }) => (
 const GoalBoardPanel = React.lazy(() => import('@/components/goalBoard/GoalBoardPanel').then(module => ({ default: module.GoalBoardPanel })));
 const GoalArtifactWindow = React.lazy(() => import('@/components/GoalArtifactWindow').then(module => ({ default: module.GoalArtifactWindow })));
 
-const SessionViewContent = React.memo((props: { id: string }) => {
+const SessionViewContent = React.memo((props: SessionViewProps) => {
     const sessionId = props.id;
     const fileWorkspace = useFileWorkspace();
     const router = useRouter();
@@ -736,6 +740,29 @@ const SessionViewContent = React.memo((props: { id: string }) => {
         if (fileWorkspace?.enabled && fileWorkspace.snapshot.open) { setDesktopPanelMode('files'); setSidebarMode('allFiles'); }
     }, [fileWorkspace?.enabled, fileWorkspace?.snapshot.open]);
     const [desktopPanelMode, setDesktopPanelMode] = React.useState<'capabilities' | 'files' | 'tasks'>('capabilities');
+    const handledFileRequest = React.useRef<string | null>(null);
+    React.useEffect(() => {
+        const request = props.fileOpenRequest;
+        if (!isFocused || !request || !fileWorkspace?.enabled || !fileWorkspace.root) return;
+        const key = `${sessionId}:${request.requestId}`;
+        if (handledFileRequest.current === key) return;
+        handledFileRequest.current = key;
+        if (resolveSessionFilePath(request.path, fileWorkspace.root)?.withinSessionRoot) {
+            void fileWorkspace.openReference(request.path);
+        } else {
+            // Project-external paths retain the existing read-only route.
+            router.push(legacySessionFileHref(sessionId, request.path));
+        }
+    }, [isFocused, sessionId, props.fileOpenRequest?.requestId, props.fileOpenRequest?.path, fileWorkspace?.enabled, fileWorkspace?.root]);
+    const revealedFileRequest = React.useRef(0);
+    React.useEffect(() => {
+        if (!isFocused || !fileWorkspace?.enabled || !fileWorkspace.openRequestId || revealedFileRequest.current === fileWorkspace.openRequestId) return;
+        revealedFileRequest.current = fileWorkspace.openRequestId;
+        subagentInspector?.close();
+        setDesktopPanelMode('files');
+        setSidebarMode('allFiles');
+        if (zenMode) toggleLayoutRightSidebar(); else setDesktopRightPanelCollapsed(false);
+    }, [isFocused, fileWorkspace?.enabled, fileWorkspace?.openRequestId]);
     const goalBoardOpen = desktopPanelMode === 'tasks' && !subagentSelection
         && (desktopRightPanelAvailable ? showDesktopRightPanel : rightDrawerOpen);
     const goalBoard = useGoalBoard(sessionId, goalBoardOpen && isFocused);

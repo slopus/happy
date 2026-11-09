@@ -1,4 +1,4 @@
-import { encodeFilePath } from '@/utils/filePathEncoding';
+import { useOpenSessionFile } from '@/hooks/useOpenSessionFile';
 import * as React from 'react';
 import { View, Text, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -41,6 +41,7 @@ export const ToolGroupView = React.memo<ToolGroupViewProps>((props) => {
     const readingWidth = useDesktopReadingWidth();
     const { group, metadata, sessionId, expanded, onToggle, nested, hideSingleToolChildren } = props;
     const router = useRouter();
+    const openFile = useOpenSessionFile(sessionId);
     const summary = React.useMemo(() => generateGroupSummary(group.messages), [group.messages]);
     const summaryCategory = React.useMemo(() => getGroupSummaryCategory(group.messages), [group.messages]);
     const suppressChildren = hideSingleToolChildren && group.messages.length === 1 && group.messages[0]?.kind === 'tool-call';
@@ -56,11 +57,11 @@ export const ToolGroupView = React.memo<ToolGroupViewProps>((props) => {
             ? singleToolMessage.tool.input.file_path
             : null;
         if (filePath) {
-            router.push(`/session/${sessionId}/file?path=${encodeFilePath(filePath)}`);
+            openFile(filePath);
             return;
         }
         router.push(`/session/${sessionId}/message/${singleToolMessage.id}`);
-    }, [onToggle, router, sessionId, singleToolMessage]);
+    }, [onToggle, router, sessionId, singleToolMessage, openFile]);
     const renderGroupMessage = React.useCallback((msg: Message) => (
         <TranscriptReadingMarker key={msg.id} messageId={msg.id} depth={2}>
         <ToolGroupMessageRow
@@ -355,6 +356,7 @@ function ToolSummaryRow(props: {
 }) {
     const { theme } = useUnistyles();
     const router = useRouter();
+    const openFile = useOpenSessionFile(props.sessionId);
     const { tool } = props.message;
     const category = getToolSummaryCategory(tool.name);
     const detail = getToolSummaryDetail(tool);
@@ -366,11 +368,11 @@ function ToolSummaryRow(props: {
     const handlePress = React.useCallback(() => {
         if (!props.sessionId) return;
         if (filePath) {
-            router.push(`/session/${props.sessionId}/file?path=${encodeFilePath(filePath)}`);
+            openFile(filePath);
             return;
         }
         router.push(`/session/${props.sessionId}/message/${props.message.id}`);
-    }, [filePath, props.message.id, props.sessionId, router]);
+    }, [filePath, props.message.id, props.sessionId, router, openFile]);
 
     const content = (
         <>

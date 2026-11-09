@@ -3,7 +3,7 @@ import { StackActions, StackRouter } from '@react-navigation/routers';
 vi.mock('@react-navigation/native', () => ({ StackRouter }));
 import { createDesktopModalRouter, getDesktopModalStart, getDesktopModalBackgroundPath } from './desktopModalRouter';
 
-const options = { routeNames: ['index', 'inbox/index', 'settings/index', 'settings/appearance', 'settings/device-environment', 'settings/profile', 'session/[id]', 'machine/[id]', 'dev/index', 'dev/logs', 'relationship-advisor'], routeParamList: {}, routeGetIdList: {} };
+const options = { routeNames: ['index', 'inbox/index', 'settings/index', 'settings/appearance', 'settings/device-environment', 'settings/profile', 'session/[id]', 'session/[id]/file', 'session/[id]/files', 'machine/[id]', 'dev/index', 'dev/logs', 'relationship-advisor'], routeParamList: {}, routeGetIdList: {} };
 function setup() {
     const original = StackRouter({ initialRouteName: 'index' });
     const router = createDesktopModalRouter({ initialRouteName: 'index' });
@@ -136,4 +136,36 @@ describe('restored desktop modal state', () => {
         const restored = router.getRehydratedState({ ...app.state, stale: true, routes: app.state.routes.map(({ state: nestedState, ...route }) => route) }, options);
         expect(getDesktopModalStart(restored)).toBe(1);
     });
+});
+
+
+describe('desktop file handoff navigation', () => {
+    it('updates file requests on the current conversation without replacing its route identity', () => {
+        const app = setup(); app.send(StackActions.push('session/[id]', { id: 's' }));
+        const key = app.state.routes[1].key;
+        app.send({ type: 'NAVIGATE', payload: { name: 'session/[id]', params: { id: 's', openFile: 'ZmlsZQ==', fileOpenRequest: 'first' } } });
+        expect(app.state.routes[1]).toMatchObject({ key, params: { openFile: 'ZmlsZQ==', fileOpenRequest: 'first' } });
+        expect(app.state.routes).toHaveLength(2);
+        app.send({ type: 'NAVIGATE', payload: { name: 'session/[id]', params: { id: 's', openFile: 'ZmlsZQ==', fileOpenRequest: 'second' } } });
+        expect(app.state.routes[1].params).toHaveProperty('fileOpenRequest', 'second');
+    });
+    it.each(['session/[id]/file','session/[id]/files'])('reuses the existing session under %s, removing the legacy page so Back cannot reopen it', name => {
+        const app = setup(); app.send(StackActions.push('session/[id]', { id: 's' }));
+        const key = app.state.routes[1].key;
+        app.send(StackActions.push(name, { id: 's' }));
+        app.send({ type: 'NAVIGATE', payload: { name: 'session/[id]', params: { id: 's', openFile: 'ZmlsZQ==', fileOpenRequest: 'handoff' } } });
+        expect(app.state.routes.map(route=>route.name)).toEqual(['index','session/[id]']);
+        expect(app.state.routes[1].key).toBe(key);
+        app.send({ type: 'GO_BACK' }); expect(app.state.routes.map(route=>route.name)).toEqual(['index']);
+    });
+});
+
+
+it('replaces a direct legacy file URL without leaving a redirect loop on Back', () => {
+    const original = StackRouter({ initialRouteName: 'index' });
+    const router = createDesktopModalRouter({ initialRouteName: 'index' });
+    const state = original.getRehydratedState({ stale: true, index: 0, routes: [{ name: 'session/[id]/file', params: { id: 's' } }] }, options);
+    const next = router.getStateForAction(state, { type: 'NAVIGATE', payload: { name: 'session/[id]', params: { id: 's', openFile: 'ZmlsZQ==', fileOpenRequest: 'direct' } } }, options)!;
+    expect(next.routes.map(route=>route.name)).toEqual(['session/[id]']);
+    expect(next.routes[0].params).toHaveProperty('fileOpenRequest', 'direct');
 });

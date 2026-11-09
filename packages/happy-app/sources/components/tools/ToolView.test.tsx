@@ -129,3 +129,5 @@ describe('ToolView MCP App presentation', () => {
         act(() => renderer.unmount());
     });
 });
+
+vi.mock('@/hooks/useDesktopFileWorkspaceAvailable', () => ({ useDesktopFileWorkspaceAvailable: () => false }));

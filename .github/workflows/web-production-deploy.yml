@@ -92,6 +92,9 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
+        # Web/OTA jobs do not launch the separate Codium Electron app.
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
         if: ${{ steps.source.outputs.eligible == 'true' }}
         run: pnpm install --frozen-lockfile
 

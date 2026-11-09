@@ -62,6 +62,18 @@ export function createDesktopModalRouter(options: StackRouterOptions) {
             // descendants continue to use their isolated stack above.
             if (start < 0 && !opensModal && action.type === 'NAVIGATE'
                 && action.payload.name === 'session/[id]') {
+                if (typeof params?.openFile === 'string' && typeof params?.fileOpenRequest === 'string') {
+                    const existingIndex = state.routes.findIndex(route => route.name === 'session/[id]'
+                        && (route.params as { id?: unknown } | undefined)?.id === params.id);
+                    if (existingIndex >= 0) {
+                        const route = state.routes[existingIndex];
+                        const sameRequest = (route.params as Record<string, unknown>)?.fileOpenRequest === params.fileOpenRequest;
+                        if (existingIndex === state.index && sameRequest) return state;
+                        const routes = state.routes.slice(0, existingIndex + 1);
+                        routes[existingIndex] = { ...route, params: { ...route.params, ...params } };
+                        return { ...state, routes, index: existingIndex };
+                    }
+                }
                 const current = state.routes[state.index];
                 if (current.name === 'session/[id]' && current.params
                     && (current.params as { id?: unknown }).id === params?.id) {
@@ -69,6 +81,13 @@ export function createDesktopModalRouter(options: StackRouterOptions) {
                 }
                 const home = state.routes.find(route => route.name === 'index');
                 if (home) activeState = { ...state, routes: [home], index: 0 };
+                else if (typeof params?.fileOpenRequest === 'string'
+                    && ['session/[id]/file', 'session/[id]/files'].includes(current.name)
+                    && (current.params as { id?: unknown } | undefined)?.id === params.id) {
+                    // A direct old URL may have no conversation or home underneath it.
+                    // Replace it so Back cannot return to a page that redirects again.
+                    nextAction = { type: 'REPLACE', payload: { name: 'session/[id]', params } };
+                }
             }
             const resolved = original.getStateForAction(activeState, nextAction, config);
             if (!resolved) return null;

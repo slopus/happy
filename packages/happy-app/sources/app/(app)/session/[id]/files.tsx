@@ -1,8 +1,8 @@
-import { encodeFilePath } from '@/utils/filePathEncoding';
+import { useOpenSessionFile } from '@/hooks/useOpenSessionFile';
 import * as React from 'react';
 import { View, ActivityIndicator, Platform, TextInput } from 'react-native';
 import { t } from '@/text';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { Octicons } from '@expo/vector-icons';
 import { Text } from '@/components/StyledText';
 import { Item } from '@/components/Item';
@@ -19,10 +19,11 @@ import { Shaker, ShakeInstance } from '@/components/Shaker';
 import { usePrefetchFileContents } from '@/hooks/usePrefetchFileContents';
 
 export default React.memo(function FilesScreen() {
-    const router = useRouter();
     const { id: sessionId, focus } = useLocalSearchParams<{ id: string; focus?: string }>();
 
     const { data: gitStatusFiles, isLoading } = useGitStatusFiles(sessionId!);
+
+    const openFile = useOpenSessionFile(sessionId);
 
     // Prefetch file contents for instant navigation into file view
     usePrefetchFileContents(sessionId!, gitStatusFiles);
@@ -77,9 +78,8 @@ export default React.memo(function FilesScreen() {
             shakerRefs.current.get(file.fullPath)?.shake();
             return;
         }
-        const encodedPath = encodeFilePath(file.fullPath);
-        router.push(`/session/${sessionId}/file?path=${encodedPath}`);
-    }, [router, sessionId]);
+        openFile(file.fullPath);
+    }, [openFile]);
 
     const renderFileIcon = (file: GitFileStatus) => {
         return <FileIcon fileName={file.fileName} size={32} />;
