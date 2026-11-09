@@ -60,7 +60,7 @@ struct Picture: Equatable {
                     }
                 case .sentFile(let file) where file.isVisual && !file.isVideo:
                     pictures.append(Picture(key: MediaLoader.sentKey(file.id), thumbhash: nil, label: file.name))
-                case .text, .file, .artifact, .sidebarProposal, .sentFile:
+                case .text, .file, .artifact, .sidebarProposal, .sentFile, .ui:
                     break
                 }
             }

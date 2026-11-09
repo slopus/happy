@@ -321,6 +321,8 @@ enum ChatRowAction: Equatable, Sendable {
     case openArtifact(Artifact)
     /// A finished V2 turn's "View traces" / "Hide traces", by its run.
     case toggleTurn(String)
+    /// A press on a chat UI component.
+    case ui(ChatUiTap)
 
     // Long presses
 

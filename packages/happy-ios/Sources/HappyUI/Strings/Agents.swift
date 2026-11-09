@@ -138,6 +138,8 @@ extension Strings {
     }
     public static let sending = "Sending…"
     public static let sendFailed = "Not sent. Tap to retry."
+    /// Under a chat UI press the computer refused, with its reason.
+    public static func uiNotSent(_ reason: String) -> String { reason.isEmpty ? "Not sent" : "Not sent: \(reason)" }
     /// A failed turn's card (happyAgentConversationProject.ts, conversationFailureText.ts).
     public static let failure = "Failure"
     public static let retry = "Retry"

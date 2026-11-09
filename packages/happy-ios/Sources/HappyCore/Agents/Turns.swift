@@ -197,7 +197,8 @@ public enum TurnFold {
             case .turnEnd, .user, .collaborator, .failure, .trace: return true
             case .tool(let tool): return tool.isResult
             case .question(let ask): return ask.phase != .answered
-            case .agent: return false
+            // Chat UI waits on the person, or says what they chose.
+            case .agent: return group[index].pieces.contains { if case .ui = $0 { true } else { false } }
             }
         }
         guard kept.count < group.count else { return group }

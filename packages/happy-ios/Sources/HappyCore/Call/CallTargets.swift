@@ -257,7 +257,7 @@ public struct CallTargetState: Equatable, Sendable {
                 let delivery: CallMessage.Delivery = switch item.delivery {
                 case .sending: .queued
                 case .pending, .sent: .accepted
-                case .failed: .failed
+                case .failed, .refused: .failed
                 }
                 let message = CallMessage(id: item.id, role: .user, text: text, time: item.time, delivery: delivery, author: item.author)
                 messages.append(message)

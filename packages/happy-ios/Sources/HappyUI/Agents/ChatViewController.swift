@@ -131,6 +131,9 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     private var foldMoved = false
     /// Each waiting question's ticked options, by question and prompt.
     private var picks: [String: [String: [String]]] = [:]
+    /// Each chat UI checklist's ticks as the person left them here, by its
+    /// offer's key, until it is sent.
+    private var uiTicks: [String: Set<String>] = [:]
     /// The sidebar proposals the transcript shows, and their cards by row.
     private let proposals: SidebarProposals
     private var proposalViews: [String: SidebarProposalView] = [:]
@@ -1134,6 +1137,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     private var planKey: ChatPlanner.Key {
         var key = ChatPlanner.Key(width: transcriptWidth, maxContentWidth: ContentWidth.maxWidth, environment: traitCollection.textEnvironment, references: subagentReferences, subagentTitles: chat.subagentTitles, pageHeights: pageHeights)
         key.server = session.server
+        if case .cloud(let permissions) = session.gate { key.uiGranted = permissions?.granted ?? [] }
         // Only a failure card reads the composer's model; without one the
         // key stays the warm chat's, so its rows planned ahead are taken.
         if chat.items.contains(where: { if case .failure = $0.role { true } else { false } }) {
@@ -1178,7 +1182,47 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
                 items[index].role = .question(ask)
             }
         }
+        if !uiTicks.isEmpty {
+            for index in items.indices {
+                guard items[index].pieces.contains(where: { if case .ui(let shown) = $0 { uiTicks[shown.offer.key] != nil } else { false } }) else { continue }
+                items[index].pieces = items[index].pieces.map { piece in
+                    guard case .ui(var shown) = piece, !shown.state.settled, let ticked = uiTicks[shown.offer.key] else { return piece }
+                    shown.state.ticked = ticked
+                    return .ui(shown)
+                }
+            }
+        }
         return TurnFold.fold(items, expanded: expandedTurns)
+    }
+
+    /// A press on a chat UI component: a tick here, a field's text asked
+    /// for, or an action sent.
+    private func press(_ tap: ChatUiTap) {
+        guard !previewing, !tap.shown.state.settled else { return }
+        switch tap.kind {
+        case .tick(let option):
+            UISelectionFeedbackGenerator().selectionChanged()
+            var ticked = tap.shown.ticked
+            if ticked.remove(option) == nil { ticked.insert(option) }
+            uiTicks[tap.shown.offer.key] = ticked
+            replan()
+        case .prompt:
+            guard case .textField(let label, let placeholder, let submitLabel) = tap.shown.kind else { return }
+            let alert = UIAlertController(title: label, message: nil, preferredStyle: .alert)
+            alert.addTextField { $0.placeholder = placeholder }
+            alert.addAction(UIAlertAction(title: Strings.cancel, style: .cancel))
+            alert.addAction(UIAlertAction(title: submitLabel, style: .default) { [weak self, weak alert] _ in
+                let text = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                guard !text.isEmpty else { return }
+                self?.press(ChatUiTap(shown: tap.shown, kind: .act(UiAction(type: "text_field.submit", payload: .object(["text": .string(String(text.prefix(2000)))])))))
+            })
+            present(alert, animated: true)
+        case .act(let action):
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            uiTicks[tap.shown.offer.key] = nil
+            let conversation = conversation
+            Task { await conversation.act(tap.shown, action: action) }
+        }
     }
 
     /// The question waiting on the person, with what is ticked.
@@ -2117,6 +2161,8 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             pick(questionId: questionId, promptId: promptId, option: option)
         case .questionSubmit(let questionId):
             submit(questionId: questionId)
+        case .ui(let tap):
+            press(tap)
         default:
             break
         }

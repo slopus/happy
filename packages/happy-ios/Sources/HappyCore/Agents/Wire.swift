@@ -402,6 +402,8 @@ extension AgentWire {
         /// the service message's compaction block.
         public var tokensBefore: Double?
         public var tokensAfter: Double?
+        /// A `show_ui` call's document (`ui`); its `images` name `items` by index.
+        public var ui: UiDocument?
 
         /// One `exploration` step: `list` a `target`, `read` a `name`, or
         /// `search` by `command`, with its `query` and `path` when known.
@@ -502,9 +504,13 @@ extension AgentWire {
         case toolCall(id: String, name: String, status: String, presentation: Presentation?, arguments: JSONValue? = nil, output: String? = nil, result: JSONValue? = nil, review: ToolReview? = nil)
         /// One context compaction, inside a service message.
         case compaction(Compaction)
+        /// A document the daemon wrote itself (protocol 35).
+        case ui(UiDocument)
+        /// A chat UI action, in its attempt record or the person's message it became.
+        case action(UiActionBlock)
         case unknown(String)
 
-        enum CodingKeys: String, CodingKey { case type, text, mimeType, data, id, name, status, presentation, arguments, result, elevated, review }
+        enum CodingKeys: String, CodingKey { case type, text, mimeType, data, id, name, status, presentation, arguments, result, elevated, review, ui }
         enum ResultKeys: String, CodingKey { case output }
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -539,6 +545,11 @@ extension AgentWire {
                     review: review ?? nil
                 )
             case "compaction": self = .compaction(try Compaction(from: decoder))
+            // One that can't be read is skipped, never the message.
+            case "ui":
+                if let document = try? container.decode(UiDocument.self, forKey: .ui) { self = .ui(document) } else { self = .unknown(type) }
+            case "action":
+                if let block = try? UiActionBlock(from: decoder) { self = .action(block) } else { self = .unknown(type) }
             default: self = .unknown(type)
             }
         }
@@ -566,6 +577,12 @@ extension AgentWire {
             case .compaction(let compaction):
                 try container.encode("compaction", forKey: .type)
                 try compaction.encode(to: encoder)
+            case .ui(let document):
+                try container.encode("ui", forKey: .type)
+                try container.encode(document, forKey: .ui)
+            case .action(let block):
+                try container.encode("action", forKey: .type)
+                try block.encode(to: encoder)
             case .unknown(let type): try container.encode(type, forKey: .type)
             }
         }

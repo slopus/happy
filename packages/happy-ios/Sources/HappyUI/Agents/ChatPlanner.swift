@@ -29,6 +29,9 @@ actor ChatPlanner {
         /// The server the conversation is on, which says where a settings
         /// link opens (`SettingsLinkPlace`).
         var server: String?
+        /// The permissions the person holds, which say which chat UI
+        /// controls they may use; nil for every one (a computer of their own).
+        var uiGranted: Set<String>?
     }
 
     /// A row as it was planned, and what from.
@@ -210,7 +213,9 @@ actor ChatPlanner {
         let text = HappyReferences.plain(item.text, instanceId: key.references.instanceId, view: key.references.view)
         switch item.role {
         case .agent:
-            return Self.body(item, key: key, syntax: syntax, proposals: proposals, revealable: true) {
+            // Chat UI is there whole, never revealed a character at a time.
+            let revealable = !item.pieces.contains { if case .ui = $0 { true } else { false } }
+            return Self.body(item, key: key, syntax: syntax, proposals: proposals, revealable: revealable) {
                 MessageLayout.agent(width: width, maxContentWidth: key.maxContentWidth, parts: $0)
             }
         case .user:
@@ -238,6 +243,9 @@ actor ChatPlanner {
             }
             var failure = false
             if case .failed = item.delivery { failure = true }
+            // A chat UI press the computer refused: greyed, with why under it.
+            var refusal: String?
+            if case .refused(let reason) = item.delivery { refusal = reason }
             // On its way: each picture shows how far it is, and can be
             // taken out; one that failed is sent again with a tap.
             let uploading = item.delivery == .sending || failure
@@ -248,6 +256,7 @@ actor ChatPlanner {
             case .pending: .received
             case .sent: .accepted
             case .failed: .failed
+            case .refused: .received
             }
             let onMedia = body == nil
             let ink = onMedia ? Palette.deliveryOnMedia : Palette.deliveryInk
@@ -258,8 +267,8 @@ actor ChatPlanner {
                 fold: body.map { _ in .init(preview: preview.measurable, control: control.measurable, opened: opened, lineHeight: ChatTextStyles.text.lineHeight ?? 24) },
                 // A refusal is the red mark in the slot, as Telegram's: no
                 // line under the bubble, so the row never grows when a send fails.
-                pictures: pictures.map(\.image), showsStatus: false,
-                delivery: status, trailing: body?.trailing
+                pictures: pictures.map(\.image), showsStatus: refusal != nil,
+                delivery: refusal == nil ? status : nil, trailing: body?.trailing
             )
             var items: [ChatDrawItem] = []
             var hits: [ChatHit] = []
@@ -276,6 +285,10 @@ actor ChatPlanner {
                 selectable.append(.init(layout: drawn, frame: frame))
             }
             if let frame = layout.foldControl { items.append(.text(control.layout(for: frame), frame)) }
+            if let refusal, let frame = layout.status {
+                let line = ChatTextStyles.pendingStatus.string(Strings.uiNotSent(refusal), color: Palette.textSecondary, alignment: .right, lineBreakMode: .byTruncatingTail, in: environment)
+                items.append(.text(ChatTextLayout(line, width: frame.width, maxLines: 1), frame))
+            }
             for (picture, frame) in zip(pictures, layout.pictures) {
                 let key = MediaLoader.sentKey(picture.id)
                 let upload = uploading ? ChatUpload(key: picture.id, failed: failure) : nil
@@ -299,14 +312,15 @@ actor ChatPlanner {
                 items += placed.items
                 if failure { hits.insert(ChatHit(frame: placed.mark.insetBy(dx: -8, dy: -8), action: .retry(localId: item.id)), at: 0) }
             }
-            let label = [text, failure ? Strings.sendFailed : ""].filter { !$0.isEmpty }.joined(separator: ", ")
+            let label = [text, failure ? Strings.sendFailed : "", refusal.map(Strings.uiNotSent) ?? ""].filter { !$0.isEmpty }.joined(separator: ", ")
             let shape = layout.bubble.map { ChatBox(frame: $0, fill: Palette.userBubble, radius: M.bubbleRadius) }
                 ?? ChatBox(frame: layout.pictures.reduce(CGRect.null) { $0.union($1) })
             let flight = ChatRowFlight(bubble: shape, text: layout.text, status: layout.delivery, media: !pictures.isEmpty)
             let selection = layout.bubble.flatMap { bubble in
                 selectable.isEmpty ? nil : ChatSelectable(texts: selectable, whole: text, frame: bubble, card: false)
             }
-            return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: label, toggles: layout.foldControl == nil ? nil : toggles, flight: flight, mine: true, selection: selection)
+            return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, alpha: refusal == nil ? 1 : ChatUiLayout.Metrics.disabledAlpha, accessibilityLabel: label,
+                               toggles: layout.foldControl == nil ? nil : toggles, flight: flight, mine: true, selection: selection)
         case .collaborator, .failure, .tool, .turnEnd, .trace, .question:
             // Planned above.
             return ChatRowPlan(id: item.id, size: CGSize(width: width, height: 0), items: [])
@@ -330,6 +344,7 @@ actor ChatPlanner {
             case proposal(String)
             /// Words the planner writes, read but not selectable.
             case line(MarkdownPiece)
+            case ui(ChatUiPlan.Draft)
         }
         var drafts: [Draft] = []
         var spoken: [String] = text.isEmpty ? [] : [text]
@@ -377,6 +392,11 @@ actor ChatPlanner {
                     parts.append(.markdown(markdown.blocks))
                     spoken.append(line)
                 }
+            case .ui(let shown):
+                let draft = ChatUiPlan.draft(shown, granted: key.uiGranted, environment: environment)
+                drafts.append(.ui(draft))
+                parts.append(.ui(draft.input))
+                spoken.append(draft.spoken)
             case .picture, .sentFile:
                 break
             }
@@ -431,6 +451,10 @@ actor ChatPlanner {
                 items += markdown.draw(placed, origin: origin).items
             case (.proposal(let layout, let frame), .proposal(let artifactId)):
                 proposals.append((artifactId, layout, frame))
+            case (.ui(let placed, let origin), .ui(let draft)):
+                let drawn = ChatUiPlan.draw(draft, placed, origin: origin)
+                items += drawn.items
+                hits.insert(contentsOf: drawn.hits, at: 0)
             default:
                 break
             }

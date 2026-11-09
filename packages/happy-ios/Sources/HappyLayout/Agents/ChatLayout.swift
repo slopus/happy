@@ -287,6 +287,8 @@ public struct MessageLayout: Equatable, Sendable {
         case page(height: CGFloat)
         /// A sidebar Prioritizing proposed, at the column's left.
         case proposal(SidebarProposalLayout.Input)
+        /// A chat UI component, at the column's left.
+        case ui(ChatUiLayout.Input)
     }
 
     public enum Placed: Equatable, Sendable {
@@ -298,6 +300,8 @@ public struct MessageLayout: Equatable, Sendable {
         case page(CGRect)
         /// The card's frame; its insides are `layout`'s, from the frame's origin.
         case proposal(SidebarProposalLayout, frame: CGRect)
+        /// Its insides are `layout`'s, from `origin`.
+        case ui(ChatUiLayout, origin: CGPoint)
     }
 
     public var size: CGSize
@@ -367,6 +371,10 @@ public struct MessageLayout: Equatable, Sendable {
                 let proposal = SidebarProposalLayout(width: inner, input: input)
                 placed.append(.proposal(proposal, frame: CGRect(origin: CGPoint(x: left, y: y), size: proposal.size)))
                 y += proposal.size.height
+            case .ui(let input):
+                let ui = ChatUiLayout(width: inner, input: input)
+                placed.append(.ui(ui, origin: CGPoint(x: left, y: y)))
+                y += ui.size.height
             }
         }
         return MessageLayout(size: CGSize(width: max(0, width), height: y + bottom), parts: placed, bubble: nil, text: nil, pictures: [], status: nil)

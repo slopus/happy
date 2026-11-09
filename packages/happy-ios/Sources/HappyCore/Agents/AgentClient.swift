@@ -57,13 +57,24 @@ public final class AgentClient: Sendable {
         let body = try raw ?? json.map { try encoder.encode($0) }
         let response: HTTP1Response
         if let sent, let body, headers.isEmpty {
+            // An upload whose progress is heard: its answer holds no chat UI.
             response = try await transport.send(method: method, path: path, credential: token, body: body, category: category, sent: sent)
-        } else if let sent, let body {
+            if response.status == 401 { throw AgentClientError.revoked }
+            return try Self.checked(response)
+        }
+        // Chat UI as itself, not its fallback text, on every other request.
+        var headers = headers
+        headers[ChatUi.protocolHeader] = String(ChatUi.protocolVersion)
+        if let sent, let body {
             response = try await transport.send(method: method, path: path, credential: token, body: body, headers: headers, category: category, sent: sent)
         } else {
             response = try await transport.request(method: method, path: path, credential: token, body: body, headers: headers, category: category)
         }
         if response.status == 401 { throw AgentClientError.revoked }
+        return try Self.checked(response)
+    }
+
+    private static func checked(_ response: HTTP1Response) throws -> HTTP1Response {
         guard (200..<300).contains(response.status) || response.status == 304 || response.status == 206 else {
             // Flat (`{error, code}`) or nested (`{error: {code, message}}`).
             let failure = try? JSONValue.decode(response.body)
@@ -456,6 +467,24 @@ public final class AgentClient: Sendable {
         _ = try await send("POST", "/v0/agents/\(Self.escape(agentId))/abort", json: .object([:]))
     }
 
+    /// One press on a chat UI component (`POST /v0/agents/:agentId/actions`):
+    /// its attempt record and the person's message it became, if any.
+    /// `mode` only for an action that becomes the person's words.
+    public func act(_ agentId: String, id: String, offer: UiOffer, action: UiAction, mode: AgentWire.Mode?) async throws -> (record: AgentWire.Message, message: AgentWire.Message?) {
+        var object: [String: JSONValue] = [
+            "id": .string(id), "messageId": .string(offer.messageId), "uiId": .string(offer.uiId), "componentId": .string(offer.componentId),
+            "action": .object(["type": .string(action.type), "payload": action.payload]),
+        ]
+        if let mode { object["mode"] = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(mode)) }
+        let response = try await decode(JSONValue.self, "POST", "/v0/agents/\(Self.escape(agentId))/actions", json: .object(object))
+        func message(_ value: JSONValue?) throws -> AgentWire.Message? {
+            guard let value, value != .null else { return nil }
+            do { return try value.decode(as: AgentWire.Message.self) } catch { throw AgentClientError.invalidResponse }
+        }
+        guard let record = try message(response["record"]) else { throw AgentClientError.invalidResponse }
+        return (record, try message(response["message"]))
+    }
+
     /// A failed turn run again (`…/messages/:id/retry`), or moved to another
     /// model and continued there (`…/switch`): the failure's message, now
     /// carrying its resolution. The continued run comes as events.
@@ -610,7 +639,9 @@ public final class AgentClient: Sendable {
     /// `hello`; the stream ends when the connection does, or when nothing,
     /// not even a heartbeat, has come for `silence`.
     public func events(after cursor: String?) async throws -> AsyncThrowingStream<ServerSentEvent, Error> {
-        let response = try await transport.stream(path: "/v0/events/stream", credential: token, headers: cursor.map { ["Last-Event-ID": $0] } ?? [:])
+        var headers = [ChatUi.protocolHeader: String(ChatUi.protocolVersion)]
+        if let cursor { headers["Last-Event-ID"] = cursor }
+        let response = try await transport.stream(path: "/v0/events/stream", credential: token, headers: headers)
         if response.status == 401 { throw AgentClientError.revoked }
         guard response.status == 200 else { throw AgentClientError.status(response.status, code: nil, message: nil) }
         let body = response.body

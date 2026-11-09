@@ -78,7 +78,7 @@ public struct Shared: Equatable, Sendable {
             case .file(let one): media.append(.tool(one))
             case .text(let text): texts.append(text)
             // Not the computer's yet: it is shared once it is there.
-            case .artifact, .sidebarProposal, .sentFile: break
+            case .artifact, .sidebarProposal, .sentFile, .ui: break
             }
         }
         shared.add(media: media, texts: texts)
@@ -124,9 +124,9 @@ public struct Shared: Equatable, Sendable {
                     if let bytes = Data(base64Encoded: data) { media.append(.picture(id: pictureId(message.id, pictures), mimeType: mimeType, data: bytes)) }
                     pictures += 1
                 case .toolCall(let id, _, _, let presentation, _, _, _, _):
-                    guard let presentation, presentation.type == "media" else { continue }
+                    guard let presentation, presentation.type == "media" || presentation.type == "ui" else { continue }
                     media += (presentation.items ?? []).enumerated().map { .tool(HappyCore.Media(toolCallId: id, index: $0.offset, item: $0.element)) }
-                case .reasoning, .compaction, .unknown:
+                case .reasoning, .compaction, .ui, .action, .unknown:
                     continue
                 }
             }
