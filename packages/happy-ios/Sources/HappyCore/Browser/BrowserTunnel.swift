@@ -186,9 +186,48 @@ public enum BrowserRelay {
     }
 
     public static func duplex(_ first: any BrowserStream, _ second: any BrowserStream) async throws {
+        try await duplex(first, second) { try await pipe(first, to: second) }
+    }
+
+    /// A page on a loopback alias, tunnelled to the computer's loopback:
+    /// each request names `host` where it named `alias`. Bodies, responses,
+    /// TLS and upgraded streams pass byte for byte.
+    public static func loopback(_ local: any BrowserStream, _ remote: any BrowserStream, initial: Data, alias: String, host: String) async throws {
+        try await duplex(local, remote) {
+            var buffer = initial.isEmpty ? try await local.read(maximumBytes: 65536) : initial
+            // A TLS handshake is never HTTP: its Host is sealed inside.
+            guard buffer.first != 0x16 else { try await remote.write(buffer); try await pipe(local, to: remote); return }
+            while true {
+                var parsed = try BrowserHTTPHead.parse(buffer)
+                while parsed == nil {
+                    let bytes = try await local.read(maximumBytes: 65536)
+                    if bytes.isEmpty { return }
+                    buffer.append(bytes)
+                    parsed = try BrowserHTTPHead.parse(buffer)
+                }
+                guard let (head, rest) = parsed else { return }
+                try await remote.write(head.loopbackRequest(alias: alias, host: host).data)
+                if head.value("upgrade") != nil {
+                    if !rest.isEmpty { try await remote.write(rest) }
+                    try await pipe(local, to: remote); return
+                }
+                var body = try BrowserResponseBody(request: head)
+                var bytes = rest
+                while true {
+                    let used = try body.consume(bytes)
+                    if used > 0 { try await remote.write(bytes.prefix(used)) }
+                    if body.finished { buffer = Data(bytes.dropFirst(used)); break }
+                    bytes = try await local.read(maximumBytes: 65536)
+                    if bytes.isEmpty { return }
+                }
+            }
+        }
+    }
+
+    private static func duplex(_ first: any BrowserStream, _ second: any BrowserStream, outgoing: @escaping @Sendable () async throws -> Void) async throws {
         try await withTaskCancellationHandler {
             try await withThrowingTaskGroup(of: Void.self) { group in
-                group.addTask { try await pipe(first, to: second) }
+                group.addTask { try await outgoing() }
                 group.addTask { try await pipe(second, to: first) }
                 defer { group.cancelAll() }
                 do { _ = try await group.next() }

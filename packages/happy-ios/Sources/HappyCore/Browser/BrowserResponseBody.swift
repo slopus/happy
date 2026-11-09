@@ -31,15 +31,36 @@ struct BrowserResponseBody {
         } else { state = .eof }
     }
 
+    /// A request's body: a length, chunks, or none at all.
+    init(request head: BrowserHTTPHead) throws {
+        let lengths = head.fields.filter { $0.0.lowercased() == "content-length" }
+        let transfers = head.fields.filter { $0.0.lowercased() == "transfer-encoding" }
+        guard lengths.count <= 1, transfers.count <= 1, lengths.isEmpty || transfers.isEmpty else { throw BrowserError.malformed }
+        permitsReuse = false
+        if let transfer = transfers.first {
+            guard transfer.1.lowercased() == "chunked" else { throw BrowserError.malformed }
+            state = .size
+        } else if let text = lengths.first?.1 {
+            guard !text.isEmpty, text.utf8.allSatisfy({ (48...57).contains($0) }), let count = Int(text) else { throw BrowserError.malformed }
+            state = count == 0 ? .done : .length(count)
+        } else { state = .done }
+    }
+
     var finished: Bool { if case .done = state { return true }; return false }
     var reusable: Bool { finished && permitsReuse }
 
     mutating func append(_ bytes: Data) throws {
+        guard try consume(bytes) == bytes.count else { throw BrowserError.malformed }
+    }
+
+    /// Takes the message's bytes from the front of `bytes` and says how
+    /// many: whatever is after them begins the next message.
+    mutating func consume(_ bytes: Data) throws -> Int {
         var index = bytes.startIndex
         while index < bytes.endIndex {
             switch state {
-            case .done: throw BrowserError.malformed
-            case .eof: return
+            case .done: return index - bytes.startIndex
+            case .eof: return bytes.count
             case .length(let remaining), .chunk(let remaining):
                 let count = min(remaining, bytes.endIndex - index)
                 index += count
@@ -74,6 +95,7 @@ struct BrowserResponseBody {
                 line.removeAll(keepingCapacity: true)
             }
         }
+        return bytes.count
     }
 
     mutating func end() throws {
