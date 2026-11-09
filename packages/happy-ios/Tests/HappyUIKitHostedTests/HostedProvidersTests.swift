@@ -40,7 +40,7 @@ private actor CloudProvidersServer: AgentTransport {
               {"id":"operator:openai","name":"Happy (free)","scope":"team","source":"operator","vendors":["openai"],"models":["openai/gpt-6.1-terra"],"credentialCount":0},
               {"id":"anthropic","name":"Anthropic","scope":"team","source":"tenant","vendors":["anthropic"],"models":[],"credentialCount":1,
                "credentials":[{"id":"k1","vendor":"anthropic","kind":"api_key","label":"Team key","enabled":true,"state":"invalid"}]}
-            ],"capabilities":{"apiKeys":true,"claudeSetupToken":false,"codexSignIn":true,"claudeSignIn":true}}
+            ],"capabilities":{"apiKeys":true,"claudeSetupToken":true,"codexSignIn":true,"claudeSignIn":false}}
             """#)
         case ("GET", "/v0/provider-clis"):
             return ok(#"{"providerClis":[{"id":"codex"},{"id":"claude"}]}"#)
@@ -186,10 +186,17 @@ final class HostedProvidersTests: XCTestCase {
         let server = CloudProvidersServer()
         let (list, navigation, window, _) = try await host(server)
         let flows = ProviderFlows(client: AgentClient(transport: server, token: "t"), destination: .mine, host: list, added: {})
-        let claude = ClaudeSignInViewController(flows: flows, offered: false, setupToken: true)
+        let claude = ClaudeSignInViewController(flows: flows)
         navigation.pushViewController(claude, animated: false)
         window.layoutIfNeeded()
         let token = try XCTUnwrap(Self.find(UIButton.self, in: claude.view) { $0.accessibilityIdentifier == "provider-claude-token" })
+        // A setup token only: no Claude page to open, no code to paste.
+        XCTAssertEqual(claude.title, "Use a Claude setup token")
+        XCTAssertEqual(token.configuration?.title, "Add setup token")
+        XCTAssertNil(Self.find(UIButton.self, in: claude.view) { $0.accessibilityIdentifier == "provider-claude-open" })
+        XCTAssertNil(Self.find(UITextField.self, in: claude.view) { $0.accessibilityIdentifier == "provider-claude-code" })
+        let shot = XCTAttachment(image: UIGraphicsImageRenderer(bounds: window.bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) })
+        shot.name = "claude-setup-token"; shot.lifetime = .keepAlways; add(shot)
         token.sendActions(for: .touchUpInside)
         let form = try await until { claude.presentedViewController as? UIAlertController }
         XCTAssertEqual(form.title, "Setup token")
@@ -206,7 +213,7 @@ final class HostedProvidersTests: XCTestCase {
         let device = try await until { navigation.topViewController as? DeviceSignInViewController }
         _ = try await until { (device.presentedViewController as? UIAlertController)?.title == "Sign-in failed" ? true : nil }
         XCTAssertFalse(list.chooser().actions.contains { $0.title == "Sign in with ChatGPT" })
-        XCTAssertTrue(list.chooser().actions.contains { $0.title == "Sign in with Claude" })
+        XCTAssertTrue(list.chooser().actions.contains { $0.title == "Use a Claude setup token" })
         list.load()
         _ = try await until { list.chooser().actions.contains { $0.title == "Sign in with ChatGPT" } ? true : nil }
     }
