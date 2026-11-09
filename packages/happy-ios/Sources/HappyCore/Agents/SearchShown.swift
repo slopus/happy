@@ -114,10 +114,11 @@ extension Search {
     }
 
     /// One thing the computer found, as the row that opens it here (desktop's
-    /// `remoteRow`); nil for what the phone has nowhere to open: a person, a
-    /// skill, a project or a workspace, which have no screen on the phone,
-    /// anything archived, and a conversation, or a message of one, in no
-    /// workspace.
+    /// `remoteRow`); nil for what the phone has nowhere to open: a skill, a
+    /// project or a workspace, which have no screen on the phone, anything
+    /// archived, and a conversation, or a message of one, in no workspace.
+    /// A person isn't one of these either: they are listed apart, under
+    /// People (`people`).
     public static func shown(_ result: Result, names: Names) -> Shown? {
         let joined = { (parts: [String?]) -> String? in
             let line = parts.compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")

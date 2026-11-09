@@ -970,6 +970,10 @@ final class DetailMarkView: UIView {
     var mark: Row.Mark = .none {
         didSet { if mark != oldValue { apply() } }
     }
+    /// A person's picture or placeholder, drawn as a circle.
+    var round = false {
+        didSet { if round != oldValue { setNeedsLayout() } }
+    }
     private let seedling = MarkView()
     private let picture = UIImageView()
     private let markPicture = MarkPicture()
@@ -994,8 +998,8 @@ final class DetailMarkView: UIView {
         seedling.frame = bounds
         picture.frame = bounds
         if case .glyph = mark { picture.layer.cornerRadius = bounds.width * 0.28 }
-        if case .image = mark { picture.layer.cornerRadius = bounds.width * 0.22 }
-        if case .placeholder = mark { picture.layer.cornerRadius = bounds.width * 0.22 }
+        if case .image = mark { picture.layer.cornerRadius = bounds.width * (round ? 0.5 : 0.22) }
+        if case .placeholder = mark { picture.layer.cornerRadius = bounds.width * (round ? 0.5 : 0.22) }
     }
 
     private func apply() {

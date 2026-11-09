@@ -39,6 +39,8 @@ extension Search {
         public var eventId: String?
         public var artifactId: String?
         public var agentId: String?
+        /// A person's (`user`), found on a Happy Cloud server.
+        public var userId: String?
         /// An agent's or a message's workspace and project, when it has them.
         public var workspaceId: String?
         public var projectId: String?

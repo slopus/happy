@@ -60,6 +60,10 @@ final class HomeViewController: UIViewController {
     private var artifacts: [ArtifactSummary] = []
     /// The open todos of the sidebar's lists, by list, read when search opens.
     private var todos: [String: [TodoItem]] = [:]
+    /// The people search found on a Happy Cloud server, by user ID, read
+    /// once each for their pictures (`GET /v0/users`); those asked for.
+    private var people: [String: TeamUser] = [:]
+    private var peopleAsked: Set<String> = []
 
     /// One of desktop's palette actions (`actionRows`), as a phone has them.
     private struct QuickAction {
@@ -188,6 +192,8 @@ final class HomeViewController: UIViewController {
         // Another computer's sidebar: what was searched was the last one's.
         endSearch(animated: false)
         servesSearch = nil
+        people = [:]
+        peopleAsked = []
         connectionWatch?.cancel(); connectionWatch = nil
         headerWatch = nil; waitingForNetwork = false
         accessWatch?.invalidate(); accessWatch = nil
@@ -281,6 +287,21 @@ final class HomeViewController: UIViewController {
             guard !Task.isCancelled, let answer = try? await client.search(typed), !Task.isCancelled, search?.query == query else { return }
             search?.remote = (query, answer.results)
             showResults()
+            readPeople(answer.results, client: client)
+        }
+    }
+
+    /// The pictures of the people the computer found, one read for all
+    /// those not yet asked for; a person's search result names them only.
+    private func readPeople(_ results: [HappyCore.Search.Result], client: AgentClient) {
+        guard session?.isCloud == true else { return }
+        let wanted = HappyCore.Search.people(results).map(\.userId).filter { !peopleAsked.contains($0) }
+        guard !wanted.isEmpty else { return }
+        peopleAsked.formUnion(wanted)
+        Task { [weak self] in
+            guard let users = try? await client.teamUsers(wanted), let self else { return }
+            for user in users { people[user.id] = user }
+            if search != nil { showResults() }
         }
     }
 
@@ -397,8 +418,9 @@ final class HomeViewController: UIViewController {
             resultsView.show(HappyCore.Search.recent(snapshot.allRows), query: "")
             return
         }
-        let fused = foundResults(for: query, remote: search.remote?.query == search.query ? search.remote?.results : nil)
-        let sections = results(for: query)
+        let remote = search.remote?.query == search.query ? search.remote?.results : nil
+        let fused = foundResults(for: query, remote: remote)
+        let sections = [peopleResults(for: query, remote: remote ?? [])] + results(for: query)
         var runs = fused.runs
         var shown: [(rows: [Row], best: Int)] = [(fused.rows, fused.best)]
         for section in sections {
@@ -407,7 +429,7 @@ final class HomeViewController: UIViewController {
         }
         search.results = runs
         self.search = search
-        // A stable sort: equals keep found, actions, settings.
+        // A stable sort: equals keep found, people, actions, settings.
         let ordered = shown.enumerated().filter { !$0.element.rows.isEmpty }.sorted { ($0.element.best, $0.offset) < ($1.element.best, $1.offset) }
         resultsView.show(ordered.flatMap(\.element.rows), query: query)
     }
@@ -458,6 +480,34 @@ final class HomeViewController: UIViewController {
             }
         }
         let best = HappyCore.Search.foundBest(localRanks: local.map(\.rank), answered: !remote.isEmpty)
+        return (rows, runs, best)
+    }
+
+    /// The people the computer found, under their own heading, each with
+    /// their picture (else their placeholder, as their tasks wear it) and
+    /// opening their profile. A Happy Cloud server's only: a computer of
+    /// one's own has no team, so nothing shows there whatever it answers.
+    private func peopleResults(for query: String, remote: [HappyCore.Search.Result]) -> (rows: [Row], runs: [String: () -> Void], best: Int) {
+        guard let session, UserProfileViewController.offered(session) else { return ([], [:], .max) }
+        let found = HappyCore.Search.people(remote)
+        guard !found.isEmpty else { return ([], [:], .max) }
+        var rows = [Row(id: "search:people", nodeId: "search:people", kind: .section, label: Strings.UserProfile.people)]
+        var runs: [String: () -> Void] = [:]
+        for person in found {
+            let rowId = "search:people:\(person.userId)"
+            let known = people[person.userId]
+            let user = TeamUser(id: person.userId, name: person.name.isEmpty ? known?.name ?? "" : person.name, photo: known?.photo)
+            let mark = UserProfileViewController.mark(AgentWire.ProfileUser(id: user.id, name: user.name, photo: user.photo),
+                                                      me: session.home.userId, myPhoto: session.home.profilePhoto)
+            rows.append(Row(id: rowId, nodeId: rowId, kind: .result, label: user.name, mark: mark))
+            runs[rowId] = { [weak self] in
+                guard let self, let session = self.session else { return }
+                show(UserProfileViewController(session: session, user: user), for: rowId)
+            }
+        }
+        // Where the best name puts them among the quick actions and
+        // settings; one the computer matched otherwise, as a match anywhere.
+        let best = found.compactMap { HappyCore.Search.rank($0.name, query) }.min() ?? 2
         return (rows, runs, best)
     }
 
