@@ -251,8 +251,13 @@ final class HostedAttachMenuTests: XCTestCase {
     func testLimitedShowsTheAllowedItemsAndAManageControl() async throws {
         try await open(FixtureAttachLibrary(access: .limited, count: 7))
         let sheet = try await menu()
+        // Presentation and library delivery can outlast menu()'s animation
+        // pause on CI. The existing wait covers the visible grid and its data.
+        try await wait {
+            (self.view("attach-grid", in: sheet.view) as? UICollectionView)?.numberOfItems(inSection: 0) == 7
+        }
         let grid = try XCTUnwrap(view("attach-grid", in: sheet.view) as? UICollectionView)
-        try await wait { grid.numberOfItems(inSection: 0) == 7 }
+        XCTAssertEqual(grid.numberOfItems(inSection: 0), 7)
         let note = try XCTUnwrap(view("attach-limited", in: sheet.view))
         let manage = try XCTUnwrap(view("attach-manage", in: sheet.view) as? UIButton)
         XCTAssertNotNil(manage.menu, "manage offers nothing")
