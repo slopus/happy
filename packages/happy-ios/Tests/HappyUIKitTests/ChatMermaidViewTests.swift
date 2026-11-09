@@ -52,22 +52,6 @@ final class ChatMermaidViewTests: XCTestCase {
         return try await condition()
     }
 
-    /// Waits, up to `seconds`, until `count` has held for `quiet` seconds:
-    /// a slow machine's page reports later than a Mac's.
-    private func quiet(_ seconds: Double = 10, for quiet: Double = 0.6, _ count: () -> Int) async throws {
-        let deadline = Date().addingTimeInterval(seconds)
-        var last = count(), since = Date()
-        while Date() < deadline {
-            try await Task.sleep(for: .milliseconds(50))
-            if count() != last {
-                last = count()
-                since = Date()
-            } else if Date().timeIntervalSince(since) >= quiet {
-                return
-            }
-        }
-    }
-
     /// What `body` returns, run as one of the page's own scripts.
     private func script(_ view: ChatMermaidView, _ body: String) async throws -> Any? {
         let webView = try XCTUnwrap(view.webView, "the view made no page")
@@ -228,9 +212,11 @@ final class ChatMermaidViewTests: XCTestCase {
         defer { window.isHidden = true }
         row.apply(first)
         let view = try XCTUnwrap(row.subviews.compactMap { $0 as? ChatMermaidView }.first)
-        try await until { !actions.isEmpty }
-        // The page reports again once its drawing has settled.
-        try await quiet { actions.count }
+        // mermaid.html reports once on the animation frame and again from
+        // its settling timer. Wait for both: a quiet interval can end before
+        // WebKit delivers the timer's report on a busy simulator.
+        let settled = try await until { actions.count == 2 }
+        XCTAssertTrue(settled, "the page did not deliver both height reports")
         let reported = try XCTUnwrap(actions.max { $0.height < $1.height }, "the row heard no height")
         XCTAssertEqual(reported.row, "m1")
         XCTAssertEqual(reported.index, 0)
