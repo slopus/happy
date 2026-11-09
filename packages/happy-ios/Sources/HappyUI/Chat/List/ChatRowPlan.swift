@@ -38,8 +38,11 @@ final class ChatRowPlan: @unchecked Sendable {
     /// The words a person can select once the message is lifted, and the
     /// whole message as Copy copies it; nil where there are none.
     let selection: ChatSelectable?
+    /// Drawn controls VoiceOver reads and presses one by one, after the
+    /// row's words.
+    let controls: [ChatControl]
 
-    init(id: String, size: CGSize, items: [ChatDrawItem], hits: [ChatHit] = [], alpha: CGFloat = 1, accessibilityLabel: String? = nil, proposals: [(artifactId: String, layout: SidebarProposalLayout, frame: CGRect)] = [], toggles: String? = nil, flight: ChatRowFlight? = nil, mine: Bool = false, revealable: Bool = false, selection: ChatSelectable? = nil) {
+    init(id: String, size: CGSize, items: [ChatDrawItem], hits: [ChatHit] = [], alpha: CGFloat = 1, accessibilityLabel: String? = nil, proposals: [(artifactId: String, layout: SidebarProposalLayout, frame: CGRect)] = [], toggles: String? = nil, flight: ChatRowFlight? = nil, mine: Bool = false, revealable: Bool = false, selection: ChatSelectable? = nil, controls: [ChatControl] = []) {
         self.id = id
         self.size = size
         self.items = items
@@ -52,6 +55,7 @@ final class ChatRowPlan: @unchecked Sendable {
         self.mine = mine
         self.revealable = revealable
         self.selection = selection
+        self.controls = controls
     }
 
     /// Where its words are, in reading order, for a revealable plan. Worked
@@ -341,6 +345,16 @@ struct ChatPermissionTap: Equatable, Sendable {
     var permissionId: String
     var kind: PermissionButton.Kind
     var reply: PermissionReply
+}
+
+/// A control drawn in a row (a quick reply, a card's button), as VoiceOver
+/// has it: where it is in row coordinates, what it says, whether it is the
+/// one chosen, and what pressing it does (nil: it can't be used now).
+struct ChatControl {
+    var frame: CGRect
+    var label: String
+    var selected = false
+    var action: ChatRowAction?
 }
 
 struct ChatHit {

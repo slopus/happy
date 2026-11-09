@@ -1538,7 +1538,21 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             card.accessibilityFrameInContainerSpace = hit.frame
             return card
         }
-        let media: [Any] = (row.mediaViews as [Any]) + (cards as [Any]) + (cardsHosted as [Any])
+        // Quick replies and a card's buttons, each pressed on its own (a
+        // double tap lands on it): the one sent selected, one that can't be
+        // used now dimmed.
+        let controls = plan.controls.map { control -> UIAccessibilityElement in
+            let element = UIAccessibilityElement(accessibilityContainer: row)
+            element.accessibilityLabel = control.label
+            var traits: UIAccessibilityTraits = .button
+            if control.selected { traits.insert(.selected) }
+            if control.action == nil { traits.insert(.notEnabled) }
+            element.accessibilityTraits = traits
+            element.accessibilityIdentifier = "control"
+            element.accessibilityFrameInContainerSpace = control.frame
+            return element
+        }
+        let media: [Any] = (row.mediaViews as [Any]) + (cards as [Any]) + (cardsHosted as [Any]) + (controls as [Any])
         row.isAccessibilityElement = media.isEmpty
         if media.isEmpty {
             row.accessibilityElements = nil

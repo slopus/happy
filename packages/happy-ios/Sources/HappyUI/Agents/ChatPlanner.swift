@@ -393,12 +393,12 @@ actor ChatPlanner {
                 let draft = ChatUiPlan.draft(shown, granted: key.uiGranted, environment: environment)
                 drafts.append(.ui(draft))
                 parts.append(.ui(draft.input))
-                spoken.append(draft.spoken)
+                if !draft.spoken.isEmpty { spoken.append(draft.spoken) }
             case .quickReplies(let replies):
                 let draft = ChatUiPlan.draft(replies, environment: environment)
                 drafts.append(.ui(draft))
                 parts.append(.ui(draft.input))
-                spoken.append(draft.spoken)
+                if !draft.spoken.isEmpty { spoken.append(draft.spoken) }
             case .picture, .sentFile:
                 break
             }
@@ -406,6 +406,7 @@ actor ChatPlanner {
         let layout = layout(parts)
         var items: [ChatDrawItem] = []
         var hits: [ChatHit] = []
+        var controls: [ChatControl] = []
         var selectable: [ChatSelectable.Text] = []
         var proposals: [(artifactId: String, layout: SidebarProposalLayout, frame: CGRect)] = []
         func media(_ media: Media, _ frame: CGRect) {
@@ -457,6 +458,7 @@ actor ChatPlanner {
                 let drawn = ChatUiPlan.draw(draft, placed, origin: origin)
                 items += drawn.items
                 hits.insert(contentsOf: drawn.hits, at: 0)
+                controls += drawn.controls
             default:
                 break
             }
@@ -464,7 +466,7 @@ actor ChatPlanner {
         // Each picture and recording reads as itself (`ChatMediaView`).
         return ChatRowPlan(
             id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: spoken.joined(separator: "\n\n"), proposals: proposals,
-            revealable: revealable, selection: .covering(items, texts: selectable, whole: text)
+            revealable: revealable, selection: .covering(items, texts: selectable, whole: text), controls: controls
         )
     }
 

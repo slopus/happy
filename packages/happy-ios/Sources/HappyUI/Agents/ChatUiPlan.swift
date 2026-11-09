@@ -73,7 +73,7 @@ enum ChatUiPlan {
             }
             let input = ChatUiLayout.Input.card(title: title.measurable, lines: lines.map(\.measurable), buttons: buttons.map(\.measurable))
             return Draft(shown: .component(shown), input: input, buttons: buttons, text: title, lines: lines, card: card,
-                         spoken: ([card.title] + card.lines.filter { $0.style != .code }.map(\.text) + card.buttons.map(\.label)).joined(separator: ", "))
+                         spoken: ([card.title] + card.lines.filter { $0.style != .code }.map(\.text)).joined(separator: ", "))
         }
     }
 
@@ -84,13 +84,14 @@ enum ChatUiPlan {
             let quiet = replies.chosen.map { $0 != index } ?? false
             return MeasuredText(ChatTextStyles.text.string(option, color: quiet ? Palette.textSecondary : Palette.userMessageText, lineBreakMode: .byTruncatingTail, in: environment), maxLines: 1)
         }
-        return Draft(shown: .replies(replies), input: .replies(labels.map(\.measurable)), buttons: labels, spoken: replies.options.joined(separator: ", "))
+        return Draft(shown: .replies(replies), input: .replies(labels.map(\.measurable)), buttons: labels, spoken: "")
     }
 
-    static func draw(_ draft: Draft, _ layout: ChatUiLayout, origin: CGPoint) -> (items: [ChatDrawItem], hits: [ChatHit]) {
+    static func draw(_ draft: Draft, _ layout: ChatUiLayout, origin: CGPoint) -> (items: [ChatDrawItem], hits: [ChatHit], controls: [ChatControl]) {
         typealias M = ChatUiLayout.Metrics
         var items: [ChatDrawItem] = []
         var hits: [ChatHit] = []
+        var controls: [ChatControl] = []
         func at(_ frame: CGRect) -> CGRect { frame.offsetBy(dx: origin.x, dy: origin.y) }
         func text(_ text: MeasuredText, _ frame: CGRect) { items.append(.text(text.layout(for: frame), at(frame))) }
         switch draft.shown {
@@ -102,7 +103,9 @@ enum ChatUiPlan {
                 items.append(.box(ChatBox(frame: at(placed.frame), fill: sent ? Palette.userBubble : Palette.quickReplyBubble, radius: MessageLayout.Metrics.bubbleRadius)))
                 text(label, placed.label)
                 if sent, let tick = placed.tick { items.append(.icon(.ionicons("checkmark"), size: M.tick, frame: at(tick), tint: Palette.userMessageText)) }
-                if replies.live { hits.insert(ChatHit(frame: at(placed.frame), action: .ui(ChatUiTap(kind: .reply(replies, index)))), at: 0) }
+                let tap = ChatRowAction.ui(ChatUiTap(kind: .reply(replies, index)))
+                if replies.live { hits.insert(ChatHit(frame: at(placed.frame), action: tap), at: 0) }
+                controls.append(ChatControl(frame: at(placed.frame), label: replies.options[index], selected: sent, action: replies.live ? tap : nil))
             }
         case .component(let shown):
             switch shown.kind {
@@ -125,11 +128,13 @@ enum ChatUiPlan {
                     items.append(.box(ChatBox(frame: at(placed.frame), fill: filled ? Palette.roundButtonFill : Palette.surface, border: filled ? nil : Palette.legacyDivider,
                                               borderWidth: filled ? 0 : M.border, radius: M.radius, alpha: one.enabled ? 1 : M.disabledAlpha)))
                     text(label, placed.label)
-                    if one.enabled { hits.insert(ChatHit(frame: at(placed.frame), action: .ui(ChatUiTap(kind: .card(shown, one.tap)))), at: 0) }
+                    let tap = ChatRowAction.ui(ChatUiTap(kind: .card(shown, one.tap)))
+                    if one.enabled { hits.insert(ChatHit(frame: at(placed.frame), action: tap), at: 0) }
+                    controls.append(ChatControl(frame: at(placed.frame), label: one.label, action: one.enabled ? tap : nil))
                 }
             }
         }
-        return (items, hits)
+        return (items, hits, controls)
     }
 }
 #endif

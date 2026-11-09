@@ -52,7 +52,15 @@ pills' frames read only their labels (`ChatUiLayout.replies`), so the sent
 one's highlight and the stack going quiet are a drawn state of the same row:
 one row reconfigured at the same height, and the send's row inserted
 (`ChatUiTests`' changeset assertions). A folded turn keeps the replies and
-the words above them.
+the words above them. VoiceOver reads each pill and each card button as a
+button of its own (`ChatRowPlan.controls`): the sent pill selected, one
+that can't be used now dimmed.
+
+A chat UI action's result that holds a secret (an invite's link, a join
+code) is merged into its card on the main thread (`ChatViewController.shownItems`),
+by design: it is the screen's alone, so it never reaches the conversation's
+shared snapshot, which warm chats, sharing and the voice call also read. The
+pass runs only while a result is held, and changes only the rows holding one.
 
 The agent's newest words come out a character at a time as they stream
 (`ChatRevealDriver`, see docs/telegram-notes.md §8). A revealing row is as
