@@ -21364,16 +21364,6 @@ SPLcom/slopus/happy/ui/settings/ChangelogRoute;->serializer()Lkotlinx/serializat
 Lcom/slopus/happy/ui/settings/ChangelogRoute$$ExternalSyntheticLambda0;
 SPLcom/slopus/happy/ui/settings/ChangelogRoute$$ExternalSyntheticLambda0;-><init>()V
 SPLcom/slopus/happy/ui/settings/ChangelogRoute$$ExternalSyntheticLambda0;->invoke()Ljava/lang/Object;
-Lcom/slopus/happy/ui/settings/ConnectClaudeRoute;
-SPLcom/slopus/happy/ui/settings/ConnectClaudeRoute;->$r8$lambda$mQ9ot4Tfk2RBNX8fNSbIrKM2Xrc()Lkotlinx/serialization/KSerializer;
-SPLcom/slopus/happy/ui/settings/ConnectClaudeRoute;-><clinit>()V
-SPLcom/slopus/happy/ui/settings/ConnectClaudeRoute;-><init>()V
-SPLcom/slopus/happy/ui/settings/ConnectClaudeRoute;->_init_$_anonymous_()Lkotlinx/serialization/KSerializer;
-SPLcom/slopus/happy/ui/settings/ConnectClaudeRoute;->get$cachedSerializer()Lkotlinx/serialization/KSerializer;
-SPLcom/slopus/happy/ui/settings/ConnectClaudeRoute;->serializer()Lkotlinx/serialization/KSerializer;
-Lcom/slopus/happy/ui/settings/ConnectClaudeRoute$$ExternalSyntheticLambda0;
-SPLcom/slopus/happy/ui/settings/ConnectClaudeRoute$$ExternalSyntheticLambda0;-><init>()V
-SPLcom/slopus/happy/ui/settings/ConnectClaudeRoute$$ExternalSyntheticLambda0;->invoke()Ljava/lang/Object;
 Lcom/slopus/happy/ui/settings/LanguageRoute;
 SPLcom/slopus/happy/ui/settings/LanguageRoute;-><clinit>()V
 Lcom/slopus/happy/ui/settings/LanguageRoute$$serializer;

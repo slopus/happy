@@ -38,9 +38,6 @@
     <string name="settings_agents_effort">推理強度</string>
     <string name="settings_agents_custom_codex_title">自訂 Codex 模型</string>
     <string name="settings_agents_custom_codex_message">輸入確切的模型 ID。是否可用取決於你的 Codex 帳號或 API 設定。</string>
-    <string name="settings_connect_claude_title">連線到 Claude</string>
-    <string name="settings_connect_claude">連線 Claude</string>
-    <string name="settings_connect_claude_run">在終端機中執行以下指令：</string>
     <string name="settings_commit">提交</string>
     <string name="settings_commit_at">提交 %1$s</string>
     <string name="settings_manage_subscriptions">管理訂閱</string>

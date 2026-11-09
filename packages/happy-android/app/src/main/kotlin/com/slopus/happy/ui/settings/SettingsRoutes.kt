@@ -80,7 +80,6 @@ import com.slopus.happy.ui.voice.VoiceSettingsRoute
 @Serializable data object AppearanceRoute
 @Serializable data class LanguageRoute(val reveal: String? = null)
 @Serializable data object AgentsRoute
-@Serializable data object ConnectClaudeRoute
 @Serializable data object ChangelogRoute
 
 /** Settings' screens; [SettingsRoute] itself is HappyApp's ([AccountSettings]). */
@@ -91,7 +90,6 @@ fun NavGraphBuilder.settingsRoutes(graph: AppGraph, nav: NavHostController) {
     page<BackupRoute> { entry -> ProvideRowReveal(entry.toRoute<BackupRoute>().reveal) { Backup(graph, nav) } }
     page<AppearanceRoute> { Appearance(graph, nav) }
     page<AgentsRoute> { Agents(graph, nav) }
-    page<ConnectClaudeRoute> { ConnectClaudeScreen(onBack = { nav.popBackStack() }) }
     page<ChangelogRoute> {
         val resources = LocalResources.current
         val changelog = remember(resources) { Changelog.bundled(resources) }

@@ -38,9 +38,6 @@
     <string name="settings_agents_effort">Усилие</string>
     <string name="settings_agents_custom_codex_title">Своя модель Codex</string>
     <string name="settings_agents_custom_codex_message">Введите точный ID модели. Доступность зависит от вашего аккаунта Codex или настроек API.</string>
-    <string name="settings_connect_claude_title">Подключение к Claude</string>
-    <string name="settings_connect_claude">Подключить Claude</string>
-    <string name="settings_connect_claude_run">Выполните эту команду в терминале:</string>
     <string name="settings_commit">Коммит</string>
     <string name="settings_commit_at">Коммит %1$s</string>
     <string name="settings_manage_subscriptions">Управление подписками</string>
