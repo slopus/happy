@@ -199,8 +199,11 @@ public enum TurnFold {
             case .turnEnd, .user, .collaborator, .failure, .trace: return true
             case .tool(let tool): return tool.isResult
             case .question(let ask): return ask.phase != .answered
-            // Chat UI stays: a live control, a tree or images the agent showed.
-            case .agent: return replies(group[index]) || group[index].pieces.contains { if case .ui = $0 { true } else { false } }
+            // Chat UI stays: a live control, a tree or images the agent
+            // showed, and quick replies with the words that offered them.
+            case .agent:
+                return replies(group[index]) || group[index].pieces.contains { if case .ui = $0 { true } else { false } }
+                    || (group.indices.contains(index + 1) && replies(group[index + 1]))
             }
         }
         guard kept.count < group.count else { return group }

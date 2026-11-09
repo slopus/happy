@@ -1778,38 +1778,35 @@ public actor Conversation {
 
     // MARK: Quick replies
 
-    /// Each suggestion's row, right under its turn's last words and above
-    /// how the turn ended, for good: the option a person's message sent is
-    /// marked from its `quickReply` (a send on its way from here too), and
-    /// only the newest takes a tap, while nobody has written since.
+    /// Each suggestion's row, right under the words that offered it and
+    /// above how the turn ended, for good: what comes later in the turn
+    /// (a steer and the answer to it) goes under it, so nothing moves it.
+    /// The option a person's message sent is marked from its `quickReply`
+    /// (a send on its way from here too), and only the newest takes a tap,
+    /// while nobody has written since.
     private func placeQuickReplies(_ items: inout [ChatItem]) {
-        var found: [(run: String, replies: QuickReplies)] = []
+        // Each with the last row of its turn made up to it, if any.
+        var found: [(run: String, replies: QuickReplies, after: String?)] = []
         var chosen: [QuickReply] = []
         var spokeAfter = false
         for run in transcript.runs {
+            var after: String?
             for id in run.messageIds {
                 guard let message = transcript[message: id] else { continue }
+                let made = madeMessages[id]
+                if let last = made?.items.last { after = last.id }
                 if message.role == "user" {
                     spokeAfter = true
                     if let reply = message.quickReply { chosen.append(reply) }
-                    continue
-                }
-                guard message.role == "agent" else { continue }
-                for block in message.content {
-                    switch block {
-                    case .quickReplies(let options) where !options.isEmpty:
-                        found.append((run.id, QuickReplies(messageId: message.id, options: options)))
-                        spokeAfter = false
-                    case .toolCall(let callId, _, _, let presentation?, _, _, _, _) where presentation.type == "quick_replies" && !(presentation.options ?? []).isEmpty:
-                        found.append((run.id, QuickReplies(messageId: message.id, toolCallId: callId, options: presentation.options ?? [])))
-                        spokeAfter = false
-                    default:
-                        continue
-                    }
+                } else if let suggestion = made?.suggestion {
+                    found.append((run.id, suggestion, after))
+                    spokeAfter = false
                 }
             }
         }
         guard !found.isEmpty else { return }
+        // Sent and taken, and not yet in a run; or still on its way.
+        chosen += transcript.pending.compactMap { transcript[message: $0]?.quickReply }
         chosen += outgoing.compactMap { outgoingReplies[$0.id] }
         let quiet = !spokeAfter && outgoing.isEmpty && transcript.pending.isEmpty
         // From the end, so each insertion leaves the places still to find.
@@ -1818,21 +1815,34 @@ public actor Conversation {
             replies.chosen = chosen.last(where: replies.names)?.index
             replies.live = quiet && offset == found.count - 1
             let item = ChatItem(id: "replies:\(replies.messageId):\(replies.toolCallId ?? "")", role: .agent, pieces: [.quickReplies(replies)], delivery: .sent, turn: entry.run)
-            let last = items.lastIndex { item in
-                guard item.turn == entry.run else { return false }
-                if case .turnEnd = item.role { return false }
-                return true
-            }
-            items.insert(item, at: last.map { $0 + 1 } ?? items.endIndex)
+            let place = if let after = entry.after, let index = items.firstIndex(where: { $0.id == after }) { index + 1 }
+                else { items.firstIndex { $0.turn == entry.run } ?? items.endIndex }
+            items.insert(item, at: place)
         }
+    }
+
+    /// What an agent's message offers to reply with: the daemon's block, or
+    /// a `suggest_replies` call's presentation.
+    private static func suggestion(in message: AgentWire.Message) -> QuickReplies? {
+        for block in message.content {
+            switch block {
+            case .quickReplies(let options) where !options.isEmpty:
+                return QuickReplies(messageId: message.id, options: options)
+            case .toolCall(let callId, _, _, let presentation?, _, _, _, _) where presentation.type == "quick_replies" && !(presentation.options ?? []).isEmpty:
+                return QuickReplies(messageId: message.id, toolCallId: callId, options: presentation.options ?? [])
+            default:
+                continue
+            }
+        }
+        return nil
     }
 
     /// A tap on a quick reply: an ordinary send of the option, naming
     /// where it came from, which the computer checks.
     @discardableResult
-    public func sendQuickReply(_ replies: QuickReplies, index: Int) async -> Bool {
+    public func sendQuickReply(_ replies: QuickReplies, index: Int, id: String = ClientID.make()) async -> Bool {
         guard replies.options.indices.contains(index) else { return false }
-        return await send(text: replies.options[index], quickReply: replies.reply(index))
+        return await send(id: id, text: replies.options[index], quickReply: replies.reply(index))
     }
 
     // MARK: Live components
@@ -2121,6 +2131,8 @@ public actor Conversation {
         var readsShown = false
         var produces = false
         var tools = 0
+        /// The quick replies it offers, read once per revision.
+        var suggestion: QuickReplies?
         /// Each text block's pieces and each call's row, by block index.
         var blocks: [Int: MadeBlock] = [:]
         /// Each run of words' row, by its ID, with what it was made from.
@@ -2221,7 +2233,10 @@ public actor Conversation {
         }
         var made = MadeMessage(revision: revision, streaming: streaming, turn: turn, context: itemContext)
         made.produces = message.role != "user" && !message.content.isEmpty && (message.metadata?.senderAgentId ?? agentId) == agentId
-        if message.role == "agent" { made.tools = message.content.reduce(0) { if case .toolCall = $1 { $0 + 1 } else { $0 } } }
+        if message.role == "agent" {
+            made.tools = message.content.reduce(0) { if case .toolCall = $1 { $0 + 1 } else { $0 } }
+            made.suggestion = Self.suggestion(in: message)
+        }
         items(message, old: old, made: &made, shown: &shown)
         madeMessages[message.id] = made
         return made

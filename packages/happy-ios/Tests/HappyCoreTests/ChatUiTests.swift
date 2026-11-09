@@ -235,6 +235,12 @@ final class ChatUiTests: XCTestCase {
         XCTAssertTrue(bubble.suggested)
         XCTAssertEqual(replies(sent), QuickReplies(messageId: "a1", toolCallId: "call1", options: ["Yes, go ahead", "Not now"], chosen: 0, live: false))
         XCTAssertEqual(sent?.items.prefix(3).map(\.id), ["a1", "replies:a1:call1", "r1:status"], "nothing moved")
+        // The changeset: the stack's row reconfigured, the send's inserted, nothing else touched.
+        let before = Dictionary(uniqueKeysWithValues: (first?.items ?? []).map { ($0.id, $0) })
+        let after = sent?.items ?? []
+        XCTAssertEqual(after.filter { before[$0.id] == nil }.map(\.id), [bubble.id])
+        XCTAssertEqual(after.filter { item in before[item.id].map { $0 != item } ?? false }.map(\.id), ["replies:a1:call1"])
+        XCTAssertEqual(Set(before.keys).subtracting(after.map(\.id)), [])
         _ = await sending.value
         // Without an outbox, a send goes when the stream picks up again.
         await store.externalResync(loadSidebar: false)
@@ -274,6 +280,51 @@ final class ChatUiTests: XCTestCase {
         XCTAssertEqual(replies(first, "a0"), QuickReplies(messageId: "a0", options: ["Hi"]))
         XCTAssertEqual(replies(first, "a1"), QuickReplies(messageId: "a1", toolCallId: "call1", options: ["Yes, go ahead", "Not now"], chosen: 1))
         XCTAssertEqual(replies(first, "a2"), QuickReplies(messageId: "a2", options: ["Thanks"], live: true))
+        await conversation.stop()
+    }
+
+    /// A reply steered into the turn that offered the replies, and the
+    /// answer streaming in it, go under the stack: it stays right under
+    /// the words that offered it, and as the answer grows its row and the
+    /// words' are never made again.
+    func testWhatComesLaterInTheTurnGoesUnderTheRepliesAndNeverMovesThem() async throws {
+        func steered(_ answer: String) -> [JSONValue] {
+            [.object(["id": .string("r1"), "status": .string("running"), "messages": .array([
+                Self.suggesting("a1", at: 1),
+                .object(["id": .string("u2"), "role": .string("user"), "createdAt": .number(2), "content": .array([.object(["type": .string("text"), "text": .string("Yes, go ahead")])]),
+                         "quickReply": .object(["messageId": .string("a1"), "toolCallId": .string("call1"), "index": .number(0)])]),
+                .object(["id": .string("a3"), "role": .string("agent"), "createdAt": .number(3), "content": .array([.object(["type": .string("text"), "text": .string(answer)])])]),
+            ])])]
+        }
+        let server = ChatUiServer(history: steered("Fixing"))
+        var (conversation, updates, store) = await openWithStore(server)
+        let first = await next(&updates) { $0.items.contains { $0.id == "a3" } }
+        XCTAssertEqual(first?.items.map(\.id), ["a1", "replies:a1:call1", "u2", "a3"])
+        XCTAssertEqual(replies(first), QuickReplies(messageId: "a1", toolCallId: "call1", options: ["Yes, go ahead", "Not now"], chosen: 0))
+
+        await server.move(to: steered("Fixing it now: the first file is done"))
+        await store.externalResync(loadSidebar: false)
+        let grown = await next(&updates) { $0.items.first { $0.id == "a3" }?.text.hasSuffix("done") == true }
+        XCTAssertEqual(grown?.items.map(\.id), ["a1", "replies:a1:call1", "u2", "a3"])
+        let kept = Dictionary(uniqueKeysWithValues: (first?.items ?? []).map { ($0.id, $0) })
+        XCTAssertEqual(grown?.items.filter { kept[$0.id] != $0 }.map(\.id), ["a3"], "only the answer is made again")
+        await conversation.stop()
+    }
+
+    /// Taken by the computer but not yet in a run, a reply keeps its
+    /// option marked: the stack never blinks between the send and its run.
+    func testASentReplyWaitingForItsRunStaysMarked() async throws {
+        let server = ChatUiServer(history: [
+            .object(["id": .string("r1"), "status": .string("completed"), "endedAt": .number(2), "messages": .array([Self.suggesting("a1", at: 1)])]),
+        ])
+        await server.read("/bootstrap", .object([
+            "agent": .object(["id": .string("agent"), "workspaceId": .string("w"), "status": .string("idle")]),
+            "pending": .array([.object(["id": .string("u2"), "role": .string("user"), "createdAt": .number(3), "content": .array([.object(["type": .string("text"), "text": .string("Not now")])]),
+                                        "quickReply": .object(["messageId": .string("a1"), "toolCallId": .string("call1"), "index": .number(1)])])]),
+        ]))
+        var (conversation, updates) = await open(server)
+        let first = await next(&updates) { $0.items.contains { $0.id == "u2" } }
+        XCTAssertEqual(replies(first), QuickReplies(messageId: "a1", toolCallId: "call1", options: ["Yes, go ahead", "Not now"], chosen: 1))
         await conversation.stop()
     }
 
@@ -519,7 +570,7 @@ final class ChatUiTests: XCTestCase {
 /// A daemon with one conversation's history and a `/actions` answer, that
 /// keeps what was sent there and every request's `Happy-Protocol`.
 private actor ChatUiServer: AgentTransport {
-    let history: [JSONValue]
+    private(set) var history: [JSONValue]
     /// Other reads, by the path they end with.
     var reads: [String: JSONValue] = [:]
     private var answerBody: JSONValue = .object([:])
@@ -531,6 +582,9 @@ private actor ChatUiServer: AgentTransport {
 
     func answer(_ body: JSONValue) { answerBody = body }
 
+    /// What the next read of the messages finds.
+    func move(to history: [JSONValue]) { self.history = history }
+
     func read(_ path: String, _ body: JSONValue) { reads[path] = body }
 
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) throws -> HTTP1Response {
@@ -539,7 +593,7 @@ private actor ChatUiServer: AgentTransport {
         if path.contains("/messages?") {
             value = .object(["hasMore": .bool(false), "runs": .array(history)])
         } else if path.hasSuffix("/bootstrap") {
-            value = .object(["agent": .object(["id": .string("agent"), "workspaceId": .string("w"), "status": .string("idle")]), "pending": .array([])])
+            value = reads["/bootstrap"] ?? .object(["agent": .object(["id": .string("agent"), "workspaceId": .string("w"), "status": .string("idle")]), "pending": .array([])])
         } else if path.hasSuffix("/actions") {
             if let body { actions.append(try JSONValue.decode(body)) }
             // The record's id is the request's.

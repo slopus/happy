@@ -49,6 +49,17 @@ final class ChatUiLayoutTests: XCTestCase {
         XCTAssertEqual(row.bubble?.maxX, 386)
     }
 
+    /// At a larger text size a pill grows by its one line, keeping its
+    /// padding, and its tick stays centred in it.
+    func testRepliesGrowWithTheTextSizeByTheirOneLine() {
+        let layout = ChatUiLayout(width: 370, input: .replies([.fixed(width: 100, height: 37), .fixed(width: 100, height: 37)]))
+        XCTAssertEqual(layout.buttons, [
+            .init(frame: CGRect(x: 20, y: 0, width: 350, height: 57), label: CGRect(x: 32, y: 10, width: 302, height: 37), tick: CGRect(x: 342, y: 21, width: 16, height: 16)),
+            .init(frame: CGRect(x: 20, y: 63, width: 350, height: 57), label: CGRect(x: 32, y: 73, width: 302, height: 37), tick: CGRect(x: 342, y: 84, width: 16, height: 16)),
+        ])
+        XCTAssertEqual(layout.size, CGSize(width: 370, height: 120))
+    }
+
     /// In a message, a component stands at the reading column's left, 8
     /// under what is before it.
     func testInAMessageItStandsAtTheColumnsLeft() {

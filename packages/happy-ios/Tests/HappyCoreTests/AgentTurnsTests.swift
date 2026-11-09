@@ -57,6 +57,15 @@ final class AgentTurnsTests: XCTestCase {
         XCTAssertEqual(TurnFold.fold(items, expanded: []).map(\.id), ["u", "r:trace", "a2", "replies:a2:c", "r:status"])
     }
 
+    /// A reply steered into the turn answers under the replies; closed,
+    /// the words that offered them stay with them.
+    func testAFoldedTurnKeepsTheWordsThatOfferedItsRepliesWithThem() {
+        let replies = ChatItem(id: "replies:a1:c", role: .agent, pieces: [.quickReplies(QuickReplies(messageId: "a1", toolCallId: "c", options: ["Yes"]))], delivery: .sent, turn: "r")
+        let items = [user("u", turn: "r"), tool("t1", "exec_command", type: "exec_command", turn: "r"), agent("a1", "Go on?", turn: "r"), replies,
+                     user("u2", turn: "r"), agent("a2", "Going.", turn: "r"), ended("r", tools: 1)]
+        XCTAssertEqual(TurnFold.fold(items, expanded: []).map(\.id), ["u", "a1", "replies:a1:c", "u2", "r:trace", "a2", "r:status"])
+    }
+
     /// Open, every step shows and the control rides the turn's first one.
     func testAnOpenTurnShowsEveryStepWithItsControlFirst() {
         let items = [user("u", turn: "r"), tool("t1", "Bash", turn: "r"), agent("a", "Done.", turn: "r"), tool("t2", "Bash", turn: "r"), ended("r", tools: 2)]

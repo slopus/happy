@@ -1209,13 +1209,29 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             press(control, on: shown)
         case .reply(let replies, let index):
             guard mayWrite != false else { return }
-            // As the composer's send: the reader is carried to the end.
+            // As the composer's send: the reader is carried to the end, and
+            // at the end the message flies in, from its pill: the words were
+            // never the composer's, and a draft there stays as it is.
             Haptics.play(.send)
+            let id = ClientID.make()
+            if sendFlies, let source = replySource(replies, index: index) {
+                ultra.flight = ChatSendFlight(source: source, host: view, message: id)
+            }
             followsNewest = true
             ultra.revealNextSend(animated: true)
             let conversation = conversation
-            Task { await conversation.sendQuickReply(replies, index: index) }
+            Task { await conversation.sendQuickReply(replies, index: index, id: id) }
         }
+    }
+
+    /// A quick reply's pill and its words as drawn now, in the view.
+    private func replySource(_ replies: QuickReplies, index: Int) -> ChatSendFlight.Source? {
+        guard let canvas = ultra.canvas(forPlan: "replies:\(replies.messageId):\(replies.toolCallId ?? "")"), let plan = canvas.plan,
+              let pill = plan.hits.first(where: { $0.action == .ui(ChatUiTap(kind: .reply(replies, index))) })?.frame else { return nil }
+        for case let .text(text, frame) in plan.items where pill.contains(frame) {
+            return ChatSendFlight.source(pill: canvas.convert(pill, to: view), label: canvas.convert(frame, to: view), text: text, in: view)
+        }
+        return nil
     }
 
     /// A live component's control: an action sent, a secret asked for in a
