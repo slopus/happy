@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_member_profile.xml in es: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="member_profile_tasks">Tareas</string>
+    <string name="member_profile_active_tasks">Tareas activas</string>
+    <string name="member_profile_active_days">Días activos de 30</string>
+    <string name="member_profile_last_active">Última actividad</string>
+    <string name="member_profile_usage">Uso</string>
+    <string name="member_profile_tokens">Tokens</string>
+    <string name="member_profile_window_hour">Última hora</string>
+    <string name="member_profile_window_day">Último día</string>
+    <string name="member_profile_window_week">Última semana</string>
+    <string name="member_profile_window_month">Último mes</string>
+    <string name="member_profile_recent">Actividad reciente</string>
+    <string name="member_profile_no_tasks">Aún no hay tareas</string>
+    <string name="member_profile_unknown">Esta persona no está en el equipo.</string>
+    <string name="member_profile_archived">Archivada</string>
+    <string name="agent_search_people">Personas</string>
+</resources>

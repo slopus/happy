@@ -65,6 +65,7 @@ internal fun CloudMembers(graph: AppGraph, nav: NavHostController, connectionId:
         onRetry = source::retry,
         onLeave = { confirming = true },
         onBack = { nav.popBackStack() },
+        onOpenMember = { userId -> nav.navigate(MemberProfileRoute(connectionId, userId)) },
     )
     if (confirming) {
         HappyAlert(
@@ -99,7 +100,11 @@ internal fun CloudMembers(graph: AppGraph, nav: NavHostController, connectionId:
     }
 }
 
-/** [CloudMembers]' page: the members, or a retry when they couldn't be read, then Leave server with [footer] under it. */
+/**
+ * [CloudMembers]' page: the members, or a retry when they couldn't be read,
+ * then Leave server with [footer] under it. A member with a user opens
+ * their profile ([onOpenMember]); one who hasn't signed in yet has none.
+ */
 @Composable
 internal fun CloudMembersScreen(
     handle: String,
@@ -109,6 +114,7 @@ internal fun CloudMembersScreen(
     onRetry: () -> Unit,
     onLeave: () -> Unit,
     onBack: () -> Unit,
+    onOpenMember: (userId: String) -> Unit = {},
 ) {
     Screen(header = { StackHeader(stringResource(R.string.cloud_members), onBack) }) {
         ItemList {
@@ -123,10 +129,12 @@ internal fun CloudMembersScreen(
                         showChevron = false,
                     )
                     is TeamSource.State.Loaded -> team.team.members.forEach { member ->
+                        val userId = member.userId
                         Item(
                             title = member.name?.takeIf { it.isNotBlank() } ?: member.accountId,
                             detail = team.team.roleName(member.role) ?: builtInRoleName(member.role),
-                            showChevron = false,
+                            onClick = userId?.let { { onOpenMember(it) } },
+                            showChevron = userId != null,
                             modifier = Modifier.testTag(CloudTags.member(member.accountId)),
                         )
                     }
@@ -149,7 +157,7 @@ internal fun CloudMembersScreen(
 
 /** A built-in role's name in the app's language, for a team that didn't list its roles; any other role reads as its id. */
 @Composable
-private fun builtInRoleName(role: String): String = when (role) {
+internal fun builtInRoleName(role: String): String = when (role) {
     "owner" -> stringResource(R.string.cloud_role_owner)
     "admin" -> stringResource(R.string.cloud_role_admin)
     "member" -> stringResource(R.string.cloud_role_member)

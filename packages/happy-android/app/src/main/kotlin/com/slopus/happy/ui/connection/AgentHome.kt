@@ -113,6 +113,7 @@ import androidx.compose.ui.platform.LocalDensity
 import com.slopus.happy.agent.AgentFeed
 import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.agent.AgentLinkStatus
+import com.slopus.happy.agent.TeamUser
 import com.slopus.happy.connection.LinkState
 import com.slopus.happy.ui.chat.rememberShownLinkState
 import com.slopus.happy.ui.conversation.linkState
@@ -184,6 +185,8 @@ class AgentHomeActions(
     /** Projects belong to self-hosted connections, never Cloud. */
     val projectsAvailable: Boolean = true,
     val notificationsAvailable: Boolean = false,
+    /** Opens a team member's profile; null where there are none (any server but Happy Cloud's), and search finds no people. */
+    val onOpenPerson: ((userId: String) -> Unit)? = null,
 )
 
 /** The colours of every bar on an agent connection's screens: the page's own [container], scrolled or not. */
@@ -276,6 +279,10 @@ fun AgentHomeScreen(
     searchReads: suspend () -> Map<String, JsonObject> = { emptyMap() },
     /** Search's daemon half for a query ([AgentSession.search]); null, or answering null, searches the phone alone. */
     search: (suspend (String) -> SearchAnswer?)? = null,
+    /** The team members read so far ([com.slopus.happy.agent.TeamDirectory]), whose pictures search's People wear. */
+    people: Map<String, TeamUser> = emptyMap(),
+    /** Reads the members search found that [people] lacks. */
+    wantPeople: (Collection<String>) -> Unit = {},
 ) {
     val colors = HappyTheme.colors
     val reduceMotion = rememberReduceMotion()
@@ -355,7 +362,11 @@ fun AgentHomeScreen(
         }
         // Only the answer to what is typed now joins in; an earlier query's would bring in what no longer answers.
         val answer = remote?.takeIf { it.query == query.trim().take(SearchClient.MAX_QUERY) }
-        agentSearchResults(feed, query, label, words, searchEntries.first, searchEntries.second, sources, answer)
+        agentSearchResults(feed, query, label, words, searchEntries.first, searchEntries.second, sources, answer, people = actions.onOpenPerson != null)
+    }
+    LaunchedEffect(results) {
+        val found = results.mapNotNull { (it as? AgentSearchResult.Person)?.userId }
+        if (found.isNotEmpty()) wantPeople(found)
     }
 
     // One ground under the bar and the page, the chat's own (surface), light and dark; the cards sit on it, as on iOS.
@@ -534,6 +545,11 @@ fun AgentHomeScreen(
                             actions.onOpenArtifact(artifact)
                         },
                         onOpenHit = { hit -> openHit(hit, actions)?.let { open -> { focus.clearFocus(); open() } } },
+                        people = people,
+                        onOpenPerson = { userId ->
+                            focus.clearFocus()
+                            actions.onOpenPerson?.invoke(userId)
+                        },
                         onPull = { focus.clearFocus() },
                         onClose = closeSearch,
                         selected = sidebar?.selected,
@@ -627,6 +643,7 @@ private fun openHit(hit: SearchHit, actions: AgentHomeActions): (() -> Unit)? = 
     is SearchHit.Artifact -> { { actions.onOpenArtifact(ArtifactRef(hit.artifactId, 1, hit.artifactType, hit.title, followsLatest = true)) } }
     is SearchHit.VaultFile -> { { actions.onOpenVaultItem(hit.surfaceId, hit.fileId, false, hit.name) } }
     is SearchHit.VaultFolder -> { { actions.onOpenVaultItem(hit.surfaceId, hit.folderId, true, hit.name) } }
+    is SearchHit.User -> actions.onOpenPerson?.let { open -> { open(hit.userId) } }
     is SearchHit.Project, is SearchHit.Workspace -> null
 }
 
@@ -648,6 +665,7 @@ private fun rememberAgentSearchWords(): AgentSearchWords {
             shared = resources.getString(R.string.agent_search_kind_shared),
             done = resources.getString(R.string.todo_done),
             agent = resources.getString(R.string.agent_search_by_agent),
+            people = resources.getString(R.string.agent_search_people),
             notJoined = resources.getString(R.string.agent_search_not_joined),
             taskNotJoined = resources.getString(R.string.agent_search_task_not_joined),
             openTodos = { count -> resources.getQuantityString(R.plurals.agent_search_open_todos, count, count) },
@@ -818,6 +836,8 @@ fun AgentHome(
     onSignIn: (server: String) -> Unit = {},
     onOpenTodos: () -> Unit = {},
     onOpenVaultItem: (surfaceId: String, itemId: String, folder: Boolean, name: String) -> Unit = { _, _, _, _ -> },
+    /** Opens a team member's profile, which only a Happy Cloud server has. */
+    onOpenPerson: (userId: String) -> Unit = {},
 ) {
     val agents by graph.agentConnections.accounts.collectAsStateWithLifecycle()
     val connection = agents.firstOrNull { it.id == id } ?: return
@@ -833,7 +853,7 @@ fun AgentHome(
         )
         return
     }
-    SignedInAgentHome(graph, id, agents, onOpenConversation, onCompose, onSettings, onSettingsRow, onComposeWithPicture, onOpenArtifacts, onOpenSurface, onOpenArtifact, onOpenFeed, onSignIn, onOpenTodos, onOpenVaultItem)
+    SignedInAgentHome(graph, id, agents, onOpenConversation, onCompose, onSettings, onSettingsRow, onComposeWithPicture, onOpenArtifacts, onOpenSurface, onOpenArtifact, onOpenFeed, onSignIn, onOpenTodos, onOpenVaultItem, onOpenPerson)
 }
 
 /**
@@ -911,8 +931,10 @@ private fun SignedInAgentHome(
     onSignIn: (server: String) -> Unit,
     onOpenTodos: () -> Unit,
     onOpenVaultItem: (surfaceId: String, itemId: String, folder: Boolean, name: String) -> Unit,
+    onOpenPerson: (userId: String) -> Unit,
 ) {
     val session = remember(id) { graph.agentSessions.session(id) } ?: return
+    val people by session.team.users.collectAsStateWithLifecycle()
     val feed by session.feed.collectAsStateWithLifecycle()
     val status by session.status.collectAsStateWithLifecycle()
     val syncing by session.isSyncing.collectAsStateWithLifecycle()
@@ -929,7 +951,7 @@ private fun SignedInAgentHome(
     val permissions by session.permissions.collectAsStateWithLifecycle()
     val canCompose = permissions.canWrite
     val canAskChief = permissions.allows(com.slopus.happy.agent.Permission.BOTS_MANAGE)
-    val actions = remember(graph, session, onOpenConversation, onCompose, onComposeWithPicture, onSettings, onSettingsRow, onOpenArtifacts, onOpenSurface, onOpenArtifact, onOpenFeed, add, switchAccount, onSignIn, onOpenTodos, voice, onOpenVaultItem, canCompose, canAskChief) {
+    val actions = remember(graph, session, onOpenConversation, onCompose, onComposeWithPicture, onSettings, onSettingsRow, onOpenArtifacts, onOpenSurface, onOpenArtifact, onOpenFeed, add, switchAccount, onSignIn, onOpenTodos, voice, onOpenVaultItem, onOpenPerson, canCompose, canAskChief) {
         AgentHomeActions(
             onOpenConversation = onOpenConversation,
             onCompose = onCompose,
@@ -951,6 +973,7 @@ private fun SignedInAgentHome(
             canAskChief = canAskChief,
             projectsAvailable = !session.client.cloud,
             notificationsAvailable = session.client.cloud,
+            onOpenPerson = onOpenPerson.takeIf { session.client.cloud },
         )
     }
     CompositionLocalProvider(LocalAgentPictures provides session.pictures) {
@@ -972,6 +995,8 @@ private fun SignedInAgentHome(
                 { withContext(Dispatchers.IO) { AgentSearchSources.reads(session.feed.value, session::cachedResource) { path -> session.client.decode<JsonObject>("GET", path) } } }
             },
             search = remember(session) { { query -> session.search(query) } },
+            people = people,
+            wantPeople = remember(session) { { ids -> session.team.want(ids) } },
         )
     }
 }

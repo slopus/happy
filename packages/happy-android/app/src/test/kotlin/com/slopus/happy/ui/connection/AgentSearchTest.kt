@@ -278,6 +278,33 @@ class AgentSearchTest {
         )
     }
 
+    /** A Happy Cloud server's people (`type: "user"`): under People after what was found, six at most in the daemon's order; elsewhere none. */
+    @Test
+    fun peopleTheDaemonFoundStandUnderTheirOwnHeadingOnHappyCloud() {
+        val setting = AgentSearchEntry("theme", "Plan settings", com.slopus.happy.ui.components.Ionicon.SettingsOutline) {}
+        val remote = SearchAnswer(
+            "plan",
+            listOf(SearchHit.Agent("agent:at3", 1, "at3", "Plan the launch", "task", workspaceId = "wt3")) +
+                (0 until 8).map { SearchHit.User("user:u$it", it + 2, "u$it", "Planner $it") } +
+                SearchHit.User("user:u0", 10, "u0", "Planner 0"),
+        )
+        val results = agentSearchResults(feed, "plan", label, words, emptyList(), listOf(setting), remote = remote, people = true)
+        val keys = results.map { it.key }
+        val people = keys.indexOf("heading-People")
+        // What was found, then People, then the settings.
+        assertTrue(keys.take(people).all { it.startsWith("agent:") || it.startsWith("document:") })
+        assertEquals(listOf("heading-People") + (0 until 6).map { "user:u$it" } + listOf("heading-Settings", "entry-theme"), keys.drop(people))
+        val first = results[people + 1] as AgentSearchResult.Person
+        assertEquals(Triple("u0", "Planner 0", true), Triple(first.userId, first.name, first.place.first))
+        assertTrue((results[people + 6] as AgentSearchResult.Person).place.last)
+        // People alone are an answer too: they come before the settings.
+        val alone = agentSearchResults(feed, "zed", label, words, emptyList(), listOf(AgentSearchEntry("z", "Zed", com.slopus.happy.ui.components.Ionicon.SettingsOutline) {}),
+            remote = SearchAnswer("zed", listOf(SearchHit.User("user:z", 1, "z", "Zed"))), people = true)
+        assertEquals(listOf("heading-People", "user:z", "heading-Settings", "entry-z"), alone.map { it.key })
+        // Any other server has no profiles: no people, and none in the found card either.
+        assertTrue(agentSearchResults(feed, "plan", label, words, emptyList(), emptyList(), remote = remote).none { it.key.startsWith("user:") || it.key == "heading-People" })
+    }
+
     @Test
     fun theCardHoldsTwelveAndEachSectionSix() {
         val many = AgentSearchSources(artifacts = (0 until 15).map { AgentSearchSources.Artifact(com.slopus.happy.artifacts.ArtifactRef("a$it", 1, "html", "Chart $it", followsLatest = true)) })

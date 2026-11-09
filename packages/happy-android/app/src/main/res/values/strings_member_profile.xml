@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A Happy Cloud member's profile (ui/connection/MemberProfile.kt) and
+  search's People. Not in happy-app's catalogs. Translated in values-*/
+  (AndroidStringsTranslatedTest).
+-->
+<resources>
+    <string name="member_profile_tasks">Tasks</string>
+    <string name="member_profile_active_tasks">Active tasks</string>
+    <string name="member_profile_active_days">Active days, last 30</string>
+    <string name="member_profile_last_active">Last active</string>
+    <string name="member_profile_usage">Usage</string>
+    <string name="member_profile_tokens">Tokens</string>
+    <string name="member_profile_window_hour">Past hour</string>
+    <string name="member_profile_window_day">Past day</string>
+    <string name="member_profile_window_week">Past week</string>
+    <string name="member_profile_window_month">Past month</string>
+    <string name="member_profile_recent">Recent activity</string>
+    <string name="member_profile_no_tasks">No tasks yet</string>
+    <string name="member_profile_unknown">This person isn’t on this team.</string>
+    <string name="member_profile_archived">Archived</string>
+    <string name="agent_search_people">People</string>
+</resources>

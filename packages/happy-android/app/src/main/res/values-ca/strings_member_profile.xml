@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_member_profile.xml in ca: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="member_profile_tasks">Tasques</string>
+    <string name="member_profile_active_tasks">Tasques actives</string>
+    <string name="member_profile_active_days">Dies actius de 30</string>
+    <string name="member_profile_last_active">Darrera activitat</string>
+    <string name="member_profile_usage">Ús</string>
+    <string name="member_profile_tokens">Tokens</string>
+    <string name="member_profile_window_hour">Darrera hora</string>
+    <string name="member_profile_window_day">Darrer dia</string>
+    <string name="member_profile_window_week">Darrera setmana</string>
+    <string name="member_profile_window_month">Darrer mes</string>
+    <string name="member_profile_recent">Activitat recent</string>
+    <string name="member_profile_no_tasks">Encara no hi ha tasques</string>
+    <string name="member_profile_unknown">Aquesta persona no és a l’equip.</string>
+    <string name="member_profile_archived">Arxivada</string>
+    <string name="agent_search_people">Persones</string>
+</resources>

@@ -384,7 +384,12 @@ win:
     fusion, as desktop's `remoteRow` leaves out what it can't open:
     projects and worktrees (they open nothing on the phone, as their home
     headings don't), anything archived, a conversation or message in no
-    workspace, and people and skills, which don't parse.
+    workspace, and skills, which don't parse. People (`type: "user"`, only
+    `userId` and `name`) stand apart under People, after what was found, at
+    most six in the daemon's order, and only on a Happy Cloud server
+    (`AgentHomeActions.onOpenPerson`); each wears their face from the team
+    directory (`TeamDirectory`, `GET /v0/users?ids=`, never a profile read
+    per row) and opens their profile.
   - Every found row is a title and desktop's meta under it (66 high): a
     conversation's kind (Bot, Task, Subtask) or, for a project's chat, its
     project and worktree; a Surface's kind; an artifact's type; a todo's
@@ -1184,7 +1189,14 @@ change its wire behaviour on Android alone.
   `member.*`, `role.*` and `profile.updated`, since a member's name is
   their profile's (there is no `member.added`); Leave server is `POST
   /v0/members/leave`, confirmed, then the server is removed here too, and
-  its last owner gets `409 last_owner`. No account pass is needed. The
+  its last owner gets `409 last_owner`. No account pass is needed. A
+  member with a `userId` opens their profile (`MemberProfile.kt`,
+  `agent/MemberProfiles.kt`; cluster `GET /v0/users/:id/profile`, Happy
+  Cloud only): the agent page's header and tiles with their picture round,
+  job title and team role, Usage (tasks, active tasks, active days of the
+  last 30, last active), Tokens per window (input plus output, which
+  already hold cache and reasoning, summed over providers and models) and
+  Recent activity, their latest ten tasks, each opening its conversation. The
   accounts service lists servers without a role now (`CloudServer.role` is
   optional; the picker shows a role only where one is listed).
   A cloud server's team roles gate what shows (`agent/AgentPermissions.kt`):

@@ -79,10 +79,10 @@ class SearchTest {
         // The query in a JSON body, never the URL.
         assertEquals("POST /v0/search", daemon.paths.single())
         assertEquals(Json.parseToJsonElement("""{"q":"café & launch","limit":20}"""), Json.parseToJsonElement(daemon.bodies.single()!!))
-        // People and skills have no page on the phone, so they're left out with the type it doesn't know.
-        assertEquals(listOf("vault_file:f1", "todo:t1", "agent:a1", "agent:a2", "calendar_event:e1", "message:m1"), answer.hits.map { it.key })
+        // Skills have no page on the phone, so they're left out with the type it doesn't know; a person opens their profile.
+        assertEquals(listOf("vault_file:f1", "todo:t1", "agent:a1", "agent:a2", "calendar_event:e1", "message:m1", "user:u1"), answer.hits.map { it.key })
         // Each keeps the rank the daemon gave it in its whole list.
-        assertEquals(listOf(1, 3, 4, 5, 6, 7), answer.hits.map { it.rank })
+        assertEquals(listOf(1, 3, 4, 5, 6, 7, 8), answer.hits.map { it.rank })
         val file = answer.hits.first() as SearchHit.VaultFile
         assertEquals(4, file.line)
         assertEquals("The launch moves to Friday", file.snippet)
@@ -96,7 +96,19 @@ class SearchTest {
         assertEquals("content" to "Bring the launch banner", event.match to event.snippet)
         val message = answer.hits[5] as SearchHit.Message
         assertEquals(listOf("a1", "m1", "user", "when is the launch?", "w1", "p1"), listOf(message.agentId, message.messageId, message.role, message.snippet, message.workspaceId, message.projectId))
+        assertEquals(SearchHit.User("user:u1", 8, "u1", "Launch Lee"), answer.hits[6])
         assertTrue(answer.truncated && answer.partial)
+    }
+
+    /** The cluster's people (`type: "user"`) carry only `userId` and `name`, their picture read apart; one without a `userId` doesn't read. */
+    @Test
+    fun aPersonReadsByTheirIdAndName() {
+        assertEquals(
+            SearchHit.User("user:u2", 1, "u2", "Ada Lovelace"),
+            SearchHit.parse(Json.parseToJsonElement("""{"type":"user","key":"user:u2","rank":1,"userId":"u2","name":"Ada Lovelace","email":"ada@example.com"}""")),
+        )
+        assertEquals(SearchHit.User("user:u3", 2, "u3", ""), SearchHit.parse(Json.parseToJsonElement("""{"type":"user","key":"user:u3","rank":2,"userId":"u3"}""")))
+        assertNull(SearchHit.parse(Json.parseToJsonElement("""{"type":"user","key":"user:u4","rank":3,"name":"No id"}""")))
     }
 
     @Test

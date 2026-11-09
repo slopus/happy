@@ -36,7 +36,7 @@ object TeamMembers {
     suspend fun read(client: AgentClient): Team = coroutineScope {
         val roles = async {
             try {
-                client.decode<Roles>("GET", "/v0/roles").roles
+                roles(client)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -45,6 +45,9 @@ object TeamMembers {
         }
         Team(client.decode<Members>("GET", "/v0/members").members, roles.await())
     }
+
+    /** The team's roles (`GET /v0/roles`). */
+    suspend fun roles(client: AgentClient): List<TeamRole> = client.decode<Roles>("GET", "/v0/roles").roles
 
     /** Leaves the team; its last owner can't ([lastOwner]). */
     suspend fun leave(client: AgentClient) {

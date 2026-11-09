@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_member_profile.xml in b+zh+Hant: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="member_profile_tasks">任務</string>
+    <string name="member_profile_active_tasks">進行中的任務</string>
+    <string name="member_profile_active_days">近 30 天活躍天數</string>
+    <string name="member_profile_last_active">最近活躍</string>
+    <string name="member_profile_usage">用量</string>
+    <string name="member_profile_tokens">權杖</string>
+    <string name="member_profile_window_hour">過去 1 小時</string>
+    <string name="member_profile_window_day">過去 1 天</string>
+    <string name="member_profile_window_week">過去 1 週</string>
+    <string name="member_profile_window_month">過去 1 個月</string>
+    <string name="member_profile_recent">最近活動</string>
+    <string name="member_profile_no_tasks">還沒有任務</string>
+    <string name="member_profile_unknown">此人不在這個團隊中。</string>
+    <string name="member_profile_archived">已封存</string>
+    <string name="agent_search_people">成員</string>
+</resources>

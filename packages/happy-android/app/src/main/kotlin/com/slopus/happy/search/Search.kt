@@ -15,8 +15,8 @@ import kotlinx.serialization.json.jsonObject
  * One thing `POST /v0/search` found (happy-agent API.md, "Search" ›
  * Result types): its [key] (`<type>:<id>`, the same one the phone's own
  * search gives it), its 1-based [rank] in the daemon's whole list, and the
- * fields its row shows. People (`user`) and skills (`skill`) have no page
- * on the phone, so they are left out as types it doesn't know are.
+ * fields its row shows. Skills (`skill`) have no page on the phone, so
+ * they are left out as types it doesn't know are.
  */
 @Immutable
 sealed interface SearchHit {
@@ -95,6 +95,10 @@ sealed interface SearchHit {
         val projectId: String? = null,
     ) : SearchHit
 
+    /** A team member, found by name; their profile is on Happy Cloud servers only. Their picture is read apart ([com.slopus.happy.agent.TeamDirectory]). */
+    @Serializable
+    data class User(override val key: String, override val rank: Int, val userId: String, val name: String = "") : SearchHit
+
     @Serializable
     data class Project(override val key: String, override val rank: Int, val projectId: String, val name: String, val archived: Boolean = false) : SearchHit
 
@@ -103,7 +107,7 @@ sealed interface SearchHit {
 
     companion object {
         /** The types in the daemon's provider order, which the phone's own search ranks in too. */
-        val TYPES = listOf("vault_file", "vault_folder", "document", "message", "todo", "calendar_event", "artifact", "surface", "agent", "project", "workspace")
+        val TYPES = listOf("vault_file", "vault_folder", "document", "message", "todo", "calendar_event", "artifact", "surface", "agent", "project", "workspace", "user")
 
         /**
          * [value] as the hit its `type` names, any field this phone doesn't
@@ -124,6 +128,7 @@ sealed interface SearchHit {
                 "agent" -> Agent.serializer()
                 "project" -> Project.serializer()
                 "workspace" -> Workspace.serializer()
+                "user" -> User.serializer()
                 else -> return null
             }
             return try {

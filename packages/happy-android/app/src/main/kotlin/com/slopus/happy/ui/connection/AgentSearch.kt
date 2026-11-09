@@ -60,6 +60,7 @@ import com.slopus.happy.agent.AgentClient
 import com.slopus.happy.agent.AgentFeed
 import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.agent.ConversationKind
+import com.slopus.happy.agent.TeamUser
 import com.slopus.happy.agent.isNullish
 import com.slopus.happy.agent.string
 import com.slopus.happy.artifacts.ArtifactCatalog
@@ -71,6 +72,7 @@ import com.slopus.happy.search.SearchHit
 import com.slopus.happy.ui.components.HomeCardPlace
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.avatar.PlaceholderAvatar
 import com.slopus.happy.vaults.VaultNames
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
@@ -252,6 +254,11 @@ sealed interface AgentSearchResult {
         override val key get() = "artifact-${artifact.id}"
     }
 
+    /** A team member the daemon found, under People; it opens their profile. */
+    data class Person(val userId: String, val name: String, val place: HomeCardPlace) : AgentSearchResult {
+        override val key get() = "user:$userId"
+    }
+
     /**
      * One result of search under its [key] (`<type>:<id>`), as desktop's
      * palette draws it: its [title] and, under it, [detail], what it is and
@@ -396,6 +403,8 @@ class AgentSearchWords(
     val shared: String = "Shared",
     val done: String = "Done",
     val agent: String = "Agent",
+    /** The heading over the team members found. */
+    val people: String = "People",
     /** A found Surface the person isn't in (desktop's "not joined"). */
     val notJoined: String = "not joined",
     /** A found task the person isn't in (desktop's "Task you have not joined"). */
@@ -543,10 +552,11 @@ private fun conversationFolders(feed: AgentFeed): Map<String, String> {
  * Whether the phone can open what the daemon found (desktop's `remoteRow`
  * leaves out what it has nowhere to open): not a project or a worktree,
  * which open nothing on the phone, nothing archived, and no conversation,
- * or message of one, in no workspace. People and skills never parse.
+ * or message of one, in no workspace. People stand apart, under their own
+ * heading; skills never parse.
  */
 internal fun searchHitOpens(hit: SearchHit): Boolean = when (hit) {
-    is SearchHit.Project, is SearchHit.Workspace -> false
+    is SearchHit.Project, is SearchHit.Workspace, is SearchHit.User -> false
     is SearchHit.Agent -> !hit.archived && hit.workspaceId != null
     is SearchHit.Message -> hit.workspaceId != null
     else -> true
@@ -560,8 +570,9 @@ internal fun searchHitOpens(hit: SearchHit): Boolean = when (hit) {
  * the settings that answer, each under its heading, at most six, best
  * first, which only the phone has. Each section stands where its best
  * answer puts it; what was found comes first once the daemon has answered
- * with anything. Nothing typed: the bots and tasks last active, one card
- * with no title.
+ * with anything. Where [people] (a Happy Cloud server), the team members
+ * the daemon found follow under People, at most six in its order.
+ * Nothing typed: the bots and tasks last active, one card with no title.
  */
 fun agentSearchResults(
     feed: AgentFeed,
@@ -572,6 +583,7 @@ fun agentSearchResults(
     settings: List<AgentSearchEntry>,
     sources: AgentSearchSources = AgentSearchSources.None,
     remote: SearchAnswer? = null,
+    people: Boolean = false,
 ): List<AgentSearchResult> {
     val out = ArrayList<AgentSearchResult>()
     if (query.isBlank()) {
@@ -606,8 +618,12 @@ fun agentSearchResults(
             ranked.mapIndexed { index, entry -> AgentSearchResult.Entry(entry, HomeCardPlace(first = index == 0, last = index == ranked.lastIndex)) }
         return rows to ranked.minOf { AgentSearch.rank(it.title, query) ?: Int.MAX_VALUE }
     }
-    val foundBest = if (hits.isNotEmpty()) Int.MIN_VALUE else local.minOfOrNull { it.rank } ?: Int.MAX_VALUE
-    listOf(found to foundBest, section(words.actions, actions), section(words.settings, settings))
+    val persons = if (people) remote?.hits.orEmpty().filterIsInstance<SearchHit.User>().distinctBy { it.userId }.take(AgentSearch.SECTION_LIMIT) else emptyList()
+    val peopleRows = if (persons.isEmpty()) emptyList() else listOf(AgentSearchResult.Heading(words.people)) +
+        persons.mapIndexed { index, hit -> AgentSearchResult.Person(hit.userId, hit.name, HomeCardPlace(first = index == 0, last = index == persons.lastIndex)) }
+    val answered = hits.isNotEmpty() || persons.isNotEmpty()
+    val foundBest = if (answered) Int.MIN_VALUE else local.minOfOrNull { it.rank } ?: Int.MAX_VALUE
+    listOf(found to foundBest, peopleRows to Int.MIN_VALUE, section(words.actions, actions), section(words.settings, settings))
         .filter { it.first.isNotEmpty() }
         // Stable: among equals, what was found, then the actions, then the settings.
         .sortedBy { it.second }
@@ -656,7 +672,7 @@ private class SearchNames(feed: AgentFeed, label: (AgentFeedRow) -> String?, sou
                 },
                 hit.projectId?.let(projects::get),
             )
-            is SearchHit.Project, is SearchHit.Workspace -> null
+            is SearchHit.Project, is SearchHit.Workspace, is SearchHit.User -> null
         }
     }
 }
@@ -743,6 +759,9 @@ fun AgentSearchResults(
     onOpenTodos: () -> Unit = {},
     /** Opens what the daemon found that the phone draws no row of; null for what opens nothing (a project, as on home). */
     onOpenHit: (SearchHit) -> (() -> Unit)? = { null },
+    /** The team members read so far ([com.slopus.happy.agent.TeamDirectory]), whose pictures People wear. */
+    people: Map<String, TeamUser> = emptyMap(),
+    onOpenPerson: (userId: String) -> Unit = {},
 ) {
     val colors = HappyTheme.colors
     val density = LocalDensity.current
@@ -810,6 +829,13 @@ fun AgentSearchResults(
                         result.place,
                         tag,
                     ) { onOpenArtifact(result.artifact) }
+                    is AgentSearchResult.Person -> AgentSearchEntryRow(
+                        result.name.ifBlank { result.userId },
+                        Ionicon.PersonCircleOutline,
+                        result.place,
+                        tag,
+                        mark = { PersonMark(result.userId, people[result.userId]?.photo, AgentHomeSpec.mark) },
+                    ) { onOpenPerson(result.userId) }
                     is AgentSearchResult.Found -> {
                         val hit = result.hit
                         val untitled = stringResource(if (hit is SearchHit.Artifact || result.local is AgentSearchResult.Artifact) R.string.agent_artifacts_untitled else R.string.session_new_chat)
@@ -885,6 +911,7 @@ internal fun searchHitTitle(hit: SearchHit): String = when (hit) {
     is SearchHit.Agent -> hit.title
     is SearchHit.Project -> hit.name
     is SearchHit.Workspace -> hit.name
+    is SearchHit.User -> hit.name
 }
 
 /**
@@ -915,6 +942,14 @@ private fun searchHitGlyph(hit: SearchHit): Ionicon = when (hit) {
     is SearchHit.Surface -> RowTile.surface(hit.surfaceType).first
     is SearchHit.Agent -> if (hit.kind == "bot") Ionicon.PersonCircleOutline else Ionicon.ChatbubbleEllipsesOutline
     is SearchHit.Project, is SearchHit.Workspace -> Ionicon.FolderOutline
+    is SearchHit.User -> Ionicon.PersonCircleOutline
+}
+
+/** A team member's round face: their picture over its ThumbHash, else the placeholder their ID picks. */
+@Composable
+internal fun PersonMark(userId: String, photo: String?, size: Dp) {
+    if (photo != null) AgentPicture(TeamUser.photoPath(userId), photo, size, size / 2)
+    else PlaceholderAvatar(userId, size, shape = CircleShape)
 }
 
 /**

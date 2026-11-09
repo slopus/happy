@@ -198,6 +198,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                                     }
                                 },
                                 onSignIn = { server -> go.open(null) { nav.signInToServerAgain(graph, server, replacing = account.id) } },
+                                onOpenPerson = { userId -> go.open(null) { nav.navigate(com.slopus.happy.ui.connection.MemberProfileRoute(account.id, userId)) } },
                             )
                             is OpenAccount.Happy -> LegacyHome(graph, nav, onOpenSession = openSession, onTroubleshoot = troubleshoot, go = go)
                             OpenAccount.None -> Unit

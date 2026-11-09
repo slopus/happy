@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_member_profile.xml in ja: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="member_profile_tasks">タスク</string>
+    <string name="member_profile_active_tasks">進行中のタスク</string>
+    <string name="member_profile_active_days">過去30日の活動日数</string>
+    <string name="member_profile_last_active">最終アクティブ</string>
+    <string name="member_profile_usage">使用状況</string>
+    <string name="member_profile_tokens">トークン</string>
+    <string name="member_profile_window_hour">過去1時間</string>
+    <string name="member_profile_window_day">過去1日</string>
+    <string name="member_profile_window_week">過去1週間</string>
+    <string name="member_profile_window_month">過去1か月</string>
+    <string name="member_profile_recent">最近のアクティビティ</string>
+    <string name="member_profile_no_tasks">まだタスクはありません</string>
+    <string name="member_profile_unknown">この人はこのチームにいません。</string>
+    <string name="member_profile_archived">アーカイブ済み</string>
+    <string name="agent_search_people">メンバー</string>
+</resources>

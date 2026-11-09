@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_member_profile.xml in ru: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="member_profile_tasks">Задачи</string>
+    <string name="member_profile_active_tasks">Активные задачи</string>
+    <string name="member_profile_active_days">Активных дней из 30</string>
+    <string name="member_profile_last_active">Последняя активность</string>
+    <string name="member_profile_usage">Использование</string>
+    <string name="member_profile_tokens">Токены</string>
+    <string name="member_profile_window_hour">За час</string>
+    <string name="member_profile_window_day">За день</string>
+    <string name="member_profile_window_week">За неделю</string>
+    <string name="member_profile_window_month">За месяц</string>
+    <string name="member_profile_recent">Недавняя активность</string>
+    <string name="member_profile_no_tasks">Задач пока нет</string>
+    <string name="member_profile_unknown">Этого человека нет в команде.</string>
+    <string name="member_profile_archived">В архиве</string>
+    <string name="agent_search_people">Люди</string>
+</resources>

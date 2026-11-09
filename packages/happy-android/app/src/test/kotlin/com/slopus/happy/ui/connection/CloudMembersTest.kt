@@ -26,9 +26,10 @@ class CloudMembersTest {
 
     private var retries = 0
     private var leaves = 0
+    private val opened = mutableListOf<String>()
 
     private fun show(team: TeamSource.State, footer: String? = null) = rule.setHappyContent {
-        CloudMembersScreen("@acme", team, footer, leaving = false, onRetry = { retries++ }, onLeave = { leaves++ }, onBack = {})
+        CloudMembersScreen("@acme", team, footer, leaving = false, onRetry = { retries++ }, onLeave = { leaves++ }, onBack = {}, onOpenMember = { opened += it })
     }
 
     @Test
@@ -50,6 +51,14 @@ class CloudMembersTest {
         rule.onNodeWithText("Viewer").assertIsDisplayed()
         rule.onNodeWithTag(CloudTags.LEAVE).performClick()
         assertEquals(1, leaves)
+    }
+
+    @Test
+    fun aMemberWithAUserOpensTheirProfileAndOneWithoutOpensNothing() {
+        show(TeamSource.State.Loaded(Team(listOf(TeamMember("a1", userId = "u1", name = "Ada", role = "owner"), TeamMember("a2", name = "Invited", role = "member")))))
+        rule.onNodeWithTag(CloudTags.member("a1")).performClick()
+        rule.onNodeWithTag(CloudTags.member("a2")).performClick()
+        assertEquals(listOf("u1"), opened)
     }
 
     @Test
