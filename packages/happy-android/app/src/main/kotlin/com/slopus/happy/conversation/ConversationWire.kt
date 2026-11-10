@@ -7,6 +7,7 @@ import com.slopus.happy.chat.num
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
 import com.slopus.happy.conversation.ui.QuickReply
+import com.slopus.happy.conversation.ui.ReplyUi
 import com.slopus.happy.conversation.ui.UiActionRecord
 import com.slopus.happy.conversation.ui.UiDocument
 import kotlinx.serialization.json.JsonElement
@@ -144,7 +145,7 @@ sealed interface Presentation {
     /** What `show_ui` showed: its document, and the [items] its `images` point at by index; [raw] as sent, which the phone keeps. */
     data class Ui(val document: UiDocument, val items: List<MediaItem>, val raw: JsonObject) : Presentation
     /** What `suggest_replies` suggested: one-tap answers ([com.slopus.happy.conversation.ui.QuickReplies]); [raw] as [Ui]'s. */
-    data class QuickReplies(val options: List<String>, val raw: JsonObject) : Presentation
+    data class QuickReplies(val options: List<String>, val raw: JsonObject, val ui: List<ReplyUi?> = emptyList()) : Presentation
 
     companion object {
         fun parse(value: JsonElement?): Presentation? {
@@ -218,7 +219,10 @@ sealed interface Presentation {
                 "agent_spawn" -> AgentSpawn(o["model"].obj?.get("name").str)
                 "background_terminal_interaction" -> Terminal(o["input"].str.orEmpty(), o["command"].str)
                 "ui" -> Ui(UiDocument.parse(o["ui"]) ?: return null, o["items"].arr.orEmpty().mapNotNull(MediaItem::parse), o)
-                "quick_replies" -> QuickReplies(com.slopus.happy.conversation.ui.QuickReplies.options(o) ?: return null, o)
+                "quick_replies" -> {
+                    val options = com.slopus.happy.conversation.ui.QuickReplies.options(o) ?: return null
+                    QuickReplies(options, o, com.slopus.happy.conversation.ui.QuickReplies.ui(o, options.size))
+                }
                 else -> null
             }
         }
@@ -323,7 +327,7 @@ sealed interface Block {
     /** An action's attempt record (`action`); [raw] as [Ui]'s. */
     data class Action(val record: UiActionRecord, val raw: JsonObject) : Block
     /** Replies the daemon suggested itself in an agent message (`quick_replies`); [raw] as [Ui]'s. */
-    data class QuickReplies(val options: List<String>, val raw: JsonObject) : Block
+    data class QuickReplies(val options: List<String>, val raw: JsonObject, val ui: List<ReplyUi?> = emptyList()) : Block
     data class Unknown(val type: String) : Block
 
     companion object {
@@ -362,7 +366,7 @@ sealed interface Block {
                 "compaction" -> Compaction(o["status"].str ?: "running")
                 "ui" -> UiDocument.parse(o["ui"])?.let { Ui(it, o) } ?: Unknown(type)
                 "action" -> UiActionRecord.parse(o)?.let { Action(it, o) } ?: Unknown(type)
-                "quick_replies" -> com.slopus.happy.conversation.ui.QuickReplies.options(o)?.let { QuickReplies(it, o) } ?: Unknown(type)
+                "quick_replies" -> com.slopus.happy.conversation.ui.QuickReplies.options(o)?.let { QuickReplies(it, o, com.slopus.happy.conversation.ui.QuickReplies.ui(o, it.size)) } ?: Unknown(type)
                 else -> Unknown(type)
             }
         }

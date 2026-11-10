@@ -8,6 +8,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -18,8 +19,8 @@ import org.junit.Test
 /**
  * The client package's chat UI rules, against its own vectors.
  * `ui/actions.fixtures.json` and `ui/ui.schema.json` are
- * `packages/happy-agent-client/fixtures/ui/` from happy-agent 8417cce23
- * (client 0.0.161-preview.14), copied unchanged: take them again from
+ * `packages/happy-agent-client/fixtures/ui/` from happy-agent 5b749e558
+ * (client 0.0.162-preview.1), copied unchanged: take them again from
  * there when the catalog changes, never edit them by hand.
  */
 class UiActionsTest {
@@ -74,6 +75,33 @@ class UiActionsTest {
         assertEquals(null, QuickReplies.options(block("[]")))
         assertEquals("""{"messageId":"m1","toolCallId":"c1","index":2}""", QuickReply("m1", "c1", 2).json().toString())
         assertEquals("""{"messageId":"m1","index":0}""", QuickReply("m1", null, 0).json().toString())
+    }
+
+    @Test fun `each stored suggestion reads its reply components, the bare option for a type or provider this build doesn't draw`() {
+        val vectors = fixtures["replies"]!!.jsonArray.map { it.jsonObject }
+        assertTrue(vectors.isNotEmpty())
+        for (vector in vectors) {
+            val stored = buildJsonObject {
+                put("type", JsonPrimitive("quick_replies"))
+                vector["stored"]!!.jsonObject.forEach { (key, value) -> put(key, value) }
+            }
+            val options = QuickReplies.options(stored) ?: continue
+            val expected = stored["ui"]?.jsonArray?.map { ui ->
+                (ui as? JsonObject)?.takeIf { it["type"].string() == "provider" }?.get("props")?.jsonObject?.get("provider").string()
+                    ?.takeIf { it in ReplyUi.PROVIDERS }?.let(ReplyUi::Provider)
+            }?.takeIf { list -> list.any { it != null } }.orEmpty()
+            assertEquals(vector.toString(), expected, QuickReplies.ui(stored, options.size))
+        }
+        // The vectors' own: Claude and ChatGPT marked, "Skip for now" bare; "gemini" and "slideshow" bare.
+        assertEquals(listOf(ReplyUi.Provider("claude"), ReplyUi.Provider("codex"), null), QuickReplies.ui(vectors[1]["stored"]!!.jsonObject, 3))
+        assertEquals(emptyList<ReplyUi?>(), QuickReplies.ui(vectors[3]["stored"]!!.jsonObject, 1))
+    }
+
+    @Test fun `a media component reads its items and labels, and the old images type reads as it`() {
+        val media = UiComponent.parse(Json.parseToJsonElement("""{"id":"m","type":"media","fallback":"2 images: Login","props":{"items":[{"mediaIndex":0,"label":"Login"},{"mediaIndex":1}]}}"""))
+        assertEquals(listOf(UiComponent.Media.Item(0, "Login"), UiComponent.Media.Item(1, null)), (media as UiComponent.Media).items)
+        val images = UiComponent.parse(Json.parseToJsonElement("""{"id":"i","type":"images","fallback":"1 image","props":{"images":[{"mediaIndex":0,"alt":"A cat","caption":"Mittens"}]}}"""))
+        assertEquals(listOf(UiComponent.Media.Item(0, "Mittens")), (images as UiComponent.Media).items)
     }
 
     @Test fun `permissions resolve as uiActionPermission and uiActionAllowed do`() {

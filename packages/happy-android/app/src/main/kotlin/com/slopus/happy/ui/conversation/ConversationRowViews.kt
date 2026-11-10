@@ -12,6 +12,8 @@ import com.slopus.happy.conversation.InlinePicture
 import com.slopus.happy.conversation.pictureSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,6 +57,7 @@ import com.slopus.happy.media.MediaSizeText
 import com.slopus.happy.media.NotKept
 import com.slopus.happy.conversation.ConversationRow
 import com.slopus.happy.conversation.ConversationViewing
+import com.slopus.happy.conversation.ui.UiMediaLayout
 import com.slopus.happy.conversation.Delivery
 import com.slopus.happy.conversation.LiveText
 import com.slopus.happy.ui.chat.rememberTextReveal
@@ -430,9 +433,10 @@ private fun InlinePictures(
 
 @Composable
 private fun MediaRow(row: ConversationRow.Media, actions: ConversationRowActions, modifier: Modifier) {
-    val visual = row.items.filter { it.item.isVisual }
-    val other = row.items.filter { !it.item.isVisual }
-    // A chat UI images component says what each shows.
+    // Chat UI media lays every item out by its one rule, files too, at the row's own inset.
+    val visual = if (row.ui) row.items else row.items.filter { it.item.isVisual }
+    val other = if (row.ui) emptyList() else row.items.filter { !it.item.isVisual }
+    // A chat UI media component labels each item.
     val label = { ref: MediaRef -> row.labels.getOrNull(row.items.indexOf(ref))?.takeIf { it.isNotBlank() } }
     Column(
         modifier.fillMaxWidth().padding(vertical = ConversationRowSpec.marginVertical).testTag(ConversationRowTags.MEDIA),
@@ -442,7 +446,7 @@ private fun MediaRow(row: ConversationRow.Media, actions: ConversationRowActions
             // A kept picture read again once its download completes.
             val loads = visual.map { ref ->
                 key(ref.key) {
-                    if (ref.item.kind == "video") null else rememberMediaBytes(ref, actions.loadMedia, here = actions.kept?.phase(ref)?.isComplete == true)
+                    if (!ref.item.isVisual || ref.item.kind == "video") null else rememberMediaBytes(ref, actions.loadMedia, here = actions.kept?.phase(ref)?.isComplete == true)
                 }
             }
             val posters = visual.map { ref -> key(ref.key) { if (ref.item.kind == "video") rememberVideoPoster(ref, actions.loadVideo) else null } }
@@ -453,63 +457,21 @@ private fun MediaRow(row: ConversationRow.Media, actions: ConversationRowActions
                 val read = if (video) posters[index]?.let { MediaFlow.Image(it.width, it.height) } else loads[index]?.getOrNull()?.size
                 MediaFlow.Item(video, if (MediaFlow.pointSize(stated) == null && read?.width != null) read else stated)
             }
-            MediaFlowLayout(
+            val tiles: @Composable (Int) -> Unit = { index -> MediaTileFor(row, visual, index, loads, posters, actions, label) }
+            if (row.ui) {
+                // Chat UI media: its sizes from the snapshots alone, never from bytes read, so it never moves.
+                UiMediaFlowLayout(
+                    items = visual.map { ref -> UiMediaLayout.Input(ref.item.kind, ref.item.width, ref.item.height, label(ref) != null) },
+                    labels = visual.map(label),
+                    modifier = Modifier.padding(horizontal = ConversationRowSpec.marginHorizontal),
+                    tile = tiles,
+                )
+            } else MediaFlowLayout(
                 items = items,
                 columns = row.columns,
                 limits = MediaFlow.tool,
                 modifier = Modifier.padding(horizontal = ConversationRowSpec.marginHorizontal),
-            ) { index ->
-                val ref = visual[index]
-                val key = ConversationViewing.presentedKey(ref)
-                val thumbhash = rememberThumbHash(ref.item.thumbhash)
-                val kept = actions.kept
-                if (ref.item.kind == "video") {
-                    val poster = posters[index]
-                    val frame = poster?.frame
-                    val still = remember(frame) { frame?.asImageBitmap() }
-                    val duration = poster?.seconds?.let(::formatDuration)
-                    Box {
-                        MediaTile(
-                            bytes = null,
-                            cacheKey = key,
-                            contentDescription = label(ref) ?: ref.item.name.ifEmpty { stringResource(R.string.artifact_video) },
-                            failed = false,
-                            onClick = { if (kept != null) actions.play(key, ref) else actions.onOpenPicture(key) },
-                            placeholder = still ?: thumbhash,
-                            video = true,
-                            // Kept, the ring is the play button and the badge says the length.
-                            duration = if (kept == null) duration else null,
-                            playButton = kept == null,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                        if (kept != null) DownloadStatus(ref, kept, video = true, duration = duration, starting = actions.videos?.isStarting(key) == true, onPlay = { actions.play(key, ref) })
-                    }
-                } else {
-                    val load = loads[index]
-                    val bytes = load?.getOrNull()?.bytes
-                    // Waiting for a tap, the ring says so; the tile isn't a failure.
-                    val waiting = load?.exceptionOrNull() is NotKept || (kept != null && kept.phase(ref)?.let { !it.isComplete } == true)
-                    Box {
-                        MediaTile(
-                            bytes = bytes,
-                            cacheKey = key,
-                            contentDescription = label(ref) ?: ref.item.name.ifEmpty { stringResource(R.string.conversation_picture) },
-                            failed = load?.isFailure == true && !waiting,
-                            onClick = bytes?.let { { actions.onOpenPicture(key) } },
-                            placeholder = thumbhash,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                        if (kept != null) DownloadStatus(ref, kept, video = false)
-                    }
-                }
-            }
-        }
-        if (row.captions.isNotEmpty()) {
-            Text(
-                row.captions.joinToString(" · "),
-                style = ConversationRowSpec.notice,
-                color = HappyTheme.colors.textSecondary,
-                modifier = Modifier.padding(horizontal = ConversationRowSpec.marginHorizontal).testTag(ConversationRowTags.MEDIA_CAPTION),
+                tile = tiles,
             )
         }
         other.forEach { ref ->
@@ -536,6 +498,94 @@ private fun MediaRow(row: ConversationRow.Media, actions: ConversationRowActions
                 chip = kept?.let { { FileStatusChip(ref.key, phase, Ionicon.DocumentTextOutline, onTap = { it.toggle(ref) }) } },
             )
         }
+    }
+}
+
+/** One picture or recording of a media row, at the box its flow gives it. */
+@Composable
+private fun MediaTileFor(
+    row: ConversationRow.Media,
+    visual: List<MediaRef>,
+    index: Int,
+    loads: List<Result<MediaBytes>?>,
+    posters: List<VideoPoster?>,
+    actions: ConversationRowActions,
+    label: (MediaRef) -> String?,
+) {
+    if (!visual[index].item.isVisual) {
+        DocumentTile(visual[index], actions)
+        return
+    }
+    val ref = visual[index]
+    val key = ConversationViewing.presentedKey(ref)
+    val thumbhash = rememberThumbHash(ref.item.thumbhash)
+    val kept = actions.kept
+    if (ref.item.kind == "video") {
+        val poster = posters[index]
+        val frame = poster?.frame
+        val still = remember(frame) { frame?.asImageBitmap() }
+        val duration = poster?.seconds?.let(::formatDuration)
+        Box {
+            MediaTile(
+                bytes = null,
+                cacheKey = key,
+                contentDescription = label(ref) ?: ref.item.name.ifEmpty { stringResource(R.string.artifact_video) },
+                failed = false,
+                onClick = { if (kept != null) actions.play(key, ref) else actions.onOpenPicture(key) },
+                placeholder = still ?: thumbhash,
+                video = true,
+                // Kept, the ring is the play button and the badge says the length.
+                duration = if (kept == null) duration else null,
+                playButton = kept == null,
+                crop = row.ui,
+                modifier = Modifier.fillMaxSize(),
+            )
+            if (kept != null) DownloadStatus(ref, kept, video = true, duration = duration, starting = actions.videos?.isStarting(key) == true, onPlay = { actions.play(key, ref) })
+        }
+    } else {
+        val load = loads[index]
+        val bytes = load?.getOrNull()?.bytes
+        // Waiting for a tap, the ring says so; the tile isn't a failure.
+        val waiting = load?.exceptionOrNull() is NotKept || (kept != null && kept.phase(ref)?.let { !it.isComplete } == true)
+        Box {
+            MediaTile(
+                bytes = bytes,
+                cacheKey = key,
+                contentDescription = label(ref) ?: ref.item.name.ifEmpty { stringResource(R.string.conversation_picture) },
+                failed = load?.isFailure == true && !waiting,
+                onClick = bytes?.let { { actions.onOpenPicture(key) } },
+                placeholder = thumbhash,
+                crop = row.ui,
+                modifier = Modifier.fillMaxSize(),
+            )
+            if (kept != null) DownloadStatus(ref, kept, video = false)
+        }
+    }
+}
+
+/**
+ * A file in a chat UI `media` flow, at the box the rule gives it: surfaceHigh,
+ * radius 8, a 24 document glyph over its name (13/18, two lines), centred;
+ * a tap opens it as a file card's would.
+ */
+@Composable
+private fun DocumentTile(ref: MediaRef, actions: ConversationRowActions) {
+    val colors = HappyTheme.colors
+    val open = actions.onOpenMedia
+    Column(
+        Modifier
+            .fillMaxSize()
+            .testTag(ConversationRowTags.MEDIA_FILE)
+            .clip(RoundedCornerShape(ConversationMediaSpec.radius))
+            .background(colors.surfaceHigh)
+            .then(if (open != null) Modifier.clickable(role = Role.Button) { open(ref) } else Modifier)
+            .padding(8.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(Ionicon.DocumentTextOutline, 24.dp, colors.textSecondary)
+        Spacer(Modifier.height(6.dp))
+        Text(ref.item.name, style = ConversationMediaSpec.label, color = colors.text, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
     }
 }
 

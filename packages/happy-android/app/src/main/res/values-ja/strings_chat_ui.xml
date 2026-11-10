@@ -3,15 +3,7 @@
     <string name="conversation_quick_reply">↩ 提案された返信</string>
     <string name="conversation_ui_tree_show_all">すべて表示（%1$d）</string>
     <string name="ui_live_cli_reading">このコンピューターで%1$sを確認しています…</string>
-    <string name="ui_live_cli_missing">未インストール · %1$sの公式インストーラー</string>
-    <string name="ui_live_cli_missing_no_installer">未インストールです。Happyはここで%1$sをインストールできません。</string>
-    <string name="ui_live_cli_install">インストールしてサインイン</string>
-    <string name="ui_live_cli_signed_out">インストール済み（%1$s）。まだサインインしていません。</string>
-    <string name="ui_live_cli_signed_out_plain">インストール済み。まだサインインしていません。</string>
-    <string name="ui_live_cli_unknown">インストール済み（%1$s）。サインイン済みかHappyには分かりません。</string>
-    <string name="ui_live_cli_unknown_plain">インストール済み。サインイン済みかHappyには分かりません。</string>
     <string name="ui_live_cli_sign_in">サインイン</string>
-    <string name="ui_live_cli_code">コード %1$s</string>
     <string name="ui_live_cli_open_page">サインインページを開く</string>
     <string name="ui_live_cli_code_field">ページのコードを貼り付け</string>
     <string name="ui_live_cli_cancel">キャンセル</string>
@@ -19,7 +11,6 @@
     <string name="ui_live_cli_signed_in_plan">%1$sでサインイン中 · %2$s</string>
     <string name="ui_live_cli_signed_in_plain">サインイン済み</string>
     <string name="ui_live_cli_use">%1$sを使う</string>
-    <string name="ui_live_cli_token">またはセットアップトークンを貼り付け</string>
     <string name="ui_live_cli_unsupported">このサーバーのAIは設定で構成します。</string>
     <string name="ui_live_model_title">デフォルトモデル</string>
     <string name="ui_live_model_reading">このHappy Agentのモデルを読み込んでいます…</string>
@@ -53,4 +44,22 @@
     <string name="ui_live_not_allowed">あなたのロールではここで変更できません。</string>
     <string name="ui_live_github_connected">%1$sとして接続済み。</string>
     <string name="ui_live_github_connected_plain">接続済み。</string>
+    <string name="conversation_reply_not_installed">未インストール</string>
+    <string name="conversation_reply_signed_out">未サインイン</string>
+    <plurals name="conversation_reply_accounts">
+        <item quantity="other">%1$d 件のアカウント</item>
+    </plurals>
+    <string name="ui_live_cli_not_here">このコンピュータにはまだありません · 提供元 %1$s</string>
+    <string name="ui_live_cli_not_here_plain">このコンピュータにはまだありません</string>
+    <string name="ui_live_cli_set_up">セットアップ</string>
+    <string name="ui_live_cli_use_token">トークンを使う</string>
+    <string name="ui_live_cli_token_line">セットアップトークンか API キーを貼り付けてください</string>
+    <string name="ui_live_cli_token_field">トークンまたはキー</string>
+    <string name="ui_live_cli_save">保存</string>
+    <string name="ui_live_cli_code_placeholder">ページのコード</string>
+    <string name="ui_live_cli_continue">続ける</string>
+    <string name="ui_live_cli_browser">ブラウザで完了してください</string>
+    <string name="ui_live_cli_enter_code">%2$s のページで %1$s を入力</string>
+    <string name="ui_live_cli_add_account">アカウントを追加</string>
+    <string name="ui_live_cli_accounts">%1$s · %2$s +%3$d</string>
 </resources>

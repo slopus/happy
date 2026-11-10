@@ -7,6 +7,7 @@ import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
 import com.slopus.happy.conversation.ui.UiAction
 import com.slopus.happy.conversation.ui.QuickReply
+import com.slopus.happy.conversation.ui.ReplyUi
 import com.slopus.happy.conversation.ui.UiComponent
 import com.slopus.happy.conversation.ui.UiDocument
 import com.slopus.happy.conversation.ui.UiOffer
@@ -116,16 +117,19 @@ sealed interface ConversationRow {
 
     /**
      * Pictures, videos and files a tool presented, read on demand; [columns]
-     * as the tool asked (0: justified rows), under the [tool]'s line.
+     * as the tool asked (0: justified rows), under the [tool]'s line. A chat
+     * UI `media` component ([ui]) is laid out by its one shared rule
+     * ([com.slopus.happy.conversation.ui.UiMediaLayout]) instead, each item's
+     * [labels] under it.
      */
     data class Media(
         override val key: String,
         val items: List<MediaRef>,
         val columns: Int = 0,
         val tool: ToolUse? = null,
-        /** A chat UI `images` component's words for its pictures, by item: what each shows ([UiComponent.Images.Image.alt]) and its caption. */
+        /** A chat UI `media` component's label for each item, by item. */
         val labels: List<String?> = emptyList(),
-        val captions: List<String> = emptyList(),
+        val ui: Boolean = false,
     ) : ConversationRow
 
     /**
@@ -155,6 +159,8 @@ sealed interface ConversationRow {
         val options: List<String>,
         val chosen: Int? = null,
         val live: Boolean = false,
+        /** What each option shows beside its words, by index; empty for words alone. */
+        val ui: List<ReplyUi?> = emptyList(),
     ) : ConversationRow {
         fun reply(index: Int) = QuickReply(messageId, toolCallId, index)
     }
@@ -423,7 +429,7 @@ class ConversationRowBuilder(
                     is Block.Image -> rows += ConversationRow.Picture(key, block)
                     is Block.ToolCall -> rows += toolRows(key, id, block, references)
                     is Block.Ui -> rows += uiRows(key, id, block.document, null, emptyList())
-                    is Block.QuickReplies -> rows += ConversationRow.Replies(key, id, null, block.options)
+                    is Block.QuickReplies -> rows += ConversationRow.Replies(key, id, null, block.options, ui = block.ui)
                     is Block.Compaction, is Block.File, is Block.Action, is Block.Unknown -> Unit
                 }
             }
@@ -436,7 +442,7 @@ class ConversationRowBuilder(
 
         /**
          * A document's components, one row each, keyed by [key] and the
-         * component's id. `images` points at the call's [items] ([toolCallId]),
+         * component's id. `media` points at the call's [items] ([toolCallId]),
          * and is its fallback line where there are none; `phone_app` shows
          * nothing on a phone.
          */
@@ -446,17 +452,16 @@ class ConversationRowBuilder(
                 val offer = UiOffer(messageId, document.id, component.id)
                 when {
                     component is UiComponent.Other && component.hidden -> null
-                    component is UiComponent.Images -> {
-                        val shown = component.images.filter { it.mediaIndex in items.indices }
+                    component is UiComponent.Media -> {
+                        val shown = component.items.filter { it.mediaIndex in items.indices }
                         if (toolCallId == null || shown.isEmpty()) {
                             ConversationRow.Ui(rowKey, offer, UiComponent.Other(component.id, component.fallback, component.type))
                         } else {
                             ConversationRow.Media(
                                 rowKey,
                                 shown.map { MediaRef(toolCallId, it.mediaIndex, items[it.mediaIndex]) },
-                                component.columns,
-                                labels = shown.map { it.alt ?: it.caption },
-                                captions = shown.mapNotNull { it.caption?.takeIf(String::isNotBlank) },
+                                labels = shown.map { it.label },
+                                ui = true,
                             )
                         }
                     }
@@ -482,7 +487,7 @@ class ConversationRowBuilder(
                 // What show_ui showed stands in its call's place: the components, no line.
                 is Presentation.Ui -> uiRows(key, messageId, p.document, call.id, p.items).ifEmpty { listOf(ConversationRow.Tool(key, call.id, tool)) }
                 // So do suggested replies: the pills, which the conversation keeps only where they may be sent.
-                is Presentation.QuickReplies -> if (call.id == null) listOf(ConversationRow.Tool(key, call.id, tool)) else listOf(ConversationRow.Replies(key, messageId, call.id, p.options))
+                is Presentation.QuickReplies -> if (call.id == null) listOf(ConversationRow.Tool(key, call.id, tool)) else listOf(ConversationRow.Replies(key, messageId, call.id, p.options, ui = p.ui))
                 is Presentation.Media -> if (call.id == null || p.items.isEmpty()) {
                     listOf(ConversationRow.Tool(key, call.id, tool))
                 } else {

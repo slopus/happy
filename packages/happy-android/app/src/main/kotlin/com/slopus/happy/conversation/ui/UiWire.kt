@@ -43,13 +43,19 @@ sealed interface UiComponent {
     /** The props as sent: what the client package's rules read ([UiCatalog.permission]). */
     val props: JsonObject
 
-    /** Pictures the call presented, by their index among its items. */
-    data class Images(override val id: String, override val fallback: String, val images: List<Image>, val columns: Int, override val props: JsonObject = NONE) : UiComponent {
+    /**
+     * Pictures and recordings the call presented, by their index among its
+     * items, each with an optional one-line label; laid out by the one shared
+     * rule ([UiMediaLayout]) from their sizes alone.
+     */
+    data class Media(override val id: String, override val fallback: String, val items: List<Item>, override val props: JsonObject = NONE) : UiComponent {
         override val type: String get() = TYPE
-        data class Image(val mediaIndex: Int, val alt: String?, val caption: String?)
+        data class Item(val mediaIndex: Int, val label: String?)
 
         companion object {
-            const val TYPE = "images"
+            const val TYPE = "media"
+            /** The type `media` replaced, read as it until no daemon sends it: its caption, else its alt, is the label. */
+            const val LEGACY = "images"
         }
     }
 
@@ -87,13 +93,13 @@ sealed interface UiComponent {
         }
 
         private fun read(id: String, fallback: String, type: String, props: JsonObject): UiComponent? = when (type) {
-            Images.TYPE -> Images(
+            Media.TYPE, Media.LEGACY -> Media(
                 id, fallback,
-                props["images"].arr.orEmpty().mapNotNull { value ->
-                    val image = value.obj ?: return@mapNotNull null
-                    Images.Image(image["mediaIndex"].num?.toInt() ?: return@mapNotNull null, image["alt"].str, image["caption"].str)
+                props[if (type == Media.TYPE) "items" else "images"].arr.orEmpty().mapNotNull { value ->
+                    val item = value.obj ?: return@mapNotNull null
+                    val label = (item["label"].str ?: item["caption"].str ?: item["alt"].str)?.trim()?.takeIf { it.isNotEmpty() }
+                    Media.Item(item["mediaIndex"].num?.toInt() ?: return@mapNotNull null, label)
                 }.takeIf { it.isNotEmpty() } ?: return null,
-                props["columns"].num?.toInt()?.takeIf { it in 1..3 } ?: 0,
                 props,
             )
             FileTree.TYPE -> FileTree(id, fallback, props["paths"].arr.orEmpty().mapNotNull { it.str }, props)

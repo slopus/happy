@@ -1,5 +1,6 @@
 package com.slopus.happy.agent
 
+import com.slopus.happy.chat.arr
 import com.slopus.happy.chat.bool
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
@@ -32,8 +33,34 @@ data class ProviderCli(
     val operation: Operation?,
     /** A UUIDv7 minted on every change: of two copies, the greater is newer. */
     val version: String,
+    /** Each configured provider of this type, where the server lists them; null from a server that keeps one sign-in. */
+    val accounts: List<Account>? = null,
 ) {
     data class Installer(val command: String, val sourceHost: String)
+
+    /** One account: what the vendor calls it, and whether it's signed in. */
+    data class Account(val id: String, val label: String, val email: String?, val plan: String?, val signIn: SignIn)
+
+    /** What a `provider` reply's note says (API.md "Quick replies"). */
+    sealed interface Note {
+        data object NotInstalled : Note
+        data object SignedOut : Note
+        data class Accounts(val count: Int) : Note
+    }
+
+    /**
+     * Its reply note: "Not installed" while missing; else its signed-in
+     * [accounts] when listed ("Not signed in" for none); else its one
+     * sign-in, and none while that is unknown.
+     */
+    val note: Note?
+        get() = when {
+            !installed -> Note.NotInstalled
+            accounts != null -> accounts.count { it.signIn == SignIn.SignedIn }.let { if (it == 0) Note.SignedOut else Note.Accounts(it) }
+            signIn == SignIn.SignedIn -> Note.Accounts(1)
+            signIn == SignIn.SignedOut -> Note.SignedOut
+            else -> null
+        }
 
     enum class SignIn { SignedIn, SignedOut, Unknown }
 
@@ -68,11 +95,7 @@ data class ProviderCli(
                 installed = installation?.get("status").str == "installed",
                 installedVersion = installation?.get("version").str,
                 installer = installer?.let { Installer(it["command"].str ?: return@let null, it["sourceHost"].str.orEmpty()) },
-                signIn = when (signIn?.get("status").str) {
-                    "signed_in" -> SignIn.SignedIn
-                    "signed_out" -> SignIn.SignedOut
-                    else -> SignIn.Unknown
-                },
+                signIn = signInOf(signIn?.get("status").str),
                 email = account?.get("email").str,
                 plan = account?.get("plan").str,
                 operation = operation?.let { o ->
@@ -93,7 +116,23 @@ data class ProviderCli(
                     )
                 },
                 version = cli["version"].str.orEmpty(),
+                accounts = cli["accounts"].arr?.mapNotNull { value ->
+                    val a = value.obj ?: return@mapNotNull null
+                    Account(
+                        a["id"].str ?: return@mapNotNull null,
+                        a["label"].str ?: a["email"].str.orEmpty(),
+                        a["email"].str,
+                        a["plan"].str,
+                        signInOf(a["signIn"].str ?: a["signIn"].obj?.get("status").str),
+                    )
+                },
             )
+        }
+
+        private fun signInOf(status: String?): SignIn = when (status) {
+            "signed_in" -> SignIn.SignedIn
+            "signed_out" -> SignIn.SignedOut
+            else -> SignIn.Unknown
         }
 
         /** Of [held] and [incoming] for one id, the newer: the greater version. */

@@ -1697,17 +1697,28 @@ UI wire types: the `ui` block of an agent message, the `ui` presentation of
 a `show_ui` call and the `action` block. A type this build doesn't draw, or
 props that don't read, is `UiComponent.Other`, shown as its fallback line;
 `phone_app` and `phone_pair` show nothing on a phone. `file_tree` is drawn
-natively (`ui/conversation/UiComponentViews.kt`); `images` becomes a
-`ConversationRow.Media` over the call's items, with the viewer, kept media
-and the agent page as any presented picture. The show_ui call has no line
-of its own. `conversation/ui/UiActions.kt` ports `uiActionPermission` /
-`uiActionAllowed`; `UiActionsTest` checks them, the catalog and the quick
-reply rules against `test/resources/ui/` (`fixtures/ui/` copied unchanged).
+natively (`ui/conversation/UiComponentViews.kt`); `media` (and the old
+`images`, read as it) becomes a `ConversationRow.Media` with `ui`, laid out
+by the client package's one rule, `layoutMedia`, ported as
+`conversation/ui/UiMediaLayout.kt` (160 dp rows, 6 apart, sizes from the
+presentation's items alone, never from bytes read, so the height is known
+before a byte arrives): every item, files too, in `UiMediaFlowLayout`, a
+picture covering its clamped box, each label one 13/18 line 4 under its
+item. The viewer, kept media and the agent page work as for any presented
+picture. The show_ui call has no line of its own.
+`conversation/ui/UiActions.kt` ports `uiActionPermission` /
+`uiActionAllowed`; `UiActionsTest` checks them, the catalog, the quick
+reply and reply component rules, and `UiMediaLayoutTest` the media frame
+table, against `test/resources/ui/` (`fixtures/ui/` copied unchanged).
 
 Live components (`ui/conversation/UiLiveViews.kt`) are drawn from the
 server's state: `provider_sign_in` from `GET /v0/provider-clis/:cliId` and
 `provider_cli.updated`, the newer version kept (`agent/ProviderClis.kt`;
-`404`/`501` points to Settings), `default_model` from the conversation's
+`404`/`501` points to Settings), as desktop's single row: mark, name, one
+status line, and one control line of fixed height (Set up, Sign in, Use,
+Add account for `account: "new"`, Try again, the page, Cancel); the token
+field only once "Use a token" is chosen, the code field while the vendor's
+page shows one, no install commands. `default_model` from the conversation's
 `ModeCatalog`, and on a Happy Cloud server only `invite` (roles from
 `/v0/roles`), `github_connect` (linked from
 `GET /v0/git/credentials?host=github.com`, re-read on `gitCredential.*`: the
@@ -1736,9 +1747,12 @@ the pills never move; TurnFold keeps the stack and the row above it. Every
 stack stays: `markReplies` sets `chosen` from the last `quickReply` naming
 it (messages, pending, outgoing, so it survives reloads and other devices)
 and `live` only on the newest stack while nobody has written after it.
-`QuickRepliesRow` stacks one pill per option, each as wide as the user
-bubble may be and right-aligned, with the bubble's radius and padding and a
-fill halfway to the ground; the chosen one takes the bubble fill and a ✓ in
+`QuickRepliesRow` stacks one pill per option, left-aligned at the agent's
+words, every pill the widest option's own width (one intrinsic measure, the
+widest note reserved) capped at the user bubble's, with the bubble's radius
+and padding and a fill halfway to the ground. A `provider` reply component
+(`ReplyUi`) draws the AI's mark before the words and, while the stack is
+live, its note from the provider CLI (`ProviderCli.note`) at the end; the chosen one takes the bubble fill and a ✓ in
 space that is always reserved, the others turn grey (`input.placeholder`),
 and nothing relayouts. Each pill is a button, announced selected when chosen; only a
 live stack takes a tap (not for a role that can't write). A tap is

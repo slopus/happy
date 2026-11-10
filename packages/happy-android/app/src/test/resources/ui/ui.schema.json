@@ -43,17 +43,17 @@
                                         "type": "string"
                                     },
                                     "type": {
-                                        "const": "images",
+                                        "const": "media",
                                         "type": "string"
                                     },
                                     "props": {
                                         "additionalProperties": false,
                                         "type": "object",
-                                        "required": ["images"],
+                                        "required": ["items"],
                                         "properties": {
-                                            "images": {
+                                            "items": {
                                                 "minItems": 1,
-                                                "maxItems": 12,
+                                                "maxItems": 24,
                                                 "type": "array",
                                                 "items": {
                                                     "additionalProperties": false,
@@ -62,39 +62,17 @@
                                                     "properties": {
                                                         "mediaIndex": {
                                                             "minimum": 0,
-                                                            "maximum": 11,
+                                                            "maximum": 23,
                                                             "type": "integer"
                                                         },
-                                                        "alt": {
+                                                        "label": {
                                                             "minLength": 1,
-                                                            "maxLength": 200,
-                                                            "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]*$",
-                                                            "type": "string"
-                                                        },
-                                                        "caption": {
-                                                            "minLength": 1,
-                                                            "maxLength": 200,
+                                                            "maxLength": 80,
                                                             "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]*$",
                                                             "type": "string"
                                                         }
                                                     }
                                                 }
-                                            },
-                                            "columns": {
-                                                "anyOf": [
-                                                    {
-                                                        "const": 1,
-                                                        "type": "number"
-                                                    },
-                                                    {
-                                                        "const": 2,
-                                                        "type": "number"
-                                                    },
-                                                    {
-                                                        "const": 3,
-                                                        "type": "number"
-                                                    }
-                                                ]
                                             }
                                         }
                                     }
@@ -196,6 +174,10 @@
                                                         "type": "string"
                                                     }
                                                 ]
+                                            },
+                                            "account": {
+                                                "const": "new",
+                                                "type": "string"
                                             }
                                         }
                                     }
@@ -474,17 +456,17 @@
                                                 "type": "string"
                                             },
                                             "type": {
-                                                "const": "images",
+                                                "const": "media",
                                                 "type": "string"
                                             },
                                             "props": {
                                                 "additionalProperties": false,
                                                 "type": "object",
-                                                "required": ["images"],
+                                                "required": ["items"],
                                                 "properties": {
-                                                    "images": {
+                                                    "items": {
                                                         "minItems": 1,
-                                                        "maxItems": 12,
+                                                        "maxItems": 24,
                                                         "type": "array",
                                                         "items": {
                                                             "additionalProperties": false,
@@ -493,39 +475,17 @@
                                                             "properties": {
                                                                 "mediaIndex": {
                                                                     "minimum": 0,
-                                                                    "maximum": 11,
+                                                                    "maximum": 23,
                                                                     "type": "integer"
                                                                 },
-                                                                "alt": {
+                                                                "label": {
                                                                     "minLength": 1,
-                                                                    "maxLength": 200,
-                                                                    "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]*$",
-                                                                    "type": "string"
-                                                                },
-                                                                "caption": {
-                                                                    "minLength": 1,
-                                                                    "maxLength": 200,
+                                                                    "maxLength": 80,
                                                                     "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]*$",
                                                                     "type": "string"
                                                                 }
                                                             }
                                                         }
-                                                    },
-                                                    "columns": {
-                                                        "anyOf": [
-                                                            {
-                                                                "const": 1,
-                                                                "type": "number"
-                                                            },
-                                                            {
-                                                                "const": 2,
-                                                                "type": "number"
-                                                            },
-                                                            {
-                                                                "const": 3,
-                                                                "type": "number"
-                                                            }
-                                                        ]
                                                     }
                                                 }
                                             }
@@ -627,6 +587,10 @@
                                                                 "type": "string"
                                                             }
                                                         ]
+                                                    },
+                                                    "account": {
+                                                        "const": "new",
+                                                        "type": "string"
                                                     }
                                                 }
                                             }
@@ -907,17 +871,17 @@
                                                 "type": "string"
                                             },
                                             "type": {
-                                                "const": "images",
+                                                "const": "media",
                                                 "type": "string"
                                             },
                                             "props": {
                                                 "additionalProperties": false,
                                                 "type": "object",
-                                                "required": ["images"],
+                                                "required": ["items"],
                                                 "properties": {
-                                                    "images": {
+                                                    "items": {
                                                         "minItems": 1,
-                                                        "maxItems": 12,
+                                                        "maxItems": 24,
                                                         "type": "array",
                                                         "items": {
                                                             "additionalProperties": false,
@@ -926,39 +890,17 @@
                                                             "properties": {
                                                                 "mediaIndex": {
                                                                     "minimum": 0,
-                                                                    "maximum": 11,
+                                                                    "maximum": 23,
                                                                     "type": "integer"
                                                                 },
-                                                                "alt": {
+                                                                "label": {
                                                                     "minLength": 1,
-                                                                    "maxLength": 200,
-                                                                    "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]*$",
-                                                                    "type": "string"
-                                                                },
-                                                                "caption": {
-                                                                    "minLength": 1,
-                                                                    "maxLength": 200,
+                                                                    "maxLength": 80,
                                                                     "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]*$",
                                                                     "type": "string"
                                                                 }
                                                             }
                                                         }
-                                                    },
-                                                    "columns": {
-                                                        "anyOf": [
-                                                            {
-                                                                "const": 1,
-                                                                "type": "number"
-                                                            },
-                                                            {
-                                                                "const": 2,
-                                                                "type": "number"
-                                                            },
-                                                            {
-                                                                "const": 3,
-                                                                "type": "number"
-                                                            }
-                                                        ]
                                                     }
                                                 }
                                             }
@@ -1060,6 +1002,10 @@
                                                                 "type": "string"
                                                             }
                                                         ]
+                                                    },
+                                                    "account": {
+                                                        "const": "new",
+                                                        "type": "string"
                                                     }
                                                 }
                                             }
@@ -1301,7 +1247,7 @@
                     }
                 },
                 "items": {
-                    "maxItems": 12,
+                    "maxItems": 24,
                     "type": "array",
                     "items": {
                         "anyOf": [
@@ -1577,6 +1523,14 @@
                         "maxLength": 64,
                         "type": "string"
                     }
+                },
+                "replies": {
+                    "type": "array",
+                    "items": {
+                        "minLength": 1,
+                        "maxLength": 64,
+                        "type": "string"
+                    }
                 }
             }
         }
@@ -1600,6 +1554,37 @@
                         "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]*$",
                         "type": "string"
                     }
+                },
+                "ui": {
+                    "minItems": 1,
+                    "maxItems": 6,
+                    "type": "array",
+                    "items": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": false,
+                                "type": "object",
+                                "required": ["type", "props"],
+                                "properties": {
+                                    "type": {
+                                        "minLength": 1,
+                                        "maxLength": 64,
+                                        "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                                        "type": "string"
+                                    },
+                                    "props": {
+                                        "type": "object",
+                                        "patternProperties": {
+                                            "^(.*)$": {}
+                                        }
+                                    }
+                                }
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
                 }
             }
         },
@@ -1620,6 +1605,37 @@
                         "maxLength": 200,
                         "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]*$",
                         "type": "string"
+                    }
+                },
+                "ui": {
+                    "minItems": 1,
+                    "maxItems": 6,
+                    "type": "array",
+                    "items": {
+                        "anyOf": [
+                            {
+                                "additionalProperties": false,
+                                "type": "object",
+                                "required": ["type", "props"],
+                                "properties": {
+                                    "type": {
+                                        "minLength": 1,
+                                        "maxLength": 64,
+                                        "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                                        "type": "string"
+                                    },
+                                    "props": {
+                                        "type": "object",
+                                        "patternProperties": {
+                                            "^(.*)$": {}
+                                        }
+                                    }
+                                }
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
                     }
                 }
             }
@@ -1643,19 +1659,112 @@
                     "type": "integer"
                 }
             }
+        },
+        "input": {
+            "anyOf": [
+                {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                },
+                {
+                    "additionalProperties": false,
+                    "type": "object",
+                    "required": ["text"],
+                    "properties": {
+                        "text": {
+                            "minLength": 1,
+                            "maxLength": 200,
+                            "type": "string"
+                        },
+                        "ui": {
+                            "additionalProperties": false,
+                            "type": "object",
+                            "required": ["type", "props"],
+                            "properties": {
+                                "type": {
+                                    "minLength": 1,
+                                    "maxLength": 64,
+                                    "type": "string"
+                                },
+                                "props": {}
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        "ui": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": ["type", "props"],
+            "properties": {
+                "type": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                    "type": "string"
+                },
+                "props": {
+                    "type": "object",
+                    "patternProperties": {
+                        "^(.*)$": {}
+                    }
+                }
+            }
         }
     },
+    "replies": {
+        "provider": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": ["provider"],
+            "properties": {
+                "provider": {
+                    "anyOf": [
+                        {
+                            "const": "claude",
+                            "type": "string"
+                        },
+                        {
+                            "const": "codex",
+                            "type": "string"
+                        },
+                        {
+                            "const": "grok",
+                            "type": "string"
+                        },
+                        {
+                            "const": "antigravity",
+                            "type": "string"
+                        }
+                    ]
+                }
+            }
+        }
+    },
+    "mediaLayout": {
+        "rowHeightDesktop": 220,
+        "rowHeightPhone": 160,
+        "gap": 6,
+        "labelGap": 4,
+        "labelLine": 18,
+        "maxRowScale": 1.5,
+        "singleHeightScale": 2,
+        "minAspect": 0.4,
+        "maxAspect": 3
+    },
     "components": {
-        "images": {
-            "description": "Images shown in a grid of one to three columns.",
+        "media": {
+            "description": "Pictures, videos, and files laid out in justified rows, each with an optional label.",
             "props": {
                 "additionalProperties": false,
                 "type": "object",
-                "required": ["images"],
+                "required": ["items"],
                 "properties": {
-                    "images": {
+                    "items": {
                         "minItems": 1,
-                        "maxItems": 12,
+                        "maxItems": 24,
                         "type": "array",
                         "items": {
                             "additionalProperties": false,
@@ -1664,50 +1773,28 @@
                             "properties": {
                                 "mediaIndex": {
                                     "minimum": 0,
-                                    "maximum": 11,
+                                    "maximum": 23,
                                     "type": "integer"
                                 },
-                                "alt": {
+                                "label": {
                                     "minLength": 1,
-                                    "maxLength": 200,
-                                    "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]*$",
-                                    "type": "string"
-                                },
-                                "caption": {
-                                    "minLength": 1,
-                                    "maxLength": 200,
+                                    "maxLength": 80,
                                     "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]*$",
                                     "type": "string"
                                 }
                             }
                         }
-                    },
-                    "columns": {
-                        "anyOf": [
-                            {
-                                "const": 1,
-                                "type": "number"
-                            },
-                            {
-                                "const": 2,
-                                "type": "number"
-                            },
-                            {
-                                "const": 3,
-                                "type": "number"
-                            }
-                        ]
                     }
                 }
             },
             "input": {
                 "additionalProperties": false,
                 "type": "object",
-                "required": ["images"],
+                "required": ["items"],
                 "properties": {
-                    "images": {
+                    "items": {
                         "minItems": 1,
-                        "maxItems": 12,
+                        "maxItems": 24,
                         "type": "array",
                         "items": {
                             "additionalProperties": false,
@@ -1719,36 +1806,14 @@
                                     "maxLength": 4096,
                                     "type": "string"
                                 },
-                                "alt": {
+                                "label": {
                                     "minLength": 1,
-                                    "maxLength": 200,
-                                    "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]*$",
-                                    "type": "string"
-                                },
-                                "caption": {
-                                    "minLength": 1,
-                                    "maxLength": 200,
+                                    "maxLength": 80,
                                     "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]*$",
                                     "type": "string"
                                 }
                             }
                         }
-                    },
-                    "columns": {
-                        "anyOf": [
-                            {
-                                "const": 1,
-                                "type": "number"
-                            },
-                            {
-                                "const": 2,
-                                "type": "number"
-                            },
-                            {
-                                "const": 3,
-                                "type": "number"
-                            }
-                        ]
                     }
                 }
             },
@@ -1814,6 +1879,10 @@
                                 "type": "string"
                             }
                         ]
+                    },
+                    "account": {
+                        "const": "new",
+                        "type": "string"
                     }
                 }
             },
@@ -1831,6 +1900,17 @@
                         "additionalProperties": false,
                         "type": "object",
                         "properties": {}
+                    },
+                    "result": {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "properties": {
+                            "accountId": {
+                                "minLength": 1,
+                                "maxLength": 128,
+                                "type": "string"
+                            }
+                        }
                     },
                     "permission": {
                         "prop": "target",

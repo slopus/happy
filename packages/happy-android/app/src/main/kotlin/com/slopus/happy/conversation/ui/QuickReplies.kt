@@ -16,6 +16,31 @@ import kotlinx.serialization.json.put
 // `quick_replies` presentation of a `suggest_replies` call; a tap is an
 // ordinary send of the option with `quickReply` naming it.
 
+/**
+ * What one option shows beside its words, from the reply catalog (happy-agent
+ * `sources/replies/`): display only, one line, no actions; a tap still sends
+ * the option's text. A type this build doesn't know is null, the words alone.
+ */
+@Immutable
+sealed interface ReplyUi {
+    /** An AI: its mark before the words, and how it stands now at the end, read live from its program ([com.slopus.happy.agent.ProviderCli]), never from the model. */
+    data class Provider(val provider: String) : ReplyUi
+
+    companion object {
+        /** The AIs `provider` names; any other is drawn as the bare option. */
+        val PROVIDERS = setOf("claude", "codex", "grok", "antigravity")
+
+        fun parse(value: JsonElement?): ReplyUi? {
+            val o = value.obj ?: return null
+            val props = o["props"].obj
+            return when (o["type"].str) {
+                "provider" -> props?.get("provider").str?.takeIf { it in PROVIDERS }?.let(::Provider)
+                else -> null
+            }
+        }
+    }
+}
+
 /** Which option of which suggestion a person's message is: [toolCallId] for a presentation's, absent for a block's. */
 @Immutable
 data class QuickReply(val messageId: String, val toolCallId: String?, val index: Int) {
@@ -57,5 +82,11 @@ object QuickReplies {
     fun options(o: JsonObject): List<String>? {
         val options = o["options"].arr?.map { it.str ?: return null } ?: return null
         return options.takeIf { problems(it).isEmpty() }
+    }
+
+    /** Each option's [ReplyUi], by index; empty where `ui` is absent or not one per option. */
+    fun ui(o: JsonObject, count: Int): List<ReplyUi?> {
+        val ui = o["ui"].arr ?: return emptyList()
+        return if (ui.size == count) ui.map(ReplyUi::parse).takeIf { list -> list.any { it != null } }.orEmpty() else emptyList()
     }
 }

@@ -3,15 +3,7 @@
     <string name="conversation_quick_reply">↩ 建议的回复</string>
     <string name="conversation_ui_tree_show_all">显示全部（%1$d）</string>
     <string name="ui_live_cli_reading">正在检查这台电脑上的 %1$s…</string>
-    <string name="ui_live_cli_missing">未安装 · 来自 %1$s 的官方安装程序</string>
-    <string name="ui_live_cli_missing_no_installer">未安装，Happy 无法在此安装 %1$s。</string>
-    <string name="ui_live_cli_install">安装并登录</string>
-    <string name="ui_live_cli_signed_out">已安装（%1$s）。尚未登录。</string>
-    <string name="ui_live_cli_signed_out_plain">已安装。尚未登录。</string>
-    <string name="ui_live_cli_unknown">已安装（%1$s）。Happy 无法判断是否已登录。</string>
-    <string name="ui_live_cli_unknown_plain">已安装。Happy 无法判断是否已登录。</string>
     <string name="ui_live_cli_sign_in">登录</string>
-    <string name="ui_live_cli_code">代码 %1$s</string>
     <string name="ui_live_cli_open_page">打开登录页面</string>
     <string name="ui_live_cli_code_field">粘贴页面上的代码</string>
     <string name="ui_live_cli_cancel">取消</string>
@@ -19,7 +11,6 @@
     <string name="ui_live_cli_signed_in_plan">已登录为 %1$s · %2$s</string>
     <string name="ui_live_cli_signed_in_plain">已登录</string>
     <string name="ui_live_cli_use">使用 %1$s</string>
-    <string name="ui_live_cli_token">或粘贴设置令牌</string>
     <string name="ui_live_cli_unsupported">此服务器的 AI 在设置中配置。</string>
     <string name="ui_live_model_title">默认模型</string>
     <string name="ui_live_model_reading">正在读取此 Happy Agent 提供的模型…</string>
@@ -53,4 +44,22 @@
     <string name="ui_live_not_allowed">你的角色无法在此更改。</string>
     <string name="ui_live_github_connected">已连接为 %1$s。</string>
     <string name="ui_live_github_connected_plain">已连接。</string>
+    <string name="conversation_reply_not_installed">未安装</string>
+    <string name="conversation_reply_signed_out">未登录</string>
+    <plurals name="conversation_reply_accounts">
+        <item quantity="other">%1$d 个账号</item>
+    </plurals>
+    <string name="ui_live_cli_not_here">此电脑上还没有 · 来自 %1$s</string>
+    <string name="ui_live_cli_not_here_plain">此电脑上还没有</string>
+    <string name="ui_live_cli_set_up">设置</string>
+    <string name="ui_live_cli_use_token">使用令牌</string>
+    <string name="ui_live_cli_token_line">粘贴设置令牌或 API 密钥</string>
+    <string name="ui_live_cli_token_field">令牌或密钥</string>
+    <string name="ui_live_cli_save">保存</string>
+    <string name="ui_live_cli_code_placeholder">页面上的代码</string>
+    <string name="ui_live_cli_continue">继续</string>
+    <string name="ui_live_cli_browser">请在浏览器中完成</string>
+    <string name="ui_live_cli_enter_code">在 %2$s 的页面输入 %1$s</string>
+    <string name="ui_live_cli_add_account">添加账号</string>
+    <string name="ui_live_cli_accounts">%1$s · %2$s +%3$d</string>
 </resources>

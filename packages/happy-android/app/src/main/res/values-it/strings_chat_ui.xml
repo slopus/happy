@@ -3,15 +3,7 @@
     <string name="conversation_quick_reply">↩ Risposta suggerita</string>
     <string name="conversation_ui_tree_show_all">Mostra tutto (%1$d)</string>
     <string name="ui_live_cli_reading">Controllo di %1$s su questo computer…</string>
-    <string name="ui_live_cli_missing">Non installato · programma di installazione ufficiale da %1$s</string>
-    <string name="ui_live_cli_missing_no_installer">Non installato, e Happy non può installare %1$s qui.</string>
-    <string name="ui_live_cli_install">Installa e accedi</string>
-    <string name="ui_live_cli_signed_out">Installato (%1$s). Accesso non ancora effettuato.</string>
-    <string name="ui_live_cli_signed_out_plain">Installato. Accesso non ancora effettuato.</string>
-    <string name="ui_live_cli_unknown">Installato (%1$s). Happy non sa se l\'accesso è stato effettuato.</string>
-    <string name="ui_live_cli_unknown_plain">Installato. Happy non sa se l\'accesso è stato effettuato.</string>
     <string name="ui_live_cli_sign_in">Accedi</string>
-    <string name="ui_live_cli_code">Codice %1$s</string>
     <string name="ui_live_cli_open_page">Apri la pagina di accesso</string>
     <string name="ui_live_cli_code_field">Incolla il codice dalla pagina</string>
     <string name="ui_live_cli_cancel">Annulla</string>
@@ -19,7 +11,6 @@
     <string name="ui_live_cli_signed_in_plan">Accesso effettuato come %1$s · %2$s</string>
     <string name="ui_live_cli_signed_in_plain">Accesso effettuato</string>
     <string name="ui_live_cli_use">Usa %1$s</string>
-    <string name="ui_live_cli_token">Oppure incolla un token di configurazione</string>
     <string name="ui_live_cli_unsupported">Le IA di questo server si configurano nelle Impostazioni.</string>
     <string name="ui_live_model_title">Modello predefinito</string>
     <string name="ui_live_model_reading">Lettura dei modelli offerti da questo Happy Agent…</string>
@@ -53,4 +44,24 @@
     <string name="ui_live_not_allowed">Il tuo ruolo non può cambiarlo qui.</string>
     <string name="ui_live_github_connected">Collegato come %1$s.</string>
     <string name="ui_live_github_connected_plain">Collegato.</string>
+    <string name="conversation_reply_not_installed">Non installato</string>
+    <string name="conversation_reply_signed_out">Accesso non eseguito</string>
+    <plurals name="conversation_reply_accounts">
+        <item quantity="one">%1$d account</item>
+        <item quantity="many">%1$d account</item>
+        <item quantity="other">%1$d account</item>
+    </plurals>
+    <string name="ui_live_cli_not_here">Non ancora su questo computer · arriva da %1$s</string>
+    <string name="ui_live_cli_not_here_plain">Non ancora su questo computer</string>
+    <string name="ui_live_cli_set_up">Configura</string>
+    <string name="ui_live_cli_use_token">Usa un token</string>
+    <string name="ui_live_cli_token_line">Incolla un token di configurazione o una chiave API</string>
+    <string name="ui_live_cli_token_field">Token o chiave</string>
+    <string name="ui_live_cli_save">Salva</string>
+    <string name="ui_live_cli_code_placeholder">Codice dalla pagina</string>
+    <string name="ui_live_cli_continue">Continua</string>
+    <string name="ui_live_cli_browser">Completa nel browser</string>
+    <string name="ui_live_cli_enter_code">Inserisci %1$s nella pagina di %2$s</string>
+    <string name="ui_live_cli_add_account">Aggiungi account</string>
+    <string name="ui_live_cli_accounts">%1$s · %2$s +%3$d</string>
 </resources>

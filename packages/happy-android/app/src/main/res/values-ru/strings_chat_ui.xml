@@ -3,15 +3,7 @@
     <string name="conversation_quick_reply">↩ Предложенный ответ</string>
     <string name="conversation_ui_tree_show_all">Показать все (%1$d)</string>
     <string name="ui_live_cli_reading">Проверяем %1$s на этом компьютере…</string>
-    <string name="ui_live_cli_missing">Не установлен · официальный установщик с %1$s</string>
-    <string name="ui_live_cli_missing_no_installer">Не установлен, и Happy не может установить %1$s здесь.</string>
-    <string name="ui_live_cli_install">Установить и войти</string>
-    <string name="ui_live_cli_signed_out">Установлен (%1$s). Вход ещё не выполнен.</string>
-    <string name="ui_live_cli_signed_out_plain">Установлен. Вход ещё не выполнен.</string>
-    <string name="ui_live_cli_unknown">Установлен (%1$s). Happy не может понять, выполнен ли вход.</string>
-    <string name="ui_live_cli_unknown_plain">Установлен. Happy не может понять, выполнен ли вход.</string>
     <string name="ui_live_cli_sign_in">Войти</string>
-    <string name="ui_live_cli_code">Код %1$s</string>
     <string name="ui_live_cli_open_page">Открыть страницу входа</string>
     <string name="ui_live_cli_code_field">Вставьте код со страницы</string>
     <string name="ui_live_cli_cancel">Отмена</string>
@@ -19,7 +11,6 @@
     <string name="ui_live_cli_signed_in_plan">Вход выполнен: %1$s · %2$s</string>
     <string name="ui_live_cli_signed_in_plain">Вход выполнен</string>
     <string name="ui_live_cli_use">Использовать %1$s</string>
-    <string name="ui_live_cli_token">Или вставьте токен настройки</string>
     <string name="ui_live_cli_unsupported">ИИ этого сервера настраиваются в Настройках.</string>
     <string name="ui_live_model_title">Модель по умолчанию</string>
     <string name="ui_live_model_reading">Читаем модели этого Happy Agent…</string>
@@ -53,4 +44,25 @@
     <string name="ui_live_not_allowed">Ваша роль не позволяет менять это здесь.</string>
     <string name="ui_live_github_connected">Подключено как %1$s.</string>
     <string name="ui_live_github_connected_plain">Подключено.</string>
+    <string name="conversation_reply_not_installed">Не установлен</string>
+    <string name="conversation_reply_signed_out">Не выполнен вход</string>
+    <plurals name="conversation_reply_accounts">
+        <item quantity="one">%1$d аккаунт</item>
+        <item quantity="few">%1$d аккаунта</item>
+        <item quantity="many">%1$d аккаунтов</item>
+        <item quantity="other">%1$d аккаунта</item>
+    </plurals>
+    <string name="ui_live_cli_not_here">Ещё нет на этом компьютере · источник: %1$s</string>
+    <string name="ui_live_cli_not_here_plain">Ещё нет на этом компьютере</string>
+    <string name="ui_live_cli_set_up">Настроить</string>
+    <string name="ui_live_cli_use_token">Использовать токен</string>
+    <string name="ui_live_cli_token_line">Вставьте токен настройки или ключ API</string>
+    <string name="ui_live_cli_token_field">Токен или ключ</string>
+    <string name="ui_live_cli_save">Сохранить</string>
+    <string name="ui_live_cli_code_placeholder">Код со страницы</string>
+    <string name="ui_live_cli_continue">Продолжить</string>
+    <string name="ui_live_cli_browser">Завершите в браузере</string>
+    <string name="ui_live_cli_enter_code">Введите %1$s на странице %2$s</string>
+    <string name="ui_live_cli_add_account">Добавить аккаунт</string>
+    <string name="ui_live_cli_accounts">%1$s · %2$s +%3$d</string>
 </resources>

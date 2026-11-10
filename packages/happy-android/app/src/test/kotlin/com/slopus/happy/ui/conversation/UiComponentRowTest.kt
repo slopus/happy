@@ -9,6 +9,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
@@ -22,18 +23,23 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.agent.ProviderCli
+import com.slopus.happy.agent.ProviderCliSource
 import com.slopus.happy.conversation.AgentInfo
 import com.slopus.happy.conversation.ConversationRow
 import com.slopus.happy.conversation.ConversationRowBuilder
 import com.slopus.happy.conversation.ConversationState
 import com.slopus.happy.conversation.Message
 import com.slopus.happy.conversation.ui.QuickReply
+import com.slopus.happy.conversation.ui.UiMediaLayout
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -106,14 +112,15 @@ class UiComponentRowTest {
 
     private fun pills() = rule.onAllNodesWithTag(UiTags.REPLY, useUnmergedTree = true).let { all -> (0 until all.fetchSemanticsNodes().size).map { all[it] } }
 
-    @Test fun `suggested replies are a stack of person-wide bubbles against the right, and a tap sends the option`() {
+    @Test fun `suggested replies are a left-aligned stack one width, capped at a person's widest bubble, and a tap sends the option`() {
         val sent = ArrayList<Pair<ConversationRow.Replies, Int>>()
         screen(suggested() + ConversationRowBuilder.build(sentReply, "a1", null, streaming = false).map { (it as ConversationRow.User).copy(suggested = false) }, replied = sent)
         val root = rule.onRoot().bounds
         val bounds = pills().map { it.bounds }
         for (pill in bounds) {
-            assertDp("a person's widest bubble: the column less 16 a side", root.right - root.left - 32.dp, pill.right - pill.left)
-            assertDp("against the right, 16 in", root.right - 16.dp, pill.right)
+            // The long option is wider than the column: every pill stops at a person's widest bubble.
+            assertDp("capped: the column less 16 a side", root.right - root.left - 32.dp, pill.right - pill.left)
+            assertDp("at the agent's words' edge, 16 in", root.left + 16.dp, pill.left)
         }
         assertDp("6 apart", 6.dp, bounds[1].top - bounds[0].bottom)
         assertDp("6 apart", 6.dp, bounds[2].top - bounds[1].bottom)
@@ -124,6 +131,67 @@ class UiComponentRowTest {
         pills()[1].performClick()
         assertEquals(listOf(1), sent.map { it.second })
         assertEquals(QuickReply("m2", "c1", 1), sent.single().first.reply(1))
+    }
+
+    /** A suggestion of short options, the first two about an AI ([ReplyUi.Provider]). */
+    private fun aiReplies(live: Boolean = true, chosen: Int? = null): List<ConversationRow> {
+        val message = Message.parse(
+            Json.parseToJsonElement(
+                """{"id":"m3","role":"agent","createdAt":2,"metadata":{},"content":[{"type":"text","text":"Which AI?"},
+                {"type":"tool_call","id":"c3","name":"suggest_replies","status":"completed","presentation":{"type":"quick_replies",
+                "options":["Sign in to Codex","Sign in to Claude Code","Skip for now"],
+                "ui":[{"type":"provider","props":{"provider":"codex"}},{"type":"provider","props":{"provider":"claude"}},null]}}]}""",
+            ),
+        )!!
+        return ConversationRowBuilder.build(message, "a1", null, streaming = false).map { if (it is ConversationRow.Replies) it.copy(live = live, chosen = chosen) else it }
+    }
+
+    private val codex = MutableStateFlow<ProviderCliSource.State>(ProviderCliSource.State.Reading)
+    private val claude = MutableStateFlow<ProviderCliSource.State>(ProviderCliSource.State.Reading)
+
+    private fun cli(id: String, installed: Boolean = true, signIn: String = "signed_out", accounts: Int? = null) = ProviderCli.parse(
+        Json.parseToJsonElement(
+            """{"id":"$id","name":"$id","installation":{"status":"${if (installed) "installed" else "missing"}"},"signIn":{"status":"$signIn"},"version":"01b"
+            ${accounts?.let { n -> ""","accounts":[${(1..n).joinToString(",") { """{"id":"a$it","label":"a$it@example.com","signIn":"signed_in"}""" }}]""" } ?: ""}}""",
+        ).jsonObject,
+    )!!
+
+    private fun liveScreen(rows: List<ConversationRow>) {
+        shownRows = rows
+        rule.setHappyContent {
+            ConversationScreen(
+                ConversationState(created = true, loaded = true, rows = shownRows.asReversed(), agent = agent),
+                ConversationScreenActions(onQuickReply = { _, _ -> }),
+                uiLive = UiLive(providerCli = { if (it == "codex") codex else claude }, team = false, roles = { emptyList() }),
+            )
+        }
+        rule.waitForIdle()
+    }
+
+    @Test fun `short options take the widest one's width, an AI's mark and live note included, and a note that changes moves nothing`() {
+        codex.value = ProviderCliSource.State.Read(cli("codex", signIn = "signed_in"))
+        claude.value = ProviderCliSource.State.Read(cli("claude", installed = false))
+        liveScreen(aiReplies())
+        val root = rule.onRoot().bounds
+        val before = pills().map { it.bounds }
+        assertEquals("one width", 1, before.map { it.right - it.left }.distinct().size)
+        assertTrue("narrower than the column: no wider than its options", before[0].right - before[0].left < root.right - root.left - 32.dp)
+        for (pill in before) assertDp("left-aligned, 16 in", root.left + 16.dp, pill.left)
+        assertEquals(2, rule.onAllNodesWithTag(UiTags.REPLY_MARK, useUnmergedTree = true).fetchSemanticsNodes().size)
+        rule.onNodeWithText("1 account", useUnmergedTree = true).assertExists()
+        rule.onNodeWithText("Not installed", useUnmergedTree = true).assertExists()
+        shot("ui-quick-replies-ai")
+        // Claude signs in twice over; Codex's program goes: only the notes' words change.
+        claude.value = ProviderCliSource.State.Read(cli("claude", signIn = "signed_in", accounts = 12))
+        codex.value = ProviderCliSource.State.Read(cli("codex", installed = false))
+        rule.waitForIdle()
+        rule.onNodeWithText("12 accounts", useUnmergedTree = true).assertExists()
+        assertEquals("not a pixel moves", before, pills().map { it.bounds })
+        // Answered, the notes go and the marks stay, in the same room.
+        shownRows = aiReplies(live = false, chosen = 2)
+        rule.waitForIdle()
+        rule.onAllNodesWithTag(UiTags.REPLY_NOTE, useUnmergedTree = true).assertCountEquals(0)
+        assertEquals("not a pixel moves", before, pills().map { it.bounds })
     }
 
     @Test fun `the option sent takes the bubble's fill and a tick, and nothing moves`() {
@@ -153,6 +221,56 @@ class UiComponentRowTest {
         pills()[0].assertIsNotEnabled()
         pills()[0].performClick()
         assertTrue(sent.isEmpty())
+    }
+
+    /** A show_ui call's `media`: [count] items cycling landscape, portrait and square, every third labelled, and a file. */
+    private fun mediaRows(count: Int, file: Boolean = false): List<ConversationRow> {
+        val sizes = listOf(1600 to 900, 900 to 1200, 1000 to 1000)
+        val items = (0 until count).map { val (w, h) = sizes[it % 3]; """{"kind":"image","name":"p$it.png","mimeType":"image/png","width":$w,"height":$h}""" } +
+            if (file) listOf("""{"kind":"document","name":"Report.pdf","mimeType":"application/pdf"}""") else emptyList()
+        val refs = (0 until items.size).joinToString(",") { if (it % 3 == 0) """{"mediaIndex":$it,"label":"Shot $it"}""" else """{"mediaIndex":$it}""" }
+        val message = Message.parse(
+            Json.parseToJsonElement(
+                """{"id":"m4","role":"agent","createdAt":2,"metadata":{},"content":[{"type":"text","text":"Here they are."},
+                {"type":"tool_call","id":"c4","name":"show_ui","status":"completed","presentation":{"type":"ui","ui":{"id":"u4","components":[
+                {"id":"pics","type":"media","fallback":"$count images","props":{"items":[$refs]}}]},"items":[${items.joinToString(",")}]}}]}""",
+            ),
+        )!!
+        return ConversationRowBuilder.build(message, "a1", null, streaming = false)
+    }
+
+    @Test fun `media lays out by the shared rule at the phone's measure, labels under their items, before any bytes`() {
+        screen(mediaRows(4, file = true))
+        val flow = rule.node(ConversationMediaTags.FLOW).bounds
+        val width = (flow.right - flow.left).value.toDouble()
+        val inputs = (0 until 4).map { listOf(1600.0 to 900.0, 900.0 to 1200.0, 1000.0 to 1000.0)[it % 3] }
+            .mapIndexed { i, (w, h) -> UiMediaLayout.Input("image", w, h, i % 3 == 0) } + UiMediaLayout.Input("document", null, null, false)
+        val laid = UiMediaLayout.layout(inputs, width)
+        assertDp("the column less 16 a side", rule.onRoot().bounds.let { it.right - it.left } - 32.dp, flow.right - flow.left)
+        assertDp("as tall as the rule says, with nothing loaded", laid.height.dp, flow.bottom - flow.top)
+        val tiles = rule.onAllNodesWithTag(ConversationMediaTags.TILE, useUnmergedTree = true).let { all -> (0 until all.fetchSemanticsNodes().size).map { all[it].bounds } }
+        tiles.forEachIndexed { i, tile ->
+            assertDp("tile $i left", flow.left + laid.frames[i].x.dp, tile.left)
+            assertDp("tile $i top", flow.top + laid.frames[i].y.dp, tile.top)
+            assertDp("tile $i width", laid.frames[i].width.dp, tile.right - tile.left)
+        }
+        rule.onNodeWithText("Shot 0").assertExists()
+        rule.onNodeWithText("Report.pdf").assertExists()
+        shot("ui-media-four")
+    }
+
+    @Test fun `ten labelled items, and one alone at most twice the row height`() {
+        screen(mediaRows(10))
+        shot("ui-media-ten")
+        assertEquals(10, rule.onAllNodesWithTag(ConversationMediaTags.TILE, useUnmergedTree = true).fetchSemanticsNodes().size)
+        screenAgain(mediaRows(1))
+        val tile = rule.node(ConversationMediaTags.TILE).bounds
+        assertDp("16:9 at the full measure", (tile.right - tile.left) * 9f / 16f, tile.bottom - tile.top)
+    }
+
+    private fun screenAgain(rows: List<ConversationRow>) {
+        shownRows = rows
+        rule.waitForIdle()
     }
 
     @Test fun `without live sources live components are their fallback line, and phone_app is not on a phone`() {

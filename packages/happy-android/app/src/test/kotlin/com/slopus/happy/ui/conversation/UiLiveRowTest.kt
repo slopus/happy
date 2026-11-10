@@ -39,6 +39,11 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.assertCountEquals
+import com.slopus.happy.ui.assertDp
+import com.slopus.happy.ui.bounds
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -124,16 +129,24 @@ class UiLiveRowTest {
     private val github = """{"id":"gh","type":"github_connect","fallback":"Connect GitHub in Settings","props":{}}"""
     private val join = """{"id":"join","type":"compute_join","fallback":"Add a computer in Settings","props":{"pool":"builders"}}"""
 
-    @Test fun `a signed-out AI signs in, or takes a setup token masked and gone once sent`() {
+    private fun rowHeight() = rule.node(UiLiveTags.FIGURE).bounds.let { it.bottom - it.top }
+
+    @Test fun `a signed-out AI is one row that signs in, and takes a setup token only once chosen, masked and gone once sent`() {
         cli.value = ProviderCliSource.State.Read(claude())
         screen(offer(signIn))
-        rule.onNodeWithText("Installed (2.1.312). Not signed in yet.").assertExists()
+        rule.onNodeWithText("Not signed in").assertExists()
+        rule.node(UiLiveTags.SECRET_FIELD).assertDoesNotExist()
+        val height = rowHeight()
+        shot("ui-live-sign-in")
         rule.onNodeWithText("Sign in").performClick()
+        rule.onNodeWithText("Use a token").performClick()
+        rule.onNodeWithText("Paste a setup token or API key").assertExists()
+        assertDp("the field takes the control line: the row keeps its height", height, rowHeight())
         rule.node(UiLiveTags.SECRET_FIELD).performTextInput("sk-ant-oat01-secret")
         // Drawn masked.
         rule.node(UiLiveTags.SECRET_FIELD).assertTextEquals("•".repeat(19))
-        shot("ui-live-sign-in")
-        rule.onNodeWithText("Send").performClick()
+        shot("ui-live-sign-in-token")
+        rule.onNodeWithText("Save").performClick()
         assertEquals(
             listOf(
                 UiAction("provider_sign_in.sign_in", JsonObject(emptyMap())),
@@ -142,33 +155,54 @@ class UiLiveRowTest {
             sent.map { it.second },
         )
         assertEquals(UiOffer("m1", "u1", "claude"), sent.first().first)
-        rule.node(UiLiveTags.SECRET_FIELD).assertTextEquals("")
+        rule.node(UiLiveTags.SECRET_FIELD).assertDoesNotExist()
+        rule.onNodeWithText("sk-ant-oat01-secret", substring = true).assertDoesNotExist()
     }
 
-    @Test fun `a sign-in under way offers its page, a code and Cancel`() {
+    @Test fun `a missing AI says where it comes from and sets up, with no install command`() {
+        cli.value = ProviderCliSource.State.Read(parse("""{"id":"grok","name":"Grok","installation":{"status":"missing"},"installer":{"command":"curl -fsSL https://x.ai/cli/install.sh | bash","sourceHost":"x.ai"},"signIn":{"status":"unknown"},"version":"01a"}"""))
+        screen(offer(signIn))
+        rule.onNodeWithText("Not on this computer yet · comes from x.ai").assertExists()
+        rule.onNodeWithText("curl", substring = true).assertDoesNotExist()
+        rule.onNodeWithText("Set up").performClick()
+        assertEquals(listOf("provider_sign_in.install"), sent.map { it.second.type })
+    }
+
+    @Test fun `a sign-in waiting on a code takes it in the row's line, and the row never changes height`() {
+        cli.value = ProviderCliSource.State.Read(claude())
+        screen(offer(signIn))
+        val height = rowHeight()
         cli.value = ProviderCliSource.State.Read(
             claude(
                 operation = """{"kind":"sign_in","status":"waiting","message":"Waiting for you to finish signing in to Claude in your browser.",
                 "authorization":{"method":"browser","url":"https://claude.com/cai/oauth/authorize","acceptsCode":true}}""",
             ),
         )
-        screen(offer(signIn))
-        rule.onNodeWithText("Waiting for you to finish signing in to Claude in your browser.").assertExists()
-        rule.onNodeWithText("Open sign-in page").assertExists()
+        rule.waitForIdle()
+        rule.onNodeWithText("Paste the code from the page").assertExists()
         rule.node(UiLiveTags.SECRET_FIELD).assertExists()
+        assertDp("one height whatever the state", height, rowHeight())
         shot("ui-live-sign-in-waiting")
-        rule.onNodeWithText("Cancel").performClick()
+        rule.onNodeWithContentDescription("Cancel").performClick()
         assertEquals(listOf("provider_sign_in.cancel"), sent.map { it.second.type })
+        cli.value = ProviderCliSource.State.Read(claude(operation = """{"kind":"sign_in","status":"failed","message":"x","error":{"message":"The sign-in page closed before it finished"}}"""))
+        rule.waitForIdle()
+        rule.onNodeWithText("The sign-in page closed before it finished").assertExists()
+        rule.onNodeWithText("Try again").assertExists()
+        assertDp("one height whatever the state", height, rowHeight())
+        shot("ui-live-sign-in-failed")
     }
 
-    @Test fun `a signed-in AI is used as it is, and one the server doesn't run points to Settings`() {
+    @Test fun `a signed-in AI is used as it is, adds an account when asked to, and one the server doesn't run points to Settings`() {
         cli.value = ProviderCliSource.State.Read(claude(signIn = "signed_in"))
-        screen(offer(signIn))
-        rule.onNodeWithText("Signed in as ada@example.com · Max").assertExists()
+        screen(offer(signIn, signIn.replace("\"id\":\"claude\"", "\"id\":\"more\"").replace("{\"provider\":\"claude\"}", "{\"provider\":\"claude\",\"account\":\"new\"}")))
+        rule.onAllNodesWithText("Signed in as ada@example.com · Max").assertCountEquals(2)
         rule.onNodeWithText("Use Claude Code").performClick()
-        assertEquals(listOf("provider_sign_in.sign_in"), sent.map { it.second.type })
+        rule.onNodeWithText("Add account").performClick()
+        assertEquals(listOf("provider_sign_in.sign_in", "provider_sign_in.sign_in"), sent.map { it.second.type })
+        shot("ui-live-signed-in")
         cli.value = ProviderCliSource.State.Unsupported
-        rule.onNodeWithText("This server's AIs are set up in Settings.").assertExists()
+        rule.onAllNodesWithText("This server's AIs are set up in Settings.").assertCountEquals(2)
     }
 
     @Test fun `the default model changes in place, and a role without config manage only sees it`() {

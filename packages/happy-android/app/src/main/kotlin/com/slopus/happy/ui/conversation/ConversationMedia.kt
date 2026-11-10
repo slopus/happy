@@ -28,6 +28,10 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.layout.Placeable
+import androidx.compose.ui.text.style.TextOverflow
+import com.slopus.happy.conversation.ui.UiMediaLayout
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.conversation.MediaFlow
 import com.slopus.happy.conversation.MediaItem
@@ -50,12 +54,15 @@ object ConversationMediaSpec {
     val badge = happyTextStyle(fontSize = 12, lineHeight = 16, weight = FontWeight.SemiBold)
     val more = happyTextStyle(fontSize = 22, lineHeight = 28, weight = FontWeight.SemiBold)
     val moreScrim = Color(0x73000000)
+    /** A chat UI `media` item's label, on its 18 line. */
+    val label = happyTextStyle(fontSize = 13, lineHeight = 18)
 }
 
 object ConversationMediaTags {
     /** Every picture and recording tile; the flow they sit in is [FLOW]. */
     const val TILE = "conversation.media.tile"
     const val FLOW = "conversation.media.flow"
+    const val LABEL = "conversation.media.label"
     /** A recording's play circle and its length. */
     const val PLAY = "conversation.media.play"
     const val DURATION = "conversation.media.duration"
@@ -112,6 +119,54 @@ fun MediaFlowLayout(
     }
 }
 
+/**
+ * A chat UI `media` component's items, laid out by the one shared rule
+ * ([UiMediaLayout]) at the room it is given: rows of one picture height, 6
+ * apart, from the items' stated sizes alone, so the height is known before a
+ * byte arrives and nothing moves when one does. Under each labelled item,
+ * its label: one 13/18 line 4 below, cut with an ellipsis, textSecondary.
+ */
+@Composable
+fun UiMediaFlowLayout(
+    items: List<UiMediaLayout.Input>,
+    labels: List<String?>,
+    modifier: Modifier = Modifier,
+    tile: @Composable (index: Int) -> Unit,
+) {
+    val colors = HappyTheme.colors
+    Layout(
+        content = {
+            items.indices.forEach { index ->
+                key(index) {
+                    tile(index)
+                    Text(
+                        labels.getOrNull(index).orEmpty(),
+                        style = ConversationMediaSpec.label,
+                        color = colors.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.testTag(ConversationMediaTags.LABEL),
+                    )
+                }
+            }
+        },
+        modifier = modifier.testTag(ConversationMediaTags.FLOW),
+    ) { measurables, constraints ->
+        val available = if (constraints.hasBoundedWidth) constraints.maxWidth / density else FALLBACK_WIDTH
+        val laid = UiMediaLayout.layout(items, available.toDouble())
+        fun px(dp: Double) = (dp * density).roundToInt()
+        fun fixed(frame: UiMediaLayout.Frame) = Constraints.fixed(px(frame.x + frame.width) - px(frame.x), px(frame.y + frame.height) - px(frame.y))
+        val places = ArrayList<Pair<Placeable, IntOffset>>()
+        laid.frames.forEachIndexed { index, frame ->
+            places += measurables[index * 2].measure(fixed(frame)) to IntOffset(px(frame.x), px(frame.y))
+            laid.labels[index]?.let { line -> places += measurables[index * 2 + 1].measure(fixed(line)) to IntOffset(px(line.x), px(line.y)) }
+        }
+        layout(constraints.maxWidth.takeIf { constraints.hasBoundedWidth } ?: px(available.toDouble()), px(laid.height)) {
+            for ((placeable, at) in places) placeable.place(at)
+        }
+    }
+}
+
 /** Only where a flow is given no width to fill (never in the transcript). */
 private const val FALLBACK_WIDTH = 360f
 
@@ -141,6 +196,8 @@ fun MediaTile(
     more: Int = 0,
     /** A recording's play circle; off where a ring shows it instead. */
     playButton: Boolean = true,
+    /** The box isn't the picture's shape (chat UI `media`, its aspect clamped): the picture covers it. */
+    crop: Boolean = false,
 ) {
     val colors = HappyTheme.colors
     val shape = RoundedCornerShape(ConversationMediaSpec.radius)
@@ -162,12 +219,12 @@ fun MediaTile(
                 cacheKey = cacheKey,
                 contentDescription = contentDescription,
                 // The tile is the picture's shape: fitted, it fills it.
-                contentScale = ContentScale.Fit,
+                contentScale = if (crop) ContentScale.Crop else ContentScale.Fit,
                 placeholder = placeholder,
                 modifier = Modifier.matchParentSize(),
             )
         } else if (placeholder != null && !failed) {
-            androidx.compose.foundation.Image(placeholder, null, Modifier.matchParentSize(), contentScale = if (video) ContentScale.Fit else ContentScale.FillBounds)
+            androidx.compose.foundation.Image(placeholder, null, Modifier.matchParentSize(), contentScale = if (crop) ContentScale.Crop else if (video) ContentScale.Fit else ContentScale.FillBounds)
         }
         if (video && playButton) {
             Box(

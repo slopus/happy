@@ -4,6 +4,11 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.PersistableBundle
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,6 +20,12 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -121,6 +132,32 @@ class UiLive(
     }
 }
 
+/**
+ * An AI's mark, [size] square: Claude's and Gemini's (Antigravity) as drawn,
+ * OpenAI's (Codex) in text colour, Grok a flash, anything else sparkles.
+ */
+@Composable
+internal fun ProviderMark(provider: String, size: Dp, modifier: Modifier = Modifier) {
+    val colors = HappyTheme.colors
+    val image = when (provider) {
+        "claude" -> R.drawable.icon_claude
+        "codex" -> R.drawable.icon_gpt
+        "antigravity" -> R.drawable.icon_gemini
+        else -> null
+    }
+    when {
+        image != null -> Image(
+            painter = painterResource(image),
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            colorFilter = if (provider == "codex") ColorFilter.tint(colors.text) else null,
+            modifier = modifier.size(size),
+        )
+        provider == "grok" -> Icon(Ionicon.FlashOutline, size, colors.text, modifier)
+        else -> Icon(Ionicon.SparklesOutline, size, colors.text, modifier)
+    }
+}
+
 object UiLiveTags {
     const val FIGURE = "conversation.ui.live"
     const val LINE = "conversation.ui.live.line"
@@ -137,6 +174,13 @@ object UiLiveSpec {
     val markGap = 8.dp
     val buttonHeight = 36.dp
     val buttonPaddingH = 14.dp
+    /** A provider row's mark and its gap to the words, the gap to its control line, and that line's height. */
+    val rowMark = 24.dp
+    val rowMarkGap = 12.dp
+    val rowGap = 10.dp
+    val controlLine = 40.dp
+    val lineMark = 14.dp
+    val lineMarkGap = 6.dp
     val head = happyTextStyle(fontSize = 15, lineHeight = 20, weight = FontWeight.SemiBold)
     val line = happyTextStyle(fontSize = 13, lineHeight = 18)
     val button = happyTextStyle(fontSize = 14, lineHeight = 20, weight = FontWeight.Medium)
@@ -189,9 +233,23 @@ private const val SUBMIT_CODE = "provider_sign_in.submit_code"
 private const val SUBMIT_TOKEN = "provider_sign_in.submit_token"
 private const val CANCEL = "provider_sign_in.cancel"
 
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * `provider_sign_in`: one AI as desktop's single row (happy-desktop
+ * `UiProviderAccounts`), from its program's live state. Spec: a card of the
+ * row's 16 inset, surface with a divider hairline, radius 12, padding 12; a
+ * 24 mark, 12, its name (15/20 semibold) over one status line (13/18, a 14
+ * spinner, check or alert 6 before it while working, connected or refused);
+ * 10 under them, one control line 40 high whatever the state, so the card's
+ * height never changes: the control the state needs (Set up, Sign in, Use,
+ * Add account, Try again, the page), "Use a token" beside it where tokens are
+ * taken, and Cancel while something runs. The token field takes the line
+ * only once someone chooses it, or the code field while the vendor's page
+ * shows a code; both masked, held here alone and emptied once sent. No
+ * install commands: "Set up" installs, then signs in.
+ */
 @Composable
 private fun ProviderSignIn(control: LiveControl, provider: String, live: UiLive, modifier: Modifier) {
+    val colors = HappyTheme.colors
     val source = remember(live, provider) { live.providerCli?.invoke(provider) }
     val state = source?.collectAsState()?.value ?: ProviderCliSource.State.Unsupported
     val cli = (state as? ProviderCliSource.State.Read)?.cli
@@ -199,67 +257,149 @@ private fun ProviderSignIn(control: LiveControl, provider: String, live: UiLive,
     val uri = LocalUriHandler.current
     val operation = cli?.operation
     val signedIn = cli?.signIn == ProviderCli.SignIn.SignedIn
-    val failed = operation?.status == ProviderCli.Operation.Status.Failed && !signedIn
+    val addsAccount = control.row.component.props["account"].str == "new"
+    val failed = operation?.status == ProviderCli.Operation.Status.Failed && (!signedIn || addsAccount)
+    var tokenChosen by remember { mutableStateOf(false) }
+    val tokens = control.allowed(SUBMIT_TOKEN)
+    val refused = control.work.refused && !control.work.busy
+    val tone = when {
+        refused || failed || state is ProviderCliSource.State.Failed -> RowTone.Error
+        cli == null && state is ProviderCliSource.State.Reading || operation?.busy == true || control.work.busy -> RowTone.Busy
+        signedIn && !addsAccount -> RowTone.Done
+        else -> RowTone.Quiet
+    }
     val line = when {
+        refused -> control.work.reason?.takeIf { it.isNotBlank() } ?: stringResource(R.string.ui_live_failed)
         state is ProviderCliSource.State.Unsupported -> stringResource(R.string.ui_live_cli_unsupported)
         state is ProviderCliSource.State.Failed -> stringResource(R.string.ui_live_failed)
         cli == null -> stringResource(R.string.ui_live_cli_reading, name)
+        tokenChosen && operation?.busy != true -> stringResource(R.string.ui_live_cli_token_line)
+        operation?.busy == true && operation.acceptsCode -> stringResource(R.string.ui_live_cli_code_field)
+        operation?.busy == true && operation.userCode != null -> stringResource(R.string.ui_live_cli_enter_code, operation.userCode, name)
+        operation?.busy == true && operation.url != null -> stringResource(R.string.ui_live_cli_browser)
         operation?.busy == true -> operation.message ?: stringResource(R.string.ui_live_working)
-        signedIn -> when {
-            cli.email != null && cli.plan != null -> stringResource(R.string.ui_live_cli_signed_in_plan, cli.email, cli.plan)
-            cli.email != null -> stringResource(R.string.ui_live_cli_signed_in, cli.email)
-            else -> stringResource(R.string.ui_live_cli_signed_in_plain)
-        }
         failed -> operation?.errorMessage ?: operation?.message ?: stringResource(R.string.ui_live_failed)
-        !cli.installed && cli.installer != null -> stringResource(R.string.ui_live_cli_missing, cli.installer.sourceHost)
-        !cli.installed -> stringResource(R.string.ui_live_cli_missing_no_installer, name)
-        cli.signIn == ProviderCli.SignIn.SignedOut ->
-            cli.installedVersion?.let { stringResource(R.string.ui_live_cli_signed_out, it) } ?: stringResource(R.string.ui_live_cli_signed_out_plain)
-        else -> cli.installedVersion?.let { stringResource(R.string.ui_live_cli_unknown, it) } ?: stringResource(R.string.ui_live_cli_unknown_plain)
+        !cli.installed && cli.installer != null -> stringResource(R.string.ui_live_cli_not_here, cli.installer.sourceHost)
+        !cli.installed -> stringResource(R.string.ui_live_cli_not_here_plain)
+        signedIn -> accountsLine(cli)
+        else -> stringResource(R.string.conversation_reply_signed_out)
     }
-    LiveFigure(
-        title = name,
-        line = line,
-        work = control.work,
-        error = failed || state is ProviderCliSource.State.Failed,
-        busy = cli == null && state is ProviderCliSource.State.Reading || operation?.busy == true,
-        modifier = modifier,
+    val cancel: @Composable () -> Unit = {
+        LiveIconButton(Ionicon.Close, stringResource(R.string.ui_live_cli_cancel), enabled = control.may(CANCEL)) {
+            tokenChosen = false
+            control.send(CANCEL)
+        }
+    }
+    val useToken: @Composable () -> Unit = {
+        if (tokens) LiveButton(stringResource(R.string.ui_live_cli_use_token), enabled = control.may(SUBMIT_TOKEN), ghost = true) { tokenChosen = true }
+    }
+    Column(
+        modifier
+            .background(colors.surface, RoundedCornerShape(ConversationRowSpec.cardRadius))
+            .border(with(LocalDensity.current) { 1f.toDp() }, colors.divider, RoundedCornerShape(ConversationRowSpec.cardRadius))
+            .padding(ConversationRowSpec.cardPadding),
+        verticalArrangement = Arrangement.spacedBy(UiLiveSpec.rowGap),
     ) {
-        if (cli == null) return@LiveFigure
-        when {
-            operation?.busy == true -> {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(UiLiveSpec.gap), verticalArrangement = Arrangement.spacedBy(UiLiveSpec.gap)) {
-                    operation.userCode?.let { Text(stringResource(R.string.ui_live_cli_code, it), style = UiLiveSpec.secret, color = HappyTheme.colors.text, modifier = Modifier.align(Alignment.CenterVertically)) }
-                    operation.url?.let { url -> LiveButton(stringResource(R.string.ui_live_cli_open_page), enabled = true, primary = true) { uri.openUri(url) } }
-                    LiveButton(stringResource(R.string.ui_live_cli_cancel), enabled = control.may(CANCEL)) { control.send(CANCEL) }
-                }
-                if (operation.acceptsCode && control.allowed(SUBMIT_CODE)) {
-                    SecretField(stringResource(R.string.ui_live_cli_code_field), stringResource(R.string.ui_live_send), control.may(SUBMIT_CODE)) { code ->
-                        control.send(SUBMIT_CODE, buildJsonObject { put("code", code) })
-                    }
-                }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            ProviderMark(provider, UiLiveSpec.rowMark)
+            Spacer(Modifier.width(UiLiveSpec.rowMarkGap))
+            Column(Modifier.weight(1f)) {
+                Text(name, style = UiLiveSpec.head, color = colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                RowLine(line, tone)
             }
-            signedIn -> LiveButton(stringResource(R.string.ui_live_cli_use, name), enabled = control.may(SIGN_IN), primary = true) { control.send(SIGN_IN) }
-            failed -> {
-                val retry = if (!cli.installed && cli.installer != null) INSTALL else SIGN_IN
-                LiveButton(stringResource(R.string.ui_live_try_again), enabled = control.may(retry), primary = true) { control.send(retry) }
-            }
-            else -> {
-                if (!cli.installed) {
-                    cli.installer?.let { installer ->
-                        Text(installer.command, style = UiLiveSpec.command, color = HappyTheme.colors.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        LiveButton(stringResource(R.string.ui_live_cli_install), enabled = control.may(INSTALL), primary = true) { control.send(INSTALL) }
-                    }
-                } else {
-                    LiveButton(stringResource(R.string.ui_live_cli_sign_in), enabled = control.may(SIGN_IN), primary = true) { control.send(SIGN_IN) }
-                }
-                if (control.allowed(SUBMIT_TOKEN)) {
-                    SecretField(stringResource(R.string.ui_live_cli_token), stringResource(R.string.ui_live_send), control.may(SUBMIT_TOKEN)) { token ->
+        }
+        Row(
+            Modifier.fillMaxWidth().height(UiLiveSpec.controlLine),
+            horizontalArrangement = Arrangement.spacedBy(UiLiveSpec.gap, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            when {
+                cli == null -> Unit
+                tokenChosen && operation?.busy != true -> {
+                    SecretField(stringResource(R.string.ui_live_cli_token_field), stringResource(R.string.ui_live_cli_save), control.may(SUBMIT_TOKEN), Modifier.weight(1f)) { token ->
+                        tokenChosen = false
                         control.send(SUBMIT_TOKEN, buildJsonObject { put("token", token) })
                     }
+                    LiveIconButton(Ionicon.Close, stringResource(R.string.common_cancel), enabled = true) { tokenChosen = false }
+                }
+                operation?.busy == true && operation.acceptsCode && control.allowed(SUBMIT_CODE) -> {
+                    SecretField(stringResource(R.string.ui_live_cli_code_placeholder), stringResource(R.string.ui_live_cli_continue), control.may(SUBMIT_CODE), Modifier.weight(1f)) { code ->
+                        control.send(SUBMIT_CODE, buildJsonObject { put("code", code) })
+                    }
+                    cancel()
+                }
+                operation?.busy == true -> {
+                    if (operation.userCode == null) useToken()
+                    operation.url?.let { url -> LiveButton(stringResource(R.string.ui_live_cli_open_page), enabled = true, primary = true) { uri.openUri(url) } }
+                    cancel()
+                }
+                failed -> {
+                    useToken()
+                    val retry = if (!cli.installed && cli.installer != null) INSTALL else SIGN_IN
+                    LiveButton(stringResource(R.string.ui_live_try_again), enabled = control.may(retry)) { control.send(retry) }
+                }
+                !cli.installed -> if (cli.installer != null) {
+                    LiveButton(stringResource(R.string.ui_live_cli_set_up), enabled = control.may(INSTALL), primary = true) { control.send(INSTALL) }
+                }
+                signedIn && addsAccount -> LiveButton(stringResource(R.string.ui_live_cli_add_account), enabled = control.may(SIGN_IN), primary = true) { control.send(SIGN_IN) }
+                signedIn -> LiveButton(stringResource(R.string.ui_live_cli_use, name), enabled = control.may(SIGN_IN), primary = true) { control.send(SIGN_IN) }
+                else -> {
+                    useToken()
+                    LiveButton(stringResource(R.string.ui_live_cli_sign_in), enabled = control.may(SIGN_IN), primary = true) { control.send(SIGN_IN) }
                 }
             }
         }
+    }
+}
+
+/** One account is its email and plan; more are "2 accounts · ada@example.com +1". */
+@Composable
+private fun accountsLine(cli: ProviderCli): String {
+    val accounts = cli.accounts
+    if (accounts == null || accounts.size <= 1) {
+        val email = accounts?.firstOrNull()?.email ?: accounts?.firstOrNull()?.label ?: cli.email
+        val plan = accounts?.firstOrNull()?.plan ?: cli.plan
+        return when {
+            email != null && plan != null -> stringResource(R.string.ui_live_cli_signed_in_plan, email, plan)
+            email != null -> stringResource(R.string.ui_live_cli_signed_in, email)
+            else -> stringResource(R.string.ui_live_cli_signed_in_plain)
+        }
+    }
+    return stringResource(R.string.ui_live_cli_accounts, pluralStringResource(R.plurals.conversation_reply_accounts, accounts.size, accounts.size), accounts.first().label, accounts.size - 1)
+}
+
+private enum class RowTone { Quiet, Busy, Done, Error }
+
+/** A row's one status line: 13/18 textSecondary, a 14 mark 6 before it while working, connected or refused; red when refused. */
+@Composable
+private fun RowLine(line: String, tone: RowTone) {
+    val colors = HappyTheme.colors
+    Row(Modifier.testTag(UiLiveTags.LINE), verticalAlignment = Alignment.CenterVertically) {
+        when (tone) {
+            RowTone.Quiet -> Unit
+            RowTone.Busy -> CircularProgressIndicator(Modifier.size(12.dp), color = colors.textSecondary, strokeWidth = 1.5.dp)
+            RowTone.Done -> Icon(Ionicon.CheckmarkCircle, UiLiveSpec.lineMark, colors.success)
+            RowTone.Error -> Icon(Ionicon.AlertCircleOutline, UiLiveSpec.lineMark, colors.textDestructive)
+        }
+        if (tone != RowTone.Quiet) Spacer(Modifier.width(UiLiveSpec.lineMarkGap))
+        Text(line, style = UiLiveSpec.line, color = if (tone == RowTone.Error) colors.textDestructive else colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** A 36 round button of one glyph, for Cancel and Close. */
+@Composable
+private fun LiveIconButton(icon: Ionicon, label: String, enabled: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .testTag(UiLiveTags.BUTTON)
+            .size(UiLiveSpec.buttonHeight)
+            .alpha(if (enabled) 1f else UiSpec.DIMMED_ALPHA)
+            .clip(CircleShape)
+            .clickable(enabled = enabled, role = Role.Button, onClickLabel = label, onClick = onClick)
+            .semantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, 18.dp, HappyTheme.colors.textSecondary)
     }
 }
 
@@ -501,7 +641,7 @@ private fun LiveFigure(
 
 /** A 36 high pill: primary in the primary button's colours, else surface with a hairline; 0.48 while it can't be pressed. */
 @Composable
-private fun LiveButton(label: String, enabled: Boolean, primary: Boolean = false, onClick: () -> Unit) {
+private fun LiveButton(label: String, enabled: Boolean, primary: Boolean = false, ghost: Boolean = false, onClick: () -> Unit) {
     val colors = HappyTheme.colors
     val shape = RoundedCornerShape(UiLiveSpec.buttonHeight / 2)
     val hairline = with(LocalDensity.current) { 1f.toDp() }
@@ -511,12 +651,12 @@ private fun LiveButton(label: String, enabled: Boolean, primary: Boolean = false
             .alpha(if (enabled) 1f else UiSpec.DIMMED_ALPHA)
             .heightIn(min = UiLiveSpec.buttonHeight)
             .background(if (primary) colors.button.primaryBackground else colors.surface, shape)
-            .then(if (primary) Modifier else Modifier.border(hairline, colors.divider, shape))
+            .then(if (primary || ghost) Modifier else Modifier.border(hairline, colors.divider, shape))
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = UiLiveSpec.buttonPaddingH),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, style = UiLiveSpec.button, color = if (primary) colors.button.primaryTint else colors.text, maxLines = 1)
+        Text(label, style = UiLiveSpec.button, color = if (primary) colors.button.primaryTint else if (ghost) colors.textSecondary else colors.text, maxLines = 1)
     }
 }
 
@@ -564,11 +704,11 @@ private fun LiveSelect(
  * once sent.
  */
 @Composable
-private fun SecretField(placeholder: String, send: String, enabled: Boolean, onSend: (String) -> Unit) {
+private fun SecretField(placeholder: String, send: String, enabled: Boolean, modifier: Modifier = Modifier, onSend: (String) -> Unit) {
     val colors = HappyTheme.colors
     var typed by remember { mutableStateOf("") }
     DisposableEffect(Unit) { onDispose { typed = "" } }
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Box(
             Modifier
                 .weight(1f)
