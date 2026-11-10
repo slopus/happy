@@ -1,3 +1,4 @@
+import { AndroidDrawerSwipeLockProvider, useAndroidDrawerSwipeLocked } from '@/hooks/useAndroidDrawerSwipeLock';
 import { useAuth } from '@/auth/AuthContext';
 import * as React from 'react';
 import { Drawer } from 'expo-router/drawer';
@@ -43,7 +44,9 @@ export const SidebarNavigator = React.memo(() => {
     return (
         <DesktopWorkspaceLayoutProvider enabled={auth.isAuthenticated && isTablet}>
             <KeyboardShortcutsProvider>
-                <SidebarNavigatorContent />
+                <AndroidDrawerSwipeLockProvider>
+                    <SidebarNavigatorContent />
+                </AndroidDrawerSwipeLockProvider>
             </KeyboardShortcutsProvider>
         </DesktopWorkspaceLayoutProvider>
     );
@@ -63,6 +66,7 @@ const SidebarNavigatorContent = React.memo(() => {
         setLeftSidebarHovered,
         setLeftSidebarFocused,
     } = useDesktopWorkspaceLayout();
+    const androidDrawerSwipeLocked = useAndroidDrawerSwipeLocked();
     const selectionMode = useSessionSelection((s) => s.active);
     const clearSelection = useSessionSelection((s) => s.clearSelection);
     const isDesktopLayout = auth.isAuthenticated && isTablet;
@@ -119,7 +123,7 @@ const SidebarNavigatorContent = React.memo(() => {
                 // look. Web keeps 'front' because its drawer progress is a 0/1 binary
                 // jump (no per-frame value), so the scale would flicker.
                 drawerType: (Platform.OS === 'web' ? 'front' : 'slide') as 'front' | 'slide',
-                swipeEnabled: !selectionMode,
+                swipeEnabled: !selectionMode && !(Platform.OS === 'android' && androidDrawerSwipeLocked),
                 // Full-screen open gesture: a right-swipe started anywhere on the screen
                 // pulls the sidebar in (not just the left edge / left third). May contend
                 // with in-page horizontal scroll — the drawer wins; narrow this back if
@@ -164,7 +168,7 @@ const SidebarNavigatorContent = React.memo(() => {
             drawerItemStyle: { display: 'none' as const },
             drawerLabelStyle: { display: 'none' as const },
         };
-    }, [isDesktopLayout, drawerWidth, windowWidth, auth.isAuthenticated, fullDrawerWidth, selectionMode, theme.colors.surface, theme.colors.groupped.background, dreamskin, reducedTransparency]);
+    }, [isDesktopLayout, drawerWidth, windowWidth, auth.isAuthenticated, fullDrawerWidth, selectionMode, androidDrawerSwipeLocked, theme.colors.surface, theme.colors.groupped.background, dreamskin, reducedTransparency]);
 
     const drawerContent = React.useCallback(
         ({ navigation }: { navigation: { closeDrawer: () => void } }) => (

@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import * as React from 'react';
 import { act } from 'react';
-import { Platform, Pressable, View } from 'react-native';
+import { BackHandler, Platform, Pressable, View } from 'react-native';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RightSwipePanelHost, useRightSwipePanel } from './RightSwipePanelHost';
+import { AndroidDrawerSwipeLockProvider, useAndroidDrawerSwipeLocked } from '@/hooks/useAndroidDrawerSwipeLock';
 
 // react-test-renderer does not publish TypeScript declarations with the package.
 // @ts-expect-error The test only needs the small create/unmount surface typed below.
@@ -12,6 +13,7 @@ import TestRenderer from 'react-test-renderer';
 type SpringCompletion = (finished?: boolean) => void;
 
 const mocks = vi.hoisted(() => ({
+    isFocused: true,
     gestureEnabledValues: [] as boolean[],
     gestureHandlers: {} as Record<string, (...args: any[]) => void>,
     springCompletions: [] as Array<SpringCompletion | undefined>,
@@ -24,7 +26,7 @@ vi.mock('react-native', () => ({
     View: 'View',
     useWindowDimensions: () => ({ width: 400, height: 800 }),
 }));
-vi.mock('@react-navigation/native', () => ({ useIsFocused: () => true }));
+vi.mock('@react-navigation/native', () => ({ useIsFocused: () => mocks.isFocused }));
 vi.mock('expo-router', () => ({
     useNavigation: () => ({ addListener: vi.fn(() => vi.fn()) }),
 }));
@@ -58,6 +60,7 @@ vi.mock('react-native-gesture-handler', () => {
             'onStart',
             'onUpdate',
             'onEnd',
+            'onFinalize',
             'blocksExternalGesture',
         ]) {
             pan[method] = (value: unknown) => {
@@ -293,7 +296,7 @@ describe('RightSwipePanelHost close completion', () => {
         act(() => {
             mocks.gestureHandlers.onStart();
             mocks.gestureHandlers.onUpdate({ translationX: -160 });
-            mocks.gestureHandlers.onEnd({ translationX: -160, velocityX: 0 });
+            mocks.gestureHandlers.onEnd({ translationX: -160, velocityX: 0 }, true);
         });
         expect(
             renderer.root.findByProps({ testID: 'right-swipe-panel-drawer' }).props.accessibilityElementsHidden,
@@ -367,7 +370,7 @@ describe('RightSwipePanelHost close completion', () => {
             act(() => {
                 mocks.gestureHandlers.onStart();
                 mocks.gestureHandlers.onUpdate({ translationX: -160 });
-                mocks.gestureHandlers.onEnd({ translationX: -160, velocityX: 0 });
+                mocks.gestureHandlers.onEnd({ translationX: -160, velocityX: 0 }, true);
             });
             expect(renderer.root.findByProps({ testID: 'right-swipe-panel-drawer' }).props.role).toBe('dialog');
         } finally {
@@ -394,7 +397,7 @@ describe('RightSwipePanelHost close completion', () => {
         const open = () => act(() => {
             mocks.gestureHandlers.onStart();
             mocks.gestureHandlers.onUpdate({ translationX: -160 });
-            mocks.gestureHandlers.onEnd({ translationX: -160, velocityX: 0 });
+            mocks.gestureHandlers.onEnd({ translationX: -160, velocityX: 0 }, true);
         });
         const completeClose = () => act(() => latestSpringCompletion()(true));
 
@@ -544,5 +547,203 @@ describe('RightSwipePanelHost close completion', () => {
             if (renderer) act(() => renderer.unmount());
             (Platform as { OS: string }).OS = 'ios';
         }
+    });
+});
+
+function DrawerLockProbe() {
+    const locked = useAndroidDrawerSwipeLocked();
+    return <View testID="drawer-lock" accessibilityState={{ disabled: locked }} />;
+}
+
+function OpenControl() {
+    const panel = useRightSwipePanel();
+    return <Pressable testID="open-panel" onPress={() => panel?.openPanel()} />;
+}
+
+describe('Android right drawer gesture ownership', () => {
+    beforeEach(() => {
+        (Platform as { OS: string }).OS = 'android';
+        mocks.isFocused = true;
+        mocks.springCompletions = [];
+        mocks.gestureEnabledValues = [];
+        vi.mocked(BackHandler.addEventListener).mockClear();
+    });
+    afterEach(() => {
+        (Platform as { OS: string }).OS = 'ios';
+        mocks.isFocused = true;
+    });
+
+    function panelTree(enabled = true, open?: boolean) {
+        return (
+            <AndroidDrawerSwipeLockProvider>
+                <DrawerLockProbe />
+                <RightSwipePanelHost {...PANEL_ACCESSIBILITY_LABELS} enabled={enabled} gestureEnabled={false} open={open}
+                    panelContent={<View />}>
+                    <OpenControl />
+                </RightSwipePanelHost>
+            </AndroidDrawerSwipeLockProvider>
+        );
+    }
+    function renderPanel() {
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(panelTree()); });
+        return renderer;
+    }
+    function locked(renderer: any) {
+        return renderer.root.findByProps({ testID: 'drawer-lock' }).props.accessibilityState.disabled;
+    }
+
+    it('enables only dismissal while open and releases the left drawer after the closing spring', () => {
+        const renderer = renderPanel();
+        expect(locked(renderer)).toBe(false);
+        expect(mocks.gestureEnabledValues.at(-1)).toBe(false);
+        act(() => findControl(renderer, 'open-panel').props.onPress());
+        expect(locked(renderer)).toBe(true);
+        expect(mocks.gestureEnabledValues.at(-1)).toBe(true);
+
+        const state = { activate: vi.fn(), fail: vi.fn() };
+        act(() => {
+            mocks.gestureHandlers.onTouchesDown({ allTouches: [{ x: 150, y: 200 }] });
+            mocks.gestureHandlers.onTouchesMove({ allTouches: [{ x: 180, y: 201 }] }, state);
+        });
+        expect(state.activate).toHaveBeenCalledOnce();
+        expect(state.fail).not.toHaveBeenCalled();
+        act(() => {
+            mocks.gestureHandlers.onStart();
+            mocks.gestureHandlers.onUpdate({ translationX: 160 });
+            mocks.gestureHandlers.onEnd({ translationX: 160, velocityX: 1000 }, true);
+        });
+        expect(locked(renderer)).toBe(true);
+        act(() => latestSpringCompletion()(true));
+        expect(locked(renderer)).toBe(false);
+        expect(mocks.gestureEnabledValues.at(-1)).toBe(false);
+        act(() => renderer.unmount());
+    });
+
+    it('keeps ownership on a left swipe, vertical scroll, and canceled close', () => {
+        const renderer = renderPanel();
+        act(() => findControl(renderer, 'open-panel').props.onPress());
+        act(() => {
+            mocks.gestureHandlers.onStart();
+            mocks.gestureHandlers.onUpdate({ translationX: -160 });
+            mocks.gestureHandlers.onEnd({ translationX: -160, velocityX: -1000 }, true);
+        });
+        expect(locked(renderer)).toBe(true);
+        const state = { activate: vi.fn(), fail: vi.fn() };
+        act(() => {
+            mocks.gestureHandlers.onTouchesDown({ allTouches: [{ x: 150, y: 200 }] });
+            mocks.gestureHandlers.onTouchesMove({ allTouches: [{ x: 151, y: 230 }] }, state);
+        });
+        expect(state.fail).toHaveBeenCalledOnce();
+        expect(state.activate).not.toHaveBeenCalled();
+        const springCount = mocks.springCompletions.length;
+        act(() => {
+            mocks.gestureHandlers.onStart();
+            mocks.gestureHandlers.onUpdate({ translationX: 220 });
+            // RNGH reports unsuccessful onEnd before onFinalize on cancellation.
+            mocks.gestureHandlers.onEnd({ translationX: 220, velocityX: 1000 }, false);
+            mocks.gestureHandlers.onFinalize({}, false);
+        });
+        // Only the restoring spring may run; no queued JS close may outlive it.
+        expect(mocks.springCompletions.slice(springCount)).toEqual([undefined]);
+        expect(locked(renderer)).toBe(true);
+        const filmstrip = renderer.root.findAllByType('AnimatedView')[0];
+        expect(flattenStyle(filmstrip.props.style).transform).toEqual([{ translateX: -288 }]);
+        act(() => renderer.unmount());
+    });
+
+    it('does not unlock or close a reopened panel from a stale swipe completion', () => {
+        const renderer = renderPanel();
+        act(() => findControl(renderer, 'open-panel').props.onPress());
+        act(() => {
+            mocks.gestureHandlers.onStart();
+            mocks.gestureHandlers.onUpdate({ translationX: 220 });
+            mocks.gestureHandlers.onEnd({ translationX: 220, velocityX: 0 }, true);
+        });
+        const staleCompletion = latestSpringCompletion();
+        act(() => findControl(renderer, 'open-panel').props.onPress());
+        act(() => staleCompletion(true));
+        expect(locked(renderer)).toBe(true);
+        act(() => renderer.unmount());
+    });
+
+    it('keeps the left drawer locked until a controlled close finishes, ignoring stale completions', () => {
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(panelTree(true, true)); });
+        expect(locked(renderer)).toBe(true);
+        act(() => renderer.update(panelTree(true, false)));
+        expect(locked(renderer)).toBe(true);
+        const staleCompletion = latestSpringCompletion();
+        act(() => renderer.update(panelTree(true, true)));
+        act(() => staleCompletion(true));
+        expect(locked(renderer)).toBe(true);
+        act(() => renderer.update(panelTree(true, false)));
+        const complete = latestSpringCompletion();
+        act(() => complete(false));
+        expect(locked(renderer)).toBe(true);
+        act(() => renderer.update(panelTree(true, true)));
+        act(() => renderer.update(panelTree(true, false)));
+        act(() => latestSpringCompletion()(true));
+        expect(locked(renderer)).toBe(false);
+        expect(mocks.gestureEnabledValues.at(-1)).toBe(false);
+        act(() => renderer.unmount());
+    });
+
+    it('releases ownership when a controlled close cancels an active gesture', () => {
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(panelTree(true, true)); });
+        act(() => {
+            mocks.gestureHandlers.onStart();
+            mocks.gestureHandlers.onUpdate({ translationX: 100 });
+        });
+        const canceledHandlers = { ...mocks.gestureHandlers };
+        act(() => renderer.update(panelTree(true, false)));
+        const interruptedClose = latestSpringCompletion();
+        act(() => {
+            // Native may deliver the handlers installed when the drag began.
+            canceledHandlers.onEnd({ translationX: 100, velocityX: 1000 }, false);
+            canceledHandlers.onFinalize({}, false);
+            interruptedClose(false);
+        });
+        expect(locked(renderer)).toBe(true);
+        act(() => latestSpringCompletion()(true));
+        expect(locked(renderer)).toBe(false);
+        act(() => renderer.unmount());
+    });
+
+    it('routes Android system back to the right drawer and unlocks after dismissal', () => {
+        const renderer = renderPanel();
+        act(() => findControl(renderer, 'open-panel').props.onPress());
+        const back = vi.mocked(BackHandler.addEventListener).mock.calls.at(-1)![1];
+        act(() => expect(back()).toBe(true));
+        expect(locked(renderer)).toBe(true);
+        act(() => latestSpringCompletion()(true));
+        expect(locked(renderer)).toBe(false);
+        act(() => renderer.unmount());
+    });
+
+    it('releases ownership on blur or disable and reacquires it when the open panel returns', () => {
+        const renderer = renderPanel();
+        act(() => findControl(renderer, 'open-panel').props.onPress());
+        expect(locked(renderer)).toBe(true);
+        mocks.isFocused = false;
+        act(() => renderer.update(panelTree()));
+        expect(locked(renderer)).toBe(false);
+        expect(mocks.gestureEnabledValues.at(-1)).toBe(false);
+        mocks.isFocused = true;
+        act(() => renderer.update(panelTree()));
+        expect(locked(renderer)).toBe(true);
+        act(() => renderer.update(panelTree(false)));
+        expect(locked(renderer)).toBe(false);
+        act(() => renderer.unmount());
+    });
+
+    it.each(['web', 'ios'])('preserves disabled gestures and leaves the left drawer unlocked on %s', (os) => {
+        (Platform as { OS: string }).OS = os;
+        const renderer = renderPanel();
+        act(() => findControl(renderer, 'open-panel').props.onPress());
+        expect(mocks.gestureEnabledValues.at(-1)).toBe(false);
+        expect(locked(renderer)).toBe(false);
+        act(() => renderer.unmount());
     });
 });

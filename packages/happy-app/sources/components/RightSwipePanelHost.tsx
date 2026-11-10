@@ -12,6 +12,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet } from 'react-native-unistyles';
+import { useAndroidDrawerSwipeLock } from '@/hooks/useAndroidDrawerSwipeLock';
 import { useIsTablet } from '@/utils/responsive';
 import { getResponsiveRightPanelMode, type ResponsiveRightPanelMode } from '@/utils/desktopNavigationLayout';
 import { hapticsLight } from './haptics';
@@ -26,6 +27,7 @@ type Props = {
     closeAccessibilityLabel: string;
     panelAccessibilityLabel: string;
     enabled?: boolean;
+    // Controls swipe-to-open. Android keeps dismissal available while open.
     gestureEnabled: boolean;
     fullWidth?: boolean;
     mode?: Exclude<ResponsiveRightPanelMode, 'persistent'>;
@@ -130,6 +132,16 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
     const [hostWidth, setHostWidth] = React.useState(windowWidth);
     const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false);
     const open = controlledOpen ?? uncontrolledOpen;
+    const [androidPanelVisible, setAndroidPanelVisible] = React.useState(open);
+    // A controlled close flips `open` before its spring ends. Retain ownership
+    // while the outgoing panel is still on screen, including header closes.
+    React.useLayoutEffect(() => {
+        if (Platform.OS === 'android' && open) setAndroidPanelVisible(true);
+    }, [open]);
+    useAndroidDrawerSwipeLock(enabled && isFocused && (open || androidPanelVisible));
+    const horizontalGestureEnabled = enabled && (Platform.OS === 'android'
+        ? isFocused && (gestureEnabled || open)
+        : gestureEnabled);
     const preferredPanelWidth = Math.min(
         Math.max(Math.floor(hostWidth * 0.72), 260),
         340,
@@ -147,8 +159,11 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
     const startX = useSharedValue(0);
     const startY = useSharedValue(0);
     const decided = useSharedValue(false);
+    const gestureActive = useSharedValue(false);
     const backHandlerRef = React.useRef<PanelBackHandler | null>(null);
     const mountedRef = React.useRef(true);
+    const openRef = React.useRef(open);
+    React.useLayoutEffect(() => { openRef.current = open; }, [open]);
     const animationRequestRef = React.useRef(0);
     const pendingCloseRef = React.useRef<{ id: number; onClosed?: () => void } | null>(null);
     const hostRef = React.useRef<any>(null);
@@ -177,6 +192,7 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
         if (!pending || pending.id !== requestId) return;
         pendingCloseRef.current = null;
         if (!finished) return;
+        if (Platform.OS === 'android') setAndroidPanelVisible(false);
         setPanelOpen(false);
         pending.onClosed?.();
     }, [setPanelOpen]);
@@ -196,16 +212,28 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
         progress.value = withSpring(1, SPRING_CONFIG);
     }, [progress, setPanelOpen, supersedePanelAnimation]);
 
+    const completeControlledClose = React.useCallback((requestId: number) => {
+        if (!mountedRef.current || animationRequestRef.current !== requestId) return;
+        setAndroidPanelVisible(false);
+    }, []);
+
     React.useEffect(() => {
         if (controlledOpen === undefined) return;
         supersedePanelAnimation();
         // On web the controlled accessibility state (role/inert/aria-hidden)
         // and the panel geometry must change atomically. Native keeps the
         // spring because its focus model cannot scroll the hidden filmstrip.
-        progress.value = Platform.OS === 'web'
-            ? (controlledOpen ? 1 : 0)
-            : withSpring(controlledOpen ? 1 : 0, SPRING_CONFIG);
-    }, [controlledOpen, progress, supersedePanelAnimation]);
+        if (Platform.OS === 'android' && !controlledOpen) {
+            const requestId = animationRequestRef.current;
+            progress.value = withSpring(0, SPRING_CONFIG, (finished) => {
+                if (finished) runOnJS(completeControlledClose)(requestId);
+            });
+        } else {
+            progress.value = Platform.OS === 'web'
+                ? (controlledOpen ? 1 : 0)
+                : withSpring(controlledOpen ? 1 : 0, SPRING_CONFIG);
+        }
+    }, [completeControlledClose, controlledOpen, progress, supersedePanelAnimation]);
 
     const closePanel = React.useCallback((onClosed?: () => void) => {
         const requestId = animationRequestRef.current + 1;
@@ -216,6 +244,18 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
             runOnJS(completePanelClose)(requestId, finished === true);
         });
     }, [completePanelClose, progress]);
+
+    const settleCanceledGesture = React.useCallback(() => {
+        if (!mountedRef.current) return;
+        // A header close can cancel a drag with callbacks from the previous
+        // render. Read the latest target and retain a completion-aware close.
+        if (!openRef.current) {
+            closePanel();
+        } else {
+            supersedePanelAnimation();
+            progress.value = withSpring(1, SPRING_CONFIG);
+        }
+    }, [closePanel, progress, supersedePanelAnimation]);
 
     const focusPanel = React.useCallback(() => {
         const restoreFocus = () => {
@@ -388,7 +428,7 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
 
     const horizontalGesture = React.useMemo(() => {
         const pan = Gesture.Pan()
-            .enabled(enabled && gestureEnabled)
+            .enabled(horizontalGestureEnabled)
             .manualActivation(true)
             .onTouchesDown((e) => {
                 'worklet';
@@ -416,6 +456,7 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
             })
             .onStart(() => {
                 'worklet';
+                gestureActive.value = true;
                 runOnJS(supersedePanelAnimation)();
                 startProgress.value = progress.value;
             })
@@ -423,8 +464,11 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
                 'worklet';
                 progress.value = Math.max(0, Math.min(1, startProgress.value - (e.translationX / panelWidth)));
             })
-            .onEnd((e) => {
+            .onEnd((e, success) => {
                 'worklet';
+                // Canceled native gestures also call onEnd. Let onFinalize
+                // restore the panel without queuing a new JS close animation.
+                if (Platform.OS === 'android' && !success) return;
                 const projected = progress.value + Math.max(-0.22, Math.min(0.22, -e.velocityX / 2600));
                 if (projected >= (e.translationX < 0 ? OPEN_PROGRESS_THRESHOLD : CLOSE_PROGRESS_THRESHOLD)) {
                     runOnJS(hapticsLight)();
@@ -434,6 +478,12 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
                         velocity: -e.velocityX / panelWidth,
                     });
                 } else {
+                    if (Platform.OS === 'android') {
+                        // Keep the parent drawer locked until the close animation
+                        // completes, including when a new open interrupts this close.
+                        runOnJS(closePanel)();
+                        return;
+                    }
                     progress.value = withSpring(0, {
                         ...SPRING_CONFIG,
                         velocity: -e.velocityX / panelWidth,
@@ -444,16 +494,23 @@ export const RightSwipePanelHost = React.memo(function RightSwipePanelHost({
                     });
                     runOnJS(hapticsLight)();
                 }
+            })
+            .onFinalize((_event, success) => {
+                'worklet';
+                if (Platform.OS === 'android' && gestureActive.value && !success) {
+                    runOnJS(settleCanceledGesture)();
+                }
+                gestureActive.value = false;
             });
         if (drawerPan) {
             pan.blocksExternalGesture(drawerPan);
         }
         return pan;
-    }, [decided, drawerPan, enabled, gestureEnabled, open, panelWidth, progress, setPanelOpen, startProgress, startX, startY, supersedePanelAnimation]);
+    }, [closePanel, decided, drawerPan, gestureActive, horizontalGestureEnabled, open, panelWidth, progress, setPanelOpen, settleCanceledGesture, startProgress, startX, startY, supersedePanelAnimation]);
 
     const externalHorizontalGestures = React.useMemo(
-        () => gestureEnabled ? [horizontalGesture] : [],
-        [gestureEnabled, horizontalGesture],
+        () => (Platform.OS === 'android' ? horizontalGestureEnabled : gestureEnabled) ? [horizontalGesture] : [],
+        [gestureEnabled, horizontalGestureEnabled, horizontalGesture],
     );
 
     const scrimStyle = useAnimatedStyle(() => ({

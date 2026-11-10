@@ -1,5 +1,7 @@
 import * as React from 'react';
 import { act } from 'react';
+import { Platform } from 'react-native';
+import { useAndroidDrawerSwipeLock } from '@/hooks/useAndroidDrawerSwipeLock';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SidebarNavigator } from './SidebarNavigator';
 
@@ -8,6 +10,9 @@ import { SidebarNavigator } from './SidebarNavigator';
 import TestRenderer from 'react-test-renderer';
 
 const mocks = vi.hoisted(() => ({
+    rightPanelActive: false,
+    secondPanelActive: false,
+    selectionMode: false,
     isTablet: true,
     windowWidth: 1200,
     clearSelection: vi.fn(),
@@ -28,7 +33,15 @@ vi.mock('@/utils/responsive', () => ({
     useHeaderHeight: () => 48,
 }));
 vi.mock('./SidebarView', () => ({ SidebarView: 'SidebarView' }));
-vi.mock('expo-router/drawer', () => ({ Drawer: 'Drawer' }));
+function PanelLock({ active }: { active: boolean }) {
+    useAndroidDrawerSwipeLock(active);
+    return null;
+}
+vi.mock('expo-router/drawer', () => ({
+    Drawer: (props: any) => React.createElement('Drawer', props,
+        <PanelLock active={mocks.rightPanelActive} />,
+        <PanelLock active={mocks.secondPanelActive} />),
+}));
 vi.mock('expo-router', () => ({
     useRouter: () => ({
         back: vi.fn(),
@@ -131,7 +144,7 @@ vi.mock('@/navigation/browserNavigationStore', () => {
 vi.mock('@/hooks/useSessionSelection', () => ({
     useSessionSelection: (
         selector: (state: { active: boolean; clearSelection: () => void }) => unknown,
-    ) => selector({ active: false, clearSelection: mocks.clearSelection }),
+    ) => selector({ active: mocks.selectionMode, clearSelection: mocks.clearSelection }),
 }));
 vi.mock('./KeyboardShortcuts', () => ({
     KeyboardShortcutsProvider: ({ children }: { children: React.ReactNode }) => (
@@ -174,6 +187,10 @@ describe('SidebarNavigator drawer behavior', () => {
     let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
+        (Platform as { OS: string }).OS = 'web';
+        mocks.rightPanelActive = false;
+        mocks.secondPanelActive = false;
+        mocks.selectionMode = false;
         mocks.hovered = false;
         mocks.isTablet = true;
         mocks.windowWidth = 1200;
@@ -337,6 +354,28 @@ describe('SidebarNavigator drawer behavior', () => {
         expect(renderer.root.findAllByProps({ testID: 'desktop-navigation-controls' })).toHaveLength(1);
         expect(renderer.root.findAllByProps({ testID: 'desktop-left-panel-resize-handle' })).toHaveLength(1);
 
+        act(() => renderer.unmount());
+    });
+});
+
+
+describe('Android drawer locking integration', () => {
+    afterEach(() => {
+        (Platform as { OS: string }).OS = 'web';
+        mocks.rightPanelActive = false;
+        mocks.secondPanelActive = false;
+        mocks.selectionMode = false;
+    });
+
+    it.each(['android', 'ios', 'web'])('gates the actual navigator swipe option on %s', (os) => {
+        (Platform as { OS: string }).OS = os;
+        mocks.isTablet = false;
+        mocks.windowWidth = 400;
+        mocks.rightPanelActive = true;
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SidebarNavigator />); });
+        const swipeEnabled = () => renderer.root.findByType('Drawer').props.screenOptions.swipeEnabled;
+        expect(swipeEnabled()).toBe(os !== 'android');
         act(() => renderer.unmount());
     });
 });
