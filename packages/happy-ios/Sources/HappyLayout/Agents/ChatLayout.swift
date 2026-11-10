@@ -278,6 +278,8 @@ public struct MessageLayout: Equatable, Sendable {
         case markdown([MarkdownLayout.Block])
         /// A tool call's pictures and recordings; `columns` 0 is justified rows.
         case media([MediaLayout.Item], columns: Int)
+        /// A `media` component's items.
+        case mediaRows([MediaRows.Item])
         /// A layout the agent wrote for media it showed.
         case tree([MediaTreeLayout.Box])
         /// A document, file or artifact: one card across the column.
@@ -295,6 +297,8 @@ public struct MessageLayout: Equatable, Sendable {
         case markdown(MarkdownLayout, origin: CGPoint)
         /// One frame per item, in the items' order.
         case media([CGRect])
+        /// Its tiles are `layout`'s, from `origin`.
+        case mediaRows(MediaRows, origin: CGPoint)
         case tree(MediaTreeLayout, origin: CGPoint)
         case card(CGRect)
         case page(CGRect)
@@ -356,6 +360,10 @@ public struct MessageLayout: Equatable, Sendable {
                 let media = MediaLayout(width: inner, items: items, columns: columns)
                 placed.append(.media(media.frames.map { $0.offsetBy(dx: left, dy: y) }))
                 y += media.size.height
+            case .mediaRows(let items):
+                let rows = MediaRows(width: inner, items: items)
+                placed.append(.mediaRows(rows, origin: CGPoint(x: left, y: y)))
+                y += rows.size.height
             case .tree(let boxes):
                 let tree = MediaTreeLayout(width: inner, root: boxes)
                 placed.append(.tree(tree, origin: CGPoint(x: left, y: y)))

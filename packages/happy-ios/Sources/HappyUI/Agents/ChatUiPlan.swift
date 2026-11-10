@@ -40,6 +40,8 @@ enum ChatUiPlan {
         var rows: [MeasuredText] = []
         var text: MeasuredText?
         var lines: [MeasuredText] = []
+        /// Each pill's note, when it has one.
+        var notes: [MeasuredText?] = []
         /// A live component's card.
         var card: UiCard?
         var spoken: String
@@ -59,6 +61,18 @@ enum ChatUiPlan {
             return Draft(shown: .component(shown), input: .line(text.measurable), text: text, spoken: words)
         case .live:
             let card = UiCard.make(shown, granted: granted)
+            if let row = card.row {
+                // One line each, so the row is one height whatever it says.
+                let name = measured(card.title, label, Palette.text, lines: 1)
+                let words = card.lines.first ?? UiCard.Line("")
+                let line = MeasuredText(detail.string(words.text, color: words.style == .error ? Palette.textDestructive : Palette.textSecondary, lineBreakMode: .byTruncatingTail, in: environment), maxLines: 1)
+                let buttons = card.buttons.map { one in
+                    MeasuredText(label.string(one.label, color: !one.enabled ? Palette.textSecondary : (one.primary ? Palette.roundButtonText : Palette.text), lineBreakMode: .byTruncatingTail, in: environment), maxLines: 1)
+                }
+                let controls = zip(card.buttons, buttons).map { one, text in ChatUiLayout.RowControl(one.glyph == nil ? text.measurable : nil, rank: one.rank) }
+                let input = ChatUiLayout.Input.row(name: name.measurable, line: line.measurable, lineMark: row.tone != .quiet, controls: controls)
+                return Draft(shown: .component(shown), input: input, buttons: buttons, text: name, lines: [line], card: card, spoken: [card.title, words.text].joined(separator: ", "))
+            }
             let title = measured(card.title, label, Palette.text)
             let lines = card.lines.map { one -> MeasuredText in
                 switch one.style {
@@ -78,13 +92,34 @@ enum ChatUiPlan {
     }
 
     /// Quick replies in a person's words' type, one line each; once one
-    /// is sent, the others' words go quiet, so the sent one stands out.
+    /// is sent, the others' words go quiet, so the sent one stands out. A
+    /// provider's option keeps room for the widest note it may show.
     static func draft(_ replies: QuickReplies, environment: TextEnvironment?) -> Draft {
+        func quiet(_ index: Int) -> Bool { replies.chosen.map { $0 != index } ?? false }
         let labels = replies.options.enumerated().map { index, option in
-            let quiet = replies.chosen.map { $0 != index } ?? false
-            return MeasuredText(ChatTextStyles.text.string(option, color: quiet ? Palette.textSecondary : Palette.userMessageText, lineBreakMode: .byTruncatingTail, in: environment), maxLines: 1)
+            MeasuredText(ChatTextStyles.text.string(option, color: quiet(index) ? Palette.textSecondary : Palette.userMessageText, lineBreakMode: .byTruncatingTail, in: environment), maxLines: 1)
         }
-        return Draft(shown: .replies(replies), input: .replies(labels.map(\.measurable)), buttons: labels, spoken: "")
+        func note(_ text: String) -> MeasuredText {
+            MeasuredText(detail.string(text, color: Palette.textSecondary, alignment: .right, lineBreakMode: .byTruncatingTail, in: environment), maxLines: 1)
+        }
+        let hasNotes = replies.providers.contains { $0 != nil }
+        let noteWidth = hasNotes ? QuickReplies.noteCandidates.map { note($0).measurable.size(fitting: .greatestFiniteMagnitude).width.rounded(.up) }.max() ?? 0 : 0
+        let notes = replies.notes.map { $0.map(note) }
+        let input = ChatUiLayout.Input.replies(zip(labels, replies.providers).map { label, provider in
+            ChatUiLayout.Reply(label.measurable, mark: provider != nil, note: provider != nil)
+        }, noteWidth: noteWidth)
+        return Draft(shown: .replies(replies), input: input, buttons: labels, notes: notes, spoken: "")
+    }
+
+    /// A provider CLI's mark (new/index.tsx's `agentIcons`), drawn in the
+    /// words' colour; one this build has no picture of gets a sparkle.
+    static func mark(_ provider: String) -> String? {
+        switch provider {
+        case "claude": "icon-claude"
+        case "codex": "icon-gpt"
+        case "antigravity": "icon-agy"
+        default: nil
+        }
     }
 
     static func draw(_ draft: Draft, _ layout: ChatUiLayout, origin: CGPoint) -> (items: [ChatDrawItem], hits: [ChatHit], controls: [ChatControl]) {
@@ -101,7 +136,13 @@ enum ChatUiPlan {
             for (index, (placed, label)) in zip(layout.buttons, draft.buttons).enumerated() {
                 let sent = replies.chosen == index
                 items.append(.box(ChatBox(frame: at(placed.frame), fill: sent ? Palette.userBubble : Palette.quickReplyBubble, radius: MessageLayout.Metrics.bubbleRadius)))
+                let words = replies.chosen.map { $0 != index } ?? false ? Palette.textSecondary : Palette.userMessageText
+                if let provider = replies.providers[index], let frame = placed.mark {
+                    if let name = mark(provider) { items.append(.image(name, frame: at(frame), tint: words)) }
+                    else { items.append(.icon(.ionicons("sparkles-outline"), size: M.replyMark, frame: at(frame), tint: words)) }
+                }
                 text(label, placed.label)
+                if index < draft.notes.count, let note = draft.notes[index], let frame = placed.note { text(note, frame) }
                 if sent, let tick = placed.tick { items.append(.icon(.ionicons("checkmark"), size: M.tick, frame: at(tick), tint: Palette.userMessageText)) }
                 let tap = ChatRowAction.ui(ChatUiTap(kind: .reply(replies, index)))
                 if replies.live { hits.insert(ChatHit(frame: at(placed.frame), action: tap), at: 0) }
@@ -116,6 +157,39 @@ enum ChatUiPlan {
                 }
             case .line:
                 if let line = draft.text, let frame = layout.label { text(line, frame) }
+            case .live where draft.card?.row != nil:
+                guard let card = draft.card, let row = card.row else { break }
+                if let frame = layout.card {
+                    items.append(.box(ChatBox(frame: at(frame), fill: Palette.surfaceHigh, border: Palette.legacyDivider, borderWidth: M.border, radius: M.radius)))
+                }
+                if let frame = layout.mark {
+                    if let name = mark(row.provider) { items.append(.image(name, frame: at(frame), tint: Palette.text)) }
+                    else { items.append(.icon(.ionicons("sparkles-outline"), size: M.rowMark, frame: at(frame), tint: Palette.text)) }
+                }
+                if let name = draft.text, let frame = layout.label { text(name, frame) }
+                for (one, frame) in zip(draft.lines, layout.lines) { text(one, frame) }
+                if let frame = layout.lineMark {
+                    switch row.tone {
+                    case .busy: items.append(.spinner(at(frame), tint: Palette.textSecondary, scale: M.lineMark / 20))
+                    case .done: items.append(.icon(.ionicons("checkmark-circle"), size: M.lineMark, frame: at(frame), tint: Palette.textSecondary))
+                    case .error: items.append(.icon(.ionicons("alert-circle"), size: M.lineMark, frame: at(frame), tint: Palette.textDestructive))
+                    case .quiet: break
+                    }
+                }
+                for (placed, index) in zip(layout.buttons, layout.shown) {
+                    let one = card.buttons[index]
+                    let filled = one.primary && one.enabled
+                    items.append(.box(ChatBox(frame: at(placed.frame), fill: filled ? Palette.roundButtonFill : nil, border: filled || one.glyph != nil ? nil : Palette.legacyDivider,
+                                              borderWidth: filled || one.glyph != nil ? 0 : M.border, radius: M.rowControl / 2, alpha: one.enabled ? 1 : M.disabledAlpha)))
+                    if let glyph = one.glyph {
+                        items.append(.icon(.ionicons(glyph), size: M.tick, frame: at(placed.label), tint: Palette.textSecondary))
+                    } else {
+                        text(draft.buttons[index], placed.label)
+                    }
+                    let tap = ChatRowAction.ui(ChatUiTap(kind: .card(shown, one.tap)))
+                    if one.enabled { hits.insert(ChatHit(frame: at(placed.frame), action: tap), at: 0) }
+                    controls.append(ChatControl(frame: at(placed.frame), label: one.label, action: one.enabled ? tap : nil))
+                }
             case .live:
                 guard let card = draft.card else { break }
                 if let frame = layout.card {

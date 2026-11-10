@@ -14,7 +14,7 @@ public enum ChatUi {
     public static let protocolVersion = 35
     public static let protocolHeader = "Happy-Protocol"
 
-    /// The components the phone draws itself are `images`, `file_tree`
+    /// The components the phone draws itself are `media`, `file_tree`
     /// and the `live` ones, as a card of the server's state (`UiCard`);
     /// every other one shows its fallback line, and `hidden` ones nothing
     /// (the phone app's download codes and pairing, on the phone).
@@ -35,6 +35,42 @@ public struct UiDocument: Equatable, Sendable, Codable {
         self.id = id
         self.components = components
     }
+}
+
+/// A presentation's `ui`: a `show_ui` call's document, or a
+/// `suggest_replies` call's reply components, one per option.
+public enum PresentationUi: Equatable, Sendable, Codable {
+    case document(UiDocument)
+    case replies([ReplyUi?])
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let replies = try? container.decode([ReplyUi?].self) { self = .replies(replies) } else { self = .document(try container.decode(UiDocument.self)) }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .document(let document): try container.encode(document)
+        case .replies(let replies): try container.encode(replies)
+        }
+    }
+}
+
+/// A quick reply's component (happy-agent `sources/replies`): display only,
+/// one line; a tap still sends the option's text. A type this build
+/// doesn't know draws as a plain option.
+public struct ReplyUi: Equatable, Sendable, Codable {
+    public var type: String
+    public var props: JSONValue
+
+    public init(type: String, props: JSONValue) {
+        self.type = type
+        self.props = props
+    }
+
+    /// A `provider` reply's provider CLI, the only kind the phone draws.
+    public var provider: String? { type == "provider" ? props["provider"]?.stringValue : nil }
 }
 
 /// One component as sent: a type this build may not know is kept, and
@@ -258,7 +294,7 @@ public struct UiShown: Equatable, Sendable {
         /// Drawn from the server's state, as a `UiCard`.
         case live
         /// A line of plain text: a component the phone doesn't draw, by its
-        /// fallback, or an `images` component's captions.
+        /// fallback.
         case line(String)
     }
 
@@ -294,9 +330,9 @@ public struct UiShown: Equatable, Sendable {
         self.state = state
     }
 
-    /// The pieces a document's component draws as: its own, an `images`
-    /// grid of `media` (a `show_ui` call's items) with its captions, its
-    /// fallback line, or nothing.
+    /// The pieces a document's component draws as: its own, a `media`
+    /// component's items (a `show_ui` call's) in rows with their labels,
+    /// its fallback line, or nothing.
     public static func pieces(_ component: UiComponent, document: String, message: String, media: [Media]) -> [ChatItem.Piece] {
         let offer = UiOffer(messageId: message, uiId: document, componentId: component.id)
         let props = component.props
@@ -307,15 +343,15 @@ public struct UiShown: Equatable, Sendable {
         if ChatUi.hidden.contains(component.type) { return [] }
         let kind: Kind?
         switch component.type {
-        case "images":
-            let entries = props["images"]?.arrayValue ?? []
+        case "media":
+            let entries = props["items"]?.arrayValue ?? []
             let shown = entries.compactMap { entry -> (Media, String?)? in
-                guard let index = entry["mediaIndex"]?.numberValue.map(Int.init), media.indices.contains(index), media[index].isVisual else { return nil }
-                return (media[index], entry["caption"]?.stringValue)
+                guard let index = entry["mediaIndex"]?.numberValue.map(Int.init), media.indices.contains(index) else { return nil }
+                let label = entry["label"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+                return (media[index], label?.isEmpty == false ? label : nil)
             }
             guard !shown.isEmpty, shown.count == entries.count else { return line(component.fallback) }
-            let columns = props["columns"]?.numberValue.map(Int.init).flatMap { (1...3).contains($0) ? $0 : nil } ?? 0
-            return [.gallery(shown.map(\.0), columns: columns)] + line(shown.compactMap(\.1).joined(separator: "\n"))
+            return [.mediaRows(shown.map(\.0), labels: shown.map(\.1))]
         case "file_tree":
             let paths = (props["paths"]?.arrayValue ?? []).compactMap(\.stringValue)
             kind = paths.isEmpty ? nil : .fileTree(UiFileTree.rows(paths))
@@ -349,13 +385,38 @@ public struct QuickReplies: Equatable, Sendable {
     public var chosen: Int?
     /// It takes a tap: the newest suggestion, nobody having written since.
     public var live: Bool
+    /// Each option's provider CLI, for a `provider` reply: its mark goes
+    /// before the words. As long as `options`.
+    public var providers: [String?]
+    /// Each provider option's quiet note, from its CLI's live state ("Not
+    /// installed", "2 accounts"); nil until it is read.
+    public var notes: [String?]
 
-    public init(messageId: String, toolCallId: String? = nil, options: [String], chosen: Int? = nil, live: Bool = false) {
+    public init(messageId: String, toolCallId: String? = nil, options: [String], chosen: Int? = nil, live: Bool = false, ui: [ReplyUi?]? = nil, notes: [String?] = []) {
         self.messageId = messageId
         self.toolCallId = toolCallId
         self.options = options
         self.chosen = chosen
         self.live = live
+        let ui = ui?.count == options.count ? ui ?? [] : Array(repeating: nil, count: options.count)
+        providers = ui.map { $0?.provider }
+        self.notes = notes.count == options.count ? notes : Array(repeating: nil, count: options.count)
+    }
+
+    /// The notes a provider option may show, the widest of which its pill
+    /// keeps room for, so a note changing never moves it.
+    public static let noteCandidates = ["Not installed", "Not signed in", "12 accounts"]
+
+    /// A provider option's note from its CLI's state (`API.md`, "Quick
+    /// replies"): not installed, its signed-in accounts counted, or not
+    /// signed in; none while a CLI that lists no accounts doesn't know.
+    public static func note(_ cli: UiProviderCli) -> String? {
+        guard cli.installed else { return "Not installed" }
+        let accounts: Int
+        if let listed = cli.accounts { accounts = listed.filter { $0.signIn == "signed_in" }.count }
+        else if cli.signIn == "unknown" { return nil }
+        else { accounts = cli.signIn == "signed_in" ? 1 : 0 }
+        return accounts == 0 ? "Not signed in" : UiProviderCli.accounts(accounts)
     }
 
     /// Which suggestion a `quickReply` names.

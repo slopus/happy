@@ -54,7 +54,16 @@ one row reconfigured at the same height, and the send's row inserted
 (`ChatUiTests`' changeset assertions). A folded turn keeps the replies and
 the words above them. VoiceOver reads each pill and each card button as a
 button of its own (`ChatRowPlan.controls`): the sent pill selected, one
-that can't be used now dimmed.
+that can't be used now dimmed. The stack's width is the widest
+option's own, measured in the same off-main pass as its height, and a
+`provider` option reserves the widest note it may show, so its note
+following the CLI's live state changes the row's drawing, never its frame.
+
+A `media` component's frames come from its items' stated sizes alone
+(`MediaRows`, the rule happy-agent's `layoutMedia` gives every client), so
+a picture loading never moves the row; it covers its tile. A live sign-in
+is one row whose height its state never changes: one line, controls left
+out rather than wrapped.
 
 A chat UI action's result that holds a secret (an invite's link, a join
 code) is merged into its card on the main thread (`ChatViewController.shownItems`),

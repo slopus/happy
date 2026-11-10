@@ -56,6 +56,9 @@ private struct ChatNodeDrawing: Drawing {
                     context.setFillColor(UIColor(tint).cgColor)
                     context.addPath(glyph.path.cgPath); context.fillPath()
                 }
+            case .image(let name, let frame, let tint):
+                guard frame.intersects(visible) else { context.restoreGState(); continue }
+                UIImage.happy(name)?.withTintColor(UIColor(tint), renderingMode: .alwaysTemplate).draw(in: frame)
             default: break
             }
             context.restoreGState()
@@ -175,7 +178,7 @@ final class ChatUltraRow: ListRow {
             switch item {
             case .box(let box):
                 if live.contains(where: { $0.intersects(box.frame) }) { return true }
-            case .text(_, let frame), .icon(_, _, let frame, _):
+            case .text(_, let frame), .icon(_, _, let frame, _), .image(_, let frame, _):
                 if live.contains(where: { $0.intersects(frame) }) { return true }
             case .spinner(let frame, _, _), .shimmer(_, let frame), .elapsed(_, let frame, _), .diff(_, let frame, _, _, _, _),
                  .diffHeader(_, _, let frame), .scroller(_, let frame, _, _), .attachment(_, let frame),

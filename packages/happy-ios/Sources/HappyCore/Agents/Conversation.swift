@@ -44,6 +44,9 @@ public struct ChatItem: Equatable, Sendable, Identifiable {
         /// Pictures and videos an agent's tool presented, in `columns` (0:
         /// justified rows); read on demand.
         case gallery([Media], columns: Int)
+        /// A `media` component's items in justified rows (`MediaRows`),
+        /// each with its label, as long as `media`.
+        case mediaRows([Media], labels: [String?])
         /// A layout the agent wrote for media it showed: a presentation's
         /// `tree`, or a block in its text. The tree's item indexes are
         /// positions in `media`.
@@ -1818,16 +1821,25 @@ public actor Conversation {
         chosen += transcript.pending.compactMap { transcript[message: $0]?.quickReply }
         chosen += outgoing.compactMap { outgoingReplies[$0.id] }
         let quiet = !spokeAfter && outgoing.isEmpty && transcript.pending.isEmpty
+        // A provider option's note follows its CLI as a sign-in widget does.
+        var sources: Set<String> = []
         // From the end, so each insertion leaves the places still to find.
         for (offset, entry) in found.enumerated().reversed() {
             var replies = entry.replies
             replies.chosen = chosen.last(where: replies.names)?.index
             replies.live = quiet && offset == found.count - 1
+            replies.notes = replies.providers.map { provider in
+                guard let provider else { return nil }
+                sources.insert("provider_cli:\(provider)")
+                guard case .provider(let cli)? = live["provider_cli:\(provider)"] else { return nil }
+                return QuickReplies.note(cli)
+            }
             let item = ChatItem(id: "replies:\(replies.messageId):\(replies.toolCallId ?? "")", role: .agent, pieces: [.quickReplies(replies)], delivery: .sent, turn: entry.run)
             let place = if let after = entry.after, let index = items.firstIndex(where: { $0.id == after }) { index + 1 }
                 else { items.firstIndex { $0.turn == entry.run } ?? items.endIndex }
             items.insert(item, at: place)
         }
+        followLive(sources)
     }
 
     /// What an agent's message offers to reply with: the daemon's block, or
@@ -1835,10 +1847,10 @@ public actor Conversation {
     private static func suggestion(in message: AgentWire.Message) -> QuickReplies? {
         for block in message.content {
             switch block {
-            case .quickReplies(let options) where !options.isEmpty:
-                return QuickReplies(messageId: message.id, options: options)
+            case .quickReplies(let options, let ui) where !options.isEmpty:
+                return QuickReplies(messageId: message.id, options: options, ui: ui)
             case .toolCall(let callId, _, _, let presentation?, _, _, _, _) where presentation.type == "quick_replies" && !(presentation.options ?? []).isEmpty:
-                return QuickReplies(messageId: message.id, toolCallId: callId, options: presentation.options ?? [])
+                return QuickReplies(messageId: message.id, toolCallId: callId, options: presentation.options ?? [], ui: presentation.replyUi)
             default:
                 continue
             }

@@ -335,6 +335,8 @@ actor ChatPlanner {
         enum Draft {
             case markdown(MarkdownPiece)
             case gallery([Media])
+            /// A `media` component's items and their labels' one lines.
+            case mediaRows([Media], labels: [MeasuredText?])
             case tree(ChatMediaPlan.Tree)
             case card(ChatMediaPlan.Card)
             case page(InlinePage)
@@ -360,6 +362,15 @@ actor ChatPlanner {
             case .gallery(let media, let columns):
                 drafts.append(.gallery(media))
                 parts.append(.media(media.map(Self.layoutItem), columns: columns))
+            case .mediaRows(let media, let labels):
+                let measured = labels.map { label in
+                    label.map { MeasuredText(ChatUiPlan.detail.string($0, color: Palette.textSecondary, lineBreakMode: .byTruncatingTail, in: environment), maxLines: 1) }
+                }
+                drafts.append(.mediaRows(media, labels: measured))
+                parts.append(.mediaRows(zip(media, labels).map { one, label in
+                    MediaRows.Item(width: one.item.width.map { CGFloat($0) }, height: one.item.height.map { CGFloat($0) }, isVideo: one.isVideo, labelled: label != nil)
+                }))
+                spoken += labels.compactMap { $0 }
             case .tree(let media, let tree):
                 let planned = ChatMediaPlan.tree(media, tree, environment: environment)
                 drafts.append(.tree(planned))
@@ -409,8 +420,8 @@ actor ChatPlanner {
         var controls: [ChatControl] = []
         var selectable: [ChatSelectable.Text] = []
         var proposals: [(artifactId: String, layout: SidebarProposalLayout, frame: CGRect)] = []
-        func media(_ media: Media, _ frame: CGRect) {
-            items.append(.media(ChatMedia(key: media.key, isVideo: media.isVideo, thumbhash: media.item.thumbhash, label: Strings.media(isVideo: media.isVideo, name: media.item.name)), frame: frame))
+        func media(_ media: Media, _ frame: CGRect, covers: Bool = false) {
+            items.append(.media(ChatMedia(key: media.key, isVideo: media.isVideo, thumbhash: media.item.thumbhash, label: Strings.media(isVideo: media.isVideo, name: media.item.name), covers: covers), frame: frame))
             hits.insert(ChatHit(frame: frame, action: .openMedia(media.key)), at: 0)
             // Telegram's ring pauses or resumes the download; a video's
             // play button plays, so its badge does that instead.
@@ -435,6 +446,12 @@ actor ChatPlanner {
                 selectable += drawn.texts
             case (.media(let frames), .gallery(let gallery)):
                 for (one, frame) in zip(gallery, frames) { media(one, frame) }
+            case (.mediaRows(let rows, let origin), .mediaRows(let shown, let labels)):
+                for ((one, tile), label) in zip(zip(shown, rows.tiles), labels) {
+                    let frame = tile.frame.offsetBy(dx: origin.x, dy: origin.y)
+                    if one.isVisual { media(one, frame, covers: true) } else { card(ChatMediaPlan.card(file: one), frame) }
+                    if let label, let frame = tile.label?.offsetBy(dx: origin.x, dy: origin.y) { items.append(.text(label.layout(for: frame), frame)) }
+                }
             case (.tree(let tree, let origin), .tree(let planned)):
                 for (index, frame) in tree.items.sorted(by: { $0.key < $1.key }) where planned.media.indices.contains(index) {
                     let one = planned.media[index]

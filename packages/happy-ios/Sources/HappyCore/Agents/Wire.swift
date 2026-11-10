@@ -402,10 +402,22 @@ extension AgentWire {
         /// the service message's compaction block.
         public var tokensBefore: Double?
         public var tokensAfter: Double?
-        /// A `show_ui` call's document (`ui`); its `images` name `items` by index.
-        public var ui: UiDocument?
+        /// A `show_ui` call's document, or a `suggest_replies` call's reply
+        /// components: both are `ui` on the wire.
+        public var uiField: PresentationUi?
         /// A `suggest_replies` call's options (`quick_replies`).
         public var options: [String]?
+
+        /// A `show_ui` call's document; its `media` name `items` by index.
+        public var ui: UiDocument? { if case .document(let document)? = uiField { document } else { nil } }
+        /// Each option's reply component, as long as `options` when present.
+        public var replyUi: [ReplyUi?]? { if case .replies(let ui)? = uiField { ui } else { nil } }
+
+        private enum CodingKeys: String, CodingKey {
+            case type, items, layout, artifactId, artifactType, title, version, shows, command, input, query, operations, files, model, output
+            case target, sources, omittedFiles, agentId, tokensBefore, tokensAfter, options
+            case uiField = "ui"
+        }
 
         /// One `exploration` step: `list` a `target`, `read` a `name`, or
         /// `search` by `command`, with its `query` and `path` when known.
@@ -510,8 +522,9 @@ extension AgentWire {
         case ui(UiDocument)
         /// A chat UI action, in its attempt record.
         case action(UiActionBlock)
-        /// Replies the daemon suggested itself (`quick_replies`).
-        case quickReplies([String])
+        /// Replies the daemon suggested itself (`quick_replies`), and each
+        /// option's reply component when it has them.
+        case quickReplies([String], ui: [ReplyUi?]? = nil)
         case unknown(String)
 
         enum CodingKeys: String, CodingKey { case type, text, mimeType, data, id, name, status, presentation, arguments, result, elevated, review, ui, options }
@@ -555,7 +568,9 @@ extension AgentWire {
             case "action":
                 if let block = try? UiActionBlock(from: decoder) { self = .action(block) } else { self = .unknown(type) }
             case "quick_replies":
-                if let options = try? container.decode([String].self, forKey: .options) { self = .quickReplies(options) } else { self = .unknown(type) }
+                if let options = try? container.decode([String].self, forKey: .options) {
+                    self = .quickReplies(options, ui: (try? container.decodeIfPresent([ReplyUi?].self, forKey: .ui)) ?? nil)
+                } else { self = .unknown(type) }
             default: self = .unknown(type)
             }
         }
@@ -589,9 +604,10 @@ extension AgentWire {
             case .action(let block):
                 try container.encode("action", forKey: .type)
                 try block.encode(to: encoder)
-            case .quickReplies(let options):
+            case .quickReplies(let options, let ui):
                 try container.encode("quick_replies", forKey: .type)
                 try container.encode(options, forKey: .options)
+                try container.encodeIfPresent(ui, forKey: .ui)
             case .unknown(let type): try container.encode(type, forKey: .type)
             }
         }

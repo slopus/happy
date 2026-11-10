@@ -54,7 +54,7 @@ struct Picture: Equatable {
                 switch piece {
                 case .picture(let id, _, _):
                     pictures.append(Picture(key: MediaLoader.sentKey(id), thumbhash: nil, label: Strings.picture))
-                case .gallery(let media, _), .tree(let media, _):
+                case .gallery(let media, _), .tree(let media, _), .mediaRows(let media, _):
                     for one in media where one.isVisual && !one.isVideo {
                         pictures.append(Picture(one))
                     }

@@ -152,6 +152,9 @@ enum ChatDrawItem {
     case box(ChatBox)
     case text(ChatTextLayout, CGRect)
     case icon(Icon, size: CGFloat, frame: CGRect, tint: ColorToken)
+    /// A bundled picture (`UIImage.happy`), as a template in `tint`: a
+    /// provider's mark.
+    case image(String, frame: CGRect, tint: ColorToken)
     /// ActivityIndicator size="small", scaled.
     case spinner(CGRect, tint: ColorToken, scale: CGFloat)
     /// A label carrying the shimmer while its work goes (`ChatShimmerView`).
@@ -233,6 +236,9 @@ struct ChatMedia: Equatable, Sendable {
     var label: String
     /// Still going to the computer: its ring.
     var upload: ChatUpload? = nil
+    /// It fills its tile, cropped, as a `media` component's items do,
+    /// rather than fitting inside it.
+    var covers = false
 }
 
 /// A picture or video of a message on its way: how far it is lives on

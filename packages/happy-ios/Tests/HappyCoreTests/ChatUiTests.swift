@@ -25,7 +25,7 @@ final class ChatUiTests: XCTestCase {
         let schema = try fixture("chat-ui-schema")
         let member = Set(try XCTUnwrap(schema["memberPermissions"]?.arrayValue).compactMap(\.stringValue))
         let vectors = try XCTUnwrap(fixture("chat-ui-actions")["permission"]?.arrayValue)
-        XCTAssertEqual(vectors.count, 25)
+        XCTAssertEqual(vectors.count, 30)
         for vector in vectors {
             let type = try XCTUnwrap(vector["action"]?.stringValue)
             let props = vector["props"] ?? .object([:])
@@ -49,6 +49,23 @@ final class ChatUiTests: XCTestCase {
             XCTAssertEqual(QuickReplies.problems(normalized).map(JSONValue.string), vector["problems"]?.arrayValue, "\(vector)")
         }
         XCTAssertEqual(try fixture("chat-ui-schema")["quickReplies"]?["block"]?["properties"]?["options"]?["maxItems"]?.numberValue, Double(QuickReplies.max))
+    }
+
+    /// Each stored suggestion of the client's reply vectors reads: a
+    /// `provider` option has its provider, any other type is a plain option.
+    func testReplyComponentsReadAsTheClientStoresThem() throws {
+        let vectors = try XCTUnwrap(fixture("chat-ui-actions")["replies"]?.arrayValue)
+        XCTAssertEqual(vectors.count, 6)
+        for vector in vectors {
+            let stored = try XCTUnwrap(vector["stored"])
+            let block = try JSONDecoder().decode(AgentWire.Block.self, from: JSONEncoder().encode(JSONValue.object(["type": .string("quick_replies"), "options": stored["options"] ?? .null, "ui": stored["ui"] ?? .null])))
+            guard case .quickReplies(let options, let ui) = block else { return XCTFail("\(vector)") }
+            let replies = QuickReplies(messageId: "m", options: options, ui: ui)
+            let expected = (stored["ui"]?.arrayValue ?? options.map { _ in .null }).map { one -> String? in
+                one["type"]?.stringValue == "provider" ? one["props"]?["provider"]?.stringValue : nil
+            }
+            XCTAssertEqual(replies.providers, expected, "\(vector)")
+        }
     }
 
     /// Every action the schema declares, with its permission, and no other.
@@ -138,19 +155,21 @@ final class ChatUiTests: XCTestCase {
         XCTAssertEqual(broken.kind, .line("Fallback"))
     }
 
-    func testImagesAreAGridOfTheCallsItemsWithTheirCaptions() {
+    func testMediaIsTheCallsItemsInRowsWithTheirLabels() {
         let item = AgentWire.MediaItem(kind: "image", name: "a.png", mimeType: "image/png")
         let media = (0..<3).map { Media(toolCallId: "call", index: $0, item: item) }
-        let props: JSONValue = .object(["columns": .number(3), "images": .array([
-            .object(["mediaIndex": .number(2), "caption": .string("Login")]), .object(["mediaIndex": .number(0)]),
+        let props: JSONValue = .object(["items": .array([
+            .object(["mediaIndex": .number(2), "label": .string("Login")]), .object(["mediaIndex": .number(0), "label": .string("  ")]),
         ])])
-        let pieces = UiShown.pieces(component("images", props), document: "u1", message: "a1", media: media)
-        XCTAssertEqual(pieces.first, .gallery([media[2], media[0]], columns: 3))
-        XCTAssertEqual(pieces.count, 2)
+        XCTAssertEqual(UiShown.pieces(component("media", props), document: "u1", message: "a1", media: media), [.mediaRows([media[2], media[0]], labels: ["Login", nil])])
         // An index past the items: the fallback, never a hole.
-        let missing = UiShown.pieces(component("images", .object(["images": .array([.object(["mediaIndex": .number(5)])])])), document: "u1", message: "a1", media: media)
+        let missing = UiShown.pieces(component("media", .object(["items": .array([.object(["mediaIndex": .number(5)])])])), document: "u1", message: "a1", media: media)
         guard case .ui(let line)? = missing.first else { return XCTFail() }
         XCTAssertEqual(line.kind, .line("Fallback"))
+        // The old `images` is gone: its fallback.
+        guard case .ui(let old)? = UiShown.pieces(component("images", .object(["images": .array([.object(["mediaIndex": .number(0)])])])), document: "u1", message: "a1", media: media).first
+        else { return XCTFail() }
+        XCTAssertEqual(old.kind, .line("Fallback"))
     }
 
     func testAFileTreeIsItsFoldersOnceBeforeWhatIsInThem() {
@@ -343,6 +362,71 @@ final class ChatUiTests: XCTestCase {
         await conversation.stop()
     }
 
+    /// A suggestion's reply components come in its `ui`, one per option:
+    /// a `provider` option's mark goes before its words, and its note
+    /// follows its CLI's live state, the stack's row moved in place.
+    func testAProviderReplyHasItsMarkAndANoteFromItsCli() async throws {
+        let ui: JSONValue = .array([.object(["type": .string("provider"), "props": .object(["provider": .string("claude")])]), .null])
+        let server = ChatUiServer(history: [
+            .object(["id": .string("r1"), "status": .string("completed"), "messages": .array([
+                .object(["id": .string("a1"), "role": .string("agent"), "createdAt": .number(1), "content": .array([
+                    .object(["type": .string("text"), "text": .string("Which AI should I work with?")]),
+                    .object(["type": .string("quick_replies"), "options": .array([.string("Add another Claude Code account"), .string("That's all for now")]), "ui": ui]),
+                ])]),
+            ])]),
+        ])
+        await server.read("/v0/provider-clis/claude", .object(["providerCli": Self.providerCli(version: "01991f3a-0000")]))
+        var (conversation, updates, store) = await openWithStore(server)
+        let read = await next(&updates) { (self.replies($0)?.notes.first ?? nil) != nil }
+        let shown = try XCTUnwrap(replies(read))
+        XCTAssertEqual(shown.providers, ["claude", nil])
+        XCTAssertEqual(shown.notes, ["Not signed in", nil])
+
+        guard case .object(var signedIn) = Self.providerCli(version: "01991f3a-0001", signIn: "signed_in") else { return XCTFail() }
+        signedIn["accounts"] = .array([
+            .object(["id": .string("a"), "label": .string("Work"), "signIn": .string("signed_in")]),
+            .object(["id": .string("b"), "label": .string("Home"), "signIn": .string("signed_in")]),
+        ])
+        await store.externalEvent(.object(["type": .string("provider_cli.updated"), "payload": .object(["providerCli": .object(signedIn)])]))
+        let moved = await next(&updates) { self.replies($0)?.notes.first == "2 accounts" }
+        XCTAssertEqual(moved?.items.map(\.id), read?.items.map(\.id), "nothing moved")
+        let before = Dictionary(uniqueKeysWithValues: (read?.items ?? []).map { ($0.id, $0) })
+        XCTAssertEqual(moved?.items.filter { before[$0.id] != $0 }.map(\.id), ["replies:a1:"])
+        await conversation.stop()
+    }
+
+    func testAReplyComponentReadsAndKeepsAndANoteSaysWhatItsCliHas() throws {
+        let json = #"""
+        {"id":"m","role":"agent","createdAt":1,"content":[
+          {"type":"quick_replies","options":["Set up Grok","No"],"ui":[{"type":"provider","props":{"provider":"grok"}},null]},
+          {"type":"tool_call","id":"c2","name":"suggest_replies","status":"completed","presentation":{"type":"quick_replies","options":["Codex","Later"],"ui":[{"type":"provider","props":{"provider":"codex"}},{"type":"sparkle","props":{}}]}}
+        ]}
+        """#
+        let message = try JSONDecoder().decode(AgentWire.Message.self, from: Data(json.utf8))
+        let grok = ReplyUi(type: "provider", props: .object(["provider": .string("grok")]))
+        XCTAssertEqual(message.content[0], .quickReplies(["Set up Grok", "No"], ui: [grok, nil]))
+        guard case .toolCall(_, _, _, let presentation, _, _, _, _) = message.content[1] else { return XCTFail("no call") }
+        XCTAssertNil(presentation?.ui)
+        // A type this build doesn't know is a plain option.
+        XCTAssertEqual(QuickReplies(messageId: "m", options: presentation?.options ?? [], ui: presentation?.replyUi).providers, ["codex", nil])
+        // Components that don't match the options are dropped, not misplaced.
+        XCTAssertEqual(QuickReplies(messageId: "m", options: ["A", "B"], ui: [grok]).providers, [nil, nil])
+        let kept = try JSONDecoder().decode(AgentWire.Message.self, from: JSONEncoder().encode(message))
+        XCTAssertEqual(kept.content, message.content)
+
+        func note(_ extra: [String: JSONValue]) throws -> String? {
+            guard case .object(var base) = Self.providerCli(version: "v") else { throw CocoaError(.coderInvalidValue) }
+            for (key, value) in extra { base[key] = value }
+            return QuickReplies.note(try XCTUnwrap(UiProviderCli(.object(base))))
+        }
+        XCTAssertEqual(try note(["installation": .object(["status": .string("not_installed")])]), "Not installed")
+        XCTAssertEqual(try note([:]), "Not signed in")
+        XCTAssertEqual(try note(["signIn": .object(["status": .string("signed_in")])]), "1 account")
+        XCTAssertEqual(try note(["accounts": .array([.object(["id": .string("a"), "signIn": .string("signed_out")])])]), "Not signed in")
+        // Not knowing, with no accounts listed: no note.
+        XCTAssertNil(try note(["signIn": .object(["status": .string("unknown")])]))
+    }
+
     // MARK: Live components
 
     private static func providerCli(version: String, signIn: String = "signed_out", operation: JSONValue = .null) -> JSONValue {
@@ -369,21 +453,28 @@ final class ChatUiTests: XCTestCase {
         return shown
     }
 
-    func testASignInCardOffersWhatItsStateAllows() throws {
+    /// A sign-in is one row: its name, one line, and the control it
+    /// needs now; a token only while a sign-in waits or after one failed,
+    /// and no installer line, "Set up" installing.
+    func testASignInRowOffersWhatItsStateAllows() throws {
         let claude: JSONValue = .object(["provider": .string("claude")])
         let out = try XCTUnwrap(UiProviderCli(Self.providerCli(version: "a")))
         var card = UiCard.make(live("provider_sign_in", claude, live: .provider(out)), granted: nil)
         XCTAssertEqual(card.title, "Claude Code")
+        XCTAssertEqual(card.row, UiCard.Row(provider: "claude", tone: .quiet))
         XCTAssertEqual(card.lines, [.init("Not signed in", .muted)])
-        XCTAssertEqual(card.buttons.map(\.label), ["Sign in", "Paste a token"])
+        XCTAssertEqual(card.buttons.map(\.label), ["Sign in"])
         XCTAssertEqual(card.buttons.first?.tap, .act(UiAction(type: "provider_sign_in.sign_in", payload: .object([:]))))
-        XCTAssertEqual(card.buttons.last?.tap, .secret(action: "provider_sign_in.submit_token", field: "token", title: "Paste a setup token or API key"))
 
+        // Waiting for a code the page shows: the page, the code, and a cross.
         let waiting = try XCTUnwrap(UiProviderCli(Self.providerCli(version: "b", operation: Self.waiting)))
         card = UiCard.make(live("provider_sign_in", claude, live: .provider(waiting)), granted: nil)
-        XCTAssertEqual(card.lines, [.init("Waiting for you to finish signing in to Claude in your browser.")])
-        XCTAssertEqual(card.buttons.map(\.label), ["Open sign-in page", "Paste code", "Cancel"])
+        XCTAssertEqual(card.lines, [.init("Paste the code from the page")])
+        XCTAssertEqual(card.row?.tone, .busy)
+        XCTAssertEqual(card.buttons.map(\.label), ["Open page", "Paste code", "Cancel"])
+        XCTAssertEqual(card.buttons.map(\.rank), [1, 0, 2], "the cross goes first when they don't all fit")
         XCTAssertEqual(card.buttons.first?.tap, .open(URL(string: "https://claude.com/cai/oauth/authorize?x=1")!))
+        XCTAssertEqual(card.buttons.map(\.glyph), ["open-outline", nil, "close"])
 
         // A page that isn't https never opens.
         var http = Self.waiting
@@ -395,33 +486,66 @@ final class ChatUiTests: XCTestCase {
         let unsafe = try XCTUnwrap(UiProviderCli(Self.providerCli(version: "c", operation: http)))
         XCTAssertEqual(UiCard.make(live("provider_sign_in", claude, live: .provider(unsafe)), granted: nil).buttons.map(\.label), ["Paste code", "Cancel"])
 
-        // Missing: its installer, said exactly, then Install.
-        var missing = out
-        missing.installed = false
-        card = UiCard.make(live("provider_sign_in", claude, live: .provider(missing)), granted: nil)
-        XCTAssertEqual(card.lines, [.init("Not installed on the computer", .muted), .init("curl -fsSL https://claude.ai/install.sh | bash", .code)])
-        XCTAssertEqual(card.buttons.map(\.label), ["Install"])
+        // A browser page only the computer can finish: a token, or a cross.
+        var browser = Self.waiting
+        if case .object(var object) = browser, case .object(var authorization)? = object["authorization"] {
+            authorization["acceptsCode"] = .bool(false)
+            object["authorization"] = .object(authorization)
+            browser = .object(object)
+        }
+        card = UiCard.make(live("provider_sign_in", claude, live: .provider(try XCTUnwrap(UiProviderCli(Self.providerCli(version: "d", operation: browser))))), granted: nil)
+        XCTAssertEqual(card.lines, [.init("Finish in the browser on your computer")])
+        XCTAssertEqual(card.buttons.map(\.label), ["Use a token", "Cancel"])
+        XCTAssertEqual(card.buttons.first?.tap, .secret(action: "provider_sign_in.submit_token", field: "token", title: "Paste a setup token or API key"))
 
-        // Nothing read (an older server): its fallback, with its controls.
+        // Missing: where it comes from, and Set up; never the installer itself.
+        guard case .object(var missingJSON) = Self.providerCli(version: "e") else { return XCTFail() }
+        missingJSON["installation"] = .object(["status": .string("missing")])
+        missingJSON["installer"] = .object(["command": .string("curl -fsSL https://x.ai/cli/install.sh | bash"), "sourceHost": .string("x.ai")])
+        card = UiCard.make(live("provider_sign_in", claude, live: .provider(try XCTUnwrap(UiProviderCli(.object(missingJSON))))), granted: nil)
+        XCTAssertEqual(card.lines, [.init("Not on this computer yet · comes from x.ai", .muted)])
+        XCTAssertEqual(card.buttons.map(\.label), ["Set up"])
+        XCTAssertEqual(card.buttons.first?.tap, .act(UiAction(type: "provider_sign_in.install", payload: .object([:]))))
+        XCTAssertFalse(String(describing: card).contains("curl"))
+
+        // Signed in: its account; adding another, Add account; two, counted.
+        guard case .object(var two) = Self.providerCli(version: "f", signIn: "signed_in") else { return XCTFail() }
+        two["accounts"] = .array([
+            .object(["id": .string("a"), "label": .string("ada@example.com"), "plan": .string("Max"), "signIn": .string("signed_in")]),
+            .object(["id": .string("b"), "label": .string("work@example.com"), "signIn": .string("signed_in")]),
+        ])
+        let both = try XCTUnwrap(UiProviderCli(.object(two)))
+        card = UiCard.make(live("provider_sign_in", claude, live: .provider(both)), granted: nil)
+        XCTAssertEqual(card.lines, [.init("2 accounts · ada@example.com +1")])
+        XCTAssertEqual(card.row?.tone, .done)
+        XCTAssertEqual(card.buttons, [])
+        let adding: JSONValue = .object(["provider": .string("claude"), "account": .string("new")])
+        XCTAssertEqual(UiCard.make(live("provider_sign_in", adding, live: .provider(both)), granted: nil).buttons.map(\.label), ["Add account"])
+        var addingNow = both
+        addingNow.operation = UiProviderCli.Operation(kind: "sign_in", status: "running", message: "opening the sign-in page", url: nil, userCode: nil, acceptsCode: false, device: false, openedByProgram: false)
+        XCTAssertEqual(UiCard.make(live("provider_sign_in", adding, live: .provider(addingNow)), granted: nil).lines, [.init("Adding account 3 · opening the sign-in page")])
+
+        // Nothing read (an older server): its fallback, with a sign-in.
         card = UiCard.make(live("provider_sign_in", claude), granted: nil)
         XCTAssertEqual(card.lines, [.init("Do it on your computer", .muted)])
-        XCTAssertEqual(card.buttons.map(\.label), ["Sign in", "Paste a token"])
+        XCTAssertEqual(card.buttons.map(\.label), ["Sign in"])
 
-        // On its way, then refused by the computer.
-        card = UiCard.make(live("provider_sign_in", claude, live: .provider(out), attempt: UiAttempt(type: "provider_sign_in.submit_token", outcome: UiOutcome(status: "pending"))), granted: nil)
-        XCTAssertEqual(card.lines.last, .init("Checking…", .muted))
-        XCTAssertTrue(card.buttons.allSatisfy { !$0.enabled })
+        // On its way, then refused by the computer: the reason, a token, or again.
+        card = UiCard.make(live("provider_sign_in", claude, live: .provider(out), attempt: UiAttempt(type: "provider_sign_in.sign_in", outcome: UiOutcome(status: "pending"))), granted: nil)
+        XCTAssertEqual(card.lines, [.init("Starting…")])
+        XCTAssertEqual(card.buttons, [])
         let rejected = UiOutcome(status: "rejected", code: "token_rejected", reason: "Claude didn't accept this token.")
         card = UiCard.make(live("provider_sign_in", claude, live: .provider(out), attempt: UiAttempt(type: "provider_sign_in.submit_token", outcome: rejected)), granted: nil)
-        XCTAssertEqual(card.lines.last, .init("Claude didn't accept this token.", .error))
+        XCTAssertEqual(card.lines, [.init("Claude didn't accept this token.", .error)])
+        XCTAssertEqual(card.buttons.map(\.label), ["Use a token", "Try again"])
         XCTAssertTrue(card.buttons.allSatisfy(\.enabled))
     }
 
     func testControlsTheViewerMayNotUseAreDisabledAndSayWhoCan() {
         let member: Set<String> = ["content.write", "providers.own"]
-        let team = UiCard.make(live("provider_sign_in", .object(["provider": .string("claude"), "target": .string("team")])), granted: member)
+        let team = UiCard.make(live("provider_sign_in", .object(["provider": .string("claude"), "target": .string("team")]), live: .provider(try! XCTUnwrap(UiProviderCli(Self.providerCli(version: "a"))))), granted: member)
         XCTAssertTrue(team.buttons.allSatisfy { !$0.enabled })
-        XCTAssertEqual(team.lines.last, .init("Owners and admins can connect AIs for the team", .muted))
+        XCTAssertEqual(team.lines, [.init("Owners and admins can connect AIs for the team", .muted)])
         XCTAssertTrue(UiCard.make(live("provider_sign_in", .object(["provider": .string("claude")])), granted: member).buttons.allSatisfy(\.enabled))
         let invite = UiCard.make(live("invite"), granted: member)
         XCTAssertEqual(invite.buttons.map(\.enabled), [false])
@@ -526,7 +650,7 @@ final class ChatUiTests: XCTestCase {
 
         await store.externalEvent(.object(["type": .string("provider_cli.updated"), "payload": .object(["providerCli": Self.providerCli(version: "01991f3a-0002", operation: Self.waiting)])]))
         let moved = await next(&updates) { if case .provider(let cli)? = self.shown($0, "sign")?.live { cli.operation != nil } else { false } }
-        XCTAssertEqual(UiCard.make(try XCTUnwrap(shown(moved, "sign")), granted: nil).buttons.map(\.label), ["Open sign-in page", "Paste code", "Cancel"])
+        XCTAssertEqual(UiCard.make(try XCTUnwrap(shown(moved, "sign")), granted: nil).buttons.map(\.label), ["Open page", "Paste code", "Cancel"])
         // An older reading changes nothing.
         await store.externalEvent(.object(["type": .string("provider_cli.updated"), "payload": .object(["providerCli": Self.providerCli(version: "01991f3a-0001", signIn: "signed_in")])]))
 
@@ -541,8 +665,10 @@ final class ChatUiTests: XCTestCase {
         _ = await pressing.value
         XCTAssertFalse(seen.contains { String(describing: $0.items).contains(secret) })
         let card = UiCard.make(try XCTUnwrap(shown(refused, "sign")), granted: nil)
-        XCTAssertEqual(card.lines.last, .init("Claude didn't accept this token.", .error))
-        XCTAssertEqual(card.buttons.map(\.label), ["Open sign-in page", "Paste code", "Cancel"], "the older reading was ignored")
+        XCTAssertEqual(card.lines, [.init("Claude didn't accept this token.", .error)])
+        XCTAssertEqual(card.buttons.map(\.label), ["Use a token", "Try again"])
+        guard case .provider(let still)? = shown(refused, "sign")?.live else { return XCTFail() }
+        XCTAssertNotNil(still.operation, "the older reading was ignored")
         // No bubble for a silent action.
         XCTAssertFalse(refused?.items.contains { $0.role == .user } ?? true)
         let sent = await server.actions

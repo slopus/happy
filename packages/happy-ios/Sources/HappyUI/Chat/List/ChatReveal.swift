@@ -29,7 +29,7 @@ enum ChatRevealMapping {
                 lines += layout.revealLines(at: frame.origin)
             case .box(let box):
                 boxes.append(box.frame)
-            case .icon:
+            case .icon, .image:
                 continue
             case .scroller(let content, let frame, _, _):
                 lines.append(RevealMap.Line(block: card(frame, boxes), length: textLength(content)))

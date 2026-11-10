@@ -202,6 +202,14 @@ final class ChatPlanView: UIView {
                 view.tintColor = UIColor(tint)
                 view.setLayoutFrame(frame)
                 order.append(view)
+            case .image(let name, let frame, let tint):
+                guard drawsStaticContent else { continue }
+                let view = take(&icons, &iconIndex) { UIImageView() }
+                view.contentMode = .scaleAspectFit
+                view.image = UIImage.happy(name)?.withRenderingMode(.alwaysTemplate)
+                view.tintColor = UIColor(tint)
+                view.setLayoutFrame(frame)
+                order.append(view)
             case .spinner(let frame, let tint, let scale):
                 let view = take(&spinners, &spinnerIndex) { UIActivityIndicatorView(style: .medium) }
                 view.bounds = CGRect(origin: .zero, size: frame.size)
@@ -442,7 +450,7 @@ extension ChatDrawItem {
     var markFrame: CGRect {
         switch self {
         case .box(let box), .pulse(let box): box.frame
-        case .text(_, let frame), .icon(_, _, let frame, _), .spinner(let frame, _, _), .shimmer(_, let frame), .elapsed(_, let frame, _),
+        case .text(_, let frame), .icon(_, _, let frame, _), .image(_, let frame, _), .spinner(let frame, _, _), .shimmer(_, let frame), .elapsed(_, let frame, _),
              .diff(_, let frame, _, _, _, _), .diffHeader(_, _, let frame), .scroller(_, let frame, _, _), .attachment(_, let frame),
              .webImage(_, let frame, _), .mermaid(_, let frame), .media(_, let frame), .fileStatus(_, let frame), .embed(_, let frame), .delivery(_, let frame): frame
         }

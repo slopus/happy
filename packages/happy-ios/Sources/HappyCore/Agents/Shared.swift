@@ -74,7 +74,7 @@ public struct Shared: Equatable, Sendable {
         for piece in item.pieces {
             switch piece {
             case .picture(_, let mimeType, let data): media.append(.picture(id: pictureId(item.id, media.filter(\.isSent).count), mimeType: mimeType, data: data))
-            case .gallery(let shown, _), .tree(let shown, _): media += shown.map(Media.tool)
+            case .gallery(let shown, _), .tree(let shown, _), .mediaRows(let shown, _): media += shown.map(Media.tool)
             case .file(let one): media.append(.tool(one))
             case .text(let text): texts.append(text)
             // Not the computer's yet: it is shared once it is there.
