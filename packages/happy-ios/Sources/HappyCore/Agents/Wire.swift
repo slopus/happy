@@ -402,6 +402,19 @@ extension AgentWire {
         /// the service message's compaction block.
         public var tokensBefore: Double?
         public var tokensAfter: Double?
+        /// A `show_ui` call's document (`ui`); its `media` components name
+        /// `items` by index.
+        public var shownUi: PresentedUi?
+        /// A `suggest_replies` call's options (`quick_replies`).
+        public var options: [String]?
+
+        public var ui: UiDocument? { shownUi?.document }
+
+        private enum CodingKeys: String, CodingKey {
+            case type, items, layout, artifactId, artifactType, title, version, shows, command, input, query, operations, files, model, output
+            case target, sources, omittedFiles, agentId, tokensBefore, tokensAfter, options
+            case shownUi = "ui"
+        }
 
         /// One `exploration` step: `list` a `target`, `read` a `name`, or
         /// `search` by `command`, with its `query` and `path` when known.
@@ -502,9 +515,15 @@ extension AgentWire {
         case toolCall(id: String, name: String, status: String, presentation: Presentation?, arguments: JSONValue? = nil, output: String? = nil, result: JSONValue? = nil, review: ToolReview? = nil)
         /// One context compaction, inside a service message.
         case compaction(Compaction)
+        /// A document the daemon wrote itself (protocol 35).
+        case ui(UiDocument)
+        /// A chat UI action, in its attempt record.
+        case action(UiActionBlock)
+        /// Replies the daemon suggested itself (`quick_replies`).
+        case quickReplies([String])
         case unknown(String)
 
-        enum CodingKeys: String, CodingKey { case type, text, mimeType, data, id, name, status, presentation, arguments, result, elevated, review }
+        enum CodingKeys: String, CodingKey { case type, text, mimeType, data, id, name, status, presentation, arguments, result, elevated, review, ui, options }
         enum ResultKeys: String, CodingKey { case output }
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -539,6 +558,13 @@ extension AgentWire {
                     review: review ?? nil
                 )
             case "compaction": self = .compaction(try Compaction(from: decoder))
+            // One that can't be read is skipped, never the message.
+            case "ui":
+                if let document = try? container.decode(UiDocument.self, forKey: .ui) { self = .ui(document) } else { self = .unknown(type) }
+            case "action":
+                if let block = try? UiActionBlock(from: decoder) { self = .action(block) } else { self = .unknown(type) }
+            case "quick_replies":
+                if let options = try? container.decode([String].self, forKey: .options) { self = .quickReplies(options) } else { self = .unknown(type) }
             default: self = .unknown(type)
             }
         }
@@ -566,6 +592,15 @@ extension AgentWire {
             case .compaction(let compaction):
                 try container.encode("compaction", forKey: .type)
                 try compaction.encode(to: encoder)
+            case .ui(let document):
+                try container.encode("ui", forKey: .type)
+                try container.encode(document, forKey: .ui)
+            case .action(let block):
+                try container.encode("action", forKey: .type)
+                try block.encode(to: encoder)
+            case .quickReplies(let options):
+                try container.encode("quick_replies", forKey: .type)
+                try container.encode(options, forKey: .options)
             case .unknown(let type): try container.encode(type, forKey: .type)
             }
         }
@@ -674,8 +709,10 @@ extension AgentWire {
         /// failure (`failure`), kept as sent; `Failure` reads them.
         public var error: JSONValue?
         public var failure: JSONValue?
+        /// The suggested reply a person's message is (`quickReply`).
+        public var quickReply: QuickReply?
 
-        public init(id: String, role: String, createdAt: Double, content: [Block], status: String? = nil, runId: String? = nil, metadata: MessageMetadata? = nil, error: JSONValue? = nil, failure: JSONValue? = nil) {
+        public init(id: String, role: String, createdAt: Double, content: [Block], status: String? = nil, runId: String? = nil, metadata: MessageMetadata? = nil, error: JSONValue? = nil, failure: JSONValue? = nil, quickReply: QuickReply? = nil) {
             self.id = id
             self.role = role
             self.createdAt = createdAt
@@ -685,6 +722,7 @@ extension AgentWire {
             self.metadata = metadata
             self.error = error
             self.failure = failure
+            self.quickReply = quickReply
         }
     }
 

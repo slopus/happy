@@ -33,6 +33,9 @@ struct Transcript {
     private var waiting: Set<String> = []
     /// The message each tool call is in, by call ID.
     private var calls: [String: String] = [:]
+    /// The chat UI action blocks held, by the message holding them: what
+    /// every offer's state is read from, without looking through the rest.
+    private(set) var actions: [String: [UiActionBlock]] = [:]
     /// Text blocks' lengths in UTF-16, by message and block, once counted.
     private var units: [String: [Int: Int]] = [:]
 
@@ -164,6 +167,7 @@ struct Transcript {
         messageRevisions[id] = nil
         blockRevisions[id] = nil
         units[id] = nil
+        actions[id] = nil
         unwait(id)
         clock += 1
         for runId in holders.removeValue(forKey: id) ?? [] {
@@ -258,6 +262,7 @@ struct Transcript {
         holders = [:]
         ordinals = [:]
         calls = [:]
+        actions = [:]
         first = 0
         clock += 1
         var kept: [String: [UInt64]] = [:]
@@ -306,8 +311,11 @@ struct Transcript {
     }
 
     private mutating func index(calls message: AgentWire.Message) {
+        var held: [UiActionBlock] = []
         for block in message.content {
             if case .toolCall(let id, _, _, _, _, _, _, _) = block { calls[id] = message.id }
+            if case .action(let action) = block { held.append(action) }
         }
+        actions[message.id] = held.isEmpty ? nil : held
     }
 }

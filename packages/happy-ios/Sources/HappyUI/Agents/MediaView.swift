@@ -144,6 +144,9 @@ final class ChatMediaView: UIView, UploadRingTile, DownloadShowing {
         task = nil
         retryPending = false
         self.media = media
+        let covers = fills || media?.covers == true
+        placeholder.contentMode = covers ? .scaleAspectFill : .scaleToFill
+        picture.contentMode = covers ? .scaleAspectFill : .scaleAspectFit
         loadedPixels = 0
         setFailed(false)
         // Now, not once it is on screen: its first frame shows it.

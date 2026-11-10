@@ -29,6 +29,9 @@ actor ChatPlanner {
         /// The server the conversation is on, which says where a settings
         /// link opens (`SettingsLinkPlace`).
         var server: String?
+        /// The permissions the person holds, which say which chat UI
+        /// controls they may use; nil for every one (a computer of their own).
+        var uiGranted: Set<String>?
     }
 
     /// A row as it was planned, and what from.
@@ -210,7 +213,9 @@ actor ChatPlanner {
         let text = HappyReferences.plain(item.text, instanceId: key.references.instanceId, view: key.references.view)
         switch item.role {
         case .agent:
-            return Self.body(item, key: key, syntax: syntax, proposals: proposals, revealable: true) {
+            // Chat UI is there whole, never revealed a character at a time.
+            let revealable = !item.pieces.contains { if case .ui = $0 { true } else if case .quickReplies = $0 { true } else { false } }
+            return Self.body(item, key: key, syntax: syntax, proposals: proposals, revealable: revealable) {
                 MessageLayout.agent(width: width, maxContentWidth: key.maxContentWidth, parts: $0)
             }
         case .user:
@@ -238,6 +243,8 @@ actor ChatPlanner {
             }
             var failure = false
             if case .failed = item.delivery { failure = true }
+            // A suggested reply says so under its bubble.
+            let origin = item.suggested ? Strings.uiSuggested : nil
             // On its way: each picture shows how far it is, and can be
             // taken out; one that failed is sent again with a tap.
             let uploading = item.delivery == .sending || failure
@@ -258,7 +265,7 @@ actor ChatPlanner {
                 fold: body.map { _ in .init(preview: preview.measurable, control: control.measurable, opened: opened, lineHeight: ChatTextStyles.text.lineHeight ?? 24) },
                 // A refusal is the red mark in the slot, as Telegram's: no
                 // line under the bubble, so the row never grows when a send fails.
-                pictures: pictures.map(\.image), showsStatus: false,
+                pictures: pictures.map(\.image), showsStatus: origin != nil,
                 delivery: status, trailing: body?.trailing
             )
             var items: [ChatDrawItem] = []
@@ -276,6 +283,10 @@ actor ChatPlanner {
                 selectable.append(.init(layout: drawn, frame: frame))
             }
             if let frame = layout.foldControl { items.append(.text(control.layout(for: frame), frame)) }
+            if let origin, let frame = layout.status {
+                let line = ChatTextStyles.pendingStatus.string(origin, color: Palette.textSecondary, alignment: .right, lineBreakMode: .byTruncatingTail, in: environment)
+                items.append(.text(ChatTextLayout(line, width: frame.width, maxLines: 1), frame))
+            }
             for (picture, frame) in zip(pictures, layout.pictures) {
                 let key = MediaLoader.sentKey(picture.id)
                 let upload = uploading ? ChatUpload(key: picture.id, failed: failure) : nil
@@ -299,7 +310,7 @@ actor ChatPlanner {
                 items += placed.items
                 if failure { hits.insert(ChatHit(frame: placed.mark.insetBy(dx: -8, dy: -8), action: .retry(localId: item.id)), at: 0) }
             }
-            let label = [text, failure ? Strings.sendFailed : ""].filter { !$0.isEmpty }.joined(separator: ", ")
+            let label = [text, failure ? Strings.sendFailed : "", origin ?? ""].filter { !$0.isEmpty }.joined(separator: ", ")
             let shape = layout.bubble.map { ChatBox(frame: $0, fill: Palette.userBubble, radius: M.bubbleRadius) }
                 ?? ChatBox(frame: layout.pictures.reduce(CGRect.null) { $0.union($1) })
             let flight = ChatRowFlight(bubble: shape, text: layout.text, status: layout.delivery, media: !pictures.isEmpty)
@@ -324,12 +335,15 @@ actor ChatPlanner {
         enum Draft {
             case markdown(MarkdownPiece)
             case gallery([Media])
+            /// A `media` component's items and their labels' one lines.
+            case mediaRows([Media], labels: [MeasuredText?])
             case tree(ChatMediaPlan.Tree)
             case card(ChatMediaPlan.Card)
             case page(InlinePage)
             case proposal(String)
             /// Words the planner writes, read but not selectable.
             case line(MarkdownPiece)
+            case ui(ChatUiPlan.Draft)
         }
         var drafts: [Draft] = []
         var spoken: [String] = text.isEmpty ? [] : [text]
@@ -348,6 +362,15 @@ actor ChatPlanner {
             case .gallery(let media, let columns):
                 drafts.append(.gallery(media))
                 parts.append(.media(media.map(Self.layoutItem), columns: columns))
+            case .mediaRows(let media, let labels):
+                let measured = labels.map { label in
+                    label.map { MeasuredText(ChatUiPlan.detail.string($0, color: Palette.textSecondary, lineBreakMode: .byTruncatingTail, in: environment), maxLines: 1) }
+                }
+                drafts.append(.mediaRows(media, labels: measured))
+                parts.append(.mediaRows(zip(media, labels).map { one, label in
+                    MediaRows.Item(width: one.item.width.map { CGFloat($0) }, height: one.item.height.map { CGFloat($0) }, isVideo: one.isVideo, labelled: label != nil)
+                }))
+                spoken += labels.compactMap { $0 }
             case .tree(let media, let tree):
                 let planned = ChatMediaPlan.tree(media, tree, environment: environment)
                 drafts.append(.tree(planned))
@@ -377,6 +400,16 @@ actor ChatPlanner {
                     parts.append(.markdown(markdown.blocks))
                     spoken.append(line)
                 }
+            case .ui(let shown):
+                let draft = ChatUiPlan.draft(shown, granted: key.uiGranted, environment: environment)
+                drafts.append(.ui(draft))
+                parts.append(.ui(draft.input))
+                if !draft.spoken.isEmpty { spoken.append(draft.spoken) }
+            case .quickReplies(let replies):
+                let draft = ChatUiPlan.draft(replies, environment: environment)
+                drafts.append(.ui(draft))
+                parts.append(.ui(draft.input))
+                if !draft.spoken.isEmpty { spoken.append(draft.spoken) }
             case .picture, .sentFile:
                 break
             }
@@ -384,10 +417,11 @@ actor ChatPlanner {
         let layout = layout(parts)
         var items: [ChatDrawItem] = []
         var hits: [ChatHit] = []
+        var controls: [ChatControl] = []
         var selectable: [ChatSelectable.Text] = []
         var proposals: [(artifactId: String, layout: SidebarProposalLayout, frame: CGRect)] = []
-        func media(_ media: Media, _ frame: CGRect) {
-            items.append(.media(ChatMedia(key: media.key, isVideo: media.isVideo, thumbhash: media.item.thumbhash, label: Strings.media(isVideo: media.isVideo, name: media.item.name)), frame: frame))
+        func media(_ media: Media, _ frame: CGRect, covers: Bool = false) {
+            items.append(.media(ChatMedia(key: media.key, isVideo: media.isVideo, thumbhash: media.item.thumbhash, label: Strings.media(isVideo: media.isVideo, name: media.item.name), covers: covers), frame: frame))
             hits.insert(ChatHit(frame: frame, action: .openMedia(media.key)), at: 0)
             // Telegram's ring pauses or resumes the download; a video's
             // play button plays, so its badge does that instead.
@@ -412,6 +446,12 @@ actor ChatPlanner {
                 selectable += drawn.texts
             case (.media(let frames), .gallery(let gallery)):
                 for (one, frame) in zip(gallery, frames) { media(one, frame) }
+            case (.mediaRows(let rows, let origin), .mediaRows(let shown, let labels)):
+                for ((one, tile), label) in zip(zip(shown, rows.tiles), labels) {
+                    let frame = tile.frame.offsetBy(dx: origin.x, dy: origin.y)
+                    if one.isVisual { media(one, frame, covers: true) } else { card(ChatMediaPlan.card(file: one), frame) }
+                    if let label, let frame = tile.label?.offsetBy(dx: origin.x, dy: origin.y) { items.append(.text(label.layout(for: frame), frame)) }
+                }
             case (.tree(let tree, let origin), .tree(let planned)):
                 for (index, frame) in tree.items.sorted(by: { $0.key < $1.key }) where planned.media.indices.contains(index) {
                     let one = planned.media[index]
@@ -431,6 +471,11 @@ actor ChatPlanner {
                 items += markdown.draw(placed, origin: origin).items
             case (.proposal(let layout, let frame), .proposal(let artifactId)):
                 proposals.append((artifactId, layout, frame))
+            case (.ui(let placed, let origin), .ui(let draft)):
+                let drawn = ChatUiPlan.draw(draft, placed, origin: origin)
+                items += drawn.items
+                hits.insert(contentsOf: drawn.hits, at: 0)
+                controls += drawn.controls
             default:
                 break
             }
@@ -438,7 +483,7 @@ actor ChatPlanner {
         // Each picture and recording reads as itself (`ChatMediaView`).
         return ChatRowPlan(
             id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: spoken.joined(separator: "\n\n"), proposals: proposals,
-            revealable: revealable, selection: .covering(items, texts: selectable, whole: text)
+            revealable: revealable, selection: .covering(items, texts: selectable, whole: text), controls: controls
         )
     }
 

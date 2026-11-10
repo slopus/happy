@@ -15,9 +15,14 @@ private struct AgentChatSockets: WebSocketConnector {
 
 /// One agent, `harness`, with forty turns of a question and a few lines of
 /// answer, and nothing streaming. With `slash`, it offers slash commands
-/// (one with a picture), and its last turn is a `/compact`.
+/// (one with a picture), and its last turn is a `/compact`. With `replies`,
+/// its last two turns offer quick replies: one taken, one waiting. With
+/// `media`, its last turns show pictures in a `media` component: one, a
+/// wide and a tall one, four, and ten with labels.
 private struct AgentChatComputer: AgentTransport {
     var slash = false
+    var replies = false
+    var media = false
 
     private static func text(_ text: String) -> JSONValue { .object(["type": .string("text"), "text": .string(text)]) }
 
@@ -64,6 +69,89 @@ private struct AgentChatComputer: AgentTransport {
         ])]),
     ])
 
+    private static func suggest(_ id: String, _ options: [String]) -> JSONValue {
+        .object(["type": .string("tool_call"), "id": .string(id), "name": .string("suggest_replies"), "status": .string("completed"),
+                 "presentation": .object(["type": .string("quick_replies"), "options": .array(options.map { .string($0) })])])
+    }
+
+    /// A name picked from quick replies, then taglines offered.
+    private static let suggesting: [JSONValue] = [
+        .object([
+            "id": .string("q1"), "status": .string("completed"), "startedAt": .number(5_000), "endedAt": .number(13_000), "reason": .string("completed"),
+            "messages": .array([
+                message("qu1", role: "user", [text("Help me pick a name for my weekend side project, a tiny habit tracker.")]),
+                message("qa1", role: "agent", [text("Which feels right for your tiny habit tracker?"), suggest("pick", ["Sprout", "Tally", "Pebble"])]),
+            ]),
+        ]),
+        .object([
+            "id": .string("q2"), "status": .string("completed"), "startedAt": .number(14_000), "endedAt": .number(19_000), "reason": .string("completed"),
+            "messages": .array([
+                .object(["id": .string("qu2"), "role": .string("user"), "createdAt": .number(14_000), "metadata": .object([:]), "content": .array([text("Tally")]),
+                         "quickReply": .object(["messageId": .string("qa1"), "toolCallId": .string("pick"), "index": .number(1)])]),
+                message("qa2", role: "agent", [text("**Tally** it is: short, friendly, and easy to remember. Now a tagline?"),
+                                               suggest("tagline", ["Small habits. Every day.", "A little progress adds up.", "Make the small things count."])]),
+            ]),
+        ]),
+    ]
+
+    /// The pictures each `media` turn shows, by pixel size, and their labels.
+    private static let shown: [(id: String, ask: String, say: String, items: [(width: Int, height: Int, label: String?)])] = [
+        ("p1", "Show me the login screen.", "Here it is on a phone.", [(1170, 2532, nil)]),
+        ("p2", "And the dashboard, wide and on a phone?", "The dashboard on a laptop and on a phone.", [(1600, 900, nil), (900, 1600, nil)]),
+        ("p3", "What did the onboarding look like before?", "The four steps of the old onboarding.", [(1200, 900, nil), (900, 1600, nil), (1000, 1000, nil), (1600, 900, nil)]),
+        ("p4", "Every screen of the settings, labelled please.", "All ten settings screens.", [
+            (1600, 900, "Account"), (1600, 900, "Notifications"), (900, 1600, "Privacy"), (1200, 900, "Appearance"), (1000, 1000, "Language"),
+            (900, 1600, "Storage and data"), (1600, 900, "Connected AIs"), (1200, 900, "Keyboard shortcuts"), (1000, 1000, "About"), (2400, 800, "Danger zone"),
+        ]),
+    ]
+
+    private static let showing: [JSONValue] = shown.enumerated().map { offset, turn in
+        let items: [JSONValue] = turn.items.enumerated().map { index, item in
+            .object(["kind": .string("image"), "name": .string("\(turn.id)-\(index).png"), "mimeType": .string("image/png"), "width": .number(Double(item.width)), "height": .number(Double(item.height))])
+        }
+        let entries: [JSONValue] = turn.items.enumerated().map { index, item in
+            var entry: [String: JSONValue] = ["mediaIndex": .number(Double(index))]
+            if let label = item.label { entry["label"] = .string(label) }
+            return .object(entry)
+        }
+        let document: JSONValue = .object(["id": .string("ui-\(turn.id)"), "components": .array([.object([
+            "id": .string("media"), "type": .string("media"), "fallback": .string("\(turn.items.count) images"), "props": .object(["items": .array(entries)]),
+        ])])])
+        let start = Double(30_000 + offset * 10_000)
+        return .object([
+            "id": .string("run-\(turn.id)"), "status": .string("completed"), "startedAt": .number(start), "endedAt": .number(start + 4_000), "reason": .string("completed"),
+            "messages": .array([
+                message("ask-\(turn.id)", role: "user", [text(turn.ask)]),
+                message("say-\(turn.id)", role: "agent", [text(turn.say), .object([
+                    "type": .string("tool_call"), "id": .string(turn.id), "name": .string("show_ui"), "status": .string("completed"),
+                    "presentation": .object(["type": .string("ui"), "ui": document, "items": .array(items)]),
+                ])]),
+            ]),
+        ])
+    }
+
+    /// A `media` item's picture: a gradient its size's shape, a quarter of
+    /// its pixels, saying its size, so its tile shows it fills its box.
+    private static func picture(_ turn: String, _ index: Int) -> Data? {
+        guard let place = shown.firstIndex(where: { $0.id == turn }), shown[place].items.indices.contains(index) else { return nil }
+        let item = shown[place].items[index]
+        let size = CGSize(width: item.width / 4, height: item.height / 4)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: size, format: format).pngData { context in
+            let hues: [CGFloat] = [0.58, 0.92, 0.12, 0.38, 0.75]
+            let hue = hues[(place + index) % hues.count]
+            let colors = [UIColor(hue: hue, saturation: 0.55, brightness: 0.95, alpha: 1).cgColor, UIColor(hue: hue + 0.08, saturation: 0.7, brightness: 0.7, alpha: 1).cgColor] as CFArray
+            if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 1]) {
+                context.cgContext.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: size.width, y: size.height), options: [])
+            }
+            let words = (item.label ?? "\(item.width) × \(item.height)") as NSString
+            let font = UIFont.systemFont(ofSize: min(size.width, size.height) / 8, weight: .semibold)
+            let measured = words.size(withAttributes: [.font: font])
+            words.draw(at: CGPoint(x: (size.width - measured.width) / 2, y: (size.height - measured.height) / 2), withAttributes: [.font: font, .foregroundColor: UIColor.white])
+        }
+    }
+
     /// The code-review command's picture.
     private static let picture: Data = UIGraphicsImageRenderer(size: CGSize(width: 64, height: 64)).pngData { context in
         let colors = [UIColor.systemIndigo.cgColor, UIColor.systemPink.cgColor] as CFArray
@@ -74,10 +162,13 @@ private struct AgentChatComputer: AgentTransport {
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         let value: JSONValue
         if path.contains("/agents/harness/messages?") {
-            value = .object(["hasMore": .bool(false), "runs": .array(Self.runs + (slash ? [Self.compaction] : []))])
+            value = .object(["hasMore": .bool(false), "runs": .array(Self.runs + (slash ? [Self.compaction] : []) + (replies ? Self.suggesting : []) + (media ? Self.showing : []))])
         } else if path.hasSuffix("/agents/harness/bootstrap") {
             value = .object(["agent": .object(["id": .string("harness"), "workspaceId": .string("w"), "status": .string("idle")]), "pending": .array([]),
                              "slashCommands": .array(slash ? Self.commands : [])])
+        } else if media, path.contains("/tool-calls/"), let parts = Optional(path.split(separator: "/")), parts.count >= 3,
+                  let index = Int(parts[parts.count - 1]), let picture = Self.picture(String(parts[parts.count - 3]), index) {
+            return HTTP1Response(status: 200, headers: ["Content-Type": "image/png"], body: picture)
         } else if slash, path.hasSuffix("/slash-commands/code-review/image") {
             return HTTP1Response(status: 200, body: Self.picture)
         } else {
@@ -111,7 +202,7 @@ final class AgentChatHarness {
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/agent-chat",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
-            agentConnectionCredentialStore: InMemoryAgentConnectionCredentialStore(), agentTransport: { _ in AgentChatComputer(slash: arguments.contains("-slash")) },
+            agentConnectionCredentialStore: InMemoryAgentConnectionCredentialStore(), agentTransport: { _ in AgentChatComputer(slash: arguments.contains("-slash"), replies: arguments.contains("-replies"), media: arguments.contains("-media")) },
             rnServerImport: { .confirmed(ServerConfig.defaultServerURL) }, transport: AgentChatHTTP(), connector: AgentChatSockets()
         )
         self.account = account
