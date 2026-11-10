@@ -2,6 +2,8 @@ package com.slopus.happy.conversation.ui
 
 import com.slopus.happy.conversation.ConversationRow
 import com.slopus.happy.conversation.ConversationRowBuilder
+import com.slopus.happy.conversation.MediaItem
+import com.slopus.happy.conversation.MediaRef
 import com.slopus.happy.conversation.Message
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -59,7 +61,31 @@ class UiRowsTest {
         assertEquals(listOf("m1:0", "m1:2:files"), rows.map { it.key })
     }
 
+    @Test fun `a media component is one row of the items it names, in its order, each with its label`() {
+        val rows = rows(shown(media("""{"mediaIndex":1,"label":"After"},{"mediaIndex":0}"""), TREE, items = "$PICTURE,$REPORT"))
+        assertEquals(listOf("m1:0:pics", "m1:0:files"), rows.map { it.key })
+        val row = rows[0] as ConversationRow.UiMedia
+        assertEquals(listOf(MediaRef("c1", 1, MediaItem("document", "Report.pdf", "application/pdf")), MediaRef("c1", 0, MediaItem("image", "a.png", "image/png", 1600.0, 900.0))), row.items)
+        assertEquals(listOf("After", null), row.labels)
+    }
+
+    @Test fun `a media component is drawn whole or not at all`() {
+        val fallback = UiComponent.Other("pics", "2 images")
+        // An index past the call's items: nothing of it is drawn, though one item is there.
+        assertEquals(fallback, (rows(shown(media("""{"mediaIndex":0},{"mediaIndex":2}"""), items = "$PICTURE,$REPORT")).single() as ConversationRow.Ui).component)
+        // An item that doesn't read holds its place, and is no item.
+        assertEquals(fallback, (rows(shown(media("""{"mediaIndex":1}"""), items = "$PICTURE,7")).single() as ConversationRow.Ui).component)
+        // Only a show_ui call carries items: in a block there are none to name.
+        assertEquals(fallback, (rows(block(media("""{"mediaIndex":0}"""))).single() as ConversationRow.Ui).component)
+        // Props that don't fit.
+        assertEquals(fallback, (rows(shown("""{"id":"pics","type":"media","fallback":"2 images","props":{"items":[]}}""", items = PICTURE)).single() as ConversationRow.Ui).component)
+    }
+
+    private fun media(items: String) = """{"id":"pics","type":"media","fallback":"2 images","props":{"items":[$items]}}"""
+
     private companion object {
+        const val PICTURE = """{"kind":"image","name":"a.png","mimeType":"image/png","width":1600,"height":900}"""
+        const val REPORT = """{"kind":"document","name":"Report.pdf","mimeType":"application/pdf"}"""
         const val TREE = """{"id":"files","type":"file_tree","fallback":"2 files","props":{"paths":["src/a.ts","src/b.ts"]}}"""
         const val SIGN_IN = """{"id":"claude","type":"provider_sign_in","fallback":"Sign in to Claude in Happy on your computer","props":{"provider":"claude"}}"""
     }

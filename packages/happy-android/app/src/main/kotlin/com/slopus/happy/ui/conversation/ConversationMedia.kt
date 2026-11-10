@@ -125,7 +125,8 @@ private const val FALLBACK_WIDTH = 360f
  * circle (a 22 glyph on the play fill), and its length ([duration]) in a
  * pill 6 in from its bottom left (20 high, 6 either side of 12/16
  * semibold), as the artifact gallery shows it. [more] photos not shown
- * read "+N" (22/28 semibold, white) over a darkened tile.
+ * read "+N" (22/28 semibold, white) over a darkened tile. Where the tile
+ * is not the picture's own shape ([crop]), the picture covers it.
  */
 @Composable
 fun MediaTile(
@@ -141,6 +142,7 @@ fun MediaTile(
     more: Int = 0,
     /** A recording's play circle; off where a ring shows it instead. */
     playButton: Boolean = true,
+    crop: Boolean = false,
 ) {
     val colors = HappyTheme.colors
     val shape = RoundedCornerShape(ConversationMediaSpec.radius)
@@ -161,13 +163,13 @@ fun MediaTile(
                 model = bytes,
                 cacheKey = cacheKey,
                 contentDescription = contentDescription,
-                // The tile is the picture's shape: fitted, it fills it.
-                contentScale = ContentScale.Fit,
+                // The tile is the picture's shape, so fitted it fills it; one that isn't is covered.
+                contentScale = if (crop) ContentScale.Crop else ContentScale.Fit,
                 placeholder = placeholder,
                 modifier = Modifier.matchParentSize(),
             )
         } else if (placeholder != null && !failed) {
-            androidx.compose.foundation.Image(placeholder, null, Modifier.matchParentSize(), contentScale = if (video) ContentScale.Fit else ContentScale.FillBounds)
+            androidx.compose.foundation.Image(placeholder, null, Modifier.matchParentSize(), contentScale = if (crop) ContentScale.Crop else if (video) ContentScale.Fit else ContentScale.FillBounds)
         }
         if (video && playButton) {
             Box(

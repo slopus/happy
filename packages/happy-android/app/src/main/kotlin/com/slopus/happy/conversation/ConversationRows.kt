@@ -129,6 +129,15 @@ sealed interface ConversationRow {
     data class Ui(override val key: String, val offer: UiOffer, val component: UiComponent) : ConversationRow
 
     /**
+     * A chat UI `media` component whole: every item it names among its
+     * `show_ui` call's, in its order, read on demand as [Media]'s are, each
+     * with its label or none. Laid out by the one rule every client shares
+     * ([com.slopus.happy.conversation.ui.UiMediaLayout]), files among the
+     * pictures, so it is a row of its own kind and not a [Media].
+     */
+    data class UiMedia(override val key: String, val items: List<MediaRef>, val labels: List<String?>) : ConversationRow
+
+    /**
      * Replies an agent message suggested: its own `quick_replies` block
      * ([toolCallId] null) or a `suggest_replies` call's presentation. The
      * conversation puts the stack under all the agent wrote in its turn
@@ -396,7 +405,7 @@ class ConversationRowBuilder(
                     is Block.Image -> rows += ConversationRow.Picture(key, block)
                     is Block.ToolCall -> rows += toolRows(key, id, block, references)
                     is Block.QuickReplies -> rows += ConversationRow.Replies(key, id, null, block.options)
-                    is Block.Ui -> rows += uiRows(key, id, block.document)
+                    is Block.Ui -> rows += uiRows(key, id, block.document, null, emptyList())
                     is Block.Compaction, is Block.File, is Block.Action, is Block.Unknown -> Unit
                 }
             }
@@ -410,17 +419,26 @@ class ConversationRowBuilder(
         /**
          * A document's components, one row each, top to bottom, keyed by
          * [key] and the component's id. One with nothing to draw, not even
-         * a fallback line, has no row.
+         * a fallback line, has no row. `media` names the [items] of the call
+         * that showed the document ([toolCallId]).
          */
-        private fun uiRows(key: String, messageId: String, document: UiDocument): List<ConversationRow> =
+        private fun uiRows(key: String, messageId: String, document: UiDocument, toolCallId: String?, items: List<MediaItem?>): List<ConversationRow> =
             document.components.mapNotNull { component ->
                 val rowKey = "$key:${component.id}"
                 val offer = UiOffer(messageId, document.id, component.id)
                 when (component) {
                     is UiComponent.FileTree -> ConversationRow.Ui(rowKey, offer, component)
+                    is UiComponent.Media -> media(rowKey, component, toolCallId, items) ?: fallback(rowKey, offer, component)
                     else -> fallback(rowKey, offer, component)
                 }
             }
+
+        /** [component] whole, or null: outside a call, or naming an item the call doesn't have. */
+        private fun media(key: String, component: UiComponent.Media, toolCallId: String?, items: List<MediaItem?>): ConversationRow.UiMedia? {
+            if (toolCallId == null) return null
+            val refs = component.items.map { MediaRef(toolCallId, it.mediaIndex, items.getOrNull(it.mediaIndex) ?: return null) }
+            return ConversationRow.UiMedia(key, refs, component.items.map { it.label })
+        }
 
         /** [component] as its fallback line; null where the daemon wrote none. */
         private fun fallback(key: String, offer: UiOffer, component: UiComponent): ConversationRow.Ui? =
@@ -442,7 +460,7 @@ class ConversationRowBuilder(
             val tool = ToolUse(call.name, call.status, call.presentation, skill, call.id, ToolHint.of(call), ToolSummary.of(call.name, call.arguments))
             return when (val p = call.presentation) {
                 // What show_ui showed stands in its call's place: the components, no line.
-                is Presentation.Ui -> uiRows(key, messageId, p.document).ifEmpty { listOf(ConversationRow.Tool(key, call.id, tool)) }
+                is Presentation.Ui -> uiRows(key, messageId, p.document, call.id, p.items).ifEmpty { listOf(ConversationRow.Tool(key, call.id, tool)) }
                 // So does what suggest_replies suggested: the stack.
                 is Presentation.QuickReplies -> listOf(if (call.id == null) ConversationRow.Tool(key, null, tool) else ConversationRow.Replies(key, messageId, call.id, p.options))
                 is Presentation.Media -> if (call.id == null || p.items.isEmpty()) {

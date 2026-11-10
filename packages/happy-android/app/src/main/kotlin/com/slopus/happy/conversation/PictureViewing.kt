@@ -182,23 +182,27 @@ object ConversationViewing {
                     entries += Entry(ViewerItem(pictureKey(row.key, index), pictureLabel), inline = picture)
                 }
                 is ConversationRow.Picture -> entries += Entry(ViewerItem(pictureKey(row.key, 0), pictureLabel), inline = row.image)
-                is ConversationRow.Media -> row.items.filter { it.item.isVisual }.forEach { ref ->
-                    val video = ref.item.kind == "video"
-                    entries += Entry(
-                        ViewerItem(
-                            key = presentedKey(ref),
-                            label = ref.item.name.ifEmpty { if (video) videoLabel else pictureLabel },
-                            isVideo = video,
-                            width = ref.item.width?.toFloat(),
-                            height = ref.item.height?.toFloat(),
-                            thumbhash = ref.item.thumbhash,
-                        ),
-                        presented = ref,
-                    )
-                }
+                is ConversationRow.Media -> entries += presented(row.items, pictureLabel, videoLabel)
+                is ConversationRow.UiMedia -> entries += presented(row.items, pictureLabel, videoLabel)
                 else -> Unit
             }
         }
         return entries
     }
+
+    private fun presented(items: List<MediaRef>, pictureLabel: String, videoLabel: String): List<Entry> =
+        items.filter { it.item.isVisual }.map { ref ->
+            val video = ref.item.kind == "video"
+            Entry(
+                ViewerItem(
+                    key = presentedKey(ref),
+                    label = ref.item.name.ifEmpty { if (video) videoLabel else pictureLabel },
+                    isVideo = video,
+                    width = ref.item.width?.toFloat(),
+                    height = ref.item.height?.toFloat(),
+                    thumbhash = ref.item.thumbhash,
+                ),
+                presented = ref,
+            )
+        }
 }
