@@ -534,8 +534,8 @@ final class ChatUiTests: XCTestCase {
         // Signed in: its account; adding another, Add account; two, counted.
         guard case .object(var two) = Self.providerCli(version: "f", signIn: "signed_in") else { return XCTFail() }
         two["accounts"] = .array([
-            .object(["id": .string("a"), "label": .string("ada@example.com"), "plan": .string("Max"), "signIn": .string("signed_in")]),
-            .object(["id": .string("b"), "label": .string("work@example.com"), "signIn": .string("signed_in")]),
+            .object(["id": .string("a"), "label": .string("Current CLI"), "email": .string("ada@example.com"), "plan": .string("Max"), "signIn": .string("signed_in")]),
+            .object(["id": .string("b"), "label": .string("Work"), "signIn": .string("signed_in")]),
         ])
         let both = try XCTUnwrap(UiProviderCli(.object(two)))
         card = UiCard.make(live("provider_sign_in", claude, live: .provider(both)), granted: nil)

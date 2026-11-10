@@ -173,7 +173,7 @@ enum ChatUiPlan {
                 if let frame = layout.lineMark {
                     switch row.tone {
                     case .busy: items.append(.spinner(at(frame), tint: Palette.textSecondary, scale: M.lineMark / 20))
-                    case .done: items.append(.icon(.ionicons("checkmark-circle"), size: M.lineMark, frame: at(frame), tint: Palette.textSecondary))
+                    case .done: items.append(.icon(.ionicons("checkmark-circle"), size: M.lineMark, frame: at(frame), tint: Palette.success))
                     case .error: items.append(.icon(.ionicons("alert-circle"), size: M.lineMark, frame: at(frame), tint: Palette.textDestructive))
                     case .quiet: break
                     }

@@ -427,13 +427,15 @@ public struct UiCard: Equatable, Sendable {
             return row(cli.installerHost.map { "Not on this computer yet · comes from \($0)" } ?? "Not on this computer yet", .quiet, [setUp])
         }
         let signIn = { (label: String) in control(label, "provider_sign_in.sign_in", act("provider_sign_in.sign_in"), primary: true) }
+        // An account reads as its email, its label only when it has none.
+        func named(_ account: UiProviderCli.Account) -> String { account.email ?? account.label }
         if let lapsed = accounts.first(where: { $0.signIn == "signed_out" }), !adding {
-            let line = accounts.count > 1 ? "\(UiProviderCli.accounts(accounts.count)) · \(lapsed.label) needs to sign in again" : "\(lapsed.label) needs to sign in again"
+            let line = accounts.count > 1 ? "\(UiProviderCli.accounts(accounts.count)) · \(named(lapsed)) needs to sign in again" : "\(named(lapsed)) needs to sign in again"
             return row(line, .quiet, [signIn("Sign in again")])
         }
         if accounts.isEmpty { return row(cli.signIn == "unknown" ? "Sign-in not checked" : "Not signed in", .quiet, [signIn("Sign in")]) }
         let first = accounts[0]
-        let line = accounts.count == 1 ? [first.label, first.plan].compactMap { $0 }.joined(separator: " · ") : "\(UiProviderCli.accounts(accounts.count)) · \(first.label) +\(accounts.count - 1)"
+        let line = accounts.count == 1 ? [named(first), first.plan].compactMap { $0 }.joined(separator: " · ") : "\(UiProviderCli.accounts(accounts.count)) · \(named(first)) +\(accounts.count - 1)"
         // Signed in but not yet taken into use here: the one control that does.
         let used = shown.state.attempt.map { $0.type == "provider_sign_in.sign_in" && $0.outcome.status == "accepted" } ?? false
         if !adding, !used { return row(line, .done, [signIn("Use \(name)")]) }
