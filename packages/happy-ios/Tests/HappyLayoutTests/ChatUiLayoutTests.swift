@@ -90,17 +90,41 @@ final class ChatUiLayoutTests: XCTestCase {
         ])
     }
 
-    /// A provider's option has its 16 mark 8 before its words and keeps
-    /// the widest note's room before the tick's, whatever its note says
-    /// now; the rest of the stack takes that width too.
-    func testAProvidersReplyHasItsMarkAndItsNotesRoom() {
-        let layout = ChatUiLayout(width: 370, input: .replies([.init(.fixed(width: 80, height: 24), mark: true, note: true), .init(.fixed(width: 120, height: 24))], noteWidth: 70))
-        // 12 + 16 + 8 + 80 + 12 + 70 + 8 + 16 + 12
+    /// A provider's option has its 16 mark 8 before its words and its
+    /// note's line 2 under them; the stack takes the wider of its words
+    /// and the widest note, and a plain option has no note line.
+    func testAProvidersReplyHasItsMarkAndItsNoteLineUnderItsWords() {
+        let layout = ChatUiLayout(width: 370, input: .replies([.init(.fixed(width: 80, height: 24), mark: true, note: true), .init(.fixed(width: 60, height: 24))],
+                                                              note: CGSize(width: 90, height: 18)))
+        // 12 + 16 + 8 + max(80, 90) + 8 + 16 + 12
         XCTAssertEqual(layout.buttons, [
-            .init(frame: CGRect(x: 0, y: 0, width: 234, height: 44), label: CGRect(x: 36, y: 10, width: 80, height: 24), tick: CGRect(x: 206, y: 14, width: 16, height: 16),
-                  mark: CGRect(x: 12, y: 14, width: 16, height: 16), note: CGRect(x: 128, y: 10, width: 70, height: 24)),
-            .init(frame: CGRect(x: 0, y: 50, width: 234, height: 44), label: CGRect(x: 12, y: 60, width: 186, height: 24), tick: CGRect(x: 206, y: 64, width: 16, height: 16)),
+            .init(frame: CGRect(x: 0, y: 0, width: 162, height: 64), label: CGRect(x: 36, y: 10, width: 90, height: 24), tick: CGRect(x: 134, y: 24, width: 16, height: 16),
+                  mark: CGRect(x: 12, y: 24, width: 16, height: 16), note: CGRect(x: 36, y: 36, width: 90, height: 18)),
+            .init(frame: CGRect(x: 0, y: 70, width: 162, height: 44), label: CGRect(x: 12, y: 80, width: 114, height: 24), tick: CGRect(x: 134, y: 84, width: 16, height: 16)),
         ])
+    }
+
+    /// A label too long for a phone's stack wraps to a second line and
+    /// only its own pill grows; the rest keep one line, all one width.
+    /// iPhone SE (375 wide, a 343 column) and iPhone 12 (390, 358).
+    func testALongLabelWrapsToTwoLinesInItsOwnPillOnAnSEAndA12() {
+        // 8 wide per character, 24 a line.
+        func words(_ count: Int) -> Measurable {
+            Measurable { width in
+                let lines = max(1, Int((CGFloat(count * 8) / max(1, width)).rounded(.up)))
+                return CGSize(width: min(CGFloat(count * 8), width), height: CGFloat(min(lines, 2) * 24))
+            }
+        }
+        for (column, pill) in [(CGFloat(343), CGFloat(323)), (358, 338)] {
+            let layout = ChatUiLayout(width: column, input: .replies([.init(words(40), mark: true, note: true), .init(words(18))], note: CGSize(width: 80, height: 18)))
+            let frames = layout.buttons.map(\.frame)
+            XCTAssertEqual(frames.map(\.width), [pill, pill], "\(column)")
+            XCTAssertEqual(frames.map(\.minX), [0, 0])
+            // 10 + two lines + 2 + the note + 10; then 10 + one line + 10.
+            XCTAssertEqual(frames.map(\.height), [10 + 48 + 2 + 18 + 10, 44], "\(column)")
+            XCTAssertEqual(layout.buttons[0].note?.minY, 10 + 48 + 2)
+            XCTAssertEqual(layout.buttons[0].label.width, pill - 36 - 24 - 12)
+        }
     }
 
     /// At a larger text size a pill grows by its one line, keeping its

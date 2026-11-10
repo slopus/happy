@@ -427,6 +427,29 @@ final class ChatUiTests: XCTestCase {
         XCTAssertNil(try note(["signIn": .object(["status": .string("unknown")])]))
     }
 
+    /// A call the run's end left interrupted, then told completed by a
+    /// later update, takes the completed state and what it showed.
+    func testACallTheRunsEndInterruptedTakesItsLaterCompletion() async throws {
+        func message(_ status: String, presentation: JSONValue?) -> JSONValue {
+            var call: [String: JSONValue] = ["type": .string("tool_call"), "id": .string("c1"), "name": .string("show_ui"), "status": .string(status)]
+            if let presentation { call["presentation"] = presentation }
+            return .object(["id": .string("a1"), "role": .string("agent"), "createdAt": .number(1), "content": .array([.object(["type": .string("text"), "text": .string("Here it is:")]), .object(call)])])
+        }
+        let server = ChatUiServer(history: [
+            .object(["id": .string("r1"), "status": .string("completed"), "messages": .array([message("interrupted", presentation: nil)])]),
+        ])
+        var (conversation, updates, store) = await openWithStore(server)
+        let first = await next(&updates) { $0.items.contains { $0.id == "a1" } }
+        XCTAssertNil(shown(first, "tree"))
+        let document: JSONValue = .object(["type": .string("ui"), "items": .array([]), "ui": .object(["id": .string("u1"), "components": .array([
+            .object(["id": .string("tree"), "type": .string("file_tree"), "fallback": .string("Files"), "props": .object(["paths": .array([.string("a.txt")])])]),
+        ])])])
+        await store.externalEvent(.object(["type": .string("message.updated"), "payload": .object(["agentId": .string("agent"), "message": message("completed", presentation: document), "runId": .string("r1")])]))
+        let completed = await next(&updates) { self.shown($0, "tree") != nil }
+        XCTAssertEqual(shown(completed, "tree")?.kind, .fileTree([.init(depth: 0, name: "a.txt", folder: false)]))
+        await conversation.stop()
+    }
+
     // MARK: Live components
 
     private static func providerCli(version: String, signIn: String = "signed_out", operation: JSONValue = .null) -> JSONValue {

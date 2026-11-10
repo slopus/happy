@@ -91,23 +91,25 @@ enum ChatUiPlan {
         }
     }
 
-    /// Quick replies in a person's words' type, one line each; once one
-    /// is sent, the others' words go quiet, so the sent one stands out. A
-    /// provider's option keeps room for the widest note it may show.
+    /// Quick replies in a person's words' type, two lines at most; once
+    /// one is sent, the others' words go quiet, so the sent one stands out.
+    /// A provider's option has a note line under its words, as wide as the
+    /// widest note it may show, kept whether or not a note is read.
     static func draft(_ replies: QuickReplies, environment: TextEnvironment?) -> Draft {
         func quiet(_ index: Int) -> Bool { replies.chosen.map { $0 != index } ?? false }
         let labels = replies.options.enumerated().map { index, option in
-            MeasuredText(ChatTextStyles.text.string(option, color: quiet(index) ? Palette.textSecondary : Palette.userMessageText, lineBreakMode: .byTruncatingTail, in: environment), maxLines: 1)
+            MeasuredText(ChatTextStyles.text.string(option, color: quiet(index) ? Palette.textSecondary : Palette.userMessageText, lineBreakMode: .byTruncatingTail, in: environment), maxLines: 2)
         }
         func note(_ text: String) -> MeasuredText {
-            MeasuredText(detail.string(text, color: Palette.textSecondary, alignment: .right, lineBreakMode: .byTruncatingTail, in: environment), maxLines: 1)
+            MeasuredText(detail.string(text, color: Palette.textSecondary, lineBreakMode: .byTruncatingTail, in: environment), maxLines: 1)
         }
         let hasNotes = replies.providers.contains { $0 != nil }
-        let noteWidth = hasNotes ? QuickReplies.noteCandidates.map { note($0).measurable.size(fitting: .greatestFiniteMagnitude).width.rounded(.up) }.max() ?? 0 : 0
+        let noteSize = hasNotes ? QuickReplies.noteCandidates.map { note($0).measurable.size(fitting: .greatestFiniteMagnitude) }
+            .reduce(CGSize.zero) { CGSize(width: max($0.width, $1.width), height: max($0.height, $1.height)) } : .zero
         let notes = replies.notes.map { $0.map(note) }
         let input = ChatUiLayout.Input.replies(zip(labels, replies.providers).map { label, provider in
             ChatUiLayout.Reply(label.measurable, mark: provider != nil, note: provider != nil)
-        }, noteWidth: noteWidth)
+        }, note: noteSize)
         return Draft(shown: .replies(replies), input: input, buttons: labels, notes: notes, spoken: "")
     }
 

@@ -66,6 +66,16 @@ final class AgentTurnsTests: XCTestCase {
         XCTAssertEqual(TurnFold.fold(items, expanded: []).map(\.id), ["u", "a1", "replies:a1:c", "u2", "r:trace", "a2", "r:status"])
     }
 
+    /// What `show_ui` showed stays with the words that brought it, the
+    /// control above them both; the work before them folds.
+    func testAFoldedTurnKeepsWhatItShowedWithTheWordsThatBroughtIt() {
+        let item = AgentWire.MediaItem(kind: "image", name: "a.png", mimeType: "image/png")
+        let shown = ChatItem(id: "m1", role: .agent, pieces: [.mediaRows([Media(toolCallId: "m1", index: 0, item: item)], labels: [nil])], delivery: .sent, turn: "r")
+        let items = [user("u", turn: "r"), tool("t1", "exec_command", type: "exec_command", turn: "r"), agent("a0", "Looking.", turn: "r"),
+                     agent("a1", "The new overview:", turn: "r"), shown, ended("r", tools: 2)]
+        XCTAssertEqual(TurnFold.fold(items, expanded: []).map(\.id), ["u", "r:trace", "a1", "m1", "r:status"])
+    }
+
     /// Open, every step shows and the control rides the turn's first one.
     func testAnOpenTurnShowsEveryStepWithItsControlFirst() {
         let items = [user("u", turn: "r"), tool("t1", "Bash", turn: "r"), agent("a", "Done.", turn: "r"), tool("t2", "Bash", turn: "r"), ended("r", tools: 2)]

@@ -19,11 +19,14 @@ import Foundation
 ///                tall, 8 apart; the controls that leave the words less
 ///                than 100 are left out, the least needed first, so the row
 ///                is one height whatever it shows
-///     replies    quick replies one under another, 6 apart, at the column's
-///                left as the agent's words are: every pill as wide as the
-///                widest option's own width, at most a person's widest
-///                bubble; its label one line, 12 in, after a provider's 16
-///                mark, then the room a note may need, then a 16 tick
+///     replies    quick replies one under another, 6 apart, their boxes on
+///                the column's left edge as a card's is: every pill as wide
+///                as the widest option's own width (a provider's mark and
+///                label, or its note line), then a 16 tick's room, at most
+///                a person's widest bubble; its label 12 in, after a
+///                provider's 16 mark, at most two lines, each pill as tall
+///                as its own label; a provider's pill always has its note's
+///                one line 2 under the label, said or not
 public struct ChatUiLayout: Equatable, Sendable {
     public enum Metrics {
         public static let maxWidth: CGFloat = 420
@@ -44,7 +47,7 @@ public struct ChatUiLayout: Equatable, Sendable {
         public static let tickGap: CGFloat = 8
         public static let replyMark: CGFloat = 16
         public static let replyMarkGap: CGFloat = 8
-        public static let noteGap: CGFloat = 12
+        public static let noteGap: CGFloat = 2
         public static let rowMark: CGFloat = 20
         public static let rowMarkGap: CGFloat = 12
         public static let lineMark: CGFloat = 14
@@ -64,13 +67,13 @@ public struct ChatUiLayout: Equatable, Sendable {
         /// A name, its one line and whether a glyph goes before it, and
         /// the controls in the order they stand.
         case row(name: Measurable, line: Measurable, lineMark: Bool, controls: [RowControl])
-        /// Each option, and the room any note takes: the widest a note
-        /// may ever say, so a note changing moves nothing.
-        case replies([Reply], noteWidth: CGFloat = 0)
+        /// Each option, and a note's one line: as wide as the widest a
+        /// note may ever say, so a note changing moves nothing.
+        case replies([Reply], note: CGSize = .zero)
     }
 
-    /// A quick reply: its label measured on one line, whether a provider's
-    /// mark goes before it, and whether it carries a note.
+    /// A quick reply: its label (at most two lines), whether a provider's
+    /// mark goes before it, and whether it has a note line under it.
     public struct Reply {
         public var label: Measurable
         public var mark: Bool
@@ -227,33 +230,34 @@ public struct ChatUiLayout: Equatable, Sendable {
             }
             card = CGRect(x: 0, y: 0, width: control, height: height)
             size = CGSize(width: control, height: height)
-        case .replies(let replies, let noteWidth):
+        case .replies(let replies, let note):
             // At most a person's widest bubble (`MessageLayout.user`).
             typealias B = MessageLayout.Metrics
             let cap = max(0, width - (B.bubbleLeading - B.marginH))
             let pad = B.bubblePaddingH
             let tickRoom = M.tickGap + M.tick
             func markRoom(_ reply: Reply) -> CGFloat { reply.mark ? M.replyMark + M.replyMarkGap : 0 }
-            func noteRoom(_ reply: Reply) -> CGFloat { reply.note ? M.noteGap + noteWidth : 0 }
             // Every pill the widest option's own width, so they stand as one stack.
             let natural = replies.map { reply in
-                2 * pad + markRoom(reply) + reply.label.size(fitting: .greatestFiniteMagnitude).width.rounded(.up) + noteRoom(reply) + tickRoom
+                let words = reply.label.size(fitting: .greatestFiniteMagnitude).width.rounded(.up)
+                return 2 * pad + markRoom(reply) + max(words, reply.note ? note.width.rounded(.up) : 0) + tickRoom
             }
             let pill = min(cap, natural.max() ?? 0)
             for (index, reply) in replies.enumerated() {
                 if index > 0 { y += M.replyGap }
                 let labelX = pad + markRoom(reply)
-                let labelWidth = max(0, pill - labelX - noteRoom(reply) - tickRoom - pad)
+                let labelWidth = max(0, pill - labelX - tickRoom - pad)
                 let height = reply.label.height(fitting: labelWidth).rounded(.up)
-                let frame = CGRect(x: 0, y: y, width: pill, height: height + 2 * B.bubblePaddingV)
+                let noteHeight = reply.note ? M.noteGap + note.height.rounded(.up) : 0
+                let frame = CGRect(x: 0, y: y, width: pill, height: height + noteHeight + 2 * B.bubblePaddingV)
                 func centred(_ size: CGFloat, at x: CGFloat) -> CGRect {
                     CGRect(x: x, y: y + ((frame.height - size) / 2).rounded(), width: size, height: size)
                 }
                 let label = CGRect(x: labelX, y: y + B.bubblePaddingV, width: labelWidth, height: height)
                 let tick = centred(M.tick, at: pill - pad - M.tick)
                 let mark = reply.mark ? centred(M.replyMark, at: pad) : nil
-                let note = reply.note ? CGRect(x: pill - pad - tickRoom - noteWidth, y: label.minY, width: noteWidth, height: height) : nil
-                buttons.append(Button(frame: frame, label: label, tick: tick, mark: mark, note: note))
+                let line = reply.note ? CGRect(x: labelX, y: label.maxY + M.noteGap, width: labelWidth, height: note.height.rounded(.up)) : nil
+                buttons.append(Button(frame: frame, label: label, tick: tick, mark: mark, note: line))
                 y = frame.maxY
             }
             size = CGSize(width: width, height: y)
