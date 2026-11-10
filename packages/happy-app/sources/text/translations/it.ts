@@ -1397,6 +1397,8 @@ failedContinueTask: "Continua il lavoro in sospeso",
         },
         effort: {
             title: 'IMPEGNO',
+            fastOn: 'Fast attivo',
+            fastOff: 'Fast disattivato',
         },
         codexPermissionMode: {
             title: 'MODALITÀ PERMESSI CODEX',

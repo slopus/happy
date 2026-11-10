@@ -1398,6 +1398,8 @@ failedContinueTask: "Continuar tarefa pendente",
         },
         effort: {
             title: 'ESFORÇO',
+            fastOn: 'Fast ativado',
+            fastOff: 'Fast desativado',
         },
         codexPermissionMode: {
             title: 'MODO DE PERMISSÃO CODEX',

@@ -3413,11 +3413,12 @@ test('[CODEX-MODEL-01] 缺少运行时模型元数据时，PC Web 模型菜单�
         await expect(page.getByTestId('session-message-input')).toBeVisible({ timeout: 280_000 });
 
         const selector = page.getByTestId('session-composer-mode-selector');
-        const modelTrigger = selector.getByTestId('session-composer-model-trigger');
+        const modelTrigger = selector.getByTestId('session-composer-mode-trigger');
         await expect(modelTrigger).toContainText('gpt-6-astra');
         await modelTrigger.click();
+        await page.getByTestId('session-composer-open-models').click();
 
-        const modelPicker = page.getByTestId('session-composer-model-picker');
+        const modelPicker = page.getByTestId('session-composer-mode-panel');
         const gpt6AstraOption = modelPicker.getByRole('radio', { name: 'gpt-6-astra' });
         await expect(gpt6AstraOption).toBeVisible();
         await expect(gpt6AstraOption).toBeChecked();
@@ -3456,18 +3457,19 @@ test('[R10-01] 每轮权限、模型与推理强度经 UI 发送并在离线重�
         const selector = page.locator('[data-testid="session-composer-mode-selector"]:visible');
         const permissionSelector = page.locator('[data-testid="session-composer-permission-selector"]:visible');
         const permissionTrigger = permissionSelector.getByTestId('session-composer-permission-trigger');
-        const modelTrigger = selector.getByTestId('session-composer-model-trigger');
-        const effortTrigger = selector.getByTestId('session-composer-effort-trigger');
+        const modelTrigger = selector.getByTestId('session-composer-mode-trigger');
+        const effortTrigger = selector.getByTestId('session-composer-mode-trigger');
         await expect(permissionSelector).toBeVisible();
         await expect(permissionTrigger).toContainText('Ask first');
         await expect(permissionTrigger).toHaveAttribute('aria-label', 'Permissions: Needs confirmation');
         await expect(permissionTrigger).toHaveAttribute('aria-expanded', 'false');
         await expect(selector).toBeVisible();
         await expect(modelTrigger).toContainText('gpt-5.6-sol');
-        await expect(modelTrigger).toHaveAttribute('aria-label', 'MODEL: gpt-5.6-sol');
+        await expect(modelTrigger).toHaveAttribute('aria-label', /MODEL: gpt-5.6-sol, EFFORT: xhigh/);
         await expect(effortTrigger).toContainText('xhigh');
-        await expect(effortTrigger).toHaveAttribute('aria-label', 'EFFORT: xhigh');
-        const fastToggle = selector.getByTestId('session-composer-fast-toggle');
+
+        await modelTrigger.click();
+        const fastToggle = page.getByTestId('session-composer-fast-toggle');
         await expect(fastToggle).toBeVisible();
         await expect(fastToggle).toHaveAttribute('role', 'switch');
         await expect(fastToggle).toHaveAttribute('aria-label', 'Fast');
@@ -3487,6 +3489,7 @@ test('[R10-01] 每轮权限、模型与推理强度经 UI 发送并在离线重�
             fullPage: true,
         });
 
+        await page.getByTestId('session-composer-mode-picker-scrim').click({ position: { x: 8, y: 8 } });
         await permissionTrigger.click();
         const permissionPicker = page.getByTestId('session-composer-permission-picker');
         const confirmPermission = page.getByTestId('session-composer-permission-option-confirm');
@@ -3551,7 +3554,8 @@ test('[R10-01] 每轮权限、模型与推理强度经 UI 发送并在离线重�
         });
 
         await modelTrigger.click();
-        const modelPicker = page.getByTestId('session-composer-model-picker');
+        await page.getByTestId('session-composer-open-models').click();
+        const modelPicker = page.getByTestId('session-composer-mode-panel');
         await expect(modelPicker).toBeVisible();
         await expect(modelTrigger).toHaveAttribute('aria-expanded', 'true');
         await expect(modelPicker.getByRole('radio', { name: 'default model' })).toBeVisible();
@@ -3568,23 +3572,24 @@ test('[R10-01] 每轮权限、模型与推理强度经 UI 发送并在离线重�
         await expect(modelTrigger).toHaveAttribute('aria-expanded', 'false');
 
         await effortTrigger.click();
-        const effortPicker = page.getByTestId('session-composer-effort-picker');
+        const effortPicker = page.getByTestId('session-composer-mode-panel');
         await expect(effortPicker).toBeVisible();
         await expect(effortTrigger).toHaveAttribute('aria-expanded', 'true');
         await expect(effortPicker.getByRole('radio', { name: 'default effort' })).toBeVisible();
-        await expect(effortPicker.getByRole('radio', { name: /^medium,/ })).toBeVisible();
-        await expect(effortPicker.getByRole('radio', { name: /^high,/ })).toBeVisible();
-        await expect(effortPicker.getByRole('radio', { name: /^xhigh,/ })).toBeChecked();
+        await expect(effortPicker.getByRole('radio', { name: 'medium', exact: true })).toBeVisible();
+        await expect(effortPicker.getByRole('radio', { name: 'high', exact: true })).toBeVisible();
+        await expect(effortPicker.getByRole('radio', { name: 'xhigh', exact: true })).toBeChecked();
 
-        await effortPicker.getByRole('radio', { name: /^high,/ }).click();
+        await effortPicker.getByRole('radio', { name: 'high', exact: true }).click();
         await expect(effortTrigger).toContainText('high');
-        await modelTrigger.click();
-        await page.getByTestId('session-composer-model-picker')
+        await page.getByTestId('session-composer-open-models').click();
+        await page.getByTestId('session-composer-mode-panel')
             .getByRole('radio', { name: /^gpt-5\.5,/ })
             .click();
         await expect(modelTrigger).toContainText('gpt-5.5');
         await expect(permissionTrigger).toContainText('Full');
 
+        await page.getByTestId('session-composer-mode-picker-scrim').click({ position: { x: 8, y: 8 } });
         const sentMessage = `UI metadata regression ${Date.now()}`;
         const input = page.getByTestId('session-message-input');
         await input.fill(sentMessage);

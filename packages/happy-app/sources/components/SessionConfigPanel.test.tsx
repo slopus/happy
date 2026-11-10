@@ -70,6 +70,7 @@ vi.mock('@expo/vector-icons', () => ({
     MaterialCommunityIcons: 'MaterialCommunityIcons',
     Octicons: 'Octicons',
 }));
+vi.mock('@/components/haptics', () => ({ hapticsLight: vi.fn() }));
 vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}) } }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('@/sync/storage', () => {
@@ -235,40 +236,34 @@ describe('SessionConfigPanel composer layout', () => {
         expect(renderer.root.findByProps({ testID: 'session-config-agent-trigger' })).toBeDefined();
         expect(renderer.root.findAllByProps({ testID: 'session-config-worktree-trigger' })).toHaveLength(0);
         expect(renderer.root.findByProps({ testID: 'session-config-permission-trigger' })).toBeDefined();
-        expect(renderer.root.findByProps({ testID: 'session-config-model-trigger' })).toBeDefined();
-        expect(renderer.root.findByProps({ testID: 'session-config-effort-trigger' })).toBeDefined();
-        expect(renderer.root.findByProps({ testID: 'session-config-fast-toggle' })).toBeDefined();
+        expect(renderer.root.findByProps({ testID: 'session-composer-mode-trigger' })).toBeDefined();
+        expect(renderer.root.findAllByProps({ testID: 'session-config-model-trigger' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'session-config-effort-trigger' })).toHaveLength(0);
         expect(mocks.listWorktrees).not.toHaveBeenCalled();
-
         const controls = renderer.root.findByProps({ testID: 'new-session-composer-config-controls' });
         expect(controls.props.style).toMatchObject({ flexDirection: 'row', flexWrap: 'wrap' });
-
-        mocks.pickerCloseFocus.mockClear();
-
-        act(() => renderer.root.findByProps({ testID: 'session-config-model-trigger' }).props.onPress());
-        act(() => vi.runOnlyPendingTimers());
-        expect(mocks.pickerCloseFocus).toHaveBeenCalledOnce();
-        expect(renderer.root.findByProps({ testID: 'session-config-picker-model' }).props.accessibilityViewIsModal).toBe(true);
-        act(() => renderer.root.findByProps({ testID: 'session-config-picker-close' }).props.onPress());
-        expect(mocks.modelTriggerFocus).toHaveBeenCalledOnce();
-
-        act(() => renderer.root.findByProps({ testID: 'session-config-model-trigger' }).props.onPress());
-        act(() => renderer.root.findByProps({ accessibilityLabel: 'gpt-5.6-terra' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-composer-model-gpt-5.6-terra' }).props.onPress());
         expect(mocks.setModelMode).toHaveBeenCalledWith('gpt-5.6-terra');
-
+        expect(ref.current.getSelection().modelKey).toBe('gpt-5.6-terra');
+        act(() => renderer.root.findByProps({ testID: 'session-composer-fast-toggle' }).props.onPress());
+        expect(ref.current.getSelection().fastMode).toBe(true);
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-picker-scrim' }).props.onPress());
         act(() => renderer.root.findByProps({ testID: 'session-config-permission-trigger' }).props.onPress());
         act(() => renderer.root.findByProps({ accessibilityLabel: 'agentInput.codexPermissionMode.readOnly' }).props.onPress());
         expect(mocks.setPermissionMode).toHaveBeenCalledWith('read-only');
 
-        act(() => renderer.root.findByProps({ testID: 'session-config-fast-toggle' }).props.onPress());
-        expect(ref.current.getSelection().fastMode).toBe(true);
+    });
 
-        for (const model of ['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna']) {
-            act(() => renderer.root.findByProps({ testID: 'session-config-model-trigger' }).props.onPress());
-            act(() => renderer.root.findByProps({ accessibilityLabel: model }).props.onPress());
-            expect(mocks.setModelMode).toHaveBeenCalledWith(model);
-            expect(ref.current.getSelection().modelKey).toBe(model);
-        }
+    it('keeps the current model label when it is the only model but effort is editable', async () => {
+        // Exercised through a single-option selector because the provider controls the catalog.
+        const { SessionComposerModeSelector } = await import('./SessionComposerModeSelector');
+        act(() => { renderer = TestRenderer.create(<SessionComposerModeSelector online
+            model={{ key: 'only', name: 'Only model' }} modelOptions={[{ key: 'only', name: 'Only model' }]}
+            effort={{ key: 'high', name: 'high' }} effortOptions={[{ key: 'high', name: 'high' }, { key: 'low', name: 'low' }]}
+            onModelChange={vi.fn()} onEffortChange={vi.fn()} />); });
+        expect(renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.accessibilityLabel).toContain('Only model');
     });
 
     it('opens the Android folder browser in a modal and closes it after choosing a folder', async () => {

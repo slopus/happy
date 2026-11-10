@@ -1415,6 +1415,8 @@ failedContinueTask: "Продолжить незавершённую задач�
         },
         effort: {
             title: 'УСИЛИЕ',
+            fastOn: 'Fast включён',
+            fastOff: 'Fast выключен',
         },
         codexPermissionMode: {
             title: 'РЕЖИМ РАЗРЕШЕНИЙ CODEX',

@@ -1459,6 +1459,8 @@ failedContinueTask: "繼續未完成的工作",
         },
         effort: {
             title: '工作量',
+            fastOn: 'Fast 已開啟',
+            fastOff: 'Fast 關閉',
         },
         codexPermissionMode: {
             title: 'CODEX 權限模式',

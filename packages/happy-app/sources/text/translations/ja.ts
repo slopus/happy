@@ -1400,6 +1400,8 @@ failedContinueTask: "未完了の作業を続ける",
         },
         effort: {
             title: 'エフォート',
+            fastOn: 'Fast オン',
+            fastOff: 'Fast オフ',
         },
         codexPermissionMode: {
             title: 'CODEX権限モード',

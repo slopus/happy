@@ -1407,6 +1407,8 @@ failedContinueTask: "Continue unfinished task",
         },
         effort: {
             title: 'EFFORT',
+            fastOn: 'Fast On',
+            fastOff: 'Fast Off',
         },
         codexPermissionMode: {
             title: 'CODEX PERMISSION MODE',

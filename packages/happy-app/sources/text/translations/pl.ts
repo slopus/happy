@@ -1415,6 +1415,8 @@ failedContinueTask: "Kontynuuj niedokończone zadanie",
         },
         effort: {
             title: 'WYSIŁEK',
+            fastOn: 'Fast włączony',
+            fastOff: 'Fast wyłączony',
         },
         codexPermissionMode: {
             title: 'TRYB UPRAWNIEŃ CODEX',

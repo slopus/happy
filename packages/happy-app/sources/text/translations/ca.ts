@@ -1399,6 +1399,8 @@ failedContinueTask: "Continua la tasca pendent",
         },
         effort: {
             title: 'ESFORÇ',
+            fastOn: 'Fast activat',
+            fastOff: 'Fast desactivat',
         },
         codexPermissionMode: {
             title: 'MODE DE PERMISOS CODEX',

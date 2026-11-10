@@ -1,3 +1,4 @@
+import { SessionComposerModeSelector } from './SessionComposerModeSelector';
 import React from 'react';
 import {
     View,
@@ -1548,7 +1549,27 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                 </Pressable>
                             )}
 
-                            {!isOffline && showModel && (
+                            {isWeb && selectedAgent === 'codex' && !isOffline && (showModel || showEffort || supportsFast) && (
+                                <SessionComposerModeSelector
+                                    online={!isOffline}
+                                    model={currentModel ?? null}
+                                    modelOptions={modelModes}
+                                    effort={showEffort ? currentEffort : null}
+                                    effortOptions={showEffort ? effortLevels : []}
+                                    fastMode={fastMode}
+                                    supportsFast={supportsFast}
+                                    onFastModeChange={setFastMode}
+                                    onModelChange={(key) => {
+                                        const next = modelModes.findIndex((mode) => mode.key === key);
+                                        if (next >= 0) { setModelIndex(next); draft.setModelMode(modelModes[next].key); }
+                                    }}
+                                    onEffortChange={(key) => {
+                                        const next = effortLevels.findIndex((level) => level.key === key);
+                                        if (next >= 0) { setEffortIndex(next); draft.setEffortLevel(effortLevels[next].key); }
+                                    }}
+                                />
+                            )}
+                            {(!isWeb || selectedAgent !== 'codex') && !isOffline && showModel && (
                                 <Pressable
                                     ref={(node) => capturePickerTrigger('model', node)}
                                     testID="session-config-model-trigger"
@@ -1564,7 +1585,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                 </Pressable>
                             )}
 
-                            {!isOffline && showEffort && (
+                            {(!isWeb || selectedAgent !== 'codex') && !isOffline && showEffort && (
                                 <Pressable
                                     ref={(node) => capturePickerTrigger('effort', node)}
                                     testID="session-config-effort-trigger"
@@ -1580,7 +1601,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                 </Pressable>
                             )}
 
-                            {!isOffline && supportsFast && (
+                            {(!isWeb || selectedAgent !== 'codex') && !isOffline && supportsFast && (
                                 <Pressable
                                     accessibilityRole="switch"
                                     accessibilityLabel="Fast"
@@ -1599,8 +1620,8 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                         {!configExperience.isAskMode && renderActivePickerPopover('agent')}
                         {renderActivePickerPopover('worktree')}
                         {renderActivePickerPopover('permission')}
-                        {renderActivePickerPopover('model')}
-                        {renderActivePickerPopover('effort')}
+                        {(!isWeb || selectedAgent !== 'codex') && renderActivePickerPopover('model')}
+                        {(!isWeb || selectedAgent !== 'codex') && renderActivePickerPopover('effort')}
                     </View>
 
                     {modalPicker}

@@ -1806,6 +1806,7 @@ function SessionViewLoaded({
         storage.getState().updateSessionFastMode(sessionId, enabled);
     }, [sessionId]);
     const modeSelector = React.useMemo(() => ({
+        unifiedCodex: session.metadata?.flavor === 'codex',
         online: !isDisconnected,
         model: nextTurnModes.modelMode,
         modelOptions: nextTurnModes.availableModels,
@@ -1816,7 +1817,7 @@ function SessionViewLoaded({
         fastMode: session.fastMode === true,
         supportsFast: nextTurnModes.supportsFast,
         onFastModeChange: handleFastModeChange,
-    }), [handleEffortChange, handleFastModeChange, handleModelChange, isDisconnected, nextTurnModes, session.fastMode]);
+    }), [handleEffortChange, handleFastModeChange, handleModelChange, isDisconnected, nextTurnModes, session.fastMode, session.metadata?.flavor]);
 
     // Attachment state（图片/音视频，会话内默认可用）。pickAttachment 弹出
     // 图片/音视频选择器；音视频不支持的 flavor 由 sendMessage 兜底提示。

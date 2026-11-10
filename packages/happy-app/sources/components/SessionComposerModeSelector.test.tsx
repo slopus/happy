@@ -2,13 +2,16 @@ import * as React from 'react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveRunningSessionTurnModes } from '@/utils/runningSessionTurnModes';
-import { SessionComposerModeSelector } from './SessionComposerModeSelector';
+import { SessionComposerModeSelector, getModePanelPlacement } from './SessionComposerModeSelector';
 
 // @ts-expect-error react-test-renderer has no declarations in this workspace.
 import TestRenderer from 'react-test-renderer';
 
 vi.mock('react-native', () => ({
-    Modal: 'Modal',
+    Platform: { OS: 'web' },
+    Modal: ({ visible, children }: any) => (visible ? children : null),
+    ScrollView: 'ScrollView',
+    TextInput: 'TextInput',
     Pressable: 'Pressable',
     Text: 'Text',
     View: 'View',
@@ -19,27 +22,32 @@ vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}) } }
 vi.mock('@/components/haptics', () => ({ hapticsLight: vi.fn() }));
 vi.mock('@/components/SessionConfigPanel', () => ({ PickerContent: 'PickerContent' }));
 vi.mock('@/text', () => ({
-    t: (key: string) => ({
-        'agentInput.model.title': 'MODEL',
-        'agentInput.effort.title': 'EFFORT',
-        'newSession.machineOffline': 'offline',
-        'settingsAccount.notAvailable': 'Not available',
-    } as Record<string, string>)[key] ?? key,
+    t: (key: string) =>
+        (
+            ({
+                'agentInput.model.title': 'MODEL',
+                'agentInput.effort.title': 'EFFORT',
+                'newSession.machineOffline': 'offline',
+                'settingsAccount.notAvailable': 'Not available',
+            }) as Record<string, string>
+        )[key] ?? key,
 }));
 vi.mock('react-native-unistyles', () => ({
     StyleSheet: {
-        create: (factory: unknown) => typeof factory === 'function'
-            ? (factory as (theme: any) => object)({
-                colors: {
-                    divider: '#444',
-                    input: { background: '#111' },
-                    shadow: { color: '#000', opacity: 0.2 },
-                    surfaceHigh: '#222',
-                    text: '#fff',
-                    textSecondary: '#aaa',
-                },
-            })
-            : factory,
+        create: (factory: unknown) =>
+            typeof factory === 'function'
+                ? (factory as (theme: any) => object)({
+                      colors: {
+                          switch: { thumb: { active: '#fff' } },
+                          divider: '#444',
+                          input: { background: '#111' },
+                          shadow: { color: '#000', opacity: 0.2 },
+                          surfaceHigh: '#222',
+                          text: '#fff',
+                          textSecondary: '#aaa',
+                      },
+                  })
+                : factory,
     },
     useUnistyles: () => ({ theme: { colors: { textSecondary: '#aaa' } } }),
 }));
@@ -65,34 +73,51 @@ describe('SessionComposerModeSelector', () => {
         consoleErrorSpy.mockRestore();
     });
 
-    it.each(['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna'])('offers %s from an existing session catalog', (model) => {
-        const modes = resolveRunningSessionTurnModes({
-            session: { modelMode: null, effortLevel: null, metadata: {
-                flavor: 'codex', currentModelCode: 'gpt-6-astra',
-                models: [{ code: 'gpt-6-astra', value: 'gpt-6-astra' }],
-            } } as any,
-            agentDefaultOverrides: {}, translate: (key) => key,
-        });
-        const onModelChange = vi.fn();
-        let renderer: any;
-        act(() => {
-            renderer = TestRenderer.create(<SessionComposerModeSelector
-                online model={modes.modelMode} modelOptions={modes.availableModels}
-                effort={modes.effortLevel} effortOptions={modes.availableEffortLevels}
-                onModelChange={onModelChange} onEffortChange={vi.fn()}
-            />);
-        });
-        act(() => renderer.root.findByProps({ testID: 'session-composer-model-trigger' }).props.onPress());
-        const picker = renderer.root.findByType('PickerContent');
-        expect(picker.props.items.some((item: any) => item.key === model)).toBe(true);
-        act(() => picker.props.onSelect(model));
-        expect(onModelChange).toHaveBeenCalledWith(model);
-        act(() => renderer.unmount());
-    });
+    it.each(['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna'])(
+        'offers %s from the current session catalog',
+        (model) => {
+            const modes = resolveRunningSessionTurnModes({
+                session: {
+                    modelMode: null,
+                    effortLevel: null,
+                    metadata: {
+                        flavor: 'codex',
+                        currentModelCode: 'gpt-6-astra',
+                        models: [{ code: 'gpt-6-astra', value: 'gpt-6-astra' }],
+                    },
+                } as any,
+                agentDefaultOverrides: {},
+                translate: (key) => key,
+            });
+            const onModelChange = vi.fn();
+            let renderer: any;
+            act(() => {
+                renderer = TestRenderer.create(
+                    <SessionComposerModeSelector
+                        online
+                        model={modes.modelMode}
+                        modelOptions={modes.availableModels}
+                        effort={modes.effortLevel}
+                        effortOptions={modes.availableEffortLevels}
+                        onModelChange={onModelChange}
+                        onEffortChange={vi.fn()}
+                    />,
+                );
+            });
+            act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+            act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
+            act(() =>
+                renderer.root.findByProps({ testID: `session-composer-model-${model}` }).props.onPress(),
+            );
+            expect(onModelChange).toHaveBeenCalledWith(model);
+            act(() => renderer.unmount());
+        },
+    );
 
-    it('opens model and effort pickers independently', () => {
-        const onModelChange = vi.fn();
-        const onEffortChange = vi.fn();
+    it('opens one panel for model, effort and fast settings', () => {
+        const onModelChange = vi.fn(),
+            onEffortChange = vi.fn(),
+            onFastModeChange = vi.fn();
         let renderer: any;
         act(() => {
             renderer = TestRenderer.create(
@@ -102,64 +127,66 @@ describe('SessionComposerModeSelector', () => {
                     modelOptions={modelOptions}
                     effort={effortOptions[0]}
                     effortOptions={effortOptions}
+                    supportsFast
+                    fastMode={false}
                     onModelChange={onModelChange}
                     onEffortChange={onEffortChange}
+                    onFastModeChange={onFastModeChange}
                 />,
             );
         });
-
-        act(() => renderer.root.findByProps({ testID: 'session-composer-model-trigger' }).props.onPress());
-        const modelPicker = renderer.root.findByType('PickerContent');
-        expect(modelPicker.props.selectedKey).toBe('gpt-5.5');
-        act(() => modelPicker.props.onSelect('gpt-5.6-sol'));
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        expect(renderer.root.findByProps({ testID: 'session-composer-mode-panel' })).toBeTruthy();
+        act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
+        act(() =>
+            renderer.root.findByProps({ testID: 'session-composer-model-gpt-5.6-sol' }).props.onPress(),
+        );
         expect(onModelChange).toHaveBeenCalledWith('gpt-5.6-sol');
-        expect(onEffortChange).not.toHaveBeenCalled();
-
-        act(() => renderer.root.findByProps({ testID: 'session-composer-effort-trigger' }).props.onPress());
-        const effortPicker = renderer.root.findByType('PickerContent');
-        expect(effortPicker.props.selectedKey).toBe('medium');
-        act(() => effortPicker.props.onSelect('xhigh'));
+        act(() => renderer.root.findByProps({ testID: 'session-composer-effort-xhigh' }).props.onPress());
         expect(onEffortChange).toHaveBeenCalledWith('xhigh');
-
+        act(() => renderer.root.findByProps({ testID: 'session-composer-fast-toggle' }).props.onPress());
+        expect(onFastModeChange).toHaveBeenCalledWith(true);
+        act(() =>
+            renderer.root.findByProps({ testID: 'session-composer-mode-picker-scrim' }).props.onPress(),
+        );
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-mode-panel' })).toHaveLength(0);
         act(() => renderer.unmount());
     });
 
-    it('disables both pickers without duplicating the visible offline reason', () => {
+    it('disables the unified control offline and closes an open panel', () => {
+        const props = {
+            model: modelOptions[0],
+            modelOptions,
+            effort: effortOptions[0],
+            effortOptions,
+            onModelChange: vi.fn(),
+            onEffortChange: vi.fn(),
+        };
         let renderer: any;
         act(() => {
-            renderer = TestRenderer.create(
-                <SessionComposerModeSelector
-                    online={false}
-                    model={modelOptions[0]}
-                    modelOptions={modelOptions}
-                    effort={effortOptions[0]}
-                    effortOptions={effortOptions}
-                    onModelChange={vi.fn()}
-                    onEffortChange={vi.fn()}
-                />,
-            );
+            renderer = TestRenderer.create(<SessionComposerModeSelector {...props} online />);
         });
-
-        const modelTrigger = renderer.root.findByProps({ testID: 'session-composer-model-trigger' });
-        const effortTrigger = renderer.root.findByProps({ testID: 'session-composer-effort-trigger' });
-        expect(modelTrigger.props.disabled).toBe(true);
-        expect(modelTrigger.props.accessibilityHint).toBe('offline');
-        expect(effortTrigger.props.disabled).toBe(true);
-        expect(effortTrigger.props.accessibilityHint).toBe('offline');
-        expect(renderer.root.findAllByProps({ testID: 'session-composer-disabled-reason' })).toHaveLength(0);
-        expect(renderer.root.findAllByType('PickerContent')).toHaveLength(0);
-
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        act(() => renderer.update(<SessionComposerModeSelector {...props} online={false} />));
+        const trigger = renderer.root.findByProps({ testID: 'session-composer-mode-trigger' });
+        expect(trigger.props.disabled).toBe(true);
+        expect(trigger.props.accessibilityHint).toBe('offline');
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-mode-panel' })).toHaveLength(0);
         act(() => renderer.unmount());
     });
 
-    it('does not invent an effort control for an agent without effort support', () => {
+    it('filters models by name or description and exposes the current selection', () => {
         let renderer: any;
+        const models = [
+            { key: 'a', name: 'Alpha', description: 'Reasoning model' },
+            { key: 'b', name: 'Beta', description: 'Vision model' },
+        ];
         act(() => {
             renderer = TestRenderer.create(
                 <SessionComposerModeSelector
                     online
-                    model={modelOptions[0]}
-                    modelOptions={[modelOptions[0]]}
+                    model={models[0]}
+                    modelOptions={models}
                     effort={null}
                     effortOptions={[]}
                     onModelChange={vi.fn()}
@@ -167,35 +194,148 @@ describe('SessionComposerModeSelector', () => {
                 />,
             );
         });
-
-        expect(renderer.root.findByProps({ testID: 'session-composer-model-trigger' }).props.accessibilityHint).toBe('Not available');
-        expect(renderer.root.findAllByProps({ testID: 'session-composer-effort-trigger' })).toHaveLength(0);
-        expect(renderer.root.findByProps({ testID: 'session-composer-disabled-reason' }).props.children)
-            .toBe('Not available');
-
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
+        expect(
+            renderer.root.findByProps({ testID: 'session-composer-model-a' }).props.accessibilityState
+                .checked,
+        ).toBe(true);
+        act(() =>
+            renderer.root
+                .findByProps({ testID: 'session-composer-model-search' })
+                .props.onChangeText('vision'),
+        );
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-model-a' })).toHaveLength(0);
+        expect(renderer.root.findByProps({ testID: 'session-composer-model-b' })).toBeTruthy();
         act(() => renderer.unmount());
     });
 
-    it('keeps the full picker affordance for desktop composers', () => {
+    it('exposes checked semantics and supports Space on the Fast switch', () => {
+        const onFastModeChange = vi.fn();
         let renderer: any;
         act(() => {
             renderer = TestRenderer.create(
                 <SessionComposerModeSelector
                     online
-                    model={modelOptions[1]}
+                    model={modelOptions[0]}
                     modelOptions={modelOptions}
-                    effort={effortOptions[1]}
+                    effort={effortOptions[0]}
+                    effortOptions={effortOptions}
+                    supportsFast
+                    fastMode={false}
+                    onFastModeChange={onFastModeChange}
+                    onModelChange={vi.fn()}
+                    onEffortChange={vi.fn()}
+                />,
+            );
+        });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        const toggle = renderer.root.findByProps({ testID: 'session-composer-fast-toggle' });
+        const preventDefault = vi.fn();
+        expect(toggle.props['aria-checked']).toBe(false);
+        act(() => toggle.props.onKeyDown({ key: ' ', repeat: false, preventDefault }));
+        expect(preventDefault).toHaveBeenCalledOnce();
+        expect(onFastModeChange).toHaveBeenCalledWith(true);
+        act(() => renderer.unmount());
+    });
+
+    it('previews a drag, commits only on release, and cancels without changing effort', () => {
+        const onEffortChange = vi.fn();
+        let renderer: any;
+        const options = [{ key: 'default', name: 'default' }, ...effortOptions];
+        act(() => {
+            renderer = TestRenderer.create(
+                <SessionComposerModeSelector
+                    online
+                    model={modelOptions[0]}
+                    modelOptions={modelOptions}
+                    effort={effortOptions[0]}
+                    effortOptions={options}
+                    onModelChange={vi.fn()}
+                    onEffortChange={onEffortChange}
+                />,
+                { createNodeMock: () => ({ measureInWindow: (cb: any) => cb(100, 100, 200, 32) }) },
+            );
+        });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        const track = renderer.root.findByProps({ testID: 'session-composer-effort-track' });
+        act(() => track.props.onLayout({ nativeEvent: { layout: { width: 200 } } }));
+        const pointer = (clientX: number) => ({
+            clientX,
+            pointerId: 1,
+            preventDefault: () => {},
+            currentTarget: { setPointerCapture: () => {}, getBoundingClientRect: () => ({ left: 100 }) },
+        });
+        act(() => track.props.onPointerDown(pointer(116)));
+        act(() => track.props.onPointerMove(pointer(284)));
+        expect(onEffortChange).not.toHaveBeenCalled();
+        act(() => track.props.onPointerCancel());
+        expect(onEffortChange).not.toHaveBeenCalled();
+        act(() => track.props.onPointerDown(pointer(284)));
+        act(() => track.props.onPointerUp());
+        expect(onEffortChange).toHaveBeenCalledOnce();
+        expect(onEffortChange).toHaveBeenCalledWith('xhigh');
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-effort-default' })).toHaveLength(0);
+        act(() => renderer.unmount());
+    });
+
+    it('places the panel below an anchor near the top of a short viewport', () => {
+        const placement = getModePanelPlacement(390, 700, { x: 200, y: 10, width: 100, height: 28 });
+        expect(placement.top).toBe(46);
+        expect(placement.maxHeight).toBeGreaterThan(200);
+        expect(placement.left).toBeGreaterThanOrEqual(8);
+        expect(placement.left + placement.width).toBeLessThanOrEqual(390);
+    });
+
+    it('dismisses an open panel when the web viewport changes', () => {
+        const listeners: Record<string, EventListener> = {};
+        vi.stubGlobal('window', {
+            addEventListener: (name: string, fn: EventListener) => {
+                listeners[name] = fn;
+            },
+            removeEventListener: (name: string) => {
+                delete listeners[name];
+            },
+        });
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(
+                <SessionComposerModeSelector
+                    online
+                    model={modelOptions[0]}
+                    modelOptions={modelOptions}
+                    effort={effortOptions[0]}
                     effortOptions={effortOptions}
                     onModelChange={vi.fn()}
                     onEffortChange={vi.fn()}
                 />,
             );
         });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        act(() => listeners.resize(new Event('resize')));
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-mode-panel' })).toHaveLength(0);
+        act(() => renderer.unmount());
+        vi.unstubAllGlobals();
+    });
 
-        const selector = renderer.root.findByProps({ testID: 'session-composer-mode-selector' });
-        expect(selector.props.style).toContainEqual({ maxWidth: 220 });
-        expect(renderer.root.findAllByType('Ionicons')).toHaveLength(2);
-
+    it('hides unsupported effort and fast controls', () => {
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(
+                <SessionComposerModeSelector
+                    online
+                    model={modelOptions[0]}
+                    modelOptions={modelOptions}
+                    effort={null}
+                    effortOptions={[]}
+                    onModelChange={vi.fn()}
+                    onEffortChange={vi.fn()}
+                />,
+            );
+        });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-fast-toggle' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-effort-xhigh' })).toHaveLength(0);
         act(() => renderer.unmount());
     });
 });

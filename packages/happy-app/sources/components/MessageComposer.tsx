@@ -1,3 +1,4 @@
+import { SessionComposerModeSelector as LegacySessionComposerModeSelector } from './LegacySessionComposerModeSelector';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { View, Platform, useWindowDimensions, Text, ActivityIndicator, Pressable } from 'react-native';
@@ -1058,7 +1059,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                     isWeb: Platform.OS === 'web',
                                     windowWidth: screenWidth,
                                 }) ? (
-                                    <SessionComposerModeSelector {...props.modeSelector} />
+                                    props.modeSelector.unifiedCodex ? <SessionComposerModeSelector {...props.modeSelector} /> : <LegacySessionComposerModeSelector {...props.modeSelector} />
                                 ) : null}
 
                                 {/* Primary action: stop while running and empty, send when there is a payload. */}

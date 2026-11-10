@@ -119,15 +119,17 @@ test('AGP-01 online panel evidence', async ({ page, request }, testInfo) => {
     await expect(panelModel).toContainText('gpt-5.5');
     await page.getByTestId('session-header-chip').click();
     const composerModel = page.locator('[data-testid="session-composer-mode-selector"]:visible')
-        .getByTestId('session-composer-model-trigger');
+        .getByTestId('session-composer-mode-trigger');
     await expect(composerModel).toContainText('gpt-5.5');
 
     // Composer → panel: switching back is immediately reflected when the panel reopens.
     await composerModel.click();
-    await page.getByTestId('session-composer-model-picker')
+    await page.getByTestId('session-composer-open-models').click();
+    await page.getByTestId('session-composer-mode-panel')
         .getByRole('radio', { name: /^gpt-5\.6-sol,/ })
         .click();
     await expect(composerModel).toContainText('gpt-5.6-sol');
+    await page.getByTestId('session-composer-mode-picker-scrim').click({ position: { x: 8, y: 8 } });
     await page.getByTestId('session-header-chip').click();
     await expect(panel.getByTestId('session-agent-panel-model')).toContainText('gpt-5.6-sol');
     await page.screenshot({
