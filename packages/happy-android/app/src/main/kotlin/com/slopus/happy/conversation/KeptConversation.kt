@@ -87,6 +87,7 @@ data class KeptConversation(
             }
             message.failure?.let { put("failure", it) }
             message.error?.let { put("error", it) }
+            message.quickReply?.let { put("quickReply", it.json()) }
         }
 
         private fun blockJson(block: Block): JsonObject = when (block) {
@@ -122,6 +123,9 @@ data class KeptConversation(
                 block.elevated?.let { put("elevated", it) }
             }
             is Block.Compaction -> buildJsonObject { put("type", "compaction"); put("status", block.status) }
+            is Block.Ui -> block.raw
+            is Block.Action -> block.raw
+            is Block.QuickReplies -> block.raw
             is Block.Unknown -> buildJsonObject { put("type", block.type) }
         }
 
@@ -233,6 +237,8 @@ data class KeptConversation(
                 put("input", presentation.input)
                 presentation.command?.let { put("command", it) }
             }
+            is Presentation.Ui -> presentation.raw
+            is Presentation.QuickReplies -> presentation.raw
         }
 
         private fun hunkJson(hunk: Presentation.FileDiff.Hunk): JsonObject = buildJsonObject {

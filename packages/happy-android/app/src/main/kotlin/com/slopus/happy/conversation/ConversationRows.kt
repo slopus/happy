@@ -360,7 +360,7 @@ class ConversationRowBuilder(
                     }
                     is Block.Image -> rows += ConversationRow.Picture(key, block)
                     is Block.ToolCall -> rows += toolRows(key, block, references)
-                    is Block.Compaction, is Block.File, is Block.Unknown -> Unit
+                    is Block.Compaction, is Block.File, is Block.Ui, is Block.Action, is Block.QuickReplies, is Block.Unknown -> Unit
                 }
             }
             return rows
