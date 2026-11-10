@@ -11,6 +11,8 @@ import com.slopus.happy.conversation.ConversationState
 import com.slopus.happy.conversation.Delivery
 import com.slopus.happy.conversation.FailureReason
 import com.slopus.happy.conversation.ToolUse
+import com.slopus.happy.conversation.ui.UiComponent
+import com.slopus.happy.conversation.ui.UiOffer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -84,6 +86,18 @@ class CallTargetsTest {
         rows.add(2, said("m2:0", "Found it"))
         assertEquals(mapOf("m1:0" to true, "m2:0" to false), finals(rows))
         assertEquals(mapOf("m1:0" to true, "m2:0" to true), finals(rows, working = false))
+    }
+
+    /** A show_ui call's components stand in its line's place: the words before them are as complete as before a tool line. */
+    @Test
+    fun chatUiAfterWordsCompletesThem() {
+        val shown = ConversationRow.Ui("m1:1:files", UiOffer("m1", "u1", "files"), UiComponent.Other("files", "2 files"))
+        assertEquals(mapOf("m1:0" to true), finals(listOf(said("m1:0", "Here they are"), shown)))
+        val pictures = ConversationRow.UiMedia("m1:1:pics", emptyList(), emptyList())
+        assertEquals(mapOf("m1:0" to true), finals(listOf(said("m1:0", "Here they are"), pictures)))
+        // Suggested replies are put under words written after them: they say nothing of the words above.
+        val replies = ConversationRow.Replies("m1:1", "m1", "c1", listOf("Yes"))
+        assertEquals(mapOf("m1:0" to false), finals(listOf(said("m1:0", "Shall I"), replies)))
     }
 
     /** The person's new message while the agent writes completes nothing, queued on the phone or taken by the computer. */
