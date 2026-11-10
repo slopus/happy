@@ -244,6 +244,7 @@ export function getPersistentNavigationControlsWidth(buttonCount: number): numbe
 
 export function getPersistentHeaderContentInset({
     windowWidth,
+    mainContentWidth,
     headerMaxWidth,
     headerHorizontalPadding,
     sidebarWidth,
@@ -255,6 +256,8 @@ export function getPersistentHeaderContentInset({
     targetHitSlop = 0,
 }: {
     windowWidth: number;
+    /** Measured chat column, including any file-workspace split and outer gaps. */
+    mainContentWidth?: number;
     headerMaxWidth: number;
     headerHorizontalPadding: number;
     sidebarWidth?: number;
@@ -270,7 +273,7 @@ export function getPersistentHeaderContentInset({
     const renderedSidebarWidth = sidebarVisible
         ? sidebarWidth ?? getDesktopSidebarWidth(windowWidth)
         : 0;
-    const mainWidth = Math.max(0, windowWidth - renderedSidebarWidth - Math.max(0, rightPanelWidth));
+    const mainWidth = Math.max(0, mainContentWidth ?? (windowWidth - renderedSidebarWidth - Math.max(0, rightPanelWidth)));
     const renderedHeaderWidth = Math.min(mainWidth, headerMaxWidth);
     const centeredHeaderInset = Math.max(0, (mainWidth - renderedHeaderWidth) / 2);
     const headerTargetHitLeft = centeredHeaderInset + headerHorizontalPadding - targetHitSlop;

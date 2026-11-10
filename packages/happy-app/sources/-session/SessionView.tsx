@@ -1211,6 +1211,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
     const persistentHeaderContentInset = isTablet
         ? getPersistentHeaderContentInset({
             windowWidth,
+            mainContentWidth: desktopMainWidth || undefined,
             headerMaxWidth: layout.headerMaxWidth,
             headerHorizontalPadding: Platform.OS === 'ios' ? 8 : 16,
             sidebarVisible: desktopLeftSidebarVisible,

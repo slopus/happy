@@ -6,7 +6,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { FileWorkspaceController } from './controller';
 const state = vi.hoisted(() => ({ skin: 'gingham', reduced: false, alert: vi.fn() }));
 const theme = vi.hoisted(() => ({ dark: true, colors: {
-    surface: '#101820', surfaceSelected: '#354550', surfacePressed: '#283640', divider: '#445566', text: '#ffffff', textSecondary: '#aabbcc',
+    surface: '#101820', surfaceSelected: '#354550', surfacePressed: '#283640', divider: '#445566', text: '#ffffff', textSecondary: '#aabbcc', textLink: '#77aaff',
     desktopSkin: { readingSolid: '#151a21', readingCompact: 'rgba(21,26,33,0.70)' },
 } }));
 vi.mock('react-native', () => ({ Platform: { OS: 'web' }, View: 'View', ScrollView: 'ScrollView', ActivityIndicator: 'ActivityIndicator' }));
@@ -24,7 +24,7 @@ vi.mock('./VersionHistoryPanel', () => ({ VersionHistoryPanel: 'VersionHistoryPa
 vi.mock('./ArtifactPreview', () => ({ ArtifactPreview: 'ArtifactPreview' }));
 vi.mock('./HtmlFilePreview', () => ({ HtmlFilePreview: 'HtmlFilePreview' }));
 import { FileWorkspaceContext } from './context';
-import { FileWorkspace } from './FileWorkspace';
+import { FileWorkspace, FileWorkspaceResizeHandle } from './FileWorkspace';
 let controller: FileWorkspaceController;
 let maximized = false;
 let expanded = true;
@@ -103,5 +103,36 @@ it('keeps the file tree toggle available after collapsing it and in full-screen 
     expect(button().props.label).toBe('fileWorkspace.showFileTree');
     act(() => button().props.onPress());
     expect(toggleTree).toHaveBeenCalledTimes(2);
+    act(() => renderer.unmount());
+});
+
+it('keeps the resize cue visible through a captured drag and clears cancelled gestures', () => {
+    const setChatWidth = vi.fn();
+    let renderer: any;
+    act(() => { renderer = TestRenderer.create(<FileWorkspaceContext.Provider value={{ setChatWidth } as any}><FileWorkspaceResizeHandle width={800} maximumWidth={1200} /></FileWorkspaceContext.Provider>); });
+    const handle = () => renderer.root.findByProps({ role: 'separator' });
+    const cue = () => handle().findByProps({ 'aria-hidden': true }).props.style;
+    expect(cue().opacity).toBe(0);
+    act(() => handle().props.onFocus());
+    expect(cue()).toMatchObject({ opacity: 1, background: theme.colors.textLink });
+    act(() => handle().props.onBlur());
+    act(() => handle().props.onPointerEnter());
+    expect(cue()).toMatchObject({ opacity: 1, background: theme.colors.divider });
+    const setPointerCapture = vi.fn();
+    act(() => handle().props.onPointerDown({ preventDefault() {}, clientX: 700, pointerId: 1, currentTarget: { setPointerCapture, previousElementSibling: { getBoundingClientRect: () => ({ width: 700 }) } } }));
+    act(() => handle().props.onPointerLeave());
+    expect(cue()).toMatchObject({ opacity: 1, background: theme.colors.textLink });
+    act(() => handle().props.onPointerMove({ clientX: 750, pointerId: 1 }));
+    expect(setPointerCapture).toHaveBeenCalledWith(1);
+    expect(setChatWidth).toHaveBeenLastCalledWith(750);
+    act(() => handle().props.onPointerCancel());
+    expect(cue().opacity).toBe(0);
+    setChatWidth.mockClear();
+    act(() => handle().props.onPointerMove({ clientX: 900, pointerId: 1 }));
+    expect(setChatWidth).not.toHaveBeenCalled();
+    act(() => handle().props.onKeyDown({ key: 'ArrowRight', preventDefault() {} }));
+    expect(setChatWidth).toHaveBeenLastCalledWith(816);
+    act(() => handle().props.onKeyDown({ key: 'End', preventDefault() {} }));
+    expect(setChatWidth).toHaveBeenLastCalledWith(1200);
     act(() => renderer.unmount());
 });

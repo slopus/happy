@@ -78,7 +78,7 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree }:
         const url = URL.createObjectURL(new Blob([document.phase === 'ready' ? document.draft : cachedDraft?.draft ?? ''], { type: 'text/plain;charset=utf-8' }));
         const anchor = globalThis.document.createElement('a'); anchor.href = url; anchor.download = path.split('/').pop() ?? 'file'; anchor.click(); URL.revokeObjectURL(url);
     };
-    return <View testID="file-workspace" onLayout={event => setWorkspaceWidth(Math.round(event.nativeEvent.layout.width))} style={{ flex: 1, minWidth: 0, minHeight: 0, borderLeftWidth: workspace.maximized ? 0 : 1, borderColor: theme.colors.divider, backgroundColor: photoSkin ? (reducedTransparency ? theme.colors.desktopSkin.readingSolid : theme.colors.desktopSkin.readingCompact) : theme.colors.surface, borderRadius: 20, overflow: 'hidden' }} {...({ onKeyDown: (event: any) => { if (historyPath === path) return; if ((event.metaKey || event.ctrlKey) && event.key === 's') { event.preventDefault(); void controller.save(path); } } } as any)}>
+    return <View testID="file-workspace" onLayout={event => setWorkspaceWidth(Math.round(event.nativeEvent.layout.width))} style={{ flex: 1, minWidth: 0, minHeight: 0, backgroundColor: photoSkin ? (reducedTransparency ? theme.colors.desktopSkin.readingSolid : theme.colors.desktopSkin.readingCompact) : theme.colors.surface, borderRadius: 20, overflow: 'hidden' }} {...({ onKeyDown: (event: any) => { if (historyPath === path) return; if ((event.metaKey || event.ctrlKey) && event.key === 's') { event.preventDefault(); void controller.save(path); } } } as any)}>
         <View style={{flex:1,minHeight:0}} {...(historyPath === path ? {"aria-hidden":true,inert:true} : {}) as any}>
         <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 46, backgroundColor: theme.colors.surface, borderBottomWidth: 1, borderColor: theme.colors.divider }}>
             <ScrollView horizontal style={{ flex: 1, minWidth: 0 }} contentContainerStyle={{ alignItems: 'center', paddingHorizontal: 6 }}>
@@ -142,30 +142,41 @@ export function FileWorkspaceResizeHandle({ width, maximumWidth }: { width: numb
     const workspace = useFileWorkspace();
     const { theme } = useUnistyles();
     const start = React.useRef<{ x: number; width: number; pointerId: number } | null>(null);
+    const [hovered, setHovered] = React.useState(false);
+    const [focused, setFocused] = React.useState(false);
+    const [dragging, setDragging] = React.useState(false);
     if (!workspace || Platform.OS !== 'web') return null;
     const resize = (value: number) => workspace.setChatWidth(Math.max(workspaceChatMinWidth, Math.min(maximumWidth, value)));
     return React.createElement('div', {
         role: 'separator', tabIndex: 0, 'aria-label': t('fileWorkspace.resize'), 'aria-orientation': 'vertical',
         'aria-valuemin': workspaceChatMinWidth, 'aria-valuemax': maximumWidth, 'aria-valuenow': width,
+        onPointerEnter: () => setHovered(true),
+        onPointerLeave: () => setHovered(false),
+        onFocus: () => setFocused(true),
+        onBlur: () => setFocused(false),
         onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => {
             event.preventDefault();
             const renderedWidth = event.currentTarget.previousElementSibling?.getBoundingClientRect().width ?? width;
             start.current = { x: event.clientX, width: renderedWidth, pointerId: event.pointerId };
             event.currentTarget.setPointerCapture(event.pointerId);
+            setDragging(true);
         },
         onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => {
             const active = start.current;
             if (active?.pointerId === event.pointerId) resize(active.width + event.clientX - active.x);
         },
-        onPointerUp: () => { start.current = null; },
-        onPointerCancel: () => { start.current = null; },
-        onLostPointerCapture: () => { start.current = null; },
+        onPointerUp: () => { start.current = null; setDragging(false); },
+        onPointerCancel: () => { start.current = null; setDragging(false); },
+        onLostPointerCapture: () => { start.current = null; setDragging(false); },
         onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => {
             if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
                 event.preventDefault();
                 resize(event.key === 'Home' ? workspaceChatMinWidth : event.key === 'End' ? maximumWidth : width + (event.key === 'ArrowLeft' ? -16 : 16));
             }
         },
-        style: { flexShrink: 0, width: workspaceResizeWidth, background: theme.colors.divider, cursor: 'col-resize', touchAction: 'none' },
-    });
+        style: { flexShrink: 0, width: workspaceResizeWidth, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'col-resize', touchAction: 'none', outline: 'none' },
+    }, React.createElement('div', {
+        'aria-hidden': true,
+        style: { width: 2, height: 32, borderRadius: 1, pointerEvents: 'none', background: focused || dragging ? theme.colors.textLink : theme.colors.divider, opacity: hovered || focused || dragging ? 1 : 0 },
+    }));
 }

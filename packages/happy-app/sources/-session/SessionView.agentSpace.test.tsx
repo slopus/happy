@@ -1331,6 +1331,27 @@ describe('SessionView Agent-space boundary', () => {
         act(() => renderer.unmount());
     });
 
+    it('recomputes navigation clearance from the measured chat column beside an open document', () => {
+        mocks.isDataReady = true;
+        mocks.windowWidth = 2560;
+        mocks.isTablet = true;
+        mocks.platformOS = 'web';
+        const value = { enabled: true, root: '/work', snapshot: { open: true, active: '/work/a.md', tabs: ['/work/a.md'], documents: {} }, maximized: false, chatWidth: 900 } as any;
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<FileWorkspaceContext.Provider value={value}><SessionView id="session-1" /></FileWorkspaceContext.Provider>); });
+        const main = () => renderer.root.findByProps({ testID: 'desktop-workspace-main' });
+        const header = () => renderer.root.findByType('ChatHeaderView').props;
+        act(() => main().props.onLayout({ nativeEvent: { layout: { width: 800 } } }));
+        expect(header().headerContentLeftInset).toBe(210);
+        expect(header().headerContentTopInset).toBe(0);
+        act(() => main().props.onLayout({ nativeEvent: { layout: { width: 1000 } } }));
+        expect(header().headerContentLeftInset).toBe(110);
+        act(() => main().props.onLayout({ nativeEvent: { layout: { width: 600 } } }));
+        expect(header().headerContentLeftInset).toBe(0);
+        expect(header().headerContentTopInset).toBe(40);
+        act(() => renderer.unmount());
+    });
+
     it('shows the capability hub by default on a wide desktop session', () => {
         mocks.isDataReady = true;
         mocks.windowWidth = 1400;

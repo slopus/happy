@@ -274,6 +274,18 @@ describe('desktopNavigationLayout', () => {
         })).toBe(194);
     });
 
+    it('uses the actual chat width when a document shares a wide desktop', () => {
+        expect(getPersistentHeaderContentInset({
+            windowWidth: 2560,
+            mainContentWidth: 800,
+            headerMaxWidth: 800,
+            headerHorizontalPadding: 16,
+            controlStartPadding: 16,
+            buttonCount: 4,
+            targetHitSlop: 8,
+        })).toBe(210);
+    });
+
     it('reserves navigation space when the desktop file panel narrows the session header', () => {
         expect(getPersistentHeaderContentInset({
             windowWidth: 1470,
