@@ -394,6 +394,9 @@ data class Message(
 ) {
     val text: String get() = content.filterIsInstance<Block.Text>().joinToString("\n") { it.text }
 
+    /** The attempt at a chat UI action this records, where it is an attempt record: a service message of one `action` block. */
+    val attempt: UiActionRecord? get() = if (role == "service") (content.singleOrNull() as? Block.Action)?.record else null
+
     companion object {
         fun parse(value: JsonElement?): Message? {
             val o = value.obj ?: return null
@@ -417,7 +420,10 @@ data class Message(
 /**
  * A run of history: the messages one turn of work holds, oldest first, and
  * once it ended when and why (`completed`, `steering`, `abort`, `error`,
- * `compaction`).
+ * `compaction`). One the server stored already finished, outside any turn
+ * (`kind: "standalone"`), is no turn of work: a chat UI attempt record
+ * lives in one, and so does a message the server wrote itself with no run
+ * open.
  */
 data class Run(
     val id: String,
@@ -426,6 +432,7 @@ data class Run(
     val messages: List<Message>,
     val endedAt: Long? = null,
     val reason: String? = null,
+    val standalone: Boolean = false,
 ) {
     companion object {
         fun parse(value: JsonElement?): Run? {
@@ -437,8 +444,12 @@ data class Run(
                 messages = o["messages"].arr.orEmpty().mapNotNull(Message::parse),
                 endedAt = o["endedAt"].long,
                 reason = o["reason"].str,
+                standalone = standalone(o),
             )
         }
+
+        /** Whether a run object, in history or an event, says it is a standalone one. */
+        fun standalone(run: JsonObject): Boolean = run["kind"].str == "standalone"
     }
 }
 

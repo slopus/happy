@@ -71,6 +71,7 @@ data class KeptConversation(
             run.startedAt?.let { put("startedAt", it) }
             run.endedAt?.let { put("endedAt", it) }
             run.reason?.let { put("reason", it) }
+            if (run.standalone) put("kind", "standalone")
             put("messages", JsonArray(run.messages.map(::messageJson)))
         }
 

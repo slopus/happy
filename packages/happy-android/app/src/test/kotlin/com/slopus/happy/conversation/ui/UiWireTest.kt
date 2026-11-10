@@ -4,6 +4,7 @@ import com.slopus.happy.conversation.Block
 import com.slopus.happy.conversation.KeptConversation
 import com.slopus.happy.conversation.Message
 import com.slopus.happy.conversation.Presentation
+import com.slopus.happy.conversation.Run
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
@@ -213,5 +214,16 @@ class UiWireTest {
         assertTrue(messages[2].content.single() is Block.Action)
         assertEquals(QuickReply("m1", "c2", 1), messages[3].quickReply)
         for (message in messages) assertEquals(message, Message.parse(KeptConversation.messageJson(message)))
+    }
+
+    @Test fun `a run says it is standalone with its kind, in history and when kept, and no other run is`() {
+        val record = """{"id":"k1","role":"service","createdAt":3,"metadata":{},"content":[]}"""
+        val standalone = Run.parse(json("""{"id":"r2","kind":"standalone","status":"completed","startedAt":3,"endedAt":3,"messages":[$record]}"""))!!
+        assertTrue(standalone.standalone)
+        for (turn in listOf("""{"id":"r1","status":"completed","startedAt":1,"endedAt":2,"messages":[]}""", """{"id":"r1","kind":"compaction","status":"completed","messages":[]}""")) {
+            assertFalse(turn, Run.parse(json(turn))!!.standalone)
+        }
+        val kept = KeptConversation.parse(KeptConversation(listOf(standalone, Run("r3", "running", 4, emptyList())), emptyList(), false, null, null).json())!!
+        assertEquals(listOf(true, false), kept.runs.map { it.standalone })
     }
 }

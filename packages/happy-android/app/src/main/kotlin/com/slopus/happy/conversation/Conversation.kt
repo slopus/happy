@@ -21,6 +21,11 @@ import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
 import com.slopus.happy.connection.AgentConnectionException
 import com.slopus.happy.conversation.ui.QuickReply
+import com.slopus.happy.conversation.ui.UiAction
+import com.slopus.happy.conversation.ui.UiActions
+import com.slopus.happy.conversation.ui.UiComponent
+import com.slopus.happy.conversation.ui.UiOffer
+import com.slopus.happy.conversation.ui.UiPresses
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -64,12 +69,12 @@ data class ComposerFocus(val serial: Int, val cursor: Int)
 data class NewWork(val choice: WorkChoice, val locked: Boolean = false)
 
 /** A run's status, when it began and ended, and why it ended (`run.*` metadata). */
-internal data class RunInfo(val status: String, val startedAt: Long?, val endedAt: Long? = null, val reason: String? = null) {
+internal data class RunInfo(val status: String, val startedAt: Long?, val endedAt: Long? = null, val reason: String? = null, val standalone: Boolean = false) {
     companion object {
-        fun of(run: Run) = RunInfo(run.status, run.startedAt, run.endedAt, run.reason)
+        fun of(run: Run) = RunInfo(run.status, run.startedAt, run.endedAt, run.reason, run.standalone)
 
         /** An event's run object; [status] where it says none. */
-        fun of(run: JsonObject, status: String) = RunInfo(run["status"].str ?: status, run["startedAt"].long, run["endedAt"].long, run["reason"].str)
+        fun of(run: JsonObject, status: String) = RunInfo(run["status"].str ?: status, run["startedAt"].long, run["endedAt"].long, run["reason"].str, Run.standalone(run))
     }
 }
 
@@ -262,6 +267,8 @@ class Conversation(
     private val messages = HashMap<String, Message>()
     private val pending = ArrayList<String>()
     private val outgoing = ArrayList<Outgoing>()
+    /** Chat UI presses from here, and the refusals that are still news ([press]). */
+    private val presses = UiPresses(ConversationApi::clientId)
     private var agent: AgentInfo? = null
     private var mode: Mode? = null
     private var picked: Mode? = null
@@ -446,7 +453,8 @@ class Conversation(
      * read whole again unless it is known to have finished.
      */
     private fun anchor(): String? {
-        val finished = if (running || runInfo[runs.lastOrNull()?.first]?.status == "running") runs.dropLast(1) else runs
+        val going = lastTurn()?.takeIf { running || runInfo[it]?.status == "running" }
+        val finished = if (going != null) runs.subList(0, runs.indexOfFirst { it.first == going }) else runs
         return finished.lastOrNull { it.second.isNotEmpty() }?.second?.last()
     }
 
@@ -540,7 +548,7 @@ class Conversation(
         outgoing.filter { it.id in messages }.forEach { uploads.clear(it.id) }
         outgoing.removeAll { it.id in messages }
         running = start.agent.isWorking
-        activeRunStartedAt = runs.lastOrNull()?.first?.let(runInfo::get)?.takeIf { start.agent.isWorking && it.status == "running" }?.startedAt
+        activeRunStartedAt = lastTurn()?.let(runInfo::get)?.takeIf { start.agent.isWorking && it.status == "running" }?.startedAt
         // Before what came while reading, which is newer.
         snapshot = snapshot.copy(context = start.context)
         val events = held.orEmpty()
@@ -570,7 +578,7 @@ class Conversation(
         val kept = KeptConversation(
             runs = newest.map { (id, ids) ->
                 val info = runInfo[id] ?: RunInfo("completed", null)
-                Run(id, info.status, info.startedAt, ids.mapNotNull(messages::get), info.endedAt, info.reason)
+                Run(id, info.status, info.startedAt, ids.mapNotNull(messages::get), info.endedAt, info.reason, info.standalone)
             },
             pending = pending.mapNotNull(messages::get),
             hasMore = snapshot.hasMore || newest.size < runs.size,
@@ -635,6 +643,7 @@ class Conversation(
         when (event.type) {
             "message.created", "message.updated" -> {
                 val message = Message.parse(payload["message"]) ?: return
+                hear(message)
                 messages[message.id] = message
                 outgoing.removeAll { it.id == message.id }
                 uploads.clear(message.id)
@@ -668,7 +677,7 @@ class Conversation(
             }
             "run.started" -> {
                 val run = payload["run"].obj ?: return
-                runs.lastOrNull()?.first?.let { last -> runInfo[last]?.let { runInfo[last] = it.copy(status = "completed") } }
+                lastTurn()?.let { last -> runInfo[last]?.let { runInfo[last] = it.copy(status = "completed") } }
                 accept(payload["acceptedMessageIds"].strings(), run["id"].str ?: return)
                 activeRunStartedAt = run["startedAt"].long
                 running = true
@@ -684,10 +693,14 @@ class Conversation(
                 runInfo[run["id"].str!!] = RunInfo.of(run, "running")
             }
             "run.finished" -> {
-                finish(payload["run"].obj)
-                activeRunStartedAt = null
-                running = false
-                agent = agent?.copy(status = "idle")
+                val run = payload["run"].obj
+                finish(run)
+                // A standalone run was stored finished, beside any turn going on, which goes on.
+                if (run?.let(Run::standalone) != true) {
+                    activeRunStartedAt = null
+                    running = false
+                    agent = agent?.copy(status = "idle")
+                }
                 if (visible) markRead()
             }
             "agent.updated" -> {
@@ -744,7 +757,7 @@ class Conversation(
 
     /** A run ended, as [run] says, else the newest one: no longer running. */
     private fun finish(run: JsonObject?) {
-        val id = run?.get("id").str ?: runs.lastOrNull()?.first ?: return
+        val id = run?.get("id").str ?: lastTurn() ?: return
         runInfo[id] = run?.let { RunInfo.of(it, "completed") } ?: runInfo[id]?.copy(status = "completed") ?: RunInfo("completed", null)
     }
 
@@ -858,6 +871,68 @@ class Conversation(
             pump()
         }
     }
+
+    /**
+     * Sends a chat UI component's [action] on its [offer] to the actions
+     * route. No bubble: the component is busy until the press is answered,
+     * and shows what was refused ([UiWork]) from the attempt record the
+     * answer brings, which joins history as any other does. Nothing goes
+     * where the offer isn't in the transcript, its component doesn't take
+     * the action ([UiActions.takes]), or a press of the offer is already on
+     * its way.
+     *
+     * Only the action's redacted form is kept while it goes ([UiPresses]).
+     * The answer's `result` is not read, for no action this build sends has
+     * one. An action that has is where a result store joins: kept here by
+     * offer and published with the row, never held in a row's composition,
+     * which a lazy list drops as it scrolls away.
+     */
+    fun press(offer: UiOffer, action: UiAction) {
+        scope.launch(lane) {
+            if (!created || closed) return@launch
+            val row = snapshot.rows.firstOrNull { it is ConversationRow.Ui && it.offer == offer } as ConversationRow.Ui? ?: return@launch
+            if (!UiActions.takes(row.component, action)) return@launch
+            val id = presses.begin(offer, action) { it in messages } ?: return@launch
+            publish()
+            try {
+                val record = withRetries { api.act(agentId, id, offer, action) }
+                presses.answered(offer)
+                hear(record)
+                join(record)
+                keepSoon()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Turned down, nothing was recorded. Unanswered, the same press again is the same attempt.
+                val problem = describe(e)
+                if (e is ConversationApiException && e.status in 400..499) presses.refused(offer, action, problem) else presses.lost(offer, id, action, problem)
+            }
+            publish()
+        }
+    }
+
+    /**
+     * A message the computer answered with joins history. Its run is the
+     * events' to announce (`run.finished`, then `message.created`), so until
+     * they have it waits among the messages no run holds yet.
+     */
+    private fun join(message: Message) {
+        messages[message.id] = message
+        if (message.id !in pending && runs.none { message.id in it.second }) pending += message.id
+    }
+
+    /**
+     * A message that came while the chat is open, in an event or as a
+     * press's answer, before it replaces what was known: an attempt record
+     * that says something new is news for its component ([UiPresses.heard]).
+     */
+    private fun hear(message: Message) {
+        val record = message.attempt ?: return
+        if (record.outcome != messages[message.id]?.attempt?.outcome) presses.heard(record)
+    }
+
+    /** The newest run that is a turn, which may still be going: a standalone run ([Run.standalone]) is none. */
+    private fun lastTurn(): String? = runs.lastOrNull { runInfo[it.first]?.standalone != true }?.first
 
     /** Whether [id] is a message here already: one of this phone's sends, or one the computer has. */
     suspend fun has(id: String): Boolean = withContext(lane) { outgoing.any { it.id == id } || id in messages }
@@ -1339,6 +1414,7 @@ class Conversation(
     /** Reads the computer's models again (`config.updated`, a reconnect): hidden accounts and models, names, windows. */
     private fun rereadCatalog() {
         scope.launch(lane) {
+            val mark = presses.mark()
             val found = try {
                 api.catalog()
             } catch (e: CancellationException) {
@@ -1347,9 +1423,13 @@ class Conversation(
                 return@launch
             }
             catalogRead = null
+            // Asked for after it, the default model is newer than any refusal to change it.
+            val settled = presses.read(UiComponent.DefaultModel.TYPE, mark)
             if (found != catalog) {
                 catalog = found
                 adoptStartMode()
+                publish()
+            } else if (settled) {
                 publish()
             }
         }
@@ -1380,6 +1460,7 @@ class Conversation(
     /** The computer's models, read once; a failed read is asked again next time. */
     private suspend fun readCatalog(): ModeCatalog {
         catalog?.let { return it }
+        val mark = presses.mark()
         val read = catalogRead ?: scope.async(lane) { api.catalog() }.also { catalogRead = it }
         val found = try {
             read.await()
@@ -1391,6 +1472,7 @@ class Conversation(
         }
         if (catalog == null) {
             catalog = found
+            presses.read(UiComponent.DefaultModel.TYPE, mark)
             adoptStartMode()
             publish()
         }
@@ -1625,12 +1707,27 @@ class Conversation(
     /** Every message the computer has, in order: each run's, then those waiting for one. */
     private fun history(): List<Message> = (runs.flatMap { it.second } + pending).mapNotNull(messages::get)
 
+    /**
+     * Lays over each chat UI row how its actions go ([UiWork]): the press
+     * on its way from here, whether the newest attempt on its offer by
+     * anyone is still pending, and a refusal that is still news.
+     */
+    private fun workOn(rows: MutableList<ConversationRow>) {
+        val newest = HashMap<UiOffer, Boolean>()
+        for (message in history()) message.attempt?.let { newest[it.offer] = it.outcome.pending }
+        rows.replaceAll { row ->
+            if (row !is ConversationRow.Ui) return@replaceAll row
+            val work = UiWork(presses.sending(row.offer), newest[row.offer] == true, presses.problem(row.offer))
+            if (work == row.work) row else row.copy(work = work)
+        }
+    }
+
     private fun derive(base: ConversationState): ConversationState {
         val agent = agent
         val working = running || agent?.isWorking == true || outgoing.any { it.accepted }
         val parentAgentId = agent?.parentAgentId
         val rows = ArrayList<ConversationRow>()
-        val lastRun = runs.lastOrNull()?.first
+        val lastRun = lastTurn()
         val waiting = base.question
         for ((runId, ids) in runs) {
             val streaming = working && runId == lastRun
@@ -1642,8 +1739,13 @@ class Conversation(
                 replies.add(turn, message.role, settled(sentAt(builder.rows(message, agentId, parentAgentId, streaming && message.role == "agent")), waiting))
             }
             replies.place(turn)
-            // Ended: how, after how long, and the answer to copy (desktop's `turnStatus`); then it folds.
             val info = runInfo[runId]
+            // A standalone run is no turn: what the server wrote in it stands as it is, with no end and no fold.
+            if (info?.standalone == true) {
+                rows += turn
+                continue
+            }
+            // Ended: how, after how long, and the answer to copy (desktop's `turnStatus`); then it folds.
             val endedAt = info?.endedAt
             if (endedAt != null) {
                 val at = turn.indexOfLast { it is ConversationRow.Text }
@@ -1683,9 +1785,10 @@ class Conversation(
         if (rows.any { it is ConversationRow.Replies }) {
             QuickReplyRows.mark(rows, history(), outgoing.mapNotNull { it.quickReply }, unsent = outgoing.isNotEmpty())
         }
+        if (rows.any { it is ConversationRow.Ui }) workOn(rows)
         builder.forget(messages.keys)
-        val produced = lastRun != null && running &&
-            runs.last().second.any { id -> messages[id]?.let { it.role == "agent" && it.content.isNotEmpty() } == true }
+        val produced = running &&
+            runs.firstOrNull { it.first == lastRun }?.second.orEmpty().any { id -> messages[id]?.let { it.role == "agent" && it.content.isNotEmpty() } == true }
         val activity = when {
             base.question != null -> Activity.AwaitingAnswer
             !working -> if ((agent?.subagentsRunning ?: 0) > 0) Activity.Delegating else null

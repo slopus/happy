@@ -6,6 +6,7 @@ import com.slopus.happy.chat.markdown.parseMarkdown
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
 import com.slopus.happy.conversation.ui.QuickReply
+import com.slopus.happy.conversation.ui.UiAction
 import com.slopus.happy.conversation.ui.UiComponent
 import com.slopus.happy.conversation.ui.UiDocument
 import com.slopus.happy.conversation.ui.UiOffer
@@ -124,9 +125,10 @@ sealed interface ConversationRow {
      * `show_ui` call's presentation, named as a press names it ([offer]).
      * A component is drawn whole or not at all: a type this build doesn't
      * draw, or one it can't draw whole, is [UiComponent.Other], its fallback
-     * line.
+     * line. [work] is how its actions go, which the conversation lays over
+     * the row as built.
      */
-    data class Ui(override val key: String, val offer: UiOffer, val component: UiComponent) : ConversationRow
+    data class Ui(override val key: String, val offer: UiOffer, val component: UiComponent, val work: UiWork = UiWork.Idle) : ConversationRow
 
     /**
      * A chat UI `media` component whole: every item it names among its
@@ -237,6 +239,20 @@ sealed interface ConversationRow {
 }
 
 enum class NoticeKind { Compacting, Compacted, CompactionFailed }
+
+/**
+ * How a component's actions go: one on its way from this phone ([sending],
+ * its secret fields left out), the newest attempt by anyone not settled yet
+ * ([pending]), or the last one refused while that is still news ([problem]).
+ */
+@Immutable
+data class UiWork(val sending: UiAction? = null, val pending: Boolean = false, val problem: Problem? = null) {
+    val busy: Boolean get() = sending != null || pending
+
+    companion object {
+        val Idle = UiWork()
+    }
+}
 
 /** Where a question's answer stands. */
 @Immutable
@@ -427,7 +443,7 @@ class ConversationRowBuilder(
                 val rowKey = "$key:${component.id}"
                 val offer = UiOffer(messageId, document.id, component.id)
                 when (component) {
-                    is UiComponent.FileTree -> ConversationRow.Ui(rowKey, offer, component)
+                    is UiComponent.FileTree, is UiComponent.DefaultModel -> ConversationRow.Ui(rowKey, offer, component)
                     is UiComponent.Media -> media(rowKey, component, toolCallId, items) ?: fallback(rowKey, offer, component)
                     else -> fallback(rowKey, offer, component)
                 }
