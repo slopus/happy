@@ -1688,6 +1688,79 @@ secretbox has checked the MAC, and a sent picture is kept at upload, so the
 sender never downloads it. A legacy download is one request with progress
 from the body; it can't pause.
 
+### Chat UI
+
+An agent shows typed components in a conversation and suggests quick
+replies (happy-agent protocol 35). Every request to an agent connection
+says `Happy-Protocol: 35` (`TailcatHttp.requestHead`); without it the
+daemon sends fallback text and leaves attempt records out.
+
+The contract is happy-agent's client package, vendored into
+`app/src/test/resources/ui/` by `tools/chat-ui/vendor.sh <happy-agent
+checkout> <commit>`: `ui.schema.json` (the catalog, secret fields marked
+`x-happy-secret`), `actions.fixtures.json` (its conformance vectors) and
+`vendored.json` (the commit and each file's SHA-256, which
+`UiContractTest` checks). Never edit them by hand; run the script again
+when the catalog changes. Tests read them through `UiContract`. A vector
+section no test reads is not depended on: today `result` (no action this
+build sends has one) and `mediaLayout`'s desktop row height.
+
+- **Wire** (`conversation/ui/UiWire.kt`, `QuickReplies.kt`): a `ui` block
+  of an agent message, the `ui` presentation of a `show_ui` call (its
+  `items` are media items a `media` component names by index), the
+  `action` block of an attempt record, and `quick_replies` as a block or a
+  `suggest_replies` call's presentation. A block that doesn't decode is
+  skipped, never its message. Each is kept on the phone as it came (`raw`).
+- **A component is drawn whole or not at all.** `UiComponent` reads the
+  types this build draws strictly, as their schemas say; any other type, a
+  known one whose props don't fit, and a `media` naming an item its call
+  doesn't have, is its `fallback` line. `provider_sign_in` is a fallback
+  line. Adding a type: its class and strict parse in `UiWire.kt`, its row
+  in `ConversationRowBuilder.uiRows`, its view, and tests of all three
+  against the schema.
+- **Rows.** A component is a `ConversationRow.Ui`; a `media` component is a
+  `ConversationRow.UiMedia`, a row of its own kind rather than a flag on
+  `Media`, because it lays files out among the pictures by the shared rule
+  (`UiMediaLayout`, a port of `layoutMedia` checked against the vectors)
+  and labels each item. What `show_ui` or `suggest_replies` showed stands
+  in its call's place, with no tool line.
+- **A press** is `Conversation.press(offer, action)`: one
+  `POST /v0/agents/:id/actions`, no bubble. `UiPresses` holds how presses
+  stand: one of an offer at a time; the attempt ID kept across the
+  request's retries and, when no answer came, for the same press again;
+  only the action's redacted form while it goes. `UiActions` is the
+  catalog of what this build sends: the fields kept (never one marked
+  secret; an action it doesn't know keeps no payload) and the permission
+  needed, both held to the schema by `UiActionsTest`. Nothing of a payload
+  is logged or stored.
+- **Attempt records** show on their component as `UiWork`, never as a row:
+  busy while a press goes or the newest attempt is pending; a refusal only
+  while it is news (learned while the chat is open, until the offer is
+  pressed again, a later attempt goes through, or the component's live
+  state is read again after it). They live in standalone runs
+  (`Run.standalone`, `kind: "standalone"`), which never change whether
+  the agent is working and draw no end of a turn.
+- **Results.** No action this build sends answers with a result, so
+  `ConversationApi.act` reads none. One that does keeps its result in the
+  conversation, by offer, and publishes it with the row: never in a row's
+  `remember`, which a lazy list drops as it scrolls away.
+- **Live components** draw from the server's state, not their props:
+  `default_model` from `ConversationState.catalog`, read again on
+  `config.updated`.
+- **Views** (`ui/conversation/UiComponentViews.kt`, `UiDefaultModelView.kt`,
+  `UiMediaViews.kt`, `QuickReplyViews.kt`) act through one object,
+  `ConversationRowActions.ui` (`UiRowActions`); where it is null the rows
+  are only read. No link a server sends is opened; if one ever is, only
+  `https`.
+- **Quick replies.** `QuickReplyPlacement` puts each stack under all the
+  agent wrote in its turn before a person's message; `QuickReplyRows.mark`
+  sets the option sent from the message's `quickReply` and lets only the
+  newest stack take a tap, until someone writes. A tap is
+  `Conversation.sendReply`: an ordinary send of the option with
+  `quickReply { messageId, toolCallId?, index }`. The optional `ui` list
+  is ignored.
+- Words are in `strings_chat_ui.xml`.
+
 ### Context meter and usage ring
 
 Under an agent connection's composer, `ui/conversation/ContextMeter` draws

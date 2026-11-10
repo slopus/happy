@@ -4,9 +4,9 @@ package com.slopus.happy.conversation
  * Folds each finished turn as desktop does (`happyAgentConnectGroupProject`,
  * iOS 7f6355041 `TurnFold`): closed, a turn keeps the person's words, its
  * final answer (else its last step), what other agents said, file edits,
- * the media and artifacts its calls showed, failures, questions still open,
- * the replies it suggested under the row that offered them, and how it
- * ended, and its "View traces" control rides the answer. Open,
+ * the media and artifacts its calls showed, its chat UI, failures,
+ * questions still open, the replies it suggested under the row that offered
+ * them, and how it ended, and its "View traces" control rides the answer. Open,
  * every step shows and the control rides the turn's first step. A turn
  * still running, or with nothing to hide, is left as it is.
  */

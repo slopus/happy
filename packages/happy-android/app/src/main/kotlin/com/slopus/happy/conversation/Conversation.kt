@@ -875,11 +875,10 @@ class Conversation(
     /**
      * Sends a chat UI component's [action] on its [offer] to the actions
      * route. No bubble: the component is busy until the press is answered,
-     * and shows what was refused ([UiWork]) from the attempt record the
-     * answer brings, which joins history as any other does. Nothing goes
-     * where the offer isn't in the transcript, its component doesn't take
-     * the action ([UiActions.takes]), or a press of the offer is already on
-     * its way.
+     * and shows what was refused ([UiWork]), as the answer's attempt record
+     * says or the refusal of the request itself. Nothing goes where the
+     * offer isn't in the transcript, its component doesn't take the action
+     * ([UiActions.takes]), or a press of the offer is already on its way.
      *
      * Only the action's redacted form is kept while it goes ([UiPresses]).
      * The answer's `result` is not read, for no action this build sends has

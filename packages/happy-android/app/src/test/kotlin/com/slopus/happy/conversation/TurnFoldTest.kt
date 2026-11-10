@@ -1,5 +1,7 @@
 package com.slopus.happy.conversation
 
+import com.slopus.happy.conversation.ui.UiComponent
+import com.slopus.happy.conversation.ui.UiOffer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -36,6 +38,16 @@ class TurnFoldTest {
         val folded = TurnFold.fold("r", group, open = false)
         assertEquals(listOf("u", "r:trace", "t2", "r:status"), folded.map { it.key })
         assertTrue((folded.last() as ConversationRow.TurnEnd).afterStep)
+    }
+
+    @Test fun closedItKeepsItsChatUiAndTheRepliesItSuggestedUnderTheRowThatOfferedThem() {
+        val shown = ConversationRow.Ui("m:1:files", UiOffer("m", "u1", "files"), UiComponent.Other("files", "2 files"))
+        val pictures = ConversationRow.UiMedia("m:1:pics", emptyList(), emptyList())
+        val replies = ConversationRow.Replies("m:3", "m", "c1", listOf("Yes"))
+        val group = listOf(user("u"), tool("t1"), shown, pictures, tool("t2"), replies, text("a"), end(2))
+        val folded = TurnFold.fold("r", group, open = false)
+        // The call right above the stack stays with it, though a call folds away.
+        assertEquals(listOf("u", "m:1:files", "m:1:pics", "t2", "m:3", "r:trace", "a", "r:status"), folded.map { it.key })
     }
 
     @Test fun openTheControlRidesTheFirstStep() {
