@@ -201,6 +201,27 @@ class QuickRepliesConversationTest {
         assertTrue(chat.state.value.rows.filterIsInstance<ConversationRow.Ui>().single().work.pending)
     }
 
+    @Test fun `calls still running when their run finished take the update that settles them, row and pills`() = runTest {
+        // happy-agent 2c290e125: a lagging queue could announce the run finished before its last tool events.
+        fun shown(status: String, presentations: Boolean) = """{"id":"m1","role":"agent","createdAt":2,"metadata":{},"content":[
+            {"type":"text","text":"Here you go."},
+            {"type":"tool_call","id":"c1","name":"show_ui","status":"$status"${if (presentations) ""","presentation":{"type":"ui","ui":{"id":"u1","components":[{"id":"inv","type":"invite","fallback":"Invite a teammate in Settings.","props":{}}]}}""" else ""}},
+            {"type":"tool_call","id":"c2","name":"suggest_replies","status":"$status"${if (presentations) ""","presentation":{"type":"quick_replies","options":["Fix the login redirect","Run the tests"]}""" else ""}}]}"""
+        page = """{"runs":[{"id":"r1","status":"running","startedAt":1,"messages":[${shown("running", false)}]}],"hasMore":false}"""
+        val chat = conversation()
+        advanceUntilIdle()
+        signals.emit(event("run.finished", """{"run":{"id":"r1","status":"completed","startedAt":1,"endedAt":3,"reason":"completed"}}"""))
+        advanceUntilIdle()
+        assertFalse(chat.state.value.working)
+        signals.emit(event("message.updated", """{"runId":"r1","message":${shown("completed", true)}}"""))
+        advanceUntilIdle()
+        val rows = chat.state.value.rows
+        assertEquals(1, rows.filterIsInstance<ConversationRow.Ui>().size)
+        assertTrue(chat.replies()!!.live)
+        assertTrue("no call left running", rows.none { it is ConversationRow.Tool && it.tool.running })
+        assertEquals(1, rows.count { it is ConversationRow.TurnEnd && it.turn == "r1" })
+    }
+
     private fun event(type: String, payload: String) = ConversationSignal.Event(type, Json.parseToJsonElement(payload).jsonObject)
 
     companion object {
