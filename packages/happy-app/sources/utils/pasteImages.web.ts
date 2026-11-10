@@ -18,20 +18,6 @@ export function getImagesFromClipboard(event: ClipboardEvent): File[] {
     return images;
 }
 
-export function getImagesFromDrop(event: DragEvent): File[] {
-    const files = event.dataTransfer?.files;
-    if (!files) return [];
-
-    const images: File[] = [];
-    for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        if (file.type.startsWith('image/')) {
-            images.push(file);
-        }
-    }
-    return images;
-}
-
 export async function fileToAttachmentPreview(
     file: File,
     generateThumbhash: (uri: string, w: number, h: number) => Promise<string | undefined>,

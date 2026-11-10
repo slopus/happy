@@ -18,6 +18,8 @@ vi.mock('react-native', () => ({
     Pressable: 'Pressable', Text: 'Text', View: 'View', TextInput: 'TextInput', ScrollView: 'ScrollView',
     useWindowDimensions: () => ({ width: 1200, height: 800 }),
 }));
+vi.mock('@/realtime/RealtimeSession', () => ({ RealtimeSession: {} }));
+vi.mock('react-native-device-info', () => ({ getDeviceType: () => 'Desktop' }));
 vi.mock('@expo/vector-icons', () => ({ Octicons: 'Octicons', Ionicons: 'Ionicons' }));
 vi.mock('react-native-reanimated', () => ({
     default: { View: 'AnimatedView' }, FadeIn: { duration: vi.fn() }, FadeOut: { duration: vi.fn() },
@@ -31,6 +33,7 @@ const { theme } = vi.hoisted(() => ({ theme: { colors: {
 vi.mock('react-native-unistyles', () => ({
     StyleSheet: { create: (factory: any) => factory(theme) }, useUnistyles: () => ({ theme }),
 }));
+vi.mock('@/navigation/desktopModalRouter', () => ({ getDesktopModalBackgroundPath: () => null }));
 vi.mock('expo-router', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('expo-clipboard', () => ({ setStringAsync: vi.fn() }));
 vi.mock('@/sync/sync', () => ({ sync: {} }));

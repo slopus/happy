@@ -3,17 +3,17 @@
  *
  * Wraps expo-image-picker with permission handling and thumbhash generation.
  * Enforces limits: max 50 attachments per message, 50MB for images/media,
- * and 10MB for whole-buffer encrypted PDF documents.
+ * and 10MB for whole-buffer encrypted documents.
  *
  * File sizes reported by platform pickers are treated as hints: images are
- * normalized and measured, while PDFs with a missing size are stat'ed before
+ * normalized and measured, while documents with a missing size are stat'ed before
  * they can enter the attachment queue.
  */
 import { useState, useCallback, useRef, useEffect } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { getInfoAsync } from 'expo-file-system/legacy';
-import { Platform, Keyboard } from 'react-native';
+import { Platform, Keyboard, Image } from 'react-native';
 import { Modal } from '@/modal';
 import { generateThumbhash } from '@/utils/thumbhash';
 import { normalizeImageForUpload } from '@/utils/normalizeImageForUpload';
@@ -53,13 +53,14 @@ type UseImagePickerResult = {
     pickImages: () => Promise<AttachmentPreview[]>;
     /** Pick audio/video files via the system document picker (plaintext lane). */
     pickMedia: () => Promise<void>;
-    /** Pick PDF documents via the system document picker (encrypted lane). */
+    /** Pick files of any type via the system document picker. */
     pickPdf: () => Promise<void>;
-    /** Show a chooser (photo, audio/video, or PDF), then run the matching picker. */
+    /** Choose photos or files, depending on the platform. */
     pickAttachment: () => void;
     removeImage: (id: string) => void;
     clearImages: () => void;
     addImages: (images: AttachmentPreview[]) => void;
+    prepareAddImages: () => (images: AttachmentPreview[]) => void;
 };
 
 /** Classify a document-picker asset's mimeType into our media kinds. */
@@ -305,77 +306,61 @@ export function useImagePicker(options: UseImagePickerOptions = {}): UseImagePic
         const token = captureSelection();
         const remaining = maxAttachments - selectedCountRef.current;
         if (remaining <= 0) {
-            Modal.alert(
-                t('imageUpload.limitTitle'),
-                t('imageUpload.limitMessage', { max: maxAttachments }),
-                [{ text: t('common.ok') }],
-            );
+            Modal.alert(t('imageUpload.limitTitle'), t('imageUpload.limitMessage', { max: maxAttachments }), [{ text: t('common.ok') }]);
             return;
         }
-
-        const result = await DocumentPicker.getDocumentAsync({
-            type: 'application/pdf',
-            multiple: true,
-            copyToCacheDirectory: true,
-        });
-        if (!isSelectionCurrent(token)) return;
-        if (result.canceled || !result.assets?.length) return;
-
+        const result = await DocumentPicker.getDocumentAsync({ type: '*/*', multiple: true, copyToCacheDirectory: true });
+        if (!isSelectionCurrent(token) || result.canceled || !result.assets?.length) return;
         const previews: AttachmentPreview[] = [];
         for (const asset of result.assets.slice(0, remaining)) {
-            const name = asset.name ?? `document_${Date.now()}.pdf`;
-            const mimeType = (asset.mimeType ?? '').toLowerCase();
-            if (mimeType !== 'application/pdf' && !name.toLowerCase().endsWith('.pdf')) {
-                continue;
-            }
-            // Do not trust picker metadata: native providers can report stale or
-            // under-counted sizes. Browser File.size and a native stat are the
-            // independent preflight used before any whole-file read occurs.
+            const name = asset.name ?? `document_${Date.now()}`;
+            const mimeType = asset.mimeType || 'application/octet-stream';
+            const isImage = mimeType.startsWith('image/');
+            const isMedia = mimeType.startsWith('audio/') || mimeType.startsWith('video/');
+            const limit = isImage ? maxImageSizeBytes : isMedia ? MAX_MEDIA_FILE_SIZE : MAX_PDF_FILE_SIZE;
             const size = await getActualDocumentSize(asset);
             if (!isSelectionCurrent(token)) return;
             if (size === null) {
-                Modal.alert(
-                    t('imageUpload.uploadFailedTitle'),
-                    t('imageUpload.uploadFailedMessage', { count: 1 }),
-                    [{ text: t('common.ok') }],
-                );
+                Modal.alert(t('imageUpload.uploadFailedTitle'), t('imageUpload.uploadFailedMessage', { count: 1 }), [{ text: t('common.ok') }]);
                 continue;
             }
-            if (size > MAX_PDF_FILE_SIZE) {
-                Modal.alert(
-                    t('imageUpload.fileTooLargeTitle'),
-                    t('imageUpload.fileTooLargeMessage', { name, maxMb: MAX_PDF_FILE_SIZE_MB }),
-                    [{ text: t('common.ok') }],
-                );
+            if (size > limit) {
+                Modal.alert(t('imageUpload.fileTooLargeTitle'), t('imageUpload.fileTooLargeMessage', { name, maxMb: limit / 1024 / 1024 }), [{ text: t('common.ok') }]);
                 continue;
             }
-            previews.push({
-                id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
-                uri: asset.uri,
-                width: 0,
-                height: 0,
-                mimeType: 'application/pdf',
-                size,
-                name,
-                kind: 'file',
-            });
+            if (isImage) {
+                try {
+                    const dimensions = await new Promise<{ width: number; height: number }>((resolve) => {
+                        Image.getSize(asset.uri, (width, height) => resolve({ width, height }), () => resolve({ width: 0, height: 0 }));
+                    });
+                    if (!isSelectionCurrent(token)) return;
+                    const image = await normalizeImageForUpload(asset.uri, dimensions.width, dimensions.height);
+                    if (!isSelectionCurrent(token)) return;
+                    if (image.size > limit) {
+                        Modal.alert(t('imageUpload.fileTooLargeTitle'), t('imageUpload.fileTooLargeMessage', { name, maxMb: limit / 1024 / 1024 }), [{ text: t('common.ok') }]);
+                        continue;
+                    }
+                    const thumbhash = image.width > 0 && image.height > 0 ? await generateThumbhash(image.uri, image.width, image.height) : undefined;
+                    if (!isSelectionCurrent(token)) return;
+                    previews.push({ id: `${Date.now()}_${Math.random().toString(36).slice(2)}`, ...image, name, thumbhash });
+                } catch {
+                    Modal.alert(t('imageUpload.normalizeFailedTitle'), t('imageUpload.normalizeFailedMessage', { count: 1 }), [{ text: t('common.ok') }]);
+                }
+            } else {
+                previews.push({ id: `${Date.now()}_${Math.random().toString(36).slice(2)}`, uri: asset.uri, width: 0, height: 0, mimeType, size, name, kind: isMedia ? mediaKindFromMime(mimeType, name) : 'file' });
+            }
         }
-
-        if (previews.length > 0 && isSelectionCurrent(token)) {
-            setSelectedImages(prev => isSelectionCurrent(token)
-                ? [...prev, ...previews].slice(0, maxAttachments)
-                : prev);
-        }
-    }, [captureSelection, isSelectionCurrent, maxAttachments, setSelectedImages]);
+        if (previews.length && isSelectionCurrent(token)) setSelectedImages(prev => isSelectionCurrent(token) ? [...prev, ...previews].slice(0, maxAttachments) : prev);
+    }, [captureSelection, isSelectionCurrent, maxAttachments, maxImageSizeBytes, setSelectedImages]);
 
     const pickAttachment = useCallback(() => {
-        // Card-style source chooser — see AttachmentSourceSheet.
+        if (Platform.OS === 'web') { void pickPdf(); return; }
+        // Native devices offer the photo library and the system file picker.
         const show = () => Modal.show({
             component: AttachmentSourceSheet,
             props: {
                 onPickPhoto: () => { void pickImages(); },
-                onPickMedia: () => { void pickMedia(); },
-                onPickPdf: () => { void pickPdf(); },
+                onPickFiles: () => { void pickPdf(); },
             },
         });
 
@@ -394,7 +379,7 @@ export function useImagePicker(options: UseImagePickerOptions = {}): UseImagePic
         } else {
             show();
         }
-    }, [pickImages, pickMedia, pickPdf]);
+    }, [pickImages, pickPdf]);
 
     const removeImage = useCallback((id: string) => {
         setSelectedImages(prev => prev.filter(img => img.id !== id));
@@ -414,5 +399,12 @@ export function useImagePicker(options: UseImagePickerOptions = {}): UseImagePic
         });
     }, [maxAttachments]);
 
-    return { selectedImages, pickImages, pickMedia, pickPdf, pickAttachment, removeImage, clearImages, addImages };
+    const prepareAddImages = useCallback(() => {
+        const token = captureSelection();
+        return (images: AttachmentPreview[]) => {
+            if (isSelectionCurrent(token)) setSelectedImages(prev => isSelectionCurrent(token) ? [...prev, ...images].slice(0, maxAttachments) : prev);
+        };
+    }, [captureSelection, isSelectionCurrent, maxAttachments, setSelectedImages]);
+
+    return { selectedImages, pickImages, pickMedia, pickPdf, pickAttachment, removeImage, clearImages, addImages, prepareAddImages };
 }

@@ -1804,7 +1804,9 @@ function SessionViewLoaded({
 
     // Attachment state（图片/音视频，会话内默认可用）。pickAttachment 弹出
     // 图片/音视频选择器；音视频不支持的 flavor 由 sendMessage 兜底提示。
-    const { selectedImages, pickImages, pickAttachment, removeImage, clearImages, addImages } = useImagePicker();
+    const { selectedImages, pickImages, pickAttachment, removeImage, clearImages, addImages, prepareAddImages } = useImagePicker();
+    const selectedImagesRef = React.useRef(selectedImages);
+    selectedImagesRef.current = selectedImages;
 
     // Handle dismissing CLI version warning
     const handleDismissCliWarning = React.useCallback(() => {
@@ -2010,6 +2012,7 @@ function SessionViewLoaded({
         </>
     ) : null;
 
+    const sessionCanAttach = !session.metadata?.flavor || ['claude', 'codex', 'opencode'].includes(session.metadata.flavor);
     const composer = (
         <ChatComposer
             mode="session"
@@ -2028,9 +2031,11 @@ function SessionViewLoaded({
             showAbortButton={sessionStatus.state === 'running'}
             onFileViewerPress={experiments && !isTablet ? handleFileViewerPress : undefined}
             selectedImages={selectedImages}
-            onPickImages={session.metadata?.flavor === 'opencode' ? pickImages : pickAttachment}
+            onPickImages={sessionCanAttach ? (session.metadata?.flavor === 'opencode' ? pickImages : pickAttachment) : undefined}
             onRemoveImage={removeImage}
-            onAddImages={addImages}
+            onAddImages={sessionCanAttach ? addImages : undefined}
+            onPrepareAddImages={sessionCanAttach ? prepareAddImages : undefined}
+            imageAttachmentsOnly={session.metadata?.flavor === 'opencode'}
             autocompletePrefixes={autocompletePrefixes}
             autocompleteSuggestions={handleAutocompleteSuggestions}
             usageData={usageData}
@@ -2098,18 +2103,33 @@ function SessionViewLoaded({
                         turnId: session.agentState?.turnStatus?.turnId }}
                     onSteer={id => { void messageStagingQueue.steer(id); }}
                     onRemove={messageStagingQueue.remove}
-                    onEdit={message => {
+                    onEdit={message => { void (async () => {
                         if (composerHandleRef.current?.getMessage().trim() || selectedImages.length) {
                             Modal.alert(t('messageQueue.title'), t('messageQueue.occupied'));
                             return;
                         }
-                        if (!composerHandleRef.current) return;
+                        const composer = composerHandleRef.current;
+                        if (!composer) return;
+                        if (message.attachmentsExpired) {
+                            const names = message.attachments?.filter(attachment => attachment.uri.startsWith('blob:')).map(attachment => attachment.name).join('、') ?? '';
+                            const warning = [message.deliveryUncertain ? t('messageQueue.failed') : '', t('messageQueue.attachmentsExpired'), names].filter(Boolean).join('\n');
+                            if (!await Modal.confirm(t('messageQueue.title'), warning)) return;
+                            // The user may have typed while the confirmation was open.
+                            if (composerHandleRef.current !== composer) return;
+                            if (composer.getMessage().trim() || selectedImagesRef.current.length) {
+                                Modal.alert(t('messageQueue.title'), t('messageQueue.occupied'));
+                                return;
+                            }
+                        }
                         const recovered = messageStagingQueue.take(message.id);
                         if (!recovered) return;
-                        composerHandleRef.current.setMessage(recovered.draftText ?? recovered.text);
+                        composer.setMessage(recovered.draftText ?? recovered.text);
                         if (recovered.fileReference) fileWorkspace?.setReference(recovered.fileReference);
-                        if (recovered.attachments?.length) addImages(recovered.attachments);
-                    }}
+                        const valid = recovered.attachmentsExpired
+                            ? recovered.attachments?.filter(attachment => !attachment.uri.startsWith('blob:'))
+                            : recovered.attachments;
+                        if (valid?.length) addImages(valid);
+                    })(); }}
                 />
             </CenteredInputWidth>
             {composer}

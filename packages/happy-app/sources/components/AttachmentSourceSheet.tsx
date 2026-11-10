@@ -2,7 +2,7 @@
  * Attachment source chooser rendered as a custom modal (via Modal.show).
  *
  * Replaces the plain OS-style alert row with a card picker: one card per source
- * (photo / audio-video / PDF), icon over label, matching the app's dark surface style.
+ * (photo library / files), icon over label, matching the app's dark surface style.
  * Each card dismisses the sheet first, then runs its picker on the next tick so
  * the modal is gone before the system picker opens.
  */
@@ -14,13 +14,12 @@ import { t } from '@/text';
 
 interface AttachmentSourceSheetProps {
     onPickPhoto: () => void;
-    onPickMedia: () => void;
-    onPickPdf: () => void;
+    onPickFiles: () => void;
     /** Injected by the modal host. */
     onClose?: () => void;
 }
 
-export function AttachmentSourceSheet({ onPickPhoto, onPickMedia, onPickPdf, onClose }: AttachmentSourceSheetProps) {
+export function AttachmentSourceSheet({ onPickPhoto, onPickFiles, onClose }: AttachmentSourceSheetProps) {
     const { theme } = useUnistyles();
 
     const choose = React.useCallback((run: () => void) => {
@@ -42,16 +41,10 @@ export function AttachmentSourceSheet({ onPickPhoto, onPickMedia, onPickPdf, onC
                     onPress={() => choose(onPickPhoto)}
                 />
                 <SourceCard
-                    icon="film-outline"
-                    label={t('imageUpload.chooseSourceMedia')}
+                    icon="document-outline"
+                    label={t('imageUpload.chooseSourceFiles')}
                     theme={theme}
-                    onPress={() => choose(onPickMedia)}
-                />
-                <SourceCard
-                    icon="document-text-outline"
-                    label={t('imageUpload.chooseSourcePdf')}
-                    theme={theme}
-                    onPress={() => choose(onPickPdf)}
+                    onPress={() => choose(onPickFiles)}
                 />
             </View>
         </View>

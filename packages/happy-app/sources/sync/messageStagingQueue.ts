@@ -10,6 +10,8 @@ export type StagedMessage = {
     attachments?: AttachmentPreview[];
     modeMeta: MessageModeMeta;
     status: 'queued' | 'sending' | 'failed';
+    attachmentsExpired?: boolean;
+    deliveryUncertain?: boolean;
 };
 
 export type StagingSession = {
@@ -21,8 +23,8 @@ export type StagingSession = {
 };
 
 /** Keep unavailable actions out of both the view and the dispatcher. */
-export function canSendStagedMessageNow(message: Pick<StagedMessage, 'text'>, session?: StagingSession): boolean {
-    if (!session?.connected) return false;
+export function canSendStagedMessageNow(message: Pick<StagedMessage, 'text' | 'attachmentsExpired'>, session?: StagingSession): boolean {
+    if (!session?.connected || message.attachmentsExpired) return false;
     const busy = session.state === 'running' || session.state === 'permission_required';
     return !busy || (session.supportsSteer === true && !!session.turnId && !message.text.trimStart().startsWith('/'));
 }
@@ -37,6 +39,13 @@ export type StagingSnapshot = {
  * A successful submission is not a completed turn: retain a barrier until the
  * runner has started and finished that turn (or reports a new completed ID).
  */
+function recoveredMessage(message: StagedMessage): StagedMessage {
+    const attachmentsExpired = message.attachmentsExpired || message.attachments?.some(attachment => attachment.uri.startsWith('blob:'));
+    return message.status === 'sending' || attachmentsExpired
+        ? { ...message, status: 'failed', ...(attachmentsExpired ? { attachmentsExpired: true } : {}), ...(message.status === 'sending' ? { deliveryUncertain: true } : {}) }
+        : message;
+}
+
 export function createMessageStagingQueue(deps: {
     load: () => StagingSnapshot;
     save: (snapshot: StagingSnapshot) => void;
@@ -49,7 +58,7 @@ export function createMessageStagingQueue(deps: {
         ...restored,
         // A process may have died after acceptance. Never silently resend an
         // ambiguous submission; let the user inspect history and retry it.
-        messages: restored.messages.map(m => m.status === 'sending' ? { ...m, status: 'failed' } : m),
+        messages: restored.messages.map(recoveredMessage),
     };
     const listeners = new Set<() => void>();
     const locks = new Set<string>();
@@ -136,7 +145,7 @@ export function createMessageStagingQueue(deps: {
         refresh,
         restore(value: StagingSnapshot) {
             generation++;
-            snapshot = { ...value, messages: value.messages.map(m => m.status === 'sending' ? { ...m, status: 'failed' } : m) };
+            snapshot = { ...value, messages: value.messages.map(recoveredMessage) };
             for (const listener of listeners) listener();
         },
         enqueue(message: Omit<StagedMessage, 'status'>) {
@@ -161,7 +170,7 @@ export function createMessageStagingQueue(deps: {
         },
         steer(id: string) {
             const message = snapshot.messages.find(m => m.id === id);
-            if (!message || message.status === 'sending') return Promise.resolve();
+            if (!message || message.status === 'sending' || message.attachmentsExpired) return Promise.resolve();
             const session = deps.session(message.sessionId);
             // Commands execute between turns in the CLI. A queued command
             // must never be inserted into the current model turn as prose.

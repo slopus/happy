@@ -65,6 +65,7 @@ vi.mock('./AgentInputAutocomplete', () => ({ AgentInputAutocomplete: 'AgentInput
 vi.mock('./GitStatusBadge', () => ({ GitStatusBadge: 'GitStatusBadge', useHasMeaningfulGitStatus: () => false }));
 vi.mock('@/sync/storage', () => ({ useSetting: () => false }));
 vi.mock('./layout', () => ({ layout: { maxWidth: 800 } }));
+vi.mock('@/modal', () => ({ Modal: { alert: vi.fn() } }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('@/utils/desktopNavigationLayout', () => ({ supportsDesktopComposerModeSelector: () => false }));
 vi.mock('./SessionComposerModeSelector', () => ({ SessionComposerModeSelector: 'SessionComposerModeSelector' }));

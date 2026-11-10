@@ -18,6 +18,22 @@ function setup(initial?: StagingSnapshot) {
 const tick = () => new Promise<void>(resolve => setTimeout(resolve, 0));
 
 describe('message staging queue', () => {
+    it('does not automatically send or steer a restored browser blob attachment', async () => {
+        const attachment = { id: 'file', uri: 'blob:https://example.test/expired', name: 'report.txt', size: 10, width: 0, height: 0, mimeType: 'text/plain', kind: 'file' as const };
+        const snapshot: StagingSnapshot = { messages: [{ id: 'm', sessionId: 's', text: 'report', modeMeta: {}, status: 'queued', attachments: [attachment] }], barriers: {} };
+        const t = setup();
+        t.queue.restore(snapshot);
+        expect(t.queue.getSnapshot().messages[0]).toMatchObject({ status: 'failed', attachmentsExpired: true });
+        const sending = setup();
+        sending.queue.restore({ ...snapshot, messages: [{ ...snapshot.messages[0], status: 'sending' }] });
+        expect(sending.queue.getSnapshot().messages[0]).toMatchObject({ status: 'failed', attachmentsExpired: true, deliveryUncertain: true });
+        t.update({ state: 'idle' });
+        await t.queue.steer('m');
+        await tick();
+        expect(t.send).not.toHaveBeenCalled();
+        expect(t.steer).not.toHaveBeenCalled();
+    });
+
     it('does not advance during the cold-start queued-to-running handoff', async () => {
         const t = setup();
         t.update({ state: 'idle', turnId: undefined });

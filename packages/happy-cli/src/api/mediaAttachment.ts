@@ -163,7 +163,7 @@ export function formatMediaAttachmentNotice(items: MediaAttachment[]): string | 
     return [
         `Happy attached ${items.length} user-uploaded local file${items.length === 1 ? '' : 's'} to this turn:`,
         ...lines,
-        ...(hasDocument ? ['Use the exact local file path above to read or process the PDF according to the user request.'] : []),
+        ...(hasDocument ? ['Use the exact local file path above to read or process the file according to the user request.'] : []),
         ...(hasMedia ? ['Audio/video content is available at the exact paths above; use command-line tools such as ffmpeg or whisper when needed.'] : []),
         'Do not scan ~/.happy/attachments or guess which file the user intended.',
     ].join('\n');

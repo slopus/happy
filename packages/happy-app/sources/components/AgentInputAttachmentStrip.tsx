@@ -200,7 +200,7 @@ function AttachmentThumbnail({
                             {image.name}
                         </Text>
                         <Text numberOfLines={1} style={[styles.mediaType, { color: theme.colors.textSecondary }]}>
-                            {t('imageUpload.documentPdf')}
+                            {image.mimeType === 'application/pdf' ? t('imageUpload.documentPdf') : t('imageUpload.documentFile')}
                         </Text>
                     </View>
                 </View>

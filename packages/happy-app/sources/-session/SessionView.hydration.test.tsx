@@ -193,6 +193,7 @@ vi.mock('@/components/AgentContentView', async (importOriginal) => {
         React.createElement('AgentContentView', {}, React.createElement(actual.AgentContentView, props))
     ) };
 });
+vi.mock('@/components/SubmittedAttachmentPreview', () => ({ SubmittedAttachmentPreview: 'SubmittedAttachmentPreview' }));
 vi.mock('@/components/MessageComposer', () => ({ MessageComposer: 'MessageComposer' }));
 vi.mock('@/components/ChatHeaderView', () => ({ ChatHeaderView: 'ChatHeaderView' }));
 vi.mock('@/components/SessionHeaderChip', () => ({ SessionHeaderChip: 'SessionHeaderChip' }));

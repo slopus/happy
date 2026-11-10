@@ -137,7 +137,7 @@ function DocumentFileCard({ ref_, sessionId, name, size, mimeType, encrypted, so
         let resolved: MediaPlaybackSource | null = null;
         try {
             if (size !== undefined && size > MAX_PDF_FILE_SIZE) {
-                throw new Error('PDF attachment exceeds the safe open limit');
+                throw new Error('File attachment exceeds the safe open limit');
             }
             resolved = directUri
                 ? { uri: directUri, headers: {} }
@@ -177,7 +177,7 @@ function DocumentFileCard({ ref_, sessionId, name, size, mimeType, encrypted, so
                 <View style={styles.mediaMeta}>
                     <Text style={[styles.filename, { color: theme.colors.text }]} numberOfLines={1}>{name}</Text>
                     <Text style={[styles.mediaSub, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-                        {t('imageUpload.documentPdf')}{sizeLabel ? ` · ${sizeLabel}` : ''}
+                        {resolvedMimeType === 'application/pdf' ? t('imageUpload.documentPdf') : t('imageUpload.documentFile')}{sizeLabel ? ` · ${sizeLabel}` : ''}
                     </Text>
                 </View>
                 {loading

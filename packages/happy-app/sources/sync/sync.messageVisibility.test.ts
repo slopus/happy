@@ -200,6 +200,7 @@ vi.mock('@/track', () => ({
     trackPaywallPurchased: vi.fn(),
     trackPaywallRestored: vi.fn(),
 }));
+vi.mock('@/components/SubmittedAttachmentPreview', () => ({ SubmittedAttachmentPreview: 'SubmittedAttachmentPreview' }));
 vi.mock('@/modal', () => ({ Modal: { alert: vi.fn() } }));
 vi.mock('@/sync/ops', () => ({ machineSpawnNewSession: mocks.machineSpawnNewSession }));
 vi.mock('@/hooks/useNavigateToSession', () => ({ useNavigateToSession: () => mocks.navigateToSession }));

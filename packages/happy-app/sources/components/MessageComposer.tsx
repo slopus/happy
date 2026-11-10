@@ -22,6 +22,8 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSetting } from '@/sync/storage';
 import { Theme } from '@/theme';
 import { t } from '@/text';
+import { Modal } from '@/modal';
+import { MAX_PDF_FILE_SIZE } from '@/sync/attachmentLimits';
 import type { ComposerAutocompleteSuggestion } from './autocomplete/types';
 import { supportsDesktopComposerModeSelector } from '@/utils/desktopNavigationLayout';
 import {
@@ -112,6 +114,8 @@ interface MessageComposerProps {
     onPickImages?: () => void;
     onRemoveImage?: (id: string) => void;
     onAddImages?: (images: AttachmentPreview[]) => void;
+    onPrepareAddImages?: () => (images: AttachmentPreview[]) => void;
+    imageAttachmentsOnly?: boolean;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
@@ -545,51 +549,105 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
             }
         };
 
-        // dragover must call preventDefault for drop to fire; we gate on
-        // `types.includes('Files')` so we don't hijack drag-text/HTML in the
-        // rest of the app.
-        const isFileDrag = (e: DragEvent) => {
-            const types = e.dataTransfer?.types;
-            if (!types) return false;
-            // DataTransferItemList vs DOMStringList — both expose .includes-ish.
-            for (let i = 0; i < types.length; i++) {
-                if (types[i] === 'Files') return true;
-            }
-            return false;
+        // Only a visible composer may own a document-wide drag. A retained
+        // home composer otherwise receives the same drop as the session composer.
+        const isVisible = () => composerElement.isConnected && composerElement.getClientRects().length > 0 && !composerElement.closest('[inert], [aria-hidden="true"]');
+        let disposed = false;
+        const isFileDrag = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+        let overlay: HTMLDivElement | null = null;
+        const hideOverlay = () => { overlay?.remove(); overlay = null; };
+        const showOverlay = () => {
+            if (overlay) return;
+            overlay = document.createElement('div');
+            overlay.setAttribute('role', 'status');
+            overlay.setAttribute('data-testid', 'file-drop-overlay');
+            Object.assign(overlay.style, {
+                position: 'fixed', inset: '0', zIndex: '2147483647', pointerEvents: 'none',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                backgroundColor: theme.colors.surface, opacity: '0.96', color: theme.colors.text,
+                textAlign: 'center', gap: '12px',
+            });
+            const icon = document.createElement('div');
+            icon.textContent = '↧';
+            Object.assign(icon.style, { fontSize: '64px', lineHeight: '1', color: theme.colors.textSecondary });
+            const title = document.createElement('strong');
+            title.textContent = t('imageUpload.dropTitle');
+            Object.assign(title.style, { fontSize: '30px' });
+            const hint = document.createElement('span');
+            hint.textContent = t('imageUpload.dropHint');
+            Object.assign(hint.style, { fontSize: '18px', color: theme.colors.textSecondary });
+            overlay.append(icon, title, hint);
+            document.body.appendChild(overlay);
         };
-
         const handleDragOver = (e: DragEvent) => {
-            if (!isFileDrag(e)) return;
+            if (e.defaultPrevented || !isVisible() || !isFileDrag(e)) return;
             e.preventDefault();
             if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+            showOverlay();
         };
-
+        const handleDragLeave = (e: DragEvent) => {
+            if (!e.relatedTarget && (e.clientX <= 0 || e.clientY <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight)) hideOverlay();
+        };
         const handleDrop = async (e: DragEvent) => {
-            if (!isFileDrag(e)) return;
+            hideOverlay();
+            if (e.defaultPrevented || !isVisible() || !isFileDrag(e)) return;
             e.preventDefault();
-            const { getImagesFromDrop, fileToAttachmentPreview } = await import('@/utils/pasteImages.web');
-            const files = getImagesFromDrop(e);
-            if (!files.length) return;
-            const previews = (await Promise.all(
-                files.map((f) => fileToAttachmentPreview(f, generateThumbhash))
-            )).filter(Boolean) as Omit<AttachmentPreview, 'id'>[];
-            if (previews.length) {
-                props.onAddImages!(previews.map((p) => ({
-                    ...p,
-                    id: `drop_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-                })));
+            const files = Array.from(e.dataTransfer?.files ?? []);
+            const add = props.onPrepareAddImages?.() ?? props.onAddImages!;
+            const previews: AttachmentPreview[] = [];
+            for (const file of files) {
+                const image = file.type.startsWith('image/');
+                const media = file.type.startsWith('audio/') || file.type.startsWith('video/');
+                if (!image && props.imageAttachmentsOnly) {
+                    Modal.alert(t('imageUpload.notSupportedTitle'), t('imageUpload.notSupportedMessage'), [{ text: t('common.ok') }]);
+                    continue;
+                }
+                const limit = image || media ? 50 * 1024 * 1024 : MAX_PDF_FILE_SIZE;
+                if (file.size > limit) {
+                    Modal.alert(t('imageUpload.fileTooLargeTitle'), t('imageUpload.fileTooLargeMessage', { name: file.name, maxMb: limit / 1024 / 1024 }), [{ text: t('common.ok') }]);
+                    continue;
+                }
+                const id = `drop_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+                if (image) {
+                    try {
+                        const { normalizeImageForUpload } = await import('@/utils/normalizeImageForUpload');
+                        const normalized = await normalizeImageForUpload(URL.createObjectURL(file), 0, 0);
+                        if (normalized.size > limit) {
+                            Modal.alert(t('imageUpload.fileTooLargeTitle'), t('imageUpload.fileTooLargeMessage', { name: file.name, maxMb: limit / 1024 / 1024 }), [{ text: t('common.ok') }]);
+                            continue;
+                        }
+                        const dimensions = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+                            const img = new Image();
+                            img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+                            img.onerror = reject;
+                            img.src = normalized.uri;
+                        });
+                        const thumbhash = dimensions.width && dimensions.height ? await generateThumbhash(normalized.uri, dimensions.width, dimensions.height) : undefined;
+                        previews.push({ ...normalized, ...dimensions, name: file.name, thumbhash, id });
+                    } catch {
+                        Modal.alert(t('imageUpload.normalizeFailedTitle'), t('imageUpload.normalizeFailedMessage', { count: 1 }), [{ text: t('common.ok') }]);
+                    }
+                } else {
+                    previews.push({ id, uri: URL.createObjectURL(file), width: 0, height: 0, size: file.size, name: file.name, mimeType: file.type || 'application/octet-stream', kind: media ? (file.type.startsWith('audio/') ? 'audio' : 'video') : 'file' });
+                }
             }
+            if (!disposed && previews.length) add(previews);
         };
-
         composerElement.addEventListener('paste', handlePaste);
         document.addEventListener('dragover', handleDragOver);
+        document.addEventListener('dragleave', handleDragLeave);
+        document.addEventListener('dragend', hideOverlay);
         document.addEventListener('drop', handleDrop);
         return () => {
+            disposed = true;
+            hideOverlay();
             composerElement.removeEventListener('paste', handlePaste);
             document.removeEventListener('dragover', handleDragOver);
+            document.removeEventListener('dragleave', handleDragLeave);
+            document.removeEventListener('dragend', hideOverlay);
             document.removeEventListener('drop', handleDrop);
         };
-    }, [props.onAddImages]);
+    }, [props.onAddImages, props.onPrepareAddImages, props.imageAttachmentsOnly, theme]);
 
     // Autocomplete state — text + selection. Updated via startTransition so
     // typing renders the character immediately and the autocomplete pipeline

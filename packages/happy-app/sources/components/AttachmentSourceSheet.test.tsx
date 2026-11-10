@@ -30,12 +30,11 @@ vi.mock('react-native-unistyles', () => ({
 describe('AttachmentSourceSheet', () => {
     afterEach(() => vi.useRealTimers());
 
-    it('shows a third PDF document source and opens it after closing the sheet', () => {
+    it('shows the file source and opens it after closing the sheet', () => {
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         vi.useFakeTimers();
         const onPickPhoto = vi.fn();
-        const onPickMedia = vi.fn();
-        const onPickPdf = vi.fn();
+        const onPickFiles = vi.fn();
         const onClose = vi.fn();
 
         let renderer: any;
@@ -43,26 +42,24 @@ describe('AttachmentSourceSheet', () => {
             renderer = TestRenderer.create(
                 <AttachmentSourceSheet
                     onPickPhoto={onPickPhoto}
-                    onPickMedia={onPickMedia}
-                    onPickPdf={onPickPdf}
+                    onPickFiles={onPickFiles}
                     onClose={onClose}
                 />,
             );
         });
 
         const cards = renderer.root.findAllByType('Pressable');
-        expect(cards).toHaveLength(3);
-        expect(cards[2].props.accessibilityLabel).toBe('imageUpload.chooseSourcePdf');
+        expect(cards).toHaveLength(2);
+        expect(cards[1].props.accessibilityLabel).toBe('imageUpload.chooseSourceFiles');
 
         act(() => {
-            cards[2].props.onPress();
+            cards[1].props.onPress();
             vi.advanceTimersByTime(50);
         });
 
         expect(onClose).toHaveBeenCalledTimes(1);
-        expect(onPickPdf).toHaveBeenCalledTimes(1);
+        expect(onPickFiles).toHaveBeenCalledTimes(1);
         expect(onPickPhoto).not.toHaveBeenCalled();
-        expect(onPickMedia).not.toHaveBeenCalled();
         act(() => renderer.unmount());
     });
 });

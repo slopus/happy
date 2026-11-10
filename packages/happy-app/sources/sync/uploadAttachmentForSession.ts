@@ -70,7 +70,7 @@ export async function uploadAttachmentForSession(
         kind === 'file' ? MAX_PDF_FILE_SIZE : undefined,
     );
     if (kind === 'file' && bytes.length > MAX_PDF_FILE_SIZE) {
-        throw new Error('PDF attachment is too large');
+        throw new Error('File attachment is too large');
     }
     const encrypted = dependencies.encryptBlob(bytes, blobKey);
     const motionPhoto = kind === 'image' ? detectHonorMotionPhoto(bytes) : null;

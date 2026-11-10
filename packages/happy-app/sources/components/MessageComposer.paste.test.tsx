@@ -99,6 +99,7 @@ vi.mock('react-native-unistyles', () => {
             radio: { active: '#f90' },
             shadow: { color: '#000', opacity: 0.2 },
             success: '#0f0',
+            surface: '#111',
             surfaceHigh: '#222',
             surfacePressed: '#333',
             text: '#fff',
@@ -117,6 +118,8 @@ vi.mock('react-native-unistyles', () => {
     };
 });
 
+vi.mock('@/modal', () => ({ Modal: { alert: vi.fn() } }));
+vi.mock('@/utils/normalizeImageForUpload', () => ({ normalizeImageForUpload: async (uri: string, width: number, height: number) => ({ uri, width, height, size: 5, mimeType: 'image/png' }) }));
 vi.mock('@/utils/thumbhash', () => ({ generateThumbhash: async () => undefined }));
 
 import { MessageComposer } from './MessageComposer';
@@ -146,6 +149,7 @@ describe('MessageComposer web image paste', () => {
         const input = document.createElement('textarea');
         container.append(input);
         document.body.append(container);
+        container.getClientRects = () => [new DOMRect(0, 0, 100, 100)] as any;
         act(() => {
             renderers.push(TestRenderer.create(
                 <MessageComposer mode="home" initialValue="" placeholder="Message"
@@ -166,6 +170,47 @@ describe('MessageComposer web image paste', () => {
         input.dispatchEvent(event);
         return event;
     }
+
+    it('shows one overlay and handles a drop once with two mounted composers', async () => {
+        const added: unknown[] = [];
+        const addImages = (images: unknown[]) => added.push(...images);
+        mountComposer(addImages as any);
+        mountComposer(addImages as any);
+        const file = new File(['image'], 'chart.png', { type: 'image/png' });
+        const drag = new Event('dragover', { bubbles: true, cancelable: true });
+        Object.defineProperty(drag, 'dataTransfer', { value: { types: ['Files'], files: [file] } });
+        document.dispatchEvent(drag);
+        expect(drag.defaultPrevented).toBe(true);
+        expect(document.querySelectorAll('[data-testid="file-drop-overlay"]')).toHaveLength(1);
+        const drop = new Event('drop', { bubbles: true, cancelable: true });
+        Object.defineProperty(drop, 'dataTransfer', { value: { types: ['Files'], files: [file] } });
+        await act(async () => { document.dispatchEvent(drop); await vi.dynamicImportSettled(); });
+        expect(document.querySelector('[data-testid="file-drop-overlay"]')).toBeNull();
+        expect(added).toHaveLength(1);
+    });
+
+    it('keeps every file from a mixed multi-file drop in one batch', async () => {
+        const composer = mountComposer();
+        const files = [new File(['image'], 'first.png', { type: 'image/png' }),
+            new File(['image'], 'second.png', { type: 'image/png' }),
+            new File(['document'], 'third.txt', { type: 'text/plain' })];
+        const drop = new Event('drop', { bubbles: true, cancelable: true });
+        Object.defineProperty(drop, 'dataTransfer', { value: { types: ['Files'], files } });
+        await act(async () => { document.dispatchEvent(drop); await vi.dynamicImportSettled(); });
+        expect(composer.onAddImages).toHaveBeenCalledTimes(1);
+        expect(composer.onAddImages.mock.calls[0][0].map((item: any) => item.name)).toEqual(['first.png', 'second.png', 'third.txt']);
+    });
+
+    it('does not let an inert old composer consume a file drop', async () => {
+        const old = mountComposer();
+        old.input.parentElement!.setAttribute('inert', '');
+        const active = mountComposer();
+        const drop = new Event('drop', { bubbles: true, cancelable: true });
+        Object.defineProperty(drop, 'dataTransfer', { value: { types: ['Files'], files: [new File(['text'], 'notes.txt', { type: 'text/plain' })] } });
+        await act(async () => { document.dispatchEvent(drop); await vi.dynamicImportSettled(); });
+        expect(old.onAddImages).not.toHaveBeenCalled();
+        expect(active.onAddImages).toHaveBeenCalledWith([expect.objectContaining({ name: 'notes.txt', kind: 'file' })]);
+    });
 
     it('restores queue text through the current input callbacks after a composer update', () => {
         const ref = React.createRef<any>();

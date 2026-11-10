@@ -33,6 +33,7 @@ vi.mock('expo-file-system/legacy', () => ({
 vi.mock('react-native', () => ({
     Platform: { OS: 'web' },
     Keyboard: { dismiss: () => {}, isVisible: () => false, addListener: vi.fn() },
+    Image: { getSize: (_uri: string, success: (w: number, h: number) => void) => success(640, 480) },
 }));
 vi.mock('@/modal', () => ({
     Modal: { alert: vi.fn() },
@@ -183,7 +184,7 @@ describe('useImagePicker PDF documents', () => {
         vi.mocked(getInfoAsync).mockReset();
     });
 
-    it('opens a PDF-only document picker and adds a generic file attachment', async () => {
+    it('opens an unrestricted document picker and adds a generic file attachment', async () => {
         vi.mocked(DocumentPicker.getDocumentAsync).mockResolvedValue({
             canceled: false,
             assets: [{
@@ -210,7 +211,7 @@ describe('useImagePicker PDF documents', () => {
         });
 
         expect(DocumentPicker.getDocumentAsync).toHaveBeenCalledWith({
-            type: 'application/pdf',
+            type: '*/*',
             multiple: true,
             copyToCacheDirectory: true,
         });
@@ -223,6 +224,37 @@ describe('useImagePicker PDF documents', () => {
                 kind: 'file',
             }),
         ]);
+        act(() => renderer.unmount());
+    });
+
+    it('preserves arbitrary document metadata and image dimensions from the file picker', async () => {
+        let current: ReturnType<typeof useImagePicker> | null = null;
+        function Probe() { current = useImagePicker(); return null; }
+        vi.mocked(DocumentPicker.getDocumentAsync).mockResolvedValue({ canceled: false, assets: [
+            { uri: 'file:///report.docx', name: 'report.docx', size: 4, lastModified: 0, mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', file: { size: 4 } as File },
+            { uri: 'file:///photo.png', name: 'photo.png', size: 5, lastModified: 0, mimeType: 'image/png', file: { size: 5 } as File },
+        ] });
+        vi.mocked(normalizeImageForUpload).mockResolvedValue({ uri: 'file:///photo.png', mimeType: 'image/png', size: 5, width: 640, height: 480 });
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(React.createElement(Probe)); });
+        await act(async () => { await current!.pickPdf(); });
+        expect(normalizeImageForUpload).toHaveBeenCalledWith('file:///photo.png', 640, 480);
+        expect(current!.selectedImages).toEqual([
+            expect.objectContaining({ name: 'report.docx', kind: 'file', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }),
+            expect.objectContaining({ name: 'photo.png', width: 640, height: 480 }),
+        ]);
+        act(() => renderer.unmount());
+    });
+
+    it('discards a pending drop when its draft is cleared', async () => {
+        let current: ReturnType<typeof useImagePicker> | null = null;
+        function Probe() { current = useImagePicker(); return null; }
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(React.createElement(Probe)); });
+        const finishDrop = current!.prepareAddImages();
+        act(() => current!.clearImages());
+        act(() => finishDrop([{ id: 'old', uri: 'file:///old', width: 0, height: 0, size: 1, name: 'old.txt', mimeType: 'text/plain', kind: 'file' }]));
+        expect(current!.selectedImages).toHaveLength(0);
         act(() => renderer.unmount());
     });
 

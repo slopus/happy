@@ -2132,13 +2132,17 @@ failedContinueTask: "Продолжить незавершённую задач�
     },
 
     imageUpload: {
+        chooseSourceFiles: 'Файлы',
+        documentFile: 'Файл',
+        dropTitle: 'Добавить содержимое',
+        dropHint: 'Перетащите файлы сюда, чтобы добавить их в диалог',
         chooseSourceTitle: 'Добавить вложение',
         chooseSourcePhoto: 'Фото или изображение',
         chooseSourceMedia: 'Аудио или видео',
         chooseSourcePdf: 'Документ PDF',
         documentPdf: 'Документ PDF',
         documentOpen: ({ name }: { name: string }) => `Открыть «${name}»`,
-        documentOpenFailed: 'Не удалось открыть этот PDF-документ.',
+        documentOpenFailed: 'Не удалось открыть этот файл.',
         mediaVideo: 'Видео',
         mediaAudio: 'Аудио',
         mediaPlay: ({ name }: { name: string }) => `Воспроизвести «${name}»`,

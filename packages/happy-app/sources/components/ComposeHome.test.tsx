@@ -205,6 +205,7 @@ vi.mock('./haptics', () => ({ hapticsLight: vi.fn() }));
 vi.mock('./navigation/Header', () => ({ Header: 'Header' }));
 vi.mock('./layout', () => ({ layout: { maxWidth: 720, headerMaxWidth: 720 } }));
 vi.mock('./MessageComposer', () => ({ MessageComposer: 'MessageComposer' }));
+vi.mock('./SubmittedAttachmentPreview', () => ({ SubmittedAttachmentPreview: 'SubmittedAttachmentPreview' }));
 vi.mock('./SessionConfigPanel', () => ({ SessionConfigPanel: 'SessionConfigPanel' }));
 vi.mock('./ComposeHomeParticles', () => ({ ComposeHomeParticles: 'ComposeHomeParticles' }));
 vi.mock('./Avatar', () => ({ Avatar: 'Avatar' }));
@@ -510,6 +511,42 @@ describe('ComposeHome session hydration recovery', () => {
         act(() => renderer.unmount());
     });
 
+    it('moves submitted attachments with their text while upload is pending and preserves later edits', async () => {
+        let resolveSpawn!: (value: any) => void;
+        mocks.machineSpawnNewSession.mockImplementationOnce(() => new Promise(resolve => { resolveSpawn = resolve; }));
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<ComposeHome variant="screen" />); });
+        act(() => renderer.root.findByType('MessageComposer').props.onChangeText('Describe these'));
+        await act(async () => { renderer.root.findByType('MessageComposer').props.onSend(); await Promise.resolve(); });
+        expect(renderer.root.findByProps({ testID: 'compose-home-starting-text' }).props.children).toBe('Describe these');
+        const pending = renderer.root.findByType('SubmittedAttachmentPreview');
+        expect(pending.props.images.map((image: any) => image.id)).toEqual(['image-a', 'image-b']);
+        expect(renderer.root.findByType('MessageComposer').props.selectedImages).toBeUndefined();
+        act(() => {
+            const composer = renderer.root.findByType('MessageComposer');
+            composer.props.onChangeText('new draft');
+            composer.props.onAddImages([{ id: 'image-c', uri: 'file:///c.png' }]);
+        });
+        expect(renderer.root.findByType('MessageComposer').props.selectedImages.map((image: any) => image.id)).toEqual(['image-c']);
+        await act(async () => { resolveSpawn({ type: 'error' }); });
+        expect(renderer.root.findByType('MessageComposer').props.initialValue).toBe('new draft');
+        expect(renderer.root.findByType('MessageComposer').props.selectedImages.map((image: any) => image.id)).toEqual(['image-a', 'image-b', 'image-c']);
+        act(() => renderer.unmount());
+    });
+
+    it('keeps submitted attachments visible when projection fails after the queue accepted them', async () => {
+        mocks.ensureSessionHydrated.mockResolvedValue(true);
+        mocks.awaitLocalMessageProjection.mockResolvedValue(false);
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<ComposeHome variant="screen" />); });
+        act(() => renderer.root.findByType('MessageComposer').props.onChangeText('Sent with files'));
+        await act(async () => { renderer.root.findByType('MessageComposer').props.onSend(); await new Promise(resolve => setTimeout(resolve, 0)); });
+        expect(mocks.sendMessage).toHaveBeenCalledTimes(1);
+        expect(renderer.root.findByType('SubmittedAttachmentPreview').props.images.map((image: any) => image.id)).toEqual(['image-a', 'image-b']);
+        expect(renderer.root.findByType('MessageComposer').props.selectedImages).toBeUndefined();
+        act(() => renderer.unmount());
+    });
+
     it('clears the unchanged submitted text and attachments after the local queue accepts retry', async () => {
         vi.useFakeTimers();
         let renderer: any;
@@ -541,10 +578,9 @@ describe('ComposeHome session hydration recovery', () => {
         expect(mocks.sendMessage).toHaveBeenCalledTimes(1);
         expect(mocks.awaitLocalMessageProjection).not.toHaveBeenCalled();
         expect(renderer.root.findByType('MessageComposer').props.initialValue).toBe('');
-        expect(renderer.root.findByType('MessageComposer').props.selectedImages).toEqual([
-            { id: 'image-a', uri: 'file:///a.png' },
-            { id: 'image-b', uri: 'file:///b.png' },
-        ]);
+        expect(renderer.root.findByType('MessageComposer').props.selectedImages).toBeUndefined();
+        expect(useComposeDraft.getState().images.map(image => image.id)).toEqual(['image-a', 'image-b']);
+        expect(renderer.root.findByType('SubmittedAttachmentPreview').props.images.map((image: any) => image.id)).toEqual(['image-a', 'image-b']);
 
         await act(async () => {
             resolveQueue?.();

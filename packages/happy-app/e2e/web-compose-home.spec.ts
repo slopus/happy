@@ -5716,9 +5716,8 @@ test.describe('中文 Web 消息与工具演示', () => {
         await page.goto(authenticatedRoute(`/session/${sessionId}`));
         await expect(page.getByTestId('session-message-input')).toBeVisible();
 
-        await page.getByRole('button', { name: /添加附件|Add attachment/i }).click();
         const fileChooserPromise = page.waitForEvent('filechooser');
-        await page.getByRole('button', { name: /音频.*视频|Audio or video/i }).click();
+        await page.getByRole('button', { name: /添加图片和文件|Add photos and files/i }).click();
         const fileChooser = await fileChooserPromise;
         await fileChooser.setFiles(fixturePath);
 
@@ -5751,9 +5750,8 @@ test.describe('中文 Web 消息与工具演示', () => {
         await page.goto(authenticatedRoute(`/session/${sessionId}`));
         await expect(page.getByRole('textbox', { name: /输入消息|Type a message/i })).toBeVisible({ timeout: 20_000 });
 
-        await page.getByRole('button', { name: /添加附件|Add attachment/i }).click();
         const fileChooserPromise = page.waitForEvent('filechooser');
-        await page.getByRole('button', { name: /图片|Photo or image/i }).click();
+        await page.getByRole('button', { name: /添加图片和文件|Add photos and files/i }).click();
         const fileChooser = await fileChooserPromise;
         await fileChooser.setFiles(fixturePath);
         const sendButton = page.locator('[data-testid="message-composer-send-button"]:not([aria-disabled="true"])');
@@ -5865,11 +5863,10 @@ test.describe('中文 Web 消息与工具演示', () => {
         await page.goto(authenticatedRoute(`/session/${sessionId}`));
         await expect(page.getByTestId('session-message-input')).toBeVisible();
 
-        await page.getByRole('button', { name: /添加附件|Add attachment/i }).click();
         const fileChooserPromise = page.waitForEvent('filechooser');
-        await page.getByRole('button', { name: /PDF 文档|PDF document/i }).click();
+        await page.getByRole('button', { name: /添加图片和文件|Add photos and files/i }).click();
         const fileChooser = await fileChooserPromise;
-        expect(await fileChooser.element().getAttribute('accept')).toBe('application/pdf');
+        expect(['', '*/*', null]).toContain(await fileChooser.element().getAttribute('accept'));
         await fileChooser.setFiles({
             name: fileName,
             mimeType: 'application/pdf',

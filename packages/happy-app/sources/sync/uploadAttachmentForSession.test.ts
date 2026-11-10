@@ -227,7 +227,7 @@ describe('uploadAttachmentForSession', () => {
             readFileBytes,
             encryptBlob,
             uploadEncryptedBlob: vi.fn(),
-        })).rejects.toThrow('PDF attachment is too large');
+        })).rejects.toThrow('File attachment is too large');
 
         expect(encryptBlob).not.toHaveBeenCalled();
         expect(requestUpload).not.toHaveBeenCalled();

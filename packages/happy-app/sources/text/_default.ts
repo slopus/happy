@@ -344,7 +344,7 @@ export const en = {
         emptyTitle: "No authorized apps yet",
         emptyHint: "Start with “Connect my Paws” in Relationship Advisor.",
     },
-    messageQueue: { title: 'Queued messages', hint: 'Sends one at a time after the current task. Keep Paws open on this device.', enqueue: 'Queue for next turn (Tab)', enqueueHint: 'Sends after the current task finishes', steerDuringTurn: 'Guide current task', enqueueSend: 'Queue for next turn', steer: 'Send now', steerUnavailable: 'This session cannot receive guidance during a task. Update Paws CLI and start a new session; queued messages can still send after this task finishes.', steerHint: 'Guide the current Codex turn without stopping it; current turn settings apply', sending: 'Sending…', failed: 'Not sent or delivery uncertain. Check history before retrying.', attachments: 'Attachments', edit: 'Return to input', occupied: 'Send or clear your current draft before editing a queued message.' },
+    messageQueue: { title: 'Queued messages', hint: 'Sends one at a time after the current task. Keep Paws open on this device.', enqueue: 'Queue for next turn (Tab)', enqueueHint: 'Sends after the current task finishes', steerDuringTurn: 'Guide current task', enqueueSend: 'Queue for next turn', steer: 'Send now', steerUnavailable: 'This session cannot receive guidance during a task. Update Paws CLI and start a new session; queued messages can still send after this task finishes.', steerHint: 'Guide the current Codex turn without stopping it; current turn settings apply', sending: 'Sending…', failed: 'Not sent or delivery uncertain. Check history before retrying.', attachmentsExpired: 'The attached files expired after reload. Return to input and select them again.', attachments: 'Attachments', edit: 'Return to input', occupied: 'Send or clear your current draft before editing a queued message.' },
     accounts: {
         attachmentWarning: "Switching accounts reloads Paws. Text drafts are kept, but unsent attachments must be selected again. Continue?",
         title: "Paws accounts",
@@ -1145,13 +1145,17 @@ export const en = {
     },
 
     imageUpload: {
-        chooseSourceTitle: 'Add attachment',
+        chooseSourceFiles: 'Files',
+        documentFile: 'File',
+        dropTitle: 'Add anything',
+        dropHint: 'Drop files anywhere to add them to the conversation',
+        chooseSourceTitle: 'Add photos and files',
         chooseSourcePhoto: 'Photo or image',
         chooseSourceMedia: 'Audio or video',
         chooseSourcePdf: 'PDF document',
         documentPdf: 'PDF document',
         documentOpen: ({ name }: { name: string }) => `Open ${name}`,
-        documentOpenFailed: 'Could not open this PDF.',
+        documentOpenFailed: 'Could not open this file.',
         mediaVideo: 'Video',
         mediaAudio: 'Audio',
         mediaPlay: ({ name }: { name: string }) => `Play ${name}`,

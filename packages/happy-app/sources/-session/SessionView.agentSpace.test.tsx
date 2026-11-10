@@ -237,6 +237,7 @@ vi.mock('@/components/AgentContentView', async () => {
         }) => ReactModule.createElement('AgentContentView', {}, content ?? children, input),
     };
 });
+vi.mock('@/components/SubmittedAttachmentPreview', () => ({ SubmittedAttachmentPreview: 'SubmittedAttachmentPreview' }));
 vi.mock('@/components/MessageComposer', () => ({ MessageComposer: 'MessageComposer' }));
 vi.mock('@/sync/messageStagingQueueRuntime', () => ({
     stageSessionMessage: mocks.stageSessionMessage,
