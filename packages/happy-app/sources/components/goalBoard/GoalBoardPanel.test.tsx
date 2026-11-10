@@ -10,7 +10,7 @@ import TestRenderer from 'react-test-renderer';
 
 const mocks = vi.hoisted(() => ({ scrollTo: vi.fn(), focus: vi.fn() }));
 vi.mock('react-native', () => ({
-    View: 'View', Text: 'Text', Pressable: 'Pressable', ScrollView: 'ScrollView',
+    Platform: { OS: 'web' }, View: 'View', Text: 'Text', Pressable: 'Pressable', ScrollView: 'ScrollView',
     TextInput: 'TextInput', ActivityIndicator: 'ActivityIndicator',
 }));
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
@@ -63,17 +63,60 @@ afterAll(() => errorSpy.mockRestore());
 afterEach(() => { for (const renderer of renderers) act(() => renderer.unmount()); renderers = []; vi.clearAllMocks(); });
 
 describe('GoalBoardPanel', () => {
-    it('shows a task-scoped file tree only when its files section is opened', () => {
+    it('switches details and files using persistent tabs, preserving the mounted file tree', () => {
         const selected = task('g1');
         const renderTaskFiles = vi.fn((task: GoalTask) => <View testID="task-files">{task.indexPath}</View>);
         const renderer = render(props({ renderTaskFiles }));
         press(renderer, 'goal-board-task-g1');
+        expect(button(renderer, 'goal-board-details-tab').props.accessibilityState.selected).toBe(true);
+        expect(button(renderer, 'goal-board-files-tab').props.accessibilityRole).toBe('tab');
         expect(renderTaskFiles).not.toHaveBeenCalled();
-        press(renderer, 'goal-board-files');
+        expect(renderer.root.findAllByProps({ testID: 'goal-board-files' })).toHaveLength(0);
+        press(renderer, 'goal-board-files-tab');
         expect(renderTaskFiles).toHaveBeenCalledWith(selected);
-        expect(json(renderer)).toContain('/goal/tasks/g1/index.md');
+        expect(button(renderer, 'goal-board-files-tab').props.accessibilityState.selected).toBe(true);
+        const fileTree = renderer.root.findByProps({ testID: 'task-files' });
+        press(renderer, 'goal-board-details-tab');
+        press(renderer, 'goal-board-files-tab');
+        expect(renderer.root.findByProps({ testID: 'task-files' })).toBe(fileTree);
         press(renderer, 'goal-board-back');
         expect(renderer.root.findAllByProps({ testID: 'task-files' })).toHaveLength(0);
+    });
+
+    it('resets to details when another task is selected and does not read files offline', () => {
+        const renderTaskFiles = vi.fn(() => <View testID="task-files" />);
+        const renderer = render(props({ renderTaskFiles, offline: true, snapshot: snapshot([task('g1'), task('g2')]) }));
+        press(renderer, 'goal-board-task-g1');
+        press(renderer, 'goal-board-files-tab');
+        expect(renderTaskFiles).not.toHaveBeenCalled();
+        expect(json(renderer)).toContain('status.offline');
+        press(renderer, 'goal-board-back');
+        press(renderer, 'goal-board-task-g2');
+        expect(button(renderer, 'goal-board-details-tab').props.accessibilityState.selected).toBe(true);
+        expect(button(renderer, 'goal-board-files-tab').props.accessibilityState.selected).toBe(false);
+    });
+
+    it('switches tabs using arrow keys and keeps a single tab stop', () => {
+        const renderer = render(props({ renderTaskFiles: () => <View testID="task-files" /> }));
+        press(renderer, 'goal-board-task-g1');
+        const preventDefault = vi.fn();
+        act(() => button(renderer, 'goal-board-details-tab').props.onKeyDown({ key: 'ArrowRight', preventDefault }));
+        expect(preventDefault).toHaveBeenCalled();
+        expect(button(renderer, 'goal-board-files-tab').props.tabIndex).toBe(0);
+        expect(button(renderer, 'goal-board-files-tab').props['aria-selected']).toBe(true);
+        expect(button(renderer, 'goal-board-details-tab').props.tabIndex).toBe(-1);
+        expect(mocks.focus).toHaveBeenCalled();
+        act(() => button(renderer, 'goal-board-files-tab').props.onKeyDown({ key: 'Home', preventDefault }));
+        expect(button(renderer, 'goal-board-details-tab').props.tabIndex).toBe(0);
+    });
+
+    it('uses current theme surfaces for unselected tab hover and keyboard focus', () => {
+        const renderer = render(props({ renderTaskFiles: () => <View /> }));
+        press(renderer, 'goal-board-task-g1');
+        act(() => button(renderer, 'goal-board-files-tab').props.onHoverIn());
+        expect(button(renderer, 'goal-board-files-tab').props.style({ pressed: false })).toContainEqual({ backgroundColor: 'pressed' });
+        act(() => button(renderer, 'goal-board-files-tab').props.onFocus());
+        expect(button(renderer, 'goal-board-files-tab').props.style({ pressed: false })).toContainEqual({ borderColor: 'link' });
     });
 
     it('counts actual done records and retains unknown task status', () => {

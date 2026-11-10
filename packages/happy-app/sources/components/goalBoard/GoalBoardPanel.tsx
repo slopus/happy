@@ -5,6 +5,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import type { GoalArtifact, GoalArtifactKind, GoalBoardCatalogEntry, GoalBoardSnapshot, GoalTask, GoalTaskStatus } from '@slopus/happy-wire';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
+import { PanelTabs } from '@/components/PanelTabs';
 import { GoalBoardButton } from './GoalBoardButton';
 
 export interface GoalBoardPanelProps {
@@ -59,7 +60,7 @@ const TaskRow = React.memo(function TaskRow({ task, active, onSelect, registerRe
     </GoalBoardButton>;
 });
 
-function Fold({ id, title, children }: { id: string; title: string; children: React.ReactNode | (() => React.ReactNode) }) {
+function Fold({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
     const [expanded, setExpanded] = React.useState(false);
     const { theme } = useUnistyles();
     return <View style={styles.fold}>
@@ -67,7 +68,7 @@ function Fold({ id, title, children }: { id: string; title: string; children: Re
             <Text style={styles.foldTitle}>{title}</Text>
             <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color={theme.colors.textSecondary} />
         </GoalBoardButton>
-        {expanded ? <View style={styles.foldBody}>{typeof children === 'function' ? children() : children}</View> : null}
+        {expanded ? <View style={styles.foldBody}>{children}</View> : null}
     </View>;
 }
 
@@ -94,9 +95,8 @@ function Field({ title, value }: { title: string; value?: string }) {
     </View>;
 }
 
-const TaskDetail = React.memo(function TaskDetail({ task, offline, onOpenArtifact, renderTaskFiles }: {
+const TaskDetail = React.memo(function TaskDetail({ task, offline, onOpenArtifact }: {
     task: GoalTask; offline: boolean; onOpenArtifact: GoalBoardPanelProps['onOpenArtifact'];
-    renderTaskFiles: GoalBoardPanelProps['renderTaskFiles'];
 }) {
     const outputs = task.artifacts.filter((artifact) => artifact.relation === 'output');
     const references = task.artifacts.filter((artifact) => artifact.relation === 'reference');
@@ -109,9 +109,6 @@ const TaskDetail = React.memo(function TaskDetail({ task, offline, onOpenArtifac
         <Text accessibilityRole="header" style={styles.sectionTitle}>{t('goalBoard.deliverables')}</Text>
         {outputs.length ? outputs.map((artifact) => <ArtifactCard key={artifact.id} task={task} artifact={artifact} offline={offline} onOpen={onOpenArtifact} />)
             : <Text style={styles.meta}>{t('goalBoard.noDeliverables')}</Text>}
-        {renderTaskFiles ? <Fold id="goal-board-files" title={t('common.files')}>
-            {() => <View style={styles.taskFiles}>{offline ? <Text style={styles.meta}>{t('status.offline')}</Text> : renderTaskFiles(task)}</View>}
-        </Fold> : null}
         <Fold id="goal-board-expected" title={t('goalBoard.expected')}>
             {task.expectedDeliverables.length ? task.expectedDeliverables.map((value, index) => <Text key={index} style={styles.body}>{value}</Text>)
                 : <Text style={styles.meta}>{t('goalBoard.unknownField')}</Text>}
@@ -143,6 +140,8 @@ export const GoalBoardPanel = React.memo(function GoalBoardPanel({
     const [filter, setFilter] = React.useState<GoalTaskStatus | 'all'>('all');
     const [scope, setScope] = React.useState<'all' | 'current'>('all');
     const [choosingGoal, setChoosingGoal] = React.useState(false);
+    const [detailTab, setDetailTab] = React.useState('details');
+    const [filesVisited, setFilesVisited] = React.useState(false);
     const [selection, setSelection] = React.useState<{ featurePath: string; taskId: string } | null>(null);
     const [localOpeningId, setLocalOpeningId] = React.useState<string | null>(null);
     const [taskErrorId, setTaskErrorId] = React.useState<string | null>(null);
@@ -161,7 +160,7 @@ export const GoalBoardPanel = React.memo(function GoalBoardPanel({
         return () => { mountedRef.current = false; };
     }, []);
     React.useEffect(() => {
-        setQuery(''); setFilter('all'); setScope('all'); setSelection(null); setChoosingGoal(false); setTaskErrorId(null);
+        setQuery(''); setFilter('all'); setScope('all'); setSelection(null); setChoosingGoal(false); setTaskErrorId(null); setDetailTab('details'); setFilesVisited(false);
     }, [snapshot?.featurePath]);
     React.useEffect(() => {
         scrollRef.current?.scrollTo({ y: 0, animated: false });
@@ -177,7 +176,7 @@ export const GoalBoardPanel = React.memo(function GoalBoardPanel({
     }, []);
     const selectTask = React.useCallback((task: GoalTask) => {
         if (featureRef.current) setSelection({ featurePath: featureRef.current, taskId: task.id });
-        setTaskErrorId(null);
+        setTaskErrorId(null); setDetailTab('details'); setFilesVisited(false);
     }, []);
     const back = () => {
         focusTaskRef.current = selected?.id ?? null;
@@ -211,6 +210,11 @@ export const GoalBoardPanel = React.memo(function GoalBoardPanel({
     };
     const linked = selected ? Boolean(getTaskSessionId(selected)) : false;
     const showCatalog = !snapshot || choosingGoal;
+    const filesActive = Boolean(selected && renderTaskFiles && detailTab === 'files');
+    const changeDetailTab = (tab: string) => {
+        setDetailTab(tab);
+        if (tab === 'files') setFilesVisited(true);
+    };
 
     return <View testID="goal-board-panel" style={styles.panel}>
         <View style={styles.header}>
@@ -226,11 +230,17 @@ export const GoalBoardPanel = React.memo(function GoalBoardPanel({
                 </GoalBoardButton>
             </View>
         </View>
+        {selected && renderTaskFiles ? <View style={styles.tabsHeader}>
+            <PanelTabs activeTab={detailTab} onTabChange={changeDetailTab} testIDPrefix="goal-board" tabs={[
+                { key: 'details', label: t('profile.details'), icon: 'document-text-outline' },
+                { key: 'files', label: t('common.files'), icon: 'folder-outline' },
+            ]} />
+        </View> : null}
         {loading ? <View accessibilityLiveRegion="polite" style={styles.notice}><ActivityIndicator size="small" color={theme.colors.textSecondary} /><Text style={styles.meta}>{t('goalBoard.loading')}</Text></View> : null}
         {offline ? <Text accessibilityLiveRegion="polite" style={styles.noticeText}>{t(snapshot ? 'goalBoard.offline' : 'goalBoard.offlineEmpty')}</Text> : null}
         {error ? <View accessibilityRole="alert" style={styles.notice}><Text style={styles.error}>{t('goalBoard.loadError')}: {error}</Text></View> : null}
-        <ScrollView ref={scrollRef} style={styles.scroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-            {selected ? <TaskDetail key={`${snapshot?.featurePath}:${selected.id}`} task={selected} offline={offline} onOpenArtifact={onOpenArtifact} renderTaskFiles={renderTaskFiles} /> : <>
+        <ScrollView ref={scrollRef} style={[styles.scroll, filesActive && styles.hidden]} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+            {selected ? <TaskDetail key={`${snapshot?.featurePath}:${selected.id}`} task={selected} offline={offline} onOpenArtifact={onOpenArtifact} /> : <>
                 {snapshot ? <View style={styles.overview}>
                     {snapshot.projectTitle ? <Text style={styles.meta}>{snapshot.projectTitle}</Text> : null}
                     <Text style={styles.goalTitle}>{snapshot.title}</Text>
@@ -267,7 +277,11 @@ export const GoalBoardPanel = React.memo(function GoalBoardPanel({
             </>}
             {snapshot?.warnings.map((warning, index) => <Text key={index} style={styles.noticeText}>{warning}</Text>)}
         </ScrollView>
-        {selected ? <View style={styles.footer}>
+        {selected && renderTaskFiles && filesVisited ? <View key={`${snapshot?.featurePath}:${selected.id}:files`} testID="goal-board-files-panel" style={[styles.taskFiles, !filesActive && styles.hidden]}>
+            <Text numberOfLines={1} style={styles.filesTitle}>{selected.title}</Text>
+            {offline ? <Text style={styles.empty}>{t('status.offline')}</Text> : renderTaskFiles(selected)}
+        </View> : null}
+        {selected ? <View style={[styles.footer, filesActive && styles.hidden]}>
             {taskErrorId === selected.id ? <Text accessibilityRole="alert" style={styles.error}>{t('goalBoard.taskError')}</Text> : null}
             <GoalBoardButton testID="goal-board-open-task" label={t(busy ? 'goalBoard.openingTask' : linked ? 'goalBoard.continueTask' : 'goalBoard.startTask')} disabled={busy || offline} busy={busy}
                 variant="primary" onPress={() => { void openTask(false); }}>
@@ -309,7 +323,10 @@ const styles = StyleSheet.create((theme) => ({
     artifact: { gap: 8, padding: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider, borderRadius: 10 },
     fold: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.divider },
     foldTitle: { ...Typography.default('semiBold'), color: theme.colors.text, fontSize: 13, lineHeight: 20, flex: 1 },
-    taskFiles: { height: 360, minHeight: 0 },
+    taskFiles: { flex: 1, minHeight: 0 },
+    hidden: { display: 'none' },
+    tabsHeader: { minHeight: 48, paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.divider },
+    filesTitle: { ...Typography.default('semiBold'), fontSize: 13, color: theme.colors.text, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 4 },
     foldBody: { gap: 14, paddingHorizontal: 12, paddingBottom: 14 },
     path: { ...Typography.mono(), color: theme.colors.textSecondary, fontSize: 11, lineHeight: 19 },
     footer: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.divider, padding: 12, gap: 8 },

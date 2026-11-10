@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { PanelTabs, type PanelTab } from './PanelTabs';
 import { Typography } from '@/constants/Typography';
 import { DesktopPanelResizeHandle } from './DesktopPanelResizeHandle';
 import { DesktopShortcutTooltip } from './DesktopShortcutTooltip';
@@ -9,11 +10,7 @@ import { useDesktopWorkspaceLayout } from '@/hooks/useDesktopWorkspaceLayout';
 import { getDesktopPanelShortcutPresentation } from '@/utils/desktopNavigationLayout';
 import { t } from '@/text';
 
-export type DesktopRightPanelTab = {
-    key: string;
-    label: string;
-    icon: keyof typeof Ionicons.glyphMap;
-};
+export type DesktopRightPanelTab = PanelTab;
 
 export const DesktopRightPanel = React.memo(function DesktopRightPanel({
     activeTab,
@@ -53,44 +50,7 @@ export const DesktopRightPanel = React.memo(function DesktopRightPanel({
                 />
             )}
             <View style={styles.header}>
-                <View style={styles.tabs}>
-                    {tabs.map((tab) => {
-                        const selected = tab.key === activeTab;
-                        return (
-                            <Pressable
-                                accessibilityLabel={tab.label}
-                                accessibilityRole="tab"
-                                accessibilityState={{ selected }}
-                                {...(Platform.OS === 'web' ? {
-                                    dataSet: {
-                                        happyMotion: 'desktop-tab',
-                                        happyMotionState: selected ? 'selected' : 'idle',
-                                    },
-                                } as any : {})}
-                                key={tab.key}
-                                onPress={() => onTabChange(tab.key)}
-                                style={({ pressed }) => [
-                                    styles.tab,
-                                    selected && styles.tabSelected,
-                                    pressed && styles.pressed,
-                                ]}
-                                testID={`desktop-right-panel-${tab.key}-tab`}
-                            >
-                                <Ionicons
-                                    color={selected ? theme.colors.text : theme.colors.textSecondary}
-                                    name={tab.icon}
-                                    size={15}
-                                />
-                                <Text
-                                    numberOfLines={1}
-                                    style={[styles.tabText, selected && styles.tabTextSelected]}
-                                >
-                                    {tab.label}
-                                </Text>
-                            </Pressable>
-                        );
-                    })}
-                </View>
+                <PanelTabs activeTab={activeTab} tabs={tabs} onTabChange={onTabChange} testIDPrefix="desktop-right-panel" />
                 {showCollapseButton ? <View style={styles.collapseButtonWrapper}>
                     <Pressable
                         accessibilityHint={`${collapseAccessibilityLabel} (${shortcuts.rightLabel})`}
@@ -199,36 +159,6 @@ const styles = StyleSheet.create((theme) => ({
         borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: theme.colors.divider,
         backgroundColor: theme.colors.surface,
-    },
-    tabs: {
-        flex: 1,
-        minWidth: 0,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-    },
-    tab: {
-        minWidth: 0,
-        flexShrink: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 5,
-        paddingHorizontal: 9,
-        paddingVertical: 7,
-        borderRadius: 9,
-    },
-    tabSelected: {
-        backgroundColor: theme.colors.surfacePressed,
-    },
-    tabText: {
-        minWidth: 0,
-        flexShrink: 1,
-        fontSize: 12,
-        color: theme.colors.textSecondary,
-        ...Typography.default('semiBold'),
-    },
-    tabTextSelected: {
-        color: theme.colors.text,
     },
     collapseButton: {
         minWidth: 52,
