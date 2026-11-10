@@ -1351,6 +1351,11 @@ failedContinueTask: "未完了の作業を続ける",
     },
 
     agentInput: {
+        prediction: {
+            accept: '入力欄に反映',
+            acceptHint: 'Tab で入力',
+            dismiss: '提案を閉じる',
+        },
         questionSkip: 'スキップ',
         questionSend: '送信',
         questionClose: '質問を閉じる',

@@ -3,6 +3,7 @@ import { prepareCodexArtifactScope } from '@/modules/artifacts/turn';
 import { nativeLaunchPolicy, nativeCodexMode } from '@/daemon/appDelegation/nativeLaunchPolicy';
 import { immediateCodexCommandEnvelopes } from './codexImmediateCommand';
 import { createCodexSteerHandler, type CodexSteerRequest, type CodexSteerResponse } from './codexSteerRpc';
+import { createComposerPredictionHandlers } from './composerPrediction';
 import { ApiClient } from '@/api/api';
 import {
     CodexAppServerClient,
@@ -446,7 +447,7 @@ export async function runCodex(opts: {
         ...hydratedMetadata,
         ...(applicationPolicy ? { application: { appId: applicationPolicy.binding.appId, bindingId: applicationPolicy.binding.id } } : {}),
         ...codexAccountSessionMetadata(),
-        capabilities: { ...hydratedMetadata.capabilities, artifactLeases: artifactLeaseSupported ? ARTIFACT_PROTOCOL : undefined, codexSteer: true, codexCredentialRecovery: Boolean(process.env.HAPPY_CODEX_ACCOUNT_PROFILE_ID && process.env.CODEX_HOME
+        capabilities: { ...hydratedMetadata.capabilities, artifactLeases: artifactLeaseSupported ? ARTIFACT_PROTOCOL : undefined, codexSteer: true, composerPrediction: !applicationPolicy, codexCredentialRecovery: Boolean(process.env.HAPPY_CODEX_ACCOUNT_PROFILE_ID && process.env.CODEX_HOME
             && basename(process.env.CODEX_HOME).startsWith('happy-codex-home-')) },
         codexPawsOriginToken,
         ...(!hydratedMetadata.summary?.text?.trim() && importedSessionTitle
@@ -481,6 +482,7 @@ export async function runCodex(opts: {
     let client!: CodexAppServerClient;
     let reasoningProcessor!: ReasoningProcessor;
     let abortInProgress: Promise<void> | null = null;
+    let predictionHandlers: ReturnType<typeof createComposerPredictionHandlers> | null = null;
     const mcpAppBindingRegistry = new McpAppBindingRegistry();
     let mcpAppRpcHandlers: ReturnType<typeof registerMcpAppRpcHandlers> | null = null;
     const messageQueue = new MessageQueue2<EnhancedMode>(hashCodexEnhancedMode);
@@ -500,6 +502,10 @@ export async function runCodex(opts: {
             }
             rebindMcpAppRpcHandlersOnSessionSwap(mcpAppRpcHandlers, newSession);
             if (client) newSession.rpcHandlerManager.registerHandler<CodexSteerRequest, CodexSteerResponse>('steer', steerHandler);
+            if (predictionHandlers) {
+                newSession.rpcHandlerManager.registerHandler('composerPrediction', predictionHandlers.request);
+                newSession.rpcHandlerManager.registerHandler('composerPredictionCancel', predictionHandlers.cancel);
+            }
         }
     });
     session = initialSession;
@@ -968,6 +974,18 @@ export async function runCodex(opts: {
         uploadImageAttachment: (path) => session.uploadImageAttachment(path),
     });
     session.rpcHandlerManager.registerHandler<CodexSteerRequest, CodexSteerResponse>('steer', steerHandler);
+
+    if (!applicationPolicy) {
+        predictionHandlers = createComposerPredictionHandlers({
+            client,
+            isBusy: () => thinking || messageQueue.size() > 0 || shouldExit,
+            onUnsupported: () => session.updateMetadata(metadata => ({
+                ...metadata, capabilities: { ...metadata.capabilities, composerPrediction: false },
+            })),
+        });
+        session.rpcHandlerManager.registerHandler('composerPrediction', predictionHandlers.request);
+        session.rpcHandlerManager.registerHandler('composerPredictionCancel', predictionHandlers.cancel);
+    }
 
     permissionHandler = new CodexPermissionHandler(session, (notification) => {
         api.push().sendSessionNotification(notification);

@@ -38,6 +38,7 @@ interface MultiTextInputProps {
     value?: string;
     defaultValue?: string;
     onChangeText?: (text: string) => void;
+    onInputActivity?: () => void;
     placeholder?: string;
     maxHeight?: number;
     lineHeight?: number;
@@ -214,6 +215,8 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                 onChange={handleChange}
                 onSelect={handleSelect}
                 onKeyDown={handleKeyDown}
+                onCompositionStart={props.onInputActivity}
+                onPasteCapture={props.onInputActivity}
                 maxRows={maxRows}
                 autoCapitalize="sentences"
                 autoCorrect="on"

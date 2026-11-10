@@ -59,4 +59,22 @@ describe('MultiTextInput Web 可访问属性', () => {
 
         act(() => renderer.unmount());
     });
+
+    it('invalidates ghost suggestions at composition and paste start without intercepting IME confirmation', () => {
+        const onActivity = vi.fn();
+        const onKeyPress = vi.fn(() => true);
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<MultiTextInput defaultValue="" onInputActivity={onActivity} onKeyPress={onKeyPress} />); });
+        const textarea = renderer.root.findByType('TextareaAutosize');
+        const preventDefault = vi.fn();
+        act(() => {
+            textarea.props.onCompositionStart();
+            textarea.props.onPasteCapture();
+            textarea.props.onKeyDown({ key: 'Enter', nativeEvent: { isComposing: true }, preventDefault });
+        });
+        expect(onActivity).toHaveBeenCalledTimes(2);
+        expect(onKeyPress).not.toHaveBeenCalled();
+        expect(preventDefault).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
 });

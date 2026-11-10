@@ -1448,6 +1448,11 @@ failedContinueTask: "继续未完成的任务",
     },
 
     agentInput: {
+        prediction: {
+            accept: '填入',
+            acceptHint: 'Tab 填入',
+            dismiss: '关闭建议',
+        },
         questionSkip: '跳过',
         questionSend: '发送',
         questionClose: '关闭问题',

@@ -128,6 +128,7 @@ describe('MessageComposer web image paste', () => {
     const renderers: any[] = [];
 
     beforeEach(async () => {
+        vi.stubGlobal('matchMedia', () => ({ matches: false }));
         vi.stubGlobal('Image', class {
             naturalWidth = 100;
             naturalHeight = 100;
@@ -229,6 +230,85 @@ describe('MessageComposer web image paste', () => {
         expect(ref.current.getText()).toBe('Recovered queued message');
         expect(currentChange).toHaveBeenCalledExactlyOnceWith('Recovered queued message');
         expect(previousChange).not.toHaveBeenCalled();
+    });
+
+    it('keeps prediction out of the live draft and only fills it on explicit Tab acceptance', () => {
+        const ref = React.createRef<any>();
+        const onSend = vi.fn();
+        const onQueue = vi.fn();
+        const onChange = vi.fn();
+        const onDismiss = vi.fn();
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<MessageComposer ref={ref} mode="session" initialValue="" placeholder="Message"
+                onSend={onSend} onQueue={onQueue} onChangeText={onChange}
+                predictionText="Show me the preview." onDismissPrediction={onDismiss} />);
+            renderers.push(renderer);
+        });
+        expect(ref.current.getText()).toBe('');
+        expect(onChange).not.toHaveBeenCalled();
+        const input = renderer.root.findByType('MultiTextInput');
+        let handled: boolean | undefined;
+        act(() => { handled = input.props.onKeyPress({ key: 'Tab', shiftKey: true }); });
+        expect(handled).toBe(false);
+        expect(ref.current.getText()).toBe('');
+        act(() => { input.props.onKeyPress({ key: 'Enter', shiftKey: false }); });
+        expect(onSend).not.toHaveBeenCalled();
+        act(() => { handled = input.props.onKeyPress({ key: 'Tab', shiftKey: false }); });
+        expect(handled).toBe(true);
+        expect(ref.current.getText()).toBe('Show me the preview.');
+        expect(onChange).toHaveBeenCalledExactlyOnceWith('Show me the preview.');
+        expect(onQueue).not.toHaveBeenCalled();
+        expect(onSend).not.toHaveBeenCalled();
+        expect(onDismiss).toHaveBeenCalledOnce();
+    });
+
+    it('does not overwrite live input with a late candidate and supports mobile fill and dismiss buttons', () => {
+        const ref = React.createRef<any>();
+        const onSend = vi.fn();
+        const onDismiss = vi.fn();
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<MessageComposer ref={ref} mode="session" initialValue="" placeholder="Message"
+                onSend={onSend} predictionText="Suggested reply" onDismissPrediction={onDismiss} />);
+            renderers.push(renderer);
+        });
+        const button = () => renderer.root.findAllByType('Pressable').find((node: any) => node.props.testID === 'composer-prediction-accept');
+        act(() => button().props.onPress());
+        expect(ref.current.getText()).toBe('Suggested reply');
+        expect(onSend).not.toHaveBeenCalled();
+        act(() => ref.current.setTextAndSelection('My own reply', { start: 12, end: 12 }));
+        expect(renderer.root.findAllByProps({ testID: 'composer-prediction-text' })).toHaveLength(0);
+        expect(ref.current.getText()).toBe('My own reply');
+        act(() => ref.current.setTextAndSelection('', { start: 0, end: 0 }));
+        const dismiss = renderer.root.findAllByType('Pressable').find((node: any) => node.props.testID === 'composer-prediction-dismiss');
+        act(() => dismiss.props.onPress());
+        expect(onDismiss).toHaveBeenCalledTimes(2);
+    });
+
+    it('hides predictions when contextual content is pending', () => {
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<MessageComposer mode="session" initialValue="" placeholder="Message"
+                onSend={vi.fn()} predictionText="Suggested reply" hasContext />);
+            renderers.push(renderer);
+        });
+        expect(renderer.root.findAllByProps({ testID: 'composer-prediction-text' })).toHaveLength(0);
+    });
+
+    it('dismisses the prediction before opening an asynchronous attachment picker', () => {
+        const actions: string[] = [];
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<MessageComposer mode="session" initialValue="" placeholder="Message"
+                onSend={vi.fn()} predictionText="Suggested reply"
+                onDismissPrediction={() => actions.push('dismiss')}
+                onPickImages={() => actions.push('pick')} />);
+            renderers.push(renderer);
+        });
+        const picker = renderer.root.findAllByType('Pressable').find((node: any) => node.props.accessibilityLabel === 'imageUpload.chooseSourceTitle');
+        act(() => picker.props.onPress());
+        expect(actions).toEqual(['dismiss', 'pick']);
     });
 
     it('adds one image once when two mounted composers share a draft', async () => {

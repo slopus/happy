@@ -1348,6 +1348,11 @@ failedContinueTask: "Continua il lavoro in sospeso",
     },
 
     agentInput: {
+        prediction: {
+            accept: 'Inserisci',
+            acceptHint: 'Tab per inserire',
+            dismiss: 'Ignora suggerimento',
+        },
         questionSkip: 'Salta',
         questionSend: 'Invia',
         questionClose: 'Chiudi domanda',

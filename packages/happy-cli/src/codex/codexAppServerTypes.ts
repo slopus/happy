@@ -6,6 +6,16 @@
 
 export type ThreadId = string;
 
+/** Experimental thread/sample returns text before Core can execute tool calls. */
+export type ThreadSampleResponse = {
+    sourceTurnId: string;
+    responseId: string;
+    text: string | null;
+    inputTokens?: number | null;
+    cachedInputTokens?: number | null;
+    outputTokens?: number | null;
+};
+
 // --- Initialize ---
 
 export type McpUiClientCapability = {

@@ -41,6 +41,7 @@ interface MultiTextInputProps {
     value?: string;
     defaultValue?: string;
     onChangeText?: (text: string) => void;
+    onInputActivity?: () => void;
     placeholder?: string;
     editable?: boolean;
     maxHeight?: number;

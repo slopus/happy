@@ -1350,6 +1350,11 @@ failedContinueTask: "Continua la tasca pendent",
     },
 
     agentInput: {
+        prediction: {
+            accept: 'Insereix',
+            acceptHint: 'Tab per inserir',
+            dismiss: 'Descarta el suggeriment',
+        },
         questionSkip: 'Omet',
         questionSend: 'Envia',
         questionClose: 'Tanca la pregunta',

@@ -1358,6 +1358,11 @@ failedContinueTask: "Continue unfinished task",
     },
 
     agentInput: {
+        prediction: {
+            accept: 'Fill in',
+            acceptHint: 'Tab to fill in',
+            dismiss: 'Dismiss suggestion',
+        },
         questionSkip: 'Skip',
         questionSend: 'Send',
         questionClose: 'Close question',

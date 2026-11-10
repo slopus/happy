@@ -1350,6 +1350,11 @@ failedContinueTask: "Continuar tarea pendiente",
     },
 
     agentInput: {
+        prediction: {
+            accept: 'Insertar',
+            acceptHint: 'Tab para insertar',
+            dismiss: 'Descartar sugerencia',
+        },
         questionSkip: 'Omitir',
         questionSend: 'Enviar',
         questionClose: 'Cerrar pregunta',

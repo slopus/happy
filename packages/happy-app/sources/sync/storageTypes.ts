@@ -46,6 +46,7 @@ export const MetadataSchema = z.object({
         regenerateTitle: z.boolean().optional(),
         codexCredentialRecovery: z.boolean().optional(),
         codexSteer: z.boolean().optional(),
+        composerPrediction: z.boolean().optional(),
         artifactLeases: z.union([z.literal(1),z.literal(ARTIFACT_PROTOCOL)]).optional(),
     }).optional(),
     machineId: z.string().optional(),

@@ -1410,6 +1410,11 @@ failedContinueTask: "繼續未完成的工作",
     },
 
     agentInput: {
+        prediction: {
+            accept: '填入',
+            acceptHint: 'Tab 填入',
+            dismiss: '關閉建議',
+        },
         questionSkip: '略過',
         questionSend: '傳送',
         questionClose: '關閉問題',

@@ -74,6 +74,7 @@ import type {
     McpServerElicitationRequestResponse,
     ThreadSettings,
     ThreadItem,
+    ThreadSampleResponse,
 } from './codexAppServerTypes';
 import type { SandboxConfig } from '@/persistence';
 import { initializeSandbox, wrapForMcpTransport } from '@/sandbox/manager';
@@ -391,6 +392,40 @@ export class CodexAppServerClient {
     private acceptedPawsSteers: Array<{ text: string; turnId: string }> = [];
     private pawsSteerItemIds = new Set<string>();
     private rawFileChangesByItemId = new Map<string, LegacyPatchChanges>();
+    private predictionControllers = new Set<AbortController>();
+    private _predictionRevision = 0;
+    /** Auxiliary inference stays invisible while users read; never delays their next turn. */
+    static readonly PREDICTION_TIMEOUT_MS = 20_000;
+
+    get predictionRevision(): number { return this._predictionRevision; }
+
+    /** Invalidate auxiliary inference without waiting or interrupting the root turn. */
+    private invalidatePredictions(): void {
+        this._predictionRevision++;
+        for (const controller of this.predictionControllers) controller.abort();
+    }
+
+    async sampleThread(sourceTurnId: string, prompt: string, signal: AbortSignal): Promise<ThreadSampleResponse> {
+        if (!this._threadId || this._turnId || signal.aborted) throw new Error('Prediction source unavailable');
+        const controller = new AbortController();
+        const abort = () => controller.abort();
+        signal.addEventListener('abort', abort, { once: true });
+        this.predictionControllers.add(controller);
+        const epoch = this.processEpoch;
+        try {
+            return await this.request('thread/sample', {
+                threadId: this._threadId, expectedTurnId: sourceTurnId, prompt,
+                effort: 'low', threadSource: 'composer_predictions', turnTrigger: 'composer_predictions',
+                interruptOnCancel: true,
+            }, CodexAppServerClient.PREDICTION_TIMEOUT_MS, controller.signal, (requestId) => {
+                if (this.processEpoch !== epoch) return;
+                void this.request('thread/sample/cancel', { requestId }, 2_000).catch(() => {});
+            }) as ThreadSampleResponse;
+        } finally {
+            signal.removeEventListener('abort', abort);
+            this.predictionControllers.delete(controller);
+        }
+    }
 
     // Handlers set by the consumer (runCodex.ts)
     private eventHandler: ((msg: EventMsg) => void) | null = null;
@@ -639,6 +674,7 @@ export class CodexAppServerClient {
         if (turnId && this.startedTurnIds.has(turnId)) {
             return;
         }
+        this.invalidatePredictions();
         if (turnId) {
             if (this._turnId !== turnId) this.clearTextStreams();
             this._turnId = turnId;
@@ -699,6 +735,7 @@ export class CodexAppServerClient {
             if (!this.isRootThreadNotification(params)) {
                 return true;
             }
+            this.invalidatePredictions();
             const threadId = typeof params?.threadId === 'string' ? params.threadId : null;
             const threadSettings = params?.threadSettings as ThreadSettings | undefined;
             if (threadSettings && typeof threadSettings.model === 'string') {
@@ -1219,6 +1256,7 @@ export class CodexAppServerClient {
     }
 
     private async disconnectInternal(opts?: { preserveThreadState?: boolean }): Promise<void> {
+        this.invalidatePredictions();
         this.clearTextStreams();
         if (!this.connected && !this.process && !this.socket) return;
 
@@ -2076,6 +2114,7 @@ export class CodexAppServerClient {
     }
 
     clearThreadState(): void {
+        this.invalidatePredictions();
         logger.debug(
             `[CodexAppServer] Clearing thread state: thread=${this._threadId ?? 'none'} turn=${this._turnId ?? 'none'}`,
         );
@@ -2098,7 +2137,11 @@ export class CodexAppServerClient {
     /** Default timeout for RPC requests (ms). */
     private static readonly REQUEST_TIMEOUT_MS = 30_000;
 
-    private request(method: string, params?: unknown, timeoutMs?: number, signal?: AbortSignal): Promise<unknown> {
+    private request(method: string, params?: unknown, timeoutMs?: number, signal?: AbortSignal, cancelRequest?: (id: number) => void): Promise<unknown> {
+        if (['turn/start', 'turn/steer', 'thread/start', 'thread/resume', 'thread/fork', 'thread/rollback',
+            'thread/inject_items', 'thread/compact/start', 'thread/goal/set', 'thread/goal/clear'].includes(method)) {
+            this.invalidatePredictions();
+        }
         if (this.applicationPolicy && ['thread/start', 'thread/resume', 'thread/fork', 'turn/start'].includes(method)) {
             params = nativeCodexRequest(this.applicationPolicy, method, (params ?? {}) as Record<string, unknown>);
         }
@@ -2124,6 +2167,7 @@ export class CodexAppServerClient {
                 this.pending.delete(id);
                 cleanup();
                 reject(new CodexAppServerRequestTimeoutError(method, timeout));
+                cancelRequest?.(id);
             }, timeout);
 
             this.pending.set(id, {
@@ -2137,6 +2181,7 @@ export class CodexAppServerClient {
                 if (!this.pending.delete(id)) return;
                 cleanup();
                 reject(new Error(`${method} aborted`));
+                cancelRequest?.(id);
             };
             signal?.addEventListener('abort', abortListener, { once: true });
 

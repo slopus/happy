@@ -54,6 +54,9 @@ interface MessageComposerProps {
     // Fires on every keystroke so the parent can sync derived state (drafts,
     // hasText) — typically wrapped in startTransition / debounce by the caller.
     onChangeText?: (text: string) => void;
+    /** Unaccepted auxiliary text. Never contributes to hasPayload or the draft. */
+    predictionText?: string | null;
+    onDismissPrediction?: () => void;
     sessionId?: string;
     onSend: () => void;
     /** Keyboard-only queue shortcut; the primary button also stages submissions. */
@@ -157,6 +160,31 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         paddingVertical: 4,
         minHeight: 40,
     },
+    predictionGhost: {
+        position: 'absolute',
+        top: Platform.OS === 'web' ? 14 : 12,
+        left: 8,
+        right: 8,
+        color: theme.colors.input.placeholder,
+        fontSize: 16,
+        lineHeight: 22,
+        ...Typography.default(),
+    },
+    predictionActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 8,
+        paddingBottom: 4,
+        gap: 8,
+    },
+    predictionButton: {
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 6,
+        backgroundColor: theme.colors.surface,
+    },
+    predictionButtonPressed: { backgroundColor: theme.colors.surfacePressed },
+    predictionLabel: { color: theme.colors.textSecondary, fontSize: 12, ...Typography.default() },
 
     // Overlay styles
     autocompleteOverlay: {
@@ -677,6 +705,15 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
     // To customize: useActiveSuggestions(activeWord, autocompleteSuggestions, { clampSelection: false, wrapAround: false })
     const [suggestions, selected, moveUp, moveDown] = useActiveSuggestions(activeWord, autocompleteSuggestions, { clampSelection: true, wrapAround: true });
 
+    const predictionText = !hasText && !hasImages && !props.hasContext && !isSendBlocked
+        && !props.isSending && !props.showAbortButton ? props.predictionText : null;
+    const acceptPrediction = React.useCallback(() => {
+        if (!predictionText || inputRef.current?.getText() !== '') return;
+        inputRef.current.setTextAndSelection(predictionText, { start: predictionText.length, end: predictionText.length });
+        inputRef.current.focus();
+        props.onDismissPrediction?.();
+    }, [predictionText, props.onDismissPrediction]);
+
     // Handle suggestion selection
     const handleSuggestionSelect = React.useCallback((index: number) => {
         if (!suggestions[index] || !inputRef.current) return;
@@ -789,6 +826,17 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
             }
         }
 
+        if (predictionText && inputRef.current?.getText() === '') {
+            if (event.key === 'Tab' && !event.shiftKey) {
+                acceptPrediction();
+                return true;
+            }
+            if (event.key === 'Escape') {
+                props.onDismissPrediction?.();
+                return true;
+            }
+        }
+
         // On PC, Escape uses a recoverable two-step confirmation. Native keeps
         // the existing one-press hardware-keyboard behavior.
         if (event.key === 'Escape' && props.showAbortButton && props.onAbort && !isAborting) {
@@ -826,7 +874,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
             }
         }
         return false; // Key was not handled
-    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortEscape, handleAbortPress, agentInputEnterToSend, props.onSend, props.onQueue, props.isSending, hasImages, props.hasContext, isSendBlocked, handleBlockedSendAttempt, props.isSendDisabled]);
+    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortEscape, handleAbortPress, agentInputEnterToSend, props.onSend, props.onQueue, props.isSending, hasImages, props.hasContext, isSendBlocked, handleBlockedSendAttempt, props.isSendDisabled, predictionText, acceptPrediction, props.onDismissPrediction]);
 
 
 
@@ -895,12 +943,30 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                             paddingTop={Platform.OS === 'web' ? 10 : 8}
                             paddingBottom={Platform.OS === 'web' ? 10 : 8}
                             onChangeText={handleTextChange}
-                            placeholder={props.placeholder}
+                            placeholder={predictionText ? '' : props.placeholder}
+                            onInputActivity={props.onDismissPrediction}
                             onKeyPress={handleKeyPress}
                             onStateChange={handleInputStateChange}
                             maxHeight={Platform.OS === 'web' ? 480 : 120}
                         />
+                        {predictionText && <Text testID="composer-prediction-text" pointerEvents="none"
+                            numberOfLines={1} style={styles.predictionGhost}>{predictionText}</Text>}
                     </View>
+
+                    {predictionText && <View style={styles.predictionActions}>
+                        <Pressable testID="composer-prediction-accept" accessibilityRole="button"
+                            accessibilityLabel={t('agentInput.prediction.accept')} accessibilityHint={predictionText}
+                            onPress={acceptPrediction}
+                            style={({ pressed }) => [styles.predictionButton, pressed && styles.predictionButtonPressed]}>
+                            <Text style={styles.predictionLabel}>{t(Platform.OS === 'web' && screenWidth >= 768
+                                ? 'agentInput.prediction.acceptHint' : 'agentInput.prediction.accept')}</Text>
+                        </Pressable>
+                        <Pressable testID="composer-prediction-dismiss" accessibilityRole="button"
+                            accessibilityLabel={t('agentInput.prediction.dismiss')} onPress={props.onDismissPrediction}
+                            style={({ pressed }) => [styles.predictionButton, pressed && styles.predictionButtonPressed]}>
+                            <Ionicons name="close" size={14} color={theme.colors.textSecondary} />
+                        </Pressable>
+                    </View>}
 
                     {/* Action buttons below input */}
                     <View style={styles.actionButtonsContainer}>
@@ -926,6 +992,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                 {isSession && props.agentType && props.onAgentClick && (
                                     <Pressable
                                         onPress={() => {
+                                            props.onDismissPrediction?.();
                                             hapticsLight();
                                             props.onAgentClick?.();
                                         }}
@@ -981,6 +1048,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                         accessibilityRole="button"
                                         accessibilityLabel={t('imageUpload.chooseSourceTitle')}
                                         onPress={() => {
+                                            props.onDismissPrediction?.();
                                             hapticsLight();
                                             props.onPickImages?.();
                                         }}

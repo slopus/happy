@@ -1349,6 +1349,11 @@ failedContinueTask: "Continuar tarefa pendente",
     },
 
     agentInput: {
+        prediction: {
+            accept: 'Preencher',
+            acceptHint: 'Tab para preencher',
+            dismiss: 'Dispensar sugestão',
+        },
         questionSkip: 'Pular',
         questionSend: 'Enviar',
         questionClose: 'Fechar pergunta',

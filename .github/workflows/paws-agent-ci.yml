@@ -80,7 +80,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        # macos-latest now targets arm64; hosted capacity can leave this job
+        # unacquired until cancellation. Keep macOS package coverage on a
+        # supported Intel image instead of depending on that runner pool.
+        os: [ubuntu-latest, macos-15-intel]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

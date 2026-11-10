@@ -1366,6 +1366,11 @@ failedContinueTask: "Продолжить незавершённую задач�
     },
 
     agentInput: {
+        prediction: {
+            accept: 'Вставить',
+            acceptHint: 'Tab — вставить',
+            dismiss: 'Скрыть подсказку',
+        },
         questionSkip: 'Пропустить',
         questionSend: 'Отправить',
         questionClose: 'Закрыть вопрос',

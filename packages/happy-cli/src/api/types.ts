@@ -392,6 +392,7 @@ export type Metadata = {
     codexCredentialRecovery?: boolean
     artifactLeases?: 1 | typeof ARTIFACT_PROTOCOL
     codexSteer?: boolean
+    composerPrediction?: boolean
   },
   machineId?: string,
   claudeSessionId?: string, // Claude Code session ID

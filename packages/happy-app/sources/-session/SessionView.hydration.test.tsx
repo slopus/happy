@@ -145,6 +145,7 @@ vi.mock('@/utils/responsive', () => ({
 vi.mock('@/utils/desktopNavigationLayout', async (importOriginal) => ({
     ...await importOriginal<typeof import('@/utils/desktopNavigationLayout')>(),
     DESKTOP_MAIN_MIN_WIDTH: 1100,
+    DESKTOP_WORKSPACE_OUTER_GAP: 10,
     PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH: 0,
     TAURI_HEADER_CONTROL_LEFT: 0,
     getDesktopRightPanelPresentation: () => 'unavailable',
@@ -184,6 +185,7 @@ vi.mock('@/hooks/useSessionManagementPreferences', () => ({
 vi.mock('@/hooks/useSessionTaskPermission', () => ({ useSessionTaskPermission: () => ({}) }));
 vi.mock('@/hooks/useSessionWorkingDirectory', () => ({ useSessionWorkingDirectory: () => ({}) }));
 vi.mock('@/hooks/useDraft', () => ({ useDraft: () => ({ clearDraft: vi.fn(), updateDraft: vi.fn() }) }));
+vi.mock('@/hooks/useComposerPrediction', () => ({ useComposerPrediction: () => ({ text: null, invalidate: vi.fn() }) }));
 vi.mock('@/hooks/useImagePicker', () => ({ useImagePicker: () => ({ selectedImages: [] }) }));
 
 // Keep the existing host selector while exercising the real content/placeholder

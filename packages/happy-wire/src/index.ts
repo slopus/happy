@@ -15,3 +15,4 @@ export * from './applicationSession';
 
 export * from './goalBoard';
 export * from './artifacts';
+export * from './composerPrediction';

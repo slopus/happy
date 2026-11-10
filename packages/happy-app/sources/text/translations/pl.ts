@@ -1366,6 +1366,11 @@ failedContinueTask: "Kontynuuj niedokończone zadanie",
     },
 
     agentInput: {
+        prediction: {
+            accept: 'Wstaw',
+            acceptHint: 'Tab, aby wstawić',
+            dismiss: 'Odrzuć sugestię',
+        },
         questionSkip: 'Pomiń',
         questionSend: 'Wyślij',
         questionClose: 'Zamknij pytanie',

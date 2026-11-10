@@ -4,6 +4,7 @@
  */
 
 import { apiSocket } from './apiSocket';
+import { ComposerPredictionResponseSchema, type ComposerPredictionRequest, type ComposerPredictionResponse } from '@slopus/happy-wire';
 import { sync } from './sync';
 import { ensureSessionHydratedWithRetry } from './ensureSessionHydratedWithRetry';
 import type { MachineMetadata, Metadata, Session } from './storageTypes';
@@ -13,6 +14,17 @@ import { CodexAccountError, createCodexSessionGrant, type CodexAccountErrorCode 
 
 export const SESSION_START_RPC_TIMEOUT_MS = 140_000;
 export const WORKSPACE_READ_TIMEOUT_MS = 10_000;
+
+/** One auxiliary request over the existing encrypted connection; no retries or history writes. */
+export async function sessionComposerPrediction(sessionId: string, request: ComposerPredictionRequest): Promise<ComposerPredictionResponse> {
+    return ComposerPredictionResponseSchema.parse(await apiSocket.sessionRPC(sessionId, 'composerPrediction', request, {
+        timeoutMs: 25_000, overallTimeoutMs: 25_000,
+    }));
+}
+
+export async function sessionCancelComposerPrediction(sessionId: string, requestId: string): Promise<void> {
+    await apiSocket.sessionRPC(sessionId, 'composerPredictionCancel', { requestId }, { timeoutMs: 2_000, overallTimeoutMs: 2_000 });
+}
 
 // Strict type definitions for all operations
 

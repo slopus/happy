@@ -38,6 +38,7 @@ import { ChatList } from '@/components/ChatList';
 import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
 import { useDraft } from '@/hooks/useDraft';
+import { useComposerPrediction, type ComposerPredictionSource } from '@/hooks/useComposerPrediction';
 import { useImagePicker } from '@/hooks/useImagePicker';
 import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard';
 import { gitStatusSync } from '@/sync/gitStatusSync';
@@ -1614,6 +1615,7 @@ type ChatComposerProps = Omit<
 > & {
     sessionId: string;
     composerHandleRef: React.RefObject<ChatComposerHandle | null>;
+    predictionSource?: ComposerPredictionSource;
 };
 
 // Owns the chat-message draft autosave. The textarea itself is uncontrolled:
@@ -1623,7 +1625,7 @@ type ChatComposerProps = Omit<
 // so navigation can flush characters whose mirror has not committed yet.
 // Reads/clears on send go through the MultiTextInput handle imperatively.
 const ChatComposer = React.memo(function ChatComposer(props: ChatComposerProps) {
-    const { sessionId, composerHandleRef, ...rest } = props;
+    const { sessionId, composerHandleRef, predictionSource, ...rest } = props;
     // Synchronously hydrate the textarea with any saved draft so the user sees
     // their work-in-progress on session open without an extra round-trip.
     const initialDraft = React.useMemo(() => {
@@ -1631,6 +1633,8 @@ const ChatComposer = React.memo(function ChatComposer(props: ChatComposerProps) 
     }, [sessionId]);
     const inputHandleRef = React.useRef<MultiTextInputHandle>(null);
     const [message, setMessage] = React.useState(initialDraft);
+    const getLiveText = React.useCallback(() => inputHandleRef.current?.getText() ?? initialDraft, [initialDraft]);
+    const prediction = useComposerPrediction(sessionId, predictionSource, getLiveText);
 
     const applyDraft = React.useCallback((text: string) => {
         inputHandleRef.current?.setTextAndSelection(text, { start: text.length, end: text.length });
@@ -1640,11 +1644,12 @@ const ChatComposer = React.memo(function ChatComposer(props: ChatComposerProps) 
     const { clearDraft, updateDraft } = useDraft(sessionId, message, applyDraft);
 
     const handleChangeText = React.useCallback((text: string) => {
+        prediction.invalidate();
         updateDraft(text);
         // Transition keeps the textarea responsive even when the draft
         // autosave / re-render takes longer than a frame.
         React.startTransition(() => setMessage(text));
-    }, [updateDraft]);
+    }, [updateDraft, prediction.invalidate]);
 
     React.useImperativeHandle(composerHandleRef, () => ({
         getMessage: () => inputHandleRef.current?.getText() ?? '',
@@ -1668,6 +1673,8 @@ const ChatComposer = React.memo(function ChatComposer(props: ChatComposerProps) 
             sessionId={sessionId}
             initialValue={initialDraft}
             onChangeText={handleChangeText}
+            predictionText={prediction.text}
+            onDismissPrediction={prediction.invalidate}
         />
     );
 });
@@ -2027,6 +2034,25 @@ function SessionViewLoaded({
             composerHandleRef={composerHandleRef}
             placeholder={t('session.inputPlaceholder')}
             sessionId={sessionId}
+            predictionSource={{
+                turnId: session.agentState?.turnStatus?.turnId ?? '',
+                contextKey: JSON.stringify([session.metadata?.codexThreadId, session.metadata?.hostPid,
+                    session.metadata?.codexAccountProfileId, session.metadata?.codexAccountCredentialVersion,
+                    session.metadata?.currentModelCode, session.metadata?.currentThoughtLevelCode,
+                    nextTurnModes.modelMode, nextTurnModes.effortLevel, session.permissionMode, session.fastMode,
+                    session.metadata?.path, workingDirectory.currentPath]),
+                enabled: isFocused && !isDisconnected && !isSyncingResults && isLoaded && isAtLatest
+                    && isCodexSessionFlavor(session.metadata?.flavor)
+                    && !hasMoreNewer && session.metadata?.capabilities?.composerPrediction === true
+                    && session.agentState?.turnStatus?.status === 'completed'
+                    && sessionStatus.state !== 'running' && sessionStatus.state !== 'permission_required'
+                    && !(session.agentState?.queuedMessages ?? 0)
+                    && !stagedSnapshot.messages.some(message => message.sessionId === sessionId)
+                    && !stagedSnapshot.barriers[sessionId]
+                    && !sync.hasPendingOutboxMessagesForSession(sessionId)
+                    && selectedImages.length === 0 && annotations.length === 0 && !fileWorkspace?.reference
+                    && !workingDirectory.switching,
+            }}
             connectionStatus={connectionStatus}
             blockSend={false}
             hasContext={annotations.length > 0 || !!fileWorkspace?.reference}
