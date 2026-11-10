@@ -34,7 +34,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.semantics.selected
@@ -79,10 +78,11 @@ object UiSpec {
     val replyGap = 6.dp
     val tick = 16.dp
     val tickGap = 8.dp
-    /** A reply's AI mark and its gap to the words; its note's gap from them. */
+    /** A reply's AI mark and its gap to the words. */
     val replyMark = 16.dp
     val replyMarkGap = 8.dp
-    val replyNoteGap = 12.dp
+    /** Lines a reply's words take before they cut. */
+    const val REPLY_LINES = 2
     val fieldMinHeight = 40.dp
     val fieldPaddingH = 12.dp
     val fieldPaddingV = 10.dp
@@ -99,7 +99,8 @@ object UiSpec {
     val field = happyTextStyle(fontSize = 15, lineHeight = 20)
     val line = happyTextStyle(fontSize = 14, lineHeight = 20)
     val note = happyTextStyle(fontSize = 12, lineHeight = 16)
-    val replyNote = happyTextStyle(fontSize = 14, lineHeight = 20)
+    /** A reply's AI note, the line under its words. */
+    val replyNote = happyTextStyle(fontSize = 13, lineHeight = 18)
     val tree = happyTextStyle(fontSize = 13, lineHeight = 20, family = AppMono)
 }
 
@@ -188,18 +189,22 @@ private fun Fallback(text: String, modifier: Modifier) {
  * under another 6 apart, left-aligned; every pill one width, the widest
  * option's own (one intrinsic measure in the same pass as its height, so it
  * never relayouts): 12 in, a 16 mark 8 before the words where the option
- * shows an AI, the words (the person's 16/25 type, one line), 12 then the
- * widest note any AI could have, 8 then the 16 tick; capped at the column
- * less 16 a side, a person's widest bubble, past which the words cut with an
- * ellipsis. Drawn as that bubble: radius 12, 4 + 8 above and 4 + 10 below,
- * a one-line bubble's height. Unsent, a fill halfway from the bubble's to
- * the ground (`quickReplyBubble`), the words in text colour. The option a
- * person's message sent ([ConversationRow.Replies.chosen]) takes the
- * bubble's own fill and hairline and the tick, whose room every pill keeps,
- * so nothing moves; the others keep their fill, their words grey
- * (`input.placeholder`, iOS's secondary #8E8E93; textSecondary is too near
- * black to tell apart at a glance). An AI's note says how it stands now
- * (14/20 grey, against the tick's room) only while the stack takes a tap.
+ * shows an AI, the words (the person's 16/25 type), 8 then the 16 tick;
+ * capped at the column less 16 a side, a person's widest bubble, past which
+ * the words wrap to a second line and then cut with an ellipsis. Each pill
+ * is as tall as its own words at that width, from the same pass; the mark
+ * and tick sit on the first line. An AI's pill keeps one more line under its
+ * words, its note (13/18 grey), which says how the AI stands now only while
+ * the stack takes a tap and is blank otherwise, so a note never changes a
+ * height; it takes no width of its own beyond its words'. Drawn as that
+ * bubble: radius 12, 4 + 8 above and 4 + 10 below. Unsent, a fill halfway
+ * from the bubble's to the ground (`quickReplyBubble`), the words in text
+ * colour. The option a person's message sent
+ * ([ConversationRow.Replies.chosen]) takes the bubble's own fill and
+ * hairline and the tick, whose room every pill keeps, so nothing moves; the
+ * others keep their fill, their words grey (`input.placeholder`, iOS's
+ * secondary #8E8E93; textSecondary is too near black to tell apart at a
+ * glance).
  * Each is a button; only the newest stack takes a tap
  * ([ConversationRow.Replies.live]), and none for a person who can't write here.
  */
@@ -209,6 +214,7 @@ fun QuickRepliesRow(row: ConversationRow.Replies, bubble: BubblePalette, actions
     val send = actions.onQuickReply?.takeIf { row.live && actions.uiReplies() }
     val shape = RoundedCornerShape(MessageSpec.bubbleRadius)
     val hairline = with(LocalDensity.current) { 1f.toDp() }
+    val line = with(LocalDensity.current) { MarkdownSpec.text.lineHeight.toDp() }
     val quiet = lerp(bubble.background, colors.surface, 0.5f)
     val quietBorder = lerp(bubble.border, colors.surface, 0.5f)
     Box(
@@ -236,26 +242,27 @@ fun QuickRepliesRow(row: ConversationRow.Replies, bubble: BubblePalette, actions
                             top = MessageSpec.bubblePaddingVertical + MarkdownSpec.textMarginTop,
                             bottom = MessageSpec.bubblePaddingVertical + MarkdownSpec.textMarginBottom,
                         ),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalAlignment = Alignment.Top,
                 ) {
                     if (provider != null) {
-                        ProviderMark(provider, UiSpec.replyMark, Modifier.testTag(UiTags.REPLY_MARK))
+                        // On the words' first line.
+                        Box(Modifier.height(line), contentAlignment = Alignment.Center) {
+                            ProviderMark(provider, UiSpec.replyMark, Modifier.testTag(UiTags.REPLY_MARK))
+                        }
                         Spacer(Modifier.width(UiSpec.replyMarkGap))
                     }
-                    Text(
-                        option,
-                        style = MarkdownSpec.text,
-                        color = if (row.chosen == null || chosen) colors.text else colors.input.placeholder,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    if (provider != null) {
-                        Spacer(Modifier.width(UiSpec.replyNoteGap))
-                        ReplyNote(provider, shown = row.live, live = actions.uiLive)
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            option,
+                            style = MarkdownSpec.text,
+                            color = if (row.chosen == null || chosen) colors.text else colors.input.placeholder,
+                            maxLines = UiSpec.REPLY_LINES,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (provider != null) ReplyNote(provider, shown = row.live, live = actions.uiLive)
                     }
                     Spacer(Modifier.width(UiSpec.tickGap))
-                    Box(Modifier.size(UiSpec.tick), contentAlignment = Alignment.Center) {
+                    Box(Modifier.height(line).width(UiSpec.tick), contentAlignment = Alignment.Center) {
                         if (chosen) Icon(Ionicon.Checkmark, UiSpec.tick, colors.text, Modifier.testTag(UiTags.REPLY_TICK))
                     }
                 }
@@ -265,43 +272,30 @@ fun QuickRepliesRow(row: ConversationRow.Replies, bubble: BubblePalette, actions
 }
 
 /**
- * An AI's note in its reply: "Not installed", "Not signed in", "1 account",
- * "N accounts", read live from its program. It takes the room of the widest
- * any AI could have ("12 accounts" stands for every count), whatever it says
- * now, so a note that changes never moves or resizes the pill.
+ * An AI's note under its reply's words: "Not installed", "Not signed in",
+ * "1 account", "N accounts", read live from its program. Its line is always
+ * there, blank while nothing is known or once the stack is answered, so a
+ * note that comes, changes or goes never changes a height.
  */
 @Composable
 private fun ReplyNote(provider: String, shown: Boolean, live: UiLive?) {
     val follow = live?.providerCli
     val state = if (follow == null) null else remember(follow, provider) { follow(provider) }.collectAsState().value
     val cli = (state as? ProviderCliSource.State.Read)?.cli
-    val widest = listOf(
-        stringResource(R.string.conversation_reply_not_installed),
-        stringResource(R.string.conversation_reply_signed_out),
-        pluralStringResource(R.plurals.conversation_reply_accounts, 1, 1),
-        pluralStringResource(R.plurals.conversation_reply_accounts, 12, 12),
-    )
     val note = when (val n = cli?.note) {
         null -> null
-        ProviderCli.Note.NotInstalled -> widest[0]
-        ProviderCli.Note.SignedOut -> widest[1]
+        ProviderCli.Note.NotInstalled -> stringResource(R.string.conversation_reply_not_installed)
+        ProviderCli.Note.SignedOut -> stringResource(R.string.conversation_reply_signed_out)
         is ProviderCli.Note.Accounts -> pluralStringResource(R.plurals.conversation_reply_accounts, n.count, n.count)
-    }
-    Box(contentAlignment = Alignment.CenterEnd) {
-        // The room: every note it could say, unseen and unread.
-        for (text in widest) Text(text, style = UiSpec.replyNote, maxLines = 1, modifier = Modifier.alpha(0f).clearAndSetSemantics {})
-        if (shown && note != null) {
-            Text(
-                note,
-                style = UiSpec.replyNote,
-                color = HappyTheme.colors.input.placeholder,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.End,
-                modifier = Modifier.matchParentSize().testTag(UiTags.REPLY_NOTE),
-            )
-        }
-    }
+    }?.takeIf { shown }
+    Text(
+        note.orEmpty(),
+        style = UiSpec.replyNote,
+        color = HappyTheme.colors.input.placeholder,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = if (note == null) Modifier.clearAndSetSemantics {} else Modifier.testTag(UiTags.REPLY_NOTE),
+    )
 }
 
 /**

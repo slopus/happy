@@ -1748,13 +1748,16 @@ stack stays: `markReplies` sets `chosen` from the last `quickReply` naming
 it (messages, pending, outgoing, so it survives reloads and other devices)
 and `live` only on the newest stack while nobody has written after it.
 `QuickRepliesRow` stacks one pill per option, left-aligned at the agent's
-words, every pill the widest option's own width (one intrinsic measure, the
-widest note reserved) capped at the user bubble's, with the bubble's radius
-and padding and a fill halfway to the ground. A `provider` reply component
-(`ReplyUi`) draws the AI's mark before the words and, while the stack is
-live, its note from the provider CLI (`ProviderCli.note`) at the end; the chosen one takes the bubble fill and a ✓ in
-space that is always reserved, the others turn grey (`input.placeholder`),
-and nothing relayouts. Each pill is a button, announced selected when chosen; only a
+words, every pill the widest option's own width (one intrinsic measure)
+capped at the user bubble's, past which the words wrap to two lines, then
+cut; each pill is as tall as its own words at that width. The bubble's
+radius and padding, and a fill halfway to the ground. A `provider` reply
+component (`ReplyUi`) draws the AI's mark before the words and keeps one
+13/18 line under them for its note from the provider CLI
+(`ProviderCli.note`): shown while the stack is live, blank otherwise, and
+always there, so a note never changes a height; it reserves no width. The
+chosen one takes the bubble fill and a ✓ in space that is always reserved,
+the others turn grey (`input.placeholder`), and nothing relayouts. Each pill is a button, announced selected when chosen; only a
 live stack takes a tap (not for a role that can't write). A tap is
 `Conversation.sendReply`, a steered send of the option with `quickReply {
 messageId, toolCallId?, index }`; a person's message carrying `quickReply`

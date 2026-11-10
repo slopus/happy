@@ -126,7 +126,7 @@ class UiComponentRowTest {
         assertDp("6 apart", 6.dp, bounds[2].top - bounds[1].bottom)
         val bubble = rule.node(com.slopus.happy.ui.chat.MessageTags.USER_BUBBLE).bounds
         assertDp("a one-line bubble's height", bubble.bottom - bubble.top, bounds[0].bottom - bounds[0].top)
-        assertDp("the long one stays one line", bounds[0].bottom - bounds[0].top, bounds[2].bottom - bounds[2].top)
+        assertTrue("the long one wraps, taller", bounds[2].bottom - bounds[2].top > bounds[0].bottom - bounds[0].top)
         shot("ui-quick-replies")
         pills()[1].performClick()
         assertEquals(listOf(1), sent.map { it.second })
@@ -193,6 +193,65 @@ class UiComponentRowTest {
         rule.onAllNodesWithTag(UiTags.REPLY_NOTE, useUnmergedTree = true).assertCountEquals(0)
         assertEquals("not a pixel moves", before, pills().map { it.bounds })
     }
+
+    /** "Add another Claude Code account", an AI's longest reply, over one that is short. */
+    private fun addAccount(live: Boolean = true, chosen: Int? = null): List<ConversationRow> {
+        val message = Message.parse(
+            Json.parseToJsonElement(
+                """{"id":"m4","role":"agent","createdAt":2,"metadata":{},"content":[{"type":"text","text":"Which should I add?"},
+                {"type":"tool_call","id":"c4","name":"suggest_replies","status":"completed","presentation":{"type":"quick_replies",
+                "options":["Add another Claude Code account","That's all for now"],"ui":[{"type":"provider","props":{"provider":"claude"}},null]}}]}""",
+            ),
+        )!!
+        return ConversationRowBuilder.build(message, "a1", null, streaming = false).map { if (it is ConversationRow.Replies) it.copy(live = live, chosen = chosen) else it }
+    }
+
+    /**
+     * The long reply stays whole at the stack's one width (two lines at most), its note on a line of
+     * its own under the words that every AI pill keeps, blank or not; nothing moves after.
+     */
+    private fun longReplyFits(width: Int) {
+        claude.value = ProviderCliSource.State.Reading
+        liveScreen(addAccount())
+        val root = rule.onRoot().bounds
+        assertDp("the phone", width.dp, root.right - root.left)
+        val before = pills().map { it.bounds }
+        assertEquals("one width", 1, before.map { it.right - it.left }.distinct().size)
+        assertTrue("capped at the column less 16 a side", before[0].right - before[0].left <= root.right - root.left - 32.dp)
+        for (pill in before) assertDp("left-aligned, 16 in", root.left + 16.dp, pill.left)
+        val words = rule.onNodeWithText("Add another Claude Code account", useUnmergedTree = true).fetchSemanticsNode()
+        val layout = ArrayList<androidx.compose.ui.text.TextLayoutResult>().also { words.config[androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult].action!!(it) }.single()
+        assertTrue("two lines at most", layout.lineCount in 1..2)
+        assertTrue("whole, no ellipsis", !layout.hasVisualOverflow && !layout.isLineEllipsized(layout.lineCount - 1))
+        val density = rule.density.density
+        val label = ((words.boundsInRoot.bottom - words.boundsInRoot.top) / density).dp
+        assertDp("its words' height", 25.dp * layout.lineCount, label)
+        // The plain pill is one line; the AI's is its words plus the note line, 18, even blank.
+        assertDp("words + the note line + the bubble's padding", 25.dp * layout.lineCount + 18.dp + 26.dp, before[0].bottom - before[0].top)
+        assertDp("a one-line bubble", 51.dp, before[1].bottom - before[1].top)
+        rule.onAllNodesWithTag(UiTags.REPLY_NOTE, useUnmergedTree = true).assertCountEquals(0)
+        // The note comes, under the words, at their edge; then changes, then goes with the tap: no height moves.
+        claude.value = ProviderCliSource.State.Read(cli("claude", signIn = "signed_in", accounts = 1))
+        rule.waitForIdle()
+        val note = rule.onNodeWithText("1 account", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertDp("under the words", (words.boundsInRoot.bottom / density).dp, (note.top / density).dp)
+        assertDp("at the words' edge", (words.boundsInRoot.left / density).dp, (note.left / density).dp)
+        assertEquals("not a pixel moves", before, pills().map { it.bounds })
+        shot("ui-quick-replies-long-$width")
+        claude.value = ProviderCliSource.State.Read(cli("claude", signIn = "signed_in", accounts = 2))
+        rule.waitForIdle()
+        rule.onNodeWithText("2 accounts", useUnmergedTree = true).assertExists()
+        assertEquals("not a pixel moves", before, pills().map { it.bounds })
+        shownRows = addAccount(live = false, chosen = 0)
+        rule.waitForIdle()
+        rule.onAllNodesWithTag(UiTags.REPLY_NOTE, useUnmergedTree = true).assertCountEquals(0)
+        assertEquals("not a pixel moves", before, pills().map { it.bounds })
+    }
+
+    @Config(qualifiers = "w360dp-h780dp-xxhdpi")
+    @Test fun `a long AI reply stays whole on a 360 phone, its note under it`() = longReplyFits(360)
+
+    @Test fun `a long AI reply stays whole on a 411 phone, its note under it`() = longReplyFits(411)
 
     @Test fun `the option sent takes the bubble's fill and a tick, and nothing moves`() {
         screen(suggested())
