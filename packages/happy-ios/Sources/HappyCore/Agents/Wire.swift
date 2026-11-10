@@ -751,10 +751,13 @@ extension AgentWire {
         /// `error`; nil while it runs.
         public var endedAt: Double?
         public var reason: String?
+        /// `standalone` when it was stored already finished, outside any
+        /// turn; nil on every turn.
+        public var kind: String?
         public var messages: [Message]?
 
-        public init(id: String, status: String, startedAt: Double? = nil, endedAt: Double? = nil, reason: String? = nil, messages: [Message]? = nil) {
-            self.id = id; self.status = status; self.startedAt = startedAt; self.endedAt = endedAt; self.reason = reason; self.messages = messages
+        public init(id: String, status: String, startedAt: Double? = nil, endedAt: Double? = nil, reason: String? = nil, kind: String? = nil, messages: [Message]? = nil) {
+            self.id = id; self.status = status; self.startedAt = startedAt; self.endedAt = endedAt; self.reason = reason; self.kind = kind; self.messages = messages
         }
     }
 

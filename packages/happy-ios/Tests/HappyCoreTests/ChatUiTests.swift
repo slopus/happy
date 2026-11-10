@@ -483,15 +483,51 @@ final class ChatUiTests: XCTestCase {
 
     /// An attempt record's own finished run ends nothing: the agent's turn
     /// going on keeps working, and the record's run shows no "ended" row.
-    func testAnAttemptRecordsRunEndsNoTurn() async throws {
-        let server = ChatUiServer(history: Self.offering + [
-            .object(["id": .string("k-run"), "status": .string("completed"), "endedAt": .number(6), "messages": .array([Self.record("accepted")])]),
-        ])
+    private static func recordRun(kind: String?) -> JSONValue {
+        var run: [String: JSONValue] = ["id": .string("k-run"), "status": .string("completed"), "startedAt": .number(6), "endedAt": .number(6), "messages": .array([record("accepted")])]
+        if let kind { run["kind"] = .string(kind) }
+        return .object(run)
+    }
+
+    func testAStandaloneRunEndsNoTurn() async throws {
+        let server = ChatUiServer(history: Self.offering + [Self.recordRun(kind: "standalone")])
         await server.read("/v0/config", Self.config)
         var (conversation, updates) = await open(server)
         let read = await next(&updates) { self.shown($0, "model")?.attempt != nil }
         XCTAssertEqual(read?.items.map(\.id), ["a1"])
         XCTAssertEqual(shown(read, "model")?.attempt?.outcome.status, "accepted")
+        await conversation.stop()
+    }
+
+    /// The marker says it, not what the run holds.
+    func testARunOfRecordsWithoutTheMarkerEndsItsTurn() async throws {
+        let server = ChatUiServer(history: Self.offering + [Self.recordRun(kind: nil)])
+        await server.read("/v0/config", Self.config)
+        var (conversation, updates) = await open(server)
+        let read = await next(&updates) { self.shown($0, "model")?.attempt != nil }
+        XCTAssertEqual(read?.items.map(\.id), ["a1", "k-run:status"])
+        await conversation.stop()
+    }
+
+    func testAStandaloneRunFinishingLeavesTheAgentWorking() async throws {
+        let server = ChatUiServer(history: Self.offering)
+        await server.read("/v0/config", Self.config)
+        var (conversation, updates, store) = await openWithStore(server)
+        _ = await next(&updates) { self.shown($0, "model") != nil }
+        func event(_ type: String, _ payload: [String: JSONValue]) -> JSONValue {
+            .object(["type": .string(type), "payload": .object(payload.merging(["agentId": .string("agent")]) { old, _ in old })])
+        }
+        await store.externalEvent(event("run.started", ["run": .object(["id": .string("live"), "status": .string("running"), "startedAt": .number(10)])]))
+        let working = await next(&updates) { $0.working }
+        XCTAssertEqual(working?.working, true)
+        await store.externalEvent(event("run.finished", ["run": .object(["id": .string("k-run"), "status": .string("completed"), "reason": .string("completed"), "kind": .string("standalone"), "startedAt": .number(11), "endedAt": .number(11)])]))
+        await store.externalEvent(event("message.created", ["runId": .string("k-run"), "message": Self.record("accepted", at: 11)]))
+        let recorded = await next(&updates) { self.shown($0, "model")?.attempt != nil }
+        XCTAssertEqual(recorded?.working, true)
+        XCTAssertEqual(recorded?.items.contains { $0.id == "k-run:status" }, false)
+        await store.externalEvent(event("run.finished", ["run": .object(["id": .string("live"), "status": .string("completed"), "reason": .string("completed"), "startedAt": .number(10), "endedAt": .number(12)])]))
+        let ended = await next(&updates) { !$0.working }
+        XCTAssertEqual(ended?.working, false)
         await conversation.stop()
     }
 }

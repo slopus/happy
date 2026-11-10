@@ -429,13 +429,19 @@ public actor Conversation {
         var startedAt: Double?
         var endedAt: Double?
         var reason: String?
+        /// `standalone` on a run stored already finished, outside any
+        /// turn: a chat UI attempt record's, or a message the computer
+        /// wrote itself. It is no turn and ends none.
+        var kind: String?
+        var standalone: Bool { kind == "standalone" }
 
         init(_ run: AgentWire.Run) {
-            startedAt = run.startedAt; endedAt = run.endedAt; reason = run.reason
+            startedAt = run.startedAt; endedAt = run.endedAt; reason = run.reason; kind = run.kind
         }
 
         init(_ run: JSONValue?) {
             startedAt = run?["startedAt"]?.numberValue; endedAt = run?["endedAt"]?.numberValue; reason = run?["reason"]?.stringValue
+            kind = run?["kind"]?.stringValue
         }
     }
     /// The question the agent waits on, and how its answer stands.
@@ -892,10 +898,9 @@ public actor Conversation {
             refreshAgentMode()
         case "run.finished":
             let finished = payload["run"]?["id"]?.stringValue
-            if let finished { transcript.setTime(RunTime(payload["run"]), for: finished) }
-            // A chat UI attempt record comes in a finished run of its own,
-            // which ends nothing the agent is doing.
-            if let running = activeRun?.id, let finished, finished != running { break }
+            let time = RunTime(payload["run"])
+            if let finished { transcript.setTime(time, for: finished) }
+            if time.standalone { break }
             snapshot.working = false
             settle()
             if visible { markRead() }
@@ -2182,11 +2187,8 @@ public actor Conversation {
             if let last = rows.items.last(where: { $0.role == .agent }) { lastAgent = last }
         }
         // Ended: how, after how long, and the answer to copy (desktop's
-        // `turnStatus`). A chat UI attempt record's own run was no turn.
-        let records = run.messageIds.allSatisfy { id in
-            transcript[message: id].map { $0.role == "service" && $0.content.contains { if case .action = $0 { true } else { false } } } ?? false
-        }
-        if !records, let time = transcript.times[run.id], let ended = time.endedAt {
+        // `turnStatus`). A standalone run was no turn.
+        if let time = transcript.times[run.id], !time.standalone, let ended = time.endedAt {
             let answer = lastAgent.map(\.text).flatMap { $0.isEmpty ? nil : $0 }
             let turnEnd = ChatItem.TurnEnd(reason: time.reason ?? "completed", durationMs: time.startedAt.map { max(0, ended - $0) }, tools: tools, copyText: answer, endedAt: ended)
             let item = ChatItem(id: "\(run.id):status", role: .turnEnd(turnEnd), pieces: [], delivery: .sent, turn: run.id)
