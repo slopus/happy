@@ -6,6 +6,9 @@ import com.slopus.happy.chat.markdown.parseMarkdown
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
 import com.slopus.happy.conversation.ui.QuickReply
+import com.slopus.happy.conversation.ui.UiComponent
+import com.slopus.happy.conversation.ui.UiDocument
+import com.slopus.happy.conversation.ui.UiOffer
 import com.slopus.happy.references.HappyReferences
 import com.slopus.happy.references.References
 import kotlinx.serialization.json.JsonObject
@@ -115,6 +118,15 @@ sealed interface ConversationRow {
      * as the tool asked (0: justified rows), under the [tool]'s line.
      */
     data class Media(override val key: String, val items: List<MediaRef>, val columns: Int = 0, val tool: ToolUse? = null) : ConversationRow
+
+    /**
+     * One component of chat UI, from an agent message's `ui` block or a
+     * `show_ui` call's presentation, named as a press names it ([offer]).
+     * A component is drawn whole or not at all: a type this build doesn't
+     * draw, or one it can't draw whole, is [UiComponent.Other], its fallback
+     * line.
+     */
+    data class Ui(override val key: String, val offer: UiOffer, val component: UiComponent) : ConversationRow
 
     /**
      * Replies an agent message suggested: its own `quick_replies` block
@@ -384,7 +396,8 @@ class ConversationRowBuilder(
                     is Block.Image -> rows += ConversationRow.Picture(key, block)
                     is Block.ToolCall -> rows += toolRows(key, id, block, references)
                     is Block.QuickReplies -> rows += ConversationRow.Replies(key, id, null, block.options)
-                    is Block.Compaction, is Block.File, is Block.Ui, is Block.Action, is Block.Unknown -> Unit
+                    is Block.Ui -> rows += uiRows(key, id, block.document)
+                    is Block.Compaction, is Block.File, is Block.Action, is Block.Unknown -> Unit
                 }
             }
             return rows
@@ -393,6 +406,25 @@ class ConversationRowBuilder(
         /** The artifact [presentation] shows, when it may be a page shown inline: HTML, following its latest version. */
         private fun inlineCandidate(presentation: Presentation): String? =
             (presentation as? Presentation.Artifact)?.takeIf { it.artifactType == "html" && it.shows == "latest" }?.artifactId
+
+        /**
+         * A document's components, one row each, top to bottom, keyed by
+         * [key] and the component's id. One with nothing to draw, not even
+         * a fallback line, has no row.
+         */
+        private fun uiRows(key: String, messageId: String, document: UiDocument): List<ConversationRow> =
+            document.components.mapNotNull { component ->
+                val rowKey = "$key:${component.id}"
+                val offer = UiOffer(messageId, document.id, component.id)
+                when (component) {
+                    is UiComponent.FileTree -> ConversationRow.Ui(rowKey, offer, component)
+                    else -> fallback(rowKey, offer, component)
+                }
+            }
+
+        /** [component] as its fallback line; null where the daemon wrote none. */
+        private fun fallback(key: String, offer: UiOffer, component: UiComponent): ConversationRow.Ui? =
+            component.fallback.takeIf { it.isNotBlank() }?.let { ConversationRow.Ui(key, offer, UiComponent.Other(component.id, it)) }
 
         private fun toolRows(key: String, messageId: String, call: Block.ToolCall, references: References?): List<ConversationRow> {
             if (call.name == Question.TOOL_NAME && call.id != null) {
@@ -409,7 +441,9 @@ class ConversationRowBuilder(
             val skill = if (call.name == Conversation.READ_SKILL) (call.arguments as? JsonObject)?.get("name").str else null
             val tool = ToolUse(call.name, call.status, call.presentation, skill, call.id, ToolHint.of(call), ToolSummary.of(call.name, call.arguments))
             return when (val p = call.presentation) {
-                // What suggest_replies suggested stands in its call's place: the stack, no line.
+                // What show_ui showed stands in its call's place: the components, no line.
+                is Presentation.Ui -> uiRows(key, messageId, p.document).ifEmpty { listOf(ConversationRow.Tool(key, call.id, tool)) }
+                // So does what suggest_replies suggested: the stack.
                 is Presentation.QuickReplies -> listOf(if (call.id == null) ConversationRow.Tool(key, null, tool) else ConversationRow.Replies(key, messageId, call.id, p.options))
                 is Presentation.Media -> if (call.id == null || p.items.isEmpty()) {
                     listOf(ConversationRow.Tool(key, call.id, tool))

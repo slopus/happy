@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="conversation_quick_reply">↩ 提案された返信</string>
+    <string name="conversation_ui_tree_show_all">すべて表示（%1$d）</string>
 </resources>
