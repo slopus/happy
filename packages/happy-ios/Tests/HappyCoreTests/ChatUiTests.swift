@@ -541,7 +541,9 @@ final class ChatUiTests: XCTestCase {
         card = UiCard.make(live("provider_sign_in", claude, live: .provider(both)), granted: nil)
         XCTAssertEqual(card.lines, [.init("2 accounts · ada@example.com +1")])
         XCTAssertEqual(card.row?.tone, .done)
-        XCTAssertEqual(card.buttons, [])
+        XCTAssertEqual(card.buttons.map(\.label), ["Use Claude Code"])
+        let accepted = UiAttempt(type: "provider_sign_in.sign_in", outcome: UiOutcome(status: "accepted"))
+        XCTAssertEqual(UiCard.make(live("provider_sign_in", claude, live: .provider(both), attempt: accepted), granted: nil).buttons, [], "once used, nothing to do")
         let adding: JSONValue = .object(["provider": .string("claude"), "account": .string("new")])
         XCTAssertEqual(UiCard.make(live("provider_sign_in", adding, live: .provider(both)), granted: nil).buttons.map(\.label), ["Add account"])
         var addingNow = both
