@@ -415,7 +415,7 @@ vi.mock('@/sync/storage', () => ({
     },
 }));
 vi.mock('@/sync/gitStatusSync', () => ({ gitStatusSync: { getSync: vi.fn() } }));
-vi.mock('@/sync/ops', () => ({ sessionAbort: mocks.sessionAbort }));
+vi.mock('@/sync/ops', () => ({ sessionAbort: mocks.sessionAbort, sessionListDirectory: vi.fn() }));
 vi.mock('@/sync/sync', () => ({ sync: {
     beginSessionRoute: (sessionId: string) => ({ sessionId, ownerEpoch: 1, phase: 'opening' as const }),
     isSessionRouteOwner: () => true,
@@ -1494,6 +1494,20 @@ describe('SessionView Agent-space boundary', () => {
         await act(async () => renderer.update(<SessionView id="session-1" />));
         expect(renderer.root.findAllByProps({ testID: 'goal-board-return-parent' })).toHaveLength(0);
         expect(renderer.root.findByProps({ testID: 'goal-board-trigger' })).toBeTruthy();
+        await act(async () => renderer.unmount());
+    });
+
+    it('connects task files to the read-only directory API and exact file route', async () => {
+        const { sessionListDirectory } = await import('@/sync/ops');
+        mocks.isDataReady = true;
+        (mocks.session.metadata as any).goalBoard = { featurePath: '/goal/feature' };
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
+        await act(async () => renderer.root.findByProps({ testID: 'goal-board-trigger' }).props.onPress());
+        const files = renderer.root.findByType('GoalBoardPanel').props.renderTaskFiles({ indexPath: '/goal/feature/tasks/t1/index.md' });
+        expect(files.props).toMatchObject({ sessionId: 'session-1', rootPath: '/goal/feature/tasks/t1', listDirectory: sessionListDirectory });
+        act(() => files.props.onOpenFile('/goal/feature/tasks/t1/result.md'));
+        expect(mocks.routerPush).toHaveBeenCalledWith((await import('@/utils/sessionFileNavigation')).legacySessionFileHref('session-1', '/goal/feature/tasks/t1/result.md'));
         await act(async () => renderer.unmount());
     });
 

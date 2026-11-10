@@ -9,7 +9,12 @@ import { t } from '@/text';
 import { useFileWorkspace } from './context';
 import { WorkspaceButton as Button } from './WorkspaceButton';
 
-export function WorkspaceDirectoryTree({ sessionId }: { sessionId: string }) {
+export function WorkspaceDirectoryTree({ sessionId, rootPath, onOpenFile, listDirectory = sessionWorkspaceListDirectory }: {
+    sessionId: string;
+    rootPath?: string;
+    onOpenFile?: (path: string) => void;
+    listDirectory?: typeof sessionWorkspaceListDirectory;
+}) {
     const workspace = useFileWorkspace();
     const { theme } = useUnistyles();
     const [directories, setDirectories] = React.useState<Record<string, { entries?: DirectoryEntry[]; error?: string }>>({});
@@ -18,25 +23,26 @@ export function WorkspaceDirectoryTree({ sessionId }: { sessionId: string }) {
     const [hidden, setHidden] = React.useState(false);
     const requests = React.useRef(new Map<string, object>());
     const alive = React.useRef(true);
-    const root = workspace?.root ?? '';
+    const root = rootPath ?? workspace?.root ?? '';
+    const canBrowse = Boolean(rootPath || workspace?.enabled);
     const load = React.useCallback(async (path: string) => {
         if (!accountRuntimeCurrent()) return;
         const token = {}; requests.current.set(path, token);
         setDirectories(value => ({ ...value, [path]: {} }));
-        const result = await sessionWorkspaceListDirectory(sessionId, path);
+        const result = await listDirectory(sessionId, path);
         if (!alive.current || !accountRuntimeCurrent() || requests.current.get(path) !== token) return;
         setDirectories(value => ({ ...value, [path]: result.success ? { entries: result.entries ?? [] } : { error: result.error ?? t('fileWorkspace.readError') } }));
-    }, [sessionId]);
-    React.useEffect(() => { alive.current = true; if (root) void load(root); return () => { alive.current = false; requests.current.clear(); }; }, [root, load]);
+    }, [sessionId, listDirectory]);
+    React.useEffect(() => { alive.current = true; setDirectories({}); setExpanded(new Set()); if (canBrowse && root) void load(root); return () => { alive.current = false; requests.current.clear(); }; }, [root, load, canBrowse]);
     React.useEffect(() => {
         const active = workspace?.snapshot.active;
-        if (!active?.startsWith(root + '/')) return;
+        if (!canBrowse || !root || !active?.startsWith(root + '/')) return;
         let parent = root;
         const parents = active.slice(root.length + 1).split('/').slice(0, -1).map(segment => { parent += '/' + segment; return parent; });
         setExpanded(value => new Set([...value, ...parents]));
         for (const path of parents) if (!requests.current.has(path)) void load(path);
-    }, [workspace?.snapshot.active, root, load]);
-    if (!workspace?.enabled || !root) return <Text style={{ padding: 16, color: theme.colors.textSecondary }}>{t('fileWorkspace.rootUnavailable')}</Text>;
+    }, [workspace?.snapshot.active, root, load, canBrowse]);
+    if (!canBrowse || !root) return <Text style={{ padding: 16, color: theme.colors.textSecondary }}>{t('fileWorkspace.rootUnavailable')}</Text>;
     const rows = (path: string, depth: number): React.ReactNode => {
         const directory = directories[path];
         if (!directory || (!directory.entries && !directory.error)) return <ActivityIndicator key={path} style={{ padding: 12 }} color={theme.colors.textSecondary} />;
@@ -50,9 +56,10 @@ export function WorkspaceDirectoryTree({ sessionId }: { sessionId: string }) {
             // Filtering is intentionally restricted to loaded folders; never scan the whole machine.
             if (!isDirectory && query && !full.toLowerCase().includes(query.toLowerCase())) return null;
             return <React.Fragment key={full}>
-                <DirectoryRow name={entry.name} full={full} depth={depth} directory={isDirectory} open={open} selected={workspace.snapshot.active === full} onPress={() => {
+                <DirectoryRow name={entry.name} full={full} depth={depth} directory={isDirectory} open={open} selected={workspace?.snapshot.active === full} onPress={() => {
                     if (isDirectory) { setExpanded(value => { const next = new Set(value); if (open) next.delete(full); else next.add(full); return next; }); if (!open && !directories[full]) void load(full); }
-                    else void workspace.openReference(full);
+                    else if (onOpenFile) onOpenFile(full);
+                    else void workspace?.openReference(full);
                 }} />
                 {isDirectory && open && rows(full, depth + 1)}
             </React.Fragment>;
@@ -63,7 +70,7 @@ export function WorkspaceDirectoryTree({ sessionId }: { sessionId: string }) {
             <Text numberOfLines={1} style={{ flex: 1, fontSize: 12, color: theme.colors.textSecondary }}>{root.split('/').pop() || root}</Text>
             <Button label={hidden ? t('fileWorkspace.hideHidden') : t('fileWorkspace.hidden')} icon="eye-outline" compact selected={hidden} onPress={() => setHidden(!hidden)} />
             <Button label={t('fileWorkspace.refresh')} icon="refresh-outline" compact onPress={() => { for (const path of [root, ...expanded]) void load(path); }} />
-            {!workspace.snapshot.open && workspace.snapshot.active && <Button label={t('fileWorkspace.open')} icon="open-outline" compact onPress={() => workspace.controller.setOpen(true)} />}
+            {!onOpenFile && workspace && !workspace.snapshot.open && workspace.snapshot.active && <Button label={t('fileWorkspace.open')} icon="open-outline" compact onPress={() => workspace.controller.setOpen(true)} />}
         </View>
         <TextInput value={query} onChangeText={setQuery} placeholder={t('fileWorkspace.filter')} accessibilityLabel={t('fileWorkspace.filter')} placeholderTextColor={theme.colors.textSecondary} style={{ color: theme.colors.text, backgroundColor: theme.colors.surface, borderRadius: 7, marginHorizontal: 10, padding: 8, fontSize: 12 }} />
         {query ? <Text style={{ padding: 10, fontSize: 11, color: theme.colors.textSecondary }}>{t('fileWorkspace.searchHint')}</Text> : null}

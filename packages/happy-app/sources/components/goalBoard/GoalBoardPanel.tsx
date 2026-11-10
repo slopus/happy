@@ -21,6 +21,7 @@ export interface GoalBoardPanelProps {
     onOpenTask: (task: GoalTask, newSession: boolean) => Promise<void>;
     getTaskSessionId: (task: GoalTask) => string | null;
     openingTaskId?: string | null;
+    renderTaskFiles?: (task: GoalTask) => React.ReactNode;
 }
 
 const NO_TASKS: GoalTask[] = [];
@@ -58,7 +59,7 @@ const TaskRow = React.memo(function TaskRow({ task, active, onSelect, registerRe
     </GoalBoardButton>;
 });
 
-function Fold({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
+function Fold({ id, title, children }: { id: string; title: string; children: React.ReactNode | (() => React.ReactNode) }) {
     const [expanded, setExpanded] = React.useState(false);
     const { theme } = useUnistyles();
     return <View style={styles.fold}>
@@ -66,7 +67,7 @@ function Fold({ id, title, children }: { id: string; title: string; children: Re
             <Text style={styles.foldTitle}>{title}</Text>
             <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color={theme.colors.textSecondary} />
         </GoalBoardButton>
-        {expanded ? <View style={styles.foldBody}>{children}</View> : null}
+        {expanded ? <View style={styles.foldBody}>{typeof children === 'function' ? children() : children}</View> : null}
     </View>;
 }
 
@@ -93,8 +94,9 @@ function Field({ title, value }: { title: string; value?: string }) {
     </View>;
 }
 
-const TaskDetail = React.memo(function TaskDetail({ task, offline, onOpenArtifact }: {
+const TaskDetail = React.memo(function TaskDetail({ task, offline, onOpenArtifact, renderTaskFiles }: {
     task: GoalTask; offline: boolean; onOpenArtifact: GoalBoardPanelProps['onOpenArtifact'];
+    renderTaskFiles: GoalBoardPanelProps['renderTaskFiles'];
 }) {
     const outputs = task.artifacts.filter((artifact) => artifact.relation === 'output');
     const references = task.artifacts.filter((artifact) => artifact.relation === 'reference');
@@ -107,6 +109,9 @@ const TaskDetail = React.memo(function TaskDetail({ task, offline, onOpenArtifac
         <Text accessibilityRole="header" style={styles.sectionTitle}>{t('goalBoard.deliverables')}</Text>
         {outputs.length ? outputs.map((artifact) => <ArtifactCard key={artifact.id} task={task} artifact={artifact} offline={offline} onOpen={onOpenArtifact} />)
             : <Text style={styles.meta}>{t('goalBoard.noDeliverables')}</Text>}
+        {renderTaskFiles ? <Fold id="goal-board-files" title={t('common.files')}>
+            {() => <View style={styles.taskFiles}>{offline ? <Text style={styles.meta}>{t('status.offline')}</Text> : renderTaskFiles(task)}</View>}
+        </Fold> : null}
         <Fold id="goal-board-expected" title={t('goalBoard.expected')}>
             {task.expectedDeliverables.length ? task.expectedDeliverables.map((value, index) => <Text key={index} style={styles.body}>{value}</Text>)
                 : <Text style={styles.meta}>{t('goalBoard.unknownField')}</Text>}
@@ -130,7 +135,7 @@ const TaskDetail = React.memo(function TaskDetail({ task, offline, onOpenArtifac
 /** Pure presentation: no file reads, RPC, timers or production sample records. */
 export const GoalBoardPanel = React.memo(function GoalBoardPanel({
     snapshot, catalog, loading, error, offline, activeTaskId, onSelectFeature, onRefresh, onClose, onOpenArtifact,
-    onOpenTask, getTaskSessionId, openingTaskId,
+    onOpenTask, getTaskSessionId, openingTaskId, renderTaskFiles,
 }: GoalBoardPanelProps) {
     const { theme } = useUnistyles();
     const tasks = snapshot?.tasks ?? NO_TASKS;
@@ -225,7 +230,7 @@ export const GoalBoardPanel = React.memo(function GoalBoardPanel({
         {offline ? <Text accessibilityLiveRegion="polite" style={styles.noticeText}>{t(snapshot ? 'goalBoard.offline' : 'goalBoard.offlineEmpty')}</Text> : null}
         {error ? <View accessibilityRole="alert" style={styles.notice}><Text style={styles.error}>{t('goalBoard.loadError')}: {error}</Text></View> : null}
         <ScrollView ref={scrollRef} style={styles.scroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-            {selected ? <TaskDetail key={`${snapshot?.featurePath}:${selected.id}`} task={selected} offline={offline} onOpenArtifact={onOpenArtifact} /> : <>
+            {selected ? <TaskDetail key={`${snapshot?.featurePath}:${selected.id}`} task={selected} offline={offline} onOpenArtifact={onOpenArtifact} renderTaskFiles={renderTaskFiles} /> : <>
                 {snapshot ? <View style={styles.overview}>
                     {snapshot.projectTitle ? <Text style={styles.meta}>{snapshot.projectTitle}</Text> : null}
                     <Text style={styles.goalTitle}>{snapshot.title}</Text>
@@ -304,6 +309,7 @@ const styles = StyleSheet.create((theme) => ({
     artifact: { gap: 8, padding: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider, borderRadius: 10 },
     fold: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.divider },
     foldTitle: { ...Typography.default('semiBold'), color: theme.colors.text, fontSize: 13, lineHeight: 20, flex: 1 },
+    taskFiles: { height: 360, minHeight: 0 },
     foldBody: { gap: 14, paddingHorizontal: 12, paddingBottom: 14 },
     path: { ...Typography.mono(), color: theme.colors.textSecondary, fontSize: 11, lineHeight: 19 },
     footer: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.divider, padding: 12, gap: 8 },

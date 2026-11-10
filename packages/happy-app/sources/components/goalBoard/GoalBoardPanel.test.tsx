@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { act } from 'react';
+import { View } from 'react-native';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { GoalArtifact, GoalBoardSnapshot, GoalTask } from '@slopus/happy-wire';
 import { GoalBoardPanel, type GoalBoardPanelProps } from './GoalBoardPanel';
@@ -62,6 +63,19 @@ afterAll(() => errorSpy.mockRestore());
 afterEach(() => { for (const renderer of renderers) act(() => renderer.unmount()); renderers = []; vi.clearAllMocks(); });
 
 describe('GoalBoardPanel', () => {
+    it('shows a task-scoped file tree only when its files section is opened', () => {
+        const selected = task('g1');
+        const renderTaskFiles = vi.fn((task: GoalTask) => <View testID="task-files">{task.indexPath}</View>);
+        const renderer = render(props({ renderTaskFiles }));
+        press(renderer, 'goal-board-task-g1');
+        expect(renderTaskFiles).not.toHaveBeenCalled();
+        press(renderer, 'goal-board-files');
+        expect(renderTaskFiles).toHaveBeenCalledWith(selected);
+        expect(json(renderer)).toContain('/goal/tasks/g1/index.md');
+        press(renderer, 'goal-board-back');
+        expect(renderer.root.findAllByProps({ testID: 'task-files' })).toHaveLength(0);
+    });
+
     it('counts actual done records and retains unknown task status', () => {
         const renderer = render(props({ snapshot: snapshot([task('g1', { status: 'done' }), task('g2', { status: 'review' }), task('g3', { status: 'unknown' })]) }));
         expect(json(renderer)).toContain('goalBoard.completed:{\\"completed\\":1,\\"total\\":3}');

@@ -1,3 +1,4 @@
+import { sessionListDirectory } from '@/sync/ops';
 import { WorkspaceDirectoryTree } from '@/components/fileWorkspace/WorkspaceDirectoryTree';
 import { resolveSessionFilePath } from '@/utils/sessionFileLinks';
 import { legacySessionFileHref } from '@/utils/sessionFileNavigation';
@@ -810,7 +811,11 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
             error={goalBoard.error} offline={goalBoard.offline} activeTaskId={goalBoard.activeTaskId}
             onSelectFeature={(entry) => { void goalBoard.selectFeature(entry); }} onRefresh={() => { void goalBoard.refresh(); }}
             onClose={closeGoalBoard} onOpenArtifact={openGoalArtifact} onOpenTask={openGoalTask}
-            getTaskSessionId={goalBoard.getTaskSessionId} openingTaskId={goalBoard.openingTaskId} />
+            getTaskSessionId={goalBoard.getTaskSessionId} openingTaskId={goalBoard.openingTaskId}
+            renderTaskFiles={(task) => <WorkspaceDirectoryTree key={`${sessionId}:${task.indexPath}`} sessionId={sessionId}
+                listDirectory={sessionListDirectory}
+                rootPath={task.indexPath.replace(/[\\/][^\\/]+$/, '')}
+                onOpenFile={(path) => router.push(legacySessionFileHref(sessionId, path))} />} />
     </React.Suspense>;
     const latestGoalTask = goalArtifact && goalBoard.snapshot?.featurePath === goalArtifact.featurePath
         ? goalBoard.snapshot.tasks.find(task => task.id === goalArtifact.task.id) : null;
