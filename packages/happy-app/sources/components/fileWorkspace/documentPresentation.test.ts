@@ -6,8 +6,8 @@ describe('workspace chat allocation', () => {
         const rowWidth = 946;
         const rightPanelWidth = 320;
         const chat = getWorkspaceChatWidth(430, rowWidth, rightPanelWidth);
-        expect(chat).toBe(380);
-        expect(rowWidth - rightPanelWidth - 6 - chat).toBeGreaterThanOrEqual(240);
+        expect(chat).toBe(376);
+        expect(rowWidth - rightPanelWidth - 10 - chat).toBeGreaterThanOrEqual(240);
     });
 
     it('preserves the preferred width when there is room, including after collapsing the panel', () => {
@@ -18,11 +18,11 @@ describe('workspace chat allocation', () => {
 
     it('lets the document shrink beyond the midpoint and the old 800px chat ceiling', () => {
         expect(getWorkspaceChatWidth(1200, 2000, 320)).toBe(1200);
-        expect(getWorkspaceChatWidth(1900, 2000, 320)).toBe(1434);
+        expect(getWorkspaceChatWidth(1900, 2000, 320)).toBe(1430);
     });
 
     it('clamps to the visible space while retaining a wider preference for a larger window', () => {
-        expect(getWorkspaceChatWidth(1200, 946, 320)).toBe(380);
+        expect(getWorkspaceChatWidth(1200, 946, 320)).toBe(376);
         expect(getWorkspaceChatWidth(1200, 2000, 320)).toBe(1200);
         expect(getWorkspaceChatWidth(0, 2000, 320)).toBe(310);
     });
@@ -30,6 +30,6 @@ describe('workspace chat allocation', () => {
     it('keeps the chat usable without overflowing when both panels leave less than the combined minimum', () => {
         const chat = getWorkspaceChatWidth(1200, 800, 320);
         expect(chat).toBe(310);
-        expect(800 - 320 - 6 - chat).toBe(164);
+        expect(800 - 320 - 10 - chat).toBe(160);
     });
 });

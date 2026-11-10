@@ -73,6 +73,13 @@ describe('desktop workspace sidebar integration', () => {
         expect(storage.values.desktopLeftSidebarCollapsed).toBe(true);
     });
 
+    it('reserves both outer gutters before allocating panels in a constrained desktop', () => {
+        act(() => layout.toggleLeftSidebar());
+        expect(layout.leftWidth + layout.rightWidth + 60 + 2 * 10 + 480).toBe(storage.width);
+        act(() => layout.resizePanelBy('left', 100));
+        expect(layout.leftWidth + layout.rightWidth + 60 + 2 * 10 + 480).toBe(storage.width);
+    });
+
     it('unpin dismisses immediately even while pointer or keyboard focus remains engaged', () => {
         act(() => layout.toggleLeftSidebar());
         act(() => layout.setLeftSidebarHovered(true));

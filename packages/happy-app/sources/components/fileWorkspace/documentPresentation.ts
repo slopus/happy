@@ -1,11 +1,12 @@
 import type { ViewStyle } from 'react-native';
+import { DESKTOP_WORKSPACE_OUTER_GAP } from '@/utils/desktopNavigationLayout';
 
 /** The same reading geometry for working Markdown and immutable history. */
 export const documentScrollStyle: ViewStyle = { paddingHorizontal: 28, paddingTop: 32, paddingBottom: 64 };
 export const documentBodyStyle: ViewStyle = { width: '100%', maxWidth: 840, alignSelf: 'center' };
 
 export const workspaceChatMinWidth = 310;
-export const workspaceResizeWidth = 6;
+export const workspaceResizeWidth = DESKTOP_WORKSPACE_OUTER_GAP;
 
 /** Only reserve the document's usable minimum; the user owns the split ratio. */
 export function getWorkspaceChatMaximumWidth(rowWidth: number, rightPanelWidth: number): number {

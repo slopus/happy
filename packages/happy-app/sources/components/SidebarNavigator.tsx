@@ -159,7 +159,7 @@ const SidebarNavigatorContent = React.memo(() => {
                 overflow: Platform.OS === 'web' ? 'visible' as const : 'hidden' as const,
             } as any,
             sceneStyle: Platform.OS === 'web' ? {
-                margin: DESKTOP_WORKSPACE_OUTER_GAP, marginLeft: 0, borderRadius: 20, overflow: 'hidden',
+                margin: DESKTOP_WORKSPACE_OUTER_GAP, borderRadius: 20, overflow: 'hidden',
                 backgroundColor: dreamskin && !reducedTransparency ? 'transparent' : theme.colors.surface,
             } : undefined,
             swipeEnabled: false,
@@ -230,7 +230,7 @@ const SidebarNavigatorContent = React.memo(() => {
                     accessibilityLabel={t('desktopWorkspace.resizePanel', {
                         panel: t('desktopWorkspace.sessions'),
                     })}
-                    offset={leftExpandedWidth + (Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH : 0) - 5}
+                    offset={leftExpandedWidth + (Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH + DESKTOP_WORKSPACE_OUTER_GAP / 2 : 0) - 5}
                     side="left"
                 />
             )}
@@ -316,7 +316,7 @@ const PersistentHeader = React.memo(() => {
                 ...(Platform.OS === 'web' ? { visibility: coveredBySidebar ? 'hidden' : 'visible' } as any : {}),
                 position: 'absolute',
                 top: Platform.OS === 'web' ? DESKTOP_WORKSPACE_OUTER_GAP : 0,
-                left: (sidebarVisible ? sidebarWidth : 0) + (Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH : 0) + 16,
+                left: (sidebarVisible ? sidebarWidth : 0) + (Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH + DESKTOP_WORKSPACE_OUTER_GAP : 0) + 16,
                 right: 0,
                 paddingTop: safeArea.top,
                 paddingLeft: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 16,

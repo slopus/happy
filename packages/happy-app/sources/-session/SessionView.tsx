@@ -60,6 +60,7 @@ import { isRunningOnMac } from '@/utils/platform';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
 import {
     DESKTOP_MAIN_MIN_WIDTH,
+    DESKTOP_WORKSPACE_OUTER_GAP,
     getPersistentHeaderContentInset,
     getDesktopRightPanelPresentation,
     getPersistentNavigationControlsWidth,
@@ -2726,7 +2727,7 @@ const workspaceStyles = StyleSheet.create((theme) => ({
         flex: 1,
     },
     desktopPanelWeb: {
-        paddingLeft: 10,
+        paddingLeft: DESKTOP_WORKSPACE_OUTER_GAP,
         position: 'absolute',
         top: 0,
         right: 0,

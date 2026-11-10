@@ -264,8 +264,8 @@ describe('SidebarNavigator drawer behavior', () => {
         const drawer = renderer.root.findByType('Drawer');
         expect(drawer.props.screenOptions.drawerStyle.width).toBe(420);
         expect(renderer.root.findByProps({ testID: 'desktop-left-panel-resize-handle' }).props.style)
-            .toContainEqual({ left: 415 });
-        expect(renderer.root.findByProps({ testID: 'desktop-navigation-controls' }).parent.props.style.left).toBe(436);
+            .toContainEqual({ left: 420 });
+        expect(renderer.root.findByProps({ testID: 'desktop-navigation-controls' }).parent.props.style.left).toBe(446);
         const sidebarToggle = renderer.root.findByProps({ testID: 'desktop-navigation-sidebar-button' });
         expect(sidebarToggle.props['aria-expanded']).toBe(true);
         expect(sidebarToggle.props.accessibilityState).toEqual({ expanded: true, selected: true });
@@ -291,7 +291,7 @@ describe('SidebarNavigator drawer behavior', () => {
         expect(toggle.props['aria-pressed']).toBe(false);
         expect(toggle.props.accessibilityLabel).toBe('desktopWorkspace.pinSessions');
         const header = renderer.root.findByProps({ testID: 'desktop-navigation-controls' }).parent;
-        expect(header.props.style.left).toBe(76);
+        expect(header.props.style.left).toBe(86);
         expect(header.props['aria-hidden']).toBe(true);
         expect(header.props.inert).toBe(true);
         const handle = renderer.root.findByProps({ testID: 'desktop-left-panel-resize-handle' });
@@ -316,7 +316,7 @@ describe('SidebarNavigator drawer behavior', () => {
         expect(content.props.inert).toBeUndefined();
         expect(content.props.children.props.desktopSecondaryVisible).toBe(false);
         expect(content.props.children.props.desktopPrimaryNavigation).toBe(true);
-        expect(renderer.root.findByProps({ testID: 'desktop-navigation-controls' }).parent.props.style.left).toBe(76);
+        expect(renderer.root.findByProps({ testID: 'desktop-navigation-controls' }).parent.props.style.left).toBe(86);
         act(() => renderer.unmount());
     });
 

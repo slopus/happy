@@ -130,7 +130,7 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
             supportsPersistentPanel: Platform.OS === 'web' || isRunningOnMac(),
             windowWidth,
         });
-    const reservedWidth = enabled && Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH + DESKTOP_WORKSPACE_OUTER_GAP : 0;
+    const reservedWidth = enabled && Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH + 2 * DESKTOP_WORKSPACE_OUTER_GAP : 0;
     const layoutWindowWidth = Math.max(0, windowWidth - reservedWidth);
     const leftVisible = enabled && !zenMode && (Platform.OS === 'web' ? reveal.visible : !leftCollapsed);
     const leftPinned = enabled && !zenMode && !leftCollapsed;
