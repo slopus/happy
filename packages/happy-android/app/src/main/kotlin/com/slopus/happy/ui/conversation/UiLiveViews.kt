@@ -365,7 +365,7 @@ private fun accountsLine(cli: ProviderCli): String {
             else -> stringResource(R.string.ui_live_cli_signed_in_plain)
         }
     }
-    return stringResource(R.string.ui_live_cli_accounts, pluralStringResource(R.plurals.conversation_reply_accounts, accounts.size, accounts.size), accounts.first().label, accounts.size - 1)
+    return stringResource(R.string.ui_live_cli_accounts, pluralStringResource(R.plurals.conversation_reply_accounts, accounts.size, accounts.size), accounts.first().let { it.email ?: it.label }, accounts.size - 1)
 }
 
 private enum class RowTone { Quiet, Busy, Done, Error }

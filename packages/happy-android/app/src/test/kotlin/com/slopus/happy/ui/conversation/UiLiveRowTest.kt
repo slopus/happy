@@ -201,6 +201,17 @@ class UiLiveRowTest {
         rule.onNodeWithText("Add account").performClick()
         assertEquals(listOf("provider_sign_in.sign_in", "provider_sign_in.sign_in"), sent.map { it.second.type })
         shot("ui-live-signed-in")
+        // A second account: the count, and the first by its email rather than its configuration label.
+        cli.value = ProviderCliSource.State.Read(
+            parse(
+                """{"id":"claude","name":"Claude Code","installation":{"status":"installed","version":"2.1.312"},
+                "signIn":{"status":"signed_in","account":{"email":"ada@example.com","plan":"Max"}},
+                "accounts":[{"id":"claude","label":"Current CLI","email":"ada@example.com","plan":"Max","signIn":"signed_in"},
+                    {"id":"claude_2","label":"Claude Code 2","email":"grace@example.com","plan":"Max","signIn":"signed_in"}],
+                "operation":null,"version":"01b"}""",
+            ),
+        )
+        rule.onAllNodesWithText("2 accounts · ada@example.com +1").assertCountEquals(2)
         cli.value = ProviderCliSource.State.Unsupported
         rule.onAllNodesWithText("This server's AIs are set up in Settings.").assertCountEquals(2)
     }
