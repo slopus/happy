@@ -24,6 +24,7 @@ import { useGoalBoard } from '@/hooks/useGoalBoard';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import type { GoalTask, GoalArtifact } from '@slopus/happy-wire';
 import { DesktopSkinCanvas } from '@/components/DesktopSkinCanvas';
+import { useReducedTransparency } from '@/hooks/useReducedTransparency';
 import { DesktopReadingWidthContext, useDesktopReadingWidth } from '@/components/DesktopReadingWidth';
 import { SessionHeaderChip } from '@/components/SessionHeaderChip';
 import { SessionInfoDropdown } from '@/components/SessionInfoDropdown';
@@ -577,6 +578,9 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
     const zenMode = useLocalSetting('zenMode');
     const desktopSkinId = useLocalSetting('desktopSkinId');
     const dreamskin = Platform.OS === 'web' && isTablet && desktopSkinId !== 'default';
+    const reducedTransparency = useReducedTransparency();
+    const desktopPaneSurface = !dreamskin ? undefined
+        : reducedTransparency ? theme.colors.desktopSkin.readingSolid : theme.colors.desktopSkin.readingWide;
     const desktopReadingWidth = useLocalSetting('desktopReadingWidth');
     const sidebarOrganization = useSetting('sidebarOrganization');
     const updateSidebarOrganization = useSettingUpdater('sidebarOrganization');
@@ -1552,6 +1556,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
                         onCollapse={() => setDesktopRightPanelCollapsed(true)}
                         onTabChange={(key) => setDesktopPanelMode(key === 'files' ? 'files' : 'capabilities')}
                         showCollapseButton
+                        surfaceColor={desktopPaneSurface}
                         tabs={desktopPanelTabs}
                     >
                         <DesktopPresenceTransition
@@ -1562,6 +1567,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
                         >
                             {desktopPanelMode === 'files' && canShowFilePanel ? (
                                 <FilesSidebar
+                                    transparentBackground={dreamskin}
                                     allFilesContent={fileWorkspace?.enabled ? <WorkspaceDirectoryTree sessionId={sessionId} /> : undefined}
                                     mode={sidebarMode}
                                     onAllFilesFilePress={handleAllFilesFilePress}

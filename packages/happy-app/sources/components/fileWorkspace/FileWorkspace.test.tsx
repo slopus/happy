@@ -7,7 +7,7 @@ import { FileWorkspaceController } from './controller';
 const state = vi.hoisted(() => ({ skin: 'gingham', reduced: false, alert: vi.fn() }));
 const theme = vi.hoisted(() => ({ dark: true, colors: {
     surface: '#101820', surfaceSelected: '#354550', surfacePressed: '#283640', divider: '#445566', text: '#ffffff', textSecondary: '#aabbcc', textLink: '#77aaff',
-    desktopSkin: { readingSolid: '#151a21', readingCompact: 'rgba(21,26,33,0.70)' },
+    desktopSkin: { readingSolid: '#151a21', readingCompact: 'rgba(21,26,33,0.70)', readingWide: 'rgba(21,26,33,0.51)' },
 } }));
 vi.mock('react-native', () => ({ Platform: { OS: 'web' }, View: 'View', ScrollView: 'ScrollView', ActivityIndicator: 'ActivityIndicator' }));
 vi.mock('react-native-unistyles', () => ({ useUnistyles: () => ({ theme }) }));
@@ -77,10 +77,13 @@ it('keeps one full-width themed reading background when maximized and supports r
     let renderer: any;
     act(() => { renderer = TestRenderer.create(<Harness />); });
     const surface = () => renderer.root.findByProps({ testID: 'file-workspace' }).props.style;
-    expect(surface().backgroundColor).toBe(theme.colors.desktopSkin.readingCompact);
+    expect(surface().backgroundColor).toBe(theme.colors.desktopSkin.readingWide);
+    const headers = () => renderer.root.findAll((node: any) => node.type === 'View' && (node.props.style?.minHeight === 46 || node.props.style?.flexWrap === 'wrap'));
+    expect(headers()).toHaveLength(2);
+    expect(headers().map((node: any) => node.props.style.backgroundColor)).toEqual(['transparent', 'transparent']);
     maximized = true;
     act(() => renderer.update(<Harness />));
-    expect(surface().backgroundColor).toBe(theme.colors.desktopSkin.readingCompact);
+    expect(surface().backgroundColor).toBe(theme.colors.desktopSkin.readingWide);
     expect(surface().paddingTop ?? 0).toBe(0);
     expect(surface().maxWidth).toBeUndefined();
     state.reduced = true;
@@ -89,6 +92,7 @@ it('keeps one full-width themed reading background when maximized and supports r
     state.skin = 'default';
     act(() => renderer.update(<Harness />));
     expect(surface().backgroundColor).toBe(theme.colors.surface);
+    expect(headers().map((node: any) => node.props.style.backgroundColor)).toEqual([theme.colors.surface, theme.colors.surface]);
     act(() => renderer.unmount());
 });
 it('keeps the file tree toggle available after collapsing it and in full-screen mode', () => {

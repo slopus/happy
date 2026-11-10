@@ -142,7 +142,8 @@ vi.mock('@/utils/platform', () => ({ isRunningOnMac: () => false }));
 vi.mock('@/utils/responsive', () => ({
     useDeviceType: () => 'phone', useHeaderHeight: () => 52, useIsLandscape: () => false, useIsTablet: () => false,
 }));
-vi.mock('@/utils/desktopNavigationLayout', () => ({
+vi.mock('@/utils/desktopNavigationLayout', async (importOriginal) => ({
+    ...await importOriginal<typeof import('@/utils/desktopNavigationLayout')>(),
     DESKTOP_MAIN_MIN_WIDTH: 1100,
     PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH: 0,
     TAURI_HEADER_CONTROL_LEFT: 0,

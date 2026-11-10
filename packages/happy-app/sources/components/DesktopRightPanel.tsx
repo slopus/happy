@@ -20,6 +20,7 @@ export const DesktopRightPanel = React.memo(function DesktopRightPanel({
     onCollapse,
     onTabChange,
     showCollapseButton = true,
+    surfaceColor,
     tabs,
 }: {
     activeTab: string;
@@ -29,6 +30,8 @@ export const DesktopRightPanel = React.memo(function DesktopRightPanel({
     onCollapse: () => void;
     onTabChange: (key: string) => void;
     showCollapseButton?: boolean;
+    /** The parent owns the photo-skin tint; inner surfaces stay transparent. */
+    surfaceColor?: string;
     tabs: readonly DesktopRightPanelTab[];
 }) {
     const { theme } = useUnistyles();
@@ -39,7 +42,7 @@ export const DesktopRightPanel = React.memo(function DesktopRightPanel({
 
     return (
         <View
-            style={[styles.container, resizable && styles.containerResizable]}
+            style={[styles.container, resizable && styles.containerResizable, surfaceColor && { backgroundColor: surfaceColor }]}
             testID="desktop-right-panel"
         >
             {resizable && (
@@ -49,7 +52,7 @@ export const DesktopRightPanel = React.memo(function DesktopRightPanel({
                     side="right"
                 />
             )}
-            <View style={styles.header}>
+            <View style={[styles.header, surfaceColor && { backgroundColor: 'transparent' }]}>
                 <PanelTabs activeTab={activeTab} tabs={tabs} onTabChange={onTabChange} testIDPrefix="desktop-right-panel" />
                 {showCollapseButton ? <View style={styles.collapseButtonWrapper}>
                     <Pressable

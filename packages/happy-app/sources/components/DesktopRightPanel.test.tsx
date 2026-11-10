@@ -75,3 +75,19 @@ describe('DesktopRightPanel', () => {
         act(() => renderer.unmount());
     });
 });
+
+// The photograph must be tinted once by the pane, including behind its header.
+it.each([undefined, 'rgba(21,26,33,0.51)', '#151A21'])('owns one pane surface with color %s', (surfaceColor) => {
+    let renderer: any;
+    act(() => { renderer = TestRenderer.create(
+        <DesktopRightPanel activeTab="files" collapseAccessibilityLabel="Collapse" collapseLabel="Collapse"
+            onCollapse={vi.fn()} onTabChange={vi.fn()} surfaceColor={surfaceColor}
+            tabs={[{ key: 'files', label: 'Files', icon: 'folder-outline' }]}><React.Fragment /></DesktopRightPanel>,
+    ); });
+    const flatten = (style: any) => Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
+    const pane = renderer.root.findByProps({ testID: 'desktop-right-panel' });
+    expect(flatten(pane.props.style).backgroundColor).toBe(surfaceColor ?? '#fff');
+    const header = pane.findAll((node: any) => node.type === 'View' && flatten(node.props.style).minHeight === 48)[0];
+    expect(flatten(header.props.style).backgroundColor).toBe(surfaceColor ? 'transparent' : '#fff');
+    act(() => renderer.unmount());
+});

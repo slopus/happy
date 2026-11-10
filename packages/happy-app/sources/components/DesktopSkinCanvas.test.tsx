@@ -25,7 +25,7 @@ describe('DesktopSkinCanvas', () => {
         expect(renderer.root.findAllByProps({ testID: 'dreamskin-photo' })).toHaveLength(1);
         act(() => renderer.unmount());
     });
-    it('uses a translucent reading surface without duplicating the workspace photograph', () => {
+    it('keeps the wide reading tint when split panes narrow the chat without duplicating the photograph', () => {
         (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
         let renderer: any;
         act(() => { renderer = TestRenderer.create(<DesktopSkinCanvas skin="dreamskin" reading photo={false} />); });
@@ -37,9 +37,9 @@ describe('DesktopSkinCanvas', () => {
         expect(renderer.root.findAllByProps({ testID: 'dreamskin-reading-surface' })).toHaveLength(1);
         expect(renderer.root.findByProps({ testID: 'dreamskin-reading-surface' }).props.style.backgroundColor).toBe('rgba(21,26,33,0.51)');
         act(() => canvas.props.onLayout({ nativeEvent: { layout: { width: 960 } } }));
-        expect(renderer.root.findByProps({ testID: 'dreamskin-reading-surface' }).props.style.backgroundColor).toBe('rgba(21,26,33,0.70)');
-        act(() => canvas.props.onLayout({ nativeEvent: { layout: { width: 760 } } }));
-        expect(renderer.root.findByProps({ testID: 'dreamskin-reading-surface' }).props.style.backgroundColor).toBe('rgba(21,26,33,0.92)');
+        expect(renderer.root.findByProps({ testID: 'dreamskin-reading-surface' }).props.style.backgroundColor).toBe('rgba(21,26,33,0.51)');
+        act(() => canvas.props.onLayout({ nativeEvent: { layout: { width: 430 } } }));
+        expect(renderer.root.findByProps({ testID: 'dreamskin-reading-surface' }).props.style.backgroundColor).toBe('rgba(21,26,33,0.51)');
         expect(renderer.root.findAllByProps({ testID: 'dreamskin-photo' })).toHaveLength(0);
         act(() => renderer.unmount());
     });

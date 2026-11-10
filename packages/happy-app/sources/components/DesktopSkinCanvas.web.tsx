@@ -15,14 +15,12 @@ export function DesktopSkinCanvas({ reading = false, photo = true, readingWidth 
         const next = Math.round(event.nativeEvent.layout.width);
         setWidth((current) => current === next ? current : next);
     }, []);
-    // The session darkens the photograph according to its actual main-pane width.
-    // Home keeps the workspace photograph even when the capability panel is open.
+    // Only the photograph responds to the pane width. Reading glass keeps the
+    // same tint when chat is narrowed by the file workspace or right panel.
     const showAtmosphere = !reducedTransparency && (!reading || width >= 800);
-    const compactReading = reading && width < 1180;
     const visual = photoDesktopSkin(skin);
     const surface = theme.colors.desktopSkin;
-    const readingSurface = reducedTransparency ? surface.readingSolid : !showAtmosphere
-        ? surface.readingHidden : compactReading ? surface.readingCompact : surface.readingWide;
+    const readingSurface = reducedTransparency ? surface.readingSolid : surface.readingWide;
 
     return (
         <View

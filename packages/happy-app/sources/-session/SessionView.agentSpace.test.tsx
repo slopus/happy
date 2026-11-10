@@ -34,6 +34,7 @@ const mocks = vi.hoisted(() => ({
     runningOnMac: false,
     windowWidth: 390,
     desktopSkinId: 'default',
+    reducedTransparency: false,
     desktopReadingWidth: 960,
     setDesktopReadingWidth: vi.fn(),
     previewLocalSettings: vi.fn(),
@@ -169,6 +170,7 @@ vi.mock('react-native-unistyles', () => {
             header: { tint: '#ffffff' },
             primary: '#7c5cbf',
             shadow: { color: '#000000', opacity: 0.2 },
+            desktopSkin: { readingWide: 'rgba(21,26,33,0.51)', readingSolid: '#151A21' },
             surface: '#171717',
             surfaceHigh: '#202020',
             surfacePressed: '#333333',
@@ -199,6 +201,7 @@ vi.mock('react-native-unistyles', () => {
 vi.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}) } }));
 vi.mock('@/components/haptics', () => ({ hapticsLight: vi.fn() }));
+vi.mock('@/hooks/useReducedTransparency', () => ({ useReducedTransparency: () => mocks.reducedTransparency }));
 vi.mock('@/components/DesktopSkinCanvas', () => ({ DesktopSkinCanvas: (props: any) => React.createElement('DesktopSkinCanvas', props) }));
 vi.mock('@/components/rightPanel/SessionCapabilityHub', () => ({ SessionCapabilityHub: 'SessionCapabilityHub' }));
 vi.mock('@/components/RightSwipePanelHost', async () => {
@@ -506,6 +509,7 @@ describe('SessionView Agent-space boundary', () => {
         mocks.runningOnMac = false;
         mocks.windowWidth = 390;
         mocks.desktopSkinId = 'default';
+        mocks.reducedTransparency = false;
         mocks.desktopReadingWidth = 960;
         mocks.isTablet = false;
         mocks.isLandscape = false;
@@ -1299,6 +1303,24 @@ describe('SessionView Agent-space boundary', () => {
         expect(header.findAll((node: any) => node.children.includes('committed-file-slot'))).not.toHaveLength(0);
         expect(header.findAll((node: any) => node.children.includes('stale-after-file-commit'))).toHaveLength(0);
 
+        act(() => renderer.unmount());
+    });
+
+    it.each([
+        ['dreamskin', false, 'rgba(21,26,33,0.51)'],
+        ['dreamskin', true, '#151A21'],
+        ['default', false, '#111111'],
+    ] as const)('shares one reading surface with the right pane for %s (reduced transparency: %s)', (skin, reduced, color) => {
+        mocks.isDataReady = true; mocks.fileDiffsSidebarEnabled = true;
+        mocks.windowWidth = 2048; mocks.isTablet = true; mocks.platformOS = 'web';
+        mocks.desktopSkinId = skin; mocks.reducedTransparency = reduced;
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
+        const flatten = (style: any) => Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
+        const pane = renderer.root.findByProps({ testID: 'desktop-right-panel' });
+        expect(flatten(pane.props.style).backgroundColor).toBe(color);
+        act(() => renderer.root.findByProps({ testID: 'desktop-right-panel-files-tab' }).props.onPress());
+        expect(renderer.root.findByType('FilesSidebar').props.transparentBackground).toBe(skin !== 'default');
         act(() => renderer.unmount());
     });
 

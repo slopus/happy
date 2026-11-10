@@ -78,9 +78,9 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree }:
         const url = URL.createObjectURL(new Blob([document.phase === 'ready' ? document.draft : cachedDraft?.draft ?? ''], { type: 'text/plain;charset=utf-8' }));
         const anchor = globalThis.document.createElement('a'); anchor.href = url; anchor.download = path.split('/').pop() ?? 'file'; anchor.click(); URL.revokeObjectURL(url);
     };
-    return <View testID="file-workspace" onLayout={event => setWorkspaceWidth(Math.round(event.nativeEvent.layout.width))} style={{ flex: 1, minWidth: 0, minHeight: 0, backgroundColor: photoSkin ? (reducedTransparency ? theme.colors.desktopSkin.readingSolid : theme.colors.desktopSkin.readingCompact) : theme.colors.surface, borderRadius: 20, overflow: 'hidden' }} {...({ onKeyDown: (event: any) => { if (historyPath === path) return; if ((event.metaKey || event.ctrlKey) && event.key === 's') { event.preventDefault(); void controller.save(path); } } } as any)}>
+    return <View testID="file-workspace" onLayout={event => setWorkspaceWidth(Math.round(event.nativeEvent.layout.width))} style={{ flex: 1, minWidth: 0, minHeight: 0, backgroundColor: photoSkin ? (reducedTransparency ? theme.colors.desktopSkin.readingSolid : theme.colors.desktopSkin.readingWide) : theme.colors.surface, borderRadius: 20, overflow: 'hidden' }} {...({ onKeyDown: (event: any) => { if (historyPath === path) return; if ((event.metaKey || event.ctrlKey) && event.key === 's') { event.preventDefault(); void controller.save(path); } } } as any)}>
         <View style={{flex:1,minHeight:0}} {...(historyPath === path ? {"aria-hidden":true,inert:true} : {}) as any}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 46, backgroundColor: theme.colors.surface, borderBottomWidth: 1, borderColor: theme.colors.divider }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 46, backgroundColor: photoSkin ? 'transparent' : theme.colors.surface, borderBottomWidth: 1, borderColor: theme.colors.divider }}>
             <ScrollView horizontal style={{ flex: 1, minWidth: 0 }} contentContainerStyle={{ alignItems: 'center', paddingHorizontal: 6 }}>
                 {snapshot.tabs.map(file => <View key={file} {...(Platform.OS === 'web' ? {
                     tabIndex: 0,
@@ -104,7 +104,7 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree }:
             <Button label={workspace.maximized ? t('fileWorkspace.restore') : t('fileWorkspace.maximize')} icon={workspace.maximized ? 'contract-outline' : 'expand-outline'} compact onPress={() => workspace.setMaximized(!workspace.maximized)} />
             <Button label={t('fileWorkspace.close')} icon="close-outline" compact onPress={() => controller.setOpen(false)} />
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', padding: 8, gap: 4, backgroundColor: theme.colors.surface, borderBottomWidth: 1, borderColor: theme.colors.divider, flexWrap: 'wrap' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', padding: 8, gap: 4, backgroundColor: photoSkin ? 'transparent' : theme.colors.surface, borderBottomWidth: 1, borderColor: theme.colors.divider, flexWrap: 'wrap' }}>
             <Text numberOfLines={1} selectable style={{ flexGrow: 1, flexShrink: 1, fontSize: 12, color: theme.colors.textSecondary }}>{path.startsWith(workspace.root + '/') ? path.slice(workspace.root.length + 1).replaceAll('/', ' / ') : path}</Text>
             {previewable && <Button label={t('fileWorkspace.preview')} selected={preview} onPress={() => setModes(value => ({ ...value, [path]: true }))} />}
             <Button label={t('fileWorkspace.code')} selected={!preview} onPress={() => setModes(value => ({ ...value, [path]: false }))} />

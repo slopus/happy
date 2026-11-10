@@ -27,6 +27,7 @@ interface FilesSidebarProps {
     onModeChange?: (mode: SidebarMode) => void;
     onAllFilesFilePress?: (filePath: string) => void;
     allFilesContent?: React.ReactNode;
+    transparentBackground?: boolean;
 }
 
 type FileNode<T = GitFileStatus> = {
@@ -155,6 +156,7 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
     onModeChange,
     onAllFilesFilePress,
     allFilesContent,
+    transparentBackground = false,
 }) => {
     const openFile = useOpenSessionFile(sessionId);
     const { theme } = useUnistyles();
@@ -235,7 +237,7 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
     );
 
     return (
-        <View testID="session-files-sidebar" style={styles.container}>
+        <View testID="session-files-sidebar" style={[styles.container, transparentBackground && styles.transparentContainer]}>
             {/* Tab selector */}
             <View style={styles.header}>
                 {onModeChange ? (
@@ -582,6 +584,10 @@ const styles = StyleSheet.create((theme) => ({
         backgroundColor: theme.colors.groupped.background,
         borderLeftWidth: StyleSheet.hairlineWidth,
         borderLeftColor: theme.colors.divider,
+    },
+    transparentContainer: {
+        backgroundColor: 'transparent',
+        borderLeftWidth: 0,
     },
     header: {
         flexDirection: 'row',

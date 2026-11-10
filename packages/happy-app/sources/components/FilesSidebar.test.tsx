@@ -111,6 +111,20 @@ describe('FilesSidebar desktop tabs', () => {
 
     afterEach(() => consoleErrorSpy.mockRestore());
 
+    it('lets a photo-skin pane show through both file modes and keeps the default background otherwise', () => {
+        let renderer: any;
+        const flatten = (style: any) => Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
+        act(() => { renderer = TestRenderer.create(<FilesSidebar sessionId="session-1" transparentBackground mode="changes" />); });
+        const container = () => flatten(renderer.root.findByProps({ testID: 'session-files-sidebar' }).props.style);
+        expect(container()).toMatchObject({ backgroundColor: 'transparent', borderLeftWidth: 0 });
+        act(() => renderer.update(<FilesSidebar sessionId="session-1" transparentBackground mode="allFiles" allFilesContent={<React.Fragment />} />));
+        expect(container()).toMatchObject({ backgroundColor: 'transparent', borderLeftWidth: 0 });
+        act(() => renderer.update(<FilesSidebar sessionId="session-1" />));
+        expect(container().backgroundColor).not.toBe('transparent');
+        expect(container().borderLeftWidth).toBe(1);
+        act(() => renderer.unmount());
+    });
+
     it('moves forward and back while keeping exactly one selected tab', () => {
         let renderer: any;
         act(() => {
