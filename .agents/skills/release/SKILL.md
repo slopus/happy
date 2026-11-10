@@ -355,6 +355,25 @@ every file that holds the version), commit, push to `main`, and start Step 0
 again. `next` prints the version without writing anything. Never move or
 reuse an existing tag.
 
+### Debug symbols
+
+- **Android:** the AAB embeds the R8 mapping and any available native symbols
+  (`ndk.debugSymbolLevel = "FULL"` for release and preview). Before upload, list
+  its metadata with `unzip -Z1 <app.aab> 'BUNDLE-METADATA/*'`. If
+  `com.android.tools.build.debugsymbols` is present, Play receives those symbols
+  with the bundle; no separate upload is needed. Play's native-code-without-debug-symbols
+  warning is expected while every `.so` is a stripped vendor prebuilt:
+  `liblkjingle_peerconnection_so.so` (LiveKit WebRTC),
+  `libandroidx.graphics.path.so`, `libdatastore_shared_counter.so`,
+  `libimage_processing_util_jni.so` and `libsurface_util_jni.so` (AndroidX/CameraX).
+  Do not fabricate or upload a symbols zip containing stripped libraries. If
+  first-party native code is added, the build must produce its symbols and the
+  warning must go away.
+- **iOS:** export uploads the app's own dSYM. "Upload Symbols Failed" for
+  `LiveKitWebRTC.framework` or `RustLiveKitUniFFI.framework` is expected: those
+  vendor frameworks ship without dSYMs. Any other missing dSYM blocks the
+  release until investigated.
+
 ---
 
 ## Server Release

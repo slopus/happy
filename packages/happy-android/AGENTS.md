@@ -906,6 +906,8 @@ ANDROID_SERIAL=<device> ./gradlew :benchmark:connectedBenchmarkBenchAndroidTest 
 - A signed release or preview build without an explicit versionCode fails in
   `pre<Variant>Build`, before R8, rather than at the Play console.
 - Shipping goes through the `release` skill like every other release.
+- Release and preview bundles request native debug symbols at `FULL`; inspect
+  their `BUNDLE-METADATA` before upload and follow the release skill's "Debug symbols" rules.
 - CI: `.github/workflows/happy-android.yml` runs `assembleDebug
   assembleRelease testDebugUnitTest :crypto:test` on changes under
   `packages/happy-android/` and shared mobile resources. It has no signing

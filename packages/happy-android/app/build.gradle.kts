@@ -175,6 +175,8 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            // Embed native symbols in the bundle when the libraries supply them.
+            ndk { debugSymbolLevel = "FULL" }
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             resValue("string", "app_name", "Happy")
             signingConfig = signingConfigs.findByName("release")
@@ -182,6 +184,8 @@ android {
         create("preview") {
             isMinifyEnabled = true
             isShrinkResources = true
+            // Preview does not inherit release's native symbol configuration.
+            ndk { debugSymbolLevel = "FULL" }
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             matchingFallbacks += "release"
             resValue("string", "app_name", "Happy (preview)")
