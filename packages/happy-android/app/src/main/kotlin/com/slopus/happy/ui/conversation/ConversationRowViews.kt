@@ -244,7 +244,7 @@ fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: Co
                     }
                 }
             }
-            is ConversationRow.Ui -> UiComponentRow(row, content)
+            is ConversationRow.Ui -> UiComponentRow(row, actions.ui, content)
             is ConversationRow.UiMedia -> UiMediaRow(row, actions, content)
             is ConversationRow.Replies -> QuickRepliesRow(row, bubble, actions.ui, content)
             is ConversationRow.Collaborator -> CollaboratorProse(row, actions.legacy, content)

@@ -2,4 +2,8 @@
 <resources>
     <string name="conversation_quick_reply">↩ Resposta suggerida</string>
     <string name="conversation_ui_tree_show_all">Mostra-ho tot (%1$d)</string>
+    <string name="conversation_ui_model_title">Model predeterminat</string>
+    <string name="conversation_ui_model_reading">Llegint els models que ofereix aquest Happy Agent…</string>
+    <string name="conversation_ui_model_saving">Desant…</string>
+    <string name="conversation_ui_model_line">Els xats nous comencen aquí. Els que ja tens mantenen el seu.</string>
 </resources>

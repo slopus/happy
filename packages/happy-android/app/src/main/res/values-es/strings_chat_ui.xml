@@ -2,4 +2,8 @@
 <resources>
     <string name="conversation_quick_reply">↩ Respuesta sugerida</string>
     <string name="conversation_ui_tree_show_all">Mostrar todo (%1$d)</string>
+    <string name="conversation_ui_model_title">Modelo predeterminado</string>
+    <string name="conversation_ui_model_reading">Leyendo los modelos que ofrece este Happy Agent…</string>
+    <string name="conversation_ui_model_saving">Guardando…</string>
+    <string name="conversation_ui_model_line">Los chats nuevos empiezan aquí. Los que ya tienes conservan el suyo.</string>
 </resources>

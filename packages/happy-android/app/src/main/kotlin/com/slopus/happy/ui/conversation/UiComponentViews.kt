@@ -65,11 +65,12 @@ object UiSpec {
  * 14 folder or document glyph 6 before each name, a name too long for its
  * line cut with an ellipsis; at most twelve lines, then "Show all (N)"
  * (13/18 semibold, link colour, 4 under the lines, 4 above and below its
- * words), which shows them all for good. Any other component is its
- * fallback line: 14/20 textSecondary, an 18 info mark 10 before it.
+ * words), which shows them all for good. `default_model` is live
+ * ([UiDefaultModel]), where the rows act at all. Any other component is
+ * its fallback line: 14/20 textSecondary, an 18 info mark 10 before it.
  */
 @Composable
-fun UiComponentRow(row: ConversationRow.Ui, modifier: Modifier = Modifier) {
+fun UiComponentRow(row: ConversationRow.Ui, actions: UiRowActions?, modifier: Modifier = Modifier) {
     // Tagged outside the row's own inset, so a tag measures the whole row.
     val inset = { tag: String ->
         modifier
@@ -79,6 +80,7 @@ fun UiComponentRow(row: ConversationRow.Ui, modifier: Modifier = Modifier) {
     }
     when (val component = row.component) {
         is UiComponent.FileTree -> FileTree(row.key, component, inset(UiTags.FILE_TREE))
+        is UiComponent.DefaultModel -> if (actions != null) UiDefaultModel(row, actions, inset(UiDefaultModelTags.CARD)) else Fallback(component.fallback, inset(UiTags.FALLBACK))
         else -> Fallback(component.fallback, inset(UiTags.FALLBACK))
     }
 }

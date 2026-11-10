@@ -2,4 +2,8 @@
 <resources>
     <string name="conversation_quick_reply">↩ 建议的回复</string>
     <string name="conversation_ui_tree_show_all">显示全部（%1$d）</string>
+    <string name="conversation_ui_model_title">默认模型</string>
+    <string name="conversation_ui_model_reading">正在读取此 Happy Agent 提供的模型…</string>
+    <string name="conversation_ui_model_saving">正在保存…</string>
+    <string name="conversation_ui_model_line">新聊天从这里开始。已有的聊天保留各自的模型。</string>
 </resources>
