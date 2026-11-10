@@ -7,7 +7,7 @@ import type { AttachmentGalleryPresentation } from '@/utils/attachmentGalleryLay
 import { generateThumbhash } from '@/utils/thumbhash';
 import { getImagesFromClipboard } from '@/utils/pasteImages.web';
 import { useDesktopReadingWidth } from './DesktopReadingWidth';
-import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
+import { MultiTextInput, KeyPressEvent, MULTI_TEXT_INPUT_FONT_SIZE, MULTI_TEXT_INPUT_LINE_HEIGHT } from './MultiTextInput';
 import { Typography } from '@/constants/Typography';
 import { hapticsLight, hapticsError } from './haptics';
 import { Shaker, ShakeInstance } from './Shaker';
@@ -57,6 +57,7 @@ interface MessageComposerProps {
     /** Unaccepted auxiliary text. Never contributes to hasPayload or the draft. */
     predictionText?: string | null;
     onDismissPrediction?: () => void;
+    onPredictionInputActivity?: () => void;
     sessionId?: string;
     onSend: () => void;
     /** Keyboard-only queue shortcut; the primary button also stages submissions. */
@@ -166,25 +167,11 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         left: 8,
         right: 8,
         color: theme.colors.input.placeholder,
-        fontSize: 16,
-        lineHeight: 22,
+        opacity: 0.65,
+        fontSize: MULTI_TEXT_INPUT_FONT_SIZE,
+        lineHeight: MULTI_TEXT_INPUT_LINE_HEIGHT,
         ...Typography.default(),
     },
-    predictionActions: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 8,
-        paddingBottom: 4,
-        gap: 8,
-    },
-    predictionButton: {
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 6,
-        backgroundColor: theme.colors.surface,
-    },
-    predictionButtonPressed: { backgroundColor: theme.colors.surfacePressed },
-    predictionLabel: { color: theme.colors.textSecondary, fontSize: 12, ...Typography.default() },
 
     // Overlay styles
     autocompleteOverlay: {
@@ -711,8 +698,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
         if (!predictionText || inputRef.current?.getText() !== '') return;
         inputRef.current.setTextAndSelection(predictionText, { start: predictionText.length, end: predictionText.length });
         inputRef.current.focus();
-        props.onDismissPrediction?.();
-    }, [predictionText, props.onDismissPrediction]);
+    }, [predictionText]);
 
     // Handle suggestion selection
     const handleSuggestionSelect = React.useCallback((index: number) => {
@@ -944,29 +930,19 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                             paddingBottom={Platform.OS === 'web' ? 10 : 8}
                             onChangeText={handleTextChange}
                             placeholder={predictionText ? '' : props.placeholder}
-                            onInputActivity={props.onDismissPrediction}
+                            onInputActivity={props.onPredictionInputActivity ?? props.onDismissPrediction}
                             onKeyPress={handleKeyPress}
                             onStateChange={handleInputStateChange}
                             maxHeight={Platform.OS === 'web' ? 480 : 120}
                         />
-                        {predictionText && <Text testID="composer-prediction-text" pointerEvents="none"
+                        {predictionText && <Text testID="composer-prediction-text"
+                            pointerEvents={Platform.OS === 'web' ? 'none' : 'auto'}
+                            onPress={Platform.OS === 'web' ? undefined : acceptPrediction}
+                            accessibilityRole={Platform.OS === 'web' ? undefined : 'button'}
+                            accessibilityLabel={t('agentInput.prediction.accept')}
+                            accessibilityHint={predictionText}
                             numberOfLines={1} style={styles.predictionGhost}>{predictionText}</Text>}
                     </View>
-
-                    {predictionText && <View style={styles.predictionActions}>
-                        <Pressable testID="composer-prediction-accept" accessibilityRole="button"
-                            accessibilityLabel={t('agentInput.prediction.accept')} accessibilityHint={predictionText}
-                            onPress={acceptPrediction}
-                            style={({ pressed }) => [styles.predictionButton, pressed && styles.predictionButtonPressed]}>
-                            <Text style={styles.predictionLabel}>{t(Platform.OS === 'web' && screenWidth >= 768
-                                ? 'agentInput.prediction.acceptHint' : 'agentInput.prediction.accept')}</Text>
-                        </Pressable>
-                        <Pressable testID="composer-prediction-dismiss" accessibilityRole="button"
-                            accessibilityLabel={t('agentInput.prediction.dismiss')} onPress={props.onDismissPrediction}
-                            style={({ pressed }) => [styles.predictionButton, pressed && styles.predictionButtonPressed]}>
-                            <Ionicons name="close" size={14} color={theme.colors.textSecondary} />
-                        </Pressable>
-                    </View>}
 
                     {/* Action buttons below input */}
                     <View style={styles.actionButtonsContainer}>

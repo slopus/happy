@@ -8,15 +8,20 @@ editable draft; sending remains a separate user action.
 ## Interaction
 
 - Request once per completed source turn while the conversation is focused,
-  foregrounded, connected, caught up, and has no draft, attachments, selected
-  context, staged messages, or outgoing messages.
-- Render ghost text using the current theme's input placeholder token.
-  Tab or the fill button accepts it. Shift+Tab retains focus navigation.
-  Enter does not accept the prediction; Escape or the close button dismisses it.
+  foregrounded, connected, at the latest messages, and has no draft, attachments,
+  selected context, staged messages, or outgoing messages. Sampling overlaps final
+  history synchronization; display waits until that synchronization is ready.
+- Render only subdued ghost text using the current theme's input placeholder
+  token and the same typography as the input. There is no toolbar, visible Tab
+  prompt or close button. Tab accepts on Web; tapping the text accepts on native.
+  Shift+Tab retains focus navigation, Enter does not accept, and Escape dismisses.
 - Normal autocomplete retains keyboard priority. Existing nonempty-input queue
   shortcuts keep their behavior. IME composition and paste invalidate first.
-- Typing, restored drafts, attachments, backgrounding, changed session/model/
-  permissions/directory, or the next root turn invalidate the candidate.
+- Typing and accepted drafts hide the candidate while retaining a completed
+  same-context cache. Deleting all text restores that cache immediately with no
+  RPC or model request. Explicit dismissal, attachments, backgrounding, changed
+  session/model/permissions/directory or the next root turn discard it. Pending
+  sampling is still cancelled at input/IME/paste start and cannot revive late.
   Results are checked against the source, context key and synchronous input
   generation before display, including a type-then-delete race.
 - Predictions are not saved to the draft, transcript, or message queue. Empty,
@@ -43,6 +48,11 @@ Core executes tools and returns null for tool calls. It also owns fork cleanup.
 Do not replace it with ordinary `thread/fork` + `turn/start`, or with the separate
 `thread/prediction/request` method: the latter is unimplemented in the audited
 upstream commit.
+
+MCP startup/discovery is disabled for the auxiliary sample where upstream supports
+that optimization (Responses Lite with inherited incremental tool definitions);
+other model paths retain upstream behavior. The sample still inherits context
+and cannot execute tools.
 
 Low effort is requested as a hint: upstream applies it only for supported
 models/providers. There is no separate model parameter on this API. Auxiliary
@@ -104,3 +114,11 @@ Audited upstream: openai/codex commit
 `b32ada5320b043bde03a10edab6b88fc126812b4`,
 `codex-rs/app-server/src/thread_sample.rs` and
 `codex-rs/app-server/tests/suite/v2/thread_sample.rs`.
+
+2026-11-11 refinement: a single sequential same-source comparison on gpt-6.1-sol
+returned `改得更温暖一点。` for both samples, 9454 ms with MCP initialization
+and 7632 ms with `disableMcp: true`. Input tokens were 40129 vs 35871 (24832
+cached for both); output tokens were 11 for both. Root history was unchanged
+with one root start. This is one measurement with order/cache/network effects,
+not a latency benchmark or a claim of instant first prediction. The immediate
+delete-to-restore path uses the already completed UI cache and does no inference.

@@ -6,7 +6,7 @@ import {
 import type { CodexAppServerClient } from './codexAppServerClient';
 
 const PREDICTION_PROMPT = `Predict the next message the user is most likely to type, based on the conversation so far.
-Return only one short message in the user's voice and language, at most 100 words and 240 characters.
+Return only one short message in the user's voice and language, one brief sentence, ideally under 12 words and always under 240 characters.
 Do not answer the assistant, explain, call tools, invent permission, or expand the user's stated goal.
 If the next message is unclear, return exactly <NO_SUGGESTION>.`;
 

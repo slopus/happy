@@ -416,7 +416,9 @@ export class CodexAppServerClient {
             return await this.request('thread/sample', {
                 threadId: this._threadId, expectedTurnId: sourceTurnId, prompt,
                 effort: 'low', threadSource: 'composer_predictions', turnTrigger: 'composer_predictions',
-                interruptOnCancel: true,
+                // With inherited incremental tool definitions, the sample can
+                // skip MCP startup/discovery. Upstream guards other model paths.
+                disableMcp: true, interruptOnCancel: true,
             }, CodexAppServerClient.PREDICTION_TIMEOUT_MS, controller.signal, (requestId) => {
                 if (this.processEpoch !== epoch) return;
                 void this.request('thread/sample/cancel', { requestId }, 2_000).catch(() => {});

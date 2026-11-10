@@ -1644,12 +1644,12 @@ const ChatComposer = React.memo(function ChatComposer(props: ChatComposerProps) 
     const { clearDraft, updateDraft } = useDraft(sessionId, message, applyDraft);
 
     const handleChangeText = React.useCallback((text: string) => {
-        prediction.invalidate();
+        prediction.onTextChange(text);
         updateDraft(text);
         // Transition keeps the textarea responsive even when the draft
         // autosave / re-render takes longer than a frame.
         React.startTransition(() => setMessage(text));
-    }, [updateDraft, prediction.invalidate]);
+    }, [updateDraft, prediction.onTextChange]);
 
     React.useImperativeHandle(composerHandleRef, () => ({
         getMessage: () => inputHandleRef.current?.getText() ?? '',
@@ -1674,6 +1674,7 @@ const ChatComposer = React.memo(function ChatComposer(props: ChatComposerProps) 
             initialValue={initialDraft}
             onChangeText={handleChangeText}
             predictionText={prediction.text}
+            onPredictionInputActivity={prediction.onInputActivity}
             onDismissPrediction={prediction.invalidate}
         />
     );
@@ -2041,7 +2042,8 @@ function SessionViewLoaded({
                     session.metadata?.currentModelCode, session.metadata?.currentThoughtLevelCode,
                     nextTurnModes.modelMode, nextTurnModes.effortLevel, session.permissionMode, session.fastMode,
                     session.metadata?.path, workingDirectory.currentPath]),
-                enabled: isFocused && !isDisconnected && !isSyncingResults && isLoaded && isAtLatest
+                readyToDisplay: !isSyncingResults,
+                enabled: isFocused && !isDisconnected && isLoaded && isAtLatest
                     && isCodexSessionFlavor(session.metadata?.flavor)
                     && !hasMoreNewer && session.metadata?.capabilities?.composerPrediction === true
                     && session.agentState?.turnStatus?.status === 'completed'

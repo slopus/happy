@@ -185,7 +185,7 @@ vi.mock('@/hooks/useSessionManagementPreferences', () => ({
 vi.mock('@/hooks/useSessionTaskPermission', () => ({ useSessionTaskPermission: () => ({}) }));
 vi.mock('@/hooks/useSessionWorkingDirectory', () => ({ useSessionWorkingDirectory: () => ({}) }));
 vi.mock('@/hooks/useDraft', () => ({ useDraft: () => ({ clearDraft: vi.fn(), updateDraft: vi.fn() }) }));
-vi.mock('@/hooks/useComposerPrediction', () => ({ useComposerPrediction: () => ({ text: null, invalidate: vi.fn() }) }));
+vi.mock('@/hooks/useComposerPrediction', () => ({ useComposerPrediction: () => ({ text: null, invalidate: vi.fn(), onTextChange: vi.fn(), onInputActivity: vi.fn() }) }));
 vi.mock('@/hooks/useImagePicker', () => ({ useImagePicker: () => ({ selectedImages: [] }) }));
 
 // Keep the existing host selector while exercising the real content/placeholder

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import * as React from 'react';
 import { act } from 'react';
+import { Platform } from 'react-native';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // @ts-expect-error react-test-renderer has no declarations in this workspace.
@@ -42,6 +43,8 @@ vi.mock('./AgentInputAttachmentStrip', () => ({ AgentInputAttachmentStrip: 'Agen
 vi.mock('./MultiTextInput', async () => {
     const ReactModule = await import('react');
     return {
+        MULTI_TEXT_INPUT_FONT_SIZE: 16,
+        MULTI_TEXT_INPUT_LINE_HEIGHT: 22,
         MultiTextInput: ReactModule.forwardRef<any, any>((props, ref) => {
             const text = ReactModule.useRef(props.defaultValue ?? '');
             ReactModule.useImperativeHandle(ref, () => ({
@@ -95,7 +98,7 @@ vi.mock('react-native-unistyles', () => {
                 secondary: { tint: '#fff' },
             },
             divider: '#444',
-            input: { background: '#111' },
+            input: { background: '#111', text: '#fff', placeholder: '#999' },
             radio: { active: '#f90' },
             shadow: { color: '#000', opacity: 0.2 },
             success: '#0f0',
@@ -128,6 +131,7 @@ describe('MessageComposer web image paste', () => {
     const renderers: any[] = [];
 
     beforeEach(async () => {
+        Platform.OS = 'web';
         vi.stubGlobal('matchMedia', () => ({ matches: false }));
         vi.stubGlobal('Image', class {
             naturalWidth = 100;
@@ -260,30 +264,49 @@ describe('MessageComposer web image paste', () => {
         expect(onChange).toHaveBeenCalledExactlyOnceWith('Show me the preview.');
         expect(onQueue).not.toHaveBeenCalled();
         expect(onSend).not.toHaveBeenCalled();
-        expect(onDismiss).toHaveBeenCalledOnce();
+        expect(onDismiss).not.toHaveBeenCalled();
     });
 
-    it('does not overwrite live input with a late candidate and supports mobile fill and dismiss buttons', () => {
+    it('shows only subdued ghost text, restores it after deletion and keeps Escape dismissal', () => {
         const ref = React.createRef<any>();
-        const onSend = vi.fn();
         const onDismiss = vi.fn();
         let renderer: any;
         act(() => {
             renderer = TestRenderer.create(<MessageComposer ref={ref} mode="session" initialValue="" placeholder="Message"
-                onSend={onSend} predictionText="Suggested reply" onDismissPrediction={onDismiss} />);
+                onSend={vi.fn()} predictionText="Suggested reply" onDismissPrediction={onDismiss} />);
             renderers.push(renderer);
         });
-        const button = () => renderer.root.findAllByType('Pressable').find((node: any) => node.props.testID === 'composer-prediction-accept');
-        act(() => button().props.onPress());
+        const ghost = () => renderer.root.findByProps({ testID: 'composer-prediction-text' });
+        expect(ghost().props.style).toMatchObject({ color: '#999', opacity: 0.65, fontSize: 16, lineHeight: 22 });
+        expect(ghost().props.pointerEvents).toBe('none');
+        expect(renderer.root.findAllByProps({ testID: 'composer-prediction-accept' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'composer-prediction-dismiss' })).toHaveLength(0);
+        const input = () => renderer.root.findByType('MultiTextInput');
+        act(() => input().props.onKeyPress({ key: 'Tab', shiftKey: false }));
         expect(ref.current.getText()).toBe('Suggested reply');
-        expect(onSend).not.toHaveBeenCalled();
+        expect(renderer.root.findAllByProps({ testID: 'composer-prediction-text' })).toHaveLength(0);
+        act(() => ref.current.setTextAndSelection('', { start: 0, end: 0 }));
+        expect(ghost().props.children).toBe('Suggested reply');
+        act(() => input().props.onKeyPress({ key: 'Escape', shiftKey: false }));
+        expect(onDismiss).toHaveBeenCalledOnce();
         act(() => ref.current.setTextAndSelection('My own reply', { start: 12, end: 12 }));
         expect(renderer.root.findAllByProps({ testID: 'composer-prediction-text' })).toHaveLength(0);
         expect(ref.current.getText()).toBe('My own reply');
-        act(() => ref.current.setTextAndSelection('', { start: 0, end: 0 }));
-        const dismiss = renderer.root.findAllByType('Pressable').find((node: any) => node.props.testID === 'composer-prediction-dismiss');
-        act(() => dismiss.props.onPress());
-        expect(onDismiss).toHaveBeenCalledTimes(2);
+    });
+
+    it('accepts native ghost text by tapping the text itself without extra controls or sending', () => {
+        Platform.OS = 'android';
+        const ref = React.createRef<any>();
+        const onSend = vi.fn();
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<MessageComposer ref={ref} mode="session" initialValue="" placeholder="Message"
+                onSend={onSend} predictionText="Suggested reply" />);
+            renderers.push(renderer);
+        });
+        act(() => renderer.root.findByProps({ testID: 'composer-prediction-text' }).props.onPress());
+        expect(ref.current.getText()).toBe('Suggested reply');
+        expect(onSend).not.toHaveBeenCalled();
     });
 
     it('hides predictions when contextual content is pending', () => {

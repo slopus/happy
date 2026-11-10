@@ -65,7 +65,7 @@ describe('composer prediction', () => {
         const first = runtime.handlers.request({ requestId: 'device-a', sourceTurnId: 'done' });
         const second = runtime.handlers.request({ requestId: 'device-b', sourceTurnId: 'done' });
         const sample = await arrived;
-        expect(sample.params).toMatchObject({ threadId: 'parent', expectedTurnId: 'done', effort: 'low', interruptOnCancel: true });
+        expect(sample.params).toMatchObject({ threadId: 'parent', expectedTurnId: 'done', effort: 'low', disableMcp: true, interruptOnCancel: true });
         expect(sample.params).not.toHaveProperty('model');
         runtime.reply(sample.id, { sourceTurnId: 'done', responseId: 'r', text: 'Show me the preview.' });
         expect(await first).toEqual({ sourceTurnId: 'done', status: 'ready', text: 'Show me the preview.' });
