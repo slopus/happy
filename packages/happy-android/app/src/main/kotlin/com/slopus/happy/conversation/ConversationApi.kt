@@ -6,6 +6,7 @@ import com.slopus.happy.chat.str
 import com.slopus.happy.connection.AgentConnectionException
 import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.connection.TransportResponse
+import com.slopus.happy.conversation.ui.QuickReply
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -147,6 +148,8 @@ open class ConversationApi(
         mode: Mode,
         toolRequest: ToolRequest? = null,
         attachments: List<SentAttachment> = emptyList(),
+        /** The suggested reply [text] is, exactly: the daemon checks it, and answers `400` where it isn't. */
+        quickReply: QuickReply? = null,
     ): Message? {
         val body = buildJsonObject {
             put("id", id)
@@ -162,6 +165,7 @@ open class ConversationApi(
             )
             put("delivery", "steer")
             put("clientMetadata", buildJsonObject { put("composer", "mobile") })
+            quickReply?.let { put("quickReply", it.json()) }
             if (images.isNotEmpty() || attachments.isNotEmpty() || toolRequest != null) put("content", buildJsonArray {
                 images.forEach { add(buildJsonObject { put("type", "image"); put("mimeType", it.mimeType); put("data", it.data) }) }
                 attachments.forEach { add(buildJsonObject { put("type", "file"); put("attachment", it.id); put("name", it.name) }) }

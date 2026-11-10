@@ -147,6 +147,8 @@ class ConversationRowActions(
     val videos: VideoOpening? = null,
     /** HTML artifacts shown inline under their cards; null where none are. */
     val pages: InlinePages? = null,
+    /** What chat UI and suggested replies act with; null where the rows are only read, and nothing of theirs takes a tap. */
+    val ui: UiRowActions? = null,
 )
 
 /** Plays the recording [ref] whose tile is [key]: in the viewer, once it can ([VideoOpening]). */
@@ -242,6 +244,7 @@ fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: Co
                     }
                 }
             }
+            is ConversationRow.Replies -> QuickRepliesRow(row, bubble, actions.ui, content)
             is ConversationRow.Collaborator -> CollaboratorProse(row, actions.legacy, content)
             is ConversationRow.Failure -> FailureRow(row, actions, content)
             is ConversationRow.Ask -> AskRow(row, actions.asks, content)
@@ -328,21 +331,24 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
     val cut = remember(prose) { prose?.cut(UserFold.FOLD_LINES) }
     val toggle = stringResource(if (row.opened) R.string.machine_launcher_show_less else R.string.conversation_show_full)
     if (row.text.isNotEmpty() || failed) {
-        UserMessage(
-            ChatRow.User(message, UserDisplay.Text(row.text, row.blocks), delivery = delivery, time = row.createdAt),
-            bubble,
-            actions.legacy,
-            modifier.fillMaxWidth(),
-            statusLine = false,
-            onRetry = if (failed) ({ actions.legacy.onRetry(row.messageId) }) else null,
-            onDiscard = if (failed) ({ actions.legacy.onDiscard(row.messageId) }) else null,
-            attachments = if (row.pictures.isEmpty()) null else {
-                { Box(Modifier.padding(top = ConversationRowSpec.photosGap)) { photos(row, actions) } }
-            },
-            onTap = if (cut != null) ({ actions.onToggleMessage(row.key) }) else null,
-            tapLabel = toggle,
-            body = if (prose != null) { _ -> UserProse(row, prose, cut, actions.legacy) } else null,
-        )
+        Column(modifier.fillMaxWidth()) {
+            UserMessage(
+                ChatRow.User(message, UserDisplay.Text(row.text, row.blocks), delivery = delivery, time = row.createdAt),
+                bubble,
+                actions.legacy,
+                Modifier.fillMaxWidth(),
+                statusLine = false,
+                onRetry = if (failed) ({ actions.legacy.onRetry(row.messageId) }) else null,
+                onDiscard = if (failed) ({ actions.legacy.onDiscard(row.messageId) }) else null,
+                attachments = if (row.pictures.isEmpty()) null else {
+                    { Box(Modifier.padding(top = ConversationRowSpec.photosGap)) { photos(row, actions) } }
+                },
+                onTap = if (cut != null) ({ actions.onToggleMessage(row.key) }) else null,
+                tapLabel = toggle,
+                body = if (prose != null) { _ -> UserProse(row, prose, cut, actions.legacy) } else null,
+            )
+            if (row.suggested) SuggestedLine()
+        }
     } else if (row.pictures.isNotEmpty()) {
         Box(
             modifier

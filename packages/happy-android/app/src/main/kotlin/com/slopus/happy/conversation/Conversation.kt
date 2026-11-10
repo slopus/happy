@@ -20,6 +20,7 @@ import com.slopus.happy.chat.num
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
 import com.slopus.happy.connection.AgentConnectionException
+import com.slopus.happy.conversation.ui.QuickReply
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -206,6 +207,8 @@ class Conversation(
         var skill: String? = null,
         /** A voice call's words ([sendAs]). */
         val voice: Boolean = false,
+        /** A suggested reply tapped ([sendReply]): [text] is its option, exactly. */
+        val quickReply: QuickReply? = null,
         var accepted: Boolean = false,
         var failure: Problem? = null,
         val sentAt: Long,
@@ -839,6 +842,23 @@ class Conversation(
         true
     }
 
+    /**
+     * Sends option [index] of the suggestion [replies]: an ordinary send of
+     * the option's words, exactly, with `quickReply` naming it, in order
+     * with the composer's sends. The draft is left as it is. Nothing goes
+     * where the option isn't there, or from a stack that takes no tap now
+     * ([ConversationRow.Replies.live]), so a second tap sends nothing.
+     */
+    fun sendReply(replies: ConversationRow.Replies, index: Int) {
+        val text = replies.options.getOrNull(index) ?: return
+        scope.launch(lane) {
+            if (closed || snapshot.rows.none { it is ConversationRow.Replies && it.key == replies.key && it.live }) return@launch
+            queue(Outgoing(ConversationApi.clientId(), text, emptyList(), quickReply = replies.reply(index), sentAt = now()))
+            publish()
+            pump()
+        }
+    }
+
     /** Whether [id] is a message here already: one of this phone's sends, or one the computer has. */
     suspend fun has(id: String): Boolean = withContext(lane) { outgoing.any { it.id == id } || id in messages }
 
@@ -1040,7 +1060,8 @@ class Conversation(
         scope.launch(lane) {
             val send = outgoing.firstOrNull { it.id == id && it.failure != null } ?: return@launch
             outgoing.remove(send)
-            if (draft.isBlank() && send.text.isNotEmpty()) {
+            // A suggested reply's words were never typed: nothing goes back to the composer.
+            if (send.quickReply == null && draft.isBlank() && send.text.isNotEmpty()) {
                 setDraftNow(send.text)
                 publish { it.copy(draftArrivals = it.draftArrivals + 1) }
             } else {
@@ -1077,7 +1098,7 @@ class Conversation(
                                 uploads.set(UploadBoard.pictureKey(next.id, index), if (share >= 1f) UploadPhase.Done else UploadPhase.Uploading(share))
                             }
                         }
-                        withContext(progress) { api.send(agentId, next.id, wire(next), images, mode, next.toolRequest, attachments) }
+                        withContext(progress) { api.send(agentId, next.id, wire(next), images, mode, next.toolRequest, attachments, next.quickReply) }
                     }
                     // All there, whatever the transport told on the way; the echo clears them.
                     images.indices.forEach { uploads.set(UploadBoard.pictureKey(next.id, it), UploadPhase.Done) }
@@ -1601,6 +1622,9 @@ class Conversation(
         }
     }
 
+    /** Every message the computer has, in order: each run's, then those waiting for one. */
+    private fun history(): List<Message> = (runs.flatMap { it.second } + pending).mapNotNull(messages::get)
+
     private fun derive(base: ConversationState): ConversationState {
         val agent = agent
         val working = running || agent?.isWorking == true || outgoing.any { it.accepted }
@@ -1612,10 +1636,12 @@ class Conversation(
             val streaming = working && runId == lastRun
             val turn = ArrayList<ConversationRow>()
             var tools = 0
+            val replies = QuickReplyPlacement()
             for (id in ids) messages[id]?.let { message ->
                 if (message.role == "agent") tools += message.content.count { it is Block.ToolCall }
-                turn += settled(sentAt(builder.rows(message, agentId, parentAgentId, streaming && message.role == "agent")), waiting)
+                replies.add(turn, message.role, settled(sentAt(builder.rows(message, agentId, parentAgentId, streaming && message.role == "agent")), waiting))
             }
+            replies.place(turn)
             // Ended: how, after how long, and the answer to copy (desktop's `turnStatus`); then it folds.
             val info = runInfo[runId]
             val endedAt = info?.endedAt
@@ -1651,9 +1677,12 @@ class Conversation(
             val delivery = send.failure?.let(Delivery::Failed) ?: if (send.accepted) Delivery.Pending else Delivery.Sending
             val time = shownAt.getOrPut(send.id) { send.sentAt }
             val text = shown(send)
-            rows += ConversationRow.User("${send.id}:user", send.id, text, com.slopus.happy.chat.markdown.parseMarkdown(text, hasSettingsPage), send.images + send.thumbnails, delivery, time)
+            rows += ConversationRow.User("${send.id}:user", send.id, text, com.slopus.happy.chat.markdown.parseMarkdown(text, hasSettingsPage), send.images + send.thumbnails, delivery, time, suggested = send.quickReply != null)
         }
         if (opened.isNotEmpty()) rows.replaceAll { if (it is ConversationRow.User && it.key in opened) it.copy(opened = true) else it }
+        if (rows.any { it is ConversationRow.Replies }) {
+            QuickReplyRows.mark(rows, history(), outgoing.mapNotNull { it.quickReply }, unsent = outgoing.isNotEmpty())
+        }
         builder.forget(messages.keys)
         val produced = lastRun != null && running &&
             runs.last().second.any { id -> messages[id]?.let { it.role == "agent" && it.content.isNotEmpty() } == true }

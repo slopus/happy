@@ -211,6 +211,8 @@ class ConversationScreenActions(
     val onOpenTool: ((String) -> Unit)? = null,
     /** How a workspace's folders read, for naming one of its files from the attach sheet; null where they can't. */
     val workspace: ((workspaceId: String) -> com.slopus.happy.ui.files.WorkspaceSource)? = null,
+    /** Sends a suggested reply ([com.slopus.happy.conversation.Conversation.sendReply]). */
+    val onQuickReply: (ConversationRow.Replies, Int) -> Unit = { _, _ -> },
 )
 
 /**
@@ -296,6 +298,8 @@ fun ConversationScreen(
     val videoLabel = stringResource(R.string.artifact_video)
     val folds = remember(listState) { FoldHold(listState) }
     val videos = rememberVideoOpening(store::video)
+    // A suggested reply is a send: it goes where the composer would, from whoever may write here.
+    val sends by rememberUpdatedState(state.created && state.agent?.archivedAt == null && roleCanSend)
     val rowActions = remember(actions, legacy, pictures, media, store, pictureLabel, videoLabel, asks, folds, videos) {
         ConversationRowActions(
             legacy = legacy,
@@ -322,6 +326,10 @@ fun ConversationScreen(
             kept = store.kept,
             videos = videos,
             pages = actions.pages,
+            ui = UiRowActions(
+                reply = { replies, index -> if (sends) actions.onQuickReply(replies, index) },
+                replies = { sends },
+            ),
         )
     }
     val atNewest by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }
