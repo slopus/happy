@@ -171,7 +171,9 @@ public enum UiCatalog {
 
 /// The props of the components the phone draws, read as their schemas
 /// allow and no further: nil where they don't fit, and the component is
-/// its fallback line.
+/// its fallback line. These checks mirror the `file_tree`, `media` and
+/// `default_model` schemas in the vendored `ui.schema.json` and change
+/// with them; the vendored `documents` vectors say which props fit.
 public enum UiProps {
     /// `file_tree`: 1 to 200 paths of 1 to 1024 characters, none a control.
     public static func fileTree(_ props: JSONValue) -> [String]? {
