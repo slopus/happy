@@ -18,6 +18,8 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 export const ca: TranslationStructure = {
     projectGoals: {
         ...projectGoalsBase.projectGoals,
+        mobileChat: "Xat",
+        chooseChat: "Obre una conversa",
         collapseTasks: "Contreu la llista de tasques",
         showTasks: "Expandeix la llista de tasques",
         emptyConversationEyebrow: "Conversa de la tasca",

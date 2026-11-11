@@ -541,7 +541,7 @@ function DesktopReadingWidthControl() {
     </View>;
 }
 
-type SessionViewProps = { id: string; fileOpenRequest?: { path: string; requestId: string }; embedded?: boolean; fullWidth?: boolean; emptyState?: React.ReactNode | ((appendDraft: (text: string) => void) => React.ReactNode) };
+type SessionViewProps = { id: string; fileOpenRequest?: { path: string; requestId: string }; embedded?: boolean; projectTaskContext?: boolean; fullWidth?: boolean; emptyState?: React.ReactNode | ((appendDraft: (text: string) => void) => React.ReactNode) };
 
 export const SessionView = React.memo((props: SessionViewProps) => (
     <SubagentInspectorProvider sessionId={props.id}>
@@ -1204,7 +1204,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
             {dreamskinHeaderActions}
             {goalParentAction}
             {moreButton}
-            {showChip && <View ref={goalTriggerAnchor}><GoalBoardTrigger completed={goalBoard.snapshot?.tasks.filter(task => task.status === 'done').length ?? 0}
+            {showChip && !props.projectTaskContext && <View ref={goalTriggerAnchor}><GoalBoardTrigger completed={goalBoard.snapshot?.tasks.filter(task => task.status === 'done').length ?? 0}
                 total={goalBoard.snapshot?.tasks.length ?? 0} open={goalBoardOpen} onPress={toggleGoalBoard} /></View>}
             {rightPanelToggleButton}
         </View>
@@ -1215,7 +1215,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
             {dreamskinHeaderActions}
             {goalParentAction}
             {moreButton}
-            {showChip && <View ref={goalTriggerAnchor}><GoalBoardTrigger completed={goalBoard.snapshot?.tasks.filter(task => task.status === 'done').length ?? 0}
+            {showChip && !props.projectTaskContext && <View ref={goalTriggerAnchor}><GoalBoardTrigger completed={goalBoard.snapshot?.tasks.filter(task => task.status === 'done').length ?? 0}
                 total={goalBoard.snapshot?.tasks.length ?? 0} open={goalBoardOpen} onPress={toggleGoalBoard} /></View>}
             {rightPanelToggleButton}
             {headerRightSlot}

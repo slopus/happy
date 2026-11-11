@@ -599,7 +599,7 @@ export const SidebarView = React.memo(({
                 testID="sidebar-command-palette-button"
             />
             <View style={styles.desktopRailDivider} />
-            {desktopPrimaryNavigation && <DesktopRailItem
+            {railNavigation && <DesktopRailItem
                 icon="folder-open-outline"
                 label={t('projectGoals.allProjects')}
                 onPress={() => go('/projects')}

@@ -16,6 +16,8 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const en = {
     projectGoals: {
+        mobileChat: "Chat",
+        chooseChat: "Open conversation",
         sessionUnavailable: 'This conversation could not be loaded. Check the connection or choose another conversation from history.',
         loadingArchive: 'Loading projects from this machine…',
         loadingTasks: 'Task list',

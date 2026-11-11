@@ -21,6 +21,8 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 export const ja: TranslationStructure = {
     projectGoals: {
         ...projectGoalsBase.projectGoals,
+        mobileChat: "会話",
+        chooseChat: "会話を開く",
         collapseTasks: "タスク一覧を折りたたむ",
         showTasks: "タスク一覧を展開",
         emptyConversationEyebrow: "タスクの会話",

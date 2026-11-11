@@ -27,7 +27,7 @@ export function SessionFileWorkspaceProvider({ sessionId, binding, children }: {
     const session = useSession(sessionId);
     const root = binding?.root ?? session?.metadata?.path ?? '';
     const { rightPanelAvailable } = useDesktopWorkspaceLayout();
-    const enabled = Platform.OS === 'web' && (!!binding || rightPanelAvailable);
+    const enabled = !!binding || (Platform.OS === 'web' && rightPanelAvailable);
     const scope = JSON.stringify([getServerUrl(), getRuntimeAccountSelection()?.key ?? 'legacy', binding?.machineId ?? session?.metadata?.machineId ?? sessionId, root, binding?.scope ?? sessionId]);
     return <FileWorkspaceOwner key={scope} {...{ sessionId, root, enabled, scope, binding }}>{children}</FileWorkspaceOwner>;
 }

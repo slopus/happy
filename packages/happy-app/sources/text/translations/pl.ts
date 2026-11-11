@@ -29,6 +29,8 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
 export const pl: TranslationStructure = {
     projectGoals: {
         ...projectGoalsBase.projectGoals,
+        mobileChat: "Czat",
+        chooseChat: "Otwórz rozmowę",
         collapseTasks: "Zwiń listę zadań",
         showTasks: "Rozwiń listę zadań",
         emptyConversationEyebrow: "Rozmowa o zadaniu",

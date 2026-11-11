@@ -1,7 +1,8 @@
 import type { Router } from "expo-router"
 import { useRouter } from "expo-router"
 import { useCallback } from 'react';
-import { Platform } from 'react-native';
+import { Dimensions, Platform } from 'react-native';
+import { projectSessionRoute } from '@/utils/projectSessionRoute';
 import { storage } from '@/sync/storage';
 import { trackSessionSwitched } from '@/track';
 
@@ -29,7 +30,8 @@ export function navigateToSession(router: Router, sessionId: string) {
     // actually dismisses it is the navigate itself — the sidebar's own buttons close
     // the drawer purely via router.navigate(...) (their closeDrawer() call does
     // nothing). A plain router.push() left the drawer stuck open over the session.
-    router.navigate(`/session/${encodeURIComponent(sessionId)}`);
+    const projectRoute = (Platform.OS !== 'web' || Dimensions.get('window').width < 1100) ? projectSessionRoute(sessionId, session?.metadata) : null;
+    router.navigate(projectRoute ?? `/session/${encodeURIComponent(sessionId)}`);
 }
 
 export function useNavigateToSession() {

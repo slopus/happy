@@ -13,12 +13,13 @@ interface GoalBoardButtonProps {
     expanded?: boolean;
     disabled?: boolean;
     busy?: boolean;
+    touchTarget?: boolean;
     variant?: 'plain' | 'chip' | 'row' | 'primary' | 'toolbar' | 'card';
 }
 
 /** Shared keyboard, pointer and touch surface; colors always come from the active theme. */
 export const GoalBoardButton = React.memo(React.forwardRef<View, GoalBoardButtonProps>(function GoalBoardButton({
-    children, label, testID, onPress, selected, expanded, disabled, busy, variant = 'plain',
+    children, label, testID, onPress, selected, expanded, disabled, busy, touchTarget = false, variant = 'plain',
 }, ref) {
     const surfaces = React.useContext(ProjectSurfaces);
     const [hovered, setHovered] = React.useState(false);
@@ -39,6 +40,7 @@ export const GoalBoardButton = React.memo(React.forwardRef<View, GoalBoardButton
         hitSlop={4}
         style={(state: { pressed: boolean; hovered?: boolean }) => [
             styles.base,
+            touchTarget && styles.touchTarget,
             variant === 'card' ? styles.card : variant === 'row' ? styles.row : variant === 'chip' ? styles.chip : variant === 'primary' ? styles.primary : variant === 'toolbar' ? styles.toolbar : styles.plain,
             variant === 'card' && setCardFocused ? styles.ownedCard : undefined,
             variant !== 'card' && selected ? styles.selected : undefined,
@@ -54,6 +56,7 @@ const styles = StyleSheet.create((theme) => ({
     base: { minHeight: 36, borderRadius: 8, borderWidth: 1, borderColor: theme.colors.surface, backgroundColor: theme.colors.surface,
         flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 7 },
     plain: {},
+    touchTarget: { minWidth: 44, minHeight: 44 },
     // Chromium paints outline-style:auto even at width 0; use a solid zero-width
     // outline so the explicit theme border remains the sole focus indicator.
     card: { flexGrow: 1, flexDirection: 'column', alignItems: 'stretch', justifyContent: 'flex-start', paddingHorizontal: 0, paddingVertical: 0, borderColor: 'transparent', backgroundColor: 'transparent', borderRadius: 13, overflow: 'hidden', width: '100%', ...(Platform.OS === 'web' ? { outlineWidth: 0, outlineStyle: 'solid' as const } : {}) },

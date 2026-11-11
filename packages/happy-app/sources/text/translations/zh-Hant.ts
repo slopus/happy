@@ -20,6 +20,8 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 export const zhHant: TranslationStructure = {
     projectGoals: {
         ...projectGoalsBase.projectGoals,
+        mobileChat: "對話",
+        chooseChat: "開啟對話",
         collapseTasks: "收起任務清單",
         showTasks: "展開任務清單",
         emptyConversationEyebrow: "任務對話",

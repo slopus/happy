@@ -7,8 +7,8 @@ import { Typography } from '@/constants/Typography';
 export type PanelTab = { key: string; label: string; icon: keyof typeof Ionicons.glyphMap };
 
 /** Shared panel navigation, including keyboard selection and focus on Web. */
-export function PanelTabs({ activeTab, tabs, onTabChange, testIDPrefix }: {
-    activeTab: string; tabs: readonly PanelTab[]; onTabChange: (key: string) => void; testIDPrefix: string;
+export function PanelTabs({ activeTab, tabs, onTabChange, testIDPrefix, touchTarget = false }: {
+    activeTab: string; tabs: readonly PanelTab[]; onTabChange: (key: string) => void; testIDPrefix: string; touchTarget?: boolean;
 }) {
     const { theme } = useUnistyles();
     const refs = React.useRef(new Map<string, View>());
@@ -37,7 +37,7 @@ export function PanelTabs({ activeTab, tabs, onTabChange, testIDPrefix }: {
                         refs.current.get(tabs[nextIndex].key)?.focus();
                     },
                 } : {})}
-                style={({ pressed }) => [styles.tab, selected ? styles.selected : (pressed || hoveredKey === tab.key) ? styles.pressed : null, focusedKey === tab.key && styles.focused]}>
+                style={({ pressed }) => [styles.tab, touchTarget && styles.touchTab, selected ? styles.selected : (pressed || hoveredKey === tab.key) ? styles.pressed : null, focusedKey === tab.key && styles.focused]}>
                 <Ionicons name={tab.icon} size={15} color={selected ? theme.colors.text : theme.colors.textSecondary} />
                 <Text numberOfLines={1} style={[styles.text, selected && styles.selectedText]}>{tab.label}</Text>
             </Pressable>;
@@ -48,6 +48,7 @@ const styles = StyleSheet.create((theme) => ({
     tabs: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 4 },
     tab: { minWidth: 0, flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 7, borderRadius: 9, borderWidth: 1, borderColor: 'transparent', backgroundColor: theme.colors.surface },
     selected: { backgroundColor: theme.colors.surfaceSelected },
+    touchTab: { minWidth: 44, minHeight: 44, flex: 1, justifyContent: 'center' },
     pressed: { backgroundColor: theme.colors.surfacePressed },
     focused: { borderColor: theme.colors.textLink },
     text: { minWidth: 0, flexShrink: 1, fontSize: 12, color: theme.colors.textSecondary, ...Typography.default('semiBold') },

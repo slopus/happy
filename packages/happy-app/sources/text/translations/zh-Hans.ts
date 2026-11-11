@@ -19,6 +19,8 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const zhHans: TranslationStructure = {
     projectGoals: {
+        mobileChat: "对话",
+        chooseChat: "打开对话",
         sessionUnavailable: '暂时无法读取这段对话，请检查连接或从历史中选择其他对话。',
         loadingArchive: '正在读取这台机器的项目…',
         loadingTasks: '任务清单',
