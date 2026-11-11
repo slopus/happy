@@ -95,6 +95,8 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
     const rootState = useRootNavigationState();
     const pathname = getDesktopModalBackgroundPath(rootState) ?? currentPathname;
     const projectWorkspace = pathname === '/projects';
+    const [projectSidebarOpen, setProjectSidebarOpen] = React.useState(false);
+    React.useEffect(() => { setProjectSidebarOpen(false); }, [projectWorkspace]);
     const { width: windowWidth } = useWindowDimensions();
     const [zenMode, setZenMode] = useLocalSettingMutable('zenMode');
     // The saved collapsed preference is the inverse of the desktop pin state.
@@ -133,7 +135,7 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
         });
     const reservedWidth = enabled && Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH + 2 * DESKTOP_WORKSPACE_OUTER_GAP : 0;
     const layoutWindowWidth = Math.max(0, windowWidth - reservedWidth);
-    const leftVisible = enabled && !projectWorkspace && !zenMode && (Platform.OS === 'web' ? reveal.visible : !leftCollapsed);
+    const leftVisible = enabled && !zenMode && (projectWorkspace ? projectSidebarOpen : Platform.OS === 'web' ? reveal.visible : !leftCollapsed);
     const leftPinned = enabled && !projectWorkspace && !zenMode && !leftCollapsed;
     const leftOccupiesSpace = Platform.OS === 'web' ? leftPinned : leftVisible;
     const rightVisible = rightPanelAvailable && !zenMode && !rightCollapsed;
@@ -195,6 +197,11 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
 
     const toggleLeftSidebar = React.useCallback(() => {
         if (!enabled) return;
+        if (projectWorkspace) {
+            if (zenMode) setZenMode(false);
+            setProjectSidebarOpen(value => !value);
+            return;
+        }
         if (zenMode) {
             setZenMode(false);
             setLeftCollapsed(false);
@@ -205,7 +212,7 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
             reveal.dismiss();
         }
         setLeftCollapsed(!leftCollapsed);
-    }, [enabled, endPanelResize, leftCollapsed, resizingSide, setLeftCollapsed, setZenMode, zenMode, reveal.dismiss]);
+    }, [enabled, endPanelResize, leftCollapsed, resizingSide, setLeftCollapsed, setZenMode, zenMode, reveal.dismiss, projectWorkspace]);
     const toggleRightSidebar = React.useCallback(() => {
         if (!rightPanelAvailable) return;
         if (zenMode) {

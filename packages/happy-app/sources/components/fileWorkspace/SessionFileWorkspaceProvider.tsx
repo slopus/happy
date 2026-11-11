@@ -81,14 +81,16 @@ function FileWorkspaceOwner({ sessionId, root, enabled, scope, binding, children
     }, [controller]);
     const [restoring, setRestoring] = React.useState(true);
     React.useEffect(() => {
-        if (!enabled || !root || socketStatus !== 'connected' || restored.current) return;
+        // A cached Task can render before machine keys finish hydrating.
+        // Machine metadata is published only after its encryption is initialized.
+        if (!enabled || !root || socketStatus !== 'connected' || (binding && !binding.readOnly && !machine) || restored.current) return;
         restored.current = true;
         // Restore only previously opened tabs, bounded to twenty by persistence.
         const reads = initial.tabs.map(path => { const draft = drafts.current[path]; return controller.open(path).then(() => { if (draft) controller.restoreDraft(path, draft); }); });
         void Promise.allSettled(reads).then(() => { setRestoring(false); restoration.finish(); });
         if (initial.active) void controller.open(initial.active);
         if (!initial.open) controller.setOpen(false);
-    }, [controller, enabled, initial, root, socketStatus, restoration]);
+    }, [controller, enabled, initial, root, socketStatus, restoration, binding, !!machine]);
     const lifetime = React.useRef<object | null>(null);
     React.useEffect(() => {
         const token = {}; lifetime.current = token;

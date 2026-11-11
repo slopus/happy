@@ -31,7 +31,20 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * - New translation keys must be added to ALL language files
  */
 export const en: TranslationStructure = {
-    projectGoals: { ...projectGoalsBase.projectGoals },
+    projectGoals: {
+        ...projectGoalsBase.projectGoals,
+        collapseTasks: "Collapse task list",
+        showTasks: "Expand task list",
+        emptyConversationEyebrow: "Task conversation",
+        emptyConversationTitle: "Start with this task",
+        emptyConversationHint: "Discuss goals, questions, or next steps, or choose a starting point.",
+        discussNextStep: "Plan the next step",
+        discussDelivery: "Discuss deliverables",
+        viewTaskFiles: "View task files",
+        draftOnlyHint: "Choosing a starting point fills a draft. Review it before sending.",
+        nextStepDraft: ({ title }: { title: string }) => `Help me plan the next step for “${title}” using its current goals and records. Let’s discuss first; don’t run the task yet.`,
+        deliveryDraft: ({ title }: { title: string }) => `Let’s discuss the deliverables and acceptance criteria for “${title}”. Share your suggestions for me to review first.`,
+    },
     fileWorkspace: { ...baseEn.fileWorkspace },
 
     goalBoard: {

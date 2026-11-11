@@ -27,7 +27,20 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
  * Must match the exact structure of the English translations
  */
 export const ru: TranslationStructure = {
-    projectGoals: { ...projectGoalsBase.projectGoals },
+    projectGoals: {
+        ...projectGoalsBase.projectGoals,
+        collapseTasks: "Свернуть список задач",
+        showTasks: "Развернуть список задач",
+        emptyConversationEyebrow: "Обсуждение задачи",
+        emptyConversationTitle: "Начните с этой задачи",
+        emptyConversationHint: "Обсудите цель, вопросы или следующие шаги либо выберите, с чего начать.",
+        discussNextStep: "Наметить следующий шаг",
+        discussDelivery: "Обсудить результаты работы",
+        viewTaskFiles: "Посмотреть файлы задачи",
+        draftOnlyHint: "Выбор отправной точки только заполняет черновик. Проверьте его перед отправкой.",
+        nextStepDraft: ({ title }: { title: string }) => `Помоги наметить следующий шаг для задачи «${title}» с учётом её текущей цели и записей. Сначала обсудим варианты, пока не выполняй задачу.`,
+        deliveryDraft: ({ title }: { title: string }) => `Давай обсудим результаты работы и критерии приёмки для задачи «${title}». Сначала подготовь предложения для моего подтверждения.`,
+    },
     fileWorkspace: { ...en.fileWorkspace,
         retryOperation: "Повторить исходную операцию",
         operationRetryConfirm: "Запись об операции не найдена. Повторить исходную операцию с тем же ID и исходной базовой версией? Если файлы изменились после того запроса, возникнет конфликт.",

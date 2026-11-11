@@ -541,7 +541,7 @@ function DesktopReadingWidthControl() {
     </View>;
 }
 
-type SessionViewProps = { id: string; fileOpenRequest?: { path: string; requestId: string }; embedded?: boolean; fullWidth?: boolean };
+type SessionViewProps = { id: string; fileOpenRequest?: { path: string; requestId: string }; embedded?: boolean; fullWidth?: boolean; emptyState?: React.ReactNode | ((appendDraft: (text: string) => void) => React.ReactNode) };
 
 export const SessionView = React.memo((props: SessionViewProps) => (
     <SubagentInspectorProvider sessionId={props.id}>
@@ -1332,6 +1332,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
                     <DesktopReadingWidthContext.Provider value={props.fullWidth ? desktopMainWidth || layout.maxWidth : dreamskin ? desktopReadingWidth : layout.maxWidth}>
                         <SessionViewLoaded
                             key={sessionId}
+                            emptyState={props.emptyState}
                             composerHandleRef={sessionComposerHandleRef}
                             onManageTags={() => setOrganizerOpen(true)}
                             onRemoveTag={removeSessionTag}
@@ -1725,6 +1726,7 @@ function SessionViewLoaded({
     onManageTags,
     onRemoveTag,
     tags,
+    emptyState,
 }: {
     sessionId: string;
     routeOwner: SessionRouteOwner;
@@ -1735,6 +1737,7 @@ function SessionViewLoaded({
     onManageTags: () => void;
     onRemoveTag: (tagId: string) => void;
     tags: readonly SidebarTag[];
+    emptyState?: SessionViewProps['emptyState'];
 }) {
     const { theme } = useUnistyles();
     const fileWorkspace = useFileWorkspace();
@@ -2029,10 +2032,16 @@ function SessionViewLoaded({
             </Deferred>
         </>
     );
+    const appendEmptyStateDraft = React.useCallback((text: string) => {
+        const composer = composerHandleRef.current;
+        if (!composer) return;
+        const current = composer.getMessage();
+        if (!current.includes(text)) composer.setMessage(current.trim() ? `${current}\n\n${text}` : text);
+    }, [composerHandleRef]);
     const placeholder = messages.length === 0 && !session.metadata?.continuationOfSessionId ? (
         <>
             {isLoaded ? (
-                <EmptyMessages session={session} />
+                typeof emptyState === 'function' ? emptyState(appendEmptyStateDraft) : emptyState ?? <EmptyMessages session={session} />
             ) : (
                 <ActivityIndicator size="small" color={theme.colors.textSecondary} />
             )}

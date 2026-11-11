@@ -19,7 +19,20 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const ja: TranslationStructure = {
-    projectGoals: { ...projectGoalsBase.projectGoals },
+    projectGoals: {
+        ...projectGoalsBase.projectGoals,
+        collapseTasks: "タスク一覧を折りたたむ",
+        showTasks: "タスク一覧を展開",
+        emptyConversationEyebrow: "タスクの会話",
+        emptyConversationTitle: "このタスクから始めましょう",
+        emptyConversationHint: "目標や疑問、次のステップについて話すか、話題のきっかけを選んでください。",
+        discussNextStep: "次のステップを整理",
+        discussDelivery: "成果物について相談",
+        viewTaskFiles: "タスクのファイルを表示",
+        draftOnlyHint: "きっかけを選ぶと下書きに入力されます。内容を確認してから送信してください。",
+        nextStepDraft: ({ title }: { title: string }) => `「${title}」の現在の目標と記録を踏まえて、次のステップを整理してください。まずは相談だけにして、タスクはまだ実行しないでください。`,
+        deliveryDraft: ({ title }: { title: string }) => `「${title}」の成果物と受け入れ基準について相談しましょう。まずは私が確認できるように提案をまとめてください。`,
+    },
     fileWorkspace: { ...en.fileWorkspace,
         retryOperation: "元の操作を再試行",
         operationRetryConfirm: "操作記録が見つかりませんでした。同じ ID と元の基準バージョンで、元の操作を再試行しますか？そのリクエスト後にファイルが変更されていれば、競合になります。",

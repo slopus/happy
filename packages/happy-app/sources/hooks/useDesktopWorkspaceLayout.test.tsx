@@ -127,4 +127,15 @@ describe('desktop workspace sidebar integration', () => {
         expect(layout.leftVisible).toBe(false);
         expect(storage.values.desktopLeftSidebarCollapsed).toBe(true);
     });
+    it('opens the project route session sidebar on demand without reserving space or changing the saved pin', () => {
+        act(() => renderer.unmount()); storage.pathname = '/projects'; mount();
+        expect(layout.leftVisible).toBe(false);
+        act(() => layout.toggleLeftSidebar());
+        expect(layout.leftVisible).toBe(true);
+        expect(layout.leftPinned).toBe(false);
+        expect(layout.leftWidth).toBe(0);
+        expect(storage.values.desktopLeftSidebarCollapsed).toBe(true);
+        act(() => layout.toggleLeftSidebar());
+        expect(layout.leftVisible).toBe(false);
+    });
 });

@@ -16,7 +16,20 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const es: TranslationStructure = {
-    projectGoals: { ...projectGoalsBase.projectGoals },
+    projectGoals: {
+        ...projectGoalsBase.projectGoals,
+        collapseTasks: "Contraer lista de tareas",
+        showTasks: "Expandir lista de tareas",
+        emptyConversationEyebrow: "Conversación de la tarea",
+        emptyConversationTitle: "Empieza con esta tarea",
+        emptyConversationHint: "Habla sobre el objetivo, tus preguntas o el siguiente paso, o elige un punto de partida.",
+        discussNextStep: "Planear el siguiente paso",
+        discussDelivery: "Hablar sobre los entregables",
+        viewTaskFiles: "Ver archivos de la tarea",
+        draftOnlyHint: "Elegir un punto de partida solo rellena un borrador. Revísalo antes de enviarlo.",
+        nextStepDraft: ({ title }: { title: string }) => `Ayúdame a planear el siguiente paso de «${title}» a partir de su objetivo actual y sus registros. Primero hablemos; no ejecutes la tarea todavía.`,
+        deliveryDraft: ({ title }: { title: string }) => `Hablemos de los entregables y los criterios de aceptación de «${title}». Primero prepara tus propuestas para que pueda confirmarlas.`,
+    },
     fileWorkspace: { ...en.fileWorkspace,
         retryOperation: "Reintentar operación original",
         operationRetryConfirm: "No se encontró ningún registro de la operación. ¿Reintentar la operación original con el mismo ID y la versión de referencia original? Si los archivos cambiaron desde aquella solicitud, se producirá un conflicto.",

@@ -18,7 +18,20 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHant: TranslationStructure = {
-    projectGoals: { ...projectGoalsBase.projectGoals },
+    projectGoals: {
+        ...projectGoalsBase.projectGoals,
+        collapseTasks: "收起任務清單",
+        showTasks: "展開任務清單",
+        emptyConversationEyebrow: "任務對話",
+        emptyConversationTitle: "從這項任務開始",
+        emptyConversationHint: "聊聊目標、問題或下一步，也可以選擇一個起點。",
+        discussNextStep: "梳理下一步",
+        discussDelivery: "討論交付內容",
+        viewTaskFiles: "查看任務檔案",
+        draftOnlyHint: "選擇起點只會填入草稿，確認後再傳送。",
+        nextStepDraft: ({ title }: { title: string }) => `請結合「${title}」目前的目標與紀錄，幫我梳理下一步。先討論，不要直接執行任務。`,
+        deliveryDraft: ({ title }: { title: string }) => `我們來討論「${title}」的交付內容和驗收方式，先整理建議讓我確認。`,
+    },
     fileWorkspace: {
         tabActions: "分頁操作",
         closeOtherTabs: "關閉其他分頁",

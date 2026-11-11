@@ -16,7 +16,20 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const ca: TranslationStructure = {
-    projectGoals: { ...projectGoalsBase.projectGoals },
+    projectGoals: {
+        ...projectGoalsBase.projectGoals,
+        collapseTasks: "Contreu la llista de tasques",
+        showTasks: "Expandeix la llista de tasques",
+        emptyConversationEyebrow: "Conversa de la tasca",
+        emptyConversationTitle: "Comença amb aquesta tasca",
+        emptyConversationHint: "Parla de l’objectiu, els dubtes o el pas següent, o tria un punt de partida.",
+        discussNextStep: "Planifica el pas següent",
+        discussDelivery: "Parla dels lliurables",
+        viewTaskFiles: "Mostra els fitxers de la tasca",
+        draftOnlyHint: "Triar un punt de partida només omple un esborrany. Revisa’l abans d’enviar-lo.",
+        nextStepDraft: ({ title }: { title: string }) => `Ajuda’m a planificar el pas següent de «${title}» a partir del seu objectiu actual i els seus registres. Primer parlem-ne; encara no executis la tasca.`,
+        deliveryDraft: ({ title }: { title: string }) => `Parlem dels lliurables i els criteris d’acceptació de «${title}». Primer prepara les teves propostes perquè les pugui confirmar.`,
+    },
     fileWorkspace: { ...en.fileWorkspace,
         retryOperation: "Torna a intentar l’operació original",
         operationRetryConfirm: "No s’ha trobat cap registre de l’operació. Vols tornar a intentar l’operació original amb el mateix ID i la versió de referència original? Si els fitxers han canviat des d’aquella sol·licitud, es produirà un conflicte.",

@@ -7,6 +7,7 @@ import { DrawerActions } from '@react-navigation/native';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 import { useRealtimeStatus, useSession, useProfile, useLocalSetting, useLocalSettingMutable } from '@/sync/storage';
 import { useReducedTransparency } from '@/hooks/useReducedTransparency';
+import { useDesktopWorkspaceLayout } from '@/hooks/useDesktopWorkspaceLayout';
 import { getDisplayName } from '@/sync/profile';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
@@ -385,6 +386,7 @@ export const SidebarView = React.memo(({
     const router = useRouter();
     const pathname = usePathname();
     const mobileNavigation = !desktopDensity;
+    const { leftVisible, toggleLeftSidebar } = useDesktopWorkspaceLayout();
     const railNavigation = desktopPrimaryNavigation || mobileNavigation;
     const routeSessionId = pathname.match(/^\/session\/([^/]+)/)?.[1];
     const routeSession = useSession(routeSessionId ? decodeURIComponent(routeSessionId) : '');
@@ -437,6 +439,7 @@ export const SidebarView = React.memo(({
     const openDesktopSessionLists = () => {
         setAppConversationsActive(false);
         setDesktopSidebarMode(desktopSidebarListMode);
+        if (desktopPrimaryNavigation && pathname === '/projects' && (!leftVisible || desktopSidebarMode === desktopSidebarListMode)) toggleLeftSidebar();
         if (mobileNavigation) setMobilePanel('sessions');
         else if (advisorSidebarActive || pathname.startsWith('/apps/conversations')) go('/');
     };
@@ -444,6 +447,7 @@ export const SidebarView = React.memo(({
     const openArchive = () => {
         setAppConversationsActive(false);
         setDesktopSidebarMode('archive');
+        if (desktopPrimaryNavigation && pathname === '/projects' && (!leftVisible || desktopSidebarMode === 'archive')) toggleLeftSidebar();
         if (mobileNavigation) setMobilePanel('sessions');
         else if (pathname.startsWith('/apps/conversations')) go('/');
     };
@@ -620,7 +624,7 @@ export const SidebarView = React.memo(({
                 icon="albums-outline"
                 label={t('sidebar.listsTab')}
                 onPress={openDesktopSessionLists}
-                selected={pathname !== '/projects' && !appConversationsActive && !advisorSidebarActive && desktopSidebarMode !== 'archive'}
+                selected={(pathname !== '/projects' || leftVisible) && !appConversationsActive && !advisorSidebarActive && desktopSidebarMode !== 'archive'}
                 testID="sidebar-session-list-button"
             />
             <DesktopRailItem
@@ -748,7 +752,7 @@ export const SidebarView = React.memo(({
                         {footerNavigation}
                     </View>
                     <View
-                        style={[styles.desktopSecondaryColumn, { backgroundColor: theme.colors.groupped.background }, dreamskin && desktopDensity && { backgroundColor: reducedTransparency ? theme.colors.desktopSkin.reducedSidebar : theme.colors.desktopSkin.sidebar }, desktopPrimaryNavigation && {
+                        style={[styles.desktopSecondaryColumn, { backgroundColor: theme.colors.groupped.background }, dreamskin && desktopDensity && { backgroundColor: reducedTransparency || pathname === '/projects' ? theme.colors.desktopSkin.reducedSidebar : theme.colors.desktopSkin.sidebar }, desktopPrimaryNavigation && {
                             position: 'absolute', left: DESKTOP_PRIMARY_NAVIGATION_WIDTH,
                             top: 0, bottom: 0, width: desktopSecondaryWidth,
                             pointerEvents: desktopSecondaryVisible ? 'auto' : 'none',
@@ -761,6 +765,10 @@ export const SidebarView = React.memo(({
                         {...(desktopPrimaryNavigation && !desktopSecondaryVisible ? { inert: true } as any : {})}
                         testID="desktop-secondary-navigation-column"
                     >
+                        {desktopPrimaryNavigation && pathname === '/projects' && desktopSecondaryVisible && <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 46, paddingLeft: 16, paddingRight: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider }} testID="project-global-sidebar-header">
+                            <Text style={{ flex: 1, color: theme.colors.text, fontSize: 13, ...Typography.default('semiBold') }}>{t(desktopSidebarMode === 'archive' ? 'sessionHistory.archiveTitle' : 'sidebar.listsTab')}</Text>
+                            <Pressable accessibilityRole="button" accessibilityLabel={t('sidebarLists.close')} onPress={toggleLeftSidebar} style={({ pressed }) => ({ padding: 9, borderRadius: 8, backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent' })} testID="project-global-sidebar-close"><Ionicons name="close-outline" size={18} color={theme.colors.textSecondary} /></Pressable>
+                        </View>}
                         {mobileNavigation ? (
                             <>
                                 <View style={styles.mobileHeader}>

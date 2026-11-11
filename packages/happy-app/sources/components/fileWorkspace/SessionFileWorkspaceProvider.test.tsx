@@ -4,12 +4,12 @@ import { act } from 'react';
 import TestRenderer from 'react-test-renderer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
-    socket: 'connecting', uiOpen: true, uiTabs: ['/work/方案.md'], session: { metadata: { path: '/work', machineId: 'machine' }, agentState: { turnStatus: { status: 'completed', turnId: 'initial', updatedAt: 1 } } },
+    machineReady: true, socket: 'connecting', uiOpen: true, uiTabs: ['/work/方案.md'], session: { metadata: { path: '/work', machineId: 'machine' }, agentState: { turnStatus: { status: 'completed', turnId: 'initial', updatedAt: 1 } } },
     reads: vi.fn(), writes: vi.fn(), artifacts: vi.fn(), persisted: {} as Record<string, unknown>, references: {} as Record<string, { path: string; hash: string; quote?: string } | null>, current: true, sessionLoaded: true,
 }));
 vi.mock('react-native', () => ({ Platform: { OS: 'web' } }));
 vi.mock('@/hooks/useDesktopWorkspaceLayout', () => ({ useDesktopWorkspaceLayout: () => ({ rightPanelAvailable: true }) }));
-vi.mock('@/sync/storage', () => ({ useMachine: () => null, useSession: () => mocks.sessionLoaded ? mocks.session : null, useSocketStatus: () => ({ status: mocks.socket }) }));
+vi.mock('@/sync/storage', () => ({ useMachine: () => mocks.machineReady ? { metadata: {} } : null, useSession: () => mocks.sessionLoaded ? mocks.session : null, useSocketStatus: () => ({ status: mocks.socket }) }));
 vi.mock('@/auth/accountRuntime', () => ({ accountRuntimeCurrent: () => mocks.current, getRuntimeAccountSelection: () => ({ key: 'account' }) }));
 vi.mock('@/sync/serverConfig', () => ({ getServerUrl: () => 'https://fixture.test' }));
 vi.mock('@/sync/persistence', () => ({
@@ -32,11 +32,26 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 function node() { return <SessionFileWorkspaceProvider sessionId="session"><Probe /></SessionFileWorkspaceProvider>; }
 beforeEach(() => {
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
-    mocks.socket = 'connecting'; mocks.uiOpen = true; mocks.uiTabs = ['/work/方案.md']; mocks.current = true; mocks.sessionLoaded = true; mocks.session.metadata.path = '/work'; mocks.session.agentState.turnStatus = { status: 'completed', turnId: 'initial', updatedAt: 1 };
+    mocks.machineReady = true; mocks.socket = 'connecting'; mocks.uiOpen = true; mocks.uiTabs = ['/work/方案.md']; mocks.current = true; mocks.sessionLoaded = true; mocks.session.metadata.path = '/work'; mocks.session.agentState.turnStatus = { status: 'completed', turnId: 'initial', updatedAt: 1 };
     mocks.persisted = {}; mocks.references = {}; mocks.reads.mockReset().mockResolvedValue({ content: '# Base', hash: 'base' }); mocks.writes.mockReset().mockResolvedValue({ hash: 'saved' });
     mocks.artifacts.mockReset().mockResolvedValue([]);
 });
 describe('workspace owner in real session lifecycle', () => {
+    it('waits for machine hydration before restoring cached Task files', async () => {
+        mocks.socket = 'connected'; mocks.machineReady = false; mocks.uiTabs = ['/archive/task/result.md'];
+        const binding = { root: '/archive/task', scope: 'task', machineId: 'machine', readBytes: vi.fn(), readText: vi.fn(async () => ({ content: '# Ready', hash: 'ready' })), writeText: vi.fn() };
+        const render = () => <SessionFileWorkspaceProvider sessionId="" binding={binding}><Probe /></SessionFileWorkspaceProvider>;
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(render()); await tick(); });
+        try {
+            expect(binding.readText).not.toHaveBeenCalled();
+            mocks.machineReady = true;
+            await act(async () => { renderer.update(render()); await tick(); });
+            expect(binding.readText).toHaveBeenCalledTimes(1);
+            expect(value.snapshot.documents['/archive/task/result.md'].content).toBe('# Ready');
+        } finally { await act(async () => { renderer.unmount(); await tick(); }); }
+    });
+
     it.each([true, false])('does not refresh Task files when entering a different completed history (already hydrated: %s)', async hydrated => {
         mocks.socket = 'connected'; mocks.uiTabs = ['/archive/task/demo.html'];
         const binding = { root: '/archive/task', scope: 'task', machineId: 'machine', readBytes: vi.fn(), readText: vi.fn(async () => ({ content: '<button>1</button>', hash: 'same' })), writeText: vi.fn() };

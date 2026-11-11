@@ -3,6 +3,14 @@ import { getWorkspaceChatMaximumWidth, getWorkspaceChatWidth, workspaceResizeWid
 export const projectPanelGap = 10;
 export const projectFileDefaultMaximumWidth = 760;
 
+export function getProjectTaskNavigationWidth(rowWidth: number) {
+    return Math.min(264, Math.max(220, Math.floor(rowWidth * 0.18)));
+}
+
+export function canSplitProjectFile(rowWidth: number, rightWidth: number, taskNavigationWidth: number) {
+    return rowWidth - rightWidth - taskNavigationWidth - (taskNavigationWidth ? projectPanelGap : 0) - projectPanelGap >= 640;
+}
+
 export function getProjectChatMaximumWidth(rowWidth: number, rightWidth: number) {
     return getWorkspaceChatMaximumWidth(rowWidth - projectPanelGap, rightWidth);
 }

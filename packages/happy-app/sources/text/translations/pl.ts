@@ -27,7 +27,20 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
  * Must match the exact structure of the English translations
  */
 export const pl: TranslationStructure = {
-    projectGoals: { ...projectGoalsBase.projectGoals },
+    projectGoals: {
+        ...projectGoalsBase.projectGoals,
+        collapseTasks: "Zwiń listę zadań",
+        showTasks: "Rozwiń listę zadań",
+        emptyConversationEyebrow: "Rozmowa o zadaniu",
+        emptyConversationTitle: "Zacznij od tego zadania",
+        emptyConversationHint: "Porozmawiaj o celu, pytaniu lub kolejnym kroku albo wybierz punkt wyjścia.",
+        discussNextStep: "Zaplanuj kolejny krok",
+        discussDelivery: "Omów rezultaty",
+        viewTaskFiles: "Zobacz pliki zadania",
+        draftOnlyHint: "Wybór punktu wyjścia tylko uzupełnia szkic. Sprawdź go przed wysłaniem.",
+        nextStepDraft: ({ title }: { title: string }) => `Pomóż mi zaplanować kolejny krok dla zadania „${title}” na podstawie jego aktualnego celu i zapisów. Najpierw porozmawiajmy — nie wykonuj jeszcze zadania.`,
+        deliveryDraft: ({ title }: { title: string }) => `Omówmy rezultaty i kryteria akceptacji zadania „${title}”. Najpierw przygotuj propozycje do mojego zatwierdzenia.`,
+    },
     fileWorkspace: { ...en.fileWorkspace,
         retryOperation: "Ponów pierwotną operację",
         operationRetryConfirm: "Nie znaleziono zapisu operacji. Ponowić pierwotną operację z tym samym ID i pierwotną wersją bazową? Jeśli pliki zmieniły się od czasu tamtego żądania, wystąpi konflikt.",

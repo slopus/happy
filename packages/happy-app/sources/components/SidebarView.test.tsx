@@ -39,6 +39,8 @@ const mocks = vi.hoisted(() => ({
     }],
     desktopSidebarListMode: 'timeline',
     desktopSidebarMode: 'projects',
+    leftVisible: false,
+    toggleLeftSidebar: vi.fn(),
     spaceAgent: {
         id: 'health',
         name: 'Health',
@@ -66,6 +68,7 @@ vi.mock('react-native', () => ({
 vi.mock('react-native-safe-area-context', () => ({
     useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
+vi.mock('@/hooks/useDesktopWorkspaceLayout', () => ({ useDesktopWorkspaceLayout: () => ({ leftVisible: mocks.leftVisible, toggleLeftSidebar: mocks.toggleLeftSidebar }) }));
 vi.mock('expo-router', () => ({
     useNavigation: () => ({ dispatch: mocks.dispatch }),
     useRouter: () => ({ navigate: mocks.navigate }),
@@ -202,6 +205,7 @@ describe('SidebarView Agent space exit', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.pathname = '/';
+        mocks.leftVisible = false;
         mocks.theme = appThemes.ginghamLight;
         mocks.desktopSkin = 'default';
         mocks.focusHistory.length = 0;
@@ -357,6 +361,17 @@ describe('SidebarView Agent space exit', () => {
         expect(renderer.root.findByType('PluginMarketplaceModal').props.visible).toBe(true);
         expect(renderer.root.findByType('PluginMarketplaceModal').props.initialPluginId).toBeNull();
 
+        act(() => renderer.unmount());
+    });
+
+    it('opens the session-list panel from projects while preserving the project route', () => {
+        mocks.pathname = '/projects'; mocks.spaceAgent = null;
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SidebarView desktopDensity desktopPrimaryNavigation />); });
+        act(() => renderer.root.findByProps({ testID: 'sidebar-session-list-button' }).props.onPress());
+        expect(mocks.setDesktopSidebarMode).toHaveBeenCalledWith('timeline');
+        expect(mocks.toggleLeftSidebar).toHaveBeenCalledTimes(1);
+        expect(mocks.navigate).not.toHaveBeenCalled();
         act(() => renderer.unmount());
     });
 
