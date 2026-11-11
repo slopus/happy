@@ -1,0 +1,86 @@
+{
+  "target": "iphone-tour",
+  "simulator": "786D96D0-112E-4374-BC42-6DBE2F0877B8",
+  "started": 1793968951.26797,
+  "sourceCommit": "76ed3d0abaf5586b1929df77797af8783b38d21c",
+  "begin": 1793968982.6733649,
+  "end": 1793969036.3527832,
+  "testExitCode": 0,
+  "beats": [
+    {
+      "beat": "home",
+      "at": 0.01
+    },
+    {
+      "beat": "servers",
+      "at": 6.01
+    },
+    {
+      "beat": "dismissed",
+      "at": 10.83
+    },
+    {
+      "beat": "activity",
+      "at": 12.34
+    },
+    {
+      "beat": "team-again",
+      "at": 20.74
+    },
+    {
+      "beat": "open-chat",
+      "at": 22.24
+    },
+    {
+      "beat": "picker",
+      "at": 25.72
+    },
+    {
+      "beat": "accounts",
+      "at": 29.01
+    },
+    {
+      "beat": "switch-account",
+      "at": 32.09
+    },
+    {
+      "beat": "switch-model",
+      "at": 34.77
+    },
+    {
+      "beat": "ask",
+      "at": 37.52
+    },
+    {
+      "beat": "answer",
+      "at": 41.44
+    },
+    {
+      "beat": "call",
+      "at": 47.45
+    }
+  ],
+  "finished": 1793969037.259161,
+  "command": [
+    "xcodebuild",
+    "-project",
+    "Happy.xcodeproj",
+    "-scheme",
+    "HappyChatUI",
+    "-configuration",
+    "Debug",
+    "-destination",
+    "platform=iOS Simulator,id=786D96D0-112E-4374-BC42-6DBE2F0877B8",
+    "-derivedDataPath",
+    "/Users/kirilldubovitskiy/happy-native-screenshots-vq03/.context/ios-derived",
+    "CODE_SIGNING_ALLOWED=NO",
+    "ARCHS=arm64",
+    "ONLY_ACTIVE_ARCH=YES",
+    "-parallel-testing-enabled",
+    "NO",
+    "-only-testing:HappyChatUITests/StoryTourUITests/testTour",
+    "-resultBundlePath",
+    "/Users/kirilldubovitskiy/happy-store-v8/results-tour-044231/tour.xcresult",
+    "test"
+  ]
+}

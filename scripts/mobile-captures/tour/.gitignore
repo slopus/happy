@@ -1,0 +1,18 @@
+# Written by prepare.sh, make-bgloop.sh and the render scripts.
+.bg/
+bgloop.mp4
+fonts/
+iphone-16-pro-black.png
+layers2/copy*.png
+layers2/phone.png
+layers2/mask.png
+out/
+vl-*/
+review/
+renderer/formats.html
+renderer/fonts/
+renderer/frames/
+renderer/img-formats/
+renderer/img-v8n/
+renderer/out/
+renderer/out-formats/

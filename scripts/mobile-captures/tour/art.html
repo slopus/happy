@@ -1,0 +1,169 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: "SF"; src: url("fonts/SFNS.ttf") format("truetype"); font-weight: 1 1000; }
+  html, body { margin: 0; overflow: hidden; background: #2a0670; }
+  .card { position: relative; overflow: hidden; font-family: "SF", system-ui, sans-serif; color: #fff; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .phone { position: absolute; aspect-ratio: 1406 / 2822; filter: drop-shadow(0 40px 70px rgba(16, 0, 48, .5)); }
+  .phone > img { position: absolute; display: block; }
+  .frame { inset: 0; width: 100%; height: 100%; }
+  .screen {
+    left: 7.25462%; top: 3.543586%; width: 85.775249%; height: 92.912828%; 
+  }
+  .copy { position: absolute; top: 50%; transform: translateY(-50%); }
+  h1 { margin: 0; font-weight: 700; line-height: 1; letter-spacing: -0.02em; text-shadow: 0 6px 40px rgba(20, 0, 50, .35); }
+  p { margin: 0; font-weight: 400; line-height: 1.22; opacity: .95; text-shadow: 0 4px 24px rgba(20, 0, 50, .4); }
+  .stars { display: flex; align-items: center; gap: .45em; font-weight: 400; opacity: .88; text-shadow: 0 4px 24px rgba(20, 0, 50, .4); }
+  h1 { line-height: 1.04; }
+  .logos { display: flex; align-items: center; gap: 70px; margin-top: 70px; filter: drop-shadow(0 4px 24px rgba(20, 0, 50, .4)); }
+  .logos svg { height: 120px; width: auto; fill: #fff; }
+  .stars svg { width: 1em; height: 1em; fill: currentColor; margin-left: .35em; }
+</style>
+</head>
+<body>
+<div class="card"><canvas></canvas><div class="phone"><img class="screen" src="screen-masked.png"><img class="frame" src="iphone-16-pro-black.png"></div>
+<div class="copy"><h1>Happy</h1><p class="tag"></p><div class="stars">Free and open source<svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>24k</span></div></div>
+</div>
+<script>
+// Layouts: W×H canvas, phone height as a share of H (0 = no phone), font sizes in px.
+const L = {
+  // Apple's Art Safe Area from the template PSDs, as [x0, y0, x1, y1].
+  // The tour video: a bigger phone, and subtitles the size of the store's own subtitle line.
+  tour:        { safe: [836, 765, 3004, 1795], W: 3840, H: 2560, phone: 0.90, phoneLeft: 300, textLeft: 1600, title: 400, tag: 116, detail: 100, gap1: 40, gap2: 60, titleOnly: true, lines: ["One place for you,", "your team,", "and your agents."] },
+  search:      { safe: [836, 765, 3004, 1795], W: 3840, H: 2560, phone: 0.80, phoneLeft: 420, textLeft: 1640, title: 560, tag: 150, detail: 118, gap1: 40, gap2: 70, lines: ["One place for you, your team,", "and your agents."] },
+  header:      { safe: [1097, 493, 2743, 1154], W: 3840, H: 1646, phone: 0, title: 400, tag: 118, detail: 92, gap1: 34, gap2: 50, lines: ["One place for you, your team, and your agents."], center: true },
+  headerPhone: { safe: [1097, 493, 2743, 1154], W: 3840, H: 1646, phone: 0.80, phoneLeft: 560, textLeft: 1460, title: 400, tag: 118, detail: 92, gap1: 30, gap2: 50, lines: ["One place for you, your team,", "and your agents."] },
+};
+const params = new URLSearchParams(location.search);
+const k = L[params.get("kind") || "search"];
+// fit=1 keeps the phone where it is and shrinks or reflows only the copy into the safe area.
+const fitCopy = params.get("fit") === "1";
+if (fitCopy && k.center) k.lines = ["One place for you, your team,", "and your agents."];
+// caption=N: the tour video's captions after the first, each a title and its lines.
+const CAPTIONS = [
+  null,
+  { title: "Your computer<br>and team servers", lines: ["Add remote servers", "for yourself and", "your team."] },
+  { title: "Build<br>together", lines: ["See what your team", "and agents shipped,", "day by day."] },
+  { title: "Use all your<br>subscriptions", lines: ["Switch models and", "accounts mid-session."] },
+  { title: "Call your<br>agents", lines: ["Real-time voice calls."] },
+  { title: "All<br>platforms", lines: [], logos: true, textLeft: 747 },
+];
+const caption = CAPTIONS[Number(params.get("caption") || 0)];
+if (params.get("title")) k.captionTitle = Number(params.get("title"));
+if (caption) { k.lines = caption.lines; k.title = k.titleOnly ? (k.captionTitle || 185) : 300; if (!k.titleOnly) { k.tag = 120; k.gap1 = 36; } if (caption.textLeft) k.textLeft = caption.textLeft; }
+const card = document.querySelector(".card");
+card.style.width = k.W + "px"; card.style.height = k.H + "px";
+const phone = document.querySelector(".phone");
+let glow = [0.5, 0.5];
+if (k.phone) {
+  const ph = k.H * k.phone, pw = ph * 1406 / 2822;
+  Object.assign(phone.style, { height: ph + "px", width: pw + "px", left: k.phoneLeft + "px", top: (k.H - ph) / 2 + "px" });
+  glow = [(k.phoneLeft + pw / 2) / k.W, 0.5];
+} else phone.remove();
+const copy = document.querySelector(".copy");
+const h1 = copy.querySelector("h1"), tag = copy.querySelector(".tag"), stars = copy.querySelector(".stars");
+h1.style.fontSize = k.title + "px"; tag.style.fontSize = k.tag + "px"; stars.style.fontSize = k.detail + "px";
+tag.style.marginTop = k.gap1 + "px"; stars.style.marginTop = k.gap2 + "px";
+tag.innerHTML = k.lines.join("<br>");
+if (caption) { h1.innerHTML = caption.title; stars.remove(); }
+if (caption?.logos) { tag.outerHTML = `<div class="logos"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg><svg aria-hidden="true" viewBox="0 0 16 16"><path d="M0 0h7v7H0zM9 0h7v7H9zM0 9h7v7H0zM9 9h7v7H9z"/></svg><svg aria-hidden="true" viewBox="0 0 448 512"><path d="M220.8 123.3c1 .5 1.8 1.7 3 1.7 1.1 0 2.8-.4 2.9-1.5.2-1.4-1.9-2.3-3.2-2.9-1.7-.7-3.9-1-5.5-.1-.4.2-.8.7-.6 1.1.3 1.3 2.3 1.1 3.4 1.7zm-21.9 1.7c1.2 0 2-1.2 3-1.7 1.1-.6 3.1-.4 3.5-1.6.2-.4-.2-.9-.6-1.1-1.6-.9-3.8-.6-5.5.1-1.3.6-3.4 1.5-3.2 2.9.1 1 1.8 1.5 2.8 1.4zM420 403.8c-3.6-4-5.3-11.6-7.2-19.7-1.8-8.1-3.9-16.8-10.5-22.4-1.3-1.1-2.6-2.1-4-2.9-1.3-.8-2.7-1.5-4.1-2 9.2-27.3 5.6-54.5-3.7-79.1-11.4-30.1-31.3-56.4-46.5-74.4-17.1-21.5-33.7-41.9-33.4-72C311.1 85.4 315.7.1 234.8 0 132.4-.2 158 103.4 156.9 135.2c-1.7 23.4-6.4 41.8-22.5 64.7-18.9 22.5-45.5 58.8-58.1 96.7-6 17.9-8.8 36.1-6.2 53.3-6.5 5.8-11.4 14.7-16.6 20.2-4.2 4.3-10.3 5.9-17 8.3s-14 6-18.5 14.5c-2.1 3.9-2.8 8.1-2.8 12.4 0 3.9.6 7.9 1.2 11.8 1.2 8.1 2.5 15.7.8 20.8-5.2 14.4-5.9 24.4-2.2 31.7 3.8 7.3 11.4 10.5 20.1 12.3 17.3 3.6 40.8 2.7 59.3 12.5 19.8 10.4 39.9 14.1 55.9 10.4 11.6-2.6 21.1-9.6 25.9-20.2 12.5-.1 26.3-5.4 48.3-6.6 14.9-1.2 33.6 5.3 55.1 4.1.6 2.3 1.4 4.6 2.5 6.7v.1c8.3 16.7 23.8 24.3 40.3 23 16.6-1.3 34.1-11 48.3-27.9 13.6-16.4 36-23.2 50.9-32.2 7.4-4.5 13.4-10.1 13.9-18.3.4-8.2-4.4-17.3-15.5-29.7zM223.7 87.3c9.8-22.2 34.2-21.8 44-.4 6.5 14.2 3.6 30.9-4.3 40.4-1.6-.8-5.9-2.6-12.6-4.9 1.1-1.2 3.1-2.7 3.9-4.6 4.8-11.8-.2-27-9.1-27.3-7.3-.5-13.9 10.8-11.8 23-4.1-2-9.4-3.5-13-4.4-1-6.9-.3-14.6 2.9-21.8zM183 75.8c10.1 0 20.8 14.2 19.1 33.5-3.5 1-7.1 2.5-10.2 4.6 1.2-8.9-3.3-20.1-9.6-19.6-8.4.7-9.8 21.2-1.8 28.1 1 .8 1.9-.2-5.9 5.5-15.6-14.6-10.5-52.1 8.4-52.1zm-13.6 60.7c6.2-4.6 13.6-10 14.1-10.5 4.7-4.4 13.5-14.2 27.9-14.2 7.1 0 15.6 2.3 25.9 8.9 6.3 4.1 11.3 4.4 22.6 9.3 8.4 3.5 13.7 9.7 10.5 18.2-2.6 7.1-11 14.4-22.7 18.1-11.1 3.6-19.8 16-38.2 14.9-3.9-.2-7-1-9.6-2.1-8-3.5-12.2-10.4-20-15-8.6-4.8-13.2-10.4-14.7-15.3-1.4-4.9 0-9 4.2-12.3zm3.3 334c-2.7 35.1-43.9 34.4-75.3 18-29.9-15.8-68.6-6.5-76.5-21.9-2.4-4.7-2.4-12.7 2.6-26.4v-.2c2.4-7.6.6-16-.6-23.9-1.2-7.8-1.8-15 .9-20 3.5-6.7 8.5-9.1 14.8-11.3 10.3-3.7 11.8-3.4 19.6-9.9 5.5-5.7 9.5-12.9 14.3-18 5.1-5.5 10-8.1 17.7-6.9 8.1 1.2 15.1 6.8 21.9 16l19.6 35.6c9.5 19.9 43.1 48.4 41 68.9zm-1.4-25.9c-4.1-6.6-9.6-13.6-14.4-19.6 7.1 0 14.2-2.2 16.7-8.9 2.3-6.2 0-14.9-7.4-24.9-13.5-18.2-38.3-32.5-38.3-32.5-13.5-8.4-21.1-18.7-24.6-29.9s-3-23.3-.3-35.2c5.2-22.9 18.6-45.2 27.2-59.2 2.3-1.7.8 3.2-8.7 20.8-8.5 16.1-24.4 53.3-2.6 82.4.6-20.7 5.5-41.8 13.8-61.5 12-27.4 37.3-74.9 39.3-112.7 1.1.8 4.6 3.2 6.2 4.1 4.6 2.7 8.1 6.7 12.6 10.3 12.4 10 28.5 9.2 42.4 1.2 6.2-3.5 11.2-7.5 15.9-9 9.9-3.1 17.8-8.6 22.3-15 7.7 30.4 25.7 74.3 37.2 95.7 6.1 11.4 18.3 35.5 23.6 64.6 3.3-.1 7 .4 10.9 1.4 13.8-35.7-11.7-74.2-23.3-84.9-4.7-4.6-4.9-6.6-2.6-6.5 12.6 11.2 29.2 33.7 35.2 59 2.8 11.6 3.3 23.7.4 35.7 16.4 6.8 35.9 17.9 30.7 34.8-2.2-.1-3.2 0-4.2 0 3.2-10.1-3.9-17.6-22.8-26.1-19.6-8.6-36-8.6-38.3 12.5-12.1 4.2-18.3 14.7-21.4 27.3-2.8 11.2-3.6 24.7-4.4 39.9-.5 7.7-3.6 18-6.8 29-32.1 22.9-76.7 32.9-114.3 7.2zm257.4-11.5c-.9 16.8-41.2 19.9-63.2 46.5-13.2 15.7-29.4 24.4-43.6 25.5s-26.5-4.8-33.7-19.3c-4.7-11.1-2.4-23.1 1.1-36.3 3.7-14.2 9.2-28.8 9.9-40.6.8-15.2 1.7-28.5 4.2-38.7 2.6-10.3 6.6-17.2 13.7-21.1.3-.2.7-.3 1-.5.8 13.2 7.3 26.6 18.8 29.5 12.6 3.3 30.7-7.5 38.4-16.3 9-.3 15.7-.9 22.6 5.1 9.9 8.5 7.1 30.3 17.1 41.6 10.6 11.6 14 19.5 13.7 24.6zM173.3 148.7c2 1.9 4.7 4.5 8 7.1 6.6 5.2 15.8 10.6 27.3 10.6 11.6 0 22.5-5.9 31.8-10.8 4.9-2.6 10.9-7 14.8-10.4s5.9-6.3 3.1-6.6-2.6 2.6-6 5.1c-4.4 3.2-9.7 7.4-13.9 9.8-7.4 4.2-19.5 10.2-29.9 10.2s-18.7-4.8-24.9-9.7c-3.1-2.5-5.7-5-7.7-6.9-1.5-1.4-1.9-4.6-4.3-4.9-1.4-.1-1.8 3.7 1.7 6.5z"/></svg><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M18.4395 5.5586c-.675 1.1664-1.352 2.3318-2.0274 3.498-.0366-.0155-.0742-.0286-.1113-.043-1.8249-.6957-3.484-.8-4.42-.787-1.8551.0185-3.3544.4643-4.2597.8203-.084-.1494-1.7526-3.021-2.0215-3.4864a1.1451 1.1451 0 0 0-.1406-.1914c-.3312-.364-.9054-.4859-1.379-.203-.475.282-.7136.9361-.3886 1.5019 1.9466 3.3696-.0966-.2158 1.9473 3.3593.0172.031-.4946.2642-1.3926 1.0177C2.8987 12.176.452 14.772 0 18.9902h24c-.119-1.1108-.3686-2.099-.7461-3.0683-.7438-1.9118-1.8435-3.2928-2.7402-4.1836a12.1048 12.1048 0 0 0-2.1309-1.6875c.6594-1.122 1.312-2.2559 1.9649-3.3848.2077-.3615.1886-.7956-.0079-1.1191a1.1001 1.1001 0 0 0-.8515-.5332c-.5225-.0536-.9392.3128-1.0488.5449zm-.0391 8.461c.3944.5926.324 1.3306-.1563 1.6503-.4799.3197-1.188.0985-1.582-.4941-.3944-.5927-.324-1.3307.1563-1.6504.4727-.315 1.1812-.1086 1.582.4941zM7.207 13.5273c.4803.3197.5506 1.0577.1563 1.6504-.394.5926-1.1038.8138-1.584.4941-.48-.3197-.5503-1.0577-.1563-1.6504.4008-.6021 1.1087-.8106 1.584-.4941z"/></svg></div>`; }
+if (k.center) { copy.style.left = "0"; copy.style.right = "0"; copy.style.textAlign = "center"; stars.style.justifyContent = "center"; }
+else copy.style.left = k.textLeft + "px";
+
+if (fitCopy) {
+  const [x0, y0, x1, y1] = k.safe, pad = 24;
+  const left = Math.max(x0, k.center ? x0 : k.textLeft) + pad, right = x1 - pad, top = y0 + pad, bottom = y1 - pad;
+  const sizes = [k.title, k.tag, k.detail, k.gap1, k.gap2];
+  const apply = k.titleOnly ? f => { h1.style.fontSize = k.title * f + "px"; } : f => {
+    [h1.style.fontSize, tag.style.fontSize, stars.style.fontSize, tag.style.marginTop, stars.style.marginTop] = sizes.map(v => v * f + "px");
+  };
+  Object.assign(copy.style, { left: left + "px", right: "auto", width: k.center ? right - left + "px" : "auto", top: (top + bottom) / 2 + "px" });
+  let f = 1;
+  for (; f > 0.3; f -= 0.01) {
+    apply(f);
+    const r = copy.getBoundingClientRect();
+    if (r.right <= right && r.width <= right - left && r.height <= bottom - top) break;
+  }
+  document.title = "fit " + f.toFixed(2);
+}
+
+// The hero video's shader (shader-preview/index.v8-neutral.html FRAG, palette 01-home, seed 0,
+// uTime 20 = the video's first frame). Noise is scaled to a fixed 2048 px so header and search share
+// one scale, close to the marbling size the hero video shows around its phone; the glow sits behind the phone.
+const FRAG = `
+precision highp float;
+uniform vec2 uRes, uGlow;
+uniform float uTime, uSeed, uRef;
+uniform vec3 c0, c1, c2, c3;
+float hash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float noise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y);
+}
+float fbm(vec2 p) {
+  float v = 0.0, a = 0.5;
+  mat2 m = mat2(1.6, 1.2, -1.2, 1.6);
+  for (int i = 0; i < 5; i++) { v += a * noise(p); p = m * p; a *= 0.5; }
+  return v;
+}
+void main() {
+  vec2 uv = gl_FragCoord.xy / uRes;
+  vec2 p = (gl_FragCoord.xy - 0.5 * uRes) / uRef * 1.05 + uSeed;
+  float t = uTime * 0.05;
+  vec2 q = vec2(fbm(p + vec2(0.0, t)), fbm(p + vec2(5.2, 1.3) - t));
+  vec2 r = vec2(fbm(p + 3.2 * q + vec2(1.7, 9.2) + 0.7 * t), fbm(p + 3.2 * q + vec2(8.3, 2.8) - 0.6 * t));
+  float f = fbm(p + 3.0 * r);
+  vec3 col = mix(c0, c1, clamp(f * f * 2.6, 0.0, 1.0));
+  col = mix(col, c2, clamp(length(q) * 1.1 - 0.45, 0.0, 1.0));
+  col = mix(col, c3, clamp(r.x * r.x * 1.8 - 0.15, 0.0, 1.0));
+  float band = 0.5 + 0.5 * sin(f * 13.0 + r.y * 5.0 - uTime * 0.3);
+  col += pow(band, 10.0) * 0.13 * (0.4 + f);
+  col += pow(smoothstep(0.55, 1.0, f), 3.0) * 0.35;
+  col *= mix(1.0, 0.82, smoothstep(0.62, 1.0, uv.y));
+  vec2 d = (uv - uGlow) * vec2(uRes.x / uRes.y, 1.0) * 0.7;
+  col += c1 * 0.12 * smoothstep(0.6, 0.0, length(d));
+  float g = dot(col, vec3(0.299, 0.587, 0.114));
+  col = mix(vec3(g), col, 1.18);
+  col += (hash(gl_FragCoord.xy + 0.37 * 91.0) - 0.5) * 0.03;
+  gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+}`;
+// layer=overlay: only the phone frame, its shadow and the copy, on transparent, for the video.
+if (params.get("layer") === "overlay") {
+  document.documentElement.style.background = document.body.style.background = "transparent";
+  document.querySelector(".screen").style.visibility = "hidden";
+  // only=copy or only=phone: one of the two, so the edit can move them apart.
+  const only = params.get("only");
+  if (only === "copy") phone.style.visibility = "hidden";
+  if (only === "phone") copy.style.visibility = "hidden";
+  const r = document.querySelector(".screen").getBoundingClientRect();
+  document.title = JSON.stringify({ x: r.x, y: r.y, w: r.width, h: r.height });
+  throw 0;
+}
+const canvas = document.querySelector("canvas");
+canvas.width = k.W; canvas.height = k.H;
+const gl = canvas.getContext("webgl", { preserveDrawingBuffer: true });
+const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+const prog = gl.createProgram();
+gl.attachShader(prog, sh(gl.VERTEX_SHADER, "attribute vec2 a; void main(){ gl_Position = vec4(a, 0.0, 1.0); }"));
+gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FRAG));
+gl.linkProgram(prog); gl.useProgram(prog);
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+const U = n => gl.getUniformLocation(prog, n);
+const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
+gl.viewport(0, 0, k.W, k.H);
+gl.uniform2f(U("uRes"), k.W, k.H);
+gl.uniform2f(U("uGlow"), glow[0], 1 - glow[1]);
+gl.uniform1f(U("uTime"), 20);
+gl.uniform1f(U("uSeed"), 0);
+gl.uniform1f(U("uRef"), 2048);
+["#2a0670", "#ff3d9a", "#ffa63d", "#3d5bff"].forEach((c, i) => gl.uniform3fv(U("c" + i), hex(c)));
+gl.drawArrays(gl.TRIANGLES, 0, 3);
+</script>
+</body>
+</html>
