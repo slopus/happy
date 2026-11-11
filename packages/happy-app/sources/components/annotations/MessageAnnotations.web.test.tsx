@@ -130,19 +130,26 @@ it('collects passages across files through capsules and previews them above the 
 it('supports whitespace dismissal, IME-safe Enter, a saved comment bubble and preview editing/deletion', () => {
     const sessionId = `point-${++session}`;
     const file = { path: '/work/readme.md', hash: 'baseline' };
-    act(() => root.render(<><FileAnnotationControls sessionId={sessionId} enabled /><AnnotatableFile sessionId={sessionId} file={file}><div data-annotation-block="text"><p>需要修改的完整段落。</p></div></AnnotatableFile><AnnotationComposer sessionId={sessionId} /><FileAnnotationPanel sessionId={sessionId} /></>));
+    act(() => root.render(<><FileAnnotationControls sessionId={sessionId} enabled /><AnnotatableFile sessionId={sessionId} file={file}><div data-annotation-block="text" style={{ paddingTop: 6 }}><p>需要修改的完整段落。</p></div></AnnotatableFile><AnnotationComposer sessionId={sessionId} /><FileAnnotationPanel sessionId={sessionId} /></>));
     const target = document.querySelector('[data-annotation-block]') as HTMLElement;
     act(() => target.click()); expect(document.querySelector('[data-testid=annotation-editor]')).toBeNull();
     act(() => (document.querySelector('[data-testid=file-annotation-mode]') as HTMLButtonElement).click());
     act(() => target.click()); typeComment('待取消的评论');
+    expect(target.style.paddingTop).toBe('78px');
+    expect(target.textContent).toBe('需要修改的完整段落。');
+    expect(document.querySelectorAll('[data-testid=file-annotation-pending-pin]')).toHaveLength(1);
+    expect(document.querySelector('[data-testid=annotation-editor]')!.contains(document.querySelector('[data-testid=file-annotation-pending-pin]'))).toBe(true);
     act(() => document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true })));
     expect(document.querySelector('[data-testid=annotation-editor]')).toBeNull(); expect(annotationDraftStore.getSnapshot(sessionId)).toHaveLength(0);
+    expect(target.style.paddingTop).toBe('6px');
     act(() => target.click()); typeComment('简化这一段');
     const input = document.querySelector('[data-testid=annotation-comment-input]')!;
     act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true })));
     expect(annotationDraftStore.getSnapshot(sessionId)).toHaveLength(0);
     act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
     expect(annotationDraftStore.getSnapshot(sessionId)[0].comment).toBe('简化这一段');
+    expect(target.style.paddingTop).toBe('6px');
+    expect(document.querySelector('[data-testid=file-annotation-pending-pin]')).toBeNull();
     expect(document.querySelector('[data-testid=annotation-badge]')!.textContent).toBe('1');
     expect(document.querySelector('[data-testid=file-annotation-bubble]')!.textContent).toBe('简化这一段');
     expect(document.querySelector('[data-testid=file-annotation-bubble]')!.querySelector('button')).toBeNull();

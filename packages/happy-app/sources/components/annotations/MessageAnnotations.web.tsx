@@ -12,7 +12,7 @@ import { fileAnnotationUi, useFileAnnotationUi } from './fileAnnotationUi';
 export { useMessageAnnotations };
 
 type Anchor = { left: number; top: number; bottom: number; right?: number };
-type MovingAnchor = { getAnchor?: () => Anchor | null; getBounds?: () => DOMRect | undefined };
+type MovingAnchor = { getAnchor?: () => Anchor | null; getBounds?: () => DOMRect | undefined; getEditorHost?: () => HTMLElement | null };
 type EditRequest = { sessionId: string; id: string; anchor: Anchor; focus: HTMLElement | null; sequence: number; selection?: AnnotationSelection } & MovingAnchor;
 let editRequest: EditRequest | null = null;
 let sequence = 0;
@@ -54,13 +54,27 @@ function SmallButton({ children, style, ...props }: React.ButtonHTMLAttributes<H
     const [hover, setHover] = React.useState(false);
     return <button {...props} type={props.type ?? 'button'} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} style={{ ...button, ...(hover ? { background: c.surfacePressed } : {}), ...style }}>{children}</button>;
 }
-function FloatingPanel({ anchor, children, label, onClose, testId = 'annotation-editor', width = 460, maxHeight = 'calc(100dvh - 24px)', ignoreOutside, getAnchor, getBounds, variant = 'panel' }: {
+function FloatingPanel({ anchor, children, label, onClose, testId = 'annotation-editor', width = 460, maxHeight = 'calc(100dvh - 24px)', ignoreOutside, getAnchor, getBounds, getEditorHost, pendingPin = false, variant = 'panel' }: {
     anchor: Anchor; children: React.ReactNode; label: string; onClose: () => void; testId?: string; width?: number;
-    maxHeight?: string; ignoreOutside?: HTMLElement | null; variant?: 'panel' | 'capsule' | 'bubble' | 'preview';
+    maxHeight?: string; ignoreOutside?: HTMLElement | null; pendingPin?: boolean; variant?: 'panel' | 'capsule' | 'bubble' | 'preview';
 } & MovingAnchor) {
     const { c } = useAnnotationStyles();
     const ref = React.useRef<HTMLDivElement>(null);
     const [position, setPosition] = React.useState({ left: 12, top: 12 });
+    React.useLayoutEffect(() => {
+        const host = variant === 'capsule' ? getEditorHost?.() : null;
+        if (!host) return;
+        // Make room in the document instead of covering the preceding heading.
+        // Keep the exact text Range for the outline; dock in this reserved row.
+        const original = host.style.getPropertyValue('padding-top');
+        const priority = host.style.getPropertyPriority('padding-top');
+        const padding = parseFloat(getComputedStyle(host).paddingTop) || 0;
+        host.style.setProperty('padding-top', `${padding + 72}px`);
+        return () => {
+            if (original) host.style.setProperty('padding-top', original, priority);
+            else host.style.removeProperty('padding-top');
+        };
+    }, [getEditorHost, variant]);
     React.useLayoutEffect(() => {
         let frame: number | undefined;
         const layout = () => {
@@ -78,11 +92,17 @@ function FloatingPanel({ anchor, children, label, onClose, testId = 'annotation-
             const rect = ref.current.getBoundingClientRect();
             const beside = variant === 'bubble';
             const above = variant === 'capsule';
+            const editorHost = above ? getEditorHost?.() : null;
+            const hostRect = editorHost?.getBoundingClientRect();
+            const dockAnchorTop = hostRect ? hostRect.top + (parseFloat(getComputedStyle(editorHost!).paddingTop) || 0) : target.top;
             const left = beside
                 ? ((target.right ?? target.left) + rect.width + 12 <= right ? (target.right ?? target.left) + 10 : target.left - rect.width - 10)
-                : target.left + (above ? 30 : 0);
+                : (hostRect?.left ?? target.left) - (above ? 5 : 0);
+            const dockTop = dockAnchorTop - rect.height - 12;
+            // A scrolled-out dock must not jump onto another paragraph.
+            if (above && bounds && (dockTop < minTop || dockTop + rect.height > bottom)) { onClose(); return; }
             const preferredTop = beside ? target.top - 2
-                : above ? (target.top - rect.height - 8 >= minTop ? target.top - rect.height - 8 : target.bottom + 8)
+                : above ? (dockTop >= minTop ? dockTop : target.bottom + 12)
                 : getBounds ? (target.bottom + rect.height + 10 <= bottom ? target.bottom + 10 : target.top - rect.height - 10)
                 : (target.top - rect.height - (variant === 'preview' ? 6 : 10) >= minTop ? target.top - rect.height - (variant === 'preview' ? 6 : 10) : target.bottom + (variant === 'preview' ? 6 : 10));
             setPosition({ left: Math.max(minLeft, Math.min(left, right - rect.width)), top: Math.max(minTop, Math.min(preferredTop, bottom - rect.height)) });
@@ -94,7 +114,7 @@ function FloatingPanel({ anchor, children, label, onClose, testId = 'annotation-
         window.addEventListener('resize', schedule);
         layout();
         return () => { observer.disconnect(); if (frame !== undefined) cancelAnimationFrame(frame); window.removeEventListener('scroll', schedule, true); window.removeEventListener('resize', schedule); };
-    }, [anchor, getAnchor, getBounds, onClose, variant, width]);
+    }, [anchor, getAnchor, getBounds, getEditorHost, onClose, variant, width]);
     React.useEffect(() => {
         const pointer = (event: PointerEvent) => { if (!ref.current?.contains(event.target as Node) && !ignoreOutside?.contains(event.target as Node)) onClose(); };
         const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(); } };
@@ -102,7 +122,12 @@ function FloatingPanel({ anchor, children, label, onClose, testId = 'annotation-
         document.addEventListener('keydown', key, true);
         return () => { document.removeEventListener('pointerdown', pointer); document.removeEventListener('keydown', key, true); };
     }, [onClose, ignoreOutside]);
-    return createPortal(<div ref={ref} role="dialog" aria-label={label} data-testid={testId} className={variant === 'bubble' ? 'paws-annotation-bubble' : variant === 'capsule' ? 'paws-annotation-capsule' : variant === 'preview' ? 'paws-annotation-preview' : undefined} data-annotation-surface={variant} style={{ position: 'fixed', zIndex: 10000, ...position, boxSizing: 'border-box', width: variant === 'bubble' ? 'max-content' : `min(${width}px, calc(100vw - 24px))`, maxHeight, overflowY: 'auto', padding: variant === 'capsule' ? '6px 7px 6px 12px' : variant === 'bubble' ? '11px 18px' : variant === 'preview' ? 0 : 16, borderRadius: variant === 'capsule' ? 999 : variant === 'bubble' ? 26 : 14, color: c.text, background: c.surface, border: `1px solid ${variant === 'panel' ? c.divider : `color-mix(in srgb, ${c.text} 9%, ${c.surface})`}`, boxShadow: variant === 'preview' ? `0 6px 16px ${c.shadow.color}, 0 1px 3px ${c.shadow.color}` : variant === 'panel' ? `0 8px 36px ${c.shadow.color}` : `0 2px 8px color-mix(in srgb, ${c.shadow.color} 16%, transparent), 0 1px 2px color-mix(in srgb, ${c.shadow.color} 5%, transparent)`, fontFamily: 'inherit', fontSize: 14 }}>{children}</div>, document.body);
+    const capsule = variant === 'capsule';
+    const surface: React.CSSProperties = { boxSizing: 'border-box', padding: capsule ? '6px 7px 6px 12px' : variant === 'bubble' ? '11px 18px' : variant === 'preview' ? 0 : 16, borderRadius: capsule ? 999 : variant === 'bubble' ? 26 : 14, color: c.text, background: c.surface, border: `1px solid ${variant === 'panel' ? c.divider : `color-mix(in srgb, ${c.text} 9%, ${c.surface})`}`, boxShadow: variant === 'preview' ? `0 6px 16px ${c.shadow.color}, 0 1px 3px ${c.shadow.color}` : variant === 'panel' ? `0 8px 36px ${c.shadow.color}` : `0 2px 8px color-mix(in srgb, ${c.shadow.color} 16%, transparent), 0 1px 2px color-mix(in srgb, ${c.shadow.color} 5%, transparent)` };
+    return createPortal(<div ref={ref} role="dialog" aria-label={label} data-testid={testId} className={variant === 'bubble' ? 'paws-annotation-bubble' : variant === 'preview' ? 'paws-annotation-preview' : undefined} data-annotation-surface={variant} style={{ position: 'fixed', zIndex: 10000, ...position, boxSizing: 'border-box', width: variant === 'bubble' ? 'max-content' : `min(${width}px, calc(100vw - 24px))`, maxHeight, overflowY: capsule ? 'visible' : 'auto', ...(capsule ? { display: 'flex', alignItems: 'center', gap: 12 } : surface), fontFamily: 'inherit', fontSize: 14 }}>
+        {capsule && pendingPin && <span aria-hidden="true" data-testid="file-annotation-pending-pin" style={{ width: 28, height: 28, flexShrink: 0, borderRadius: '50% 50% 50% 5px', background: c.accent }} />}
+        {capsule ? <div className="paws-annotation-capsule" style={{ ...surface, flex: 1, minWidth: 0, transformOrigin: 'left center' }}>{children}</div> : children}
+    </div>, document.body);
 }
 function LegacyCommentEditor({ sessionId, item, request, number, onClose }: { sessionId: string; item: MessageAnnotation; request: EditRequest; number: number; onClose: () => void }) {
     const { c, button } = useAnnotationStyles();
@@ -161,7 +186,7 @@ function FileCommentCapsule({ sessionId, item, request, onClose }: { sessionId: 
             onClose();
         } catch { setError(true); }
     };
-    return <FloatingPanel anchor={request.anchor} getAnchor={request.getAnchor} getBounds={request.getBounds} width={368} variant="capsule" label={t('messageAnnotations.edit')} onClose={onClose}>
+    return <FloatingPanel anchor={request.anchor} getAnchor={request.getAnchor} getBounds={request.getBounds} getEditorHost={request.getEditorHost} width={request.selection ? 408 : 368} pendingPin={!!request.selection} variant="capsule" label={t('messageAnnotations.edit')} onClose={onClose}>
         <style>{`.paws-annotation-pill-input::placeholder { color: ${c.textSecondary}; opacity: .6; } .paws-annotation-save { transition: transform 160ms ease; } .paws-annotation-save:not(:disabled):hover { transform: scale(1.08); } @media (prefers-reduced-motion: reduce) { .paws-annotation-save { transition: none; } }`}</style>
         <form data-annotation-quote={item.quote} onSubmit={event => { event.preventDefault(); save(); }} onKeyDown={event => { event.stopPropagation(); if (event.key === 'Enter') { event.preventDefault(); if (!event.nativeEvent.isComposing && !composing.current && event.keyCode !== 229) save(); } }} style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 34 }}>
             <span title={item.quote} style={{ color: c.textSecondary, display: 'flex', opacity: .7 }}><Icon name="scope" /></span>
@@ -388,7 +413,12 @@ function AnnotationSource({ sessionId, messageId, file, children }: Omit<Annotat
         return () => document.removeEventListener('pointerdown', dismiss);
     }, [file?.path, sessionId, ui.activeId]);
     const moving = (data: AnnotationSelection, target?: HTMLElement): MovingAnchor => ({
-        getAnchor: () => target?.isConnected ? target.getBoundingClientRect() : source.current ? annotationRange(source.current, data)?.getBoundingClientRect() ?? null : null,
+        getAnchor: () => source.current ? annotationRange(source.current, data)?.getBoundingClientRect() ?? null : null,
+        getEditorHost: () => {
+            const range = source.current && annotationRange(source.current, data);
+            const host = target?.isConnected ? target : range?.startContainer.parentElement?.closest<HTMLElement>('[data-annotation-block],p,h1,h2,h3,h4,li');
+            return host && source.current?.contains(host) ? host : null;
+        },
         getBounds: () => source.current?.closest<HTMLElement>('[data-testid="workspace-reading-pane"]')?.getBoundingClientRect(),
     });
     const open = (value: NonNullable<typeof selection>, target?: HTMLElement) => {
@@ -421,7 +451,6 @@ function AnnotationSource({ sessionId, messageId, file, children }: Omit<Annotat
     const outline: React.CSSProperties = { position: 'absolute', pointerEvents: 'none', boxSizing: 'border-box', border: `${file ? 1.5 : 1}px solid ${c.accent}`, borderRadius: file ? 2 : 6, zIndex: 1 };
     return <div ref={root} tabIndex={-1} style={{ position: 'relative', width: '100%', minWidth: 0, outline: 'none' }} data-testid={`annotation-source-${messageId}`}>
         <style>{`::highlight(${highlightName}) { background-color: ${file ? `color-mix(in srgb, ${c.accent} 34%, transparent)` : c.surfaceSelected}; color: ${c.text}; } .paws-annotation-pin,.paws-annotation-bubble,.paws-annotation-capsule { transition: transform 160ms ease; } .paws-annotation-pin:hover { transform: scale(1.12); } .paws-annotation-bubble:hover { transform: scale(1.035); } .paws-annotation-capsule:hover { transform: scale(1.02); } @media (prefers-reduced-motion: reduce) { .paws-annotation-pin,.paws-annotation-bubble,.paws-annotation-capsule { transition: none; transform: none !important; } }`}</style>
-        {file && activeBox && <span aria-hidden="true" data-testid="file-annotation-pending-pin" style={{ position: 'absolute', left: activeBox.left + 24, top: activeBox.top - 28, width: 28, height: 28, borderRadius: '50% 50% 50% 5px', background: c.accent, zIndex: 2 }} />}
         {file && activeBox && <div data-testid="file-annotation-active-outline" style={{ ...outline, ...activeBox, opacity: 0.65 }} />}
         {marking && hover && !request && <div data-testid="file-annotation-hover" style={{ ...outline, ...hover }} />}
         <div ref={source} onMouseUp={capture} onKeyUp={capture}
