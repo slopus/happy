@@ -248,3 +248,12 @@ Differences accepted on purpose. Everything else is a bug.
     the route's answers match, and posted lines go to `.logs/MM-DD-HH-MM-SS.log` in
     pino's JSON layout. The TS server also copies its own log output into that file
     at debug level; the Rust server's own logs stay on stdout under `HAPPY_LOG`.
+18. **Console log format.** The levels follow `NODE_ENV` like the TS server (production:
+    errors plus the 30 s `http:summary` line; otherwise debug), but lines are
+    `tracing` output, not pino-pretty, and `HAPPY_LOG` overrides the filter. Stdout is
+    written by a background thread: when it falls 64k lines behind, info/debug lines
+    are dropped (warn and error keep a 1k-line reserve), a
+    `log-writer: dropped N log lines` line follows once the queue drains, and the
+    count is exported as `log_lines_dropped_total` on `/metrics`.
+19. **`/metrics` extras.** `redis_stream_lag_ms` is exported as a constant `0` (there is
+    no Redis stream), and `log_lines_dropped_total` exists only in the Rust server.

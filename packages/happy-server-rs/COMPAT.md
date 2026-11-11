@@ -43,7 +43,7 @@ validation (params → body → querystring, before auth), `R` = zod response sc
 - [x] `GET /health` → `{status, timestamp(ISO), service}` / 503 on DB failure
 - [x] `GET /files/*` (local storage only): public file serving, 403 on traversal and on session avatars
 - not ported: backend-only. Static webapp + SPA fallback + `__HAPPY_CONFIG__` injection (`HAPPY_STATIC_DIR`, `HAPPY_INJECT_HTML_CONFIG`) exist only in the standalone/self-host entry (`standalone.ts`, PGlite); the Rust server targets the hosted `main.ts` deployment
-- [ ] Metrics server (`METRICS_PORT`, default 9090, `METRICS_ENABLED`): `GET /metrics`, `GET /health`
+- [x] Metrics server (`METRICS_PORT`, default 9090, `METRICS_ENABLED`): `GET /metrics`, `GET /health` (QUIRKS deviations 3, 19)
 
 ### Auth (`authRoutes.ts`)
 - [x] `POST /v1/auth` S — ed25519 challenge, upsert Account by uppercase-hex key, `{success, token}`
@@ -214,11 +214,11 @@ polling→upgrade). EIO3 and other namespaces are refused exactly as the TS serv
 | `HANDY_MASTER_SECRET` | tokens, KeyTree, ElevenLabs user id | [x] |
 | `PORT` | API port (3005) | [x] |
 | `HOST` | bind host (standalone only; `main.ts` binds 0.0.0.0) | [x] (default 0.0.0.0) |
-| `METRICS_ENABLED`, `METRICS_PORT` | metrics server | [ ] |
-| `NODE_ENV` | log level | [ ] |
+| `METRICS_ENABLED`, `METRICS_PORT` | metrics server | [x] |
+| `NODE_ENV` | log level | [x] (production: errors + `http:summary`; QUIRKS deviation 18) |
 | `DATA_DIR` | local files root (`./data`) | [x] |
 | `PUBLIC_URL` | public file / upload URLs | [x] |
-| `S3_HOST`, `S3_PORT`, `S3_USE_SSL`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET`, `S3_REGION`, `S3_PUBLIC_URL` | Minio client | [ ] |
+| `S3_HOST`, `S3_PORT`, `S3_USE_SSL`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET`, `S3_REGION`, `S3_PUBLIC_URL` | Minio client | [x] (verified against Minio: `compat/phase4-s3`) |
 | `REDIS_URL` | adapter (multi-replica) | ignored (single process by design) |
 | `DB_PROVIDER`, `PGLITE_DIR` | PGlite standalone | not ported: backend-only (external Postgres only) |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_REDIRECT_URL` | OAuth | [x] |
@@ -228,7 +228,7 @@ polling→upgrade). EIO3 and other namespaces are refused exactly as the TS serv
 | `HAPPY_STATIC_DIR`, `HAPPY_INJECT_HTML_CONFIG` | self-host webapp | not ported: backend-only |
 | new: `HAPPY_WORKERS` | — | [x] tokio worker threads (default: allowed CPUs, cgroup `cpu.max` aware) |
 | new: `DATABASE_POOL_SIZE` | — | [x] sqlx pool size (default: `connection_limit` URL param, else 4 × workers clamped to 10..200) |
-| new: `HAPPY_LOG` | — | [x] tracing filter (default `info,sqlx=warn`) |
+| new: `HAPPY_LOG` | — | [x] tracing filter (default by `NODE_ENV`, see QUIRKS deviation 18) |
 | new: `HAPPY_RS_EXPO_PUSH_URL`, `HAPPY_RS_ELEVENLABS_API`, `HAPPY_RS_GITHUB_OAUTH_BASE`, `HAPPY_RS_GITHUB_API_BASE` | — | [x] third-party endpoints, for tests (the TS server gets the same through `compat/fetch-mock.mjs`) |
 
 ## Dead code in the TS server (not ported)

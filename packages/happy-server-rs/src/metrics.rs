@@ -1,6 +1,6 @@
 //! prom-client metrics (`metrics2.ts`), same names, labels and buckets.
 
-use prometheus::{CounterVec, Encoder, GaugeVec, HistogramOpts, HistogramVec, IntCounter, Opts, Registry, TextEncoder};
+use prometheus::{CounterVec, Encoder, Gauge, GaugeVec, HistogramOpts, HistogramVec, IntCounter, Opts, Registry, TextEncoder};
 use std::collections::HashMap;
 
 pub struct Metrics {
@@ -20,6 +20,9 @@ pub struct Metrics {
     pub rpc_fetch_timeouts: CounterVec,
     /// Not in the TS server: log lines the non-blocking writer had to drop.
     pub log_lines_dropped: IntCounter,
+    /// prom-client prints HELP/TYPE for a labelled metric before its first
+    /// series; the prometheus crate leaves the family out.
+    families: Vec<(String, String, &'static str)>,
 }
 
 /// `parseClientLabels`.
@@ -65,7 +68,9 @@ impl Metrics {
         .unwrap();
         let rpc_fetch_timeouts = CounterVec::new(Opts::new("rpc_fetchsockets_timeouts_total", "Cross-replica fetchSockets timeouts by context"), &["context"]).unwrap();
         let log_lines_dropped = IntCounter::new("log_lines_dropped_total", "Log lines dropped because stdout could not keep up").unwrap();
-        for c in [
+        // No Redis stream here: the lag is always 0 (exported so dashboards and alerts keep working).
+        let redis_stream_lag = Gauge::new("redis_stream_lag_ms", "Milliseconds between this pod read cursor and stream HEAD").unwrap();
+        let collectors = [
             Box::new(websocket_connections.clone()) as Box<dyn prometheus::core::Collector>,
             Box::new(session_alive_events.clone()),
             Box::new(machine_alive_events.clone()),
@@ -80,7 +85,18 @@ impl Metrics {
             Box::new(rpc_lookup_retries.clone()),
             Box::new(rpc_fetch_timeouts.clone()),
             Box::new(log_lines_dropped.clone()),
-        ] {
+            Box::new(redis_stream_lag),
+        ];
+        let mut families = Vec::new();
+        for c in collectors {
+            for d in c.desc() {
+                let kind = match c.collect().first().map(|m| m.get_field_type()) {
+                    Some(prometheus::proto::MetricType::COUNTER) => "counter",
+                    Some(prometheus::proto::MetricType::HISTOGRAM) => "histogram",
+                    _ => "gauge",
+                };
+                families.push((d.fq_name.clone(), d.help.clone(), kind));
+            }
             registry.register(c).unwrap();
         }
         Metrics {
@@ -99,6 +115,7 @@ impl Metrics {
             rpc_lookup_retries,
             rpc_fetch_timeouts,
             log_lines_dropped,
+            families,
         }
     }
 
@@ -115,9 +132,16 @@ impl Metrics {
         if dropped > self.log_lines_dropped.get() {
             self.log_lines_dropped.inc_by(dropped - self.log_lines_dropped.get());
         }
+        let gathered = self.registry.gather();
         let mut buf = Vec::new();
-        TextEncoder::new().encode(&self.registry.gather(), &mut buf).ok();
-        String::from_utf8(buf).unwrap_or_default()
+        TextEncoder::new().encode(&gathered, &mut buf).ok();
+        let mut out = String::from_utf8(buf).unwrap_or_default();
+        for (name, help, kind) in &self.families {
+            if !gathered.iter().any(|f| f.name() == name) {
+                out.push_str(&format!("# HELP {} {}\n# TYPE {} {}\n", name, help, name, kind));
+            }
+        }
+        out
     }
 }
 
