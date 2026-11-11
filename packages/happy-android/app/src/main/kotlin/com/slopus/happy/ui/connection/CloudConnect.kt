@@ -31,6 +31,7 @@ import com.slopus.happy.connection.CloudAccount
 import com.slopus.happy.connection.CloudAccountState
 import com.slopus.happy.connection.CloudException
 import com.slopus.happy.connection.CloudName
+import com.slopus.happy.connection.CloudProvider
 import com.slopus.happy.connection.CloudServer
 import com.slopus.happy.connection.HappyCloud
 import com.slopus.happy.connection.ServerSignInFlow
@@ -119,7 +120,7 @@ private fun Cloud(graph: AppGraph, account: CloudAccount, nav: NavHostController
     val authTab = rememberLauncherForActivityResult(AuthTabIntent.AuthenticateUserResultContract()) { result ->
         if (result.resultCode == AuthTabIntent.RESULT_OK) result.resultUri?.let { graph.oauthCallback(it.toString()) }
     }
-    val openBrowser = { openAuthTab(context, authTab, account.browserUrl(), dark) }
+    val openBrowser = { provider: CloudProvider -> openAuthTab(context, authTab, account.browserUrl(provider), dark) }
     val accounts by graph.agentConnections.accounts.collectAsStateWithLifecycle()
     LaunchedEffect(state) { if (state == CloudAccountState.SignedIn) picker.load() }
     // No servers yet: Bootstrap leads, and its Back signs out (desktop's create with nothing to go back to).

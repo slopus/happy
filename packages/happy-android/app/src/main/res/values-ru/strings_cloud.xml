@@ -58,5 +58,6 @@
     <string name="cloud_create_first_detail">У вашего аккаунта пока нет серверов. Назовите первый сервер команды.</string>
     <string name="cloud_create_have_invite">Есть приглашение? Присоединитесь к серверу</string>
     <string name="cloud_invite_button">Присоединиться</string>
+    <string name="cloud_sign_in_apple">Вход с Apple</string>
     <string name="cloud_sign_in_github">Войти через GitHub</string>
 </resources>

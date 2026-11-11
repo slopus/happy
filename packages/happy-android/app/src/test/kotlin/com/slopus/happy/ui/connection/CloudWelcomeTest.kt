@@ -1,6 +1,9 @@
 package com.slopus.happy.ui.connection
 
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -26,6 +29,7 @@ import com.slopus.happy.ui.setHappyContent
 import com.slopus.happy.ui.start.StartGalleryTags
 import com.slopus.happy.ui.start.StartSlide
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.width
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -58,7 +62,7 @@ class CloudWelcomeTest {
             here = here,
             joins = joins,
             image = { null },
-            onOpenBrowser = { taps += "browser" },
+            onOpenBrowser = { taps += "browser ${it.id}" },
             signInWithPassword = { login, password -> tries += login to password; answers.removeFirst() },
             onReload = {},
             onJoinServer = { taps += "join ${it.name}" },
@@ -82,9 +86,9 @@ class CloudWelcomeTest {
         rule.mainClock.autoAdvance = true
     }
 
-    /** Desktop's five slides in its order, with its words (the first in Liquid Metal), and Sign in with GitHub in Continue's place. */
+    /** Desktop's five slides in its order, with its words (the first in Liquid Metal), then Sign in with Apple and with GitHub in the first screen's two places. */
     @Test
-    fun theWelcomeIsDesktopsSlidesThenSignInWithGitHub() {
+    fun theWelcomeIsDesktopsSlidesThenAppleAndGitHub() {
         assertEquals(StartSlide.Art.Cloud, CloudSlides[0].art)
         assertEquals(
             listOf(R.raw.state_robot, R.raw.state_closed_lock, R.raw.state_sparkles, R.raw.state_open_hands),
@@ -96,14 +100,29 @@ class CloudWelcomeTest {
         for (title in listOf("Built for lots of agents", "Programmable permissions", "No lock-in", "Private open source")) {
             rule.onNodeWithContentDescription(title).assertExists()
         }
-        val primary = rule.node(CloudTags.PRIMARY).bounds
-        assertDp("continue 48 above the bottom", (891 - 48).dp, primary.bottom)
-        assertDp("continue centred", (PHONE_WIDTH / 2f).dp, (primary.left + primary.right) / 2)
+        // Apple where Start is, GitHub where Use Happy Cloud is, as iOS.
+        val apple = rule.node(CloudTags.PRIMARY).bounds
+        val github = rule.node(CloudTags.SECONDARY).bounds
+        rule.node(CloudTags.PRIMARY).assert(hasAnyDescendant(hasText("Sign in with Apple")))
+        rule.node(CloudTags.SECONDARY).assert(hasAnyDescendant(hasText("Sign in with GitHub")))
+        assertDp("github 12 under apple", apple.bottom + 12.dp, github.top)
+        assertDp("github 24 above the bottom", (891 - 24).dp, github.bottom)
+        assertDp("as wide as each other", apple.width, github.width)
+        assertDp("centred", (PHONE_WIDTH / 2f).dp, (apple.left + apple.right) / 2)
         rule.onNodeWithText("Continue").assertDoesNotExist()
         rule.onNodeWithText("Other ways", substring = true).assertDoesNotExist()
+        rule.onNodeWithText("Sign in with Apple").performClick()
         rule.onNodeWithText("Sign in with GitHub").performClick()
         rule.node(HeaderTags.LEFT).performClick()
-        assertEquals(listOf("browser", "back"), taps)
+        assertEquals(listOf("browser apple", "browser github", "back"), taps)
+    }
+
+    /** While the code is exchanged neither can be pressed again. */
+    @Test
+    fun whileFinishingBothWait() {
+        screen(CloudAccountState.Finishing)
+        rule.node(CloudTags.PRIMARY).assertIsNotEnabled()
+        rule.node(CloudTags.SECONDARY).assertIsNotEnabled()
     }
 
     /** A failed sign-in stays on the welcome: why, in red over the button, which tries again. */
@@ -112,7 +131,7 @@ class CloudWelcomeTest {
         screen(CloudAccountState.Failed(ServerAuthException.Reason.Denied))
         rule.node(CloudTags.SLIDES).assertExists()
         rule.onNodeWithText("Sign in with GitHub").performClick()
-        assertEquals(listOf("browser"), taps)
+        assertEquals(listOf("browser github"), taps)
     }
 
     /** Desktop's scenes, its files byte for byte (assets/animations/PROVENANCE.md at dca9b205). */

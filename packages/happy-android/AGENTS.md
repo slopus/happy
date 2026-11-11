@@ -1147,10 +1147,15 @@ change its wire behaviour on Android alone.
   welcome (no dialog), desktop's (CloudConnectScreen.tsx at dca9b205): its
   CLOUD_SLIDES (`CloudSlides`, the logo then robot, closed-lock, sparkles and
   open-hands, desktop's Lottie files minified, and its words) as the first
-  screen's `StartGallery`, then one Continue, which opens the
-  **account** sign-in in a Custom Tab: PKCE against the accounts origin's
-  `/authorize` and `/token`, `client_id` `happy`, `resource` the accounts
-  origin, nothing discovered (the page offers Apple for now). The account
+  screen's `StartGallery`, with desktop's scenes drifting down the sides
+  (`CloudDrift`), then Sign in with Apple where Start is and Sign in with
+  GitHub under it where Use Happy Cloud is (iOS's). Each opens the
+  **account** sign-in in an Auth Tab (androidx.browser, ephemeral; a Custom
+  Tab where there is none): PKCE against the accounts origin's `/authorize`
+  and `/token`, `client_id` `happy`, `resource` the accounts origin, nothing
+  discovered, and `provider=apple` or `github` (`CloudProvider`), which skips
+  the page's chooser. Both are web sign-ins: Apple has no native one on
+  Android, and the service refuses Google. The account
   token is a pass of about an hour with no refresh (token lifetimes v4): held
   in memory only, never stored, never refreshed, and only ever sent to the
   accounts API. Past its hour (two minutes' margin), or on any 401 from the
@@ -1187,8 +1192,7 @@ change its wire behaviour on Android alone.
   first screen's Grain Gradient (`StartSpec` palettes, onboarding's 28/34
   title, a scene above it) with one primary action at the bottom
   (`CloudScreens.kt`, `CloudFrame`); servers are cards on it.
-  Sign-in methods are the accounts page's (Apple and GitHub now); the app
-  shows none of its own, but one hidden: the welcome's slide art pressed ten
+  Besides Apple and GitHub, one sign-in is hidden: the welcome's slide art pressed ten
   times within four seconds (`CloudWelcome`) reveal a test account's login
   and password, for people and agents testing without Apple or GitHub.
   Nothing of it is composed before then. It posts `POST /v1/auth/password`

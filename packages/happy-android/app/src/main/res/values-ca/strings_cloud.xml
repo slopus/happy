@@ -58,5 +58,6 @@
     <string name="cloud_create_first_detail">El teu compte encara no té servidors. Posa nom al primer del teu equip.</string>
     <string name="cloud_create_have_invite">Tens una invitació? Uneix-te a un servidor</string>
     <string name="cloud_invite_button">Uneix-te</string>
+    <string name="cloud_sign_in_apple">Inicia la sessió amb Apple</string>
     <string name="cloud_sign_in_github">Inicia la sessió amb GitHub</string>
 </resources>

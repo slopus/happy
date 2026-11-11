@@ -47,6 +47,13 @@ data class CloudServer(
 @Serializable
 data class CloudServerImage(val thumbhash: String? = null, val width: Int? = null, val height: Int? = null, val url: String)
 
+/**
+ * A way to sign in to the account, by the accounts service's `provider`
+ * hint. Both are web sign-ins on Android: Apple has no native sign-in here,
+ * and the service refuses Google (`unsupported_provider`).
+ */
+enum class CloudProvider(val id: String) { Apple("apple"), GitHub("github") }
+
 /** What `GET /v1/servers/availability` says of a name. */
 enum class CloudName { Available, Taken, Reserved, Invalid }
 
@@ -125,16 +132,16 @@ class CloudAccount(
     )
 
     /**
-     * GitHub's sign-in, starting a fresh one each time: the PKCE request
-     * with `provider=github`, which makes the accounts service skip its
-     * chooser and redirect straight to GitHub (an unknown provider shows the
-     * chooser; Google is refused, 400).
+     * [provider]'s sign-in, starting a fresh one each time: the PKCE request
+     * with `provider=apple` or `github`, which makes the accounts service skip
+     * its chooser and redirect straight to Apple or GitHub (an unknown
+     * provider shows the chooser; Google is refused, 400).
      */
-    fun browserUrl(): String {
+    fun browserUrl(provider: CloudProvider): String {
         val next = auth.begin(origin, method, ServerSignInFlow.REDIRECT_URI)
         pending = next
         mutableState.value = CloudAccountState.InBrowser
-        return next.authorizeUrl.toHttpUrl().newBuilder().addQueryParameter("provider", GITHUB).build().toString()
+        return next.authorizeUrl.toHttpUrl().newBuilder().addQueryParameter("provider", provider.id).build().toString()
     }
 
     /** The browser came back to the redirect URI with [uri]; one that isn't this sign-in's is ignored. */
@@ -377,8 +384,6 @@ class CloudAccount(
         private const val EXPIRY_MARGIN_MILLIS = 120_000L
         /** The pass's life when the token endpoint doesn't say (contract v4: an hour). */
         private const val PASS_MILLIS = 3_600_000L
-        /** The accounts service's name for GitHub, its `provider` hint. */
-        internal const val GITHUB = "github"
         /** A lockout's length when a 429 doesn't say (test accounts: 15 minutes). */
         private const val LOCKOUT_SECONDS = 900L
         private val json = Json { ignoreUnknownKeys = true }

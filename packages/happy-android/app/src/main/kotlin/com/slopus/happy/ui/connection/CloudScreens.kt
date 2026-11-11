@@ -88,6 +88,7 @@ import com.slopus.happy.R
 import com.slopus.happy.connection.CloudAccountState
 import com.slopus.happy.connection.CloudException
 import com.slopus.happy.connection.CloudName
+import com.slopus.happy.connection.CloudProvider
 import com.slopus.happy.connection.CloudServer
 import com.slopus.happy.connection.PasswordSignIn
 import com.slopus.happy.connection.ServerAuthException
@@ -329,8 +330,8 @@ fun CloudScreen(
     joins: Map<String, CloudJoin>,
     /** A server picture's bytes, fetched with the account token. */
     image: suspend (String) -> ByteArray?,
-    /** Sign in with GitHub, in the app. */
-    onOpenBrowser: () -> Unit,
+    /** Sign in with Apple or GitHub, in the app. */
+    onOpenBrowser: (CloudProvider) -> Unit,
     /** A test account's sign-in, for the welcome's hidden form. */
     signInWithPassword: suspend (login: String, password: String) -> PasswordSignIn,
     onReload: () -> Unit,
@@ -389,10 +390,12 @@ fun CloudScreen(
  * Signed out: the welcome, desktop's, with the sign-in in it (Steve): Happy
  * Cloud's slides ([CloudSlides]) as the first screen's [StartGallery] on its
  * gradient, desktop's scenes drifting down the sides ([CloudDrift]), and at
- * the bottom Sign in with GitHub, which opens GitHub's sign-in in the app
- * (the accounts service has no other way for Android: no native Google, and
- * Apple isn't native here). Over it, a note: the hour up, or why the last
- * sign-in failed. While the code is exchanged the button spins.
+ * the bottom Sign in with Apple in Start's place and Sign in with GitHub
+ * under it in Use Happy Cloud's, as iOS. Each opens that provider's sign-in
+ * in the app ([CloudProvider]: Apple has no native sign-in on Android, and
+ * the accounts service refuses Google). Over them, a note: the hour up, or
+ * why the last sign-in failed. While the code is exchanged the one pressed
+ * spins.
  *
  * The slides' art pressed [UNLOCK_TAPS] times within [UNLOCK_MILLIS]
  * reveals a test account's sign-in, login and password, for people and
@@ -403,13 +406,22 @@ fun CloudScreen(
 @Composable
 private fun CloudWelcome(
     state: CloudAccountState,
-    onSignIn: () -> Unit,
+    onSignIn: (CloudProvider) -> Unit,
     signInWithPassword: suspend (login: String, password: String) -> PasswordSignIn,
     onBack: () -> Unit,
 ) {
     var unlocked by remember { mutableStateOf(false) }
     val presses = remember { ArrayDeque<Long>() }
-    val github = CloudAction(stringResource(R.string.cloud_sign_in_github), onSignIn, loading = state == CloudAccountState.Finishing)
+    // Which one was pressed, so the spinner is on it; kept while the browser is up, through a fold or unfold.
+    var pressed by rememberSaveable { mutableStateOf(CloudProvider.Apple) }
+    fun action(provider: CloudProvider, title: String) = CloudAction(
+        title,
+        { pressed = provider; onSignIn(provider) },
+        enabled = state != CloudAccountState.Finishing,
+        loading = state == CloudAccountState.Finishing && pressed == provider,
+    )
+    val apple = action(CloudProvider.Apple, stringResource(R.string.cloud_sign_in_apple))
+    val github = action(CloudProvider.GitHub, stringResource(R.string.cloud_sign_in_github))
     if (!unlocked) {
         val colors = HappyTheme.colors
         val note = when (state) {
@@ -419,7 +431,8 @@ private fun CloudWelcome(
         }
         CloudDeck(
             note = note,
-            primary = github,
+            primary = apple,
+            secondary = github,
             onArtPress = remember {
                 { at: Long ->
                     presses.addLast(at)
@@ -476,13 +489,15 @@ private const val UNLOCK_MILLIS = 4_000L
 /**
  * The welcome's frame, the first screen's with back: the gradient, the
  * drift, the clear bar, [CloudSlides] centred between the bar's row and the
- * button (16 kept above and below, moving on every 12 s), then [note] if
- * any, 12 over [primary], as wide as its label (at least 280), 48 above the
- * bottom inset. It scrolls when it outgrows the window. The drift keeps
- * clear of the slides and of the note and button.
+ * buttons (16 kept above and below, moving on every 12 s), then [note] if
+ * any, 12 over [primary] where Start is, and [secondary] where Use Happy
+ * Cloud is: 12 under it, 24 above the bottom inset, both as wide as the
+ * wider (at least 280), [primary] rising to make room. It scrolls when it
+ * outgrows the window. The drift keeps clear of the slides and of the
+ * note and buttons.
  */
 @Composable
-private fun CloudDeck(note: Pair<String, Color?>?, primary: CloudAction, onArtPress: (Long) -> Unit, onBack: () -> Unit) {
+private fun CloudDeck(note: Pair<String, Color?>?, primary: CloudAction, secondary: CloudAction?, onArtPress: (Long) -> Unit, onBack: () -> Unit) {
     val dark = HappyTheme.colors.dark
     val text = if (dark) StartSpec.darkText else StartSpec.lightText
     var root by remember { mutableStateOf<LayoutCoordinates?>(null) }
@@ -500,8 +515,7 @@ private fun CloudDeck(note: Pair<String, Color?>?, primary: CloudAction, onArtPr
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    .heightIn(min = viewport)
-                    .padding(bottom = StartSpec.bottomPadding),
+                    .heightIn(min = viewport),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Spacer(Modifier.height(StartSpec.controlsPadding + StartSpec.control + StartGallerySpec.margin))
@@ -525,13 +539,29 @@ private fun CloudDeck(note: Pair<String, Color?>?, primary: CloudAction, onArtPr
                         Box(Modifier.padding(horizontal = CloudSpec.sidePadding).widthIn(max = CloudSpec.columnMaxWidth)) { NotePill(note.first, note.second) }
                         Spacer(Modifier.height(CloudSpec.noteGap))
                     }
-                    RoundButton(
-                        title = primary.title,
-                        onClick = primary.onClick,
-                        enabled = primary.enabled,
-                        loading = primary.loading,
-                        modifier = Modifier.widthIn(min = StartSpec.connectMinWidth).width(IntrinsicSize.Max).testTag(CloudTags.PRIMARY),
-                    )
+                    // Start and Use Happy Cloud's places, as wide as the wider; both filled, as iOS: two ways in, neither the lesser.
+                    Column(Modifier.widthIn(min = StartSpec.connectMinWidth).width(IntrinsicSize.Max)) {
+                        RoundButton(
+                            title = primary.title,
+                            onClick = primary.onClick,
+                            enabled = primary.enabled,
+                            loading = primary.loading,
+                            modifier = Modifier.testTag(CloudTags.PRIMARY),
+                        )
+                        Box(Modifier.fillMaxWidth().heightIn(min = StartSpec.bottomPadding), contentAlignment = Alignment.TopCenter) {
+                            if (secondary != null) {
+                                RoundButton(
+                                    title = secondary.title,
+                                    onClick = secondary.onClick,
+                                    enabled = secondary.enabled,
+                                    loading = secondary.loading,
+                                    modifier = Modifier
+                                        .padding(top = StartSpec.cloudGap, bottom = StartSpec.cloudBottomPadding)
+                                        .testTag(CloudTags.SECONDARY),
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

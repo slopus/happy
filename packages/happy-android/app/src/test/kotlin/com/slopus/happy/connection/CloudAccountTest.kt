@@ -56,8 +56,10 @@ class CloudAccountTest {
     }
 
     /** Opens the page, comes back with a code, and waits until signed in. */
-    private fun signIn(account: CloudAccount, access: String) = runBlocking {
-        val page = account.browserUrl().toHttpUrl()
+    private fun signIn(account: CloudAccount, access: String, provider: CloudProvider = CloudProvider.GitHub) = runBlocking {
+        val page = account.browserUrl(provider).toHttpUrl()
+        // The service goes straight to that provider, past its own chooser.
+        assertEquals(provider.id, page.queryParameter("provider"))
         assertEquals("/authorize", page.encodedPath)
         assertEquals("happy", page.queryParameter("client_id"))
         assertEquals(audience, page.queryParameter("resource"))
@@ -86,6 +88,14 @@ class CloudAccountTest {
         assertEquals(1, server.requestCount)
     }
 
+    /** Apple is the same web sign-in, the service sent to Apple instead. */
+    @Test
+    fun signsInWithAppleTheSameWay() = runBlocking {
+        val account = account()
+        signIn(account, jwt(audience, tag = "a1"), CloudProvider.Apple)
+        assertEquals(CloudAccountState.SignedIn, account.state.value)
+    }
+
     @Test
     fun aPassPastItsHourIsNeverSent() = runBlocking {
         val account = account()
@@ -107,7 +117,7 @@ class CloudAccountTest {
     @Test
     fun aCallbackForAnotherSignInIsIgnored() {
         val account = account()
-        account.browserUrl()
+        account.browserUrl(CloudProvider.GitHub)
         account.callback("happy://oauth/callback?code=c1&state=someone-elses")
         assertEquals(CloudAccountState.InBrowser, account.state.value)
         assertEquals(0, server.requestCount)

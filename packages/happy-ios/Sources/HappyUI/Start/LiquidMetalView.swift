@@ -53,8 +53,8 @@ import UIKit
 /// Metal the mark stands still in `fallbackColor`.
 ///
 /// Only the view's own pixels are drawn, and the mask's edge field comes
-/// baked, so a 128 pt mark at 3x costs the GPU about 0.1 ms a frame on an
-/// iPhone 15 Pro Max (`HAPPY_LIQUID_METAL_PROBE=1` prints it).
+/// baked, so a frame is one texture read and the stripes' arithmetic per
+/// pixel. `HAPPY_LIQUID_METAL_PROBE=1` prints each frame's GPU time.
 final class LiquidMetalView: UIView {
     /// What is drawn in metal: a mask and its edge field, baked by
     /// scripts/liquid-metal/cloud.py.

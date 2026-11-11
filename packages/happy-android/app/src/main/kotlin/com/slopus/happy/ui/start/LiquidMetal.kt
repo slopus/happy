@@ -90,7 +90,8 @@ object LiquidMetalTags {
  * and holds still while covered, in the background, or with animations
  * removed (Paper's frame 0 then). Only its own box is drawn and the mask's
  * edge field comes baked (`cloud_liquid_metal.png`, decoded once off the main
- * thread), so a frame costs the GPU a fraction of a millisecond. Until the
+ * thread), so a frame is one texture read and the stripes' arithmetic per
+ * pixel, three times over for the stripes' fwidth. Until the
  * field is decoded, and before Android 13, which has no runtime shader, the
  * cloud stands still in [fallbackColor].
  */

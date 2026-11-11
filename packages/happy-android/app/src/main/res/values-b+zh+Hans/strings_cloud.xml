@@ -58,5 +58,6 @@
     <string name="cloud_create_first_detail">你的账户还没有服务器。为团队的第一个服务器命名。</string>
     <string name="cloud_create_have_invite">有邀请？加入服务器</string>
     <string name="cloud_invite_button">加入</string>
+    <string name="cloud_sign_in_apple">通过 Apple 登录</string>
     <string name="cloud_sign_in_github">使用 GitHub 登录</string>
 </resources>

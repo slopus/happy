@@ -58,5 +58,6 @@
     <string name="cloud_create_first_detail">你的帳號還沒有伺服器。為團隊的第一個伺服器命名。</string>
     <string name="cloud_create_have_invite">有邀請？加入伺服器</string>
     <string name="cloud_invite_button">加入</string>
+    <string name="cloud_sign_in_apple">使用 Apple 登入</string>
     <string name="cloud_sign_in_github">使用 GitHub 登入</string>
 </resources>
