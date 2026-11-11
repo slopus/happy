@@ -147,6 +147,12 @@ public actor SocketIOClient {
 
     private func runConnection(onConnected: () -> Void) async throws {
         let connection = try await connector.connect(to: url)
+        // disconnect() may have run while the connect was in flight, when
+        // there was no connection yet for it to close.
+        guard wantsConnection && !Task.isCancelled else {
+            await connection.close()
+            throw CancellationError()
+        }
         self.connection = connection
         defer { Task { await connection.close() } }
 
