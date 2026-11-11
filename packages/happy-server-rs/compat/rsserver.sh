@@ -8,4 +8,4 @@ export PORT="$2" METRICS_ENABLED=false NODE_ENV=production DATA_DIR="$WORK/data-
 export HAPPY_RS_EXPO_PUSH_URL="$COMPAT_MOCK/exp.host/--/api/v2/push/send"
 export HAPPY_RS_ELEVENLABS_API="$COMPAT_MOCK/api.elevenlabs.io/v1/convai"
 export HAPPY_RS_GITHUB_OAUTH_BASE="$COMPAT_MOCK/github.com" HAPPY_RS_GITHUB_API_BASE="$COMPAT_MOCK/api.github.com"
-exec "$ROOT/packages/happy-server-rs/target/${PROFILE:-debug}/happy-server-rs" serve
+cd "$WORK" && exec "$ROOT/packages/happy-server-rs/target/${PROFILE:-debug}/happy-server-rs" serve

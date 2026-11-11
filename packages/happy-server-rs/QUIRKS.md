@@ -244,3 +244,7 @@ Differences accepted on purpose. Everything else is a bug.
     differ. The placeholder looks the same.
 16. **`avatar_url` schemes.** Only `http:` and `https:` are fetched; Node's `fetch`
     also reads `data:` URLs.
+17. **Remote debug log file.** With `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING`
+    the route's answers match, and posted lines go to `.logs/MM-DD-HH-MM-SS.log` in
+    pino's JSON layout. The TS server also copies its own log output into that file
+    at debug level; the Rust server's own logs stay on stdout under `HAPPY_LOG`.
