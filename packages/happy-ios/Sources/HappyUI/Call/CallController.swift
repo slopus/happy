@@ -161,7 +161,7 @@ final class CallController {
         }
         focus = targets.focusedNow
         call.start(language: nil, context: {
-            let initial = await context.initial(previous: history.slots)
+            let initial = await context.initial(previous: history.slots, person: await Self.person(account))
             await Self.hold(await context.followed, in: targets)
             return initial
         }, tool: { call in await context.handle(call) })
@@ -183,6 +183,16 @@ final class CallController {
             deliver(update)
             await Self.hold(await context.followed, in: targets)
         }
+    }
+
+    /// Who the call talks to, in a team: the person's name on this
+    /// computer; nil outside one, or while it can't be read.
+    private static func person(_ account: Session) async -> String? {
+        guard account.home.userId != nil else { return nil }
+        var name = account.profile.state.name
+        if name.isEmpty { name = (try? await account.client.profile())?.name ?? "" }
+        name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? nil : name
     }
 
     /// Exactly the conversations the call hears from stay read: one that

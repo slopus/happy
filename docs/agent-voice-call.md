@@ -463,11 +463,13 @@ or `"title":null` for home, Settings or anything else that isn't a
 conversation: the screen in front changed. No history comes with it.
 
 **The first context** (`initialConversationContext`) is plain text, no
-JSON, in five parts separated by blank lines:
+JSON, in five parts separated by blank lines. The "The person" line comes
+only in a team, with the person's name from their profile:
 
 ```text
 Now: 2026-11-06T09:15:00+01:00 (the person's local time)
 focusRevision: 0
+The person: Ada, a member of this team. They mostly ask about their own work; look across the team only when they ask about the team or others' work.
 
 On screen: Fix cache race — subtask, ref s3, under Release notes
 Working: yes. Needs the person: no.

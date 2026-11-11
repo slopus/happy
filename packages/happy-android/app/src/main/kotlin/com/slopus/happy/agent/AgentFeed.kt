@@ -74,6 +74,8 @@ sealed interface AgentFeedRow {
         val delegating: Boolean = false,
         val workspaceId: String? = null,
         val lineChanges: WorkspaceLineChanges? = null,
+        /** A teammate's task: their name, a line under its title (iOS `SidebarRows.ownerName`). */
+        val owner: String? = null,
     ) : AgentFeedRow {
         override val key get() = "agent-$agentId"
 
@@ -186,6 +188,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                 seed: String? = null, happy: Boolean = false,
                 /** A bot muted on the desktop: listed, its subtasks too, without activity or unread (iOS SidebarRows' `muted`). */
                 muted: Boolean = false,
+                owner: String? = null,
             ): Boolean {
                 if (agentId in removed) return false
                 val agent = catalog.agents[agentId] ?: return false
@@ -209,6 +212,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     waiting = !muted && wire.wait != null,
                     workspaceId = wire.workspaceId,
                     lineChanges = git[wire.workspaceId]?.takeIf { it.visible },
+                    owner = owner,
                 )
                 var delegating = false
                 if (nesting < 2) {
@@ -300,6 +304,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     agentRows(
                         agentId, id?.let(intents.titles::get) ?: task.string("name"), ConversationKind.Task, 0,
                         picture = author?.takeIf { photo != null }?.let(TeamUser::photoPath), thumbhash = photo, seed = author ?: id ?: agentId,
+                        owner = author?.takeIf { it != catalog.userId }?.let { users[it]?.name?.trim() }?.ifEmpty { null },
                     )
                 }
             }

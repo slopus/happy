@@ -8,13 +8,17 @@ import com.slopus.happy.analytics.VoiceError
 import android.content.Context
 import android.os.SystemClock
 import com.slopus.happy.BuildConfig
+import com.slopus.happy.agent.AgentSession
 import com.slopus.happy.agent.AgentSessions
+import com.slopus.happy.agent.WireProfileResponse
+import com.slopus.happy.agent.decode
 import com.slopus.happy.payments.OfferResult
 import com.slopus.happy.payments.OfferSheet
 import com.slopus.happy.payments.Offers
 import com.slopus.happy.payments.Subscription
 import com.slopus.happy.ui.conversation.Typesetter
 import com.slopus.happy.ui.conversation.failureText
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -156,8 +160,23 @@ class CallController(
         focus = targets.focusedNow
         calling.launch { context.onRestart { withContext(Dispatchers.Main) { call.requestRestart() } } }
         call.start(language = null, context = {
-            context.initial(history.slots).also { hold(context.followed(), targets) }
+            context.initial(history.slots, person(account)).also { hold(context.followed(), targets) }
         }, tool = { context.handle(it) })
+    }
+
+    /** Who the call talks to, in a team: the person's name on this computer; null outside one, or while it can't be read. */
+    private suspend fun person(account: AgentSession): String? {
+        if (account.catalog.value.userId == null) return null
+        val name = account.profile.state.value.name.ifBlank {
+            try {
+                account.client.decode<WireProfileResponse>("GET", "/v0/profile").profile.name.orEmpty()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                ""
+            }
+        }
+        return name.trim().ifEmpty { null }
     }
 
     /** Exactly the conversations the call hears from stay read: one that dropped out of the last visited is let go. */

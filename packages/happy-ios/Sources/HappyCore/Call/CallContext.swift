@@ -196,8 +196,9 @@ public actor CallContext {
     /// `Limits.totalBytes`: the older turns give way first, then the
     /// directory's tail, then the recap's older lines (nothing else has
     /// them), and the newest turn only after that. A new conversation's:
-    /// the agent has no reference yet.
-    public func initial(previous: [CallSlot] = []) async -> String {
+    /// the agent has no reference yet. In a team, `person` names who it
+    /// talks to (`personText`).
+    public func initial(previous: [CallSlot] = [], person: String? = nil) async -> String {
         told.removeAll()
         see(await targets.directory())
         listed = entries.map(Listing.init)
@@ -214,6 +215,7 @@ public actor CallContext {
             }
         }
         let header = "Now: \(Self.local(now(), in: timeZone)) (the person's local time)\nfocusRevision: \(focusRevision)"
+            + (person.map { "\n" + Self.personText($0) } ?? "")
         var turns = focused.map(Self.recent) ?? []
         var budget = Limits.directoryBytes
         var recapBudget = Limits.recapBytes
@@ -228,6 +230,11 @@ public actor CallContext {
         while text().utf8.count > Limits.totalBytes, !turns.isEmpty { turns.removeFirst() }
         if let focus { told.insert(focus) }
         return text(telling: true)
+    }
+
+    /// Who the call talks to, in a team.
+    static func personText(_ name: String) -> String {
+        "The person: \(name), a member of this team. They mostly ask about their own work; look across the team only when they ask about the team or others' work."
     }
 
     /// How the first context starts new work, as `message` takes it.

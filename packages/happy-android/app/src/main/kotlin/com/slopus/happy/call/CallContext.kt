@@ -198,9 +198,10 @@ class CallContext(
      * where `navigate` goes. Within [Limits.TOTAL_BYTES]: the older turns give
      * way first, then the directory's tail, then the recap's older lines
      * (nothing else has them), and the newest turn only after that. A new
-     * conversation's: the agent has no reference yet.
+     * conversation's: the agent has no reference yet. In a team, [person]
+     * names who it talks to ([personText]).
      */
-    suspend fun initial(previous: List<CallSlot> = emptyList()): String = withContext(lane) {
+    suspend fun initial(previous: List<CallSlot> = emptyList(), person: String? = null): String = withContext(lane) {
         told.clear()
         see(targets.directory())
         listed = entries.map(::Listing)
@@ -214,7 +215,8 @@ class CallContext(
             if (directory[focused] == null) targets.unlisted(focused)?.let { drafts[focused] = it }
             state = targets.state(focused)?.also { if (heard[focused] == null) listen(it) }
         }
-        val header = "Now: ${local(now(), zone)} (the person's local time)\nfocusRevision: $focusRevision"
+        val header = "Now: ${local(now(), zone)} (the person's local time)\nfocusRevision: $focusRevision" +
+            person?.let { "\n" + personText(it) }.orEmpty()
         val turns = state?.let(::recent)?.toMutableList() ?: mutableListOf()
         var budget = Limits.DIRECTORY_BYTES
         var recapBudget = Limits.RECAP_BYTES
@@ -996,6 +998,10 @@ class CallContext(
          * only; the dashboard's navigate description names the screens.
          */
         const val RESTART_URL = "happy://call/restart"
+
+        /** Who the call talks to, in a team (iOS `personText`). */
+        fun personText(name: String): String =
+            "The person: $name, a member of this team. They mostly ask about their own work; look across the team only when they ask about the team or others' work."
 
         /** How the first context starts new work, as `message` takes it. */
         val NEW_WORK_TEXT = """
