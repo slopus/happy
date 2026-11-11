@@ -2599,6 +2599,200 @@
             "drawn": [false],
             "problems": ["grid: The media props are invalid at \"/columns\": Unexpected property."],
             "fallback": "1 image"
+        },
+        {
+            "document": {
+                "id": "u1x8k2m9r4t8w1y5z3a6b0c2",
+                "components": [
+                    {
+                        "id": "tree",
+                        "fallback": "src/app.ts",
+                        "type": "file_tree",
+                        "props": {
+                            "paths": ["src/app.ts"],
+                            "collapsed": true
+                        }
+                    }
+                ]
+            },
+            "wireValid": true,
+            "drawn": [false],
+            "problems": [
+                "tree: The file_tree props are invalid at \"/collapsed\": Unexpected property."
+            ],
+            "fallback": "src/app.ts"
+        },
+        {
+            "document": {
+                "id": "u1x8k2m9r4t8w1y5z3a6b0c2",
+                "components": [
+                    {
+                        "id": "tree",
+                        "fallback": "A file tree",
+                        "type": "file_tree",
+                        "props": {
+                            "paths": []
+                        }
+                    }
+                ]
+            },
+            "wireValid": true,
+            "drawn": [false],
+            "problems": [
+                "tree: The file_tree props are invalid at \"/paths\": Expected array length to be greater or equal to 1."
+            ],
+            "fallback": "A file tree"
+        },
+        {
+            "document": {
+                "id": "u1x8k2m9r4t8w1y5z3a6b0c2",
+                "components": [
+                    {
+                        "id": "tree",
+                        "fallback": "A file tree",
+                        "type": "file_tree",
+                        "props": {}
+                    }
+                ]
+            },
+            "wireValid": true,
+            "drawn": [false],
+            "problems": [
+                "tree: The file_tree props are invalid at \"/paths\": Expected required property."
+            ],
+            "fallback": "A file tree"
+        },
+        {
+            "document": {
+                "id": "u1x8k2m9r4t8w1y5z3a6b0c2",
+                "components": [
+                    {
+                        "id": "tree",
+                        "fallback": "src/app.ts",
+                        "type": "file_tree",
+                        "props": {
+                            "paths": ["src/\u0007app.ts"]
+                        }
+                    }
+                ]
+            },
+            "wireValid": true,
+            "drawn": [false],
+            "problems": [
+                "tree: The file_tree props are invalid at \"/paths/0\": Expected string to match '^[^\\u0000-\\u001f\\u007f-\\u009f]*$'."
+            ],
+            "fallback": "src/app.ts"
+        },
+        {
+            "document": {
+                "id": "u1x8k2m9r4t8w1y5z3a6b0c2",
+                "components": [
+                    {
+                        "id": "tree",
+                        "fallback": "src",
+                        "type": "file_tree",
+                        "props": {
+                            "paths": ["src", ""]
+                        }
+                    }
+                ]
+            },
+            "wireValid": true,
+            "drawn": [false],
+            "problems": [
+                "tree: The file_tree props are invalid at \"/paths/1\": Expected string length greater or equal to 1."
+            ],
+            "fallback": "src"
+        },
+        {
+            "document": {
+                "id": "u1x8k2m9r4t8w1y5z3a6b0c2",
+                "components": [
+                    {
+                        "id": "tree",
+                        "fallback": "src",
+                        "type": "file_tree",
+                        "props": {
+                            "paths": ["src", 7]
+                        }
+                    }
+                ]
+            },
+            "wireValid": true,
+            "drawn": [false],
+            "problems": ["tree: The file_tree props are invalid at \"/paths/1\": Expected string."],
+            "fallback": "src"
+        },
+        {
+            "document": {
+                "id": "u1x8k2m9r4t8w1y5z3a6b0c2",
+                "components": [
+                    {
+                        "id": "tree",
+                        "fallback": "src",
+                        "type": "file_tree",
+                        "props": {
+                            "paths": "src"
+                        }
+                    }
+                ]
+            },
+            "wireValid": true,
+            "drawn": [false],
+            "problems": ["tree: The file_tree props are invalid at \"/paths\": Expected array."],
+            "fallback": "src"
+        },
+        {
+            "document": {
+                "id": "u1x8k2m9r4t8w1y5z3a6b0c2",
+                "components": [
+                    {
+                        "id": "model",
+                        "fallback": "Choose your default model",
+                        "type": "default_model",
+                        "props": {
+                            "modelId": "gpt-5.5"
+                        }
+                    }
+                ]
+            },
+            "wireValid": true,
+            "drawn": [false],
+            "problems": [
+                "model: The default_model props are invalid at \"/modelId\": Unexpected property."
+            ],
+            "fallback": "Choose your default model"
+        },
+        {
+            "document": {
+                "id": "u1x8k2m9r4t8w1y5z3a6b0c2",
+                "components": [
+                    {
+                        "id": "tree",
+                        "fallback": "src/app.ts",
+                        "type": "file_tree",
+                        "props": {
+                            "paths": ["src/app.ts"]
+                        }
+                    },
+                    {
+                        "id": "model",
+                        "fallback": "Choose your default model",
+                        "type": "default_model",
+                        "props": {
+                            "providerId": "codex",
+                            "modelId": "gpt-5.5",
+                            "effort": "high"
+                        }
+                    }
+                ]
+            },
+            "wireValid": true,
+            "drawn": [true, false],
+            "problems": [
+                "model: The default_model props are invalid at \"/providerId\": Unexpected property."
+            ],
+            "fallback": "src/app.ts\n\nChoose your default model"
         }
     ]
 }

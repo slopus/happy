@@ -1,8 +1,8 @@
 {
   "source": "happy-agent packages/happy-agent-client/fixtures/ui",
-  "commit": "1ac2081e16c3111ef928ea29311ae2ba7c06c671",
+  "commit": "3b2d95654d428a18ba02674251c2fac8ad2c4066",
   "sha256": {
-    "actions.fixtures.json": "561db2a04cec38962b505f945b094e6f953bbdce6cbf4a40f14544fb99554ade",
+    "actions.fixtures.json": "b68f294eda87380b635dba63aaf1f94c90fb7971a25668f6e3abe6917f89b75b",
     "ui.schema.json": "6789692dcd1297443cc9ea14f50bc302bdf1c2c3c0b515ee47dd3bacab0e792f"
   }
 }
