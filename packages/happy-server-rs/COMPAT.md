@@ -29,7 +29,7 @@ validation (params → body → querystring, before auth), `R` = zod response sc
       `undefined` (DELETE/GET); invalid JSON → 400 `SyntaxError` with the V8 message
 - [x] `text/plain` body → string; `application/octet-stream` → raw bytes;
       other types → 415 `FastifyError` `Unsupported Media Type: <type>`
-- [ ] Body limit 100 MB (10 MB on session avatar PUT) → 413 `FastifyError`
+- [x] Body limit 100 MB (10 MB on session avatar PUT) → 413 `FastifyError`
 - [x] Query parsing like `fast-querystring` (repeated keys → array, `+` → space)
 - [x] `z.coerce.number()` uses JS `Number()` semantics on strings
 - [x] Automatic `HEAD` for every `GET` route
@@ -41,7 +41,7 @@ validation (params → body → querystring, before auth), `R` = zod response sc
 ### Misc
 - [x] `GET /` → `Welcome to Happy Server!` (text) — only without a static webapp dir
 - [x] `GET /health` → `{status, timestamp(ISO), service}` / 503 on DB failure
-- [ ] `GET /files/*` (local storage only): public file serving, 403 on traversal and on session avatars
+- [x] `GET /files/*` (local storage only): public file serving, 403 on traversal and on session avatars
 - not ported: backend-only. Static webapp + SPA fallback + `__HAPPY_CONFIG__` injection (`HAPPY_STATIC_DIR`, `HAPPY_INJECT_HTML_CONFIG`) exist only in the standalone/self-host entry (`standalone.ts`, PGlite); the Rust server targets the hosted `main.ts` deployment
 - [ ] Metrics server (`METRICS_PORT`, default 9090, `METRICS_ENABLED`): `GET /metrics`, `GET /health`
 
@@ -72,87 +72,87 @@ validation (params → body → querystring, before auth), `R` = zod response sc
 - [x] `POST /v3/sessions/:sessionId/messages` A S — localId dedup, batch seq, `new-message`
 
 ### Session avatars (`sessionAvatarRoutes.ts`)
-- [ ] `POST /v1/sessions/:sessionId/avatar/request-upload` A S — 60/min/account limiter
-- [ ] `PUT /v1/sessions/:sessionId/avatar/:avatarFile` A S — local only, immutable (`wx`), 409 on differing bytes
-- [ ] `PATCH /v1/sessions/:sessionId/avatar` A S — serializable tx, `update-session` with `avatar`/`avatarVersion`
-- [ ] `DELETE /v1/sessions/:sessionId/avatar` A S
-- [ ] `POST /v1/sessions/:sessionId/avatar/request-download` A S
-- [ ] `GET /v1/sessions/:sessionId/avatar/:avatarFile` A S — local only, `cache-control: private, no-store`
+- [x] `POST /v1/sessions/:sessionId/avatar/request-upload` A S — 60/min/account limiter
+- [x] `PUT /v1/sessions/:sessionId/avatar/:avatarFile` A S — local only, immutable (`wx`), 409 on differing bytes
+- [x] `PATCH /v1/sessions/:sessionId/avatar` A S — serializable tx, `update-session` with `avatar`/`avatarVersion`
+- [x] `DELETE /v1/sessions/:sessionId/avatar` A S
+- [x] `POST /v1/sessions/:sessionId/avatar/request-download` A S
+- [x] `GET /v1/sessions/:sessionId/avatar/:avatarFile` A S — local only, `cache-control: private, no-store`
 
 ### Attachments (`attachmentRoutes.ts`)
-- [ ] `POST /v1/sessions/:sessionId/attachments/request-upload` A S R — limiter, presigned POST policy (S3) / PUT URL (local)
-- [ ] `PUT /v1/sessions/:sessionId/attachments/:attachmentFile` A S R
-- [ ] `POST /v1/sessions/:sessionId/attachments/request-download` A S R
-- [ ] `GET /v1/sessions/:sessionId/attachments/:attachmentFile` A S — bytes (local) / 302 to presigned GET (S3)
+- [x] `POST /v1/sessions/:sessionId/attachments/request-upload` A S R — limiter, presigned POST policy (S3) / PUT URL (local)
+- [x] `PUT /v1/sessions/:sessionId/attachments/:attachmentFile` A S R
+- [x] `POST /v1/sessions/:sessionId/attachments/request-download` A S R
+- [x] `GET /v1/sessions/:sessionId/attachments/:attachmentFile` A S — bytes (local) / 302 to presigned GET (S3)
 
 ### Push (`pushRoutes.ts`)
-- [ ] `POST /v1/push-tokens` A S R
-- [ ] `DELETE /v1/push-tokens/:token` A S R
-- [ ] `GET /v1/push-tokens` A
-- [ ] `POST /v1/sessions/:sessionId/push-event` A S R — `session-event` ephemeral, presence suppression, Expo send (8 s deadline)
+- [x] `POST /v1/push-tokens` A S R
+- [x] `DELETE /v1/push-tokens/:token` A S R
+- [x] `GET /v1/push-tokens` A
+- [x] `POST /v1/sessions/:sessionId/push-event` A S R — `session-event` ephemeral, presence suppression, Expo send (8 s deadline)
 
 ### Connect (`connectRoutes.ts`)
-- [ ] `GET /v1/connect/github/params` A R — ephemeral state token (5 min)
-- [ ] `GET /v1/connect/github/callback` S — OAuth exchange, avatar upload + thumbhash, redirects
-- [ ] `POST /v1/connect/github/webhook` S R — HMAC verification (`@octokit/webhooks` semantics)
-- [ ] `DELETE /v1/connect/github` A R
-- [ ] `POST /v1/connect/:vendor/register` A S — KeyTree AES-GCM encrypted token
-- [ ] `GET /v1/connect/:vendor/token` A S R
-- [ ] `DELETE /v1/connect/:vendor` A S R — 500 when missing (Prisma `delete` throws)
-- [ ] `GET /v1/connect/tokens` A R
+- [x] `GET /v1/connect/github/params` A R — ephemeral state token (5 min)
+- [x] `GET /v1/connect/github/callback` S — OAuth exchange, avatar upload + thumbhash, redirects
+- [x] `POST /v1/connect/github/webhook` S R — HMAC verification (`@octokit/webhooks` semantics)
+- [x] `DELETE /v1/connect/github` A R
+- [x] `POST /v1/connect/:vendor/register` A S — KeyTree AES-GCM encrypted token
+- [x] `GET /v1/connect/:vendor/token` A S R
+- [x] `DELETE /v1/connect/:vendor` A S R — 500 when missing (Prisma `delete` throws)
+- [x] `GET /v1/connect/tokens` A R
 
 ### Machines (`machinesRoutes.ts`)
-- [ ] `POST /v1/machines` A S — create-or-load, 409 `machine_id_taken`, `new-machine` + `update-machine`
-- [ ] `GET /v1/machines` A — bare array
-- [ ] `GET /v1/machines/:id` A S
-- [ ] `DELETE /v1/machines/:id` A S — deletes access keys, `delete-machine`
+- [x] `POST /v1/machines` A S — create-or-load, 409 `machine_id_taken`, `new-machine` + `update-machine`
+- [x] `GET /v1/machines` A — bare array
+- [x] `GET /v1/machines/:id` A S
+- [x] `DELETE /v1/machines/:id` A S — deletes access keys, `delete-machine`
 
 ### Artifacts (`artifactsRoutes.ts`)
-- [ ] `GET /v1/artifacts` A R
-- [ ] `GET /v1/artifacts/:id` A S R
-- [ ] `POST /v1/artifacts` A S R
-- [ ] `POST /v1/artifacts/:id` A S R
-- [ ] `DELETE /v1/artifacts/:id` A S R
+- [x] `GET /v1/artifacts` A R
+- [x] `GET /v1/artifacts/:id` A S R
+- [x] `POST /v1/artifacts` A S R
+- [x] `POST /v1/artifacts/:id` A S R
+- [x] `DELETE /v1/artifacts/:id` A S R
 
 ### Access keys (`accessKeysRoutes.ts`)
-- [ ] `GET /v1/access-keys/:sessionId/:machineId` A S R
-- [ ] `POST /v1/access-keys/:sessionId/:machineId` A S R
-- [ ] `PUT /v1/access-keys/:sessionId/:machineId` A S R
+- [x] `GET /v1/access-keys/:sessionId/:machineId` A S R
+- [x] `POST /v1/access-keys/:sessionId/:machineId` A S R
+- [x] `PUT /v1/access-keys/:sessionId/:machineId` A S R
 
 ### Projects (`projectRoutes.ts`)
-- [ ] `POST /v1/projects` A S — create-or-load by `externalId`
-- [ ] `GET /v1/projects` A S — `ids`, `changedSince`
-- [ ] `GET /v1/projects/:projectId` A S
-- [ ] `PATCH /v1/projects/:projectId` A S — strict body, 409 on version mismatch
-- [ ] `PATCH /v1/projects/:projectId/avatar` A S
-- [ ] `DELETE /v1/projects/:projectId/avatar` A S
-- [ ] `DELETE /v1/projects/:projectId` A S — unlinks sessions (`update-session` with `projectId: null`), `delete-project`
-- [ ] `POST /v1/projects/:projectId/avatar/request-upload` A S — limiter (checked before ownership)
-- [ ] `PUT /v1/projects/:projectId/avatar/:avatarFile` A S
-- [ ] `POST /v1/projects/:projectId/avatar/request-download` A S
-- [ ] `GET /v1/projects/:projectId/avatar/:avatarFile` A S
+- [x] `POST /v1/projects` A S — create-or-load by `externalId`
+- [x] `GET /v1/projects` A S — `ids`, `changedSince`
+- [x] `GET /v1/projects/:projectId` A S
+- [x] `PATCH /v1/projects/:projectId` A S — strict body, 409 on version mismatch
+- [x] `PATCH /v1/projects/:projectId/avatar` A S
+- [x] `DELETE /v1/projects/:projectId/avatar` A S
+- [x] `DELETE /v1/projects/:projectId` A S — unlinks sessions (`update-session` with `projectId: null`), `delete-project`
+- [x] `POST /v1/projects/:projectId/avatar/request-upload` A S — limiter (checked before ownership)
+- [x] `PUT /v1/projects/:projectId/avatar/:avatarFile` A S
+- [x] `POST /v1/projects/:projectId/avatar/request-download` A S
+- [x] `GET /v1/projects/:projectId/avatar/:avatarFile` A S
 
 ### KV (`kvRoutes.ts`)
-- [ ] `GET /v1/kv/:key` A S R
-- [ ] `GET /v1/kv` A S R
-- [ ] `POST /v1/kv/bulk` A S R
-- [ ] `POST /v1/kv` A S R — serializable all-or-nothing, `kv-batch-update`
+- [x] `GET /v1/kv/:key` A S R
+- [x] `GET /v1/kv` A S R
+- [x] `POST /v1/kv/bulk` A S R
+- [x] `POST /v1/kv` A S R — serializable all-or-nothing, `kv-batch-update`
 
 ### Feed / social (`feedRoutes.ts`, `userRoutes.ts`)
-- [ ] `GET /v1/feed` A S R — `0-<counter>` cursors; bad cursor → 500
-- [ ] `GET /v1/user/:id` A S R
-- [ ] `GET /v1/user/search` A S R — `ILIKE prefix%`, 10 results
-- [ ] `POST /v1/friends/add` A S R — relationship state machine + feed notifications (24 h cooldown)
-- [ ] `POST /v1/friends/remove` A S R
-- [ ] `GET /v1/friends` A R
+- [x] `GET /v1/feed` A S R — `0-<counter>` cursors; bad cursor → 500
+- [x] `GET /v1/user/:id` A S R
+- [x] `GET /v1/user/search` A S R — `ILIKE prefix%`, 10 results
+- [x] `POST /v1/friends/add` A S R — relationship state machine + feed notifications (24 h cooldown)
+- [x] `POST /v1/friends/remove` A S R
+- [x] `GET /v1/friends` A R
 
 ### Voice (`voiceRoutes.ts`)
-- [ ] `POST /v1/voice/conversations` A S R — ElevenLabs usage paging, 7200 s cap, token + conversation id
-- [ ] `GET /v1/voice/usage` A R
+- [x] `POST /v1/voice/conversations` A S R — ElevenLabs usage paging, 7200 s cap, token + conversation id
+- [x] `GET /v1/voice/usage` A R
 
 ### Version / dev
-- [ ] `POST /v1/version` S R — node-semver `>=1.4.1` for ios/android
-- [ ] `POST /logs-combined-from-cli-and-mobile-for-simple-ai-debugging` S — only with `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING`
+- [x] `POST /v1/version` S R — node-semver `>=1.4.1` for ios/android
+- [x] `POST /logs-combined-from-cli-and-mobile-for-simple-ai-debugging` S — only with `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING`
 
 ## Socket.IO (`socket.ts`, `socketConfig.ts`)
 
@@ -195,7 +195,7 @@ polling→upgrade). EIO3 and other namespaces are refused exactly as the TS serv
 - [x] `update` payload `{id, seq, body:{t,...}, createdAt}` from ported code: `new-message`, `new-session`,
       `update-session`, `delete-session`, `update-account`, `update-machine`, `new-artifact`,
       `update-artifact`, `delete-artifact`
-- [ ] the same from Phase 3 routes: `new-machine`, `delete-machine`, HTTP artifact routes, `new-feed-post`,
+- [x] the same from Phase 3 routes: `new-machine`, `delete-machine`, HTTP artifact routes, `new-feed-post`,
       `kv-batch-update`, `new-project`, `update-project`, `delete-project`
 - [x] `ephemeral`: `activity`, `machine-activity`, `usage`, `session-event`
 - [x] `rpc-request` (with ack), `rpc-registered`, `rpc-unregistered`, `rpc-error`
@@ -217,18 +217,19 @@ polling→upgrade). EIO3 and other namespaces are refused exactly as the TS serv
 | `METRICS_ENABLED`, `METRICS_PORT` | metrics server | [ ] |
 | `NODE_ENV` | log level | [ ] |
 | `DATA_DIR` | local files root (`./data`) | [x] |
-| `PUBLIC_URL` | public file / upload URLs | [ ] |
+| `PUBLIC_URL` | public file / upload URLs | [x] |
 | `S3_HOST`, `S3_PORT`, `S3_USE_SSL`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET`, `S3_REGION`, `S3_PUBLIC_URL` | Minio client | [ ] |
 | `REDIS_URL` | adapter (multi-replica) | ignored (single process by design) |
 | `DB_PROVIDER`, `PGLITE_DIR` | PGlite standalone | not ported: backend-only (external Postgres only) |
-| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_REDIRECT_URL` | OAuth | [ ] |
-| `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`, `GITHUB_REDIRECT_URI`, `GITHUB_WEBHOOK_SECRET` | webhooks enabled iff all set | [ ] |
-| `ELEVENLABS_API_KEY` | voice | [ ] |
-| `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING` | dev log route + `.logs/` file | [ ] |
+| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_REDIRECT_URL` | OAuth | [x] |
+| `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`, `GITHUB_REDIRECT_URI`, `GITHUB_WEBHOOK_SECRET` | webhooks enabled iff all set | [x] |
+| `ELEVENLABS_API_KEY` | voice | [x] |
+| `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING` | dev log route + `.logs/` file | [x] |
 | `HAPPY_STATIC_DIR`, `HAPPY_INJECT_HTML_CONFIG` | self-host webapp | not ported: backend-only |
 | new: `HAPPY_WORKERS` | — | [x] tokio worker threads (default: allowed CPUs, cgroup `cpu.max` aware) |
 | new: `DATABASE_POOL_SIZE` | — | [x] sqlx pool size (default: `connection_limit` URL param, else 4 × workers clamped to 10..200) |
 | new: `HAPPY_LOG` | — | [x] tracing filter (default `info,sqlx=warn`) |
+| new: `HAPPY_RS_EXPO_PUSH_URL`, `HAPPY_RS_ELEVENLABS_API`, `HAPPY_RS_GITHUB_OAUTH_BASE`, `HAPPY_RS_GITHUB_API_BASE` | — | [x] third-party endpoints, for tests (the TS server gets the same through `compat/fetch-mock.mjs`) |
 
 ## Dead code in the TS server (not ported)
 `buildRelationshipUpdatedEvent`, `buildMachineStatusEphemeral`, `usernameUpdate`,

@@ -50,7 +50,7 @@ async fn files(app: Arc<App>, req: Req) -> HResult {
         return Reply::text(404, "Not found");
     }
     match tokio::fs::read(&full).await {
-        Ok(b) => Reply::bytes(b),
+        Ok(b) => Reply::stream(b),
         // `fs.createReadStream` on a directory errors after headers are decided:
         // Fastify answers 500 through the error handler.
         Err(e) => Err(e.into()),

@@ -4,6 +4,8 @@
 # transcripts compared. Exit code 1 on any difference. Build the Rust server first.
 source "$(dirname "$0")/env.sh"
 S=$1
+# Per-scenario server environment (third-party credentials pointing at the mock).
+if [ -f "$COMPAT/$S.env" ]; then set -a; source "$COMPAT/$S.env"; set +a; fi
 "$COMPAT/freshdb.sh" d_ts_$S && "$COMPAT/freshdb.sh" d_rs_$S || exit 1
 rm -rf "$WORK/data-d_ts_$S" "$WORK/data-d_rs_$S"
 "$COMPAT/tsserver.sh" d_ts_$S 3201 > "$WORK/ts-$S.log" 2>&1 & TS=$!

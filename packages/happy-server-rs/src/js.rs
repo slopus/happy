@@ -198,6 +198,52 @@ pub fn to_js_string(v: &Value) -> String {
     }
 }
 
+/// `String(v)` / a template literal on a parsed-JSON value; `None` is `undefined`.
+/// `Err` when it throws: an object with an own `toString` key is not callable and
+/// its `valueOf` returns the object itself.
+pub fn to_string_checked(v: Option<&Value>) -> Result<String, ()> {
+    match v {
+        None => Ok("undefined".into()),
+        Some(Value::Null) => Ok("null".into()),
+        Some(Value::Object(m)) if m.contains_key("toString") => Err(()),
+        Some(Value::Array(a)) => {
+            // Array.prototype.join: null and undefined elements become "".
+            let parts: Result<Vec<String>, ()> =
+                a.iter().map(|e| if e.is_null() { Ok(String::new()) } else { to_string_checked(Some(e)) }).collect();
+            Ok(parts?.join(","))
+        }
+        Some(v) => Ok(to_js_string(v)),
+    }
+}
+
+/// `encodeURIComponent`.
+pub fn encode_uri_component(s: &str) -> String {
+    percent_encode(s, |c| c.is_ascii_alphanumeric() || "-_.!~*'()".contains(c), false)
+}
+
+/// `URLSearchParams` serialization of one name or value
+/// (application/x-www-form-urlencoded).
+pub fn form_urlencode(s: &str) -> String {
+    percent_encode(s, |c| c.is_ascii_alphanumeric() || "*-._".contains(c), true)
+}
+
+fn percent_encode(s: &str, keep: impl Fn(char) -> bool, plus: bool) -> String {
+    let mut out = String::new();
+    for c in s.chars() {
+        if keep(c) {
+            out.push(c);
+        } else if plus && c == ' ' {
+            out.push('+');
+        } else {
+            let mut buf = [0u8; 4];
+            for b in c.encode_utf8(&mut buf).bytes() {
+                out.push_str(&format!("%{:02X}", b));
+            }
+        }
+    }
+    out
+}
+
 // ---------------------------------------------------------------------------
 // Truthiness / typeof
 // ---------------------------------------------------------------------------

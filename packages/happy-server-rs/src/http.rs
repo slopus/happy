@@ -90,6 +90,10 @@ impl Reply {
     pub fn bytes(b: Vec<u8>) -> HResult {
         Ok(Reply { status: 200, headers: vec![], body: Body::Bytes(b, "application/octet-stream") })
     }
+    /// A file stream: Fastify sets no content type for it.
+    pub fn stream(b: Vec<u8>) -> HResult {
+        Ok(Reply { status: 200, headers: vec![], body: Body::Bytes(b, "") })
+    }
     pub fn redirect(url: &str) -> HResult {
         Ok(Reply { status: 302, headers: vec![("location".into(), url.to_string())], body: Body::Empty })
     }
@@ -114,6 +118,8 @@ pub struct Route {
     pub params: Option<S>,
     pub body: Option<S>,
     pub query: Option<S>,
+    /// Validated only; handlers read `Req::headers`.
+    pub headers: Option<S>,
     pub auth: bool,
     pub body_limit: usize,
     pub responses: Vec<(u16, S)>,
@@ -136,6 +142,10 @@ impl<'a> RouteBuilder<'a> {
     }
     pub fn query(mut self, s: S) -> Self {
         self.route.query = Some(s);
+        self
+    }
+    pub fn headers(mut self, s: S) -> Self {
+        self.route.headers = Some(s);
         self
     }
     pub fn auth(mut self) -> Self {
@@ -190,6 +200,7 @@ impl Router {
                 params: None,
                 body: None,
                 query: None,
+                headers: None,
                 auth: false,
                 body_limit: DEFAULT_BODY_LIMIT,
                 responses: vec![],
@@ -563,7 +574,7 @@ pub fn render(reply: Reply) -> HttpResponse {
     let (ct, bytes) = match reply.body {
         Body::Json(v) => (Some("application/json; charset=utf-8"), Bytes::from(js::stringify(&v))),
         Body::Text(s) => (Some("text/plain; charset=utf-8"), Bytes::from(s)),
-        Body::Bytes(b, ct) => (Some(ct), Bytes::from(b)),
+        Body::Bytes(b, ct) => ((!ct.is_empty()).then_some(ct), Bytes::from(b)),
         Body::Empty => (None, Bytes::new()),
     };
     if let (Some(ct), false) = (ct, has_ct) {
@@ -761,7 +772,7 @@ async fn dispatch(app: Arc<App>, req: hyper::Request<Incoming>, method: Method, 
     };
     let query = parse_query(&query_str);
 
-    // Validation: params → body → querystring.
+    // Validation: params → body → querystring → headers.
     let mut params = Value::Object(params);
     let mut body = body;
     let mut query = Value::Object(query);
@@ -781,6 +792,11 @@ async fn dispatch(app: Arc<App>, req: hyper::Request<Incoming>, method: Method, 
         match s.parse(Some(&query)) {
             Ok(v) => query = v.unwrap_or(Value::Object(Map::new())),
             Err(i) => return (label, render(finalize(&route, error_reply(400, "Error", &zod::format_issues("querystring", &i)), Origin::ErrorHandler))),
+        }
+    }
+    if let Some(s) = &route.headers {
+        if let Err(i) = s.parse(Some(&node_headers(&parts.headers))) {
+            return (label, render(finalize(&route, error_reply(400, "Error", &zod::format_issues("headers", &i)), Origin::ErrorHandler)));
         }
     }
 
@@ -889,6 +905,17 @@ fn fallback_error(route: &Route) -> Reply {
         }),
     };
     Reply { status: 500, headers: vec![], body: Body::Json(body) }
+}
+
+/// `req.headers` as Node builds it: lowercase names, repeated values joined with
+/// ", " (latin1 for non-ASCII bytes).
+pub fn node_headers(h: &HeaderMap) -> Value {
+    let mut m = Map::new();
+    for name in h.keys() {
+        let vals: Vec<String> = h.get_all(name).iter().map(|v| v.as_bytes().iter().map(|&b| b as char).collect()).collect();
+        m.insert(name.as_str().to_string(), Value::String(vals.join(", ")));
+    }
+    Value::Object(m)
 }
 
 /// Header helper: first value of a possibly repeated header (`x-forwarded-*`).

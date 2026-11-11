@@ -28,7 +28,7 @@ export class Recorder {
     }
 
     async req(name, method, path, { body, headers = {}, raw } = {}) {
-        const init = { method, headers: { ...headers } };
+        const init = { method, headers: { ...headers }, redirect: 'manual' };
         if (raw !== undefined) init.body = raw;
         else if (body !== undefined) {
             init.body = JSON.stringify(body);
@@ -96,6 +96,11 @@ const RKEY = /"id":"[A-Za-z0-9]{12}"/g;
 const SID = /"sid":"[A-Za-z0-9_-]{20}"/g;
 const JSID = /\\"sid\\":\\"[A-Za-z0-9_-]{20}\\"/g;
 const EIOSID = /([?&]sid=)[A-Za-z0-9_-]{20}/g;
+// randomKey('github') file names, ElevenLabs user ids (HMAC of the account id),
+// the 30-day window start in unix seconds.
+const PKEY = /github_[A-Za-z0-9]{24}(?![A-Za-z0-9])/g;
+const ELEVEN = /u_[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/g;
+const UNIX = /call_start_after_unix=\d+/g;
 const UUID4 = /[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/gi;
 
 /**
@@ -104,24 +109,25 @@ const UUID4 = /[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{1
  * timestamps become placeholders. Everything else, including key order and
  * number formatting, must match byte for byte.
  */
-export function normalizer() {
+export function normalizer(extra = (s) => s) {
     const ids = new Map();
     const idOf = (s) => {
         if (!ids.has(s)) ids.set(s, `<id${ids.size + 1}>`);
         return ids.get(s);
     };
-    const text = (t) => String(t).replace(SID, '"sid":"<sid>"').replace(JSID, '\\"sid\\":\\"<sid>\\"').replace(EIOSID, '$1<sid>').replace(RKEY, '"id":"<rkey>"').replace(JWT, '<jwt>').replace(ISO, '<iso>').replace(CUID, idOf).replace(UUID4, idOf).replace(MS, '<ts>').replace(/127\.0\.0\.1:320[12]|localhost:320[12]/g, '<host>');
+    const text = (t) => String(t).replace(SID, '"sid":"<sid>"').replace(JSID, '\\"sid\\":\\"<sid>\\"').replace(EIOSID, '$1<sid>').replace(RKEY, '"id":"<rkey>"').replace(JWT, '<jwt>').replace(ISO, '<iso>').replace(CUID, idOf).replace(UUID4, idOf).replace(PKEY, idOf).replace(ELEVEN, idOf).replace(UNIX, 'call_start_after_unix=<unix>').replace(MS, '<ts>').replace(/127\.0\.0\.1:320[12]|localhost:320[12]/g, '<host>');
+    const all = (t) => extra(text(t));
     return (entry) => {
         const e = { name: entry.name, status: entry.status, headers: entry.headers };
-        e.body = entry.note ? text(JSON.stringify(entry.json)) : text(entry.text ?? '');
+        e.body = entry.note ? all(JSON.stringify(entry.json)) : all(entry.text ?? '');
         return e;
     };
 }
 
 /** Compares two transcripts; returns a list of human-readable differences. */
-export function compare(a, b) {
-    const na = normalizer();
-    const nb = normalizer();
+export function compare(a, b, extra) {
+    const na = normalizer(extra);
+    const nb = normalizer(extra);
     const diffs = [];
     const n = Math.max(a.length, b.length);
     for (let i = 0; i < n; i++) {

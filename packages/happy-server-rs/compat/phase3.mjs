@@ -2,6 +2,7 @@
 // the updates each route emits.
 import { connected, login, step } from './phase2.mjs';
 import { startMock } from './mock.mjs';
+import * as connect from './phase3-connect.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -272,7 +273,11 @@ async function sessionFiles(t, sql, H, H2, sid, r) {
     await t.req('session avatar upload bad name', 'PUT', `${S}/avatar/x.enc`, bin('abc'));
     await t.req('session avatar upload empty', 'PUT', `${S}/avatar/${file}`, bin(''));
     await t.req('session avatar upload text', 'PUT', `${S}/avatar/${file}`, { headers: { ...H, 'content-type': 'text/plain' }, raw: 'abc' });
+    // Node answers 413 before reading the body and may close the socket while the
+    // client is still writing (EPIPE): both count as the same rejection.
     await t.req('session avatar upload too large', 'PUT', `${S}/avatar/${file}`, bin(Buffer.alloc(10 * 1024 * 1024 + 1)));
+    const last = t.entries[t.entries.length - 1];
+    if (last.status === 413 || /EPIPE|ECONNRESET/.test(last.text)) Object.assign(last, { status: 'rejected', headers: {}, text: 'too large' });
     await t.req('session avatar upload', 'PUT', `${S}/avatar/${file}`, bin('abc'));
     await t.req('session avatar upload same bytes', 'PUT', `${S}/avatar/${file}`, bin('abc'));
     await t.req('session avatar upload different bytes', 'PUT', `${S}/avatar/${file}`, bin('abd'));
@@ -412,6 +417,25 @@ async function push(t, sql, H, H2, sid, mock, ui, r) {
     await r('push event app-state string', 'POST', E(), { headers: H, body: ev });
 }
 
+/** Local `/files/*`: public files, 404, traversal and session avatars refused. */
+async function files(t, H, sid) {
+    const profile = await t.req('files: profile with avatar', 'GET', '/v1/account/profile', { headers: H });
+    const path = new URL(profile.avatar.url).pathname;
+    await t.req('files: avatar', 'GET', path);
+    await t.req('files: avatar HEAD', 'HEAD', path);
+    await t.req('files: avatar with query', 'GET', path + '?v=1');
+    await t.req('files: avatar encoded', 'GET', path.replace('avatars', 'avatar%73'));
+    await t.req('files: missing', 'GET', '/files/public/nope.png');
+    await t.req('files: root', 'GET', '/files/');
+    await t.req('files: directory', 'GET', path.slice(0, path.lastIndexOf('/')));
+    await t.req('files: session avatar', 'GET', `/files/sessions/${sid}/avatar/x`);
+    await t.req('files: session avatar dir', 'GET', `/files/sessions/${sid}/avatar`);
+    await t.req('files: session attachment', 'GET', `/files/sessions/${sid}/attachments/x`);
+    for (const p of ['/files/..%2F..%2Fetc%2Fhostname', '/files/public/..%2F..%2F..%2Fx', '/files/%2E%2E/x', '/files/a/../../x', '/files/sessions/x/..%2F..%2Fsessions/s/avatar/f']) {
+        await t.raw(`files: raw ${p}`, `GET ${p} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n`, 500);
+    }
+}
+
 async function version(t) {
     const V = (name, platform, version) => t.req(name, 'POST', '/v1/version', { body: { platform, version, app_id: 'x' } });
     await t.req('version missing app_id', 'POST', '/v1/version', { body: { platform: 'ios', version: '1.0.0' } });
@@ -423,8 +447,13 @@ async function version(t) {
     await t.req('dev log route disabled', 'POST', '/logs-combined-from-cli-and-mobile-for-simple-ai-debugging', { body: {} });
 }
 
-export async function scenario(t, { sql }) {
+/** Avatar thumbhashes after a resize differ in low bits (QUIRKS deviation 15);
+ * `unresized uploads` compares the ones computed without a resize exactly. */
+export const normalize = (s) => s.replace(/(thumbhash\\*":\\*")[A-Za-z0-9+/=]+/g, '$1<thumbhash>');
+
+export async function scenario(t, { sql, other }) {
     const mock = await startMock(t);
+    await connect.routes(mock);
     const token = await login(t, 1);
     const token2 = await login(t, 2, 'auth user2');
     const H = { authorization: 'Bearer ' + token };
@@ -452,6 +481,11 @@ export async function scenario(t, { sql }) {
     await sessionFiles(t, sql, H, H2, sid, obs);
     await version(t);
     await push(t, sql, H, H2, sid, mock, ui, obs);
+    await connect.github(t, sql, H, H2, H3, other, observed(t, [ui, ui2, ui3]));
+    await connect.webhooks(t);
+    await connect.vendors(t, H, H2);
+    await connect.voice(t, H, mock);
+    await files(t, H3, sid);
 
     await dumpDb(t, sql, 'before deletes', [
         ['machines', `SELECT "id","metadata","metadataVersion","daemonState","daemonStateVersion",encode("dataEncryptionKey",'base64') AS dek,"seq","active" FROM "Machine" ORDER BY "id"`],
@@ -463,6 +497,11 @@ export async function scenario(t, { sql }) {
         ['feed', `SELECT a."publicKey", f."counter", f."repeatKey", f."body" FROM "UserFeedItem" f JOIN "Account" a ON a."id" = f."userId" ORDER BY 1, 2`],
         ['projects', `SELECT "externalId","metadata","metadataVersion",encode("dataEncryptionKey",'base64') AS dek,"avatarRef" IS NOT NULL AS has_avatar,"avatarPreview","avatarVersion","seq" FROM "Project" ORDER BY "externalId","metadata"`],
         ['sessions', `SELECT "tag","projectId" FROM "Session" ORDER BY "tag"`],
+        ['github accounts', `SELECT "publicKey","githubUserId","username","firstName","lastName","avatar" FROM "Account" ORDER BY "publicKey"`],
+        ['github users', `SELECT "id","profile","token" IS NOT NULL AS has_token,"createdAt" <= "updatedAt" AS ordered FROM "GithubUser" ORDER BY "id"`],
+        ['uploads', `SELECT a."publicKey",f."path",f."reuseKey",f."width",f."height",f."thumbhash" FROM "UploadedFile" f JOIN "Account" a ON a."id" = f."accountId" ORDER BY 1, 3`],
+        ['unresized uploads', `SELECT "path","thumbhash" AS exact FROM "UploadedFile" WHERE "width" = 100 AND "height" = 100 ORDER BY "path"`],
+        ['vendor tokens', `SELECT a."publicKey",v."vendor",length(v."token") AS len FROM "ServiceAccountToken" v JOIN "Account" a ON a."id" = v."accountId" ORDER BY 1, 2`],
     ]);
     await obs('machine delete', 'DELETE', '/v1/machines/mach-a', { headers: H });
     await t.req('machine get after delete', 'GET', '/v1/machines/mach-a', { headers: H });

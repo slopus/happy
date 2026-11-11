@@ -161,6 +161,32 @@ reproduces. Do not fix them without changing both servers.
     integer-like keys sort first. Presence suppression needs a user-scoped socket
     whose last `app-state` was `{ state: "active" }`; any other payload means
     background.
+44. **GitHub OAuth callback.** Every outcome is a 302 to `https://app.happy.engineering`:
+    `?error=invalid_state`, `?error=server_config`, `?error=<encodeURIComponent(String(error))>`
+    from the token exchange, `?error=github_user_fetch_failed` (only once the user
+    body has parsed as JSON), `?error=server_error` for anything thrown, else
+    `?github=connected&user=<login>` (`user=undefined` without a login). A missing
+    `login` leaves `username` untouched. The avatar is uploaded before the
+    transaction, so a failed connect (say, the username is taken) still leaves the
+    file and its `UploadedFile` row. Uploads are reused by source URL across
+    accounts. Connecting a GitHub id another account holds disconnects that account
+    first. The authorize URL always points at github.com.
+45. **GitHub webhooks.** `500 "Server configuration error"` unless the body went
+    through the JSON parser and is non-empty (no body, `text/plain`, empty JSON);
+    `500 "Webhooks not configured"` unless all six `GITHUB_*` variables are set.
+    A bad signature, a whitespace-only body, a falsy or primitive payload, an empty
+    event name, or a hook that throws (`push` without `repository`/`pusher`,
+    `star.created` without `sender`, a logged field that is an object with a
+    `toString` key, …) is `500 "Internal server error"`. Hooks only log.
+46. **Vendor tokens.** Deleting a token that does not exist is a Prisma P2025, so a
+    generic 500. `GET /v1/connect/tokens` has no `ORDER BY`.
+47. **Voice.** `agentId` goes into the token URL unencoded (`#` cuts it, `&` adds
+    parameters). `conversationLimit` is always 100. Any usage problem (non-2xx, bad
+    JSON, non-array `conversations`, non-boolean `has_more`, a `null` conversation,
+    a duration that is not a finite non-negative number, a missing or repeated
+    cursor, the 15 s deadline) is `500 "Failed to get voice usage"`. Token problems
+    are `"Failed to get voice credentials"`, except a `video.room` without a `conv_…`
+    id: `"Failed to get conversation ID"`.
 
 (Continued as more are found.)
 
@@ -211,3 +237,10 @@ Differences accepted on purpose. Everything else is a bug.
     behind a per-socket lock) are spawned as tasks, so acks of *different* events sent
     together may come back in another order. Events behind the per-socket FIFO
     (`message`, `usage-report`, `session-subscribe`/`-unsubscribe`) keep their order.
+15. **Avatar thumbhash after a resize.** The thumbhash encoder is the TS one (in
+    doubles) and matches exactly when no resize is needed (≤100 px square). Other
+    sizes are resized with the `image` crate's Lanczos3 rather than libvips (which
+    shrinks, then reduces, in premultiplied alpha), so the low bits of the hash can
+    differ. The placeholder looks the same.
+16. **`avatar_url` schemes.** Only `http:` and `https:` are fetched; Node's `fetch`
+    also reads `data:` URLs.

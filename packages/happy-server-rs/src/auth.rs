@@ -286,6 +286,16 @@ mod tests {
         assert_eq!(a.decrypt_string(&["user", "u", "vendors", "openai", "token"], &enc).unwrap(), "sk-1");
     }
 
+    /// `KeyTree.symmetricEncrypt` output from privacy-kit (master secret test-master-secret).
+    #[test]
+    fn decrypts_privacy_kit_key_tree() {
+        let a = Auth::new("test-master-secret");
+        let enc = hex::decode("002d2d2bd19754b0938a8e0f15640e11e0d1d4a28cfe8ff06d845cf58395cdaefede29f356").unwrap();
+        let path = ["user", "u", "vendors", "openai", "token"];
+        assert_eq!(a.decrypt_string(&path, &enc).unwrap(), "sk-ts-é");
+        assert!(a.decrypt_string(&["user", "v", "vendors", "openai", "token"], &enc).is_err());
+    }
+
     /// Token minted by the TS server (privacy-kit) with HANDY_MASTER_SECRET=test-master-secret.
     #[test]
     fn verifies_ts_token() {

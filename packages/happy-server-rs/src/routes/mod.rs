@@ -5,6 +5,7 @@ pub mod account;
 pub mod artifacts;
 pub mod kv;
 pub mod auth;
+pub mod connect;
 pub mod machines;
 pub mod misc;
 pub mod projects;
@@ -15,6 +16,7 @@ pub mod social;
 pub mod uploads;
 pub mod v3;
 pub mod version;
+pub mod voice;
 
 use crate::config::Config;
 use crate::http::Router;
@@ -32,6 +34,8 @@ pub fn register(r: &mut Router, c: &Config) {
     social::register(r);
     projects::register(r);
     push::register(r);
+    connect::register(r);
+    voice::register(r);
     session_files::register(r);
     version::register(r, c);
 }

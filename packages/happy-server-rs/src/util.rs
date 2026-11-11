@@ -282,6 +282,18 @@ pub fn cuid() -> String {
 }
 
 /// `randomKeyNaked(length)`: alphanumerics from base64 of random bytes.
+/// `randomKey(prefix)`: `<prefix>_` and 24 alphanumerics from base64 noise.
+pub fn random_key(prefix: &str) -> String {
+    loop {
+        let mut bytes = [0u8; 48];
+        rand::thread_rng().fill_bytes(&mut bytes);
+        let normalized: String = b64_encode(&bytes).chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+        if normalized.len() >= 24 {
+            return format!("{}_{}", prefix, &normalized[..24]);
+        }
+    }
+}
+
 pub fn random_key_naked(length: usize) -> String {
     loop {
         let mut buf = vec![0u8; length * 2];

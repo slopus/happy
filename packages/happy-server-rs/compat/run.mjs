@@ -5,14 +5,14 @@ import { execFileSync } from 'node:child_process';
 import { Recorder, compare } from './lib.mjs';
 
 const [scenarioName, aBase, aDb, bBase, bDb] = process.argv.slice(2);
-const { scenario } = await import(`./${scenarioName}.mjs`);
+const { scenario, normalize } = await import(`./${scenarioName}.mjs`);
 const PG = { host: process.env.PGHOST || '127.0.0.1', port: process.env.PGPORT || '55487' };
 const sqlFor = (db) => async (q) => execFileSync('psql', ['-h', PG.host, '-p', PG.port, '-U', 'postgres', '-d', db, '-At', '-v', 'ON_ERROR_STOP=1', '-c', q], { encoding: 'utf8' });
 
 const a = new Recorder(aBase);
-await scenario(a, { sql: sqlFor(aDb), side: 'ts' });
+await scenario(a, { sql: sqlFor(aDb), side: 'ts', other: bBase });
 const b = new Recorder(bBase);
-await scenario(b, { sql: sqlFor(bDb), side: 'rs' });
+await scenario(b, { sql: sqlFor(bDb), side: 'rs', other: aBase });
 
 if (process.env.DUMP) {
     const fs = await import('node:fs');
@@ -20,7 +20,7 @@ if (process.env.DUMP) {
     fs.writeFileSync(`${process.env.DUMP}/${scenarioName}-ts.json`, JSON.stringify(a.entries.map(strip), null, 1));
     fs.writeFileSync(`${process.env.DUMP}/${scenarioName}-rs.json`, JSON.stringify(b.entries.map(strip), null, 1));
 }
-const diffs = compare(a.entries, b.entries);
+const diffs = compare(a.entries, b.entries, normalize);
 console.log(`${scenarioName}: ${a.entries.length} exchanges, ${diffs.length} differences`);
 for (const d of diffs) console.log(d);
 process.exit(diffs.length ? 1 : 0);

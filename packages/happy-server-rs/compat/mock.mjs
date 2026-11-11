@@ -12,9 +12,9 @@ export async function startMock(t, port = Number(new URL(process.env.COMPAT_MOCK
             const text = Buffer.concat(chunks).toString();
             let body = text;
             try { body = JSON.parse(text); } catch { /* raw */ }
-            // Client defaults (undici's `accept: */*`, user agents) are not compared.
+            // undici's default `accept: */*` is not compared.
             const headers = {};
-            for (const n of ['content-type', 'accept', 'authorization', 'xi-api-key']) {
+            for (const n of ['content-type', 'accept', 'authorization', 'xi-api-key', 'user-agent']) {
                 if (req.headers[n] !== undefined && !(n === 'accept' && req.headers[n] === '*/*')) headers[n] = req.headers[n];
             }
             t.note(`mock ${req.method} ${url.pathname}`, { query: url.search, headers, body });

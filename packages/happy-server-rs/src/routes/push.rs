@@ -8,7 +8,7 @@ use crate::js;
 use crate::util::{cuid, naive_to_ms};
 use crate::zod::{enumeration, literal, number, object, record, string};
 use serde_json::{json, Map, Value};
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 use std::time::Duration;
 
 pub fn register(r: &mut Router) {
@@ -200,8 +200,6 @@ async fn fetch_tokens_and_send(app: &App, uid: &str, sid: &str, title: &str, bod
     Ok(json!({"result": "partial", "tokens": tokens.len(), "delivered": ok, "reason": errors.join(", ")}))
 }
 
-static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| reqwest::Client::builder().build().expect("http client"));
-
 /// `sendPushNotifications`: batches of 100 under one 8 s deadline; a failed batch
 /// becomes one error ticket per message.
 async fn send(url: &str, messages: &[Value]) -> Vec<Value> {
@@ -209,12 +207,11 @@ async fn send(url: &str, messages: &[Value]) -> Vec<Value> {
     let mut tickets = Vec::new();
     for batch in messages.chunks(100) {
         let r = tokio::time::timeout_at(deadline, async {
-            let resp = HTTP.post(url).header("Content-Type", "application/json").body(js::stringify(&Value::Array(batch.to_vec()))).send().await?;
+            let resp = crate::fetch::CLIENT.post(url).header("Content-Type", "application/json").body(js::stringify(&Value::Array(batch.to_vec()))).send().await?;
             if !resp.status().is_success() {
                 return Ok::<_, anyhow::Error>(Err(resp.status().as_u16()));
             }
-            let text = resp.text().await?;
-            let v = js::parse(&text).map_err(|e| anyhow::anyhow!(e.message))?;
+            let v = crate::fetch::json(resp).await?;
             // `tickets.push(...result.data)` throws unless `data` is iterable.
             match js::get(Some(&v), "data") {
                 Some(Value::Array(a)) => Ok(Ok(a.clone())),
