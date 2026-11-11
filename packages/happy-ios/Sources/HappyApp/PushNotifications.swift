@@ -29,6 +29,11 @@ final class PushNotifications: NSObject {
     /// A tap delivered before the scene's coordinator exists.
     private var pendingSessionID: String?
 
+    /// This installation's id: the push exchange's `deviceId`, and the
+    /// device this phone's environment reports name (`AgentConnections.environment`).
+    static let installationID = ExpoInstallationID(backend: SecurityKeychainBackend(), legacyDefaults: StandardDefaults(),
+                                                   bundleIdentifier: Bundle.main.bundleIdentifier ?? "")
+
     private lazy var source: ExpoDevicePushTokenSource = {
         let bundle = Bundle.main
         let bundleID = bundle.bundleIdentifier ?? ""
@@ -36,7 +41,7 @@ final class PushNotifications: NSObject {
         let apns = self.apns
         return ExpoDevicePushTokenSource(
             transport: URLSessionTransport(),
-            installationID: ExpoInstallationID(backend: SecurityKeychainBackend(), legacyDefaults: StandardDefaults(), bundleIdentifier: bundleID),
+            installationID: Self.installationID,
             development: ProvisioningProfile.usesDevelopmentAPNs(profile),
             appId: bundleID,
             deviceToken: { try await apns.token() }
