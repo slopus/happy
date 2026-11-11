@@ -92,8 +92,9 @@ object LiquidMetalTags {
  * edge field comes baked (`cloud_liquid_metal.png`, decoded once off the main
  * thread), so a frame is one texture read and the stripes' arithmetic per
  * pixel, three times over for the stripes' fwidth. Until the
- * field is decoded, and before Android 13, which has no runtime shader, the
- * cloud stands still in [fallbackColor].
+ * field is decoded and the program compiled (once for the app, also off
+ * the main thread, [LiquidMetalProgram]), and before Android 13, which has
+ * no runtime shader, the cloud stands still in [fallbackColor].
  */
 @Composable
 fun LiquidMetalMark(modifier: Modifier = Modifier, paused: Boolean = false, fallbackColor: Color = Color.Gray) {
@@ -147,16 +148,40 @@ private fun ShaderLiquidMetal(shader: RuntimeShader, field: BitmapShader, paused
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @Composable
-private fun rememberLiquidMetalShader(): RuntimeShader? = remember {
-    try {
-        RuntimeShader(LIQUID_METAL_AGSL)
-    } catch (e: RuntimeException) {
-        // A device whose compiler refuses the source gets the still cloud.
-        Log.w("LiquidMetal", "Liquid Metal shader unavailable", e)
-        null
-    } catch (e: LinkageError) {
-        // Robolectric without native graphics.
-        null
+private fun rememberLiquidMetalShader(): RuntimeShader? {
+    var shader by remember { mutableStateOf(LiquidMetalProgram.now) }
+    LaunchedEffect(Unit) {
+        if (shader == null) shader = withContext(Dispatchers.Default) { LiquidMetalProgram.get() }
+    }
+    return shader
+}
+
+/**
+ * The mark's program, compiled the first time any mark asks, off the main
+ * thread, and shared: every mark sets its uniforms just before it draws.
+ */
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+internal object LiquidMetalProgram {
+    @Volatile
+    var now: RuntimeShader? = null
+        private set
+    private var tried = false
+
+    @Synchronized
+    fun get(): RuntimeShader? {
+        if (tried) return now
+        tried = true
+        now = try {
+            RuntimeShader(LIQUID_METAL_AGSL)
+        } catch (e: RuntimeException) {
+            // A device whose compiler refuses the source gets the still cloud.
+            Log.w("LiquidMetal", "Liquid Metal shader unavailable", e)
+            null
+        } catch (e: LinkageError) {
+            // Robolectric without native graphics.
+            null
+        }
+        return now
     }
 }
 

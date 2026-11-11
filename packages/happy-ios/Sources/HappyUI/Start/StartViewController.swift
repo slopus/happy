@@ -102,6 +102,8 @@ final class StartViewController: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         gallery.isRunning = true
+        // Use Happy Cloud's welcome opens on the liquid metal cloud.
+        if offersCloud { LiquidMetalView.prepare() }
     }
 
     override func viewWillDisappear(_ animated: Bool) {

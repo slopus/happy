@@ -286,6 +286,16 @@ private enum LiquidMetalField {
     }
 }
 
+extension LiquidMetalView {
+    /// Compiles the shader and loads `mark`'s field off the main thread,
+    /// ahead of a screen that may show it (Start, before Use Happy Cloud):
+    /// left to the first view, the compile runs on the main thread in the
+    /// push.
+    nonisolated static func prepare(_ mark: Mark = .cloud) {
+        LiquidMetalRenderer.queue.async { LiquidMetalRenderer.shared?.prepare(mark) }
+    }
+}
+
 /// The one pipeline every mark draws with. Its Metal objects are
 /// thread-safe and never change; fields are loaded and frames drawn only on
 /// `queue`.

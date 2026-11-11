@@ -112,6 +112,18 @@ public final class StateSceneView: UIView {
     private var hasPlayed = false
     /// True between asking Lottie to play and its completion.
     private var isPlaying = false
+    /// Read, and waiting to go on screen (`waits`).
+    private var pending: LottieAnimation?
+
+    /// It waits to go on screen: its animation, once read, stays off the
+    /// layer tree until this turns false. For a scene no one can see yet (a
+    /// drift scene before its fade, a slide out of view): going on screen
+    /// builds its layers and commits their animations on the main thread,
+    /// tens of milliseconds for the larger scenes, so a screen with many
+    /// brings them on one by one rather than all in its push.
+    var waits = false {
+        didSet { if !waits { attach() } }
+    }
 
     public init(scene: StateScene, size: CGFloat, play: Play = .onAppear, replayLabel: String) {
         self.scene = scene
@@ -167,25 +179,41 @@ public final class StateSceneView: UIView {
         loading?.cancel()
         animationView.stop()
         animationView.animation = nil
+        pending = nil
         isPlaying = false
         hasPlayed = false
         let scene = scene
         loading = Task { [weak self] in
             let animation = await Task.detached(priority: .userInitiated) { Self.read(scene) }.value
             guard let self, !Task.isCancelled, self.scene == scene, let animation else { return }
-            self.animationView.animation = animation
-            self.apply()
+            self.pending = animation
+            self.attach()
         }
     }
+
+    /// Puts the read animation on screen, unless it `waits`.
+    private func attach() {
+        guard !waits, let animation = pending else { return }
+        pending = nil
+        animationView.animation = animation
+        apply()
+    }
+
+    /// Each scene read once: Lottie's models are immutable, so every view
+    /// showing a scene, now or later, shares one.
+    private nonisolated(unsafe) static let cache = NSCache<NSString, LottieAnimation>()
 
     /// The scene's bytes, read and decoded off the main thread. A file that
     /// is missing or will not decode leaves the view empty, on purpose.
     nonisolated static func read(_ scene: StateScene) -> LottieAnimation? {
+        if let animation = cache.object(forKey: scene.rawValue as NSString) { return animation }
         guard let url = Bundle.module.url(forResource: scene.rawValue, withExtension: "json")
             ?? Bundle.module.url(forResource: scene.rawValue, withExtension: "json", subdirectory: "Animations"),
-            let data = try? Data(contentsOf: url)
+            let data = try? Data(contentsOf: url),
+            let animation = try? LottieAnimation.from(data: data)
         else { return nil }
-        return try? LottieAnimation.from(data: data)
+        cache.setObject(animation, forKey: scene.rawValue as NSString)
+        return animation
     }
 
     // MARK: Playing
@@ -281,12 +309,13 @@ public final class StateSceneView: UIView {
     private func start() {
         hasPlayed = true
         isPlaying = true
-        animationView.play(fromProgress: animationView.currentProgress, toProgress: 1, loopMode: .playOnce) { [weak self] finished in
+        animationView.play(fromProgress: animationView.currentProgress, toProgress: 1, loopMode: .playOnce) { [weak self] _ in
             guard let self else { return }
             self.isPlaying = false
-            // Hold the last frame whether it ran to the end or was stopped
-            // at it; a pause mid-way leaves progress where it was.
-            if finished { self.animationView.currentProgress = 1 }
+            // A play that ran to the end holds its last frame by itself; a
+            // pause mid-way leaves progress where it was. Setting progress
+            // here would rebuild every layer's animations on the main
+            // thread, tens of milliseconds, as each play ends.
         }
     }
 

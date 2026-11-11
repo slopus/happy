@@ -9,6 +9,11 @@ import UIKit
 /// itself, starts the wait again; a drag holds it. A slide's animation
 /// plays once each time the slide arrives and holds its last frame, as
 /// desktop's deck remounts its scene on every visit; a tap plays it again.
+/// A slide arrives when the pager comes to rest on it, so a swipe never
+/// carries a scene starting over. Until the screen is up only the slide
+/// showing has its scene on screen (`StateSceneView.waits`); then the
+/// others come on one at a time, nearest first, while the pager is still,
+/// so neither the push nor a swipe builds them.
 ///
 /// With Reduce Motion on (or VoiceOver running) nothing moves by itself and
 /// the dots change pages without the slide. Off screen, it waits
@@ -43,11 +48,17 @@ final class StartGalleryView: UIView, UIScrollViewDelegate {
     /// line.
     static let advanceInterval: TimeInterval = 8
     static let crossfade: TimeInterval = 0.35
+    /// The beat between one slide's scene coming on and the next's.
+    static let stageDelay: TimeInterval = 0.25
 
     private let pager = UIScrollView()
     let dots = UIPageControl()
     private let pages: [Page]
     private(set) var index = 0
+    /// The slide that arrives when the pager comes to rest.
+    private var arriving: Int?
+    /// A slide's scene is due to come on (`stage`).
+    private var staging = false
     private var timer: Timer?
     private var layout: StartLayout?
     /// How long a slide shows before the next: `advanceInterval` unless
@@ -66,6 +77,7 @@ final class StartGalleryView: UIView, UIScrollViewDelegate {
             schedule()
             if isRunning { pages[index].arrive() }
             updateMotion()
+            stage()
         }
     }
 
@@ -91,6 +103,7 @@ final class StartGalleryView: UIView, UIScrollViewDelegate {
         dots.addTarget(self, action: #selector(dotChosen), for: .valueChanged)
         addSubview(dots)
         updateAccessibility()
+        stage()
         for name in [UIAccessibility.reduceMotionStatusDidChangeNotification, UIAccessibility.voiceOverStatusDidChangeNotification] {
             NotificationCenter.default.addObserver(self, selector: #selector(motionChanged), name: name, object: nil)
         }
@@ -179,6 +192,36 @@ final class StartGalleryView: UIView, UIScrollViewDelegate {
         }
     }
 
+    /// Puts the showing slide's scene on screen now and, once the screen
+    /// is up, the others a beat apart, nearest first; a scene once on
+    /// stays on.
+    private func stage() {
+        guard pages.indices.contains(index) else { return }
+        pages[index].waits = false
+        guard isRunning, !staging, pages.contains(where: \.waits) else { return }
+        staging = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.stageDelay) { [weak self] in
+            guard let self else { return }
+            staging = false
+            guard isRunning else { return }
+            // Never while the pager moves: it waits for the next beat.
+            if !pager.isTracking, !pager.isDecelerating,
+               let next = pages.indices.filter({ pages[$0].waits }).min(by: { abs($0 - index) < abs($1 - index) }) {
+                pages[next].waits = false
+            }
+            stage()
+        }
+    }
+
+    /// The pager came to rest: the slide it rests on arrives.
+    private func rest() {
+        guard let arriving else { return }
+        self.arriving = nil
+        // Swiped to before its turn came: on now.
+        pages[arriving].waits = false
+        pages[arriving].arrive()
+    }
+
     /// Shows slide `number`. The next or the previous slides in; a jump
     /// further (the wrap back to the first, a far dot) crossfades rather
     /// than running past the others.
@@ -186,6 +229,8 @@ final class StartGalleryView: UIView, UIScrollViewDelegate {
         guard let layout, pages.indices.contains(number) else { return }
         let offset = layout.page(number).origin
         let animated = animated && !UIAccessibility.isReduceMotionEnabled
+        pages[number].waits = false
+        let slides = animated && abs(number - index) == 1
         if animated, abs(number - index) > 1 {
             UIView.transition(with: pager, duration: Self.crossfade, options: [.transitionCrossDissolve, .allowUserInteraction]) {
                 self.pager.contentOffset = offset
@@ -194,6 +239,8 @@ final class StartGalleryView: UIView, UIScrollViewDelegate {
             pager.setContentOffset(offset, animated: animated)
         }
         settle(on: number)
+        // A slide in arrives when it lands (`scrollViewDidEndScrollingAnimation`).
+        if !slides { rest() }
     }
 
     private func settle(on number: Int) {
@@ -202,7 +249,7 @@ final class StartGalleryView: UIView, UIScrollViewDelegate {
         dots.currentPage = number
         updateAccessibility()
         schedule()
-        pages[number].arrive()
+        arriving = number
     }
 
     /// One wait for the next slide, from now.
@@ -246,11 +293,19 @@ final class StartGalleryView: UIView, UIScrollViewDelegate {
     }
 
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
-        if !decelerate { schedule() }
+        if !decelerate {
+            schedule()
+            rest()
+        }
     }
 
     func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
         schedule()
+        rest()
+    }
+
+    func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+        rest()
     }
 }
 
@@ -271,6 +326,11 @@ private final class Page: UIView {
     var isPaused = true {
         didSet { metal?.isPaused = isPaused }
     }
+    /// Its scene waits to go on screen (`StateSceneView.waits`).
+    var waits: Bool {
+        get { scene?.waits ?? false }
+        set { scene?.waits = newValue }
+    }
 
     init(art: StartGalleryView.Art, title: String, body: String) {
         switch art {
@@ -283,6 +343,7 @@ private final class Page: UIView {
         case .scene(let name):
             // Held on its last frame until its slide arrives (`arrive`).
             scene = StateSceneView(scene: name, size: StartLayout.Metrics.art, play: .onDemand, replayLabel: Strings.Start.replay(title))
+            scene?.waits = true
             metal = nil
         }
         self.title = StartGalleryView.titleLabel(title)

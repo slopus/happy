@@ -8,7 +8,9 @@ import UIKit
 /// (animated emoji never loop), then wanders slowly there and back for as
 /// long as the page is up. Pure decoration: no touches, nothing read out,
 /// and still under Reduce Motion. `SetupDriftLayout` places them, clear of
-/// `avoid`; the picks are drawn once, so a rotation only moves them.
+/// `avoid`; the picks are drawn once, so a rotation only moves them. A
+/// scene goes on screen only as it fades in (`StateSceneView.waits`), so
+/// the page's push isn't building six of them at once.
 final class SetupDriftView: UIView {
     private let scenes: [StateSceneView]
     private let draws: [SetupDriftLayout.Draw]
@@ -35,6 +37,7 @@ final class SetupDriftView: UIView {
         isUserInteractionEnabled = false
         accessibilityElementsHidden = true
         for scene in self.scenes {
+            scene.waits = true
             scene.alpha = 0
             scene.isHidden = true
             addSubview(scene)
@@ -71,12 +74,11 @@ final class SetupDriftView: UIView {
             if !arrived.contains(item.scene) {
                 arrived.insert(item.scene)
                 if still {
+                    scene.waits = false
                     scene.alpha = SetupDriftLayout.Metrics.opacity
                 } else {
-                    UIView.animate(withDuration: SetupDriftLayout.Metrics.fade, delay: item.delay, options: [.curveEaseOut]) {
-                        scene.alpha = SetupDriftLayout.Metrics.opacity
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + item.delay) { [weak scene] in scene?.replay() }
+                    let index = item.scene
+                    DispatchQueue.main.asyncAfter(deadline: .now() + item.delay) { [weak self] in self?.fadeIn(index) }
                 }
             }
             guard !still, wandering[item.scene] != item.offset else { continue }
@@ -88,6 +90,21 @@ final class SetupDriftView: UIView {
                 scene.transform = CGAffineTransform(translationX: item.offset.dx, y: item.offset.dy)
             }
         }
+    }
+
+    /// A scene's turn: on screen, fading in, playing once. Off screen by
+    /// then, it waits for the page to show again.
+    private func fadeIn(_ index: Int) {
+        guard isRunning else {
+            arrived.remove(index)
+            return
+        }
+        let scene = scenes[index]
+        scene.waits = false
+        UIView.animate(withDuration: SetupDriftLayout.Metrics.fade, delay: 0, options: [.curveEaseOut]) {
+            scene.alpha = SetupDriftLayout.Metrics.opacity
+        }
+        scene.replay()
     }
 
     /// Off screen: the wandering stops where it started.
@@ -103,7 +120,10 @@ final class SetupDriftView: UIView {
     @objc private func motionChanged() {
         stop()
         if UIAccessibility.isReduceMotionEnabled {
-            for index in arrived { scenes[index].alpha = SetupDriftLayout.Metrics.opacity }
+            for index in arrived {
+                scenes[index].waits = false
+                scenes[index].alpha = SetupDriftLayout.Metrics.opacity
+            }
         }
         if isRunning { start() }
     }

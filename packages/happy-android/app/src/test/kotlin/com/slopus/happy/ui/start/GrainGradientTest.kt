@@ -6,11 +6,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -46,6 +48,12 @@ class GrainGradientTest {
     fun drawsInTheLightPalette() = assertDrawsIn(StartSpec.lightPalette)
 
     private fun assertDrawsIn(palette: GrainPalette) {
+        // Made off the main thread, as the app warms them before Start: ready for the first frame.
+        runBlocking {
+            GrainCache.programs()
+            GrainCache.field(IntSize(600, 1200))
+            GrainCache.whole()
+        }
         rule.setHappyContent { GrainGradient(palette, Modifier.size(200.dp, 400.dp)) }
         val pixels = rule.node(GrainGradientTags.SHADER).captureToImage().toPixelMap()
         var lit = 0

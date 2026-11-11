@@ -276,7 +276,9 @@ private final class GrainInFlight: @unchecked Sendable {
 
 /// A view's grain and how much it changes over a pixel, for every pixel of
 /// its drawable: none of it moves, so it is drawn when the size changes
-/// and every frame reads it. Touched only on `GrainRenderer.queue`.
+/// and every frame reads it. Views of one size share one, so a screen
+/// pushed over another of its size draws none. Touched only on
+/// `GrainRenderer.queue`.
 private final class GrainField: @unchecked Sendable {
     /// Half floats: off by under a thousandth, far below what 8-bit colour
     /// shows. 14 MB on an iPhone 15 Pro Max.
@@ -302,6 +304,13 @@ private final class GrainRenderer: @unchecked Sendable {
     private let queue: MTLCommandQueue
     private let pipeline: MTLRenderPipelineState
     private let fieldPipeline: MTLRenderPipelineState
+    /// Every field some view holds, for another of its size to share.
+    /// Touched only on `GrainRenderer.queue`.
+    private var fields: [WeakTexture] = []
+
+    private struct WeakTexture {
+        weak var texture: MTLTexture?
+    }
 
     private init?() {
         guard let compiled = GrainPipeline.compiled else { return nil }
@@ -346,6 +355,10 @@ private final class GrainRenderer: @unchecked Sendable {
         let width = drawable.texture.width, height = drawable.texture.height
         uniforms.resolution = SIMD2(Float(width), Float(height))
         if field.texture?.width != width || field.texture?.height != height {
+            fields.removeAll { $0.texture == nil }
+            field.texture = fields.lazy.compactMap(\.texture).first { $0.width == width && $0.height == height }
+        }
+        if field.texture == nil {
             let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: GrainField.pixelFormat, width: width, height: height, mipmapped: false)
             descriptor.usage = [.renderTarget, .shaderRead]
             descriptor.storageMode = .private
@@ -356,6 +369,7 @@ private final class GrainRenderer: @unchecked Sendable {
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
             encoder.endEncoding()
             field.texture = texture
+            fields.append(WeakTexture(texture: texture))
         }
         guard let encoder = buffer.makeRenderCommandEncoder(descriptor: Self.pass(to: drawable.texture)) else { return }
         encoder.setRenderPipelineState(pipeline)

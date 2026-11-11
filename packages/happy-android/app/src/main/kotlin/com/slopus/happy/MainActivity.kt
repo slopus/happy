@@ -21,6 +21,7 @@ import com.slopus.happy.ui.FirstFrame
 import com.slopus.happy.ui.HappyApp
 import com.slopus.happy.ui.LocalAfterStart
 import com.slopus.happy.ui.connect.DeepLinks
+import com.slopus.happy.ui.start.StartWarmup
 import com.slopus.happy.ui.theme.AppNightMode
 import com.slopus.happy.ui.theme.paintWindow
 import androidx.profileinstaller.ProfileInstaller
@@ -56,6 +57,8 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             val built = ready.await()
             graph.value = built
+            // Start's shaders and grain, made off the main thread while its first frame is put together.
+            if (built.openAccount.value == OpenAccount.None) StartWarmup.warm(this@MainActivity)
             BackgroundSendNotifications.start(this@MainActivity, built)
             // The platform's night mode is the app's theme setting, kept by the system for the next start.
             launch(Dispatchers.IO) { built.localSettings.themePreference.collect { AppNightMode.apply(applicationContext, it) } }

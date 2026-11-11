@@ -52,6 +52,8 @@ class LiquidMetalTest {
 
     @Test
     fun drawsTheCloudInChromeAndNothingAroundIt() {
+        // Made off the main thread, as StartWarmup makes them before Start: ready for the first frame.
+        LiquidMetalProgram.get()
         LiquidMetalField.load(ApplicationProvider.getApplicationContext<android.content.Context>().resources)
         // Over magenta, which chrome never is: what shows magenta was left clear.
         rule.setHappyContent {
