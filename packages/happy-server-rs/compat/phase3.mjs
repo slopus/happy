@@ -315,6 +315,17 @@ async function sessionFiles(t, sql, H, H2, sid, r) {
     await t.req('attachment request download no auth', 'POST', `${A}/request-download`, { body: { ref: at.ref } });
 }
 
+async function version(t) {
+    const V = (name, platform, version) => t.req(name, 'POST', '/v1/version', { body: { platform, version, app_id: 'x' } });
+    await t.req('version missing app_id', 'POST', '/v1/version', { body: { platform: 'ios', version: '1.0.0' } });
+    for (const [p, v] of [
+        ['ios', '1.4.1'], ['ios', '1.4.0'], ['IOS', '2.0.0'], ['android', '1.3.9'], ['Android', 'v1.5.0'], ['ios', ' 1.5.0 '],
+        ['ios', '1.5.0-beta.1'], ['ios', '1.5.0+build.7'], ['ios', '01.5.0'], ['ios', '1.5'], ['ios', 'vv1.5.0'], ['ios', '=1.5.0'],
+        ['ios', ''], ['ios', '99999999999999999.0.0'], ['ios', '1.٥.0'], ['web', '0.0.1'], ['ios', 'x'.repeat(300)],
+    ]) await V(`version ${p} ${JSON.stringify(v).slice(0, 20)}`, p, v);
+    await t.req('dev log route disabled', 'POST', '/logs-combined-from-cli-and-mobile-for-simple-ai-debugging', { body: {} });
+}
+
 export async function scenario(t, { sql }) {
     const token = await login(t, 1);
     const token2 = await login(t, 2, 'auth user2');
@@ -341,6 +352,7 @@ export async function scenario(t, { sql }) {
     await social(t, sql, H, H2, H3, ids, observed(t, [ui, ui2, ui3]));
     await projects(t, sql, H, H2, sid, obs);
     await sessionFiles(t, sql, H, H2, sid, obs);
+    await version(t);
 
     await dumpDb(t, sql, 'before deletes', [
         ['machines', `SELECT "id","metadata","metadataVersion","daemonState","daemonStateVersion",encode("dataEncryptionKey",'base64') AS dek,"seq","active" FROM "Machine" ORDER BY "id"`],

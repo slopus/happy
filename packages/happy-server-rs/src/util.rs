@@ -264,7 +264,7 @@ fn fingerprint() -> &'static str {
     static FP: OnceLock<String> = OnceLock::new();
     FP.get_or_init(|| {
         let pid = std::process::id() as u64;
-        let host = std::fs::read_to_string("/etc/hostname").unwrap_or_else(|_| "localhost".into());
+        let host = hostname();
         let host = host.trim();
         let hsum: u64 = host.bytes().map(|b| b as u64).sum::<u64>() + host.len() as u64 + 36;
         format!("{}{}", pad_b36(pid, 2), pad_b36(hsum, 2))
@@ -305,6 +305,11 @@ pub fn base64id() -> String {
 
 pub fn uuid_v4() -> String {
     uuid::Uuid::new_v4().to_string()
+}
+
+/// `os.hostname()`.
+pub fn hostname() -> String {
+    std::fs::read_to_string("/etc/hostname").map(|s| s.trim().to_string()).unwrap_or_else(|_| "localhost".into())
 }
 
 #[cfg(test)]

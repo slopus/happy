@@ -13,6 +13,7 @@ pub mod sessions;
 pub mod social;
 pub mod uploads;
 pub mod v3;
+pub mod version;
 
 use crate::config::Config;
 use crate::http::Router;
@@ -30,6 +31,7 @@ pub fn register(r: &mut Router, c: &Config) {
     social::register(r);
     projects::register(r);
     session_files::register(r);
+    version::register(r, c);
 }
 
 /// Prisma's `new Date(x)` accepts only JS-representable instants (±8.64e15 ms);
