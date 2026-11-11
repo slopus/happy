@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="agent_voice_support_title">Happy és de codi obert</string>
-    <string name="agent_voice_support_line">Dona suport convidant-nos a un boba i obtén 5 hores de trucades amb agents</string>
-    <string name="agent_voice_support_spoken">Happy és de codi obert. Dona suport convidant-nos a un boba i obtén 5 hores de trucades amb agents</string>
+    <string name="agent_voice_support_line">Dona suport convidant-nos a un boba i obtén 2 hores de trucades amb agents</string>
+    <string name="agent_voice_support_spoken">Happy és de codi obert. Dona suport convidant-nos a un boba i obtén 2 hores de trucades amb agents</string>
     <string name="agent_voice_support_thanks_title">Gràcies per donar suport a Happy</string>
     <string name="agent_voice_support_manage">Gestiona la teva subscripció</string>
     <string name="agent_voice_support_thanks_spoken">Gràcies per donar suport a Happy. Gestiona la teva subscripció</string>
@@ -17,15 +17,15 @@
     <string name="agent_voice_minutes">%1$d min</string>
     <string name="agent_voice_back">Més a partir de</string>
     <string name="agent_voice_about">La veu fa servir ElevenLabs per ajudar-te a parlar amb els teus agents. El micròfon només s\'activa durant una trucada.</string>
-    <string name="agent_voice_subscribe">5 h de veu</string>
+    <string name="agent_voice_subscribe">2 h de veu</string>
     <string name="agent_voice_not_yet">Encara no està a la venda</string>
     <string name="agent_voice_not_yet_hint">Les subscripcions de veu encara no estan a la venda.</string>
-    <string name="agent_voice_coming_footer">Un boba cada mes donarà suport a Happy i inclourà 5 hores de veu en temps real. Encara no està a la venda.</string>
+    <string name="agent_voice_coming_footer">Un boba cada mes donarà suport a Happy i inclourà 2 hores de veu en temps real. Encara no està a la venda.</string>
     <string name="agent_voice_restore">Restaura les compres</string>
     <string name="agent_voice_restore_unavailable">No disponible</string>
     <string name="agent_voice_restore_hint">No hi ha res a restaurar fins que les subscripcions de veu estiguin a la venda.</string>
     <string name="agent_voice_sheet_title">Dona suport a Happy de codi obert</string>
-    <string name="agent_voice_sheet_body">Happy és de codi obert. Dona suport convidant-nos a un boba i obtén 5 hores de trucades amb agents</string>
+    <string name="agent_voice_sheet_body">Happy és de codi obert. Dona suport convidant-nos a un boba i obtén 2 hores de trucades amb agents</string>
     <string name="agent_voice_sheet_not_yet">Les aportacions encara no estan obertes.</string>
     <string name="agent_voice_sheet_pledge">Aporta %1$s/mes</string>
     <string name="agent_voice_sheet_subscribed">Estàs subscrit per %1$s/mes.</string>

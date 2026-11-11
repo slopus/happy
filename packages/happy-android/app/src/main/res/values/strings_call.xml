@@ -33,14 +33,14 @@
     <string name="call_used_date">Your free voice time is used. More comes back on %1$s.</string>
     <string name="call_used_later">Your free voice time is used. It comes back as older calls pass 30 days.</string>
     <string name="call_support_for">Support Happy for %1$s/month</string>
-    <string name="call_subscribe_allowance">5 hours of real-time voice included</string>
+    <string name="call_subscribe_allowance">2 hours of real-time voice included</string>
     <string name="call_subscribe_support">Happy is open source. Subscribing to voice pays for its development.</string>
     <string name="call_subscribe">Subscribe</string>
     <string name="call_preview_note">Test preview. Nothing is charged.</string>
     <string name="call_preview_title">Preview only</string>
     <string name="call_preview_message">Voice subscriptions aren’t on sale yet. Nothing was bought or charged, and your voice time hasn’t changed.</string>
-    <string name="call_paid_used">This month’s 5 hours of voice are used. More comes back on %1$s.</string>
-    <string name="call_paid_used_later">This month’s 5 hours of voice are used.</string>
+    <string name="call_paid_used">This month’s 2 hours of voice are used. More comes back on %1$s.</string>
+    <string name="call_paid_used_later">This month’s 2 hours of voice are used.</string>
     <string name="call_restore">Restore Purchases</string>
     <string name="call_restore_done">Your subscription is restored.</string>
     <string name="call_restore_none">No voice subscription was found for this store account.</string>

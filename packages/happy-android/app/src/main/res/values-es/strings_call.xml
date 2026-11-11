@@ -28,14 +28,14 @@
     <string name="call_used_date">Has usado tu tiempo de voz gratuito. Vuelve el %1$s.</string>
     <string name="call_used_later">Has usado tu tiempo de voz gratuito. Vuelve a medida que las llamadas antiguas superan los 30 días.</string>
     <string name="call_support_for">Apoya a Happy por %1$s al mes</string>
-    <string name="call_subscribe_allowance">Incluye 5 horas de voz en tiempo real</string>
+    <string name="call_subscribe_allowance">Incluye 2 horas de voz en tiempo real</string>
     <string name="call_subscribe_support">Happy es de código abierto. La suscripción de voz financia su desarrollo.</string>
     <string name="call_subscribe">Suscribirse</string>
     <string name="call_preview_note">Vista previa de prueba. No se cobra nada.</string>
     <string name="call_preview_title">Solo vista previa</string>
     <string name="call_preview_message">Las suscripciones de voz aún no están a la venta. No se ha comprado ni cobrado nada y tu tiempo de voz no ha cambiado.</string>
-    <string name="call_paid_used">Las 5 horas de voz de este mes se han agotado. Habrá más el %1$s.</string>
-    <string name="call_paid_used_later">Las 5 horas de voz de este mes se han agotado.</string>
+    <string name="call_paid_used">Las 2 horas de voz de este mes se han agotado. Habrá más el %1$s.</string>
+    <string name="call_paid_used_later">Las 2 horas de voz de este mes se han agotado.</string>
     <string name="call_restore">Restaurar compras</string>
     <string name="call_restore_done">Tu suscripción se ha restaurado.</string>
     <string name="call_restore_none">No se encontró ninguna suscripción de voz en esta cuenta de la tienda.</string>

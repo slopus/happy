@@ -671,7 +671,7 @@
     <string name="settings_voice_prompt_guide_title">エージェントプロンプトガイド</string>
     <string name="settings_voice_prompt_guide_description">ElevenLabs エージェントには以下が必要です:\n\n• ツール: sendMessageToSession — パラメータ: sessionId (string), message (string)。指定されたコーディングセッションにメッセージを送信します。\n• ツール: processPermissionRequest — パラメータ: requestId (string), decision (\"allow\" または \"deny\")。保留中のツール許可を承認または拒否します。\n• 動的変数: {{initialConversationContext}} — 開始時にセッション履歴とコンテキストを受信します。\n\nエージェントはユーザーとコーディングエージェント間の音声ブリッジとして機能します。簡潔に、話しかけられた時のみ応答し、コーディングエージェントが作業を完了したら報告する必要があります。</string>
     <string name="settings_voice_usage_title">使用状況（過去30日間）</string>
-    <string name="settings_voice_usage_footer">過去30日間に使用した音声時間。無料プラン: 20分。サブスクリプション: 5時間。月間最大100会話。</string>
+    <string name="settings_voice_usage_footer">過去30日間に使用した音声時間。無料プラン: 20分。サブスクリプション: 2時間。月間最大100会話。</string>
     <string name="settings_voice_usage_label">音声時間</string>
     <string name="settings_voice_conversations_label">会話</string>
     <string name="settings_voice_usage_used">%2$s中%1$s使用済み</string>

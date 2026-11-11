@@ -91,7 +91,7 @@ final class ProPassTests: XCTestCase {
         XCTAssertEqual(july.month(at: s("2026-07-31T23:59:59Z")), ProMonth(start: s("2026-07-01T00:00:00Z"), end: s("2026-08-01T00:00:00Z")))
     }
 
-    func testAYearlyOrLifetimeProIsFiveHoursAMonthNotAYear() {
+    func testAYearlyOrLifetimeProIsTwoHoursAMonthNotAYear() {
         let cache = ProPassCache(store: InMemoryKeyValueStore())
         told(cache, at: "2026-03-25T00:00:00Z", Self.pro("2026-01-31T00:00:00Z", "2027-01-31T00:00:00Z", product: "happy_yearly"))
         XCTAssertEqual(cache.month(customer: "a", now: s("2026-03-25T00:00:00Z")), ProMonth(start: s("2026-02-28T00:00:00Z"), end: s("2026-03-31T00:00:00Z")))
@@ -164,21 +164,28 @@ final class ProPassTests: XCTestCase {
 
     // MARK: The allowance
 
-    func testASubscriberHasFiveHoursInTheirMonthReplacingTheFreeTime() {
+    func testASubscriberHasTwoHoursInTheirMonthReplacingTheFreeTime() {
         var month: ProMonth? = ProMonth(start: 1_000, end: 2_000_000_000)
         let allowance = CallAllowance(store: MemoryUsageStore(), period: { month })
-        XCTAssertEqual(allowance.remaining(at: 1_000), CallAllowance.paidSeconds)
-        allowance.record(call: "a", from: 1_000, to: 1_000 + 4 * 3600)
-        XCTAssertEqual(allowance.remaining(at: 1_000 + 4 * 3600), 3600)
+        XCTAssertEqual(allowance.total, 7200)
+        XCTAssertEqual(allowance.remaining(at: 1_000), 7200)
+        allowance.record(call: "a", from: 1_000, to: 1_000 + 7199)
+        XCTAssertEqual(allowance.remaining(at: 1_000 + 7199), 1)
+        allowance.record(call: "a", from: 1_000, to: 1_000 + 7200)
+        XCTAssertEqual(allowance.remaining(at: 1_000 + 7200), 0)
+        XCTAssertEqual(allowance.freeAgain(after: 1_000 + 7200), month?.end)
+        allowance.record(call: "a", from: 1_000, to: 1_000 + 7201)
+        XCTAssertEqual(allowance.remaining(at: 1_000 + 7201), 0)
         // The next month counts nothing from before it.
-        month = ProMonth(start: 1_000 + 4 * 3600, end: 2_000_000_000)
-        XCTAssertEqual(allowance.remaining(at: 1_000 + 4 * 3600), CallAllowance.paidSeconds)
+        month = ProMonth(start: 1_000 + 7201, end: 2_000_000_000)
+        XCTAssertEqual(allowance.remaining(at: 1_000 + 7201), 7200)
         // Without pro, the free 20 minutes, already spent; not on top of the paid hours.
         month = nil
-        XCTAssertEqual(allowance.remaining(at: 1_000 + 4 * 3600), 0)
+        XCTAssertEqual(allowance.total, 1200)
+        XCTAssertEqual(allowance.remaining(at: 1_000 + 7201), 0)
     }
 
-    /// 5 hours spent on a month's first day; on day 45, in grace, that month
+    /// 2 hours spent on a month's first day; on day 45, in grace, that month
     /// still runs: no hours come back, and none are promised. The spans are
     /// kept for the paid month however long it runs, even through a moment
     /// nothing was known about pro.
@@ -187,9 +194,9 @@ final class ProPassTests: XCTestCase {
         var month: ProMonth? = ProMonth(start: start, end: s("2026-08-01T00:00:00Z"))
         let store = MemoryUsageStore()
         let allowance = CallAllowance(store: store, period: { month })
-        allowance.record(call: "day1", from: start + 3600, to: start + 6 * 3600)
-        XCTAssertEqual(allowance.remaining(at: start + 6 * 3600), 0)
-        XCTAssertEqual(allowance.freeAgain(after: start + 6 * 3600), s("2026-08-01T00:00:00Z"))
+        allowance.record(call: "day1", from: start + 3600, to: start + 3 * 3600)
+        XCTAssertEqual(allowance.remaining(at: start + 3 * 3600), 0)
+        XCTAssertEqual(allowance.freeAgain(after: start + 3 * 3600), s("2026-08-01T00:00:00Z"))
         // Unknown for a while (offline past a day): a short free call is counted, nothing forgotten.
         month = nil
         allowance.record(call: "unknown", from: start + 40 * 86_400, to: start + 40 * 86_400 + 60)
@@ -223,7 +230,7 @@ final class ProPassTests: XCTestCase {
         XCTAssertEqual(allowance.remaining(at: 200 * 86_400 + 60), CallAllowance.paidSeconds - 3720)
     }
 
-    func testAnAnnualSliceIsFiveHoursPerMonth() throws {
+    func testAnAnnualSliceIsTwoHoursPerMonth() throws {
         let pass = try XCTUnwrap(Self.pass(Self.subscriber("2026-03-25T00:00:00Z", Self.pro("2026-01-31T00:00:00Z", "2027-01-31T00:00:00Z", product: "happy_yearly"))))
         let at = pass.checkedAt
         let allowance = CallAllowance(store: MemoryUsageStore(), period: { pass.month(at: at) })
@@ -231,7 +238,7 @@ final class ProPassTests: XCTestCase {
         allowance.record(call: "feb", from: s("2026-02-10T00:00:00Z"), to: s("2026-02-10T05:00:00Z"))
         XCTAssertEqual(allowance.remaining(at: at), CallAllowance.paidSeconds)
         allowance.record(call: "mar", from: s("2026-03-20T00:00:00Z"), to: s("2026-03-20T01:00:00Z"))
-        XCTAssertEqual(allowance.remaining(at: at), 4 * 3600)
+        XCTAssertEqual(allowance.remaining(at: at), 3600)
     }
 
     // MARK: Fixtures

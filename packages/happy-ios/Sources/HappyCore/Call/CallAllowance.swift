@@ -85,7 +85,7 @@ public struct DefaultsCallUsageStore: CallUsageStore {
 
 /// The voice time a device has on agent calls, counted here: 20 free
 /// minutes in any 30 days, rolling, or, while the subscription gives a
-/// month (`Subscription.month()`), 5 hours in that month instead, not on
+/// month (`Subscription.month()`), 2 hours in that month instead, not on
 /// top. Provisional, like the public agent it goes with
 /// (`PublicAgentCallGrants`): nothing on a server counts or enforces it.
 /// Not a number of calls, and no other cap.
@@ -93,7 +93,7 @@ public struct DefaultsCallUsageStore: CallUsageStore {
 public final class CallAllowance {
     public static let freeSeconds: Double = 20 * 60
     public static let window: Double = 30 * 86_400
-    public static let paidSeconds: Double = 5 * 3600
+    public static let paidSeconds: Double = 2 * 3600
     /// How long calls are kept at least, past the 30 days: two months.
     public static let kept: Double = 62 * 86_400
 
@@ -145,7 +145,7 @@ public enum CallOffer: Equatable, Sendable {
     case unavailable
     /// The monthly subscription, at the price as the store words it.
     case onSale(price: String)
-    /// This customer has `pro`: 5 hours of voice a month, nothing to sell.
+    /// This customer has `pro`: 2 hours of voice a month, nothing to sell.
     case subscribed
     /// Debug builds' test screens only (`HAPPY_CALL_OFFER=preview`): the
     /// subscription drawn as if it were on sale, its button a preview that

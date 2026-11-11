@@ -5,7 +5,7 @@ import UIKit
 
 /// What an agent connection's Settings say about voice, read and never
 /// changed: this device's voice time (`CallAllowance`, read from its store:
-/// the free 20 minutes, or the subscription's 5 hours this month) and what
+/// the free 20 minutes, or the subscription's 2 hours this month) and what
 /// is on offer, as the call's sheets have it (`Offers.offer`). Debug builds
 /// can draw it from a
 /// fixture for their screenshots (`HAPPY_VOICE_SETTINGS_FIXTURE`: `fresh`,

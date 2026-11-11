@@ -21,7 +21,7 @@ public struct StoreKitSubscriptionStore: SubscriptionStore {
     }
 
     /// Sold only as a monthly auto-renewing subscription: never an annual
-    /// or a four-week one as 5 hours a month.
+    /// or a four-week one as 2 hours a month.
     static func monthly(_ product: Product) -> StoreProduct? {
         guard product.type == .autoRenewable, let period = product.subscription?.subscriptionPeriod,
               period.value == 1, period.unit == .month else { return nil }

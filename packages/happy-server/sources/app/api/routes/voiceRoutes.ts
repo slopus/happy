@@ -6,7 +6,7 @@ import { log } from "@/utils/log";
 
 // Subscriptions live on the phones (RevenueCat, per install); the server checks none.
 // It only caps every account's voice as a cost safety net.
-const VOICE_HARD_LIMIT_SECONDS = 18000; // 5 hours absolute cap per 30 days
+const VOICE_HARD_LIMIT_SECONDS = 7200; // 2 hours absolute cap per 30 days
 const VOICE_USAGE_PAGE_SIZE = 100;     // ElevenLabs maximum page size, not a conversation quota
 const ELEVEN_LABS_API = "https://api.elevenlabs.io/v1/convai";
 
@@ -124,7 +124,7 @@ export function voiceRoutes(app: Fastify) {
         const { usedSeconds, conversationCount } = usage;
         log({ module: 'voice' }, `User ${userId}: ${usedSeconds}s used, ${conversationCount} convos (hard=${VOICE_HARD_LIMIT_SECONDS}s)`);
 
-        // Hard cap — 5 hours, no exceptions
+        // Hard cap — 2 hours, no exceptions
         if (usedSeconds >= VOICE_HARD_LIMIT_SECONDS) {
             return reply.send({
                 allowed: false as const,

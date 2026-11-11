@@ -86,7 +86,7 @@ class CallSheetTest {
         var dismissed = 0
         rule.setHappyContent { CallSheet(OfferSheet.Used(null, Offer.Preview("$20")), onStart = { started++ }, onDismiss = { dismissed++ }) }
         rule.waitForIdle()
-        for (line in listOf("Support Happy for $20/month", "5 hours of real-time voice included", "Happy is open source. Subscribing to voice pays for its development.", "Test preview. Nothing is charged.")) text(line).assertExists()
+        for (line in listOf("Support Happy for $20/month", "2 hours of real-time voice included", "Happy is open source. Subscribing to voice pays for its development.", "Test preview. Nothing is charged.")) text(line).assertExists()
         rule.node(CallSheetTags.SUBSCRIBE).performClick()
         rule.waitForIdle()
         rule.onNodeWithText(context.getString(R.string.call_preview_message)).assertExists()
@@ -119,7 +119,7 @@ class CallSheetTest {
         rule.setHappyContent { CallSheet(OfferSheet.Required(Offer.OnSale("9,99 €")), onStart = { started++ }, onDismiss = {}, onRestore = { com.slopus.happy.payments.RestoreResult.NothingFound }) }
         rule.waitForIdle()
         rule.node(CallSheetTags.PAYWALL).assertExists()
-        for (line in listOf("Talk to your agents", "Support Happy for 9,99 €/month", "5 hours of real-time voice included")) text(line).assertExists()
+        for (line in listOf("Talk to your agents", "Support Happy for 9,99 €/month", "2 hours of real-time voice included")) text(line).assertExists()
         rule.node(CallSheetTags.SUBSCRIBE).assertExists()
         rule.node(CallSheetTags.RESTORE).assertExists()
         rule.node(CallSheetTags.SESSION).assertIsNotEnabled().performClick()
@@ -138,7 +138,7 @@ class CallSheetTest {
         text("Pledge 9,99 €/month").assertExists()
         text("Support Happy for 9,99 €/month").assertDoesNotExist()
         text("Talk to your agents").assertDoesNotExist()
-        text("5 hours of real-time voice included").assertDoesNotExist()
+        text("2 hours of real-time voice included").assertDoesNotExist()
         rule.node(CallSheetTags.SESSION).assertDoesNotExist()
         rule.node(AgentVoiceTags.SUBSCRIBE_BUTTON).assertIsEnabled().performClick()
         rule.waitForIdle()
@@ -187,7 +187,7 @@ class CallSheetTest {
     fun supportFitsWithoutScrolling() {
         rule.setHappyContent { SupportScreen(Offer.OnSale("9,99 €"), onBack = {}, onRestore = { com.slopus.happy.payments.RestoreResult.NothingFound }) }
         rule.waitForIdle()
-        text("Happy is open source. Support by sending us boba, get 5 hours of calls with agents").assertIsDisplayed()
+        text("Happy is open source. Support by sending us boba, get 2 hours of calls with agents").assertIsDisplayed()
         rule.onAllNodes(androidx.compose.ui.test.hasScrollAction()).assertCountEquals(0)
         val page = rule.node(AgentVoiceTags.PAGE).bounds
         val manage = rule.node(AgentVoiceTags.PAGE_MANAGE).bounds

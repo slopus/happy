@@ -299,12 +299,12 @@ final class CallCuesTests: XCTestCase {
         XCTAssertEqual(free.next(.init(now: 11, allowanceLeft: 120, allowanceTotal: 1_200)), .cue(.callEnding(reason: .timeUsed, in: 120, restart: false)))
         XCTAssertNil(free.next(.init(now: 12, allowanceLeft: 100, allowanceTotal: 1_200)))
         var paid = CallCues(since: 0)
-        XCTAssertNil(paid.next(.init(now: 10, allowanceLeft: 301, allowanceTotal: 18_000)))
-        XCTAssertEqual(paid.next(.init(now: 11, allowanceLeft: 300, allowanceTotal: 18_000)), .cue(.callEnding(reason: .timeUsed, in: 300, restart: false)))
+        XCTAssertNil(paid.next(.init(now: 10, allowanceLeft: 301, allowanceTotal: 7_200)))
+        XCTAssertEqual(paid.next(.init(now: 11, allowanceLeft: 300, allowanceTotal: 7_200)), .cue(.callEnding(reason: .timeUsed, in: 300, restart: false)))
         // At the limit with a minute or less to spare after it: no fresh call on offer.
         var short = CallCues(since: 0)
         short.heard(at: 3_290)
-        XCTAssertEqual(short.next(.init(now: 3_290, allowanceLeft: 360, allowanceTotal: 18_000)), .cue(.callEnding(reason: .callLimit, in: 300, restart: false)))
+        XCTAssertEqual(short.next(.init(now: 3_290, allowanceLeft: 360, allowanceTotal: 7_200)), .cue(.callEnding(reason: .callLimit, in: 300, restart: false)))
         XCTAssertFalse(short.canRestart(allowanceLeft: 59))
         XCTAssertTrue(short.canRestart(allowanceLeft: nil))
     }

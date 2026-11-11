@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="agent_voice_support_title">Happy — открытый проект</string>
-    <string name="agent_voice_support_line">Поддержите нас бобой и получите 5 часов звонков с агентами</string>
-    <string name="agent_voice_support_spoken">Happy — открытый проект. Поддержите нас бобой и получите 5 часов звонков с агентами</string>
+    <string name="agent_voice_support_line">Поддержите нас бобой и получите 2 часа звонков с агентами</string>
+    <string name="agent_voice_support_spoken">Happy — открытый проект. Поддержите нас бобой и получите 2 часа звонков с агентами</string>
     <string name="agent_voice_support_thanks_title">Спасибо, что поддерживаете Happy</string>
     <string name="agent_voice_support_manage">Управление подпиской</string>
     <string name="agent_voice_support_thanks_spoken">Спасибо, что поддерживаете Happy. Управление подпиской</string>
@@ -17,15 +17,15 @@
     <string name="agent_voice_minutes">%1$d мин</string>
     <string name="agent_voice_back">Снова с</string>
     <string name="agent_voice_about">Голос работает на ElevenLabs и помогает говорить с вашими агентами. Микрофон включён только во время звонка.</string>
-    <string name="agent_voice_subscribe">5 ч голоса</string>
+    <string name="agent_voice_subscribe">2 ч голоса</string>
     <string name="agent_voice_not_yet">Пока не продаётся</string>
     <string name="agent_voice_not_yet_hint">Подписка на голос пока не продаётся.</string>
-    <string name="agent_voice_coming_footer">Боба каждый месяц поддержит Happy и даст 5 часов голоса в реальном времени. Пока не продаётся.</string>
+    <string name="agent_voice_coming_footer">Боба каждый месяц поддержит Happy и даст 2 часа голоса в реальном времени. Пока не продаётся.</string>
     <string name="agent_voice_restore">Восстановить покупки</string>
     <string name="agent_voice_restore_unavailable">Недоступно</string>
     <string name="agent_voice_restore_hint">Восстанавливать нечего, пока подписка на голос не продаётся.</string>
     <string name="agent_voice_sheet_title">Поддержите открытый Happy</string>
-    <string name="agent_voice_sheet_body">Happy — открытый проект. Поддержите нас бобой и получите 5 часов звонков с агентами</string>
+    <string name="agent_voice_sheet_body">Happy — открытый проект. Поддержите нас бобой и получите 2 часа звонков с агентами</string>
     <string name="agent_voice_sheet_not_yet">Поддержка пока не открыта.</string>
     <string name="agent_voice_sheet_pledge">Поддержать за %1$s в месяц</string>
     <string name="agent_voice_sheet_subscribed">Вы подписаны за %1$s в месяц.</string>

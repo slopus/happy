@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="agent_voice_support_title">Happy 是开源的</string>
-    <string name="agent_voice_support_line">请我们喝杯波霸来支持我们，获得 5 小时与智能体通话</string>
-    <string name="agent_voice_support_spoken">Happy 是开源的。请我们喝杯波霸来支持我们，获得 5 小时与智能体通话</string>
+    <string name="agent_voice_support_line">请我们喝杯波霸来支持我们，获得 2 小时与智能体通话</string>
+    <string name="agent_voice_support_spoken">Happy 是开源的。请我们喝杯波霸来支持我们，获得 2 小时与智能体通话</string>
     <string name="agent_voice_support_thanks_title">感谢你支持 Happy</string>
     <string name="agent_voice_support_manage">管理你的订阅</string>
     <string name="agent_voice_support_thanks_spoken">感谢你支持 Happy。管理你的订阅</string>
@@ -17,15 +17,15 @@
     <string name="agent_voice_minutes">%1$d 分钟</string>
     <string name="agent_voice_back">恢复时间</string>
     <string name="agent_voice_about">语音使用 ElevenLabs 帮助你与智能体对话。麦克风只在通话时开启。</string>
-    <string name="agent_voice_subscribe">5 小时语音</string>
+    <string name="agent_voice_subscribe">2 小时语音</string>
     <string name="agent_voice_not_yet">尚未开售</string>
     <string name="agent_voice_not_yet_hint">语音订阅尚未开售。</string>
-    <string name="agent_voice_coming_footer">每月一杯波霸可以支持 Happy，并包含 5 小时实时语音。尚未开售。</string>
+    <string name="agent_voice_coming_footer">每月一杯波霸可以支持 Happy，并包含 2 小时实时语音。尚未开售。</string>
     <string name="agent_voice_restore">恢复购买</string>
     <string name="agent_voice_restore_unavailable">不可用</string>
     <string name="agent_voice_restore_hint">语音订阅开售前没有可恢复的内容。</string>
     <string name="agent_voice_sheet_title">支持开源的 Happy</string>
-    <string name="agent_voice_sheet_body">Happy 是开源的。请我们喝杯波霸来支持我们，获得 5 小时与智能体通话</string>
+    <string name="agent_voice_sheet_body">Happy 是开源的。请我们喝杯波霸来支持我们，获得 2 小时与智能体通话</string>
     <string name="agent_voice_sheet_not_yet">认捐尚未开放。</string>
     <string name="agent_voice_sheet_pledge">每月认捐 %1$s</string>
     <string name="agent_voice_sheet_subscribed">你已订阅，每月 %1$s。</string>

@@ -28,14 +28,14 @@
     <string name="call_used_date">免费语音时长已用完。%1$s 恢复更多时长。</string>
     <string name="call_used_later">免费语音时长已用完。较早的通话满 30 天后，时长会恢复。</string>
     <string name="call_support_for">以每月 %1$s 支持 Happy</string>
-    <string name="call_subscribe_allowance">包含 5 小时实时语音</string>
+    <string name="call_subscribe_allowance">包含 2 小时实时语音</string>
     <string name="call_subscribe_support">Happy 是开源项目。订阅语音可资助它的开发。</string>
     <string name="call_subscribe">订阅</string>
     <string name="call_preview_note">测试预览，不会收费。</string>
     <string name="call_preview_title">仅预览</string>
     <string name="call_preview_message">语音订阅尚未开售。没有购买或收取任何费用，你的语音时长也没有变化。</string>
-    <string name="call_paid_used">本月的 5 小时语音已用完。%1$s 起可再次使用。</string>
-    <string name="call_paid_used_later">本月的 5 小时语音已用完。</string>
+    <string name="call_paid_used">本月的 2 小时语音已用完。%1$s 起可再次使用。</string>
+    <string name="call_paid_used_later">本月的 2 小时语音已用完。</string>
     <string name="call_restore">恢复购买</string>
     <string name="call_restore_done">你的订阅已恢复。</string>
     <string name="call_restore_none">此商店账户中没有找到语音订阅。</string>

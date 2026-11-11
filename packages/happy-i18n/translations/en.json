@@ -770,7 +770,7 @@
     "settingsVoice.promptGuideTitle": "Agent Prompt Guide",
     "settingsVoice.promptGuideDescription": "Your ElevenLabs agent needs:\n\n• Tool: sendMessageToSession — parameters: sessionId (string), message (string). Sends a message to the specified coding session.\n• Tool: processPermissionRequest — parameters: requestId (string), decision (\"allow\" or \"deny\"). Approves or denies a pending tool permission.\n• Dynamic variable: {{initialConversationContext}} — receives session history and context on start.\n\nThe agent acts as a voice bridge between the user and coding agents. It should be concise, only respond when addressed, and report when a coding agent finishes work.",
     "settingsVoice.usageTitle": "Usage (Last 30 Days)",
-    "settingsVoice.usageFooter": "Voice time used in the last 30 days. Free tier: 20 min. Subscribed: 5 hours. Max 100 conversations per month.",
+    "settingsVoice.usageFooter": "Voice time used in the last 30 days. Free tier: 20 min. Subscribed: 2 hours. Max 100 conversations per month.",
     "settingsVoice.usageLabel": "Voice Time",
     "settingsVoice.conversationsLabel": "Conversations",
     "settingsVoice.usageUsed": {

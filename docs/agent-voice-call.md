@@ -133,10 +133,10 @@ covers every connection on the device and survives sign-out.
 - There is no cap on the number of calls and no other cap.
 
 With the subscription (RevenueCat's `pro` entitlement, from any product
-that grants it) the limit is 5 hours a month instead, counted by the same
+that grants it) the limit is 2 hours a month instead, counted by the same
 ledger. The ledger keeps calls for at least 62 days and never forgets one
 from inside the running paid month. Both limits are local. The server checks
-no subscription; it only caps every account's Happy-managed voice at 5 hours
+no subscription; it only caps every account's Happy-managed voice at 2 hours
 per 30 days as a cost safety net.
 
 Voice in Happy (relay) sessions is switched off in both apps: a session's
@@ -193,7 +193,7 @@ its text colours and pill. The podcast mic plays on top (Lottie,
 does, one icon and a few words a line: "Ask how your work is going",
 "Open and send by voice", "20 free minutes" (a gift). At the bottom, where
 a subscription is on offer: "Support Happy for $20/month"
-(`CallOffer.price`), "5 hours of real-time voice included", "Happy is open
+(`CallOffer.price`), "2 hours of real-time voice included", "Happy is open
 source. Subscribing to voice pays for its development.", the "Subscribe"
 pill, then "Start Voice Session" with
 voice's three bars, quieter, under it. A ✕ on top, or a swipe down, closes
@@ -225,7 +225,7 @@ back). What is on offer (`CallOffer` on iOS, `Offer` on Android):
   pill, greyed out, and the ✕ closes the sheet.
 - `onSale(price)`: the store's price, Subscribe and "Restore
   Purchases".
-- `subscribed`: no second Subscribe; the 5 hours a month, and once they are
+- `subscribed`: no second Subscribe; the 2 hours a month, and once they are
   used, when the next month's begin.
 - `preview(price:)`, debug builds only and only when launched with
   `HAPPY_CALL_OFFER=preview` (test screens; `HAPPY_CALL_OFFER_PRICE`
@@ -242,9 +242,9 @@ buttons and warning. One presenter (`payments/Offers.kt`, drawn by
 voice's `Welcome` and `Used`, `Required` when the relay's voice says
 `voice_must_pay` (buying retries it once; unreachable while the relay's
 voice is off), and `Support` from Settings'
-Support us row and the agent's boba row ("Pledge <price>/month", 5 hours of
+Support us row and the agent's boba row ("Pledge <price>/month", 2 hours of
 voice a month, no Start). `CallIntro` keeps `call.intro.seen` in the
-`call-usage` preferences beside the free time. The relay's 5-hour hard cap
+`call-usage` preferences beside the free time. The relay's 2-hour hard cap
 is never sold: it only says so. The legacy RevenueCat SDK and its paywall
 are removed.
 On a tablet the sidebar's foot has the voice button too, left of the
@@ -636,7 +636,7 @@ is speaking:
 | --- | --- | --- |
 | `{"event":"silence","endsIn":"about 2 minutes"}` | 180 s with nobody speaking | ends at 290 s unless the person speaks |
 | `{"event":"call_ending","reason":"call_limit","in":"about 5 minutes","restart":true}` | 5 min before the one-call limit | ends 10 s before ElevenLabs' 3,600 s |
-| `{"event":"call_ending","reason":"time_used","in":"about 2 minutes","restart":false}` | 2 min before the free 20 min run out, 5 min before the paid 5 h | ends when the time is used |
+| `{"event":"call_ending","reason":"time_used","in":"about 2 minutes","restart":false}` | 2 min before the free 20 min run out, 5 min before the paid 2 h | ends when the time is used |
 
 - Silence is the app's. ElevenLabs ends a call after 300 s of silence
   (`silence_end_call_timeout`, which the hosted agent must have at 300 s,

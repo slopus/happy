@@ -28,14 +28,14 @@
     <string name="call_used_date">無料の音声時間を使い切りました。%1$sに再び使えます。</string>
     <string name="call_used_later">無料の音声時間を使い切りました。古い通話が30日を過ぎると戻ります。</string>
     <string name="call_support_for">月額%1$sでHappyを支援</string>
-    <string name="call_subscribe_allowance">リアルタイム音声5時間込み</string>
+    <string name="call_subscribe_allowance">リアルタイム音声2時間込み</string>
     <string name="call_subscribe_support">Happyはオープンソースです。音声のサブスクリプションが開発を支えます。</string>
     <string name="call_subscribe">登録する</string>
     <string name="call_preview_note">テストプレビューです。料金はかかりません。</string>
     <string name="call_preview_title">プレビューのみ</string>
     <string name="call_preview_message">音声のサブスクリプションはまだ販売していません。購入や請求は行われておらず、音声時間も変わっていません。</string>
-    <string name="call_paid_used">今月の音声 5 時間を使い切りました。%1$s にまた使えます。</string>
-    <string name="call_paid_used_later">今月の音声 5 時間を使い切りました。</string>
+    <string name="call_paid_used">今月の音声 2 時間を使い切りました。%1$s にまた使えます。</string>
+    <string name="call_paid_used_later">今月の音声 2 時間を使い切りました。</string>
     <string name="call_restore">購入を復元</string>
     <string name="call_restore_done">サブスクリプションを復元しました。</string>
     <string name="call_restore_none">このストアアカウントには音声のサブスクリプションが見つかりませんでした。</string>

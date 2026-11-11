@@ -9,11 +9,11 @@ extension Strings {
         static var manage: String { "Manage Subscriptions" }
         static var subscribed: String { "Subscribed" }
         static var includedVoice: String { "Voice included" }
-        static var includedValue: String { "5 hrs / month" }
-        static var voiceFooter: String { "5 hours of real-time voice each month, and it supports Happy." }
+        static var includedValue: String { "2 hrs / month" }
+        static var voiceFooter: String { "2 hours of real-time voice each month, and it supports Happy." }
         static var unconfirmedNote: String { "Your purchase is being confirmed. Voice hours come once it is." }
-        static var paidUsedNote: String { "Your 5 hours of voice this month are used." }
-        static func paidUsedNote(_ when: String) -> String { "Your 5 hours of voice this month are used. More come \(when)." }
+        static var paidUsedNote: String { "Your 2 hours of voice this month are used." }
+        static func paidUsedNote(_ when: String) -> String { "Your 2 hours of voice this month are used. More come \(when)." }
 
         static var pendingTitle: String { "Purchase pending" }
         static var pendingMessage: String { "It needs approval first. Once it’s approved, your subscription starts on its own." }

@@ -28,14 +28,14 @@
     <string name="call_used_date">Has esgotat el temps de veu gratuït. Torna el %1$s.</string>
     <string name="call_used_later">Has esgotat el temps de veu gratuït. Torna a mesura que les trucades antigues superen els 30 dies.</string>
     <string name="call_support_for">Dona suport a Happy per %1$s al mes</string>
-    <string name="call_subscribe_allowance">Inclou 5 hores de veu en temps real</string>
+    <string name="call_subscribe_allowance">Inclou 2 hores de veu en temps real</string>
     <string name="call_subscribe_support">Happy és de codi obert. La subscripció de veu en paga el desenvolupament.</string>
     <string name="call_subscribe">Subscriu-te</string>
     <string name="call_preview_note">Previsualització de prova. No es cobra res.</string>
     <string name="call_preview_title">Només previsualització</string>
     <string name="call_preview_message">Les subscripcions de veu encara no estan a la venda. No s’ha comprat ni cobrat res i el teu temps de veu no ha canviat.</string>
-    <string name="call_paid_used">Les 5 hores de veu d’aquest mes s’han esgotat. N’hi haurà més el %1$s.</string>
-    <string name="call_paid_used_later">Les 5 hores de veu d’aquest mes s’han esgotat.</string>
+    <string name="call_paid_used">Les 2 hores de veu d’aquest mes s’han esgotat. N’hi haurà més el %1$s.</string>
+    <string name="call_paid_used_later">Les 2 hores de veu d’aquest mes s’han esgotat.</string>
     <string name="call_restore">Restaura les compres</string>
     <string name="call_restore_done">S’ha restaurat la subscripció.</string>
     <string name="call_restore_none">No s’ha trobat cap subscripció de veu en aquest compte de la botiga.</string>

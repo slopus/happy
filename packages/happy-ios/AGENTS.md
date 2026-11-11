@@ -213,7 +213,7 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
   (`HAPPY_REVENUE_CAT_APPLE_KEY` → `HappyRevenueCatAppleKey`). It is on sale
   only when the current offering's `$rc_monthly` is a one-month
   auto-renewable App Store product, at the store's price; anything else,
-  nothing is sold. RevenueCat's `pro`, from any product, gives 5 hours a
+  nothing is sold. RevenueCat's `pro`, from any product, gives 2 hours a
   paid month in place of the free time. The customer is the install's own
   anonymous id, kept on the phone: no Happy account, sign-in or analytics
   id touches it. Its `appAccountToken` is that id's hex as a UUID, so an

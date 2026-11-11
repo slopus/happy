@@ -117,7 +117,7 @@ class ProPassTest {
     }
 
     @Test
-    fun aYearlyOrLifetimeProIsFiveHoursAMonthNotAYear() {
+    fun aYearlyOrLifetimeProIsTwoHoursAMonthNotAYear() {
         told("2026-03-25T00:00:00Z", pro("2026-01-31T00:00:00Z", "2027-01-31T00:00:00Z", product = "happy_yearly"))
         // Each month from the purchase: Jan 31, Feb 28, Mar 31.
         assertEquals(ProMonth(ms("2026-02-28T00:00:00Z"), ms("2026-03-31T00:00:00Z")), cache.period("a", ms("2026-03-25T00:00:00Z")))
@@ -199,22 +199,29 @@ class ProPassTest {
     }
 
     @Test
-    fun aSubscriberHasFiveHoursInTheirMonthAndANewMonthStartsAfresh() {
+    fun aSubscriberHasTwoHoursInTheirMonthAndANewMonthStartsAfresh() {
         var period: ProMonth? = ProMonth(1_000_000L, 2_000_000_000L)
         val allowance = CallAllowance(MemoryUsageStore(), period = { period })
-        assertEquals(CallAllowance.PAID_MILLIS, allowance.remaining(1_000_000L))
-        allowance.record("a", 1_000_000L, 1_000_000L + 4 * 3_600_000L)
-        assertEquals(3_600_000L, allowance.remaining(1_000_000L + 4 * 3_600_000L))
+        assertEquals(7_200_000L, allowance.total())
+        assertEquals(7_200_000L, allowance.remaining(1_000_000L))
+        allowance.record("a", 1_000_000L, 1_000_000L + 7_199_000L)
+        assertEquals(1_000L, allowance.remaining(1_000_000L + 7_199_000L))
+        allowance.record("a", 1_000_000L, 1_000_000L + 7_200_000L)
+        assertEquals(0L, allowance.remaining(1_000_000L + 7_200_000L))
+        assertEquals(period?.end, allowance.freeAgain(1_000_000L + 7_200_000L))
+        allowance.record("a", 1_000_000L, 1_000_000L + 7_201_000L)
+        assertEquals(0L, allowance.remaining(1_000_000L + 7_201_000L))
         // The next month counts nothing from before it.
-        period = ProMonth(1_000_000L + 4 * 3_600_000L, 2_000_000_000L)
-        assertEquals(CallAllowance.PAID_MILLIS, allowance.remaining(1_000_000L + 4 * 3_600_000L))
+        period = ProMonth(1_000_000L + 7_201_000L, 2_000_000_000L)
+        assertEquals(7_200_000L, allowance.remaining(1_000_000L + 7_201_000L))
         // Without pro, the free 20 minutes, already spent.
         period = null
-        assertEquals(0L, allowance.remaining(1_000_000L + 4 * 3_600_000L))
+        assertEquals(1_200_000L, allowance.total())
+        assertEquals(0L, allowance.remaining(1_000_000L + 7_201_000L))
     }
 
     /**
-     * The integrated chain: 5 hours spent on the first day of a 31-day
+     * The integrated chain: 2 hours spent on the first day of a 31-day
      * month, then a failed renewal and 14 days of grace. On day 45 the month
      * still runs and nothing is back: recording a call then forgets nothing
      * of it.
@@ -226,8 +233,8 @@ class ProPassTest {
         told("2026-10-01T08:00:00Z", pro("2026-10-01T08:00:00Z", "2026-11-01T08:00:00Z"))
         var at = asked
         val allowance = CallAllowance(store, period = { cache.period("a", at) })
-        allowance.record("day-1", ms("2026-10-01T09:00:00Z"), ms("2026-10-01T14:00:00Z"))
-        at = ms("2026-10-01T14:00:00Z")
+        allowance.record("day-1", ms("2026-10-01T09:00:00Z"), ms("2026-10-01T11:00:00Z"))
+        at = ms("2026-10-01T11:00:00Z")
         assertEquals(0L, allowance.remaining(at))
         // Day 45, in grace (RevenueCat answers anew, its time and the device's alike).
         at = ms("2026-11-14T10:00:00Z")

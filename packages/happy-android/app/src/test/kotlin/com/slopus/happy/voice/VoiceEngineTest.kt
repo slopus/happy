@@ -181,10 +181,10 @@ class VoiceEngineTest {
         assertEquals(listOf("mic", "credentials", "voice_must_pay"), f.log)
     }
 
-    /** The server's 5-hour cap: no purchase lifts it, so it is said and nothing is sold. */
+    /** The server's 2-hour cap: no purchase lifts it, so it is said and nothing is sold. */
     @Test fun theHardCapIsSaidNeverSold() = runTest {
-        val f = Fixture(this); f.response = VoiceCredentials.Denied("voice_hard_limit_reached", 18_000)
-        assertEquals(VoiceStart.HardLimitReached(5), f.engine.start("s", f.microphone()))
+        val f = Fixture(this); f.response = VoiceCredentials.Denied("voice_hard_limit_reached", 7_200)
+        assertEquals(VoiceStart.HardLimitReached(2), f.engine.start("s", f.microphone()))
         assertEquals(listOf("mic", "credentials"), f.log)
     }
 

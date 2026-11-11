@@ -725,7 +725,7 @@
     <string name="settings_voice_prompt_guide_title">Przewodnik po promptach agenta</string>
     <string name="settings_voice_prompt_guide_description">Twój agent ElevenLabs potrzebuje:\n\n• Narzędzie: sendMessageToSession — parametry: sessionId (string), message (string). Wysyła wiadomość do wskazanej sesji kodowania.\n• Narzędzie: processPermissionRequest — parametry: requestId (string), decision (\"allow\" lub \"deny\"). Zatwierdza lub odrzuca oczekujące uprawnienie narzędzia.\n• Zmienna dynamiczna: {{initialConversationContext}} — otrzymuje historię sesji i kontekst przy uruchomieniu.\n\nAgent działa jako most głosowy między użytkownikiem a agentami kodującymi. Powinien być zwięzły, odpowiadać tylko gdy jest adresowany i raportować, gdy agent kodujący zakończy pracę.</string>
     <string name="settings_voice_usage_title">Użycie (ostatnie 30 dni)</string>
-    <string name="settings_voice_usage_footer">Czas głosowy wykorzystany w ostatnich 30 dniach. Darmowy plan: 20 min. Z subskrypcją: 5 godzin. Maks. 100 rozmów miesięcznie.</string>
+    <string name="settings_voice_usage_footer">Czas głosowy wykorzystany w ostatnich 30 dniach. Darmowy plan: 20 min. Z subskrypcją: 2 godziny. Maks. 100 rozmów miesięcznie.</string>
     <string name="settings_voice_usage_label">Czas głosowy</string>
     <string name="settings_voice_conversations_label">Rozmowy</string>
     <string name="settings_voice_usage_used">%1$s wykorzystano z %2$s</string>

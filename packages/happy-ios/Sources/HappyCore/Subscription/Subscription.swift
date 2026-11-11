@@ -129,7 +129,7 @@ public final class Subscription {
     /// day: any product that grants it, whatever is on sale.
     public var hasPro: Bool { grantsPro || cache.active(customer: customer, now: now()) }
 
-    /// The month of 5 hours the customer has now; nil without `pro`, or
+    /// The month of 2 hours the customer has now; nil without `pro`, or
     /// when RevenueCat hasn't said within a day. The meter's window.
     public func month() -> ProMonth? { grantsPro ? .calendar(at: now()) : cache.month(customer: customer, now: now()) }
 

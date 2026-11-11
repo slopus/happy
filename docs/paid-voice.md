@@ -13,7 +13,7 @@ User taps mic
 │   ├─ GET /v1/convai/conversations?user_id=Y&call_start_after_unix=<30d ago, Unix seconds>&page_size=100
 │   │   └─ Follow next_cursor while has_more, sum call_duration_secs → usedSeconds
 │   │
-│   ├─ usedSeconds >= 5h?             → { allowed: false, reason: "voice_hard_limit_reached" }
+│   ├─ usedSeconds >= 2h?             → { allowed: false, reason: "voice_hard_limit_reached" }
 │   │   (no subscription check: the 20 free minutes and `pro` are enforced on the phone)
 │   │
 │   ├─ GET /v1/convai/conversation/token?agent_id=X&participant_name=ELEVEN_USER_ID
@@ -39,8 +39,8 @@ User taps mic
 | Tier | Limit | Window | Cost to us | What happens |
 |------|-------|--------|------------|--------------|
 | Free | 20 min | 30 days | ~$0.19 | Paywall (on the phone) |
-| Subscribed | 5 hours | 30 days | — | Hard block → BYO agent |
-| Server cap (everyone) | 5 hours | 30 days | — | `voice_hard_limit_reached`, the only server gate |
+| Subscribed | 2 hours | 30 days | — | Hard block → BYO agent |
+| Server cap (everyone) | 2 hours | 30 days | — | `voice_hard_limit_reached`, the only server gate |
 | BYO Agent | Unlimited | — | $0 | User's own ElevenLabs |
 
 Cost: ~$0.01/min ($1600 / 171K min measured).
@@ -53,7 +53,7 @@ ElevenLabs is the source of truth. No local DB.
 - Usage: `GET /conversations?user_id=Y&call_start_after_unix=<30d ago, Unix seconds>&page_size=100` → sum durations
 - `user_id` = HMAC-SHA256 of Happy user ID (deterministic, one-way)
 - Max `page_size` is 100. Follow `next_cursor` while `has_more` to count all matching conversations, including users with more than 100 calls.
-- Stop reading once the 5-hour duration quota is reached. Above that quota, reported duration and conversation count are lower bounds on monthly usage.
+- Stop reading once the 2-hour duration quota is reached. Above that quota, reported duration and conversation count are lower bounds on monthly usage.
 - History lookup has a 15-second total timeout. Provider failures and malformed/repeated cursors return a server error; they never grant voice based on partial or zero usage.
 - `/v1/voice/usage` retains numeric `conversationLimit: 100` for compatibility with shipped native clients. It is a deprecated display field, no longer an eligibility limit. Older settings screens may display `103 / 100`; new calls are governed by duration alone on the server.
 

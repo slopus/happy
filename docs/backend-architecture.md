@@ -380,7 +380,7 @@ graph TB
 ## Integrations
 - **GitHub**: OAuth connect + webhook verification, optional if env vars are set.
 - **AI vendors**: encrypted token storage for `openai`, `anthropic`, `gemini`.
-- **Voice**: ElevenLabs usage hard cap (5 hours per 30 days) + token minting. No subscription check; subscriptions live on the phones.
+- **Voice**: ElevenLabs usage hard cap (2 hours per 30 days) + token minting. No subscription check; subscriptions live on the phones.
 - **Push tokens**: stored for later notification delivery.
 
 ## Observability

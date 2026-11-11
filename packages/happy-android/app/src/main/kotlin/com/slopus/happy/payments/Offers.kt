@@ -33,7 +33,7 @@ sealed interface Offer {
     /** The monthly subscription, at [price] as the store words it. */
     data class OnSale(override val price: String) : Offer
 
-    /** This customer has `pro`: 5 hours of voice a month, nothing to sell. */
+    /** This customer has `pro`: 2 hours of voice a month, nothing to sell. */
     data object Subscribed : Offer
 
     /**

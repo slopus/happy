@@ -56,7 +56,7 @@ final class SubscriptionTests: XCTestCase {
 
     // MARK: The preview app
 
-    /// The preview app is a subscriber from its build alone: voice opens with no welcome, a subscriber's 5 hours
+    /// The preview app is a subscriber from its build alone: voice opens with no welcome, a subscriber's 2 hours
     /// in each calendar month, and nothing sold.
     func testThePreviewBuildIsASubscriber() async throws {
         XCTAssertEqual(AppVariant.allCases.filter(\.grantsPro), [.preview])

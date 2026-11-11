@@ -46,7 +46,7 @@ Preserve credential and push compatibility on upgrades.
   ignored `local.properties` (`happy.callAgentV3Id`) into
   `BuildConfig.CALL_AGENT_ID`, and is never committed. Without it the tap says "Voice isn't set up for this
   connection yet". Each device gets 20 free connected minutes in any
-  rolling 30 days, 5 hours a month with the subscription (`CallAllowance`,
+  rolling 30 days, 2 hours a month with the subscription (`CallAllowance`,
   local). The app's own sheet (`CallSheet`, no vendor UI) is the welcome,
   once, on the first tap while the subscription is on sale, and, once the
   time is used, says when it is back with Start greyed out. It sells only
@@ -1431,7 +1431,7 @@ SDK's own) stay on disk, unread.
   boba row, which is that page's only Support us): "Pledge <price>/month"
   over Subscribe, always there and greyed out while nothing is on sale,
   then Restore Purchases and Manage subscriptions as quiet links.
-- Grants are client-side. The server checks no subscription; its 5-hour
+- Grants are client-side. The server checks no subscription; its 2-hour
   hard cap on every account's voice is a cost safety net, never sold, only
   said.
 - Debug builds treat About's Support row as Pro, as RN does; that grants no

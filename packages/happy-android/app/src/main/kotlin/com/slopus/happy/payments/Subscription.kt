@@ -126,7 +126,7 @@ class Subscription(
         if (store != null) scope.launch { store.updates.collect { bought(it) } }
     }
 
-    /** The month of 5 hours [customer] has now; null without `pro`, or when RevenueCat hasn't said within a day. */
+    /** The month of 2 hours [customer] has now; null without `pro`, or when RevenueCat hasn't said within a day. */
     fun period(): ProMonth? = if (grantsPro) ProMonth.calendar(now()) else cache.period(customer, now())
 
     fun hasPro(): Boolean = period() != null

@@ -79,7 +79,7 @@ class PreferencesCallUsageStore(private val preferences: SharedPreferences) : Ca
 /**
  * The voice time a device has on agent calls (iOS `CallAllowance`), counted
  * here: 20 free minutes in any 30 days, rolling, or, while the subscription
- * gives a [period], 5 hours in that billing period instead. Provisional, like
+ * gives a [period], 2 hours in that billing period instead. Provisional, like
  * the public agent it goes with: nothing on a server counts or enforces it.
  * Not a number of calls, and no other cap. Used on the main thread.
  */
@@ -115,7 +115,7 @@ class CallAllowance(
     companion object {
         const val FREE_MILLIS = 20 * 60 * 1000L
         const val WINDOW_MILLIS = 30 * 24 * 60 * 60 * 1000L
-        const val PAID_MILLIS = 5 * 60 * 60 * 1000L
+        const val PAID_MILLIS = 2 * 60 * 60 * 1000L
         /** A 31-day month and the longest store grace period after it (Play's 30 days), and a day. */
         const val KEEP_MILLIS = 62 * 24 * 60 * 60 * 1000L
     }

@@ -707,7 +707,7 @@
     <string name="settings_voice_prompt_guide_title">Guia de prompt do agente</string>
     <string name="settings_voice_prompt_guide_description">Seu agente ElevenLabs precisa de:\n\n• Ferramenta: sendMessageToSession — parâmetros: sessionId (string), message (string). Envia uma mensagem para a sessão de código especificada.\n• Ferramenta: processPermissionRequest — parâmetros: requestId (string), decision (\"allow\" ou \"deny\"). Aprova ou nega uma permissão de ferramenta pendente.\n• Variável dinâmica: {{initialConversationContext}} — recebe o histórico e contexto da sessão ao iniciar.\n\nO agente atua como ponte de voz entre o usuário e os agentes de código. Deve ser conciso, responder apenas quando abordado e informar quando um agente de código terminar o trabalho.</string>
     <string name="settings_voice_usage_title">Uso (últimos 30 dias)</string>
-    <string name="settings_voice_usage_footer">Tempo de voz utilizado nos últimos 30 dias. Plano gratuito: 20 min. Assinante: 5 horas. Máx. 100 conversas por mês.</string>
+    <string name="settings_voice_usage_footer">Tempo de voz utilizado nos últimos 30 dias. Plano gratuito: 20 min. Assinante: 2 horas. Máx. 100 conversas por mês.</string>
     <string name="settings_voice_usage_label">Tempo de voz</string>
     <string name="settings_voice_conversations_label">Conversas</string>
     <string name="settings_voice_usage_used">%1$s usado de %2$s</string>

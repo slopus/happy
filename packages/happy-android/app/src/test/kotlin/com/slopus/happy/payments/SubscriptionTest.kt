@@ -63,7 +63,7 @@ class SubscriptionTest {
 
     private fun sha(text: String) = MessageDigest.getInstance("SHA-256").digest(text.toByteArray()).joinToString("") { "%02x".format(it) }
 
-    /** The preview app is a subscriber from its build alone: no welcome, a subscriber's 5 hours in each calendar month, nothing sold. */
+    /** The preview app is a subscriber from its build alone: no welcome, a subscriber's 2 hours in each calendar month, nothing sold. */
     @Test
     fun thePreviewBuildIsASubscriber() = runTest {
         assertEquals(listOf("preview"), listOf("debug", "release", "preview", "bench").filter(Subscription::grantsPro))

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="agent_voice_support_title">Happy è open source</string>
-    <string name="agent_voice_support_line">Sostienici offrendoci un boba e ottieni 5 ore di chiamate con gli agenti</string>
-    <string name="agent_voice_support_spoken">Happy è open source. Sostienici offrendoci un boba e ottieni 5 ore di chiamate con gli agenti</string>
+    <string name="agent_voice_support_line">Sostienici offrendoci un boba e ottieni 2 ore di chiamate con gli agenti</string>
+    <string name="agent_voice_support_spoken">Happy è open source. Sostienici offrendoci un boba e ottieni 2 ore di chiamate con gli agenti</string>
     <string name="agent_voice_support_thanks_title">Grazie per sostenere Happy</string>
     <string name="agent_voice_support_manage">Gestisci il tuo abbonamento</string>
     <string name="agent_voice_support_thanks_spoken">Grazie per sostenere Happy. Gestisci il tuo abbonamento</string>
@@ -17,15 +17,15 @@
     <string name="agent_voice_minutes">%1$d min</string>
     <string name="agent_voice_back">Di nuovo dal</string>
     <string name="agent_voice_about">La voce usa ElevenLabs per aiutarti a parlare con i tuoi agenti. Il microfono è attivo solo durante una chiamata.</string>
-    <string name="agent_voice_subscribe">5 ore di voce</string>
+    <string name="agent_voice_subscribe">2 ore di voce</string>
     <string name="agent_voice_not_yet">Non ancora in vendita</string>
     <string name="agent_voice_not_yet_hint">Gli abbonamenti voce non sono ancora in vendita.</string>
-    <string name="agent_voice_coming_footer">Un boba ogni mese sosterrà Happy e includerà 5 ore di voce in tempo reale. Non è ancora in vendita.</string>
+    <string name="agent_voice_coming_footer">Un boba ogni mese sosterrà Happy e includerà 2 ore di voce in tempo reale. Non è ancora in vendita.</string>
     <string name="agent_voice_restore">Ripristina acquisti</string>
     <string name="agent_voice_restore_unavailable">Non disponibile</string>
     <string name="agent_voice_restore_hint">Niente da ripristinare finché gli abbonamenti voce non sono in vendita.</string>
     <string name="agent_voice_sheet_title">Sostieni Happy open source</string>
-    <string name="agent_voice_sheet_body">Happy è open source. Sostienici offrendoci un boba e ottieni 5 ore di chiamate con gli agenti</string>
+    <string name="agent_voice_sheet_body">Happy è open source. Sostienici offrendoci un boba e ottieni 2 ore di chiamate con gli agenti</string>
     <string name="agent_voice_sheet_not_yet">I contributi non sono ancora aperti.</string>
     <string name="agent_voice_sheet_pledge">Contribuisci con %1$s/mese</string>
     <string name="agent_voice_sheet_subscribed">Sei abbonato a %1$s/mese.</string>

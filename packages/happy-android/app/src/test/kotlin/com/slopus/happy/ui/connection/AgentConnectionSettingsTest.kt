@@ -218,7 +218,7 @@ class AgentConnectionSettingsTest {
         assertDp("line under the title", title.bottom, line.top)
         assertTrue("the row grows for both lines", row.height > 56.dp)
         rule.onNodeWithText("Happy is open source").assertIsDisplayed()
-        rule.onNodeWithText("Support by sending us boba, get 5 hours of calls with agents").assertIsDisplayed()
+        rule.onNodeWithText("Support by sending us boba, get 2 hours of calls with agents").assertIsDisplayed()
     }
 
     /** A subscriber's boba row thanks them and says where to manage it; it still opens Support Happy. */
@@ -248,7 +248,7 @@ class AgentConnectionSettingsTest {
     fun aSubscribersVoicePageThanksAndOffersNothing() {
         rule.setHappyContent { AgentVoiceScreen(AgentVoiceSummary(4 * 3_600_000L, offer = com.slopus.happy.payments.Offer.Subscribed)) {} }
         rule.onNodeWithText("Thank you for your support!").assertIsDisplayed()
-        rule.onNodeWithText("Get 5 hrs of voice").assertDoesNotExist()
+        rule.onNodeWithText("Get 2 hrs of voice").assertDoesNotExist()
         rule.node(AgentVoiceTags.FREE).assertDoesNotExist()
         rule.node(AgentVoiceTags.SUBSCRIBE).assertHasNoClickAction()
     }

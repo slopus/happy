@@ -243,6 +243,6 @@ class VoiceEngine(
 
     private companion object {
         /** happy-server's `VOICE_HARD_LIMIT_SECONDS`, should a denial not say. */
-        const val HARD_LIMIT_SECONDS = 5 * 60 * 60L
+        const val HARD_LIMIT_SECONDS = 2 * 60 * 60L
     }
 }

@@ -159,7 +159,7 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
             XCTAssertEqual(cards.firstIndex(of: ["support-boba"]), 2, "Support Happy is not right under Profile: \(cards)")
             XCTAssertEqual(settings.shownRow("agent-voice")?.value, "12 min left")
             XCTAssertEqual(settings.shownRow("support-boba")?.title, "Happy is open source")
-            XCTAssertEqual(settings.shownRow("support-boba")?.subtitle, "Support by sending us boba, get 5 hours of calls with agents")
+            XCTAssertEqual(settings.shownRow("support-boba")?.subtitle, "Support by sending us boba, get 2 hours of calls with agents")
             window.layoutIfNeeded()
             try checkSupportRow(settings)
             // The boba stays still on Settings.

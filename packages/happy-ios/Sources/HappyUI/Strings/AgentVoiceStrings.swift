@@ -6,8 +6,8 @@ import Foundation
 extension Strings {
     enum AgentVoice {
         static var supportTitle: String { "Happy is open source" }
-        static var supportLine: String { "Support by sending us boba, get 5 hours of calls with agents" }
-        static var supportSpoken: String { "Happy is open source. Support by sending us boba, get 5 hours of calls with agents" }
+        static var supportLine: String { "Support by sending us boba, get 2 hours of calls with agents" }
+        static var supportSpoken: String { "Happy is open source. Support by sending us boba, get 2 hours of calls with agents" }
         // The same row for a subscriber.
         static var supportThanksTitle: String { "Thank you for supporting Happy" }
         static var supportManage: String { "Manage your subscription" }
@@ -16,7 +16,7 @@ extension Strings {
         // The sheet the row opens (`SupportSheetViewController`): about Happy; voice is what a pledge comes with.
         static var sheetTitle: String { "Support Happy open source" }
         static var sheetReplay: String { "Play the boba again" }
-        static var sheetBody: String { "Happy is open source. Support by sending us boba, get 5 hours of calls with agents" }
+        static var sheetBody: String { "Happy is open source. Support by sending us boba, get 2 hours of calls with agents" }
         static func sheetPrice(_ price: String) -> String { "Pledge \(price)/month" }
         static var sheetNotYet: String { "Pledges aren’t open yet." }
         static func sheetSubscribed(_ price: String) -> String { "You’re subscribed at \(price)/month." }
@@ -37,12 +37,12 @@ extension Strings {
         static var back: String { "More from" }
         static var about: String { "Voice uses ElevenLabs to help you talk to your agents. The microphone is on only during a call." }
 
-        static var subscribe: String { "Get 5 hrs of voice" }
+        static var subscribe: String { "Get 2 hrs of voice" }
         static func perMonth(_ price: String) -> String { "\(price)/month" }
-        static var previewFooter: String { "5 hours of real-time voice each month, and it supports Happy. Test preview: nothing is charged." }
+        static var previewFooter: String { "2 hours of real-time voice each month, and it supports Happy. Test preview: nothing is charged." }
         static var notYet: String { "Not on sale yet" }
         static var notYetHint: String { "Voice subscriptions aren’t on sale yet." }
-        static var comingFooter: String { "Sending boba every month will support Happy and come with 5 hours of real-time voice. It isn’t on sale yet." }
+        static var comingFooter: String { "Sending boba every month will support Happy and come with 2 hours of real-time voice. It isn’t on sale yet." }
         static var restoreHint: String { "Nothing to restore until voice subscriptions are on sale." }
     }
 }

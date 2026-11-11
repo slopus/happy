@@ -40,7 +40,7 @@ final class CallController {
         CallAgent.hostedAgentId.map { PublicAgentCallGrants(agentId: $0) } ?? UnconfiguredCallGrants()
     }
 
-    /// 20 free minutes in 30 days, or the subscription's 5 hours a month.
+    /// 20 free minutes in 30 days, or the subscription's 2 hours a month.
     private let allowance = CallAllowance(period: { Offers.shared.month() })
     private let offers = Offers.shared
 

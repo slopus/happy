@@ -694,7 +694,7 @@
     "settingsVoice.promptGuideTitle": "代理提示詞指南",
     "settingsVoice.promptGuideDescription": "您的 ElevenLabs 代理需要：\n\n• 工具：sendMessageToSession — 參數：sessionId (string), message (string)。向指定的編碼工作階段傳送訊息。\n• 工具：processPermissionRequest — 參數：requestId (string), decision (\"allow\" 或 \"deny\")。核准或拒絕待處理的工具權限。\n• 動態變數：{{initialConversationContext}} — 啟動時接收工作階段歷史和上下文。\n\n代理充當使用者和編碼代理之間的語音橋梁。它應該簡潔，僅在被呼叫時回應，並在編碼代理完成工作時進行報告。",
     "settingsVoice.usageTitle": "使用量（過去 30 天）",
-    "settingsVoice.usageFooter": "過去 30 天使用的語音時間。免費方案: 20 分鐘。訂閱用戶: 5 小時。每月最多 100 次對話。",
+    "settingsVoice.usageFooter": "過去 30 天使用的語音時間。免費方案: 20 分鐘。訂閱用戶: 2 小時。每月最多 100 次對話。",
     "settingsVoice.usageLabel": "語音時間",
     "settingsVoice.conversationsLabel": "對話",
     "settingsVoice.usageUsed": {

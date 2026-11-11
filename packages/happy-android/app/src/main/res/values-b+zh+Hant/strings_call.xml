@@ -28,14 +28,14 @@
     <string name="call_used_date">免費語音時數已用完。%1$s 恢復更多時數。</string>
     <string name="call_used_later">免費語音時數已用完。較早的通話滿 30 天後，時數會恢復。</string>
     <string name="call_support_for">以每月 %1$s 支持 Happy</string>
-    <string name="call_subscribe_allowance">包含 5 小時即時語音</string>
+    <string name="call_subscribe_allowance">包含 2 小時即時語音</string>
     <string name="call_subscribe_support">Happy 是開源專案。訂閱語音可資助它的開發。</string>
     <string name="call_subscribe">訂閱</string>
     <string name="call_preview_note">測試預覽，不會收費。</string>
     <string name="call_preview_title">僅預覽</string>
     <string name="call_preview_message">語音訂閱尚未開賣。沒有購買或收取任何費用，你的語音時數也沒有變化。</string>
-    <string name="call_paid_used">本月的 5 小時語音已用完。%1$s 起可再次使用。</string>
-    <string name="call_paid_used_later">本月的 5 小時語音已用完。</string>
+    <string name="call_paid_used">本月的 2 小時語音已用完。%1$s 起可再次使用。</string>
+    <string name="call_paid_used_later">本月的 2 小時語音已用完。</string>
     <string name="call_restore">回復購買項目</string>
     <string name="call_restore_done">你的訂閱已回復。</string>
     <string name="call_restore_none">此商店帳號中找不到語音訂閱。</string>

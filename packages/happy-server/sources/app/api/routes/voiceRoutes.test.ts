@@ -72,7 +72,7 @@ describe("voiceRoutes", () => {
         });
     }
 
-    it.each([0, 1199, 1200, 17999])("grants voice below the hard cap at %i seconds without asking about a subscription", async (usedSeconds) => {
+    it.each([0, 1199, 1200, 7199])("grants voice below the hard cap at %i seconds without asking about a subscription", async (usedSeconds) => {
         mockUsage(usedSeconds ? [usedSeconds] : []);
         mockToken();
 
@@ -87,7 +87,7 @@ describe("voiceRoutes", () => {
             agentId,
             elevenUserId,
             usedSeconds,
-            limitSeconds: 18000,
+            limitSeconds: 7200,
         });
         expect(fetchMock).toHaveBeenCalledTimes(2);
         const usageUrl = new URL(String(fetchMock.mock.calls[0][0]));
@@ -123,8 +123,8 @@ describe("voiceRoutes", () => {
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it("enforces the hard cap for every account", async () => {
-        mockUsage([18000]);
+    it.each([7200, 7201, 18000])("enforces the hard cap for every account at %i seconds", async (usedSeconds) => {
+        mockUsage([usedSeconds]);
 
         const response = await requestConversation();
 
@@ -132,8 +132,8 @@ describe("voiceRoutes", () => {
         expect(VoiceConversationResponseSchema.parse(response.json())).toEqual({
             allowed: false,
             reason: "voice_hard_limit_reached",
-            usedSeconds: 18000,
-            limitSeconds: 18000,
+            usedSeconds,
+            limitSeconds: 7200,
             agentId,
         });
         expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -152,7 +152,7 @@ describe("voiceRoutes", () => {
             conversationId: "conv_test123",
             elevenUserId,
             usedSeconds: 100,
-            limitSeconds: 18000,
+            limitSeconds: 7200,
             agentId,
         });
         expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -170,7 +170,7 @@ describe("voiceRoutes", () => {
         expect(response.statusCode).toBe(200);
         expect(VoiceUsageResponseSchema.parse(response.json())).toEqual({
             usedSeconds: 1200,
-            limitSeconds: 18000,
+            limitSeconds: 7200,
             conversationCount: 2,
             conversationLimit: 100,
             elevenUserId,
@@ -226,7 +226,7 @@ describe("voiceRoutes", () => {
     });
 
     it("accounts for 101 recent conversations before minting a token", async () => {
-        mockUsage(Array.from({ length: 100 }, () => 88), "page+/2=");
+        mockUsage(Array.from({ length: 100 }, () => 70), "page+/2=");
         mockUsage([2]);
         mockToken();
 
@@ -235,8 +235,8 @@ describe("voiceRoutes", () => {
         expect(response.statusCode).toBe(200);
         expect(VoiceConversationResponseSchema.parse(response.json())).toMatchObject({
             allowed: true,
-            usedSeconds: 8802,
-            limitSeconds: 18000,
+            usedSeconds: 7002,
+            limitSeconds: 7200,
             conversationToken,
         });
         expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -272,7 +272,7 @@ describe("voiceRoutes", () => {
     });
 
     it("stops fetching history once a later page reaches the actual hard duration limit", async () => {
-        mockUsage([17900], "page-2");
+        mockUsage([7100], "page-2");
         mockUsage([100], "page-3");
 
         const response = await requestConversation();
@@ -281,8 +281,8 @@ describe("voiceRoutes", () => {
         expect(VoiceConversationResponseSchema.parse(response.json())).toMatchObject({
             allowed: false,
             reason: "voice_hard_limit_reached",
-            usedSeconds: 18000,
-            limitSeconds: 18000,
+            usedSeconds: 7200,
+            limitSeconds: 7200,
         });
         expect(fetchMock).toHaveBeenCalledTimes(2); // No further page or token.
     });

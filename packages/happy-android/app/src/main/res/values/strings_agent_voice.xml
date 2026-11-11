@@ -6,8 +6,8 @@
 -->
 <resources>
     <string name="agent_voice_support_title">Happy is open source</string>
-    <string name="agent_voice_support_line">Support by sending us boba, get 5 hours of calls with agents</string>
-    <string name="agent_voice_support_spoken">Happy is open source. Support by sending us boba, get 5 hours of calls with agents</string>
+    <string name="agent_voice_support_line">Support by sending us boba, get 2 hours of calls with agents</string>
+    <string name="agent_voice_support_spoken">Happy is open source. Support by sending us boba, get 2 hours of calls with agents</string>
     <string name="agent_voice_support_thanks_title">Thank you for supporting Happy</string>
     <string name="agent_voice_support_manage">Manage your subscription</string>
     <string name="agent_voice_support_thanks_spoken">Thank you for supporting Happy. Manage your subscription</string>
@@ -22,15 +22,15 @@
     <string name="agent_voice_minutes">%1$d min</string>
     <string name="agent_voice_back">More from</string>
     <string name="agent_voice_about">Voice uses ElevenLabs to help you talk to your agents. The microphone is on only during a call.</string>
-    <string name="agent_voice_subscribe">Get 5 hrs of voice</string>
+    <string name="agent_voice_subscribe">Get 2 hrs of voice</string>
     <string name="agent_voice_not_yet">Not on sale yet</string>
     <string name="agent_voice_not_yet_hint">Voice subscriptions aren’t on sale yet.</string>
-    <string name="agent_voice_coming_footer">Sending boba every month will support Happy and come with 5 hours of real-time voice. It isn’t on sale yet.</string>
+    <string name="agent_voice_coming_footer">Sending boba every month will support Happy and come with 2 hours of real-time voice. It isn’t on sale yet.</string>
     <string name="agent_voice_restore">Restore purchases</string>
     <string name="agent_voice_restore_unavailable">Unavailable</string>
     <string name="agent_voice_restore_hint">Nothing to restore until voice subscriptions are on sale.</string>
     <string name="agent_voice_sheet_title">Support Happy open source</string>
-    <string name="agent_voice_sheet_body">Happy is open source. Support by sending us boba, get 5 hours of calls with agents</string>
+    <string name="agent_voice_sheet_body">Happy is open source. Support by sending us boba, get 2 hours of calls with agents</string>
     <string name="agent_voice_sheet_not_yet">Pledges aren’t open yet.</string>
     <string name="agent_voice_sheet_pledge">Pledge %1$s/month</string>
     <string name="agent_voice_sheet_subscribed">You’re subscribed at %1$s/month.</string>

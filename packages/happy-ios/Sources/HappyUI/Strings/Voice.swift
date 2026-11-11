@@ -31,7 +31,7 @@ extension Strings {
         static var preferredLanguageSubtitle: String { localized("settingsVoice.preferredLanguageSubtitle", "Language used for voice assistant responses") }
         static var search: String { localized("settingsVoice.language.searchPlaceholder", "Search languages...") }
         static var usageTitle: String { localized("settingsVoice.usageTitle", "Usage (Last 30 Days)") }
-        static var usageFooter: String { localized("settingsVoice.usageFooter", "Voice time used in the last 30 days. Free tier: 20 min. Subscribed: 5 hours. Max 100 conversations per month.") }
+        static var usageFooter: String { localized("settingsVoice.usageFooter", "Voice time used in the last 30 days. Free tier: 20 min. Subscribed: 2 hours. Max 100 conversations per month.") }
         static var usage: String { localized("settingsVoice.usageLabel", "Voice Time") }
         static var conversations: String { localized("settingsVoice.conversationsLabel", "Conversations") }
         static var retry: String { "Retry" }

@@ -28,14 +28,14 @@
     <string name="call_used_date">Бесплатное время голоса закончилось. Ещё появится %1$s.</string>
     <string name="call_used_later">Бесплатное время голоса закончилось. Оно возвращается, когда старым звонкам исполняется 30 дней.</string>
     <string name="call_support_for">Поддержите Happy за %1$s в месяц</string>
-    <string name="call_subscribe_allowance">5 часов голоса в реальном времени</string>
+    <string name="call_subscribe_allowance">2 часа голоса в реальном времени</string>
     <string name="call_subscribe_support">Happy — проект с открытым исходным кодом. Подписка на голос оплачивает его разработку.</string>
     <string name="call_subscribe">Подписаться</string>
     <string name="call_preview_note">Тестовый просмотр. Ничего не списывается.</string>
     <string name="call_preview_title">Только просмотр</string>
     <string name="call_preview_message">Голосовые подписки пока не продаются. Ничего не куплено и не списано, ваше время голоса не изменилось.</string>
-    <string name="call_paid_used">5 часов голоса в этом месяце израсходованы. Новые появятся %1$s.</string>
-    <string name="call_paid_used_later">5 часов голоса в этом месяце израсходованы.</string>
+    <string name="call_paid_used">2 часа голоса в этом месяце израсходованы. Новые появятся %1$s.</string>
+    <string name="call_paid_used_later">2 часа голоса в этом месяце израсходованы.</string>
     <string name="call_restore">Восстановить покупки</string>
     <string name="call_restore_done">Подписка восстановлена.</string>
     <string name="call_restore_none">В этом аккаунте магазина не найдено подписки на голос.</string>

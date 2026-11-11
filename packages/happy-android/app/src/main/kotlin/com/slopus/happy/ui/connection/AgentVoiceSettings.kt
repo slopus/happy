@@ -284,7 +284,7 @@ fun AgentVoiceScreen(summary: AgentVoiceSummary, onSubscribe: () -> Unit = {}, o
  * first screen's grain under the standard bar, clear over it, the boba
  * where voice's sheet has its mic, played once as the page appears and
  * again on a tap ([SceneAnimation]; never looped), a headline and what
- * sending boba is for and comes with (5 hours of calls with agents). No
+ * sending boba is for and comes with (2 hours of calls with agents). No
  * voice session. Then "Pledge <the store's price>/month" over Subscribe,
  * which is always there and greyed out, under "Pledges aren't open yet.",
  * while nothing is on sale, and under them Restore Purchases and Manage
