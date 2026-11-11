@@ -162,11 +162,13 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         paddingVertical: 4,
         minHeight: 40,
     },
+    inputEditor: { flex: 1 },
+    predictionEditor: {
+        position: 'absolute', top: 4, bottom: 4, left: 8, right: 8,
+    },
     predictionGhost: {
-        position: 'absolute',
-        top: Platform.OS === 'web' ? 14 : 12,
-        left: 8,
-        right: 8,
+        flex: 1,
+        paddingVertical: Platform.OS === 'web' ? 10 : 8,
         color: theme.colors.input.placeholder,
         opacity: 0.65,
         fontSize: MULTI_TEXT_INPUT_FONT_SIZE,
@@ -923,26 +925,27 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                     )}
                     {/* Input field */}
                     <View style={[styles.inputContainer, props.minHeight ? { minHeight: props.minHeight } : undefined]}>
-                        <MultiTextInput
-                            testID={isSession ? 'session-message-input' : 'new-session-message-input'}
-                            ref={inputRef}
-                            defaultValue={props.initialValue}
-                            paddingTop={Platform.OS === 'web' ? 10 : 8}
-                            paddingBottom={Platform.OS === 'web' ? 10 : 8}
-                            onChangeText={handleTextChange}
-                            placeholder={predictionText ? '' : props.placeholder}
-                            onInputActivity={props.onPredictionInputActivity ?? props.onDismissPrediction}
-                            onKeyPress={handleKeyPress}
-                            onStateChange={handleInputStateChange}
-                            maxHeight={Platform.OS === 'web' ? 480 : 120}
-                        />
+                        <View style={predictionText ? styles.predictionEditor : styles.inputEditor}>
+                            <MultiTextInput
+                                testID={isSession ? 'session-message-input' : 'new-session-message-input'}
+                                ref={inputRef}
+                                defaultValue={props.initialValue}
+                                paddingTop={Platform.OS === 'web' ? 10 : 8}
+                                paddingBottom={Platform.OS === 'web' ? 10 : 8}
+                                onChangeText={handleTextChange}
+                                placeholder={predictionText ? '' : props.placeholder}
+                                onInputActivity={props.onPredictionInputActivity ?? props.onDismissPrediction}
+                                onKeyPress={handleKeyPress}
+                                onStateChange={handleInputStateChange}
+                                maxHeight={Platform.OS === 'web' ? 480 : 120}
+                            />
+                        </View>
                         {predictionText && <Text testID="composer-prediction-text"
-                            pointerEvents={Platform.OS === 'web' ? 'none' : 'auto'}
-                            onPress={Platform.OS === 'web' ? undefined : acceptPrediction}
+                            onPress={Platform.OS === 'web' ? () => inputRef.current?.focus() : acceptPrediction}
                             accessibilityRole={Platform.OS === 'web' ? undefined : 'button'}
-                            accessibilityLabel={t('agentInput.prediction.accept')}
-                            accessibilityHint={predictionText}
-                            numberOfLines={1} style={styles.predictionGhost}>{predictionText}</Text>}
+                            accessibilityLabel={Platform.OS === 'web' ? predictionText : t('agentInput.prediction.accept')}
+                            accessibilityHint={Platform.OS === 'web' ? undefined : predictionText}
+                            style={styles.predictionGhost}>{predictionText}</Text>}
                     </View>
 
                     {/* Action buttons below input */}

@@ -279,7 +279,9 @@ describe('MessageComposer web image paste', () => {
         });
         const ghost = () => renderer.root.findByProps({ testID: 'composer-prediction-text' });
         expect(ghost().props.style).toMatchObject({ color: '#999', opacity: 0.65, fontSize: 16, lineHeight: 22 });
-        expect(ghost().props.pointerEvents).toBe('none');
+        expect(ghost().props.numberOfLines).toBeUndefined();
+        expect(ghost().props.style.position).toBeUndefined();
+        expect(ghost().props.style.flex).toBe(1);
         expect(renderer.root.findAllByProps({ testID: 'composer-prediction-accept' })).toHaveLength(0);
         expect(renderer.root.findAllByProps({ testID: 'composer-prediction-dismiss' })).toHaveLength(0);
         const input = () => renderer.root.findByType('MultiTextInput');
@@ -293,6 +295,29 @@ describe('MessageComposer web image paste', () => {
         act(() => ref.current.setTextAndSelection('My own reply', { start: 12, end: 12 }));
         expect(renderer.root.findAllByProps({ testID: 'composer-prediction-text' })).toHaveLength(0);
         expect(ref.current.getText()).toBe('My own reply');
+    });
+
+    it('wraps a complete multi-sentence suggestion in layout and accepts every constraint', () => {
+        const text = '先做 B，结合上下文告诉我谁找我、什么事、需要我做什么，AI 失败也要正常提醒。先把目标和任务拆分对齐，暂时不要直接写代码。';
+        const ref = React.createRef<any>();
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<MessageComposer ref={ref} mode="session" initialValue="" placeholder="Message"
+                onSend={vi.fn()} predictionText={text} />);
+            renderers.push(renderer);
+        });
+        const ghost = renderer.root.findByProps({ testID: 'composer-prediction-text' });
+        expect(ghost.props.children).toBe(text);
+        expect(ghost.props.numberOfLines).toBeUndefined();
+        expect(ghost.props.style.position).toBeUndefined(); // Natural height keeps the toolbar below all lines.
+        const input = renderer.root.findByType('MultiTextInput');
+        let editor = input.parent;
+        while (editor && editor.type !== 'View') editor = editor.parent;
+        expect(editor.props.style).toMatchObject({ position: 'absolute' });
+        act(() => ghost.props.onPress()); // Web click only focuses; it does not accept.
+        expect(ref.current.getText()).toBe('');
+        act(() => input.props.onKeyPress({ key: 'Tab', shiftKey: false }));
+        expect(ref.current.getText()).toBe(text);
     });
 
     it('accepts native ghost text by tapping the text itself without extra controls or sending', () => {

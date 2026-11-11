@@ -5,10 +5,27 @@ import {
 } from '@slopus/happy-wire';
 import type { CodexAppServerClient } from './codexAppServerClient';
 
-const PREDICTION_PROMPT = `Predict the next message the user is most likely to type, based on the conversation so far.
-Return only one short message in the user's voice and language, one brief sentence, ideally under 12 words and always under 240 characters.
-Do not answer the assistant, explain, call tools, invent permission, or expand the user's stated goal.
-If the next message is unclear, return exactly <NO_SUGGESTION>.`;
+const PREDICTION_PROMPT = `Suggest the user's next message using the current conversation and their established goal.
+Focus on the latest unresolved question, decision or concrete next step. Write a useful, directly editable draft in the user's voice and language, preserving relevant requirements, fallback conditions and execution boundaries they have already expressed.
+Use up to three natural sentences in one plain-text paragraph, at most 240 characters. Include the specific object, action and important constraints when the context supports them; do not shorten the draft into a vague acknowledgement.
+Do not answer as the assistant, explain the suggestion, call tools, repeat the assistant's reply, or invent facts, preferences, requirements, permission to act or additional tasks. Do not choose an option merely because the assistant recommends it; the user's own stated preferences must support the choice.
+Return exactly <NO_SUGGESTION> if there is no specific, well-supported follow-up, the work is finished, or only a generic acknowledgement such as "okay", "continue" or "keep optimizing" would fit.
+Return only the draft or <NO_SUGGESTION>.`;
+
+// A narrow fallback for obvious filler; concrete short instructions and option
+// labels remain eligible. Context/intent grounding is the sampler prompt's job.
+const GENERIC_PREDICTIONS = new Set([
+    'ok', 'okay', 'yes', 'sure', 'thanks', 'thankyou', 'gotit', 'understood',
+    'soundsgood', 'continue', 'continueplease', 'goahead', 'proceed', 'keepgoing',
+    'keepoptimizing', 'continueoptimizing', 'optimizeitmore',
+    '好', '好的', '好啊', '好呀', '行', '可以', '明白', '明白了', '收到', '知道了',
+    '嗯', '嗯嗯', '谢谢', '继续', '继续吧', '请继续', '继续优化', '继续优化一下',
+    '再优化一下', '进一步优化', '帮我优化一下',
+]);
+
+function isGenericPrediction(text: string): boolean {
+    return GENERIC_PREDICTIONS.has(text.toLowerCase().replace(/[\s.!?。！？,，;；:：…]/gu, ''));
+}
 
 export function createComposerPredictionHandlers(options: {
     client: Pick<CodexAppServerClient, 'threadId' | 'turnId' | 'predictionRevision' | 'sampleThread'>;
@@ -34,8 +51,8 @@ export function createComposerPredictionHandlers(options: {
                         const response = await options.client.sampleThread(sourceTurnId, PREDICTION_PROMPT, controller.signal);
                         if (controller.signal.aborted || key !== JSON.stringify([options.client.threadId, options.client.predictionRevision, sourceTurnId])
                             || options.client.turnId || options.isBusy() || response.sourceTurnId !== sourceTurnId) return result('stale');
-                        const text = response.text?.trim();
-                        if (!text || text.includes('<NO_SUGGESTION>') || text.length > 240 || /[\r\n]/.test(text)) return result('none');
+                        const text = response.text?.replace(/\s+/gu, ' ').trim();
+                        if (!text || text.includes('<NO_SUGGESTION>') || text.length > 240 || isGenericPrediction(text)) return result('none');
                         return { sourceTurnId, status: 'ready', text };
                     } catch (error) {
                         if (error instanceof Error && 'code' in error && error.code === -32601) {

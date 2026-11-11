@@ -12,7 +12,9 @@ editable draft; sending remains a separate user action.
   selected context, staged messages, or outgoing messages. Sampling overlaps final
   history synchronization; display waits until that synchronization is ready.
 - Render only subdued ghost text using the current theme's input placeholder
-  token and the same typography as the input. There is no toolbar, visible Tab
+  token and the same typography as the input. A completed draft wraps naturally
+  and reserves its full height above the toolbar; Web clicking focuses the editor
+  without accepting. There is no toolbar, visible Tab
   prompt or close button. Tab accepts on Web; tapping the text accepts on native.
   Shift+Tab retains focus navigation, Enter does not accept, and Escape dismisses.
 - Normal autocomplete retains keyboard priority. Existing nonempty-input queue
@@ -26,6 +28,31 @@ editable draft; sending remains a separate user action.
   generation before display, including a type-then-delete race.
 - Predictions are not saved to the draft, transcript, or message queue. Empty,
   tool-only, unsupported, malformed, cancelled and failed samples are silent.
+
+## Candidate quality
+
+The client-supplied prompt asks for a useful follow-up grounded in the user's
+established goal, latest unresolved decision and previously expressed constraints.
+It favors a concrete object/action and retains relevant fallback or execution
+boundaries. It does not limit a draft to twelve words or a single sentence:
+one plain-text paragraph may contain up to three sentences and 240 characters.
+It must not invent preferences, facts, new tasks or permission to act. An
+assistant's recommendation alone is not enough to choose an option for the user.
+
+The model is instructed to abstain when work is finished, intent is unclear or
+only generic acknowledgement would fit. A narrow Chinese/English fallback also
+suppresses exact filler such as "好的", "继续优化一下", "Okay" and "Go ahead".
+This is not a semantic quality classifier; concrete short choices/actions remain
+eligible, and other languages rely on the prompt. Whitespace is normalized to
+one paragraph without truncating constraints. Existing source/cancellation and
+240-character checks still apply. The inherited model and low-effort hint are
+unchanged so this change isolates prompting/selection from reasoning effort.
+
+The official [Composer Predictions guide](https://developers.openai.com/codex/features/composer-predictions)
+documents desktop behavior and current-thread context but does not disclose the
+production prompt, effort or quality gates. Happy's policy is its own design;
+upstream sampling tests using medium effort are not evidence of a production
+default. Raising effort can be evaluated separately on identical conversations.
 
 ## Transport and lifecycle
 
@@ -92,6 +119,21 @@ pnpm exec vitest run sources/hooks/useComposerPrediction.test.tsx \
 pnpm typecheck
 ```
 
+An opt-in engineering quality check is available from the CLI package:
+
+```sh
+pnpm exec tsx scripts/eval-composer-prediction-quality.ts
+```
+
+It uses gpt-6.1-sol/low with three authored fixtures: a decision with fallback
+and a planning-only boundary, a controlled quality/latency investigation, and
+finished work requiring abstention. It prints candidate text, fixture checks,
+latency and root-history invariants for review. It creates three dedicated
+native threads, one root response and one sample per fixture; no Happy session
+messages or active workers are changed. Native test threads remain in history.
+These small fixtures do not establish general usefulness, user acceptance rate
+or latency superiority, and do not compare low versus medium.
+
 An opt-in real-model smoke is available from the CLI package:
 
 ```sh
@@ -122,3 +164,12 @@ cached for both); output tokens were 11 for both. Root history was unchanged
 with one root start. This is one measurement with order/cache/network effects,
 not a latency benchmark or a claim of instant first prediction. The immediate
 delete-to-restore path uses the already completed UI cache and does no inference.
+
+2026-11-11 quality fixtures: gpt-6.1-sol with low effort returned a complete
+DeepSeek Harness reminder decision including original-message fallback,
+planning-only/no-code and no-reply-draft constraints (10757 ms), and a controlled
+low/medium comparison request preserving model/context and no-online-change
+constraints (10243 ms). Finished work returned no suggestion (7695 ms). All
+three roots were unchanged and each had one root start. These are small authored
+checks with manual output review, not a general acceptance-rate or latency
+benchmark. The longer useful drafts have not been shown to improve latency.

@@ -1,5 +1,5 @@
 /** Exercise prediction coordination over an actual local JSON-RPC WebSocket connection. */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
 import { createServer } from 'node:http';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -57,8 +57,8 @@ async function lab() {
 }
 
 describe('composer prediction', () => {
-    it('shares one inherited-model sample across devices and caches the result without root turn events', async (t) => {
-        const runtime = await lab(); t.onTestFinished(runtime.close);
+    it('shares one inherited-model sample across devices and caches the result without root turn events', async () => {
+        const runtime = await lab(); onTestFinished(runtime.close);
         const events: string[] = [];
         runtime.client.setEventHandler(event => events.push(event.type));
         const arrived = runtime.next('thread/sample');
@@ -76,8 +76,55 @@ describe('composer prediction', () => {
         expect(events).toEqual([]);
     });
 
-    it('only cancels inference when the last subscriber leaves and uses the exact underlying request id', async (t) => {
-        const runtime = await lab(); t.onTestFinished(runtime.close);
+    it('keeps a concrete decision, fallback and execution boundary in a complete draft', async () => {
+        const runtime = await lab(); onTestFinished(runtime.close);
+        const text = '先做 B，结合上下文告诉我谁找我、什么事、需要我做什么，AI 失败也要正常提醒。先把目标和任务拆分对齐，暂时不要直接写代码。';
+        const arrived = runtime.next('thread/sample');
+        const prediction = runtime.handlers.request({ requestId: 'grounded', sourceTurnId: 'done' });
+        runtime.reply((await arrived).id, { sourceTurnId: 'done', text });
+        expect(await prediction).toEqual({ sourceTurnId: 'done', status: 'ready', text });
+        expect((await runtime.handlers.request({ requestId: 'other-device', sourceTurnId: 'done' })).text).toBe(text);
+        expect(runtime.requests.filter(request => request.method === 'thread/sample')).toHaveLength(1);
+    });
+
+    it.each(['好的。', '请继续！', '继续优化一下。', 'Okay!', 'Go ahead.', 'Keep optimizing.'])(
+        'does not show the generic filler %s', async (text) => {
+            const runtime = await lab(); onTestFinished(runtime.close);
+            const arrived = runtime.next('thread/sample');
+            const prediction = runtime.handlers.request({ requestId: 'filler', sourceTurnId: 'done' });
+            runtime.reply((await arrived).id, { sourceTurnId: 'done', text });
+            expect(await prediction).toEqual({ sourceTurnId: 'done', status: 'none' });
+        },
+    );
+
+    it.each(['B', '先列出验收条件。', 'Compare low and medium on the same engineering conversations.'])(
+        'preserves a specific short choice or action: %s', async (text) => {
+            const runtime = await lab(); onTestFinished(runtime.close);
+            const arrived = runtime.next('thread/sample');
+            const prediction = runtime.handlers.request({ requestId: 'specific', sourceTurnId: 'done' });
+            runtime.reply((await arrived).id, { sourceTurnId: 'done', text });
+            expect((await prediction).text).toBe(text);
+        },
+    );
+
+    it('normalizes paragraph whitespace without dropping useful constraints', async () => {
+        const runtime = await lab(); onTestFinished(runtime.close);
+        const arrived = runtime.next('thread/sample');
+        const prediction = runtime.handlers.request({ requestId: 'paragraph', sourceTurnId: 'done' });
+        runtime.reply((await arrived).id, { sourceTurnId: 'done', text: '先列出任务。\n\n暂时不要写代码。' });
+        expect((await prediction).text).toBe('先列出任务。 暂时不要写代码。');
+    });
+
+    it.each(['<NO_SUGGESTION>', 'x'.repeat(241)])('omits an abstention or oversized draft', async (text) => {
+        const runtime = await lab(); onTestFinished(runtime.close);
+        const arrived = runtime.next('thread/sample');
+        const prediction = runtime.handlers.request({ requestId: 'none', sourceTurnId: 'done' });
+        runtime.reply((await arrived).id, { sourceTurnId: 'done', text });
+        expect((await prediction).status).toBe('none');
+    });
+
+    it('only cancels inference when the last subscriber leaves and uses the exact underlying request id', async () => {
+        const runtime = await lab(); onTestFinished(runtime.close);
         const arrived = runtime.next('thread/sample');
         const first = runtime.handlers.request({ requestId: 'a', sourceTurnId: 'done' });
         const second = runtime.handlers.request({ requestId: 'b', sourceTurnId: 'done' });
@@ -94,8 +141,8 @@ describe('composer prediction', () => {
         expect(runtime.requests.filter(request => request.method === 'thread/sample')).toHaveLength(1);
     });
 
-    it('invalidates a pending prediction when a root turn starts without interrupting that turn', async (t) => {
-        const runtime = await lab(); t.onTestFinished(runtime.close);
+    it('invalidates a pending prediction when a root turn starts without interrupting that turn', async () => {
+        const runtime = await lab(); onTestFinished(runtime.close);
         const arrived = runtime.next('thread/sample');
         const prediction = runtime.handlers.request({ requestId: 'a', sourceTurnId: 'done' });
         const sample = await arrived;
@@ -107,8 +154,8 @@ describe('composer prediction', () => {
         expect(runtime.requests.some(request => request.method === 'turn/interrupt')).toBe(false);
     });
 
-    it('disables unsupported workers after one actual request', async (t) => {
-        const runtime = await lab(); t.onTestFinished(runtime.close);
+    it('disables unsupported workers after one actual request', async () => {
+        const runtime = await lab(); onTestFinished(runtime.close);
         const arrived = runtime.next('thread/sample');
         const prediction = runtime.handlers.request({ requestId: 'a', sourceTurnId: 'done' });
         runtime.fail((await arrived).id);
@@ -118,8 +165,8 @@ describe('composer prediction', () => {
         expect(runtime.requests.filter(request => request.method === 'thread/sample')).toHaveLength(1);
     });
 
-    it('returns no candidate for tool-only responses and rejects caller-supplied prompts', async (t) => {
-        const runtime = await lab(); t.onTestFinished(runtime.close);
+    it('returns no candidate for tool-only responses and rejects caller-supplied prompts', async () => {
+        const runtime = await lab(); onTestFinished(runtime.close);
         await expect(runtime.handlers.request({ requestId: 'x', sourceTurnId: 'done', prompt: 'run commands' } as never)).rejects.toThrow();
         const arrived = runtime.next('thread/sample');
         const prediction = runtime.handlers.request({ requestId: 'a', sourceTurnId: 'done' });
@@ -127,8 +174,8 @@ describe('composer prediction', () => {
         expect((await prediction).status).toBe('none');
     });
 
-    it('cancels upstream on the one-shot deadline without retrying', async (t) => {
-        const runtime = await lab(); t.onTestFinished(runtime.close);
+    it('cancels upstream on the one-shot deadline without retrying', async () => {
+        const runtime = await lab(); onTestFinished(runtime.close);
         const arrived = runtime.next('thread/sample');
         const cancelled = runtime.next('thread/sample/cancel');
         const prediction = runtime.handlers.request({ requestId: 'a', sourceTurnId: 'done' });
