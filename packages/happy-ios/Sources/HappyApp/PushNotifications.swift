@@ -31,8 +31,8 @@ final class PushNotifications: NSObject {
 
     /// This installation's id: the push exchange's `deviceId`, and the
     /// device this phone's environment reports name (`AgentConnections.environment`).
-    static let installationID = ExpoInstallationID(backend: SecurityKeychainBackend(), legacyDefaults: StandardDefaults(),
-                                                   bundleIdentifier: Bundle.main.bundleIdentifier ?? "")
+    nonisolated static let installationID = ExpoInstallationID(backend: SecurityKeychainBackend(), legacyDefaults: StandardDefaults(),
+                                                               bundleIdentifier: Bundle.main.bundleIdentifier ?? "")
 
     private lazy var source: ExpoDevicePushTokenSource = {
         let bundle = Bundle.main
