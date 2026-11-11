@@ -3,6 +3,6 @@
 COMPAT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$COMPAT/../../.." && pwd)"
 WORK="${WORK:-$ROOT/.context/compat}"
-PGPORT="${PGPORT:-55432}"
+PGPORT="${PGPORT:-55487}"
 export PGHOST=127.0.0.1 PGPORT
 mkdir -p "$WORK"

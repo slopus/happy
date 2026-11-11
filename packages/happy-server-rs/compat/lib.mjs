@@ -96,6 +96,7 @@ const RKEY = /"id":"[A-Za-z0-9]{12}"/g;
 const SID = /"sid":"[A-Za-z0-9_-]{20}"/g;
 const JSID = /\\"sid\\":\\"[A-Za-z0-9_-]{20}\\"/g;
 const EIOSID = /([?&]sid=)[A-Za-z0-9_-]{20}/g;
+const UUID4 = /[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/gi;
 
 /**
  * Normalizes raw response text: ids are numbered by first use (so the same id
@@ -109,7 +110,7 @@ export function normalizer() {
         if (!ids.has(s)) ids.set(s, `<id${ids.size + 1}>`);
         return ids.get(s);
     };
-    const text = (t) => String(t).replace(SID, '"sid":"<sid>"').replace(JSID, '\\"sid\\":\\"<sid>\\"').replace(EIOSID, '$1<sid>').replace(RKEY, '"id":"<rkey>"').replace(JWT, '<jwt>').replace(ISO, '<iso>').replace(CUID, idOf).replace(MS, '<ts>').replace(/127\.0\.0\.1:320[12]|localhost:320[12]/g, '<host>');
+    const text = (t) => String(t).replace(SID, '"sid":"<sid>"').replace(JSID, '\\"sid\\":\\"<sid>\\"').replace(EIOSID, '$1<sid>').replace(RKEY, '"id":"<rkey>"').replace(JWT, '<jwt>').replace(ISO, '<iso>').replace(CUID, idOf).replace(UUID4, idOf).replace(MS, '<ts>').replace(/127\.0\.0\.1:320[12]|localhost:320[12]/g, '<host>');
     return (entry) => {
         const e = { name: entry.name, status: entry.status, headers: entry.headers };
         e.body = entry.note ? text(JSON.stringify(entry.json)) : text(entry.text ?? '');

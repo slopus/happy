@@ -12,9 +12,10 @@ async function dumpDb(t, sql, label, queries) {
 function observed(t, clients) {
     return async (name, method, path, opts) => {
         let res;
+        // After-commit work is not awaited by the response: allow it a wider quiet window.
         await step(t, name + ' (sockets)', clients, async () => {
             res = await t.req(name, method, path, opts);
-        });
+        }, { quiet: 500 });
         return res;
     };
 }
@@ -192,6 +193,70 @@ async function social(t, sql, H, H2, H3, ids, r) {
     await t.req('feed invalid body', 'GET', '/v1/feed', { headers: H });
 }
 
+async function projects(t, sql, H, H2, sid, r) {
+    const P = '/v1/projects';
+    const bin = (bytes, h = H) => ({ headers: { ...h, 'content-type': 'application/octet-stream' }, raw: bytes });
+    await t.req('projects no auth', 'GET', P);
+    await t.req('project create missing metadata', 'POST', P, { headers: H, body: { externalId: 'e1' } });
+    await t.req('project create empty externalId', 'POST', P, { headers: H, body: { externalId: '', metadata: 'm' } });
+    const p1 = await r('project create', 'POST', P, { headers: H, body: { externalId: 'ext-1', metadata: 'meta-1', dataEncryptionKey: 'a2V5' } });
+    await r('project create existing', 'POST', P, { headers: H, body: { externalId: 'ext-1', metadata: 'other' } });
+    const p2 = await r('project create null dek', 'POST', P, { headers: H, body: { externalId: 'ext-2', metadata: 'meta-2', dataEncryptionKey: null } });
+    await r('project create bad dek', 'POST', P, { headers: H, body: { externalId: 'ext-3', metadata: 'meta-3', dataEncryptionKey: 'ab' } });
+    await r('project create same external other user', 'POST', P, { headers: H2, body: { externalId: 'ext-1', metadata: 'theirs' } });
+    const id1 = p1.id;
+    const id2 = p2.id;
+    await t.req('projects list', 'GET', P, { headers: H });
+    await t.req('projects list ids', 'GET', `${P}?ids=${id2},nope,${id2}`, { headers: H });
+    await t.req('projects list empty id', 'GET', `${P}?ids=${id1},`, { headers: H });
+    await t.req('projects list too many ids', 'GET', `${P}?ids=${Array.from({ length: 101 }, (_, i) => 'x' + i).join(',')}`, { headers: H });
+    await t.req('projects list empty ids param', 'GET', `${P}?ids=`, { headers: H });
+    await t.req('projects list changedSince', 'GET', `${P}?changedSince=1`, { headers: H });
+    await t.req('projects list changedSince future', 'GET', `${P}?changedSince=99999999999999`, { headers: H });
+    await t.req('projects list changedSince huge', 'GET', `${P}?changedSince=9999999999999999`, { headers: H });
+    await t.req('projects list changedSince 0', 'GET', `${P}?changedSince=0`, { headers: H });
+    await t.req('project get', 'GET', `${P}/${id1}`, { headers: H });
+    await t.req('project get other user', 'GET', `${P}/${id1}`, { headers: H2 });
+    await t.req('project patch unknown key', 'PATCH', `${P}/${id1}`, { headers: H, body: { metadata: 'x', extra: 1 } });
+    await r('project patch mismatch', 'PATCH', `${P}/${id1}`, { headers: H, body: { metadata: 'x', expectedMetadataVersion: 5 } });
+    await r('project patch same metadata', 'PATCH', `${P}/${id1}`, { headers: H, body: { metadata: 'meta-1' } });
+    await r('project patch nothing', 'PATCH', `${P}/${id1}`, { headers: H, body: {} });
+    await r('project patch', 'PATCH', `${P}/${id1}`, { headers: H, body: { metadata: 'meta-1b', expectedMetadataVersion: 1 } });
+    await r('project patch without version', 'PATCH', `${P}/${id1}`, { headers: H, body: { metadata: 'meta-1c' } });
+    await r('project patch unknown', 'PATCH', `${P}/nope`, { headers: H, body: { metadata: 'x' } });
+
+    await t.req('project upload request bad size', 'POST', `${P}/${id1}/avatar/request-upload`, { headers: H, body: { size: -1 } });
+    const up = await t.req('project upload request', 'POST', `${P}/${id1}/avatar/request-upload`, { headers: { ...H, 'x-forwarded-host': 'example.test', 'x-forwarded-proto': 'https' }, body: { size: 3 } });
+    await t.req('project upload request host header', 'POST', `${P}/${id1}/avatar/request-upload`, { headers: H, body: { size: 3 } });
+    await t.req('project upload request unknown', 'POST', `${P}/nope/avatar/request-upload`, { headers: H, body: { size: 3 } });
+    const file = up.ref.slice(up.ref.lastIndexOf('/') + 1);
+    await t.req('project upload json body', 'PUT', `${P}/${id1}/avatar/${file}`, { headers: H, body: { a: 1 } });
+    await t.req('project upload bad file', 'PUT', `${P}/${id1}/avatar/x.enc`, bin('abc'));
+    await t.req('project upload other user', 'PUT', `${P}/${id1}/avatar/${file}`, bin('abc', H2));
+    await t.req('project upload', 'PUT', `${P}/${id1}/avatar/${file}`, bin('abc'));
+    await t.req('project upload empty', 'PUT', `${P}/${id1}/avatar/00000000-0000-4000-8000-000000000000.enc`, bin(''));
+    await t.req('project download before activate', 'GET', `${P}/${id1}/avatar/${file}`, { headers: H });
+    await t.req('project request download none', 'POST', `${P}/${id1}/avatar/request-download`, { headers: H });
+    await r('project avatar bad ref', 'PATCH', `${P}/${id1}/avatar`, { headers: H, body: { ref: 'projects/x/avatar/' + file, preview: 'pv' } });
+    await r('project avatar missing upload', 'PATCH', `${P}/${id1}/avatar`, { headers: H, body: { ref: `projects/${id1}/avatar/11111111-1111-4111-8111-111111111111.enc`, preview: 'pv' } });
+    await r('project avatar activate', 'PATCH', `${P}/${id1}/avatar`, { headers: H, body: { ref: up.ref, preview: 'pv' } });
+    await r('project avatar activate same', 'PATCH', `${P}/${id1}/avatar`, { headers: H, body: { ref: up.ref, preview: 'pv' } });
+    await t.req('project request download', 'POST', `${P}/${id1}/avatar/request-download`, { headers: H });
+    await t.req('project download', 'GET', `${P}/${id1}/avatar/${file}`, { headers: H });
+    await t.req('project download other file', 'GET', `${P}/${id1}/avatar/00000000-0000-4000-8000-000000000000.enc`, { headers: H });
+    await t.req('project download bad name', 'GET', `${P}/${id1}/avatar/nope`, { headers: H });
+    await r('project avatar delete', 'DELETE', `${P}/${id1}/avatar`, { headers: H });
+    await r('project avatar delete again', 'DELETE', `${P}/${id1}/avatar`, { headers: H });
+
+    await t.req('session link to project', 'POST', '/v1/sessions', { headers: H, body: { tag: 'proj-linked', metadata: 'm', projectId: id2 } });
+    await r('project delete other user', 'DELETE', `${P}/${id2}`, { headers: H2 });
+    await r('project delete', 'DELETE', `${P}/${id2}`, { headers: H });
+    await r('project delete again', 'DELETE', `${P}/${id2}`, { headers: H });
+    await t.req('sessions after project delete', 'GET', '/v1/sessions', { headers: H });
+    for (let i = 0; i < 59; i++) await fetch(t.base + `${P}/nope/avatar/request-upload`, { method: 'POST', headers: { ...H, 'content-type': 'application/json' }, body: '{"size":1}' });
+    await t.req('project upload rate limit', 'POST', `${P}/${id1}/avatar/request-upload`, { headers: H, body: { size: 3 } });
+}
+
 export async function scenario(t, { sql }) {
     const token = await login(t, 1);
     const token2 = await login(t, 2, 'auth user2');
@@ -216,6 +281,7 @@ export async function scenario(t, { sql }) {
     await artifacts(t, sql, H, H2, obs);
     await kv(t, H, H2, obs);
     await social(t, sql, H, H2, H3, ids, observed(t, [ui, ui2, ui3]));
+    await projects(t, sql, H, H2, sid, obs);
 
     await dumpDb(t, sql, 'before deletes', [
         ['machines', `SELECT "id","metadata","metadataVersion","daemonState","daemonStateVersion",encode("dataEncryptionKey",'base64') AS dek,"seq","active" FROM "Machine" ORDER BY "id"`],
@@ -225,6 +291,8 @@ export async function scenario(t, { sql }) {
         ['kv', `SELECT "key",encode("value",'base64') AS v,"version" FROM "UserKVStore" ORDER BY "key"`],
         ['relationships', `SELECT a."publicKey" AS "from", b."publicKey" AS "to", r."status", r."acceptedAt" IS NOT NULL AS accepted, r."lastNotifiedAt" IS NOT NULL AS notified FROM "UserRelationship" r JOIN "Account" a ON a."id" = r."fromUserId" JOIN "Account" b ON b."id" = r."toUserId" ORDER BY 1, 2`],
         ['feed', `SELECT a."publicKey", f."counter", f."repeatKey", f."body" FROM "UserFeedItem" f JOIN "Account" a ON a."id" = f."userId" ORDER BY 1, 2`],
+        ['projects', `SELECT "externalId","metadata","metadataVersion",encode("dataEncryptionKey",'base64') AS dek,"avatarRef" IS NOT NULL AS has_avatar,"avatarPreview","avatarVersion","seq" FROM "Project" ORDER BY "externalId","metadata"`],
+        ['sessions', `SELECT "tag","projectId" FROM "Session" ORDER BY "tag"`],
     ]);
     await obs('machine delete', 'DELETE', '/v1/machines/mach-a', { headers: H });
     await t.req('machine get after delete', 'GET', '/v1/machines/mach-a', { headers: H });

@@ -6,7 +6,7 @@ import { Recorder, compare } from './lib.mjs';
 
 const [scenarioName, aBase, aDb, bBase, bDb] = process.argv.slice(2);
 const { scenario } = await import(`./${scenarioName}.mjs`);
-const PG = { host: process.env.PGHOST || '127.0.0.1', port: process.env.PGPORT || '55432' };
+const PG = { host: process.env.PGHOST || '127.0.0.1', port: process.env.PGPORT || '55487' };
 const sqlFor = (db) => async (q) => execFileSync('psql', ['-h', PG.host, '-p', PG.port, '-U', 'postgres', '-d', db, '-At', '-v', 'ON_ERROR_STOP=1', '-c', q], { encoding: 'utf8' });
 
 const a = new Recorder(aBase);

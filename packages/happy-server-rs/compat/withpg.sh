@@ -15,6 +15,6 @@ full_page_writes = off
 max_connections = 400
 CONF
 fi
-pg_ctl -D "$WORK/pgdata" -l "$WORK/pg.log" -w start >/dev/null || { tail -5 "$WORK/pg.log"; exit 1; }
+pg_ctl -D "$WORK/pgdata" -l "$WORK/pg.log" -o "-p $PGPORT" -w start >/dev/null || { tail -5 "$WORK/pg.log"; exit 1; }
 trap 'pg_ctl -D "$WORK/pgdata" -m fast stop >/dev/null' EXIT
 "$@"
