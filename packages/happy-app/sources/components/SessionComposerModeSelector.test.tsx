@@ -39,6 +39,8 @@ vi.mock('react-native-unistyles', () => ({
                 ? (factory as (theme: any) => object)({
                       colors: {
                           switch: { thumb: { active: '#fff' } },
+                          slider: { track: '#555' },
+                          surfaceSelected: '#333',
                           divider: '#444',
                           input: { background: '#111' },
                           shadow: { color: '#000', opacity: 0.2 },
@@ -150,6 +152,34 @@ describe('SessionComposerModeSelector', () => {
             renderer.root.findByProps({ testID: 'session-composer-mode-picker-scrim' }).props.onPress(),
         );
         expect(renderer.root.findAllByProps({ testID: 'session-composer-mode-panel' })).toHaveLength(0);
+        act(() => renderer.unmount());
+    });
+
+    it('keeps reset in the header without footer text and highlights only the open trigger', () => {
+        const onEffortChange = vi.fn();
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(
+                <SessionComposerModeSelector online model={modelOptions[0]} modelOptions={modelOptions}
+                    effort={effortOptions[0]} effortOptions={[{ key: 'default', name: 'default effort' }, ...effortOptions]}
+                    onModelChange={vi.fn()} onEffortChange={onEffortChange} supportsFast />,
+            );
+        });
+        const trigger = () => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' });
+        const background = (pressed: boolean) => Object.assign({}, ...trigger().props.style({ pressed }).filter(Boolean)).backgroundColor;
+        expect(background(false)).toBeUndefined();
+        expect(background(true)).toBe('#333');
+        act(() => trigger().props.onPress());
+        expect(background(false)).toBe('#333');
+        const reset = renderer.root.findByProps({ testID: 'session-composer-effort-reset' });
+        expect(reset.props.accessibilityHint).toBe('default effort');
+        act(() => reset.props.onPress());
+        expect(onEffortChange).toHaveBeenCalledWith('default');
+        expect(renderer.root.findAllByType('Text').some((node: any) =>
+            ['default effort', 'agentInput.effort.fastOff'].includes(node.props.children),
+        )).toBe(false);
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-picker-scrim' }).props.onPress());
+        expect(background(false)).toBeUndefined();
         act(() => renderer.unmount());
     });
 

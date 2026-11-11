@@ -15,6 +15,15 @@ export { ACCENTS, THEME_PACK_IDS, type ThemePackId } from './themePacksData';
  * / `${packId}Dark`，共 7×2 = 14 套；PC 照片皮肤按来源明暗态另行注册。
  */
 
+// Blend the rail against its actual panel, retaining each palette's neutral tint.
+function sliderTrack(surface: string, text: string, dark: boolean): string {
+    const amount = dark ? 0.4 : 0.2;
+    return `#${[1, 3, 5].map((offset) => Math.round(
+        Number.parseInt(surface.slice(offset, offset + 2), 16) * (1 - amount)
+        + Number.parseInt(text.slice(offset, offset + 2), 16) * amount,
+    ).toString(16).padStart(2, '0')).join('')}`;
+}
+
 /** 把一个 accent 覆盖到基础主题上，生成完整主题对象 */
 function applyAccent(base: typeof lightTheme, a: AccentMode): typeof lightTheme {
     return {
@@ -38,6 +47,7 @@ function applyAccent(base: typeof lightTheme, a: AccentMode): typeof lightTheme 
             },
             particle: { primary: a.particleA, accent: a.particleB },
             accent: a.primary,
+            slider: { track: sliderTrack(a.surfaceHigh, a.textSecondary, base.dark) },
             // 选中态 / 单选的边框与圆点也跟随主题包主色
             radio: { ...base.colors.radio, active: a.primary, dot: a.primary },
             // 输入框 / 消息输入栏背景也随主题包（否则各主题下都停留在焦糖米色）

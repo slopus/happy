@@ -72,6 +72,7 @@ export const lightTheme = {
             background: '#FFFDFA',
             tint: '#3D2E22'
         },
+        slider: { track: '#DED9D2' },
         switch: {
             track: {
                 active: Platform.select({ ios: '#34C759', default: '#1976D2' }),
@@ -299,6 +300,7 @@ export const darkTheme = {
             background: Platform.select({ ios: '#1A1512', default: '#1A1512' }),
             tint: '#F0E6DA'
         },
+        slider: { track: '#62564B' },
         switch: {
             track: {
                 active: Platform.select({ ios: '#34C759', default: '#1976D2' }),

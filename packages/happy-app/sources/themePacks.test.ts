@@ -69,6 +69,15 @@ describe('theme pack interactive surfaces', () => {
         expect(theme.colors.surfaceSelected).toBe('#283544');
     });
 
+    it.each(['ginghamDark', 'dreamskinDark', 'caramelLight'] as const)(
+        'keeps the full slider rail distinct from the panel in %s', (name) => {
+            const { colors, dark } = appThemes[name];
+            expect(contrastRatio(colors.slider.track, colors.input.background)).toBeGreaterThan(dark ? 1.8 : 1.15);
+            expect(colors.slider.track).not.toBe(colors.surfacePressed);
+            expect(colors.slider.track).not.toBe(colors.surfaceSelected);
+        },
+    );
+
     it('keeps destructive button text readable in gingham dark', () => {
         const { background, backgroundPressed, tint } = appThemes.ginghamDark.colors.button.destructive;
 

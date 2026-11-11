@@ -169,7 +169,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                 style={({ pressed }) => [
                     styles.trigger,
                     !enabled && styles.disabled,
-                    pressed && styles.pressed,
+                    (open || pressed) && styles.selected,
                 ]}
             >
                 {props.supportsFast ? (
@@ -382,13 +382,15 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                             </Pressable>
                                         </View>
                                         <Pressable
+                                            testID="session-composer-effort-reset"
                                             accessibilityRole="button"
-                                            accessibilityLabel={t('devTools.close')}
-                                            onPress={close}
-                                            style={styles.iconButton}
+                                            accessibilityLabel={defaultOption ? t('common.reset') : t('devTools.close')}
+                                            accessibilityHint={defaultOption?.name}
+                                            onPress={() => defaultOption ? props.onEffortChange(defaultOption.key) : close()}
+                                            style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
                                         >
                                             <Ionicons
-                                                name="close"
+                                                name={defaultOption ? 'refresh-outline' : 'close'}
                                                 size={20}
                                                 color={theme.colors.textSecondary}
                                             />
@@ -476,44 +478,6 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                             </View>
                                         </View>
                                     ) : null}
-                                    {defaultOption ? (
-                                        <Pressable
-                                            {...spaceActivation(() =>
-                                                props.onEffortChange(defaultOption.key),
-                                            )}
-                                            accessibilityRole="radio"
-                                            aria-checked={props.effort?.key === 'default'}
-                                            accessibilityState={{ checked: props.effort?.key === 'default' }}
-                                            onPress={() => props.onEffortChange(defaultOption.key)}
-                                        >
-                                            <Text
-                                                style={[
-                                                    styles.description,
-                                                    styles.defaultOption,
-                                                    props.effort?.key === 'default' && styles.activeText,
-                                                ]}
-                                            >
-                                                {defaultOption.name}
-                                            </Text>
-                                        </Pressable>
-                                    ) : null}
-                                    <View style={styles.summary}>
-                                        <Text style={styles.description} numberOfLines={1}>
-                                            {props.effort?.description ?? ''}
-                                        </Text>
-                                        {props.supportsFast ? (
-                                            <Text
-                                                style={[
-                                                    styles.description,
-                                                    props.fastMode && styles.activeText,
-                                                ]}
-                                            >
-                                                {props.fastMode
-                                                    ? t('agentInput.effort.fastOn')
-                                                    : t('agentInput.effort.fastOff')}
-                                            </Text>
-                                        ) : null}
-                                    </View>
                                 </View>
                             )}
                         </View>
@@ -536,7 +500,6 @@ const styles = StyleSheet.create((theme) => ({
         paddingHorizontal: 12,
         height: 30,
         maxWidth: 280,
-        backgroundColor: theme.colors.surfaceSelected,
     },
     triggerText: {
         minWidth: 0,
@@ -576,8 +539,7 @@ const styles = StyleSheet.create((theme) => ({
         height: 32,
         marginTop: 18,
         borderRadius: 16,
-        backgroundColor: theme.colors.surfacePressed,
-        overflow: 'hidden',
+        backgroundColor: theme.colors.slider.track,
     },
     fill: {
         position: 'absolute',
@@ -598,11 +560,13 @@ const styles = StyleSheet.create((theme) => ({
         justifyContent: 'center',
     },
     dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: theme.colors.textSecondary },
-    passed: { backgroundColor: theme.colors.input.background },
+    passed: { backgroundColor: theme.colors.switch.thumb.active, opacity: 0.35 },
     knob: {
-        width: 30,
-        height: 30,
-        borderRadius: 15,
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.divider,
         backgroundColor: theme.colors.switch.thumb.active,
         shadowColor: theme.colors.shadow.color,
         shadowOffset: { width: 0, height: 1 },
@@ -610,9 +574,6 @@ const styles = StyleSheet.create((theme) => ({
         shadowRadius: 4,
         elevation: 2,
     },
-    defaultOption: { marginTop: 8, textAlign: 'center' },
-    summary: { marginTop: 10, flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
-    activeText: { color: theme.colors.accent },
     models: { flexShrink: 1, minHeight: 0 },
     modelsHead: {
         paddingHorizontal: 10,
