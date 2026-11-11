@@ -92,6 +92,7 @@ final class Session {
     private var connectionStatus: ConnectionStatus = .connecting
     /// Whether the phone has a way out at all (`NetworkPath`).
     private var networkPath = NetworkPath.shared.isSatisfied
+    private var networkMoves = NetworkPath.shared.moves
     private var networkWatch: NetworkPathWatch?
     /// The link as it is (`headerState(status:snapshot:network:)`), and as
     /// headers show it: home's title and every chat's subtitle watch
@@ -203,10 +204,16 @@ final class Session {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 let back = satisfied && !self.networkPath
+                let moves = NetworkPath.shared.moves
+                let moved = satisfied && moves != self.networkMoves
                 self.networkPath = satisfied
+                self.networkMoves = moves
                 self.updateHeaderState()
+                // Off Wi-Fi onto cellular: the stream says live over a way
+                // that may be gone, so it is opened again now.
+                if moved { Task { await engine.moved() } }
                 // Back from airplane mode: reconnect, and send what waited, now.
-                if back { Task { await engine.reconnect() } }
+                else if back { Task { await engine.reconnect() } }
             }
         }
         connectionObservation = account.observeAccounts { [weak self, weak account] _ in

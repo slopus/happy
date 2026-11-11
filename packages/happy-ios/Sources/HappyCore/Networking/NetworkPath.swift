@@ -6,7 +6,8 @@ import Network
 /// Whether this phone has a way out at all, as the system says
 /// (`NWPathMonitor`): with none, headers say "Waiting for network…" rather
 /// than "Connecting…", as Telegram's do. One monitor for the app; watchers
-/// hear on the main queue.
+/// hear on the main queue, when the path comes or goes and when it moves
+/// to another interface (`moves`).
 public final class NetworkPath: @unchecked Sendable {
     public static let shared = NetworkPath()
 
@@ -16,6 +17,10 @@ public final class NetworkPath: @unchecked Sendable {
     private let lock = NSLock()
     private var satisfied = true
     private var latest = NetworkPathDetails(satisfied: true)
+    /// The interface the system last sent on ("en0", "pdp_ip0"), kept
+    /// while there is none: coming back on another one is a move too.
+    private var route: String?
+    private var moved = 0
     private var watchers: [UUID: @Sendable (Bool) -> Void] = [:]
     #if DEBUG
     /// Tests: what the path is said to be, whatever it is.
@@ -26,7 +31,7 @@ public final class NetworkPath: @unchecked Sendable {
         #if canImport(Network)
         monitor.pathUpdateHandler = { [weak self] path in
             self?.describe(path)
-            self?.update(path.status == .satisfied)
+            self?.update(path.status == .satisfied, route: path.status == .satisfied ? path.availableInterfaces.first?.name : nil)
         }
         monitor.start(queue: DispatchQueue(label: "engineering.happy.network-path", qos: .utility))
         #endif
@@ -39,6 +44,14 @@ public final class NetworkPath: @unchecked Sendable {
         if let forced { return forced }
         #endif
         return satisfied
+    }
+
+    /// How many times the way out moved to another interface (Wi-Fi to
+    /// cellular, one Wi-Fi to another): what was open went out the old
+    /// way, and may hang there with nothing said.
+    public var moves: Int {
+        lock.lock(); defer { lock.unlock() }
+        return moved
     }
 
     /// The way out as the system last described it: the interface, and
@@ -66,15 +79,25 @@ public final class NetworkPath: @unchecked Sendable {
     }
     #endif
 
-    private func update(_ value: Bool) {
+    private func update(_ value: Bool, route: String?) {
         lock.lock()
-        let changed = satisfied != value
+        let moves = Self.moves(from: self.route, to: route)
+        if moves { moved += 1 }
+        if let route { self.route = route }
+        let changed = satisfied != value || moves
         satisfied = value
         let shown = Self.shown(value, self)
         let watchers = Array(watchers.values)
         lock.unlock()
         guard changed else { return }
         DispatchQueue.main.async { for watch in watchers { watch(shown) } }
+    }
+
+    /// Whether going out on `new` after `old` is a move: another interface,
+    /// not the first one heard nor none at all.
+    static func moves(from old: String?, to new: String?) -> Bool {
+        guard let old, let new else { return false }
+        return old != new
     }
 
     private static func shown(_ value: Bool, _ path: NetworkPath) -> Bool {
@@ -84,8 +107,8 @@ public final class NetworkPath: @unchecked Sendable {
         return value
     }
 
-    /// Calls `watch` on the main queue whenever the path comes or goes;
-    /// stops when the returned token is cancelled.
+    /// Calls `watch` on the main queue whenever the path comes, goes or
+    /// moves; stops when the returned token is cancelled.
     public func watch(_ watch: @escaping @Sendable (Bool) -> Void) -> NetworkPathWatch {
         let id = UUID()
         lock.lock()
@@ -105,6 +128,16 @@ public final class NetworkPath: @unchecked Sendable {
         lock.lock()
         forced = value
         let shown = value ?? satisfied
+        let watchers = Array(watchers.values)
+        lock.unlock()
+        DispatchQueue.main.async { for watch in watchers { watch(shown) } }
+    }
+
+    /// Tests: the path moved to another interface, told to watchers.
+    public func forceMove() {
+        lock.lock()
+        moved += 1
+        let shown = Self.shown(satisfied, self)
         let watchers = Array(watchers.values)
         lock.unlock()
         DispatchQueue.main.async { for watch in watchers { watch(shown) } }

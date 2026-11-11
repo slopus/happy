@@ -28,6 +28,18 @@ private struct NoComputer: AgentTransport {
     func close() async {}
 }
 
+/// A computer that never answers, telling which tunnels were let go of.
+private final class MovingComputer: AgentTransport, @unchecked Sendable {
+    private let lock = NSLock()
+    private var heard: [RequestCategory] = []
+    var resets: [RequestCategory] { lock.withLock { heard } }
+    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response { throw URLError(.cannotConnectToHost) }
+    func stream(path: String, credential: String, headers: [String: String]) async throws -> HTTP1Stream { throw URLError(.cannotConnectToHost) }
+    func reset() async {}
+    func reset(_ category: RequestCategory) async { lock.withLock { heard.append(category) } }
+    func close() async {}
+}
+
 /// Home's title through a link that goes and comes back, on both homes:
 /// connecting, updating, live, never offline. At each step the title says what
 /// it should, the picture, the bar and its other items stay where they
@@ -314,6 +326,36 @@ final class HostedLinkTitleTests: XCTestCase {
         XCTAssertEqual(switcher.accessibilityValue, "Connecting…, Studio Mac")
         try await captureBoth(window, "agent-6-computer-did-not-answer-connecting")
         note("agent-frames", log)
+        try await account.agentConnections.remove(connection.id)
+    }
+
+    /// Off Wi-Fi onto cellular: the session lets go of the stream's
+    /// tunnel, which went out the old way, and opens it again at once
+    /// (the engine's part: `SyncEngineTests.testAMoveOpensTheStreamAgainAtOnce`).
+    func testAMoveOpensTheStreamAgain() async throws {
+        let transport = MovingComputer()
+        let account = AccountController(
+            serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
+            credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
+            agentTransport: { _ in transport },
+            rnServerImport: { .confirmed(ServerConfig.defaultServerURL) },
+            transport: NoNetwork(), connector: ForeverConnecting()
+        )
+        await account.agentConnections.setForeground(false)
+        let connection = try await account.agentConnections.add(
+            JSONDecoder().decode(AgentConnectionCredentials.self, from: Data(#"{"address":"link-move","port":1,"deviceID":"\#(UUID().uuidString)","deviceToken":"token"}"#.utf8)),
+            name: "Studio Mac"
+        )
+        defer { Session.forget(connection.id) }
+        NetworkPath.shared.force(true)
+        let context = AppContext(account: account, variant: .preview, version: "test")
+        let session = try XCTUnwrap(Session.session(for: connection.id, context: context))
+        await session.engine.start()
+        try await Task.sleep(for: .milliseconds(100))
+
+        NetworkPath.shared.forceMove()
+        try await until("the stream's tunnel let go of") { transport.resets == [.realtime] }
+        await session.engine.stop()
         try await account.agentConnections.remove(connection.id)
     }
 

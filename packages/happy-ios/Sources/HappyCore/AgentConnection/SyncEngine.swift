@@ -259,6 +259,23 @@ public actor SyncEngine {
         start()
     }
 
+    /// The phone's way out moved (Wi-Fi to cellular): the stream went out
+    /// the old way, where it can hang with nothing said until its
+    /// 40-second silence while home says online. It is opened again at
+    /// once on a new tunnel, every other tunnel woken (`resumed`), and the
+    /// header says "connecting…" until the stream answers. Does nothing
+    /// while the engine is paused.
+    public func moved() async {
+        guard !stopped, runner != nil else { return }
+        snapshot.error = nil
+        snapshot.reconnecting = true
+        await client.transport.reset(.realtime)
+        let client = client
+        Task { await client.resumed() }
+        await pause()
+        start()
+    }
+
     public func stop() async {
         stopped = true
         await pause()

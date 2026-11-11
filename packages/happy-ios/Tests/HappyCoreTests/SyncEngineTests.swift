@@ -66,6 +66,13 @@ private actor SyncFixture: AgentTransport {
     func isHolding() -> Bool { held != nil }
     func streamsOpened() -> Int { streamHeaders.count }
     func release() { held?.resume(); held = nil }
+    var resets: [RequestCategory] = []
+    var wakes = 0
+    /// The stream's tunnel let go of: it ends, as a closed tunnel's does.
+    func reset(_ category: RequestCategory) { resets.append(category); if category == .realtime { drop() } }
+    func resumed() { wakes += 1 }
+    func heardResets() -> [RequestCategory] { resets }
+    func heardWakes() -> Int { wakes }
     func setDaemon(_ id: String?) { daemonId = id }
     func gapNextHello() { nextHelloGap = true }
     func bootstrapReads() -> Int { requested.filter { $0 == "/v0/bootstrap/desktop" }.count }
@@ -285,6 +292,37 @@ final class SyncEngineTests: XCTestCase {
 
         await engine.markRead("last-agent")
         try await eventually { await transport.heardActs().contains("read:last-agent") }
+        await engine.stop()
+    }
+
+    /// Wi-Fi to cellular: the stream, live over the old way, is opened
+    /// again at once on a new tunnel, every tunnel woken, and home says it
+    /// is reconnecting until the stream answers, then picks up where it was.
+    func testAMoveOpensTheStreamAgainAtOnce() async throws {
+        let transport = SyncFixture()
+        await transport.setDaemon("d1")
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        await engine.start()
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        let reads = await transport.bootstrapReads()
+        let snapshots = await engine.snapshots()
+        let reconnecting = Task { () -> HomeSnapshot? in
+            for await snapshot in snapshots where !snapshot.live && snapshot.reconnecting { return snapshot }
+            return nil
+        }
+
+        await engine.moved()
+        let heard = await reconnecting.value
+        let between = try XCTUnwrap(heard)
+        XCTAssertNil(between.error, "the header's \"connecting…\" (`Session.headerState`)")
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        let resets = await transport.heardResets()
+        XCTAssertEqual(resets, [.realtime])
+        try await eventually { await transport.heardWakes() == 1 }
+        let streams = await transport.streamsOpened()
+        XCTAssertEqual(streams, 2)
+        let after = await transport.bootstrapReads()
+        XCTAssertEqual(after, reads, "the same process with nothing missed: no read")
         await engine.stop()
     }
 
