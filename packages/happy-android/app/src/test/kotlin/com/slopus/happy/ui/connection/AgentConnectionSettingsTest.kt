@@ -150,6 +150,25 @@ class AgentConnectionSettingsTest {
         rule.node(AgentVoiceTags.ROW).performScrollTo().assertIsDisplayed()
     }
 
+    /** On Happy Cloud, Compute pools is the last row of Data and Storage's card. */
+    @Test
+    fun computePoolsCloseDataAndStoragesCard() {
+        rule.setHappyContent {
+            AgentConnectionSettingsScreen(
+                profile = SettingsProfile("agent-connection-1", "Studio", "Connected"),
+                accounts = accounts,
+                actions = AgentSettingsActions(onDataStorage = {}, onSharing = {}, onAgents = {}, onMembers = {}, onProviders = {}, onComputePools = {}, onNotifications = {}),
+                about = AboutInfo("1.8.0 (412)"),
+            )
+        }
+        val card = hasTestTag(ItemGroupTags.CARD) and hasAnyDescendant(hasTestTag(DataStorageTags.ROW))
+        rule.onNode(card and hasAnyDescendant(hasTestTag(ComputePoolsTags.ROW)), useUnmergedTree = true).assertExists()
+        val rows = listOf(DataStorageTags.ROW, AgentSharingTags.ROW, CloudProvidersTags.ROW, CloudTags.MEMBERS, CloudPushTags.ROW, ComputePoolsTags.ROW)
+            .map { rule.node(it).bounds }
+        assertEquals(rows.sortedBy { it.top }, rows)
+        assertDp("Compute pools ends the card", rule.onNode(card, useUnmergedTree = true).bounds.bottom, rows.last().bottom)
+    }
+
     /**
      * The boba row: "Happy is open source" and, under it at the same size in
      * the page's secondary grey, the ask. The boba is a tile's 30 in the 32

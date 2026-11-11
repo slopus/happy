@@ -301,19 +301,20 @@ fun AgentConnectionSettingsScreen(
                         onClick = open,
                     )
                 },
-                actions.onComputePools?.let { open ->
-                    SettingsEntry(
-                        id = ComputePoolsTags.ROW,
-                        title = stringResource(R.string.compute_pools_title),
-                        icon = { SettingsTile(Ionicon.ServerOutline, SettingsTiles.indigo) },
-                        onClick = open,
-                    )
-                },
                 actions.onNotifications?.let { open ->
                     SettingsEntry(
                         id = CloudPushTags.ROW,
                         title = stringResource(R.string.cloud_push_title),
                         icon = { SettingsTile(Ionicon.NotificationsOutline, SettingsTiles.red) },
+                        onClick = open,
+                    )
+                },
+                // Compute pools close Data and Storage's card.
+                actions.onComputePools?.let { open ->
+                    SettingsEntry(
+                        id = ComputePoolsTags.ROW,
+                        title = stringResource(R.string.compute_pools_title),
+                        icon = { SettingsTile(Ionicon.ServerOutline, SettingsTiles.indigo) },
                         onClick = open,
                     )
                 },
