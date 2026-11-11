@@ -65,6 +65,7 @@ private actor PeopleServer: AgentTransport {
         if path.hasPrefix("/v0/users?ids=") {
             return ok(#"{"users":[{"id":"ada","name":"Ada Lovelace","photo":{"thumbhash":"\#(Self.adaHash)"}},{"id":"adam","name":"Adam Novak","photo":null},{"id":"steve","name":"Steve","photo":{"thumbhash":"\#(Self.steveHash)"}}]}"#)
         }
+        if path == "/v0/permissions" { return ok(#"{"granted":["content.write","bots.manage","pools.manage"]}"#) }
         if path == "/v0/roles" { return ok(#"{"roles":[{"id":"owner","name":"Owner","builtIn":true},{"id":"member","name":"Member","builtIn":true}]}"#) }
         if path.hasPrefix("/v0/users/ada/profile") { return ok(Self.profile()) }
         if let picture = Self.picture(path) { return HTTP1Response(status: 200, headers: ["content-type": "image/png"], body: picture) }
@@ -91,8 +92,9 @@ private actor PeopleServer: AgentTransport {
 }
 
 /// Home on a Happy Cloud server with "ad" typed into search
-/// (`-screen people -open search`), or Ada's profile over it
-/// (`-open profile`), for screenshots.
+/// (`-screen people -open search`), Ada's profile over it
+/// (`-open profile`), or the server's Settings (`-open settings`), for
+/// screenshots.
 @MainActor
 final class PeopleHarness {
     private var account: AccountController?
@@ -132,6 +134,8 @@ final class PeopleHarness {
                 home.search.updateSearchResults(for: home.search.controller)
             case "profile":
                 navigation.pushViewController(UserProfileViewController(session: session, user: TeamUser(id: "ada", name: "Ada Lovelace")), animated: false)
+            case "settings":
+                navigation.pushViewController(SettingsViewController(context: context, computer: connection.id), animated: false)
             default:
                 break
             }

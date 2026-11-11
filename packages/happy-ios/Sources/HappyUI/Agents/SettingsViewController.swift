@@ -481,7 +481,10 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         if profile.isAgentConnection {
             let server = context.account.agentConnections.server(for: id)
             let revoked = context.account.agentConnections.accounts.first { $0.id == id }?.revoked == true
-            let serverRows: [[SettingsRow]] = server.map { origin in
+            // A Happy Cloud server signs in through the Cloud account, and an
+            // ended session signs in again from home's signed-out page: no
+            // Server or Sign In Again rows here.
+            let serverRows: [[SettingsRow]] = server.flatMap { HappyCloud.isCloud($0) ? nil : $0 }.map { origin in
                 [[
                     Row(id: "server", title: Strings.ServerSignIn.server, value: HappyCloud.handle(server: origin) ?? URLComponents(string: origin)?.host ?? origin, accessory: .none),
                     Row(id: "server-sign-in", title: revoked ? Strings.ServerSignIn.needsSignIn : Strings.ServerSignIn.signInAgain, accessory: .none, action: { [weak self] in
@@ -494,16 +497,17 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             let removal: [[SettingsRow]] = [[
                 Row(id: "disconnect", title: server == nil ? Strings.disconnect : Strings.ServerSignIn.signOut, accessory: .none, destructive: true, action: { [weak self] in self?.remove(id, direct: true) }),
             ]]
-            let computeRows: [[SettingsRow]]
+            // Compute pools close Data and Storage's card.
+            let computeRows: [SettingsRow]
             if let session = Session.session(for: id, context: context), ComputeViewController.offered(session) {
-                computeRows = [[Row(Index.computes, action: { [weak self] in
+                computeRows = [Row(Index.computes, action: { [weak self] in
                     guard let self, ComputeViewController.offered(session) else { return }
                     navigationController?.pushViewController(ComputeViewController(session: session), animated: true)
-                })]]
+                })]
             } else { computeRows = [] }
             return [
                 accountRows(),
-            ] + serverRows + computeRows + [
+            ] + serverRows + [
                 [Row(Index.profile, image: profilePhoto, value: profileName.isEmpty ? nil : profileName, action: { [weak self] in self?.openProfile() })],
                 [supportRow()],
                 [
@@ -512,7 +516,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                     Row(Index.agents, action: { [weak self] in self?.open(.agents) }),
                 ] + providersRows(id) + [
                     Row(Index.dataStorage, action: { [weak self] in self?.open(.dataStorage) }),
-                ],
+                ] + computeRows,
                 [analyticsRow()],
                 aboutRows(),
             ] + removal

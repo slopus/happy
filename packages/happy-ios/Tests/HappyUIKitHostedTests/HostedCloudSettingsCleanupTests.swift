@@ -95,6 +95,19 @@ final class HostedCloudSettingsCleanupTests: XCTestCase {
         try await checkProjects(server: nil, offered: true)
     }
 
+    /// A Happy Cloud server signs in through the Cloud account: its page has
+    /// no Server row and no Sign In Again; a self-hosted server keeps both.
+    func testOnlySelfHostedServersShowTheServerAndSignInAgain() async throws {
+        for (server, shown) in [(HappyCloud.server(named: "settings-test"), false), ("https://self-hosted.example", true)] {
+            let (context, id) = try await rig(server: server)
+            let settings = SettingsViewController(context: context, computer: id)
+            _ = try await host(settings)
+            XCTAssertEqual(settings.shownRow("server") != nil, shown, "\(server): \(settings.shownRowIDs)")
+            XCTAssertEqual(settings.shownRow("server-sign-in") != nil, shown, "\(server): \(settings.shownRowIDs)")
+            XCTAssertNotNil(settings.shownRow("disconnect"), "\(server) can't be signed out of")
+        }
+    }
+
     func testLocalSearchKeepsThePolicyVaultLock() async throws {
         let (context, id) = try await rig(server: HappyCloud.server(named: "settings-test"))
         let home = HomeViewController(context: context, computer: id)
