@@ -17,6 +17,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.After
@@ -30,7 +31,8 @@ import org.junit.runner.RunWith
 /**
  * Back from the background, the tunnels a session kept through it look for
  * every way to the agent again before its stream asks them for anything
- * (iOS's ForegroundProbeTests); and a network that returns is told to them.
+ * (iOS's ForegroundProbeTests); a network that returns is told to them,
+ * and one that moves opens the stream again.
  */
 @RunWith(AndroidJUnit4::class)
 class ResumeProbeTest {
@@ -40,7 +42,7 @@ class ResumeProbeTest {
     private val second = FakeAgent()
     private val open = MutableStateFlow<String?>(null)
     private val foreground = MutableStateFlow(true)
-    private val network = MutableStateFlow(true)
+    private val network = MutableStateFlow<Long?>(1)
     private lateinit var connections: AgentConnections
     private lateinit var firstId: String
     private lateinit var secondId: String
@@ -62,6 +64,7 @@ class ResumeProbeTest {
     private fun probing(agent: FakeAgent): Transport = object : Transport by agent {
         override suspend fun resumed() { agent.calls += "resumed" }
         override suspend fun networkChanged() { agent.calls += "network changed" }
+        override suspend fun reset(category: com.slopus.happy.connection.RequestCategory) { agent.calls += "reset $category" }
     }
 
     private fun sessions() = AgentSessions(connections, scope, null, open, foreground, network = network) {
@@ -156,10 +159,61 @@ class ResumeProbeTest {
         open.value = firstId
         val session = sessions().session(firstId)!!
         live(session, first)
-        network.value = false
+        network.value = null
         delay(100)
-        network.value = true
+        first.calls += "returned"
+        network.value = 1
         eventually({ first.calls }) { it.contains("network changed") }
+        // Live, nothing was lost on the way: the stream stays.
+        delay(200)
+        assertFalse(after("returned", first).toString(), after("returned", first).any { it.startsWith("STREAM") || it.startsWith("reset") })
+        assertEquals(AgentLinkStatus.Connected, session.status.value)
+    }
+
+    /**
+     * Off Wi-Fi onto cellular (iOS's `testAMoveOpensTheStreamAgain`): the
+     * live stream, still open over the old way, is let go of and opened again
+     * at once from its cursor, not after its 40-second silence, on new
+     * tunnels for it and for queries; every tunnel is checked, and the
+     * header says connecting until the stream answers.
+     */
+    @Test
+    fun aNetworkThatMovesOpensTheStreamAgainAtOnce() = runBlocking {
+        open.value = firstId
+        val session = sessions().session(firstId)!!
+        live(session, first)
+        val seen = java.util.Collections.synchronizedList(mutableListOf<AgentLinkStatus>())
+        val watching = scope.launch { session.status.collect { seen += it } }
+        first.calls += "moved"
+        network.value = 2
+        eventually({ after("moved", first) }) { calls -> calls.any { it.startsWith("STREAM") } }
+        val moved = after("moved", first)
+        val stream = moved.indexOfFirst { it.startsWith("STREAM") }
+        // Both before the link asks anything again: its health read goes over the queries' tunnel.
+        assertTrue(moved.toString(), moved.indexOf("reset Realtime") in 0 until moved.indexOf("GET /v0/health").coerceAtMost(stream))
+        assertTrue(moved.toString(), moved.indexOf("reset Query") in 0 until moved.indexOf("GET /v0/health").coerceAtMost(stream))
+        assertEquals(moved.toString(), listOf("reset Realtime", "reset Query"), moved.filter { it.startsWith("reset") })
+        eventually({ first.calls }) { it.contains("network changed") }
+        assertEquals("from where it was", listOf("c0", "c0"), first.streamCursors.toList())
+        assertEquals(AgentLinkStatus.Connecting, session.status.value)
+        first.frames.send(Wire.hello("c0"))
+        eventually({ session.status.value }) { it == AgentLinkStatus.Connected }
+        watching.cancel()
+        assertEquals(listOf(AgentLinkStatus.Connected, AgentLinkStatus.Connecting, AgentLinkStatus.Connected), seen.toList())
+    }
+
+    @Test
+    fun aMoveLeavesALinkNotRunningAlone() = runBlocking {
+        open.value = firstId
+        val manager = sessions()
+        live(manager.session(firstId)!!, first)
+        open.value = null
+        delay(100)
+        first.calls += "moved"
+        network.value = 2
+        eventually({ first.calls }) { it.contains("network changed") }
+        delay(200)
+        assertFalse(after("moved", first).toString(), after("moved", first).any { it.startsWith("STREAM") || it.startsWith("reset") })
     }
 
     @Test

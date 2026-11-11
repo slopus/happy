@@ -1962,7 +1962,13 @@ is `packages/happy-ios`. The wire keeps its own names
   dropped, and an expired session rekeys; clients, requests under way and
   live sessions stay. tailcat-kotlin watches no network itself, so a network
   that returns gets the same check on every kept client
-  (`Transport.networkChanged`, from `AgentSession.networkReturned`). It uses
+  (`Transport.networkChanged`, from `AgentSession.networkReturned`). A
+  default network that moves to another one with no loss between (Wi-Fi to
+  cellular, `NetworkChange.Moved` from `defaultNetwork().changes()`, iOS's
+  4760daf0c) is different: what was open went out the old way and can hang
+  there silently, so a running link resets its realtime and query clients,
+  says connecting and starts over from its cursor at once
+  (`AgentSession.networkMoved`); the rest get the check. It uses
   tailcat-kotlin's default DERP map (`https://tailcat.dev/derpmap.json`),
   cached in `noBackupFilesDir/tailcat/derpmap.json` (`FileDerpMapCache`):
   with no network and no cached map, connecting fails.

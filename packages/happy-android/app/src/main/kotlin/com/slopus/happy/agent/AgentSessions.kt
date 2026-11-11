@@ -6,7 +6,8 @@ import com.slopus.happy.connection.agentTransport
 import com.slopus.happy.connection.Transport
 import com.slopus.happy.connection.AgentIdentity
 import com.slopus.happy.connection.AgentConnectionException
-import com.slopus.happy.connection.returns
+import com.slopus.happy.connection.NetworkChange
+import com.slopus.happy.connection.changes
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,8 +39,8 @@ class AgentSessions(
     /** The open agent connection's id ([com.slopus.happy.AppGraph.openAgentId]). */
     private val openId: StateFlow<String?>,
     private val foreground: StateFlow<Boolean>,
-    /** Whether the phone has a way out at all ([com.slopus.happy.connection.networkPath]). */
-    private val network: Flow<Boolean> = flowOf(true),
+    /** The phone's default network ([com.slopus.happy.connection.defaultNetwork]). */
+    private val network: Flow<Long?> = flowOf(0L),
     private val identityRefreshMillis: Long = 60_000,
     /** Desktop's completion chime, for a conversation that finished while its connection is open ([CompletionWatch]). */
     private val chime: () -> Unit = {},
@@ -68,8 +69,16 @@ class AgentSessions(
             }
         }
         scope.launch {
-            // Back from airplane mode: a link waiting out its backoff tries now (iOS's Session `networkWatch`).
-            network.returns().collect { synchronized(sessions) { sessions.values.toList() }.forEach { it.networkReturned() } }
+            // Back from airplane mode: a link waiting out its backoff tries now; off Wi-Fi onto
+            // cellular: a live stream is opened again (iOS's Session `networkWatch`).
+            network.changes().collect { change ->
+                synchronized(sessions) { sessions.values.toList() }.forEach {
+                    when (change) {
+                        NetworkChange.Returned -> it.networkReturned()
+                        NetworkChange.Moved -> it.networkMoved()
+                    }
+                }
+            }
         }
         scope.launch {
             var known: Set<String>? = null

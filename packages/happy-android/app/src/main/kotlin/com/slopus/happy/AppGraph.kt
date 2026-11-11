@@ -63,6 +63,7 @@ import com.slopus.happy.connection.CloudAccount
 import com.slopus.happy.connection.HappyCloud
 import com.slopus.happy.connection.TailcatTransport
 import com.slopus.happy.connection.networkPath
+import com.slopus.happy.connection.defaultNetwork
 import com.slopus.happy.sync.AccountSync
 import com.slopus.happy.sync.SessionFileCache
 import com.slopus.happy.ui.changelog.ChangelogReadMarker
@@ -602,7 +603,7 @@ class AppGraph(
         stagedFiles = File(appContext.cacheDir, com.slopus.happy.conversation.MediaFiles.DIRECTORY),
         openId = openAgentId,
         foreground = isForeground,
-        network = appContext.networkPath(),
+        network = appContext.defaultNetwork(),
         chime = CompletionChime(appContext)::play,
     )
 

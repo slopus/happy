@@ -636,7 +636,7 @@ class AgentSession internal constructor(
             // A team server that wants signing in again (a refused refresh) stops the link at once,
             // even with its event stream still open, and it resumes from its cursor after.
             val signedIn = connections.accounts.map { list -> list.none { it.id == connectionId && it.signInRequired } }.distinctUntilChanged()
-            // A redial ([networkReturned]) starts the link over, as iOS's `SyncEngine.reconnect` pauses and starts it.
+            // A redial ([networkReturned], [networkMoved]) starts the link over, as iOS's `SyncEngine.reconnect` pauses and starts it.
             combine(active.distinctUntilChanged(), signedIn, redials, ::Triple).collectLatest { (on, signedIn) ->
                 linking = on && signedIn
                 when {
@@ -674,6 +674,32 @@ class AgentSession internal constructor(
             linkLock.withLock { route?.second }?.networkChanged()
             if (!linking || statusState.value != AgentLinkStatus.Connecting) return@launch
             redials.update { it + 1 }
+        }
+    }
+
+    /**
+     * The phone's way out moved to another network, Wi-Fi to cellular
+     * (iOS's `SyncEngine.moved`): the stream went out the old way, where it
+     * can hang with nothing said until its 40-second silence while home
+     * says connected. A running link lets go of the stream's tunnel and the
+     * queries' one, which starting over reads health from first, and starts
+     * over at once, from its cursor, saying connecting until the stream
+     * answers; every other tunnel is checked as on a return. A check passes
+     * while the old way still answers, and that read then hung with it
+     * (13 s, emulator, Wi-Fi silenced a second after the switch).
+     */
+    fun networkMoved() {
+        scope.launch {
+            val transport = linkLock.withLock { route?.second }
+            val status = statusState.value
+            if (linking && (status == AgentLinkStatus.Connected || status == AgentLinkStatus.Connecting)) {
+                statusState.value = AgentLinkStatus.Connecting
+                // Before the redial, so it asks new tunnels, not ones that went out the old way.
+                transport?.reset(RequestCategory.Realtime)
+                transport?.reset(RequestCategory.Query)
+                redials.update { it + 1 }
+            }
+            transport?.networkChanged()
         }
     }
 

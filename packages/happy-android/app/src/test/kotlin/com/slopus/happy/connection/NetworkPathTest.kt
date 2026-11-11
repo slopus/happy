@@ -17,39 +17,53 @@ import org.junit.runner.RunWith
 import org.robolectric.shadows.ShadowNetwork
 
 /**
- * Whether there is a network, as headers read it: the callback is in place
- * before the network is read, so one lost in between (airplane mode turned
- * on as an activity is recreated) still says "Waiting for network…".
+ * The default network, as headers and links read it: the callback is in
+ * place before the network is read, so one lost in between (airplane mode
+ * turned on as an activity is recreated) still says "Waiting for
+ * network…"; and Wi-Fi handing over to cellular is told as a move.
  */
 @RunWith(AndroidJUnit4::class)
 class NetworkPathTest {
     @Test fun `a network lost between the first read and the registration is not missed`() = runTest {
         // The network is there until the callback is registered, and gone by the time it is read after:
         // the system sends nothing to a callback registered with no default network.
-        var present = true
+        var present: Long? = 1L
         val registered = mutableListOf<ConnectivityManager.NetworkCallback>()
-        val path = networkPath(
-            hasDefault = { present },
-            register = { registered += it; present = false },
+        val path = defaultNetwork(
+            current = { present },
+            register = { registered += it; present = null },
             unregister = { registered -= it },
         )
-        assertEquals(false, path.first())
+        assertEquals(null, path.first())
         assertTrue("unregistered once collected", registered.isEmpty())
     }
 
     @Test fun `changes come through, each once`() = runTest {
         var callback: ConnectivityManager.NetworkCallback? = null
-        val path = networkPath(hasDefault = { true }, register = { callback = it }, unregister = {})
-        val seen = mutableListOf<Boolean>()
-        val collecting = launch { path.take(3).toList(seen) }
+        val wifi: Network = ShadowNetwork.newInstance(1)
+        val cellular: Network = ShadowNetwork.newInstance(2)
+        val path = defaultNetwork(current = { wifi.networkHandle }, register = { callback = it }, unregister = {})
+        val seen = mutableListOf<Long?>()
+        val collecting = launch { path.take(4).toList(seen) }
         testScheduler.advanceUntilIdle()
-        val network: Network = ShadowNetwork.newInstance(1)
-        callback!!.onAvailable(network)
-        callback!!.onLost(network)
+        callback!!.onAvailable(wifi)
+        callback!!.onLost(wifi)
         testScheduler.advanceUntilIdle()
-        callback!!.onAvailable(network)
+        callback!!.onAvailable(wifi)
+        testScheduler.advanceUntilIdle()
+        // Off Wi-Fi onto cellular: the system names the new default, with no loss before it.
+        callback!!.onAvailable(cellular)
         collecting.join()
-        assertEquals(listOf(true, false, true), seen)
+        assertEquals(listOf(wifi.networkHandle, null, wifi.networkHandle, cellular.networkHandle), seen)
+    }
+
+    @Test fun `another network is a move, the same one after none a return`() = runTest {
+        assertEquals(emptyList<NetworkChange>(), flowOf<Long?>(1, 1).changes().toList())
+        assertEquals(emptyList<NetworkChange>(), flowOf<Long?>(null).changes().toList())
+        assertEquals(listOf(NetworkChange.Moved, NetworkChange.Moved), flowOf<Long?>(1, 2, 1).changes().toList())
+        assertEquals(listOf(NetworkChange.Returned), flowOf<Long?>(1, null, 1).changes().toList())
+        assertEquals(listOf(NetworkChange.Moved), flowOf<Long?>(1, null, null, 2).changes().toList())
+        assertEquals(listOf(NetworkChange.Returned, NetworkChange.Moved), flowOf<Long?>(null, 1, 2).changes().toList())
     }
 
     @Test fun `a return is a network after none, and the first reading is never one`() = runTest {
