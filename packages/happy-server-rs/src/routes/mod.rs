@@ -1,7 +1,10 @@
 //! HTTP routes, one module per TS route file.
 
+pub mod access_keys;
 pub mod account;
+pub mod artifacts;
 pub mod auth;
+pub mod machines;
 pub mod misc;
 pub mod sessions;
 pub mod v3;
@@ -15,6 +18,9 @@ pub fn register(r: &mut Router, c: &Config) {
     sessions::register(r);
     account::register(r);
     v3::register(r);
+    machines::register(r);
+    artifacts::register(r);
+    access_keys::register(r);
 }
 
 /// Prisma's `new Date(x)` accepts only JS-representable instants (±8.64e15 ms);

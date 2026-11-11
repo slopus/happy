@@ -594,7 +594,7 @@ async fn machine_alive(app: Arc<App>, s: Arc<SocketHandle>, args: Args) {
     app.hub.emit_ephemeral(&s.user_id, events::machine_activity(&json!(mid), true, t), Filter::UserScopedOnly);
 }
 
-async fn find_machine(app: &App, uid: &str, id: &str) -> anyhow::Result<Option<Machine>> {
+pub(crate) async fn find_machine(app: &App, uid: &str, id: &str) -> anyhow::Result<Option<Machine>> {
     let row = sqlx::query(&format!(r#"SELECT {} FROM "Machine" WHERE "accountId" = $1 AND "id" = $2 LIMIT 1"#, MACHINE_COLS))
         .bind(uid)
         .bind(id)
@@ -676,7 +676,7 @@ async fn machine_update(app: Arc<App>, s: Arc<SocketHandle>, args: Args, state: 
 // artifactUpdateHandler.ts
 // ---------------------------------------------------------------------------
 
-async fn find_artifact(app: &App, id: &str, uid: &str) -> anyhow::Result<Option<Artifact>> {
+pub(crate) async fn find_artifact(app: &App, id: &str, uid: &str) -> anyhow::Result<Option<Artifact>> {
     let row = sqlx::query(&format!(r#"SELECT {} FROM "Artifact" WHERE "id" = $1 AND "accountId" = $2 LIMIT 1"#, ARTIFACT_COLS))
         .bind(id)
         .bind(uid)
