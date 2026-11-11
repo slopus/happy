@@ -662,12 +662,7 @@ async fn dispatch(app: Arc<App>, req: hyper::Request<Incoming>, method: Method, 
     let (route, params) = match app.router.find(&lookup_method, &url) {
         Lookup::Found(r, p) => (r, p),
         Lookup::BadUrl => return (String::new(), bad_url(&url)),
-        Lookup::NotFound => {
-            if let Some(r) = crate::routes::misc::fallback(&app, &method, &url, &path).await {
-                return (path, r);
-            }
-            return (path, render(not_found(&method, &url)));
-        }
+        Lookup::NotFound => return (path, render(not_found(&method, &url))),
     };
     let label = route.pattern.to_string();
     let (parts, raw) = match read_body(req, route.body_limit).await {

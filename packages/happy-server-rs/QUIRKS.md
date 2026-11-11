@@ -120,5 +120,7 @@ Differences accepted on purpose. Everything else is a bug.
 9. **User seqs for `POST /v3/.../messages`.** The TS server allocates one user seq
    per created message (one `UPDATE` each); the Rust server takes the same
    consecutive range in one `UPDATE`. The values match (single writer); `Account.updatedAt`
-   is bumped once instead of once per message.
+   is bumped once instead of once per message. This assumes the TS server is never
+   live on the same database at the same time: switching servers is stop one, then
+   start the other. The advisory lock only keeps a second *Rust* instance out.
 

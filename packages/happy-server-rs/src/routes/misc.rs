@@ -3,15 +3,12 @@
 use crate::app::App;
 use crate::config::Config;
 use crate::h;
-use crate::http::{render, HResult, HttpResponse, Reply, Req, Router};
-use http::Method;
+use crate::http::{HResult, Reply, Req, Router};
 use serde_json::json;
 use std::sync::Arc;
 
 pub fn register(r: &mut Router, c: &Config) {
-    if c.static_dir.is_none() {
-        r.get("/").handle(h!(root));
-    }
+    r.get("/").handle(h!(root));
     r.get("/health").handle(h!(health));
     if c.s3.is_none() {
         r.get("/files/*").handle(h!(files));
@@ -58,10 +55,4 @@ async fn files(app: Arc<App>, req: Req) -> HResult {
         // Fastify answers 500 through the error handler.
         Err(e) => Err(e.into()),
     }
-}
-
-/// Hook for paths no route matched (the self-host static webapp lives here).
-pub async fn fallback(_app: &Arc<App>, _method: &Method, _url: &str, _path: &str) -> Option<HttpResponse> {
-    let _ = render;
-    None
 }

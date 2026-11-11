@@ -41,8 +41,6 @@ pub struct Config {
     pub github_webhook_secret: Option<String>,
     pub elevenlabs_api_key: Option<String>,
     pub dev_logging: bool,
-    pub static_dir: Option<PathBuf>,
-    pub inject_html_config: Option<serde_json::Value>,
     /// Overrides for tests: external endpoints.
     pub expo_push_url: String,
     pub elevenlabs_api: String,
@@ -114,8 +112,6 @@ impl Config {
             github_webhook_secret: if webhooks { var("GITHUB_WEBHOOK_SECRET") } else { None },
             elevenlabs_api_key: var("ELEVENLABS_API_KEY"),
             dev_logging: var("DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING").is_some(),
-            static_dir: find_static_dir(),
-            inject_html_config: var("HAPPY_INJECT_HTML_CONFIG").and_then(|s| crate::js::parse(&s).ok()),
             expo_push_url: var("HAPPY_RS_EXPO_PUSH_URL").unwrap_or_else(|| "https://exp.host/--/api/v2/push/send".into()),
             elevenlabs_api: var("HAPPY_RS_ELEVENLABS_API").unwrap_or_else(|| "https://api.elevenlabs.io/v1/convai".into()),
             github_oauth_base: var("HAPPY_RS_GITHUB_OAUTH_BASE").unwrap_or_else(|| "https://github.com".into()),
@@ -128,13 +124,6 @@ impl Config {
     }
 }
 
-/// The TS production entry (`main.ts`) never serves a webapp; only the standalone
-/// entry does, after also probing `./webapp`. We serve one only when
-/// `HAPPY_STATIC_DIR` points at a directory with an `index.html`, so an accidental
-/// `./webapp` never changes the API surface.
-fn find_static_dir() -> Option<PathBuf> {
-    var("HAPPY_STATIC_DIR").map(PathBuf::from).filter(|d| d.join("index.html").exists())
-}
 
 /// CPUs this process may use: the affinity mask (`available_parallelism`) capped by
 /// the cgroup v2 `cpu.max` quota, rounded up.
