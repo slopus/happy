@@ -1,5 +1,9 @@
 package com.slopus.happy.call
 
+import com.slopus.happy.conversation.ConversationRow
+import com.slopus.happy.conversation.ConversationState
+import com.slopus.happy.conversation.Delivery
+import com.slopus.happy.conversation.FailureReason
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -12,6 +16,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -135,6 +140,102 @@ class CallReadTest {
         }
         val full = obj(read(context, ""","from":"t:a13f","backTo":"t:a13f"""").text)
         assertEquals(listOf("ask aa13f"), full.turns().map { it.str("user") })
+    }
+
+    // Exchanges
+
+    private fun ask(id: String, text: String, delivery: Delivery = Delivery.Sent) = ConversationRow.User("$id:user", id, text, emptyList(), emptyList(), delivery)
+    private fun said(key: String, text: String) = ConversationRow.Text(key, text, emptyList())
+    private fun end(turn: String, reason: String = "completed", copy: String? = null) = ConversationRow.TurnEnd("$turn:end", turn, reason, 5, 0, copy)
+
+    /** [rows] oldest first, published newest first as the conversation does, read by the call. */
+    private fun state(rows: List<ConversationRow>, working: Boolean = true) =
+        CallTargetState.from(ConversationState(created = true, loaded = true, working = working, rows = rows.asReversed()), target) { "Rate limited" }
+
+    /**
+     * Steering doesn't start a turn: the exchange keeps the message that started it, and its answer is the last words
+     * of the run that ended it, as it ended. While it runs, its message is the one waiting.
+     */
+    @Test
+    fun aSteeredExchangeIsOneTurnWithTheFirstMessageAndTheLastWords() = runBlocking {
+        val steered = listOf(ask("ur1", "Fix the build"), said("a1:0", "Looking at the logs."), end("r1", "steering", "Looking at the logs."))
+        val going = state(steered + ask("ur2", "And add a test") + said("a2:0", "On it"))
+        assertEquals(emptyList<CallTurn>(), going.exchanges)
+        assertEquals("ur1", going.unanswered?.id)
+        assertEquals("Fix the build", going.unanswered?.text)
+        // Queued on the phone before the run took it: still the first.
+        assertEquals("ur1", state(listOf(ask("ur1", "Fix the build"), said("a1:0", "Looking"), ask("q", "and a test", Delivery.Sending))).unanswered?.id)
+        val failure = ConversationRow.Failure("f", "f", FailureReason.RateLimited("Claude"), retryable = true, resolved = false)
+        val done = state(steered + ask("ur2", "And add a test") + said("a2:0", "Fixed, with a test.") + failure + end("r2", "error", "Fixed, with a test."), working = false)
+        assertEquals(listOf(CallTurn("r1", "Fix the build", "Fixed, with a test.", "error", "Rate limited")), done.exchanges)
+        assertNull(done.unanswered)
+        val (context) = context(done)
+        val value = obj(read(context).text)
+        assertEquals(listOf("t:r1"), value.refs())
+        val turn = value.turns().single()
+        assertEquals("Fix the build", turn.str("user"))
+        assertEquals("Fixed, with a test.", turn.str("assistant"))
+        assertEquals("error", turn.str("ended"))
+        assertEquals("Rate limited", turn.str("error"))
+    }
+
+    /**
+     * The agent's own runs after an answer go on with that exchange: its answer is their last words, or stays when
+     * they have none. The person's steering of one starts a new exchange, the first having its answer.
+     */
+    @Test
+    fun theAgentsOwnRunsGoOnWithTheExchangeBeforeThem() {
+        val exchanges = CallTurn.exchanges(listOf(
+            CallTurn("r1", "Start the subagent", "Started.", endedAt = 1),
+            CallTurn("r2", reply = "It reported: all green.", endedAt = 2),
+            CallTurn("r3", endedAt = 3),
+            CallTurn("r4", "Deploy", "Deploying.", endedAt = 4),
+            CallTurn("r5", reply = "Checking the rollout", ended = "steering", endedAt = 5),
+            CallTurn("r6", "Stop it", "Stopped.", endedAt = 6),
+        ))
+        assertEquals(
+            listOf(
+                CallTurn("r1", "Start the subagent", "It reported: all green.", endedAt = 3),
+                CallTurn("r4", "Deploy", "Deploying.", endedAt = 4),
+                CallTurn("r6", "Stop it", "Stopped.", endedAt = 6),
+            ),
+            exchanges.answered,
+        )
+        assertFalse(exchanges.open)
+        // An error answered, then the agent's own run answered again.
+        assertEquals(listOf(CallTurn("r1", "go", "Recovered.")),
+            CallTurn.exchanges(listOf(CallTurn("r1", "go", ended = "error", error = "Boom"), CallTurn("r2", reply = "Recovered."))).answered)
+        // The oldest the phone has is the agent's own: no message, then the person's steering takes it.
+        assertEquals(listOf(CallTurn("r1", "and?", "Done.")),
+            CallTurn.exchanges(listOf(CallTurn("r1", reply = "Half", ended = "compaction"), CallTurn("r2", "and?", "Done."))).answered)
+    }
+
+    /**
+     * Five turns back from the newest are five exchanges, each the person's message and the agent's last words,
+     * however much came between: steered runs, the agent's own runs, a run with no words.
+     */
+    @Test
+    fun fiveTurnsAreFiveExchangesWhateverCameBetween() = runBlocking {
+        val runs = ArrayList<CallTurn>()
+        for (n in 1..7) {
+            runs += CallTurn("r${n}a", "ask $n", "commentary $n", "steering")
+            runs += CallTurn("r${n}b", "steer $n", "answer $n")
+            runs += CallTurn("r${n}c")
+            if (n % 2 == 0) runs += CallTurn("r${n}d", reply = "later $n")
+        }
+        val waiting = CallMessage("u8", CallMessage.Role.User, "ask 8", delivery = CallMessage.Delivery.Accepted)
+        val (context) = context(CallTargetState(target, turns = runs, unanswered = waiting))
+        val value = obj(read(context, ""","backTo":"t:3a"""").text)
+        assertEquals(listOf("t:3a", "t:4a", "t:5a", "t:6a", "t:7a"), value.refs())
+        assertEquals(listOf("ask 3", "ask 4", "ask 5", "ask 6", "ask 7"), value.turns().map { it.str("user") })
+        assertEquals(listOf("answer 3", "later 4", "answer 5", "later 6", "answer 7"), value.turns().map { it.str("assistant") })
+        assertEquals(List(5) { "completed" }, value.turns().map { it.str("ended") })
+        assertEquals("t:2a", value.str("continueFrom"))
+        val newest = obj(read(context).text)
+        assertEquals(listOf("ask 4", "ask 5", "ask 6", "ask 7"), newest.turns().map { it.str("user") })
+        assertEquals("ask 8", newest["pendingUserMessage"]!!.jsonObject.str("text"))
+        // The first context's turns are the same.
+        assertEquals(listOf("answer 3", "later 4", "answer 5", "later 6", "answer 7"), CallContext.recent(CallTargetState(target, turns = runs)).map { it.reply })
     }
 
     // Words

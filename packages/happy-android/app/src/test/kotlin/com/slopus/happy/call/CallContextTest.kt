@@ -33,13 +33,13 @@ class CallContextTest {
     private val fixTarget = CallTarget("c", "Fix cache race", CallTarget.Kind.Subtask, CallTarget.Status.Running,
         listOf(CallTarget.Parent("task:t", "Release notes", "task", "t")))
 
-    /** Backend: three finished turns, one that only steered, and a message no turn has answered yet. */
+    /** Backend: three finished turns, the third steered on its way, and a message no turn has answered yet. */
     private fun backend(focus: String? = "a"): FakeCallTargets {
         val turns = listOf(
             CallTurn("r1", "first ask", "first answer"),
             CallTurn("r2", "second ask", "second answer"),
-            CallTurn("r3", "steer", ended = "steering"),
-            CallTurn("r4", "third ask", "third answer"),
+            CallTurn("r3", "third ask", "Looking.", ended = "steering"),
+            CallTurn("r4", "and the tests", "third answer"),
         )
         val messages = listOf(
             CallMessage("u1", CallMessage.Role.User, "first ask"), CallMessage("x1", CallMessage.Role.Assistant, "first answer"),
@@ -70,8 +70,8 @@ class CallContextTest {
         val utc = java.time.ZoneOffset.UTC
         val context = CallContext(backend(), now = { 1_700_000_000_000 }, zone = utc)
         val text = context.initial()
-        // Plain lines, as Happy Agent's own tools write them: the focus, its turns (four finished and the message
-        // waiting: five), the directory once.
+        // Plain lines, as Happy Agent's own tools write them: the focus, its turns (three finished, the steered one
+        // whole, and the message waiting), the directory once.
         assertEquals(
             """
             |Now: 2023-11-14T22:13:00Z (the person's local time)
@@ -84,9 +84,7 @@ class CallContextTest {
             |   Agent: first answer
             |2. The person: second ask
             |   Agent: second answer
-            |3. The person: steer
-            |   Ended: steering
-            |4. The person: third ask
+            |3. The person: third ask
             |   Agent: third answer
             |Waiting for an answer, from the person:
             |   still waiting
@@ -159,7 +157,7 @@ class CallContextTest {
         val context = CallContext(backend(focus = null))
         context.initial()
         val read = obj(context.tool("readConversation", """{"ref":"s1"}""").text)
-        assertEquals(listOf("first answer", "second answer", null, "third answer"), read.turns().map { it.str("assistant") })
+        assertEquals(listOf("first answer", "second answer", "third answer"), read.turns().map { it.str("assistant") })
         assertEquals("still waiting", read["pendingUserMessage"]!!.jsonObject.str("text"))
         assertFalse(read["working"]!!.jsonPrimitive.boolean)
         assertFalse(read["needsInput"]!!.jsonPrimitive.boolean)
@@ -171,8 +169,8 @@ class CallContextTest {
 
     /**
      * Five in all: five finished turns with nothing waiting, four with a
-     * message waiting; an answer with no message of the person's is half a
-     * pair; a read within [CallContext.Limits.READ_BYTES] on the wire, the
+     * message waiting; the agent's own run after a turn is part of it, its
+     * words the turn's answer; a read within [CallContext.Limits.READ_BYTES] on the wire, the
      * oldest first to go and the newest whole.
      */
     @Test
@@ -182,8 +180,8 @@ class CallContextTest {
         val context = CallContext(targets)
         context.initial()
         var read = obj(context.tool("readConversation", """{"ref":"s1"}""").text)
-        assertEquals(listOf("answer 4", "answer 5", "answer 6", "answer 7", "done on its own"), read.turns().map { it.str("assistant") })
-        assertNull(read.turns().last()["user"])
+        assertEquals(listOf("answer 3", "answer 4", "answer 5", "answer 6", "done on its own"), read.turns().map { it.str("assistant") })
+        assertEquals("ask 7", read.turns().last().str("user"))
         assertTrue(read["olderTurns"]!!.jsonPrimitive.boolean)
         targets.states["a"] = CallTargetState(backendTarget, turns = turns, unanswered = CallMessage("p", CallMessage.Role.User, "and now?"))
         read = obj(context.tool("readConversation", """{"ref":"s1"}""").text)
@@ -567,7 +565,7 @@ class CallContextTest {
         assertTrue((System.nanoTime() - started) / 1_000_000 < 200)
         assertNull(read["refreshing"])
         assertNull(read["checked"])
-        assertEquals(4, read.turns().size)
+        assertEquals(3, read.turns().size)
         delay(100)
         assertTrue(all.isEmpty())
         assertTrue(targets.refreshes.isEmpty())
@@ -590,7 +588,7 @@ class CallContextTest {
         assertEquals(true, read["refreshing"]!!.jsonPrimitive.boolean)
         assertEquals("29 minutes ago", read["checked"]!!.jsonObject.str("ago"))
         assertEquals("Backend", read.str("title"))
-        assertEquals(4, read.turns().size)
+        assertEquals(3, read.turns().size)
         assertEquals(CallContext.REFRESHING_NOTE, read.str("note"))
         assertNull(read["status"])
         waitFor { all.size == 1 }
@@ -622,7 +620,7 @@ class CallContextTest {
         assertEquals("t:r5", cue.turns().first().str("ref"))
         assertNull(cue["pendingUserMessage"])
         assertNull(cue["refreshing"])
-        assertEquals("t:r4", cue.str("continueFrom"))
+        assertEquals("t:r3", cue.str("continueFrom"))
         assertEquals(false, cue["working"]!!.jsonPrimitive.boolean)
     }
 
@@ -701,13 +699,13 @@ class CallContextTest {
         assertEquals(CallContext.REFRESHING_EMPTY_NOTE, read.str("note"))
         waitFor { all.size == 2 }
         val cue = cue(all.last())
-        assertEquals(4, cue.turns().size)
+        assertEquals(3, cue.turns().size)
         assertEquals("still waiting", cue["pendingUserMessage"]!!.jsonObject.str("text"))
         // Read again, the phone still slow: what that refresh found, marked, and nothing new after.
         targets.refresh["a"] = FakeCallTargets.Refresh.After(100)
         val again = obj(context.tool("readConversation", """{"ref":"s1"}""").text)
         assertEquals(true, again["refreshing"]!!.jsonPrimitive.boolean)
-        assertEquals(4, again.turns().size)
+        assertEquals(3, again.turns().size)
         assertTrue(again["checked"] != null)
         waitFor { all.size == 4 }
         assertEquals("conversation_current", line(all.last()).str("event"))

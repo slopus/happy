@@ -161,9 +161,11 @@ data class CallMessage(
 }
 
 /**
- * One finished turn of a conversation: the person's message that started it
+ * One finished run of a conversation: the person's message that started it
  * and the agent's final answer, as the turn's copy button copies it
  * ([ConversationRow.TurnEnd.copyText]), never its commentary or tool output.
+ * Or, as [CallTargetState.exchanges] makes them, one exchange of the person's
+ * message and the agent's answer, its runs in one.
  */
 data class CallTurn(
     val id: String,
@@ -178,7 +180,59 @@ data class CallTurn(
     /** Who wrote [user], as [CallMessage.author] and [CallMessage.by] have it. */
     val userAuthor: String? = null,
     val userBy: String? = null,
-)
+) {
+    /** The exchanges finished runs make ([exchanges]), and whether the newest has no answer yet, with the run whose message started it. */
+    class Exchanges(val answered: List<CallTurn>, val open: Boolean, val asker: String?)
+
+    companion object {
+        /** How a run ends that leaves its exchange going: the person's steering started the next, or a compaction did. */
+        private val CUT_SHORT = setOf("steering", "compaction")
+
+        /**
+         * The exchanges [runs] make, oldest first. One is the person's message and all the agent did after it until
+         * the person's next: the runs steering or a compaction cut short, and the agent's own runs (no message of the
+         * person's) after them, go on with it, as does the person's steering while it has no answer yet; it keeps the
+         * message that started it, or takes the first if it had none, and the ID of its first run. Its answer is its
+         * last run that wasn't cut short: how that ended, when, its error, and the last words of its runs up to there.
+         * One with no answer yet is left out, the newest alone: [Exchanges.open], with the run whose message started it
+         * ([Exchanges.asker]), null while it has none.
+         */
+        fun exchanges(runs: List<CallTurn>): Exchanges {
+            val answered = ArrayList<CallTurn>()
+            var current: CallTurn? = null
+            var asker: String? = null
+            // The last words of its runs, and whether it has an answer.
+            var words: String? = null
+            var settled = false
+            var cut = false
+            for (run in runs) {
+                val asks = !run.user.isNullOrEmpty()
+                val going = current
+                var exchange = if (going != null && (!asks || (cut && !settled))) {
+                    if (asks && going.user.isNullOrEmpty()) {
+                        asker = run.id
+                        going.copy(user = run.user, userAuthor = run.userAuthor, userBy = run.userBy)
+                    } else going
+                } else {
+                    if (going != null && settled) answered += going
+                    asker = if (asks) run.id else null
+                    words = null
+                    settled = false
+                    CallTurn(run.id, run.user, userAuthor = run.userAuthor, userBy = run.userBy)
+                }
+                if (!run.reply.isNullOrEmpty()) words = run.reply
+                cut = run.ended in CUT_SHORT
+                if (!cut) {
+                    settled = true
+                    exchange = exchange.copy(reply = words, ended = run.ended, error = run.error, endedAt = run.endedAt)
+                }
+                current = exchange
+            }
+            current?.let { if (settled) answered += it }
+            return Exchanges(answered, current != null && !settled, asker)
+        }
+    }
+}
 
 /**
  * What the call knows of one conversation: its finished turns, the person's
@@ -190,8 +244,9 @@ data class CallTargetState(
     val target: CallTarget,
     /** Every public message, the agent's still being written included (`final` false). The agent's are its words between steps, one message each. */
     val messages: List<CallMessage> = emptyList(),
+    /** Its finished runs, oldest first. What is read of it is [exchanges]. */
     val turns: List<CallTurn> = emptyList(),
-    /** The person's latest message, when no finished turn answers it. */
+    /** The person's message whose exchange has no answer yet, the newest: one steering that exchange is never it. */
     val unanswered: CallMessage? = null,
     val working: Boolean = false,
     val needsInput: Boolean = false,
@@ -223,9 +278,10 @@ data class CallTargetState(
         fun from(state: ConversationState, target: CallTarget, failureText: (FailureReason) -> String = { "" }): CallTargetState {
             val messages = ArrayList<CallMessage>()
             val turns = ArrayList<CallTurn>()
-            var asked: ConversationRow.User? = null
+            // The person's first message since the last run's end, and each run's.
+            var asked: CallMessage? = null
+            val users = HashMap<String, CallMessage>()
             var failure: String? = null
-            var pending: CallMessage? = null
             var needsInput = state.question != null
             // The agent's words in the run still going, by index in [messages], and that run's last step.
             val running = ArrayList<Int>()
@@ -241,8 +297,7 @@ data class CallTargetState(
                         }
                         val message = CallMessage(row.messageId, CallMessage.Role.User, row.text, row.createdAt.takeIf { it > 0 }, delivery = delivery, author = row.author)
                         messages += message
-                        if (asked == null) asked = row
-                        pending = message
+                        if (asked == null) asked = message
                     }
                     is ConversationRow.Text -> {
                         val text = row.current
@@ -253,11 +308,11 @@ data class CallTargetState(
                     is ConversationRow.Failure -> failure = failureText(row.reason)
                     is ConversationRow.TurnEnd -> {
                         turns += CallTurn(row.turn, asked?.text, row.copyText, row.reason, failure.takeIf { row.reason == "error" }, row.endedAt, asked?.author)
+                        asked?.let { users[row.turn] = it }
                         for (index in running) messages[index] = messages[index].copy(turn = row.turn)
                         running.clear()
                         asked = null
                         failure = null
-                        pending = null
                     }
                     is ConversationRow.Ask -> if (row.phase != AskPhase.Answered) needsInput = true
                     else -> Unit
@@ -271,6 +326,9 @@ data class CallTargetState(
                 val index = messages.indexOfLast { it.role == CallMessage.Role.Assistant && it.id == last.key }
                 if (index >= 0 && index in running) messages[index] = messages[index].copy(final = false)
             }
+            // A message after the last run's end steers an exchange that has no answer yet, which keeps its own; else it starts one.
+            val exchanges = CallTurn.exchanges(turns)
+            val pending = if (exchanges.open) exchanges.asker?.let(users::get) ?: asked else asked
             val status = when {
                 needsInput -> CallTarget.Status.NeedsInput
                 state.working -> CallTarget.Status.Running
@@ -291,6 +349,12 @@ data class CallTargetState(
             )
         }
     }
+
+    /**
+     * What is read of it (`readConversation`, the first context): its exchanges, oldest first, each the person's
+     * message and the agent's answer, however many runs that took ([CallTurn.exchanges]).
+     */
+    val exchanges: List<CallTurn> get() = CallTurn.exchanges(turns).answered
 
     /** The members who wrote its messages, by user ID, for [named]. */
     val authors: Set<String> get() = (messages.mapNotNull { it.author } + turns.mapNotNull { it.userAuthor }).toSet()

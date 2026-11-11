@@ -516,7 +516,7 @@ among them (the ones `message`'s `model` and `effort` take); nothing in the
 context repeats the directory, and the tools' list is the prompt's alone.
 The destinations are the only places `navigate` goes, listed as the new-work
 refs are; nothing else in the app has a `happy://` address of the call's. A turn says who
-wrote it on a team, its non-plain end (`Ended: steering`, `Ended in an
+wrote it on a team, its non-plain end (`Ended: abort`, `Ended in an
 error: …`), and a text past its limit (8 KB for the agent's words, 2 KB for
 the person's) cut after a whole word, ending `… (cut, N more words)`;
 "Older turns aren't shown." when there are more.
@@ -524,21 +524,30 @@ the person's) cut after a whole word, ending `… (cut, N more words)`;
 **History** (`readConversation`, JSON): the conversation's `title` and
 `parents`, `working`, `needsInput`, when the person last wrote there
 (`lastUserMessage`, the newest message of theirs in what was read) and when
-the agent last answered (`lastAgentReply`, the end of the newest run with
-words), its `workspace` (the project and worktree headings it sits under,
-`App / Feature`; a bot or task has a workspace of its own and none is
-given, and the computer gives the phone no folder paths), its `model`
+the agent last answered (`lastAgentReply`, the end of the newest turn's
+answer with words), its `workspace` (the project and worktree headings it
+sits under, `App / Feature`; a bot or task has a workspace of its own and
+none is given, and the computer gives the phone no folder paths), its `model`
 (`{id,name,effort}`, what its next message goes with), the `models` it can
 switch to (`[{id,name,efforts}]`, at most 30: the composer's model
 picker's, each shown account's switched-on models less those it hides),
 then its turns. Never its reference, kind or status: the directory has
-those. Each turn is the person's message that started it and the agent's
-last words (the turn's copy text, never its commentary between steps, tool
-output or words still streaming), or as much of that pair as there is: a
-turn steered or stopped before an answer has only the person's message, one
-with no message of the person's only the agent's words, one an error ended
-its `error`. The person's latest message, when no finished turn answers it
-yet, is the newest turn, apart as `pendingUserMessage`.
+those. Each turn is one exchange: a message of the person's and the
+agent's last words after it, before the person's next, however many runs
+that took (`CallTargetState.exchanges` on both). Its words are the last the
+agent wrote anywhere in it (a run's copy text, never its commentary between
+steps, tool output or words still streaming), even when it went on to tool
+calls or a run with no words. A message the person sent while the agent
+still worked on the turn's, before it had an answer (steering, which cuts
+that run short), starts no turn and isn't read: the turn keeps the message
+that started it. The agent's own runs with no message of the person's (a
+subagent reporting back, say) and a run a compaction cut short go on with
+the turn before them. Its end is that of its last run steering or a
+compaction didn't cut short: one stopped before any words has only the
+person's message, one with no message of the person's (the oldest the
+phone has) only the agent's words, one an error ended its `error`. The
+person's message whose turn has no answer yet, steered or not, is the
+newest turn, apart as `pendingUserMessage`.
 
 **Paging.** A read goes backwards, from the newest turn into older ones,
 and the unit is the turn (the pair above, or the message waiting for an
@@ -547,7 +556,7 @@ exchange, and the agent's words between its steps are never read, so
 counting messages would count what can't be seen.
 
 - Every turn carries its `ref`: `t:` and the end of its ID on the computer
-  (its run's, or the waiting message's own), two characters, or as many
+  (its first run's, or the waiting message's own), two characters, or as many
   more as tell it from every other turn the phone has of that
   conversation. `t:` keeps it apart from a conversation's `s3`; a ref given
   as `from` or `backTo` that is an `s` ref is refused as one.

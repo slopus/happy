@@ -8,10 +8,10 @@ import kotlinx.serialization.json.doubleOrNull
 
 /**
  * How `readConversation` pages through a conversation (iOS `CallRead`): backwards, from the newest turn into older
- * ones, a turn at a time. A turn is the person's message and the agent's last words ([CallTurn]), or the person's
- * message still waiting for an answer, which is the newest. Each has a reference of its own, `t:` and the end of its
- * ID on the computer (its run's, or the waiting message's own): two characters, more where two would fit another turn
- * the phone has of that conversation.
+ * ones, a turn at a time. A turn is an exchange: the person's message and the agent's last words after it, however
+ * many runs that took ([CallTargetState.exchanges]), or the person's message still waiting for an answer, which is the
+ * newest. Each has a reference of its own, `t:` and the end of its ID on the computer (its first run's, or the waiting
+ * message's own): two characters, more where two would fit another turn the phone has of that conversation.
  */
 object CallRead {
     /** Turns a read gives unless it is told where to stop. */
@@ -50,7 +50,7 @@ object CallRead {
      * words, an error), then the message still waiting for an answer.
      */
     fun items(state: CallTargetState): List<Item> {
-        val items = state.turns.filter { !it.user.isNullOrEmpty() || !it.reply.isNullOrEmpty() || it.ended == "error" }.map { Item(it.id, turn = it) }
+        val items = state.exchanges.filter { !it.user.isNullOrEmpty() || !it.reply.isNullOrEmpty() || it.ended == "error" }.map { Item(it.id, turn = it) }
         return state.unanswered?.let { items + Item(it.id, pending = it) } ?: items
     }
 

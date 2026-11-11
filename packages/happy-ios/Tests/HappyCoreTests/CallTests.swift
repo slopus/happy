@@ -15,13 +15,13 @@ final class CallContextTests: XCTestCase {
     private let thousandWords = Array(repeating: "The build in `packages/happy-ios` failed on step three: the cache key changed after the lockfile update, so the agent rebuilt it and reran the tests.", count: 40).joined(separator: " ")
     private let docsTarget = CallTarget(agentId: "b", title: "Docs", kind: .task, status: .running)
 
-    /// Backend: three finished turns, one that failed, and a message no turn has answered yet.
+    /// Backend: three finished turns, the third steered on its way, and a message no turn has answered yet.
     private func backend(focus: String? = "a") -> FakeCallTargets {
         let turns = [
             CallTurn(id: "r1", user: "first ask", reply: "first answer"),
             CallTurn(id: "r2", user: "second ask", reply: "second answer"),
-            CallTurn(id: "r3", user: "steer", ended: "steering"),
-            CallTurn(id: "r4", user: "third ask", reply: "third answer"),
+            CallTurn(id: "r3", user: "third ask", reply: "Looking.", ended: "steering"),
+            CallTurn(id: "r4", user: "and the tests", reply: "third answer"),
         ]
         let messages = [
             CallMessage(id: "u1", role: .user, text: "first ask"), CallMessage(id: "x1", role: .assistant, text: "first answer"),
@@ -54,7 +54,7 @@ final class CallContextTests: XCTestCase {
         let context = CallContext(targets: backend(), now: { 1_700_000_000 }, timeZone: utc)
         let text = await context.initial()
         // Plain lines, as Happy Agent's own tools write them: the focus, its
-        // turns (four finished and the message waiting: five), the directory once.
+        // turns (three finished, the steered one whole, and the message waiting), the directory once.
         XCTAssertEqual(text, """
         Now: \(CallContext.local(1_700_000_000, in: utc)) (the person's local time)
         focusRevision: 0
@@ -66,9 +66,7 @@ final class CallContextTests: XCTestCase {
            Agent: first answer
         2. The person: second ask
            Agent: second answer
-        3. The person: steer
-           Ended: steering
-        4. The person: third ask
+        3. The person: third ask
            Agent: third answer
         Waiting for an answer, from the person:
            still waiting
@@ -137,7 +135,7 @@ final class CallContextTests: XCTestCase {
         let context = CallContext(targets: backend(focus: nil))
         _ = await context.initial()
         let read = try object(await tool(context, "readConversation", #"{"ref":"s1"}"#).text)
-        XCTAssertEqual((read["turns"] as? [[String: Any]])?.map { $0["assistant"] as? String }, ["first answer", "second answer", nil, "third answer"])
+        XCTAssertEqual((read["turns"] as? [[String: Any]])?.map { $0["assistant"] as? String }, ["first answer", "second answer", "third answer"])
         XCTAssertEqual((read["pendingUserMessage"] as? [String: Any])?["text"] as? String, "still waiting")
         XCTAssertEqual(read["working"] as? Bool, false)
         XCTAssertEqual(read["needsInput"] as? Bool, false)
@@ -150,8 +148,8 @@ final class CallContextTests: XCTestCase {
     }
 
     /// Five in all: five finished turns with nothing waiting, four with a
-    /// message waiting; an answer with no message of the person's is half
-    /// a pair; a read within `Limits.readBytes` on the wire, the oldest
+    /// message waiting; the agent's own run after a turn is part of it, its
+    /// words the turn's answer; a read within `Limits.readBytes` on the wire, the oldest
     /// first to go and the newest whole.
     func testFiveTurnsInAllAndTheBudgetHolds() async throws {
         var turns = (1...7).map { CallTurn(id: "r\($0)", user: "ask \($0)", reply: "answer \($0)") }
@@ -160,8 +158,8 @@ final class CallContextTests: XCTestCase {
         let context = CallContext(targets: targets)
         _ = await context.initial()
         var read = try object(await tool(context, "readConversation", #"{"ref":"s1"}"#).text)
-        XCTAssertEqual((read["turns"] as? [[String: Any]])?.map { $0["assistant"] as? String }, ["answer 4", "answer 5", "answer 6", "answer 7", "done on its own"])
-        XCTAssertNil((read["turns"] as? [[String: Any]])?.last?["user"])
+        XCTAssertEqual((read["turns"] as? [[String: Any]])?.map { $0["assistant"] as? String }, ["answer 3", "answer 4", "answer 5", "answer 6", "done on its own"])
+        XCTAssertEqual((read["turns"] as? [[String: Any]])?.last?["user"] as? String, "ask 7")
         XCTAssertEqual(read["olderTurns"] as? Bool, true)
         let waiting = CallMessage(id: "p", role: .user, text: "and now?")
         await targets.set("a", CallTargetState(target: backendTarget, turns: turns, unanswered: waiting))
@@ -624,7 +622,7 @@ final class CallContextTests: XCTestCase {
         XCTAssertLessThan(ContinuousClock.now - started, .milliseconds(200))
         XCTAssertNil(read["refreshing"])
         XCTAssertNil(read["checked"])
-        XCTAssertEqual((read["turns"] as? [[String: Any]])?.count, 4)
+        XCTAssertEqual((read["turns"] as? [[String: Any]])?.count, 3)
         try? await Task.sleep(for: .milliseconds(100))
         let all = await readings.all
         XCTAssertTrue(all.isEmpty)
@@ -650,7 +648,7 @@ final class CallContextTests: XCTestCase {
         XCTAssertEqual(read["refreshing"] as? Bool, true)
         XCTAssertEqual((read["checked"] as? [String: Any])?["ago"] as? String, "29 minutes ago")
         XCTAssertEqual(read["title"] as? String, "Backend")
-        XCTAssertEqual((read["turns"] as? [[String: Any]])?.count, 4)
+        XCTAssertEqual((read["turns"] as? [[String: Any]])?.count, 3)
         XCTAssertEqual(read["note"] as? String, CallContext.refreshingNote)
         XCTAssertNil(read["status"])
         await waitFor { await readings.all.count == 1 }
@@ -689,7 +687,7 @@ final class CallContextTests: XCTestCase {
         XCTAssertEqual(turns.first?["ref"] as? String, "t:r5")
         XCTAssertNil(cue["pendingUserMessage"])
         XCTAssertNil(cue["refreshing"])
-        XCTAssertEqual(cue["continueFrom"] as? String, "t:r4")
+        XCTAssertEqual(cue["continueFrom"] as? String, "t:r3")
         XCTAssertEqual(cue["working"] as? Bool, false)
     }
 
@@ -776,12 +774,12 @@ final class CallContextTests: XCTestCase {
         await waitFor { await readings.all.count == 2 }
         try? await Task.sleep(for: .milliseconds(1500))
         let cue = try cueObject(await readings.all.last)
-        XCTAssertEqual((cue["turns"] as? [[String: Any]])?.count, 4)
+        XCTAssertEqual((cue["turns"] as? [[String: Any]])?.count, 3)
         XCTAssertEqual((cue["pendingUserMessage"] as? [String: Any])?["text"] as? String, "still waiting")
         await targets.setRefresh("a", .after(.milliseconds(100)))
         let again = try object(await tool(context, "readConversation", #"{"ref":"s1"}"#).text)
         XCTAssertEqual(again["refreshing"] as? Bool, true)
-        XCTAssertEqual((again["turns"] as? [[String: Any]])?.count, 4)
+        XCTAssertEqual((again["turns"] as? [[String: Any]])?.count, 3)
         XCTAssertNotNil(again["checked"])
         await waitFor { await readings.all.count == 4 }
         let last = await readings.all.last

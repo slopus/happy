@@ -1,13 +1,14 @@
 import Foundation
 
 /// How `readConversation` pages through a conversation: backwards, from the
-/// newest turn into older ones, a turn at a time. A turn is the person's
-/// message and the agent's last words (`CallTurn`), or the person's message
+/// newest turn into older ones, a turn at a time. A turn is an exchange:
+/// the person's message and the agent's last words after it, however many
+/// runs that took (`CallTargetState.exchanges`), or the person's message
 /// still waiting for an answer, which is the newest. Each has a reference
-/// of its own, `t:` and the end of its ID on the computer (its run's, or
-/// the waiting message's own): two characters, more where two would fit
-/// another turn the phone has of that conversation. Android's `CallRead`
-/// is the same, word for word.
+/// of its own, `t:` and the end of its ID on the computer (its first
+/// run's, or the waiting message's own): two characters, more where two
+/// would fit another turn the phone has of that conversation. Android's
+/// `CallRead` is the same, word for word.
 public enum CallRead {
     /// Turns a read gives unless it is told where to stop.
     public static let turns = 5
@@ -54,7 +55,7 @@ public enum CallRead {
     /// say (the person's message, the agent's last words, an error), then
     /// the message still waiting for an answer.
     public static func items(_ state: CallTargetState) -> [Item] {
-        var items = state.turns.filter { $0.user?.isEmpty == false || $0.reply?.isEmpty == false || $0.ended == "error" }
+        var items = state.exchanges.filter { $0.user?.isEmpty == false || $0.reply?.isEmpty == false || $0.ended == "error" }
             .map { Item(id: $0.id, turn: $0, pending: nil) }
         if let pending = state.unanswered { items.append(Item(id: pending.id, turn: nil, pending: pending)) }
         return items

@@ -286,7 +286,7 @@ class CallContext(
         state.messages.lastOrNull { it.role == CallMessage.Role.User && (it.time ?: 0L) > 0 }?.let { last ->
             lines += "Last message from ${last.by ?: "the person"}: ${said(last.time!!)}"
         }
-        state.turns.filter { !it.reply.isNullOrEmpty() }.mapNotNull { it.endedAt }.filter { it > 0 }.maxOrNull()?.let { lines += "Last reply: ${said(it)}" }
+        state.exchanges.filter { !it.reply.isNullOrEmpty() }.mapNotNull { it.endedAt }.filter { it > 0 }.maxOrNull()?.let { lines += "Last reply: ${said(it)}" }
         if (target.workspace.isNotEmpty()) lines += "Workspace: ${target.workspace.joinToString(" / ")}"
         state.mode?.let { lines += "Model: ${it.model}" + if (it.effort.isEmpty()) "" else ", effort ${it.effort}" }
         if (state.models.isNotEmpty()) {
@@ -1126,7 +1126,7 @@ class CallContext(
             val said = moment(last.time!!)
             value["lastUserMessage"] = last.by?.let { JsonObject(said + ("by" to JsonPrimitive(it))) } ?: said
         }
-        state.turns.filter { !it.reply.isNullOrEmpty() }.mapNotNull { it.endedAt }.filter { it > 0 }.maxOrNull()?.let { value["lastAgentReply"] = moment(it) }
+        state.exchanges.filter { !it.reply.isNullOrEmpty() }.mapNotNull { it.endedAt }.filter { it > 0 }.maxOrNull()?.let { value["lastAgentReply"] = moment(it) }
         if (state.target.workspace.isNotEmpty()) value["workspace"] = JsonPrimitive(state.target.workspace.joinToString(" / "))
         state.mode?.let { value["model"] = JsonObject(mapOf("id" to JsonPrimitive(it.modelId), "name" to JsonPrimitive(it.model), "effort" to JsonPrimitive(it.effort))) }
         if (state.models.isNotEmpty()) value["models"] = models(state.models)
@@ -1334,12 +1334,12 @@ class CallContext(
             answering(state).takeLast(if (state.unanswered == null) Limits.TURNS else Limits.TURNS - 1)
 
         /**
-         * Finished turns with something to say: the person's message, the
+         * Finished exchanges with something to say: the person's message, the
          * agent's last words, an error, or as much of that as there is. Never
-         * the agent's words between its steps.
+         * the agent's words between its steps, nor a run steering cut short.
          */
         private fun answering(state: CallTargetState): List<CallTurn> =
-            state.turns.filter { !it.user.isNullOrEmpty() || !it.reply.isNullOrEmpty() || it.ended == "error" }
+            state.exchanges.filter { !it.user.isNullOrEmpty() || !it.reply.isNullOrEmpty() || it.ended == "error" }
 
         /**
          * One turn as a read gives it: its reference, the person's message and the agent's last words, each cut in the

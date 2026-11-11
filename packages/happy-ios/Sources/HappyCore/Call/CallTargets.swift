@@ -163,9 +163,11 @@ public struct CallMessage: Equatable, Sendable {
     }
 }
 
-/// One finished turn of a conversation: the person's message that started
+/// One finished run of a conversation: the person's message that started
 /// it and the agent's final answer, as desktop's turn summary copies it
-/// (`ChatItem.TurnEnd.copyText`), never its commentary or tool output.
+/// (`ChatItem.TurnEnd.copyText`), never its commentary or tool output. Or,
+/// as `CallTargetState.exchanges` makes them, one exchange of the person's
+/// message and the agent's answer, its runs in one.
 public struct CallTurn: Equatable, Sendable {
     public var id: String
     public var user: String?
@@ -193,6 +195,64 @@ public struct CallTurn: Equatable, Sendable {
     }
 }
 
+extension CallTurn {
+    /// How a run ends that leaves its exchange going: the person's steering
+    /// started the next, or a compaction did.
+    static let cutShort: Set<String> = ["steering", "compaction"]
+
+    /// The exchanges `runs` make, oldest first. One is the person's message
+    /// and all the agent did after it until the person's next: the runs
+    /// steering or a compaction cut short, and the agent's own runs (no
+    /// message of the person's) after them, go on with it, as does the
+    /// person's steering while it has no answer yet; it keeps the message
+    /// that started it, or takes the first if it had none, and the ID of
+    /// its first run. Its answer is its last run that wasn't cut short:
+    /// how that ended, when, its error, and the last words of its runs up
+    /// to there. One with no answer yet is left out, the newest alone:
+    /// `open`, with the run whose message started it (`asker`), nil while
+    /// it has none.
+    static func exchanges(_ runs: [CallTurn]) -> (answered: [CallTurn], open: Bool, asker: String?) {
+        var answered: [CallTurn] = []
+        var current: CallTurn?
+        var asker: String?
+        // The last words of its runs, and whether it has an answer.
+        var words: String?
+        var settled = false
+        var cut = false
+        for run in runs {
+            let asks = run.user?.isEmpty == false
+            var exchange: CallTurn
+            if let going = current, !asks || (cut && !settled) {
+                exchange = going
+                if asks, exchange.user?.isEmpty != false {
+                    exchange.user = run.user
+                    exchange.userAuthor = run.userAuthor
+                    exchange.userBy = run.userBy
+                    asker = run.id
+                }
+            } else {
+                if let current, settled { answered.append(current) }
+                exchange = CallTurn(id: run.id, user: run.user, reply: nil, userAuthor: run.userAuthor, userBy: run.userBy)
+                asker = asks ? run.id : nil
+                words = nil
+                settled = false
+            }
+            if let reply = run.reply, !reply.isEmpty { words = reply }
+            cut = cutShort.contains(run.ended)
+            if !cut {
+                settled = true
+                exchange.reply = words
+                exchange.ended = run.ended
+                exchange.error = run.error
+                exchange.endedAt = run.endedAt
+            }
+            current = exchange
+        }
+        if let current, settled { answered.append(current) }
+        return (answered, current != nil && !settled, asker)
+    }
+}
+
 /// What the call knows of one conversation: its finished turns, the
 /// person's message still waiting for an answer, the agent's words as they
 /// come, and whether it is working, waits for the person and can take a
@@ -204,8 +264,10 @@ public struct CallTargetState: Equatable, Sendable {
     /// (`final` false). The agent's are its words between steps, one
     /// message each.
     public var messages: [CallMessage]
+    /// Its finished runs, oldest first. What is read of it is `exchanges`.
     public var turns: [CallTurn]
-    /// The person's latest message, when no finished turn answers it.
+    /// The person's message whose exchange has no answer yet, the newest:
+    /// one steering that exchange is never it.
     public var unanswered: CallMessage?
     public var working: Bool
     public var needsInput: Bool
@@ -251,10 +313,10 @@ public struct CallTargetState: Equatable, Sendable {
     public static func from(_ snapshot: ChatSnapshot, target: CallTarget) -> CallTargetState {
         var messages: [CallMessage] = []
         var turns: [CallTurn] = []
-        var users: [String: (text: String, author: String?)] = [:]
+        var users: [String: CallMessage] = [:]
         var failures: [String: String] = [:]
-        var lastUser: CallMessage?
-        var lastUserTurn: String?
+        // The person's first message since the last run's end.
+        var waiting: CallMessage?
         var needsInput = false
         for item in snapshot.items {
             switch item.role {
@@ -268,9 +330,8 @@ public struct CallTargetState: Equatable, Sendable {
                 }
                 let message = CallMessage(id: item.id, role: .user, text: text, time: item.time, delivery: delivery, author: item.author)
                 messages.append(message)
-                if let turn = item.turn, users[turn] == nil { users[turn] = (text, item.author) }
-                lastUser = message
-                lastUserTurn = item.turn
+                if let turn = item.turn, users[turn] == nil { users[turn] = message }
+                if waiting == nil { waiting = message }
             case .agent:
                 let text = item.text
                 guard !text.isEmpty else { continue }
@@ -281,6 +342,7 @@ public struct CallTargetState: Equatable, Sendable {
                 guard let turn = item.turn else { continue }
                 turns.append(CallTurn(id: turn, user: users[turn]?.text, reply: end.copyText, ended: end.reason,
                                       error: end.reason == "error" ? failures[turn] : nil, endedAt: end.endedAt, userAuthor: users[turn]?.author))
+                waiting = nil
             case .question(let ask):
                 if ask.phase != .answered { needsInput = true }
             default:
@@ -298,8 +360,10 @@ public struct CallTargetState: Equatable, Sendable {
            let index = messages.lastIndex(where: { $0.role == .assistant && $0.id == last.id }) {
             messages[index].final = false
         }
-        let finished = Set(turns.map(\.id))
-        let unanswered = lastUser.flatMap { message in lastUserTurn.map(finished.contains) == true ? nil : message }
+        // A message after the last run's end steers an exchange that has no
+        // answer yet, which keeps its own; else it starts one.
+        let exchanges = CallTurn.exchanges(turns)
+        let unanswered = exchanges.open ? exchanges.asker.flatMap { users[$0] } ?? waiting : waiting
         if case .awaitingAnswer? = snapshot.activity?.phase { needsInput = true }
         var target = target
         if needsInput { target.status = .needsInput }
@@ -313,6 +377,11 @@ public struct CallTargetState: Equatable, Sendable {
 }
 
 extension CallTargetState {
+    /// What is read of it (`readConversation`, the first context): its
+    /// exchanges, oldest first, each the person's message and the agent's
+    /// answer, however many runs that took (`CallTurn.exchanges`).
+    public var exchanges: [CallTurn] { CallTurn.exchanges(turns).answered }
+
     /// The members who wrote its messages, by user ID, for `named`.
     public var authors: Set<String> {
         Set(messages.compactMap(\.author) + turns.compactMap(\.userAuthor))

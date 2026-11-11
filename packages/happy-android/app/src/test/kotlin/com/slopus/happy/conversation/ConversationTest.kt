@@ -308,6 +308,44 @@ class ConversationTest {
         assertEquals("Third question", later.unanswered?.text)
     }
 
+    /**
+     * The call reads the conversation as exchanges (iOS `CallReadTests`): each run's last words are its answer, tool
+     * calls after them or not, never its earlier words; a steered run and the agent's own run go on with the exchange
+     * before them; the person's message still being answered is the one waiting.
+     */
+    @Test fun `a call reads a conversation as exchanges of the person's message and the last words`() = runTest {
+        fun run(id: String, user: String?, reason: String?, vararg content: String): String {
+            val blocks = content.mapIndexed { index, part ->
+                if (part.startsWith("call:")) """{"type":"tool_call","id":"$id-$index","name":"exec_command","status":"completed"}"""
+                else """{"type":"text","text":"$part"}"""
+            }
+            val messages = listOfNotNull(
+                user?.let { """{"id":"u-$id","role":"user","createdAt":1,"content":[{"type":"text","text":"$it"}],"metadata":{}}""" },
+                """{"id":"m-$id","role":"agent","createdAt":2,"content":[${blocks.joinToString(",")}],"metadata":{}}""",
+            )
+            val status = when (reason) { null -> "running"; "steering" -> "aborted"; "error" -> "failed"; else -> "completed" }
+            val ended = reason?.let { ""","reason":"$it","endedAt":2""" }.orEmpty()
+            return """{"id":"$id","status":"$status","startedAt":1$ended,"messages":[${messages.joinToString(",")}]}"""
+        }
+        val agent = FakeAgent()
+        agent.page = """{"runs":[${listOf(
+            run("r1", "Fix the build", "completed", "Looking.", "call:", "Fixed it.", "call:"),
+            run("r2", "Why did it fail?", "steering", "Checking the logs.", "call:"),
+            run("r3", "And add a test", "completed", "The lockfile changed; the test is in.", "call:"),
+            run("r4", null, "completed", "The subagent's checks are green.", "call:"),
+            run("r5", "Ship it", "completed", "Shipped."),
+            run("r6", "Now the docs", null, "Writing"),
+        ).joinToString(",")}],"hasMore":false}"""
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        val target = com.slopus.happy.call.CallTarget("a1", "Fix it", com.slopus.happy.call.CallTarget.Kind.Task, com.slopus.happy.call.CallTarget.Status.Idle)
+        val read = com.slopus.happy.call.CallTargetState.from(chat.state.value, target)
+        assertEquals(listOf("r1", "r2", "r5"), read.exchanges.map { it.id })
+        assertEquals(listOf("Fix the build", "Why did it fail?", "Ship it"), read.exchanges.map { it.user })
+        assertEquals(listOf("Fixed it.", "The subagent's checks are green.", "Shipped."), read.exchanges.map { it.reply })
+        assertEquals("Now the docs", read.unanswered?.text)
+    }
+
     @Test fun `reads history and pending messages in run order`() = runTest {
         val agent = FakeAgent()
         agent.page = """{"runs":[{"id":"r1","status":"completed","messages":[

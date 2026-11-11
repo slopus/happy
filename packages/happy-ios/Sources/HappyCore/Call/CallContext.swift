@@ -332,7 +332,7 @@ public actor CallContext {
         if let last = state.messages.last(where: { $0.role == .user && ($0.time ?? 0) > 0 }), let at = last.time {
             lines.append("Last message from \(last.by ?? "the person"): \(said(at))")
         }
-        if let at = state.turns.filter({ $0.reply?.isEmpty == false }).compactMap(\.endedAt).filter({ $0 > 0 }).max() {
+        if let at = state.exchanges.filter({ $0.reply?.isEmpty == false }).compactMap(\.endedAt).filter({ $0 > 0 }).max() {
             lines.append("Last reply: \(said(at))")
         }
         if !target.workspace.isEmpty { lines.append("Workspace: \(target.workspace.joined(separator: " / "))") }
@@ -1321,11 +1321,11 @@ public actor CallContext {
         Array(answering(state).suffix(state.unanswered == nil ? Limits.turns : Limits.turns - 1))
     }
 
-    /// Finished turns with something to say: the person's message, the
+    /// Finished exchanges with something to say: the person's message, the
     /// agent's last words, an error, or as much of that as there is. Never
-    /// the agent's words between its steps.
+    /// the agent's words between its steps, nor a run steering cut short.
     private static func answering(_ state: CallTargetState) -> [CallTurn] {
-        state.turns.filter { $0.user?.isEmpty == false || $0.reply?.isEmpty == false || $0.ended == "error" }
+        state.exchanges.filter { $0.user?.isEmpty == false || $0.reply?.isEmpty == false || $0.ended == "error" }
     }
 
     /// A conversation as read: `name`, then whether it works or waits for
@@ -1344,7 +1344,7 @@ public actor CallContext {
             if let by = last.by { said["by"] = by }
             value["lastUserMessage"] = said
         }
-        if let at = state.turns.filter({ $0.reply?.isEmpty == false }).compactMap(\.endedAt).filter({ $0 > 0 }).max() { value["lastAgentReply"] = when(at) }
+        if let at = state.exchanges.filter({ $0.reply?.isEmpty == false }).compactMap(\.endedAt).filter({ $0 > 0 }).max() { value["lastAgentReply"] = when(at) }
         if !state.target.workspace.isEmpty { value["workspace"] = state.target.workspace.joined(separator: " / ") }
         if let mode = state.mode { value["model"] = ["id": mode.modelId, "name": mode.model, "effort": mode.effort] }
         if !state.models.isEmpty { value["models"] = Self.models(state.models) }
