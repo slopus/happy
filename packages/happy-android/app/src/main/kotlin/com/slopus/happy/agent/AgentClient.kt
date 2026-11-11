@@ -228,6 +228,9 @@ class AgentClient private constructor(
      */
     val tunnelsBlocked: StateFlow<Boolean> = blocked.asStateFlow()
 
+    /** Whether the computer takes this device's environment, and what it was last told. */
+    val environment = UserEnvironmentReports()
+
     /** Health's `capabilities.search`, false until health is read. */
     @Volatile var search: Boolean = false
         private set

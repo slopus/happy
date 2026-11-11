@@ -252,7 +252,10 @@ internal fun AgentSession.makeConversation(
     initialChoice: WorkChoice = WorkChoice(),
     created: () -> Unit = {},
 ): Conversation = Conversation(
-    api = ConversationApi(bytesRequest = conversationBytesRequest(), request = conversationRequest(), cloud = client.cloud, fileRequest = conversationFileRequest()),
+    api = ConversationApi(
+        bytesRequest = conversationBytesRequest(), request = conversationRequest(), cloud = client.cloud, fileRequest = conversationFileRequest(),
+        sendingDevice = { client.environment.sendingDeviceId },
+    ),
     signals = events.signalsFor(agentId),
     // No screen's or call's: a send or draft save in flight finishes after they go.
     scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
