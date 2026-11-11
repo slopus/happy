@@ -7,6 +7,7 @@
 import { createId, isCuid } from '@paralleldrive/cuid2';
 import * as z from 'zod';
 import { interactivePreviewEventSchema } from './interactivePreview';
+import { asyncQuestionsSchema } from './asyncQuestions';
 
 export const sessionRoleSchema = z.enum(['user', 'agent']);
 export type SessionRole = z.infer<typeof sessionRoleSchema>;
@@ -15,6 +16,8 @@ export const sessionTextEventSchema = z.object({
   t: z.literal('text'),
   text: z.string(),
   thinking: z.boolean().optional(),
+  delivery: z.literal('async').optional().catch(undefined),
+  questions: asyncQuestionsSchema.optional().catch(undefined),
 });
 
 export const sessionServiceMessageEventSchema = z.object({

@@ -605,6 +605,8 @@ function collectAgentWorkGroups(
         const visibleAgentIndexes = indexes.filter((index) => {
             const msg = messages[index];
             if (msg.kind === 'user-text') return false;
+            // Native async questions remain reachable even after later output.
+            if (msg.kind === 'agent-text' && msg.asyncQuestion) return false;
             if (isInvisibleMessage(msg) || isUserAttachment(msg)) return false;
             return true;
         });
@@ -702,7 +704,7 @@ function isInvisibleMessage(msg: Message): boolean {
     // Thinking messages render as null in MessageView
     if (msg.kind === 'agent-text') {
         if (msg.isThinking) return true;
-        if (msg.text.trim().length === 0) return true;
+        if (msg.text.trim().length === 0 && !msg.asyncQuestion) return true;
     }
     return false;
 }

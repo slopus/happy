@@ -1,4 +1,4 @@
-import { ARTIFACT_PROTOCOL } from '@slopus/happy-wire';
+import { ARTIFACT_PROTOCOL, createEnvelope, getAsyncQuestions, type AsyncQuestionAction, type AsyncQuestionResponse } from '@slopus/happy-wire';
 import { prepareCodexArtifactScope } from '@/modules/artifacts/turn';
 import { nativeLaunchPolicy, nativeCodexMode } from '@/daemon/appDelegation/nativeLaunchPolicy';
 import { immediateCodexCommandEnvelopes } from './codexImmediateCommand';
@@ -80,6 +80,7 @@ import { startCodexAccountWorkerObserver, codexAccountSessionMetadata } from './
 import { CodexSessionCredentialRecovery } from './codexSessionCredentialRecovery';
 import { CodexAuthTurnRecovery, runTurnWithCredentialRecovery } from './codexAuthTurnRecovery';
 import { createCodexMessageQueueStatus } from './codexMessageQueueStatus';
+import { createCodexAsyncQuestionHandler, deliverCodexAsyncQuestionAnswer, recoverAsyncQuestionResponses } from './codexAsyncQuestionRpc';
 
 /**
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
@@ -447,7 +448,7 @@ export async function runCodex(opts: {
         ...hydratedMetadata,
         ...(applicationPolicy ? { application: { appId: applicationPolicy.binding.appId, bindingId: applicationPolicy.binding.id } } : {}),
         ...codexAccountSessionMetadata(),
-        capabilities: { ...hydratedMetadata.capabilities, artifactLeases: artifactLeaseSupported ? ARTIFACT_PROTOCOL : undefined, codexSteer: true, composerPrediction: !applicationPolicy, codexCredentialRecovery: Boolean(process.env.HAPPY_CODEX_ACCOUNT_PROFILE_ID && process.env.CODEX_HOME
+        capabilities: { ...hydratedMetadata.capabilities, artifactLeases: artifactLeaseSupported ? ARTIFACT_PROTOCOL : undefined, codexSteer: true, codexAsyncQuestions: !applicationPolicy, composerPrediction: !applicationPolicy, codexCredentialRecovery: Boolean(process.env.HAPPY_CODEX_ACCOUNT_PROFILE_ID && process.env.CODEX_HOME
             && basename(process.env.CODEX_HOME).startsWith('happy-codex-home-')) },
         codexPawsOriginToken,
         ...(!hydratedMetadata.summary?.text?.trim() && importedSessionTitle
@@ -482,6 +483,7 @@ export async function runCodex(opts: {
     let client!: CodexAppServerClient;
     let reasoningProcessor!: ReasoningProcessor;
     let abortInProgress: Promise<void> | null = null;
+    let asyncQuestionHandler: ReturnType<typeof createCodexAsyncQuestionHandler> | null = null;
     let predictionHandlers: ReturnType<typeof createComposerPredictionHandlers> | null = null;
     const mcpAppBindingRegistry = new McpAppBindingRegistry();
     let mcpAppRpcHandlers: ReturnType<typeof registerMcpAppRpcHandlers> | null = null;
@@ -502,6 +504,7 @@ export async function runCodex(opts: {
             }
             rebindMcpAppRpcHandlersOnSessionSwap(mcpAppRpcHandlers, newSession);
             if (client) newSession.rpcHandlerManager.registerHandler<CodexSteerRequest, CodexSteerResponse>('steer', steerHandler);
+            if (asyncQuestionHandler) newSession.rpcHandlerManager.registerHandler('codex-async-question', asyncQuestionHandler);
             if (predictionHandlers) {
                 newSession.rpcHandlerManager.registerHandler('composerPrediction', predictionHandlers.request);
                 newSession.rpcHandlerManager.registerHandler('composerPredictionCancel', predictionHandlers.cancel);
@@ -976,6 +979,42 @@ export async function runCodex(opts: {
     session.rpcHandlerManager.registerHandler<CodexSteerRequest, CodexSteerResponse>('steer', steerHandler);
 
     if (!applicationPolicy) {
+        asyncQuestionHandler = createCodexAsyncQuestionHandler({
+            async readQuestions(itemId) {
+                const threadId = client.threadId;
+                if (!threadId) return undefined;
+                const { thread } = await client.readThread({ threadId, includeTurns: true });
+                for (const turn of thread.turns ?? []) {
+                    const item = turn.items.find(item => item.id === itemId && item.type === 'agentMessage');
+                    if (item?.type === 'agentMessage') return getAsyncQuestions(item.delivery, item.questions);
+                }
+                return undefined;
+            },
+            readResponse: itemId => session.getMetadata()?.codexAsyncQuestionResponses?.[itemId],
+            updateResponse: (itemId, update) => session.updateMetadataAndAwait(meta => ({
+                ...meta, codexAsyncQuestionResponses: {
+                    ...meta.codexAsyncQuestionResponses,
+                    [itemId]: update(meta.codexAsyncQuestionResponses?.[itemId]),
+                },
+            })),
+            deliver: (text, clientMessageId) => deliverCodexAsyncQuestionAnswer({
+                activeTurnId: () => client.turnId,
+                steer: (text, turnId, clientMessageId) => steerHandler({ text, expectedTurnId: turnId, clientMessageId }),
+                async enqueue(text, clientMessageId) {
+                    session.sendSessionProtocolMessage(createEnvelope('user', { t: 'text', text }, { id: clientMessageId }));
+                    await session.flushOutboxAndAwait();
+                    messageQueue.push(text, {
+                        permissionMode: currentPermissionMode || 'default', model: currentModel,
+                        effort: currentEffort, fast: currentFastMode, appendSystemPrompt: currentAppendSystemPrompt,
+                    }, [], clientMessageId);
+                    void queuedMessageStatus.sync();
+                },
+            }, text, clientMessageId),
+        });
+        session.rpcHandlerManager.registerHandler<AsyncQuestionAction, AsyncQuestionResponse>('codex-async-question', asyncQuestionHandler);
+    }
+
+    if (!applicationPolicy) {
         predictionHandlers = createComposerPredictionHandlers({
             client,
             isBusy: () => thinking || messageQueue.size() > 0 || shouldExit,
@@ -1254,6 +1293,12 @@ export async function runCodex(opts: {
     let processorStartupComplete = false;
     try {
         await reconnectMetadataReady;
+        if (!applicationPolicy && Object.values(session.getMetadata()?.codexAsyncQuestionResponses ?? {}).some(response => response.status === 'sending')) {
+            await session.updateMetadataAndAwait(meta => {
+                const responses = recoverAsyncQuestionResponses(meta.codexAsyncQuestionResponses);
+                return responses === meta.codexAsyncQuestionResponses ? meta : { ...meta, codexAsyncQuestionResponses: responses };
+            });
+        }
         logger.debug('[codex]: client.connect begin');
         await client.connect();
         logger.debug('[codex]: client.connect done');

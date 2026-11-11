@@ -1448,6 +1448,15 @@ failedContinueTask: "继续未完成的任务",
     },
 
     agentInput: {
+        asyncQuestion: {
+            title: '问题', hint: '可以稍后回答，任务仍会继续。',
+            later: '稍后回答', expand: '展开问题', answered: '已回答', dismissed: '已跳过',
+            sending: '正在发送…', uncertain: '发送结果待确认',
+            uncertainHint: '回答可能已发送，请先检查对话，避免重复提交。',
+            unavailable: '请用新版 CLI 重新连接此会话后，在这里回答。',
+            error: '提交失败，已保留回答，可以重试。',
+        },
+
         prediction: {
             accept: '填入',
             acceptHint: 'Tab 填入',

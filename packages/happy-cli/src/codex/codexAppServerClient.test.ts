@@ -2928,6 +2928,8 @@ describe('CodexAppServerClient sandbox integration', () => {
                                     id: 'call-async-question',
                                     text: 'Which session should I inspect? I will keep investigating meanwhile.',
                                     phase: 'final_answer',
+                                    delivery: 'async',
+                                    questions: [{ title: 'Which session?', options: ['Current', 'Other'] }],
                                 },
                             },
                         });
@@ -2959,6 +2961,9 @@ describe('CodexAppServerClient sandbox integration', () => {
             return result;
         });
         await waitFor(() => events.some((event) => event.item_id === 'call-async-question'));
+        expect(events.find(event => event.item_id === 'call-async-question')).toMatchObject({
+            delivery: 'async', questions: [{ title: 'Which session?', options: ['Current', 'Other'] }],
+        });
         expect(settled).toBe(false);
         expect(client.turnId).toBe('turn-raw-2');
         expect(events.filter((event) => event.type === 'task_complete' || event.type === 'turn_aborted')).toEqual([]);

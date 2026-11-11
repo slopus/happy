@@ -115,7 +115,7 @@ export type McpToolCallItem = {
 
 export type ThreadItem =
     | { type: "userMessage"; id: string; content: InputItem[] }
-    | { type: "agentMessage"; id: string; text: string; phase?: string | null; memoryCitation?: unknown | null }
+    | { type: "agentMessage"; id: string; text: string; phase?: string | null; memoryCitation?: unknown | null; delivery?: string | null; questions?: unknown }
     | { type: "reasoning"; id: string; summary?: string[]; content?: string[] }
     | { type: "commandExecution"; id: string; command: string; cwd?: string; status?: string; aggregatedOutput?: string | null; exitCode?: number | null; durationMs?: number | null }
     | { type: "fileChange"; id: string; changes: unknown[]; status?: string }

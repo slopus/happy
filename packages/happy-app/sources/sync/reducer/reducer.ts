@@ -111,7 +111,7 @@
  */
 
 import { Message, ToolCall } from "../typesMessage";
-import { McpAppResultV1 } from '@slopus/happy-wire';
+import { AsyncQuestion, McpAppResultV1 } from '@slopus/happy-wire';
 import { AgentEvent, NormalizedMessage, UsageData } from "../typesRaw";
 import { createTracer, traceMessages, TracerState } from "./reducerTracer";
 import { AgentState, TodoItem, TodoItemsSchema } from "../storageTypes";
@@ -126,6 +126,7 @@ type ReducerMessage = {
     role: 'user' | 'agent';
     text: string | null;
     isThinking?: boolean;
+    asyncQuestion?: { id: string; questions: AsyncQuestion[] };
     event: AgentEvent | null;
     tool: ToolCall | null;
     meta?: MessageMeta;
@@ -842,6 +843,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         text: isThinking ? `*${c.thinking}*` : c.text,
                         isThinking,
                         ...(!isThinking && msg.streamKey && { streamKey: msg.streamKey }),
+                        ...(!isThinking && msg.asyncQuestion && { asyncQuestion: msg.asyncQuestion }),
                         tool: null,
                         event: null,
                         meta: msg.meta,
@@ -1315,6 +1317,7 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             kind: 'agent-text',
             text: reducerMsg.text,
             ...(reducerMsg.isThinking && { isThinking: true }),
+            ...(reducerMsg.asyncQuestion && { asyncQuestion: reducerMsg.asyncQuestion }),
             ...(reducerMsg.streamKey && { streamKey: reducerMsg.streamKey }),
             meta: reducerMsg.meta
         };

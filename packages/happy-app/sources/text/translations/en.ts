@@ -1358,6 +1358,15 @@ failedContinueTask: "Continue unfinished task",
     },
 
     agentInput: {
+        asyncQuestion: {
+            title: 'Question', hint: 'You can answer later. Work continues.',
+            later: 'Later', expand: 'Show question', answered: 'Answered', dismissed: 'Skipped',
+            sending: 'Sending…', uncertain: 'Check delivery',
+            uncertainHint: 'The answer may have been sent. Check the conversation before sending it again.',
+            unavailable: 'Reconnect this session with an updated CLI to answer here.',
+            error: 'Could not submit. Your answer is kept; try again.',
+        },
+
         prediction: {
             accept: 'Fill in',
             acceptHint: 'Tab to fill in',

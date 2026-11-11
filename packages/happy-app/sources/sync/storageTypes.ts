@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ApplicationSessionMetadataSchema, GoalBoardBindingSchema, GoalBoardSnapshotSchema, ARTIFACT_PROTOCOL } from "@slopus/happy-wire";
+import { ApplicationSessionMetadataSchema, GoalBoardBindingSchema, GoalBoardSnapshotSchema, ARTIFACT_PROTOCOL, asyncQuestionResponseSchema } from "@slopus/happy-wire";
 
 //
 // Agent states
@@ -9,6 +9,7 @@ export const MetadataSchema = z.object({
     application: ApplicationSessionMetadataSchema.optional(),
     goalBoard: GoalBoardBindingSchema.optional(),
     goalBoardSnapshot: GoalBoardSnapshotSchema.optional(),
+    codexAsyncQuestionResponses: z.record(z.string(), asyncQuestionResponseSchema).optional(),
     goalBoardTaskSessions: z.record(z.string().max(65536), z.string().max(256)).optional(),
     models: z.array(z.object({
         code: z.string(),
@@ -46,6 +47,7 @@ export const MetadataSchema = z.object({
         regenerateTitle: z.boolean().optional(),
         codexCredentialRecovery: z.boolean().optional(),
         codexSteer: z.boolean().optional(),
+        codexAsyncQuestions: z.boolean().optional(),
         composerPrediction: z.boolean().optional(),
         artifactLeases: z.union([z.literal(1),z.literal(ARTIFACT_PROTOCOL)]).optional(),
     }).optional(),

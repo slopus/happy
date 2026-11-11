@@ -4,6 +4,7 @@ import { ActivityIndicator, Image, View, Text, Pressable, Platform, TextInput } 
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
+import { AsyncQuestionCard } from "./AsyncQuestionCard";
 import { MarkdownView } from "./markdown/MarkdownView";
 import { AnnotatableMessage } from "./annotations/MessageAnnotations";
 import { t } from '@/text';
@@ -142,6 +143,7 @@ function RenderBlock(props: {
       return (
         <AgentTextBlock
           message={props.message}
+          metadata={props.metadata}
           sessionId={props.sessionId}
           forkTarget={props.agentForkTarget}
           onForkFromMessage={props.onForkFromMessage}
@@ -411,6 +413,7 @@ function UserMessageModeLabel(props: { messageId: string; label: string | null }
 
 function AgentTextBlock(props: {
   message: AgentTextMessage;
+  metadata: Metadata | null;
   sessionId?: string;
   forkTarget?: MessageForkTarget;
   onForkFromMessage?: (
@@ -484,9 +487,21 @@ function AgentTextBlock(props: {
         onMouseLeave: () => setIsHovered(false),
       } as any) : {})}
     >
-      <AnnotatableMessage sessionId={props.sessionId} messageId={props.message.id} enabled={!readOnly && !restrictedContent}>
+      {props.message.asyncQuestion && !restrictedContent ? <AsyncQuestionCard
+        key={props.message.asyncQuestion.id}
+        itemId={props.message.asyncQuestion.id}
+        questions={props.message.asyncQuestion.questions}
+        response={props.metadata?.codexAsyncQuestionResponses?.[props.message.asyncQuestion.id]}
+        readOnly={readOnly || !props.sessionId}
+        supported={props.metadata?.capabilities?.codexAsyncQuestions === true}
+        onAction={async action => {
+          if (readOnly || !props.sessionId) throw new Error('Read-only transcript');
+          const { sessionRespondAsyncQuestion } = await import('@/sync/ops');
+          return sessionRespondAsyncQuestion(props.sessionId, action);
+        }}
+      /> : <AnnotatableMessage sessionId={props.sessionId} messageId={props.message.id} enabled={!readOnly && !restrictedContent}>
         <MarkdownView readOnly={restrictedContent} markdown={props.message.text} onOptionPress={!readOnly && props.sessionId ? handleOptionPress : undefined} sessionId={props.sessionId} typography="chatMono" />
-      </AnnotatableMessage>
+      </AnnotatableMessage>}
       {showActions && (
         <View
           testID={`message-agent-actions-${props.message.id}`}

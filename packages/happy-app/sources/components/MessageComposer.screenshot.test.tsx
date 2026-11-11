@@ -36,6 +36,8 @@ vi.mock('./AgentInputAttachmentStrip', () => ({ AgentInputAttachmentStrip: 'Agen
 vi.mock('./MultiTextInput', async () => {
     const ReactModule = await import('react');
     return {
+        MULTI_TEXT_INPUT_FONT_SIZE: 16,
+        MULTI_TEXT_INPUT_LINE_HEIGHT: 22,
         MultiTextInput: ReactModule.forwardRef<any, any>((props, ref) => {
             ReactModule.useImperativeHandle(ref, () => ({
                 getText: () => '',
@@ -69,6 +71,7 @@ vi.mock('@/modal', () => ({ Modal: { alert: vi.fn() } }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('@/utils/desktopNavigationLayout', () => ({ supportsDesktopComposerModeSelector: () => false }));
 vi.mock('./SessionComposerModeSelector', () => ({ SessionComposerModeSelector: 'SessionComposerModeSelector' }));
+vi.mock('./LegacySessionComposerModeSelector', () => ({ SessionComposerModeSelector: 'SessionComposerModeSelector' }));
 vi.mock('./SessionComposerPermissionSelector', () => ({ SessionComposerPermissionSelector: 'SessionComposerPermissionSelector' }));
 vi.mock('./SessionComposerDirectorySelector', () => ({ SessionComposerDirectorySelector: 'SessionComposerDirectorySelector' }));
 vi.mock('./composerPrimaryAction', () => ({ resolveComposerPrimaryAction: () => 'send' }));

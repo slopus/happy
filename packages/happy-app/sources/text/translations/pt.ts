@@ -1349,6 +1349,20 @@ failedContinueTask: "Continuar tarefa pendente",
     },
 
     agentInput: {
+        asyncQuestion: {
+            title: 'Pergunta',
+            hint: 'Pode responder mais tarde. O trabalho continua.',
+            later: 'Mais tarde',
+            expand: 'Mostrar pergunta',
+            answered: 'Respondida',
+            dismissed: 'Ignorada',
+            sending: 'A enviar…',
+            uncertain: 'Verificar envio',
+            uncertainHint: 'A resposta pode já ter sido enviada. Verifique a conversa antes de a enviar novamente.',
+            unavailable: 'Atualize a CLI e volte a ligar esta sessão para responder aqui.',
+            error: 'Não foi possível enviar. A resposta foi mantida; tente novamente.',
+        },
+
         prediction: {
             accept: 'Preencher',
             acceptHint: 'Tab para preencher',

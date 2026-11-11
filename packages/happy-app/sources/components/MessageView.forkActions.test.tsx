@@ -303,3 +303,15 @@ describe('MessageView fork action feedback', () => {
         act(() => renderer.unmount());
     });
 });
+
+
+describe('native async question rendering', () => {
+    it('shows one structured card instead of repeating the question as Markdown', () => {
+        const message = { ...agentMessage, asyncQuestion: { id: 'question-item', questions: [{ title: 'Screenshots?', options: ['Yes', 'No'] }] } };
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<MessageView message={message} metadata={{ path: '/project', host: 'machine', capabilities: { codexAsyncQuestions: true } }} sessionId="session" />); });
+        expect(renderer.root.findAllByType('MarkdownView')).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'async-question-card' }).filter((node: any) => typeof node.type === 'string')).toHaveLength(1);
+        act(() => renderer.unmount());
+    });
+});

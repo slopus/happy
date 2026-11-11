@@ -1350,6 +1350,20 @@ failedContinueTask: "Continua la tasca pendent",
     },
 
     agentInput: {
+        asyncQuestion: {
+            title: 'Pregunta',
+            hint: 'Pots respondre més tard. La feina continua.',
+            later: 'Més tard',
+            expand: 'Mostra la pregunta',
+            answered: 'Resposta enviada',
+            dismissed: 'Omesa',
+            sending: 'Enviant…',
+            uncertain: 'Comprova l’enviament',
+            uncertainHint: 'És possible que la resposta ja s’hagi enviat. Revisa la conversa abans de tornar-la a enviar.',
+            unavailable: 'Actualitza la CLI i torna a connectar aquesta sessió per respondre aquí.',
+            error: 'No s’ha pogut enviar. Es conserva la resposta; torna-ho a provar.',
+        },
+
         prediction: {
             accept: 'Insereix',
             acceptHint: 'Tab per inserir',

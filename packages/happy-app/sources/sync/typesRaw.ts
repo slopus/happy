@@ -6,6 +6,9 @@ import {
     sessionToolCallEndEventSchema,
     sessionToolCallStartEventSchema,
     interactivePreviewEventSchema,
+    asyncQuestionsSchema,
+    getAsyncQuestions,
+    type AsyncQuestion,
 } from '@slopus/happy-wire';
 import { MessageMetaSchema, MessageMeta } from './typesMessageMeta';
 
@@ -48,6 +51,8 @@ const sessionTextEventSchema = z.object({
     t: z.literal('text'),
     text: z.string(),
     thinking: z.boolean().optional(),
+    delivery: z.literal('async').optional().catch(undefined),
+    questions: asyncQuestionsSchema.optional().catch(undefined),
 });
 
 const sessionServiceMessageEventSchema = z.object({
@@ -586,6 +591,7 @@ export type NormalizedMessage = ({
      */
     claudeUuid?: string,
     codexItemId?: string,
+    asyncQuestion?: { id: string; questions: AsyncQuestion[] },
     /** Display-only correlation with transient root-agent text; never a cursor. */
     streamKey?: { turnId: string; itemId?: string },
 };
@@ -725,6 +731,8 @@ function normalizeSessionEnvelope(
             meta,
             claudeUuid: envelope.claudeUuid,
             codexItemId: envelope.codexItemId,
+            ...(!isSidechain && !envelope.ev.thinking && envelope.codexItemId && getAsyncQuestions(envelope.ev.delivery, envelope.ev.questions)
+                ? { asyncQuestion: { id: envelope.codexItemId, questions: envelope.ev.questions! } } : {}),
             ...(!isSidechain && !envelope.ev.thinking && envelope.turn && envelope.codexItemId
                 ? { streamKey: { turnId: envelope.turn, itemId: envelope.codexItemId } } : {}),
         } satisfies NormalizedMessage;

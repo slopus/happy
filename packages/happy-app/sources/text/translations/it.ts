@@ -1348,6 +1348,20 @@ failedContinueTask: "Continua il lavoro in sospeso",
     },
 
     agentInput: {
+        asyncQuestion: {
+            title: 'Domanda',
+            hint: 'Puoi rispondere più tardi. Il lavoro continua.',
+            later: 'Più tardi',
+            expand: 'Mostra domanda',
+            answered: 'Risposta inviata',
+            dismissed: 'Saltata',
+            sending: 'Invio…',
+            uncertain: 'Verifica invio',
+            uncertainHint: 'La risposta potrebbe essere già stata inviata. Controlla la conversazione prima di inviarla di nuovo.',
+            unavailable: 'Aggiorna la CLI e riconnetti questa sessione per rispondere qui.',
+            error: 'Invio non riuscito. La risposta è conservata; riprova.',
+        },
+
         prediction: {
             accept: 'Inserisci',
             acceptHint: 'Tab per inserire',

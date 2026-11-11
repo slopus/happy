@@ -1,5 +1,5 @@
 import { AgentEvent } from "./typesRaw";
-import { McpAppPresentationV1, McpAppResultV1 } from '@slopus/happy-wire';
+import { AsyncQuestion, McpAppPresentationV1, McpAppResultV1 } from '@slopus/happy-wire';
 import { MessageMeta } from "./typesMessageMeta";
 
 export type ToolCall = {
@@ -69,6 +69,7 @@ export type AgentTextMessage = {
     createdAt: number;
     text: string;
     isThinking?: boolean;
+    asyncQuestion?: { id: string; questions: AsyncQuestion[] };
     /** Root provider identity used only to reconcile transient text previews. */
     streamKey?: { turnId: string; itemId?: string };
     meta?: MessageMeta;

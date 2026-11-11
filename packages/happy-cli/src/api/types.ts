@@ -1,6 +1,6 @@
 import { ArtifactChangedSchema, ARTIFACT_PROTOCOL } from '@slopus/happy-wire';
 import { z } from 'zod'
-import type { GoalBoardBinding, GoalBoardSnapshot, Update, UpdateMachineBody, SessionStreamEnvelope } from '@slopus/happy-wire';
+import type { AsyncQuestionResponse, GoalBoardBinding, GoalBoardSnapshot, Update, UpdateMachineBody, SessionStreamEnvelope } from '@slopus/happy-wire';
 import { UsageSchema } from '@/claude/types'
 import type { SandboxConfig } from '@/persistence'
 
@@ -364,6 +364,7 @@ export const MessageContentSchema = z.union([UserMessageSchema, AgentMessageSche
 export type MessageContent = z.infer<typeof MessageContentSchema>
 
 export type Metadata = {
+  codexAsyncQuestionResponses?: Record<string, AsyncQuestionResponse>;
   goalBoard?: GoalBoardBinding;
   goalBoardSnapshot?: GoalBoardSnapshot;
   goalBoardTaskSessions?: Record<string, string>;
@@ -392,6 +393,7 @@ export type Metadata = {
     codexCredentialRecovery?: boolean
     artifactLeases?: 1 | typeof ARTIFACT_PROTOCOL
     codexSteer?: boolean
+    codexAsyncQuestions?: boolean
     composerPrediction?: boolean
   },
   machineId?: string,

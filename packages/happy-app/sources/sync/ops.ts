@@ -1,3 +1,4 @@
+import { asyncQuestionResponseSchema, type AsyncQuestionAction, type AsyncQuestionResponse } from '@slopus/happy-wire';
 /**
  * Session operations for remote procedure calls
  * Provides strictly typed functions for all session-related RPC operations
@@ -1211,4 +1212,10 @@ export async function sessionWorkspaceWriteFile(sessionId: string, path: string,
 export async function sessionWorkspaceListDirectory(sessionId: string, path: string): Promise<SessionListDirectoryResponse> {
     try { return await apiSocket.sessionRPC(sessionId, 'workspaceListDirectory', { path }); }
     catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) }; }
+}
+
+/** Answers use the execution authority so multiple devices share one receipt. */
+export async function sessionRespondAsyncQuestion(sessionId: string, request: AsyncQuestionAction): Promise<AsyncQuestionResponse> {
+    const result = await apiSocket.sessionRPC<AsyncQuestionResponse, AsyncQuestionAction>(sessionId, 'codex-async-question', request);
+    return asyncQuestionResponseSchema.parse(result);
 }

@@ -1093,3 +1093,23 @@ describe('useGroupedMessages', () => {
         expect(items[0].messages.map((message) => message.id)).toEqual(['tool-only']);
     });
 });
+
+
+describe('native asynchronous question visibility', () => {
+    it.each([true, false])('keeps questions out of collapsed work when grouping is %s', enabled => {
+        const question: Message = { kind: 'agent-text', id: 'question', localId: null, createdAt: 3, text: '',
+            asyncQuestion: { id: 'call-question', questions: [{ title: 'Include screenshots?', options: ['Yes', 'No'] }] } };
+        const messages: Message[] = [
+            { kind: 'agent-text', id: 'final', localId: null, createdAt: 5, text: 'Done' },
+            toolMessage('later-tool', 4), question, toolMessage('earlier-tool', 2),
+            { kind: 'user-text', id: 'user', localId: null, createdAt: 1, text: 'Build it' },
+        ];
+        for (const currentTurnActive of [true, false]) {
+            const items = groupMessagesForDisplay(messages, enabled, { currentTurnActive });
+            expect(items).toContainEqual({ type: 'message', id: 'question', message: question });
+            for (const item of items) {
+                if (item.type === 'agent-work-group') expect(item.messages.some(message => message.id === 'question')).toBe(false);
+            }
+        }
+    });
+});

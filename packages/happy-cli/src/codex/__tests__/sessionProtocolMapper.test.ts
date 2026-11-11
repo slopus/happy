@@ -1347,3 +1347,33 @@ describe('mapCodexThreadToSessionEnvelopes', () => {
         });
     });
 });
+
+
+describe('native async question presentation', () => {
+    const questions = [{ title: 'Include screenshots?', options: ['Yes', 'No'] }];
+    const text = 'Include screenshots?\n- Yes\n- No';
+    it('gives live delivery and restored history the same stable identity and rich payload', () => {
+        const live = mapCodexMcpMessageToSessionEnvelopes({ type: 'agent_message', item_id: 'question', message: text,
+            delivery: 'async', questions }, { currentTurnId: 'turn' }).envelopes;
+        const replay = mapCodexThreadToSessionEnvelopes({ turns: [{ id: 'turn', status: 'completed',
+            items: [{ type: 'agentMessage', id: 'question', text, delivery: 'async', questions }] }] } as any);
+        const restored = replay.find(item => item.ev.t === 'text')!;
+        expect(live[0].ev).toEqual({ t: 'text', text, delivery: 'async', questions });
+        expect(restored.ev).toEqual(live[0].ev);
+        expect(restored.id).toBe(live[0].id);
+        expect(restored.codexItemId).toBe('question');
+    });
+    it('restores complete async questions while leaving other active-turn text to streaming', () => {
+        const replay = mapCodexThreadToSessionEnvelopes({ turns: [{ id: 'turn', status: 'inProgress', items: [
+            { type: 'agentMessage', id: 'question', text, delivery: 'async', questions },
+            { type: 'agentMessage', id: 'streaming', text: 'Still working' },
+        ] }] } as any, { activeTurnsUserOnly: true });
+        expect(replay.filter(item => item.ev.t === 'text').map(item => item.codexItemId)).toEqual(['question']);
+        expect(replay.some(item => item.ev.t === 'turn-end')).toBe(false);
+    });
+    it('keeps malformed or ordinary message bodies as plain text', () => {
+        const mapped = mapCodexMcpMessageToSessionEnvelopes({ type: 'agent_message', item_id: 'bad', message: text,
+            delivery: 'async', questions: [{ title: '' }] }, { currentTurnId: 'turn' }).envelopes;
+        expect(mapped[0].ev).toEqual({ t: 'text', text });
+    });
+});

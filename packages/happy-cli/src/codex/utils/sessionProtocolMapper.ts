@@ -3,7 +3,7 @@ import { buildCodexImageAttachmentNotice } from '../codexImageInput';
 import { createId } from '@paralleldrive/cuid2';
 import type { ReasoningOutput } from './reasoningProcessor';
 import type { DiffToolCall, DiffToolResult } from './diffProcessor';
-import { createEnvelope, summarizeToolFailureOutput, toolFailureDetail, type CreateEnvelopeOptions, type SessionEnvelope } from '@slopus/happy-wire';
+import { createEnvelope, getAsyncQuestions, summarizeToolFailureOutput, toolFailureDetail, type CreateEnvelopeOptions, type SessionEnvelope } from '@slopus/happy-wire';
 import type { Thread, ThreadItem, ThreadTurn } from '../codexAppServerTypes';
 import { hashObject } from '@/utils/deterministicJson';
 import {
@@ -604,7 +604,8 @@ export function mapCodexThreadToSessionEnvelopes(
         }));
 
         for (const item of turn.items ?? []) {
-            if (opts?.activeTurnsUserOnly && !isTerminalCodexTurn(turn) && item.type !== 'userMessage') {
+            if (opts?.activeTurnsUserOnly && !isTerminalCodexTurn(turn) && item.type !== 'userMessage'
+                && !(item.type === 'agentMessage' && getAsyncQuestions(item.delivery, item.questions))) {
                 continue;
             }
             if (
@@ -644,9 +645,10 @@ export function mapCodexThreadToSessionEnvelopes(
                 }
                 case 'agentMessage': {
                     const text = typeof item.text === 'string' ? item.text : '';
-                    if (text.length > 0) {
+                    const questions = getAsyncQuestions(item.delivery, item.questions);
+                    if (text.length > 0 || questions) {
                         const textIdentity = { turn: turn.id, role: 'agent' as const, text };
-                        envelopes.push(createEnvelope('agent', { t: 'text', text }, {
+                        envelopes.push(createEnvelope('agent', { t: 'text', text, ...(questions ? { delivery: 'async' as const, questions } : {}) }, {
                             id: stableTextEnvelopeId(
                                 textIdentity,
                                 nextTextEnvelopeOccurrence(textEnvelopeOccurrences, textIdentity),
@@ -1115,6 +1117,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
         }
 
         const text = message.message;
+        const questions = getAsyncQuestions(message.delivery, message.questions);
         const itemId = typeof message.item_id === 'string' ? message.item_id : undefined;
         const textIdentity = { ...opts, role: 'agent' as const, text };
         const envelopeId = stableTextEnvelopeId(
@@ -1123,7 +1126,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
         );
         const envelopes: SessionEnvelope[] = [];
         maybeEmitSubagentStart(subagent, opts, startedSubagents, activeSubagents, providerSubagentToSessionSubagent, envelopes);
-        envelopes.push(createEnvelope('agent', { t: 'text', text }, {
+        envelopes.push(createEnvelope('agent', { t: 'text', text, ...(questions ? { delivery: 'async' as const, questions } : {}) }, {
             ...opts,
             ...(envelopeId ? { id: envelopeId } : {}),
             ...(itemId ? { codexItemId: itemId } : {}),

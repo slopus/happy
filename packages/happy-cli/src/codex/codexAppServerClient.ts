@@ -991,6 +991,8 @@ export class CodexAppServerClient {
                     message: text,
                     item_id: item.id,
                     phase: item.phase,
+                    delivery: item.delivery,
+                    questions: item.questions,
                     ...(turnId ? { turn_id: turnId } : {}),
                     ...eventScope,
                 });

@@ -1351,6 +1351,20 @@ failedContinueTask: "未完了の作業を続ける",
     },
 
     agentInput: {
+        asyncQuestion: {
+            title: '質問',
+            hint: '後で回答できます。作業は続行されます。',
+            later: '後で回答',
+            expand: '質問を表示',
+            answered: '回答済み',
+            dismissed: 'スキップ済み',
+            sending: '送信中…',
+            uncertain: '送信結果を確認',
+            uncertainHint: '回答は送信済みの可能性があります。再送信する前に会話を確認してください。',
+            unavailable: 'CLI を更新してこのセッションに再接続すると、ここで回答できます。',
+            error: '送信できませんでした。回答は保持されています。もう一度お試しください。',
+        },
+
         prediction: {
             accept: '入力欄に反映',
             acceptHint: 'Tab で入力',
