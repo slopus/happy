@@ -3,10 +3,12 @@
 pub mod access_keys;
 pub mod account;
 pub mod artifacts;
+pub mod kv;
 pub mod auth;
 pub mod machines;
 pub mod misc;
 pub mod sessions;
+pub mod social;
 pub mod v3;
 
 use crate::config::Config;
@@ -21,6 +23,8 @@ pub fn register(r: &mut Router, c: &Config) {
     machines::register(r);
     artifacts::register(r);
     access_keys::register(r);
+    kv::register(r);
+    social::register(r);
 }
 
 /// Prisma's `new Date(x)` accepts only JS-representable instants (±8.64e15 ms);

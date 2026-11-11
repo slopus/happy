@@ -95,6 +95,103 @@ async function artifacts(t, sql, H, H2, r) {
     await r('artifact delete again', 'DELETE', U, { headers: H });
 }
 
+async function kv(t, H, H2, r) {
+    const M = (mutations, headers = H) => ({ headers, body: { mutations } });
+    await t.req('kv no auth', 'GET', '/v1/kv');
+    await t.req('kv get missing', 'GET', '/v1/kv/a', { headers: H });
+    await t.req('kv list empty', 'GET', '/v1/kv', { headers: H });
+    await t.req('kv mutate empty', 'POST', '/v1/kv', M([]));
+    await t.req('kv mutate missing version', 'POST', '/v1/kv', M([{ key: 'a', value: 'eA==' }]));
+    await r('kv create', 'POST', '/v1/kv', M([{ key: 'a', value: 'dmFsdWUtYQ==', version: -1 }, { key: 'b', value: '!!Yg', version: -1 }, { key: 'pre%x', value: 'cA==', version: -1 }, { key: 'pre_y', value: 'cQ==', version: -1 }]));
+    await r('kv create empty value', 'POST', '/v1/kv', M([{ key: 'e', value: '', version: -1 }]));
+    await r('kv create null value', 'POST', '/v1/kv', M([{ key: 'n', value: null, version: -1 }]));
+    await r('kv create existing', 'POST', '/v1/kv', M([{ key: 'a', value: 'eA==', version: -1 }, { key: 'zz', value: 'eA==', version: 3 }]));
+    await r('kv float version', 'POST', '/v1/kv', M([{ key: 'f', value: 'eA==', version: 0.5 }]));
+    await r('kv duplicate new keys', 'POST', '/v1/kv', M([{ key: 'd', value: 'eA==', version: -1 }, { key: 'd', value: 'eQ==', version: -1 }]));
+    await r('kv update bad base64', 'POST', '/v1/kv', M([{ key: 'a', value: 'ab', version: 0 }]));
+    await r('kv update and delete', 'POST', '/v1/kv', M([{ key: 'a', value: 'bmV3', version: 0 }, { key: 'b', value: null, version: 0 }]));
+    await r('kv stale', 'POST', '/v1/kv', M([{ key: 'a', value: 'eA==', version: 0 }, { key: 'b', value: 'eA==', version: 1 }]));
+    await r('kv recreate deleted', 'POST', '/v1/kv', M([{ key: 'b', value: 'Yg==', version: 1 }]));
+    await t.req('kv get', 'GET', '/v1/kv/a', { headers: H });
+    await t.req('kv get empty bytes', 'GET', '/v1/kv/b', { headers: H });
+    await t.req('kv get null', 'GET', '/v1/kv/n', { headers: H });
+    await t.req('kv get encoded key', 'GET', '/v1/kv/pre%25x', { headers: H });
+    await t.req('kv get other user', 'GET', '/v1/kv/a', { headers: H2 });
+    await t.req('kv list', 'GET', '/v1/kv', { headers: H });
+    await t.req('kv list prefix', 'GET', '/v1/kv?prefix=pre', { headers: H });
+    await t.req('kv list prefix wildcard', 'GET', '/v1/kv?prefix=pre%25', { headers: H });
+    await t.req('kv list prefix underscore', 'GET', '/v1/kv?prefix=pre_', { headers: H });
+    await t.req('kv list empty prefix', 'GET', '/v1/kv?prefix=&limit=2', { headers: H });
+    await t.req('kv list limit 0', 'GET', '/v1/kv?limit=0', { headers: H });
+    await t.req('kv list limit x', 'GET', '/v1/kv?limit=x', { headers: H });
+    await t.req('kv list limit 1001', 'GET', '/v1/kv?limit=1001', { headers: H });
+    await t.req('kv bulk', 'POST', '/v1/kv/bulk', { headers: H, body: { keys: ['a', 'b', 'n', 'zz', 'pre_y'] } });
+    await t.req('kv bulk empty', 'POST', '/v1/kv/bulk', { headers: H, body: { keys: [] } });
+    await t.req('kv bulk not strings', 'POST', '/v1/kv/bulk', { headers: H, body: { keys: [1] } });
+}
+
+async function social(t, sql, H, H2, H3, ids, r) {
+    const [u1, u2, u3] = ids;
+    await sql(`UPDATE "Account" SET "username" = 'alice', "firstName" = 'Alice', "lastName" = 'A', "avatar" = '{"path":"public/users/a.png","width":10,"height":20,"thumbhash":"th","extra":1}' WHERE "id" = '${u1}'`);
+    await sql(`UPDATE "Account" SET "username" = 'Alicia_2', "firstName" = '' WHERE "id" = '${u2}'`);
+    await sql(`INSERT INTO "GithubUser" ("id","profile","updatedAt") VALUES ('gh-3','{"login":"octo","bio":"hi","name":"Octo"}',now())`);
+    await sql(`UPDATE "Account" SET "githubUserId" = 'gh-3', "avatar" = '{"path":"x/y.jpg"}' WHERE "id" = '${u3}'`);
+
+    await t.req('user no auth', 'GET', '/v1/user/' + u2);
+    await t.req('user get', 'GET', '/v1/user/' + u2, { headers: H });
+    await t.req('user get github fallback', 'GET', '/v1/user/' + u3, { headers: H });
+    await t.req('user get self', 'GET', '/v1/user/' + u1, { headers: H });
+    await t.req('user get unknown', 'GET', '/v1/user/nope', { headers: H });
+    await t.req('user search missing query', 'GET', '/v1/user/search', { headers: H });
+    await t.req('user search', 'GET', '/v1/user/search?query=ali', { headers: H });
+    await t.req('user search case', 'GET', '/v1/user/search?query=ALICIA', { headers: H });
+    await t.req('user search wildcard', 'GET', '/v1/user/search?query=%25', { headers: H });
+    await t.req('user search underscore', 'GET', '/v1/user/search?query=alicia_', { headers: H });
+    await t.req('user search empty', 'GET', '/v1/user/search?query=', { headers: H });
+
+    const add = (name, h, uid) => r(name, 'POST', '/v1/friends/add', { headers: h, body: { uid } });
+    const rem = (name, h, uid) => r(name, 'POST', '/v1/friends/remove', { headers: h, body: { uid } });
+    await t.req('friends add missing uid', 'POST', '/v1/friends/add', { headers: H, body: {} });
+    await add('friends add self', H, u1);
+    await add('friends add unknown', H, 'nope');
+    await rem('friends remove unknown', H, 'nope');
+    await add('friends u1 requests u2', H, u2);
+    await add('friends u1 requests u2 again', H, u2);
+    await t.req('friends list u2 pending', 'GET', '/v1/friends', { headers: H2 });
+    await add('friends u2 accepts', H2, u1);
+    await t.req('friends list u1', 'GET', '/v1/friends', { headers: H });
+    await rem('friends u1 unfriends', H, u2);
+    await rem('friends u2 rejects', H2, u1);
+    await rem('friends u1 withdraws', H, u2);
+    await add('friends u1 requests rejected u2', H, u2);
+    await add('friends u3 requests u1', H3, u1);
+    await rem('friends remove self', H, u1);
+    await t.req('friends list u1 end', 'GET', '/v1/friends', { headers: H });
+    await t.req('friends list u3', 'GET', '/v1/friends', { headers: H3 });
+    await t.req('user get after', 'GET', '/v1/user/' + u2, { headers: H });
+
+    await t.req('feed no auth', 'GET', '/v1/feed');
+    await t.req('feed u1', 'GET', '/v1/feed', { headers: H });
+    await t.req('feed u2', 'GET', '/v1/feed', { headers: H2 });
+    await t.req('feed limit 1', 'GET', '/v1/feed?limit=1', { headers: H });
+    await t.req('feed before', 'GET', '/v1/feed?before=0-2', { headers: H });
+    await t.req('feed after', 'GET', '/v1/feed?after=0-1', { headers: H });
+    await t.req('feed before and after', 'GET', '/v1/feed?before=0-1&after=0-1', { headers: H });
+    await t.req('feed parseInt prefix', 'GET', '/v1/feed?before=0-%203x', { headers: H });
+    await t.req('feed negative', 'GET', '/v1/feed?after=0--5', { headers: H });
+    await t.req('feed bad cursor', 'GET', '/v1/feed?before=x', { headers: H });
+    await t.req('feed NaN cursor', 'GET', '/v1/feed?before=0-abc', { headers: H });
+    await t.req('feed empty cursor', 'GET', '/v1/feed?after=0-', { headers: H });
+    await t.req('feed huge cursor', 'GET', '/v1/feed?before=0-99999999999999999999', { headers: H });
+    await t.req('feed big cursor', 'GET', '/v1/feed?before=0-9007199254740993', { headers: H });
+    await t.req('feed limit 0', 'GET', '/v1/feed?limit=0', { headers: H });
+    await t.req('feed limit 201', 'GET', '/v1/feed?limit=201', { headers: H });
+    await sql(`INSERT INTO "UserFeedItem" ("id","userId","counter","repeatKey","body","updatedAt") VALUES ('cfeedtext00000000000000001','${u1}',100,NULL,'{"text":"hello","kind":"text","x":1}',now())`);
+    await t.req('feed text item', 'GET', '/v1/feed?limit=2', { headers: H });
+    await sql(`INSERT INTO "UserFeedItem" ("id","userId","counter","repeatKey","body","updatedAt") VALUES ('cfeedbad000000000000000001','${u1}',101,NULL,'{"kind":"other"}',now())`);
+    await t.req('feed invalid body', 'GET', '/v1/feed', { headers: H });
+}
+
 export async function scenario(t, { sql }) {
     const token = await login(t, 1);
     const token2 = await login(t, 2, 'auth user2');
@@ -103,20 +200,31 @@ export async function scenario(t, { sql }) {
     const s1 = await t.req('create s1', 'POST', '/v1/sessions', { headers: H, body: { tag: 't1', metadata: 'meta-1' } });
     const sid = s1.session.id;
 
+    const token3 = await login(t, 3, 'auth user3');
+    const H3 = { authorization: 'Bearer ' + token3 };
+    const sub = (tok) => JSON.parse(Buffer.from(tok.split('.')[1], 'base64url').toString()).sub;
+    const ids = [token, token2, token3].map(sub);
+
     const ui = await connected(t, 'ui', { token, clientType: 'user-scoped' });
     const ui2 = await connected(t, 'ui2', { token: token2, clientType: 'user-scoped' });
+    const ui3 = await connected(t, 'ui3', { token: token3, clientType: 'user-scoped' });
     const daemon = await connected(t, 'daemon', { token, clientType: 'machine-scoped', machineId: 'mach-a' });
     const obs = observed(t, [ui, ui2, daemon]);
 
     await machines(t, sql, H, H2, obs);
     await accessKeys(t, sql, H, H2, sid, obs);
     await artifacts(t, sql, H, H2, obs);
+    await kv(t, H, H2, obs);
+    await social(t, sql, H, H2, H3, ids, observed(t, [ui, ui2, ui3]));
 
     await dumpDb(t, sql, 'before deletes', [
         ['machines', `SELECT "id","metadata","metadataVersion","daemonState","daemonStateVersion",encode("dataEncryptionKey",'base64') AS dek,"seq","active" FROM "Machine" ORDER BY "id"`],
         ['access keys', `SELECT "machineId","data","dataVersion","createdAt" <= "updatedAt" AS ordered FROM "AccessKey" ORDER BY "machineId"`],
         ['artifacts', `SELECT "id",encode("header",'base64') AS h,"headerVersion",encode("body",'base64') AS b,"bodyVersion",encode("dataEncryptionKey",'base64') AS k,"seq" FROM "Artifact" ORDER BY "id"`],
-        ['accounts', `SELECT "publicKey","seq" FROM "Account" ORDER BY "publicKey"`],
+        ['accounts', `SELECT "publicKey","seq","feedSeq" FROM "Account" ORDER BY "publicKey"`],
+        ['kv', `SELECT "key",encode("value",'base64') AS v,"version" FROM "UserKVStore" ORDER BY "key"`],
+        ['relationships', `SELECT a."publicKey" AS "from", b."publicKey" AS "to", r."status", r."acceptedAt" IS NOT NULL AS accepted, r."lastNotifiedAt" IS NOT NULL AS notified FROM "UserRelationship" r JOIN "Account" a ON a."id" = r."fromUserId" JOIN "Account" b ON b."id" = r."toUserId" ORDER BY 1, 2`],
+        ['feed', `SELECT a."publicKey", f."counter", f."repeatKey", f."body" FROM "UserFeedItem" f JOIN "Account" a ON a."id" = f."userId" ORDER BY 1, 2`],
     ]);
     await obs('machine delete', 'DELETE', '/v1/machines/mach-a', { headers: H });
     await t.req('machine get after delete', 'GET', '/v1/machines/mach-a', { headers: H });
@@ -126,5 +234,5 @@ export async function scenario(t, { sql }) {
         ['access keys', `SELECT "machineId","data" FROM "AccessKey" ORDER BY "machineId"`],
         ['accounts', `SELECT "publicKey","seq" FROM "Account" ORDER BY "publicKey"`],
     ]);
-    for (const c of [ui, ui2, daemon]) c.close();
+    for (const c of [ui, ui2, ui3, daemon]) c.close();
 }

@@ -120,6 +120,35 @@ reproduces. Do not fix them without changing both servers.
 35. `usage-report` without `sessionId` always answers `Failed to save usage report`:
     the Prisma compound-unique `where` rejects a null component.
 
+
+## Phase 3 routes
+
+36. **Prisma `startsWith` does not escape wildcards.** `GET /v1/kv?prefix=` is
+    `LIKE prefix || '%'` and `GET /v1/user/search?query=` is `ILIKE query || '%'`:
+    `%` and `_` in the input match anything (`query=%` lists every user with a
+    username). An empty KV prefix is no filter.
+37. **KV base64 depends on the path.** A new key (`version: -1`) is decoded with
+    Node's lenient `Buffer.from(…, 'base64')`; an update uses privacy-kit's decoder,
+    which throws on short or malformed input (→ 500 `Failed to mutate values`). An
+    empty-string value is stored as `null` (deleted) in both paths. `version` is any
+    JS number, so `0.5` or `1e300` simply mismatches (409). Two creates of the same
+    key in one batch pass the pre-check and fail on the unique index (500).
+38. **Feed cursors use `parseInt`.** `0-%203x` reads as 3, `0--5` as -5; `0-`,
+    `0-abc` and values outside the int64 range make Prisma throw (500); anything
+    not starting with `0-` is `Invalid cursor format` (500). `before` wins over
+    `after`. A stored feed body that fails the response schema is a 500.
+39. The `new-feed-post` update carries the body Prisma read back from jsonb
+    (`{"uid":…,"kind":…}`), while `GET /v1/feed` re-serializes it through the zod
+    schema (`{"kind":…,"uid":…}`).
+40. Friend requests notify the receiver at most once per 24 h per direction
+    (`lastNotifiedAt`), never for a `rejected` relationship; adding yourself or an
+    unknown user answers 200 `{"user":null}`, not 404. `GET /v1/friends` has no
+    `ORDER BY` (table order).
+41. `POST /v1/machines` answers without `seq` (both "found" and "created"), the GET
+    routes include it; it emits `new-machine` to user-scoped clients and
+    `update-machine` to the machine and user-scoped clients, each with its own seq.
+    `DELETE /v1/machines/:id` emits `delete-machine` after commit, not awaited.
+
 (Continued as more are found.)
 
 ## Known deviations

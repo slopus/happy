@@ -109,7 +109,7 @@ export function normalizer() {
         if (!ids.has(s)) ids.set(s, `<id${ids.size + 1}>`);
         return ids.get(s);
     };
-    const text = (t) => String(t).replace(SID, '"sid":"<sid>"').replace(JSID, '\\"sid\\":\\"<sid>\\"').replace(EIOSID, '$1<sid>').replace(RKEY, '"id":"<rkey>"').replace(JWT, '<jwt>').replace(ISO, '<iso>').replace(CUID, idOf).replace(MS, '<ts>');
+    const text = (t) => String(t).replace(SID, '"sid":"<sid>"').replace(JSID, '\\"sid\\":\\"<sid>\\"').replace(EIOSID, '$1<sid>').replace(RKEY, '"id":"<rkey>"').replace(JWT, '<jwt>').replace(ISO, '<iso>').replace(CUID, idOf).replace(MS, '<ts>').replace(/127\.0\.0\.1:320[12]|localhost:320[12]/g, '<host>');
     return (entry) => {
         const e = { name: entry.name, status: entry.status, headers: entry.headers };
         e.body = entry.note ? text(JSON.stringify(entry.json)) : text(entry.text ?? '');
