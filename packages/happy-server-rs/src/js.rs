@@ -87,7 +87,7 @@ pub fn as_f64(v: &Value) -> Option<f64> {
     }
 }
 
-fn is_js_whitespace(c: char) -> bool {
+pub fn is_js_whitespace(c: char) -> bool {
     matches!(
         c,
         '\u{9}' | '\u{a}' | '\u{b}' | '\u{c}' | '\u{d}' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'

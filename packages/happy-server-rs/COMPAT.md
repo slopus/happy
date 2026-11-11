@@ -160,45 +160,51 @@ Transport: Engine.IO v4 at path `/v1/updates/` (trailing slash required; `/v1/up
 a Fastify 404), `websocket` + `polling` with upgrade, `pingInterval 15000`, `pingTimeout 45000`,
 `maxPayload 8388608`, `connectTimeout 20000`, CORS `*` with credentials, EIO≠4 → 400
 `{"code":5,"message":"Unsupported protocol version"}`. Only the default namespace.
+Engine.IO 6.6 and Socket.IO 4.8 server semantics are reimplemented in `engine.rs`
+(transports, upgrade, heartbeat, JSONP polling, compression, raw handshake aborts),
+`socket.rs` (parser), `sio.rs` (namespace/socket lifecycle) and `handlers.rs`/`rpc.rs`.
+Covered by `compat/phase2.mjs` and a socket.io-client 4.8 run (websocket-only and
+polling→upgrade). EIO3 and other namespaces are refused exactly as the TS server does.
 
-- [ ] Engine.IO handshake (`0{sid,upgrades,pingInterval,pingTimeout,maxPayload}`), heartbeat, close
-- [ ] Polling transport + websocket upgrade (`2probe`/`3probe`/`5`, `6` noop)
-- [ ] Socket.IO CONNECT with `auth`; `40{"sid"}`; middleware failure → `44{"message"}`
-- [ ] Auth middleware errors: `Missing authentication token`, `Session ID required for session-scoped clients`,
+- [x] Engine.IO handshake (`0{sid,upgrades,pingInterval,pingTimeout,maxPayload}`), heartbeat, close
+- [x] Polling transport + websocket upgrade (`2probe`/`3probe`/`5`, `6` noop)
+- [x] Socket.IO CONNECT with `auth`; `40{"sid"}`; middleware failure → `44{"message"}`
+- [x] Auth middleware errors: `Missing authentication token`, `Session ID required for session-scoped clients`,
       `Machine ID required for machine-scoped clients`, `Invalid authentication token`
-- [ ] Rooms: `user:U`, `user:U:user-scoped`, `user:U:session:S`, `user:U:machine:M`, `rpc:U:<method>`
-- [ ] Machine-scoped connect/disconnect → `machine-activity` ephemeral (user-scoped only)
-- [ ] `app-state` (+ `auth.appState` initial) for push suppression; `x-happy-client` / `auth.happyClient` labels
-- [ ] Event acks, binary placeholders, client acks for server emits
+- [x] Rooms: `user:U`, `user:U:user-scoped`, `user:U:session:S`, `user:U:machine:M`, `rpc:U:<method>`
+- [x] Machine-scoped connect/disconnect → `machine-activity` ephemeral (user-scoped only)
+- [x] `app-state` (+ `auth.appState` initial) for push suppression; `x-happy-client` / `auth.happyClient` labels
+- [x] Event acks, binary placeholders, client acks for server emits
 
 ### Client → server events
-- [ ] `ping` (ack `{}`)
-- [ ] `rpc-register` / `rpc-unregister` → `rpc-registered` / `rpc-unregistered` / `rpc-error`
-- [ ] `rpc-call` (ack) — room lookup, 15 s reconnect grace (200 ms polls), self-call check,
+- [x] `ping` (ack `{}`)
+- [x] `rpc-register` / `rpc-unregister` → `rpc-registered` / `rpc-unregistered` / `rpc-error`
+- [x] `rpc-call` (ack) — room lookup, 15 s reconnect grace (200 ms polls), self-call check,
       30 s ack timeout (`operation has timed out`), 2 s presence poll / 2 misses (`RPC target disconnected`)
-- [ ] `update-metadata` (ack), `update-state` (ack)
-- [ ] `session-alive` (activity cache, 30 s threshold, 5 s batched flush, stop suppression)
-- [ ] `message` (per-socket FIFO lock; seq allocated even for duplicates; skip sender)
-- [ ] `session-end`
-- [ ] `session-subscribe` / `session-unsubscribe` (ack; machine-scoped only; shared FIFO lock)
-- [ ] `machine-alive`, `machine-update-metadata` (ack), `machine-update-state` (ack)
-- [ ] `usage-report` (ack; per-socket FIFO lock)
-- [ ] `artifact-read`, `artifact-update`, `artifact-create`, `artifact-delete` (ack)
-- [ ] `access-key-get` (ack)
+- [x] `update-metadata` (ack), `update-state` (ack)
+- [x] `session-alive` (activity cache, 30 s threshold, 5 s batched flush, stop suppression)
+- [x] `message` (per-socket FIFO lock; seq allocated even for duplicates; skip sender)
+- [x] `session-end`
+- [x] `session-subscribe` / `session-unsubscribe` (ack; machine-scoped only; shared FIFO lock)
+- [x] `machine-alive`, `machine-update-metadata` (ack), `machine-update-state` (ack)
+- [x] `usage-report` (ack; per-socket FIFO lock)
+- [x] `artifact-read`, `artifact-update`, `artifact-create`, `artifact-delete` (ack)
+- [x] `access-key-get` (ack)
 
 ### Server → client
-- [ ] `update` payload `{id, seq, body:{t,...}, createdAt}` for: `new-message`, `new-session`, `update-session`,
-      `delete-session`, `update-account`, `new-machine`, `update-machine`, `delete-machine`, `new-artifact`,
-      `update-artifact`, `delete-artifact`, `new-feed-post`, `kv-batch-update`, `new-project`,
-      `update-project`, `delete-project`
-- [ ] `ephemeral`: `activity`, `machine-activity`, `usage`, `session-event`
-- [ ] `rpc-request` (with ack), `rpc-registered`, `rpc-unregistered`, `rpc-error`
-- [ ] Recipient filters: all-user, user-scoped-only, all-interested-in-session, machine-scoped-only; skip-sender
+- [x] `update` payload `{id, seq, body:{t,...}, createdAt}` from ported code: `new-message`, `new-session`,
+      `update-session`, `delete-session`, `update-account`, `update-machine`, `new-artifact`,
+      `update-artifact`, `delete-artifact`
+- [ ] the same from Phase 3 routes: `new-machine`, `delete-machine`, HTTP artifact routes, `new-feed-post`,
+      `kv-batch-update`, `new-project`, `update-project`, `delete-project`
+- [x] `ephemeral`: `activity`, `machine-activity`, `usage`, `session-event`
+- [x] `rpc-request` (with ack), `rpc-registered`, `rpc-unregistered`, `rpc-error`
+- [x] Recipient filters: all-user, user-scoped-only, all-interested-in-session, machine-scoped-only; skip-sender
 
 ## Background jobs
-- [ ] Session/machine timeout sweep (10 min inactivity, every 60 s)
-- [ ] Activity cache flush (5 s) + cleanup (5 min)
-- [ ] DB record-count gauges (60 s)
+- [x] Session/machine timeout sweep (10 min inactivity, every 60 s)
+- [x] Activity cache flush (5 s) + cleanup (5 min)
+- [x] DB record-count gauges (60 s)
 
 ## Environment variables
 

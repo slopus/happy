@@ -274,7 +274,7 @@ async fn archive(app: Arc<App>, req: Req) -> HResult {
     if n == 0 {
         return Reply::code(404, json!({"error": "Session not found"}));
     }
-    let activity = events::session_activity(&sid, false, crate::util::now_ms(), false);
+    let activity = events::session_activity(&sid, false, crate::util::now_ms() as f64, false);
     app.hub.emit_ephemeral(&req.user_id, activity, Filter::UserScopedOnly);
     Reply::json(json!({"success": true}))
 }

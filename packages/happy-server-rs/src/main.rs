@@ -11,12 +11,17 @@ mod app;
 mod auth;
 mod config;
 mod db;
+mod engine;
 mod events;
+mod handlers;
 mod http;
 mod js;
 mod metrics;
 mod models;
+mod presence;
 mod routes;
+mod rpc;
+mod sio;
 mod socket;
 mod storage;
 mod util;
@@ -91,7 +96,7 @@ async fn serve(config: config::Config) -> anyhow::Result<()> {
                     let io = hyper_util::rt::TokioIo::new(stream);
                     let svc = hyper::service::service_fn(move |req| {
                         let app = app.clone();
-                        async move { Ok::<_, std::convert::Infallible>(http::handle(app, req).await) }
+                        async move { http::serve(app, req).await }
                     });
                     let _ = hyper::server::conn::http1::Builder::new().keep_alive(true).serve_connection(io, svc).with_upgrades().await;
                 });
@@ -100,11 +105,13 @@ async fn serve(config: config::Config) -> anyhow::Result<()> {
         }
     }
     tracing::info!("Shutting down...");
+    app.engine.shutdown();
     app.activity.flush().await;
     Ok(())
 }
 
 fn spawn_background(app: &Arc<App>) {
+    tokio::spawn(presence::run(app.clone()));
     let a = app.clone();
     tokio::spawn(async move {
         let mut t = tokio::time::interval(Duration::from_millis(activity::BATCH_INTERVAL_MS));

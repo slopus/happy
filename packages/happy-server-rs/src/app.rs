@@ -3,6 +3,7 @@
 use crate::activity::ActivityCache;
 use crate::auth::Auth;
 use crate::config::Config;
+use crate::engine::Engine;
 use crate::events::Hub;
 use crate::http::Router;
 use crate::metrics::Metrics;
@@ -16,6 +17,7 @@ pub struct App {
     pub auth: Auth,
     pub router: Router,
     pub hub: Hub,
+    pub engine: Engine,
     pub metrics: Arc<Metrics>,
     pub files: Files,
     pub activity: ActivityCache,
@@ -31,6 +33,7 @@ impl App {
             files: Files::new(&config),
             activity: ActivityCache::new(pool.clone(), metrics.clone()),
             hub: Hub::default(),
+            engine: Engine::default(),
             router,
             metrics,
             pool,

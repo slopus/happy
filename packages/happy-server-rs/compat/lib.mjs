@@ -19,7 +19,7 @@ export function boxKey(n) {
     return nacl.box.keyPair.fromSecretKey(sk);
 }
 
-const KEEP_HEADERS = ['content-type', 'access-control-allow-origin', 'access-control-allow-methods', 'access-control-allow-headers', 'access-control-allow-credentials', 'location', 'allow'];
+const KEEP_HEADERS = ['content-type', 'content-encoding', 'cache-control', 'sec-websocket-accept', 'sec-websocket-protocol', 'sec-websocket-version', 'upgrade', 'access-control-allow-origin', 'access-control-allow-methods', 'access-control-allow-headers', 'access-control-allow-credentials', 'location', 'allow', 'x-xss-protection'];
 
 export class Recorder {
     constructor(base) {
@@ -34,8 +34,19 @@ export class Recorder {
             init.body = JSON.stringify(body);
             init.headers['content-type'] ??= 'application/json';
         }
-        const res = await fetch(this.base + path, init);
-        const text = await res.text();
+        let res;
+        try {
+            res = await fetch(this.base + path, init);
+        } catch (e) {
+            this.entries.push({ name, method, path, status: 0, headers: {}, text: 'fetch failed: ' + (e.cause?.code || e.message) });
+            return undefined;
+        }
+        let text;
+        try {
+            text = await res.text();
+        } catch (e) {
+            text = 'body failed: ' + (e.cause?.code || e.message);
+        }
         const hdrs = {};
         for (const k of KEEP_HEADERS) {
             const v = res.headers.get(k);
@@ -48,15 +59,15 @@ export class Recorder {
     }
 
     /** Sends a hand-written HTTP/1.1 request (for framing fetch() will not produce). */
-    async raw(name, request) {
+    async raw(name, request, wait = 1500) {
         const url = new URL(this.base);
         const data = await new Promise((resolve, reject) => {
             const sock = net.connect(Number(url.port), url.hostname, () => sock.write(request));
             const chunks = [];
             sock.on('data', (c) => chunks.push(c));
             sock.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-            sock.on('error', reject);
-            setTimeout(() => sock.end(), 1500);
+            sock.on('error', () => resolve(Buffer.concat(chunks).toString('utf8')));
+            setTimeout(() => sock.end(), wait);
         });
         const [head, ...rest] = data.split('\r\n\r\n');
         const lines = head.split('\r\n');
@@ -82,6 +93,9 @@ const JWT = /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g;
 const ISO = /\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g;
 const MS = /\b1[7-9]\d{11}\b/g;
 const RKEY = /"id":"[A-Za-z0-9]{12}"/g;
+const SID = /"sid":"[A-Za-z0-9_-]{20}"/g;
+const JSID = /\\"sid\\":\\"[A-Za-z0-9_-]{20}\\"/g;
+const EIOSID = /([?&]sid=)[A-Za-z0-9_-]{20}/g;
 
 /**
  * Normalizes raw response text: ids are numbered by first use (so the same id
@@ -95,7 +109,7 @@ export function normalizer() {
         if (!ids.has(s)) ids.set(s, `<id${ids.size + 1}>`);
         return ids.get(s);
     };
-    const text = (t) => String(t).replace(JWT, '<jwt>').replace(ISO, '<iso>').replace(CUID, idOf).replace(MS, '<ts>');
+    const text = (t) => String(t).replace(SID, '"sid":"<sid>"').replace(JSID, '\\"sid\\":\\"<sid>\\"').replace(EIOSID, '$1<sid>').replace(RKEY, '"id":"<rkey>"').replace(JWT, '<jwt>').replace(ISO, '<iso>').replace(CUID, idOf).replace(MS, '<ts>');
     return (entry) => {
         const e = { name: entry.name, status: entry.status, headers: entry.headers };
         e.body = entry.note ? text(JSON.stringify(entry.json)) : text(entry.text ?? '');

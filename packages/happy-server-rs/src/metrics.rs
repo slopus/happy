@@ -14,6 +14,10 @@ pub struct Metrics {
     pub http_requests: CounterVec,
     pub http_duration: HistogramVec,
     pub database_records: GaugeVec,
+    pub rpc_calls: CounterVec,
+    pub rpc_duration: HistogramVec,
+    pub rpc_lookup_retries: HistogramVec,
+    pub rpc_fetch_timeouts: CounterVec,
 }
 
 /// `parseClientLabels`.
@@ -46,6 +50,18 @@ impl Metrics {
         )
         .unwrap();
         let database_records = GaugeVec::new(Opts::new("database_records_total", "Total number of records in database tables"), &["table"]).unwrap();
+        let rpc_calls = CounterVec::new(Opts::new("rpc_calls_total", "Total RPC calls by method and outcome"), &["method", "result"]).unwrap();
+        let rpc_duration = HistogramVec::new(
+            HistogramOpts::new("rpc_call_duration_seconds", "RPC call duration from receipt to response").buckets(vec![0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 15.0, 30.0]),
+            &["method", "result"],
+        )
+        .unwrap();
+        let rpc_lookup_retries = HistogramVec::new(
+            HistogramOpts::new("rpc_lookup_retries", "Number of grace-window polls before finding daemon (0 = instant)").buckets(vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]),
+            &["method"],
+        )
+        .unwrap();
+        let rpc_fetch_timeouts = CounterVec::new(Opts::new("rpc_fetchsockets_timeouts_total", "Cross-replica fetchSockets timeouts by context"), &["context"]).unwrap();
         for c in [
             Box::new(websocket_connections.clone()) as Box<dyn prometheus::core::Collector>,
             Box::new(session_alive_events.clone()),
@@ -56,6 +72,10 @@ impl Metrics {
             Box::new(http_requests.clone()),
             Box::new(http_duration.clone()),
             Box::new(database_records.clone()),
+            Box::new(rpc_calls.clone()),
+            Box::new(rpc_duration.clone()),
+            Box::new(rpc_lookup_retries.clone()),
+            Box::new(rpc_fetch_timeouts.clone()),
         ] {
             registry.register(c).unwrap();
         }
@@ -70,6 +90,10 @@ impl Metrics {
             http_requests,
             http_duration,
             database_records,
+            rpc_calls,
+            rpc_duration,
+            rpc_lookup_retries,
+            rpc_fetch_timeouts,
         }
     }
 

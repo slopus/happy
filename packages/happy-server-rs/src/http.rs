@@ -10,7 +10,7 @@ use crate::zod::{self, S};
 use bytes::Bytes;
 use futures_util::future::BoxFuture;
 use http::{HeaderMap, Method, StatusCode};
-use http_body_util::{BodyExt, Full, Limited};
+use http_body_util::{BodyExt, Limited};
 use hyper::body::Incoming;
 use serde_json::{json, Map, Value};
 use std::sync::Arc;
@@ -435,7 +435,7 @@ pub fn bad_url(url: &str) -> HttpResponse {
         .status(400)
         .header("content-type", "application/json")
         .header("content-length", body.len().to_string())
-        .body(Full::new(Bytes::from(body)))
+        .body(RespBody::full(Bytes::from(body)))
         .unwrap()
 }
 
@@ -503,7 +503,49 @@ pub fn parse_query(input: &str) -> Map<String, Value> {
 // Responses
 // ---------------------------------------------------------------------------
 
-pub type HttpResponse = hyper::Response<Full<Bytes>>;
+pub type HttpResponse = hyper::Response<RespBody>;
+
+/// A response body sent in one piece: with a length, or chunked like Node does
+/// for `res.writeHead(...)` followed by `res.end(data)`.
+pub struct RespBody {
+    data: Option<Bytes>,
+    chunked: bool,
+}
+
+impl RespBody {
+    pub fn full(b: Bytes) -> RespBody {
+        RespBody { data: Some(b), chunked: false }
+    }
+
+    pub fn chunked(b: Bytes) -> RespBody {
+        RespBody { data: Some(b), chunked: true }
+    }
+}
+
+impl hyper::body::Body for RespBody {
+    type Data = Bytes;
+    type Error = std::convert::Infallible;
+
+    fn poll_frame(
+        self: std::pin::Pin<&mut Self>,
+        _: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Result<hyper::body::Frame<Bytes>, Self::Error>>> {
+        let d = self.get_mut().data.take().filter(|d| !d.is_empty());
+        std::task::Poll::Ready(d.map(|d| Ok(hyper::body::Frame::data(d))))
+    }
+
+    fn is_end_stream(&self) -> bool {
+        !self.chunked && self.data.as_ref().is_none_or(|d| d.is_empty())
+    }
+
+    fn size_hint(&self) -> hyper::body::SizeHint {
+        if self.chunked {
+            hyper::body::SizeHint::default()
+        } else {
+            hyper::body::SizeHint::with_exact(self.data.as_ref().map(|d| d.len() as u64).unwrap_or(0))
+        }
+    }
+}
 
 fn base_response(status: u16) -> http::response::Builder {
     hyper::Response::builder().status(StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)).header("access-control-allow-origin", "*")
@@ -528,7 +570,7 @@ pub fn render(reply: Reply) -> HttpResponse {
         b = b.header("content-type", ct);
     }
     b = b.header("content-length", bytes.len().to_string());
-    b.body(Full::new(bytes)).unwrap()
+    b.body(RespBody::full(bytes)).unwrap()
 }
 
 /// Fastify error handler output.
@@ -616,6 +658,20 @@ fn parse_body(method: &Method, headers: &HeaderMap, raw: Bytes) -> Parsed {
     }
 }
 
+/// Entry point for the API listener: Engine.IO owns its path and every upgrade.
+pub async fn serve(app: Arc<App>, req: hyper::Request<Incoming>) -> Result<HttpResponse, crate::engine::Destroy> {
+    let path = req.uri().path();
+    if crate::engine::is_engine_path(path) {
+        return crate::engine::handle(app, req).await;
+    }
+    if crate::engine::is_upgrade(req.headers()) {
+        // Node routes it to the 'upgrade' listener, which ends the socket after 1 s.
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        return Err(crate::engine::Destroy);
+    }
+    Ok(handle(app, req).await)
+}
+
 pub async fn handle(app: Arc<App>, req: hyper::Request<Incoming>) -> HttpResponse {
     let started = std::time::Instant::now();
     let method = req.method().clone();
@@ -644,7 +700,7 @@ async fn dispatch(app: Arc<App>, req: hyper::Request<Incoming>, method: Method, 
                 .header("access-control-allow-methods", "GET, POST, PUT, PATCH, DELETE")
                 .header("access-control-allow-headers", "*")
                 .header("content-length", "0")
-                .body(Full::new(Bytes::new()))
+                .body(RespBody::full(Bytes::new()))
                 .unwrap();
             return ("*".into(), resp);
         }

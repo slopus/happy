@@ -38,6 +38,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 parking_lot = "0.12"
 dashmap = "6"
+flate2 = "1"
 percent-encoding = "2"
 regex = "1"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
@@ -47,3 +48,7 @@ libc = "0.2"
 
 [profile.release]
 debug = 1
+
+# Dependencies (pbkdf2, sha2, image) are painfully slow unoptimized.
+[profile.dev.package."*"]
+opt-level = 2

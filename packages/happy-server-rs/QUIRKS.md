@@ -88,6 +88,37 @@ reproduces. Do not fix them without changing both servers.
     `expectSingleResponse`), not an array.
 26. An `rpc-call` for a method nobody registered waits the full 15 s reconnect grace
     window before answering `RPC method not available`.
+27. The Engine.IO path is a prefix: anything under `/v1/updates/` (`/v1/updates/x/y`)
+    is the engine, `/v1/updates` without the slash is a Fastify 404. Upgrade requests
+    outside the engine path are held for 1 s (`destroyUpgradeTimeout`) and then dropped
+    without a response.
+28. A websocket handshake with `EIO≠4` completes the `101` first, then writes the raw
+    `400` HTTP text into the socket and closes it.
+29. A polling POST answers `ok` even when its payload fails to parse (the session is
+    closed anyway); a POST with `Content-Type: application/octet-stream` closes the
+    session and the request never gets an answer. An overlapping GET answers both
+    polls (the pending one with a noop) and kills the session. Methods other than
+    GET/POST get a chunked 500.
+30. JSONP polling (`?j=`) is still on: the head keeps only the digits of `j`
+    (`j=x` → `___eio[](`), the payload is a JS string literal with U+2028/U+2029
+    escaped, POST bodies are form-encoded `d=` (absent or repeated `d` is ignored but
+    still answered `ok`). `X-XSS-Protection: 0` is sent only when the user agent
+    contains `;MSIE` or `Trident/`.
+31. Socket.IO parser: whitespace counts as a type digit and as an ack-id digit
+    (`Number(" ")` is 0); a binary packet announcing zero attachments is emitted at
+    once but leaves the reconstructor armed: the next text packet is a protocol
+    error that closes the connection, and binary frames are swallowed for good.
+32. A CONNECT is answered after the rest of its inbound batch is processed; an EVENT
+    before CONNECT (or a CONNECT after it) closes the whole connection. An unknown
+    namespace gets `44/x,{"message":"Invalid namespace"}` and the connection stays.
+33. Handlers read `data` from `args[0]` and the ack from `args[1]`, so `ping` only acks
+    when the client sent no data; destructuring a nullish argument or calling a
+    non-function ack throws and the event gets no answer.
+34. The RPC target is the socket that joined `rpc:U:<method>` first, not the latest.
+    If no socket matches when the request goes out (the target just closed), the
+    call answers `{ok:true}` with no `result`.
+35. `usage-report` without `sessionId` always answers `Failed to save usage report`:
+    the Prisma compound-unique `where` rejects a null component.
 
 (Continued as more are found.)
 
@@ -123,4 +154,22 @@ Differences accepted on purpose. Everything else is a bug.
    is bumped once instead of once per message. This assumes the TS server is never
    live on the same database at the same time: switching servers is stop one, then
    start the other. The advisory lock only keeps a second *Rust* instance out.
-
+10. **Inputs that crash the TS process.** A throw inside a handler's `catch` block,
+    a client-sent `error` event (unhandled EventEmitter `error`), and an `rpc-call`
+    whose `method` is not a string all end the TS process. The Rust server logs the
+    error and drops the event; the connection stays up.
+11. **Two CONNECTs in one batch.** The TS server runs the middleware for both and
+    connects twice; the Rust server connects once and ignores the second.
+12. **Compressed poll bodies.** gzip/deflate is negotiated identically (≥1024 bytes),
+    but miniz and zlib produce different compressed bytes. The decompressed body is
+    the same.
+13. **Raw upgrade aborts.** The hand-written `400` responses of `abortUpgrade` gain a
+    `date` header and lowercase header names.
+14. **Ack order across events.** Handlers that the TS server runs concurrently (not
+    behind a per-socket lock) are spawned as tasks, so acks of *different* events sent
+    together may come back in another order. Events behind the per-socket FIFO
+    (`message`, `usage-report`, `session-subscribe`/`-unsubscribe`) keep their order.
+15. **Node Buffers inside handlers** are carried as `{"\u0000buffer": "<base64>"}`
+    in JSON values. A client could forge one by sending that key itself; it is then
+    treated as binary (sent back as an attachment, stored as base64), as a real
+    Buffer would be.

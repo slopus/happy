@@ -4,11 +4,13 @@
 use crate::js;
 use crate::util::{b64_encode, naive_to_ms, now_ms, random_key_naked};
 use dashmap::DashMap;
+use futures_util::future::BoxFuture;
+use indexmap::IndexMap;
 use parking_lot::Mutex;
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ConnType {
@@ -27,28 +29,30 @@ impl ConnType {
     }
 }
 
-/// Frames queued for a socket's Engine.IO writer.
-pub enum Outbound {
-    /// A Socket.IO packet already encoded as text, plus binary attachments.
-    Packet(String, Vec<Vec<u8>>),
-    /// Server-side disconnect.
-    Close,
-}
-
+/// One connected Socket.IO socket (namespace `/`) as handlers and the hub see it.
 pub struct SocketHandle {
     pub id: String,
     pub user_id: String,
     pub conn_type: ConnType,
+    /// Room keys (`String(value)` of the handshake values).
     pub session_id: Option<String>,
     pub machine_id: Option<String>,
+    /// The handshake `machineId` as sent (machine-activity ephemerals echo it).
+    pub machine_id_value: Value,
     pub happy_client: Option<String>,
-    /// `socket.data.clientType` as sent in the handshake (may be absent).
+    /// `(client, client_type)` metric labels.
+    pub labels: (String, String),
+    /// `socket.data.clientType` when it is a string.
     pub client_type_raw: Option<String>,
     pub app_state: Mutex<Option<&'static str>>,
-    pub tx: mpsc::UnboundedSender<Outbound>,
+    /// The Engine.IO session actor that owns the connection.
+    pub tx: mpsc::UnboundedSender<crate::engine::Cmd>,
     /// Rooms joined, plus a closed flag; the lock orders join/leave against removal.
     pub rooms: Mutex<SocketRooms>,
-    pub acks: Mutex<HashMap<u64, tokio::sync::oneshot::Sender<Vec<Value>>>>,
+    /// Acknowledgements this server is waiting for (`socket.acks`).
+    pub acks: Mutex<HashMap<u64, oneshot::Sender<Vec<Value>>>>,
+    /// Per-socket FIFO queues standing in for the handlers' `AsyncLock`s.
+    pub queues: Mutex<HashMap<&'static str, mpsc::UnboundedSender<BoxFuture<'static, ()>>>>,
 }
 
 #[derive(Default)]
@@ -59,16 +63,42 @@ pub struct SocketRooms {
 
 impl SocketHandle {
     pub fn send_packet(&self, text: String, attachments: Vec<Vec<u8>>) {
-        let _ = self.tx.send(Outbound::Packet(text, attachments));
+        let _ = self.tx.send(crate::engine::Cmd::Emit(text, attachments));
+    }
+
+    /// `socket.emit(event, payload)`.
+    pub fn emit(&self, event: &str, payload: Value) {
+        let (t, a) = crate::socket::encode_event(event, &[payload]);
+        self.send_packet(t, a);
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.rooms.lock().closed
+    }
+
+    /// Runs `f` after every job queued before it on the same queue.
+    pub fn enqueue(&self, queue: &'static str, f: BoxFuture<'static, ()>) {
+        let mut q = self.queues.lock();
+        let tx = q.entry(queue).or_insert_with(|| {
+            let (tx, mut rx) = mpsc::unbounded_channel::<BoxFuture<'static, ()>>();
+            tokio::spawn(async move {
+                while let Some(job) = rx.recv().await {
+                    job.await;
+                }
+            });
+            tx
+        });
+        let _ = tx.send(f);
     }
 }
 
 /// Sockets and rooms (Socket.IO's in-memory adapter). Both maps are sharded, so
-/// fan-out for one user never contends with another user's traffic.
+/// fan-out for one user never contends with another user's traffic. Rooms keep
+/// join order: RPC routing picks the earliest socket still in the room.
 #[derive(Default)]
 pub struct Hub {
     sockets: DashMap<String, Arc<SocketHandle>>,
-    rooms: DashMap<String, HashMap<String, Arc<SocketHandle>>>,
+    rooms: DashMap<String, IndexMap<String, Arc<SocketHandle>>>,
 }
 
 pub enum Filter<'a> {
@@ -94,7 +124,7 @@ impl Hub {
 
     fn room_remove(&self, room: &str, id: &str) {
         if let dashmap::mapref::entry::Entry::Occupied(mut e) = self.rooms.entry(room.to_string()) {
-            e.get_mut().remove(id);
+            e.get_mut().shift_remove(id);
             if e.get().is_empty() {
                 e.remove();
             }
@@ -120,6 +150,10 @@ impl Hub {
 
     pub fn sockets_in(&self, room: &str) -> Vec<Arc<SocketHandle>> {
         self.rooms.get(room).map(|m| m.values().cloned().collect()).unwrap_or_default()
+    }
+
+    pub fn room_has(&self, room: &str, id: &str) -> bool {
+        self.rooms.get(room).map(|m| m.contains_key(id)).unwrap_or(false)
     }
 
     pub fn socket(&self, id: &str) -> Option<Arc<SocketHandle>> {
@@ -148,9 +182,9 @@ impl Hub {
         if targets.is_empty() {
             return;
         }
-        let text = crate::socket::encode_event(event, std::slice::from_ref(payload));
+        let (text, atts) = crate::socket::encode_event(event, std::slice::from_ref(payload));
         for s in targets {
-            s.send_packet(text.clone(), vec![]);
+            s.send_packet(text.clone(), atts.clone());
         }
     }
 
@@ -360,12 +394,13 @@ pub fn kv_batch_update(changes: Vec<Value>, seq: i32) -> Value {
     update(seq, json!({ "t": "kv-batch-update", "changes": changes }))
 }
 
-pub fn session_activity(id: &str, active: bool, active_at: i64, thinking: bool) -> Value {
-    json!({ "type": "activity", "id": id, "active": active, "activeAt": active_at, "thinking": thinking })
+/// `activeAt` is a JS number (heartbeat times may be fractional).
+pub fn session_activity(id: &str, active: bool, active_at: f64, thinking: bool) -> Value {
+    json!({ "type": "activity", "id": id, "active": active, "activeAt": js::num(active_at), "thinking": thinking })
 }
 
-pub fn machine_activity(id: &str, active: bool, active_at: i64) -> Value {
-    json!({ "type": "machine-activity", "id": id, "active": active, "activeAt": active_at })
+pub fn machine_activity(id: &Value, active: bool, active_at: f64) -> Value {
+    json!({ "type": "machine-activity", "id": id, "active": active, "activeAt": js::num(active_at) })
 }
 
 pub fn usage_ephemeral(session_id: &str, key: &str, tokens: &Value, cost: &Value) -> Value {
