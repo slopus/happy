@@ -207,7 +207,9 @@ final class Session {
                 let moves = NetworkPath.shared.moves
                 let moved = satisfied && moves != self.networkMoves
                 self.networkPath = satisfied
-                self.networkMoves = moves
+                // A move heard while there is no way out waits for one: gone
+                // and back on cellular before this ran is a move still.
+                if satisfied { self.networkMoves = moves }
                 self.updateHeaderState()
                 // Off Wi-Fi onto cellular: the stream says live over a way
                 // that may be gone, so it is opened again now.

@@ -47,8 +47,9 @@ public final class NetworkPath: @unchecked Sendable {
     }
 
     /// How many times the way out moved to another interface (Wi-Fi to
-    /// cellular, one Wi-Fi to another): what was open went out the old
-    /// way, and may hang there with nothing said.
+    /// cellular and back): what was open went out the old way, and may
+    /// hang there with nothing said. One Wi-Fi to another keeps "en0",
+    /// and a VPN's tunnel hides what is under it: neither is a move here.
     public var moves: Int {
         lock.lock(); defer { lock.unlock() }
         return moved

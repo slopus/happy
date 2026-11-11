@@ -355,6 +355,13 @@ final class HostedLinkTitleTests: XCTestCase {
 
         NetworkPath.shared.forceMove()
         try await until("the stream's tunnel let go of") { transport.resets == [.realtime] }
+
+        // Gone, moved, and back before the main queue heard any of it: the
+        // move is heard with the way back, not lost to the first.
+        NetworkPath.shared.force(false)
+        NetworkPath.shared.forceMove()
+        NetworkPath.shared.force(true)
+        try await until("let go of again") { transport.resets == [.realtime, .realtime] }
         await session.engine.stop()
         try await account.agentConnections.remove(connection.id)
     }
