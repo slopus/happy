@@ -8,6 +8,7 @@ pub mod auth;
 pub mod machines;
 pub mod misc;
 pub mod projects;
+pub mod push;
 pub mod session_files;
 pub mod sessions;
 pub mod social;
@@ -30,6 +31,7 @@ pub fn register(r: &mut Router, c: &Config) {
     kv::register(r);
     social::register(r);
     projects::register(r);
+    push::register(r);
     session_files::register(r);
     version::register(r, c);
 }

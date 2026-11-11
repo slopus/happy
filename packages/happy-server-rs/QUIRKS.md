@@ -148,6 +148,19 @@ reproduces. Do not fix them without changing both servers.
     routes include it; it emits `new-machine` to user-scoped clients and
     `update-machine` to the machine and user-scoped clients, each with its own seq.
     `DELETE /v1/machines/:id` emits `delete-machine` after commit, not awaited.
+42. **Push tokens are never pruned.** A `DeviceNotRegistered` ticket "deletes" its
+    token with `void db.accountPushToken.deleteMany(...)`; Prisma queries are lazy
+    and run only when awaited, so the token stays. A ticket list longer than the
+    token list throws on `tokens[i].id` for such a ticket (`result: "failed"`,
+    reason `Cannot read properties of undefined (reading 'id')`); a `null` ticket
+    throws on `.status` the same way. A non-iterable `data` in Expo's answer, a
+    non-2xx status and bad JSON all become per-message error tickets; a string
+    `data` is spread into one ticket per character.
+43. **`push-event` data order.** The pushed `data` is `{ sessionId, ...data, kind }`:
+    a `sessionId` inside `data` keeps the first position but its value wins, and
+    integer-like keys sort first. Presence suppression needs a user-scoped socket
+    whose last `app-state` was `{ state: "active" }`; any other payload means
+    background.
 
 (Continued as more are found.)
 

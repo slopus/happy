@@ -1,6 +1,9 @@
 // Phase 3 scenario: the remaining HTTP routes, with socket observers recording
 // the updates each route emits.
 import { connected, login, step } from './phase2.mjs';
+import { startMock } from './mock.mjs';
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function dumpDb(t, sql, label, queries) {
     for (const [name, q] of queries) {
@@ -315,6 +318,100 @@ async function sessionFiles(t, sql, H, H2, sid, r) {
     await t.req('attachment request download no auth', 'POST', `${A}/request-download`, { body: { ref: at.ref } });
 }
 
+/** Expo answers by token: `ok`, `gone` (DeviceNotRegistered), `bad`, `num`, `null`;
+ * a token naming a batch mode (`http500`, `badjson`, `nodata`, `strdata`, `extra`) sets the whole answer. */
+function expo(mock) {
+    mock.route('/exp.host/--/api/v2/push/send', ({ body }) => {
+        const tokens = body.map((m) => m.to);
+        const has = (s) => tokens.some((x) => x.includes(s));
+        if (has('http500')) return { status: 500, json: { errors: [] } };
+        if (has('badjson')) return { raw: '{nope' };
+        if (has('nodata')) return { json: {} };
+        if (has('strdata')) return { json: { data: 'ab' } };
+        const tickets = tokens.map((x) =>
+            x.includes('gone') ? { status: 'error', message: 'gone', details: { error: 'DeviceNotRegistered' } }
+                : x.includes('bad') ? { status: 'error', message: 'bad token' }
+                : x.includes('num') ? { status: 'error', details: { error: 7 } }
+                : x.includes('null') ? null
+                : { status: 'ok', id: 'ticket' });
+        if (has('extra')) tickets.push({ status: 'error', details: { error: 'DeviceNotRegistered' } });
+        return { json: { data: tickets } };
+    });
+}
+
+async function push(t, sql, H, H2, sid, mock, ui, r) {
+    expo(mock);
+    const E = (s = sid) => `/v1/sessions/${s}/push-event`;
+    const ev = { kind: 'done', title: 'Ready', body: 'It is ready' };
+    const tokens = async (H, label) => t.req(label, 'GET', '/v1/push-tokens', { headers: H });
+    const setTokens = async (list) => {
+        await sql(`DELETE FROM "AccountPushToken"`);
+        for (const x of list) await t.req(`register ${x}`, 'POST', '/v1/push-tokens', { headers: H, body: { token: x } });
+    };
+
+    await t.req('push tokens no auth', 'GET', '/v1/push-tokens');
+    await tokens(H, 'push tokens empty');
+    await t.req('push token register missing', 'POST', '/v1/push-tokens', { headers: H, body: {} });
+    await t.req('push token register number', 'POST', '/v1/push-tokens', { headers: H, body: { token: 5 } });
+    await t.req('push token register', 'POST', '/v1/push-tokens', { headers: H, body: { token: 'ExponentPushToken[ok-1]' } });
+    await sleep(5);
+    await t.req('push token register again', 'POST', '/v1/push-tokens', { headers: H, body: { token: 'ExponentPushToken[ok-1]' } });
+    await t.req('push token register empty', 'POST', '/v1/push-tokens', { headers: H, body: { token: '' } });
+    await t.req('push token register user2', 'POST', '/v1/push-tokens', { headers: H2, body: { token: 'ExponentPushToken[ok-1]' } });
+    await tokens(H, 'push tokens list');
+    t.note('push tokens updatedAt bumped', JSON.parse(await sql(`SELECT json_agg("updatedAt" > "createdAt" ORDER BY "token") FROM "AccountPushToken"`)));
+    await t.req('push token delete encoded', 'DELETE', '/v1/push-tokens/' + encodeURIComponent('ExponentPushToken[ok-1]'), { headers: H2 });
+    await t.req('push token delete unknown', 'DELETE', '/v1/push-tokens/nope', { headers: H });
+    await t.req('push token delete no auth', 'DELETE', '/v1/push-tokens/nope');
+    await tokens(H2, 'push tokens user2 after delete');
+
+    await t.req('push event no auth', 'POST', E(), { body: ev });
+    await t.req('push event bad kind', 'POST', E(), { headers: H, body: { ...ev, kind: 'other' } });
+    await t.req('push event empty title', 'POST', E(), { headers: H, body: { ...ev, title: '' } });
+    await t.req('push event long body', 'POST', E(), { headers: H, body: { ...ev, body: 'x'.repeat(501) } });
+    await t.req('push event data array', 'POST', E(), { headers: H, body: { ...ev, data: [1] } });
+    await t.req('push event data null', 'POST', E(), { headers: H, body: { ...ev, data: null } });
+    await r('push event unknown session', 'POST', E('nope'), { headers: H, body: ev });
+    await r('push event other user', 'POST', E(), { headers: H2, body: ev });
+    const s2 = await t.req('create user2 session', 'POST', '/v1/sessions', { headers: H2, body: { tag: 'push-2', metadata: 'm' } });
+    await r('push event no tokens', 'POST', E(s2.session.id), { headers: H2, body: ev });
+
+    await r('push event sent', 'POST', E(), { headers: H, body: { ...ev, kind: 'permission', data: { b: 1, 2: 'x', sessionId: 'override', kind: 'zzz', nested: { z: 1, a: 2 } } } });
+    for (const [label, list] of [
+        ['partial', ['ExponentPushToken[ok-2]', 'ExponentPushToken[gone-1]', 'ExponentPushToken[bad-1]']],
+        ['all gone', ['ExponentPushToken[gone-2]', 'ExponentPushToken[num-1]']],
+        ['null ticket', ['ExponentPushToken[null-1]']],
+        ['extra ticket', ['ExponentPushToken[ok-3]', 'ExponentPushToken[extra]']],
+        ['http 500', ['ExponentPushToken[ok-4]', 'ExponentPushToken[http500]']],
+        ['bad json', ['ExponentPushToken[badjson]']],
+        ['no data', ['ExponentPushToken[nodata]']],
+        ['string data', ['ExponentPushToken[strdata]']],
+    ]) {
+        await setTokens(list);
+        await t.req(`push event ${label}`, 'POST', E(), { headers: H, body: { ...ev, kind: 'question' } });
+        await sleep(200);
+        t.note(`push tokens after ${label}`, JSON.parse(await sql(`SELECT coalesce(json_agg("token" ORDER BY "token"), '[]') FROM "AccountPushToken"`)));
+    }
+    await setTokens(['ExponentPushToken[ok-5]']);
+    await t.req('push tokens order', 'GET', '/v1/push-tokens', { headers: H });
+
+    // 205 tokens: three Expo batches.
+    await sql(`DELETE FROM "AccountPushToken"`);
+    await sql(`INSERT INTO "AccountPushToken" ("id","accountId","token","updatedAt") SELECT 'tok' || lpad(g::text, 4, '0'), (SELECT "accountId" FROM "Session" WHERE "id" = '${sid}'), 'ExponentPushToken[ok-many-' || lpad(g::text, 3, '0') || ']', now() FROM generate_series(0, 204) g`);
+    await t.req('push event batched', 'POST', E(), { headers: H, body: ev });
+
+    await setTokens(['ExponentPushToken[ok-6]']);
+    ui.send('42' + JSON.stringify(['app-state', { state: 'active' }]));
+    await sleep(100);
+    await r('push event suppressed', 'POST', E(), { headers: H, body: ev });
+    ui.send('42' + JSON.stringify(['app-state', { state: 'background' }]));
+    await sleep(100);
+    await r('push event after background', 'POST', E(), { headers: H, body: ev });
+    ui.send('42' + JSON.stringify(['app-state', 'active']));
+    await sleep(100);
+    await r('push event app-state string', 'POST', E(), { headers: H, body: ev });
+}
+
 async function version(t) {
     const V = (name, platform, version) => t.req(name, 'POST', '/v1/version', { body: { platform, version, app_id: 'x' } });
     await t.req('version missing app_id', 'POST', '/v1/version', { body: { platform: 'ios', version: '1.0.0' } });
@@ -327,6 +424,7 @@ async function version(t) {
 }
 
 export async function scenario(t, { sql }) {
+    const mock = await startMock(t);
     const token = await login(t, 1);
     const token2 = await login(t, 2, 'auth user2');
     const H = { authorization: 'Bearer ' + token };
@@ -353,6 +451,7 @@ export async function scenario(t, { sql }) {
     await projects(t, sql, H, H2, sid, obs);
     await sessionFiles(t, sql, H, H2, sid, obs);
     await version(t);
+    await push(t, sql, H, H2, sid, mock, ui, obs);
 
     await dumpDb(t, sql, 'before deletes', [
         ['machines', `SELECT "id","metadata","metadataVersion","daemonState","daemonStateVersion",encode("dataEncryptionKey",'base64') AS dek,"seq","active" FROM "Machine" ORDER BY "id"`],
@@ -374,4 +473,5 @@ export async function scenario(t, { sql }) {
         ['accounts', `SELECT "publicKey","seq" FROM "Account" ORDER BY "publicKey"`],
     ]);
     for (const c of [ui, ui2, ui3, daemon]) c.close();
+    await mock.close();
 }
