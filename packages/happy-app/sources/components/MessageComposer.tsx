@@ -1131,12 +1131,6 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                             </View>
                         </View>
                     </View>
-                    {hasPayload && !isAbortConfirmationArmed && props.sendHint ? (
-                        <Text testID="message-composer-send-hint" style={{
-                            color: theme.colors.textSecondary, fontSize: 12,
-                            paddingHorizontal: 12, paddingBottom: 6, textAlign: 'right',
-                        }}>{props.sendHint}</Text>
-                    ) : null}
                     {isSession && !props.zenMode && props.machineName && !props.onMachineClick && supportsDesktopComposerModeSelector({
                         isWeb: Platform.OS === 'web',
                         windowWidth: screenWidth,
