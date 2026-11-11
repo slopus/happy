@@ -1,3 +1,4 @@
+import { markProjectSessionDeleted } from './projectSessionLinks';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GoalTask } from '@slopus/happy-wire';
 const mocks = vi.hoisted(() => ({ rpc: vi.fn(), launch: vi.fn(), previewChat: vi.fn(), account: { key: 'test', generation: 0, serverUrl: 'http://fixture' } }));
@@ -5,7 +6,7 @@ vi.mock('./apiSocket', () => ({ apiSocket: { machineRPC: mocks.rpc } }));
 vi.mock('./ops', () => ({ machineStartGoalTask: mocks.launch, machineStartGoalPreviewChat: mocks.previewChat }));
 vi.mock('@/auth/accountRuntime', () => ({ assertAccountRuntime: () => {}, getRuntimeAccountSelection: () => mocks.account }));
 vi.mock('@/text', () => ({ t: (value: string) => value }));
-import { projectTaskFiles, projectTaskExecutionAttempted, markProjectTaskExecutionAttempt, clearUndispatchedProjectTaskAttempt, launchProjectGoalTask, ProjectGoalLaunchError, openProjectGoalConversation, loadGoalProjects, getProjectPreviewMachineId, taskApproval, canConfirmProjectDeliverable, projectGoalRequest } from './projectGoals';
+import { projectTaskFiles, projectTaskExecutionAttempted, markProjectTaskExecutionAttempt, clearUndispatchedProjectTaskAttempt, launchProjectGoalTask, ProjectGoalLaunchError, openProjectGoalConversation, loadGoalProjects, getProjectPreviewMachineId, taskApproval, canConfirmProjectDeliverable, projectGoalRequest, projectSessionMatchesTask } from './projectGoals';
 const task: GoalTask = { id: 'task', title: 'Task', indexPath: '/archive/task/index.md', status: 'pending', goal: 'Goal', expectedDeliverables: [], artifacts: [], dependencies: [], execution: { state: 'never' } };
 beforeEach(() => { mocks.rpc.mockReset(); mocks.launch.mockReset(); mocks.previewChat.mockReset(); mocks.account.generation++; });
 afterEach(() => { delete (globalThis as any).__HAPPY_CONFIG__; });
@@ -143,4 +144,45 @@ describe('human confirmation of final deliverables', () => {
         expect(mocks.launch).not.toHaveBeenCalled();
         expect(mocks.previewChat).not.toHaveBeenCalled();
     });
+});
+
+describe('fast Task routing and request sharing', () => {
+    it('returns a verified known association without waiting for a slow or failed history service', async () => {
+        mocks.rpc.mockImplementation(() => new Promise(() => {}));
+        const known = { sessionId: 'known', directory: '/archive/task', title: 'Task', updatedAt: 10, executed: false };
+        const result = await openProjectGoalConversation('machine', '/archive', task, 'request', 'codex', [known]);
+        expect(result).toEqual({ session: known, created: false }); expect(mocks.rpc).not.toHaveBeenCalled(); expect(mocks.launch).not.toHaveBeenCalled();
+    });
+    it('does not trust a known session from a sibling directory', async () => {
+        mocks.rpc.mockRejectedValue(new Error('History unavailable'));
+        await expect(openProjectGoalConversation('machine', '/archive', task, 'request', 'codex', [{ sessionId: 'sibling', directory: '/archive/other', title: 'Other', updatedAt: 100, executed: false }])).rejects.toThrow();
+        expect(mocks.launch).not.toHaveBeenCalled();
+    });
+    it('coalesces identical concurrent reads, but an invalidation revision gets a new request', async () => {
+        let resolve!: (value: unknown) => void;
+        mocks.rpc.mockImplementation(() => new Promise(done => { resolve = done; }));
+        const first = projectGoalRequest('m', 'goalTaskHistory', { taskId: 't' }, 'v1');
+        const duplicate = projectGoalRequest('m', 'goalTaskHistory', { taskId: 't' }, 'v1');
+        expect(first).toBe(duplicate); expect(mocks.rpc).toHaveBeenCalledTimes(1);
+        const finishFirst = resolve;
+        const changed = projectGoalRequest('m', 'goalTaskHistory', { taskId: 't' }, 'v2');
+        expect(changed).not.toBe(first); expect(mocks.rpc).toHaveBeenCalledTimes(2);
+        resolve({ success: true }); finishFirst({ success: true }); await Promise.all([first, changed]);
+    });
+});
+
+it('explicit metadata cannot fall back to the cwd of a sibling Task', () => {
+    const metadata = { machineId: 'm', path: '/archive/task/', goalBoard: { featurePath: '/archive', taskId: 'sibling' } };
+    expect(projectSessionMatchesTask(metadata, 'm', '/archive', 'task', '/archive/task')).toBe(false);
+    expect(projectSessionMatchesTask({ ...metadata, goalBoard: undefined }, 'm', '/archive', 'task', '/archive/task')).toBe(true);
+    expect(projectSessionMatchesTask({ ...metadata, machineId: 'other' }, 'm', '/archive', 'task', '/archive/task')).toBe(false);
+});
+
+it('skips authoritative tombstones and follows finite history pages before considering a new chat', async () => {
+    markProjectSessionDeleted('deleted');
+    const base = { directory: '/archive/task', title: 'Task', executed: false };
+    mocks.rpc.mockResolvedValueOnce({ success: true, sessions: [{ ...base, sessionId: 'deleted', updatedAt: 20 }], nextCursor: { sessionId: 'deleted', updatedAt: 20 } })
+        .mockResolvedValueOnce({ success: true, sessions: [{ ...base, sessionId: 'alive', updatedAt: 10 }] });
+    expect(await openProjectGoalConversation('machine', '/archive', task, 'request', 'codex')).toMatchObject({ created: false, session: { sessionId: 'alive' } });
+    expect(mocks.rpc).toHaveBeenCalledTimes(2); expect(mocks.launch).not.toHaveBeenCalled();
 });

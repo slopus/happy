@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Platform, Pressable, type View } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { GoalBoardCardFocus } from './GoalBoardCard';
+import { ProjectSurfaces } from './ProjectSurfaces';
 
 interface GoalBoardButtonProps {
     children: React.ReactNode;
@@ -19,6 +20,7 @@ interface GoalBoardButtonProps {
 export const GoalBoardButton = React.memo(React.forwardRef<View, GoalBoardButtonProps>(function GoalBoardButton({
     children, label, testID, onPress, selected, expanded, disabled, busy, variant = 'plain',
 }, ref) {
+    const surfaces = React.useContext(ProjectSurfaces);
     const [hovered, setHovered] = React.useState(false);
     const [focused, setFocused] = React.useState(false);
     const setCardFocused = React.useContext(GoalBoardCardFocus);
@@ -42,6 +44,7 @@ export const GoalBoardButton = React.memo(React.forwardRef<View, GoalBoardButton
             variant !== 'card' && selected ? styles.selected : undefined,
             variant !== 'card' && !disabled && (state.pressed || state.hovered || hovered) ? styles.pressed : undefined,
             (variant !== 'card' || !setCardFocused) && focused ? styles.focused : undefined,
+            surfaces && variant !== 'card' && { backgroundColor: !disabled && (state.pressed || state.hovered || hovered) ? surfaces.pressed : selected || variant === 'primary' ? surfaces.selected : variant === 'toolbar' ? 'transparent' : surfaces.surface, ...(!focused ? { borderColor: 'transparent' } : {}) },
             disabled ? styles.disabled : undefined,
         ]}
     >{children}</Pressable>;

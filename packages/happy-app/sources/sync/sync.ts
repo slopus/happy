@@ -1,3 +1,4 @@
+import { removeProjectSessionFromCache } from './projectWorkspaceCache';
 import { accountRuntimeCurrent } from '@/auth/accountRuntime';
 import type { HistoryViewportReader, HistoryViewportRange } from './historyWindowPolicy';
 import Constants from 'expo-constants';
@@ -3431,6 +3432,17 @@ class Sync {
 
     private fetchMachines = async () => {
         if (!this.credentials) return;
+        storage.getState().setMachinesStatus('loading');
+        try {
+            await this.fetchMachineList();
+        } catch (error) {
+            storage.getState().setMachinesStatus('error');
+            throw error;
+        }
+    }
+
+    private fetchMachineList = async () => {
+        if (!this.credentials) return;
 
         console.log('📊 Sync: Fetching machines...');
         const API_ENDPOINT = getServerUrl();
@@ -3444,6 +3456,7 @@ class Sync {
 
         if (!response.ok) {
             console.error(`Failed to fetch machines: ${response.status}`);
+            storage.getState().setMachinesStatus('error');
             return;
         }
 
@@ -3559,6 +3572,7 @@ class Sync {
         const existingMachineCount = Object.keys(storage.getState().machines).length;
         if (decryptedMachines.length === 0 && existingMachineCount > 0) {
             log.log(`🖥️ fetchMachines: empty result, keeping ${existingMachineCount} existing machine(s)`);
+            storage.getState().setMachinesStatus('ready');
             return;
         }
         storage.getState().applyMachines(decryptedMachines, true);
@@ -5317,6 +5331,7 @@ class Sync {
     }
 
     public removeSessionLocally = (sessionId: string): void => {
+        removeProjectSessionFromCache(sessionId);
         void this.localHistory?.deleteSession(sessionId);
         if (!this.localHistory && this.sessionWarmCacheAccountKey) invalidateLocalHistorySession(this.sessionWarmCacheAccountKey, sessionId);
         const deletionMutationGeneration = ++this.sessionMutationGeneration;

@@ -19,6 +19,13 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const zhHans: TranslationStructure = {
     projectGoals: {
+        sessionUnavailable: '暂时无法读取这段对话，请检查连接或从历史中选择其他对话。',
+        loadingArchive: '正在读取这台机器的项目…',
+        loadingTasks: '任务清单',
+        refreshing: '正在更新 · 保留上次内容',
+        cachedContent: '显示上次读取的内容',
+        machineLoadFailed: '机器信息读取失败，请点刷新重试。',
+
         deliverableUnavailable: '产物暂不可用',
         confirmationHint: '产物是否通过由你确认；任务完成不会自动确认产物。',
         deliveryHeading: '这项任务要交付什么',

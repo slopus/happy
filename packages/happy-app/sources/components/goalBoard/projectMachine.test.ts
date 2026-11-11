@@ -35,4 +35,9 @@ describe('catalog availability', () => {
         expect(projectCatalogState({ ...connected, loaded: true, online: false })).toBe('offline');
         expect(projectCatalogState({ ...connected, loaded: true, loading: true })).toBe('loading');
     });
+    it('waits for the first machine list before reporting an unavailable machine as offline', () => {
+        expect(projectCatalogState({ ...connected, online: false, machinesStatus: 'loading' })).toBe('connecting');
+        expect(projectCatalogState({ ...connected, online: false, machinesStatus: 'error' })).toBe('error');
+        expect(projectCatalogState({ ...connected, online: false, machinesStatus: 'ready' })).toBe('offline');
+    });
 });

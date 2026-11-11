@@ -10,9 +10,11 @@ export function selectProjectMachine<T extends { id: string; active: boolean }>(
 
 /** Only a completed read can establish that a catalog is empty. */
 export function projectCatalogState(state: {
-    connected: boolean; online: boolean; loading: boolean; loaded: boolean; error: string | null;
+    connected: boolean; online: boolean; machinesStatus?: 'loading' | 'ready' | 'error'; loading: boolean; loaded: boolean; error: string | null;
 }): 'connecting' | 'offline' | 'loading' | 'error' | 'ready' {
     if (!state.connected) return 'connecting';
+    if (!state.online && state.machinesStatus === 'loading') return 'connecting';
+    if (!state.online && state.machinesStatus === 'error') return 'error';
     if (!state.online) return 'offline';
     if (state.error) return 'error';
     if (state.loading || !state.loaded) return 'loading';

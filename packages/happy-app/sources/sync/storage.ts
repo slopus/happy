@@ -186,6 +186,8 @@ interface StorageState {
     pathProjectFiles: Record<string, ProjectFilesList | null>;  // keyed by "machineId:path"
     sessionFileCache: Record<string, Record<string, { content: string | null; diff: string | null; isBinary: boolean; cachedAt: number }>>;
     machines: Record<string, Machine>;
+    machinesStatus: 'loading' | 'ready' | 'error';
+    setMachinesStatus: (status: 'loading' | 'ready' | 'error') => void;
     artifacts: Record<string, DecryptedArtifact>;  // New artifacts storage
     friends: Record<string, UserProfile>;  // All relationships (friends, pending, requested, etc.)
     users: Record<string, UserProfile | null>;  // Global user cache, null = 404/failed fetch
@@ -382,6 +384,8 @@ export const storage = create<StorageState>()((set, get) => {
         sessions: {},
         pendingMessageSessionIds: new Set<string>(),
         machines: {},
+        machinesStatus: 'loading',
+        setMachinesStatus: (machinesStatus) => set({ machinesStatus }),
         artifacts: {},  // Initialize artifacts
         friends: {},  // Initialize relationships cache
         users: {},  // Initialize global user cache
@@ -1292,6 +1296,7 @@ export const storage = create<StorageState>()((set, get) => {
             return {
                 ...state,
                 machines: mergedMachines,
+                machinesStatus: replace ? 'ready' : state.machinesStatus,
                 sessionListViewData
             };
         }),

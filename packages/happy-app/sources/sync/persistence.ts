@@ -44,6 +44,10 @@ export interface SessionManagementPreferences {
     focusOrder: string[];
 }
 
+/** Shares the account's existing local store and logout cleanup. No file bodies or credentials. */
+export function loadProjectWorkspaceCache(): string | undefined { return mmkv.getString('project-workspace-cache-v1'); }
+export function saveProjectWorkspaceCache(value: string): void { mmkv.set('project-workspace-cache-v1', value); }
+
 export function loadSettings(): { settings: Settings, version: number | null } {
     const settings = mmkv.getString('settings');
     if (settings) {

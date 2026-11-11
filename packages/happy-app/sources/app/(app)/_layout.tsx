@@ -48,7 +48,7 @@ export default function RootLayout() {
 
             }}
         >
-            <Stack.Screen name="projects" options={{ headerShown: false }} />
+            <Stack.Screen name="projects" options={{ headerShown: false, ...(photoSceneStyle ? { contentStyle: photoSceneStyle } : {}) }} />
             <Stack.Screen
                 name="index"
                 options={{

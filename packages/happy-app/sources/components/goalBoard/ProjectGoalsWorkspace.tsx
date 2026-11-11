@@ -6,16 +6,19 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import type { GoalArtifact, GoalBoardCatalogEntry, GoalProject, GoalTask, GoalTaskSession } from '@slopus/happy-wire';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
-import { storage, useAllMachines, useLocalSetting, useMachine, useSocketStatus } from '@/sync/storage';
-import { getRuntimeAccountSelection, accountRuntimeCurrent } from '@/auth/accountRuntime';
+import { storage, useAllMachines, useLocalSetting, useMachine } from '@/sync/storage';
+import { getRuntimeAccountSelection } from '@/auth/accountRuntime';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
+import { useIsTablet } from '@/utils/responsive';
+import { ProjectSurfaces, projectSurfaces } from './ProjectSurfaces';
 import { useReducedTransparency } from '@/hooks/useReducedTransparency';
 import { useDesktopWorkspaceLayout } from '@/hooks/useDesktopWorkspaceLayout';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { getSessionName } from '@/utils/sessionUtils';
+import { sync } from '@/sync/sync';
 import { ensureSessionHydratedWithRetry } from '@/sync/ensureSessionHydratedWithRetry';
 import { machineStartGoalAuthor, type DirectoryEntry } from '@/sync/ops';
-import { loadGoalProjects, loadProjectGoalBoard, loadProjectTaskHistory, launchProjectGoalTask, projectGoalRequest, projectTaskFiles, taskApproval, taskCanExecute, projectTaskExecutionAttempted, markProjectTaskExecutionAttempt, clearUndispatchedProjectTaskAttempt, ProjectGoalLaunchError, type ProjectBoardData, type ProjectHistoryCursor, isReadOnlyProjectPreview, type ProjectHistoryCandidate } from '@/sync/projectGoals';
+import { loadProjectTaskHistory, launchProjectGoalTask, projectGoalRequest, projectTaskFiles, taskApproval, taskCanExecute, projectTaskExecutionAttempted, markProjectTaskExecutionAttempt, clearUndispatchedProjectTaskAttempt, ProjectGoalLaunchError, type ProjectHistoryCursor, isReadOnlyProjectPreview, type ProjectHistoryCandidate } from '@/sync/projectGoals';
 import { SessionView } from '@/-session/SessionView';
 import { SessionFileWorkspaceProvider } from '@/components/fileWorkspace/SessionFileWorkspaceProvider';
 import { FileWorkspace, FileWorkspaceResizeHandle } from '@/components/fileWorkspace/FileWorkspace';
@@ -31,16 +34,21 @@ import { openExternalUrl } from '@/utils/openExternalUrl';
 import { GoalBoardButton as Button } from './GoalBoardButton';
 import { GoalBoardCard } from './GoalBoardCard';
 import { RunningTaskBorder } from './RunningTaskBorder';
-import { ProjectGallery } from './ProjectGallery';
+import { ProjectGallery, ProjectGalleryLoading } from './ProjectGallery';
 import { canCreateProjectConversation, canConfirmProjectDeliverable, openProjectGoalConversation } from '@/sync/projectGoals';
 import { getProjectPreviewMachineId } from '@/sync/projectGoals';
-import { projectCatalogState, selectProjectMachine } from './projectMachine';
+import { selectProjectMachine } from './projectMachine';
 import { useProjectNavigation } from './useProjectNavigation';
+import { useProjectData } from './useProjectData';
+import { projectCacheKey, projectHistorySchema, readProjectCache, writeProjectCache, isProjectSessionDeleted, subscribeProjectSessionDeletions, getProjectSessionDeletionRevision } from '@/sync/projectWorkspaceCache';
+import { projectSessionMatchesTask } from '@/sync/projectGoals';
 
 const requestId = () => `goal-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 function accountKey() { const a = getRuntimeAccountSelection(); return JSON.stringify([a?.key, a?.generation, a?.serverUrl]); }
 
-function useProjectTaskHistory(machineId: string, featurePath: string, taskId: string) {
+const verifiedHistories = new Map<string, string>();
+
+function useProjectTaskHistory(machineId: string, featurePath: string, taskId: string, directory: string) {
     const machine = useMachine(machineId);
     // The account store already decrypted these real session headers. Send only
     // candidates from this machine; the reader canonicalizes and authorizes paths.
@@ -50,7 +58,11 @@ function useProjectTaskHistory(machineId: string, featurePath: string, taskId: s
     const key = JSON.stringify([accountKey(), machineId, featurePath, taskId]);
     const context = React.useRef(key); context.current = key;
     const epoch = React.useRef(0);
-    const [state, setState] = React.useState<{ key: string; sessions: GoalTaskSession[]; loaded: boolean; nextCursor?: ProjectHistoryCursor }>({ key, sessions: [], loaded: false });
+    const invalidation = (machine?.daemonState as { goalProjectRevision?: string } | null)?.goalProjectRevision;
+    const verification = JSON.stringify([invalidation, candidateRevision]);
+    const cacheKey = projectCacheKey('history', machineId, featurePath, taskId);
+    const cached = React.useMemo(() => readProjectCache(cacheKey, projectHistorySchema), [cacheKey]);
+    const [state, setState] = React.useState<{ key: string; sessions: GoalTaskSession[]; loaded: boolean; nextCursor?: ProjectHistoryCursor }>({ key, sessions: cached?.value.sessions ?? [], loaded: !!cached, nextCursor: cached?.value.nextCursor });
     const [loading, setLoading] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
     const read = React.useCallback(async (cursor?: ProjectHistoryCursor) => {
@@ -63,65 +75,27 @@ function useProjectTaskHistory(machineId: string, featurePath: string, taskId: s
                 .map(session => ({ sessionId: session.id, title: getSessionName(session).slice(0, 4000), directory: session.metadata!.path,
                     updatedAt: session.updatedAt, executed: (session.seq ?? 0) > 1, active: session.active,
                     featurePath: session.metadata?.goalBoard?.featurePath, taskId: session.metadata?.goalBoard?.taskId })) : undefined;
-            const page = await loadProjectTaskHistory(machineId, featurePath, taskId, cursor, candidates);
+            const page = await loadProjectTaskHistory(machineId, featurePath, taskId, cursor, candidates, verification);
             if (context.current !== key || epoch.current !== request) return;
+            verifiedHistories.set(key, verification);
+            if (verifiedHistories.size > 200) verifiedHistories.delete(verifiedHistories.keys().next().value!);
             setState(previous => {
-                const merged = new Map((previous.key === key ? previous.sessions : []).map(session => [session.sessionId, session]));
+                const merged = new Map((cursor && previous.key === key ? previous.sessions : []).map(session => [session.sessionId, session]));
                 for (const session of page.sessions) merged.set(session.sessionId, session);
-                return { key, loaded: true, sessions: [...merged.values()].sort((a, b) => b.updatedAt - a.updatedAt || b.sessionId.localeCompare(a.sessionId)),
-                    nextCursor: !cursor && previous.key === key && previous.sessions.length > 25 ? previous.nextCursor : page.nextCursor };
+                const value = { sessions: [...merged.values()].sort((a, b) => b.updatedAt - a.updatedAt || b.sessionId.localeCompare(a.sessionId)), nextCursor: page.nextCursor };
+                writeProjectCache(cacheKey, value);
+                return { key, loaded: true, ...value };
             });
         } catch (error) { if (context.current === key && epoch.current === request) setError(error instanceof Error ? error.message : String(error)); }
         finally { if (context.current === key && epoch.current === request) setLoading(false); }
-    }, [machineId, featurePath, taskId, key, candidateRevision]);
-    const invalidation = (machine?.daemonState as { goalProjectRevision?: string } | null)?.goalProjectRevision;
-    React.useEffect(() => { void read(); return () => { epoch.current++; }; }, [read, invalidation]);
-    return { sessions: state.key === key ? state.sessions : [], nextCursor: state.key === key ? state.nextCursor : undefined, ready: state.key === key && state.loaded, loading, error, read };
-}
-
-function useProjectData(machineId: string, featurePath?: string) {
-    const machine = useMachine(machineId);
-    const socket = useSocketStatus();
-    const owner = JSON.stringify([accountKey(), machineId]);
-    const [projects, setProjects] = React.useState<{ owner: string; values: GoalProject[] } | null>(null);
-    const [board, setBoard] = React.useState<{ owner: string; data: ProjectBoardData } | null>(null);
-    const [error, setError] = React.useState<string | null>(null);
-    const [loading, setLoading] = React.useState(false);
-    const context = React.useRef({ owner, featurePath, machineId });
-    context.current = { owner, featurePath, machineId };
-    const generation = React.useRef(0);
-    const refresh = React.useCallback(async () => {
-        const captured = context.current;
-        const epoch = ++generation.current;
-        if (!captured.machineId) return;
-        setLoading(true); setError(null);
-        try {
-            const [projects, board] = await Promise.all([
-                loadGoalProjects(captured.machineId),
-                captured.featurePath ? loadProjectGoalBoard(captured.machineId, captured.featurePath) : Promise.resolve(null),
-            ]);
-            if (context.current.owner !== captured.owner || epoch !== generation.current || !accountRuntimeCurrent()) return;
-            setProjects({ owner: captured.owner, values: projects });
-            setBoard(board ? { owner: JSON.stringify([captured.owner, captured.featurePath]), data: board } : null);
-        } catch (error) {
-            if (context.current.owner === captured.owner && epoch === generation.current) setError(error instanceof Error ? error.message : String(error));
-        } finally { if (epoch === generation.current) setLoading(false); }
-    }, []);
-    const invalidation = (machine?.daemonState as { goalProjectRevision?: string } | null)?.goalProjectRevision;
-    const terminal = storage(state => Object.values(state.sessions)
-        .filter(session => session.metadata?.machineId === machineId && session.metadata.path.startsWith(featurePath ?? '\0'))
-        .map(session => `${session.id}:${session.agentState?.turnStatus?.status}:${session.agentState?.turnStatus?.updatedAt}`).sort().join('|'));
+    }, [machineId, featurePath, taskId, key, cacheKey, candidateRevision, verification]);
     React.useEffect(() => {
-        if (machineId && socket.status === 'connected' && machine && isMachineOnline(machine)) void refresh();
-        return () => { generation.current++; };
-    }, [owner, featurePath, socket.status, machine?.active, invalidation, terminal, refresh]);
-    return {
-        projects: projects?.owner === owner ? projects.values : [],
-        board: board?.owner === JSON.stringify([owner, featurePath]) ? board.data : null,
-        loading, error, refresh, offline: !machine || !isMachineOnline(machine), loaded: projects?.owner === owner,
-        status: projectCatalogState({ connected: socket.status === 'connected', online: !!machine && isMachineOnline(machine),
-            loading, loaded: projects?.owner === owner, error }),
-    };
+        // Reconcile once per runtime/Task/archive revision, in the background.
+        // A persisted association is not proof of freshness after a new boot.
+        if (!cached || verifiedHistories.get(key) !== verification) void read();
+        return () => { epoch.current++; };
+    }, [read, key, verification, cached]);
+    return { sessions: state.key === key ? state.sessions : [], nextCursor: state.key === key ? state.nextCursor : undefined, ready: state.key === key && state.loaded, loading, error, read, verification };
 }
 
 export function ProjectGoalsWorkspace() {
@@ -131,7 +105,9 @@ export function ProjectGoalsWorkspace() {
     const machines = useAllMachines({ includeOffline: true });
     const draftMachine = useNewSessionDraft(state => state.selectedMachineId);
     const selectedMachine = selectProjectMachine(machines, params.machine, draftMachine, getProjectPreviewMachineId());
-    const machineId = selectedMachine?.id ?? '';
+    // Preserve an explicit owner while machine metadata reconnects, so its cached
+    // archive remains readable offline and cannot fall back to another machine.
+    const machineId = selectedMachine?.id ?? getProjectPreviewMachineId() ?? params.machine ?? draftMachine ?? '';
     // Account/machine switches remount the archive owner, so stale async work cannot navigate the new account.
     return <ProjectGoalsOwner key={JSON.stringify([accountKey(), machineId])} machineId={machineId} machines={machines} params={params}
         navigation={navigation} />;
@@ -162,7 +138,9 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
     const task = feature?.tasks.find(task => task.id === params.task);
     const skin = useLocalSetting('desktopSkinId');
     const reduced = useReducedTransparency();
-    const surface = skin !== 'default' ? (reduced ? theme.colors.desktopSkin.readingSolid : theme.colors.desktopSkin.readingWide) : theme.colors.surface;
+    const desktop = useIsTablet() && Platform.OS === 'web';
+    const photo = desktop && skin !== 'default';
+    const surface = photo ? (reduced ? theme.colors.desktopSkin.readingSolid : theme.colors.desktopSkin.readingWide) : theme.colors.surface;
     const go = (values: Record<string, string | undefined>) => { setActionError(null); navigate({ conversation: undefined, author: undefined, ...values }); };
     const chooseProject = (project: GoalProject) => go({ project: project.projectPath, feature: project.features.length ? undefined : project.direct?.featurePath, task: undefined });
     const chooseFeature = (feature: GoalBoardCatalogEntry) => go({ feature: feature.featurePath, task: undefined });
@@ -185,7 +163,7 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
     };
     const tasks = feature?.tasks ?? [];
     const selectedMachine = machines.find(machine => machine.id === machineId);
-    return <View style={[styles.page, { backgroundColor: surface }]} testID="project-goals-workspace">
+    return <ProjectSurfaces.Provider value={photo && !reduced ? projectSurfaces(theme.colors) : null}><View style={styles.page} testID="project-goals-workspace">
         <View style={[styles.header, { backgroundColor: surface }]}>
             <View style={styles.line}>
                 <Button variant="toolbar" label={t('common.back')} disabled={!navigation.canBack} onPress={navigation.back} testID="project-navigation-back"><Ionicons name="arrow-back" size={18} color={theme.colors.textSecondary} /></Button>
@@ -198,7 +176,8 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
             </View>
             <View style={styles.line}>
                 <Button variant="toolbar" label={t('projectGoals.chooseMachine')} disabled={readOnly} expanded={machineMenuOpen} onPress={() => setMachineMenuOpen(value => !value)} testID="project-machine-picker"><Ionicons name="desktop-outline" size={15} color={theme.colors.textSecondary} /><Text numberOfLines={1} style={[styles.meta, { maxWidth: 200 }]}>{selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host || t('projectGoals.machine')}</Text><Ionicons name="chevron-down" size={12} color={theme.colors.textSecondary} /></Button>
-                <Button variant="toolbar" label={t('projectGoals.refresh')} disabled={data.loading || !machineId || data.offline} onPress={() => { void data.refresh(); }} testID="project-goals-refresh"><Ionicons name="refresh-outline" size={17} color={theme.colors.textSecondary} /></Button>
+                <Button variant="toolbar" label={t('projectGoals.refresh')} disabled={data.loading || ((!machineId || data.offline) && !data.canRetryMachine)} onPress={() => { void data.refresh(); }} testID="project-goals-refresh">{data.loading ? <ActivityIndicator size="small" color={theme.colors.textSecondary} /> : <Ionicons name="refresh-outline" size={17} color={theme.colors.textSecondary} />}</Button>
+                {(data.stale || data.status === 'offline' || data.status === 'connecting') && <Text testID="project-data-status" style={[styles.meta, { maxWidth: 220 }]} accessibilityLiveRegion="polite">{t(data.status === 'offline' ? 'projectGoals.offlineArchive' : data.status === 'connecting' ? 'projectGoals.connecting' : data.error ? 'projectGoals.cachedContent' : 'projectGoals.refreshing')}</Text>}
                 {readOnly && <Text style={styles.meta}>{t('projectGoals.realArchive')}</Text>}
                 {!readOnly && <Button variant="toolbar" label={t('projectGoals.agent')} onPress={() => setAgent(value => value === 'codex' ? 'claude' : 'codex')}><Text style={styles.meta}>{agent === 'codex' ? 'Codex' : 'Claude'}</Text></Button>}
                 <Button variant="toolbar" label={t(params.feature ? 'projectGoals.createTask' : 'projectGoals.createProject')} disabled={readOnly || busy || !machineId || data.offline} onPress={() => { void organize(); }} testID="project-goals-organize"><Ionicons name="sparkles-outline" size={16} color={theme.colors.textLink} /><Text style={styles.link}>{t(params.feature ? 'projectGoals.createTask' : 'projectGoals.createProject')}</Text></Button>
@@ -214,23 +193,28 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
             </ScrollView>
         </>}
         {(data.error || actionError) && <View style={styles.errorBar} accessibilityRole="alert"><Text style={styles.error}>{data.error || actionError}</Text></View>}
-        {data.status === 'loading' && machineId && !data.loaded && <ActivityIndicator style={{ padding: 24 }} color={theme.colors.textSecondary} />}
-        {!machineId ? <Empty text={t('projectGoals.noMachine')} /> : params.author ? <View style={[styles.author, { backgroundColor: surface }]}><Text style={[styles.meta, { padding: 12 }]}>{t('projectGoals.authoringHint')}</Text><SessionView key={params.author} id={params.author} embedded fullWidth /></View>
+        {!machineId && data.status === 'offline' ? <Empty text={t('projectGoals.noMachine')} /> : params.author ? <View style={[styles.author, { backgroundColor: photo && !reduced ? 'transparent' : surface }]}><Text style={[styles.meta, { padding: 12 }]}>{t('projectGoals.authoringHint')}</Text><SessionView key={params.author} id={params.author} embedded fullWidth /></View>
             : task && feature ? <TaskWorkspace key={JSON.stringify([machineId, feature.featurePath, task.id])} machineId={machineId} featurePath={feature.featurePath} task={task}
                 featureTitle={feature.title} query={query} setQuery={setQuery} statusFilter={statusFilter} setStatusFilter={setStatusFilter}
                 allTasks={tasks} conversationId={params.conversation} agent={agent} offline={data.offline}
                 refresh={data.refresh} selectTask={id => go({ task: id })} selectConversation={id => navigate({ conversation: id })} />
-            : <ScrollView style={styles.catalog} contentContainerStyle={styles.catalogContent}>
-                <CatalogHeading title={feature ? feature.title : project ? project.title : t('projectGoals.allProjects')} subtitle={feature ? `${tasks.length} ${t('projectGoals.tasks')}` : project ? project.summary || t('projectGoals.subprojects') : t('projectGoals.galleryDescription')} query={query} setQuery={setQuery} />
+            : <ScrollView style={[styles.catalog, { backgroundColor: surface }]} contentContainerStyle={styles.catalogContent}>
+                <CatalogHeading title={feature ? feature.title : params.feature ? t('projectGoals.loadingTasks') : project ? project.title : t('projectGoals.allProjects')} subtitle={feature ? `${tasks.length} ${t('projectGoals.tasks')}` : project ? project.summary || t('projectGoals.subprojects') : t('projectGoals.galleryDescription')} query={query} setQuery={setQuery} />
                 {params.task && feature && !task && <Text style={styles.error}>{t('projectGoals.taskMissing')}</Text>}
-                {feature ? <TaskCards tasks={tasks} query={query} status={statusFilter} setStatus={setStatusFilter} onSelect={id => go({ task: id })} />
+                {!data.contentLoaded && (data.status === 'loading' || data.status === 'connecting') ? <ProjectLoading /> : feature ? <TaskCards tasks={tasks} query={query} status={statusFilter} setStatus={setStatusFilter} onSelect={id => go({ task: id })} />
                     : project ? <View style={styles.grid}>{[...(project.direct ? [project.direct] : []), ...project.features].filter(entry => entry.title.toLowerCase().includes(query.toLowerCase())).map(entry => <CatalogCard key={entry.featurePath} title={entry.featurePath === project.projectPath ? t('projectGoals.tasks') : entry.title} subtitle={entry.summary || t('projectGoals.showTasks')} onPress={() => chooseFeature(entry)} />)}</View>
                         : <><View style={styles.libraryHeading}><Text style={styles.sectionTitle}>{t('projectGoals.projectLibrary')}</Text><Text style={styles.meta}>{data.loaded ? data.projects.length : '—'}</Text></View><ProjectGallery projects={data.projects.filter(project => (project.title + (project.summary || '')).toLowerCase().includes(query.toLowerCase()))} onSelect={chooseProject} /></>}
-                {data.status === 'connecting' && <Empty text={t('projectGoals.connecting')} />}
                 {data.status === 'offline' && <Empty text={t('projectGoals.offlineArchive')} />}
                 {data.status === 'ready' && !data.projects.length && <Empty text={t('projectGoals.emptyProjects')} />}
                 {feature && !tasks.length && <Empty text={t('projectGoals.emptyTasks')} />}
             </ScrollView>}
+    </View></ProjectSurfaces.Provider>;
+}
+
+function ProjectLoading() {
+    return <View testID="project-loading" accessibilityLabel={t('projectGoals.loadingArchive')} accessibilityState={{ busy: true }} style={{ gap: 20 }}>
+        <Text style={styles.meta}>{t('projectGoals.loadingArchive')}</Text>
+        <ProjectGalleryLoading />
     </View>;
 }
 
@@ -283,10 +267,12 @@ function TaskWorkspaceContent(props: TaskWorkspaceProps) {
     const { theme } = useUnistyles();
     const workspace = useFileWorkspace()!;
     const readOnly = isReadOnlyProjectPreview();
-    const taskHistory = useProjectTaskHistory(machineId, featurePath, task.id);
+    const taskHistory = useProjectTaskHistory(machineId, featurePath, task.id, workspace.root);
     const skin = useLocalSetting('desktopSkinId');
     const reduced = useReducedTransparency();
-    const surface = skin !== 'default' ? (reduced ? theme.colors.desktopSkin.readingSolid : theme.colors.desktopSkin.readingWide) : theme.colors.surface;
+    const desktop = useIsTablet() && Platform.OS === 'web';
+    const photo = desktop && skin !== 'default';
+    const surface = photo ? (reduced ? theme.colors.desktopSkin.readingSolid : theme.colors.desktopSkin.readingWide) : theme.colors.surface;
     const { width: windowWidth, height: windowHeight } = useWindowDimensions();
     const { rightExpandedWidth } = useDesktopWorkspaceLayout();
     const [rowWidth, setRowWidth] = React.useState(0);
@@ -315,40 +301,63 @@ function TaskWorkspaceContent(props: TaskWorkspaceProps) {
     const action = React.useRef<{ key: string; id: string; uncertain: boolean } | null>(null);
     const opening = React.useRef(false);
     React.useEffect(() => { lifetime.current.alive = true; return () => { lifetime.current.alive = false; }; }, []);
-    const historyFromStore = storage(state => Object.values(state.sessions).filter(session => session.metadata?.machineId === machineId
-        && (session.metadata.path === workspace.root || (session.metadata.goalBoard?.featurePath === featurePath && session.metadata.goalBoard.taskId === task.id)))
-        .map(session => `${session.id}:${session.updatedAt}`).sort().join('|'));
+    const historyFromStore = storage(state => Object.values(state.sessions)
+        .map(session => `${session.id}:${session.updatedAt}:${session.metadata?.machineId}:${session.metadata?.path}:${session.metadata?.goalBoard?.featurePath}:${session.metadata?.goalBoard?.taskId}`).sort().join('|'));
+    const deletionRevision = React.useSyncExternalStore(subscribeProjectSessionDeletions, getProjectSessionDeletionRevision, getProjectSessionDeletionRevision);
     const history = React.useMemo(() => {
         const values = new Map([...taskHistory.sessions, ...localHistory].map(session => [session.sessionId, session]));
         for (const session of Object.values(storage.getState().sessions)) {
-            if (session.metadata?.machineId !== machineId || !(session.metadata.path === workspace.root || (session.metadata.goalBoard?.featurePath === featurePath && session.metadata.goalBoard.taskId === task.id))) continue;
+            if (!session.metadata) continue;
+            const matches = projectSessionMatchesTask(session.metadata, machineId, featurePath, task.id, workspace.root);
+            if (!matches && (session.metadata.machineId !== machineId || session.metadata.goalBoard)) { values.delete(session.id); continue; }
+            // RPC canonicalizes legacy/symlink cwd. Preserve that verified directory
+            // only when no explicit Task metadata contradicts the association.
+            if (!matches && values.get(session.id)?.directory !== workspace.root) continue;
             values.set(session.id, { sessionId: session.id, title: session.metadata.summary?.text || values.get(session.id)?.title || session.metadata.name || getSessionName(session), directory: workspace.root, updatedAt: session.updatedAt, executed: (session.seq ?? 0) > 1, active: session.active });
         }
-        return [...values.values()].sort((a, b) => b.updatedAt - a.updatedAt);
-    }, [taskHistory.sessions, localHistory, historyFromStore, machineId, featurePath, task.id, workspace.root]);
-    React.useEffect(() => { if (props.conversationId) void ensureSessionHydratedWithRetry(props.conversationId); }, [props.conversationId]);
+        return [...values.values()].filter(session => !isProjectSessionDeleted(session.sessionId)).sort((a, b) => b.updatedAt - a.updatedAt || b.sessionId.localeCompare(a.sessionId));
+    }, [taskHistory.sessions, localHistory, historyFromStore, deletionRevision, machineId, featurePath, task.id, workspace.root]);
+    const [conversationRetry, retryConversation] = React.useReducer(value => value + 1, 0);
     const conversationId = history.some(session => session.sessionId === props.conversationId) ? props.conversationId : undefined;
+    const conversation = storage(state => props.conversationId ? state.sessions[props.conversationId] : undefined);
+    const conversationVerified = !!conversation?.metadata && conversation.metadata.machineId === machineId
+        && (!conversation.metadata.goalBoard || projectSessionMatchesTask(conversation.metadata, machineId, featurePath, task.id, workspace.root));
+    const conversationRejected = !!props.conversationId && (isProjectSessionDeleted(props.conversationId) || (!!conversation?.metadata && !conversationVerified));
+    React.useEffect(() => {
+        let active = true;
+        if (conversationId && !offline) void sync.ensureSessionHydrated(conversationId).then(ready => {
+            if (active && !ready) setError(t('projectGoals.sessionUnavailable'));
+        }).catch(error => { if (active) setError(error instanceof Error ? error.message : String(error)); });
+        return () => { active = false; };
+    }, [conversationId, conversationRetry, offline]);
     const start = async (target: GoalTask, mode: 'chat' | 'execute', keepFileVisible = false, forceNew = false) => {
-        if (opening.current || offline) return;
+        if (opening.current) return;
         if (target.id !== task.id) { selectTask(target.id); return; }
-        if (readOnly && (mode !== 'chat' || !taskHistory.ready || taskHistory.loading || taskHistory.error)) return;
+        if (mode === 'chat' && !forceNew && history.length) {
+            setError(null);
+            setCompactTab('chat');
+            selectConversation(history[0].sessionId);
+            return;
+        }
+        if (offline || (readOnly && mode !== 'chat')) return;
         opening.current = true;
         setBusy(true); setError(null);
         if (mode === 'execute') { markProjectTaskExecutionAttempt(machineId, task); setExecutionAttempted(true); }
         const key = `${target.id}:${mode}`;
         if (!action.current || action.current.key !== key || !action.current.uncertain) action.current = { key, id: requestId(), uncertain: true };
         try {
-            const result = mode === 'chat' ? await openProjectGoalConversation(machineId, featurePath, target, action.current.id, agent, history, forceNew) : null;
+            const result = mode === 'chat' ? await openProjectGoalConversation(machineId, featurePath, target, action.current.id, agent, history, forceNew, taskHistory.verification) : null;
             const id = result?.session.sessionId ?? await launchProjectGoalTask(machineId, featurePath, target, mode, action.current.id, agent);
             if (!lifetime.current.alive) return;
             action.current.uncertain = false;
             setLocalHistory(values => [...values.filter(session => session.sessionId !== id), result?.session ?? { sessionId: id, title: task.title, directory: workspace.root, updatedAt: Date.now(), executed: mode === 'execute' }]);
             if (!keepFileVisible) setCompactTab('chat'); selectConversation(id);
-            await ensureSessionHydratedWithRetry(id);
-            if (lifetime.current.alive) await refresh();
+            const linked = result?.session ?? { sessionId: id, title: task.title, directory: workspace.root, updatedAt: Date.now(), executed: mode === 'execute' };
+            writeProjectCache(projectCacheKey('history', machineId, featurePath, task.id), { sessions: [linked, ...history.filter(session => session.sessionId !== id)].slice(0, 1000) });
+            if (mode === 'execute') void refresh();
         } catch (error) { if (lifetime.current.alive) {
             if (mode === 'execute' && error instanceof ProjectGoalLaunchError && error.notDispatched) { clearUndispatchedProjectTaskAttempt(machineId, task); setExecutionAttempted(false); }
-            setError(error instanceof Error ? error.message : String(error)); await refresh();
+            setError(error instanceof Error ? error.message : String(error)); if (mode === 'execute') void refresh();
         } }
         finally { opening.current = false; if (lifetime.current.alive) setBusy(false); }
     };
@@ -372,18 +381,18 @@ function TaskWorkspaceContent(props: TaskWorkspaceProps) {
         <View style={styles.panelHeader}><ProjectTaskSwitcher tasks={allTasks} selectedId={task.id} onSelect={selectTask} /><View style={{ flex: 1 }} /><ProjectTaskStatus status={task.status} /></View>
         <View style={styles.tabs}><PanelTabs activeTab={tab} onTabChange={setTab} testIDPrefix="project-task" tabs={[{ key: 'details', label: t('projectGoals.details'), icon: 'document-text-outline' }, { key: 'files', label: t('projectGoals.files'), icon: 'folder-outline' }]} /></View>
         {tab === 'files' ? <WorkspaceDirectoryTree sessionId={conversationId ?? ''} rootPath={workspace.root} listDirectory={listDirectory} onOpenFile={path => { void openFile(path); }} />
-            : <ScrollView style={styles.detailScroll}><ProjectTaskDetails task={task} number={allTasks.indexOf(task) + 1} approval={<ApprovalTag task={task} />} editDisabled={!canCreateProjectConversation() || busy || offline} onEdit={() => { void start(task, 'chat'); }}>
+            : <ScrollView style={styles.detailScroll}><ProjectTaskDetails task={task} number={allTasks.indexOf(task) + 1} approval={<ApprovalTag task={task} />} editDisabled={busy || (!history.length && (!canCreateProjectConversation() || offline))} onEdit={() => { void start(task, 'chat'); }}>
                 {task.artifacts.filter(artifact => artifact.relation === 'output').map(artifact => <Deliverable key={artifact.id} {...{ artifact, task, machineId, featurePath, refresh }} openFile={openFile} />)}
             </ProjectTaskDetails></ScrollView>}
-        {error && <Text accessibilityRole="alert" style={[styles.error, { padding: 12 }]}>{error}</Text>}
+        {(error || conversationRejected) && <Text accessibilityRole="alert" style={[styles.error, { padding: 12 }]}>{error || t('projectGoals.sessionUnavailable')}</Text>}
         {!readOnly && task.execution?.state === 'uncertain' && <Text style={[styles.meta, { paddingHorizontal: 14, paddingVertical: 6 }]}>{t('projectGoals.executionUncertain')}</Text>}
-        <View style={styles.footer}>{readOnly && <Text style={styles.meta}>{t(canCreateProjectConversation() ? 'projectGoals.previewChatHint' : 'projectGoals.readOnlyArchive')}</Text>}<Button variant="primary" label={t(history.length ? 'projectGoals.continueChat' : 'projectGoals.openChat')} disabled={busy || offline || (readOnly && (!taskHistory.ready || taskHistory.loading || !!taskHistory.error || (!history.length && !canCreateProjectConversation())))} onPress={() => { void start(task, 'chat'); }} testID="project-task-open-chat"><Ionicons name="chatbubble-outline" size={16} color={theme.colors.text} /><Text style={styles.body}>{t(history.length ? 'projectGoals.continueChat' : 'projectGoals.openChat')}</Text></Button>
+        <View style={styles.footer}>{readOnly && <Text style={styles.meta}>{t(canCreateProjectConversation() ? 'projectGoals.previewChatHint' : 'projectGoals.readOnlyArchive')}</Text>}<Button variant="primary" label={t(history.length ? 'projectGoals.continueChat' : 'projectGoals.openChat')} disabled={busy || (!history.length && (offline || !canCreateProjectConversation()))} onPress={() => { void start(task, 'chat'); }} testID="project-task-open-chat"><Ionicons name="chatbubble-outline" size={16} color={theme.colors.text} /><Text style={styles.body}>{t(history.length ? 'projectGoals.continueChat' : 'projectGoals.openChat')}</Text></Button>
             {canExecute && <Button variant="primary" label={t('projectGoals.execute')} disabled={busy || offline} onPress={() => { void start(task, 'execute'); }} testID="project-task-execute"><Ionicons name="play" size={16} color={theme.colors.textLink} /><Text style={styles.link}>{t('projectGoals.execute')}</Text></Button>}{busy && <ActivityIndicator size="small" color={theme.colors.textSecondary} />}</View>
     </View>;
-    const chat = <View testID="project-task-chat" style={[styles.chat, { backgroundColor: surface }, wide && fileOpen && !workspace.maximized ? { flexGrow: 0, flexShrink: 0, flexBasis: chatWidth, width: chatWidth, minWidth: 310 } : {}]}>
+    const chat = <View testID="project-task-chat" style={[styles.chat, { backgroundColor: photo && !reduced ? 'transparent' : surface }, wide && fileOpen && !workspace.maximized ? { flexGrow: 0, flexShrink: 0, flexBasis: chatWidth, width: chatWidth, minWidth: 310 } : {}]}>
         <View style={styles.historyHeader}><Button variant="toolbar" label={t('projectGoals.backTasks')} onPress={() => { selectConversation(''); }}><Ionicons name="grid-outline" size={16} color={theme.colors.textSecondary} /></Button>
             <Button ref={historyAnchor} variant="toolbar" label={t('projectGoals.history')} expanded={historyOpen} onPress={() => {
-                historyAnchor.current?.measureInWindow((x, y, _width, height) => { setHistoryPosition({ x, y: y + height + 6 }); setHistoryOpen(true); });
+                historyAnchor.current?.measureInWindow((x, y, _width, height) => { setHistoryPosition({ x, y: y + height + 6 }); setHistoryOpen(true); void taskHistory.read(); });
             }} testID="project-task-history"><Ionicons name="time-outline" size={15} color={theme.colors.textSecondary} /><Text style={styles.meta}>{t('projectGoals.history')} · {history.length}</Text><Ionicons name="chevron-down" size={12} color={theme.colors.textSecondary} /></Button></View>
         {historyOpen && <RNModal transparent visible animationType="none" onRequestClose={() => setHistoryOpen(false)}>
             <Pressable style={styles.historyBackdrop} accessibilityRole="button" accessibilityLabel={t('common.cancel')} onPress={() => setHistoryOpen(false)} />
@@ -393,9 +402,9 @@ function TaskWorkspaceContent(props: TaskWorkspaceProps) {
             {taskHistory.error && <><Text style={styles.error}>{taskHistory.error}</Text><Button label={t('common.retry')} onPress={() => { void taskHistory.read(); }}><Text style={styles.link}>{t('common.retry')}</Text></Button></>}
             {taskHistory.nextCursor && <Button label={t('projectGoals.moreHistory')} disabled={taskHistory.loading} onPress={() => { void taskHistory.read(taskHistory.nextCursor); }}><Text style={styles.link}>{t('projectGoals.moreHistory')}</Text></Button>}
             {!history.length && !taskHistory.loading && <Text style={styles.meta}>{t(!canCreateProjectConversation() ? 'projectGoals.noMatchingHistory' : 'projectGoals.noHistory')}</Text>}</ScrollView></View></RNModal>}
-        {conversationId ? <SessionView key={conversationId} id={conversationId} embedded fullWidth /> : <View style={styles.empty}><Text style={styles.cardTitle}>{t('projectGoals.emptyChat')}</Text><Text style={styles.meta}>{t(!canCreateProjectConversation() ? 'projectGoals.noMatchingHistory' : 'projectGoals.emptyChatHint')}</Text>{canCreateProjectConversation() && <Button label={t('projectGoals.openChat')} onPress={() => { void start(task, 'chat'); }} disabled={busy || offline}><Text style={styles.link}>{t('projectGoals.openChat')}</Text></Button>}</View>}
+        {conversationId && !conversationVerified ? <View style={styles.empty} testID="project-conversation-loading">{!error && !offline && <ActivityIndicator color={theme.colors.textSecondary} />}<Text style={styles.meta}>{error || t(offline ? 'projectGoals.offlineArchive' : 'common.loading')}</Text>{error && !offline && <Button label={t('common.retry')} onPress={() => { setError(null); retryConversation(); }}><Text style={styles.link}>{t('common.retry')}</Text></Button>}</View> : conversationId ? <SessionView key={conversationId} id={conversationId} embedded fullWidth /> : <View style={styles.empty}><Text style={styles.cardTitle}>{t('projectGoals.emptyChat')}</Text><Text style={styles.meta}>{t(!canCreateProjectConversation() ? 'projectGoals.noMatchingHistory' : 'projectGoals.emptyChatHint')}</Text>{canCreateProjectConversation() && <Button label={t('projectGoals.openChat')} onPress={() => { void start(task, 'chat'); }} disabled={busy || offline}><Text style={styles.link}>{t('projectGoals.openChat')}</Text></Button>}</View>}
     </View>;
-    const catalog = <ScrollView style={styles.catalog} contentContainerStyle={styles.taskCatalogContent}>
+    const catalog = <ScrollView style={[styles.catalog, { backgroundColor: surface, borderRadius: 13 }]} contentContainerStyle={styles.taskCatalogContent}>
         <CatalogHeading title={props.featureTitle} subtitle={`${allTasks.length} ${t('projectGoals.tasks')}`} query={props.query} setQuery={props.setQuery} />
         <TaskCards tasks={allTasks} query={props.query} status={props.statusFilter} setStatus={props.setStatusFilter} selectedId={task.id} onSelect={selectTask} onAction={(task, mode) => { void start(task, mode); }} busy={busy} offline={offline} hideExecution={executionAttempted} />
     </ScrollView>;

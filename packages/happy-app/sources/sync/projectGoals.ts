@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { GoalProjectSchema, GoalBoardSnapshotSchema, GoalTaskSessionSchema, type GoalTask, type GoalBoardSnapshot } from '@slopus/happy-wire';
 import { assertAccountRuntime, getRuntimeAccountSelection } from '@/auth/accountRuntime';
+import { isProjectSessionDeleted } from './projectSessionLinks';
 import { apiSocket } from './apiSocket';
 import { machineStartGoalTask, machineStartGoalPreviewChat } from './ops';
 import type { FileWorkspaceBinding } from '@/components/fileWorkspace/SessionFileWorkspaceProvider';
@@ -32,7 +33,7 @@ export function getProjectPreviewMachineId() {
     const config = (globalThis as typeof globalThis & { __HAPPY_CONFIG__?: { goalProjectReadOnly?: boolean; goalProjectMachineId?: string } }).__HAPPY_CONFIG__;
     return config?.goalProjectReadOnly === true ? config.goalProjectMachineId : undefined;
 }
-export async function projectGoalRequest<T>(machineId: string, method: string, input: unknown): Promise<T> {
+async function sendProjectGoalRequest<T>(machineId: string, method: string, input: unknown): Promise<T> {
     const current = owner();
     if (isReadOnlyProjectPreview() && !['goalProjects', 'goalProjectRead', 'goalTaskHistory', 'goalTaskListDirectory', 'goalTaskReadFile'].includes(method)
         && !(method === 'goalTaskApprove' && canConfirmProjectDeliverable())) throw new Error(t('projectGoals.readOnlyArchive'));
@@ -50,11 +51,32 @@ export async function projectGoalRequest<T>(machineId: string, method: string, i
     }
     return response;
 }
-export async function loadGoalProjects(machineId: string) {
-    return z.object({ success: z.literal(true), projects: z.array(GoalProjectSchema).max(1000) }).parse(await projectGoalRequest(machineId, 'goalProjects', {})).projects;
+// Identical concurrent reads share one encrypted request; no timer or polling.
+const projectReads = new Map<string, Promise<unknown>>();
+export function projectGoalRequest<T>(machineId: string, method: string, input: unknown, readVersion?: string): Promise<T> {
+    if (!['goalProjects', 'goalProjectRead', 'goalTaskHistory'].includes(method)) return sendProjectGoalRequest<T>(machineId, method, input);
+    const key = JSON.stringify([owner(), isReadOnlyProjectPreview(), machineId, method, input, readVersion]);
+    const existing = projectReads.get(key);
+    if (existing) return existing as Promise<T>;
+    const pending = sendProjectGoalRequest<T>(machineId, method, input).finally(() => { if (projectReads.get(key) === pending) projectReads.delete(key); });
+    projectReads.set(key, pending);
+    return pending;
 }
-export async function loadProjectGoalBoard(machineId: string, featurePath: string) {
-    const result = z.object({ success: z.literal(true), snapshot: GoalBoardSnapshotSchema, sessions: z.record(z.string(), z.array(GoalTaskSessionSchema).max(1000)) }).parse(await projectGoalRequest(machineId, 'goalProjectRead', { featurePath }));
+
+/** Explicit Task metadata takes precedence over a coincidentally shared cwd. */
+export function projectSessionMatchesTask(metadata: { machineId?: string; path?: string; goalBoard?: { featurePath: string; taskId?: string } } | null | undefined,
+    machineId: string, featurePath: string, taskId: string, directory: string) {
+    if (!metadata || metadata.machineId !== machineId) return false;
+    if (metadata.goalBoard) return metadata.goalBoard.featurePath === featurePath && metadata.goalBoard.taskId === taskId;
+    const normalize = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
+    return typeof metadata.path === 'string' && normalize(metadata.path) === normalize(directory);
+}
+
+export async function loadGoalProjects(machineId: string, readVersion?: string) {
+    return z.object({ success: z.literal(true), projects: z.array(GoalProjectSchema).max(1000) }).parse(await projectGoalRequest(machineId, 'goalProjects', {}, readVersion)).projects;
+}
+export async function loadProjectGoalBoard(machineId: string, featurePath: string, readVersion?: string) {
+    const result = z.object({ success: z.literal(true), snapshot: GoalBoardSnapshotSchema, sessions: z.record(z.string(), z.array(GoalTaskSessionSchema).max(1000)) }).parse(await projectGoalRequest(machineId, 'goalProjectRead', { featurePath }, readVersion));
     if (result.snapshot.featurePath !== featurePath) throw new Error('Project returned a different feature');
     return result;
 }
@@ -72,26 +94,40 @@ const fileResponse = z.object({ success: z.literal(true), content: z.string().ma
 const historyCursor = z.object({ sessionId: z.string(), updatedAt: z.number() });
 export type ProjectHistoryCursor = z.infer<typeof historyCursor>;
 export type ProjectHistoryCandidate = z.infer<typeof GoalTaskSessionSchema> & { featurePath?: string; taskId?: string };
-export async function loadProjectTaskHistory(machineId: string, featurePath: string, taskId: string, cursor?: ProjectHistoryCursor, candidates?: ProjectHistoryCandidate[]) {
-    return z.object({ success: z.literal(true), sessions: z.array(GoalTaskSessionSchema).max(25), nextCursor: historyCursor.optional() }).parse(await projectGoalRequest(machineId, 'goalTaskHistory', { featurePath, taskId, cursor, ...(isReadOnlyProjectPreview() ? { candidates: candidates ?? [] } : {}) }));
+export async function loadProjectTaskHistory(machineId: string, featurePath: string, taskId: string, cursor?: ProjectHistoryCursor, candidates?: ProjectHistoryCandidate[], readVersion?: string) {
+    return z.object({ success: z.literal(true), sessions: z.array(GoalTaskSessionSchema).max(25), nextCursor: historyCursor.optional() }).parse(await projectGoalRequest(machineId, 'goalTaskHistory', { featurePath, taskId, cursor, ...(isReadOnlyProjectPreview() ? { candidates: candidates ?? [] } : {}) }, readVersion));
 }
 export function latestProjectTaskConversation(sessions: z.infer<typeof GoalTaskSessionSchema>[], directory: string) {
     const normalized = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
-    return sessions.filter(session => normalized(session.directory) === normalized(directory))
+    return sessions.filter(session => !isProjectSessionDeleted(session.sessionId) && normalized(session.directory) === normalized(directory))
         .sort((a, b) => b.updatedAt - a.updatedAt || b.sessionId.localeCompare(a.sessionId))[0];
 }
 
 /** The main entry resumes a verified Task conversation; only explicit new-chat bypasses history. */
 export async function openProjectGoalConversation(machineId: string, featurePath: string, task: GoalTask,
-    requestId: string, agent: 'codex' | 'claude', knownSessions: z.infer<typeof GoalTaskSessionSchema>[] = [], forceNew = false) {
+    requestId: string, agent: 'codex' | 'claude', knownSessions: z.infer<typeof GoalTaskSessionSchema>[] = [], forceNew = false, historyVersion?: string) {
     const current = owner();
     const directory = task.indexPath.replace(/[\\/][^\\/]+$/, '');
     if (!forceNew) {
+        // Known, Task-scoped associations can route immediately. History refresh
+        // is independent of navigation; a missing association still fails closed.
+        const known = latestProjectTaskConversation(knownSessions, directory);
+        if (known) return { session: known, created: false };
         // A failed history read must not silently create a duplicate conversation.
-        const page = await loadProjectTaskHistory(machineId, featurePath, task.id);
-        if (owner() !== current) throw new Error('Project conversation account changed');
-        const latest = latestProjectTaskConversation([...knownSessions, ...page.sessions], directory);
-        if (latest) return { session: latest, created: false };
+        let cursor: ProjectHistoryCursor | undefined;
+        const seen = new Set<string>();
+        do {
+            const page = await loadProjectTaskHistory(machineId, featurePath, task.id, cursor, undefined, historyVersion);
+            if (owner() !== current) throw new Error('Project conversation account changed');
+            const latest = latestProjectTaskConversation(page.sessions, directory);
+            if (latest) return { session: latest, created: false };
+            cursor = page.nextCursor;
+            if (cursor) {
+                const key = JSON.stringify(cursor);
+                if (seen.has(key) || seen.size >= 800) throw new Error('Task history pagination did not advance');
+                seen.add(key);
+            }
+        } while (cursor);
     }
     if (owner() !== current) throw new Error('Project conversation account changed');
     const sessionId = await launchProjectGoalTask(machineId, featurePath, task, 'chat', requestId, agent);
