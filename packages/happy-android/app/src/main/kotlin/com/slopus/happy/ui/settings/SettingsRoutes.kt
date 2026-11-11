@@ -52,6 +52,7 @@ import com.slopus.happy.ui.AccountSwitcher
 import com.slopus.happy.ui.ProvideSettingsDissolve
 import com.slopus.happy.ui.connection.AgentConnectionSettings
 import com.slopus.happy.ui.connection.LegacyDataStorageRoute
+import com.slopus.happy.ui.connection.PrivacyRoute
 import com.slopus.happy.ui.connection.SupportRoute
 import com.slopus.happy.ui.connection.dataStorageRoutes
 import androidx.compose.foundation.ScrollState
@@ -344,6 +345,7 @@ private fun SettingsIndex(graph: AppGraph, nav: NavHostController, scroll: Scrol
                 onVoice = { nav.navigate(VoiceSettingsRoute()) },
                 onAgents = { nav.navigate(AgentsRoute) },
                 onDataStorage = { nav.navigate(LegacyDataStorageRoute) },
+                onPrivacy = { nav.navigate(PrivacyRoute) },
                 onScanTerminal = connect::scan,
                 onEnterTerminal = { enteringUrl = true },
                 onSignOut = { if (switcher != null) switcher.removingFromSettings { graph.logout().join() } else graph.logout() },

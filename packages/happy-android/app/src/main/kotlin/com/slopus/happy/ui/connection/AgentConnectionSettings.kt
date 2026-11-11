@@ -125,6 +125,7 @@ fun agentSettingsIndex(projectsAvailable: Boolean = true, notificationsAvailable
         row(DataStorageTags.ROW, stringResource(R.string.data_storage_title), Ionicon.ServerOutline),
         row(AgentSharingTags.ROW, stringResource(R.string.sharing_title), Ionicon.PeopleOutline),
         row(CloudPushTags.ROW, stringResource(R.string.cloud_push_title), Ionicon.NotificationsOutline).takeIf { notificationsAvailable },
+        row(PrivacyTags.ROW, stringResource(R.string.settings_account_privacy), Ionicon.LockClosedOutline),
         row(SettingsPageTags.ADD_AGENT, stringResource(R.string.settings_add_agent), Ionicon.Add),
         row(SettingsTags.WHATS_NEW, stringResource(R.string.settings_whats_new), Ionicon.SparklesOutline),
         row(SettingsTags.GITHUB, stringResource(R.string.settings_github), Ionicon.LogoGithub),
@@ -184,6 +185,8 @@ class AgentSettingsActions(
     val onComputePools: (() -> Unit)? = null,
     /** Every Cloud member can manage their own notifications, including read-only members. */
     val onNotifications: (() -> Unit)? = null,
+    /** Privacy: this phone's Analytics switch. */
+    val onPrivacy: () -> Unit = {},
     /** Disconnects this connection; asked for only after the person confirmed. */
     val onRemove: () -> Unit = {},
     /** Opens this connection's Chief of Staff with [prefix] typed, unsent; null where the person's role can't write to it. */
@@ -201,7 +204,7 @@ data class AgentPerson(val name: String = "", val photo: ImageBitmap? = null, va
  * name (nothing is sent until the person sends it), its name and link
  * status under it; every account on the phone with Add Agent; the person's
  * own Profile here, with Support Happy's boba row under it; Appearance
- * (the theme and the desktop's Hide projects); About; Disconnect, after a
+ * (the theme and the desktop's Hide projects); Privacy; About; Disconnect, after a
  * confirm. A device token can't reach
  * the agent's device list (API.md, "Credentials on the connector's
  * socket"), so disconnecting forgets the agent on this phone only.
@@ -320,6 +323,7 @@ fun AgentConnectionSettingsScreen(
                 },
             ),
         ),
+        privacySection(actions.onPrivacy),
         SettingsSection(
             listOfNotNull(daemonVersion?.takeIf(String::isNotBlank)?.let { version ->
                 SettingsEntry(
@@ -495,6 +499,7 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
             onProviders = if (cloud) ({ nav.openCloudProviders(connectionId) }) else null,
             onComputePools = if (pools) ({ nav.navigate(CloudComputePoolsRoute(connectionId)) }) else null,
             onNotifications = if (cloud) ({ nav.navigate(CloudPushSettingsRoute(connectionId)) }) else null,
+            onPrivacy = { nav.navigate(PrivacyRoute) },
             onAskChief = if (askChief) ({ prefix -> nav.openChiefOfStaff(connectionId, prefix) }) else null,
             onRemove = {
                 if (switcher != null) switcher.removingFromSettings { removeAgentConnection(graph, connectionId) }

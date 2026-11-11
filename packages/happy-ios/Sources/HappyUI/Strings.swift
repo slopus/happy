@@ -268,6 +268,7 @@ public enum Strings {
         public static var name: String { localized("settingsAccount.name", "Name") }
         public static var privacyDescription: String { localized("settingsAccount.privacyDescription", "Shares usage data, like which features you use and your device type, to help us improve Happy. Never your messages or code.") }
         public static var analytics: String { localized("settingsAccount.analytics", "Analytics") }
+        public static var privacy: String { localized("settingsAccount.privacy", "Privacy") }
         /// Turning analytics off held for this run but wasn't saved. Not in
         /// happy-app's catalogs: every language's are in `TranslationCatalog.nativeSources`.
         public static var analyticsNotSaved: String { localized("native.settingsAccount.analyticsNotSaved", "Analytics is off for now, but the setting couldn’t be saved. It will be on again the next time Happy starts.") }

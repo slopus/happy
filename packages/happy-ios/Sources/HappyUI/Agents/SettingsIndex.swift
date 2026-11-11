@@ -39,7 +39,9 @@ enum SettingsIndex {
     static var agentVoice: Entry { Entry(id: "agent-voice", title: Strings.AgentVoice.title, glyph: "mic-outline", tile: .orange) }
     static var supportUs: Entry { Entry(id: "support-us", title: Strings.SupportUs.title, glyph: "heart-outline", tile: .red) }
     static var dataStorage: Entry { Entry(id: "data-storage", title: Strings.DataStorage.title, glyph: "server-outline", tile: .green) }
-    /// This phone's own Analytics switch, on every kind of account's page.
+    /// Privacy, a page of its own: this phone's Analytics switch.
+    static var privacySettings: Entry { Entry(id: "privacy-settings", title: Strings.SettingsAccount.privacy, glyph: "lock-closed-outline", tile: .blue) }
+    /// This phone's own Analytics switch, on every kind of account's Privacy page.
     static var analytics: Entry { Entry(id: "device-analytics", title: Strings.SettingsAccount.analytics, glyph: "analytics-outline", tile: .blue) }
     static var appearance: Entry { Entry(id: "appearance", title: Strings.Settings.appearance, glyph: "color-palette-outline", tile: .purple) }
     static var about: Entry { Entry(id: "about", title: Strings.Settings.about, glyph: "information-circle-outline", tile: .gray) }
@@ -58,7 +60,7 @@ enum SettingsIndex {
     /// is Data and Storage's. Disconnect is left
     /// out: a search doesn't offer to take the computer away.
     static var computer: [Entry] {
-        [profile, changeAgentName, changeAgentAvatar, supportBoba, appearance, hideProjects, shimmerInLowPower, agentVoice, agents, dictationOpensTask, multilingualDictation, dataStorage, connection, analytics, connectAgent, addAccount] + aboutRows
+        [profile, changeAgentName, changeAgentAvatar, supportBoba, appearance, hideProjects, shimmerInLowPower, agentVoice, agents, dictationOpensTask, multilingualDictation, dataStorage, connection, privacySettings, analytics, connectAgent, addAccount] + aboutRows
     }
 
     /// Cloud has no project settings; paired and self-hosted agents keep them.
@@ -70,7 +72,7 @@ enum SettingsIndex {
     /// their order: the same places as a computer's, with the account's own
     /// pages beside them. Sign out is left out, as Disconnect is.
     static var happyAccount: [Entry] {
-        [account, backupRestore, appearance, language, voice, agents, dataStorage, connection, scanTerminal, enterTerminal, supportUs, analytics] + aboutRows
+        [account, backupRestore, appearance, language, voice, agents, dataStorage, connection, scanTerminal, enterTerminal, supportUs, privacySettings, analytics] + aboutRows
     }
 
     /// The About page's rows.

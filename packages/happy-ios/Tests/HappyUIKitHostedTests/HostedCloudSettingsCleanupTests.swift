@@ -108,6 +108,23 @@ final class HostedCloudSettingsCleanupTests: XCTestCase {
         }
     }
 
+    /// Privacy is a card of its own, and its page holds this phone's
+    /// Analytics switch with the words on what it shares.
+    func testPrivacyIsACardOfItsOwnWithAnalyticsOnItsPage() async throws {
+        let (context, id) = try await rig(server: HappyCloud.server(named: "settings-test"))
+        let settings = SettingsViewController(context: context, computer: id)
+        let navigation = try await host(settings)
+        XCTAssertTrue(settings.shownRowIDs.contains([SettingsIndex.privacySettings.id]), "\(settings.shownRowIDs)")
+        XCTAssertNil(settings.shownRow(SettingsIndex.analytics.id))
+        XCTAssertEqual(settings.shownRow(SettingsIndex.privacySettings.id)?.title, Strings.SettingsAccount.privacy)
+        settings.tapRow(SettingsIndex.privacySettings.id)
+        try await until { navigation.topViewController is SettingsPageViewController && navigation.transitionCoordinator == nil }
+        let page = try XCTUnwrap(navigation.topViewController as? SettingsPageViewController)
+        XCTAssertEqual(page.title, Strings.SettingsAccount.privacy)
+        XCTAssertEqual(page.shownRowIDs, [[SettingsIndex.analytics.id]])
+        XCTAssertEqual(page.shownFooters, [Strings.SettingsAccount.privacyDescription])
+    }
+
     func testLocalSearchKeepsThePolicyVaultLock() async throws {
         let (context, id) = try await rig(server: HappyCloud.server(named: "settings-test"))
         let home = HomeViewController(context: context, computer: id)

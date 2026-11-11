@@ -27,6 +27,7 @@ import com.slopus.happy.ui.components.GlassSpec
 import com.slopus.happy.ui.components.ItemGroupTags
 import com.slopus.happy.ui.components.ItemTags
 import com.slopus.happy.ui.connection.DataStorageTags
+import com.slopus.happy.ui.connection.PrivacyTags
 import com.slopus.happy.ui.home.AccountMenu
 import com.slopus.happy.ui.home.AccountMenuEntry
 import com.slopus.happy.ui.node
@@ -72,6 +73,7 @@ class SettingsLayoutTest {
         onVoice = { opened += "voice" },
         onAgents = { opened += "agents" },
         onDataStorage = { opened += "storage" },
+        onPrivacy = { opened += "privacy" },
         onScanTerminal = { opened += "scan" },
         onEnterTerminal = { opened += "url" },
         onSignOut = { opened += "signOut" },
@@ -109,20 +111,23 @@ class SettingsLayoutTest {
     fun cardsComeInIosOrder() {
         show()
         val cards = rule.onAllNodesWithTag(ItemGroupTags.CARD, useUnmergedTree = true)
-        cards.assertCountEquals(7)
+        cards.assertCountEquals(8)
         fun cardOf(tag: String): Int {
             val row = rule.node(tag).bounds
-            return (0 until 7).first { index -> cards[index].bounds.let { it.top <= row.top && row.bottom <= it.bottom } }
+            return (0 until 8).first { index -> cards[index].bounds.let { it.top <= row.top && row.bottom <= it.bottom } }
         }
         assertEquals(0, cardOf(SettingsPageTags.ADD_AGENT))
         assertEquals(listOf(1, 1), listOf(SettingsTags.ACCOUNT, SettingsTags.BACKUP).map(::cardOf))
         assertEquals(listOf(2, 2, 2, 2, 2), listOf(SettingsTags.APPEARANCE, SettingsTags.LANGUAGE, SettingsTags.VOICE, SettingsTags.AGENTS, DataStorageTags.ROW).map(::cardOf))
         assertEquals(listOf(3, 3), listOf(SettingsTags.SCAN_TERMINAL, SettingsTags.ENTER_TERMINAL).map(::cardOf))
         assertEquals(4, cardOf(SettingsTags.SUPPORT))
+        // Privacy, a card of its own between Support us and About.
+        rule.node(PrivacyTags.ROW).performScrollTo()
+        assertEquals(5, cardOf(PrivacyTags.ROW))
         rule.node(SettingsTags.VERSION).performScrollTo()
-        assertEquals(5, cardOf(SettingsTags.VERSION))
+        assertEquals(6, cardOf(SettingsTags.VERSION))
         rule.node(SettingsPageTags.REMOVE).performScrollTo()
-        assertEquals(6, cardOf(SettingsPageTags.REMOVE))
+        assertEquals(7, cardOf(SettingsPageTags.REMOVE))
         // happy-app's Connected Accounts are gone, as on iOS; no titled groups at all.
         rule.onAllNodesWithTag(ItemGroupTags.HEADER, useUnmergedTree = true).assertCountEquals(0)
         rule.onNode(hasText("Claude Code")).assertDoesNotExist()
@@ -131,10 +136,10 @@ class SettingsLayoutTest {
     @Test
     fun everyRowOpensItsPage() {
         show()
-        for (tag in listOf(SettingsTags.ACCOUNT, SettingsTags.BACKUP, SettingsTags.APPEARANCE, SettingsTags.LANGUAGE, SettingsTags.VOICE, SettingsTags.AGENTS, DataStorageTags.ROW, SettingsTags.SCAN_TERMINAL, SettingsTags.ENTER_TERMINAL)) {
+        for (tag in listOf(SettingsTags.ACCOUNT, SettingsTags.BACKUP, SettingsTags.APPEARANCE, SettingsTags.LANGUAGE, SettingsTags.VOICE, SettingsTags.AGENTS, DataStorageTags.ROW, SettingsTags.SCAN_TERMINAL, SettingsTags.ENTER_TERMINAL, PrivacyTags.ROW)) {
             rule.node(tag).performScrollTo().performClick()
         }
-        assertEquals(listOf("account", "backup", "appearance", "language", "voice", "agents", "storage", "scan", "url"), opened)
+        assertEquals(listOf("account", "backup", "appearance", "language", "voice", "agents", "storage", "scan", "url", "privacy"), opened)
         for (title in listOf("What's New", "GitHub", "slopus/happy", "Report an Issue", "Privacy Policy", "Terms of Service", "1.8.0 (412)", "Commit 2026-10-16 03:12 UTC / abc1234")) {
             rule.onNodeWithText(title).performScrollTo().assertIsDisplayed()
         }

@@ -81,6 +81,7 @@ class AgentConnectionSettingsTest {
         onAppearance = { done += "appearance" },
         onRemove = { done += "remove" },
         onAskChief = { done += it },
+        onPrivacy = { done += "privacy" },
     )
 
     private fun show(dark: Boolean = false, daemonVersion: String? = null, voice: AgentVoiceSummary = AgentVoiceSummary(com.slopus.happy.call.CallAllowance.FREE_MILLIS)) = rule.setHappyContent(dark) {
@@ -135,7 +136,7 @@ class AgentConnectionSettingsTest {
     fun cardsAndRows() {
         show()
         // Support Happy is a card of its own, right under Profile, and the page's only Support us.
-        rule.onAllNodesWithTag(ItemGroupTags.CARD, useUnmergedTree = true).assertCountEquals(6)
+        rule.onAllNodesWithTag(ItemGroupTags.CARD, useUnmergedTree = true).assertCountEquals(7)
         rule.onNode(hasText("Steve") and hasAnyAncestor(hasTestTag(SettingsPageTags.account("account-1"))), useUnmergedTree = true).assertExists()
         rule.node(SettingsPageTags.account("agent-connection-2")).performClick()
         rule.node(SettingsPageTags.ADD_AGENT).performScrollTo().performClick()
@@ -148,6 +149,31 @@ class AgentConnectionSettingsTest {
         assertTrue(rule.node(AgentVoiceTags.SUPPORT).bounds.top > rule.node(AgentSettingsTags.PROFILE).bounds.bottom)
         assertTrue(rule.node(AgentVoiceTags.SUPPORT).bounds.bottom < rule.node(AgentSettingsTags.APPEARANCE).bounds.top)
         rule.node(AgentVoiceTags.ROW).performScrollTo().assertIsDisplayed()
+    }
+
+    /** Privacy is a card of its own, after Appearance's; it opens the page with this phone's Analytics switch. */
+    @Test
+    fun privacyIsACardOfItsOwn() {
+        show()
+        val privacy = hasTestTag(ItemGroupTags.CARD) and hasAnyDescendant(hasTestTag(PrivacyTags.ROW))
+        rule.onNode(privacy, useUnmergedTree = true).assertExists()
+        rule.onNode(privacy and hasAnyDescendant(hasTestTag(AgentSettingsTags.APPEARANCE)), useUnmergedTree = true).assertDoesNotExist()
+        assertTrue(rule.node(PrivacyTags.ROW).bounds.top > rule.node(AgentSettingsTags.APPEARANCE).bounds.bottom)
+        rule.onNode(hasTestTag(PrivacyTags.ROW) and hasAnyDescendant(hasText("Privacy")), useUnmergedTree = true).assertExists()
+        rule.node(PrivacyTags.ROW).performScrollTo().performClick()
+        assertEquals(listOf("privacy"), done)
+    }
+
+    /** Privacy's page: the Analytics switch, the words on what it shares under it. */
+    @Test
+    fun privacyHoldsTheAnalyticsSwitch() {
+        val set = mutableListOf<Boolean>()
+        rule.setHappyContent { PrivacyScreen(analytics = true, onAnalytics = { set += it }, onBack = {}) }
+        rule.onNodeWithText("Privacy").assertIsDisplayed()
+        rule.onNodeWithText("Analytics").assertIsDisplayed()
+        rule.onNodeWithText("Shares usage data", substring = true).assertIsDisplayed()
+        rule.node(PrivacyTags.ANALYTICS_SWITCH).assertIsOn().performClick()
+        assertEquals(listOf(false), set)
     }
 
     /** On Happy Cloud, Compute is the last row of Data and Storage's card, under that name. */

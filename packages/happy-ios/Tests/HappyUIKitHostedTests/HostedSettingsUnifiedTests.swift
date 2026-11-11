@@ -146,14 +146,16 @@ final class HostedSettingsUnifiedTests: XCTestCase {
             ["appearance", "language", "voice", "agents", "data-storage"],
             ["scan-terminal", "enter-terminal"],
             ["support-us"],
-            [SettingsIndex.analytics.id],
+            [SettingsIndex.privacySettings.id],
             SettingsIndex.aboutRows.map(\.id),
             ["sign-out"],
         ])
         // What home's search knows is what the page shows, in its order,
-        // with Data and Storage's Connection after Data and Storage.
+        // with Data and Storage's Connection after Data and Storage and
+        // Privacy's Analytics after Privacy.
         var page = Array(settings.shownRowIDs.dropFirst().dropLast().joined())
         page.insert(SettingsIndex.connection.id, at: try XCTUnwrap(page.firstIndex(of: SettingsIndex.dataStorage.id)) + 1)
+        page.insert(SettingsIndex.analytics.id, at: try XCTUnwrap(page.firstIndex(of: SettingsIndex.privacySettings.id)) + 1)
         XCTAssertEqual(SettingsIndex.happyAccount.map(\.id), page)
         for gone in Self.removed { XCTAssertNil(settings.shownRow(gone), "\(gone) is still on the page") }
         // Signing it out is its row's hold too, as Manage Accounts did.
@@ -185,7 +187,7 @@ final class HostedSettingsUnifiedTests: XCTestCase {
             ["profile"],
             ["support-boba"],
             ["appearance", "agent-voice", "agents", "data-storage"],
-            [SettingsIndex.analytics.id],
+            [SettingsIndex.privacySettings.id],
             SettingsIndex.aboutRows.map(\.id),
             ["disconnect"],
         ])

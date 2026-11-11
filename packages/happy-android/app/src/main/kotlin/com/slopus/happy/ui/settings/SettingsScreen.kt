@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.ui.connection.DataStorageTags
+import com.slopus.happy.ui.connection.privacySection
 import com.slopus.happy.model.Profile
 import com.slopus.happy.ui.components.Avatar
 import com.slopus.happy.ui.components.Icon
@@ -102,6 +103,8 @@ class HappySettingsActions(
     val onVoice: () -> Unit = {},
     val onAgents: () -> Unit = {},
     val onDataStorage: () -> Unit = {},
+    /** Privacy: this phone's Analytics switch. */
+    val onPrivacy: () -> Unit = {},
     val onScanTerminal: () -> Unit = {},
     val onEnterTerminal: () -> Unit = {},
     /** Signs this account out, once confirmed. */
@@ -193,7 +196,7 @@ fun happySettingsSections(actions: HappySettingsActions, connectingTerminal: Boo
  * ([SettingsHeader]); every account on the phone with
  * Add Agent ([AccountsCard]); Account and Backup & Restore; Appearance,
  * Language, Voice Assistant and Agents; the terminal's Scan QR code and
- * Enter URL; Support us; About; and Logout. Rows carry iOS's coloured
+ * Enter URL; Support us; Privacy; About; and Logout. Rows carry iOS's coloured
  * tiles ([SettingsTile]). happy-app's Connected Accounts (Claude Code,
  * GitHub) are gone from here, as from iOS.
  *
@@ -222,6 +225,7 @@ fun SettingsScreen(
     val search = rememberSettingsSearch()
     val sections = happySettingsSections(actions, connectingTerminal) +
         supportSection(about, aboutActions) +
+        privacySection(actions.onPrivacy) +
         aboutSection(about, aboutActions)
     Screen(
         header = {
