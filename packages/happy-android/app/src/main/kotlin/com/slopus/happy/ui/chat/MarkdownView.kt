@@ -24,6 +24,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -31,9 +33,15 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFontFamilyResolver
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -44,15 +52,18 @@ import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.chat.markdown.MarkdownBlock
@@ -61,6 +72,7 @@ import com.slopus.happy.chat.markdown.SpanStyle
 import com.slopus.happy.chat.markdown.SyntaxTokenType
 import com.slopus.happy.chat.markdown.isHttpMarkdownLink
 import com.slopus.happy.chat.markdown.tokenizeCode
+import com.slopus.happy.diff.syntax.DiffSyntax
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.MarkdownImage
@@ -72,7 +84,10 @@ import com.slopus.happy.ui.components.RoundButtonSize
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.AppMono
 import com.slopus.happy.ui.theme.happyTextStyle
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.text.SpanStyle as ComposeSpanStyle
 
 object MarkdownTags {
@@ -132,6 +147,8 @@ object MarkdownSpec {
     val copyIconReach = 40.dp
     const val COPIED_MILLIS = 1500L
     const val ICON_COPIED_MILLIS = 1600L
+    /** A long code block whose words are streaming in is coloured again once they pause this long. */
+    const val CODE_SETTLE_MILLIS = 200L
     val ruleMargin = 8.dp
     /** Link buttons: 8 above and below their stack, 8 apart. */
     val buttonMargin = 8.dp
@@ -377,7 +394,17 @@ private fun CodeBlock(content: String, language: String?) {
         }
     }
     // A row scrolled away loses its `remember`; the cache spares the tokenizer when it comes back.
-    val highlighted = remember(content, language, chat) { HighlightCache.get(content, language, chat) }
+    // A short block is coloured in place; a longer one is drawn plain while the tokenizer runs off the main thread.
+    // While words stream in, the lines coloured last keep their colour and the tokenizer waits for the words to settle.
+    val ready = remember(content, language, chat) { HighlightCache.ready(content, language, chat) }
+    var colored by remember(language, chat) { mutableStateOf<Pair<String, List<AnnotatedString>>?>(null) }
+    if (ready == null) {
+        LaunchedEffect(content, language, chat) {
+            if (colored != null) delay(MarkdownSpec.CODE_SETTLE_MILLIS)
+            colored = content to withContext(Dispatchers.Default) { HighlightCache.get(content, language, chat) }
+        }
+    }
+    val chunks = ready ?: remember(content, colored) { colored.let { if (it == null) plainCode(content) else plainAfter(it.second, it.first, content) } }
     Box(
         modifier = Modifier
             .padding(vertical = MarkdownSpec.codeMarginVertical)
@@ -396,14 +423,7 @@ private fun CodeBlock(content: String, language: String?) {
                 )
             }
             Box(modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                val layout = remember { mutableStateOf<TextLayoutResult?>(null) }
-                Text(
-                    text = highlighted,
-                    style = MarkdownSpec.codeText,
-                    softWrap = false,
-                    onTextLayout = { layout.value = it },
-                    modifier = Modifier.padding(MarkdownSpec.codePadding).revealText(layout),
-                )
+                CodeChunks(chunks, chat.syntaxDefault, Modifier.padding(MarkdownSpec.codePadding))
             }
         }
         if (style == CodeCopy.Icon) {
@@ -464,6 +484,89 @@ private fun CodeBlock(content: String, language: String?) {
     }
 }
 
+/** A code block's text: one chunk. */
+@Composable
+private fun CodeChunk(chunk: AnnotatedString, color: Color) {
+    val layout = remember { mutableStateOf<TextLayoutResult?>(null) }
+    Text(
+        text = chunk,
+        style = MarkdownSpec.codeText,
+        color = color,
+        softWrap = false,
+        onTextLayout = { layout.value = it },
+        modifier = Modifier.revealText(layout),
+    )
+}
+
+/**
+ * A code block's chunks, stacked. Line heights don't trim and lines don't
+ * wrap, so a chunk is as tall as its lines, known before it is laid out.
+ * Past [CODE_WHOLE_CHUNKS] only the chunks within a window's height of the
+ * window are composed; the rest are room of their height, so a block of
+ * thousands of lines lays out and draws a few chunks at a time, and
+ * nothing moves as chunks come and go. Off the screen, before it has a
+ * place, the block composes its first and last chunks, the ends it can
+ * come in from.
+ */
+@Composable
+private fun CodeChunks(chunks: List<AnnotatedString>, color: Color, modifier: Modifier) {
+    if (chunks.size <= CODE_WHOLE_CHUNKS) {
+        Column(modifier) { chunks.forEachIndexed { index, chunk -> key(index) { CodeChunk(chunk, color) } } }
+        return
+    }
+    val measurer = rememberTextMeasurer(cacheSize = 0)
+    val lines = remember(chunks) { chunks.map { chunk -> chunk.text.count { it == '\n' } + 1 } }
+    val tops = remember(lines, measurer) {
+        val height = HashMap<Int, Int>()
+        val tops = IntArray(lines.size + 1)
+        for ((index, count) in lines.withIndex()) {
+            tops[index + 1] = tops[index] + height.getOrPut(count) {
+                measurer.measure(AnnotatedString("\n".repeat(count - 1)), MarkdownSpec.codeText, softWrap = false).size.height
+            }
+        }
+        tops
+    }
+    // The widest line sets the scroll's width; it is measured off the main thread, and meanwhile the chunks composed say.
+    var widest by remember { mutableIntStateOf(0) }
+    val resolver = LocalFontFamilyResolver.current
+    val density = LocalDensity.current
+    val direction = LocalLayoutDirection.current
+    LaunchedEffect(chunks, resolver, density, direction) {
+        widest = withContext(Dispatchers.Default) {
+            val background = TextMeasurer(resolver, density, direction, cacheSize = 0)
+            chunks.maxOf { chunk ->
+                ensureActive()
+                background.measure(chunk, MarkdownSpec.codeText, softWrap = false).size.width
+            }
+        }
+    }
+    val window = LocalWindowInfo.current.containerSize.height
+    var near by remember(chunks.size) { mutableStateOf<IntRange?>(null) }
+    val composed = near?.toList() ?: (listOf(0, 1) + listOf(chunks.size - 2, chunks.size - 1))
+    Layout(
+        content = { for (index in composed) key(index) { CodeChunk(chunks[index], color) } },
+        modifier = modifier.onGloballyPositioned { coordinates ->
+            val top = coordinates.positionInWindow().y.roundToInt()
+            val first = chunkAt(tops, -top - window)
+            val last = chunkAt(tops, -top + 2 * window)
+            val range = first..last
+            if (range != near) near = range
+        },
+    ) { measurables, constraints ->
+        val placeables = measurables.map { it.measure(Constraints()) }
+        val width = maxOf(widest, placeables.maxOfOrNull { it.width } ?: 0).coerceAtLeast(constraints.minWidth)
+        layout(width, tops.last()) {
+            placeables.forEachIndexed { at, placeable -> placeable.place(0, tops[composed[at]]) }
+        }
+    }
+}
+
+/** The chunk at [y] of the chunks starting at [tops], held to the block. */
+private fun chunkAt(tops: IntArray, y: Int): Int {
+    val found = tops.binarySearch(y, 0, tops.size - 1)
+    return (if (found >= 0) found else -found - 2).coerceIn(0, tops.size - 2)
+}
+
 /**
  * How a code block offers its copy: happy-app's always-shown "Copy" pill
  * (the relay chat), or desktop's icon (3365ef9f, 3e08585d) that turns into
@@ -474,15 +577,29 @@ enum class CodeCopy { Pill, Icon }
 val LocalCodeCopy = staticCompositionLocalOf { CodeCopy.Pill }
 
 /**
+ * A code block is drawn as texts of this many lines. Compose merges a
+ * paragraph's font spans pairwise as it lays the paragraph out, so one text
+ * for a whole block grew with the square of its tokens: 30 s for 400 lines
+ * on the main thread.
+ */
+internal const val CODE_CHUNK_LINES = 50
+
+/** Up to this many lines a block is coloured in place; a longer one in the background. */
+internal const val CODE_INLINE_LINES = 40
+
+/** Up to this many chunks a block is composed whole; past it, only those near the window ([CodeChunks]). */
+internal const val CODE_WHOLE_CHUNKS = 3
+
+/**
  * Highlighted code blocks by (code, language, palette), most recent first,
  * so a block scrolling back into view isn't tokenized again. Bounded by
- * count; blocks are capped by size elsewhere.
+ * count; a block past DiffSyntax's limits is plain and never kept.
  */
 internal object HighlightCache {
     private const val MAX_ENTRIES = 64
     private data class Key(val code: String, val language: String?, val colors: ChatColors)
-    private val entries = object : LinkedHashMap<Key, AnnotatedString>(MAX_ENTRIES, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Key, AnnotatedString>?) = size > MAX_ENTRIES
+    private val entries = object : LinkedHashMap<Key, List<AnnotatedString>>(MAX_ENTRIES, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Key, List<AnnotatedString>>?) = size > MAX_ENTRIES
     }
 
     /** How many blocks were tokenized; tests read it. */
@@ -490,12 +607,40 @@ internal object HighlightCache {
     var misses = 0
         private set
 
-    @Synchronized
-    fun get(code: String, language: String?, colors: ChatColors): AnnotatedString =
-        entries.getOrPut(Key(code, language, colors)) {
-            misses++
-            highlight(code, language, colors)
+    /** The block's chunks if they can be had now: kept, plain, or short enough to tokenize here. Null: [get] them off the main thread. */
+    fun ready(code: String, language: String?, colors: ChatColors): List<AnnotatedString>? {
+        synchronized(this) { entries[Key(code, language, colors)] }?.let { return it }
+        return when {
+            language == null || !highlights(code) -> plainCode(code)
+            code.count { it == '\n' } < CODE_INLINE_LINES -> get(code, language, colors)
+            else -> null
         }
+    }
+
+    fun get(code: String, language: String?, colors: ChatColors): List<AnnotatedString> {
+        val key = Key(code, language, colors)
+        synchronized(this) { entries[key] }?.let { return it }
+        if (language == null || !highlights(code)) return plainCode(code)
+        val chunks = highlightChunks(code, language, colors, CODE_CHUNK_LINES)
+        return synchronized(this) {
+            misses++
+            entries.getOrPut(key) { chunks }
+        }
+    }
+
+    /** DiffSyntax's limits, which keep a pathological block plain instead of slow (iOS `CodeSyntaxService`). */
+    private fun highlights(code: String): Boolean {
+        if (code.length > DiffSyntax.MAX_CHARACTERS) return false
+        var lines = 1
+        var start = 0
+        while (true) {
+            val end = code.indexOf('\n', start)
+            if ((if (end < 0) code.length else end) - start > DiffSyntax.MAX_LINE) return false
+            if (end < 0) return true
+            if (++lines > DiffSyntax.MAX_LINES) return false
+            start = end + 1
+        }
+    }
 
     @Synchronized
     fun clear() {
@@ -504,9 +649,70 @@ internal object HighlightCache {
     }
 }
 
+/** [code] uncoloured, [CODE_CHUNK_LINES] lines to a text. */
+internal fun plainCode(code: String): List<AnnotatedString> {
+    val chunks = ArrayList<AnnotatedString>()
+    var start = 0
+    var lines = 0
+    var at = code.indexOf('\n')
+    while (at >= 0) {
+        if (++lines == CODE_CHUNK_LINES) {
+            chunks.add(AnnotatedString(code.substring(start, at)))
+            start = at + 1
+            lines = 0
+        }
+        at = code.indexOf('\n', at + 1)
+    }
+    chunks.add(AnnotatedString(code.substring(start)))
+    return chunks
+}
+
+/**
+ * [content] drawn with the chunks [colored] for [before]: [colored] itself
+ * when nothing changed, else its whole chunks that [content] still begins
+ * with, and the rest plain until it is coloured again.
+ */
+internal fun plainAfter(colored: List<AnnotatedString>, before: String, content: String): List<AnnotatedString> {
+    if (before == content) return colored
+    val kept = ArrayList<AnnotatedString>()
+    var at = 0
+    for (chunk in colored.dropLast(1)) {
+        if (!content.startsWith(chunk.text, at) || content.getOrNull(at + chunk.length) != '\n') break
+        kept.add(chunk)
+        at += chunk.length + 1
+    }
+    return kept + plainCode(content.substring(at))
+}
+
 /** SimpleSyntaxHighlighter's colours by token type. */
-internal fun highlight(code: String, language: String?, colors: ChatColors): AnnotatedString = buildAnnotatedString {
+internal fun highlight(code: String, language: String?, colors: ChatColors): AnnotatedString =
+    highlightChunks(code, language, colors, Int.MAX_VALUE).single()
+
+/**
+ * [highlight] as texts of [chunkLines] lines. Only emphasized tokens carry
+ * a weight, and neighbouring tokens drawn alike share a span: every weight
+ * is a font span, and those are what Compose merges pairwise.
+ */
+internal fun highlightChunks(code: String, language: String?, colors: ChatColors, chunkLines: Int): List<AnnotatedString> {
+    val chunks = ArrayList<AnnotatedString>()
+    var builder = AnnotatedString.Builder()
+    val run = StringBuilder()
+    var runColor = colors.syntaxDefault
+    var runEmphasized = false
+    var lines = 0
+    fun flush() {
+        if (run.isEmpty()) return
+        builder.withStyle(ComposeSpanStyle(color = runColor, fontWeight = if (runEmphasized) FontWeight.SemiBold else null)) { append(run.toString()) }
+        run.clear()
+    }
     for (token in tokenizeCode(code, language)) {
+        if (token.text == "\n" && ++lines == chunkLines) {
+            flush()
+            chunks.add(builder.toAnnotatedString())
+            builder = AnnotatedString.Builder()
+            lines = 0
+            continue
+        }
         val color = when (token.type) {
             SyntaxTokenType.Keyword, SyntaxTokenType.ControlFlow, SyntaxTokenType.Type, SyntaxTokenType.Modifier,
             SyntaxTokenType.Assignment, SyntaxTokenType.Comparison, SyntaxTokenType.Logical, SyntaxTokenType.Decorator,
@@ -519,10 +725,16 @@ internal fun highlight(code: String, language: String?, colors: ChatColors): Ann
             SyntaxTokenType.Bracket -> colors.syntaxBrackets[(token.nestLevel.coerceAtLeast(1) - 1) % 5]
             else -> colors.syntaxDefault
         }
-        withStyle(ComposeSpanStyle(color = color, fontWeight = if (token.type.emphasized) FontWeight.SemiBold else FontWeight.Normal)) {
-            append(token.text)
+        if (color != runColor || token.type.emphasized != runEmphasized) {
+            flush()
+            runColor = color
+            runEmphasized = token.type.emphasized
         }
+        run.append(token.text)
     }
+    flush()
+    chunks.add(builder.toAnnotatedString())
+    return chunks
 }
 
 @Composable

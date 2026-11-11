@@ -22,7 +22,20 @@ private val BRACKET_PAIRS = mapOf('(' to ')', '[' to ']', '{' to '}', '<' to '>'
 
 private fun words(list: List<String>) = list.joinToString("|")
 
+/** Each language's patterns, compiled once: the languages with words of their own, and the rest. */
+private val compiled = java.util.concurrent.ConcurrentHashMap<String, List<Pattern>>()
+
 private fun patterns(language: String): List<Pattern> {
+    val family = when (language) {
+        "python", "py" -> "python"
+        "typescript", "ts" -> "typescript"
+        "java" -> "java"
+        else -> ""
+    }
+    return compiled.getOrPut(family) { compile(family) }
+}
+
+private fun compile(language: String): List<Pattern> {
     val controlFlow = listOf(
         "if", "else", "elif", "for", "while", "do", "switch", "case", "break", "continue", "return", "yield", "try",
         "catch", "finally", "throw", "with",
