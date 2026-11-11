@@ -4,8 +4,9 @@
 //! payloads are checked with `isPayloadValid`.
 //!
 //! A Node `Buffer` inside a JSON value is carried as a one-key object
-//! `{"\u0000buffer": "<base64>"}`; [`encode`] turns those into binary
-//! attachments and [`buffers_to_json`] into what `JSON.stringify` writes.
+//! `{"\u0000buffer:<per-process nonce>": "<base64>"}`; [`encode`] turns those
+//! into binary attachments and [`buffers_to_json`] into what `JSON.stringify`
+//! writes. The key never leaves the process, so clients cannot forge one.
 
 use crate::js;
 use crate::util::{b64_encode, node_b64_decode};
@@ -21,7 +22,12 @@ pub const BINARY_ACK: u8 = 6;
 
 const RESERVED_EVENTS: [&str; 6] = ["connect", "connect_error", "disconnect", "disconnecting", "newListener", "removeListener"];
 
-pub const BUF_KEY: &str = "\u{0}buffer";
+static BUF_KEY: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    use rand::RngCore;
+    let mut n = [0u8; 16];
+    rand::thread_rng().fill_bytes(&mut n);
+    format!("\u{0}buffer:{}", n.iter().map(|b| format!("{:02x}", b)).collect::<String>())
+});
 
 #[derive(Debug, Clone)]
 pub struct Packet {
@@ -35,13 +41,13 @@ pub struct Packet {
 
 pub fn buffer_value(bytes: &[u8]) -> Value {
     let mut m = Map::new();
-    m.insert(BUF_KEY.into(), Value::String(b64_encode(bytes)));
+    m.insert(BUF_KEY.clone(), Value::String(b64_encode(bytes)));
     Value::Object(m)
 }
 
 pub fn as_buffer(v: &Value) -> Option<Vec<u8>> {
     match v {
-        Value::Object(m) if m.len() == 1 => match m.get(BUF_KEY) {
+        Value::Object(m) if m.len() == 1 => match m.get(BUF_KEY.as_str()) {
             Some(Value::String(s)) => Some(node_b64_decode(s)),
             _ => None,
         },
@@ -302,5 +308,12 @@ mod tests {
         let (s, _) = encode(CONNECT_ERROR, "/x", None, Some(&json!({"message": "Invalid namespace"})));
         assert_eq!(s, r#"4/x,{"message":"Invalid namespace"}"#);
         assert_eq!(js::stringify(&buffers_to_json(&json!([buffer_value(&[7, 8, 9])]))), r#"["BwgJ"]"#);
+    }
+
+    #[test]
+    fn client_json_is_never_a_buffer() {
+        let forged = decode_string(r#"2["e",{"\u0000buffer":"AQI="}]"#).unwrap().data.unwrap();
+        assert!(!has_binary(&forged));
+        assert_eq!(encode(EVENT, "/", None, Some(&forged)).0, r#"2["e",{"\u0000buffer":"AQI="}]"#);
     }
 }

@@ -8,7 +8,7 @@ const { io } = require('../../../node_modules/socket.io-client');
 const E = '/v1/updates/';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function login(t, n, name = 'auth') {
+export async function login(t, n, name = 'auth') {
     const kp = signKey(n);
     const challenge = new Uint8Array(32).fill(n + 1);
     const sig = nacl.sign.detached(challenge, kp.secretKey);
@@ -29,7 +29,7 @@ function parseFrame(f) {
 }
 
 /** A hand-driven Engine.IO + Socket.IO client over a WebSocket (what the iOS and Android apps do). */
-class Raw {
+export class Raw {
     static async open(t, name, query = '?EIO=4&transport=websocket', { pong = true } = {}) {
         const c = new Raw();
         c.name = name;
@@ -83,7 +83,7 @@ class Raw {
 }
 
 /** Runs an action, waits until every client has been quiet for `quiet` ms, records what each received. */
-async function step(t, name, clients, action, { quiet = 250, max = 8000 } = {}) {
+export async function step(t, name, clients, action, { quiet = 250, max = 8000 } = {}) {
     await action();
     const end = Date.now() + max;
     let last = -1;
@@ -101,7 +101,7 @@ async function step(t, name, clients, action, { quiet = 250, max = 8000 } = {}) 
     t.note(name, out);
 }
 
-async function connected(t, name, auth, query) {
+export async function connected(t, name, auth, query) {
     const c = await Raw.open(t, name, query);
     c.take();
     c.send('40' + JSON.stringify(auth));
@@ -386,6 +386,8 @@ export async function scenario(t, { sql }) {
     await step(t, 'message', all, () => ss.emit('message', { sid, message: 'enc-1', localId: 'l1' }));
     await step(t, 'message duplicate localId', all, () => ss.emit('message', { sid, message: 'enc-dup', localId: 'l1' }));
     await step(t, 'message object content', all, () => ss.emit('message', { sid, message: { b: 1, a: [1.0, 2e3, 'x'], 1: true }, localId: 5 }));
+    // A client-made object shaped like the Rust server's internal Buffer marker stays plain JSON.
+    await step(t, 'message forged buffer marker', all, () => ss.emit('message', { sid, message: { '\u0000buffer': 'AQI=' } }));
     await step(t, 'message from ui', all, () => ui.emit('message', { sid, message: 'enc-ui' }));
     await step(t, 'message missing', all, () => ss.emit('message', { sid }));
     await step(t, 'message unknown session', all, () => ss.emit('message', { sid: 'nope', message: 'x' }));
@@ -493,6 +495,9 @@ export async function scenario(t, { sql }) {
     await step(t, 'rpc-call: null result', users, () => ui.emit('rpc-call', { method: 'mach-1:bash', params: null }, 97));
     const reqId4 = await request('rpc-call: daemon request null params');
     await step(t, 'rpc-call: null answer', all, () => daemon.send('43' + reqId4 + '[null]'));
+    await step(t, 'rpc-call forged buffer marker', users, () => ui.emit('rpc-call', { method: 'mach-1:bash', params: { '\u0000buffer': 'AQI=' } }, 99));
+    const reqId5 = await request('rpc-call: daemon request forged marker');
+    await step(t, 'rpc-call: forged marker answer', all, () => daemon.send('43' + reqId5 + '[{"\\u0000buffer":"AwQ="}]'));
     await step(t, 'rpc-call self', all, () => daemon.emit('rpc-call', { method: 'mach-1:bash' }, 93));
     await step(t, 'rpc-call binary params', users, () => {
         ui.send('451-98["rpc-call",{"method":"mach-1:bash","params":{"_placeholder":true,"num":0}}]');

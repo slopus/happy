@@ -169,7 +169,3 @@ Differences accepted on purpose. Everything else is a bug.
     behind a per-socket lock) are spawned as tasks, so acks of *different* events sent
     together may come back in another order. Events behind the per-socket FIFO
     (`message`, `usage-report`, `session-subscribe`/`-unsubscribe`) keep their order.
-15. **Node Buffers inside handlers** are carried as `{"\u0000buffer": "<base64>"}`
-    in JSON values. A client could forge one by sending that key itself; it is then
-    treated as binary (sent back as an attachment, stored as base64), as a real
-    Buffer would be.
