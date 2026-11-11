@@ -2,7 +2,13 @@
 
 The complete surface of `packages/happy-server` (TypeScript) that the Rust server
 must reproduce. A box is ticked when the Rust implementation exists **and** the
-differential harness (`harness/`) compares it against the TS server.
+differential harness (`compat/`) compares it against the TS server.
+
+Persistence is unchanged: the Rust server reads and writes the TS server's Prisma
+schema as is (no extra tables, no migrations of its own), so both servers can be
+swapped on the same database at any time. It is a single process (no Redis) that
+uses every allocated core; a Postgres advisory lock stops a second instance from
+starting against the same database.
 
 Legend: `A` = requires `Authorization: Bearer <token>`, `S` = zod schema
 validation (params → body → querystring, before auth), `R` = zod response schema
@@ -10,60 +16,60 @@ validation (params → body → querystring, before auth), `R` = zod response sc
 
 ## HTTP framework behavior (Fastify 5 + fastify-type-provider-zod 6)
 
-- [ ] `access-control-allow-origin: *` on every response (`@fastify/cors`, origin `*`)
-- [ ] CORS preflight: `OPTIONS` + `access-control-request-method` → 204,
+- [x] `access-control-allow-origin: *` on every response (`@fastify/cors`, origin `*`)
+- [x] CORS preflight: `OPTIONS` + `access-control-request-method` → 204,
       `allow-methods: GET, POST, PUT, PATCH, DELETE`, `allow-headers: *`
-- [ ] 404 handler: `{"error":"Not found","path":<raw url incl. query>,"method":<m>}`;
+- [x] 404 handler: `{"error":"Not found","path":<raw url incl. query>,"method":<m>}`;
       unknown method on a known path is also this 404 (no 405)
-- [ ] Error handler: `<500` → `{error: err.name, message, statusCode}`;
+- [x] Error handler: `<500` → `{error: err.name, message, statusCode}`;
       `>=500` → `{error:"Internal Server Error",message:"An unexpected error occurred",statusCode}`
-- [ ] Validation errors: 400, `error:"Error"`, message
+- [x] Validation errors: 400, `error:"Error"`, message
       `"<body|params|querystring>/<path> <zod message>"` joined by `", "`; first failing part only
-- [ ] JSON body parser (global, from `connectRoutes`): empty body → `{}` (POST/PUT/PATCH) or
+- [x] JSON body parser (global, from `connectRoutes`): empty body → `{}` (POST/PUT/PATCH) or
       `undefined` (DELETE/GET); invalid JSON → 400 `SyntaxError` with the V8 message
-- [ ] `text/plain` body → string; `application/octet-stream` → raw bytes;
+- [x] `text/plain` body → string; `application/octet-stream` → raw bytes;
       other types → 415 `FastifyError` `Unsupported Media Type: <type>`
 - [ ] Body limit 100 MB (10 MB on session avatar PUT) → 413 `FastifyError`
-- [ ] Query parsing like `fast-querystring` (repeated keys → array, `+` → space)
-- [ ] `z.coerce.number()` uses JS `Number()` semantics on strings
-- [ ] Automatic `HEAD` for every `GET` route
-- [ ] `content-type: application/json; charset=utf-8` for objects, `text/plain; charset=utf-8` for strings
-- [ ] JSON output identical to `JSON.stringify` (number formatting, escaping, omitted `undefined`)
+- [x] Query parsing like `fast-querystring` (repeated keys → array, `+` → space)
+- [x] `z.coerce.number()` uses JS `Number()` semantics on strings
+- [x] Automatic `HEAD` for every `GET` route
+- [x] `content-type: application/json; charset=utf-8` for objects, `text/plain; charset=utf-8` for strings
+- [x] JSON output identical to `JSON.stringify` (number formatting, escaping, omitted `undefined`)
 
 ## HTTP routes
 
 ### Misc
-- [ ] `GET /` → `Welcome to Happy Server!` (text) — only without a static webapp dir
-- [ ] `GET /health` → `{status, timestamp(ISO), service}` / 503 on DB failure
+- [x] `GET /` → `Welcome to Happy Server!` (text) — only without a static webapp dir
+- [x] `GET /health` → `{status, timestamp(ISO), service}` / 503 on DB failure
 - [ ] `GET /files/*` (local storage only): public file serving, 403 on traversal and on session avatars
 - [ ] Static webapp + SPA fallback + `__HAPPY_CONFIG__` injection (`HAPPY_STATIC_DIR`, `HAPPY_INJECT_HTML_CONFIG`)
 - [ ] Metrics server (`METRICS_PORT`, default 9090, `METRICS_ENABLED`): `GET /metrics`, `GET /health`
 
 ### Auth (`authRoutes.ts`)
-- [ ] `POST /v1/auth` S — ed25519 challenge, upsert Account by uppercase-hex key, `{success, token}`
-- [ ] `POST /v1/auth/request` S R — terminal auth request (`supportsV2`), `{state}` / `{state, token, response}`
-- [ ] `GET /v1/auth/request/status` S R
-- [ ] `POST /v1/auth/response` A S
-- [ ] `POST /v1/auth/account/request` S R
-- [ ] `POST /v1/auth/account/response` A S
-- [ ] Token: privacy-kit persistent token (EdDSA JWT, key = PBKDF2-SHA512(secret, "handy Persistent Token", 210000)[0..32]); token cache semantics
+- [x] `POST /v1/auth` S — ed25519 challenge, upsert Account by uppercase-hex key, `{success, token}`
+- [x] `POST /v1/auth/request` S R — terminal auth request (`supportsV2`), `{state}` / `{state, token, response}`
+- [x] `GET /v1/auth/request/status` S R
+- [x] `POST /v1/auth/response` A S
+- [x] `POST /v1/auth/account/request` S R
+- [x] `POST /v1/auth/account/response` A S
+- [x] Token: privacy-kit persistent token (EdDSA JWT, key = PBKDF2-SHA512(secret, "handy Persistent Token", 210000)[0..32]); token cache semantics
 
 ### Account (`accountRoutes.ts`)
-- [ ] `GET /v1/account/profile` A
-- [ ] `GET /v1/account/settings` A R
-- [ ] `POST /v1/account/settings` A S R — version CAS, `update-account` to user-scoped
-- [ ] `POST /v1/usage/query` A S — local-time hour/day bucketing
+- [x] `GET /v1/account/profile` A
+- [x] `GET /v1/account/settings` A R
+- [x] `POST /v1/account/settings` A S R — version CAS, `update-account` to user-scoped
+- [x] `POST /v1/usage/query` A S — local-time hour/day bucketing
 
 ### Sessions (`sessionRoutes.ts`, `v3SessionRoutes.ts`)
-- [ ] `GET /v1/sessions` A — 150 by `updatedAt desc`, `lastMessage: null`
-- [ ] `GET /v2/sessions/active` A S
-- [ ] `GET /v2/sessions` A S — `cursor_v1_<id>` paging by `id desc`, `changedSince`
-- [ ] `POST /v1/sessions` A S — create-or-load by tag, project link, `new-session` / `update-session`
-- [ ] `GET /v1/sessions/:sessionId/messages` A S — 150 by `createdAt desc, seq desc` (**history offload aware**)
-- [ ] `POST /v1/sessions/:sessionId/archive` A S
-- [ ] `DELETE /v1/sessions/:sessionId` A S — cascade + `delete-session` + blob cleanup (**+ offloaded pages**)
-- [ ] `GET /v3/sessions/:sessionId/messages` A S — `after_seq`/`before_seq`/`limit`/`hasMore` (**offload aware**)
-- [ ] `POST /v3/sessions/:sessionId/messages` A S — localId dedup (**exact across offload**), batch seq, `new-message`
+- [x] `GET /v1/sessions` A — 150 by `updatedAt desc`, `lastMessage: null`
+- [x] `GET /v2/sessions/active` A S
+- [x] `GET /v2/sessions` A S — `cursor_v1_<id>` paging by `id desc`, `changedSince`
+- [x] `POST /v1/sessions` A S — create-or-load by tag, project link, `new-session` / `update-session`
+- [x] `GET /v1/sessions/:sessionId/messages` A S — 150 by `createdAt desc, seq desc`
+- [x] `POST /v1/sessions/:sessionId/archive` A S
+- [x] `DELETE /v1/sessions/:sessionId` A S — cascade + `delete-session` + blob cleanup
+- [x] `GET /v3/sessions/:sessionId/messages` A S — `after_seq`/`before_seq`/`limit`/`hasMore`
+- [x] `POST /v3/sessions/:sessionId/messages` A S — localId dedup, batch seq, `new-message`
 
 ### Session avatars (`sessionAvatarRoutes.ts`)
 - [ ] `POST /v1/sessions/:sessionId/avatar/request-upload` A S — 60/min/account limiter
@@ -172,7 +178,7 @@ a Fastify 404), `websocket` + `polling` with upgrade, `pingInterval 15000`, `pin
       30 s ack timeout (`operation has timed out`), 2 s presence poll / 2 misses (`RPC target disconnected`)
 - [ ] `update-metadata` (ack), `update-state` (ack)
 - [ ] `session-alive` (activity cache, 30 s threshold, 5 s batched flush, stop suppression)
-- [ ] `message` (per-socket FIFO lock; seq allocated even for duplicates; skip sender) (**offload aware dedup**)
+- [ ] `message` (per-socket FIFO lock; seq allocated even for duplicates; skip sender)
 - [ ] `session-end`
 - [ ] `session-subscribe` / `session-unsubscribe` (ack; machine-scoped only; shared FIFO lock)
 - [ ] `machine-alive`, `machine-update-metadata` (ack), `machine-update-state` (ack)
@@ -193,19 +199,18 @@ a Fastify 404), `websocket` + `polling` with upgrade, `pingInterval 15000`, `pin
 - [ ] Session/machine timeout sweep (10 min inactivity, every 60 s)
 - [ ] Activity cache flush (5 s) + cleanup (5 min)
 - [ ] DB record-count gauges (60 s)
-- [ ] History offload job (**new**), orphan/deleting page janitor (**new**)
 
 ## Environment variables
 
 | Variable | TS use | Rust |
 |---|---|---|
-| `DATABASE_URL` | Postgres (Prisma) | [ ] (Prisma-only URL params stripped) |
-| `HANDY_MASTER_SECRET` | tokens, KeyTree, ElevenLabs user id | [ ] |
-| `PORT` | API port (3005) | [ ] |
-| `HOST` | bind host (standalone) | [ ] |
+| `DATABASE_URL` | Postgres (Prisma) | [x] (Prisma-only URL params stripped) |
+| `HANDY_MASTER_SECRET` | tokens, KeyTree, ElevenLabs user id | [x] |
+| `PORT` | API port (3005) | [x] |
+| `HOST` | bind host (standalone) | [x] |
 | `METRICS_ENABLED`, `METRICS_PORT` | metrics server | [ ] |
 | `NODE_ENV` | log level | [ ] |
-| `DATA_DIR` | local files root (`./data`) | [ ] |
+| `DATA_DIR` | local files root (`./data`) | [x] |
 | `PUBLIC_URL` | public file / upload URLs | [ ] |
 | `S3_HOST`, `S3_PORT`, `S3_USE_SSL`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET`, `S3_REGION`, `S3_PUBLIC_URL` | Minio client | [ ] |
 | `REDIS_URL` | adapter (multi-replica) | ignored (single process by design) |
@@ -215,7 +220,9 @@ a Fastify 404), `websocket` + `polling` with upgrade, `pingInterval 15000`, `pin
 | `ELEVENLABS_API_KEY` | voice | [ ] |
 | `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING` | dev log route + `.logs/` file | [ ] |
 | `HAPPY_STATIC_DIR`, `HAPPY_INJECT_HTML_CONFIG` | self-host webapp | [ ] |
-| new: `HISTORY_*` | history offload (see STORAGE.md) | [ ] |
+| new: `HAPPY_WORKERS` | — | [x] tokio worker threads (default: allowed CPUs, cgroup `cpu.max` aware) |
+| new: `DATABASE_POOL_SIZE` | — | [x] sqlx pool size (default: `connection_limit` URL param, else 4 × workers clamped to 10..200) |
+| new: `HAPPY_LOG` | — | [x] tracing filter (default `info,sqlx=warn`) |
 
 ## Dead code in the TS server (not ported)
 `buildRelationshipUpdatedEvent`, `buildMachineStatusEphemeral`, `usernameUpdate`,

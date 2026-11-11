@@ -1,0 +1,1 @@
+http://minio.example.com:9000/happy/sessions/s1/attachments/a%20b%2B%28c%29%21.bin?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAEXAMPLE%2F20251101%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20251101T122640Z&X-Amz-Expires=900&X-Amz-SignedHeaders=host&X-Amz-Signature=741e4f597ef0d8611cd349a6f21174d7a3baf24e53b12c68c921ac3fd3c94a80

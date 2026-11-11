@@ -31,13 +31,13 @@ aes-gcm = "0.10"
 rand = "0.8"
 base64 = "0.22"
 hex = "0.4"
-zstd = "0.11"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 uuid = { version = "1", features = ["v4"] }
 prometheus = { version = "0.14", default-features = false }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 parking_lot = "0.12"
+dashmap = "6"
 percent-encoding = "2"
 regex = "1"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }

@@ -1,0 +1,1 @@
+https://minio.example.com/happy/x/y.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAEXAMPLE%2F20251101%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20251101T122640Z&X-Amz-Expires=900&X-Amz-SignedHeaders=host&X-Amz-Signature=d080d09471774c0c9e57b2752558b78201d3e31439f8420e1d25999b28ede095
