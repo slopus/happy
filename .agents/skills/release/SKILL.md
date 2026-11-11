@@ -366,6 +366,13 @@ reuse an existing tag.
   `liblkjingle_peerconnection_so.so` (LiveKit WebRTC),
   `libandroidx.graphics.path.so`, `libdatastore_shared_counter.so`,
   `libimage_processing_util_jni.so` and `libsurface_util_jni.so` (AndroidX/CameraX).
+  The upstream AARs already ship these libraries stripped: build IDs in the AAB
+  match the Maven AARs byte for byte, with no `.symtab` or `.debug_*` sections. AGP
+  therefore has nothing to extract, and `keepDebugSymbols` cannot help. Neither
+  webrtc-sdk (Maven Central, GitHub releases; see webrtc-sdk/android#57) nor
+  Google Maven publishes symbol artifacts for them. The warning is advisory. It
+  does not block review or rollout, and Java/Kotlin stack traces are still
+  deobfuscated through the embedded R8 mapping.
   Do not fabricate or upload a symbols zip containing stripped libraries. If
   first-party native code is added, the build must produce its symbols and the
   warning must go away.
