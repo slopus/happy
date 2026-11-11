@@ -5,19 +5,15 @@
 -->
 <resources>
     <string name="cloud_connect_row">Connetti a Happy Cloud</string>
-    <string name="cloud_connect_message">Accedi o crea un account Happy Cloud, poi apri uno dei tuoi server, creane uno o unisciti a uno. Gli agenti funzionano nel cloud; non serve un computer.</string>
-    <string name="cloud_connect_confirm">Connetti</string>
     <string name="cloud_needs_computer">Happy Cloud esegue solo agenti. Per questo serve un computer.</string>
     <string name="cloud_title">Happy Cloud</string>
-    <string name="cloud_your_servers">I tuoi server</string>
-    <string name="cloud_no_servers">Ancora nessun server. Creane uno o unisciti a uno qui sotto.</string>
     <string name="cloud_role_owner">Proprietario</string>
     <string name="cloud_role_member">Membro</string>
-    <string name="cloud_create">Crea un nuovo server</string>
-    <string name="cloud_create_detail">Scegli un nome. Il tuo server apparirà come @nome, come un nome utente.</string>
-    <string name="cloud_create_button">Crea server</string>
+    <string name="cloud_create">Crea un server</string>
+    <string name="cloud_create_detail">Dai un nome al nuovo server del tuo team. Potrai cambiarlo dopo.</string>
+    <string name="cloud_create_button">Crea</string>
     <string name="cloud_join">Unisciti a un server</string>
-    <string name="cloud_join_detail">Inserisci il nome del server e il codice di invito ricevuto dal proprietario.</string>
+    <string name="cloud_join_detail">Inserisci il nome del server e il codice di invito che hai ricevuto.</string>
     <string name="cloud_join_button">Unisciti</string>
     <string name="cloud_invite_code">Codice di invito</string>
     <string name="cloud_join_not_found">Nessun server con questo nome e codice di invito.</string>
@@ -45,4 +41,22 @@
     <string name="cloud_test_locked">Troppi tentativi. Riprova tra %1$d min.</string>
     <string name="cloud_role_admin">Amministratore</string>
     <string name="cloud_role_viewer">Lettore</string>
+    <string name="cloud_slide_cloud_body">Un piano di controllo robusto e ad alte prestazioni per i tuoi agenti, ospitato da Happy.</string>
+    <string name="cloud_slide_scale_title">Pensato per tanti agenti</string>
+    <string name="cloud_slide_scale_body">Happy Cloud ti permette di eseguire un numero qualsiasi di agenti, senza supervisione.</string>
+    <string name="cloud_slide_permissions_title">Permessi programmabili</string>
+    <string name="cloud_slide_permissions_body">Decidi cosa può vedere e fare ogni agente, e tieni ognuno isolato.</string>
+    <string name="cloud_slide_yours_title">Nessun vincolo</string>
+    <string name="cloud_slide_yours_body">Mai vincolato al calcolo di qualcun altro. Usa il nostro o il tuo, e prendi token e RAM ovunque.</string>
+    <string name="cloud_slide_source_title">Open source privato</string>
+    <string name="cloud_slide_source_body">Condividiamo ogni riga di Happy Cloud con clienti selezionati e aziende di sicurezza perché la esaminino.</string>
+    <string name="cloud_servers_detail">Il tuo account è già su questi server. Unisciti a quanti vuoi.</string>
+    <string name="cloud_server_joined">Unito</string>
+    <string name="cloud_server_join_label">Unisciti a %1$s</string>
+    <string name="cloud_bootstrap_new">Creane uno nuovo</string>
+    <string name="cloud_invite">Unisciti con un invito</string>
+    <string name="cloud_create_first_detail">Il tuo account non ha ancora server. Dai un nome al primo del tuo team.</string>
+    <string name="cloud_create_have_invite">Hai un invito? Unisciti a un server</string>
+    <string name="cloud_invite_button">Unisciti</string>
+    <string name="cloud_sign_in_github">Accedi con GitHub</string>
 </resources>

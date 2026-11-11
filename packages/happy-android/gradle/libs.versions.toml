@@ -13,7 +13,7 @@ core-ktx = "1.19.1"
 exifinterface = "1.4.2"
 lifecycle = "2.11.0"
 webkit = "1.16.0"
-browser = "1.8.0"
+browser = "1.10.0"
 swiperefreshlayout = "1.1.0"
 navigation-compose = "2.10.2"
 

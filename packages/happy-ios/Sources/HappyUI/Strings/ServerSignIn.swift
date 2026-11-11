@@ -31,9 +31,7 @@ extension Strings {
         static let nameLater = "Not Now"
         static let nameNeeded = "This server needs your name before you can use it."
         static let cloudAction = "Connect to Happy Cloud"
-        static let cloudTitle = "Connect to Happy Cloud?"
         static let cloudMessage = "Sign in or create an account to add a cloud team. Agents run in the cloud; no computer needed."
-        static let cloudConnect = "Connect"
 
         static func failure(_ error: any Error) -> String {
             switch error {

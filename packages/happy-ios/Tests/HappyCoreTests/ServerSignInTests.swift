@@ -432,6 +432,15 @@ final class SignInRequiredTests: XCTestCase {
         XCTAssertEqual(query.first { $0.name == "resource" }?.value, accounts + "/")
         XCTAssertEqual(query.first { $0.name == "client_id" }?.value, "happy")
         XCTAssertEqual(query.first { $0.name == "code_challenge_method" }?.value, "S256")
+        XCTAssertNil(query.first { $0.name == "provider" })
+        // GitHub straight away: the same request, with the chooser skipped.
+        let github = try CloudAccount.request(provider: "github")
+        let githubQuery = URLComponents(url: github.url, resolvingAgainstBaseURL: false)!.queryItems!
+        XCTAssertEqual(github.url.absoluteString.components(separatedBy: "?").first, accounts + "/authorize")
+        XCTAssertEqual(githubQuery.first { $0.name == "provider" }?.value, "github")
+        XCTAssertEqual(githubQuery.first { $0.name == "state" }?.value, github.state)
+        XCTAssertEqual(Set(githubQuery.map(\.name)), Set(query.map(\.name)).union(["provider"]))
+        XCTAssertEqual(github.method.tokenUrl, accounts + "/token")
         let account = try await CloudAccount.signIn(request, callback: URL(string: "happy://oauth/callback?code=c&state=\(request.state)")!, http: http, now: now)
         XCTAssertTrue(account.isLive(at: clock.now))
 

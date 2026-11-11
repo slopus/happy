@@ -323,10 +323,10 @@ final class SessionListChromeLayoutTests: XCTestCase {
             )).button
         }
         let short = button(label: 100)
-        XCTAssertEqual(short?.width, 200)
+        XCTAssertEqual(short?.width, 280)
         XCTAssertEqual(short?.midX, 196.5)
-        XCTAssertEqual(button(label: 210)?.width, 258)
-        XCTAssertEqual(button(label: 210)?.minX, 67.5)
+        XCTAssertEqual(button(label: 250)?.width, 298)
+        XCTAssertEqual(button(label: 250)?.minX, 47.5)
         XCTAssertEqual(button(label: 400)?.width, 345)
         XCTAssertEqual(button(label: 400)?.minX, 24)
     }

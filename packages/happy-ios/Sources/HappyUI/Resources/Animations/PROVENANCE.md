@@ -43,6 +43,31 @@ Three more files draw the first screen's slides and the screen after it
 | `tv.json`            | `3aad5efeefedef3fcbb2020a12873a40866141ec898a05f7eb67f15482f765fe` | a 📺 animated sticker supplied by Kirill on 2 November 2026 (`AnimatedSticker.tgs`, a Telegram sticker: gzip of Lottie JSON), decompressed and otherwise unmodified; upstream and licence not recorded |
 
 
+## Happy Cloud's welcome
+
+Four more of happy-desktop's files draw Happy Cloud's welcome: two of its
+slides (`CloudWelcomeViewController`, desktop's `CLOUD_SLIDES` in
+`CloudConnectScreen.tsx`) and two of the scenes drifting down its sides
+(`SetupDriftView`, desktop's `CLOUD_DRIFT` and `SetupDrift.tsx`), taken from
+`packages/happy-desktop-ui/src/assets/animations` at happy-desktop's
+`dca9b205`, byte for byte (desktop's own copies are already compact). Desktop's
+`PROVENANCE.md` records them as supplied by the project owner on 22 and 26
+August 2026 (`cloud-variation.json` on 27 August, `tree.json` on 9
+November), upstream and licence not recorded there.
+`packages/happy-android/app/src/main/res/raw` ships the same bytes as
+`state_closed_lock.json` and `state_open_hands.json`.
+
+| File               | SHA-256                                                            |
+| ------------------ | ------------------------------------------------------------------ |
+| `closed-lock.json` | `f6087f51de1ccc7dea5cfb9853292bc14271e86e9390a8fbc9514b31b32a0ad8` |
+| `open-hands.json`  | `7b5b9d98156057d2fb4cb895f0a462e943942be190dd0a302935e2ef306420b4` |
+| `cloud-variation.json` | `4833ea8c714e353818667d8c8e39ce807273e86c79c2d473f2331a00526600aa` |
+| `tree.json`        | `cb7c9a130992909adba37c6032799c130fe455cdc5a93e16e50f89c3eaba0eee` |
+
+Desktop loops the drifting scenes; here, as every animated emoji, each
+plays once as it fades in and holds its last frame, while the view itself
+keeps wandering (AGENTS.md, "Animated emoji never loop").
+
 ## `podcast-mic.json`, voice's sheets
 
 Not desktop's, and not under `LICENSE` here. Supplied with the request for

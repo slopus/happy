@@ -32,12 +32,31 @@ final class InstallDesktopLayoutTests: XCTestCase {
         return (layout, start)
     }
 
-    /// Scan QR code is where Start was: 48 above the bottom inset, at least 200 wide.
+    /// Scan QR code is where Start was: 48 above the bottom inset, at least 280 wide.
     func testScanIsWhereStartWas() {
         let (layout, start) = layout()
-        XCTAssertEqual(layout.button, CGRect(x: 96.5, y: 852 - 34 - 48 - 56, width: 200, height: 56))
+        XCTAssertEqual(layout.button, CGRect(x: 56.5, y: 852 - 34 - 48 - 56, width: 280, height: 56))
         XCTAssertEqual(layout.button.minY, start.button.minY)
         XCTAssertEqual(layout.contentHeight, 852)
+    }
+
+    /// Where the first screen offers Happy Cloud under Start, Start rises,
+    /// and Scan QR code rises with it.
+    func testScanRisesWithStartOverHappyCloud() {
+        let slides = [(1, 2), (2, 1), (1, 1), (2, 2)].map { lines in
+            StartLayout.Slide(
+                title: Measurable { CGSize(width: $0, height: CGFloat(lines.0) * 34) },
+                body: Measurable { CGSize(width: $0, height: CGFloat(lines.1) * 24) }
+            )
+        }
+        let start = StartLayout(size: phone, safeArea: safe, button: CGSize(width: 120, height: 56), cloud: CGSize(width: 200, height: 44),
+                                slides: slides, dots: CGSize(width: 120, height: 26))
+        let layout = InstallDesktopLayout(size: phone, safeArea: safe, start: start, title: .fixed(width: 300, height: 26),
+                                          link: .fixed(width: 210, height: 20), description: .fixed(width: 290, height: 42),
+                                          button: CGSize(width: 150, height: 56))
+        XCTAssertEqual(start.bottomPadding, 80)
+        XCTAssertEqual(layout.button.minY, start.button.minY)
+        XCTAssertEqual(layout.art.minY, start.gallery.minY + start.art.minY)
     }
 
     /// The art is the slides' square at the slides' place; the words follow it as a slide's do.

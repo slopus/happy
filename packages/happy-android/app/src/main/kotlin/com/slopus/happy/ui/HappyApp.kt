@@ -156,7 +156,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
             val happyLinks = rememberHappyLinks(graph, nav, agent)
             // Every scanner, signed in or out, sends happy://direct? codes here.
             CompositionLocalProvider(LocalAgentPairing provides connectAgent, LocalServerSignIn provides signInToServer, LocalHappyLinks provides happyLinks) {
-              // The account menu's Happy Cloud (and Add's ⋮): confirm, then sign in to the compiled-in team server.
+              // Happy Cloud: the first screen's Use Happy Cloud and the account menu's row.
               val cloud = rememberCloudConnect(graph, nav)
               // Add (the first screen's Connect, the account menu's Add): scan, then route the code.
               val add = rememberAddFlow(
@@ -164,7 +164,6 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                   onRestore = { nav.navigate(RestoreRoute) },
                   onServer = { nav.navigate(ServerRoute) },
                   serverLabel = rememberCustomServerLabel(graph),
-                  onCloud = cloud,
               )
               CompositionLocalProvider(LocalAddFlow provides add, LocalCloudConnect provides cloud) {
                 // Links: through the open agent connection in its browser, or as ever on a Happy account.

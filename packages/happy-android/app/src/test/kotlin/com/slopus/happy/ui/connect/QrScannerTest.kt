@@ -103,6 +103,11 @@ class QrScannerTest {
         rule.onNodeWithText("Happy CLI server").performClick()
         assertEquals(listOf(ScannerWay.Server), picked)
         rule.onNodeWithText("Restore Happy CLI account").assertDoesNotExist()
+        // Get help is answered over the camera, not handed back.
+        rule.node(QrScannerTags.MORE).performClick()
+        rule.onNodeWithText("Get help").performClick()
+        rule.onNodeWithText("Ask on Discord").assertExists()
+        assertEquals(listOf(ScannerWay.Server), picked)
     }
 
     @Test

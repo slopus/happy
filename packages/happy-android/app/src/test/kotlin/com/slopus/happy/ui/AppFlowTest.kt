@@ -91,6 +91,10 @@ class AppFlowTest {
         server.addSession("s1", updatedAt = 100)
         server.setSettings(buildJsonObject { put("analyticsOptOut", true) }, version = 2)
 
+        // Start's ways in are the next screen's ⋮.
+
+        rule.onNodeWithText("Start").performClick()
+
         rule.onNodeWithContentDescription("More").performClick()
         rule.onNodeWithText("Restore Happy CLI account").performClick()
         rule.onNodeWithText("Use a secret key instead").performClick()
@@ -105,6 +109,8 @@ class AppFlowTest {
 
     @Test
     fun aWrongSecretKeyShowsTheError() {
+        // Start's ways in are the next screen's ⋮.
+        rule.onNodeWithText("Start").performClick()
         rule.onNodeWithContentDescription("More").performClick()
         rule.onNodeWithText("Restore Happy CLI account").performClick()
         rule.onNodeWithText("Use a secret key instead").performClick()

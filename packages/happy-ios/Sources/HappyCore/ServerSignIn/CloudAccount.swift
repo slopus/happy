@@ -97,9 +97,17 @@ public actor CloudAccount {
     /// the answer doesn't say.
     static let lifetime: TimeInterval = 3600
 
-    /// The authorization request to open in the browser.
-    public static func request(redirectUri: String = OAuthRedirect.uri) throws -> OAuthSignInRequest {
-        try OAuthSignInRequest(method: method, audience: OAuthAudience(HappyCloud.accounts + "/")!, redirectUri: redirectUri)
+    /// The authorization request to open in the browser. `provider` names
+    /// the identity provider to go straight to (`github`, `apple`): the
+    /// accounts service then skips its own chooser page and redirects there
+    /// at once; an unknown name shows the chooser.
+    public static func request(provider: String? = nil, redirectUri: String = OAuthRedirect.uri) throws -> OAuthSignInRequest {
+        var method = method
+        if let provider, var parts = URLComponents(string: method.authorizationUrl) {
+            parts.queryItems = [URLQueryItem(name: "provider", value: provider)]
+            method.authorizationUrl = parts.string ?? method.authorizationUrl
+        }
+        return try OAuthSignInRequest(method: method, audience: OAuthAudience(HappyCloud.accounts + "/")!, redirectUri: redirectUri)
     }
 
     private let token: String

@@ -209,7 +209,7 @@ object LiveAvatarClock {
     const val MAX_LIVE = 32
     private const val FRAME_MS = 1000L / AvatarShader.FRAMES_PER_SECOND
 
-    /** [SystemClock.uptimeMillis] at the last tick; read in draw, so a tick only redraws. */
+    /** The last tick's vsync, in [SystemClock.uptimeMillis]'s time (the same monotonic clock); read in draw, so a tick only redraws. */
     val millis = mutableLongStateOf(SystemClock.uptimeMillis())
 
     /** The ones moving now. */
@@ -217,14 +217,25 @@ object LiveAvatarClock {
     private val joined = LinkedHashSet<Any>()
     private var ticking = false
 
-    private val tick: Choreographer.FrameCallback = Choreographer.FrameCallback {
-        millis.longValue = SystemClock.uptimeMillis()
+    /** Moved to the vsync's time, on the first at least [FRAME_MS] (less its jitter) after the last tick. */
+    private val tick: Choreographer.FrameCallback = Choreographer.FrameCallback { frameNanos ->
+        val frame = frameNanos / 1_000_000
+        if (frame - millis.longValue >= FRAME_MS - 2) millis.longValue = frame
         if (joined.isEmpty()) ticking = false else post()
     }
 
+    /**
+     * Woken [EARLY_MS] before the next tick is due, so the vsync at or just
+     * past it moves it: every 6 vsyncs at 120 Hz, 3 at 60. Waking at the
+     * tick itself would wait for the vsync after, 7 at 120 Hz (17 a second)
+     * and 3 to 5 at 60, unevenly.
+     */
     private fun post() {
-        Choreographer.getInstance().postFrameCallbackDelayed(tick, FRAME_MS)
+        val delay = millis.longValue + FRAME_MS - EARLY_MS - SystemClock.uptimeMillis()
+        Choreographer.getInstance().postFrameCallbackDelayed(tick, delay.coerceAtLeast(1))
     }
+
+    private const val EARLY_MS = 4L
 
     /** Main thread only. */
     fun join(token: Any) {

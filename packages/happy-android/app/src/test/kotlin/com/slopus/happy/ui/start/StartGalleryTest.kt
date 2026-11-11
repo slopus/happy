@@ -53,7 +53,7 @@ class StartGalleryTest {
 
     private fun show() {
         rule.setHappyContent {
-            StartScreen(connecting = false, customServerLabel = null, onStart = {}, onEnterLink = {}, onRestore = {}, onServer = {})
+            StartScreen(connecting = false, onStart = {})
         }
     }
 
@@ -185,7 +185,7 @@ class StartGalleryTabletTest {
     @Test
     fun tabletLayout() {
         rule.setHappyContent {
-            StartScreen(connecting = false, customServerLabel = null, onStart = {}, onEnterLink = {}, onRestore = {}, onServer = {})
+            StartScreen(connecting = false, onStart = {})
         }
         val art = rule.node(StartGalleryTags.art(0)).bounds
         assertBox("art", art, ((1280 - 128) / 2f).dp, art.top, 128.dp, 128.dp)

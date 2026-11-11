@@ -171,7 +171,14 @@ public final class AgentConnections {
     func credential(for id: String) -> AgentConnectionCredentials? { credentials[id] }
     /// What the connection's placeholder picture is picked by: its
     /// computer's address, the same on every phone paired with it.
-    public func placeholderSeed(for id: String) -> String? { credentials[id].map { "agent:\($0.signIn == nil ? $0.address : $0.publicUrl ?? "")" } }
+    /// A Happy Cloud server is picked by its handle's name, as desktop's
+    /// rail and both clients' server lists pick it; any other by its address.
+    public func placeholderSeed(for id: String) -> String? {
+        credentials[id].map { credential in
+            if credential.signIn != nil, let name = HappyCloud.serverName(credential.publicUrl) { return name }
+            return "agent:\(credential.signIn == nil ? credential.address : credential.publicUrl ?? "")"
+        }
+    }
     func configureStorage(_ directory: URL?) async { await storage.configureDirectory(directory) }
 
     public func restore() async throws {
@@ -216,8 +223,10 @@ public final class AgentConnections {
     /// Adds the team server signed in to at `origin`, or signs an account
     /// already there in again: same origin and person, same account, its
     /// grant replaced and its revocation lifted. `access` is the token the
-    /// sign-in just got, so nothing is refreshed straight away.
-    public func addServer(_ origin: AgentOrigin, signIn: ServerSignInRecord, access: OAuthAccess, name: String, instanceId: String? = nil) async throws -> AgentConnection {
+    /// sign-in just got, so nothing is refreshed straight away. `select`
+    /// false keeps the open connection open: Happy Cloud's list joins
+    /// several servers before opening one.
+    public func addServer(_ origin: AgentOrigin, signIn: ServerSignInRecord, access: OAuthAccess, name: String, instanceId: String? = nil, select: Bool = true) async throws -> AgentConnection {
         if !loaded { try await restore() }
         let value = AgentConnectionCredentials.server(origin, signIn: signIn)
         let id = credentials.first { $0.value.signIn != nil && $0.value.publicUrl == origin.value && $0.value.signIn?.userId == signIn.userId }?.key ?? "server-\(UUID().uuidString.lowercased())"
@@ -227,14 +236,17 @@ public final class AgentConnections {
         account.revoked = false
         account.status = .connecting
         await stop(id)
-        try await storage.add(account, credentials: value)
+        try await storage.add(account, credentials: value, select: select)
         credentials[id] = value
         if let existing = authorizations[id] { await existing.replace(access: access, grant: signIn.grant) }
         else { _ = authorization(value, for: id, access: access) }
-        accounts.removeAll { $0.id == id }; accounts.append(account); activeID = id
-        // Every engine pauses; `select` starts this one again, an engine
-        // that gave up when the old sign-in ended included.
-        for engine in engines.values { await engine.pause() }
+        accounts.removeAll { $0.id == id }; accounts.append(account)
+        if select {
+            activeID = id
+            // Every engine pauses; `select` starts this one again, an engine
+            // that gave up when the old sign-in ended included.
+            for engine in engines.values { await engine.pause() }
+        }
         onChange?(); startConnections()
         return account
     }

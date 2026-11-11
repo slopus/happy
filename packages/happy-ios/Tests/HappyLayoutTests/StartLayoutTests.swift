@@ -28,12 +28,19 @@ final class StartLayoutTests: XCTestCase {
         XCTAssertEqual(layout.cloud, .zero)
     }
 
+    /// Happy Cloud's text action sits 12 under Start and 24 above the
+    /// bottom inset; Start rises from its 48 to make room, and the slides
+    /// stay centred between the top row and Start.
     func testCloudAndStartShareTheWiderLabelAndKeepTheirGap() {
         let layout = StartLayout(size: phone, safeArea: safe, button: CGSize(width: 120, height: 56),
                                  cloud: CGSize(width: 260, height: 56), slides: slides(), dots: dots)
-        XCTAssertEqual(layout.button, CGRect(x: 66.5, y: 714, width: 260, height: 56))
-        XCTAssertEqual(layout.cloud, CGRect(x: 66.5, y: 646, width: 260, height: 56))
-        XCTAssertEqual(layout.gallery, CGRect(x: 0, y: 231.5, width: 393, height: 294))
+        XCTAssertEqual(layout.button, CGRect(x: 56.5, y: 670, width: 280, height: 56))
+        XCTAssertEqual(layout.cloud, CGRect(x: 56.5, y: 738, width: 280, height: 56))
+        XCTAssertEqual(layout.cloud.minY - layout.button.maxY, 12)
+        XCTAssertEqual(layout.cloud.maxY, 852 - 34 - 24)
+        XCTAssertEqual(layout.bottomPadding, 92)
+        XCTAssertEqual(layout.gallery, CGRect(x: 0, y: 243.5, width: 393, height: 294))
+        XCTAssertEqual(layout.gallery.minY - layout.help.maxY, layout.button.minY - layout.gallery.maxY, accuracy: 0.001)
         XCTAssertEqual(layout.contentHeight, 759)
     }
 
@@ -42,34 +49,35 @@ final class StartLayoutTests: XCTestCase {
                                  safeArea: LayoutInsets(top: 0, left: 59, bottom: 21, right: 59),
                                  button: CGSize(width: 120, height: 56), cloud: CGSize(width: 260, height: 56),
                                  slides: slides(), dots: dots)
-        XCTAssertEqual(layout.button, CGRect(x: 296, y: 386, width: 260, height: 56))
-        XCTAssertEqual(layout.cloud, CGRect(x: 296, y: 318, width: 260, height: 56))
+        XCTAssertEqual(layout.button, CGRect(x: 286, y: 318, width: 280, height: 56))
+        XCTAssertEqual(layout.cloud, CGRect(x: 286, y: 386, width: 280, height: 56))
         XCTAssertEqual(layout.gallery, CGRect(x: 59, y: 68, width: 734, height: 234))
-        XCTAssertEqual(layout.contentHeight, 490)
+        XCTAssertEqual(layout.contentHeight, 466)
+        XCTAssertEqual(layout.cloud.maxY + 24, layout.contentHeight)
     }
 
-    func testStartIsAsWideAsItsLabelAtLeastTwoHundredAndCentred() {
+    func testStartIsAsWideAsItsLabelAtLeast280AndCentred() {
         let layout = layout()
-        XCTAssertEqual(layout.button.width, 200)
+        XCTAssertEqual(layout.button.width, 280)
         XCTAssertEqual(layout.button.midX, 196.5)
-        let wide = self.layout(button: CGSize(width: 260, height: 56))
-        XCTAssertEqual(wide.button.width, 260)
+        let wide = self.layout(button: CGSize(width: 320, height: 56))
+        XCTAssertEqual(wide.button.width, 320)
         XCTAssertEqual(wide.button.midX, 196.5)
         let shifted = self.layout(safeArea: LayoutInsets(top: 59, left: 40, bottom: 34, right: 0))
         XCTAssertEqual(shifted.button.midX, 40 + 353 / 2)
     }
 
-    func testMoreSitsFourInFromTheTopRightOfTheSafeArea() {
+    func testHelpSitsFourInFromTheTopRightOfTheSafeArea() {
         let layout = layout(safeArea: LayoutInsets(top: 59, left: 0, bottom: 34, right: 20))
-        XCTAssertEqual(layout.more, CGRect(x: 393 - 20 - 4 - 48, y: 63, width: 48, height: 48))
+        XCTAssertEqual(layout.help, CGRect(x: 393 - 20 - 4 - 48, y: 63, width: 48, height: 48))
     }
 
-    func testTheLogotypeIsSmallAndCentredOnMoresRow() {
+    func testTheLogotypeIsSmallAndCentredOnHelpsRow() {
         let layout = layout()
         XCTAssertEqual(layout.logo.width, 88)
         XCTAssertEqual(layout.logo.height, 88 / (1200.0 / 319.0), accuracy: 0.001)
         XCTAssertEqual(layout.logo.midX, 196.5)
-        XCTAssertEqual(layout.logo.midY, layout.more.midY, accuracy: 0.001)
+        XCTAssertEqual(layout.logo.midY, layout.help.midY, accuracy: 0.001)
     }
 
     /// The art's square, the tallest slide's words and the dots, centred
@@ -80,7 +88,7 @@ final class StartLayoutTests: XCTestCase {
         let words: CGFloat = 68 + 8 + 48
         XCTAssertEqual(layout.pager, CGRect(x: 0, y: 0, width: 393, height: 96 + 24 + words))
         XCTAssertEqual(layout.gallery.height, layout.pager.height + 24 + 26)
-        XCTAssertEqual(layout.gallery.minY - layout.more.maxY, layout.button.minY - layout.gallery.maxY, accuracy: 0.001)
+        XCTAssertEqual(layout.gallery.minY - layout.help.maxY, layout.button.minY - layout.gallery.maxY, accuracy: 0.001)
         XCTAssertEqual(layout.gallery.minX, 0)
         XCTAssertEqual(layout.gallery.width, 393)
         XCTAssertEqual(layout.dots, CGRect(x: 136.5, y: layout.pager.maxY + 24, width: 120, height: 26))
@@ -95,6 +103,11 @@ final class StartLayoutTests: XCTestCase {
         XCTAssertEqual(layout.mark.width, 96 * 0.8, accuracy: 0.001)
         XCTAssertEqual(layout.mark.midX, layout.art.midX, accuracy: 0.001)
         XCTAssertEqual(layout.mark.midY, layout.art.midY, accuracy: 0.001)
+        // The liquid metal cloud's square is 1.3 times the art's, on its centre.
+        XCTAssertEqual(layout.metal.width, 124.8, accuracy: 0.001)
+        XCTAssertEqual(layout.metal.height, 124.8, accuracy: 0.001)
+        XCTAssertEqual(layout.metal.midX, layout.art.midX, accuracy: 0.001)
+        XCTAssertEqual(layout.metal.midY, layout.art.midY, accuracy: 0.001)
         XCTAssertEqual(Set(layout.titles.map(\.minY)), [120])
         XCTAssertEqual(Set(layout.bodies.map(\.minY)), [120 + 68 + 8])
         for (title, body) in zip(layout.titles, layout.bodies) {

@@ -17,12 +17,27 @@ final class StartGalleryView: UIView, UIScrollViewDelegate {
     enum Art: Equatable {
         /// The Happy mark, in the words' colour.
         case logo
+        /// The Happy Cloud mark in liquid metal (`LiquidMetalView`), in
+        /// `StartLayout.metal`, wider than the art; it moves only while its slide shows.
+        case cloud
         /// One of desktop's animated scenes.
         case scene(StateScene)
     }
 
+    /// One slide: its art, its title and its line.
+    struct Slide {
+        let art: Art
+        let title: String
+        let body: String
+    }
+
     /// Desktop's art for each slide: its logo, then its scenes (👾, 🦙, 🪄).
     static let arts: [Art] = [.logo, .scene(.alienMonster), .scene(.llama), .scene(.wand)]
+
+    /// The first screen's: desktop's welcome deck.
+    static var startSlides: [Slide] {
+        zip(arts, Strings.Start.slides).map { Slide(art: $0, title: $1.title, body: $1.body) }
+    }
 
     /// Desktop holds a slide 15 s for its longer words; a phone's are one
     /// line.
@@ -35,6 +50,14 @@ final class StartGalleryView: UIView, UIScrollViewDelegate {
     private(set) var index = 0
     private var timer: Timer?
     private var layout: StartLayout?
+    /// How long a slide shows before the next: `advanceInterval` unless
+    /// the slides' lines are longer.
+    private let interval: TimeInterval
+    /// A tap on the logo's mark (Happy Cloud's ten taps to its test
+    /// sign-in); the scenes keep their own tap, a replay.
+    var onArtTap: (() -> Void)? {
+        didSet { pages.forEach { $0.onMarkTap = onArtTap } }
+    }
 
     /// The screen is showing: only then does it move on by itself.
     var isRunning = false {
@@ -42,15 +65,17 @@ final class StartGalleryView: UIView, UIScrollViewDelegate {
             guard isRunning != oldValue else { return }
             schedule()
             if isRunning { pages[index].arrive() }
+            updateMotion()
         }
     }
 
     /// Whether it moves on by itself: never with Reduce Motion or VoiceOver.
     static var advances: Bool { !UIAccessibility.isReduceMotionEnabled && !UIAccessibility.isVoiceOverRunning }
 
-    override init(frame: CGRect) {
-        pages = zip(Self.arts, Strings.Start.slides).map { Page(art: $0, title: $1.title, body: $1.body) }
-        super.init(frame: frame)
+    init(slides: [Slide] = StartGalleryView.startSlides, interval: TimeInterval = StartGalleryView.advanceInterval) {
+        pages = slides.map { Page(art: $0.art, title: $0.title, body: $0.body) }
+        self.interval = interval
+        super.init(frame: .zero)
         pager.isPagingEnabled = true
         pager.showsHorizontalScrollIndicator = false
         pager.contentInsetAdjustmentBehavior = .never
@@ -88,10 +113,12 @@ final class StartGalleryView: UIView, UIScrollViewDelegate {
     /// (`InstallDesktopLayout`). Keep them in the view hierarchy, hidden,
     /// so they measure at the person's text size.
     @MainActor final class Measure {
-        let labels: [(title: StyledLabel, body: StyledLabel)] = Strings.Start.slides.map {
-            (StartGalleryView.titleLabel($0.title), StartGalleryView.bodyLabel($0.body))
-        }
+        let labels: [(title: StyledLabel, body: StyledLabel)]
         private let dots = UIPageControl()
+
+        init(slides: [Slide] = StartGalleryView.startSlides) {
+            labels = slides.map { (StartGalleryView.titleLabel($0.title), StartGalleryView.bodyLabel($0.body)) }
+        }
 
         var slides: [StartLayout.Slide] {
             labels.map { StartLayout.Slide(title: $0.title.measurable, body: $0.body.measurable) }
@@ -141,6 +168,15 @@ final class StartGalleryView: UIView, UIScrollViewDelegate {
         if !pager.isDragging, !pager.isDecelerating {
             pager.contentOffset = layout.page(index).origin
         }
+        updateMotion()
+    }
+
+    /// Art that moves on its own (the liquid metal cloud) moves only while
+    /// its page is in view and the screen is showing.
+    private func updateMotion() {
+        for page in pages {
+            page.isPaused = !isRunning || !page.frame.intersects(pager.bounds)
+        }
     }
 
     /// Shows slide `number`. The next or the previous slides in; a jump
@@ -174,7 +210,7 @@ final class StartGalleryView: UIView, UIScrollViewDelegate {
         timer?.invalidate()
         timer = nil
         guard isRunning, Self.advances, pages.count > 1, !pager.isTracking else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: Self.advanceInterval, repeats: false) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.show((self.index + 1) % self.pages.count, animated: true)
@@ -198,6 +234,7 @@ final class StartGalleryView: UIView, UIScrollViewDelegate {
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        updateMotion()
         // Only a drag picks the slide from where the pager is; the dots and
         // the timer pick it themselves.
         guard let layout, scrollView.isTracking || scrollView.isDecelerating else { return }
@@ -223,14 +260,30 @@ private final class Page: UIView {
     let body: StyledLabel
     private let mark = UIImageView()
     private let scene: StateSceneView?
+    private let metal: LiquidMetalView?
+    var onMarkTap: (() -> Void)? {
+        didSet {
+            mark.isUserInteractionEnabled = onMarkTap != nil
+            metal?.isUserInteractionEnabled = onMarkTap != nil
+        }
+    }
+    /// Its art holds still: the page is out of view.
+    var isPaused = true {
+        didSet { metal?.isPaused = isPaused }
+    }
 
     init(art: StartGalleryView.Art, title: String, body: String) {
         switch art {
         case .logo:
             scene = nil
+            metal = nil
+        case .cloud:
+            scene = nil
+            metal = LiquidMetalView(mark: .cloud)
         case .scene(let name):
             // Held on its last frame until its slide arrives (`arrive`).
             scene = StateSceneView(scene: name, size: StartLayout.Metrics.art, play: .onDemand, replayLabel: Strings.Start.replay(title))
+            metal = nil
         }
         self.title = StartGalleryView.titleLabel(title)
         self.body = StartGalleryView.bodyLabel(body)
@@ -241,7 +294,15 @@ private final class Page: UIView {
             mark.contentMode = .scaleAspectFit
             // The mark says nothing the title doesn't.
             mark.isAccessibilityElement = false
+            mark.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(markTapped)))
             addSubview(mark)
+        }
+        if let metal {
+            metal.isPaused = isPaused
+            metal.fallbackColor = UIColor(Palette.startText)
+            metal.accessibilityIdentifier = "cloud-liquid-metal"
+            metal.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(markTapped)))
+            addSubview(metal)
         }
         if let scene { addSubview(scene) }
         addSubview(self.title)
@@ -249,6 +310,8 @@ private final class Page: UIView {
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    @objc private func markTapped() { onMarkTap?() }
 
     /// The slide is showing now: its animation plays from the start.
     func arrive() {
@@ -258,6 +321,7 @@ private final class Page: UIView {
     func apply(_ layout: StartLayout, number: Int) {
         mark.setLayoutFrame(layout.mark)
         scene?.setLayoutFrame(layout.art)
+        metal?.setLayoutFrame(layout.metal)
         title.setLayoutFrame(layout.titles[number])
         body.setLayoutFrame(layout.bodies[number])
     }

@@ -20,4 +20,5 @@
     <string name="start_install_choose">Wybierz Link\u00A0Mobile\u00A0App podczas konfiguracji.</string>
     <string name="start_install_settings">Albo otwórz Settings\u00A0›\u00A0Mobile\u00A0Access.</string>
     <string name="start_install_download">Pobierz z %1$s</string>
+    <string name="start_cloud">Użyj Happy Cloud</string>
 </resources>

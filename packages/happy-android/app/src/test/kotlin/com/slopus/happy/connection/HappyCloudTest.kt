@@ -51,6 +51,15 @@ class HappyCloudTest {
         assertNull(HappyCloud.handle(null, base))
     }
 
+    /** What a server's placeholder is picked by, on every client: its bare name. */
+    @Test
+    fun aServersNameIsItsHandleWithoutTheAt() {
+        val base = "happy.computer"
+        assertEquals("acme", HappyCloud.serverName("https://acme.happy.computer", base))
+        assertNull(HappyCloud.serverName("https://a.b.happy.computer", base))
+        assertNull(HappyCloud.serverName("https://happy.acme.example", base))
+    }
+
     @Test
     fun theOpenConnectionToAServerFirstThenTheOldest() {
         val acme = "https://acme.happy.computer"

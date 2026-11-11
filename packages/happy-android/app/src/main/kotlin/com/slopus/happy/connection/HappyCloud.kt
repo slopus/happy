@@ -59,8 +59,15 @@ object HappyCloud {
      * username, until Happy Cloud has its own domain (accounts contract,
      * Display). Null for any other server, which shows its host.
      */
-    fun handle(server: String?, base: String? = this.base): String? =
-        if (isServer(server, base)) "@" + AgentOrigin.parse(server!!).host.removeSuffix(".$base") else null
+    fun handle(server: String?, base: String? = this.base): String? = serverName(server, base)?.let { "@$it" }
+
+    /**
+     * A Happy Cloud server's bare name (`acme`), what its placeholder
+     * picture is picked by on every client (desktop's rail, both phones'
+     * server lists and account menus). Null for any other server.
+     */
+    fun serverName(server: String?, base: String? = this.base): String? =
+        if (isServer(server, base)) AgentOrigin.parse(server!!).host.removeSuffix(".$base") else null
 
     /** This person's connection to [server] already on the phone, if any: the open one first, else the oldest. */
     fun connection(accounts: List<AgentConnection>, server: String, open: String? = null): AgentConnection? =

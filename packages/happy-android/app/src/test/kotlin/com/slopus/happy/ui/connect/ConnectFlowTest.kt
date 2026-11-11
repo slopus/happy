@@ -263,7 +263,7 @@ class ConnectFlowTest {
         rule.runOnIdle { flow.scan() }
         rule.waitUntil { ways.isNotEmpty() }
         assertEquals(
-            ScanRequest(listOf(ScannerWay.EnterLink, ScannerWay.Restore, ScannerWay.Server), "happy.example.com"),
+            ScanRequest(listOf(ScannerWay.EnterLink, ScannerWay.Restore, ScannerWay.Server, ScannerWay.Help), "happy.example.com"),
             scanner.lastRequest,
         )
         scanner.results += ScanResult.Chose(ScannerWay.Server)

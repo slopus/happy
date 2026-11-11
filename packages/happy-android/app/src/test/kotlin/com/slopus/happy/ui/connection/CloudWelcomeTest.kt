@@ -1,25 +1,41 @@
 package com.slopus.happy.ui.connection
 
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.R
 import com.slopus.happy.connection.CloudAccountState
 import com.slopus.happy.connection.CloudException
+import com.slopus.happy.connection.CloudServer
 import com.slopus.happy.connection.PasswordSignIn
+import com.slopus.happy.connection.ServerAuthException
+import androidx.test.core.app.ApplicationProvider
+import java.security.MessageDigest
 import com.slopus.happy.ui.PHONE
-import com.slopus.happy.ui.components.StateAnimationTags
+import com.slopus.happy.ui.PHONE_WIDTH
+import com.slopus.happy.ui.assertDp
+import com.slopus.happy.ui.bounds
+import com.slopus.happy.ui.components.HeaderTags
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
+import com.slopus.happy.ui.start.StartGalleryTags
+import com.slopus.happy.ui.start.StartSlide
+import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
-/** The welcome's test-account sign-in: absent until the sparkles are pressed ten times within four seconds. */
+/**
+ * Happy Cloud's steps, desktop's (CloudConnectScreen.tsx): the welcome's
+ * slides and Continue, its hidden test-account sign-in, and Join a server.
+ */
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)
 class CloudWelcomeTest {
@@ -27,23 +43,30 @@ class CloudWelcomeTest {
 
     private val tries = mutableListOf<Pair<String, String>>()
     private val answers = ArrayDeque<PasswordSignIn>()
+    private val taps = mutableListOf<String>()
 
-    private fun welcome() = rule.setHappyContent {
+    private fun screen(
+        state: CloudAccountState = CloudAccountState.SignedOut(),
+        servers: List<CloudServer>? = null,
+        here: Set<String> = emptySet(),
+        joins: Map<String, CloudJoin> = emptyMap(),
+    ) = rule.setHappyContent {
         CloudScreen(
-            state = CloudAccountState.SignedOut(),
-            servers = null,
+            state = state,
+            servers = servers,
             failure = null,
-            here = emptySet(),
+            here = here,
+            joins = joins,
             image = { null },
-            onOpenBrowser = {},
+            onOpenBrowser = { taps += "browser" },
             signInWithPassword = { login, password -> tries += login to password; answers.removeFirst() },
-            onRetrySignIn = {},
             onReload = {},
-            onPick = {},
-            onCreate = {},
-            onJoin = {},
-            onSignOut = {},
-            onBack = {},
+            onJoinServer = { taps += "join ${it.name}" },
+            onContinue = { taps += "continue" },
+            onCreate = { taps += "create" },
+            onInvite = { taps += "invite" },
+            onSignOut = { taps += "signOut" },
+            onBack = { taps += "back" },
         )
     }
 
@@ -51,15 +74,73 @@ class CloudWelcomeTest {
     private fun press(times: Int, apartMillis: Long = 100) {
         rule.mainClock.autoAdvance = false
         repeat(times) {
-            rule.node(StateAnimationTags.ANIMATION).performClick()
+            // Whichever slide shows: they move on by themselves while the presses go.
+            val shown = CloudSlides.indices.first { runCatching { rule.node(StartGalleryTags.art(it)).fetchSemanticsNode() }.isSuccess }
+            rule.node(StartGalleryTags.art(shown)).performClick()
             rule.mainClock.advanceTimeBy(apartMillis)
         }
         rule.mainClock.autoAdvance = true
     }
 
+    /** Desktop's five slides in its order, with its words (the first in Liquid Metal), and Sign in with GitHub in Continue's place. */
+    @Test
+    fun theWelcomeIsDesktopsSlidesThenSignInWithGitHub() {
+        assertEquals(StartSlide.Art.Cloud, CloudSlides[0].art)
+        assertEquals(
+            listOf(R.raw.state_robot, R.raw.state_closed_lock, R.raw.state_sparkles, R.raw.state_open_hands),
+            CloudSlides.drop(1).map { (it.art as StartSlide.Art.Scene).raw },
+        )
+        screen()
+        rule.onNodeWithText("Happy Cloud").assertExists()
+        rule.onNodeWithText("A hardened, high-performance control plane for your agents, hosted by Happy.").assertExists()
+        for (title in listOf("Built for lots of agents", "Programmable permissions", "No lock-in", "Private open source")) {
+            rule.onNodeWithContentDescription(title).assertExists()
+        }
+        val primary = rule.node(CloudTags.PRIMARY).bounds
+        assertDp("continue 48 above the bottom", (891 - 48).dp, primary.bottom)
+        assertDp("continue centred", (PHONE_WIDTH / 2f).dp, (primary.left + primary.right) / 2)
+        rule.onNodeWithText("Continue").assertDoesNotExist()
+        rule.onNodeWithText("Other ways", substring = true).assertDoesNotExist()
+        rule.onNodeWithText("Sign in with GitHub").performClick()
+        rule.node(HeaderTags.LEFT).performClick()
+        assertEquals(listOf("browser", "back"), taps)
+    }
+
+    /** A failed sign-in stays on the welcome: why, in red over the button, which tries again. */
+    @Test
+    fun aFailedSignInSaysWhyOverTheButton() {
+        screen(CloudAccountState.Failed(ServerAuthException.Reason.Denied))
+        rule.node(CloudTags.SLIDES).assertExists()
+        rule.onNodeWithText("Sign in with GitHub").performClick()
+        assertEquals(listOf("browser"), taps)
+    }
+
+    /** Desktop's scenes, its files byte for byte (assets/animations/PROVENANCE.md at dca9b205). */
+    @Test
+    fun theScenesAreDesktopsBytes() {
+        val resources = ApplicationProvider.getApplicationContext<android.content.Context>().resources
+        for ((raw, hash) in listOf(
+            R.raw.state_closed_lock to "f6087f51de1ccc7d",
+            R.raw.state_open_hands to "7b5b9d98156057d2",
+            R.raw.state_cloud_variation to "4833ea8c714e3538",
+            R.raw.state_tree to "cb7c9a130992909a",
+        )) {
+            val bytes = resources.openRawResource(raw).use { it.readBytes() }
+            val actual = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+            assertEquals(resources.getResourceEntryName(raw), hash, actual.take(16))
+        }
+    }
+
+    @Test
+    fun theHourUpSaysSoOverContinue() {
+        screen(CloudAccountState.SignedOut(expired = true))
+        rule.onNodeWithText("sign-in lasts an hour", substring = true).assertExists()
+        rule.node(CloudTags.PRIMARY).assertExists()
+    }
+
     @Test
     fun nineQuickPressesOrTenSlowOnesRevealNothing() {
-        welcome()
+        screen()
         press(9)
         rule.node(CloudTags.LOGIN).assertDoesNotExist()
         rule.onNodeWithText("Sign in with a test account.").assertDoesNotExist()
@@ -72,7 +153,7 @@ class CloudWelcomeTest {
 
     @Test
     fun tenQuickPressesRevealTheFormAndItsErrorsShowInline() {
-        welcome()
+        screen()
         press(10)
         rule.onNodeWithText("Sign in with a test account.").assertExists()
         rule.node(CloudTags.LOGIN).performTextInput(" qa-android ")
@@ -94,5 +175,43 @@ class CloudWelcomeTest {
         assertEquals(3, tries.size)
         // The browser's sign-in is still there, under it.
         rule.node(CloudTags.SECONDARY).assertExists()
+    }
+
+    private val acme = CloudServer(id = "s1", name = "acme", url = "https://acme.happy-clusters.com", displayName = "Acme")
+    private val beta = CloudServer(id = "s2", name = "beta", url = "https://beta.happy-clusters.com")
+
+    /** Join a server: each server with Join; Continue only once one is on the phone; the two ways to add one under them. */
+    @Test
+    fun joinAServer() {
+        screen(CloudAccountState.SignedIn, servers = listOf(acme, beta))
+        rule.onNodeWithText("Join a server").assertExists()
+        rule.onNodeWithText("Your account is already on these servers. Join as many as you like.").assertExists()
+        rule.onNodeWithText("@acme").assertExists()
+        rule.node(CloudTags.PRIMARY).assertDoesNotExist()
+        rule.onNodeWithContentDescription("Join Acme").performClick()
+        rule.onNodeWithText("Bootstrap a new one").performClick()
+        rule.onNodeWithText("Join with an invite").performClick()
+        // Back leaves the account, so the welcome's Continue can use another.
+        rule.node(HeaderTags.LEFT).performClick()
+        assertEquals(listOf("join acme", "create", "invite", "signOut"), taps)
+    }
+
+    @Test
+    fun aJoinedServerReadsJoinedAndContinueTakesYouIn() {
+        screen(CloudAccountState.SignedIn, servers = listOf(acme, beta), here = setOf("https://beta.happy-clusters.com"))
+        rule.onNodeWithText("Joined").assertExists()
+        rule.onNodeWithContentDescription("Join beta").assertDoesNotExist()
+        rule.node(CloudTags.PRIMARY).performClick()
+        assertEquals(listOf("continue"), taps)
+    }
+
+    /** While one joins, the others wait, Continue waits, and Back stays. */
+    @Test
+    fun whileOneJoinsNothingElseGoes() {
+        screen(CloudAccountState.SignedIn, servers = listOf(acme, beta), here = setOf("https://beta.happy-clusters.com"), joins = mapOf("s1" to CloudJoin.Joining))
+        rule.node(CloudTags.PRIMARY).assertIsNotEnabled()
+        rule.node(CloudTags.CREATE).assertIsNotEnabled()
+        rule.node(HeaderTags.LEFT).performClick()
+        assertEquals(emptyList<String>(), taps)
     }
 }

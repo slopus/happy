@@ -1065,14 +1065,19 @@ public final class AccountController {
 
     /// Keeps a team server signed in to (`ServerSignInFlow`), or signs an
     /// account already there in again, and opens it.
-    public func addServer(_ signedIn: ServerSignInFlow.SignedIn) async throws {
+    /// `open` false only keeps it: Happy Cloud's list joins several servers,
+    /// then opens one with `switchAccount(to:)`. Returns its id.
+    @discardableResult
+    public func addServer(_ signedIn: ServerSignInFlow.SignedIn, open: Bool = true) async throws -> String {
         guard !busy else { throw AccountSwitchError.operationInProgress }
         busy = true; defer { finishOperation() }
         _ = await prepareStorageDirectory()
         let name = HappyCloud.serverName(signedIn.origin.value) ?? URLComponents(string: signedIn.origin.value)?.host ?? signedIn.origin.value
-        let account = try await agentConnections.addServer(signedIn.origin, signIn: signedIn.record, access: signedIn.access, name: name, instanceId: signedIn.instanceId)
+        let account = try await agentConnections.addServer(signedIn.origin, signIn: signedIn.record, access: signedIn.access, name: name, instanceId: signedIn.instanceId, select: open)
+        guard open else { return account.id }
         isAddingAccount = false
         try await activateAgentConnection(account.id)
+        return account.id
     }
 
     /// Shows or hides the paired computers. Hidden while one is open, the

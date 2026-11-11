@@ -137,9 +137,13 @@ class AgentConnections(
     /**
      * What [id]'s placeholder picture is picked by (happy-ios's
      * `placeholderSeed(for:)`): its computer's address, the same on every
-     * phone paired with it; null when its credentials are gone.
+     * phone paired with it; null when its credentials are gone. A Happy
+     * Cloud server is picked by its bare name ([HappyCloud.serverName]), as
+     * desktop's rail and the server list pick it.
      */
-    suspend fun placeholderSeed(id: String): String? = credentials(id)?.let { "agent:${it.address}" }
+    suspend fun placeholderSeed(id: String): String? = credentials(id)?.let { credential ->
+        HappyCloud.serverName(credential.publicUrl.takeIf { credential.oauth != null }) ?: "agent:${credential.address}"
+    }
 
     /**
      * Keeps a freshly paired agent. Its own name and avatar are read first

@@ -28,7 +28,8 @@
  * fixed in the source; the noise texture behind randomR replaced by
  * Paper's proceduralHash21 over the same 100-cell period; fwidth replaced
  * by forward differences of the grain one pixel right and one down, as on
- * Android.
+ * Android; the grain, which never moves, worked out once per size into a
+ * texture (`grain_field`) that every frame reads.
  */
 #if canImport(UIKit)
 import Metal
@@ -43,16 +44,18 @@ struct GrainPalette: Equatable {
 }
 
 /// Paper's Grain Gradient, "corners" shape, filling the view. It moves at
-/// Paper's default speed but only 15 frames a second (it moves slowly, and
-/// every frame is a full-screen shader the GPU shares with the screen's own
-/// animations), while on screen and the app is active, and holds still with
+/// Paper's default speed, at the display's rate (120 frames a second on
+/// ProMotion, 60 elsewhere), while on screen and the app is active, and holds still with
 /// Reduce Motion (on Paper's frame 0). Frames are encoded and presented off
 /// the main thread (`GrainRenderer.queue`), the first one too, so a swipe or
 /// a push is never waiting on a drawable; until the first arrives the view
 /// is the gradient's background colour. A frame still on its way when the
 /// next is due is skipped, not queued, and one asked for by a resize or a
-/// new palette is drawn once it lands. Without Metal a still gradient in
-/// the same colours stands in.
+/// new palette is drawn once it lands. Only the corners move; the grain is
+/// drawn once per size (`GrainField`), so a frame costs the GPU about 1.5 ms
+/// on an iPhone 15 Pro Max rather than the whole grain over again (about
+/// 16 ms there, two 120 Hz frames). Without Metal a still gradient
+/// in the same colours stands in.
 final class GrainGradientView: UIView {
     var palette: GrainPalette {
         didSet { if palette != oldValue { paletteChanged() } }
@@ -66,6 +69,7 @@ final class GrainGradientView: UIView {
     private var fallback: CALayer?
     /// The frame being drawn off the main thread, if one is.
     private let inFlight = GrainInFlight()
+    private let field = GrainField()
 
     override class var layerClass: AnyClass { GrainRenderer.shared == nil ? CALayer.self : CAMetalLayer.self }
 
@@ -98,6 +102,9 @@ final class GrainGradientView: UIView {
     override func didMoveToWindow() {
         super.didMoveToWindow()
         if let window { metalLayer?.contentsScale = window.screen.scale }
+        // Off screen (a screen pushed over it) the field's 14 MB go; it is
+        // drawn again on the way back.
+        if window == nil { let field = field; GrainRenderer.queue.async { field.texture = nil } }
         updateLink()
         render()
     }
@@ -131,7 +138,9 @@ final class GrainGradientView: UIView {
         }
         guard link == nil else { return }
         let link = CADisplayLink(target: GrainTick(self), selector: #selector(GrainTick.tick(_:)))
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: 10, maximum: 15, preferred: 15)
+        // The screen's own rate: 120 on ProMotion, 60 elsewhere.
+        let rate = Float((window?.windowScene?.screen.maximumFramesPerSecond ?? 60) >= 120 ? 120 : 60)
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: rate, preferred: rate)
         link.add(to: .main, forMode: .common)
         self.link = link
     }
@@ -152,9 +161,9 @@ final class GrainGradientView: UIView {
         let uniforms = GrainRenderer.uniforms(size: metalLayer.drawableSize, time: Float(time), palette: palette)
         let target = GrainTarget(layer: metalLayer)
         guard inFlight.begin(orAfter: !skippable) else { return }
-        let inFlight = inFlight
+        let inFlight = inFlight, field = field
         GrainRenderer.queue.async { [weak self] in
-            renderer.draw(in: target, uniforms: uniforms)
+            renderer.draw(in: target, field: field, uniforms: uniforms)
             guard inFlight.end() else { return }
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.render() } }
         }
@@ -214,6 +223,8 @@ private struct GrainPipeline: @unchecked Sendable {
     let device: MTLDevice
     let queue: MTLCommandQueue
     let pipeline: MTLRenderPipelineState
+    /// Draws a `GrainField`.
+    let fieldPipeline: MTLRenderPipelineState
 
     private init?() {
         guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else { return nil }
@@ -224,6 +235,9 @@ private struct GrainPipeline: @unchecked Sendable {
             descriptor.fragmentFunction = library.makeFunction(name: "grain_fragment")
             descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
             pipeline = try device.makeRenderPipelineState(descriptor: descriptor)
+            descriptor.fragmentFunction = library.makeFunction(name: "grain_field")
+            descriptor.colorAttachments[0].pixelFormat = GrainField.pixelFormat
+            fieldPipeline = try device.makeRenderPipelineState(descriptor: descriptor)
         } catch {
             // A compiler that refuses the source gets the still gradient.
             return nil
@@ -260,6 +274,16 @@ private final class GrainInFlight: @unchecked Sendable {
     }
 }
 
+/// A view's grain and how much it changes over a pixel, for every pixel of
+/// its drawable: none of it moves, so it is drawn when the size changes
+/// and every frame reads it. Touched only on `GrainRenderer.queue`.
+private final class GrainField: @unchecked Sendable {
+    /// Half floats: off by under a thousandth, far below what 8-bit colour
+    /// shows. 14 MB on an iPhone 15 Pro Max.
+    static let pixelFormat = MTLPixelFormat.rg16Float
+    var texture: MTLTexture?
+}
+
 /// A view's Metal layer, handed to the render queue. CAMetalLayer's
 /// `nextDrawable` may be called from any thread; its size is set only on
 /// the main thread.
@@ -277,12 +301,14 @@ private final class GrainRenderer: @unchecked Sendable {
     let device: MTLDevice
     private let queue: MTLCommandQueue
     private let pipeline: MTLRenderPipelineState
+    private let fieldPipeline: MTLRenderPipelineState
 
     private init?() {
         guard let compiled = GrainPipeline.compiled else { return nil }
         device = compiled.device
         queue = compiled.queue
         pipeline = compiled.pipeline
+        fieldPipeline = compiled.fieldPipeline
     }
 
     struct Uniforms {
@@ -312,20 +338,42 @@ private final class GrainRenderer: @unchecked Sendable {
         )
     }
 
-    func draw(in target: GrainTarget, uniforms: Uniforms) {
+    func draw(in target: GrainTarget, field: GrainField, uniforms: Uniforms) {
         var uniforms = uniforms
         guard let drawable = target.layer.nextDrawable(), let buffer = queue.makeCommandBuffer() else { return }
-        let pass = MTLRenderPassDescriptor()
-        pass.colorAttachments[0].texture = drawable.texture
-        pass.colorAttachments[0].loadAction = .dontCare
-        pass.colorAttachments[0].storeAction = .store
-        guard let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return }
+        // The drawable's own size: the layer's may have changed since the
+        // uniforms were read, and the field is read pixel for pixel.
+        let width = drawable.texture.width, height = drawable.texture.height
+        uniforms.resolution = SIMD2(Float(width), Float(height))
+        if field.texture?.width != width || field.texture?.height != height {
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: GrainField.pixelFormat, width: width, height: height, mipmapped: false)
+            descriptor.usage = [.renderTarget, .shaderRead]
+            descriptor.storageMode = .private
+            guard let texture = device.makeTexture(descriptor: descriptor),
+                  let encoder = buffer.makeRenderCommandEncoder(descriptor: Self.pass(to: texture)) else { return }
+            encoder.setRenderPipelineState(fieldPipeline)
+            encoder.setFragmentBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 0)
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+            encoder.endEncoding()
+            field.texture = texture
+        }
+        guard let encoder = buffer.makeRenderCommandEncoder(descriptor: Self.pass(to: drawable.texture)) else { return }
         encoder.setRenderPipelineState(pipeline)
         encoder.setFragmentBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 0)
+        encoder.setFragmentTexture(field.texture, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
         buffer.present(drawable)
         buffer.commit()
+    }
+
+    /// Every pixel of `texture` written, none of what it held read.
+    private static func pass(to texture: MTLTexture) -> MTLRenderPassDescriptor {
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = texture
+        pass.colorAttachments[0].loadAction = .dontCare
+        pass.colorAttachments[0].storeAction = .store
+        return pass
     }
 }
 
@@ -439,17 +487,30 @@ float band(float mixer, float aa) {
   return smoothstep(.5 - .5 * SOFTNESS - aa, .5 + .5 * SOFTNESS + aa, clamp(mixer, 0., 1.));
 }
 
-fragment float4 grain_fragment(float4 position [[position]], constant Uniforms& u [[buffer(0)]]) {
-  float2 fragCoord = position.xy;
-  float t = .1 * (u.time + 7.);
-
-  // v_objectUV for fit contain: a square box the size of the shorter side,
-  // centred, y up.
-  float box = min(u.resolution.x, u.resolution.y);
-  float2 uv = fragCoord / u.resolution - .5;
+// v_objectUV for fit contain: a square box the size of the shorter side,
+// centred, y up.
+float2 object_uv(float2 fragCoord, float2 resolution) {
+  float2 uv = fragCoord / resolution - .5;
   uv.y = -uv.y;
-  float2 shape_uv = uv * u.resolution / box;
-  float2 grain_uv = shape_uv * box * .7;
+  return uv * resolution / min(resolution.x, resolution.y);
+}
+
+// The grain at each pixel and fwidth of it, neither of which moves: drawn
+// into a texture once per size, read by every frame.
+fragment float2 grain_field(float4 position [[position]], constant Uniforms& u [[buffer(0)]]) {
+  float2 grain_uv = object_uv(position.xy, u.resolution) * min(u.resolution.x, u.resolution.y) * .7;
+  float3 slow = float3(fbm(.002 * grain_uv + 10.), fbm(.003 * grain_uv), fbm(.001 * grain_uv));
+  float added = grain(grain_uv, slow);
+
+  // fwidth(shape): the grain one pixel right and one pixel down (y is up
+  // in grain_uv); the corners themselves barely change over a pixel.
+  float aa = abs(grain(grain_uv + float2(.7, 0.), slow) - added) + abs(grain(grain_uv - float2(0., .7), slow) - added);
+  return float2(added, aa);
+}
+
+fragment float4 grain_fragment(float4 position [[position]], constant Uniforms& u [[buffer(0)]], texture2d<float, access::read> field [[texture(0)]]) {
+  float t = .1 * (u.time + 7.);
+  float2 shape_uv = object_uv(position.xy, u.resolution);
 
   // Corners
   shape_uv *= .6;
@@ -463,13 +524,9 @@ fragment float4 grain_fragment(float4 position [[position]], constant Uniforms& 
   shape -= bl.x * bl.y * tr.x * tr.y;
   shape = 1. - smoothstep(0., 1., shape);
 
-  float3 slow = float3(fbm(.002 * grain_uv + 10.), fbm(.003 * grain_uv), fbm(.001 * grain_uv));
-  float added = grain(grain_uv, slow);
-  shape += added;
-
-  // fwidth(shape): the grain one pixel right and one pixel down (y is up
-  // in grain_uv); the corners themselves barely change over a pixel.
-  float aa = abs(grain(grain_uv + float2(.7, 0.), slow) - added) + abs(grain(grain_uv - float2(0., .7), slow) - added);
+  float2 grain_aa = field.read(uint2(position.xy)).rg;
+  shape += grain_aa.x;
+  float aa = grain_aa.y;
 
   shape = clamp(shape - .5 / COUNT, 0., 1.);
   float totalShape = smoothstep(0., SOFTNESS + 2. * aa, clamp(shape * COUNT, 0., 1.));

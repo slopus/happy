@@ -95,11 +95,11 @@ object InstallDesktopTags {
  *                      a slide's line type
  *   the site           4 under: "Download from happy.engineering", the
  *                      domain underlined, a 40 tall target opening it
- *   Scan QR code       as wide as its label (at least 200), 48 above the
+ *   Scan QR code       as wide as its label (at least 280), 48 above the
  *                      bottom inset: the app's Add flow, the scanner as ever
  *
- * The standard bar, clear over the gradient, with back and the first
- * screen's ⋮ ([StartMenu]), so the other ways in are still a tap away. If
+ * The standard bar, clear over the gradient, with back and the
+ * self-hosted flow's ⋮ ([StartMenu]): the other ways in, and Get help. If
  * it outgrows the window it scrolls, as the first screen does.
  */
 @Composable
@@ -112,7 +112,6 @@ fun InstallDesktopScreen(
     onEnterLink: () -> Unit,
     onRestore: () -> Unit,
     onServer: () -> Unit,
-    onCloud: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val dark = HappyTheme.colors.dark
@@ -214,7 +213,6 @@ fun InstallDesktopScreen(
                             onEnterLink = onEnterLink,
                             onRestore = onRestore,
                             onServer = onServer,
-                            onCloud = onCloud,
                         )
                     }
                 }

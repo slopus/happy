@@ -5,19 +5,15 @@
 -->
 <resources>
     <string name="cloud_connect_row">連線到 Happy Cloud</string>
-    <string name="cloud_connect_message">登入或建立 Happy Cloud 帳號，然後開啟你的伺服器、建立伺服器或加入伺服器。代理程式在雲端執行，不需要電腦。</string>
-    <string name="cloud_connect_confirm">連線</string>
     <string name="cloud_needs_computer">Happy Cloud 只執行代理程式。此功能需要電腦。</string>
     <string name="cloud_title">Happy Cloud</string>
-    <string name="cloud_your_servers">你的伺服器</string>
-    <string name="cloud_no_servers">還沒有伺服器。在下方建立或加入一個。</string>
     <string name="cloud_role_owner">擁有者</string>
     <string name="cloud_role_member">成員</string>
-    <string name="cloud_create">建立新伺服器</string>
-    <string name="cloud_create_detail">選擇一個名稱。伺服器會像使用者名稱一樣顯示為 @名稱。</string>
-    <string name="cloud_create_button">建立伺服器</string>
+    <string name="cloud_create">建立伺服器</string>
+    <string name="cloud_create_detail">為團隊的新伺服器命名，之後可以變更。</string>
+    <string name="cloud_create_button">建立</string>
     <string name="cloud_join">加入伺服器</string>
-    <string name="cloud_join_detail">輸入伺服器名稱和擁有者給你的邀請碼。</string>
+    <string name="cloud_join_detail">輸入伺服器名稱和你收到的邀請碼。</string>
     <string name="cloud_join_button">加入</string>
     <string name="cloud_invite_code">邀請碼</string>
     <string name="cloud_join_not_found">沒有使用該名稱和邀請碼的伺服器。</string>
@@ -45,4 +41,22 @@
     <string name="cloud_test_locked">嘗試次數過多。請在 %1$d 分鐘後再試。</string>
     <string name="cloud_role_admin">管理員</string>
     <string name="cloud_role_viewer">檢視者</string>
+    <string name="cloud_slide_cloud_body">由 Happy 託管、為你的代理打造的強化型高效能控制平面。</string>
+    <string name="cloud_slide_scale_title">為大量代理而生</string>
+    <string name="cloud_slide_scale_body">Happy Cloud 讓你無人值守地執行任意數量的代理。</string>
+    <string name="cloud_slide_permissions_title">可程式化權限</string>
+    <string name="cloud_slide_permissions_body">決定每個代理能看到什麼、做什麼，並讓它們彼此隔離。</string>
+    <string name="cloud_slide_yours_title">無綁定</string>
+    <string name="cloud_slide_yours_body">不被他人的算力綁定。用我們的或你自己的，權杖和記憶體可以來自任何地方。</string>
+    <string name="cloud_slide_source_title">私有開源</string>
+    <string name="cloud_slide_source_body">我們向特定客戶和安全公司開放 Happy Cloud 的每一行程式碼供審查。</string>
+    <string name="cloud_servers_detail">你的帳號已在這些伺服器上。想加入幾個都可以。</string>
+    <string name="cloud_server_joined">已加入</string>
+    <string name="cloud_server_join_label">加入 %1$s</string>
+    <string name="cloud_bootstrap_new">新建一個</string>
+    <string name="cloud_invite">透過邀請加入</string>
+    <string name="cloud_create_first_detail">你的帳號還沒有伺服器。為團隊的第一個伺服器命名。</string>
+    <string name="cloud_create_have_invite">有邀請？加入伺服器</string>
+    <string name="cloud_invite_button">加入</string>
+    <string name="cloud_sign_in_github">使用 GitHub 登入</string>
 </resources>

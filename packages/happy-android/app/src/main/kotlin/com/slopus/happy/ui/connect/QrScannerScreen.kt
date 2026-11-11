@@ -52,7 +52,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.ui.components.HappyDropdownMenu
+import com.slopus.happy.ui.components.HappyMenuDivider
 import com.slopus.happy.ui.components.HappyMenuItem
+import com.slopus.happy.ui.onboarding.GetHelpAlert
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.RoundButton
@@ -235,28 +237,32 @@ fun QrScannerScreen(
     }
 }
 
+/** The ⋮'s ways; Get help is answered here, over the camera, and the rest go back to the flow. */
 @Composable
 private fun ScannerWaysMenu(open: Boolean, ways: List<ScannerWay>, serverLabel: String?, onDismiss: () -> Unit, onWay: (ScannerWay) -> Unit) {
+    var help by remember { mutableStateOf(false) }
     HappyDropdownMenu(expanded = open, onDismissRequest = onDismiss, modifier = Modifier.widthIn(min = QrScannerSpec.menuMinWidth).testTag(QrScannerTags.MENU)) {
         ways.forEach { way ->
             val (label, icon) = when (way) {
                 ScannerWay.EnterLink -> stringResource(R.string.start_enter_link) to Ionicon.LinkOutline
                 ScannerWay.Restore -> stringResource(R.string.account_kind_restore_cli_account) to Ionicon.KeyOutline
                 ScannerWay.Server -> stringResource(R.string.account_kind_cli_server) to Ionicon.ServerOutline
-                ScannerWay.Cloud -> stringResource(R.string.cloud_connect_row) to Ionicon.Add
+                ScannerWay.Help -> stringResource(R.string.onboarding_get_help) to Ionicon.HelpCircleOutline
             }
+            if (way == ScannerWay.Help) HappyMenuDivider()
             HappyMenuItem(
                 label = label,
                 supporting = serverLabel.takeIf { way == ScannerWay.Server },
                 leading = { Icon(icon, QrScannerSpec.menuIcon, LocalContentColor.current) },
                 onClick = {
                     onDismiss()
-                    onWay(way)
+                    if (way == ScannerWay.Help) help = true else onWay(way)
                 },
                 modifier = Modifier.testTag(QrScannerTags.way(way)),
             )
         }
     }
+    if (help) GetHelpAlert(onDismiss = { help = false })
 }
 
 /** The square's side in a window of [width] × [height]. */

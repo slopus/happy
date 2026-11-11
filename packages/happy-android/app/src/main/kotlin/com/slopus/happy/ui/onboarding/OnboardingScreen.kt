@@ -89,6 +89,8 @@ object OnboardingSpec {
     val headerSubtitle = happyTextStyle(fontSize = 11, lineHeight = 14, weight = FontWeight.Medium)
 
     const val HELP_DISCORD_URL = "https://discord.gg/fX9WBAhyfD"
+    const val HELP_BRA1N_DUMP_URL = "https://x.com/bra1n_dump"
+    const val HELP_EX3NDR_URL = "https://x.com/Ex3NDR"
     const val HELP_ISSUES_URL = "https://github.com/slopus/happy/issues"
 }
 
@@ -240,7 +242,11 @@ fun GetHelpButton() {
     if (showHelp) GetHelpAlert(onDismiss = { showHelp = false })
 }
 
-/** "Get help": the two public places to ask, Android button order. */
+/**
+ * "Get help": the public places to ask, iOS's `Strings.helpLinks` in its
+ * order (Discord, the two X accounts, known issues), then Cancel; more
+ * than three, so they stack.
+ */
 @Composable
 fun GetHelpAlert(onDismiss: () -> Unit) {
     val uriHandler = LocalUriHandler.current
@@ -250,8 +256,10 @@ fun GetHelpAlert(onDismiss: () -> Unit) {
             message = stringResource(R.string.onboarding_help_message),
             buttons = listOf(
                 AlertButton(stringResource(R.string.onboarding_help_discord)) { uriHandler.openUri(OnboardingSpec.HELP_DISCORD_URL) },
-                AlertButton(stringResource(R.string.common_cancel)),
+                AlertButton(stringResource(R.string.onboarding_help_bra1n_dump)) { uriHandler.openUri(OnboardingSpec.HELP_BRA1N_DUMP_URL) },
+                AlertButton(stringResource(R.string.onboarding_help_ex3ndr)) { uriHandler.openUri(OnboardingSpec.HELP_EX3NDR_URL) },
                 AlertButton(stringResource(R.string.onboarding_help_issues)) { uriHandler.openUri(OnboardingSpec.HELP_ISSUES_URL) },
+                AlertButton(stringResource(R.string.common_cancel)),
             ),
         ),
         onDismiss = onDismiss,

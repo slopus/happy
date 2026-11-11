@@ -5,19 +5,15 @@
 -->
 <resources>
     <string name="cloud_connect_row">Happy Cloud に接続</string>
-    <string name="cloud_connect_message">Happy Cloud アカウントにサインインまたは作成してから、サーバーを開くか、作成するか、参加してください。エージェントはクラウドで動くので、コンピューターは不要です。</string>
-    <string name="cloud_connect_confirm">接続</string>
     <string name="cloud_needs_computer">Happy Cloud ではエージェントのみ動きます。これにはコンピューターが必要です。</string>
     <string name="cloud_title">Happy Cloud</string>
-    <string name="cloud_your_servers">あなたのサーバー</string>
-    <string name="cloud_no_servers">サーバーはまだありません。下から作成するか参加してください。</string>
     <string name="cloud_role_owner">オーナー</string>
     <string name="cloud_role_member">メンバー</string>
-    <string name="cloud_create">新しいサーバーを作成</string>
-    <string name="cloud_create_detail">名前を選んでください。サーバーはユーザー名のように @名前 で表示されます。</string>
-    <string name="cloud_create_button">サーバーを作成</string>
+    <string name="cloud_create">サーバーを作成</string>
+    <string name="cloud_create_detail">チームの新しいサーバーに名前を付けましょう。後で変更できます。</string>
+    <string name="cloud_create_button">作成</string>
     <string name="cloud_join">サーバーに参加</string>
-    <string name="cloud_join_detail">サーバー名と、オーナーから受け取った招待コードを入力してください。</string>
+    <string name="cloud_join_detail">サーバー名と、送られてきた招待コードを入力してください。</string>
     <string name="cloud_join_button">参加</string>
     <string name="cloud_invite_code">招待コード</string>
     <string name="cloud_join_not_found">その名前と招待コードのサーバーはありません。</string>
@@ -45,4 +41,22 @@
     <string name="cloud_test_locked">試行回数が多すぎます。%1$d 分後にもう一度お試しください。</string>
     <string name="cloud_role_admin">管理者</string>
     <string name="cloud_role_viewer">閲覧者</string>
+    <string name="cloud_slide_cloud_body">Happy がホストする、エージェントのための堅牢で高性能なコントロールプレーン。</string>
+    <string name="cloud_slide_scale_title">多数のエージェントのために</string>
+    <string name="cloud_slide_scale_body">Happy Cloud なら、いくつものエージェントを無人で動かせます。</string>
+    <string name="cloud_slide_permissions_title">プログラム可能な権限</string>
+    <string name="cloud_slide_permissions_body">各エージェントが見られるもの、できることを決め、それぞれを隔離できます。</string>
+    <string name="cloud_slide_yours_title">ロックインなし</string>
+    <string name="cloud_slide_yours_body">他社の計算資源に縛られません。私たちのものでも自前のものでも使え、トークンやメモリはどこからでも調達できます。</string>
+    <string name="cloud_slide_source_title">プライベートなオープンソース</string>
+    <string name="cloud_slide_source_body">Happy Cloud のすべてのコードを、選ばれたお客様やセキュリティ企業にレビューのため公開しています。</string>
+    <string name="cloud_servers_detail">あなたのアカウントはすでにこれらのサーバーにあります。好きなだけ参加できます。</string>
+    <string name="cloud_server_joined">参加済み</string>
+    <string name="cloud_server_join_label">%1$s に参加</string>
+    <string name="cloud_bootstrap_new">新しく作成</string>
+    <string name="cloud_invite">招待で参加</string>
+    <string name="cloud_create_first_detail">アカウントにはまだサーバーがありません。チームの最初のサーバーに名前を付けましょう。</string>
+    <string name="cloud_create_have_invite">招待がありますか？サーバーに参加</string>
+    <string name="cloud_invite_button">参加</string>
+    <string name="cloud_sign_in_github">GitHub でサインイン</string>
 </resources>

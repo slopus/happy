@@ -7,6 +7,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,7 +20,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -81,6 +87,8 @@ data class StartSlide(val art: Art, val title: Int, val body: Int) {
     sealed interface Art {
         /** The Happy mark, in the words' colour. */
         data object Logo : Art
+        /** Happy Cloud's mark in Liquid Metal ([LiquidMetalMark]), filling its square; moving only while its slide shows. */
+        data object Cloud : Art
         /** One of desktop's scenes (res/raw), played as its slide arrives. */
         data class Scene(@RawRes val raw: Int) : Art
     }
@@ -106,6 +114,8 @@ object StartGallerySpec {
     val artCompact = 56.dp
     /** The Happy mark fills this much of its square; a scene fills all of it. */
     const val ART_FILL = 0.8f
+    /** Happy Cloud's Liquid Metal mark is drawn this much larger than the art's square (iOS StartLayout.Metrics.cloudScale). */
+    const val CLOUD_SCALE = 1.3f
     val artGap = 24.dp
     val artGapCompact = 16.dp
     val titleGap = 8.dp
@@ -147,7 +157,7 @@ object StartGallerySpec {
  * Every slide's words are laid over one another in each page and only its
  * own are seen ([SlideWordsRoom]), so no title, line or dot moves as the
  * slides change. They move on by themselves
- * every [StartGallerySpec.ADVANCE_MILLIS] while the screen is resumed and
+ * every [advanceMillis] while the screen is resumed and
  * nothing is being dragged, wrapping to the first with a crossfade; any
  * change starts the wait again. A slide's scene plays once each time the
  * slide settles in place and holds its last frame; a tap plays it again.
@@ -166,6 +176,10 @@ fun StartGallery(
     compact: Boolean,
     modifier: Modifier = Modifier,
     slides: List<StartSlide> = StartSlides,
+    /** Every press on a slide's art, with its time, watched and never consumed (Happy Cloud's welcome counts them). */
+    /** How long a slide holds before the next: Happy Cloud's longer lines hold 12 s, as iOS's. */
+    advanceMillis: Long = StartGallerySpec.ADVANCE_MILLIS,
+    onArtPress: ((Long) -> Unit)? = null,
 ) {
     val pager = rememberPagerState { slides.size }
     val scope = rememberCoroutineScope()
@@ -202,10 +216,10 @@ fun StartGallery(
         }
     }
 
-    LaunchedEffect(pager.settledPage, dragged, reduceMotion, touchExploration, slides.size) {
+    LaunchedEffect(pager.settledPage, dragged, reduceMotion, touchExploration, slides.size, advanceMillis) {
         if (reduceMotion || touchExploration || dragged || slides.size < 2) return@LaunchedEffect
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-            delay(StartGallerySpec.ADVANCE_MILLIS)
+            delay(advanceMillis)
             // Not in this effect: the move changes the page, which restarts the effect, and would stop it half done (the crossfade at 0).
             scope.launch { show((pager.settledPage + 1) % slides.size) }
         }
@@ -225,8 +239,13 @@ fun StartGallery(
                     side = art,
                     tint = textColor,
                     plays = arrivals[page],
+                    showing = page == pager.settledPage,
                     onReplay = { played -> play(page, played + 1) },
-                    modifier = Modifier.testTag(StartGalleryTags.art(page)),
+                    modifier = Modifier.testTag(StartGalleryTags.art(page)).then(
+                        if (onArtPress == null) Modifier else Modifier.pointerInput(onArtPress) {
+                            awaitEachGesture { onArtPress(awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial).uptimeMillis) }
+                        },
+                    ),
                 )
                 Spacer(Modifier.height(artGap))
                 SlideWordsRoom(slides, own = page, textColor = textColor, secondaryColor = secondaryColor)
@@ -256,7 +275,7 @@ fun StartGallery(
 }
 
 @Composable
-private fun SlideArt(art: StartSlide.Art, side: Dp, tint: Color, plays: Int, onReplay: (Int) -> Unit, modifier: Modifier) {
+private fun SlideArt(art: StartSlide.Art, side: Dp, tint: Color, plays: Int, showing: Boolean, onReplay: (Int) -> Unit, modifier: Modifier) {
     Box(modifier.size(side), contentAlignment = Alignment.Center) {
         when (art) {
             StartSlide.Art.Logo -> Image(
@@ -264,6 +283,12 @@ private fun SlideArt(art: StartSlide.Art, side: Dp, tint: Color, plays: Int, onR
                 contentDescription = null,
                 colorFilter = ColorFilter.tint(tint),
                 modifier = Modifier.size(side * StartGallerySpec.ART_FILL),
+            )
+            // 1.3 the art's square, centred on it (iOS cloudScale): the cloud is wide, so it spills only sideways and nothing under it moves.
+            StartSlide.Art.Cloud -> LiquidMetalMark(
+                Modifier.wrapContentSize(unbounded = true).requiredSize(side * StartGallerySpec.CLOUD_SCALE),
+                paused = !showing,
+                fallbackColor = tint,
             )
             is StartSlide.Art.Scene -> SceneAnimation(art.raw, plays, onReplay, size = side)
         }

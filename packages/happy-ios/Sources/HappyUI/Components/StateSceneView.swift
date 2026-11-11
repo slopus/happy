@@ -40,6 +40,15 @@ public enum StateScene: String, CaseIterable, Sendable {
     /// Nothing made yet where what agents make is kept: the Artifacts list
     /// with none (a 🎟️ sticker; `PROVENANCE.md`).
     case tickets
+    /// Happy Cloud's welcome (desktop's CLOUD_SLIDES): permissions, and its
+    /// source shared with those who review it.
+    case closedLock = "closed-lock"
+    case openHands = "open-hands"
+    /// Drifting down the sides of Happy Cloud's welcome (desktop's
+    /// CLOUD_DRIFT, `SetupDriftView`), with the robot, sparkles, llama and
+    /// lock.
+    case cloudVariation = "cloud-variation"
+    case tree
 }
 
 /// One state picture in a fixed square, drawn the way desktop draws it

@@ -48,20 +48,23 @@ import com.slopus.happy.ui.components.HappyMenuItem
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.RoundButton
+import com.slopus.happy.ui.components.RoundButtonDisplay
+import com.slopus.happy.ui.onboarding.GetHelpAlert
 import com.slopus.happy.ui.theme.HappyTheme
-import com.slopus.happy.ui.theme.happyTextStyle
 
 object StartTags {
     const val BACKGROUND = "start.background"
     const val CONTENT = "start.content"
     const val LOGO = "start.logo"
     const val CONNECT = "start.connect"
-    const val MORE = "start.more"
+    const val CLOUD = "start.cloud"
+    const val HELP = "start.help"
+    /** The self-hosted flow's ⋮ drop-down ([StartMenu]) and its rows, on the next screen. */
     const val MENU = "start.menu"
     const val ENTER_LINK = "start.enterLink"
     const val RESTORE = "start.restore"
     const val SERVER = "start.server"
-    const val CLOUD = "start.cloud"
+    const val GET_HELP = "start.getHelp"
 }
 
 /**
@@ -88,11 +91,16 @@ object StartSpec {
     val darkDot = Color(0x4DFFFFFF)
     val lightDot = Color(0x4014112E)
 
-    /** logotype_*.png is 1200 × 319; small, on ⋮'s row. */
+    /** logotype_*.png is 1200 × 319; small, on the top row. */
     val logoWidth = 88.dp
     const val LOGO_ASPECT = 1200f / 319f
-    val connectMinWidth = 200.dp
+    /** The onboarding pills' least width, iOS's. */
+    val connectMinWidth = 280.dp
     val bottomPadding = 48.dp
+    /** Between Start and Use Happy Cloud under it (iOS StartLayout.buttonGap). */
+    val cloudGap = 12.dp
+    /** Kept under Use Happy Cloud, above the bottom inset; Start rises to make room. */
+    val cloudBottomPadding = 24.dp
     val controlsPadding = 4.dp
     val control = 48.dp
     val controlIcon = 24.dp
@@ -104,16 +112,19 @@ object StartSpec {
  * The first screen, shown only while there is no Happy account and no
  * agent connection (once added, the account menu's Add takes over). No header (Steve's exception, AGENTS.md): the Grain
  * Gradient fills the window behind the system bars; everything else keeps
- * out of the bars and the cutout. It ignores the keyboard.
+ * out of the bars and the cutout. It ignores the keyboard. No ⋮ (Steve):
+ * the other ways in are the self-hosted flow's, in the ⋮ of the next
+ * screen ([InstallDesktopScreen]) and the scanner.
  *
- *   ⋮ (top right)  a drop-down: enter a link, restore a legacy account,
- *                  and the legacy server. A new Happy account is
- *                  only ever made by a terminal code
- *   logo           88 wide, centred on ⋮'s row
- *   slides         [StartGallery], centred between ⋮'s row and Start
- *   Start          centred across, as wide as its label (at least 200),
+ *   ? (top right)  Get help ([GetHelpAlert]), a 48 target 4 in
+ *   logo           88 wide, centred on the ?'s row
+ *   slides         [StartGallery], centred between that row and Start
+ *   Start          centred across, as wide as its label (at least 280),
  *                  48 above the bottom inset: the next screen
  *                  ([InstallDesktopScreen]), which scans
+ *   Use Happy Cloud where the build offers it ([onCloud]): the quiet
+ *                  text action 12 under Start, as wide as it, 24 kept
+ *                  under it; Start rises to make room (iOS StartLayout)
  *
  * If it all outgrows the window (large text, a phone on its side) it
  * scrolls, 16 kept above and below the slides.
@@ -121,11 +132,7 @@ object StartSpec {
 @Composable
 fun StartScreen(
     connecting: Boolean,
-    customServerLabel: String?,
     onStart: () -> Unit,
-    onEnterLink: () -> Unit,
-    onRestore: () -> Unit,
-    onServer: () -> Unit,
     onCloud: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -150,8 +157,7 @@ fun StartScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    .heightIn(min = viewport)
-                    .padding(bottom = StartSpec.bottomPadding),
+                    .heightIn(min = viewport),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Box(
@@ -176,32 +182,13 @@ fun StartScreen(
                 )
                 Spacer(Modifier.weight(1f))
                 Spacer(Modifier.height(StartGallerySpec.margin))
-                RoundButton(
-                    title = stringResource(R.string.start_button),
-                    onClick = onStart,
-                    loading = connecting,
-                    modifier = Modifier
-                        .widthIn(min = StartSpec.connectMinWidth)
-                        .width(IntrinsicSize.Max)
-                        .testTag(StartTags.CONNECT),
-                )
+                StartButtons(onStart = onStart, connecting = connecting, cloud = onCloud, tint = tint)
             }
             Row(modifier = Modifier.fillMaxWidth().padding(StartSpec.controlsPadding)) {
                 Spacer(Modifier.weight(1f))
-                Box {
-                    var open by remember { mutableStateOf(false) }
-                    StartControl(Ionicon.EllipsisVertical, stringResource(R.string.start_more), tint, { open = true }, Modifier.testTag(StartTags.MORE))
-                    StartMenu(
-                        open = open,
-                        enabled = !connecting,
-                        customServerLabel = customServerLabel,
-                        onDismiss = { open = false },
-                        onEnterLink = onEnterLink,
-                        onRestore = onRestore,
-                        onServer = onServer,
-                        onCloud = onCloud,
-                    )
-                }
+                var help by remember { mutableStateOf(false) }
+                StartControl(Ionicon.HelpCircleOutline, stringResource(R.string.onboarding_get_help), tint, { help = true }, Modifier.testTag(StartTags.HELP))
+                if (help) GetHelpAlert(onDismiss = { help = false })
             }
         }
     }
@@ -225,7 +212,44 @@ internal fun StartControl(icon: Ionicon, description: String, tint: Color, onCli
     }
 }
 
-/** The ⋮ drop-down: the ways in besides scanning. The next screen has it too. */
+/**
+ * Start, and Use Happy Cloud under it where the build offers it, both as
+ * wide as the wider (at least 280), so neither reads as the lesser. Under
+ * Start is its 48 above the bottom; Happy Cloud, 12 under Start with 24
+ * kept under it, takes more, and Start rises by the difference.
+ */
+@Composable
+private fun StartButtons(onStart: () -> Unit, connecting: Boolean, cloud: (() -> Unit)?, tint: Color) {
+    Column(Modifier.widthIn(min = StartSpec.connectMinWidth).width(IntrinsicSize.Max)) {
+        RoundButton(
+            title = stringResource(R.string.start_button),
+            onClick = onStart,
+            loading = connecting,
+            modifier = Modifier.testTag(StartTags.CONNECT),
+        )
+        Box(Modifier.fillMaxWidth().heightIn(min = StartSpec.bottomPadding), contentAlignment = Alignment.TopCenter) {
+            if (cloud != null) {
+                RoundButton(
+                    title = stringResource(R.string.start_cloud),
+                    onClick = cloud,
+                    enabled = !connecting,
+                    display = RoundButtonDisplay.Inverted,
+                    contentColor = tint,
+                    modifier = Modifier
+                        .padding(top = StartSpec.cloudGap, bottom = StartSpec.cloudBottomPadding)
+                        .testTag(StartTags.CLOUD),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The self-hosted flow's ⋮ drop-down, the next screen's
+ * ([InstallDesktopScreen]): the ways in besides scanning, then Get help
+ * ([GetHelpAlert]), as the scanner's ⋮. Happy Cloud isn't here: its way in
+ * is the first screen's own button.
+ */
 @Composable
 internal fun StartMenu(
     open: Boolean,
@@ -235,8 +259,8 @@ internal fun StartMenu(
     onEnterLink: () -> Unit,
     onRestore: () -> Unit,
     onServer: () -> Unit,
-    onCloud: (() -> Unit)? = null,
 ) {
+    var help by remember { mutableStateOf(false) }
     HappyDropdownMenu(
         expanded = open,
         onDismissRequest = onDismiss,
@@ -266,9 +290,8 @@ internal fun StartMenu(
             detail = customServerLabel,
             onClick = onServer,
         )
-        if (onCloud != null) {
-            HappyMenuDivider()
-            item(stringResource(R.string.cloud_connect_row), Ionicon.Add, StartTags.CLOUD, onClick = onCloud)
-        }
+        HappyMenuDivider()
+        item(stringResource(R.string.onboarding_get_help), Ionicon.HelpCircleOutline, StartTags.GET_HELP, itemEnabled = true) { help = true }
     }
+    if (help) GetHelpAlert(onDismiss = { help = false })
 }

@@ -61,7 +61,7 @@ final class DesktopMigrationLayoutTests: XCTestCase {
         XCTAssertEqual(layout.steps.map(\.text), [rect(58, 338, 320, 24), rect(58, 384, 320, 24), rect(58, 430, 320, 24)])
         XCTAssertEqual(layout.steps.map { $0.link == nil }, [true, true, true])
         XCTAssertEqual(layout.steps.map(\.detail), [nil, nil, rect(58, 464, 320, 60)])
-        assertFrame(layout.button, rect(101, 744, 200, 52))
+        assertFrame(layout.button, rect(61, 744, 280, 52))
         assertFrame(layout.learnMore.target, rect(147, 800, 108, 40))
         assertFrame(layout.learnMore.label, rect(14, 10, 80, 20))
         XCTAssertEqual(layout.learnMore.target.maxY, 874 - 34)

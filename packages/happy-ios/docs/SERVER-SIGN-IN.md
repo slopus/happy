@@ -88,65 +88,88 @@ Both are compiled into the app (`HappyCloud.accounts`, `HappyCloud.base`,
 The contract shared with Android, desktop and the backend is Happy Cloud
 accounts and servers v1, with v4's token lifetimes.
 
-- **Where.** "Connect to Happy Cloud" in the account switcher's menu (the
-  list of accounts and servers, under Add) and in the scanner's and first
-  screen's ⋯ (`AccountAdding.connectToCloud`). The first screen also has
-  "Use Happy Cloud" above Start, with the same width and emphasis.
-  Development and preview builds only (`HappyCloud.isOffered`, from
-  `AppVariant`): production shows
-  none of these entries and `connectToCloud` does nothing there.
-- **Screens.** Every Happy Cloud step is a full-screen page in the
-  onboarding's look (`CloudStageViewController`: the grain gradient, large
-  title, one primary button at the bottom, no tables or alerts): Welcome,
-  Your Servers, Name Your Server, Join a Server, Connecting. With no
-  account yet it's pushed on the first screen; otherwise it's presented
-  full screen with a Close button.
-- **Welcome.** "Connect to Happy Cloud?" ("Sign in or create an account
-  to add a cloud team. Agents run in the cloud; no computer needed.") with
-  Sign in with Apple's own button as the primary action and Other Ways to
-  Sign In under it. While the account's pass lasts, the flow opens on Your
-  Servers instead.
-- **Account sign-in** (`CloudAccount`). Either way it ends in a pass: an
-  account token whose `aud` must be the accounts origin, good for an hour,
-  with no refresh token.
-  - *Sign in with Apple* (`CloudApple`): `ASAuthorizationAppleIDProvider`
-    asking for the name and email, its `nonce` the SHA-256 of a fresh
-    random one. `POST /v1/auth/native` gets `provider` `apple`, the
-    identity token, the raw nonce, the authorization code and, when Apple
-    gives it (the first time only), the person's full name. The
-    `com.apple.developer.applesignin` entitlement is on the development
-    and preview apps.
-  - *Other ways*: authorization code + PKCE S256 at
+- **Where.** "Use Happy Cloud", a text action under the first screen's
+  Start, and "Connect to Happy Cloud" in the account switcher's menu (the
+  list of accounts and servers, under Add) and in Settings
+  (`AccountAdding.connectToCloud`). Not in any ⋯: the first screen has
+  none, and the next screens' and the scanner's ⋯ hold the self-hosted
+  ways in only. Development and preview builds only
+  (`HappyCloud.isOffered`, from `AppVariant`): production shows none of
+  these entries and `connectToCloud` does nothing there.
+- **Screens.** Desktop's steps and words (happy-desktop
+  `CloudConnectScreen.tsx`), every one a full-screen page on the first
+  screen's grain gradient, under the standard bar with Back: Welcome, Sign
+  in, Join a server, Bootstrap a server, Join with an invite, Connecting.
+  With no account yet it's pushed on the first screen; otherwise it's
+  presented full screen with a Close button. Android has the same steps
+  and copy.
+- **Welcome** (`CloudWelcomeViewController`, `CloudWelcomeLayout`).
+  Desktop's five Cloud slides (`CLOUD_SLIDES`: Happy Cloud, Built for lots
+  of agents, Programmable permissions, No lock-in, Private open source,
+  over the Happy mark, 🤖, 🔒, ✨ and 👐) in the first screen's gallery at
+  its place, moving on every 12 s, and Continue where Start is. Continue
+  signs in, or, while the account's pass lasts, goes straight to Join a
+  server. Opened again after the pass ended, a note over Continue says so.
+- **Sign in** (`CloudSignInViewController`, `CloudAccount`): "Sign in or
+  create your Happy Cloud account.", with two buttons, both native to the
+  app; there is no other way and no chooser page. Either way it ends in a
+  pass: an account token whose `aud` must be the accounts origin, good for
+  an hour, with no refresh token.
+  - *Sign in with Apple* (`CloudApple`): Apple's own button.
+    `ASAuthorizationAppleIDProvider` asking for the name and email, its
+    `nonce` the SHA-256 of a fresh random one. `POST /v1/auth/native` gets
+    `provider` `apple`, the identity token, the raw nonce, the
+    authorization code and, when Apple gives it (the first time only), the
+    person's full name. The `com.apple.developer.applesignin` entitlement
+    is on the development and preview apps.
+  - *Sign in with GitHub*: authorization code + PKCE S256 at
     `auth.happy.engineering/authorize`, `client_id` `happy`, the usual
-    redirect, and `resource` the accounts origin, in
-    `ASWebAuthenticationSession` with
-    `prefersEphemeralWebBrowserSession = false`. A refresh token, if one
+    redirect, `resource` the accounts origin, and `provider=github`, which
+    makes the accounts service skip its own chooser and redirect straight
+    to GitHub (`provider=apple` would do the same for Apple; an unknown
+    name shows the chooser). It opens in `ASWebAuthenticationSession`, the
+    app's own sheet, with `prefersEphemeralWebBrowserSession = true`: no
+    Safari cookie comes in, so after Back signs the account out Continue can
+    pick another GitHub account, and iOS asks no "wants to use … to sign
+    in" first; passwords and passkeys still fill. A refresh token, if one
     came, is dropped.
   - *A test account* (`CloudTestSignIn`), for testing every surface without
-    Apple or GitHub: ten taps on Welcome's logo within four seconds make a
-    login and password form, which isn't there before. `POST
-    /v1/auth/password` with `{ login, password }` answers the same pass;
-    401 `invalid_credentials` and 429 `locked` (`retryAfter` seconds) are
-    said under it. The password is only in its secure field and that
-    request, cleared once signed in. Development and preview builds only,
-    as Happy Cloud is. Operators make these accounts; see the cloud's
-    TESTAUTH.md.
+    Apple or GitHub: ten taps on the welcome's Happy mark within four
+    seconds open Sign in with a login and password form, which isn't there
+    otherwise. `POST /v1/auth/password` with `{ login, password }` answers
+    the same pass; 401 `invalid_credentials` and 429 `locked`
+    (`retryAfter` seconds) are said under it. The password is only in its
+    secure field and that request, cleared once signed in. Development and
+    preview builds only, as Happy Cloud is. Operators make these accounts;
+    see the cloud's TESTAUTH.md.
   - The pass is held in memory only, with its expiry, and never refreshed.
-    Opening the flow after it ends, a minute early, or a 401 from any
-    accounts call goes straight back to Welcome, with no retry. Earlier
-    builds' Keychain item (`happy-ios:cloud-account`) is deleted.
-- **The picker** (`CloudServersViewController`). Your servers
-  (`GET /v1/servers`) as cards; Create a New Server opens Name Your Server
-  (a name under `.<base>`, checked as it's typed with
-  `GET /v1/servers/availability`, then `POST /v1/servers`); Join with an
-  Invite opens Join a Server (name and invite code,
-  `POST /v1/servers/join`). A server already connected is switched to.
-  Each row is titled with the server's `displayName` (its node name), with
-  `@name` under it, and shows its picture: the ThumbHash at once,
-  then the bytes from the listed image `url` under the account token (only
-  ever on the accounts origin), or the generated avatar seeded by the
-  server's id when it has none.
-- **Connecting** asks the accounts service for the server's own tokens,
+    A 401 from any accounts call goes straight back to the welcome, which
+    says the sign-in ended, with no retry. Earlier builds' Keychain item
+    (`happy-ios:cloud-account`) is deleted.
+- **Join a server** (`CloudServersViewController`): "Your account is
+  already on these servers. Join as many as you like." Each of the
+  account's servers (`GET /v1/servers`) is a row with its picture, its
+  `displayName` (its node name) over `@name`, and Join, which signs this
+  phone in to it as Connecting does but stays on the list; once in, the row
+  says Joined with a check (as it does for a server already on the phone).
+  Joins run one after another, Back is held while one runs, and Continue
+  appears once one is in and opens the last joined. Under the list, two
+  quiet links: Bootstrap a new one and Join with an invite. An account with
+  no server opens on Bootstrap a server instead. Back from Join a server,
+  or from that first Bootstrap, signs the account out (forgets the pass),
+  so Continue can use another. The picture is the ThumbHash at once, then
+  the bytes from the listed image `url` under the account token (only ever
+  on the accounts origin), or the generated placeholder seeded by the
+  server's name, as desktop's rail and the connection's own avatar are.
+- **Bootstrap a server** (`CloudCreateViewController`): a name under
+  `.<base>`, checked as it's typed with `GET /v1/servers/availability`
+  ("@acme is available", "is taken.", "is reserved.", in a line kept
+  whether or not it says anything); Bootstrap, enabled once the name is
+  free, `POST /v1/servers`, then straight into it. **Join with an invite**
+  (`CloudJoinViewController`): the name and the invite code,
+  `POST /v1/servers/join`, then straight into it.
+- **Connecting** (after Bootstrap or an invite; Join on the list does the
+  same in place) asks the accounts service for the server's own tokens,
   `POST /v1/servers/:id/token` under the pass: no browser. The access
   token's `aud` must be `https://<name>.<base>/`, built from the listed
   name and the app's own base, never from the listed `url`. Its refresh
@@ -168,8 +191,8 @@ accounts and servers v1, with v4's token lifetimes.
   `profile` step isn't done (`Onboarding.needsName`) asks the same over
   home, once a launch, with Not Now. A name in the profile alone decides
   nothing.
-- **Sign-in methods.** Apple natively and GitHub on the browser page
-  (Other Ways); no Google or email anywhere in the app.
+- **Sign-in methods.** Apple natively and GitHub in the app's own sheet,
+  straight to GitHub; no Google or email anywhere in the app.
 - **Sign Out of Happy Cloud**, in the account switcher's menu while the
   pass is held, forgets the pass. The servers stay connected.
 - **Removing a cloud server** drops it on the phone and revokes its

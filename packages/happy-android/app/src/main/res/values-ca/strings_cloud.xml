@@ -5,19 +5,15 @@
 -->
 <resources>
     <string name="cloud_connect_row">Connecta a Happy Cloud</string>
-    <string name="cloud_connect_message">Inicia la sessió o crea un compte de Happy Cloud i després obre un dels teus servidors, crea\'n un o uneix-te a un. Els agents s\'executen al núvol; no cal cap ordinador.</string>
-    <string name="cloud_connect_confirm">Connecta</string>
     <string name="cloud_needs_computer">Happy Cloud només executa agents. Això necessita un ordinador.</string>
     <string name="cloud_title">Happy Cloud</string>
-    <string name="cloud_your_servers">Els teus servidors</string>
-    <string name="cloud_no_servers">Encara no hi ha servidors. Crea\'n un o uneix-te a un a sota.</string>
     <string name="cloud_role_owner">Propietari</string>
     <string name="cloud_role_member">Membre</string>
-    <string name="cloud_create">Crea un servidor nou</string>
-    <string name="cloud_create_detail">Tria un nom. El teu servidor es veurà com a @nom, com un nom d\'usuari.</string>
-    <string name="cloud_create_button">Crea el servidor</string>
+    <string name="cloud_create">Crea un servidor</string>
+    <string name="cloud_create_detail">Posa nom al nou servidor del teu equip. El pots canviar més endavant.</string>
+    <string name="cloud_create_button">Crea</string>
     <string name="cloud_join">Uneix-te a un servidor</string>
-    <string name="cloud_join_detail">Introdueix el nom del servidor i el codi d\'invitació que et va donar el seu propietari.</string>
+    <string name="cloud_join_detail">Introdueix el nom del servidor i el codi d’invitació que t’han enviat.</string>
     <string name="cloud_join_button">Uneix-te</string>
     <string name="cloud_invite_code">Codi d\'invitació</string>
     <string name="cloud_join_not_found">Cap servidor té aquest nom i codi d\'invitació.</string>
@@ -45,4 +41,22 @@
     <string name="cloud_test_locked">Massa intents. Torna-ho a provar d\'aquí a %1$d min.</string>
     <string name="cloud_role_admin">Administrador</string>
     <string name="cloud_role_viewer">Lector</string>
+    <string name="cloud_slide_cloud_body">Un pla de control reforçat i d’alt rendiment per als teus agents, allotjat per Happy.</string>
+    <string name="cloud_slide_scale_title">Fet per a molts agents</string>
+    <string name="cloud_slide_scale_body">Happy Cloud et permet executar tants agents com vulguis, sense supervisió.</string>
+    <string name="cloud_slide_permissions_title">Permisos programables</string>
+    <string name="cloud_slide_permissions_body">Decideix què pot veure i fer cada agent, i mantén-los aïllats.</string>
+    <string name="cloud_slide_yours_title">Sense lligams</string>
+    <string name="cloud_slide_yours_body">Mai lligat a la computació d’un altre. Fes servir la nostra o la teva, i treu tokens i RAM d’on vulguis.</string>
+    <string name="cloud_slide_source_title">Codi obert privat</string>
+    <string name="cloud_slide_source_body">Compartim cada línia de Happy Cloud amb clients seleccionats i empreses de seguretat perquè la revisin.</string>
+    <string name="cloud_servers_detail">El teu compte ja és en aquests servidors. Uneix-te a tants com vulguis.</string>
+    <string name="cloud_server_joined">Afegit</string>
+    <string name="cloud_server_join_label">Uneix-te a %1$s</string>
+    <string name="cloud_bootstrap_new">Crea’n un de nou</string>
+    <string name="cloud_invite">Uneix-te amb una invitació</string>
+    <string name="cloud_create_first_detail">El teu compte encara no té servidors. Posa nom al primer del teu equip.</string>
+    <string name="cloud_create_have_invite">Tens una invitació? Uneix-te a un servidor</string>
+    <string name="cloud_invite_button">Uneix-te</string>
+    <string name="cloud_sign_in_github">Inicia la sessió amb GitHub</string>
 </resources>

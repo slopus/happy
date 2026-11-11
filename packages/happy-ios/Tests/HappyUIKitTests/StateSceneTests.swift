@@ -27,6 +27,11 @@ final class StateSceneTests: XCTestCase {
         .podcastMic: "f90db7a207596916bc5c0b22db6e3ca40f2e24008b015bc654ee1aa5ff724284",
         // The 🎟️ sticker supplied for the empty Artifacts list (PROVENANCE.md).
         .tickets: "8715ac66cadbd7cba548b81f7366e190592a7c515811c0df69d65ac8e9db51d4",
+        // Desktop's, for Happy Cloud's welcome (PROVENANCE.md).
+        .closedLock: "f6087f51de1ccc7dea5cfb9853292bc14271e86e9390a8fbc9514b31b32a0ad8",
+        .openHands: "7b5b9d98156057d2fb4cb895f0a462e943942be190dd0a302935e2ef306420b4",
+        .cloudVariation: "4833ea8c714e353818667d8c8e39ce807273e86c79c2d473f2331a00526600aa",
+        .tree: "cb7c9a130992909adba37c6032799c130fe455cdc5a93e16e50f89c3eaba0eee",
     ]
 
     private func url(_ scene: StateScene) throws -> URL {

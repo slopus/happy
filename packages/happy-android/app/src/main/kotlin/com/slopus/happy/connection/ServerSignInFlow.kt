@@ -318,6 +318,8 @@ class ServerSignInFlow(
          * scheme; MainActivity takes this host and path before Happy links.
          */
         const val REDIRECT_URI = "happy://oauth/callback"
+        /** [REDIRECT_URI]'s scheme, which an Auth Tab hands back to the app. */
+        const val REDIRECT_SCHEME = "happy"
 
         fun isRedirect(uri: String): Boolean = uri.substringBefore('?').substringBefore('#') == REDIRECT_URI
     }

@@ -7,7 +7,7 @@ import CoreGraphics
 /// Android's InstallDesktopScreen), laid out as the first screen is so the
 /// two read as one: the art in the slides' square at the slides' place,
 /// Scan QR code where Start was (centred, as wide as its label, at least
-/// 200, 48 above the bottom inset), and the words where the slides' words
+/// 200, as far above the bottom inset as Start), and the words where the slides' words
 /// and dots were, in a slide's type:
 ///
 ///     TV scene                       the slides' art square and place
@@ -63,8 +63,10 @@ public struct InstallDesktopLayout: Equatable, Sendable {
         let words = titleSize.height + M.titleGap + descriptionSize.height + M.linkGap + linkSize.height
         let stage = max(start.gallery.height, side + start.artGap + words)
         let top = StartLayout.Metrics.controlsPadding + StartLayout.Metrics.control
-        let height = max(viewport, top + M.margin * 2 + stage + buttonSize.height + M.bottomPadding)
-        let buttonY = safeArea.top + height - M.bottomPadding - buttonSize.height
+        // As high as Start, which rises over Happy Cloud's button where it is offered.
+        let bottom = start.bottomPadding
+        let height = max(viewport, top + M.margin * 2 + stage + buttonSize.height + bottom)
+        let buttonY = safeArea.top + height - bottom - buttonSize.height
         func centred(_ size: CGSize, _ y: CGFloat) -> CGRect {
             CGRect(x: safeArea.left + (width - size.width) / 2, y: y, width: size.width, height: size.height)
         }

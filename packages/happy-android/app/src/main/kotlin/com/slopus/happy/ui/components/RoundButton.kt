@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -58,6 +59,8 @@ enum class RoundButtonDisplay { Default, Inverted }
  * can wrap, label regular in the secondary text colour. Disabled is 50%
  * opacity. While loading the label keeps its space but is hidden under a spinner;
  * with a [loadingTitle] the spinner sits 10 before that title instead.
+ * [contentColor] replaces an Inverted label's secondary colour, for one on
+ * a ground of its own (the first screen's gradient).
  */
 @Composable
 fun RoundButton(
@@ -69,6 +72,7 @@ fun RoundButton(
     enabled: Boolean = true,
     loading: Boolean = false,
     loadingTitle: String? = null,
+    contentColor: Color = Color.Unspecified,
 ) {
     val colors = HappyTheme.colors
     val interactionSource = remember { MutableInteractionSource() }
@@ -81,7 +85,7 @@ fun RoundButton(
     if (inverted) {
         background = Color.Transparent
         pressedBackground = colors.surfacePressedOverlay
-        textColor = colors.textSecondary
+        textColor = contentColor.takeOrElse { colors.textSecondary }
     } else {
         background = if (colors.dark) Color(0xFFF5F5F5) else colors.button.primaryBackground
         pressedBackground = if (colors.dark) Color(0xFFD9D9D9) else Color(0xFF333333)

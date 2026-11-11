@@ -20,6 +20,9 @@ final class InstallDesktopViewController: UIViewController {
     private let scroll = UIScrollView()
     /// The first screen's slides, measured and never shown, so this one lines up with it.
     private let slides = StartGalleryView.Measure()
+    /// The first screen's Use Happy Cloud, measured and never shown: where
+    /// it is offered Start rises over it, and Scan with it.
+    private let cloud = StartViewController.cloudButton()
     private let art = StateSceneView(scene: .tv, size: StartLayout.Metrics.art, replayLabel: Strings.Start.replay(Strings.Onboarding.offlineOpenStep))
     /// A slide's title and line, as the first screen draws them.
     private let titleLabel = StartGalleryView.titleLabel(Strings.Onboarding.offlineOpenStep)
@@ -71,7 +74,7 @@ final class InstallDesktopViewController: UIViewController {
         for subview in [art, titleLabel, site, descriptionLabel, scan] {
             scroll.addSubview(subview)
         }
-        for label in slides.labels.flatMap({ [$0.title, $0.body] }) {
+        for label in slides.labels.flatMap({ [$0.title, $0.body] }) as [UIView] + [cloud] {
             label.isHidden = true
             view.addSubview(label)
         }
@@ -89,7 +92,9 @@ final class InstallDesktopViewController: UIViewController {
         let layout = InstallDesktopLayout(
             size: view.bounds.size,
             safeArea: safeArea,
-            start: StartLayout(size: view.bounds.size, safeArea: safeArea, button: button, slides: slides.slides, dots: slides.dotsSize),
+            start: StartLayout(size: view.bounds.size, safeArea: safeArea, button: button,
+                               cloud: HappyCloud.isOffered(in: context.variant) ? cloud.layout(width: StartLayout.Metrics.buttonMinWidth).size : .zero,
+                               slides: slides.slides, dots: slides.dotsSize),
             title: titleLabel.measurable,
             link: site.label.measurable,
             description: descriptionLabel.measurable,

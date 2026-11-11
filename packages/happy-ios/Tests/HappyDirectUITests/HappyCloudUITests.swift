@@ -36,27 +36,48 @@ final class HappyCloudUITests: XCTestCase {
         XCTFail(message)
     }
 
-    /// The first of `candidates` to show within `timeout`.
-    /// From home or Start, through Connect to Happy Cloud, the ten taps and
-    /// the test account's form, to its servers. The password is pasted,
-    /// never typed: XCTest's log keeps whatever is typed.
-    private func signInWithTestAccount(login: String, password: String) {
+    /// Happy Cloud's first screen: Start's own Use Happy Cloud, or home's
+    /// switcher and its Connect to Happy Cloud.
+    private func openCloud(capturing name: String) {
         let switcher = element("account-switcher")
-        let start = element("start-more")
+        let start = app.buttons["start-cloud"]
         guard let entry = first([switcher, start], timeout: 30) else { return require(false, "neither home nor Start") }
-        capture("01-before")
+        capture(name)
         entry.tap()
-        let cloud = first([app.buttons["Connect to Happy Cloud"], app.buttons["account-cloud"]], timeout: 5)
+        guard entry === switcher else { return }
+        let cloud = first([app.buttons["account-cloud"]], timeout: 5)
         require(cloud != nil, "no Connect to Happy Cloud")
         cloud?.tap()
+    }
 
-        let logo = element("cloud-logo")
-        require(logo.waitForExistence(timeout: 10), "no welcome")
+    /// Joins `server` from Join a server's list, then Continue opens it.
+    private func open(server: String, login: String) {
+        let join = element("cloud-server-\(server)")
+        let next = element("cloud-servers-continue")
+        require(join.waitForExistence(timeout: 30) || next.exists, "@\(server) isn't among \(login)'s servers")
+        capture("05-servers")
+        if join.exists { join.tap() }
+        require(next.waitForExistence(timeout: 90), "@\(server) never joined")
+        next.tap()
+    }
+
+    /// From home or Start, through Connect to Happy Cloud (Start's own Use
+    /// Happy Cloud), the ten taps and the test account's form, to its
+    /// servers. The password is pasted, never typed: XCTest's log keeps
+    /// whatever is typed.
+    private func signInWithTestAccount(login: String, password: String) {
+        openCloud(capturing: "01-before")
+
+        // The Happy mark over the first slide's title, which says nothing to
+        // VoiceOver: tapped where it is drawn.
+        let title = app.staticTexts["Happy Cloud"]
+        require(title.waitForExistence(timeout: 10), "no welcome")
         capture("02-welcome")
+        let logo = title.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).withOffset(CGVector(dx: 0, dy: -70))
         let form = element("cloud-test-login")
-        // One quick burst: a phone's taps one by one can outlast the four seconds.
-        logo.tap(withNumberOfTaps: 10, numberOfTouches: 1)
-        if !form.waitForExistence(timeout: 2) { for _ in 0..<10 where !form.exists { logo.tap() } }
+        // Quick bursts: a phone's taps one by one can outlast the four seconds.
+        for _ in 0..<5 { logo.doubleTap() }
+        if !form.waitForExistence(timeout: 2) { for _ in 0..<5 where !form.exists { logo.doubleTap() } }
         require(form.waitForExistence(timeout: 3), "ten taps on the logo opened nothing")
         capture("03-test-sign-in")
         form.tap()
@@ -114,10 +135,7 @@ final class HappyCloudUITests: XCTestCase {
         let owner = role == "owner"
         app.launch()
         signInWithTestAccount(login: login, password: password)
-        let card = element("cloud-server-\(server)")
-        require(card.waitForExistence(timeout: 30), "@\(server) isn't among \(login)'s servers")
-        capture("05-servers")
-        card.tap()
+        open(server: server, login: login)
         let switcher = element("account-switcher")
         require(switcher.waitForExistence(timeout: 90), "no home of @\(server)")
         Thread.sleep(forTimeInterval: 6)
@@ -221,9 +239,7 @@ final class HappyCloudUITests: XCTestCase {
         guard let login = env["QA_LOGIN"], let password = env["QA_PASSWORD"], let server = env["PROVIDERS_SERVER"] else { throw XCTSkip("no providers run") }
         app.launch()
         signInWithTestAccount(login: login, password: password)
-        let card = element("cloud-server-\(server)")
-        require(card.waitForExistence(timeout: 30), "@\(server) isn't among \(login)'s servers")
-        card.tap()
+        open(server: server, login: login)
         let switcher = element("account-switcher")
         require(switcher.waitForExistence(timeout: 120), "no home of @\(server)")
         Thread.sleep(forTimeInterval: 4)
@@ -301,9 +317,7 @@ final class HappyCloudUITests: XCTestCase {
         let owner = env["ROLE"] != "viewer"
         app.launch()
         signInWithTestAccount(login: login, password: password)
-        let card = element("cloud-server-\(server)")
-        require(card.waitForExistence(timeout: 30), "@\(server) isn't among \(login)'s servers")
-        card.tap()
+        open(server: server, login: login)
         let switcher = element("account-switcher")
         require(switcher.waitForExistence(timeout: 90), "no home of @\(server)")
         Thread.sleep(forTimeInterval: 4)
@@ -367,9 +381,7 @@ final class HappyCloudUITests: XCTestCase {
         guard let login = env["QA_LOGIN"], let password = env["QA_PASSWORD"], let server = env["LINKS_SERVER"] else { throw XCTSkip("no links run") }
         app.launch()
         signInWithTestAccount(login: login, password: password)
-        let card = element("cloud-server-\(server)")
-        require(card.waitForExistence(timeout: 30), "@\(server) isn't among \(login)'s servers")
-        card.tap()
+        open(server: server, login: login)
         let switcher = element("account-switcher")
         require(switcher.waitForExistence(timeout: 90), "no home of @\(server)")
         Thread.sleep(forTimeInterval: 4)
@@ -442,9 +454,7 @@ final class HappyCloudUITests: XCTestCase {
         guard let login = env["QA_LOGIN"], let password = env["QA_PASSWORD"], let server = env["ENTITY_SERVER"] else { throw XCTSkip("no entity links run") }
         app.launch()
         signInWithTestAccount(login: login, password: password)
-        let card = element("cloud-server-\(server)")
-        require(card.waitForExistence(timeout: 30), "@\(server) isn't among \(login)'s servers")
-        card.tap()
+        open(server: server, login: login)
         let switcher = element("account-switcher")
         require(switcher.waitForExistence(timeout: 90), "no home of @\(server)")
         Thread.sleep(forTimeInterval: 4)
@@ -519,9 +529,7 @@ final class HappyCloudUITests: XCTestCase {
         let owner = env["ROLE"] != "viewer"
         app.launch()
         signInWithTestAccount(login: login, password: password)
-        let card = element("cloud-server-\(server)")
-        require(card.waitForExistence(timeout: 30), "@\(server) isn't among \(login)'s servers")
-        card.tap()
+        open(server: server, login: login)
         let switcher = element("account-switcher")
         require(switcher.waitForExistence(timeout: 90), "no home of @\(server)")
         Thread.sleep(forTimeInterval: 5)
@@ -633,25 +641,20 @@ final class HappyCloudUITests: XCTestCase {
         app.launch()
 
         let switcher = element("account-switcher")
-        let start = element("start-more")
-        guard let entry = first([switcher, start], timeout: 30) else { return require(false, "neither home nor Start") }
-        capture("1-home")
-        entry.tap()
-        let cloud = first([app.buttons["Connect to Happy Cloud"], app.buttons["account-cloud"]], timeout: 5)
-        require(cloud != nil, "no Connect to Happy Cloud")
-        capture("2-menu")
-        cloud?.tap()
+        openCloud(capturing: "1-home")
 
+        // The welcome's own sign-in, under its slides.
         let apple = element("cloud-apple")
         require(apple.waitForExistence(timeout: 10), "no welcome")
         capture("3-welcome")
         apple.tap()
         // Apple's sheet needs the person: Face ID or the passcode.
+        // Join a server's Bootstrap a new one, or Bootstrap itself for an account with none.
         let create = element("cloud-create")
-        require(create.waitForExistence(timeout: 180), "no picker after the account's sign-in")
-        capture("7-picker")
-        create.tap()
         let name = element("cloud-create-name")
+        require(create.waitForExistence(timeout: 180) || name.exists, "no picker after the account's sign-in")
+        capture("7-picker")
+        if !name.exists { create.tap() }
         require(name.waitForExistence(timeout: 10), "no name field")
         name.tap()
         name.typeText("ios\(Int(Date().timeIntervalSince1970) % 1_000_000)")
@@ -696,11 +699,11 @@ final class HappyCloudUITests: XCTestCase {
         signInWithTestAccount(login: login, password: password)
 
         let create = element("cloud-create")
-        require(create.waitForExistence(timeout: 30), "no servers after the test account's sign-in")
+        let name = element("cloud-create-name")
+        require(create.waitForExistence(timeout: 30) || name.exists, "no servers after the test account's sign-in")
         Thread.sleep(forTimeInterval: 2)
         capture("05-servers")
-        create.tap()
-        let name = element("cloud-create-name")
+        if !name.exists { create.tap() }
         require(name.waitForExistence(timeout: 10), "no name field")
         name.tap()
         let server = "qa-ios-\(Int(Date().timeIntervalSince1970) % 1_000_000)"
@@ -739,7 +742,7 @@ final class HappyCloudUITests: XCTestCase {
         let more = element("account-cloud")
         require(more.waitForExistence(timeout: 5), "no Connect to Happy Cloud in the switcher")
         more.tap()
-        require(element("cloud-servers").waitForExistence(timeout: 15), "the pass didn't open Your Servers")
+        require(element("cloud-servers").waitForExistence(timeout: 15), "the pass didn't open Join a server")
         Thread.sleep(forTimeInterval: 2)
         capture("10-servers-again")
         let cards = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'cloud-server-' AND identifier != %@", "cloud-server-\(server)"))
@@ -747,7 +750,7 @@ final class HappyCloudUITests: XCTestCase {
         if cards.count > 0 {
             let card = cards.element(boundBy: 0)
             second = String(card.identifier.dropFirst("cloud-server-".count))
-            card.tap()
+            open(server: second, login: login)
         } else {
             second = server + "-b"
             element("cloud-create").tap()
@@ -886,9 +889,7 @@ final class HappyCloudUITests: XCTestCase {
         condition(nil)
         app.launch()
         signInWithTestAccount(login: login, password: password)
-        let card = element("cloud-server-\(server)")
-        require(card.waitForExistence(timeout: 30), "@\(server) isn't among \(login)'s servers")
-        card.tap()
+        open(server: server, login: login)
         let switcher = element("account-switcher")
         require(switcher.waitForExistence(timeout: 90), "no home of @\(server)")
         let title = { (element: XCUIElement) in element.value as? String ?? "" }
@@ -951,9 +952,7 @@ final class HappyCloudUITests: XCTestCase {
         let taskName = env["LINK_TASK"] ?? "Link check"
         app.launch()
         signInWithTestAccount(login: login, password: password)
-        let card = element("cloud-server-\(server)")
-        require(card.waitForExistence(timeout: 30), "@\(server) isn't among \(login)'s servers")
-        card.tap()
+        open(server: server, login: login)
         let switcher = element("account-switcher")
         require(switcher.waitForExistence(timeout: 90), "no home of @\(server)")
         let title = { (element: XCUIElement) in element.value as? String ?? "" }

@@ -19,16 +19,12 @@ enum AccountAdding {
         }
     }
 
-    /// Happy Cloud, entering a link, restoring an account, and the relay
-    /// server. Any other team server is added by scanning the code Happy
-    /// Desktop shows.
+    /// Entering a link, restoring an account, and the relay server: the
+    /// self-hosted ways in. Any other team server is added by scanning the
+    /// code Happy Desktop shows. Happy Cloud isn't here: its ways in are
+    /// Start's Use Happy Cloud, the account menu's and Settings'.
     static func otherWays(context: AppContext, from controller: UIViewController, intent: ScanIntent = .addAccount, busy: @escaping (Bool) -> Void = { _ in }) -> [ScannerWay] {
-        (HappyCloud.isOffered(in: context.variant) ? [
-            ScannerWay(title: Strings.ServerSignIn.cloudAction, symbol: "cloud") { [weak controller] in
-                guard let controller else { return }
-                connectToCloud(context: context, from: controller)
-            },
-        ] : []) + [
+        [
             ScannerWay(title: Strings.Start.enterLink, symbol: "link") { [weak controller] in
                 guard let controller else { return }
                 enterLink(context: context, from: controller, intent: intent, busy: busy)
@@ -65,12 +61,14 @@ enum AccountAdding {
             return
         }
         context.account.beginAddingAccount()
-        first.navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .close, primaryAction: UIAction { [weak first] _ in
+        let navigation = CloudNavigationController(rootViewController: first)
+        // The flow's, not the welcome's: a welcome put back after the pass
+        // ends wears the same button.
+        first.navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .close, primaryAction: UIAction { [weak navigation] _ in
             context.account.cancelAddingAccount()
-            first?.dismiss(animated: true)
+            navigation?.dismiss(animated: true)
         })
         first.navigationItem.leftBarButtonItem?.accessibilityIdentifier = "cloud-close"
-        let navigation = CloudNavigationController(rootViewController: first)
         AppCoordinator.applyAppearance(to: navigation.navigationBar)
         navigation.modalPresentationStyle = .fullScreen
         controller.present(navigation, animated: true)

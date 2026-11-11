@@ -347,10 +347,10 @@ private fun rememberConnectFlow(
  * instead ([ConnectFlow.enteringLink]). A failure is an alert. The
  * scanner's ⋮ has the other ways in (iOS's `AccountAdding.otherWays`): the
  * link, [onRestore], [onServer], whose custom host [serverLabel] names, and
- * [onCloud] (Happy Cloud) where the build has one.
+ * Get help, which the scanner shows itself.
  */
 @Composable
-fun rememberAddFlow(graph: AppGraph, onRestore: () -> Unit, onServer: () -> Unit, serverLabel: String?, onCloud: (() -> Unit)? = null): ConnectFlow = rememberAddConnect(
+fun rememberAddFlow(graph: AppGraph, onRestore: () -> Unit, onServer: () -> Unit, serverLabel: String?): ConnectFlow = rememberAddConnect(
     approve = { url ->
         AnalyticsReasons.signingIn(SignInMethod.RelayCreate) {
             graph.auth.createAccount { account -> approveTerminal(graph.authApi, account.credentials, account.encryption, url) }
@@ -359,7 +359,6 @@ fun rememberAddFlow(graph: AppGraph, onRestore: () -> Unit, onServer: () -> Unit
     onRestore = onRestore,
     onServer = onServer,
     serverLabel = serverLabel,
-    onCloud = onCloud,
 )
 
 /** [rememberAddFlow] with the approval passed in, for tests. */
@@ -369,7 +368,6 @@ fun rememberAddConnect(
     onRestore: () -> Unit = {},
     onServer: () -> Unit = {},
     serverLabel: String? = null,
-    onCloud: (() -> Unit)? = null,
 ): ConnectFlow {
     val haptics = LocalHapticFeedback.current
     val failed = stringResource(R.string.modals_failed_to_connect_terminal)
@@ -379,13 +377,13 @@ fun rememberAddConnect(
     flow.onUnavailable = { flow.enteringLink = true }
     val currentOnRestore by rememberUpdatedState(onRestore)
     val currentOnServer by rememberUpdatedState(onServer)
-    val currentOnCloud by rememberUpdatedState(onCloud)
-    flow.request = ScanRequest(listOfNotNull(ScannerWay.EnterLink, ScannerWay.Restore, ScannerWay.Server, ScannerWay.Cloud.takeIf { onCloud != null }), serverLabel)
+    flow.request = ScanRequest(listOf(ScannerWay.EnterLink, ScannerWay.Restore, ScannerWay.Server, ScannerWay.Help), serverLabel)
     flow.onWay = { way ->
         when (way) {
             ScannerWay.Server -> currentOnServer()
-            ScannerWay.Cloud -> currentOnCloud?.invoke()
-            else -> currentOnRestore()
+            ScannerWay.Restore -> currentOnRestore()
+            // Get help is answered in the scanner, and a link is asked for before this.
+            ScannerWay.Help, ScannerWay.EnterLink -> Unit
         }
     }
     if (flow.enteringLink) {

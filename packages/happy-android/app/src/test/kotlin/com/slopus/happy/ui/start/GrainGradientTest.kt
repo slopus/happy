@@ -32,6 +32,13 @@ class GrainGradientTest {
         RuntimeShader(GRAIN_GRADIENT_AGSL)
     }
 
+    /** The grain field and the frames that read it; GrainFieldDeviceTest checks on a GPU that they draw the same picture. */
+    @Test
+    fun theFieldShadersCompile() {
+        RuntimeShader(GRAIN_FIELD_AGSL)
+        RuntimeShader(GRAIN_CORNERS_AGSL)
+    }
+
     @Test
     fun drawsInTheDarkPalette() = assertDrawsIn(StartSpec.darkPalette)
 

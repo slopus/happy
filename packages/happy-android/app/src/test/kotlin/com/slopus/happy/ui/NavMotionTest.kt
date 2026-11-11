@@ -44,7 +44,7 @@ import com.slopus.happy.testing.FakeHappyServer
 import com.slopus.happy.testing.SoftwareKeys
 import com.slopus.happy.ui.chat.ChatScreenTags
 import com.slopus.happy.ui.home.FlatRowTags
-import com.slopus.happy.ui.server.ServerTags
+import com.slopus.happy.ui.start.InstallDesktopTags
 import com.slopus.happy.ui.start.StartTags
 import com.slopus.happy.ui.tablet.SidebarTags
 import com.slopus.happy.ui.session.SessionInfoTags
@@ -106,12 +106,11 @@ class NavMotionTest {
         rule.waitUntilAtLeastOneExists(hasTestTag(StartTags.CONTENT), 5_000)
     }
 
-    /** Start's ⋮ › Happy CLI server, a push; the clock is held from the tap on. */
+    /** Start, a push to the next screen; the clock is held from the tap on. */
     private fun pushServer() {
-        rule.onNodeWithContentDescription("More").performClick()
         rule.waitForIdle()
         rule.mainClock.autoAdvance = false
-        rule.onNodeWithText("Happy CLI server").performClick()
+        rule.onNodeWithText("Start").performClick()
         rule.mainClock.advanceTimeByFrame()
     }
 
@@ -157,10 +156,10 @@ class NavMotionTest {
         val startAtRest = left(StartTags.CONTENT)
         pushServer()
         rule.mainClock.advanceTimeBy(NavMotion.DURATION_MILLIS / 2L)
-        val incoming = left(ServerTags.FORM)
+        val incoming = left(InstallDesktopTags.CONTENT)
         val outgoing = left(StartTags.CONTENT) - startAtRest
         settle()
-        val top = incoming - left(ServerTags.FORM)
+        val top = incoming - left(InstallDesktopTags.CONTENT)
         assertOnCurve("the new page", 1f - top / width, NavMotion.DURATION_MILLIS / 2L)
         assertParallax("push", outgoing, top)
         rule.node(StartTags.CONTENT).assertIsNotDisplayed()
@@ -218,10 +217,10 @@ class NavMotionTest {
         show()
         pushServer()
         // The first frame the new page is drawn in, it rests just inside the end edge.
-        while (!shown(ServerTags.FORM)) rule.mainClock.advanceTimeByFrame()
-        val first = left(ServerTags.FORM)
+        while (!shown(InstallDesktopTags.CONTENT)) rule.mainClock.advanceTimeByFrame()
+        val first = left(InstallDesktopTags.CONTENT)
         settle()
-        assertTrue("the new page starts beyond 90% of the pane: ${first - left(ServerTags.FORM)}", first - left(ServerTags.FORM) > width * 0.9f)
+        assertTrue("the new page starts beyond 90% of the pane: ${first - left(InstallDesktopTags.CONTENT)}", first - left(InstallDesktopTags.CONTENT) > width * 0.9f)
     }
 
     @Test
@@ -277,14 +276,14 @@ class NavMotionTest {
         val startAtRest = left(StartTags.CONTENT)
         pushServer()
         settle()
-        val serverAtRest = left(ServerTags.FORM)
+        val serverAtRest = left(InstallDesktopTags.CONTENT)
 
         rule.mainClock.autoAdvance = false
         rule.onNodeWithContentDescription("Back").performClick()
         rule.mainClock.advanceTimeByFrame()
         rule.mainClock.advanceTimeBy(NavMotion.DURATION_MILLIS / 2L)
         val incoming = left(StartTags.CONTENT) - startAtRest
-        val outgoing = left(ServerTags.FORM) - serverAtRest
+        val outgoing = left(InstallDesktopTags.CONTENT) - serverAtRest
         settle()
         assertOnCurve("the page Back leaves", outgoing / width, NavMotion.DURATION_MILLIS / 2L)
         assertParallax("pop", incoming, outgoing)
@@ -296,14 +295,14 @@ class NavMotionTest {
         val startAtRest = left(StartTags.CONTENT)
         pushServer()
         settle()
-        val serverAtRest = left(ServerTags.FORM)
+        val serverAtRest = left(InstallDesktopTags.CONTENT)
         rule.mainClock.autoAdvance = false
         back()
         val frames = mutableListOf<Pair<Float, Float>>()
         repeat(40) {
             rule.mainClock.advanceTimeByFrame()
             rule.waitForIdle()
-            val leaving = if (shown(ServerTags.FORM)) left(ServerTags.FORM).value - serverAtRest.value else Float.NaN
+            val leaving = if (shown(InstallDesktopTags.CONTENT)) left(InstallDesktopTags.CONTENT).value - serverAtRest.value else Float.NaN
             val returning = if (shown(StartTags.CONTENT)) left(StartTags.CONTENT).value - startAtRest.value else Float.NaN
             frames += leaving to returning
         }
@@ -339,15 +338,15 @@ class NavMotionTest {
         val startAtRest = left(StartTags.CONTENT)
         pushServer()
         settle()
-        val serverAtRest = left(ServerTags.FORM)
-        val serverBounds = rule.node(ServerTags.FORM).bounds
+        val serverAtRest = left(InstallDesktopTags.CONTENT)
+        val serverBounds = rule.node(InstallDesktopTags.CONTENT).bounds
         val input = backInput()
         fun drag(progress: Float) {
             rule.runOnUiThread { input.progress(progress, edge) }
             repeat(3) { rule.mainClock.advanceTimeByFrame() }
             rule.waitForIdle()
         }
-        fun top() = (left(ServerTags.FORM) - serverAtRest) * sign
+        fun top() = (left(InstallDesktopTags.CONTENT) - serverAtRest) * sign
         fun beneath() = (left(StartTags.CONTENT) - startAtRest) * sign
 
         rule.mainClock.autoAdvance = false
@@ -361,7 +360,7 @@ class NavMotionTest {
             assertDp("at progress $progress the page is that share of the pane across", width * progress, top())
             assertParallax("progress $progress", beneath(), top())
         }
-        val during = rule.node(ServerTags.FORM).bounds
+        val during = rule.node(InstallDesktopTags.CONTENT).bounds
         assertDp("the gesture never scales the page", serverBounds.right - serverBounds.left, during.right - during.left)
 
         // Cancel: back to rest from half way, on the curve, over half of 450 ms.
@@ -372,7 +371,7 @@ class NavMotionTest {
         settle()
         assertTrue("cancel starts from where the finger left: $cancelling", cancelling < 0.5f)
         assertOnCurve("cancel", 1f - cancelling / 0.5f, NavMotion.DURATION_MILLIS / 4L + 16, NavMotion.DURATION_MILLIS / 2f)
-        assertEquals("cancel restores the page", serverAtRest, left(ServerTags.FORM))
+        assertEquals("cancel restores the page", serverAtRest, left(InstallDesktopTags.CONTENT))
         rule.node(StartTags.CONTENT).assertIsNotDisplayed()
 
         // Commit: from half way to the end, on the curve.
@@ -389,7 +388,7 @@ class NavMotionTest {
         settle()
         assertOnCurve("commit", (committing - 0.5f) / 0.5f, NavMotion.DURATION_MILLIS / 4L + 16, NavMotion.DURATION_MILLIS / 2f)
         assertParallax("commit", returning, leaving)
-        rule.node(ServerTags.FORM).assertDoesNotExist()
+        rule.node(InstallDesktopTags.CONTENT).assertDoesNotExist()
         assertEquals("commit returns to the previous page", startAtRest, left(StartTags.CONTENT))
     }
 
@@ -398,10 +397,10 @@ class NavMotionTest {
         show(LayoutDirection.Rtl)
         pushServer()
         rule.mainClock.advanceTimeBy(NavMotion.DURATION_MILLIS / 2L)
-        val incoming = left(ServerTags.FORM)
+        val incoming = left(InstallDesktopTags.CONTENT)
         settle()
         // The end side is the left in a right-to-left layout.
-        val top = -(incoming - left(ServerTags.FORM))
+        val top = -(incoming - left(InstallDesktopTags.CONTENT))
         assertOnCurve("the new page", 1f - top / width, NavMotion.DURATION_MILLIS / 2L)
     }
 
@@ -412,12 +411,12 @@ class NavMotionTest {
         pushServer()
         rule.mainClock.advanceTimeByFrame()
         // Already where it rests: no slide.
-        val incoming = left(ServerTags.FORM)
+        val incoming = left(InstallDesktopTags.CONTENT)
         // Gone within a few frames, with no page travelling across the pane.
         repeat(3) { rule.mainClock.advanceTimeByFrame() }
         rule.node(StartTags.CONTENT).assertIsNotDisplayed()
         settle()
-        assertEquals(left(ServerTags.FORM), incoming)
+        assertEquals(left(InstallDesktopTags.CONTENT), incoming)
     }
 
     /**

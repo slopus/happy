@@ -15,6 +15,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -123,12 +124,17 @@ class CloudAccount(
         resource = "${origin.value}/",
     )
 
-    /** The page the browser opens, starting a fresh sign-in each time. */
+    /**
+     * GitHub's sign-in, starting a fresh one each time: the PKCE request
+     * with `provider=github`, which makes the accounts service skip its
+     * chooser and redirect straight to GitHub (an unknown provider shows the
+     * chooser; Google is refused, 400).
+     */
     fun browserUrl(): String {
         val next = auth.begin(origin, method, ServerSignInFlow.REDIRECT_URI)
         pending = next
         mutableState.value = CloudAccountState.InBrowser
-        return next.authorizeUrl
+        return next.authorizeUrl.toHttpUrl().newBuilder().addQueryParameter("provider", GITHUB).build().toString()
     }
 
     /** The browser came back to the redirect URI with [uri]; one that isn't this sign-in's is ignored. */
@@ -371,6 +377,8 @@ class CloudAccount(
         private const val EXPIRY_MARGIN_MILLIS = 120_000L
         /** The pass's life when the token endpoint doesn't say (contract v4: an hour). */
         private const val PASS_MILLIS = 3_600_000L
+        /** The accounts service's name for GitHub, its `provider` hint. */
+        internal const val GITHUB = "github"
         /** A lockout's length when a 429 doesn't say (test accounts: 15 minutes). */
         private const val LOCKOUT_SECONDS = 900L
         private val json = Json { ignoreUnknownKeys = true }

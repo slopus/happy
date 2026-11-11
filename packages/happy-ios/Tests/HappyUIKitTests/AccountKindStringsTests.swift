@@ -49,9 +49,14 @@ final class AccountKindStringsTests: XCTestCase {
             rnServerImport: { .confirmed(ServerConfig.defaultServerURL) })
         let context = AppContext(account: account, variant: .preview, version: "test")
         let titles = AccountAdding.otherWays(context: context, from: UIViewController()).map(\.title)
-        XCTAssertEqual(titles, ["Connect to Happy Cloud", Strings.Start.enterLink, "Restore Happy CLI account", "Happy CLI server"])
+        // Happy Cloud has its own ways in (Start's button, the account menu's Add).
+        XCTAssertEqual(titles, [Strings.Start.enterLink, "Restore Happy CLI account", "Happy CLI server"])
         let production = AppContext(account: account, variant: .production, version: "test")
         XCTAssertEqual(AccountAdding.otherWays(context: production, from: UIViewController()).map(\.title), [Strings.Start.enterLink, "Restore Happy CLI account", "Happy CLI server"])
+        // The screen after Start's ⋯: the self-hosted ways in, then help.
+        let menu = StartMenu.items(context: context, from: UIViewController(), busy: false) { _ in }
+        let menuTitles = menu.compactMap { $0 as? UIMenu }.flatMap(\.children).map(\.title)
+        XCTAssertEqual(menuTitles, [Strings.Start.enterLink, "Restore Happy CLI account", "Happy CLI server", Strings.Onboarding.getHelp])
     }
 
     func testAnotherLanguageSaysTheWordsAroundTheNames() async {

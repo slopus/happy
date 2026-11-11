@@ -1,0 +1,151 @@
+import XCTest
+@testable import HappyLayout
+
+final class CloudLayoutTests: XCTestCase {
+    private let phone = CGSize(width: 393, height: 852)
+    /// Under the bar: the status bar's 59 and the bar's 44.
+    private let barred = LayoutInsets(top: 103, left: 0, bottom: 34, right: 0)
+
+    // MARK: The welcome
+
+    private func slides() -> [StartLayout.Slide] {
+        [(1, 2), (1, 3), (1, 2), (1, 3), (1, 2)].map { lines in
+            StartLayout.Slide(
+                title: Measurable { CGSize(width: $0, height: CGFloat(lines.0) * 34) },
+                body: Measurable { CGSize(width: $0, height: CGFloat(lines.1) * 24) }
+            )
+        }
+    }
+
+    /// Sign in with Apple is where the first screen's Start is and
+    /// Sign in with GitHub where its Use Happy Cloud is: 12 under, 24 above
+    /// the bottom inset, both as wide as the wider; the slides are where its
+    /// slides are.
+    func testTheWelcomesButtonsAreStartAndItsSecondary() {
+        let safe = LayoutInsets(top: 59, left: 0, bottom: 34, right: 0)
+        let apple = CGSize(width: 220, height: 50), github = CGSize(width: 236, height: 50)
+        let start = StartLayout(size: phone, safeArea: safe, button: apple, cloud: github, slides: slides(), dots: CGSize(width: 150, height: 26))
+        let welcome = CloudWelcomeLayout(size: phone, safeArea: safe, button: apple, secondary: github, slides: slides(), dots: CGSize(width: 150, height: 26))
+        XCTAssertEqual(welcome.button, CGRect(x: 56.5, y: 852 - 34 - 24 - 50 - 12 - 50, width: 280, height: 50))
+        XCTAssertEqual(welcome.secondary, CGRect(x: 56.5, y: 852 - 34 - 24 - 50, width: 280, height: 50))
+        XCTAssertEqual(welcome.button, start.button)
+        XCTAssertEqual(welcome.secondary, start.cloud)
+        XCTAssertEqual(welcome.start.gallery, start.gallery)
+        XCTAssertEqual(welcome.note, .zero)
+    }
+
+    /// The note sits 12 over Apple's button in the slides' column; the
+    /// buttons stay put and the slides centre again over it all.
+    func testTheNoteSitsOverTheButtonsAndTheSlidesMakeRoom() {
+        let safe = LayoutInsets(top: 59, left: 0, bottom: 34, right: 0)
+        let apple = CGSize(width: 220, height: 50), github = CGSize(width: 236, height: 50)
+        let plain = CloudWelcomeLayout(size: phone, safeArea: safe, button: apple, secondary: github, slides: slides(), dots: CGSize(width: 150, height: 26))
+        let noted = CloudWelcomeLayout(size: phone, safeArea: safe, button: apple, secondary: github, note: .fixed(width: 300, height: 40),
+                                       slides: slides(), dots: CGSize(width: 150, height: 26))
+        XCTAssertEqual(noted.button, plain.button)
+        XCTAssertEqual(noted.secondary, plain.secondary)
+        XCTAssertEqual(noted.note, CGRect(x: 24, y: noted.button.minY - 12 - 40, width: 345, height: 40))
+        XCTAssertEqual(noted.start.gallery.minY, plain.start.gallery.minY - 26)
+    }
+
+    // MARK: A step
+
+    /// Sign in: the scene, the title and its line centred over Apple's and
+    /// GitHub's buttons, which sit 16 above the bottom inset, 12 apart.
+    func testAStepIsCentredOverItsActions() {
+        let layout = CloudStageLayout(size: phone, safeArea: barred, art: 96, title: .fixed(width: 300, height: 34), body: .fixed(width: 300, height: 48),
+                                      content: .fixed(width: 0, height: 0), actions: [.init(height: 50), .init(height: 50, gap: 12)])
+        XCTAssertEqual(layout.art, CGRect(x: 148.5, y: 289.5, width: 96, height: 96))
+        XCTAssertEqual(layout.title, CGRect(x: 24, y: 409.5, width: 345, height: 34))
+        XCTAssertEqual(layout.body, CGRect(x: 24, y: 455.5, width: 345, height: 48))
+        XCTAssertEqual(layout.content.height, 0)
+        XCTAssertEqual(layout.actions, [CGRect(x: 24, y: 690, width: 345, height: 50), CGRect(x: 24, y: 752, width: 345, height: 50)])
+        XCTAssertEqual(layout.actions[1].maxY, 852 - 34 - 16)
+        XCTAssertEqual(layout.contentHeight, 852)
+        XCTAssertEqual(layout.keyboardInset, 0)
+    }
+
+    /// Typing a name: the action rides the keyboard, 16 over it, and what
+    /// is above rises only enough to stay 24 clear of it.
+    func testTheActionRidesTheKeyboardAndTheRestRisesOnlyAsFarAsItMust() {
+        let layout = CloudStageLayout(size: phone, safeArea: barred, keyboardTop: 516, title: .fixed(width: 300, height: 34), body: .fixed(width: 300, height: 24),
+                                      content: .fixed(width: 345, height: 90), actions: [.init(height: 50)])
+        XCTAssertEqual(layout.title, CGRect(x: 24, y: 234, width: 345, height: 34))
+        XCTAssertEqual(layout.body, CGRect(x: 24, y: 280, width: 345, height: 24))
+        XCTAssertEqual(layout.content, CGRect(x: 24, y: 336, width: 345, height: 90))
+        XCTAssertEqual(layout.actions, [CGRect(x: 24, y: 450, width: 345, height: 50)])
+        XCTAssertEqual(layout.actions[0].minY - layout.content.maxY, 24)
+        XCTAssertEqual(layout.keyboardInset, 852 - 516 - 34)
+    }
+
+    /// Too tall for the room over the keyboard: it starts at its top margin,
+    /// the action follows it, and the keyboard's inset lets it scroll there.
+    func testTooTallOverTheKeyboardItScrolls() {
+        let layout = CloudStageLayout(size: phone, safeArea: barred, keyboardTop: 516, title: .fixed(width: 300, height: 34), body: .fixed(width: 300, height: 24),
+                                      content: .fixed(width: 345, height: 400), actions: [.init(height: 50)])
+        XCTAssertEqual(layout.title.minY, 103 + 24)
+        XCTAssertEqual(layout.content, CGRect(x: 24, y: 229, width: 345, height: 400))
+        XCTAssertEqual(layout.actions, [CGRect(x: 24, y: 653, width: 345, height: 50)])
+        XCTAssertEqual(layout.contentHeight, 852)
+        XCTAssertGreaterThanOrEqual(layout.contentHeight + layout.keyboardInset - 516, layout.actions[0].maxY + 16 - 516)
+    }
+
+    /// A tablet: the column keeps to 440, and with no action (Join a server
+    /// before anything is joined) the list is centred in the screen.
+    func testATabletCentresTheColumn() {
+        let layout = CloudStageLayout(size: CGSize(width: 1024, height: 1366), safeArea: LayoutInsets(top: 74, left: 0, bottom: 20, right: 0), art: 96,
+                                      title: .fixed(width: 300, height: 34), body: .fixed(width: 300, height: 24), content: .fixed(width: 440, height: 164), actions: [])
+        XCTAssertEqual(CloudStageLayout.column(size: CGSize(width: 1024, height: 1366), safeArea: .zero), 440)
+        XCTAssertEqual(layout.art, CGRect(x: 464, y: 509, width: 96, height: 96))
+        XCTAssertEqual(layout.title, CGRect(x: 292, y: 629, width: 440, height: 34))
+        XCTAssertEqual(layout.content, CGRect(x: 292, y: 731, width: 440, height: 164))
+        XCTAssertEqual(layout.actions, [])
+        XCTAssertEqual(layout.contentHeight, 1366)
+    }
+
+    /// A phone on its side: the column stays inside the safe area.
+    func testTheColumnKeepsInsideTheSafeArea() {
+        let layout = CloudStageLayout(size: CGSize(width: 852, height: 393), safeArea: LayoutInsets(top: 32, left: 59, bottom: 21, right: 59),
+                                      title: .fixed(width: 300, height: 34), body: .fixed(width: 0, height: 0), content: .fixed(width: 0, height: 0),
+                                      actions: [.init(height: 50)])
+        XCTAssertEqual(layout.title.minX, 59 + (734 - 440) / 2)
+        XCTAssertEqual(layout.title.width, 440)
+        XCTAssertEqual(layout.body.height, 0)
+        XCTAssertEqual(layout.actions[0].maxY, 393 - 21 - 16)
+    }
+
+    // MARK: The column and a server's row
+
+    /// Rows fill the column; the links are their own width, centred; a part
+    /// with nothing in it takes no room and no gap.
+    func testTheColumnStacksAndSkipsWhatIsEmpty() {
+        let (frames, height) = CloudColumnLayout.stack([
+            .init(height: 76),
+            .init(height: 76, gap: 12),
+            .init(height: 0, gap: 12),
+            .init(size: CGSize(width: 180, height: 44), gap: 8, centred: true),
+            .init(size: CGSize(width: 160, height: 44), gap: 0, centred: true),
+        ], width: 345)
+        XCTAssertEqual(frames, [
+            CGRect(x: 0, y: 0, width: 345, height: 76),
+            CGRect(x: 0, y: 88, width: 345, height: 76),
+            CGRect(x: 0, y: 164, width: 345, height: 0),
+            CGRect(x: 82.5, y: 172, width: 180, height: 44),
+            CGRect(x: 92.5, y: 216, width: 160, height: 44),
+        ])
+        XCTAssertEqual(height, 260)
+        XCTAssertEqual(CloudColumnLayout.stack([.init(height: 0), .init(height: 20, gap: 12)], width: 100).height, 20)
+    }
+
+    /// The picture at the left, Join at the right (desktop's 104 at least),
+    /// the name over `@name` between, all centred down the row.
+    func testAServersRow() {
+        let row = CloudServerRowLayout(width: 345, button: CGSize(width: 80, height: 32))
+        XCTAssertEqual(row.picture, CGRect(x: 14, y: 14, width: 48, height: 48))
+        XCTAssertEqual(row.button, CGRect(x: 227, y: 22, width: 104, height: 32))
+        XCTAssertEqual(row.title, CGRect(x: 74, y: 17, width: 141, height: 22))
+        XCTAssertEqual(row.subtitle, CGRect(x: 74, y: 39, width: 141, height: 20))
+        let wide = CloudServerRowLayout(width: 345, button: CGSize(width: 120, height: 32))
+        XCTAssertEqual(wide.button.width, 120)
+    }
+}

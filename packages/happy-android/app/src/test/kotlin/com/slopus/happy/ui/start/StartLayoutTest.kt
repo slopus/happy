@@ -56,17 +56,14 @@ class StartLayoutTest {
     private val taps = mutableListOf<String>()
     private lateinit var view: View
 
-    private fun show(dark: Boolean = false, density: Density? = null, height: Int? = null, server: String? = "happy.example.com") {
+    private fun show(dark: Boolean = false, density: Density? = null, height: Int? = null, cloud: Boolean = false) {
         rule.setHappyContent(dark = dark) {
             view = LocalView.current
             val screen = @Composable {
                 StartScreen(
                     connecting = false,
-                    customServerLabel = server,
                     onStart = { taps += "start" },
-                    onEnterLink = { taps += "link" },
-                    onRestore = { taps += "restore" },
-                    onServer = { taps += "server" },
+                    onCloud = if (cloud) ({ taps += "cloud" }) else null,
                 )
             }
             val sized = @Composable {
@@ -92,12 +89,12 @@ class StartLayoutTest {
         assertBox("background", rule.node(StartTags.BACKGROUND).bounds, 0.dp, 0.dp, PHONE_WIDTH.dp, PHONE_HEIGHT.dp)
         assertBox("content", rule.node(StartTags.CONTENT).bounds, 0.dp, 0.dp, PHONE_WIDTH.dp, PHONE_HEIGHT.dp)
 
-        // ⋮ top right, a 48 target 4 in.
-        assertBox("more", rule.node(StartTags.MORE).bounds, (PHONE_WIDTH - 4 - 48).dp, 4.dp, 48.dp, 48.dp)
+        // Get help top right, a 48 target 4 in.
+        assertBox("help", rule.node(StartTags.HELP).bounds, (PHONE_WIDTH - 4 - 48).dp, 4.dp, 48.dp, 48.dp)
 
-        // Connect: centred across, as wide as its label but at least 200.
+        // Connect: centred across, as wide as its label but at least 280 (iOS).
         val connect = rule.node(StartTags.CONNECT).bounds
-        assertDp("connect width", 200, connect.width)
+        assertDp("connect width", 280, connect.width)
         assertDp("connect height", 50, connect.height)
         assertDp("connect centred", (PHONE_WIDTH / 2f).dp, (connect.left + connect.right) / 2)
 
@@ -125,38 +122,36 @@ class StartLayoutTest {
         rule.assertActionsLabelled()
     }
 
-    /** Start goes on; everything else is in the ⋮ drop-down. */
+    /** No ⋮ (Steve): Start, and Get help where ⋮ was, opening the help dialog with iOS's four links. */
     @Test
-    fun theMenuHoldsTheOtherWaysIn() {
+    fun startAndGetHelpAreAllThereIs() {
         show()
         rule.onNodeWithText("Start").performClick()
-        for ((label, tap) in listOf(
-            "Enter link manually" to "link",
-            "Restore Happy CLI account" to "restore",
-            "Happy CLI server" to "server",
-        )) {
-            rule.onNodeWithContentDescription("More").performClick()
-            rule.node(StartTags.MENU).assertExists()
-            rule.onNodeWithText(label).performClick()
-            rule.node(StartTags.MENU).assertDoesNotExist()
-            assertEquals(tap, taps.last())
+        assertEquals(listOf("start"), taps)
+        rule.onNodeWithContentDescription("More").assertDoesNotExist()
+        rule.onNodeWithText("Enter link manually").assertDoesNotExist()
+        rule.node(StartTags.CLOUD).assertDoesNotExist()
+        rule.onNodeWithContentDescription("Get help").performClick()
+        for (link in listOf("Ask on Discord", "DM @bra1n_dump on X", "DM @Ex3NDR on X", "Browse known issues", "Cancel")) {
+            rule.onNodeWithText(link).assertExists()
         }
-        assertEquals(listOf("start", "link", "restore", "server"), taps)
-
-        rule.onNodeWithContentDescription("More").performClick()
-        rule.onNodeWithText("happy.example.com").assertExists()
-        rule.onNodeWithText("Create account").assertDoesNotExist()
-        // Nothing else: no account is made here, and help lives in Settings.
-        rule.onNodeWithText("Get help").assertDoesNotExist()
     }
 
-    /** Happy CLI server names a custom server under it, and says nothing for the default one. */
+    /** Use Happy Cloud: 12 under Start and as wide, 24 above the bottom; Start rises from its 48 to make room. */
     @Test
-    fun theDefaultServerHasNoSubtitle() {
-        show(server = null)
-        rule.onNodeWithContentDescription("More").performClick()
-        rule.onNodeWithText("Happy CLI server").assertExists()
-        rule.onNodeWithText("Default").assertDoesNotExist()
+    fun useHappyCloudSitsUnderStart() {
+        show(cloud = true)
+        val connect = rule.node(StartTags.CONNECT).bounds
+        val cloud = rule.node(StartTags.CLOUD).bounds
+        assertDp("cloud 12 under start", connect.bottom + 12.dp, cloud.top)
+        assertDp("cloud 24 above the bottom", (PHONE_HEIGHT - 24).dp, cloud.bottom)
+        assertDp("as wide as start", connect.width, cloud.width)
+        assertDp("cloud centred", (PHONE_WIDTH / 2f).dp, (cloud.left + cloud.right) / 2)
+        assertTrue("start rose", connect.bottom < (PHONE_HEIGHT - 48).dp)
+        assertDp("slides centred above start", gallery.top - 52.dp, connect.top - gallery.bottom)
+        rule.onNodeWithText("Use Happy Cloud").performClick()
+        assertEquals(listOf("cloud"), taps)
+        rule.assertActionsLabelled()
     }
 
     /** The content keeps out of the status and navigation bars; the gradient still fills the window behind them. */
@@ -174,7 +169,7 @@ class StartLayoutTest {
         rule.waitForIdle()
         assertBox("background", rule.node(StartTags.BACKGROUND).bounds, 0.dp, 0.dp, PHONE_WIDTH.dp, PHONE_HEIGHT.dp)
         assertBox("content", rule.node(StartTags.CONTENT).bounds, 0.dp, 24.dp, PHONE_WIDTH.dp, (PHONE_HEIGHT - 24 - 48).dp)
-        assertDp("more under the status bar", 24 + 4, rule.node(StartTags.MORE).bounds.top)
+        assertDp("help under the status bar", 24 + 4, rule.node(StartTags.HELP).bounds.top)
         assertMiddle(gallery, rule.node(StartTags.CONNECT).bounds, (PHONE_HEIGHT - 48).dp, top = 24.dp)
     }
 
@@ -206,7 +201,7 @@ class StartLayoutTest {
         assertDp("connect centred", (PHONE_WIDTH / 2f).dp, (connect.left + connect.right) / 2)
         assertDp("logo keeps its size", 88, logo.width)
         assertDp("art keeps its size", 96, rule.node(StartGalleryTags.art(0)).bounds.width)
-        assertDp("more keeps its size", 48, rule.node(StartTags.MORE).bounds.width)
+        assertDp("help keeps its size", 48, rule.node(StartTags.HELP).bounds.width)
         // At least 16 kept between more's row and the slides, and between them and Start.
         assertTrue("16 under more's row", gallery.top >= (52 + 16).dp - 0.34.dp)
         assertTrue("16 over start", connect.top - gallery.bottom >= 16.dp - 0.34.dp)

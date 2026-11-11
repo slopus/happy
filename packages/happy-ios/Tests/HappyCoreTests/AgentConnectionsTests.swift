@@ -254,6 +254,41 @@ final class AgentConnectionsTests: XCTestCase {
         XCTAssertNotNil(manager.syncEngine(for: ended.id))
     }
 
+    /// A Happy Cloud server wears the placeholder its name picks, as
+    /// desktop's rail draws `@acme`; another server is picked by its origin.
+    func testACloudServerIsPickedByItsName() async throws {
+        let manager = AgentConnections(credentials: InMemoryAgentConnectionCredentialStore(), directory: nil, makeTransport: { _ in IdentityTransport() })
+        await manager.setForeground(false)
+        let method = OAuthMethod(id: "jwt", name: "Happy Cloud", authorizationUrl: "https://auth.example/authorize", tokenUrl: "https://auth.example/token", clientId: "happy")
+        let record = ServerSignInRecord(method: method, grant: OAuthGrant(refreshToken: "r", clientId: "happy"), userId: "u1")
+        let access = OAuthAccess(token: "a", expiresAt: nil)
+        let cloud = try await manager.addServer(try AgentOrigin(HappyCloud.server(named: "acme")), signIn: record, access: access, name: "Acme")
+        let other = try await manager.addServer(try AgentOrigin("https://happy.acme.example"), signIn: record, access: access, name: "Acme")
+        XCTAssertEqual(manager.placeholderSeed(for: cloud.id), "acme")
+        XCTAssertEqual(manager.placeholderSeed(for: other.id), "agent:https://happy.acme.example")
+    }
+
+    /// Happy Cloud's list joins several servers before one is opened: one
+    /// added without selecting it leaves the open one open, here and on disk.
+    func testAServerCanBeAddedWithoutOpeningIt() async throws {
+        let store = InMemoryAgentConnectionCredentialStore()
+        let directory = try directory()
+        let manager = AgentConnections(credentials: store, directory: directory, makeTransport: { _ in IdentityTransport() })
+        await manager.setForeground(false)
+        let method = OAuthMethod(id: "jwt", name: "Happy Cloud", authorizationUrl: "https://auth.example/authorize", tokenUrl: "https://auth.example/token", clientId: "happy")
+        let record = ServerSignInRecord(method: method, grant: OAuthGrant(refreshToken: "r", clientId: "happy"), userId: "u1")
+        let access = OAuthAccess(token: "a", expiresAt: nil)
+        let open = try await manager.addServer(try AgentOrigin(HappyCloud.server(named: "acme")), signIn: record, access: access, name: "Acme")
+        let kept = try await manager.addServer(try AgentOrigin(HappyCloud.server(named: "globex")), signIn: record, access: access, name: "Globex", select: false)
+        XCTAssertEqual(manager.activeID, open.id)
+        XCTAssertEqual(manager.accounts.map(\.id), [open.id, kept.id])
+        let reloaded = AgentConnections(credentials: store, directory: directory, makeTransport: { _ in IdentityTransport() })
+        await reloaded.setForeground(false)
+        try await reloaded.restore()
+        XCTAssertEqual(reloaded.activeID, open.id)
+        XCTAssertEqual(Set(reloaded.accounts.map(\.id)), [open.id, kept.id])
+    }
+
     func testRevocationStopsRetryAndBackgroundPauses() async throws {
         let transport = IdentityTransport()
         let manager = AgentConnections(credentials: InMemoryAgentConnectionCredentialStore(), directory: nil, makeTransport: { _ in transport })

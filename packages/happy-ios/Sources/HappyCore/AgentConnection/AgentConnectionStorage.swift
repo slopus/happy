@@ -116,10 +116,10 @@ actor AgentConnectionStorage {
         try persist()
         return (registry.accounts, registry.activeID, values)
     }
-    func add(_ account: AgentConnection, credentials value: AgentConnectionCredentials) throws {
+    func add(_ account: AgentConnection, credentials value: AgentConnectionCredentials, select: Bool = true) throws {
         try credentials.save(value, id: account.id)
         registry.accounts.removeAll { $0.id == account.id }; registry.accounts.append(account)
-        registry.activeID = account.id
+        if select { registry.activeID = account.id }
         try persist()
     }
     func update(_ account: AgentConnection) throws {

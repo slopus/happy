@@ -18,6 +18,7 @@ import com.slopus.happy.crypto.decodeBase64
 import com.slopus.happy.testing.FakeHappyServer
 import com.slopus.happy.testing.SoftwareKeys
 import com.slopus.happy.ui.onboarding.RestoreTags
+import com.slopus.happy.ui.start.InstallDesktopTags
 import com.slopus.happy.ui.start.StartTags
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -57,8 +58,10 @@ class RestoreRetryTest {
     @After
     fun tearDown() = server.close()
 
+    /** From the first screen, or the next one where its ways in are, under ⋮. */
     private fun openRestore() {
-        rule.waitUntilAtLeastOneExists(hasTestTag(StartTags.CONTENT), 5_000)
+        rule.waitUntil(5_000) { rule.onAllNodes(hasTestTag(StartTags.CONTENT) or hasTestTag(InstallDesktopTags.CONTENT)).fetchSemanticsNodes().isNotEmpty() }
+        if (rule.onAllNodes(hasTestTag(InstallDesktopTags.CONTENT)).fetchSemanticsNodes().isEmpty()) rule.onNodeWithText("Start").performClick()
         rule.onNodeWithContentDescription("More").performClick()
         rule.onNodeWithText("Restore Happy CLI account").performClick()
     }
@@ -146,7 +149,7 @@ class RestoreRetryTest {
         openRestore()
         val left = shownKey()
         rule.onNodeWithContentDescription("Back").performClick()
-        rule.waitUntilAtLeastOneExists(hasTestTag(StartTags.CONTENT), 5_000)
+        rule.waitUntilAtLeastOneExists(hasTestTag(InstallDesktopTags.CONTENT), 5_000)
         val leftAsks = asks(left)
         approve(left)
 
