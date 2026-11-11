@@ -10,6 +10,16 @@ import { ensureLocalProxyBypass } from '../utils/proxyBypass'
 import { resolveHappyEntrypoint } from './happyEntrypoint'
 
 /**
+ * The Claude Code binary to spawn, when the environment names one. An empty or
+ * blank value is treated as unset so an exported-but-empty variable does not
+ * send the SDK looking for a binary at "".
+ */
+export function resolveClaudeCodeExecutable(env: NodeJS.ProcessEnv): string | undefined {
+    const executable = env.HAPPY_CLAUDE_CODE_EXECUTABLE?.trim()
+    return executable ? executable : undefined
+}
+
+/**
  * Wraps the official SDK query() with our QueryOptions adapter
  */
 export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): Query {
@@ -45,6 +55,17 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
         strictMcpConfig: opts?.strictMcpConfig,
         sessionId: undefined,
         effort: opts?.effort,
+    }
+
+    // The SDK otherwise spawns the Claude Code binary bundled inside
+    // @anthropic-ai/claude-agent-sdk, which only moves when that dependency is
+    // upgraded. A new model then fails with "Claude Code <bundled version> does
+    // not support this model" even though the installed Claude Code is new
+    // enough, because the bundled binary is a second, older install. Pointing
+    // at an existing one keeps a single binary that updates on its own.
+    const executable = resolveClaudeCodeExecutable(process.env)
+    if (executable) {
+        sdkOptions.pathToClaudeCodeExecutable = executable
     }
 
     // Map abort signal -> AbortController
