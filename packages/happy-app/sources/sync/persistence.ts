@@ -543,13 +543,17 @@ export function clearPersistence() {
     clearPublicSessionShareQueueStorage();
 }
 
-export type FileWorkspaceUI = { tabs: string[]; active: string | null; open: boolean; width: number };
+export type FileWorkspaceUI = { tabs: string[]; active: string | null; open: boolean; width: number; widthCustomized?: boolean };
 export function loadFileWorkspaceUI(scope: string): FileWorkspaceUI {
     try {
         const raw = JSON.parse(mmkv.getString(`file-workspace-v1:${scope}`) ?? '{}');
         const tabs = Array.isArray(raw.tabs) ? raw.tabs.filter((path: unknown): path is string => typeof path === 'string' && path.length < 8192).slice(0, 20) : [];
-        return { tabs, active: typeof raw.active === 'string' && tabs.includes(raw.active) ? raw.active : tabs[0] ?? null, open: raw.open === true, width: typeof raw.width === 'number' && Number.isFinite(raw.width) ? Math.max(310, raw.width) : 430 };
-    } catch { return { tabs: [], active: null, open: false, width: 430 }; }
+        const validWidth = typeof raw.width === 'number' && Number.isFinite(raw.width);
+        return { tabs, active: typeof raw.active === 'string' && tabs.includes(raw.active) ? raw.active : tabs[0] ?? null, open: raw.open === true,
+            width: validWidth ? Math.max(310, raw.width) : 430,
+            // Older snapshots stored 430 even when the user never touched the divider.
+            widthCustomized: raw.widthCustomized === true || (raw.widthCustomized === undefined && validWidth && raw.width !== 430) };
+    } catch { return { tabs: [], active: null, open: false, width: 430, widthCustomized: false }; }
 }
 export function saveFileWorkspaceUI(scope: string, ui: FileWorkspaceUI) {
     // Persist navigation only; file contents remain on the session machine.

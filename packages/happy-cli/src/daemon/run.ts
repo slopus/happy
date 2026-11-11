@@ -25,6 +25,7 @@ import type { PersistedSession } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { createIndependentSessionLauncher, independentTaskMessage } from './independentSessions';
+import { createProjectGoalRuntime } from './projectGoalRuntime';
 import { startDaemonControlServer } from './controlServer';
 import { statSync } from 'fs';
 import { join } from 'path';
@@ -1318,6 +1319,11 @@ export async function startDaemon(): Promise<void> {
       requestShutdown: () => requestShutdown('happy-app'),
       refreshCodexUsage,
       refreshCodexAccountQuota: refreshBoundCodexAccountQuota,
+      projectGoals: createProjectGoalRuntime({
+        serverUrl: configuration.serverUrl, token: credentials.token, machineId,
+        legacyKey: credentials.encryption.type === 'legacy' ? credentials.encryption.secret : undefined,
+        findSession: findTrackedSessionById,
+      }),
     });
 
     // Connect to server

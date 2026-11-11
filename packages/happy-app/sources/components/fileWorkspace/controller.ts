@@ -3,14 +3,16 @@ import { resolveSessionFilePath } from '@/utils/sessionFileLinks';
 export type FileDocument = {
     path: string; revision: number; phase: 'loading' | 'ready' | 'error'; content: string; draft: string;
     hash: string | null; draftBaseHash: string | null; saving: boolean; conflict: boolean; error: string | null;
+    media?: { bytes: Uint8Array; mime: string };
+    fileRevision?: string;
 };
 export type FileWorkspaceSnapshot = {
     tabs: string[]; active: string | null; open: boolean; documents: Record<string, FileDocument>;
 };
 export type FileWorkspaceIO = {
     root: string;
-    read: (path: string) => Promise<{ content: string; hash: string }>;
-    write: (path: string, content: string, expectedHash: string) => Promise<{ hash: string }>;
+    read: (path: string, signal?: AbortSignal) => Promise<{ content: string; hash: string; media?: FileDocument['media']; fileRevision?: string }>;
+    write: (path: string, content: string, expectedHash: string) => Promise<{ hash: string; fileRevision?: string }>;
     isCurrent?: () => boolean;
 };
 export const documentDirty = (document: FileDocument) => document.phase === 'ready' && document.draft !== document.content;
@@ -21,6 +23,7 @@ export class FileWorkspaceController {
     private listeners = new Set<() => void>();
     private revisions = new Map<string, number>();
     private requests = new Map<string, object>();
+    private reads = new Map<string, AbortController>();
     private disposed = false;
     private restoredDrafts = new Map<string, { draft: string; hash: string }>();
     constructor(private io: FileWorkspaceIO) {}
@@ -52,6 +55,7 @@ export class FileWorkspaceController {
         if (!exists) await this.refresh(path);
     }
     edit(path: string, draft: string) {
+        if (this.snapshot.documents[path]?.media) return;
         if (this.snapshot.documents[path]?.phase === 'ready' && this.snapshot.documents[path].draft !== draft) { this.revisions.set(path, (this.revisions.get(path) ?? 0) + 1); this.update(path, { draft }); }
     }
     restoreDraft(path: string, saved: { draft: string; hash: string }) {
@@ -79,6 +83,7 @@ export class FileWorkspaceController {
         if (!entry) return true;
         if (entry.saving || (!discard && (documentDirty(entry) || this.restoredDrafts.has(path)))) return false;
         this.requests.delete(path);
+        this.reads.get(path)?.abort(); this.reads.delete(path);
         this.revisions.delete(path);
         this.restoredDrafts.delete(path);
         const index = this.snapshot.tabs.indexOf(path);
@@ -93,9 +98,11 @@ export class FileWorkspaceController {
     async refresh(path: string, discardDraft = false) {
         if (!this.current() || !this.snapshot.documents[path] || this.snapshot.documents[path].saving) return;
         const token = {}; this.requests.set(path, token);
+        this.reads.get(path)?.abort();
+        const abort = new AbortController(); this.reads.set(path, abort);
         const revision = this.revisions.get(path) ?? 0;
         try {
-            const value = await this.io.read(path);
+            const value = await this.io.read(path, abort.signal);
             if (!this.current() || this.requests.get(path) !== token || !this.snapshot.documents[path]) return;
             const entry = this.snapshot.documents[path];
             const discardCurrentDraft = discardDraft && revision === (this.revisions.get(path) ?? 0);
@@ -104,7 +111,7 @@ export class FileWorkspaceController {
             } else {
                 const saved = discardCurrentDraft ? undefined : this.restoredDrafts.get(path);
                 this.restoredDrafts.delete(path);
-                this.update(path, { revision: entry.revision + 1, phase: 'ready', content: value.content, draft: saved?.draft ?? value.content, hash: value.hash, draftBaseHash: saved?.hash ?? value.hash, conflict: !!saved && saved.hash !== value.hash, error: null });
+                this.update(path, { revision: entry.revision + 1, phase: 'ready', content: value.content, draft: saved?.draft ?? value.content, hash: value.hash, draftBaseHash: saved?.hash ?? value.hash, conflict: !!saved && saved.hash !== value.hash, error: null, media: value.media, fileRevision: value.fileRevision });
             }
         } catch (error) {
             if (!this.current() || this.requests.get(path) !== token) return;
@@ -122,7 +129,7 @@ export class FileWorkspaceController {
         try {
             const saved = await this.io.write(path, content, expectedHash);
             if (!this.current() || this.requests.get(path) !== token || !this.snapshot.documents[path]) return false;
-            this.update(path, { content, hash: saved.hash, draftBaseHash: saved.hash, saving: false, conflict: false, error: null });
+            this.update(path, { content, hash: saved.hash, draftBaseHash: saved.hash, saving: false, conflict: false, error: null, fileRevision: saved.fileRevision });
             return true;
         } catch (error) {
             if (this.current() && this.requests.get(path) === token) {
@@ -132,5 +139,5 @@ export class FileWorkspaceController {
             return false;
         }
     }
-    dispose() { this.disposed = true; this.requests.clear(); this.listeners.clear(); }
+    dispose() { this.disposed = true; for (const read of this.reads.values()) read.abort(); this.reads.clear(); this.requests.clear(); this.listeners.clear(); }
 }

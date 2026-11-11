@@ -13,6 +13,21 @@ const assets = vi.hoisted(() => ({ css: 'red', js: 'v1' }));
 vi.mock('./htmlPreviewBundle', () => ({ buildHtmlFilePreview: async () => ({ html: `<style>body{color:${assets.css}}</style><script>${assets.js}</script>`, dispose: vi.fn() }) }));
 beforeEach(() => { assets.css = 'red'; assets.js = 'v1'; });
 import { HtmlFilePreview } from './HtmlFilePreview.web';
+it('keeps an interactive Task iframe alive when its conversation changes', async () => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    const reader = vi.fn(async () => new Uint8Array());
+    let renderer: any;
+    const node = (sessionId: string) => <HtmlFilePreview sessionId={sessionId} path="/task/demo.html" root="/task" content="<h1>Task</h1>" readBytes={reader} />;
+    await act(async () => { renderer = TestRenderer.create(node('discussion-one')); });
+    try {
+        await act(async () => { renderer.root.findByType('WorkspaceButton').props.onPress(); });
+        const iframe = renderer.root.findByType('iframe');
+        expect(iframe.props.sandbox).toBe('allow-scripts');
+        await act(async () => { renderer.update(node('discussion-two')); });
+        expect(renderer.root.findByType('iframe')).toBe(iframe);
+        expect(renderer.root.findByType('iframe').props.sandbox).toBe('allow-scripts');
+    } finally { await act(async () => { renderer.unmount(); }); }
+});
 it('requires an explicit interaction action before allowing artifact scripts, and resets on another file', async () => {
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
     let renderer: any;

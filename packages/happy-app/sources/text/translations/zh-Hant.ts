@@ -1,3 +1,4 @@
+import { en as projectGoalsBase } from '../_default';
 /**
  * Chinese (Traditional) translations for the Paws app
  * Values can be:
@@ -17,6 +18,7 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHant: TranslationStructure = {
+    projectGoals: { ...projectGoalsBase.projectGoals },
     fileWorkspace: {
         tabActions: "分頁操作",
         closeOtherTabs: "關閉其他分頁",

@@ -541,11 +541,11 @@ function DesktopReadingWidthControl() {
     </View>;
 }
 
-type SessionViewProps = { id: string; fileOpenRequest?: { path: string; requestId: string } };
+type SessionViewProps = { id: string; fileOpenRequest?: { path: string; requestId: string }; embedded?: boolean; fullWidth?: boolean };
 
 export const SessionView = React.memo((props: SessionViewProps) => (
     <SubagentInspectorProvider sessionId={props.id}>
-        <SessionFileWorkspaceProvider sessionId={props.id}><SessionViewContent key={props.id} {...props} /></SessionFileWorkspaceProvider>
+        {props.embedded ? <SessionViewContent key={props.id} {...props} /> : <SessionFileWorkspaceProvider sessionId={props.id}><SessionViewContent key={props.id} {...props} /></SessionFileWorkspaceProvider>}
     </SubagentInspectorProvider>
 ));
 
@@ -710,7 +710,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
         collapsed: desktopRightPanelCollapsed,
         zenMode,
     });
-    const showDesktopRightPanel = desktopRightPanelPresentation === 'expanded';
+    const showDesktopRightPanel = !props.embedded && desktopRightPanelPresentation === 'expanded';
 
     React.useEffect(() => {
         if (responsiveRightPanelMode === 'persistent' || !isDataReady || !session) {
@@ -800,8 +800,15 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
     }, [session?.metadata?.goalBoard?.featurePath]);
     const openGoalTask = React.useCallback(async (task: GoalTask, newSession: boolean) => {
         const childId = await goalBoard.openTask(task, newSession);
+        const featurePath = goalBoard.snapshot?.featurePath;
+        const machineId = session?.metadata?.machineId;
+        if (Platform.OS === 'web' && featurePath && machineId) {
+            const entry = goalBoard.catalog.find(entry => entry.featurePath === featurePath);
+            router.push({ pathname: '/projects', params: { machine: machineId, ...(entry?.projectPath ? { project: entry.projectPath } : {}), feature: featurePath, task: task.id, conversation: childId } });
+            return;
+        }
         navigateToTaskSession(childId);
-    }, [goalBoard.openTask, navigateToTaskSession]);
+    }, [goalBoard.openTask, goalBoard.snapshot, goalBoard.catalog, session?.metadata?.machineId, router, navigateToTaskSession]);
     React.useEffect(() => {
         if (!isFocused || Platform.OS !== 'web' || !goalBoardOpen || goalArtifact) return;
         const onEscape = (event: KeyboardEvent) => {
@@ -1272,11 +1279,12 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
                         folderName={headerProps.folderName}
                         isConnected={headerProps.isConnected}
                         extraPathSegment={fileViewPath ?? undefined}
-                        headerContentLeftInset={splitFileHeader ? 0 : persistentHeaderContentInset}
+                        headerContentLeftInset={props.embedded || splitFileHeader ? 0 : persistentHeaderContentInset}
                         headerContentTopInset={fileHeaderTopInset}
+                        contentMaxWidth={props.fullWidth ? desktopMainWidth || undefined : undefined}
                         compactRightSlot={compactSessionHeader}
                         titleSlot={headerTitleSlot}
-                        rightSlot={(diffViewOpen || !!fileViewPath) ? overlayHeaderRightSlot : defaultHeaderRightSlot}
+                        rightSlot={props.embedded ? undefined : (diffViewOpen || !!fileViewPath) ? overlayHeaderRightSlot : defaultHeaderRightSlot}
                         onTitlePress={session ? () => router.push(`/session/${sessionId}/info`) : undefined}
                         onListPress={openSessionList}
                     />
@@ -1321,7 +1329,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
                         <Text style={{ color: theme.colors.textSecondary, fontSize: 15, marginTop: 8, textAlign: 'center', paddingHorizontal: 32 }}>{t('errors.sessionDeletedDescription')}</Text>
                     </View>
                 ) : (
-                    <DesktopReadingWidthContext.Provider value={dreamskin ? desktopReadingWidth : layout.maxWidth}>
+                    <DesktopReadingWidthContext.Provider value={props.fullWidth ? desktopMainWidth || layout.maxWidth : dreamskin ? desktopReadingWidth : layout.maxWidth}>
                         <SessionViewLoaded
                             key={sessionId}
                             composerHandleRef={sessionComposerHandleRef}
@@ -1380,6 +1388,8 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
             ) : null}
         </>
     );
+
+    if (props.embedded) return <View style={{ flex: 1, minWidth: 0, minHeight: 0 }} onLayout={event => setDesktopMainWidth(Math.round(event.nativeEvent.layout.width))}>{mainContent}</View>;
 
     if (!desktopRightPanelAvailable) {
         const rightPanel = subagentSelection ? (

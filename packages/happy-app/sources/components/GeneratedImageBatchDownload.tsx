@@ -41,7 +41,9 @@ export function GeneratedImageBatchDownload({
             ? t('generatedImageBatchDownload.downloading', progress)
             : t('generatedImageBatchDownload.downloadAll', { count: items.length });
 
-    if (totalCount <= 1) return null;
+    // Once all sources have failed, there is nothing to download. Keep the
+    // per-image error state rather than offering an unusable "Download all (0)".
+    if (totalCount <= 1 || (!isPreparing && items.length === 0 && !operation.busy && !summary)) return null;
 
     const summaryText = summary?.cancelled
         ? summary.destination === 'directory'

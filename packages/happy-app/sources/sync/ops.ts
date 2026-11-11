@@ -202,7 +202,7 @@ export type SpawnSessionHydrationError = {
 export type SpawnSessionResult =
     | { type: 'success'; sessionId: string }
     | { type: 'requestToApproveDirectoryCreation'; directory: string }
-    | { type: 'error'; errorMessage: string; codexAccountErrorCode?: CodexAccountErrorCode; outcomeUnknown?: boolean }
+    | { type: 'error'; errorMessage: string; codexAccountErrorCode?: CodexAccountErrorCode; outcomeUnknown?: boolean; notDispatched?: boolean }
     | SpawnSessionHydrationError;
 
 function normalizeSpawnSessionResult(result: unknown): SpawnSessionResult {
@@ -327,10 +327,26 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
     });
 }
 
+/** Project tasks use the same ephemeral Codex-account grants as ordinary session creation. */
+export async function machineStartGoalTask(machineId: string, input: {
+    featurePath: string; taskId: string; requestId: string; action: 'chat' | 'execute'; agent: 'codex' | 'claude';
+}) {
+    return machineStartSession(machineId, 'goalTaskLaunch', input.agent === 'codex', input);
+}
+/** Preview archives remain read-only; this separate endpoint can only create an empty chat. */
+export async function machineStartGoalPreviewChat(machineId: string, input: {
+    featurePath: string; taskId: string; requestId: string; agent: 'codex' | 'claude';
+}) {
+    return machineStartSession(machineId, 'previewGoalTaskLaunch', input.agent === 'codex', { ...input, action: 'chat' });
+}
+export async function machineStartGoalAuthor(machineId: string, input: { scopePath?: string; requestId: string; agent: 'codex' | 'claude' }) {
+    return machineStartSession(machineId, 'goalProjectAuthor', input.agent === 'codex', input);
+}
+
 /** Every final process launch goes through here; grants never enter persisted App state. */
 async function machineStartSession(
     machineId: string,
-    method: 'spawn-happy-session' | 'resume-happy-session' | 'codex-attach-candidate',
+    method: 'spawn-happy-session' | 'resume-happy-session' | 'codex-attach-candidate' | 'goalTaskLaunch' | 'previewGoalTaskLaunch' | 'goalProjectAuthor',
     isCodex: boolean,
     parameters: Record<string, unknown>,
 ): Promise<SpawnSessionResult> {
@@ -364,6 +380,7 @@ async function machineStartSession(
         return {
             type: 'error',
             ...(dispatching ? { outcomeUnknown: true } : {}),
+            ...(!dispatching && (method === 'goalTaskLaunch' || method === 'previewGoalTaskLaunch') ? { notDispatched: true } : {}),
             ...(error instanceof CodexAccountError ? { codexAccountErrorCode: error.code } : {}),
             errorMessage: error instanceof CodexAccountError
                 ? `${message} (machine: ${machineId}; RPC: ${method}; ${error.code}${error.status ? `; HTTP ${error.status}` : ''})`

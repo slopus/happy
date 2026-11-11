@@ -94,6 +94,7 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
     const currentPathname = usePathname();
     const rootState = useRootNavigationState();
     const pathname = getDesktopModalBackgroundPath(rootState) ?? currentPathname;
+    const projectWorkspace = pathname === '/projects';
     const { width: windowWidth } = useWindowDimensions();
     const [zenMode, setZenMode] = useLocalSettingMutable('zenMode');
     // The saved collapsed preference is the inverse of the desktop pin state.
@@ -105,7 +106,7 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
     const [liveLeftWidth, setLiveLeftWidth] = React.useState(storedLeftWidth);
     const [liveRightWidth, setLiveRightWidth] = React.useState(storedRightWidth);
     const [resizingSide, setResizingSide] = React.useState<DesktopPanelSide | null>(null);
-    const reveal = useDesktopSidebarReveal(enabled && !zenMode && Platform.OS === 'web', resizingSide === 'left', !leftCollapsed);
+    const reveal = useDesktopSidebarReveal(enabled && !projectWorkspace && !zenMode && Platform.OS === 'web', resizingSide === 'left', !leftCollapsed);
     const resizeSessionRef = React.useRef<ResizeSession | null>(null);
     const liveLeftWidthRef = React.useRef(liveLeftWidth);
     const liveRightWidthRef = React.useRef(liveRightWidth);
@@ -132,8 +133,8 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
         });
     const reservedWidth = enabled && Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH + 2 * DESKTOP_WORKSPACE_OUTER_GAP : 0;
     const layoutWindowWidth = Math.max(0, windowWidth - reservedWidth);
-    const leftVisible = enabled && !zenMode && (Platform.OS === 'web' ? reveal.visible : !leftCollapsed);
-    const leftPinned = enabled && !zenMode && !leftCollapsed;
+    const leftVisible = enabled && !projectWorkspace && !zenMode && (Platform.OS === 'web' ? reveal.visible : !leftCollapsed);
+    const leftPinned = enabled && !projectWorkspace && !zenMode && !leftCollapsed;
     const leftOccupiesSpace = Platform.OS === 'web' ? leftPinned : leftVisible;
     const rightVisible = rightPanelAvailable && !zenMode && !rightCollapsed;
     const leftReservesRightSpace = rightVisible && (Platform.OS !== 'web' || leftPinned);

@@ -5,11 +5,11 @@ import TestRenderer from 'react-test-renderer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
     socket: 'connecting', uiOpen: true, uiTabs: ['/work/方案.md'], session: { metadata: { path: '/work', machineId: 'machine' }, agentState: { turnStatus: { status: 'completed', turnId: 'initial', updatedAt: 1 } } },
-    reads: vi.fn(), writes: vi.fn(), artifacts: vi.fn(), persisted: {} as Record<string, unknown>, references: {} as Record<string, { path: string; hash: string; quote?: string } | null>, current: true,
+    reads: vi.fn(), writes: vi.fn(), artifacts: vi.fn(), persisted: {} as Record<string, unknown>, references: {} as Record<string, { path: string; hash: string; quote?: string } | null>, current: true, sessionLoaded: true,
 }));
 vi.mock('react-native', () => ({ Platform: { OS: 'web' } }));
 vi.mock('@/hooks/useDesktopWorkspaceLayout', () => ({ useDesktopWorkspaceLayout: () => ({ rightPanelAvailable: true }) }));
-vi.mock('@/sync/storage', () => ({ useMachine: () => null, useSession: () => mocks.session, useSocketStatus: () => ({ status: mocks.socket }) }));
+vi.mock('@/sync/storage', () => ({ useMachine: () => null, useSession: () => mocks.sessionLoaded ? mocks.session : null, useSocketStatus: () => ({ status: mocks.socket }) }));
 vi.mock('@/auth/accountRuntime', () => ({ accountRuntimeCurrent: () => mocks.current, getRuntimeAccountSelection: () => ({ key: 'account' }) }));
 vi.mock('@/sync/serverConfig', () => ({ getServerUrl: () => 'https://fixture.test' }));
 vi.mock('@/sync/persistence', () => ({
@@ -32,11 +32,68 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 function node() { return <SessionFileWorkspaceProvider sessionId="session"><Probe /></SessionFileWorkspaceProvider>; }
 beforeEach(() => {
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
-    mocks.socket = 'connecting'; mocks.uiOpen = true; mocks.uiTabs = ['/work/方案.md']; mocks.current = true; mocks.session.metadata.path = '/work'; mocks.session.agentState.turnStatus = { status: 'completed', turnId: 'initial', updatedAt: 1 };
+    mocks.socket = 'connecting'; mocks.uiOpen = true; mocks.uiTabs = ['/work/方案.md']; mocks.current = true; mocks.sessionLoaded = true; mocks.session.metadata.path = '/work'; mocks.session.agentState.turnStatus = { status: 'completed', turnId: 'initial', updatedAt: 1 };
     mocks.persisted = {}; mocks.references = {}; mocks.reads.mockReset().mockResolvedValue({ content: '# Base', hash: 'base' }); mocks.writes.mockReset().mockResolvedValue({ hash: 'saved' });
     mocks.artifacts.mockReset().mockResolvedValue([]);
 });
 describe('workspace owner in real session lifecycle', () => {
+    it.each([true, false])('does not refresh Task files when entering a different completed history (already hydrated: %s)', async hydrated => {
+        mocks.socket = 'connected'; mocks.uiTabs = ['/archive/task/demo.html'];
+        const binding = { root: '/archive/task', scope: 'task', machineId: 'machine', readBytes: vi.fn(), readText: vi.fn(async () => ({ content: '<button>1</button>', hash: 'same' })), writeText: vi.fn() };
+        const render = (id: string) => <SessionFileWorkspaceProvider sessionId={id} binding={binding}><Probe /></SessionFileWorkspaceProvider>;
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(render('history-one')); await tick(); });
+        try {
+            const revision = value.snapshot.documents['/archive/task/demo.html'].revision;
+            mocks.sessionLoaded = hydrated;
+            mocks.session.agentState.turnStatus = { status: 'completed', turnId: 'other-historical-turn', updatedAt: 100 };
+            await act(async () => { renderer.update(render('history-two')); await tick(); });
+            if (!hydrated) { mocks.sessionLoaded = true; await act(async () => { renderer.update(render('history-two')); await tick(); }); }
+            expect(binding.readText).toHaveBeenCalledTimes(1);
+            expect(value.snapshot.documents['/archive/task/demo.html'].revision).toBe(revision);
+            mocks.session.agentState.turnStatus = { status: 'completed', turnId: 'actually-new-turn', updatedAt: 200 };
+            await act(async () => { renderer.update(render('history-two')); await tick(); });
+            expect(binding.readText).toHaveBeenCalledTimes(2);
+        } finally { await act(async () => { renderer.unmount(); await tick(); }); }
+    });
+    it('preserves the Task file, draft and reading width while switching or creating conversations', async () => {
+        mocks.socket = 'connected'; mocks.uiTabs = ['/archive/task/result.md'];
+        const binding = { root: '/archive/task', scope: 'goal-task-1', machineId: 'machine',
+            readBytes: vi.fn(), readText: vi.fn(async () => ({ content: '# Delivery', hash: 'first', fileRevision: 'version-one' })), writeText: vi.fn() };
+        const taskNode = (sessionId: string) => <SessionFileWorkspaceProvider sessionId={sessionId} binding={binding}><Probe /></SessionFileWorkspaceProvider>;
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(taskNode('discussion-one')); await tick(); });
+        try {
+            const controller = value.controller;
+            expect(value.chatWidthCustomized).toBe(false);
+            await act(async () => { controller.edit('/archive/task/result.md', '# My unsaved review'); value.setChatWidth(390); value.setReference({ path: '/archive/task/result.md', hash: 'first' }); await tick(); });
+            await act(async () => { renderer.update(taskNode('discussion-two')); await tick(); });
+            expect(value.controller).toBe(controller);
+            expect(value.sessionId).toBe('discussion-two');
+            expect(value.snapshot).toMatchObject({ active: '/archive/task/result.md', open: true, documents: { '/archive/task/result.md': { draft: '# My unsaved review', fileRevision: 'version-one' } } });
+            expect(value.chatWidth).toBe(390);
+            expect(value.chatWidthCustomized).toBe(true);
+            expect(value.reference?.path).toBe('/archive/task/result.md');
+            expect(binding.readText).toHaveBeenCalledTimes(1);
+            expect(mocks.reads).not.toHaveBeenCalled();
+        } finally { await act(async () => { renderer.unmount(); await tick(); }); }
+    });
+    it('reads a real archive binding without version discovery and blocks save and restore', async () => {
+        mocks.socket = 'connected'; mocks.uiTabs = ['/archive/task/result.md'];
+        const binding = { root: '/archive/task', scope: 'readonly-task', machineId: 'machine', readOnly: true,
+            readBytes: vi.fn(), readText: vi.fn(async () => ({ content: '# Original', hash: 'original' })), writeText: vi.fn() };
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<SessionFileWorkspaceProvider sessionId="" binding={binding}><Probe /></SessionFileWorkspaceProvider>); await tick(); });
+        try {
+            expect(value.readOnly).toBe(true);
+            expect(value.snapshot.documents['/archive/task/result.md'].content).toBe('# Original');
+            expect(mocks.artifacts).not.toHaveBeenCalled();
+            await act(async () => { value.controller.edit('/archive/task/result.md', '# Attempted'); await value.controller.save('/archive/task/result.md'); await tick(); });
+            expect(binding.writeText).not.toHaveBeenCalled();
+            expect(await value.restoreVersion('/archive/task/result.md')).toBe(false);
+            expect(mocks.artifacts).not.toHaveBeenCalled();
+        } finally { await act(async () => { renderer.unmount(); await tick(); }); }
+    });
     it('renders file content while version discovery is still waiting', async () => {
         mocks.socket = 'connected';
         mocks.artifacts.mockReturnValue(new Promise(() => {}));

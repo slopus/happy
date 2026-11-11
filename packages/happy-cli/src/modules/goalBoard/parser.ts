@@ -12,6 +12,7 @@ const MAX_METADATA_BYTES = 192 * 1024;
 const statuses = new Set(['pending', 'running', 'review', 'done', 'blocked']);
 const clipped = (value: string) => value.trim().slice(0, 2048);
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex').slice(0, 24);
+export const goalFileRevision = (info: { dev: number; ino: number; size: number; mtimeMs: number; ctimeMs: number }) => digest(`${info.dev}:${info.ino}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`);
 
 /** fstat and bounded reads apply even if the file grows after the initial stat. */
 export async function readBoundedFile(root: string, candidate: string, maxBytes: number): Promise<Buffer> {
@@ -131,14 +132,14 @@ async function authorizedSourceParent(root: string, candidate: string, directori
     }
     return undefined;
 }
-async function artifactsOf(root: string, taskPath: string, source: string, directories: Set<string>): Promise<GoalArtifact[]> {
+async function artifactsOf(root: string, taskPath: string, source: string, directories: Set<string>, finalOnly = false): Promise<GoalArtifact[]> {
     const artifacts: GoalArtifact[] = [];
     for (const link of linksOf(source)) {
         if (artifacts.length >= 50) break;
         const isContract = /^(PROMPT|AGENTS|problem|PROGRESS)\.md$/i.test(basename(link.target)) || /契约|合同|任务说明|执行依据|历史|参考|基准|计划|预期/.test(link.name) || /历史|参考|输入|契约|计划|预期|\b(?:references?|inputs?|contracts?|historical|baseline|planned|plans?|expected|future|proposals?)\b/i.test(link.heading + ' ' + link.name);
-        const explicitOutput = /(?:当前|最终|交付)产物|最终(?:交付|成果)|实际(?:产物|产出|成果|交付)|阶段(?:产物|交付)|已(?:产出|交付|生成)|\b(?:(?:actual|final)\s+(?:outputs?|results?|deliverables?)|produced\s+(?:outputs?|files?|reports?)|outputs?|results?)\b/i.test(link.heading);
+        const explicitOutput = (finalOnly ? /最终(?:产物|交付|成果)|(?:^|\s\/\s)交付产物(?:$|\s\/\s)|\bfinal\s+(?:outputs?|results?|deliverables?)\b/i : /(?:当前|最终|交付)产物|最终(?:交付|成果)|实际(?:产物|产出|成果|交付)|阶段(?:产物|交付)|已(?:产出|交付|生成)|\b(?:(?:actual|final)\s+(?:outputs?|results?|deliverables?)|produced\s+(?:outputs?|files?|reports?)|outputs?|results?)\b/i).test(link.heading);
         if (/^https?:\/\//i.test(link.target)) {
-            artifacts.push({ id: digest(link.target), name: link.name, url: link.target.slice(0, 8192), kind: /\/commit\/[0-9a-f]+/i.test(link.target) ? 'commit' : 'url', relation: !isContract && explicitOutput ? 'output' : 'reference', available: true, description: link.description }); continue;
+            artifacts.push({ id: digest(link.target), revision: digest(link.target), name: link.name, url: link.target.slice(0, 8192), kind: /\/commit\/[0-9a-f]+/i.test(link.target) ? 'commit' : 'url', relation: !isContract && explicitOutput ? 'output' : 'reference', available: true, description: link.description }); continue;
         }
         const path = localTarget(taskPath, link.target);
         if (!path || basename(path) === 'index.md') continue;
@@ -149,7 +150,7 @@ async function artifactsOf(root: string, taskPath: string, source: string, direc
         try {
             const actual = await safePath(root, path);
             const info = await stat(actual);
-            if (info.isFile()) Object.assign(artifact, { path: actual, available: true, size: info.size, modifiedAt: info.mtimeMs });
+            if (info.isFile()) Object.assign(artifact, { path: actual, available: true, size: info.size, modifiedAt: info.mtimeMs, revision: goalFileRevision(info) });
         } catch {
             const registered = await authorizedSourceParent(root, path, directories);
             if (registered) artifact.path = registered;
@@ -161,11 +162,12 @@ async function artifactsOf(root: string, taskPath: string, source: string, direc
 }
 
 export type ParsedBoard = { snapshot: GoalBoardSnapshot; watchDirectories: string[] };
-export async function parseBoard(entry: CatalogRecord): Promise<ParsedBoard> {
+export async function parseBoard(entry: CatalogRecord, options: { featureOnly?: boolean; finalOnly?: boolean } = {}): Promise<ParsedBoard> {
     const { root, featurePath } = entry;
     const warnings: string[] = [];
     const warn = (message: string) => { if (warnings.length < 50 && !warnings.includes(message)) warnings.push(clipped(message)); };
     const directories = new Set<string>([featurePath]);
+    const inFeature = (path: string) => within(featurePath, path) && relative(featurePath, path).split(/[\\/]/)[0] !== 'features';
     let bytesRead = 0;
     const load = async (path: string) => {
         if (bytesRead >= 8 * 1024 * 1024) throw new Error('Goal document budget exceeded');
@@ -182,6 +184,7 @@ export async function parseBoard(entry: CatalogRecord): Promise<ParsedBoard> {
             // Keep the nearest authorized parent even while the mapped source is missing.
             await authorizedSourceParent(root, path, directories);
             const actual = await safePath(root, path);
+            if (options.featureOnly && !inFeature(actual)) return;
             if (!actual.includes('/tasks/') || basename(actual) !== 'index.md') return;
             const code = line.match(/\bG\d{2,}\b/)?.[0];
             const existing = tasks.get(actual);
@@ -194,6 +197,7 @@ export async function parseBoard(entry: CatalogRecord): Promise<ParsedBoard> {
         for (const link of linksOf(docs[i].text)) {
             const path = localTarget(docs[i].path, link.target);
             if (!path) continue;
+            if (options.featureOnly && !inFeature(path)) continue;
             if (path.includes('/tasks/') && basename(path) === 'index.md') { await addTask(path, link.line); continue; }
             if (path.includes('/tasks/') || extname(path).toLowerCase() !== '.md' || !within(root, path)) continue;
             const navigationName = basename(path);
@@ -242,7 +246,8 @@ export async function parseBoard(entry: CatalogRecord): Promise<ParsedBoard> {
                 nextStep: scalar(fields, ['nextStep', 'next_step', '下一步']) || section(index, ['下一步']),
                 dependencies: items(fields, ['dependencies', '依赖'], [index, prompt], ['依赖', '前置条件', '前置依赖']),
                 expectedDeliverables: items(fields, ['expectedDeliverables', 'expected_deliverables', '预期交付物'], [index, prompt], ['预期交付物', '计划交付', '预期产物', '交付物', '交付与验收', '未来交付与验证建议']),
-                artifacts: await artifactsOf(root, task.path, index, directories), batch: scalar(fields, ['batch', '批次']) || task.batch,
+                acceptanceCriteria: items(fields, ['acceptanceCriteria', '验收标准'], [index, prompt], ['验收标准', '验收条件', '通过标准']),
+                artifacts: await artifactsOf(root, task.path, index, directories, options.finalOnly), batch: scalar(fields, ['batch', '批次']) || task.batch,
             };
             for (const artifact of result.artifacts) if (artifact.path) directories.add(dirname(artifact.path));
             if (Buffer.byteLength(JSON.stringify(parsed)) + Buffer.byteLength(JSON.stringify(result)) > MAX_METADATA_BYTES) { warn('Snapshot size limit reached; board is truncated'); break; }

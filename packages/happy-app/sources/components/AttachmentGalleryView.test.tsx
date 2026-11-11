@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TestRenderer from 'react-test-renderer';
 
 import { AttachmentGalleryView } from './AttachmentGalleryView';
+import { DesktopReadingWidthContext } from './DesktopReadingWidth';
 import type { ToolCallMessage } from '@/sync/typesMessage';
 
 const attachmentImages = vi.hoisted(() => new Map<string, {
@@ -383,6 +384,33 @@ describe('AttachmentGalleryView generated batches', () => {
         expect(button.props.disabled).toBe(false);
         expect(button.findByType('Text').children.join('')).toBe('Download all 2');
 
+        act(() => renderer.unmount());
+    });
+
+    it('follows the session reading width when a project chat expands or a file column opens', () => {
+        attachmentImages.set('ref-uploaded-1', { uri: 'blob:uploaded-image-1', loading: false, error: null });
+        const messages = [uploadedImageMessage()];
+        const render = (width: number) => <DesktopReadingWidthContext.Provider value={width}>
+            <AttachmentGalleryView messages={messages} sessionId="session-1" />
+        </DesktopReadingWidthContext.Provider>;
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(render(1560)); });
+        const style = () => Object.assign({}, ...renderer.root.findByProps({ testID: 'attachment-gallery-compact' }).props.style);
+        expect(style().maxWidth).toBe(1560);
+        act(() => { renderer.update(render(580)); });
+        expect(style().maxWidth).toBe(580);
+        expect(imageLifecycle).toEqual({ mounts: 1, unmounts: 0 });
+        act(() => renderer.unmount());
+    });
+
+    it('keeps failed images visible without offering a zero-item download', () => {
+        attachmentImages.set('ref-uploaded-1', { uri: null, loading: false, error: 'download_failed' });
+        attachmentImages.set('ref-uploaded-2', { uri: null, loading: false, error: 'download_failed' });
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<AttachmentGalleryView
+            messages={[uploadedImageMessage(1), uploadedImageMessage(2)]} sessionId="session-1" />); });
+        expect(renderer.root.findAllByProps({ testID: 'attachment-gallery-error' })).toHaveLength(2);
+        expect(renderer.root.findAllByProps({ testID: 'attachment-gallery-download-all' })).toHaveLength(0);
         act(() => renderer.unmount());
     });
 

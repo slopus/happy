@@ -1,3 +1,4 @@
+import { en as projectGoalsBase } from '../_default';
 import { en, type TranslationStructure } from '../_default';
 
 /**
@@ -15,6 +16,7 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const pt: TranslationStructure = {
+    projectGoals: { ...projectGoalsBase.projectGoals },
     fileWorkspace: { ...en.fileWorkspace,
         retryOperation: "Repetir operação original",
         operationRetryConfirm: "Nenhum registro da operação foi encontrado. Repetir a operação original com o mesmo ID e a versão de referência original? Se os arquivos mudaram desde aquela solicitação, ocorrerá um conflito.",

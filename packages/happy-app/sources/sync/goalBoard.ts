@@ -6,7 +6,7 @@ import { AsyncLock } from '@/utils/lock';
 import { apiSocket } from './apiSocket';
 import { storage } from './storage';
 import type { Metadata } from './storageTypes';
-import { sessionUpdateMetadata, SESSION_START_RPC_TIMEOUT_MS } from './ops';
+import { sessionUpdateMetadata, machineStartGoalTask } from './ops';
 import { ensureSessionHydratedWithRetry } from './ensureSessionHydratedWithRetry';
 
 const errorResponse = z.object({ success: z.literal(false), error: z.string() });
@@ -146,11 +146,14 @@ export async function startGoalTaskSession(options: { sessionId: string; feature
     launches.set(key, record);
     const operation = (async () => {
         if (!record.confirmed) {
-            const response: unknown = await apiSocket.sessionRPC(sessionId, 'goalBoardStartTask', {
+            const metadata = storage.getState().sessions[sessionId]?.metadata;
+            if (!metadata?.machineId || !['codex', 'claude'].includes(metadata.flavor ?? '') || metadata.application || metadata.sandbox?.enabled) throw new Error('Task session launch is unavailable for this session');
+            const response = await machineStartGoalTask(metadata.machineId, {
                 featurePath, taskId: task.id, requestId: record.requestId,
-            }, { timeoutMs: SESSION_START_RPC_TIMEOUT_MS + 10_000 });
+                action: newSession ? 'chat' : 'execute', agent: metadata.flavor === 'codex' ? 'codex' : 'claude',
+            });
             assertBound();
-            const result = launchResponse.parse(response);
+            const result = launchResponse.parse(response.type === 'success' ? { success: true, sessionId: response.sessionId } : { success: false, error: response.type === 'error' ? response.errorMessage : 'Task directory is unavailable' });
             if (result.sessionId) record.sessionId = result.sessionId;
             if (!result.success || !result.sessionId) throw new Error(result.error || 'Task session could not be started');
             record.confirmed = true;

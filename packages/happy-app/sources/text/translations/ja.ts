@@ -1,3 +1,4 @@
+import { en as projectGoalsBase } from '../_default';
 /**
  * Japanese translations for the Paws app
  * Values can be:
@@ -18,6 +19,7 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const ja: TranslationStructure = {
+    projectGoals: { ...projectGoalsBase.projectGoals },
     fileWorkspace: { ...en.fileWorkspace,
         retryOperation: "元の操作を再試行",
         operationRetryConfirm: "操作記録が見つかりませんでした。同じ ID と元の基準バージョンで、元の操作を再試行しますか？そのリクエスト後にファイルが変更されていれば、競合になります。",

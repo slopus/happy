@@ -188,6 +188,7 @@ export function getDesktopPanelShortcutPresentation(platform?: string): DesktopP
 export function isDesktopRightPanelRoute(pathname: string): boolean {
     return pathname === '/'
         || pathname === '/new'
+        || pathname === '/projects'
         || (
             /^\/session\/[^/]+\/?$/.test(pathname)
             && !/^\/session\/search\/?$/.test(pathname)

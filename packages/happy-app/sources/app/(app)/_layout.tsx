@@ -48,6 +48,7 @@ export default function RootLayout() {
 
             }}
         >
+            <Stack.Screen name="projects" options={{ headerShown: false }} />
             <Stack.Screen
                 name="index"
                 options={{

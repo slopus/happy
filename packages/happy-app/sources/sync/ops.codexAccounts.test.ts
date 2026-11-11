@@ -7,7 +7,7 @@ vi.mock('./apiSocket', () => ({ apiSocket: { machineRPC }, getHappyClientId: () 
 vi.mock('./serverConfig', () => ({ getServerUrl: () => 'https://test' }));
 vi.mock('./sync', () => ({ sync: { ensureSessionHydrated } }));
 vi.mock('@/auth/tokenStorage', () => ({ TokenStorage: { getCredentials } }));
-import { codexListRewindPoints, forkAndSpawn, machineResumeSession, machineSpawnNewSession } from './ops';
+import { codexListRewindPoints, forkAndSpawn, machineResumeSession, machineSpawnNewSession, machineStartGoalPreviewChat } from './ops';
 
 let grants: string[];
 let requests: { url: string; body: unknown }[];
@@ -27,6 +27,13 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('transparent Codex grants', () => {
+    it('uses the same machine-bound authorization for a preview empty chat without sending task text', async () => {
+        await machineStartGoalPreviewChat('m1', { featurePath: '/archive', taskId: 'task', requestId: 'open-once', agent: 'codex' });
+        expect(requests).toEqual([{ url: 'https://test/v1/codex-session-grants', body: { machineId: 'm1' } }]);
+        expect(machineRPC).toHaveBeenCalledExactlyOnceWith('m1', 'previewGoalTaskLaunch', {
+            featurePath: '/archive', taskId: 'task', requestId: 'open-once', agent: 'codex', action: 'chat', codexSessionGrant: 'a'.repeat(43),
+        }, expect.any(Object));
+    });
     it('distinguishes a lost startup response from an explicit rejection', async () => {
         machineRPC.mockRejectedValueOnce(new Error('operation has timed out'));
         expect(await machineSpawnNewSession({ machineId: 'm1', directory: '/repo', agent: 'codex' }))

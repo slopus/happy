@@ -3,7 +3,7 @@ import { act } from 'react';
 // @ts-expect-error react-test-renderer has no declarations.
 import TestRenderer from 'react-test-renderer';
 import { beforeEach, expect, it, vi } from 'vitest';
-import { AnnotatableFile } from '@/components/annotations/MessageAnnotations';
+import { AnnotatableFile, FileAnnotationControls, FileAnnotationPanel, FileAnnotationHint } from '@/components/annotations/MessageAnnotations';
 import { FileWorkspaceController } from './controller';
 const state = vi.hoisted(() => ({ skin: 'gingham', reduced: false, alert: vi.fn() }));
 const theme = vi.hoisted(() => ({ dark: true, colors: {
@@ -11,7 +11,7 @@ const theme = vi.hoisted(() => ({ dark: true, colors: {
     desktopSkin: { readingSolid: '#151a21', readingCompact: 'rgba(21,26,33,0.70)', readingWide: 'rgba(21,26,33,0.51)' },
 } }));
 vi.mock('react-native', () => ({ Platform: { OS: 'web' }, View: 'View', ScrollView: 'ScrollView', ActivityIndicator: 'ActivityIndicator' }));
-vi.mock('react-native-unistyles', () => ({ useUnistyles: () => ({ theme }) }));
+vi.mock('react-native-unistyles', () => ({ StyleSheet: { hairlineWidth: 1 }, useUnistyles: () => ({ theme }) }));
 vi.mock('@/sync/storage', () => ({ useLocalSetting: () => state.skin }));
 vi.mock('@/hooks/useReducedTransparency', () => ({ useReducedTransparency: () => state.reduced }));
 vi.mock('@/modal', () => ({ Modal: { alert: state.alert } }));
@@ -30,11 +30,11 @@ let controller: FileWorkspaceController;
 let maximized = false;
 let expanded = true;
 const toggleTree = vi.fn();
-function Harness() {
+function Harness({ sessionId = 's', readOnly = false }: { sessionId?: string; readOnly?: boolean }) {
     const snapshot = React.useSyncExternalStore(controller.subscribe, controller.getSnapshot);
-    const value = { enabled: true, root: '/work', snapshot, controller, maximized, setMaximized: vi.fn(),
+    const value = { enabled: true, readOnly, root: '/work', snapshot, controller, maximized, setMaximized: vi.fn(),
         versions: { currentForHash: () => null }, setReference: vi.fn() } as any;
-    return <FileWorkspaceContext.Provider value={value}><FileWorkspace sessionId="s" fileTreeExpanded={expanded} onToggleFileTree={toggleTree} /></FileWorkspaceContext.Provider>;
+    return <FileWorkspaceContext.Provider value={value}><FileWorkspace sessionId={sessionId} fileTreeExpanded={expanded} onToggleFileTree={toggleTree} /></FileWorkspaceContext.Provider>;
 }
 beforeEach(async () => {
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
@@ -163,5 +163,20 @@ it('suspends current-file annotations while history is open and restores them on
     expect(renderer.root.findByType('VersionHistoryPanel')).toBeDefined();
     act(() => renderer.root.findByType('VersionHistoryPanel').props.onClose());
     expect(renderer.root.findByType(AnnotatableFile).props.file?.hash).toBe('base');
+    act(() => renderer.unmount());
+});
+
+
+it('keeps project files readable without a conversation and enables annotations only after one is selected', () => {
+    let renderer: any;
+    act(() => { renderer = TestRenderer.create(<Harness sessionId="" readOnly />); });
+    expect(renderer.root.findByType('MarkdownView').props.markdown).toBe('# Base');
+    expect(renderer.root.findByType(AnnotatableFile).props.file).toBeNull();
+    for (const component of [FileAnnotationControls, FileAnnotationPanel, FileAnnotationHint]) expect(renderer.root.findAllByType(component)).toHaveLength(0);
+    expect(renderer.root.findByProps({ testID: 'workspace-save' }).props.disabled).toBe(true);
+    act(() => renderer.update(<Harness sessionId="selected-conversation" readOnly />));
+    expect(renderer.root.findByType(AnnotatableFile).props).toMatchObject({ sessionId: 'selected-conversation', file: { path: '/work/c.md', hash: 'base' } });
+    expect(renderer.root.findAllByType(FileAnnotationControls)).toHaveLength(1);
+    expect(renderer.root.findByProps({ testID: 'workspace-save' }).props.disabled).toBe(true);
     act(() => renderer.unmount());
 });

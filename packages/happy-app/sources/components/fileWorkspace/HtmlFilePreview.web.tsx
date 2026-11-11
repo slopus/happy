@@ -7,19 +7,22 @@ import { WorkspaceButton } from './WorkspaceButton';
 import { readWorkspaceBytes } from './fileIO';
 import { buildHtmlFilePreview } from './htmlPreviewBundle';
 
-export const HtmlFilePreview = React.memo(function HtmlFilePreview({ sessionId, path, content, root, revision = 0, readBytes, onReady }: { sessionId: string; path: string; content: string; root: string; revision?: number; readBytes?: (path: string) => Promise<Uint8Array>; onReady?: (ready: boolean) => void }) {
+export const HtmlFilePreview = React.memo(function HtmlFilePreview({ sessionId, path, content, root, revision = 0, readBytes, onReady }: { sessionId: string; path: string; content: string; root: string; revision?: number; readBytes?: (path: string, signal?: AbortSignal) => Promise<Uint8Array>; onReady?: (ready: boolean) => void }) {
     const { theme } = useUnistyles();
     const [interactive, setInteractive] = React.useState(false);
     const [result, setResult] = React.useState<{ html?: string; error?: string }>({});
+    // A Task-provided reader survives conversation switches. Its iframe must too.
+    const resourceScope = readBytes ?? sessionId;
     React.useEffect(() => {
         let cancelled = false; let cleanup: (() => void) | undefined;
+        const abort = new AbortController();
         setResult({}); setInteractive(false); onReady?.(false);
-        void buildHtmlFilePreview(content, path, root, readBytes ?? (file => readWorkspaceBytes(sessionId, file))).then(value => {
+        void buildHtmlFilePreview(content, path, root, readBytes ? file => readBytes(file, abort.signal) : file => readWorkspaceBytes(sessionId, file)).then(value => {
             if (cancelled) { value.dispose(); return; }
             cleanup = value.dispose; setResult({ html: value.html }); onReady?.(true);
         }).catch(() => { if (!cancelled) setResult({ error: t('fileWorkspace.previewFailed') }); });
-        return () => { cancelled = true; cleanup?.(); };
-    }, [sessionId, path, content, root, revision, readBytes, onReady]);
+        return () => { cancelled = true; abort.abort(); cleanup?.(); };
+    }, [resourceScope, path, content, root, revision, readBytes, onReady]);
     if (result.error) return <View style={{ padding: 24 }}><Text accessibilityRole="alert" style={{ color: theme.colors.textDestructive }}>{result.error}</Text></View>;
     if (!result.html) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={theme.colors.textSecondary} /></View>;
     return <View style={{ flex: 1, minHeight: 0 }}>

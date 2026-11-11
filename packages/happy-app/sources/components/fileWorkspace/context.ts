@@ -4,6 +4,8 @@ import type { FileWorkspaceController, FileWorkspaceSnapshot } from './controlle
 export type FileReference = { path: string; hash: string; quote?: string; artifact?: { workspaceId: string; artifactId: string; expectedRevision: string; versionId?: string } };
 export type FileWorkspaceContextValue = {
     sessionId: string;
+    readOnly?: boolean;
+    readBytes?: (path: string, signal?: AbortSignal) => Promise<Uint8Array>;
     openRequestId: number;
     versions: VersionController;
     versionSnapshot: ReturnType<VersionController['getSnapshot']>;
@@ -12,7 +14,7 @@ export type FileWorkspaceContextValue = {
     enabled: boolean; root: string; controller: FileWorkspaceController; snapshot: FileWorkspaceSnapshot;
     reference: FileReference | null; setReference: React.Dispatch<React.SetStateAction<FileReference | null>>;
     openReference: (path: string) => Promise<void>;
-    chatWidth: number; setChatWidth: (width: number) => void;
+    chatWidth: number; chatWidthCustomized?: boolean; setChatWidth: (width: number) => void;
     maximized: boolean; setMaximized: (value: boolean) => void;
 };
 export const FileWorkspaceContext = React.createContext<FileWorkspaceContextValue | null>(null);

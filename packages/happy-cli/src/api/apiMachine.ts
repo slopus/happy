@@ -1,4 +1,5 @@
-import { createArtifactRuntime, authorizeArtifactRoot, watchArtifactChanges } from '@/modules/artifacts/runtime';
+import { createArtifactRuntime, authorizeArtifactRoot, watchArtifactChanges, artifactAccountScope } from '@/modules/artifacts/runtime';
+import { registerProjectGoalHandlers, type ProjectGoalDependencies } from '@/modules/goalBoard/projectService';
 import { registerArtifactHandlers } from '@/modules/artifacts/rpc';
 import type { NativeSessionHooks } from '@/daemon/appDelegation/nativeSessionRuntime';
 /**
@@ -121,6 +122,7 @@ type MachineRpcHandlers = {
     requestShutdown: () => void;
     refreshCodexUsage?: () => Promise<void>;
     refreshCodexAccountQuota?: (grant: string) => Promise<{ type: 'success'; accepted: boolean } | { type: 'error'; errorMessage: string }>;
+    projectGoals?: Pick<ProjectGoalDependencies, 'history' | 'send'>;
 }
 
 function requireNonEmptyString(value: unknown, name: string): string {
@@ -163,6 +165,8 @@ export class ApiMachineClient {
     private lastKnownResumeSupport: ResumeSupport | null = null;
     private rpcHandlerManager: RpcHandlerManager;
     private artifactWatcher: { dispose(): void };
+    private getArtifactStore: () => Promise<import('@/modules/artifacts/store').ArtifactStore>;
+    private projectGoals: { dispose(): void } | undefined;
     private resumeSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string; effort?: string | null; codexSessionGrant?: string; expectedFailedTurn?: { turnId?: string; updatedAt: number }; expectedWorkerPid?: number }) => Promise<SpawnSessionResult>) | null = null;
     private reconnectInterval: NodeJS.Timeout | null = null;
     private readonly codexAttachCandidates = createCodexAttachCandidateService({
@@ -184,6 +188,7 @@ export class ApiMachineClient {
         });
 
         const artifacts = createArtifactRuntime(artifactIdentity, this.machine.id);
+        this.getArtifactStore = artifacts.getStore;
         registerArtifactHandlers(this.rpcHandlerManager, artifacts.getStore, undefined, authorizeArtifactRoot);
         registerCommonHandlers(this.rpcHandlerManager, process.cwd(), artifactIdentity && artifacts.supported ? artifacts.getStore : undefined);
         this.artifactWatcher = watchArtifactChanges(artifacts.getStore, async events => {
@@ -236,8 +241,16 @@ export class ApiMachineClient {
         requestShutdown,
         refreshCodexUsage,
         refreshCodexAccountQuota,
+        projectGoals,
     }: MachineRpcHandlers) {
         this.resumeSessionHandler = resumeSession ?? null;
+        this.projectGoals?.dispose();
+        if (projectGoals) this.projectGoals = registerProjectGoalHandlers(this.rpcHandlerManager, {
+            ...projectGoals, spawn: spawnSession, workingDirectory: process.cwd(),
+            getArtifactStore: this.getArtifactStore,
+            storageDirectory: join(configuration.happyHomeDir, 'goal-projects', artifactAccountScope(this.machine.encryptionKey, configuration.serverUrl, this.machine.id)),
+            changed: async () => { await this.updateDaemonState(state => ({ ...state, status: state?.status ?? 'running', goalProjectRevision: `${Date.now()}:${Math.random()}` })); },
+        });
 
         // Register spawn session handler
         this.rpcHandlerManager.registerHandler('spawn-happy-session', async (params: any) => {
@@ -827,6 +840,7 @@ export class ApiMachineClient {
     shutdown() {
         logger.debug('[API MACHINE] Shutting down');
         this.artifactWatcher.dispose();
+        this.projectGoals?.dispose();
         this.stopAppChatWorker?.();
         this.stopAppChatWorker = null;
         this.stopKeepAlive();

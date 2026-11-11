@@ -55,6 +55,7 @@ export const SidebarNavigator = React.memo(() => {
 const SidebarNavigatorContent = React.memo(() => {
     const auth = useAuth();
     const isTablet = useIsTablet();
+    const projectWorkspace = usePathname() === '/projects';
     const { theme } = useUnistyles();
     const desktopSkinId = useLocalSetting('desktopSkinId');
     const dreamskin = Platform.OS === 'web' && isTablet && desktopSkinId !== 'default';
@@ -222,7 +223,7 @@ const SidebarNavigatorContent = React.memo(() => {
                 drawerContent={(isDesktopLayout || auth.isAuthenticated) ? drawerContent : undefined}
             />
             {/* Persistent header overlay — always visible on desktop, same position regardless of zen mode */}
-            {isDesktopLayout && (
+            {isDesktopLayout && !projectWorkspace && (
                 <PersistentHeader />
             )}
             {isDesktopLayout && showSidebar && (

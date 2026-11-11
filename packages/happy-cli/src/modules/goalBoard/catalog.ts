@@ -1,7 +1,7 @@
 import { readdir, realpath, stat } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
-import type { GoalBoardCatalogEntry } from '@slopus/happy-wire';
+import type { GoalBoardCatalogEntry, GoalProject } from '@slopus/happy-wire';
 import { readDocument, titleOf } from './parser';
 
 export const MAX_CATALOG = 100;
@@ -37,17 +37,58 @@ export async function discoverRoots(workingDirectory: string, homeDirectory = ho
 }
 
 export type CatalogRecord = GoalBoardCatalogEntry & { root: string };
+/** Use actual archive prose; navigation links and frontmatter are not a project description. */
+export function catalogSummary(source: string): string | undefined {
+    const prose = source.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, '')
+        .split(/\r?\n/).map(line => line.trim()).find(line => line && !/^(?:#|[-*|>`]|\d+\.|!\[|\[)/.test(line));
+    return prose?.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/[*_`]/g, '').slice(0, 400);
+}
+export async function readProjects(roots: string[]): Promise<GoalProject[]> {
+    const entries = await readCatalog(roots);
+    const projects = new Map<string, GoalProject>();
+    for (const root of roots) {
+        for (const name of (await readdir(root)).sort().slice(0, MAX_CATALOG)) {
+            if (projects.size >= MAX_CATALOG) break;
+            try {
+                const projectPath = await safePath(root, join(root, name));
+                if (!(await stat(projectPath)).isDirectory()) continue;
+                const text = await readDocument(root, join(projectPath, 'index.md'));
+                projects.set(projectPath, { projectPath, title: titleOf(text) || name, summary: catalogSummary(text), features: [] });
+            } catch { /* Only indexed archive projects are catalogued. */ }
+        }
+    }
+    for (const { root: _root, ...entry } of entries) {
+        const projectPath = entry.projectPath!;
+        const project = projects.get(projectPath) ?? { projectPath, title: entry.projectTitle!, features: [] };
+        if (entry.featurePath === projectPath) project.direct = entry;
+        else project.features.push(entry);
+        projects.set(projectPath, project);
+    }
+    return [...projects.values()];
+}
 export async function readCatalog(roots: string[]): Promise<CatalogRecord[]> {
     const catalog: CatalogRecord[] = [];
     for (const root of roots) {
         const projects = (await readdir(root)).sort().slice(0, MAX_CATALOG);
         for (const project of projects) {
-            const projectPath = join(root, project);
-            let features: string;
-            try { features = await safePath(root, join(projectPath, 'features')); } catch { continue; }
-            let entries: string[];
-            try { entries = (await readdir(features)).sort().slice(0, MAX_CATALOG); } catch { continue; }
+            let projectPath: string;
+            try { projectPath = await safePath(root, join(root, project)); if (!(await stat(projectPath)).isDirectory()) continue; } catch { continue; }
             const projectText = await readDocument(root, join(projectPath, 'index.md')).catch(() => '');
+            const projectTitle = titleOf(projectText) || project;
+            const addDirect = () => {
+                if (projectText && catalog.length < MAX_CATALOG && !catalog.some(entry => entry.featurePath === projectPath)) catalog.push({ root, featurePath: projectPath, projectPath, title: projectTitle, projectTitle });
+            };
+            // A project with no feature layer can own its tasks directly.
+            try {
+                const tasks = await safePath(projectPath, join(projectPath, 'tasks'));
+                if ((await stat(tasks)).isDirectory() && projectText && !catalog.some(entry => entry.featurePath === projectPath)) {
+                    addDirect();
+                }
+            } catch { /* No direct tasks. */ }
+            let features: string;
+            try { features = await safePath(root, join(projectPath, 'features')); } catch { addDirect(); continue; }
+            let entries: string[];
+            try { entries = (await readdir(features)).sort().slice(0, MAX_CATALOG); } catch { addDirect(); continue; }
             for (const feature of entries) {
                 if (catalog.length >= MAX_CATALOG) return catalog;
                 try {
@@ -55,9 +96,10 @@ export async function readCatalog(roots: string[]): Promise<CatalogRecord[]> {
                     if (!(await stat(featurePath)).isDirectory()) continue;
                     const source = await readDocument(root, join(featurePath, 'index.md'));
                     if (catalog.some(entry => entry.featurePath === featurePath)) continue;
-                    catalog.push({ root, featurePath, title: titleOf(source) || feature, projectTitle: titleOf(projectText) || project });
+                    catalog.push({ root, featurePath, projectPath, title: titleOf(source) || feature, summary: catalogSummary(source), projectTitle });
                 } catch { /* Not a readable feature entry. */ }
             }
+            if (!catalog.some(entry => entry.projectPath === projectPath)) addDirect();
         }
     }
     return catalog;

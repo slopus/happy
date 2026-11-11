@@ -3,6 +3,14 @@ import { loadFileWorkspaceReference, saveFileWorkspaceReference, loadFileWorkspa
 const scope = 'workspace-reference-test';
 afterEach(() => { saveFileWorkspaceReference(scope, null); saveFileWorkspaceReference(scope + '-other', null); });
 describe('pending workspace file context storage', () => {
+    it('distinguishes the old default from a manual split and preserves an explicit choice at the default width', () => {
+        saveFileWorkspaceUI(scope, { tabs: [], active: null, open: false, width: 430 });
+        expect(loadFileWorkspaceUI(scope).widthCustomized).toBe(false);
+        saveFileWorkspaceUI(scope, { tabs: [], active: null, open: false, width: 600 });
+        expect(loadFileWorkspaceUI(scope).widthCustomized).toBe(true);
+        saveFileWorkspaceUI(scope, { tabs: [], active: null, open: false, width: 430, widthCustomized: true });
+        expect(loadFileWorkspaceUI(scope).widthCustomized).toBe(true);
+    });
     it('restores a user split wider than 800px after reload', () => {
         saveFileWorkspaceUI(scope, { tabs: [], active: null, open: false, width: 1250 });
         expect(loadFileWorkspaceUI(scope).width).toBe(1250);

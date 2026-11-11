@@ -32,7 +32,7 @@ import {
     formatPendingImageElapsed,
 } from '@/utils/attachmentGalleryLayout';
 import type { AttachmentGalleryPresentation } from '@/utils/attachmentGalleryLayout';
-import { layout } from '@/components/layout';
+import { useDesktopReadingWidth } from './DesktopReadingWidth';
 import { t } from '@/text';
 import { GeneratedImageBatchDownload } from '@/components/GeneratedImageBatchDownload';
 import type { ImageBatchDownloadItem } from '@/utils/imageBatchDownload';
@@ -114,6 +114,7 @@ export const AttachmentGalleryView = React.memo<{
     pendingCount?: number;
     pendingStartedAt?: number | null;
 }>(({ messages, sessionId, presentation = 'compact', pendingCount = 0, pendingStartedAt = null }) => {
+    const readingWidth = useDesktopReadingWidth();
     const images = React.useMemo(() => toGalleryImages(messages), [messages]);
     const placeholderCount = Math.max(0, pendingCount);
     const windowDimensions = useWindowDimensions();
@@ -181,7 +182,7 @@ export const AttachmentGalleryView = React.memo<{
 
     return (
         <View
-            style={styles.galleryFrame}
+            style={[styles.galleryFrame, { maxWidth: readingWidth }]}
             testID={`attachment-gallery-${presentation}`}
             onLayout={presentation === 'generated-grid'
                 ? (event) => setFrameWidth(Math.round(event.nativeEvent.layout.width))
@@ -193,7 +194,7 @@ export const AttachmentGalleryView = React.memo<{
                     sessionId={sessionId}
                     pendingCount={placeholderCount}
                     pendingElapsedLabel={pendingElapsedLabel}
-                    containerWidth={frameWidth || Math.min(windowDimensions.width, layout.maxWidth)}
+                    containerWidth={frameWidth || Math.min(windowDimensions.width, readingWidth)}
                     downloadItems={downloadState.items}
                     settledCount={downloadState.settledCount}
                     onResolution={handleResolution}
@@ -201,7 +202,7 @@ export const AttachmentGalleryView = React.memo<{
                 />
             ) : presentation === 'featured' ? (
                 <View style={styles.featuredList}>
-                    <View style={styles.galleryBatchAction}>
+                    <View style={styles.featuredBatchAction} testID="attachment-gallery-actions">
                         <GeneratedImageBatchDownload
                             items={downloadState.items}
                             displayedCount={downloadState.displayedCount}
@@ -225,7 +226,7 @@ export const AttachmentGalleryView = React.memo<{
                 </View>
             ) : (
                 <View>
-                    <View style={styles.galleryBatchAction}>
+                    <View style={styles.galleryBatchAction} testID="attachment-gallery-actions">
                         <GeneratedImageBatchDownload
                             items={downloadState.items}
                             displayedCount={downloadState.displayedCount}
@@ -526,7 +527,6 @@ const GalleryPlaceholder = React.memo<{
 const styles = StyleSheet.create(() => ({
     galleryFrame: {
         width: '100%',
-        maxWidth: layout.maxWidth,
         alignSelf: 'center',
     },
     strip: {
@@ -546,10 +546,11 @@ const styles = StyleSheet.create(() => ({
         paddingHorizontal: 4,
     },
     galleryBatchAction: {
-        alignItems: 'flex-end',
+        alignItems: 'flex-start',
         marginHorizontal: 12,
         marginTop: 8,
     },
+    featuredBatchAction: { alignItems: 'flex-start' },
     generatedHeader: {
         flexDirection: 'row',
         alignItems: 'flex-start',

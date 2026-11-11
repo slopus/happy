@@ -5,7 +5,12 @@ import type { GoalTask } from '@slopus/happy-wire';
 const state = vi.hoisted(() => ({ sessions: {} as Record<string, any>, applySessions: vi.fn(), rpc: vi.fn(), update: vi.fn(), hydrate: vi.fn(), account: { key: 'account', generation: 'generation' } }));
 vi.mock('./storage', () => ({ storage: { getState: () => state } }));
 vi.mock('./apiSocket', () => ({ apiSocket: { sessionRPC: state.rpc } }));
-vi.mock('./ops', () => ({ sessionUpdateMetadata: state.update, SESSION_START_RPC_TIMEOUT_MS: 140000 }));
+vi.mock('./ops', () => ({ sessionUpdateMetadata: state.update,
+    machineStartGoalTask: async (machineId: string, input: unknown) => {
+        const response = await state.rpc(machineId, 'goalTaskLaunch', input);
+        return response.success ? { type: 'success', sessionId: response.sessionId } : { type: 'error', errorMessage: response.error };
+    },
+}));
 vi.mock('./ensureSessionHydratedWithRetry', () => ({ ensureSessionHydratedWithRetry: state.hydrate }));
 vi.mock('@/auth/accountRuntime', () => ({ assertAccountRuntime: vi.fn(), getRuntimeAccountSelection: () => state.account }));
 import { bindGoalBoard, clearGoalBoardRequestCache, getGoalTaskSessionId, loadGoalBoardCatalog, loadGoalBoardSnapshot, startGoalTaskSession } from './goalBoard';
@@ -91,7 +96,7 @@ describe('Task session startup', () => {
         const args = { sessionId: 'parent', featurePath: '/goals/feature', task };
         expect(await Promise.all([startGoalTaskSession(args), startGoalTaskSession(args)])).toEqual(['child', 'child']);
         expect(state.rpc).toHaveBeenCalledTimes(1);
-        expect(state.rpc.mock.calls[0][1]).toBe('goalBoardStartTask');
+        expect(state.rpc.mock.calls[0][1]).toBe('goalTaskLaunch');
         expect(state.sessions.parent.metadata.goalBoardTaskSessions).toEqual({ [sessionKey('/goals/feature', 'task-1')]: 'child' });
         expect(state.sessions.child.metadata.goalBoard).toMatchObject({ featurePath: '/goals/feature', taskId: 'task-1', parentSessionId: 'parent' });
     });

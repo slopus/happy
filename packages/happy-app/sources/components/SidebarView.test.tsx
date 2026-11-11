@@ -2,12 +2,15 @@ import * as React from 'react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SidebarView } from './SidebarView';
+import { appThemes } from '@/themePacks';
 
 // react-test-renderer does not publish TypeScript declarations with the package.
 // @ts-expect-error The test only needs the small create/unmount surface typed below.
 import TestRenderer from 'react-test-renderer';
 
 const mocks = vi.hoisted(() => ({
+    theme: { colors: { groupped: { background: '#fff' }, divider: '#ddd', desktopSkin: {} } } as any,
+    desktopSkin: 'default',
     accountFirstActionFocus: vi.fn(),
     accountTriggerFocus: vi.fn(),
     dispatch: vi.fn(),
@@ -54,7 +57,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('./AppConversationsSidebar', () => ({ AppConversationsSidebar: (props: any) => React.createElement('AppConversationsSidebar', props) }));
 
 vi.mock('react-native', () => ({
-    Platform: { OS: 'web' },
+    Platform: { OS: 'web', select: (values: any) => values.web ?? values.default },
     Text: 'Text',
     View: 'View',
     Pressable: 'Pressable',
@@ -73,7 +76,7 @@ vi.mock('@react-navigation/native', () => ({
     DrawerActions: { closeDrawer: () => ({ type: 'CLOSE_DRAWER' }) },
 }));
 vi.mock('react-native-unistyles', () => ({
-    useUnistyles: () => ({ theme: { colors: { desktopSkin: {} } } }),
+    useUnistyles: () => ({ theme: mocks.theme }),
     StyleSheet: {
         hairlineWidth: 1,
         create: (factory: unknown) => typeof factory === 'function'
@@ -96,7 +99,7 @@ vi.mock('@/sync/storage', () => ({
     useSession: () => mocks.session,
     useRealtimeStatus: () => 'connected',
     useProfile: () => null,
-    useLocalSetting: () => [],
+    useLocalSetting: (name: string) => name === 'desktopSkinId' ? mocks.desktopSkin : [],
     useLocalSettingMutable: (name: string) => name === 'desktopSidebarMode'
         ? [mocks.desktopSidebarMode, mocks.setDesktopSidebarMode]
         : name === 'desktopSidebarListMode'
@@ -199,6 +202,8 @@ describe('SidebarView Agent space exit', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.pathname = '/';
+        mocks.theme = appThemes.ginghamLight;
+        mocks.desktopSkin = 'default';
         mocks.focusHistory.length = 0;
         mocks.spaceAgent = {
             id: 'health',
@@ -225,6 +230,23 @@ describe('SidebarView Agent space exit', () => {
     });
 
     afterEach(() => consoleErrorSpy.mockRestore());
+
+    it('keeps the permanent rail on the live theme when appearance changes without remounting', () => {
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SidebarView desktopDensity desktopPrimaryNavigation />); });
+        const style = (id: string) => Object.assign({}, ...renderer.root.findByProps({ testID: id }).props.style.flat().filter(Boolean));
+        expect(style('desktop-primary-navigation-column').backgroundColor).toBe(appThemes.ginghamLight.colors.groupped.background);
+        mocks.theme = appThemes.ginghamDark;
+        act(() => { renderer.update(<SidebarView desktopDensity desktopPrimaryNavigation desktopSecondaryVisible={false} />); });
+        expect(style('desktop-primary-navigation-column').backgroundColor).toBe(appThemes.ginghamDark.colors.groupped.background);
+        expect(style('desktop-primary-navigation-column').borderRightColor).toBe(appThemes.ginghamDark.colors.divider);
+        expect(style('sidebar-desktop-density').backgroundColor).toBe(appThemes.ginghamDark.colors.groupped.background);
+        expect(style('desktop-secondary-navigation-column').backgroundColor).toBe(appThemes.ginghamDark.colors.groupped.background);
+        mocks.desktopSkin = 'dreamskin';
+        act(() => { renderer.update(<SidebarView desktopDensity desktopPrimaryNavigation desktopSecondaryVisible />); });
+        expect(style('desktop-primary-navigation-column').backgroundColor).toBe(appThemes.ginghamDark.colors.desktopSkin.rail);
+        act(() => renderer.unmount());
+    });
 
     it('ignores a persisted Agent space and renders the regular mobile sidebar', () => {
         let renderer: any;

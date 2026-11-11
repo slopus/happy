@@ -227,6 +227,7 @@ export const DaemonStateSchema = z.object({
       z.string() // Forward compatibility
     ]).optional(),
   artifactChanges: z.array(ArtifactChangedSchema).max(64).optional(),
+  goalProjectRevision: z.string().optional(),
   codexUsage: CodexUsageSnapshotSchema.optional(),
   codexAccountUsage: z.array(CodexAccountUsageSnapshotSchema).optional(),
 })

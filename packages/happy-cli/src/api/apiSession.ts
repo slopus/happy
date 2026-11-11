@@ -23,8 +23,6 @@ import { deriveKey } from '@/utils/deriveKey';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { registerGoalBoardHandlers } from '../modules/goalBoard/registerGoalBoardHandlers';
-import { goalBoardTaskPrompt } from '../modules/goalBoard/taskPrompt';
-import { launchIndependentDaemonSession } from '../daemon/controlClient';
 import { calculateCost } from '@/utils/pricing';
 import { shouldReconnect } from '@/utils/lidState';
 import { createEnvelope, type InteractivePreviewEvent, type SessionEnvelope, type SessionTurnEndStatus } from '@slopus/happy-wire';
@@ -218,9 +216,8 @@ export class ApiSessionClient extends EventEmitter {
                     mimeType: kind === 'pdf' ? 'application/pdf' : kind === 'text' ? (extension === 'html' || extension === 'htm' ? 'text/html' : 'text/plain') : imageMime[extension || ''] || 'application/octet-stream',
                     kind: kind === 'pdf' || kind === 'text' ? 'file' as const : 'image' as const, encrypted: true };
             },
-            startTask: (task, featurePath, requestId) => launchIndependentDaemonSession(this.sessionId, {
-                requestId, title: task.title.slice(0, 200), prompt: goalBoardTaskPrompt(task, featurePath), directory: featurePath,
-            }),
+            // Launches now go through the machine's durable Task service. The old
+            // session RPC must not provide a second, non-idempotent execution path.
         });
 
         //
