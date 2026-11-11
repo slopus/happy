@@ -16,7 +16,6 @@ import { Option } from './markdown/MarkdownView';
 import { layout } from "./layout";
 import { useDesktopReadingWidth } from './DesktopReadingWidth';
 import { parseLocalCommandMessage, isUserSlashCommandEcho } from './parseLocalCommandMessage';
-import { getAutoFoldPromptBodyRenderState, getAutoFoldPromptInfo } from '@/utils/autoFoldPrompt';
 import { ConversationActivityStrip } from './ConversationActivityStrip';
 import { getSkillNamesFromTool } from '@/utils/conversationActivity';
 import { getMessageExecutionModeLabel } from '@/utils/messageExecutionMode';
@@ -289,23 +288,6 @@ function UserTextBlock(props: {
     );
   }
 
-  const autoFoldPrompt = getAutoFoldPromptInfo(parsed.text);
-  if (autoFoldPrompt) {
-    return (
-      <View style={styles.userMessageContainer}>
-        <View style={[styles.userAutoFoldWrap, modeLabel && styles.userContentWithModeMeta]}>
-          <AutoFoldPromptBlock
-            text={parsed.text}
-            info={autoFoldPrompt}
-            onOptionPress={readOnly ? undefined : handleOptionPress}
-            sessionId={props.sessionId}
-          />
-        </View>
-        <UserMessageModeLabel messageId={props.message.id} label={modeLabel} />
-      </View>
-    );
-  }
-
   if (isEditing && !readOnly) {
     const canSend = editText.trim().length > 0 && !isSendingEdit;
     return (
@@ -493,20 +475,6 @@ function AgentTextBlock(props: {
     );
   };
 
-  const autoFoldPrompt = getAutoFoldPromptInfo(props.message.text);
-  if (autoFoldPrompt) {
-    return (
-      <View style={styles.agentMessageContainer}>
-        <AutoFoldPromptBlock
-          text={props.message.text}
-          info={autoFoldPrompt}
-          onOptionPress={readOnly ? undefined : handleOptionPress}
-          sessionId={props.sessionId}
-        />
-      </View>
-    );
-  }
-
   return (
     <View
       testID={`message-agent-${props.message.id}`}
@@ -603,67 +571,6 @@ function AgentTextBlock(props: {
           )}
         </View>
       )}
-    </View>
-  );
-}
-
-function AutoFoldPromptBlock(props: {
-  text: string;
-  info: NonNullable<ReturnType<typeof getAutoFoldPromptInfo>>;
-  onOptionPress?: (option: Option) => void | Promise<void>;
-  sessionId?: string;
-}) {
-  const { theme } = useUnistyles();
-  const readOnly = React.useContext(TranscriptReadOnlyContext);
-  const restrictedContent = React.useContext(TranscriptRestrictedContentContext);
-  const [expanded, setExpanded] = React.useState(false);
-  const toggleExpanded = React.useCallback(() => {
-    setExpanded((value) => !value);
-  }, []);
-  const copyPrompt = React.useCallback(() => {
-    void Clipboard.setStringAsync(props.text);
-  }, [props.text]);
-  const bodyRenderState = getAutoFoldPromptBodyRenderState({
-    text: props.text,
-    info: props.info,
-    expanded,
-  });
-
-  return (
-    <View style={styles.autoFoldCard}>
-      <View style={styles.autoFoldHeader}>
-        <Pressable style={styles.autoFoldHeaderMain} onPress={toggleExpanded}>
-          <Ionicons name="document-text-outline" size={17} color={theme.colors.textSecondary} />
-          <View style={styles.autoFoldTitleGroup}>
-            <Text style={styles.autoFoldTitle} numberOfLines={1}>{t('message.foldedPromptTitle')}</Text>
-            <Text style={styles.autoFoldSummary} numberOfLines={1}>
-              {t('message.foldedPromptSummary', { lines: props.info.lineCount, chars: props.info.charCount })}
-            </Text>
-          </View>
-        </Pressable>
-        <Pressable style={styles.autoFoldAction} onPress={copyPrompt}>
-          <Ionicons name="copy-outline" size={16} color={theme.colors.textSecondary} />
-          <Text style={styles.autoFoldActionText}>{t('common.copy')}</Text>
-        </Pressable>
-        <Pressable style={styles.autoFoldAction} onPress={toggleExpanded}>
-          <Text style={styles.autoFoldActionText}>{expanded ? t('message.hidePrompt') : t('message.showPrompt')}</Text>
-          <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color={theme.colors.textSecondary} />
-        </Pressable>
-      </View>
-      <View style={styles.autoFoldBody}>
-        {bodyRenderState.kind === 'markdown' ? (
-          <MarkdownView
-            readOnly={restrictedContent}
-            markdown={bodyRenderState.text}
-            onOptionPress={readOnly ? undefined : props.onOptionPress}
-            sessionId={props.sessionId}
-            typography="chatMono"
-            variant={bodyRenderState.markdownVariant}
-          />
-        ) : (
-          <Text style={styles.autoFoldBodyText}>{bodyRenderState.text}</Text>
-        )}
-      </View>
     </View>
   );
 }
@@ -923,11 +830,6 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 13,
     fontFamily: 'monospace',
   },
-  userAutoFoldWrap: {
-    width: '100%',
-    maxWidth: 520,
-    marginBottom: 12,
-  },
   agentMessageContainer: {
     position: 'relative',
     marginHorizontal: 16,
@@ -985,65 +887,6 @@ const styles = StyleSheet.create((theme) => ({
     marginHorizontal: 8,
     maxWidth: '100%',
     overflow: 'hidden',
-  },
-  autoFoldCard: {
-    backgroundColor: theme.colors.surfaceHigh,
-    borderColor: theme.colors.divider,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  autoFoldHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderBottomColor: theme.colors.divider,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  autoFoldHeaderMain: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  autoFoldTitleGroup: {
-    flex: 1,
-    minWidth: 0,
-  },
-  autoFoldTitle: {
-    color: theme.colors.text,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  autoFoldSummary: {
-    color: theme.colors.textSecondary,
-    fontSize: 12,
-    marginTop: 1,
-  },
-  autoFoldAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  autoFoldActionText: {
-    color: theme.colors.textSecondary,
-    fontSize: 12,
-  },
-  autoFoldBodyText: {
-    color: theme.colors.textSecondary,
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  autoFoldBody: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
   },
   debugText: {
     color: theme.colors.agentEventText,

@@ -10,11 +10,6 @@ import { MessageView } from './MessageView';
 import { TranscriptReadOnlyContext, TranscriptRestrictedContentContext } from './TranscriptReadOnlyContext';
 import * as Clipboard from 'expo-clipboard';
 
-const autoFold = vi.hoisted(() => ({
-    getBody: vi.fn<(args: unknown) => any>(() => ({ kind: 'preview-text', text: 'preview' })),
-    getInfo: vi.fn<(text: string) => any>(() => null),
-}));
-
 vi.mock('react-native', () => ({
     ActivityIndicator: 'ActivityIndicator',
     Platform: { OS: 'web', select: (options: Record<string, unknown>) => options.web ?? options.default },
@@ -32,10 +27,6 @@ vi.mock('./DesktopShortcutTooltip', () => ({ DesktopShortcutTooltip: 'DesktopSho
 vi.mock('./layout', () => ({ layout: { maxWidth: 900 } }));
 vi.mock('@/sync/sync', () => ({ sync: { sendMessage: vi.fn() } }));
 vi.mock('@/modal', () => ({ Modal: { alert: vi.fn() } }));
-vi.mock('@/utils/autoFoldPrompt', () => ({
-    getAutoFoldPromptBodyRenderState: autoFold.getBody,
-    getAutoFoldPromptInfo: autoFold.getInfo,
-}));
 vi.mock('@/text', () => ({
     t: (key: string) => ({
         'common.copy': 'Copy',
@@ -122,34 +113,17 @@ describe('MessageView fork action feedback', () => {
 
     it('preserves inert external Markdown without restricting ordinary history formatting', () => {
         for (const restricted of [false, true]) {
-            for (const folded of [false, true]) {
-                autoFold.getInfo.mockReturnValue(folded ? { charCount: 2000, lineCount: 20, preview: 'preview' } : null);
-                autoFold.getBody.mockReturnValue({ kind: 'markdown', text: agentMessage.text, markdownVariant: 'foldedPrompt' });
-                let renderer: any;
-                act(() => {
-                    renderer = TestRenderer.create(<TranscriptReadOnlyContext.Provider value={true}>
-                        <TranscriptRestrictedContentContext.Provider value={restricted}>
-                            <MessageView message={agentMessage} metadata={null} />
-                        </TranscriptRestrictedContentContext.Provider>
-                    </TranscriptReadOnlyContext.Provider>);
-                });
-                expect(renderer.root.findByType('MarkdownView').props.readOnly).toBe(restricted);
-                act(() => renderer.unmount());
-            }
+            let renderer: any;
+            act(() => {
+                renderer = TestRenderer.create(<TranscriptReadOnlyContext.Provider value={true}>
+                    <TranscriptRestrictedContentContext.Provider value={restricted}>
+                        <MessageView message={agentMessage} metadata={null} />
+                    </TranscriptRestrictedContentContext.Provider>
+                </TranscriptReadOnlyContext.Provider>);
+            });
+            expect(renderer.root.findByType('MarkdownView').props.readOnly).toBe(restricted);
+            act(() => renderer.unmount());
         }
-    });
-
-    it('also disables options inside expanded historical folded prompts', () => {
-        autoFold.getInfo.mockReturnValue({ charCount: 2000, lineCount: 20, preview: 'preview' });
-        autoFold.getBody.mockReturnValue({ kind: 'markdown', text: agentMessage.text, markdownVariant: 'foldedPrompt' });
-        let renderer: any;
-        act(() => {
-            renderer = TestRenderer.create(<TranscriptReadOnlyContext.Provider value={true}>
-                <MessageView message={agentMessage} metadata={null} sessionId="old-session" />
-            </TranscriptReadOnlyContext.Provider>);
-        });
-        expect(renderer.root.findByType('MarkdownView').props).toMatchObject({ sessionId: 'old-session', onOptionPress: undefined });
-        act(() => renderer.unmount());
     });
 
     it('passes the next question as an excluded boundary when its fork button is clicked', () => {
@@ -168,14 +142,12 @@ describe('MessageView fork action feedback', () => {
 
     beforeEach(() => {
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-        autoFold.getBody.mockReset().mockReturnValue({ kind: 'preview-text', text: 'preview' });
-        autoFold.getInfo.mockReset().mockReturnValue(null);
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     });
 
     afterEach(() => consoleErrorSpy.mockRestore());
 
-    it('selects chat typography for user, agent, and expanded folded Markdown', () => {
+    it('selects chat typography for user and agent Markdown', () => {
         let renderer: any;
         const userMessage = {
             kind: 'user-text' as const,
@@ -193,14 +165,34 @@ describe('MessageView fork action feedback', () => {
         act(() => renderer.update(<MessageView message={agentMessage} metadata={null} />));
         expect(renderer.root.findByType('MarkdownView').props.typography).toBe('chatMono');
 
-        autoFold.getInfo.mockReturnValue({ charCount: 2000, lineCount: 20, preview: 'preview' });
-        autoFold.getBody.mockReturnValue({ kind: 'markdown', text: agentMessage.text, markdownVariant: 'foldedPrompt' });
-        act(() => renderer.update(<MessageView message={{ ...agentMessage, text: `${agentMessage.text} folded` }} metadata={null} />));
-        expect(renderer.root.findByType('MarkdownView').props).toMatchObject({
-            typography: 'chatMono',
-            variant: 'foldedPrompt',
-        });
+        act(() => renderer.unmount());
+    });
 
+    it.each(['user-text', 'agent-text'] as const)('renders long %s prompts in full with options and copy actions', (kind) => {
+        const text = [
+            '风格提示词 / Style prompt:',
+            ...Array.from({ length: 32 }, (_, index) => `第 ${index} 条：保持纸张纹理、克制构图与自然阴影。Preserve the complete instructions and all details.`),
+            '<options><option>Continue</option></options>',
+            'Final instruction must remain visible.',
+        ].join('\n');
+        const message = { ...agentMessage, kind, text };
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<MessageView message={message} metadata={null} sessionId="s1"
+                showUserMessageActions showAgentMessageActions />);
+        });
+        expect(renderer.root.findByType('MarkdownView').props).toMatchObject({ markdown: text, typography: 'chatMono', sessionId: 's1' });
+        expect(renderer.root.findByType('MarkdownView').props.variant).toBeUndefined();
+        expect(renderer.root.findByType('MarkdownView').props.onOptionPress).toBeTypeOf('function');
+        const copyId = kind === 'user-text' ? 'message-user-copy-agent-1' : 'message-agent-copy-agent-1';
+        act(() => renderer.root.findByProps({ testID: copyId }).props.onPress());
+        expect(Clipboard.setStringAsync).toHaveBeenCalledWith(text);
+
+        act(() => renderer.update(<TranscriptReadOnlyContext.Provider value={true}>
+            <MessageView message={message} metadata={null} sessionId="s1" />
+        </TranscriptReadOnlyContext.Provider>));
+        expect(renderer.root.findByType('MarkdownView').props.markdown).toBe(text);
+        expect(renderer.root.findByType('MarkdownView').props.onOptionPress).toBeUndefined();
         act(() => renderer.unmount());
     });
 

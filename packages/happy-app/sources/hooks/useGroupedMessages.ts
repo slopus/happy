@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Message } from '@/sync/typesMessage';
 import { knownTools } from '@/components/tools/knownTools';
 import { t } from '@/text';
-import { isGeneratedImageBatchPromptText } from '@/utils/autoFoldPrompt';
+import { isGeneratedImageBatchPromptText } from '@/utils/generatedImageBatchPrompt';
 import type { AttachmentGalleryPresentation } from '@/utils/attachmentGalleryLayout';
 import { getSkillNamesFromTool } from '@/utils/conversationActivity';
 import { isGeneratedImageFileInput } from '@/hooks/generatedImagesModel';
