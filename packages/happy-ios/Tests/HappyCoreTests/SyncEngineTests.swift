@@ -59,6 +59,13 @@ private actor SyncFixture: AgentTransport {
     /// The process every hello names; nil as an older daemon's.
     var daemonId: String?
     var nextHelloGap = false
+    /// The next bootstrap read waits, deaf to cancellation, until `release`.
+    var holdNextRead = false
+    var held: CheckedContinuation<Void, Never>?
+    func holdNextBootstrap() { holdNextRead = true }
+    func isHolding() -> Bool { held != nil }
+    func streamsOpened() -> Int { streamHeaders.count }
+    func release() { held?.resume(); held = nil }
     func setDaemon(_ id: String?) { daemonId = id }
     func gapNextHello() { nextHelloGap = true }
     func bootstrapReads() -> Int { requested.filter { $0 == "/v0/bootstrap/desktop" }.count }
@@ -115,6 +122,10 @@ private actor SyncFixture: AgentTransport {
         requested.append(path)
         if path == "/v0/bootstrap/desktop" {
             if bootstrapFailures > 0 { bootstrapFailures -= 1; throw URLError(.timedOut) }
+            if holdNextRead {
+                holdNextRead = false
+                await withCheckedContinuation { held = $0 }
+            }
             let read = try JSONEncoder().encode(value)
             if newsDuringReads > 0 {
                 newsDuringReads -= 1
@@ -248,6 +259,32 @@ final class SyncEngineTests: XCTestCase {
         await transport.drop()
         _ = try await wait(engine) { !$0.live }
         try await eventually { await transport.bootstrapReads() > afterGap }
+        await engine.stop()
+    }
+
+    /// A pause whose tasks wind down slowly, overtaken by a start that
+    /// comes back live, leaves the outbox to that start: what the person
+    /// does next still goes out.
+    func testALatePauseDoesNotTakeALiveEngineOffline() async throws {
+        let transport = SyncFixture()
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        await engine.start()
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        await transport.holdNextBootstrap()
+        await transport.emit(.object(["type": .string("workspace.updated"), "payload": .object(["workspaceId": .string("work")])]))
+        try await eventually { await transport.isHolding() }
+
+        // The pause waits on that read; a start gets in once it let go of the run.
+        let pausing = Task { await engine.pause() }
+        try await eventually {
+            await engine.start()
+            return await transport.streamsOpened() == 2
+        }
+        await transport.release()
+        await pausing.value
+
+        await engine.markRead("last-agent")
+        try await eventually { await transport.heardActs().contains("read:last-agent") }
         await engine.stop()
     }
 

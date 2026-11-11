@@ -235,6 +235,9 @@ public actor SyncEngine {
         deriving?.cancel(); deriving = nil
         tasks.forEach { $0.cancel() }
         for task in tasks { await task.value }
+        // A start while the tasks wound down owns the outbox now: taking it
+        // offline here held every intent back while home said live.
+        guard generation == pausedGeneration else { return }
         await intents.setOnline(false)
         guard generation == pausedGeneration else { return }
         await documents.closed()
@@ -290,6 +293,9 @@ public actor SyncEngine {
     }
 
     private func run(_ generation: Int) async {
+        // Nothing goes out before this run has read the computer, even when
+        // the pause before it was overtaken and left the outbox as it was.
+        await intents.setOnline(false)
         do {
             let database = try database()
             if desktop == nil, let cached = try await database.checkpoint("desktop") {
