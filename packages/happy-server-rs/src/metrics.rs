@@ -18,6 +18,8 @@ pub struct Metrics {
     pub rpc_duration: HistogramVec,
     pub rpc_lookup_retries: HistogramVec,
     pub rpc_fetch_timeouts: CounterVec,
+    /// Not in the TS server: log lines the non-blocking writer had to drop.
+    pub log_lines_dropped: IntCounter,
 }
 
 /// `parseClientLabels`.
@@ -62,6 +64,7 @@ impl Metrics {
         )
         .unwrap();
         let rpc_fetch_timeouts = CounterVec::new(Opts::new("rpc_fetchsockets_timeouts_total", "Cross-replica fetchSockets timeouts by context"), &["context"]).unwrap();
+        let log_lines_dropped = IntCounter::new("log_lines_dropped_total", "Log lines dropped because stdout could not keep up").unwrap();
         for c in [
             Box::new(websocket_connections.clone()) as Box<dyn prometheus::core::Collector>,
             Box::new(session_alive_events.clone()),
@@ -76,6 +79,7 @@ impl Metrics {
             Box::new(rpc_duration.clone()),
             Box::new(rpc_lookup_retries.clone()),
             Box::new(rpc_fetch_timeouts.clone()),
+            Box::new(log_lines_dropped.clone()),
         ] {
             registry.register(c).unwrap();
         }
@@ -94,6 +98,7 @@ impl Metrics {
             rpc_duration,
             rpc_lookup_retries,
             rpc_fetch_timeouts,
+            log_lines_dropped,
         }
     }
 
@@ -106,6 +111,10 @@ impl Metrics {
     }
 
     pub fn render(&self) -> String {
+        let dropped = crate::logwriter::dropped_total();
+        if dropped > self.log_lines_dropped.get() {
+            self.log_lines_dropped.inc_by(dropped - self.log_lines_dropped.get());
+        }
         let mut buf = Vec::new();
         TextEncoder::new().encode(&self.registry.gather(), &mut buf).ok();
         String::from_utf8(buf).unwrap_or_default()

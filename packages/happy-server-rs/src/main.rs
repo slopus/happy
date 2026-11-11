@@ -24,6 +24,7 @@ mod presence;
 mod routes;
 mod rpc;
 mod sio;
+mod summary;
 mod socket;
 mod storage;
 mod util;
@@ -39,12 +40,24 @@ fn main() -> anyhow::Result<()> {
     let log = logwriter::stdout();
     tracing_subscriber::fmt()
         .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stdout()))
-        .with_env_filter(tracing_subscriber::EnvFilter::try_from_env("HAPPY_LOG").unwrap_or_else(|_| "info,sqlx=warn".into()))
+        .with_env_filter(tracing_subscriber::EnvFilter::try_from_env("HAPPY_LOG").unwrap_or_else(|_| default_log_filter().into()))
         .with_writer(log.clone())
         .init();
     let result = run();
     log.drain(Duration::from_secs(2));
     result
+}
+
+/// The TS levels: production consoles get errors plus the 30 s summary; elsewhere,
+/// or with remote debug logging on, everything from debug up.
+fn default_log_filter() -> String {
+    let production = std::env::var("NODE_ENV").is_ok_and(|v| v == "production");
+    let remote_debug = std::env::var("DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING").is_ok_and(|v| !v.is_empty());
+    if production && !remote_debug {
+        format!("error,{}=info", summary::TARGET)
+    } else {
+        "info,happy_server_rs=debug,sqlx=warn".into()
+    }
 }
 
 fn run() -> anyhow::Result<()> {
@@ -122,6 +135,19 @@ async fn serve(config: config::Config) -> anyhow::Result<()> {
 
 fn spawn_background(app: &Arc<App>) {
     tokio::spawn(presence::run(app.clone()));
+    if app.config.is_production {
+        summary::enable();
+        tokio::spawn(async move {
+            let mut t = tokio::time::interval(Duration::from_millis(summary::WINDOW_MS as u64));
+            t.tick().await;
+            loop {
+                t.tick().await;
+                if let Some(line) = summary::flush(util::now_ms()) {
+                    tracing::info!(target: summary::TARGET, module = "http-summary", "{}", line);
+                }
+            }
+        });
+    }
     let a = app.clone();
     tokio::spawn(async move {
         let mut t = tokio::time::interval(Duration::from_millis(activity::BATCH_INTERVAL_MS));

@@ -118,7 +118,7 @@ export function normalizer(extra = (s) => s) {
     const text = (t) => String(t).replace(SID, '"sid":"<sid>"').replace(JSID, '\\"sid\\":\\"<sid>\\"').replace(EIOSID, '$1<sid>').replace(RKEY, '"id":"<rkey>"').replace(JWT, '<jwt>').replace(ISO, '<iso>').replace(CUID, idOf).replace(UUID4, idOf).replace(PKEY, idOf).replace(ELEVEN, idOf).replace(UNIX, 'call_start_after_unix=<unix>').replace(MS, '<ts>').replace(/127\.0\.0\.1:320[12]|localhost:320[12]/g, '<host>');
     const all = (t) => extra(text(t));
     return (entry) => {
-        const e = { name: entry.name, status: entry.status, headers: entry.headers };
+        const e = { name: entry.name, status: entry.status, headers: entry.headers && all(JSON.stringify(entry.headers)) };
         e.body = entry.note ? all(JSON.stringify(entry.json)) : all(entry.text ?? '');
         return e;
     };

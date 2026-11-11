@@ -713,9 +713,16 @@ pub async fn handle(app: Arc<App>, req: hyper::Request<Incoming>) -> HttpRespons
     if route_label.is_empty() {
         return resp; // bad URL: answered before Fastify's hooks
     }
-    app.metrics.observe_http(method.as_str(), &route_label, status, client.as_deref(), started.elapsed().as_secs_f64());
+    let elapsed = started.elapsed();
+    app.metrics.observe_http(method.as_str(), &route_label, status, client.as_deref(), elapsed.as_secs_f64());
+    let summary_route = if resp.extensions().get::<Unmatched>().is_some() { "<unmatched>" } else { route_label.as_str() };
+    crate::summary::record_request(method.as_str(), summary_route, status, elapsed.as_millis() as f64);
     resp
 }
+
+/// Marks the not-found handler's answer (no route options in Fastify).
+#[derive(Clone, Copy)]
+struct Unmatched;
 
 async fn dispatch(app: Arc<App>, req: hyper::Request<Incoming>, method: Method, url: String) -> (String, HttpResponse) {
     let (path, query_str) = match url.find('?') {
@@ -749,7 +756,11 @@ async fn dispatch(app: Arc<App>, req: hyper::Request<Incoming>, method: Method, 
     let (route, params) = match app.router.find(&lookup_method, &url) {
         Lookup::Found(r, p) => (r, p),
         Lookup::BadUrl => return (String::new(), bad_url(&url)),
-        Lookup::NotFound => return (path, render(not_found(&method, &url))),
+        Lookup::NotFound => {
+            let mut resp = render(not_found(&method, &url));
+            resp.extensions_mut().insert(Unmatched);
+            return (path, resp);
+        }
     };
     let label = route.pattern.to_string();
     let (parts, raw) = match read_body(req, route.body_limit).await {
@@ -860,6 +871,9 @@ enum Origin {
 /// error handler's own payload fails its schema too, Fastify's default handler and
 /// then the fallback error serializer answer.
 fn finalize(route: &Route, reply: Reply, origin: Origin) -> Reply {
+    if origin == Origin::ErrorHandler {
+        crate::summary::record_error();
+    }
     let Body::Json(v) = &reply.body else { return reply };
     let Some((_, s)) = route.responses.iter().find(|(st, _)| *st == reply.status) else { return reply };
     match s.parse(Some(v)) {
