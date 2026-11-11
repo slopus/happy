@@ -46,7 +46,14 @@ export function useCodexAccounts() {
 }
 const listeners = new Set<() => void>();
 let fleet = ['MacBook Pro', 'Mac mini', 'Linux 工作站'].map((displayName, i) => ({ id: `device-${i+1}`, active: true, createdAt: 3-i, metadata: { displayName } })) as Machine[];
-export const storage = { getState: () => ({ machines: Object.fromEntries(fleet.map(m => [m.id, m])), socketStatus: 'connected' }) };
+export const storage = { getState: () => ({ machines: Object.fromEntries(fleet.map(m => [m.id, m])), socketStatus: 'connected',
+    deleteMachine: (id: string) => { fleet = fleet.filter(machine => machine.id !== id); listeners.forEach(listener => listener()); },
+}) };
+export const useRouter = () => ({ push: (href: string) => { (window as any).fixture.lastNavigation = href; } });
+export async function machineDelete(machineId: string) {
+    calls.push({ machineId, componentId: '*', event: 'delete', at: Date.now() });
+    return { success: true };
+}
 export const useSocketStatus = () => ({ status: 'connected' });
 export const useAllMachines = () => useSyncExternalStore(fn => { listeners.add(fn); return () => { listeners.delete(fn); }; }, () => fleet);
 const ids: EnvironmentComponentId[] = ['github-cli','paws-cli','ego-browser','cloudflare-wrangler','cloudflared'];

@@ -9,9 +9,12 @@ import type { EnvironmentDashboardController } from '@/hooks/useEnvironmentDashb
 import type { EnvironmentRow } from '@/environment/environmentDashboard';
 import { describeEnvironmentCell } from '@/environment/environmentDashboard';
 
-const mocks = vi.hoisted(() => ({ confirm: vi.fn(), hook: vi.fn(), width: 1365,
+const mocks = vi.hoisted(() => ({ confirm: vi.fn(), alert: vi.fn(), push: vi.fn(), remove: vi.fn(), deleteLocal: vi.fn(), hook: vi.fn(), width: 1365,
     accounts: { profiles: [], bindings: ['a', 'b', 'c'].map(machineId => ({ machineId, profileId: null, version: 1 })), migration: 'none', loading: false, busy: false, error: null, rename: vi.fn(), remove: vi.fn(), bind: vi.fn() } }));
 vi.mock('@/hooks/useCodexAccounts', () => ({ useCodexAccounts: () => mocks.accounts }));
+vi.mock('expo-router', () => ({ useRouter: () => ({ push: mocks.push }) }));
+vi.mock('@/sync/ops', () => ({ machineDelete: mocks.remove }));
+vi.mock('@/sync/storage', () => ({ storage: { getState: () => ({ deleteMachine: mocks.deleteLocal }) } }));
 vi.mock('expo-clipboard', () => ({ setStringAsync: vi.fn() }));
 vi.mock('react-native', () => ({ View: 'View', Text: 'Text', Pressable: 'Pressable', ScrollView: 'ScrollView', ActivityIndicator: 'ActivityIndicator',
     Platform: { OS: 'web', select: (options: any) => options.web ?? options.default }, useWindowDimensions: () => ({ width: mocks.width, height: 768 }) }));
@@ -23,7 +26,7 @@ vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}), mo
 vi.mock('@/components/layout', () => ({ layout: { maxWidth: 800 } }));
 vi.mock('@/hooks/useEnvironmentDashboard', () => ({ useEnvironmentDashboard: mocks.hook }));
 vi.mock('@/hooks/useHappyAction', () => ({ useHappyAction: (action: unknown) => [false, action] }));
-vi.mock('@/modal', () => ({ Modal: { confirm: mocks.confirm } }));
+vi.mock('@/modal', () => ({ Modal: { confirm: mocks.confirm, alert: mocks.alert } }));
 vi.mock('@/text', async () => { const { en } = await import('@/text/_default'); return { t: (key: string, params: unknown) => {
     const value = key.split('.').reduce((v: any, part) => v?.[part], en); return typeof value === 'function' ? value(params) : value ?? key;
 } }; });
@@ -79,6 +82,54 @@ describe('DeviceEnvironment matrix', () => {
         const cell = renderer.root.findByProps({ testID: 'environment-component-c-github-cli' });
         expect(textOf(cell)).toContain('1.0.0'); expect(textOf(cell)).toContain('Offline');
         expect(renderer.root.findAllByProps({ testID: 'environment-action-c-github-cli' })).toHaveLength(0);
+    });
+    it('opens device details from every column and offers direct deletion only for offline devices', async () => {
+        render(controller());
+        await press('environment-machine-details-a');
+        expect(mocks.push).toHaveBeenCalledWith('/machine/a');
+        expect(renderer.root.findAllByProps({ testID: 'environment-machine-delete-a' })).toHaveLength(0);
+        expect(renderer.root.findByProps({ testID: 'environment-machine-delete-c' })).toBeDefined();
+    });
+    it('confirms the exact offline device and removes it locally only after server success', async () => {
+        mocks.confirm.mockResolvedValue(true); mocks.remove.mockResolvedValue({ success: true });
+        render(controller()); await press('environment-machine-delete-c');
+        expect(mocks.confirm).toHaveBeenCalledWith('Delete this machine?', expect.stringContaining('c\n\n'), expect.objectContaining({ destructive: true }));
+        expect(mocks.remove).toHaveBeenCalledExactlyOnceWith('c');
+        expect(mocks.deleteLocal).toHaveBeenCalledExactlyOnceWith('c');
+    });
+    it('preserves the device when deletion is cancelled or fails', async () => {
+        mocks.confirm.mockResolvedValue(false); render(controller());
+        await press('environment-machine-delete-c'); expect(mocks.remove).not.toHaveBeenCalled();
+        mocks.confirm.mockResolvedValue(true); mocks.remove.mockResolvedValue({ success: false, message: 'Server refused' });
+        await press('environment-machine-delete-c');
+        expect(mocks.alert).toHaveBeenCalledWith('Error', 'Server refused');
+        expect(mocks.deleteLocal).not.toHaveBeenCalled();
+    });
+    it('rechecks online status and connection after confirmation', async () => {
+        const c = controller(); render(c);
+        mocks.confirm.mockImplementation(async () => { c.rows[2].machine.active = true; return true; });
+        await press('environment-machine-delete-c'); expect(mocks.remove).not.toHaveBeenCalled();
+        c.rows[2].machine.active = false;
+        mocks.confirm.mockImplementation(async () => { c.connectionReady = false; return true; });
+        await press('environment-machine-delete-c'); expect(mocks.remove).not.toHaveBeenCalled();
+    });
+    it('prevents duplicate deletion while a confirmation is pending', async () => {
+        let resolve!: (value: boolean) => void;
+        mocks.confirm.mockReturnValue(new Promise<boolean>(done => { resolve = done; }));
+        mocks.remove.mockResolvedValue({ success: true }); render(controller());
+        await press('environment-machine-delete-c');
+        await press('environment-machine-delete-c');
+        expect(mocks.confirm).toHaveBeenCalledOnce();
+        await act(async () => resolve(true)); expect(mocks.remove).toHaveBeenCalledOnce();
+    });
+    it('blocks removal while disconnected, inspecting, updating or awaiting a stopped-job decision', async () => {
+        const c = controller(); render(c);
+        for (const state of [{ connectionReady: false }, { scanning: true }, { running: true }]) {
+            Object.assign(c, { connectionReady: true, scanning: false, running: false }, state);
+            await press('environment-machine-delete-c');
+        }
+        Object.assign(c, { connectionReady: true, scanning: false, running: false }); c.rows[2].unresolved = true;
+        await press('environment-machine-delete-c'); expect(mocks.confirm).not.toHaveBeenCalled();
     });
     it('requires explicit confirmation for a separate Cloudflare login', async () => {
         const c = controller(); const o = c.rows[0].cells['cloudflare-wrangler'].observation!;

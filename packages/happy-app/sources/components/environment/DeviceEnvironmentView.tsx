@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { environmentRepairCommands, type EnvironmentComponentId } from '@slopus/happy-wire';
 import { Typography } from '@/constants/Typography';
@@ -10,6 +11,8 @@ import { describeEnvironmentCell, type EnvironmentCell, type EnvironmentRow } fr
 import { useEnvironmentDashboard, type EnvironmentDashboardController } from '@/hooks/useEnvironmentDashboard';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { Modal } from '@/modal';
+import { machineDelete } from '@/sync/ops';
+import { storage } from '@/sync/storage';
 import { t } from '@/text';
 import { environmentComponentName, environmentIcons, environmentReason } from './environmentLabels';
 import { useCodexAccounts } from '@/hooks/useCodexAccounts';
@@ -46,9 +49,10 @@ function cellStatus(cell: EnvironmentCell, online: boolean, connected = true): s
     }
 }
 
-const Action = React.memo(({ title, label, testID, onPress, disabled, primary, icon }: {
+const Action = React.memo(({ title, label, testID, onPress, disabled, primary, icon, destructive }: {
     title: string; label?: string; testID: string; onPress(): void; disabled?: boolean; primary?: boolean;
     icon?: React.ComponentProps<typeof Ionicons>['name'];
+    destructive?: boolean;
 }) => {
     const { theme } = useUnistyles();
     const [hovered, setHovered] = React.useState(false);
@@ -57,11 +61,12 @@ const Action = React.memo(({ title, label, testID, onPress, disabled, primary, i
         disabled={disabled} onPress={onPress} onHoverIn={() => setHovered(true)} onHoverOut={() => setHovered(false)} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
         style={({ pressed }) => [styles.action, primary && styles.primary, !disabled && (hovered || pressed) && (primary ? styles.primaryPressed : styles.pressed), !disabled && focused && styles.focused, disabled && styles.disabled]}>
         {icon ? <Ionicons name={icon} size={15} color={primary ? theme.colors.button.primary.tint : theme.colors.textLink} /> : null}
-        <Text numberOfLines={2} style={[styles.actionText, primary && styles.primaryText]}>{title}</Text>
+        <Text numberOfLines={2} style={[styles.actionText, primary && styles.primaryText, destructive && styles.destructiveText]}>{title}</Text>
     </Pressable>;
 });
 
 const EnvironmentContent = React.memo(({ controller }: { controller: EnvironmentDashboardController }) => {
+    const router = useRouter();
     const accounts = useCodexAccounts();
     const { theme } = useUnistyles();
     const { width } = useWindowDimensions();
@@ -71,11 +76,13 @@ const EnvironmentContent = React.memo(({ controller }: { controller: Environment
     const deviceScroll = React.useRef<ScrollView>(null);
     const [visibleMachineId, setVisibleMachineId] = React.useState<string | null>(null);
     const latest = React.useRef(controller); latest.current = controller;
+    const deleting = React.useRef(false);
+    const [deletingMachineId, setDeletingMachineId] = React.useState<string | null>(null);
     const narrow = contentWidth < 740;
     const labelWidth = narrow ? 112 : 180;
     const cellWidth = Math.max(narrow ? 208 : 224, (contentWidth - 32 - labelWidth) / Math.max(1, controller.rows.length));
     const connected = controller.connectionReady !== false;
-    const busy = controller.scanning || controller.running || !connected;
+    const busy = controller.scanning || controller.running || !connected || deletingMachineId !== null;
     const candidates = controller.getCandidates();
     const onlineRows = controller.rows.filter(row => row.machine.active);
     const unverified = onlineRows.flatMap(row => Object.values(row.cells))
@@ -97,6 +104,29 @@ const EnvironmentContent = React.memo(({ controller }: { controller: Environment
         setSelected({ machineId: row.machine.id, componentId });
         requestAnimationFrame(() => scroll.current?.scrollToEnd({ animated: false }));
     }
+    const [, removeMachine] = useHappyAction(async (row: EnvironmentRow) => {
+        const canRemove = () => !latest.current.scanning && !latest.current.running && latest.current.connectionReady !== false
+            && latest.current.rows.some(current => current.machine.id === row.machine.id && !current.machine.active && !current.unresolved);
+        if (deleting.current || !canRemove()) return;
+        deleting.current = true;
+        setDeletingMachineId(row.machine.id);
+        try {
+            const approved = await Modal.confirm(t('machine.deleteConfirmTitle'), `${machineName(row)}\n\n${t('machine.deleteConfirmMessage')}`, {
+                confirmText: t('common.delete'), cancelText: t('common.cancel'), destructive: true,
+            });
+            if (!approved || !canRemove()) return;
+            const result = await machineDelete(row.machine.id);
+            if (!result.success) {
+                Modal.alert(t('common.error'), result.message || t('machine.deleteFailed'));
+                return;
+            }
+            storage.getState().deleteMachine(row.machine.id);
+            setSelected(current => current?.machineId === row.machine.id ? null : current);
+        } finally {
+            deleting.current = false;
+            setDeletingMachineId(null);
+        }
+    });
     const [, perform] = useHappyAction(async (row: EnvironmentRow, componentId: EnvironmentComponentId) => {
         if (latest.current.scanning || latest.current.running || latest.current.connectionReady === false) return;
         const cell = row.cells[componentId], description = describeEnvironmentCell(cell);
@@ -200,6 +230,14 @@ const EnvironmentContent = React.memo(({ controller }: { controller: Environment
                             <View style={styles.tableRow}>{controller.rows.map(row => <View key={row.machine.id} style={[styles.columnHeader, { width: cellWidth }]} testID={`environment-device-${row.machine.id}`}>
                                 <Text numberOfLines={1} style={styles.deviceName}>{machineName(row)}</Text>
                                 <Text style={[styles.secondary, connected && row.machine.active && styles.ready]}>{t(!connected ? 'deviceEnvironmentDashboard.previousResult' : row.machine.active ? 'deviceEnvironmentDashboard.online' : 'deviceEnvironmentDashboard.offline')}</Text>
+                                <View style={styles.deviceActions}>
+                                    <Action title={t('profile.details')} testID={`environment-machine-details-${row.machine.id}`}
+                                        label={`${machineName(row)} · ${t('profile.details')}`}
+                                        onPress={() => router.push(`/machine/${row.machine.id}`)} />
+                                    {!row.machine.active ? <Action title={t('machine.delete')} destructive testID={`environment-machine-delete-${row.machine.id}`}
+                                        label={`${t('machine.delete')} · ${machineName(row)}`} disabled={busy || row.unresolved}
+                                        onPress={() => { void removeMachine(row); }} /> : null}
+                                </View>
                             </View>)}</View>
                             <View style={[styles.tableRow, styles.accountRow]}>{controller.rows.map(row => <CodexAccountBindingCell key={row.machine.id}
                                 controller={accounts} machine={{ id: row.machine.id, name: machineName(row) }} width={cellWidth} />)}</View>
@@ -252,7 +290,9 @@ const styles = StyleSheet.create(theme => ({
     matrix: { flexDirection: 'row', alignItems: 'flex-start', minWidth: 0 }, deviceScroller: { flex: 1, minWidth: 0 }, devices: { flexGrow: 1 }, tableRow: { flexDirection: 'row' },
     accountRow: { zIndex: 10 },
     accountLabel: { height: 88, paddingRight: 8, paddingVertical: 18, justifyContent: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider },
-    columnHeader: { height: 64, paddingHorizontal: 10, justifyContent: 'center', gap: 4, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider },
+    columnHeader: { height: 104, paddingHorizontal: 10, justifyContent: 'center', gap: 4, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider },
+    deviceActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    destructiveText: { color: theme.colors.textDestructive },
     deviceName: { color: theme.colors.text, fontSize: 14, lineHeight: 20, ...Typography.default('semiBold') },
     toolHeader: { height: 76, paddingVertical: 8, paddingRight: 8, justifyContent: 'center', gap: 3, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider },
     toolTitle: { flexDirection: 'row', alignItems: 'center', gap: 8 }, toolText: { flex: 1, fontSize: 13, lineHeight: 18, color: theme.colors.text, ...Typography.default('semiBold') },
