@@ -153,9 +153,7 @@ where
         let res: anyhow::Result<T> = async {
             let mut tx = pool.begin().await?;
             sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE").execute(&mut *tx).await?;
-            let r = f(&mut tx).await?;
-            tx.commit().await?;
-            Ok(r)
+            finish(tx, &f).await
         }
         .await;
         match res {
@@ -173,10 +171,27 @@ pub async fn tx<T, F>(pool: &PgPool, f: F) -> anyhow::Result<T>
 where
     F: for<'c> FnOnce(&'c mut PgConnection) -> BoxFuture<'c, anyhow::Result<T>>,
 {
-    let mut tx = pool.begin().await?;
-    let r = f(&mut tx).await?;
-    tx.commit().await?;
-    Ok(r)
+    let tx = pool.begin().await?;
+    finish(tx, f).await
+}
+
+/// Runs the body and commits, or rolls back on error. A dropped sqlx transaction
+/// only queues its ROLLBACK until the pooled connection is next used, keeping its
+/// row locks until then.
+async fn finish<T, F>(mut tx: sqlx::Transaction<'_, sqlx::Postgres>, f: F) -> anyhow::Result<T>
+where
+    F: for<'c> FnOnce(&'c mut PgConnection) -> BoxFuture<'c, anyhow::Result<T>>,
+{
+    match f(&mut tx).await {
+        Ok(r) => {
+            tx.commit().await?;
+            Ok(r)
+        }
+        Err(e) => {
+            let _ = tx.rollback().await;
+            Err(e)
+        }
+    }
 }
 
 /// JS `new Date()` for a statement.

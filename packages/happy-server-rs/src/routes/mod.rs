@@ -8,6 +8,7 @@ pub mod auth;
 pub mod machines;
 pub mod misc;
 pub mod projects;
+pub mod session_files;
 pub mod sessions;
 pub mod social;
 pub mod uploads;
@@ -28,6 +29,7 @@ pub fn register(r: &mut Router, c: &Config) {
     kv::register(r);
     social::register(r);
     projects::register(r);
+    session_files::register(r);
 }
 
 /// Prisma's `new Date(x)` accepts only JS-representable instants (±8.64e15 ms);

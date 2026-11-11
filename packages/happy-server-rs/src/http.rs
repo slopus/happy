@@ -10,7 +10,7 @@ use crate::zod::{self, S};
 use bytes::Bytes;
 use futures_util::future::BoxFuture;
 use http::{HeaderMap, Method, StatusCode};
-use http_body_util::{BodyExt, Limited};
+use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use serde_json::{json, Map, Value};
 use std::sync::Arc;
@@ -604,22 +604,42 @@ enum Parsed {
 }
 
 async fn read_body(req: hyper::Request<Incoming>, limit: usize) -> Result<(http::request::Parts, Bytes), Reply> {
-    let (parts, body) = req.into_parts();
+    let (parts, mut body) = req.into_parts();
+    let too_large = || error_reply(413, "FastifyError", "Request body is too large");
     if let Some(cl) = parts.headers.get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<usize>().ok()) {
         if cl > limit {
-            return Err(error_reply(413, "FastifyError", "Request body is too large"));
+            drain(body);
+            return Err(too_large());
         }
     }
-    match Limited::new(body, limit).collect().await {
-        Ok(c) => Ok((parts, c.to_bytes())),
-        Err(e) => {
-            if e.downcast_ref::<http_body_util::LengthLimitError>().is_some() {
-                Err(error_reply(413, "FastifyError", "Request body is too large"))
-            } else {
-                Err(error_reply(400, "Error", "aborted"))
+    let mut buf = bytes::BytesMut::new();
+    while let Some(frame) = body.frame().await {
+        match frame {
+            Ok(f) => {
+                if let Ok(d) = f.into_data() {
+                    if buf.len() + d.len() > limit {
+                        drain(body);
+                        return Err(too_large());
+                    }
+                    buf.extend_from_slice(&d);
+                }
             }
+            Err(_) => return Err(error_reply(400, "Error", "aborted")),
         }
     }
+    Ok((parts, buf.freeze()))
+}
+
+/// Node dumps an unread request body once the response is sent, so a client still
+/// uploading gets the 413 instead of a reset. The rest is read and discarded,
+/// for at most a minute.
+fn drain(mut body: Incoming) {
+    tokio::spawn(async move {
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(60), async move {
+            while let Some(Ok(_)) = body.frame().await {}
+        })
+        .await;
+    });
 }
 
 fn parse_body(method: &Method, headers: &HeaderMap, raw: Bytes) -> Parsed {
@@ -794,7 +814,13 @@ async fn dispatch(app: Arc<App>, req: hyper::Request<Incoming>, method: Method, 
         user_id,
         route: route.pattern,
     };
-    let reply = match (route.handler)(app.clone(), r).await {
+    // A task, so the handler runs to completion even if the client goes away
+    // (Node never cancels a handler mid-transaction).
+    let handled = match tokio::spawn((route.handler)(app.clone(), r)).await {
+        Ok(h) => h,
+        Err(e) => Err(anyhow::anyhow!("handler panicked: {}", e)),
+    };
+    let reply = match handled {
         Ok(rep) => finalize(&route, rep, Origin::Handler),
         Err(e) => {
             tracing::error!(route = route.pattern, method = %method, "http:error {:#}", e);

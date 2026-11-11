@@ -257,6 +257,64 @@ async function projects(t, sql, H, H2, sid, r) {
     await t.req('project upload rate limit', 'POST', `${P}/${id1}/avatar/request-upload`, { headers: H, body: { size: 3 } });
 }
 
+async function sessionFiles(t, sql, H, H2, sid, r) {
+    const S = `/v1/sessions/${sid}`;
+    const bin = (bytes, h = H) => ({ headers: { ...h, 'content-type': 'application/octet-stream' }, raw: bytes });
+    // Session avatars
+    await t.req('session avatar request bad id', 'POST', '/v1/sessions/a.b/avatar/request-upload', { headers: H, body: { size: 3 } });
+    await t.req('session avatar request size 0', 'POST', `${S}/avatar/request-upload`, { headers: H, body: { size: 0 } });
+    await t.req('session avatar request other user', 'POST', `${S}/avatar/request-upload`, { headers: H2, body: { size: 3 } });
+    const up = await t.req('session avatar request', 'POST', `${S}/avatar/request-upload`, { headers: H, body: { size: 3 } });
+    const file = up.ref.slice(up.ref.lastIndexOf('/') + 1);
+    await t.req('session avatar upload bad name', 'PUT', `${S}/avatar/x.enc`, bin('abc'));
+    await t.req('session avatar upload empty', 'PUT', `${S}/avatar/${file}`, bin(''));
+    await t.req('session avatar upload text', 'PUT', `${S}/avatar/${file}`, { headers: { ...H, 'content-type': 'text/plain' }, raw: 'abc' });
+    await t.req('session avatar upload too large', 'PUT', `${S}/avatar/${file}`, bin(Buffer.alloc(10 * 1024 * 1024 + 1)));
+    await t.req('session avatar upload', 'PUT', `${S}/avatar/${file}`, bin('abc'));
+    await t.req('session avatar upload same bytes', 'PUT', `${S}/avatar/${file}`, bin('abc'));
+    await t.req('session avatar upload different bytes', 'PUT', `${S}/avatar/${file}`, bin('abd'));
+    await t.req('session avatar request download none', 'POST', `${S}/avatar/request-download`, { headers: H });
+    await r('session avatar activate extra key', 'PATCH', `${S}/avatar`, { headers: H, body: { ref: up.ref, preview: 'pv', x: 1 } });
+    await r('session avatar activate bad ref', 'PATCH', `${S}/avatar`, { headers: H, body: { ref: 'sessions/other/avatar/' + file, preview: 'pv' } });
+    await r('session avatar activate missing', 'PATCH', `${S}/avatar`, { headers: H, body: { ref: `sessions/${sid}/avatar/11111111-1111-4111-8111-111111111111.enc`, preview: 'pv' } });
+    await r('session avatar activate', 'PATCH', `${S}/avatar`, { headers: H, body: { ref: up.ref, preview: 'pv' } });
+    await r('session avatar activate same', 'PATCH', `${S}/avatar`, { headers: H, body: { ref: up.ref, preview: 'pv' } });
+    await r('session avatar activate new preview', 'PATCH', `${S}/avatar`, { headers: H, body: { ref: up.ref, preview: 'pv2' } });
+    await t.req('session avatar request download', 'POST', `${S}/avatar/request-download`, { headers: { ...H, host: 'h.example:9' } });
+    await t.req('session avatar download', 'GET', `${S}/avatar/${file}`, { headers: H });
+    await t.req('session avatar download other', 'GET', `${S}/avatar/00000000-0000-4000-8000-000000000000.enc`, { headers: H });
+    await t.req('session with avatar', 'GET', '/v1/sessions', { headers: H });
+    await r('session avatar delete', 'DELETE', `${S}/avatar`, { headers: H });
+    await r('session avatar delete again', 'DELETE', `${S}/avatar`, { headers: H });
+    await r('session avatar delete unknown', 'DELETE', '/v1/sessions/nope/avatar', { headers: H });
+
+    // Attachments
+    const A = `${S}/attachments`;
+    await t.req('attachment request missing filename', 'POST', `${A}/request-upload`, { headers: H, body: { size: 1 } });
+    await t.req('attachment request too large', 'POST', `${A}/request-upload`, { headers: H, body: { filename: 'a', size: 10 * 1024 * 1024 + 1 } });
+    await t.req('attachment request negative size', 'POST', `${A}/request-upload`, { headers: H, body: { filename: 'a', size: -5.5 } });
+    await t.req('attachment request unknown session', 'POST', '/v1/sessions/nope/attachments/request-upload', { headers: H, body: { filename: 'a', size: 1 } });
+    const at = await t.req('attachment request', 'POST', `${A}/request-upload`, { headers: H, body: { filename: 'a.png', size: 3 } });
+    const afile = at.ref.slice(at.ref.lastIndexOf('/') + 1);
+    await t.req('attachment upload', 'PUT', `${A}/${afile}`, bin('xyz'));
+    await t.req('attachment upload text', 'PUT', `${A}/text.enc`, { headers: { ...H, 'content-type': 'text/plain' }, raw: 'héllo' });
+    await t.req('attachment upload json object', 'PUT', `${A}/obj.enc`, { headers: H, body: { a: 1 } });
+    await t.req('attachment upload json string', 'PUT', `${A}/str.enc`, { headers: H, body: 'abc' });
+    await t.req('attachment upload no body', 'PUT', `${A}/none.enc`, { headers: H });
+    await t.req('attachment upload traversal', 'PUT', `${A}/..x`, bin('x'));
+    await t.req('attachment upload other user', 'PUT', `${A}/${afile}`, bin('x', H2));
+    await t.req('attachment download', 'GET', `${A}/${afile}`, { headers: H });
+    await t.req('attachment download text', 'GET', `${A}/text.enc`, { headers: H });
+    await t.req('attachment download missing', 'GET', `${A}/missing.enc`, { headers: H });
+    await t.req('attachment download traversal', 'GET', `${A}/a..b`, { headers: H });
+    await t.req('attachment request download', 'POST', `${A}/request-download`, { headers: H, body: { ref: at.ref } });
+    await t.req('attachment request download other session', 'POST', `${A}/request-download`, { headers: H, body: { ref: 'sessions/x/attachments/a' } });
+    await t.req('attachment request download empty file', 'POST', `${A}/request-download`, { headers: H, body: { ref: `sessions/${sid}/attachments/` } });
+    await t.req('attachment request download nested', 'POST', `${A}/request-download`, { headers: H, body: { ref: `sessions/${sid}/attachments/a/b` } });
+    await t.req('attachment request download bad body', 'POST', `${A}/request-download`, { headers: H, body: { ref: 5 } });
+    await t.req('attachment request download no auth', 'POST', `${A}/request-download`, { body: { ref: at.ref } });
+}
+
 export async function scenario(t, { sql }) {
     const token = await login(t, 1);
     const token2 = await login(t, 2, 'auth user2');
@@ -282,6 +340,7 @@ export async function scenario(t, { sql }) {
     await kv(t, H, H2, obs);
     await social(t, sql, H, H2, H3, ids, observed(t, [ui, ui2, ui3]));
     await projects(t, sql, H, H2, sid, obs);
+    await sessionFiles(t, sql, H, H2, sid, obs);
 
     await dumpDb(t, sql, 'before deletes', [
         ['machines', `SELECT "id","metadata","metadataVersion","daemonState","daemonStateVersion",encode("dataEncryptionKey",'base64') AS dek,"seq","active" FROM "Machine" ORDER BY "id"`],
