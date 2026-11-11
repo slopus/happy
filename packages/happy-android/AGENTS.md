@@ -1379,6 +1379,28 @@ thread from registration (after the first frame) and in
 - the device has Play services (otherwise unsupported, as FCM has no
   token there).
 
+## Time zone and language
+
+happy-ios docs/SERVER-SIGN-IN.md "Time zone and language", ported. A
+computer whose health says `capabilities.userEnvironment` is told this
+phone's environment (happy-agent API.md, "User environment") by
+`PUT /v0/environment`, so its agents know the person's time zone,
+languages, clock, first weekday and calendar.
+
+- `deviceId` is expo's InstallationId, the same one the push exchanges
+  send, from one shared instance (`AppGraph.installationId`). `deviceKind`
+  is `tablet` at a smallest width of 600dp and `phone` otherwise.
+- `hourCycle` follows the system clock setting (`h23` or `h12`). A field
+  the API can't take is left out, because one bad field refuses the whole
+  report (`UserEnvironment.of`).
+- The open connection's computer is told when it is opened, when the app
+  comes back to the foreground, and on `ACTION_TIMEZONE_CHANGED` and
+  `ACTION_LOCALE_CHANGED` (`UserEnvironmentRuntime`). It is told only when
+  the report differs from what that computer was last told. A failed
+  report goes again at the next trigger, and a 404 stops the reports.
+- Sends name the device only once the computer takes reports, because an
+  older one refuses the whole send (`UserEnvironmentReports.sendingDeviceId`).
+
 ## Purchases
 
 No RevenueCat SDK: Play Billing plus RevenueCat's REST API with the public

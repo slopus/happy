@@ -78,6 +78,12 @@ open class ConversationApi(
     private val cloud: Boolean = false,
     /** Sends [uploadAttachment]'s bytes; without it they go as [request] can't, and the upload fails. */
     private val fileRequest: AgentFileRequest? = null,
+    /**
+     * The device a send names (`deviceId`), once the computer takes this
+     * device's environment ([com.slopus.happy.agent.UserEnvironmentReports.sendingDeviceId]):
+     * an older one refuses the whole send.
+     */
+    private val sendingDevice: () -> String? = { null },
 ) {
     constructor(request: AgentRequest) : this(null, request)
 
@@ -168,6 +174,7 @@ open class ConversationApi(
             put("delivery", "steer")
             put("clientMetadata", buildJsonObject { put("composer", "mobile") })
             quickReply?.let { put("quickReply", it.json()) }
+            sendingDevice()?.let { put("deviceId", it) }
             if (images.isNotEmpty() || attachments.isNotEmpty() || toolRequest != null) put("content", buildJsonArray {
                 images.forEach { add(buildJsonObject { put("type", "image"); put("mimeType", it.mimeType); put("data", it.data) }) }
                 attachments.forEach { add(buildJsonObject { put("type", "file"); put("attachment", it.id); put("name", it.name) }) }
