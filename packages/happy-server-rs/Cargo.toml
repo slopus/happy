@@ -1,0 +1,49 @@
+[package]
+name = "happy-server-rs"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Wire-compatible Rust port of packages/happy-server"
+
+[[bin]]
+name = "happy-server-rs"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+hyper = { version = "1", features = ["server", "http1", "client"] }
+hyper-util = { version = "0.1", features = ["tokio", "server", "http1"] }
+http = "1"
+http-body-util = "0.1"
+bytes = "1"
+tokio-tungstenite = { version = "0.29", default-features = false, features = ["handshake"] }
+futures-util = { version = "0.3", features = ["sink"] }
+sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "postgres", "chrono", "tls-rustls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+indexmap = "2"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+sha2 = "0.10"
+hmac = "0.12"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+aes-gcm = "0.10"
+rand = "0.8"
+base64 = "0.22"
+hex = "0.4"
+zstd = "0.11"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+uuid = { version = "1", features = ["v4"] }
+prometheus = { version = "0.14", default-features = false }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+parking_lot = "0.12"
+percent-encoding = "2"
+regex = "1"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+thumbhash = "0.1"
+anyhow = "1"
+libc = "0.2"
+
+[profile.release]
+debug = 1
