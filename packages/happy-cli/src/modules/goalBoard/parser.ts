@@ -70,6 +70,10 @@ function section(source: string, names: string[]): string | undefined {
     }
     return undefined;
 }
+export function goalOf(source: string): string {
+    return scalar(fieldsOf(source, () => {}), ['goal', '目标摘要', '目标'])
+        || section(source, ['目标', '目标与范围', '项目目标', '全局目标']) || '';
+}
 function items(fields: Fields, names: string[], docs: string[], headings: string[]): string[] {
     for (const name of names) if (fields[name]) return (Array.isArray(fields[name]) ? fields[name] as string[] : [fields[name] as string]).slice(0, 30).map(clipped);
     for (const doc of docs) {

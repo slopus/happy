@@ -24,7 +24,7 @@ export function removeProjectSessionFromCache(sessionId: string) {
     markProjectSessionDeleted(sessionId);
 }
 
-export function projectCacheKey(kind: 'catalog' | 'board' | 'history', machineId: string, featurePath?: string, taskId?: string) {
+export function projectCacheKey(kind: 'catalog' | 'board' | 'history' | 'overview', machineId: string, featurePath?: string, taskId?: string) {
     const account = getRuntimeAccountSelection();
     const preview = (globalThis as typeof globalThis & { __HAPPY_CONFIG__?: { goalProjectReadOnly?: boolean } }).__HAPPY_CONFIG__?.goalProjectReadOnly === true;
     // Generation fences in-flight work; stable account/server/scope survive reloads.

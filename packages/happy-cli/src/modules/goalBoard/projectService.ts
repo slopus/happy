@@ -4,8 +4,8 @@ import { dirname, join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { GoalTask, GoalTaskSession } from '@slopus/happy-wire';
-import { discoverRoots, readCatalog, readProjects, safePath, within, type CatalogRecord } from './catalog';
-import { digest, goalFileRevision, parseBoard, readBoundedFile } from './parser';
+import { discoverRoots, readCatalog, readProjects, safePath, within, catalogSummary, type CatalogRecord } from './catalog';
+import { digest, goalFileRevision, goalOf, titleOf, parseBoard, readBoundedFile } from './parser';
 import { goalBoardTaskPrompt } from './taskPrompt';
 import { openAuthorizedFile } from './authorizedFiles';
 import type { SpawnSessionOptions, SpawnSessionResult } from '../common/registerCommonHandlers';
@@ -43,7 +43,7 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
     let disposed = false;
     const watchers = new Map<string, { watcher: FSWatcher; identity: string }>();
     const inFlight = new Map<string, Promise<SpawnSessionResult>>();
-    const transfers = new Map<string, { featurePath: string; taskId: string; directory: string; root: string; path: string; revision: string; expiresAt: number }>();
+    const transfers = new Map<string, { scope: boolean; featurePath: string; taskId?: string; directory: string; root: string; path: string; revision: string; expiresAt: number }>();
     const catalog = async () => readCatalog(await discoverRoots(deps.workingDirectory, deps.homeDirectory));
     const entryFor = async (featurePath: string) => {
         if (disposed) throw new Error('Project workspace is closed');
@@ -51,6 +51,47 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
         const entry = (await catalog()).find(entry => entry.featurePath === actual);
         if (!entry) throw new Error('Feature is outside the authorized Goal catalog');
         return entry;
+    };
+    const scopeFor = async (scopePath: string) => {
+        if (disposed) throw new Error('Project workspace is closed');
+        const directory = await realpath(pathInput.parse(scopePath));
+        const roots = await discoverRoots(deps.workingDirectory, deps.homeDirectory);
+        const projects = await readProjects(roots);
+        if (!projects.some(project => project.projectPath === directory || project.features.some(feature => feature.featurePath === directory)))
+            throw new Error('Scope is outside the authorized Goal catalog');
+        const root = roots.find(root => within(root, directory));
+        if (!root) throw new Error('Scope root is unavailable');
+        return { directory, root };
+    };
+    const overview = async (input: unknown) => {
+        const { directory } = await scopeFor(z.object({ scopePath: pathInput }).parse(input).scopePath);
+        const indexPath = join(directory, 'index.md');
+        const source = (await readBoundedFile(directory, indexPath, 256 * 1024)).toString('utf8');
+        let fileCount = 0, visited = 0, countComplete = true;
+        const pending = [directory];
+        // One bounded archive traversal per explicit/event-driven read. No timers.
+        while (pending.length) {
+            const path = pending.pop()!;
+            try {
+                if (await safePath(directory, path) !== path) { countComplete = false; continue; }
+                const entries = await readdir(path, { withFileTypes: true });
+                for (const entry of entries) {
+                    if (++visited > 20000) { countComplete = false; pending.length = 0; break; }
+                    if (entry.isFile()) fileCount++;
+                    else if (entry.isDirectory()) pending.push(join(path, entry.name));
+                    // Symlinks are not followed or counted as original files.
+                }
+            } catch { countComplete = false; }
+        }
+        return { success: true, overview: { scopePath: directory, indexPath, title: titleOf(source), goal: goalOf(source) || catalogSummary(source) || '', fileCount, countComplete, revision: digest(source) } };
+    };
+    const scopeHistory = async (input: unknown) => {
+        const { directory } = await scopeFor(z.object({ scopePath: pathInput }).parse(input).scopePath);
+        const source = await deps.history(directory, [{ id: '', directory }]);
+        const sessions = source.filter(session => session.directory === directory && (!session.metadata.goalBoard || (!session.metadata.goalBoard.taskId && session.metadata.goalBoard.featurePath === directory)))
+            .sort((a, b) => b.updatedAt - a.updatedAt || b.sessionId.localeCompare(a.sessionId))
+            .slice(0, 25).map(({ metadata: _metadata, ...session }) => session);
+        return { success: true, sessions };
     };
     const taskFor = async (input: unknown) => {
         const data = taskInput.parse(input);
@@ -84,7 +125,7 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
         } catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false; throw error; }
     };
     const belongs = (session: ProjectSession, task: GoalTask, featurePath: string, directory: string) =>
-        session.directory === directory || (session.metadata.goalBoard?.featurePath === featurePath && session.metadata.goalBoard.taskId === task.id);
+        session.metadata.goalBoard ? session.metadata.goalBoard.featurePath === featurePath && session.metadata.goalBoard.taskId === task.id : session.directory === directory;
     const taskHistory = async (task: GoalTask, entry: CatalogRecord, history: ProjectSession[]) => {
         const directory = await safePath(entry.root, dirname(task.indexPath));
         return history.filter(session => belongs(session, task, entry.featurePath, directory));
@@ -218,17 +259,18 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
         inFlight.set(operationKey, operation);
         try { return await operation; } finally { inFlight.delete(operationKey); }
     };
-    const files = async (input: unknown, operation: 'list' | 'read' | 'write') => {
-        const data = taskInput.extend({ path: pathInput, content: z.string().max(3 * 1024 * 1024).optional(), expectedHash: z.string().optional(), offset: z.number().int().nonnegative().optional(), revision: z.string().max(200).optional(), transferId: z.string().uuid().optional() }).parse(input);
+    const files = async (input: unknown, operation: 'list' | 'read' | 'write', scope = false) => {
+        const data = taskInput.extend({ taskId: z.string().min(1).max(2048).optional() }).extend({ path: pathInput, content: z.string().max(3 * 1024 * 1024).optional(), expectedHash: z.string().optional(), offset: z.number().int().nonnegative().optional(), revision: z.string().max(200).optional(), transferId: z.string().uuid().optional() }).parse(input);
         let directory: string, root: string;
         const transfer = operation === 'read' && data.transferId ? transfers.get(data.transferId) : undefined;
         if (data.transferId) {
-            if (disposed || !transfer || transfer.expiresAt < Date.now() || transfer.featurePath !== data.featurePath || transfer.taskId !== data.taskId || transfer.path !== data.path || transfer.revision !== data.revision) throw new Error('File transfer expired or changed; reopen it');
+            if (disposed || !transfer || transfer.expiresAt < Date.now() || transfer.scope !== scope || transfer.featurePath !== data.featurePath || transfer.taskId !== data.taskId || transfer.path !== data.path || transfer.revision !== data.revision) throw new Error('File transfer expired or changed; reopen it');
             directory = transfer.directory; root = transfer.root;
             if (await safePath(root, directory) !== directory) throw new Error('Task directory changed during transfer');
         } else {
             if ((data.offset ?? 0) !== 0) throw new Error('Start a file transfer at offset zero');
-            const selected = await taskFor(data); directory = selected.directory; root = selected.entry.root;
+            if (scope) { const selected = await scopeFor(data.featurePath); directory = selected.directory; root = selected.root; }
+            else { const selected = await taskFor(data); directory = selected.directory; root = selected.entry.root; }
         }
         const path = await safePath(directory, data.path);
         if (!within(directory, path)) throw new Error('File is outside this Task archive');
@@ -255,7 +297,7 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
             if (offset + bytesRead < source.info.size) {
                 for (const [id, value] of transfers) if (value.expiresAt < Date.now()) transfers.delete(id);
                 if (!data.transferId && transfers.size >= 128) throw new Error('Too many active archive file transfers');
-                transfers.set(transferId, { featurePath: data.featurePath, taskId: data.taskId, directory, root, path: data.path, revision, expiresAt: Date.now() + 60000 });
+                transfers.set(transferId, { scope, featurePath: data.featurePath, taskId: data.taskId, directory, root, path: data.path, revision, expiresAt: Date.now() + 60000 });
             } else transfers.delete(transferId);
             return { success: true, content: bytes.subarray(0, bytesRead).toString('base64'), size: source.info.size, revision, offset, transferId };
         } finally { await source.handle.close(); }
@@ -306,7 +348,7 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
             }
             return { success: true, projects: await readProjects(roots) };
         },
-        board, launch, files, approve, historyPage,
+        board, launch, files, approve, historyPage, overview, scopeHistory,
         author: async (input: unknown): Promise<SpawnSessionResult> => {
             const data = z.object({ scopePath: pathInput.optional(), requestId: z.string().min(1).max(128), agent: z.enum(['codex', 'claude']), codexSessionGrant: z.string().max(4096).optional() }).parse(input);
             const roots = await discoverRoots(deps.workingDirectory, deps.homeDirectory);
@@ -332,6 +374,11 @@ export function registerProjectGoalHandlers(manager: { registerHandler(method: s
     const wrap = (handler: (input: any) => Promise<any>) => async (input: unknown) => {
         try { return await handler(input); } catch (error) { return { success: false, error: (error instanceof Error ? error.message : 'Project request failed').slice(0, 2048) }; }
     };
+    manager.registerHandler('goalScopeRead', wrap(service.overview));
+    manager.registerHandler('goalScopeHistory', wrap(service.scopeHistory));
+    manager.registerHandler('goalScopeListDirectory', wrap(input => service.files(input, 'list', true)));
+    manager.registerHandler('goalScopeReadFile', wrap(input => service.files(input, 'read', true)));
+    manager.registerHandler('goalScopeWriteFile', wrap(input => service.files(input, 'write', true)));
     manager.registerHandler('goalProjects', wrap(service.projects));
     manager.registerHandler('goalProjectRead', wrap(input => service.board(input?.featurePath)));
     manager.registerHandler('goalTaskHistory', wrap(service.historyPage));

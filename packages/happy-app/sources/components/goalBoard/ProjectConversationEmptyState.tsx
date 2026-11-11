@@ -8,7 +8,7 @@ import { t } from '@/text';
 import { GoalBoardButton as Button } from './GoalBoardButton';
 
 export function ProjectConversationEmptyState({ task, onDraft, onFiles, onStart, startLabel, disabled, scrollable = true }: {
-    task: GoalTask; onDraft?: (value: string) => void; onFiles: () => void; onStart?: () => void; startLabel?: string; disabled?: boolean; scrollable?: boolean;
+    task: Pick<GoalTask, 'title' | 'goal'>; onDraft?: (value: string) => void; onFiles: () => void; onStart?: () => void; startLabel?: string; disabled?: boolean; scrollable?: boolean;
 }) {
     const { theme } = useUnistyles();
     const content = <View style={styles.content}>

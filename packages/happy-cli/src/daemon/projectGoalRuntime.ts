@@ -51,7 +51,7 @@ export function createProjectGoalRuntime(options: {
                 const metadata = decrypt(encryption.encryptionKey, encryption.encryptionVariant, decodeBase64(raw.metadata)) as Metadata | null;
                 if (!metadata || metadata.machineId !== options.machineId || typeof metadata.path !== 'string') continue;
                 const directory = await realpath(metadata.path).catch(() => metadata.path);
-                const task = tasks.find(task => task.directory === directory || (metadata.goalBoard?.featurePath === featurePath && metadata.goalBoard.taskId === task.id));
+                const task = tasks.find(task => metadata.goalBoard ? metadata.goalBoard.featurePath === featurePath && (metadata.goalBoard.taskId ?? '') === task.id : task.directory === directory);
                 if (!task) continue;
                 let executed = raw.seq > 0;
                 // Ready events do not consume first execution. Only a complete

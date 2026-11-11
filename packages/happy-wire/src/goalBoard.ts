@@ -57,3 +57,10 @@ export const GoalBoardArtifactResponseSchema = z.union([
     z.object({ success: z.literal(true), kind: z.literal('attachment'), attachment: GoalBoardAttachmentSchema }),
 ]);
 export type GoalBoardArtifactResponse = z.infer<typeof GoalBoardArtifactResponseSchema>;
+
+/** The selected project/feature archive, never an account-wide aggregation. */
+export const GoalScopeOverviewSchema = z.object({
+    scopePath: path, indexPath: path, title: label, goal: label,
+    fileCount: z.number().int().nonnegative(), countComplete: z.boolean(), revision: label,
+});
+export type GoalScopeOverview = z.infer<typeof GoalScopeOverviewSchema>;

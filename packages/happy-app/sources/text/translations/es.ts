@@ -18,6 +18,15 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 export const es: TranslationStructure = {
     projectGoals: {
         ...projectGoalsBase.projectGoals,
+        globalOverview: "Objetivo general",
+        scopeGoal: "Objetivo del ámbito actual",
+        noScopeGoal: "El índice aún no indica un objetivo. Abre index.md para leer la descripción original.",
+        archiveFiles: "Archivos del proyecto",
+        fileCount: ({ count }: { count: number }) => `${count} ${count === 1 ? "archivo" : "archivos"}`,
+        fileCountPartial: ({ count }: { count: number }) => `Al menos ${count} ${count === 1 ? "archivo" : "archivos"}`,
+        scopeIndex: "Abrir index.md",
+        overviewUnavailable: "Objetivo general no disponible",
+        overviewChatHint: "Habla sobre los objetivos y organiza las tareas de este ámbito. El trabajo solo comenzará cuando envíes un mensaje.",
         mobileChat: "Chat",
         chooseChat: "Abrir conversación",
         collapseTasks: "Contraer lista de tareas",

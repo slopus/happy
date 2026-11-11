@@ -16,6 +16,16 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const en = {
     projectGoals: {
+        globalOverview: 'Global goals',
+        scopeGoal: 'Goals for this scope',
+        noScopeGoal: 'No goal is specified in the index yet. Open index.md to read the original notes.',
+        archiveFiles: 'Archive files',
+        fileCount: ({ count }: { count: number }) => `${count} files`,
+        fileCountPartial: ({ count }: { count: number }) => `At least ${count} files`,
+        scopeIndex: 'Open index.md',
+        overviewUnavailable: 'Global goals are currently unavailable',
+        overviewChatHint: 'Discuss goals and organize tasks in this scope. Work begins only after you send a message.',
+
         mobileChat: "Chat",
         chooseChat: "Open conversation",
         sessionUnavailable: 'This conversation could not be loaded. Check the connection or choose another conversation from history.',

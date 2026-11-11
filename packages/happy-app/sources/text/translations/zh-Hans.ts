@@ -19,6 +19,15 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const zhHans: TranslationStructure = {
     projectGoals: {
+        globalOverview: "全局目标",
+        scopeGoal: "当前范围目标",
+        noScopeGoal: "索引尚未写明目标，打开 index.md 查看原始说明。",
+        archiveFiles: "归档文件",
+        fileCount: ({ count }: { count: number }) => `${count} 个文件`,
+        fileCountPartial: ({ count }: { count: number }) => `至少 ${count} 个文件`,
+        scopeIndex: "打开 index.md",
+        overviewUnavailable: "全局目标暂不可用",
+        overviewChatHint: "在当前范围讨论目标和整理任务；只有发送后才会执行。",
         mobileChat: "对话",
         chooseChat: "打开对话",
         sessionUnavailable: '暂时无法读取这段对话，请检查连接或从历史中选择其他对话。',

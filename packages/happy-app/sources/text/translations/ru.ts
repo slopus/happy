@@ -29,6 +29,15 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
 export const ru: TranslationStructure = {
     projectGoals: {
         ...projectGoalsBase.projectGoals,
+        globalOverview: "Общая цель",
+        scopeGoal: "Цель текущего раздела",
+        noScopeGoal: "В индексе пока не указана цель. Откройте index.md, чтобы прочитать исходное описание.",
+        archiveFiles: "Файлы архива",
+        fileCount: ({ count }: { count: number }) => `${count} ${count % 10 === 1 && count % 100 !== 11 ? "файл" : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? "файла" : "файлов"}`,
+        fileCountPartial: ({ count }: { count: number }) => `Не менее ${count} ${count % 10 === 1 && count % 100 !== 11 ? "файла" : "файлов"}`,
+        scopeIndex: "Открыть index.md",
+        overviewUnavailable: "Общая цель недоступна",
+        overviewChatHint: "Обсуждайте цели и упорядочивайте задачи в текущем разделе. Работа начнётся только после отправки сообщения.",
         mobileChat: "Чат",
         chooseChat: "Открыть чат",
         collapseTasks: "Свернуть список задач",

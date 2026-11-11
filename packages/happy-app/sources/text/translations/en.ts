@@ -33,6 +33,15 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 export const en: TranslationStructure = {
     projectGoals: {
         ...projectGoalsBase.projectGoals,
+        globalOverview: "Global goal",
+        scopeGoal: "Goal for this scope",
+        noScopeGoal: "The index does not state a goal yet. Open index.md to read the original notes.",
+        archiveFiles: "Archive files",
+        fileCount: ({ count }: { count: number }) => `${count} ${count === 1 ? "file" : "files"}`,
+        fileCountPartial: ({ count }: { count: number }) => `At least ${count} ${count === 1 ? "file" : "files"}`,
+        scopeIndex: "Open index.md",
+        overviewUnavailable: "Global goal unavailable",
+        overviewChatHint: "Discuss goals and organize tasks in this scope. Work begins only after you send a message.",
         mobileChat: "Chat",
         chooseChat: "Open conversation",
         collapseTasks: "Collapse task list",

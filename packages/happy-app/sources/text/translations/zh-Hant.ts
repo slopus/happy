@@ -20,6 +20,15 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 export const zhHant: TranslationStructure = {
     projectGoals: {
         ...projectGoalsBase.projectGoals,
+        globalOverview: "全域目標",
+        scopeGoal: "目前範圍的目標",
+        noScopeGoal: "索引尚未寫明目標，開啟 index.md 查看原始說明。",
+        archiveFiles: "歸檔檔案",
+        fileCount: ({ count }: { count: number }) => `${count} 個檔案`,
+        fileCountPartial: ({ count }: { count: number }) => `至少 ${count} 個檔案`,
+        scopeIndex: "開啟 index.md",
+        overviewUnavailable: "全域目標暫時無法使用",
+        overviewChatHint: "在目前範圍討論目標及整理任務；只有傳送後才會執行。",
         mobileChat: "對話",
         chooseChat: "開啟對話",
         collapseTasks: "收起任務清單",

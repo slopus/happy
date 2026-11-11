@@ -24,6 +24,14 @@ describe('production project relay adapter', () => {
         expect(history.map(session => [session.sessionId, session.executed])).toEqual([['old-task', true], ['blank-chat', false]]);
         expect(vi.mocked(axios.get).mock.calls.filter(call => String(call[0]).endsWith('/v2/sessions'))).toHaveLength(2);
     });
+    it('explicit Goal bindings isolate sibling Tasks and retain a scope binding without a Task id', async () => {
+        vi.mocked(axios.get).mockResolvedValue({ data: { sessions: [
+            row('sibling', 0, { ...metadata, goalBoard: { featurePath: '/archive/feature', taskId: 'sibling' } } as any),
+            row('global', 0, { ...metadata, goalBoard: { featurePath: '/archive/feature' } } as any),
+        ], hasNext: false } });
+        expect(await runtime().history('/archive/feature', [{ id: 'task', directory: metadata.path }])).toEqual([]);
+        expect((await runtime().history('/archive/feature', [{ id: '', directory: metadata.path }])).map(session => session.sessionId)).toEqual(['global']);
+    });
     it('a broken pagination cursor cannot be mistaken for complete history', async () => {
         vi.mocked(axios.get).mockResolvedValue({ data: { sessions: [], hasNext: true, nextCursor: 'same' } });
         await expect(runtime().history('/archive/feature', [])).rejects.toThrow('could not be verified');

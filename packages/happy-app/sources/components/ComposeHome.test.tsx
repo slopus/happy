@@ -62,6 +62,7 @@ vi.mock('react-native', () => ({
         get OS() { return mocks.platformOS; },
         select: (values: Record<string, unknown>) => values[mocks.platformOS] ?? values.default,
     },
+    Dimensions: { get: () => ({ width: 480, height: 800 }) },
     useWindowDimensions: () => ({ width: 480, height: 800 }),
 }));
 vi.mock('react-native-unistyles', () => {

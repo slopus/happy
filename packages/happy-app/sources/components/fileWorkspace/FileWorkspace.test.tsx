@@ -30,11 +30,11 @@ let controller: FileWorkspaceController;
 let maximized = false;
 let expanded = true;
 const toggleTree = vi.fn();
-function Harness({ sessionId = 's', readOnly = false }: { sessionId?: string; readOnly?: boolean }) {
+function Harness({ sessionId = 's', readOnly = false, readingSurface }: { sessionId?: string; readOnly?: boolean; readingSurface?: 'wide' | 'compact' | 'inherited' }) {
     const snapshot = React.useSyncExternalStore(controller.subscribe, controller.getSnapshot);
     const value = { enabled: true, readOnly, root: '/work', snapshot, controller, maximized, setMaximized: vi.fn(),
         versions: { currentForHash: () => null }, setReference: vi.fn() } as any;
-    return <FileWorkspaceContext.Provider value={value}><FileWorkspace sessionId={sessionId} fileTreeExpanded={expanded} onToggleFileTree={toggleTree} /></FileWorkspaceContext.Provider>;
+    return <FileWorkspaceContext.Provider value={value}><FileWorkspace sessionId={sessionId} readingSurface={readingSurface} fileTreeExpanded={expanded} onToggleFileTree={toggleTree} /></FileWorkspaceContext.Provider>;
 }
 beforeEach(async () => {
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
@@ -178,5 +178,17 @@ it('keeps project files readable without a conversation and enables annotations 
     expect(renderer.root.findByType(AnnotatableFile).props).toMatchObject({ sessionId: 'selected-conversation', file: { path: '/work/c.md', hash: 'base' } });
     expect(renderer.root.findAllByType(FileAnnotationControls)).toHaveLength(1);
     expect(renderer.root.findByProps({ testID: 'workspace-save' }).props.disabled).toBe(true);
+    act(() => renderer.unmount());
+});
+
+it('inherits the project reading surface without stacking another translucent layer', () => {
+    let renderer: any;
+    act(() => { renderer = TestRenderer.create(<Harness readingSurface="inherited" />); });
+    expect(renderer.root.findByProps({ testID: 'file-workspace' }).props.style.backgroundColor).toBe('transparent');
+    state.reduced = true;
+    act(() => renderer.update(<Harness readingSurface="inherited" />));
+    expect(renderer.root.findByProps({ testID: 'file-workspace' }).props.style.backgroundColor).toBe('transparent');
+    act(() => renderer.update(<Harness readingSurface="compact" />));
+    expect(renderer.root.findByProps({ testID: 'file-workspace' }).props.style.backgroundColor).toBe(theme.colors.desktopSkin.readingSolid);
     act(() => renderer.unmount());
 });

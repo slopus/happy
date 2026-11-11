@@ -65,8 +65,8 @@ export function ProjectGallery({ projects, onSelect }: { projects: GoalProject[]
 
 const styles = StyleSheet.create(theme => ({
     grid: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 24, width: '100%' },
-    skeleton: { backgroundColor: theme.colors.divider },
-    skeletonLine: { height: 12, borderRadius: 6, backgroundColor: theme.colors.divider },
+    skeleton: { backgroundColor: theme.colors.surfaceSelected },
+    skeletonLine: { height: 12, borderRadius: 6, backgroundColor: theme.colors.surfaceSelected },
     cover: { width: '100%', aspectRatio: 8 / 5, backgroundColor: theme.colors.surfaceHigh, borderRadius: 13, overflow: 'hidden', justifyContent: 'space-between', padding: 16 },
     coverTop: { alignSelf: 'flex-start', backgroundColor: theme.colors.surface, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 6 },
     coverNumber: { color: theme.colors.textSecondary, fontSize: 9, letterSpacing: 1.5, ...Typography.default('semiBold') },
