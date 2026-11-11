@@ -4,7 +4,7 @@
     <string name="compute_total_memory">RAM totale</string>
     <string name="compute_total_disk">Dimensione del volume di lavoro</string>
     <string name="compute_revoked_count">Revocate: %1$d</string>
-    <string name="compute_pools_title">Pool di calcolo</string>
+    <string name="compute_pools_title">Calcolo</string>
     <string name="compute_permission">Per gestire i pool di calcolo serve il permesso pools.manage.</string>
     <string name="compute_empty">Nessun pool di calcolo</string>
     <string name="compute_no_nodes">Nessuna macchina</string>

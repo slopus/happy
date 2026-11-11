@@ -4,7 +4,7 @@
     <string name="compute_total_memory">内存总量</string>
     <string name="compute_total_disk">工作区卷容量</string>
     <string name="compute_revoked_count">已撤销：%1$d</string>
-    <string name="compute_pools_title">计算池</string>
+    <string name="compute_pools_title">计算</string>
     <string name="compute_permission">管理计算池需要 pools.manage 权限。</string>
     <string name="compute_empty">没有计算池</string>
     <string name="compute_no_nodes">没有机器</string>

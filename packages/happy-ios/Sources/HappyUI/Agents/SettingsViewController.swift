@@ -497,7 +497,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             let removal: [[SettingsRow]] = [[
                 Row(id: "disconnect", title: server == nil ? Strings.disconnect : Strings.ServerSignIn.signOut, accessory: .none, destructive: true, action: { [weak self] in self?.remove(id, direct: true) }),
             ]]
-            // Compute pools close Data and Storage's card.
+            // Compute closes Data and Storage's card.
             let computeRows: [SettingsRow]
             if let session = Session.session(for: id, context: context), ComputeViewController.offered(session) {
                 computeRows = [Row(Index.computes, action: { [weak self] in

@@ -150,7 +150,7 @@ class AgentConnectionSettingsTest {
         rule.node(AgentVoiceTags.ROW).performScrollTo().assertIsDisplayed()
     }
 
-    /** On Happy Cloud, Compute pools is the last row of Data and Storage's card. */
+    /** On Happy Cloud, Compute is the last row of Data and Storage's card, under that name. */
     @Test
     fun computePoolsCloseDataAndStoragesCard() {
         rule.setHappyContent {
@@ -166,7 +166,8 @@ class AgentConnectionSettingsTest {
         val rows = listOf(DataStorageTags.ROW, AgentSharingTags.ROW, CloudProvidersTags.ROW, CloudTags.MEMBERS, CloudPushTags.ROW, ComputePoolsTags.ROW)
             .map { rule.node(it).bounds }
         assertEquals(rows.sortedBy { it.top }, rows)
-        assertDp("Compute pools ends the card", rule.onNode(card, useUnmergedTree = true).bounds.bottom, rows.last().bottom)
+        rule.onNode(hasTestTag(ComputePoolsTags.ROW) and hasAnyDescendant(hasText("Compute")), useUnmergedTree = true).assertExists()
+        assertDp("Compute ends the card", rule.onNode(card, useUnmergedTree = true).bounds.bottom, rows.last().bottom)
     }
 
     /**

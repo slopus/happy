@@ -309,7 +309,7 @@ fun AgentConnectionSettingsScreen(
                         onClick = open,
                     )
                 },
-                // Compute pools close Data and Storage's card.
+                // Compute closes Data and Storage's card.
                 actions.onComputePools?.let { open ->
                     SettingsEntry(
                         id = ComputePoolsTags.ROW,

@@ -3,7 +3,7 @@ import HappyCore
 extension Strings {
     /// Native read-only Cloud monitoring; no shared mobile catalog yet.
     enum Compute {
-        static let title = "Compute pools"
+        static let title = "Compute"
         static let loading = "Loading…"
         static let unknown = "Unknown"
         static let emptyPools = "No compute pools"

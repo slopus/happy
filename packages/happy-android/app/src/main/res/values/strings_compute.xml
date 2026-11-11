@@ -4,7 +4,7 @@
     <string name="compute_total_memory">Total RAM</string>
     <string name="compute_total_disk">Workspace volume size</string>
     <string name="compute_revoked_count">%1$d revoked</string>
-    <string name="compute_pools_title">Compute pools</string>
+    <string name="compute_pools_title">Compute</string>
     <string name="compute_permission">Managing compute pools requires pools.manage permission.</string>
     <string name="compute_empty">No compute pools</string>
     <string name="compute_no_nodes">No machines</string>

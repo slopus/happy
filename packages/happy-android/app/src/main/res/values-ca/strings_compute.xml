@@ -4,7 +4,7 @@
     <string name="compute_total_memory">RAM total</string>
     <string name="compute_total_disk">Mida del volum de treball</string>
     <string name="compute_revoked_count">Revocades: %1$d</string>
-    <string name="compute_pools_title">Grups de còmput</string>
+    <string name="compute_pools_title">Còmput</string>
     <string name="compute_permission">Cal el permís pools.manage per gestionar els grups de còmput.</string>
     <string name="compute_empty">No hi ha grups de còmput</string>
     <string name="compute_no_nodes">No hi ha màquines</string>

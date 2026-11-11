@@ -169,7 +169,7 @@ final class HostedComputeMonitoringTests: XCTestCase {
         navigation.setViewControllers([home], animated: false)
         home.loadViewIfNeeded()
         home.beginSearch()
-        home.search("Compute pools")
+        home.search("Compute")
         let results = try XCTUnwrap(home.view.subviews.compactMap { $0 as? HomeSearchResultsView }.first)
         XCTAssertTrue(results.list.shownRows.contains { $0.id == "search:settings:computes" })
         await transport.setPermissions(["compute.use"])
