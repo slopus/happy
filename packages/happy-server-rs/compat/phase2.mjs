@@ -83,7 +83,13 @@ export class Raw {
 }
 
 /** Runs an action, waits until every client has been quiet for `quiet` ms, records what each received. */
+// QUIET_SCALE stretches the quiet windows on a loaded host, where the TS server can
+// stall for longer than a window and its late frames land in the next step.
+const QUIET_SCALE = Number(process.env.QUIET_SCALE) || 1;
+
 export async function step(t, name, clients, action, { quiet = 250, max = 8000 } = {}) {
+    quiet *= QUIET_SCALE;
+    max *= QUIET_SCALE;
     await action();
     const end = Date.now() + max;
     let last = -1;

@@ -13,9 +13,11 @@ mod config;
 mod db;
 mod engine;
 mod events;
+mod fetch;
 mod handlers;
 mod http;
 mod js;
+mod logwriter;
 mod metrics;
 mod models;
 mod presence;
@@ -34,10 +36,18 @@ use std::time::Duration;
 use tokio::net::TcpListener;
 
 fn main() -> anyhow::Result<()> {
+    let log = logwriter::stdout();
     tracing_subscriber::fmt()
         .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stdout()))
         .with_env_filter(tracing_subscriber::EnvFilter::try_from_env("HAPPY_LOG").unwrap_or_else(|_| "info,sqlx=warn".into()))
+        .with_writer(log.clone())
         .init();
+    let result = run();
+    log.drain(Duration::from_secs(2));
+    result
+}
+
+fn run() -> anyhow::Result<()> {
     let cmd = std::env::args().nth(1).unwrap_or_else(|| "serve".into());
     let config = config::Config::from_env()?;
     let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(config.workers).enable_all().build()?;
