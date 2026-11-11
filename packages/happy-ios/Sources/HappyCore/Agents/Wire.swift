@@ -122,6 +122,8 @@ extension AgentWire {
             public var sidebarOperations: Bool?
             public var sidebarProposals: Bool?
             public var sidebarAttachments: Bool?
+            /// `PUT /v0/environment` and `deviceId` on sends (API.md, "User environment").
+            public var userEnvironment: Bool?
         }
         public var ready: Bool
         public var capabilities: Capabilities?

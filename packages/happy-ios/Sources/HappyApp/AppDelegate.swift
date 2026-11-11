@@ -62,6 +62,11 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         let coordinator = AppCoordinator(window: window, context: CompositionRoot.makeContext())
         self.window = window
         self.coordinator = coordinator
+        // Each computer that takes it is told this phone's time zone and language.
+        let installation = PushNotifications.installationID
+        let kind: UserEnvironment.DeviceKind = UIDevice.current.userInterfaceIdiom == .pad ? .tablet : .phone
+        coordinator.context.account.agentConnections.environment = UserEnvironmentSource(
+            deviceId: { (try? installation.read())?.lowercased() }, current: { .current(kind: kind) })
         coordinator.start()
         #if DEBUG || HAPPY_FIXTURES
         GymFrameMeter.installIfAsked(in: window)
