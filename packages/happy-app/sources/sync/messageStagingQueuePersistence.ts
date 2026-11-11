@@ -1,3 +1,4 @@
+import { isAnnotation } from '@/components/annotations/annotationDraft';
 import { MMKV } from 'react-native-mmkv';
 import { v4 as uuid } from 'uuid';
 import { accountStorageId } from '@/auth/accountRuntime';
@@ -58,6 +59,8 @@ export const messageStagingPersistence = {
                 && Object.values(value.barriers).every((b: any) => b && typeof b.sawRunning === 'boolean' && (b.turnId === undefined || typeof b.turnId === 'string'))
                 && value.messages.every((m: any) => m && typeof m.id === 'string' && typeof m.sessionId === 'string'
                     && typeof m.text === 'string' && (m.draftText === undefined || typeof m.draftText === 'string')
+                    && (m.displayText === undefined || typeof m.displayText === 'string')
+                    && (m.annotations === undefined || (Array.isArray(m.annotations) && m.annotations.every(isAnnotation)))
                     && (m.fileReference === undefined || (m.fileReference && typeof m.fileReference.path === 'string' && typeof m.fileReference.hash === 'string' && (m.fileReference.quote === undefined || typeof m.fileReference.quote === 'string')))
                     && m.modeMeta && typeof m.modeMeta === 'object'
                     && ['queued', 'sending', 'failed'].includes(m.status)

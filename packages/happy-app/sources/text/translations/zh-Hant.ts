@@ -198,6 +198,11 @@ export const zhHant: TranslationStructure = {
     },
 
     messageAnnotations: {
+        ...en.messageAnnotations,
+        addFile: "新增批註",
+        filePlaceholder: "你希望這段內容怎樣修改？",
+        fileReview: "請檢查這段內容並提出改進建議。",
+        fileInstructions: en.messageAnnotations.fileInstructions,
         add: '新增至對話',
         edit: '編輯批註',
         remove: '刪除批註',

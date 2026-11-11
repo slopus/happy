@@ -24,7 +24,7 @@ export function MessageStagingQueueView(props: {
         <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
             {props.messages.map(message => <View key={message.id} style={styles.row} testID={`queued-message-${message.id}`}>
                 <View style={styles.content}>
-                    <Text numberOfLines={2} style={styles.text}>{(message.draftText ?? message.text) || t('messageQueue.attachments')}</Text>
+                    <Text numberOfLines={2} style={styles.text}>{(message.displayText ?? message.draftText ?? message.text) || t('messageQueue.attachments')}</Text>
                     {!!message.attachments?.length && !message.attachmentsExpired && <SubmittedAttachmentPreview images={message.attachments} testID={`queued-attachments-${message.id}`} />}
                     {message.status === 'failed' && (!message.attachmentsExpired || message.deliveryUncertain) && <Text style={styles.secondary}>{t('messageQueue.failed')}</Text>}
                     {message.attachmentsExpired && <Text style={styles.secondary}>{t('messageQueue.attachmentsExpired')}{'\n'}{message.attachments?.filter(attachment => attachment.uri.startsWith('blob:')).map(attachment => attachment.name).join('、')}</Text>}

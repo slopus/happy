@@ -139,6 +139,11 @@ export const ja: TranslationStructure = {
     },
 
     messageAnnotations: {
+        ...en.messageAnnotations,
+        addFile: "注釈を追加",
+        filePlaceholder: "この部分をどのように改善しますか？",
+        fileReview: "この部分を確認して改善案を提案してください。",
+        fileInstructions: en.messageAnnotations.fileInstructions,
         add: '会話に追加',
         edit: '注釈を編集',
         remove: '注釈を削除',

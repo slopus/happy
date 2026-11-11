@@ -1,3 +1,4 @@
+import type { MessageAnnotation } from '@/components/annotations/annotationDraft';
 import type { AttachmentPreview } from './attachmentTypes';
 import type { MessageModeMeta } from './messageMeta';
 
@@ -6,6 +7,8 @@ export type StagedMessage = {
     sessionId: string;
     text: string;
     draftText?: string;
+    displayText?: string;
+    annotations?: readonly MessageAnnotation[];
     fileReference?: { path: string; hash: string; quote?: string };
     attachments?: AttachmentPreview[];
     modeMeta: MessageModeMeta;

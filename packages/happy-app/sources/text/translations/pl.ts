@@ -147,6 +147,11 @@ export const pl: TranslationStructure = {
     },
 
     messageAnnotations: {
+        ...en.messageAnnotations,
+        addFile: "Dodaj adnotację",
+        filePlaceholder: "Jak chcesz poprawić ten fragment?",
+        fileReview: "Przejrzyj ten fragment i zaproponuj ulepszenia.",
+        fileInstructions: en.messageAnnotations.fileInstructions,
         add: 'Dodaj do rozmowy',
         edit: 'Edytuj adnotację',
         remove: 'Usuń adnotację',

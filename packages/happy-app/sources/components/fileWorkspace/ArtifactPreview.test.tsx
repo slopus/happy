@@ -10,6 +10,7 @@ vi.mock('react-native', () => ({ View: 'View', ScrollView: 'ScrollView', Activit
 vi.mock('@/components/markdown/MarkdownView', () => ({ MarkdownView: 'MarkdownView' }));
 vi.mock('@/components/markdown/parseMarkdown', () => ({ parseReadOnlyMarkdown: () => [{ type: 'image', url: './photo.png' }] }));
 vi.mock('./HtmlFilePreview', () => ({ HtmlFilePreview: 'HtmlFilePreview' }));
+import { AnnotatableFile } from '@/components/annotations/MessageAnnotations';
 import { ArtifactPreview } from './ArtifactPreview';
 
 it('keeps Markdown readable while immutable image resources are still loading', async () => {
@@ -23,9 +24,10 @@ it('keeps Markdown readable while immutable image resources are still loading', 
     } as unknown as ArtifactReadResult;
     const onReady = vi.fn();
     let renderer: any;
-    await act(async () => { renderer = TestRenderer.create(<ArtifactPreview sessionId="session" versions={versions} value={value} onReady={onReady} />); });
+    await act(async () => { renderer = TestRenderer.create(<ArtifactPreview sessionId="session" versions={versions} value={value} onReady={onReady} annotationFile={{ path: '/project/doc.md', hash: 'frozen-baseline' }} />); });
     try {
         expect(reader).toHaveBeenCalledWith('/project/photo.png');
+        expect(renderer.root.findByType(AnnotatableFile).props.file).toEqual({ path: '/project/doc.md', hash: 'frozen-baseline' });
         expect(renderer.root.findByType('MarkdownView').props.markdown).toBe(value.entryContent);
         expect(renderer.root.findAllByType('ActivityIndicator')).toHaveLength(0);
         expect(onReady).not.toHaveBeenCalledWith(true);

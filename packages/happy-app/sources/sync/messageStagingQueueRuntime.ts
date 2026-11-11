@@ -8,6 +8,7 @@ import { storage } from './storage';
 import { sync } from './sync';
 import { sessionSteer } from './ops';
 import { resolveMessageModeMeta } from './messageMeta';
+import type { StagedMessage } from './messageStagingQueue';
 import type { AttachmentPreview } from './attachmentTypes';
 
 export const messageStagingQueue = createMessageStagingQueue({
@@ -30,7 +31,7 @@ export const messageStagingQueue = createMessageStagingQueue({
         const credentials = sync.getCredentials();
         return sync.sendMessage(message.sessionId, message.text, {
             source: 'chat', attachments: message.attachments, modeMeta: message.modeMeta,
-            ...(message.draftText !== undefined ? { displayText: message.draftText || (message.fileReference ? '@ ' + message.fileReference.path.split('/').pop() : message.draftText) } : {}),
+            ...((message.displayText ?? message.draftText) !== undefined ? { displayText: message.displayText ?? (message.draftText || (message.fileReference ? '@ ' + message.fileReference.path.split('/').pop() : message.draftText)) } : {}),
             isCurrent: () => accountRuntimeCurrent() && sync.getCredentials() === credentials,
         });
     },
@@ -79,7 +80,7 @@ export async function clearMessageStagingQueue() {
     clearMessageStagingStorage();
 }
 
-export async function stageSessionMessage(sessionId: string, text: string, attachments?: AttachmentPreview[], delivery: 'queue' | 'steer' = 'queue', context?: { draftText?: string; fileReference?: { path: string; hash: string; quote?: string } }) {
+export async function stageSessionMessage(sessionId: string, text: string, attachments?: AttachmentPreview[], delivery: 'queue' | 'steer' = 'queue', context?: Pick<StagedMessage, 'draftText' | 'displayText' | 'annotations' | 'fileReference'>) {
     const state = storage.getState();
     const session = state.sessions[sessionId];
     if (!session || !accountRuntimeCurrent()) throw new Error('Session unavailable');
@@ -89,7 +90,7 @@ export async function stageSessionMessage(sessionId: string, text: string, attac
     if (!storage.getState().sessions[sessionId] || !accountRuntimeCurrent()) throw new Error('Session unavailable');
     const id = uuid();
     messageStagingQueue.enqueue({
-        id, sessionId, text, draftText: context?.draftText, fileReference: context?.fileReference,
+        id, sessionId, text, draftText: context?.draftText, displayText: context?.displayText, annotations: context?.annotations, fileReference: context?.fileReference,
         attachments: selected,
         modeMeta,
     });

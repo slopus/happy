@@ -10,7 +10,7 @@ import { buildFileContextMessage } from '@/components/fileWorkspace/fileContext'
 import { FileReferencePill } from '@/components/fileWorkspace/FileReferencePill';
 import { AgentContentView } from '@/components/AgentContentView';
 import { MessageComposer } from '@/components/MessageComposer';
-import { AnnotationComposer, useMessageAnnotations, prepareAnnotatedMessage } from '@/components/annotations/MessageAnnotations';
+import { AnnotationComposer, useMessageAnnotations, prepareAnnotatedMessage, restoreAnnotatedMessage } from '@/components/annotations/MessageAnnotations';
 import { MessageStagingQueueView } from '@/components/MessageStagingQueueView';
 import { messageStagingQueue, stageSessionMessage } from '@/sync/messageStagingQueueRuntime';
 import type { SessionComposerDirectorySelectorConfig } from '@/components/SessionComposerDirectorySelector';
@@ -1883,7 +1883,7 @@ function SessionViewLoaded({
                     // than inserted literally into the model's current turn.
                     try {
                         const stageDelivery = annotated.text.trimStart().startsWith('/') ? 'queue' : delivery;
-                        if (fileMessage.fileReference) await stageSessionMessage(sessionId, fileMessage.text, attachments, stageDelivery, { draftText: liveMessage, fileReference: fileMessage.fileReference });
+                        if (fileMessage.fileReference || annotated.annotations.length) await stageSessionMessage(sessionId, fileMessage.text, attachments, stageDelivery, { draftText: liveMessage, ...(annotated.annotations.length ? { displayText: annotated.displayText, annotations: annotated.annotations } : {}), fileReference: fileMessage.fileReference });
                         else await stageSessionMessage(sessionId, fileMessage.text, attachments, stageDelivery);
                         if (fileMessage.fileReference) fileWorkspace?.setReference(current => current === submittedReference ? null : current);
                     } catch {
@@ -2158,6 +2158,8 @@ function SessionViewLoaded({
                                 return;
                             }
                         }
+                        try { if (message.annotations) restoreAnnotatedMessage(sessionId, message.annotations); }
+                        catch { Modal.alert(t('common.error'), t('messageAnnotations.saveError')); return; }
                         const recovered = messageStagingQueue.take(message.id);
                         if (!recovered) return;
                         composer.setMessage(recovered.draftText ?? recovered.text);

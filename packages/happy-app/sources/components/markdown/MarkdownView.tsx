@@ -65,6 +65,7 @@ export const MarkdownView = React.memo((props: {
     variant?: MarkdownViewVariant;
     readOnly?: boolean;
     imageUrls?: Record<string, string | null>;
+    annotationTargets?: boolean;
 }) => {
     const blocks = React.useMemo(() => props.readOnly ? parseReadOnlyMarkdown(props.markdown, {allowImages: !!props.imageUrls}) : parseMarkdown(props.markdown), [props.markdown, props.readOnly, props.imageUrls]);
     const variant = props.variant ?? 'default';
@@ -106,6 +107,7 @@ export const MarkdownView = React.memo((props: {
                         && /[?？:：]$/.test(candidate.content.map(span => span.text).join('').trim());
                     const isQuestionCard = (candidate: typeof block | undefined) => candidate?.type === 'options'
                         && Boolean(props.onOptionPress) && parseImageStyleOptions(candidate.items).length === 0;
+                    const renderBlock = () => {
                     if (block.type === 'text' && isQuestion(block) && isQuestionCard(nextBlock)) return null;
                     if (block.type === 'text') {
                         return <RenderTextBlock spans={block.content} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} onLinkPress={handleLinkPress} variant={variant} />;
@@ -136,6 +138,12 @@ export const MarkdownView = React.memo((props: {
                     } else {
                         return null;
                     }
+                    };
+                    const element = renderBlock();
+                    if (element && props.annotationTargets && Platform.OS === 'web' && ['text', 'header', 'list', 'numbered-list', 'table'].includes(block.type)) {
+                        return <View key={index} {...({ dataSet: { annotationBlock: block.type } } as any)}>{element}</View>;
+                    }
+                    return element;
                     })}
                 </View>
             </MarkdownTypographyContext.Provider></MarkdownFileLinksContext.Provider></MarkdownImagesContext.Provider>

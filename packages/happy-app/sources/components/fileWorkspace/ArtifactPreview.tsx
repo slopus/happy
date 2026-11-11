@@ -1,6 +1,8 @@
 import * as React from 'react';
 import { ScrollView, View } from 'react-native';
 import type { ArtifactReadResult } from '@slopus/happy-wire';
+import { AnnotatableFile } from '@/components/annotations/MessageAnnotations';
+import type { FileReference } from './context';
 import { MarkdownView } from '@/components/markdown/MarkdownView';
 import { parseReadOnlyMarkdown } from '@/components/markdown/parseMarkdown';
 import { resolvePreviewPath } from './previewResources';
@@ -8,7 +10,7 @@ import { HtmlFilePreview } from './HtmlFilePreview';
 import type { VersionController } from './versionController';
 import { documentBodyStyle, documentScrollStyle } from './documentPresentation';
 /** Both entry and resources come from the same immutable read; no working-file fallback. */
-export function ArtifactPreview({sessionId,versions,value,onReady}:{sessionId:string;versions:VersionController;value:ArtifactReadResult;onReady?:(ready:boolean)=>void}) {
+export function ArtifactPreview({sessionId,versions,value,onReady,annotationFile=null}:{sessionId:string;versions:VersionController;value:ArtifactReadResult;annotationFile?:FileReference|null;onReady?:(ready:boolean)=>void}) {
  const reader=React.useMemo(()=>versions.reader(value),[versions,value]);
  const [images,setImages]=React.useState<Record<string,string|null>|null>(null);
  const path=versions.root+'/'+value.manifest.entryPath;
@@ -28,5 +30,5 @@ export function ArtifactPreview({sessionId,versions,value,onReady}:{sessionId:st
   return()=>{cancelled=true;blobs.forEach(u=>URL.revokeObjectURL(u));};
  },[value,path,reader,versions.root,onReady]);
  if(value.artifact.kind==='html')return <HtmlFilePreview sessionId={sessionId} path={path} root={versions.root} content={value.entryContent} readBytes={reader} onReady={onReady}/>;
- return <ScrollView style={{flex:1}} contentContainerStyle={documentScrollStyle}><View testID="workspace-document-body" style={documentBodyStyle}><MarkdownView markdown={value.entryContent} typography="document" readOnly sessionId={sessionId} imageUrls={images ?? undefined}/></View></ScrollView>;
+ return <ScrollView style={{flex:1}} contentContainerStyle={documentScrollStyle}><View testID="workspace-document-body" style={documentBodyStyle}><AnnotatableFile sessionId={sessionId} file={annotationFile}><MarkdownView markdown={value.entryContent} typography="document" readOnly sessionId={sessionId} annotationTargets={!!annotationFile} imageUrls={images ?? undefined}/></AnnotatableFile></View></ScrollView>;
 }

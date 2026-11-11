@@ -61,3 +61,17 @@ describe('staged message persistence ownership', () => {
         expect(state.stores.has('account-a-message-staging-native')).toBe(true);
     });
 });
+
+it('restores file annotation snapshots and their separate display text after a reload', async () => {
+    browser('annotations'); vi.resetModules();
+    const { fileAnnotationSourceId } = await import('@/components/annotations/annotationDraft');
+    const persistence = await import('./messageStagingQueuePersistence');
+    await persistence.initializeMessageStagingPersistence();
+    const file = { path: '/work/doc.md', hash: 'baseline' };
+    const annotation = { id: 'a', revision: 1, messageId: fileAnnotationSourceId(file), file, quote: 'text', anchorText: 'text', start: 0, end: 4, comment: 'Rewrite this' };
+    persistence.messageStagingPersistence.save({ messages: [{ id: 'm', sessionId: 's', text: 'payload', draftText: '', displayText: 'doc.md: Rewrite this', annotations: [annotation], modeMeta: {}, status: 'queued' }], barriers: {} });
+    const loaded = persistence.messageStagingPersistence.load().messages[0];
+    expect(loaded).toMatchObject({ draftText: '', displayText: 'doc.md: Rewrite this', annotations: [annotation] });
+    persistence.messageStagingPersistence.save({ messages: [{ ...loaded, annotations: [{ ...annotation, file: { ...file, hash: 'wrong-source' } }] }], barriers: {} });
+    expect(persistence.messageStagingPersistence.load().messages).toEqual([]);
+});

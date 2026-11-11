@@ -136,6 +136,11 @@ export const pt: TranslationStructure = {
     },
 
     messageAnnotations: {
+        ...en.messageAnnotations,
+        addFile: "Anotar trecho",
+        filePlaceholder: "Como você gostaria de melhorar este trecho?",
+        fileReview: "Revise este trecho e sugira melhorias.",
+        fileInstructions: en.messageAnnotations.fileInstructions,
         add: 'Adicionar à conversa',
         edit: 'Editar anotação',
         remove: 'Excluir anotação',

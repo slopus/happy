@@ -147,6 +147,11 @@ export const ru: TranslationStructure = {
     },
 
     messageAnnotations: {
+        ...en.messageAnnotations,
+        addFile: "Добавить пометку",
+        filePlaceholder: "Как вы хотите улучшить этот фрагмент?",
+        fileReview: "Проверьте этот фрагмент и предложите улучшения.",
+        fileInstructions: en.messageAnnotations.fileInstructions,
         add: 'Добавить в беседу',
         edit: 'Редактировать пометку',
         remove: 'Удалить пометку',

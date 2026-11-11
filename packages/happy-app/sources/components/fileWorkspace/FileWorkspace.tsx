@@ -1,7 +1,9 @@
+import { useFileAnnotationUi } from '@/components/annotations/fileAnnotationUi';
 import * as React from 'react';
 import { View, ScrollView, ActivityIndicator, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { useUnistyles } from 'react-native-unistyles';
+import { AnnotatableFile, FileAnnotationControls, FileAnnotationPanel, FileAnnotationHint } from '@/components/annotations/MessageAnnotations';
 import { MarkdownView } from '@/components/markdown/MarkdownView';
 import { CodeEditor } from '@/components/CodeEditor';
 import { Modal } from '@/modal';
@@ -26,6 +28,7 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree }:
     const photoSkin = Platform.OS === 'web' && desktopSkinId !== 'default';
     const [tabMenu, setTabMenu] = React.useState<TabMenuAnchor | null>(null);
     const dismissTabMenu = React.useCallback(() => setTabMenu(null), []);
+    const annotationUi = useFileAnnotationUi(sessionId);
     const [modes, setModes] = React.useState<Record<string, boolean>>({});
     const [historyPath, setHistoryPath] = React.useState<string | null>(null);
     const [workspaceWidth, setWorkspaceWidth] = React.useState(0);
@@ -40,6 +43,7 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree }:
         setHistoryPath(null);
         if (historyExpanded.current) { historyExpanded.current = false; workspace?.setMaximized(false); }
     }, [workspace?.setMaximized]);
+    React.useEffect(() => { const target = annotationUi.focus?.path; if (target) { setModes(value => ({ ...value, [target]: true })); closeHistory(); } }, [annotationUi.focus, closeHistory]);
     React.useEffect(() => {
         if (historyPath && historyPath !== path) { closeHistory(); return; }
         if (historyPath && workspaceWidth > 0 && workspaceWidth < 600 && workspace && !workspace.maximized) {
@@ -52,6 +56,14 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree }:
     const currentArtifact = workspace.versions.currentForHash(path, document?.error ? null : document?.hash ?? null);
     const cachedDraft = controller.exportDrafts()[path];
     const dirty = document ? documentDirty(document) : false;
+    const annotationFile = historyPath !== path && document?.phase === 'ready' && document.hash && !dirty ? {
+        path, hash: document.hash,
+        ...(currentArtifact ? { artifact: {
+            workspaceId: currentArtifact.artifact.workspaceId, artifactId: currentArtifact.artifact.id,
+            expectedRevision: currentArtifact.workingRevision,
+            ...(currentArtifact.readRef.kind === 'version' ? { versionId: currentArtifact.readRef.versionId } : {}),
+        } } : {}),
+    } : null;
     const previewable = /\.(md|markdown|html?|svg)$/i.test(path);
     const preview = previewable && modes[path] !== false;
     const close = (files: string[]) => {
@@ -108,17 +120,21 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree }:
             <Text numberOfLines={1} selectable style={{ flexGrow: 1, flexShrink: 1, fontSize: 12, color: theme.colors.textSecondary }}>{path.startsWith(workspace.root + '/') ? path.slice(workspace.root.length + 1).replaceAll('/', ' / ') : path}</Text>
             {previewable && <Button label={t('fileWorkspace.preview')} selected={preview} onPress={() => setModes(value => ({ ...value, [path]: true }))} />}
             <Button label={t('fileWorkspace.code')} selected={!preview} onPress={() => setModes(value => ({ ...value, [path]: false }))} />
+            {/\.(md|markdown)$/i.test(path) && <FileAnnotationControls sessionId={sessionId} enabled={preview && !!annotationFile} />}
             <Button label={t('fileWorkspace.refresh')} icon="refresh-outline" compact onPress={() => { void refresh(); }} disabled={document?.saving} />
             <Button label={t('fileWorkspace.mention')} icon="at-outline" compact disabled={document?.phase !== 'ready' || dirty || !document.hash} onPress={() => { if (document?.hash) workspace.setReference({ path, hash: document.hash, ...(quote ? { quote } : {}), ...(currentArtifact ? {artifact:{workspaceId:currentArtifact.artifact.workspaceId,artifactId:currentArtifact.artifact.id,expectedRevision:currentArtifact.workingRevision,...(currentArtifact.readRef.kind === 'version' ? {versionId:currentArtifact.readRef.versionId}: {})}} : {}) }); }} />
             <Button label={t('fileWorkspace.download')} icon="download-outline" compact onPress={download} disabled={document?.phase !== 'ready' && !cachedDraft} />
             <Button label={document?.saving ? t('common.loading') : t('fileWorkspace.save')} icon="save-outline" testID="workspace-save" onPress={() => { void controller.save(path); }} disabled={!dirty || document?.saving || document?.conflict} />
         </View>
+        {preview && /\.(md|markdown)$/i.test(path) && <FileAnnotationHint sessionId={sessionId} />}
         {workspace.draftCacheError && <Text accessibilityRole="alert" style={{ padding: 10, color: theme.colors.textDestructive }}>{t('fileWorkspace.draftCacheUnavailable')}</Text>}
         {document?.conflict && <View style={{ padding: 10, backgroundColor: theme.colors.surfaceSelected }}><Text accessibilityRole="alert" style={{ color: theme.colors.textDestructive }}>{t('fileWorkspace.conflict')}</Text><Button label={t('fileWorkspace.refresh')} onPress={() => { void refresh(); }} /></View>}
         {document?.error && <Text accessibilityRole="alert" style={{ padding: 12, color: theme.colors.textDestructive }}>{document.error}</Text>}
         {document?.phase === 'error' && cachedDraft && <ScrollView contentContainerStyle={{ padding: 16 }}><Text style={{ color: theme.colors.textSecondary }}>{t('fileWorkspace.cachedDraft')}</Text><Text selectable style={{ color: theme.colors.text }}>{cachedDraft.draft}</Text></ScrollView>}
         {!document || document.phase === 'loading' ? <ActivityIndicator style={{ padding: 30 }} color={theme.colors.textSecondary} /> : document.phase === 'ready' ? <>
-            {preview && currentArtifact && !dirty ? <ArtifactPreview sessionId={sessionId} versions={workspace.versions} value={currentArtifact}/> : preview && /\.(html?|svg)$/i.test(path) ? <HtmlFilePreview key={path} sessionId={sessionId} path={path} content={document.draft} root={workspace.root} revision={document.revision} /> :
+            <View testID="workspace-annotation-layout" style={{ flex: 1, minHeight: 0, position: 'relative', flexDirection: 'row' }}>
+            <View testID="workspace-reading-pane" style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
+            {preview && currentArtifact && !dirty ? <ArtifactPreview sessionId={sessionId} versions={workspace.versions} value={currentArtifact} annotationFile={annotationFile}/> : preview && /\.(html?|svg)$/i.test(path) ? <HtmlFilePreview key={path} sessionId={sessionId} path={path} content={document.draft} root={workspace.root} revision={document.revision} /> :
                 <ScrollView ref={scrollView} onScroll={event => { scroll.current[path] = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={100} style={{ flex: 1 }} contentContainerStyle={preview ? documentScrollStyle : { padding: 12 }}>
                     <View ref={contentRef} testID={preview ? "workspace-document-body" : undefined} style={preview ? documentBodyStyle : undefined} {...({ onMouseUp: () => {
                         const selected = globalThis.window?.getSelection();
@@ -127,9 +143,12 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree }:
                         const selected = globalThis.window?.getSelection();
                         if (selected?.anchorNode && contentRef.current?.contains?.(selected.anchorNode)) setQuote(selected.toString().slice(0, 4000));
                     } } as any)}>
-                        {preview ? <MarkdownView markdown={document.draft} typography="document" readOnly sessionId={sessionId} /> : <CodeEditor value={document.draft} onChange={value => controller.edit(path, value)} language={language(path)} darkMode={theme.dark} />}
+                        {preview ? <AnnotatableFile sessionId={sessionId} file={annotationFile}><MarkdownView markdown={document.draft} typography="document" readOnly sessionId={sessionId} annotationTargets /></AnnotatableFile> : <CodeEditor value={document.draft} onChange={value => controller.edit(path, value)} language={language(path)} darkMode={theme.dark} />}
                     </View>
                 </ScrollView>}
+            </View>
+            {/\.(md|markdown)$/i.test(path) && <FileAnnotationPanel sessionId={sessionId} compact={workspaceWidth < 900} showPreview={file => setModes(value => ({ ...value, [file]: true }))} />}
+            </View>
             <Text style={{ fontSize: 11, padding: 7, color: theme.colors.textSecondary, borderTopWidth: 1, borderColor: theme.colors.divider }}>{dirty ? t('fileWorkspace.dirty') : t('fileWorkspace.saved')}</Text>
         </> : null}
         </View>

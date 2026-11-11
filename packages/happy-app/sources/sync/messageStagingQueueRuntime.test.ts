@@ -99,3 +99,21 @@ it('uses the existing displayText contract so workspace hashes stay out of visib
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(mocks.send).toHaveBeenCalledWith('workspace-display', expect.stringContaining('[Workspace file context]'), expect.objectContaining({ displayText: 'visible' }));
 });
+
+it('preserves editable file annotations in the queue and sends a clean display separately', async () => {
+    const { fileAnnotationSourceId, createAnnotationDraftStore } = await import('@/components/annotations/annotationDraft');
+    const { stageSessionMessage } = await import('./messageStagingQueueRuntime');
+    mocks.activeAccount = true; mocks.send.mockClear();
+    mocks.state = { socketStatus: 'connected', applyPendingMessageSessions: () => {}, settings: {}, sessions: { annotated: { presence: 'online', metadata: {}, agentState: { turnStatus: { status: 'running', turnId: 'busy' } } } } };
+    const file = { path: '/work/doc.md', hash: 'baseline' };
+    const store = createAnnotationDraftStore({ read: () => undefined, write: () => {}, newId: () => 'annotation' });
+    const item = store.add('annotated', { messageId: fileAnnotationSourceId(file), file, quote: 'Original', anchorText: 'Original', start: 0, end: 8 });
+    store.update('annotated', item.id, 'Make this concrete');
+    await stageSessionMessage('annotated', 'model payload baseline', undefined, 'queue', { draftText: '', displayText: 'doc.md: Original — Make this concrete', annotations: store.getSnapshot('annotated') });
+    const queued = messageStagingQueue.getSnapshot().messages.find(m => m.sessionId === 'annotated')!;
+    expect(queued.annotations?.[0]).toMatchObject({ file, comment: 'Make this concrete' });
+    expect(queued.draftText).toBe('');
+    mocks.state.sessions.annotated.agentState.turnStatus = { status: 'idle' };
+    messageStagingQueue.refresh();
+    await vi.waitFor(() => expect(mocks.send).toHaveBeenCalledWith('annotated', 'model payload baseline', expect.objectContaining({ displayText: 'doc.md: Original — Make this concrete' })));
+});

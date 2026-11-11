@@ -226,3 +226,14 @@ describe('MarkdownView typography scope', () => {
         expect(renderer.root.findAllByType('Pressable')).toHaveLength(0);
     });
 });
+
+it('exposes point-pick targets only when the document opts in, without changing text', () => {
+    let renderer: any;
+    act(() => { renderer = TestRenderer.create(<MarkdownView markdown={'# Heading\n\nBody paragraph.'} readOnly annotationTargets />); });
+    const targets = () => renderer.root.findAll((node: any) => node.type === 'View' && node.props.dataSet?.annotationBlock);
+    expect(targets().map((node: any) => node.props.dataSet?.annotationBlock)).toEqual(['header', 'text']);
+    act(() => renderer.update(<MarkdownView markdown={'# Heading\n\nBody paragraph.'} readOnly />));
+    expect(targets()).toHaveLength(0);
+    expect(renderer.root.findAllByType('Text').some((node: any) => node.props.children?.props?.spans?.[0]?.text === 'Body paragraph.')).toBe(true);
+    act(() => renderer.unmount());
+});

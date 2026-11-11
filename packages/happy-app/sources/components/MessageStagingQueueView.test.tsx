@@ -29,3 +29,13 @@ it('marks restored expired attachments for reselection and disables sending', ()
     expect(renderer.root.findAllByType('Pressable')[0].props.disabled).toBe(true);
     act(() => renderer.unmount());
 });
+
+it('shows annotation display text instead of an empty draft or private model context', () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    let renderer: any;
+    act(() => { renderer = TestRenderer.create(<MessageStagingQueueView messages={[{ id: 'm', sessionId: 's', text: 'private-baseline', draftText: '', displayText: 'doc.md: Rewrite this passage', modeMeta: {}, status: 'queued' }]} session={{ connected: true, state: 'idle' }} onEdit={vi.fn()} onSteer={vi.fn()} onRemove={vi.fn()} />); });
+    const text = renderer.root.findAllByType('Text').map((n: any) => n.props.children);
+    expect(text).toContain('doc.md: Rewrite this passage');
+    expect(text).not.toContain('private-baseline');
+    act(() => renderer.unmount());
+});

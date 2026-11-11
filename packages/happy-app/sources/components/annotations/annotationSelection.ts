@@ -3,22 +3,27 @@ import type { AnnotationSelection, MessageAnnotation } from './annotationDraft';
 /** Handles both Text and Element boundaries and selections across inline Markdown. */
 export function readAnnotationSelection(root: HTMLElement, messageId: string, selection: Selection | null): (AnnotationSelection & { rect: DOMRect }) | null {
     if (!selection?.rangeCount || selection.isCollapsed) return null;
-    const range = selection.getRangeAt(0);
+    return readAnnotationRange(root, messageId, selection.getRangeAt(0), selection.toString().trim());
+}
+
+/** Point picking and text selection share the same durable rendered-text anchor. */
+export function readAnnotationRange(root: HTMLElement, messageId: string, range: Range, quote = range.toString().trim()): (AnnotationSelection & { rect: DOMRect }) | null {
     if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
     const element = (node: Node) => node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement;
     if ([element(range.startContainer), element(range.endContainer)].some(el => el?.closest('button,textarea,input,[contenteditable="true"],[data-no-annotation]'))) return null;
-    const quote = selection.toString().trim();
     const anchorText = range.toString();
     if (!quote || !anchorText) return null;
     const prefix = document.createRange();
     prefix.selectNodeContents(root);
     prefix.setEnd(range.startContainer, range.startOffset);
     const start = prefix.toString().length;
-    return { messageId, quote, anchorText, start, end: start + anchorText.length, rect: range.getBoundingClientRect() };
+    const end = start + anchorText.length;
+    const text = root.textContent ?? '';
+    return { messageId, quote, anchorText, start, end, context: { before: text.slice(Math.max(0, start - 120), start), after: text.slice(end, end + 120) }, rect: range.getBoundingClientRect() };
 }
 
 /** Rebuild a Range after React remounts; identical text elsewhere is not a match. */
-export function annotationRange(root: HTMLElement, annotation: MessageAnnotation): Range | null {
+export function annotationRange<T extends Pick<MessageAnnotation, 'start' | 'end' | 'anchorText'>>(root: HTMLElement, annotation: T): Range | null {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     let node: Node | null;
     let offset = 0;

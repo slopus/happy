@@ -136,6 +136,11 @@ export const ca: TranslationStructure = {
     },
 
     messageAnnotations: {
+        ...en.messageAnnotations,
+        addFile: "Anota el fragment",
+        filePlaceholder: "Com voldries millorar aquest fragment?",
+        fileReview: "Revisa aquest fragment i proposa millores.",
+        fileInstructions: en.messageAnnotations.fileInstructions,
         add: 'Afegeix a la conversa',
         edit: 'Edita l’anotació',
         remove: 'Elimina l’anotació',

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createAnnotationDraftStore, formatAnnotatedMessage, type AnnotationSelection } from './annotationDraft';
+import { createAnnotationDraftStore, fileAnnotationSourceId, formatAnnotatedMessage, type AnnotationSelection } from './annotationDraft';
 
 const selection: AnnotationSelection = { messageId: 'reply-a', quote: 'same text', anchorText: 'same text', start: 0, end: 9 };
 function fixture() {
@@ -78,4 +78,68 @@ describe('annotation draft ownership and submission', () => {
         expect(formatAnnotatedMessage('', store.getSnapshot('a'), labels)).not.toBe('');
         expect(formatAnnotatedMessage(' /status ', [], labels)).toBe(' /status ');
     });
+});
+
+describe('workspace file annotations', () => {
+    const a = { path: '/work/first.md', hash: 'baseline-a' };
+    const b = { path: '/work/second.md', hash: 'baseline-b' };
+    const selected = (file: typeof a) => ({ ...selection, file, messageId: fileAnnotationSourceId(file) });
+    it('persists multiple passages across files and keeps changed versions distinct', () => {
+        const f = fixture(), store = f.create();
+        const first = store.add('s', selected(a));
+        store.update('s', first.id, 'Shorten this');
+        store.add('s', { ...selected(a), start: 20, end: 29 });
+        store.add('s', selected(b));
+        store.add('s', selected({ ...a, hash: 'new-version' }));
+        expect(store.add('s', selected(a)).id).toBe(first.id);
+        expect(f.create().getSnapshot('s')).toHaveLength(4);
+        expect(f.create().getSnapshot('s')[0]).toMatchObject({ file: a, comment: 'Shorten this' });
+    });
+    it('retains source identity in the payload and keeps baseline details out of display text', () => {
+        const store = fixture().create();
+        const first = store.add('s', selected(a));
+        store.update('s', first.id, 'Shorten this');
+        store.add('s', selected(b));
+        const labels = { intro: 'Review annotations', annotation: 'Annotation', quote: 'Quote', comment: 'Comment', explain: 'Explain', additional: 'Additional', fileInstructions: 'Re-read the file', fileReview: 'Review this passage' };
+        const payload = formatAnnotatedMessage('Apply together', store.getSnapshot('s'), labels);
+        expect(payload).toContain(JSON.stringify({ ...a, renderedStart: 0, renderedEnd: 9 }));
+        expect(payload).toContain('Shorten this');
+        expect(payload).toContain('Review this passage');
+        expect(payload).toContain('Re-read the file');
+        const display = formatAnnotatedMessage('Apply together', store.getSnapshot('s'), labels, false);
+        expect(display).toContain('work/first.md'); expect(display).toContain('work/second.md');
+        expect(display).toContain('Shorten this'); expect(display).toContain('Apply together');
+        expect(display).not.toContain('baseline-'); expect(display).not.toContain('renderedStart');
+        expect(display).not.toContain('Re-read the file');
+    });
+    it('restores editable queued annotations without overwriting newer drafts', () => {
+        const f = fixture(), store = f.create();
+        const first = store.add('s', selected(a));
+        store.update('s', first.id, 'Original comment');
+        const submitted = store.getSnapshot('s');
+        store.clearSubmitted('s', submitted);
+        store.add('s', selected(b));
+        store.restore('s', submitted);
+        store.update('s', first.id, 'New comment');
+        store.restore('s', submitted);
+        expect(f.create().getSnapshot('s').map(a => a.comment)).toEqual(['', 'New comment']);
+    });
+    it('rejects persisted file metadata belonging to another source identity', () => {
+        const f = fixture(), store = f.create();
+        const item = store.add('s', selected(a));
+        f.disk.set('s', JSON.stringify({ version: 1, items: [{ ...item, file: b }] }));
+        expect(f.create().getSnapshot('s')).toEqual([]);
+    });
+});
+
+it('saves a new file comment atomically and leaves no blank annotation if the write fails', () => {
+    const f = fixture(), store = f.create();
+    f.fail();
+    expect(() => store.add('s', selection, 'Typed comment')).toThrow('disk full');
+    expect(store.getSnapshot('s')).toEqual([]);
+    expect(f.create().getSnapshot('s')).toEqual([]);
+    const good = fixture().create();
+    const item = good.add('s', selection, 'Typed comment');
+    expect(item.comment).toBe('Typed comment');
+    expect(good.getSnapshot('s')[0].comment).toBe('Typed comment');
 });
