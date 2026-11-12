@@ -18,7 +18,7 @@ vi.mock('@/sync/projectWorkspaceCache', () => ({ projectCacheKey: (kind: string)
 vi.mock('./useProjectData', () => ({ useCachedProjectResource: (key: string) => ({ value: key === 'overview' ? { title: 'Real scope', goal: 'Real goal', scopePath: '/scope', indexPath: '/scope/index.md', fileCount: 8, countComplete: true } : { sessions: mock.history }, loading: false }) }));
 vi.mock('@/components/fileWorkspace/SessionFileWorkspaceProvider', () => ({ SessionFileWorkspaceProvider: ({ children }: any) => children }));
 vi.mock('@/components/fileWorkspace/context', () => ({ useFileWorkspace: () => ({ snapshot: { open: mock.fileOpen }, enabled: true }) }));
-vi.mock('@/components/fileWorkspace/WorkspaceDirectoryTree', () => ({ WorkspaceDirectoryTree: 'Tree' }));
+vi.mock('./ProjectArchiveTree', () => ({ ProjectArchiveTree: 'Tree' }));
 vi.mock('@/components/fileWorkspace/FileWorkspace', () => ({ FileWorkspace: 'File' }));
 vi.mock('@/components/PanelTabs', () => ({ PanelTabs: 'Tabs' }));
 vi.mock('./ProjectConversationHeader', () => ({ ProjectConversationHeader: 'ConversationHeader' }));

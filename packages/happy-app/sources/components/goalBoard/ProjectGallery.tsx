@@ -8,6 +8,8 @@ import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { GoalBoardButton } from './GoalBoardButton';
 import { GoalBoardCard } from './GoalBoardCard';
+import { LibraryItemActions } from './LibraryItemActions';
+import type { useLibraryItems } from '@/hooks/useLibraryItems';
 import type { ProjectLibraryEntry } from '@/sync/projectLibrary';
 
 export function projectGalleryColumns(width: number) {
@@ -78,10 +80,11 @@ export function ProjectGallery({ projects, onSelect, preferences = {}, onFavorit
     </View>;
 }
 
-export function ProjectFeatureGallery({ entries, projectPath, onSelect }: {
+export function ProjectFeatureGallery({ entries, projectPath, onSelect, library }: {
     entries: GoalBoardCatalogEntry[];
     projectPath: string;
     onSelect: (entry: GoalBoardCatalogEntry) => void;
+    library?: ReturnType<typeof useLibraryItems>;
 }) {
     const { theme } = useUnistyles();
     const { cardWidth, setWidth, gridStyle } = useGalleryLayout(false);
@@ -99,6 +102,7 @@ export function ProjectFeatureGallery({ entries, projectPath, onSelect }: {
                         <View style={styles.featureMeta}><Ionicons name="folder-open-outline" size={14} color={theme.colors.textSecondary} /><Text style={styles.metaText}>{t('projectGoals.showTasks')}</Text><Ionicons name="arrow-forward" size={15} color={theme.colors.textSecondary} /></View>
                     </View>
                 </GoalBoardButton>
+                {library && <View style={styles.actions}><LibraryItemActions library={library} target={{ kind: 'feature', projectPath: entry.featurePath, parentProjectPath: projectPath, title }} /></View>}
             </GoalBoardCard>;
         })}
     </View>;

@@ -16,6 +16,15 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const en = {
     projectGoals: {
+        favoriteItem: ({ title }: { title: string }) => `Favorite ${title}`,
+        unfavoriteItem: ({ title }: { title: string }) => `Unfavorite ${title}`,
+        deleteItem: ({ title }: { title: string }) => `Delete ${title}`,
+        restoreItem: ({ title }: { title: string }) => `Restore ${title}`,
+        deleteLibraryItem: "Move to Deleted",
+        deleteLibraryItemMessage: ({ title }: { title: string }) => `Move “${title}” to Deleted on this device? You can restore it. The original files and conversations are kept.`,
+        savedDocument: "Document",
+        noMatchingItems: "No matching items",
+        noDeletedFiles: "No deleted documents",
         favorites: "Favorites",
         archivedProjects: "Archived",
         deletedProjects: "Deleted",
@@ -26,10 +35,10 @@ export const en = {
         deleteProject: "Delete project",
         librarySaveFailed: "Could not save this change. Please try again.",
         noMatchingProjects: "No matching projects",
-        noFavorites: "No favorite projects yet",
+        noFavorites: "No favorites yet",
         noArchivedProjects: "No archived projects",
         noDeletedProjects: "No deleted projects",
-        favoriteHint: "Click the star on a project to save it here.",
+        favoriteHint: "Star a project, subproject or document to keep it here.",
         projectActions: ({ title }: { title: string }) => `Actions for ${title}`,
         deleteProjectMessage: ({ title }: { title: string }) => `Move “${title}” to Deleted? You can restore it there. Project files and conversations are kept. This change is saved only on this device.`,
         agreeDelivery: "Agree delivery",

@@ -27,7 +27,7 @@ import { SessionView } from '@/-session/SessionView';
 import { SessionFileWorkspaceProvider } from '@/components/fileWorkspace/SessionFileWorkspaceProvider';
 import { FileWorkspace } from '@/components/fileWorkspace/FileWorkspace';
 import { useFileWorkspace } from '@/components/fileWorkspace/context';
-import { WorkspaceDirectoryTree } from '@/components/fileWorkspace/WorkspaceDirectoryTree';
+import { ProjectArchiveTree } from './ProjectArchiveTree';
 import { getProjectCatalogWidth, projectPanelGap } from './projectWorkspaceLayout';
 import { ProjectOverviewWorkspace } from './ProjectOverviewWorkspace';
 import { ProjectDetailsPanel } from './ProjectDetailsPanel';
@@ -42,8 +42,11 @@ import { openExternalUrl } from '@/utils/openExternalUrl';
 import { GoalBoardButton as Button } from './GoalBoardButton';
 import { GoalBoardCard } from './GoalBoardCard';
 import { RunningTaskBorder } from './RunningTaskBorder';
-import { ProjectGalleryLoading, ProjectFeatureGallery } from './ProjectGallery';
+import { ProjectGalleryLoading } from './ProjectGallery';
 import { ProjectLibrary } from './ProjectLibrary';
+import { ProjectFeatureLibrary } from './ProjectFeatureLibrary';
+import { ProjectSavedFile } from './ProjectSavedFile';
+import type { ProjectLibraryEntry } from '@/sync/projectLibrary';
 import { canCreateProjectConversation, canConfirmProjectDeliverable, openProjectGoalConversation } from '@/sync/projectGoals';
 import { getProjectPreviewMachineId } from '@/sync/projectGoals';
 import { selectProjectMachine } from './projectMachine';
@@ -154,6 +157,7 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
     const { navigate } = navigation;
     const data = useProjectData(machineId, params.feature);
     const readOnly = isReadOnlyProjectPreview();
+    const [savedFile, setSavedFile] = React.useState<ProjectLibraryEntry | null>(null);
     const scope = JSON.stringify([accountKey(), machineId, params.project, params.feature]);
     const [catalogState, updateCatalogState] = React.useState(() => ({ scope, query: catalogStates.get(scope)?.query ?? '', status: catalogStates.get(scope)?.status ?? 'all' as TaskStatusFilter }));
     const currentCatalog = catalogState.scope === scope ? catalogState : { scope, query: catalogStates.get(scope)?.query ?? '', status: catalogStates.get(scope)?.status ?? 'all' as TaskStatusFilter };
@@ -316,11 +320,15 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
                 {feature && <Button variant="toolbar" label={t('projectGoals.batchDelivery')} disabled={readOnly || data.offline || !tasks.length} onPress={() => setDeliveryTasks(tasks)} testID="project-batch-delivery"><Text style={styles.link}>{t('projectGoals.batchDelivery')}</Text></Button>}
                 {params.task && feature && !task && <Text style={styles.error}>{t('projectGoals.taskMissing')}</Text>}
                 {!data.contentLoaded && (data.status === 'loading' || data.status === 'connecting') ? <ProjectLoading kind={scopeDesktop ? params.feature ? 'tasks' : params.project ? 'features' : 'projects' : 'projects'} /> : feature ? <TaskCards onDelivery={target => setDeliveryTasks([target])} tasks={tasks} query={query} status={statusFilter} setStatus={setStatusFilter} onSelect={id => go({ task: id })} mobile={mobile} actionLabel={target => { const cached = readProjectCache(projectCacheKey('history', machineId, feature!.featurePath, target.id), projectHistorySchema); const known = data.board?.sessions[target.id] ?? cached?.value.sessions; return t(known ? known.length ? 'projectGoals.continueChat' : 'projectGoals.openChat' : 'projectGoals.chooseChat'); }} onAction={target => { if (mobile) void cardAction.continueTask(target); else void openCardConversation(target); }} offline={data.offline} busy={busy || cardAction.busy} hideExecution />
-                    : project ? <ProjectFeatureGallery entries={[...(project.direct ? [project.direct] : []), ...project.features].filter(entry => (entry.title + (entry.summary || '')).toLowerCase().includes(query.toLowerCase()))} projectPath={project.projectPath} onSelect={chooseFeature} />
-                        : <ProjectLibrary key={machineId} machineId={machineId} projects={data.projects} loaded={data.loaded} query={query} onSelect={chooseProject} />}
+                    : project ? <ProjectFeatureLibrary machineId={machineId} entries={[...(project.direct ? [project.direct] : []), ...project.features]} query={query} projectPath={project.projectPath} onSelect={chooseFeature} />
+                        : <ProjectLibrary key={machineId} machineId={machineId} projects={data.projects} loaded={data.loaded} query={query} onSelect={chooseProject} onOpenItem={item => {
+                            if (item.kind === 'file') setSavedFile(item);
+                            else go({ project: item.parentProjectPath, feature: item.projectPath, task: undefined });
+                        }} />}
                 {data.status === 'offline' && <Empty text={t('projectGoals.offlineArchive')} />}
                 {feature && !tasks.length && <Empty text={t('projectGoals.emptyTasks')} />}
             </ScrollView></ScopeCatalog>}
+        {savedFile && <ProjectSavedFile key={savedFile.projectPath} machineId={machineId} item={savedFile} onClose={() => setSavedFile(null)} />}
         {feature && !!deliveryTasks?.length && <ProjectDeliveryEditor key={JSON.stringify([accountKey(), machineId, feature.featurePath])} machineId={machineId} featurePath={feature.featurePath} tasks={deliveryTasks} onClose={() => setDeliveryTasks(null)} onSaved={data.refresh} onDiscuss={target => { setDeliveryTasks(null); if (mobile) void cardAction.continueTask(target); else void openCardConversation(target); }} />}
         {feature && featureFilesOpen && <ProjectFeatureFiles key={JSON.stringify([accountKey(), machineId, feature.featurePath])} machineId={machineId} featurePath={feature.featurePath} title={feature.title} onClose={() => setFeatureFilesOpen(false)} />}
     </View></ProjectSurfaces.Provider>;
@@ -500,7 +508,7 @@ function TaskWorkspaceContent(props: TaskWorkspaceProps) {
     const details = <ProjectDetailsPanel style={[{ backgroundColor: surface }, wide ? { width: rightWidth, marginLeft: projectPanelGap } : { flex: 1 }]} testID="project-task-panel" tab={tab} onTab={changeTab} showTabs={!mobile}
         header={mobile ? <><ProjectTaskStatus status={task.status} /><ApprovalTag task={task} /></> : <><ProjectTaskSwitcher tasks={allTasks} selectedId={task.id} onSelect={selectTask} /><View style={{ flex: 1 }} /><ProjectTaskStatus status={task.status} /></>} footer={<>{readOnly && <Text style={styles.meta}>{t(canCreateProjectConversation() ? 'projectGoals.previewChatHint' : 'projectGoals.readOnlyArchive')}</Text>}<Button variant="primary" label={t(history.length ? 'projectGoals.continueChat' : 'projectGoals.openChat')} disabled={busy || (!history.length && (offline || !canCreateProjectConversation()))} onPress={() => { void start(task, 'chat'); }} testID="project-task-open-chat"><Ionicons name="chatbubble-outline" size={16} color={theme.colors.text} /><Text style={styles.body}>{t(history.length ? 'projectGoals.continueChat' : 'projectGoals.openChat')}</Text></Button>
             {!mobile && canExecute && <Button variant="primary" label={t('projectGoals.execute')} disabled={busy || offline} onPress={() => { void start(task, 'execute'); }} testID="project-task-execute"><Ionicons name="play" size={16} color={theme.colors.textLink} /><Text style={styles.link}>{t('projectGoals.execute')}</Text></Button>}{busy && <ActivityIndicator size="small" color={theme.colors.textSecondary} />}</>}>
-        {!mobile && tab === 'files' ? <WorkspaceDirectoryTree sessionId={conversationId ?? ''} rootPath={workspace.root} listDirectory={listDirectory} cacheKey={directoryCacheKey} revision={directoryRevision} onOpenFile={path => { void openFile(path); }} />
+        {!mobile && tab === 'files' ? <ProjectArchiveTree machineId={machineId} scopePath={featurePath} taskId={task.id} sessionId={conversationId ?? ''} rootPath={workspace.root} listDirectory={listDirectory} cacheKey={directoryCacheKey} revision={directoryRevision} onOpenFile={path => { void openFile(path); }} />
             : <ScrollView style={styles.detailScroll}><ProjectTaskDetails task={task} number={allTasks.indexOf(task) + 1} approval={<ApprovalTag task={task} />} editDisabled={busy || (!history.length && (!canCreateProjectConversation() || offline))} onEdit={() => { void start(task, 'chat'); }} onDelivery={() => props.editDelivery([task])} deliveryDisabled={readOnly || offline || busy}>
                 {task.artifacts.filter(artifact => artifact.relation === 'output').map(artifact => <Deliverable key={artifact.id} {...{ artifact, task, machineId, featurePath, refresh }} openFile={openFile} offline={offline} />)}
             </ProjectTaskDetails></ScrollView>}
@@ -529,7 +537,7 @@ function TaskWorkspaceContent(props: TaskWorkspaceProps) {
         ]} /></View>
         <View style={[styles.mobileView, mobileView !== 'chat' && styles.hidden]}>{chat}</View>
         <View style={[styles.mobileView, mobileView !== 'details' && styles.hidden]}>{details}</View>
-        <View style={[styles.mobileView, mobileView !== 'files' && styles.hidden]}><WorkspaceDirectoryTree sessionId="" rootPath={workspace.root} listDirectory={listDirectory} cacheKey={directoryCacheKey} revision={directoryRevision} onOpenFile={path => { void openFile(path); }} /></View>
+        <View style={[styles.mobileView, mobileView !== 'files' && styles.hidden]}><ProjectArchiveTree machineId={machineId} scopePath={featurePath} taskId={task.id} sessionId="" rootPath={workspace.root} listDirectory={listDirectory} cacheKey={directoryCacheKey} revision={directoryRevision} onOpenFile={path => { void openFile(path); }} /></View>
     </View>;
     return <View style={styles.taskArea}>
         {!wide && <View style={styles.compactTabs}><PanelTabs activeTab={compactTab} onTabChange={setCompactTab} testIDPrefix="project-workspace" tabs={[{ key: 'tasks', label: t('projectGoals.tasks'), icon: 'grid-outline' }, ...(showChat ? [{ key: 'chat', label: t('projectGoals.discussion'), icon: 'chatbubble-outline' as const }] : []), ...(fileOpen ? [{ key: 'file', label: t('projectGoals.files'), icon: 'document-outline' as const }] : []), { key: 'details', label: t('projectGoals.details'), icon: 'reader-outline' }]} /></View>}

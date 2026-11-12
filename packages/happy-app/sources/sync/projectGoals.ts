@@ -144,6 +144,9 @@ export function projectScopeFiles(machineId: string, scopePath: string): FileWor
 export function projectFeatureFiles(machineId: string, featurePath: string): FileWorkspaceBinding {
     return projectArchiveFiles(machineId, featurePath, featurePath, undefined, true);
 }
+export function projectSavedFileBinding(machineId: string, scopePath: string, rootPath: string, taskId?: string): FileWorkspaceBinding {
+    return { ...projectArchiveFiles(machineId, scopePath, rootPath, taskId), readOnly: true };
+}
 function projectArchiveFiles(machineId: string, featurePath: string, root: string, taskId?: string, featureReadOnly = false): FileWorkspaceBinding {
     const input = { featurePath, ...(taskId ? { taskId } : {}) };
     const prefix = featureReadOnly ? 'goalFeature' : taskId ? 'goalTask' : 'goalScope';

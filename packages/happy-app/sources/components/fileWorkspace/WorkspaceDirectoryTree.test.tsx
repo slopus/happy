@@ -41,4 +41,17 @@ describe('WorkspaceDirectoryTree task scope', () => {
         expect(readOnlyList).toHaveBeenLastCalledWith('s', '/goal/tasks/t1/assets');
         expect(row('/goal/tasks/t1/assets/plot.png')).toBeTruthy();
     });
+    it('filters saved deletions without changing folder loading or nesting action buttons', async () => {
+        const list = vi.fn(async () => ({ success: true, entries: [{ name: 'keep.md', type: 'file' as const }, { name: 'hidden.md', type: 'file' as const }] }));
+        const action = vi.fn();
+        await act(async () => { renderer = TestRenderer.create(<WorkspaceDirectoryTree sessionId="s" rootPath="/goal" listDirectory={list} includeFile={path => !path.endsWith('hidden.md')} renderFileActions={path => <button onClick={() => action(path)}>Favorite</button>} />); });
+        const rows = renderer.root.findAllByType('Pressable');
+        expect(rows.map((row: any) => row.props.accessibilityLabel)).toEqual(['/goal/keep.md']);
+        const button = renderer.root.findByType('button');
+        expect(button.parent.type).not.toBe('Pressable');
+        act(() => button.props.onClick());
+        expect(action).toHaveBeenCalledWith('/goal/keep.md');
+        expect(mocks.open).not.toHaveBeenCalled();
+    });
+
 });

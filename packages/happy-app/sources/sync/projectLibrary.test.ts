@@ -7,7 +7,7 @@ vi.mock('./persistence', () => ({
     loadProjectLibraryPreferences: () => mock.stores[mock.account.scope],
     saveProjectLibraryPreferences: (value: string) => { if (mock.fail) throw new Error('Storage full'); mock.stores[mock.account.scope] = value; },
 }));
-import { filterProjectLibrary, getProjectLibraryRevision, projectLibraryOwner, readProjectLibrary, subscribeProjectLibrary, updateProjectLibrary } from './projectLibrary';
+import { libraryItemAvailable, readLibraryItems, updateLibraryItem, filterProjectLibrary, getProjectLibraryRevision, projectLibraryOwner, readProjectLibrary, subscribeProjectLibrary, updateProjectLibrary } from './projectLibrary';
 const projects = [
     { projectPath: '/a', title: 'Alpha', summary: 'Research', features: [] },
     { projectPath: '/b', title: 'Beta', features: [] },
@@ -67,5 +67,35 @@ describe('durable project library preferences', () => {
         expect(readProjectLibrary('machine')).toEqual({});
         updateProjectLibrary('machine', '/a', { state: 'archived' });
         expect(readProjectLibrary('machine')['/a'].state).toBe('archived');
+    });
+});
+
+describe('subproject and document library', () => {
+    it('reads existing v1 entries and keeps a direct subproject distinct from its project', () => {
+        mock.stores.a = JSON.stringify([{ machineId: 'm', projectPath: '/a', favorite: true, state: 'active' }]);
+        updateLibraryItem('m', 'feature', '/a', { state: 'deleted', title: 'Direct tasks' });
+        expect(readProjectLibrary('m')['/a']).toMatchObject({ kind: 'project', favorite: true, state: 'active' });
+        expect(readLibraryItems('m').find(item => item.kind === 'feature')).toMatchObject({ state: 'deleted' });
+    });
+    it('preserves file read context and favorite across delete, reload and restore', () => {
+        updateLibraryItem('m', 'file', '/a/features/f/tasks/t/result.md', { favorite: true, title: 'result.md', scopePath: '/a/features/f', rootPath: '/a/features/f/tasks/t', taskId: 't' });
+        updateLibraryItem('m', 'file', '/a/features/f/tasks/t/result.md', { state: 'deleted' });
+        mock.account.generation = 'reload';
+        const item = readLibraryItems('m')[0];
+        expect(item).toMatchObject({ favorite: true, state: 'deleted', taskId: 't', rootPath: '/a/features/f/tasks/t' });
+        expect(libraryItemAvailable(item, readLibraryItems('m'))).toBe(false);
+        updateLibraryItem('m', 'file', item.projectPath, { state: 'active' });
+        expect(libraryItemAvailable(readLibraryItems('m')[0], readLibraryItems('m'))).toBe(true);
+        expect(readProjectLibrary('m')).toEqual({});
+    });
+    it('hides descendants of removed parents with path-boundary isolation', () => {
+        updateLibraryItem('m', 'file', '/a/f/result.md', { favorite: true });
+        updateLibraryItem('m', 'file', '/ab/result.md', { favorite: true });
+        updateProjectLibrary('m', '/a', { state: 'archived' });
+        const items = readLibraryItems('m');
+        expect(items.filter(item => item.kind === 'file' && libraryItemAvailable(item, items)).map(item => item.projectPath)).toEqual(['/ab/result.md']);
+        updateProjectLibrary('m', '/a', { state: 'active' });
+        updateLibraryItem('m', 'feature', '/a/f', { state: 'deleted' });
+        expect(libraryItemAvailable(readLibraryItems('m').find(item => item.projectPath === '/a/f/result.md')!, readLibraryItems('m'))).toBe(false);
     });
 });

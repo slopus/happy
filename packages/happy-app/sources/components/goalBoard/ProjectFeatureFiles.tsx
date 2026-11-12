@@ -6,7 +6,7 @@ import { getRuntimeAccountSelection } from '@/auth/accountRuntime';
 import { useMachine } from '@/sync/storage';
 import type { DirectoryEntry } from '@/sync/ops';
 import { SessionFileWorkspaceProvider } from '@/components/fileWorkspace/SessionFileWorkspaceProvider';
-import { WorkspaceDirectoryTree } from '@/components/fileWorkspace/WorkspaceDirectoryTree';
+import { ProjectArchiveTree } from './ProjectArchiveTree';
 import { FileWorkspace } from '@/components/fileWorkspace/FileWorkspace';
 import { useFileWorkspace } from '@/components/fileWorkspace/context';
 import { GoalBoardButton as Button } from './GoalBoardButton';
@@ -35,7 +35,7 @@ function FeatureFilesContent({ machineId, featurePath, title, onClose }: { machi
     return <Modal visible transparent animationType="none" onRequestClose={onClose}><View style={styles.backdrop}><View style={[styles.dialog, { width: width - 32, height: height - 48 }]} testID="project-feature-files-panel">
         <View style={styles.header}><Text numberOfLines={1} style={styles.title}>{title} · {t('projectGoals.featureFiles')}</Text><Button label={t('projectGoals.featureFiles')} selected={treeOpen} onPress={() => setTreeOpen(value => !value)}><Text style={styles.link}>{t('projectGoals.featureFiles')}</Text></Button><Button label={t('common.back')} onPress={onClose}><Text style={styles.link}>{t('common.back')}</Text></Button></View>
         <View style={styles.row}>
-            {treeOpen && <View style={[styles.tree, { width: narrow ? '100%' : 300 }]}><WorkspaceDirectoryTree sessionId="" rootPath={featurePath} listDirectory={listDirectory} revision={revision} cacheKey={JSON.stringify([getRuntimeAccountSelection(), machineId, featurePath, 'feature'])} onOpenFile={path => { void workspace.openReference(path); if (narrow) setTreeOpen(false); }} /></View>}
+            {treeOpen && <View style={[styles.tree, { width: narrow ? '100%' : 300 }]}><ProjectArchiveTree machineId={machineId} scopePath={featurePath} sessionId="" rootPath={featurePath} listDirectory={listDirectory} revision={revision} cacheKey={JSON.stringify([getRuntimeAccountSelection(), machineId, featurePath, 'feature'])} onOpenFile={path => { void workspace.openReference(path); if (narrow) setTreeOpen(false); }} /></View>}
             {(!narrow || !treeOpen) && <View style={styles.document}>{workspace.snapshot.open ? <FileWorkspace framed sessionId="" fileTreeExpanded={treeOpen} onToggleFileTree={() => setTreeOpen(value => !value)} /> : <View style={styles.empty}><Text style={{ color: theme.colors.textSecondary }}>{t('fileWorkspace.empty')}</Text></View>}</View>}
         </View>
     </View></View></Modal>;

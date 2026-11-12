@@ -14,7 +14,7 @@ import { projectCacheKey, projectHistorySchema, writeProjectCache, isProjectSess
 import { SessionView } from '@/-session/SessionView';
 import { SessionFileWorkspaceProvider } from '@/components/fileWorkspace/SessionFileWorkspaceProvider';
 import { useFileWorkspace } from '@/components/fileWorkspace/context';
-import { WorkspaceDirectoryTree } from '@/components/fileWorkspace/WorkspaceDirectoryTree';
+import { ProjectArchiveTree } from './ProjectArchiveTree';
 import { FileWorkspace } from '@/components/fileWorkspace/FileWorkspace';
 import { PanelTabs } from '@/components/PanelTabs';
 import { useCachedProjectResource } from './useProjectData';
@@ -116,7 +116,7 @@ function OverviewContent(props: ProjectOverviewProps) {
     const panel = <ProjectDetailsPanel testID="project-scope-panel" style={{ backgroundColor: surface, ...(wide ? { width: rightWidth, marginLeft: projectPanelGap } : { flex: 1 }) }} tab={tab} onTab={changeTab}
         header={<><Ionicons name="compass-outline" size={17} color={theme.colors.textLink} /><Text style={styles.label}>{t('projectGoals.globalOverview')}</Text></>}
         footer={<><Button variant="primary" testID="project-scope-open-chat" label={t(history.length ? 'projectGoals.continueChat' : 'projectGoals.openChat')} disabled={chatDisabled} onPress={() => { void start(); }}><Ionicons name="chatbubble-outline" size={16} color={theme.colors.text} /><Text style={styles.body}>{t(history.length ? 'projectGoals.continueChat' : 'projectGoals.openChat')}</Text></Button>{busy && <ActivityIndicator color={theme.colors.textLink} size="small" />}</>}>
-        {tab === 'files' ? <WorkspaceDirectoryTree sessionId={conversationId ?? ''} rootPath={scopePath} listDirectory={listDirectory} onOpenFile={openFile} /> : <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.brief}>
+        {tab === 'files' ? <ProjectArchiveTree machineId={machineId} scopePath={scopePath} sessionId={conversationId ?? ''} rootPath={scopePath} listDirectory={listDirectory} onOpenFile={openFile} /> : <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.brief}>
             <Text accessibilityRole="header" style={styles.title}>{info?.title || props.title}</Text>
             <View style={styles.section}><View style={styles.line}><Text style={styles.label}>{t('projectGoals.scopeGoal')}</Text><Button variant="toolbar" label={t('projectGoals.editWithAI')} disabled={chatDisabled} onPress={() => { void start(); }}><Ionicons name="sparkles-outline" size={12} color={theme.colors.textLink} /><Text style={styles.link}>{t('projectGoals.editWithAI')}</Text></Button></View>
                 <Text selectable style={styles.goal}>{info ? info.goal || t('projectGoals.noScopeGoal') : t(props.connecting || overview.loading ? 'common.loading' : 'projectGoals.overviewUnavailable')}</Text></View>

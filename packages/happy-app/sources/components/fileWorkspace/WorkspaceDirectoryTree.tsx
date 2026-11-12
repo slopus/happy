@@ -10,13 +10,15 @@ import { useFileWorkspace } from './context';
 import { WorkspaceButton as Button } from './WorkspaceButton';
 import { DirectoryCache, getDirectoryCache } from './directoryCache';
 
-export function WorkspaceDirectoryTree({ sessionId, rootPath, onOpenFile, listDirectory = sessionWorkspaceListDirectory, cacheKey, revision }: {
+export function WorkspaceDirectoryTree({ sessionId, rootPath, onOpenFile, listDirectory = sessionWorkspaceListDirectory, cacheKey, revision, includeFile, renderFileActions }: {
     sessionId: string;
     rootPath?: string;
     onOpenFile?: (path: string) => void;
     listDirectory?: typeof sessionWorkspaceListDirectory;
     cacheKey?: string;
     revision?: string;
+    includeFile?: (path: string) => boolean;
+    renderFileActions?: (path: string) => React.ReactNode;
 }) {
     const workspace = useFileWorkspace();
     const { theme } = useUnistyles();
@@ -59,14 +61,15 @@ export function WorkspaceDirectoryTree({ sessionId, rootPath, onOpenFile, listDi
             const full = path + '/' + entry.name;
             const isDirectory = entry.type === 'directory';
             const open = expanded.has(full);
+            if (!isDirectory && includeFile && !includeFile(full)) return null;
             // Filtering is intentionally restricted to loaded folders; never scan the whole machine.
             if (!isDirectory && query && !full.toLowerCase().includes(query.toLowerCase())) return null;
             return <React.Fragment key={full}>
-                <DirectoryRow name={entry.name} full={full} depth={depth} directory={isDirectory} open={open} selected={workspace?.snapshot.active === full} onPress={() => {
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}><View style={{ flex: 1, minWidth: 0 }}><DirectoryRow name={entry.name} full={full} depth={depth} directory={isDirectory} open={open} selected={workspace?.snapshot.active === full} onPress={() => {
                     if (isDirectory) { setExpanded(value => { const next = new Set(value); if (open) next.delete(full); else next.add(full); return next; }); if (!open) void load(full); }
                     else if (onOpenFile) onOpenFile(full);
                     else void workspace?.openReference(full);
-                }} />
+                }} /></View>{!isDirectory && renderFileActions?.(full)}</View>
                 {isDirectory && open && rows(full, depth + 1)}
             </React.Fragment>;
         });

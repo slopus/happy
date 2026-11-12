@@ -19,6 +19,15 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const zhHans: TranslationStructure = {
     projectGoals: {
+        favoriteItem: ({ title }: { title: string }) => `收藏${title}`,
+        unfavoriteItem: ({ title }: { title: string }) => `取消收藏${title}`,
+        deleteItem: ({ title }: { title: string }) => `删除${title}`,
+        restoreItem: ({ title }: { title: string }) => `恢复${title}`,
+        deleteLibraryItem: "移入已删除",
+        deleteLibraryItemMessage: ({ title }: { title: string }) => `将“${title}”移入此设备的已删除？可随时恢复，原始文件和会话会保留。`,
+        savedDocument: "文档",
+        noMatchingItems: "没有匹配的条目",
+        noDeletedFiles: "暂无已删除文档",
         favorites: "收藏",
         archivedProjects: "已归档",
         deletedProjects: "已删除",
@@ -29,10 +38,10 @@ export const zhHans: TranslationStructure = {
         deleteProject: "删除项目",
         librarySaveFailed: "保存失败，请重试。",
         noMatchingProjects: "没有匹配的项目",
-        noFavorites: "还没有收藏项目",
+        noFavorites: "还没有收藏内容",
         noArchivedProjects: "暂无归档项目",
         noDeletedProjects: "暂无已删除项目",
-        favoriteHint: "点击项目卡片上的五角星，收藏常用项目。",
+        favoriteHint: "点击项目、子项目或文档旁的五角星，收藏内容会直接显示在这里。",
         projectActions: ({ title }: { title: string }) => `${title}的项目操作`,
         deleteProjectMessage: ({ title }: { title: string }) => `将“${title}”移入已删除？可在“已删除”中恢复，项目文件和会话会保留。此整理仅保存在当前设备。`,
         agreeDelivery: "约定交付",
