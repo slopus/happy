@@ -12,11 +12,13 @@ import UIKit
 ///   optional name and a line saying what it is, as desktop asks it
 ///   ("generated if left blank"); a task asks nothing and names itself
 ///   from its first message, as one sent with a blank name always has.
+///   It keeps the bot's room empty, so Task | Bot moves nothing.
 /// - `.session` (a legacy account): the computer, shown only when the
 ///   account has more than one, the folder on it, and the harness. Where
 ///   the computer's Happy Agent makes bots or tasks, Session | Bot | Task
 ///   heads it, as home's dock did: a task asks only the computer, a bot
-///   the computer and its name, which it can't go without.
+///   the computer and its name, which it can't go without. A task keeps
+///   the bot's name and note as empty room, so Bot | Task moves nothing.
 ///
 /// A bot stands under the robot and a task under the clapper board, the
 /// empty states' 128 (`NewWorkLayout.Metrics.art`). Each plays once as its
@@ -194,9 +196,10 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
         ])
     }
 
-    /// `.session`'s rows, top to bottom, as the kind shows them.
+    /// `.session`'s rows, top to bottom, as the kind lays them out: a
+    /// task's hidden name keeps a bot's room.
     private var sessionRows: [UIView] {
-        [machine, folder, harness, field].filter { !$0.isHidden }
+        [machine, folder, harness].filter { !$0.isHidden } + (sessionKind == .session ? [] : [field])
     }
 
     private var measuredNote: Measurable { Self.measured(note) }
@@ -215,15 +218,16 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
         case .work:
             return NewWorkLayout(
                 width: width, sides: sides, top: top, bottom: bottom,
-                kindHeight: kind.intrinsicContentSize.height, rows: field.isHidden ? 0 : 1,
-                note: note.isHidden ? nil : measuredNote, art: artScene != nil
+                // A task lays out a bot's name and note too, hidden.
+                kindHeight: kind.intrinsicContentSize.height, rows: 1,
+                note: measuredNote, art: artScene != nil
             )
         case .session:
             return NewWorkLayout(
                 width: width, sides: sides, top: top, bottom: bottom,
                 kindHeight: kind.isHidden ? nil : kind.intrinsicContentSize.height,
                 givingWay: sessionRows.count,
-                note: note.isHidden ? nil : measuredNote, art: artScene != nil
+                note: sessionKind == .session ? nil : measuredNote, art: artScene != nil
             )
         }
     }
@@ -275,7 +279,8 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
         }
     }
 
-    /// `.work`: a bot's name and what a bot is; a task has neither.
+    /// `.work`: a bot's name and what a bot is; a task shows neither, but
+    /// keeps their room.
     private func showNote() {
         let bot = kind.selectedSegmentIndex == 1
         if note.text != Strings.newWorkBotNote { note.text = Strings.newWorkBotNote }

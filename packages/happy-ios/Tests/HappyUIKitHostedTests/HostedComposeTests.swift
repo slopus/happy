@@ -470,7 +470,8 @@ final class HostedComposeTests: XCTestCase {
 
     /// Happy Agent's new work: a task asks no name, so it goes as a blank
     /// name does, under the clapper board; a bot asks its name and says
-    /// what it is, under the robot.
+    /// what it is, under the robot. A task keeps that room empty, so
+    /// Task | Bot moves nothing.
     func testATaskAsksNoNameAndABotDoes() async throws {
         let scene = try await hostedActiveScene()
         let window = hostedKeyWindow(in: scene)
@@ -487,14 +488,28 @@ final class HostedComposeTests: XCTestCase {
         XCTAssertEqual(panel.artScene, .clapperBoard)
         XCTAssertFalse(panel.art.isHidden)
         XCTAssertEqual(panel.kind.frame.minY, NewWorkLayout.Metrics.art + NewWorkLayout.Metrics.artToKind)
-        XCTAssertEqual(panel.frame.height, panel.kind.frame.maxY, "nothing under the kind")
+        XCTAssertGreaterThan(panel.frame.height, panel.kind.frame.maxY + NewWorkLayout.Metrics.rowHeight, "a bot's room, kept")
+        let task = [panel.frame, panel.art.frame, panel.kind.frame]
 
         panel.kind.selectedSegmentIndex = 1
         panel.kind.sendActions(for: .valueChanged)
         lay()
         XCTAssertFalse(panel.name.superview?.isHidden ?? true, "a bot asks its name")
         XCTAssertEqual(panel.artScene, .robot)
-        XCTAssertGreaterThan(panel.frame.height, panel.kind.frame.maxY + NewWorkLayout.Metrics.rowHeight)
+        XCTAssertEqual([panel.frame, panel.art.frame, panel.kind.frame], task, "Task to Bot moves nothing")
+
+        // Short of room (the keyboard up, the composer grown) the picture shrinks alike for both.
+        func short() { panel.place(panel.layout(width: root.bounds.width, top: 100, bottom: 100 + 290)) }
+        short()
+        let bot = [panel.frame, panel.art.frame, panel.kind.frame]
+        XCTAssertLessThan(panel.art.frame.width, NewWorkLayout.Metrics.art)
+        panel.kind.selectedSegmentIndex = 0
+        panel.kind.sendActions(for: .valueChanged)
+        short()
+        XCTAssertEqual([panel.frame, panel.art.frame, panel.kind.frame], bot, "short of room, Bot to Task moves nothing")
+        panel.kind.selectedSegmentIndex = 1
+        panel.kind.sendActions(for: .valueChanged)
+        lay()
         panel.name.text = "Newsletter"
         panel.name.sendActions(for: .editingChanged)
         XCTAssertEqual(changes.last, NewTask.Choice(kind: .bot, name: "Newsletter"))
@@ -525,6 +540,7 @@ final class HostedComposeTests: XCTestCase {
         XCTAssertNil(panel.artScene, "a session has no picture")
         XCTAssertTrue(panel.art.isHidden)
         let moves = !UIAccessibility.isReduceMotionEnabled
+        var places: [HomeDockKind: [CGRect]] = [:]
         for (kind, scene) in [(HomeDockKind.bot, StateScene.robot), (.session, nil), (.bot, .robot), (.task, .clapperBoard)] {
             try pick(kind, in: panel)
             try await until { panel.sessionKind == kind }
@@ -542,7 +558,10 @@ final class HostedComposeTests: XCTestCase {
             XCTAssertEqual(art.width, art.height)
             XCTAssertEqual(art.midX, panel.convert(panel.kind.frame, to: chat.view).midX, accuracy: 0.5, "\(kind): over the kind")
             XCTAssertEqual(panel.kind.frame.minY - panel.art.frame.maxY, NewWorkLayout.Metrics.artToKind, accuracy: 0.5)
+            places[kind] = [panel.frame, panel.art.frame, panel.kind.frame, panel.machine.frame]
         }
+        // A task keeps a bot's name and note as empty room: Bot | Task moves nothing.
+        XCTAssertEqual(places[.task], places[.bot])
         assertCentred(panel, in: chat)
     }
 

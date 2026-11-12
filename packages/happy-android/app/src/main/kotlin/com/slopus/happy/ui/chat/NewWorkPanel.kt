@@ -46,6 +46,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.selected
@@ -123,6 +124,9 @@ object NewWorkSpec {
     /** The block's width in a room [width] wide: 24 in from either side, at most 320. */
     fun blockWidth(width: Dp): Dp = minOf(maxWidth, width - side * 2).coerceAtLeast(0.dp)
 }
+
+/** Room kept for what another kind shows: laid out, but neither drawn nor read out. */
+fun Modifier.reserved(): Modifier = alpha(0f).clearAndSetSemantics {}
 
 /** The picture new work of this kind stands under: the robot for a bot, the clapper board for a task. */
 val WorkKind.art: StateArt
@@ -213,6 +217,7 @@ fun NewWorkRoom(shown: Boolean, modifier: Modifier = Modifier, art: StateArt? = 
  * message fills. A bot asks, 16 under it, its name, a 44 capsule on the
  * input ground with its 16 text centred, "Name (optional)" until typed, and
  * 10 under that says what a bot is (13/18 secondary, centred, wrapping).
+ * A task keeps that room empty, so switching moves nothing.
  * Every change goes to [onChange] as it is made, a kind change with a tick.
  * Return in the name goes on to the composer ([onReturn]). Fixed once its
  * first message is in.
@@ -232,26 +237,31 @@ fun NewWorkChoicePanel(work: NewWork, onChange: (WorkChoice) -> Unit, onReturn: 
             // A task is never named here: it goes as a blank name does.
             onPick = { onChange(if (it == 1) WorkChoice(WorkKind.Bot, name) else WorkChoice(WorkKind.Task, "")) },
         )
-        if (work.choice.kind != WorkKind.Bot) return@Column
+        // A task asks nothing more, but keeps a bot's room empty, so Task | Bot moves nothing.
+        val bot = work.choice.kind == WorkKind.Bot
         Spacer(Modifier.height(NewWorkSpec.kindToRows))
-        NewWorkNameField(
-            value = name,
-            onValueChange = {
-                name = it
-                onChange(WorkChoice(work.choice.kind, it))
-            },
-            placeholder = stringResource(R.string.new_work_name),
-            enabled = enabled,
-            onReturn = onReturn,
-            capitalization = KeyboardCapitalization.Sentences,
-        )
+        if (bot) {
+            NewWorkNameField(
+                value = name,
+                onValueChange = {
+                    name = it
+                    onChange(WorkChoice(work.choice.kind, it))
+                },
+                placeholder = stringResource(R.string.new_work_name),
+                enabled = enabled,
+                onReturn = onReturn,
+                capitalization = KeyboardCapitalization.Sentences,
+            )
+        } else {
+            Spacer(Modifier.height(NewWorkSpec.rowHeight))
+        }
         Spacer(Modifier.height(NewWorkSpec.rowsToNote))
         Text(
             stringResource(R.string.new_work_bot_note),
             style = NewWorkSpec.note,
             color = colors.textSecondary,
             textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().testTag(NewWorkTags.NOTE),
+            modifier = Modifier.fillMaxWidth().then(if (bot) Modifier.testTag(NewWorkTags.NOTE) else Modifier.reserved()),
         )
     }
 }

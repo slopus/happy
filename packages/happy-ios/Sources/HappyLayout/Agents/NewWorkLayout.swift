@@ -63,7 +63,7 @@ public struct NewWorkLayout: Equatable, Sendable {
         if let kindHeight {
             let kindWidth = min(M.kindWidth, blockWidth)
             kind = CGRect(x: (blockWidth - kindWidth) / 2, y: 0, width: kindWidth, height: kindHeight)
-            // With no rows (a task) the block ends at the kind.
+            // With no rows the block ends at the kind.
             y = kindHeight + (count > 0 ? M.kindToRows : 0)
         }
         var rows: [CGRect] = []

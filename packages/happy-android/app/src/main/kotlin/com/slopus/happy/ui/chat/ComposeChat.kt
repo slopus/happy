@@ -28,7 +28,9 @@ import com.slopus.happy.ui.components.MenuSpec
 import com.slopus.happy.ui.home.HARNESS_SETUP_HELP_URL
 import com.slopus.happy.ui.theme.HappyTheme
 import java.util.Locale
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -390,7 +392,7 @@ fun ComposeChat.Dialogs() {
  *   can't take the send while it can't.
  * - A session's folder and harness; a bot's name ("Name your bot", its
  *   refusal said inside the field) and what a bot is; a task asks nothing
- *   more.
+ *   more, and keeps that room empty, so Bot | Task moves nothing.
  *
  * Fixed while the start runs; it fades once the session has started.
  */
@@ -460,7 +462,8 @@ fun ComposeTarget(compose: ComposeChat, onReturn: () -> Unit = {}) {
                 add { HarnessRow(compose, current, awaits, enabled, open == NewSessionPage.Agent, onOpen = { open = NewSessionPage.Agent }, onClose = { open = null }) }
             }
             ComposeKind.Bot -> add { BotNameRow(compose, bot.name, enabled, onReturn) }
-            ComposeKind.Task -> Unit
+            // A task asks only the computer, but keeps a bot's room empty, so Bot | Task moves nothing.
+            ComposeKind.Task -> add { Spacer(Modifier.fillMaxWidth().height(NewWorkSpec.rowHeight)) }
         }
     }
     NewWorkGivingWay(
@@ -477,14 +480,14 @@ fun ComposeTarget(compose: ComposeChat, onReturn: () -> Unit = {}) {
             )
         },
         rows = rows,
-        note = if (kind == ComposeKind.Bot) {
+        note = if (kind != ComposeKind.Session) {
             {
                 Text(
                     stringResource(R.string.home_dock_bot_lede),
                     style = NewWorkSpec.note,
                     color = HappyTheme.colors.textSecondary,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().testTag(NewWorkTags.NOTE),
+                    modifier = Modifier.fillMaxWidth().then(if (kind == ComposeKind.Bot) Modifier.testTag(NewWorkTags.NOTE) else Modifier.reserved()),
                 )
             }
         } else {

@@ -22,6 +22,7 @@ import com.slopus.happy.ui.PHONE
 import com.slopus.happy.model.NewSessionPage
 import com.slopus.happy.model.ComposeKind
 import com.slopus.happy.ui.bounds
+import com.slopus.happy.ui.components.StateArt
 import com.slopus.happy.ui.chat.ChatScreenTags
 import com.slopus.happy.ui.chat.ComposeChatTags
 import com.slopus.happy.ui.chat.MessageTags
@@ -309,8 +310,12 @@ class ComposeJourneyTest {
         rule.node(NewWorkTags.FOLDER).assertDoesNotExist()
         // A task is Happy Agent's: its first send takes pictures (20e20e0a8).
         rule.node(AttachmentStripTags.ADD).assertExists()
+        fun places(art: StateArt) = listOf(NewWorkTags.art(art), ComposeChatTags.kind(ComposeKind.Task), NewWorkTags.MACHINE, ComposerTags.INPUT).map { rule.node(it).bounds }
+        val task = places(StateArt.Action)
         rule.node(ComposeChatTags.kind(ComposeKind.Bot)).performClick()
         rule.waitFor(NewWorkTags.NAME_FIELD)
+        // Bot | Task moves nothing: a task keeps a bot's name and note as empty room.
+        assertEquals(task, places(StateArt.Ready))
         rule.node(NewWorkTags.FOLDER).assertDoesNotExist()
         rule.node(ComposerTags.INPUT).performTextInput("Own the releases")
         rule.node(ComposerTags.PRIMARY).performClick()

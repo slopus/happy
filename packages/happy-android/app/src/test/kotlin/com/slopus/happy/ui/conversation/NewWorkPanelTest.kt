@@ -90,7 +90,8 @@ class NewWorkPanelTest {
         // A task asks no name and says nothing under the kind: its first message names it.
         rule.node(NewWorkTags.NAME_FIELD).assertDoesNotExist()
         rule.node(NewWorkTags.NOTE).assertDoesNotExist()
-        assertDp("the kind ends the block", panel.bottom, kind.bottom)
+        rule.onNodeWithText("A bot is one lasting conversation with a folder of its own.").assertDoesNotExist()
+        assertTrue("a bot's room kept under the kind", panel.bottom > kind.bottom + 16.dp + 44.dp)
         // The old empty line gives way to the panel.
         rule.node(ConversationScreenTags.EMPTY).assertDoesNotExist()
     }
@@ -109,6 +110,36 @@ class NewWorkPanelTest {
         val note = rule.node(NewWorkTags.NOTE).bounds
         assertDp("10 under the name", name.bottom + 10.dp, note.top)
         assertDp("the note ends the block", panel.bottom, note.bottom)
+    }
+
+    @Test fun `Task and Bot stand in the same place, a task keeping a bot's room empty`() {
+        show()
+        fun places(art: StateArt) = listOf(
+            rule.node(NewWorkTags.PANEL).bounds,
+            rule.node(NewWorkTags.art(art)).bounds,
+            rule.node(NewWorkTags.KIND).bounds,
+            rule.node(ConversationComposerTags.COMPOSER).bounds,
+        )
+        val task = places(StateArt.Action)
+        rule.node(NewWorkTags.kind(WorkKind.Bot)).performClick()
+        rule.waitForIdle()
+        assertEquals("Task to Bot", task, places(StateArt.Ready))
+        rule.node(NewWorkTags.kind(WorkKind.Task)).performClick()
+        rule.waitForIdle()
+        assertEquals("back to Task", task, places(StateArt.Action))
+    }
+
+    @Test
+    @Config(qualifiers = "w411dp-h420dp-xxhdpi")
+    fun `short of room the picture shrinks alike for Task and Bot`() {
+        show()
+        val task = rule.node(NewWorkTags.art(StateArt.Action)).bounds
+        assertTrue("smaller than 128: ${task.width}", task.width < NewWorkSpec.art)
+        val kind = rule.node(NewWorkTags.KIND).bounds
+        rule.node(NewWorkTags.kind(WorkKind.Bot)).performClick()
+        rule.waitForIdle()
+        assertEquals(task, rule.node(NewWorkTags.art(StateArt.Ready)).bounds)
+        assertEquals(kind, rule.node(NewWorkTags.KIND).bounds)
     }
 
     @Test fun `Bot and a name are handed on as picked, and the line follows the kind`() {

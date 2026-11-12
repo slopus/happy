@@ -189,9 +189,9 @@ final class NewWorkLayoutTests: XCTestCase {
         XCTAssertEqual(layout.block.midY, (106 + 760) / 2, accuracy: 0.001)
     }
 
-    /// A task asks nothing: its block is the picture and the kind, ending
-    /// at the kind so the pair centres as one.
-    func testATaskEndsAtItsKind() throws {
+    /// With no rows the block is the picture and the kind, ending at the
+    /// kind so the pair centres as one.
+    func testWithNoRowsTheBlockEndsAtTheKind() throws {
         let layout = NewWorkLayout(width: 393, top: 106, bottom: 760, kindHeight: 32, rows: 0, note: nil, art: true)
         XCTAssertTrue(layout.rows.isEmpty)
         XCTAssertEqual(layout.block.height, try XCTUnwrap(layout.kind).maxY)
