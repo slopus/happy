@@ -57,14 +57,15 @@ final class NewWorkLayoutTests: XCTestCase {
     }
 
     /// Too little room (a landscape phone with the keyboard up): it doesn't
-    /// fit and is hidden, laid out from the bar rather than over it.
+    /// fit, and stands on the composer, running up under the bar.
     func testTooLittleRoomDoesNotFit() {
         let height = 32 + M.kindToRows + M.rowHeight + M.rowsToNote + 40
         let edge = work(top: 100, bottom: 100 + height + 2 * M.margin)
         XCTAssertTrue(edge.fits)
         let short = work(top: 100, bottom: 100 + height + 2 * M.margin - 1)
         XCTAssertFalse(short.fits)
-        XCTAssertEqual(short.block.minY, 100 + M.margin)
+        XCTAssertEqual(short.block.maxY, short.block.minY + height)
+        XCTAssertEqual(short.block.maxY, 100 + height + M.margin - 1, "a margin over the composer")
     }
 
     /// Legacy with one computer: folder and harness, no kind or note.
@@ -130,7 +131,7 @@ final class NewWorkLayoutTests: XCTestCase {
         XCTAssertEqual(layout.block.height, tight)
         let short = bot(bottom: 103 + tight + 2 * M.margin - 1)
         XCTAssertFalse(short.fits, "a phone held sideways")
-        XCTAssertEqual(short.block.minY, 103 + M.margin)
+        XCTAssertEqual(short.block.maxY, 103 + tight + M.margin - 1, "on the composer, a margin over it")
     }
 
     /// The computer's status is a chip on the row's top-right corner,
@@ -199,34 +200,42 @@ final class NewWorkLayoutTests: XCTestCase {
         XCTAssertEqual(layout.block.midY, (106 + 760) / 2, accuracy: 0.001)
     }
 
-    /// Short of room it shrinks to 96, then 64, then goes, and what the
-    /// block asks and says stays as it was.
-    func testShortOfRoomThePictureShrinksThenGoes() {
-        let height = 32 + M.kindToRows + M.rowHeight + M.rowsToNote + 40
-        for side: CGFloat in [96, 64] {
-            let layout = NewWorkLayout(width: 393, top: 100, bottom: 100 + height + side + M.artToKind + 2 * M.margin, kindHeight: 32, rows: 1, note: note, art: true)
-            XCTAssertEqual(layout.art?.width, side)
-            XCTAssertNotNil(layout.note, "\(side): the note stays")
+    /// Short of room the picture keeps its size and place over the kind:
+    /// the block shifts up with the composer, its foot a margin over it,
+    /// and runs up under the bar, picture and all.
+    func testShortOfRoomThePictureStaysAndTheBlockShiftsUp() throws {
+        let height = 128 + M.artToKind + 32 + M.kindToRows + M.rowHeight + M.rowsToNote + 40
+        var last: CGFloat?
+        for bottom: CGFloat in [760, 100 + height + 2 * M.margin, 400, 300, 200] {
+            let layout = NewWorkLayout(width: 393, top: 100, bottom: bottom, kindHeight: 32, rows: 1, note: note, art: true)
+            XCTAssertEqual(layout.art, CGRect(x: (320 - 128) / 2, y: 0, width: 128, height: 128), "\(bottom)")
+            XCTAssertEqual(try XCTUnwrap(layout.kind).minY, 128 + M.artToKind, "\(bottom)")
+            XCTAssertNotNil(layout.note, "\(bottom): the note stays")
+            XCTAssertEqual(layout.block.height, height, "\(bottom)")
+            XCTAssertEqual(layout.fits, bottom >= 100 + height + 2 * M.margin, "\(bottom)")
+            if !layout.fits { XCTAssertEqual(layout.block.maxY, bottom - M.margin, "\(bottom): on the composer") }
+            if let last { XCTAssertLessThan(layout.block.minY, last, "\(bottom): shifted up with the composer") }
+            last = layout.block.minY
         }
-        let none = NewWorkLayout(width: 393, top: 100, bottom: 100 + height + 64 + M.artToKind + 2 * M.margin - 1, kindHeight: 32, rows: 1, note: note, art: true)
-        XCTAssertNil(none.art)
-        XCTAssertTrue(none.fits)
-        XCTAssertEqual(none, work(top: 100, bottom: 100 + height + 64 + M.artToKind + 2 * M.margin - 1))
+        let under = NewWorkLayout(width: 393, top: 100, bottom: 200, kindHeight: 32, rows: 1, note: note, art: true)
+        XCTAssertLessThan(under.block.minY, 100, "under the bar rather than gone")
     }
 
-    /// A legacy account's bot: the robot shrinks and goes before the note.
-    func testABotsPictureGivesWayBeforeTheNote() throws {
+    /// A legacy account's bot: the note and then the gaps give way, the
+    /// robot never; with no room left the block stands on the composer.
+    func testABotsPictureOutlastsTheNote() throws {
         let full = NewWorkLayout(width: 393, top: 103, bottom: 760, kindHeight: 32, givingWay: 2, note: botNote, art: true)
         XCTAssertEqual(full.art?.width, 128)
         XCTAssertEqual(try XCTUnwrap(full.kind).minY, 128 + M.artToKind)
         XCTAssertTrue(full.showsNote)
-        let rows = 32 + M.kindToRows + 2 * M.rowHeight + M.rowGap + M.rowsToNote + 72
-        let small = NewWorkLayout(width: 393, top: 103, bottom: 103 + rows + 64 + M.artToKind + 2 * M.margin, kindHeight: 32, givingWay: 2, note: botNote, art: true)
-        XCTAssertEqual(small.art?.width, 64)
-        XCTAssertTrue(small.showsNote)
-        let none = NewWorkLayout(width: 393, top: 103, bottom: 103 + rows + 2 * M.margin, kindHeight: 32, givingWay: 2, note: botNote, art: true)
-        XCTAssertNil(none.art)
-        XCTAssertTrue(none.showsNote, "the note outlasts the picture")
-        XCTAssertEqual(none, bot(bottom: 103 + rows + 2 * M.margin))
+        let rows = 128 + M.artToKind + 32 + M.kindToRows + 2 * M.rowHeight + M.rowGap
+        let noNote = NewWorkLayout(width: 393, top: 103, bottom: 103 + rows + 2 * M.margin, kindHeight: 32, givingWay: 2, note: botNote, art: true)
+        XCTAssertTrue(noNote.fits)
+        XCTAssertFalse(noNote.showsNote, "the note goes first")
+        XCTAssertEqual(noNote.art?.width, 128, "the robot stays")
+        let short = NewWorkLayout(width: 393, top: 103, bottom: 300, kindHeight: 32, givingWay: 2, note: botNote, art: true)
+        XCTAssertFalse(short.fits)
+        XCTAssertEqual(short.art?.width, 128, "the robot stays")
+        XCTAssertEqual(short.block.maxY, 300 - M.margin, "on the composer")
     }
 }

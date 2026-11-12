@@ -52,6 +52,14 @@ public enum StateScene: String, CaseIterable, Sendable {
     /// lock.
     case cloudVariation = "cloud-variation"
     case tree
+
+    /// The frame it rests on, when that is not its last: the clapper board
+    /// with "Action!" written on it, which its last frame has wiped. Such a
+    /// scene plays only when asked, a whole turn from this frame back to it
+    /// (the sticker loops), and otherwise holds it.
+    var restFrame: CGFloat? {
+        self == .clapperBoard ? 60 : nil
+    }
 }
 
 /// One state picture in a fixed square, drawn the way desktop draws it
@@ -60,7 +68,9 @@ public enum StateScene: String, CaseIterable, Sendable {
 /// It never loops; this is the rule for every animated emoji and sticker
 /// in the app, so any new one is a scene drawn here. The scene plays once when the state it illustrates
 /// appears and then holds its last frame, which for every animation is the
-/// pose it was drawn to return to, so the held picture is worth holding.
+/// pose it was drawn to return to, so the held picture is worth holding. A
+/// scene whose last frame isn't that pose names the one it is
+/// (`StateScene.restFrame`), and moves only when asked.
 /// After that it moves only when a reader asks: a tap, or the accessibility
 /// action. A replay is refused while one is running, so a repeated tap
 /// cannot turn "again" into a loop.
@@ -100,7 +110,7 @@ public final class StateSceneView: UIView {
     public var scene: StateScene {
         didSet {
             guard scene != oldValue else { return }
-            load()
+            load(switching: true)
         }
     }
 
@@ -178,7 +188,9 @@ public final class StateSceneView: UIView {
 
     // MARK: Loading
 
-    private func load() {
+    /// `switching`: from one scene to another on screen, where one already
+    /// read is shown at once rather than a blank frame while it arrives.
+    private func load(switching: Bool = false) {
         loading?.cancel()
         animationView.stop()
         animationView.animation = nil
@@ -186,6 +198,12 @@ public final class StateSceneView: UIView {
         isPlaying = false
         hasPlayed = false
         let scene = scene
+        if switching, let animation = Self.cache.object(forKey: scene.rawValue as NSString) {
+            loading = nil
+            pending = animation
+            attach()
+            return
+        }
         loading = Task { [weak self] in
             let animation = await Task.detached(priority: .userInitiated) { Self.read(scene) }.value
             guard let self, !Task.isCancelled, self.scene == scene, let animation else { return }
@@ -224,9 +242,30 @@ public final class StateSceneView: UIView {
     /// Plays it again, if it is not already playing and motion is allowed.
     /// This is what a tap and the accessibility action do.
     public func replay() {
-        guard !UIAccessibility.isReduceMotionEnabled, animationView.animation != nil, !isPlaying else { return }
-        animationView.currentProgress = 0
-        start()
+        guard !UIAccessibility.isReduceMotionEnabled, let animation = animationView.animation, !isPlaying else { return }
+        guard let rest = scene.restFrame else {
+            animationView.currentProgress = 0
+            start()
+            return
+        }
+        // Round from its rest frame: on to the end, then from the start back to it.
+        hasPlayed = true
+        isPlaying = true
+        animationView.play(fromFrame: rest, toFrame: animation.endFrame, loopMode: .playOnce) { [weak self] finished in
+            guard let self, finished, self.isPlaying else { return }
+            self.animationView.play(fromFrame: animation.startFrame, toFrame: rest, loopMode: .playOnce) { [weak self] _ in
+                self?.isPlaying = false
+            }
+        }
+    }
+
+    /// The frame it holds: its rest frame, or its last.
+    private func hold() {
+        if let rest = scene.restFrame {
+            animationView.currentFrame = rest
+        } else {
+            animationView.currentProgress = 1
+        }
     }
 
     /// Hears every tap, motion reduced or not.
@@ -274,6 +313,9 @@ public final class StateSceneView: UIView {
     /// Where the one play has got to, 0…1. The last frame is 1.
     var progress: CGFloat { animationView.currentProgress }
 
+    /// The frame shown now. Tests read this.
+    var currentFrame: CGFloat { animationView.currentFrame }
+
     /// Whether the animation has been read yet.
     var isLoaded: Bool { animationView.animation != nil }
 
@@ -285,7 +327,7 @@ public final class StateSceneView: UIView {
             // The pose it was drawn to return to, held, for good.
             isPlaying = false
             animationView.pause()
-            animationView.currentProgress = 1
+            hold()
             return
         }
         guard isVisible else {
@@ -298,10 +340,15 @@ public final class StateSceneView: UIView {
             return
         }
         guard !isPlaying else { return }
+        if scene.restFrame != nil {
+            // It moves only when asked; a turn cut short goes back to rest.
+            if animationView.currentFrame != scene.restFrame { hold() }
+            return
+        }
         switch play {
         case .onDemand where !hasPlayed:
             // Never played on its own: the held frame from the start.
-            animationView.currentProgress = 1
+            hold()
         case .onDemand, .onAppear:
             // Mid-play and interrupted, or appearing for the first time.
             guard !hasPlayed || animationView.currentProgress < 1 else { return }

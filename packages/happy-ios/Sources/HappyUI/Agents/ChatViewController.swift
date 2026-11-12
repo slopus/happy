@@ -811,12 +811,12 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
 
     /// The panel centred between the bar's foot and the card's top, so it
     /// moves with the card, in the same animation, as the keyboard comes
-    /// and goes.
+    /// and goes. Short of room it stands on the card and runs up under the
+    /// bar; it is never hidden for it.
     private func layoutNewWorkPanel(above card: CGRect) {
         guard let newWorkPanel, !newWorkPanelGone else { return }
         let layout = newWorkPanel.layout(width: view.bounds.width, sides: LayoutInsets(view.safeAreaInsets), top: view.safeAreaInsets.top, bottom: card.minY)
         newWorkPanel.place(layout)
-        newWorkPanel.isHidden = !layout.fits
     }
 
     /// The first message is in: the panel fades, and the conversation is

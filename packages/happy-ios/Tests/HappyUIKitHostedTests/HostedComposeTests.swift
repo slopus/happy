@@ -498,11 +498,15 @@ final class HostedComposeTests: XCTestCase {
         XCTAssertEqual(panel.artScene, .robot)
         XCTAssertEqual([panel.frame, panel.art.frame, panel.kind.frame], task, "Task to Bot moves nothing")
 
-        // Short of room (the keyboard up, the composer grown) the picture shrinks alike for both.
-        func short() { panel.place(panel.layout(width: root.bounds.width, top: 100, bottom: 100 + 290)) }
+        // Short of room (the keyboard up, the composer grown) the picture keeps its size, and the
+        // block stands on the composer, running up under the bar, alike for both.
+        func short() { panel.place(panel.layout(width: root.bounds.width, top: 100, bottom: 100 + 220)) }
         short()
         let bot = [panel.frame, panel.art.frame, panel.kind.frame]
-        XCTAssertLessThan(panel.art.frame.width, NewWorkLayout.Metrics.art)
+        XCTAssertEqual(panel.art.frame.width, NewWorkLayout.Metrics.art)
+        XCTAssertFalse(panel.art.isHidden, "the picture never goes")
+        XCTAssertEqual(panel.frame.maxY, 100 + 220 - NewWorkLayout.Metrics.margin, "on the composer")
+        XCTAssertLessThan(panel.frame.minY, 100, "under the bar")
         panel.kind.selectedSegmentIndex = 0
         panel.kind.sendActions(for: .valueChanged)
         short()
@@ -524,8 +528,8 @@ final class HostedComposeTests: XCTestCase {
     }
 
     /// Bot stands under the robot and Task under the clapper board, each
-    /// playing once as its kind is picked, again when picked again; a
-    /// session has none.
+    /// still as its kind is picked, and played only by a tap; a session
+    /// has none.
     func testEachKindStandsUnderItsPicture() async throws {
         let log = SpawnLog()
         let (home, navigation, window, _, _) = try await legacyHome(happyAgent: true, log: log)
@@ -551,18 +555,24 @@ final class HostedComposeTests: XCTestCase {
             }
             XCTAssertEqual(panel.art.scene, scene)
             try await until { panel.art.isLoaded && !panel.art.isHidden }
-            if moves { try await until { panel.art.isAnimating } }
+            try await Task.sleep(for: .milliseconds(300))
+            XCTAssertFalse(panel.art.isAnimating, "\(kind): still until tapped")
+            if let rest = scene.restFrame {
+                XCTAssertEqual(panel.art.currentFrame, rest, accuracy: 0.5, "\(kind): at rest")
+            } else {
+                XCTAssertEqual(panel.art.progress, 1, accuracy: 0.001, "\(kind): at rest")
+            }
             let art = try XCTUnwrap(panel.art.superview).convert(panel.art.frame, to: chat.view)
-            // With the keyboard up it may stand at a smaller step (`NewWorkLayout.Metrics.artSizes`).
-            XCTAssertTrue(NewWorkLayout.Metrics.artSizes.contains(art.width), "\(kind): \(art.width)")
-            XCTAssertEqual(art.width, art.height)
+            XCTAssertEqual(art.size, CGSize(width: NewWorkLayout.Metrics.art, height: NewWorkLayout.Metrics.art), "\(kind): never smaller")
             XCTAssertEqual(art.midX, panel.convert(panel.kind.frame, to: chat.view).midX, accuracy: 0.5, "\(kind): over the kind")
             XCTAssertEqual(panel.kind.frame.minY - panel.art.frame.maxY, NewWorkLayout.Metrics.artToKind, accuracy: 0.5)
             places[kind] = [panel.frame, panel.art.frame, panel.kind.frame, panel.machine.frame]
         }
         // A task keeps a bot's name and note as empty room: Bot | Task moves nothing.
         XCTAssertEqual(places[.task], places[.bot])
-        assertCentred(panel, in: chat)
+        // A tap plays it, once.
+        panel.art.replay()
+        if moves { XCTAssertTrue(panel.art.isAnimating, "a tap plays it") }
     }
 
     /// A bot needs its name: without one the name field asks for it in

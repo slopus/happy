@@ -32,6 +32,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
 import com.airbnb.lottie.compose.LottieAnimation
+import com.airbnb.lottie.compose.LottieClipSpec
 import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.rememberLottieAnimatable
 import com.airbnb.lottie.compose.rememberLottieComposition
@@ -58,7 +59,7 @@ import com.slopus.happy.ui.theme.happyTextStyle
  * Waiting has none either (desktop's snail): a read shows the platform's
  * spinner ([LoadingIndicator]).
  */
-enum class StateArt(@RawRes val raw: Int) {
+enum class StateArt(@RawRes val raw: Int, val restFrame: Float? = null) {
     /** What is missing can be made right here, beside the button that makes it (wand, `8de70508…`). */
     Make(R.raw.state_wand),
 
@@ -74,8 +75,11 @@ enum class StateArt(@RawRes val raw: Int) {
     /** Nothing made to keep yet: the empty Artifacts list (yellow ticket, `8715ac66…`). */
     Tickets(R.raw.state_tickets),
 
-    /** A task about to be made: over new work's Task, as a bot stands under [Ready] (clapper board, `321f9dfe…`). */
-    Action(R.raw.state_clapper_board),
+    /**
+     * A task about to be made: over new work's Task, as a bot stands under [Ready] (clapper board, `321f9dfe…`).
+     * It rests on frame 60, "Action!" written on it, which its last frame has wiped (happy-ios `StateScene.restFrame`).
+     */
+    Action(R.raw.state_clapper_board, restFrame = 60f),
 }
 
 object StateAnimationTags {
@@ -88,22 +92,26 @@ object StateAnimationTags {
  * and 96), drawn whether or not the animation has loaded, so nothing around
  * it moves. As desktop's LottieScene: it plays once when it appears and
  * holds its last frame, the pose it was drawn to return to; a tap plays it
- * again. It runs only while the screen is resumed, so it waits through the
- * background and goes on where it stopped. With animations removed it shows
- * the last frame and never moves.
+ * again. Not [autoplay], it holds that frame from the start and moves only
+ * when tapped. It runs only while the screen is resumed, so it waits through
+ * the background and goes on where it stopped. With animations removed it
+ * shows the last frame and never moves. Art with a [StateArt.restFrame]
+ * rests there instead, and a tap plays it a whole turn round to it.
  */
 @Composable
-fun StateAnimation(art: StateArt, modifier: Modifier = Modifier, size: Dp = 128.dp) {
+fun StateAnimation(art: StateArt, modifier: Modifier = Modifier, size: Dp = 128.dp, autoplay: Boolean = true) {
     // Plays asked for; kept through recreation, so a rotation doesn't replay it.
-    var requested by rememberSaveable(art) { mutableIntStateOf(1) }
-    SceneAnimation(art.raw, requested, { requested = it + 1 }, modifier, size)
+    var requested by rememberSaveable(art) { mutableIntStateOf(if (autoplay) 1 else 0) }
+    SceneAnimation(art.raw, requested, { requested = it + 1 }, modifier, size, art.restFrame)
 }
 
 /**
  * [raw] as [StateAnimation] plays it, for a caller that says when: it plays
  * once each time [requested] passes the plays it has finished, and
- * otherwise holds its last frame. A tap asks [onReplay] for one more, with
- * the plays finished so far; null, it can't be tapped.
+ * otherwise holds its last frame, or [restFrame]: from there a play goes on
+ * to the end and round from the start back to it (the art loops). A tap
+ * asks [onReplay] for one more, with the plays finished so far; null, it
+ * can't be tapped.
  */
 @Composable
 fun SceneAnimation(
@@ -112,6 +120,7 @@ fun SceneAnimation(
     onReplay: ((played: Int) -> Unit)?,
     modifier: Modifier = Modifier,
     size: Dp = 128.dp,
+    restFrame: Float? = null,
 ) {
     val reduceMotion = rememberReduceMotion()
     val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(raw))
@@ -122,11 +131,19 @@ fun SceneAnimation(
     var played by rememberSaveable(raw) { mutableIntStateOf(0) }
     LaunchedEffect(composition, reduceMotion, active, requested) {
         val loaded = composition ?: return@LaunchedEffect
+        val rest = restFrame?.let { loaded.getProgressForFrame(it) } ?: 1f
         if (reduceMotion || played >= requested) {
-            animatable.snapTo(loaded, progress = 1f)
+            animatable.snapTo(loaded, progress = rest)
             return@LaunchedEffect
         }
         if (!active) return@LaunchedEffect
+        if (restFrame != null) {
+            // A whole turn from rest back to it; one cut short starts over.
+            animatable.animate(loaded, iterations = 1, clipSpec = null, initialProgress = rest)
+            animatable.animate(loaded, iterations = 1, clipSpec = LottieClipSpec.Progress(0f, rest), initialProgress = 0f)
+            played = requested
+            return@LaunchedEffect
+        }
         // Stopped by the background, it goes on from where it was; a replay starts over.
         val resuming = animatable.composition == loaded && played == requested - 1
         val from = animatable.progress.takeIf { resuming && it < 1f } ?: 0f

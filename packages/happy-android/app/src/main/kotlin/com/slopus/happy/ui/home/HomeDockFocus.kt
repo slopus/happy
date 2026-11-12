@@ -221,7 +221,7 @@ fun HomeDockFocus(state: HomeDockState, actions: HomeDockActions, modifier: Modi
                 .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars)),
         ) {
             if (state.bot != null && standalone) {
-                // A bot stands under the robot, in the room over the header, at the size that room allows.
+                // A bot stands under the robot, in the room over the header, always 128.
                 if (state.creatingBot) NewWorkArtAbove(StateArt.Ready, Modifier.weight(1f))
                 BotKindHeader(
                     state.creatingBot,

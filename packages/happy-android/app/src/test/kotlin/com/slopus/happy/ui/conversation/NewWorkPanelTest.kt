@@ -131,11 +131,14 @@ class NewWorkPanelTest {
 
     @Test
     @Config(qualifiers = "w411dp-h420dp-xxhdpi")
-    fun `short of room the picture shrinks alike for Task and Bot`() {
+    fun `short of room the picture keeps its size and the block shifts up, alike for Task and Bot`() {
         show()
         val task = rule.node(NewWorkTags.art(StateArt.Action)).bounds
-        assertTrue("smaller than 128: ${task.width}", task.width < NewWorkSpec.art)
+        assertDp("never smaller", NewWorkSpec.art, task.width)
         val kind = rule.node(NewWorkTags.KIND).bounds
+        val panel = rule.node(NewWorkTags.PANEL).bounds
+        val composer = rule.node(ConversationComposerTags.COMPOSER).bounds
+        assertTrue("over the composer: $panel, $composer", panel.bottom <= composer.top)
         rule.node(NewWorkTags.kind(WorkKind.Bot)).performClick()
         rule.waitForIdle()
         assertEquals(task, rule.node(NewWorkTags.art(StateArt.Ready)).bounds)
@@ -221,13 +224,16 @@ class NewWorkPanelTest {
 
     @Test
     @Config(qualifiers = "w411dp-h260dp-xxhdpi")
-    fun `with no room between the bar and the composer the block doesn't show`() {
-        // A bot's block: its name and note make it the taller kind.
+    fun `with no room between the bar and the composer the block stands on the composer, running up under the bar`() {
         state = state.copy(newWork = NewWork(WorkChoice(WorkKind.Bot)))
         show()
-        val shown = rule.onAllNodes(androidx.compose.ui.test.hasTestTag(NewWorkTags.PANEL), useUnmergedTree = true)
-            .fetchSemanticsNodes().any { it.layoutInfo.isPlaced }
-        assertTrue("block not placed", !shown)
+        val art = rule.node(NewWorkTags.art(StateArt.Ready)).bounds
+        val panel = rule.node(NewWorkTags.PANEL).bounds
+        val bar = rule.node(ConversationScreenTags.BAR).bounds
+        val composer = rule.node(ConversationComposerTags.COMPOSER).bounds
+        assertDp("the picture never goes or shrinks", NewWorkSpec.art, art.width)
+        assertEquals("12 over the composer", (composer.top - 12.dp).value, panel.bottom.value, 1f)
+        assertTrue("under the bar: $art, $bar", art.top < bar.bottom)
     }
 
     @Test fun `the block is 24 in on a narrow screen`() {

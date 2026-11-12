@@ -21,8 +21,8 @@ import UIKit
 ///   the bot's name and note as empty room, so Bot | Task moves nothing.
 ///
 /// A bot stands under the robot and a task under the clapper board, the
-/// empty states' 128 (`NewWorkLayout.Metrics.art`). Each plays once as its
-/// kind is picked, and again on a tap; a session has none.
+/// empty states' 128 (`NewWorkLayout.Metrics.art`), still: each plays only
+/// when tapped, once, and comes back to rest. A session has none.
 final class NewWorkPanel: UIView, UITextFieldDelegate {
     enum Mode {
         case work
@@ -38,7 +38,7 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
     let folder = NewWorkMenuRow(icon: .ionicons("folder-outline"))
     let harness = NewWorkMenuRow(icon: .ionicons("hardware-chip-outline"))
     private let note = UILabel()
-    let art = StateSceneView(scene: .clapperBoard, size: NewWorkLayout.Metrics.art, replayLabel: Strings.Tablet.replayIllustration)
+    let art = StateSceneView(scene: .clapperBoard, size: NewWorkLayout.Metrics.art, play: .onDemand, replayLabel: Strings.Tablet.replayIllustration)
     /// The kind's picture; nil for a session.
     private(set) var artScene: StateScene?
 
@@ -234,11 +234,11 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
 
     func place(_ layout: NewWorkLayout) {
         frame = layout.block
-        // Short of room the picture shrinks, then goes; it never moves what is asked.
         art.isHidden = artScene == nil || layout.art == nil
         if let frame = layout.art { art.frame = frame }
         if let frame = layout.kind { kind.frame = frame }
-        if let frame = layout.note { note.frame = frame }
+        // A note that gave way has no place: none, rather than its last.
+        note.frame = layout.note ?? .zero
         switch mode {
         case .work:
             if let frame = layout.rows.first { field.frame = frame }
@@ -299,8 +299,7 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
         }
     }
 
-    /// The kind's picture, played once as the kind is picked: a new scene
-    /// plays as it arrives, the one already there plays again.
+    /// The kind's picture, at rest: it plays only when tapped.
     private func showArt(_ scene: StateScene?) {
         guard scene != artScene else { return }
         artScene = scene
@@ -310,7 +309,7 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
             return
         }
         art.isHidden = false
-        if art.scene != scene { art.scene = scene } else { art.replay() }
+        art.scene = scene
     }
 
     @objc private func kindChanged() {

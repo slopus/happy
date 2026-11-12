@@ -226,6 +226,47 @@ final class StateSceneTests: XCTestCase {
         window.isHidden = true
     }
 
+    /// The clapper board rests with "Action!" on it (frame 60; its last
+    /// frame has wiped the word), whether it appears on its own or on
+    /// demand; a tap plays a whole turn, from that frame round to it.
+    func testTheClapperBoardRestsOnActionAndATapComesBackToIt() async throws {
+        try XCTSkipIf(UIAccessibility.isReduceMotionEnabled, "reduce motion is on in this environment")
+        for play in [StateSceneView.Play.onDemand, .onAppear] {
+            let view = StateSceneView(scene: .clapperBoard, size: 128, play: play, replayLabel: "Play again")
+            let window = shown(view)
+            try await loaded(view)
+            XCTAssertFalse(view.isAnimating, "\(play): it moves only when asked")
+            XCTAssertEqual(view.currentFrame, 60, accuracy: 0.5, "\(play)")
+            view.replay()
+            XCTAssertTrue(view.isAnimating, "\(play): a tap plays it")
+            try await Task.sleep(nanoseconds: 1_200_000_000)
+            XCTAssertTrue(view.isAnimating, "\(play): one whole turn, 151 frames at 60 fps")
+            for _ in 0..<80 where view.isAnimating {
+                try await Task.sleep(nanoseconds: 50_000_000)
+            }
+            XCTAssertFalse(view.isAnimating, "\(play): it stops")
+            XCTAssertEqual(view.currentFrame, 60, accuracy: 0.5, "\(play): back at rest")
+            view.isHidden = true
+            view.isHidden = false
+            XCTAssertFalse(view.isAnimating, "\(play): appearing again holds it")
+            window.isHidden = true
+        }
+    }
+
+    /// Switching to a scene already read shows it at once (new work's
+    /// Task | Bot): no blank frame between the two pictures.
+    func testSwitchingToASceneAlreadyReadShowsItAtOnce() async throws {
+        let view = StateSceneView(scene: .robot, size: 128, play: .onDemand, replayLabel: "Play again")
+        let window = shown(view)
+        try await loaded(view)
+        XCTAssertNotNil(StateSceneView.read(.clapperBoard))
+        view.scene = .clapperBoard
+        XCTAssertTrue(view.isLoaded, "drawn in the same pass")
+        XCTAssertFalse(view.isAnimating)
+        XCTAssertEqual(view.currentFrame, 60, accuracy: 0.5, "at rest")
+        window.isHidden = true
+    }
+
     /// Setting the scene again and again must leave one animation, one box
     /// and no stale play.
     func testRepeatedConfigurationSettles() async throws {
@@ -252,7 +293,11 @@ final class StateSceneTests: XCTestCase {
             let window = shown(view)
             try await loaded(view)
             XCTAssertFalse(view.isAnimating, "\(scene.rawValue) moved with motion reduced")
-            XCTAssertEqual(view.progress, 1, accuracy: 0.001, "\(scene.rawValue) did not hold its last frame")
+            if let rest = scene.restFrame {
+                XCTAssertEqual(view.currentFrame, rest, accuracy: 0.5, "\(scene.rawValue) did not hold its rest frame")
+            } else {
+                XCTAssertEqual(view.progress, 1, accuracy: 0.001, "\(scene.rawValue) did not hold its last frame")
+            }
             XCTAssertFalse(view.isAccessibilityElement, "\(scene.rawValue) offered a replay control")
             view.replay()
             XCTAssertFalse(view.isAnimating, "\(scene.rawValue) replayed with motion reduced")

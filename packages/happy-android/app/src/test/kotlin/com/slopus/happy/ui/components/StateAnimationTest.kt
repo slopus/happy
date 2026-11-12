@@ -20,6 +20,7 @@ import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -62,6 +63,29 @@ class StateAnimationTest {
         assertEquals(240f, composition.endFrame, 0.01f)
         assertEquals(60f, composition.frameRate)
         assertEquals(3_000f, composition.duration, 1f)
+    }
+
+    /**
+     * The clapper board rests where "Action!" is whole: every letter layer is
+     * drawn there (they go from frame 93) and has finished popping in (by 43),
+     * and the board is still (34 to 75).
+     */
+    @Test
+    fun theClapperBoardRestsWithActionWritten() {
+        val rest = StateArt.Action.restFrame!!
+        val json = RuntimeEnvironment.getApplication().resources.openRawResource(StateArt.Action.raw).use { org.json.JSONObject(it.reader().readText()) }
+        val layers = json.getJSONArray("layers")
+        val letters = (0 until layers.length()).map { layers.getJSONObject(it) }
+            .filter { it.getString("nm").substringBefore(' ') in setOf("A", "C", "T", "I", "O", "N", "!", "do") }
+        assertEquals("both strokes of every letter", 24, letters.size)
+        for (letter in letters) {
+            val name = letter.getString("nm")
+            assertTrue("$name drawn at $rest", letter.getDouble("ip") <= rest && rest < letter.getDouble("op"))
+            val scale = letter.getJSONObject("ks").getJSONObject("s").getJSONArray("k")
+            assertTrue("$name popped in by $rest", scale.getJSONObject(scale.length() - 1).getDouble("t") <= rest)
+        }
+        assertTrue("the board is still", rest in 43f..74f)
+        assertEquals("the bot keeps its last frame", null, StateArt.Ready.restFrame)
     }
 
     @Test

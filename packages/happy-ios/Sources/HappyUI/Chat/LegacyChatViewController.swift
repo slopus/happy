@@ -856,7 +856,8 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
             composeRoom = area
             let layout = composeTarget.layout(width: size.width, sides: safeArea, top: area.minY, bottom: area.maxY)
             composeTarget.place(layout)
-            composeTarget.isHidden = !layout.fits
+            // A bot's or a task's picture never goes: short of room it runs up under the bar.
+            composeTarget.isHidden = !layout.fits && layout.art == nil
         }
         header.maxWidth = ChatTitleLayout.maxWidth(barWidth: band.width)
         dock.setLayoutFrame(screen.dock)
