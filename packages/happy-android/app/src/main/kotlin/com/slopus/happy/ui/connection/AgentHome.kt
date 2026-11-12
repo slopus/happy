@@ -166,6 +166,12 @@ class AgentHomeActions(
      * it gave none. Null here offers no Leave.
      */
     val onLeaveSurface: (suspend (AgentFeedRow.Surface) -> String?)? = null,
+    /**
+     * Archives what a conversation row names ([AgentFeedRow.Conversation.archive],
+     * [com.slopus.happy.agent.AgentSession.archive]): its row goes at once and
+     * comes back if the computer refuses. Null offers no Archive.
+     */
+    val onArchive: (suspend (AgentFeedRow.Conversation) -> Unit)? = null,
     /** Signs a team server in again, once its sign-in expired (edge SSO). */
     val onSignIn: () -> Unit = {},
     /** Opens new work with "+"'s sheet up, for its first message's picture. */
@@ -362,6 +368,10 @@ fun AgentHomeScreen(
         else -> HomePhase.List
     }
     val chatPreview = remember { ChatPreview() }
+    // A row's swipe and its preview's menu archive alike, without waiting on the computer.
+    val archive: ((AgentFeedRow.Conversation) -> Unit)? = remember(actions.onArchive, scope) {
+        actions.onArchive?.let { run -> { row: AgentFeedRow.Conversation -> scope.launch { run(row) }; Unit } }
+    }
     val previewBlur = with(LocalDensity.current) { MessageLiftSpec.blur.toPx() }
     Box(Modifier.fillMaxSize()) {
         GlassBarLayout(
@@ -442,6 +452,7 @@ fun AgentHomeScreen(
                             onOpenSurface = actions.onOpenSurface,
                             onLeaveSurface = actions.onLeaveSurface?.let { { surface: AgentFeedRow.Surface -> confirmingLeave = surface } },
                             onHold = preview?.let { { row, source -> chatPreview.open(row, source) } },
+                            onArchive = archive,
                             // The list starts under the glass bar and scrolls on beneath it.
                             contentPadding = PaddingValues(top = top),
                             // The notice is the list's first row (iOS ba0d7da0e): it comes and goes as a row does, the rows it
@@ -553,7 +564,7 @@ fun AgentHomeScreen(
             }
         }
         // Over the bar too: the whole screen blurs under a held row's preview.
-        if (preview != null) ChatPreviewOverlay(chatPreview, actions.onOpenConversation, preview)
+        if (preview != null) ChatPreviewOverlay(chatPreview, actions.onOpenConversation, archive, preview)
     }
     val refusals = LocalResources.current
     LeaveSurfaceDialogs(
@@ -966,6 +977,8 @@ private fun SignedInAgentHome(
             onOpenArtifact = onOpenArtifact,
             onOpenFeed = onOpenFeed,
             onLeaveSurface = { session.leaveSurface(it.id) },
+            // Whoever may start work may archive it, as on desktop; a viewer's home has no Archive.
+            onArchive = if (canCompose) { row -> row.archive?.let { session.archive(it.kind, it.id) } } else null,
             onSignIn = { graph.agentConnections.accounts.value.firstOrNull { it.id == id }?.server?.let(onSignIn) },
             onVoice = voice.takeIf { canCompose },
             onOpenVaultItem = onOpenVaultItem,

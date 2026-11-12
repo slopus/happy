@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -67,6 +69,8 @@ import com.slopus.happy.conversation.ConversationState
 import com.slopus.happy.ui.chat.BubblePalette
 import com.slopus.happy.ui.chat.MessageLiftSpec
 import com.slopus.happy.ui.components.GlassColors
+import com.slopus.happy.ui.components.Icon
+import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.PageBackHandler
 import com.slopus.happy.ui.components.glass
 import com.slopus.happy.ui.components.glassBlurs
@@ -114,6 +118,13 @@ object ChatPreviewSpec {
     val fade = 24.dp
     val title = TextStyle(fontSize = 17.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold)
 
+    /** The menu under the card, where the held row may be archived: one 48 row in a 14-cornered capsule. */
+    val menuHeight = 48.dp
+    val menuCorner = 14.dp
+    val menuWidth = 220.dp
+    val menuPadding = 16.dp
+    val menuText = TextStyle(fontSize = 17.sp, lineHeight = 22.sp)
+
     /** The card grows out of the row in this long while it fades in (iOS 0.15 s). */
     const val CARD_FADE_MS = 150
     /** The blur and dim come in, and everything goes back into the row, over 0.2 s. */
@@ -133,17 +144,18 @@ object ChatPreviewSpec {
      * Where the card goes, in pixels: the screen less [inset] a side (at
      * most [maxWidth] when [regular]), [maxHeight] tall or the room between
      * the insets, centred, then kept [topInset] under the status bar and
-     * [bottomInset] over the navigation bar.
+     * [bottomInset] over the navigation bar, with [menu] (pixels) kept
+     * free under it for its menu.
      */
-    fun card(screen: Size, top: Float, bottom: Float, regular: Boolean, px: (Dp) -> Float): Rect {
+    fun card(screen: Size, top: Float, bottom: Float, regular: Boolean, px: (Dp) -> Float, menu: Float = 0f): Rect {
         var width = max(0f, screen.width - px(inset) * 2)
         if (regular) width = min(width, px(maxWidth))
         val wanted = min(px(maxHeight), max(0f, screen.height - px(inset) * 2 - top - bottom))
         val ceiling = top + px(topInset)
         val floorY = screen.height - bottom - px(bottomInset)
-        val height = min(wanted, max(0f, floorY - ceiling - px(spacing)))
+        val height = min(wanted, max(0f, floorY - ceiling - px(spacing) - menu))
         var y = floor((screen.height - height) / 2)
-        val overrun = y + height + px(spacing) - floorY
+        val overrun = y + height + px(spacing) + menu - floorY
         if (overrun > 0) y -= overrun
         y = max(ceiling, y)
         val x = floor((screen.width - width) / 2)
@@ -153,6 +165,7 @@ object ChatPreviewSpec {
 
 object ChatPreviewTags {
     const val SCRIM = "chatPreview.scrim"
+    const val ARCHIVE = "chatPreview.archive"
     const val CARD = "chatPreview.card"
     const val TITLE = "chatPreview.title"
     const val LIST = "chatPreview.list"
@@ -217,7 +230,13 @@ fun Modifier.chatPreviewBackdrop(preview: ChatPreview, blur: Float): Modifier = 
  * inside: the conversation's newest messages, read only.
  */
 @Composable
-fun BoxScope.ChatPreviewOverlay(preview: ChatPreview, onOpen: (agentId: String) -> Unit, content: @Composable (AgentFeedRow.Conversation) -> Unit) {
+fun BoxScope.ChatPreviewOverlay(
+    preview: ChatPreview,
+    onOpen: (agentId: String) -> Unit,
+    /** Archive under the card, for a row that names what it archives ([AgentFeedRow.Conversation.archive]); null offers none. */
+    onArchive: ((AgentFeedRow.Conversation) -> Unit)? = null,
+    content: @Composable (AgentFeedRow.Conversation) -> Unit,
+) {
     val held = preview.held ?: return
     val density = LocalDensity.current
     val colors = HappyTheme.colors
@@ -254,7 +273,9 @@ fun BoxScope.ChatPreviewOverlay(preview: ChatPreview, onOpen: (agentId: String) 
     val top = WindowInsets.statusBars.getTop(density).toFloat()
     val bottom = WindowInsets.navigationBars.getBottom(density).toFloat()
     val regular = LocalWindowLayout.current.widthClass != WidthClass.Compact
-    val card = remember(screen, top, bottom, regular) { ChatPreviewSpec.card(screen, top, bottom, regular) { with(density) { it.toPx() } } }
+    val archive = onArchive?.takeIf { held.row.archive != null }
+    val menu = if (archive != null) with(density) { (ChatPreviewSpec.menuHeight + ChatPreviewSpec.spacing).toPx() } else 0f
+    val card = remember(screen, top, bottom, regular, menu) { ChatPreviewSpec.card(screen, top, bottom, regular, { with(density) { it.toPx() } }, menu) }
     val dim = if (colors.dark) MessageLiftSpec.dimDark else MessageLiftSpec.dimLight
     val close = stringResource(R.string.conversation_close)
     Box(
@@ -299,6 +320,33 @@ fun BoxScope.ChatPreviewOverlay(preview: ChatPreview, onOpen: (agentId: String) 
                     onOpen(held.row.agentId)
                 },
         )
+    }
+    // HoldLayout's menu, [ChatPreviewSpec.spacing] under the card, coming and going with it.
+    if (archive != null) {
+        val label = stringResource(R.string.session_archive_action)
+        Row(
+            Modifier
+                .offset { IntOffset(card.left.toInt(), (card.bottom + with(density) { ChatPreviewSpec.spacing.toPx() }).toInt()) }
+                .width(minOf(with(density) { card.width.toDp() }, ChatPreviewSpec.menuWidth))
+                .height(ChatPreviewSpec.menuHeight)
+                .graphicsLayer {
+                    translationY = -distance * (1 - place.value)
+                    alpha = shown.value
+                }
+                .clip(RoundedCornerShape(ChatPreviewSpec.menuCorner))
+                .background(colors.surface)
+                .clickable(role = Role.Button) {
+                    if (preview.opening || preview.closing) return@clickable
+                    preview.close()
+                    archive(held.row)
+                }
+                .padding(horizontal = ChatPreviewSpec.menuPadding)
+                .testTag(ChatPreviewTags.ARCHIVE),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(label, style = ChatPreviewSpec.menuText, color = colors.status.error, modifier = Modifier.weight(1f))
+            Icon(Ionicon.ArchiveOutline, size = 20.dp, color = colors.status.error)
+        }
     }
 }
 
