@@ -13,10 +13,7 @@
     <string name="cloud_create_detail">為團隊的新伺服器命名，之後可以變更。</string>
     <string name="cloud_create_button">建立</string>
     <string name="cloud_join">加入伺服器</string>
-    <string name="cloud_join_detail">輸入伺服器名稱和你收到的邀請碼。</string>
     <string name="cloud_join_button">加入</string>
-    <string name="cloud_invite_code">邀請碼</string>
-    <string name="cloud_join_not_found">沒有使用該名稱和邀請碼的伺服器。</string>
     <string name="cloud_name_placeholder">名稱</string>
     <string name="cloud_name_rules">3 到 32 個小寫字母、數字或連字號，不能以連字號開頭或結尾。</string>
     <string name="cloud_name_checking">正在檢查…</string>
@@ -54,10 +51,7 @@
     <string name="cloud_server_joined">已加入</string>
     <string name="cloud_server_join_label">加入 %1$s</string>
     <string name="cloud_bootstrap_new">新建一個</string>
-    <string name="cloud_invite">透過邀請加入</string>
     <string name="cloud_create_first_detail">你的帳號還沒有伺服器。為團隊的第一個伺服器命名。</string>
-    <string name="cloud_create_have_invite">有邀請？加入伺服器</string>
-    <string name="cloud_invite_button">加入</string>
     <string name="cloud_sign_in_apple">使用 Apple 登入</string>
     <string name="cloud_sign_in_github">使用 GitHub 登入</string>
     <string name="cloud_sign_in_google">使用 Google 帳戶繼續</string>

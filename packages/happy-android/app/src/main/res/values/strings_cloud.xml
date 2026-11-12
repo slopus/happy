@@ -15,10 +15,7 @@
     <string name="cloud_create_detail">Name your team’s new server. You can change it later.</string>
     <string name="cloud_create_button">Bootstrap</string>
     <string name="cloud_join">Join a server</string>
-    <string name="cloud_join_detail">Enter the server’s name and the invite code you were sent.</string>
     <string name="cloud_join_button">Join</string>
-    <string name="cloud_invite_code">Invite code</string>
-    <string name="cloud_join_not_found">No server has that name and invite code.</string>
     <string name="cloud_name_placeholder">name</string>
     <string name="cloud_name_rules">3 to 32 lowercase letters, digits or hyphens, not starting or ending with a hyphen.</string>
     <string name="cloud_name_checking">Checking…</string>
@@ -56,10 +53,7 @@
     <string name="cloud_server_joined">Joined</string>
     <string name="cloud_server_join_label">Join %1$s</string>
     <string name="cloud_bootstrap_new">Bootstrap a new one</string>
-    <string name="cloud_invite">Join with an invite</string>
     <string name="cloud_create_first_detail">Your account has no servers yet. Name your team’s first one.</string>
-    <string name="cloud_create_have_invite">Have an invite? Join a server</string>
-    <string name="cloud_invite_button">Join server</string>
     <string name="cloud_sign_in_apple">Sign in with Apple</string>
     <string name="cloud_sign_in_github">Sign in with GitHub</string>
     <string name="cloud_sign_in_google">Continue with Google</string>

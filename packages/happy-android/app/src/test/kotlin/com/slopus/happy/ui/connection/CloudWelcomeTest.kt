@@ -71,7 +71,6 @@ class CloudWelcomeTest {
             onJoinServer = { taps += "join ${it.name}" },
             onContinue = { taps += "continue" },
             onCreate = { taps += "create" },
-            onInvite = { taps += "invite" },
             onSignOut = { taps += "signOut" },
             onBack = { taps += "back" },
         )
@@ -234,7 +233,7 @@ class CloudWelcomeTest {
     private val acme = CloudServer(id = "s1", name = "acme", url = "https://acme.happy-clusters.com", displayName = "Acme")
     private val beta = CloudServer(id = "s2", name = "beta", url = "https://beta.happy-clusters.com")
 
-    /** Join a server: each server with Join; Continue only once one is on the phone; the two ways to add one under them. */
+    /** Join a server: each server with Join; Continue only once one is on the phone; Bootstrap a new one under them, and no invite code. */
     @Test
     fun joinAServer() {
         screen(CloudAccountState.SignedIn, servers = listOf(acme, beta))
@@ -244,10 +243,11 @@ class CloudWelcomeTest {
         rule.node(CloudTags.PRIMARY).assertDoesNotExist()
         rule.onNodeWithContentDescription("Join Acme").performClick()
         rule.onNodeWithText("Bootstrap a new one").performClick()
-        rule.onNodeWithText("Join with an invite").performClick()
+        // Invites are links, accepted on the web.
+        rule.onNodeWithText("Join with an invite").assertDoesNotExist()
         // Back leaves the account, so the welcome's Continue can use another.
         rule.node(HeaderTags.LEFT).performClick()
-        assertEquals(listOf("join acme", "create", "invite", "signOut"), taps)
+        assertEquals(listOf("join acme", "create", "signOut"), taps)
     }
 
     @Test
@@ -267,5 +267,16 @@ class CloudWelcomeTest {
         rule.node(CloudTags.CREATE).assertIsNotEnabled()
         rule.node(HeaderTags.LEFT).performClick()
         assertEquals(emptyList<String>(), taps)
+    }
+
+    /** The account's first server: Bootstrap a server says it has none, with no invite to type in. */
+    @Test
+    fun theFirstBootstrapHasNoInvite() {
+        rule.setHappyContent {
+            CloudCreateScreen(name = "", availability = null, busy = false, failure = null, onName = {}, onCreate = {}, onBack = {}, first = true)
+        }
+        rule.onNodeWithText("Bootstrap a server").assertExists()
+        rule.onNodeWithText("Your account has no servers yet. Name your team’s first one.").assertExists()
+        rule.onNodeWithText("Have an invite? Join a server").assertDoesNotExist()
     }
 }

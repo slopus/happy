@@ -134,7 +134,6 @@ object CloudTags {
     const val PRIMARY = "cloud.primary"
     const val SECONDARY = "cloud.secondary"
     const val NAME = "cloud.name"
-    const val CODE = "cloud.code"
     const val MENU = "cloud.menu"
     const val MEMBERS = "cloud.members"
     const val LEAVE = "cloud.leave"
@@ -142,7 +141,6 @@ object CloudTags {
     const val PASSWORD = "cloud.password"
     const val SLIDES = "cloud.slides"
     const val CREATE = "cloud.create"
-    const val INVITE = "cloud.invite"
     const val GOOGLE = "cloud.google"
     const val EMAIL = "cloud.email"
     const val EMAIL_CODE = "cloud.email.code"
@@ -342,8 +340,9 @@ val CloudSlides = listOf(
  * signing in: the welcome, with Sign in with GitHub in it ([CloudWelcome]).
  * Signed in: Join a
  * server, the account's servers each with Join (Joined once it is on the
- * phone), then Continue into the app once one is; Bootstrap a new one and
- * Join with an invite under them. Back there signs the account out, so
+ * phone), then Continue into the app once one is; Bootstrap a new one
+ * under them. An invite is a link, accepted on the web, not a code typed
+ * here. Back there signs the account out, so
  * Continue can sign in with another ([onSignOut]); not while a join runs.
  */
 @Composable
@@ -369,7 +368,6 @@ fun CloudScreen(
     onJoinServer: (CloudServer) -> Unit,
     onContinue: () -> Unit,
     onCreate: () -> Unit,
-    onInvite: () -> Unit,
     onSignOut: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -410,7 +408,6 @@ fun CloudScreen(
                 }
                 if (failure == null && servers != null) {
                     CloudLink(CloudAction(stringResource(R.string.cloud_bootstrap_new), onCreate, enabled = !joining), CloudTags.CREATE)
-                    CloudLink(CloudAction(stringResource(R.string.cloud_invite), onInvite, enabled = !joining), CloudTags.INVITE)
                 }
             }
         }
@@ -776,7 +773,7 @@ private fun ServerAvatar(server: CloudServer, image: suspend (String) -> ByteArr
  * Bootstrap a server (desktop's create): its name, typed as `@name` like a
  * username (its domain isn't shown yet), said to be free or not as the
  * person pauses, then Bootstrap. The account's [first] server, with none to
- * go back to, says so and offers Have an invite? Join a server.
+ * go back to, says so.
  */
 @Composable
 fun CloudCreateScreen(
@@ -788,7 +785,6 @@ fun CloudCreateScreen(
     onCreate: () -> Unit,
     onBack: () -> Unit,
     first: Boolean = false,
-    onInvite: () -> Unit = {},
 ) {
     val colors = HappyTheme.colors
     CloudFrame(
@@ -810,34 +806,9 @@ fun CloudCreateScreen(
             else -> stringResource(R.string.cloud_name_rules) to colors.textDestructive
         }
         NotePill(note, color)
-        if (first) CloudLink(CloudAction(stringResource(R.string.cloud_create_have_invite), onInvite, enabled = !busy), CloudTags.INVITE)
     }
 }
 
-/** Join with an invite: the server's `@name` and the invite code its owner sent, then Join server. */
-@Composable
-fun CloudJoinScreen(
-    name: String,
-    code: String,
-    busy: Boolean,
-    failure: CloudException.Reason?,
-    onName: (String) -> Unit,
-    onCode: (String) -> Unit,
-    onJoin: () -> Unit,
-    onBack: () -> Unit,
-) {
-    CloudFrame(
-        title = stringResource(R.string.cloud_invite),
-        body = stringResource(R.string.cloud_join_detail),
-        art = R.raw.state_owl,
-        primary = CloudAction(stringResource(R.string.cloud_invite_button), onJoin, enabled = name.length >= 3 && code.isNotEmpty() && !busy, loading = busy),
-        onBack = onBack,
-    ) {
-        CloudField(name, onName, "@" + stringResource(R.string.cloud_name_placeholder), CloudTags.NAME, !busy, KeyboardType.Uri, ImeAction.Next, AtPrefix)
-        CloudField(code, onCode, stringResource(R.string.cloud_invite_code), CloudTags.CODE, !busy, KeyboardType.Ascii, ImeAction.Done)
-        if (failure != null) NotePill(stringResource(cloudFailureText(failure)), HappyTheme.colors.textDestructive)
-    }
-}
 /**
  * Continue with email, its first step: the address, then Send code, which
  * mails a one-time code to it (`POST /v1/auth/email/start`) and goes on to
@@ -1176,10 +1147,10 @@ private object AtPrefix : VisualTransformation {
 }
 
 internal fun cloudFailureText(reason: CloudException.Reason): Int = when (reason) {
-    // Create shows a taken name as its availability, with the name; join never hears it.
+    // Create shows a taken name as its availability, with the name.
     CloudException.Reason.Taken -> R.string.cloud_failed
     CloudException.Reason.Invalid -> R.string.cloud_name_rules
-    CloudException.Reason.NotFound -> R.string.cloud_join_not_found
+    CloudException.Reason.NotFound -> R.string.cloud_failed
     CloudException.Reason.SignInRequired -> R.string.team_server_error_sign_in_required
     CloudException.Reason.Unreachable -> R.string.team_server_error_unreachable
     CloudException.Reason.Failed -> R.string.cloud_failed

@@ -45,6 +45,12 @@ import com.slopus.happy.ui.HomeRoute
 import com.slopus.happy.ui.page
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
@@ -53,8 +59,6 @@ import kotlinx.serialization.Serializable
 
 /** Bootstrap a server; [first] when the account has none, where Back signs out. */
 @Serializable data class CloudCreateRoute(val first: Boolean = false)
-
-@Serializable data object CloudJoinRoute
 
 /** Continue with email: the address, then [CloudEmailCodeRoute] for the code mailed to it. */
 @Serializable data object CloudEmailRoute
@@ -89,7 +93,6 @@ fun NavGraphBuilder.cloudRoutes(graph: AppGraph, nav: NavHostController) {
     val account = graph.cloudAccount ?: return
     page<CloudRoute> { Cloud(graph, account, nav) }
     page<CloudCreateRoute> { entry -> CloudCreate(graph, account, nav, entry.toRoute<CloudCreateRoute>().first) }
-    page<CloudJoinRoute> { CloudJoin(graph, account, nav) }
     page<CloudEmailRoute> { CloudEmailStart(account, nav) }
     page<CloudEmailCodeRoute> { entry -> CloudEmailCode(account, nav, entry.toRoute<CloudEmailCodeRoute>().email) }
     page<CloudMembersRoute> { entry -> CloudMembers(graph, nav, entry.toRoute<CloudMembersRoute>().connectionId) }
@@ -143,10 +146,17 @@ private fun Cloud(graph: AppGraph, account: CloudAccount, nav: NavHostController
         Unit
     }
     val accounts by graph.agentConnections.accounts.collectAsStateWithLifecycle()
-    LaunchedEffect(state) { if (state == CloudAccountState.SignedIn) picker.load() }
+    LaunchedEffect(state) {
+        if (state != CloudAccountState.SignedIn) return@LaunchedEffect
+        picker.load()
+        // Back from the browser, where an invite link may have added a server.
+        serversOnReturn(graph.isForeground, account::servers).collect(picker::show)
+    }
     // No servers yet: Bootstrap leads, and its Back signs out (desktop's create with nothing to go back to).
     LaunchedEffect(state, picker.servers) {
         if (state == CloudAccountState.SignedIn && picker.servers?.isEmpty() == true) {
+            // Not this empty list again on the way back: it loads anew, with any server joined in the browser meanwhile.
+            picker.clear()
             nav.navigate(CloudCreateRoute(first = true)) { launchSingleTop = true }
         }
     }
@@ -201,13 +211,26 @@ private fun Cloud(graph: AppGraph, account: CloudAccount, nav: NavHostController
             (servers.firstOrNull { it.id == picker.lastJoined } ?: servers.firstOrNull { it.origin in here })?.let { nav.openCloudServer(graph, it) }
         },
         onCreate = { nav.navigate(CloudCreateRoute()) },
-        onInvite = { nav.navigate(CloudJoinRoute) },
         onSignOut = signOut,
         onBack = { nav.popBackStack() },
     )
 }
 
-/** The account's servers, loaded each time the list shows, and those joined from it. */
+/**
+ * The account's servers each time the app comes back to the foreground, not
+ * the foreground it is in now: an invite is a link, accepted in the browser,
+ * which adds its server there. One that fails to load is skipped.
+ */
+internal fun serversOnReturn(foreground: StateFlow<Boolean>, servers: suspend () -> List<CloudServer>): Flow<List<CloudServer>> =
+    foreground.drop(1).filter { it }.mapNotNull {
+        try {
+            servers()
+        } catch (_: CloudException) {
+            null
+        }
+    }
+
+/** The account's servers, loaded each time the list shows or the app comes back, and those joined from it. */
 private class CloudServers(private val account: CloudAccount) : ViewModel() {
     var servers by mutableStateOf<List<CloudServer>?>(null)
         private set
@@ -231,6 +254,16 @@ private class CloudServers(private val account: CloudAccount) : ViewModel() {
                 failure = e.reason
             }
         }
+    }
+
+    /** Loaded again on the app's return: the list stays as it is meanwhile. */
+    fun show(servers: List<CloudServer>) {
+        failure = null
+        this.servers = servers
+    }
+
+    fun clear() {
+        servers = null
     }
 
     fun join(id: String) {
@@ -258,6 +291,11 @@ private fun CloudCreate(graph: AppGraph, account: CloudAccount, nav: NavHostCont
     // The first server, with none to go back to: Back leaves the account for the welcome, as the list's does.
     val back = { if (first) account.signOut(); nav.popBackStack(); Unit }
     BackHandler(enabled = first) { back() }
+    // The account's first server, joined from an invite link in the browser meanwhile: Join a server takes this one's place, still signed in.
+    if (first) LaunchedEffect(Unit) {
+        serversOnReturn(graph.isForeground, account::servers).first { it.isNotEmpty() }
+        nav.popBackStack(CloudRoute, inclusive = false)
+    }
     var name by remember { mutableStateOf("") }
     var availability by remember { mutableStateOf<CloudName?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -299,40 +337,6 @@ private fun CloudCreate(graph: AppGraph, account: CloudAccount, nav: NavHostCont
         },
         onBack = back,
         first = first,
-        onInvite = { nav.navigate(CloudJoinRoute) },
-    )
-}
-
-@Composable
-private fun CloudJoin(graph: AppGraph, account: CloudAccount, nav: NavHostController) {
-    var name by remember { mutableStateOf("") }
-    var code by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
-    var failure by remember { mutableStateOf<CloudException.Reason?>(null) }
-    val scope = rememberCoroutineScope()
-    CloudJoinScreen(
-        name = name,
-        code = code,
-        busy = busy,
-        failure = failure,
-        onName = { name = CloudNames.typed(it); failure = null },
-        onCode = { code = it.trim(); failure = null },
-        onJoin = {
-            busy = true
-            scope.launch {
-                try {
-                    nav.openCloudServer(graph, account.join(name, code))
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: CloudException) {
-                    if (e.reason == CloudException.Reason.SignInRequired) nav.popBackStack(CloudRoute, inclusive = false)
-                    failure = e.reason
-                } finally {
-                    busy = false
-                }
-            }
-        },
-        onBack = { nav.popBackStack() },
     )
 }
 

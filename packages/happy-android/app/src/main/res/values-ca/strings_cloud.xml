@@ -13,10 +13,7 @@
     <string name="cloud_create_detail">Posa nom al nou servidor del teu equip. El pots canviar més endavant.</string>
     <string name="cloud_create_button">Crea</string>
     <string name="cloud_join">Uneix-te a un servidor</string>
-    <string name="cloud_join_detail">Introdueix el nom del servidor i el codi d’invitació que t’han enviat.</string>
     <string name="cloud_join_button">Uneix-te</string>
-    <string name="cloud_invite_code">Codi d\'invitació</string>
-    <string name="cloud_join_not_found">Cap servidor té aquest nom i codi d\'invitació.</string>
     <string name="cloud_name_placeholder">nom</string>
     <string name="cloud_name_rules">De 3 a 32 lletres minúscules, xifres o guions, sense guió al principi ni al final.</string>
     <string name="cloud_name_checking">S\'està comprovant…</string>
@@ -54,10 +51,7 @@
     <string name="cloud_server_joined">Afegit</string>
     <string name="cloud_server_join_label">Uneix-te a %1$s</string>
     <string name="cloud_bootstrap_new">Crea’n un de nou</string>
-    <string name="cloud_invite">Uneix-te amb una invitació</string>
     <string name="cloud_create_first_detail">El teu compte encara no té servidors. Posa nom al primer del teu equip.</string>
-    <string name="cloud_create_have_invite">Tens una invitació? Uneix-te a un servidor</string>
-    <string name="cloud_invite_button">Uneix-te</string>
     <string name="cloud_sign_in_apple">Inicia la sessió amb Apple</string>
     <string name="cloud_sign_in_github">Inicia la sessió amb GitHub</string>
     <string name="cloud_sign_in_google">Continua amb Google</string>

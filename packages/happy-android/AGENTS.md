@@ -1237,12 +1237,16 @@ change its wire behaviour on Android alone.
   screen) and reads Joined once it is on the phone. Continue appears once one
   is, and opens the last joined. Under them, "Bootstrap a new one" (a name
   typed after an `@`, checked with `GET /v1/servers/availability` as the
-  person pauses, then `POST /v1/servers`) and "Join with an invite" (name and
-  invite code, `POST /v1/servers/join`), each going straight into its server.
+  person pauses, then `POST /v1/servers`), going straight into its server.
   An account with no servers opens on Bootstrap (`CloudCreateRoute(first)`).
+  There is no join with a code: an invite is a private link
+  (`https://happybases.com/join#<token>`) accepted on the web, so Join a
+  server loads its list again each time the app comes back to the
+  foreground (`serversOnReturn`), and the first Bootstrap gives way to the
+  list, still signed in, once the account has a server.
   Back on Join a server, or on that first Bootstrap, signs the account out,
-  so Continue can use another (desktop's); not while a join runs. Joining,
-  creating or joining with an invite signs in with no browser: `POST /v1/servers/:id/token` with the account token
+  so Continue can use another (desktop's); not while a join runs. Joining
+  or creating signs in with no browser: `POST /v1/servers/:id/token` with the account token
   (`CloudAccount.serverToken`, `ServerSignInFlow.startWith`) gives the server's
   access and refresh tokens, its `aud` checked as any; then as the sign-in
   below (checked with the server, a name if new, kept). That server token is
@@ -1253,7 +1257,7 @@ change its wire behaviour on Android alone.
   out of it, the server's own browser sign-in opens by itself. Each server is its own connection; one already here
   just opens. The addresses are the app's own, never typed or pasted, so no
   code and no `instanceId` check them.
-  Every Happy Cloud screen (welcome, Join a server, Bootstrap, the invite, and the
+  Every Happy Cloud screen (welcome, Join a server, Bootstrap, and the
   server sign-in, which reads "Connecting to @name…") is full screen on the
   first screen's Grain Gradient (`StartSpec` palettes, onboarding's 28/34
   title, a scene above it) with one primary action at the bottom
