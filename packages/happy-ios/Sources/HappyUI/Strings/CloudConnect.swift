@@ -56,6 +56,34 @@ extension Strings {
 
         static let failedTitle = "Couldn’t connect"
 
+        /// An invite link opened in the app.
+        static func inviteMessage(_ handle: String, role: String?) -> String {
+            role.map { "You’re invited to join \(handle) as \($0)." } ?? "You’re invited to join \(handle)."
+        }
+        static let inviteTitle = "Join a server"
+        static let inviteLoading = "Opening the invite…"
+        static let inviteJoin = "Join"
+        static let inviteShowServers = "Show My Servers"
+        static let inviteOtherAccount = "Use Another Account"
+        static let inviteInvalid = "This invite link doesn’t work. Ask for a new one."
+        static let inviteExpired = "This invite has expired. Ask for a new link."
+        static let inviteRevoked = "This invite was withdrawn. Ask for a new link."
+        static let inviteExhausted = "This invite has been used up. Ask for a new link."
+        static let inviteAccepted = "This invite has already been accepted. If it was you, the server is in your list."
+        static func inviteEmailMismatch(_ hint: String?) -> String {
+            "This invite was sent to another email address\(hint.map { " (\($0))" } ?? ""). Sign in with that one to join."
+        }
+        static func invite(_ error: CloudInviteError) -> String {
+            switch error {
+            case .invalid: inviteInvalid
+            case .expired: inviteExpired
+            case .revoked: inviteRevoked
+            case .exhausted: inviteExhausted
+            case .accepted: inviteAccepted
+            case .emailMismatch(let hint): inviteEmailMismatch(hint)
+            }
+        }
+
         /// Create your profile, as agreed with desktop: a member's name and
         /// picture before their first server opens.
         static let profileTitle = "Create your profile"

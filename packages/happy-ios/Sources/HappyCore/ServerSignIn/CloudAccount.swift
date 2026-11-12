@@ -246,6 +246,39 @@ public actor CloudAccount {
         return try await call("POST", "/v1/servers", body: ["name": name], as: Response.self).server
     }
 
+    /// What `invite` offers, before it is taken.
+    public func preview(_ invite: CloudInvite) async throws -> CloudInvitePreview {
+        try await inviteCall("/v1/invites/preview", invite, as: CloudInvitePreview.self)
+    }
+
+    /// Takes `invite`: the account joins its server, which it returns.
+    public func accept(_ invite: CloudInvite) async throws -> CloudServer {
+        struct Response: Decodable { let server: CloudServer }
+        return try await inviteCall("/v1/invites/accept", invite, as: Response.self).server
+    }
+
+    private func inviteCall<T: Decodable>(_ path: String, _ invite: CloudInvite, as: T.Type) async throws -> T {
+        let body = try JSONEncoder().encode(["token": invite.token])
+        let response = try await send("POST", url: URL(string: HappyCloud.accounts + path)!, body: body, refuse: Self.inviteRefusal)
+        guard let value = try? JSONDecoder().decode(T.self, from: response.body) else { throw CloudAccountError.invalidResponse }
+        return value
+    }
+
+    /// An invite refused, as a `CloudInviteError` when its `code` is one.
+    private static func inviteRefusal(_ response: HTTPResponse) -> any Error {
+        struct Failure: Decodable { let code: String?; let emailHint: String? }
+        let failure = try? JSONDecoder().decode(Failure.self, from: response.body)
+        switch response.status == 401 ? nil : failure?.code {
+        case "invalid": return CloudInviteError.invalid
+        case "expired": return CloudInviteError.expired
+        case "revoked": return CloudInviteError.revoked
+        case "exhausted": return CloudInviteError.exhausted
+        case "accepted": return CloudInviteError.accepted
+        case "email_mismatch": return CloudInviteError.emailMismatch(hint: failure?.emailHint)
+        default: return refusal(response)
+        }
+    }
+
     /// A server image's bytes. Only from the accounts origin: the account
     /// token goes nowhere else.
     public func image(_ image: CloudServer.Image) async throws -> Data {
@@ -285,12 +318,13 @@ public actor CloudAccount {
 
     /// One request under the account's pass. An expired pass or a 401
     /// ends the account: there is nothing to refresh it with.
-    private func send(_ method: String, url: URL, body: Data? = nil, accept: String = "application/json") async throws -> HTTPResponse {
+    private func send(_ method: String, url: URL, body: Data? = nil, accept: String = "application/json",
+                      refuse: (HTTPResponse) -> any Error = { refusal($0) }) async throws -> HTTPResponse {
         guard isLive(at: now()) else { throw CloudAccountError.signInRequired }
         var headers = ["Accept": accept, "Authorization": "Bearer \(token)"]
         if body != nil { headers["Content-Type"] = "application/json" }
         let response = try await http.send(HTTPRequest(method: method, url: url, headers: headers, body: body))
-        guard (200..<300).contains(response.status) else { throw Self.refusal(response) }
+        guard (200..<300).contains(response.status) else { throw refuse(response) }
         return response
     }
 

@@ -53,22 +53,35 @@ enum CloudScreens {
     /// The name Apple gave this sign-in, which it gives only the first
     /// time: what "What's your name?" offers. In memory only.
     static var appleName: String?
+    /// An invite link opened while signed out, taken up once the account
+    /// signs in. In memory only.
+    static var pendingInvite: CloudInvite?
 
-    /// The first screen of the flow: the servers while the account's pass
-    /// lasts, the welcome otherwise.
-    static func first(context: AppContext) -> UIViewController {
+    /// The first screen of the flow: an invite's, or the servers, while the
+    /// account's pass lasts; the welcome otherwise, `invite` kept for after.
+    static func first(context: AppContext, invite: CloudInvite? = nil) -> UIViewController {
         CloudAccount.forgetKeptGrant(backend: SecurityKeychainBackend())
-        if let account, account.isLive() { return CloudServersViewController(context: context, account: account) }
+        pendingInvite = invite
+        if let account, account.isLive() { return next(account, context: context) }
         account = nil
         return CloudWelcomeViewController(context: context)
     }
 
-    /// Signed in, however: the servers in the place of the welcome and
-    /// every sign-in step, so Back leaves Happy Cloud (and signs the
-    /// account out) rather than going back to a sign-in that is over.
+    /// Signed in, however: the invite waiting, else the servers, in the
+    /// place of the welcome and every sign-in step, so Back leaves Happy
+    /// Cloud (and signs the account out) rather than going back to a
+    /// sign-in that is over.
     static func signedIn(_ account: CloudAccount, context: AppContext, from controller: UIViewController) {
         self.account = account
-        replace(from: controller, with: CloudServersViewController(context: context, account: account))
+        replace(from: controller, with: next(account, context: context))
+    }
+
+    /// What a signed-in account sees first: the invite waiting, taken up
+    /// once, else its servers.
+    private static func next(_ account: CloudAccount, context: AppContext) -> UIViewController {
+        guard let invite = pendingInvite else { return CloudServersViewController(context: context, account: account) }
+        pendingInvite = nil
+        return CloudInviteViewController(context: context, account: account, invite: invite)
     }
 
     /// Back to the welcome when the account's pass has ended, which says
@@ -1541,9 +1554,9 @@ enum CloudBrowser {
 
 /// A server in Join a server's list, on glass over the gradient: its
 /// picture, its name over `@name`, and Join, Joining, or Joined with a
-/// check (`CloudServerRowLayout`).
+/// check (`CloudServerRowLayout`); an invite's shows no button (`none`).
 final class CloudServerRow: UIView {
-    enum State { case join, joining, joined }
+    enum State { case join, joining, joined, none }
 
     private let glass = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
     let picture = UIImageView()
@@ -1588,7 +1601,7 @@ final class CloudServerRow: UIView {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     private func apply() {
-        join.isHidden = state == .joined
+        join.isHidden = state == .joined || state == .none
         join.isLoading = state == .joining
         if let joinLabel { join.accessibilityLabel = joinLabel }
         joined.isHidden = state != .joined
@@ -1597,7 +1610,11 @@ final class CloudServerRow: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let buttonSize = state == .joined ? joined.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: 32)) : join.layout(width: 0).size
+        let buttonSize = switch state {
+        case .joined: joined.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: 32))
+        case .none: CGSize.zero
+        case .join, .joining: join.layout(width: 0).size
+        }
         let layout = CloudServerRowLayout(width: bounds.width, button: CGSize(width: buttonSize.width, height: max(32, buttonSize.height)))
         glass.setLayoutFrame(bounds)
         picture.setLayoutFrame(layout.picture)

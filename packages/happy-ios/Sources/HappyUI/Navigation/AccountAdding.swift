@@ -52,10 +52,11 @@ enum AccountAdding {
     /// Happy Cloud, full screen: Welcome while the account isn't signed in
     /// on this phone, its servers once it is (`CloudScreens`).
     /// Cloud servers need no scanned code: their addresses are built from
-    /// the app's own base.
-    static func connectToCloud(context: AppContext, from controller: UIViewController) {
+    /// the app's own base. An invite link opens on its invite, after
+    /// signing in when the account isn't.
+    static func connectToCloud(context: AppContext, from controller: UIViewController, invite: CloudInvite? = nil) {
         guard HappyCloud.isOffered(in: context.variant) else { return }
-        let first = CloudScreens.first(context: context)
+        let first = CloudScreens.first(context: context, invite: invite)
         if context.account.accounts.isEmpty, let navigation = controller.navigationController {
             navigation.pushViewController(first, animated: true)
             return
