@@ -1,3 +1,4 @@
+vi.mock('react-native-svg', () => ({ default: 'Svg', Path: 'Path', Rect: 'Rect', Circle: 'Circle' }));
 import * as React from 'react';
 import { act } from 'react';
 import { Platform } from 'react-native';
@@ -238,7 +239,7 @@ describe('SessionConfigPanel composer layout', () => {
         expect(renderer.root.findByProps({ testID: 'session-config-path-trigger' })).toBeDefined();
         expect(renderer.root.findAllByProps({ testID: 'session-config-agent-trigger' })).toHaveLength(0);
         expect(renderer.root.findAllByProps({ testID: 'session-config-worktree-trigger' })).toHaveLength(0);
-        expect(renderer.root.findByProps({ testID: 'session-config-permission-trigger' })).toBeDefined();
+        expect(renderer.root.findByProps({ testID: 'session-composer-permission-trigger' })).toBeDefined();
         expect(renderer.root.findByProps({ testID: 'session-composer-mode-trigger' })).toBeDefined();
         expect(renderer.root.findAllByProps({ testID: 'session-config-model-trigger' })).toHaveLength(0);
         expect(renderer.root.findAllByProps({ testID: 'session-config-effort-trigger' })).toHaveLength(0);
@@ -253,9 +254,17 @@ describe('SessionConfigPanel composer layout', () => {
         act(() => renderer.root.findByProps({ testID: 'session-composer-fast-toggle' }).props.onPress());
         expect(ref.current.getSelection().fastMode).toBe(true);
         act(() => renderer.root.findByProps({ testID: 'session-composer-mode-picker-scrim' }).props.onPress());
-        act(() => renderer.root.findByProps({ testID: 'session-config-permission-trigger' }).props.onPress());
-        act(() => renderer.root.findByProps({ accessibilityLabel: 'agentInput.codexPermissionMode.readOnly' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-composer-permission-trigger' }).props.onPress());
+        await act(async () => renderer.root.findByProps({ testID: 'session-composer-permission-option-automatic' }).props.onPress());
+        expect(mocks.setPermissionMode).toHaveBeenCalledWith('safe-yolo');
+        act(() => renderer.root.findByProps({ testID: 'session-composer-permission-trigger' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-composer-permission-more' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-composer-permission-extra-read-only' }).props.onKeyDown({ key: ' ', preventDefault: vi.fn() }));
         expect(mocks.setPermissionMode).toHaveBeenCalledWith('read-only');
+        act(() => renderer.root.findByProps({ testID: 'session-composer-permission-trigger' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-composer-permission-more' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-composer-permission-extra-default' }).props.onPress());
+        expect(mocks.setPermissionMode).toHaveBeenCalledWith('default');
 
     });
 

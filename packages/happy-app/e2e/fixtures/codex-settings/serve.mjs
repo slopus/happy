@@ -18,7 +18,7 @@ const log = console.log;
 console.log = (...args) => log(...args.map(value => typeof value === 'string' && value.includes('Auth URL:') ? 'Auth URL: saved privately' : value));
 let environment, machineSocket, controller, runtime;
 const clients = new Map();
-const metrics = { spawns: [], messages: [] };
+const metrics = { spawns: [], messages: [], aborts: 0 };
 const models = [
     { code: 'gpt-6.1-sol', value: 'GPT-6.1 Sol', description: '能力与速度兼顾', serviceTiers: [{ id: 'priority', name: 'Fast' }] },
     { code: 'gpt-6.1-terra', value: 'GPT-6.1 Terra', description: '编码与工程任务', serviceTiers: [{ id: 'priority', name: 'Fast' }] },
@@ -60,6 +60,12 @@ async function main() {
         clients.set(session.id, client);
         client.rpcHandlerManager.registerHandler('fixtureReady', async () => ({ ready: true }));
         await once(client.socket, 'rpc-registered', e => e.method === `${session.id}:fixtureReady`);
+        client.rpcHandlerManager.registerHandler('abort', async () => {
+            metrics.aborts++;
+            client.sendAgentMessage('codex', { type: 'turn_aborted', id: randomUUID(), status: 'cancelled' });
+            client.keepAlive(false, 'remote');
+            return { success: true };
+        });
         client.keepAlive(false, 'remote');
         client.socket.io.engine.on('packet', p => { if (p.type === 'ping') client.keepAlive(false, 'remote'); });
         client.onUserMessage(message => {
@@ -98,6 +104,13 @@ async function main() {
             if (url.pathname === '/runtime') return response.end(JSON.stringify(runtime));
             if (url.pathname === '/metrics') return response.end(JSON.stringify(metrics));
             if (request.method === 'POST' && url.pathname === '/shutdown') { response.end('{"stopping":true}'); setImmediate(() => { void cleanup(); }); return; }
+            if (request.method === 'POST' && url.pathname === '/running') {
+                for (const client of clients.values()) {
+                    client.sendAgentMessage('codex', { type: 'task_started', id: randomUUID() });
+                    client.keepAlive(true, 'remote');
+                }
+                return response.end('{"running":true}');
+            }
             if (request.method === 'POST' && url.pathname === '/offline') { for (const client of clients.values()) client.sendSessionDeath(); return response.end('{"offline":true}'); }
             if (request.method === 'POST' && url.pathname === '/online') { for (const client of clients.values()) client.keepAlive(false, 'remote'); return response.end('{"online":true}'); }
             response.writeHead(404); response.end('{}');

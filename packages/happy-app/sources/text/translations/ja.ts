@@ -1430,6 +1430,7 @@ failedContinueTask: "未完了の作業を続ける",
     },
 
     agentInput: {
+        stop: '停止',
         asyncQuestion: {
             title: '質問',
             hint: '後で回答できます。作業は続行されます。',
@@ -1466,6 +1467,9 @@ failedContinueTask: "未完了の作業を続ける",
             badgePlanMode: 'プランモード',
         },
         taskPermission: {
+            useDefaults: '既定の設定を使用',
+            moreOptions: 'その他',
+            pickerTitle: '操作をどのように承認しますか？',
             automatic: 'Auto approve',
             automaticDescription: 'Allow workspace operations and request approval on failure. Device and outer sandbox limits still apply.',
             title: '権限',

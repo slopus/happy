@@ -1429,6 +1429,7 @@ failedContinueTask: "Continua la tasca pendent",
     },
 
     agentInput: {
+        stop: 'Atura',
         asyncQuestion: {
             title: 'Pregunta',
             hint: 'Pots respondre més tard. La feina continua.',
@@ -1465,6 +1466,9 @@ failedContinueTask: "Continua la tasca pendent",
             badgePlanMode: 'Mode de planificació',
         },
         taskPermission: {
+            useDefaults: 'Utilitza els valors predeterminats',
+            moreOptions: 'Més',
+            pickerTitle: 'Com s’han d’aprovar les accions?',
             automatic: 'Auto approve',
             automaticDescription: 'Allow workspace operations and request approval on failure. Device and outer sandbox limits still apply.',
             title: 'Permisos',

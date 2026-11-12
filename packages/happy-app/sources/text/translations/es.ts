@@ -1429,6 +1429,7 @@ failedContinueTask: "Continuar tarea pendiente",
     },
 
     agentInput: {
+        stop: 'Detener',
         asyncQuestion: {
             title: 'Pregunta',
             hint: 'Puedes responder más tarde. El trabajo continúa.',
@@ -1465,6 +1466,9 @@ failedContinueTask: "Continuar tarea pendiente",
             badgePlanMode: 'Modo de planificación',
         },
         taskPermission: {
+            useDefaults: 'Usar valores predeterminados',
+            moreOptions: 'Más',
+            pickerTitle: '¿Cómo aprobar las acciones?',
             automatic: 'Auto approve',
             automaticDescription: 'Allow workspace operations and request approval on failure. Device and outer sandbox limits still apply.',
             title: 'Permisos',

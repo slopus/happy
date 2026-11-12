@@ -1445,6 +1445,7 @@ failedContinueTask: "Kontynuuj niedokończone zadanie",
     },
 
     agentInput: {
+        stop: 'Zatrzymaj',
         asyncQuestion: {
             title: 'Pytanie',
             hint: 'Możesz odpowiedzieć później. Praca trwa dalej.',
@@ -1481,6 +1482,9 @@ failedContinueTask: "Kontynuuj niedokończone zadanie",
             badgePlanMode: 'Tryb planowania',
         },
         taskPermission: {
+            useDefaults: 'Użyj ustawień domyślnych',
+            moreOptions: 'Więcej',
+            pickerTitle: 'Jak zatwierdzać działania?',
             automatic: 'Auto approve',
             automaticDescription: 'Allow workspace operations and request approval on failure. Device and outer sandbox limits still apply.',
             title: 'Uprawnienia',

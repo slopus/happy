@@ -1,3 +1,4 @@
+import { ComposerActionIcon } from './ComposerActionIcon';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { View, Platform, useWindowDimensions, Text, ActivityIndicator, Pressable } from 'react-native';
@@ -223,9 +224,9 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         flexShrink: 0,
     },
     sendButton: {
-        width: Platform.select({ web: 32, default: 40 }),
-        height: Platform.select({ web: 32, default: 40 }),
-        borderRadius: Platform.select({ web: 16, default: 20 }),
+        width: 40,
+        height: 40,
+        borderRadius: 20,
         justifyContent: 'center',
         alignItems: 'center',
         flexShrink: 0,
@@ -239,16 +240,13 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         elevation: 2,
     },
     sendButtonActive: {
-        backgroundColor: theme.colors.button.primary.background,
+        backgroundColor: theme.colors.button.composer.background,
     },
     sendButtonInactive: {
-        backgroundColor: theme.colors.button.primary.disabled,
-    },
-    sendButtonIcon: {
-        color: theme.colors.button.primary.tint,
+        backgroundColor: theme.colors.button.composer.disabled,
     },
     abortConfirmationLabel: {
-        color: theme.colors.button.primary.tint,
+        color: theme.colors.button.composer.tint,
         fontSize: 12,
         lineHeight: 16,
         ...Typography.default('semiBold'),
@@ -1063,28 +1061,14 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                             || (!isAbortAction && !isAbortConfirmationArmed && props.isSending) ? (
                                             <ActivityIndicator
                                                 size="small"
-                                                color={theme.colors.button.primary.tint}
+                                                color={theme.colors.button.composer.tint}
                                             />
                                         ) : isAbortConfirmationArmed ? (
                                             <Text style={styles.abortConfirmationLabel}>Esc</Text>
-                                        ) : isAbortAction ? (
-                                            <Octicons
-                                                name="square-fill"
-                                                size={12}
-                                                color={theme.colors.button.primary.tint}
-                                            />
                                         ) : (
-                                            <Octicons
-                                                name="arrow-up"
-                                                size={16}
-                                                color={theme.colors.button.primary.tint}
-                                                style={[
-                                                    styles.sendButtonIcon,
-                                                    { marginTop: Platform.OS === 'web' ? 2 : 0 }
-                                                ]}
-                                            />
+                                            <ComposerActionIcon stop={isAbortAction} color={theme.colors.button.composer.tint} />
                                         )}
-                                        <ComposerTooltip testID="composer-send-tooltip" label={(isAbortAction || isAbortConfirmationArmed) ? t('keyboardShortcuts.stopRunningAgent') : (props.sendLabel ?? t('keyboardShortcuts.sendMessage'))} visible={Platform.OS === 'web' && hoveredAction === 'send'} />
+                                        <ComposerTooltip testID="composer-send-tooltip" label={(isAbortAction || isAbortConfirmationArmed) ? t('agentInput.stop') : (props.sendLabel ?? t('keyboardShortcuts.sendMessage'))} visible={Platform.OS === 'web' && hoveredAction === 'send'} />
                                     </Pressable>
                                 </Shaker>
                                 </View>

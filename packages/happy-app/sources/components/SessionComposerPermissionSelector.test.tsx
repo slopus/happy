@@ -1,3 +1,4 @@
+vi.mock('react-native-svg', () => ({ default: 'Svg', Path: 'Path', Rect: 'Rect', Circle: 'Circle' }));
 import * as React from 'react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -70,6 +71,7 @@ vi.mock('react-native-unistyles', () => {
             text: '#fff',
             textSecondary: '#aaa',
             warning: '#f90',
+            permission: { fullAccess: '#f90' },
         },
     };
     return {
@@ -138,6 +140,10 @@ describe('SessionComposerPermissionSelector', () => {
         act(() => trigger.props.onPress());
         const picker = renderer.root.findByProps({ testID: 'session-composer-permission-picker' });
         expect(picker.props.role).toBe('dialog');
+        const placement = picker.props.style.find((value: any) => value?.position === 'absolute');
+        const dimensions = picker.props.style.find((value: any) => value?.width);
+        expect(placement.left).toBeGreaterThanOrEqual(8);
+        expect(placement.left + dimensions.width).toBeLessThanOrEqual(382);
         expect(renderer.root.findByProps({ testID: 'session-composer-permission-trigger' }).props['aria-expanded']).toBe(true);
 
         const confirmOption = renderer.root.findByProps({ testID: 'session-composer-permission-option-confirm' });

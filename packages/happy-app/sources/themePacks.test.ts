@@ -78,6 +78,15 @@ describe('theme pack interactive surfaces', () => {
         },
     );
 
+    it('keeps composer actions monochrome with readable contrast across themes', () => {
+        for (const theme of [appThemes.ginghamDark, appThemes.ginghamLight]) {
+            const { background, tint } = theme.colors.button.composer;
+            expect(background).toBe(theme.dark ? '#FFFFFF' : '#000000');
+            expect(contrastRatio(background, tint)).toBeGreaterThanOrEqual(7);
+            expect(contrastRatio(theme.colors.permission.fullAccess, theme.colors.surface)).toBeGreaterThanOrEqual(4.5);
+        }
+    });
+
     it('keeps destructive button text readable in gingham dark', () => {
         const { background, backgroundPressed, tint } = appThemes.ginghamDark.colors.button.destructive;
 

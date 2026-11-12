@@ -1427,6 +1427,7 @@ failedContinueTask: "Continua il lavoro in sospeso",
     },
 
     agentInput: {
+        stop: 'Ferma',
         asyncQuestion: {
             title: 'Domanda',
             hint: 'Puoi rispondere più tardi. Il lavoro continua.',
@@ -1463,6 +1464,9 @@ failedContinueTask: "Continua il lavoro in sospeso",
             badgePlanMode: 'Modalità piano',
         },
         taskPermission: {
+            useDefaults: 'Usa impostazioni predefinite',
+            moreOptions: 'Altro',
+            pickerTitle: 'Come approvare le azioni?',
             automatic: 'Auto approve',
             automaticDescription: 'Allow workspace operations and request approval on failure. Device and outer sandbox limits still apply.',
             title: 'Autorizzazioni',

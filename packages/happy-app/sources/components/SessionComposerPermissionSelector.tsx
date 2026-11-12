@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { Modal, Platform, Pressable, Text, useWindowDimensions, View } from 'react-native';
+import { PermissionModeIcon } from './PermissionModeIcon';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
@@ -11,6 +12,7 @@ import type { TaskPermissionLevel } from '@/utils/taskPermissionModes';
 
 export type SessionComposerPermissionSelectorConfig = SessionTaskPermissionController & {
     compact?: boolean;
+    extraModes?: { key: string; label: string; onSelect: () => void }[];
 };
 
 const LEVELS: TaskPermissionLevel[] = ['confirm', 'automatic', 'full-access'];
@@ -46,6 +48,9 @@ export const SessionComposerPermissionSelector = React.memo(function SessionComp
     const [open, setOpen] = React.useState(false);
     const [hovered, setHovered] = React.useState(false);
     const [hoveredLevel, setHoveredLevel] = React.useState<TaskPermissionLevel | null>(null);
+    const [showExtraModes, setShowExtraModes] = React.useState(false);
+    const [hoveredExtraMode, setHoveredExtraMode] = React.useState<string | null>(null);
+    const [extraHovered, setExtraHovered] = React.useState(false);
     const [selecting, setSelecting] = React.useState(false);
     const triggerRef = React.useRef<any>(null);
     const firstOptionRef = React.useRef<any>(null);
@@ -100,6 +105,10 @@ export const SessionComposerPermissionSelector = React.memo(function SessionComp
     const openPicker = React.useCallback(() => {
         if (!enabled) return;
         hapticsLight();
+        setHoveredLevel(null);
+        setShowExtraModes(false);
+        setExtraHovered(false);
+        setHoveredExtraMode(null);
         const node = triggerRef.current;
         if (node && typeof node.measureInWindow === 'function') {
             node.measureInWindow((x: number, y: number, width: number, height: number) => {
@@ -129,7 +138,7 @@ export const SessionComposerPermissionSelector = React.memo(function SessionComp
         }
     }, [enabled, props.level, props.onLevelChange]);
 
-    const dialogWidth = Math.min(390, Math.max(0, viewportWidth - 32));
+    const dialogWidth = Math.min(336, Math.max(0, viewportWidth - 32));
 
     return (
         <View
@@ -156,21 +165,19 @@ export const SessionComposerPermissionSelector = React.memo(function SessionComp
                     (pressed || hovered) && styles.triggerPressed,
                 ]}
             >
-                <Ionicons
-                    name={props.level === 'full-access' ? 'play-forward' : 'shield-checkmark-outline'}
-                    size={14}
-                    color={props.level === 'full-access' ? theme.colors.warning : theme.colors.textSecondary}
+                <PermissionModeIcon
+                    level={props.level}
+                    size={18}
+                    color={props.level === 'full-access' ? theme.colors.permission.fullAccess : theme.colors.textSecondary}
                 />
                 <Text
                     testID="session-composer-permission-trigger-label"
-                    style={[styles.triggerText, props.compact && styles.triggerTextCompact]}
+                    style={[styles.triggerText, props.compact && styles.triggerTextCompact, props.level === 'full-access' && { color: theme.colors.permission.fullAccess }]}
                     numberOfLines={1}
                 >
                     {currentTriggerLabel}
                 </Text>
-                {enabled && !props.compact ? (
-                    <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={11} color={theme.colors.textSecondary} />
-                ) : null}
+
             </Pressable>
             <ComposerTooltip testID="session-composer-permission-tooltip" label={t('agentInput.taskPermission.title')} visible={Platform.OS === 'web' && hovered && !open} />
             {props.online && props.unavailableReason ? (
@@ -182,12 +189,12 @@ export const SessionComposerPermissionSelector = React.memo(function SessionComp
             <Modal
                 visible={open}
                 transparent
-                animationType="fade"
+                animationType={Platform.OS === 'web' ? 'none' : 'fade'}
                 statusBarTranslucent
                 onRequestClose={() => setOpen(false)}
             >
                 <View style={styles.modalRoot}>
-                    <Pressable style={styles.modalBackdrop} onPress={() => setOpen(false)} />
+                    <Pressable testID="session-composer-permission-scrim" style={styles.modalBackdrop} onPress={() => setOpen(false)} />
                     <View
                         role="dialog"
                         accessibilityLabel={t('agentInput.taskPermission.title')}
@@ -197,15 +204,25 @@ export const SessionComposerPermissionSelector = React.memo(function SessionComp
                             anchor
                                 ? {
                                     position: 'absolute',
-                                    right: Math.max(8, viewportWidth - (anchor.x + anchor.width)),
+                                    left: Math.max(8, Math.min(anchor.x, viewportWidth - dialogWidth - 8)),
                                     bottom: Math.max(8, viewportHeight - anchor.y + 8),
                                 }
                                 : styles.pickerSurfaceFallback,
                             { width: dialogWidth, maxHeight: Math.max(0, viewportHeight - 64) },
                         ]}
                     >
-                        <Text style={styles.pickerTitle}>{t('agentInput.taskPermission.title')}</Text>
-                        <Text style={styles.pickerHint}>{t('agentInput.taskPermission.changesNextMessages')}</Text>
+                        <View style={styles.pickerHeader}>
+                            <Text style={styles.pickerTitle}>{t('agentInput.taskPermission.pickerTitle')}</Text>
+                            {!!props.extraModes?.length && <Pressable
+                                testID="session-composer-permission-more"
+                                accessibilityRole="button"
+                                accessibilityState={{ expanded: showExtraModes }}
+                                onPress={() => setShowExtraModes(value => !value)}
+                                onHoverIn={() => setExtraHovered(true)}
+                                onHoverOut={() => setExtraHovered(false)}
+                                style={({ pressed }) => [styles.moreButton, (pressed || extraHovered) && styles.optionPressed]}
+                            ><Text style={styles.moreText}>{t('agentInput.taskPermission.moreOptions')}</Text></Pressable>}
+                        </View>
                         <View accessibilityRole="radiogroup">
                             {LEVELS.filter(level => level !== 'automatic' || props.supportsAutomatic).map((level) => {
                                 const selected = level === props.level;
@@ -221,22 +238,44 @@ export const SessionComposerPermissionSelector = React.memo(function SessionComp
                                         aria-checked={selected}
                                         accessibilityLabel={`${label}. ${description}`}
                                         onPress={() => void selectLevel(level)}
+                                        {...(Platform.OS === 'web' ? { onKeyDown: (event: React.KeyboardEvent) => {
+                                            if (event.key === ' ' && !event.repeat) {
+                                                event.preventDefault();
+                                                void selectLevel(level);
+                                            }
+                                        } } : {})}
                                         onHoverIn={() => setHoveredLevel(level)}
                                         onHoverOut={() => setHoveredLevel(null)}
                                         style={({ pressed }) => [styles.option, (pressed || hoveredLevel === level) && styles.optionPressed]}
                                     >
-                                        <Ionicons
-                                            name={selected ? 'checkmark-circle' : 'ellipse-outline'}
-                                            size={18}
-                                            color={selected ? theme.colors.button.primary.background : theme.colors.textSecondary}
-                                        />
+                                        <PermissionModeIcon level={level} color={level === 'full-access' ? theme.colors.permission.fullAccess : theme.colors.textSecondary} />
                                         <View style={styles.optionCopy}>
-                                            <Text style={styles.optionLabel}>{label}</Text>
-                                            <Text style={styles.optionDescription}>{description}</Text>
+                                            <Text style={[styles.optionLabel, level === 'full-access' && { color: theme.colors.permission.fullAccess }]}>{label}</Text>
+                                            <Text style={[styles.optionDescription, level === 'full-access' && { color: theme.colors.permission.fullAccess }]}>{description}</Text>
+                                        </View>
+                                        <View style={styles.checkmark}>
+                                            {selected && <Ionicons name="checkmark" size={18} color={level === 'full-access' ? theme.colors.permission.fullAccess : theme.colors.text} />}
                                         </View>
                                     </Pressable>
                                 );
                             })}
+                            {showExtraModes && props.extraModes?.map(mode => <Pressable
+                                key={mode.key}
+                                testID={`session-composer-permission-extra-${mode.key}`}
+                                accessibilityRole="radio"
+                                accessibilityState={{ checked: props.currentMode === mode.key }}
+                                onPress={() => { setOpen(false); mode.onSelect(); }}
+                                {...(Platform.OS === 'web' ? { onKeyDown: (event: React.KeyboardEvent) => {
+                                    if (event.key === ' ' && !event.repeat) {
+                                        event.preventDefault();
+                                        setOpen(false);
+                                        mode.onSelect();
+                                    }
+                                } } : {})}
+                                onHoverIn={() => setHoveredExtraMode(mode.key)}
+                                onHoverOut={() => setHoveredExtraMode(null)}
+                                style={({ pressed }) => [styles.extraOption, (pressed || hoveredExtraMode === mode.key) && styles.optionPressed]}
+                            ><Text style={styles.optionDescription}>{mode.label}</Text>{props.currentMode === mode.key && <Ionicons name="checkmark" size={18} color={theme.colors.text} />}</Pressable>)}
                         </View>
                     </View>
                 </View>
@@ -249,7 +288,7 @@ const styles = StyleSheet.create((theme) => ({
     container: {
         minWidth: 0,
         flexShrink: 1,
-        alignItems: 'flex-end',
+        alignItems: 'flex-start',
         marginLeft: 2,
     },
     trigger: {
@@ -257,17 +296,17 @@ const styles = StyleSheet.create((theme) => ({
         width: '100%',
         height: 32,
         paddingHorizontal: 7,
-        borderRadius: 9,
+        borderRadius: 16,
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'flex-end',
+        justifyContent: 'flex-start',
         gap: 4,
     },
     triggerDisabled: {
         opacity: 0.58,
     },
     triggerPressed: {
-        backgroundColor: theme.colors.surfaceSelected,
+        backgroundColor: theme.colors.surfacePressed,
     },
     triggerText: {
         minWidth: 0,
@@ -297,11 +336,11 @@ const styles = StyleSheet.create((theme) => ({
         bottom: 0,
     },
     pickerSurface: {
-        padding: 12,
+        padding: 8,
         borderRadius: 16,
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: theme.colors.divider,
-        backgroundColor: theme.colors.input.background,
+        backgroundColor: theme.colors.surface,
         overflow: 'hidden',
         shadowColor: theme.colors.shadow.color,
         shadowOffset: { width: 0, height: 4 },
@@ -313,29 +352,30 @@ const styles = StyleSheet.create((theme) => ({
         alignSelf: 'center',
         marginTop: 120,
     },
+    pickerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    moreButton: { paddingHorizontal: 7, paddingVertical: 5, borderRadius: 6 },
+    moreText: { color: theme.colors.textSecondary, fontSize: 11, ...Typography.default() },
+    extraOption: { minHeight: 34, paddingHorizontal: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderRadius: 8 },
     pickerTitle: {
-        color: theme.colors.text,
-        fontSize: 15,
-        ...Typography.default('semiBold'),
-    },
-    pickerHint: {
-        marginTop: 2,
-        marginBottom: 8,
         color: theme.colors.textSecondary,
         fontSize: 12,
+        paddingHorizontal: 8,
+        paddingTop: 3,
+        paddingBottom: 7,
         ...Typography.default(),
     },
+    checkmark: { width: 18, alignSelf: 'center' },
     option: {
-        minHeight: 58,
+        minHeight: 52,
         paddingHorizontal: 8,
         paddingVertical: 8,
         borderRadius: 12,
         flexDirection: 'row',
-        alignItems: 'flex-start',
-        gap: 9,
+        alignItems: 'center',
+        gap: 10,
     },
     optionPressed: {
-        backgroundColor: theme.colors.surfaceSelected,
+        backgroundColor: theme.colors.surfacePressed,
     },
     optionCopy: {
         flex: 1,

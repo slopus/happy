@@ -105,6 +105,11 @@ export const lightTheme = {
             readingCompact: '#FFFFFF', readingWide: '#FFFFFF',
         },
         button: {
+            composer: {
+                background: '#000000',
+                tint: '#FFFFFF',
+                disabled: '#D5D5D5',
+            },
             primary: {
                 background: '#C77D3E',
                 tint: '#FFFFFF',
@@ -151,6 +156,7 @@ export const lightTheme = {
 
         // Permission mode colors
         permission: {
+            fullAccess: '#A14313',
             default: '#8E8E93',
             acceptEdits: '#007AFF',
             bypass: '#FF9500',
@@ -338,6 +344,11 @@ export const darkTheme = {
             readingCompact: 'rgba(21,26,33,0.70)', readingWide: 'rgba(21,26,33,0.51)',
         },
         button: {
+            composer: {
+                background: '#FFFFFF',
+                tint: '#000000',
+                disabled: '#484848',
+            },
             primary: {
                 background: '#E0975A',
                 tint: '#1A1512',
@@ -384,6 +395,7 @@ export const darkTheme = {
 
         // Permission mode colors
         permission: {
+            fullAccess: '#EDA56F',
             default: '#8E8E93',
             acceptEdits: '#0A84FF',
             bypass: '#FF9F0A',

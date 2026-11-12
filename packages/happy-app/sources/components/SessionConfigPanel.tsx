@@ -1,3 +1,5 @@
+import { SessionComposerPermissionSelector } from './SessionComposerPermissionSelector';
+import { getAgentPermissionModeForTaskLevel, getTaskPermissionLevelForAgentMode } from '@/utils/taskPermissionModes';
 import { ComposerTooltip } from './DesktopShortcutTooltip';
 import { SessionComposerModeSelector } from './SessionComposerModeSelector';
 import React from 'react';
@@ -1519,7 +1521,29 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
 
             </View>;
             const permissionControl = <>{
-!isOffline && showPermission && (
+!isOffline && showPermission && (selectedAgent === 'codex' ? (
+                                <SessionComposerPermissionSelector
+                                    online supported supportsAutomatic
+                                    level={getTaskPermissionLevelForAgentMode(selectedAgent, currentPermission?.key)}
+                                    currentMode={currentPermission?.key}
+                                    unavailableReason={null}
+                                    extraModes={permissionModes.filter(mode => mode.key === 'default' || mode.key === 'read-only').map(mode => ({
+                                        key: mode.key, label: mode.key === 'default' ? t('agentInput.taskPermission.useDefaults') : mode.name,
+                                        onSelect: () => {
+                                            setPermissionIndex(permissionModes.findIndex(option => option.key === mode.key));
+                                            draft.setPermissionMode(mode.key);
+                                        },
+                                    }))}
+                                    onLevelChange={async level => {
+                                        const mode = getAgentPermissionModeForTaskLevel(selectedAgent, level);
+                                        const index = permissionModes.findIndex(option => option.key === mode);
+                                        if (index < 0 || !mode) return false;
+                                        setPermissionIndex(index);
+                                        draft.setPermissionMode(mode);
+                                        return true;
+                                    }}
+                                />
+                            ) : (
                                 <Pressable
                                     ref={(node) => capturePickerTrigger('permission', node)}
                                     testID="session-config-permission-trigger"
@@ -1538,10 +1562,9 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                         color={permissionStyle?.color ?? theme.colors.textSecondary}
                                     />
                                     <Text style={styles.composerConfigCompactText} numberOfLines={1}>{currentPermission?.name}</Text>
-                                    <Ionicons name="chevron-down" size={11} color={theme.colors.textSecondary} />
                                 <ComposerTooltip testID="composer-permission-tooltip" label={t('agentInput.taskPermission.title')} visible={isWeb && hoveredComposerControl === 'permission' && activePicker !== 'permission'} />
                                 </Pressable>
-                            )
+                            ))
             }</>;
             const modelControl = <>{
 !isOffline && !configExperience.isAskMode && (

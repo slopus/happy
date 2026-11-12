@@ -1445,6 +1445,7 @@ failedContinueTask: "Продолжить незавершённую задач�
     },
 
     agentInput: {
+        stop: 'Стоп',
         asyncQuestion: {
             title: 'Вопрос',
             hint: 'Можно ответить позже. Работа продолжается.',
@@ -1481,6 +1482,9 @@ failedContinueTask: "Продолжить незавершённую задач�
             badgePlanMode: 'Режим планирования',
         },
         taskPermission: {
+            useDefaults: 'Использовать настройки по умолчанию',
+            moreOptions: 'Ещё',
+            pickerTitle: 'Как одобрять действия?',
             automatic: 'Auto approve',
             automaticDescription: 'Allow workspace operations and request approval on failure. Device and outer sandbox limits still apply.',
             title: 'Разрешения',

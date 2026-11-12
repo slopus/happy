@@ -1,3 +1,4 @@
+vi.mock('react-native-svg', () => ({ default: 'Svg', Path: 'Path', Rect: 'Rect', Circle: 'Circle' }));
 import * as React from 'react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -83,6 +84,7 @@ vi.mock('react-native-unistyles', () => {
         dark: true,
         colors: {
             button: {
+                composer: { background: '#fff', disabled: '#777', tint: '#000' },
                 primary: { background: '#fff', disabled: '#777', tint: '#000' },
                 secondary: { tint: '#fff' },
             },

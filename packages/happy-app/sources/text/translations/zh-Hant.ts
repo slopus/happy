@@ -1489,6 +1489,7 @@ failedContinueTask: "繼續未完成的工作",
     },
 
     agentInput: {
+        stop: '停止',
         asyncQuestion: {
             title: '問題', hint: '可以稍後回答，任務仍會繼續。',
             later: '稍後回答', expand: '展開問題', answered: '已回答', dismissed: '已略過',
@@ -1520,6 +1521,9 @@ failedContinueTask: "繼續未完成的工作",
             badgePlanMode: '計畫模式',
         },
         taskPermission: {
+            useDefaults: '使用預設',
+            moreOptions: '更多',
+            pickerTitle: '應如何批准操作？',
             automatic: '幫我批准',
             automaticDescription: '允許工作區內操作，失敗時請求批准；裝置及外層沙箱限制仍適用。',
             title: '權限',
