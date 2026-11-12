@@ -154,7 +154,7 @@ class Wire {
 }
 
 /** One app's life on the socket: handshake, auth, an acked call, the heartbeat, and its way of closing. */
-async function app(t, name, lines, auth, { heartbeat, goodbye }) {
+async function app(t, name, lines, auth, { heartbeat, goodbye, record = true }) {
     const out = {};
     const w = await Wire.open(t.base, lines);
     out.upgrade = w.head;
@@ -174,7 +174,8 @@ async function app(t, name, lines, auth, { heartbeat, goodbye }) {
     await goodbye(w);
     out.goodbye = await w.settle(500);
     w.sock.destroy();
-    t.note(name, out);
+    if (record) t.note(name, out);
+    return out;
 }
 
 export async function scenario(t) {
@@ -182,11 +183,12 @@ export async function scenario(t) {
     const host = new URL(t.base).host;
     const auth = (client, appState = 'active') => ({ token, clientType: 'user-scoped', happyClient: client, appState });
 
-    // Both heartbeats in parallel, so the 15 s wait is paid once.
-    await Promise.all([
+    // Both heartbeats in parallel, so the 15 s wait is paid once; noted in a fixed order.
+    const [i, a] = await Promise.all([
         // SocketIOClient.disconnect(): "41", then URLSessionWebSocketTask.cancel(.normalClosure).
         app(t, 'ios', ios(host), auth('ios/2.0.0'), {
             heartbeat: true,
+            record: false,
             goodbye: async (w) => {
                 w.send('41');
                 w.close(1000);
@@ -195,9 +197,12 @@ export async function scenario(t) {
         // OkHttp's WebSocket.close(1000, null) without a Socket.IO disconnect first.
         app(t, 'android', android(host), auth('android/2.0.0', 'background'), {
             heartbeat: true,
+            record: false,
             goodbye: async (w) => w.close(1000),
         }),
     ]);
+    t.note('ios', i);
+    t.note('android', a);
 
     await app(t, 'ios without deflate offer', ios(host, false), auth('ios/2.0.0'), { goodbye: async (w) => w.close(1000) });
     // Android's X-Happy-Client header stands in for a missing happyClient.

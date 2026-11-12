@@ -595,8 +595,10 @@ fn parse_protocols(h: &str) -> Result<Vec<String>, ()> {
     Ok(out)
 }
 
+/// tungstenite allocates `read_buffer_size` per socket up front (128 KiB by default,
+/// 640 MB for 5000 idle sockets); it grows to the frame size when a large frame comes.
 fn ws_config() -> WebSocketConfig {
-    WebSocketConfig::default().max_message_size(Some(MAX_PAYLOAD)).max_frame_size(Some(MAX_PAYLOAD))
+    WebSocketConfig::default().max_message_size(Some(MAX_PAYLOAD)).max_frame_size(Some(MAX_PAYLOAD)).read_buffer_size(8 * 1024)
 }
 
 fn ws_handshake(app: Arc<App>, mut req: hyper::Request<Incoming>, q: HashMap<String, String>) -> Result<HttpResponse, Destroy> {

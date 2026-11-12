@@ -34,7 +34,7 @@ use app::App;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpSocket};
 
 fn main() -> anyhow::Result<()> {
     let log = logwriter::stdout();
@@ -88,7 +88,12 @@ async fn serve(config: config::Config) -> anyhow::Result<()> {
     spawn_background(&app);
 
     let addr: SocketAddr = format!("{}:{}", app.config.host, app.config.port).parse()?;
-    let listener = TcpListener::bind(addr).await?;
+    // Node's listen backlog (511); mio's bind uses std's 128, which overflows under a
+    // burst of connects and costs each dropped SYN a 1 s retransmit.
+    let socket = if addr.is_ipv4() { TcpSocket::new_v4()? } else { TcpSocket::new_v6()? };
+    socket.set_reuseaddr(true)?;
+    socket.bind(addr)?;
+    let listener = socket.listen(511)?;
     tracing::info!("API ready on http://{}:{}", app.config.host, app.config.port);
     if app.config.metrics_enabled {
         let a = app.clone();
