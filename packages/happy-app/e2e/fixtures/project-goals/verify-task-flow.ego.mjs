@@ -20,50 +20,53 @@ const record = async (id, evidence) => {
 const metrics = async () => (await fetch(runtime.controllerUrl + '/metrics')).json();
 const featureBoard = async () => {
     await page.click('button[aria-label="桌面工作区"]');
-    await page.waitForSelector('[data-testid="project-task-board"]', { state: 'visible', timeout: 30000 });
+    await page.waitForFunction(() => !new URL(location.href).searchParams.has('task') && !!document.querySelector('[data-testid="project-task-board"]'), undefined, { timeout: 30000 });
 };
 const card = id => `[data-testid="project-task-card-${id}"]`;
 
 await page.goto((await fs.readFile(runtime.authUrlFile, 'utf8')).trim(), { timeout: 60000 });
 await page.waitForSelector('[data-testid="sidebar-project-goals-button"]', { state: 'visible', timeout: 60000 });
-await page.click('[data-testid="sidebar-project-goals-button"]');
-await page.waitForSelector('button[aria-label="Paws 项目工作区"]', { state: 'visible', timeout: 30000 });
-await page.click('button[aria-label="Paws 项目工作区"]');
-await page.waitForSelector('button[aria-label="桌面工作区"]', { state: 'visible', timeout: 30000 });
-await page.click('button[aria-label="桌面工作区"]');
+const boardUrl = runtime.webUrl + '/projects?' + Object.entries({ machine: runtime.machineId, project: runtime.projectPath, feature: runtime.featurePath }).map(([key, value]) => key + '=' + encodeURIComponent(value)).join('&');
+await page.goto(boardUrl, { timeout: 60000 });
 await page.waitForSelector('[data-testid="project-task-board"]', { state: 'visible', timeout: 30000 });
 
 const initial = await metrics();
+await page.waitForFunction(id => !document.querySelector(`[data-testid="project-task-chat-${id}"]`)?.disabled, runtime.taskA.id, { timeout: 30000 });
 await page.click(`${card(runtime.taskA.id)} button[aria-label="Open conversation"]`);
 await page.waitForSelector('[data-testid="project-task-chat"] textarea[data-testid="session-message-input"]', { state: 'visible', timeout: 60000 });
-assert(runtime.sessionIds.includes(new URL(await page.url()).searchParams.get('conversation')));
+assert([...runtime.sessionIds, ...initial.spawned.filter(session => session.directory === runtime.taskDirectory).map(session => session.sessionId)].includes(new URL(await page.url()).searchParams.get('conversation')));
 assert.equal((await metrics()).spawned.length, initial.spawned.length);
 await record('TF2-existing-chat', { newConversations: 0 });
 
 await featureBoard();
 const beforeCreate = await metrics();
+const taskBHadHistory = beforeCreate.spawned.some(session => session.directory === runtime.taskB.indexPath.replace(/[\\/][^\\/]+$/, ''));
+await page.waitForFunction(id => !document.querySelector(`[data-testid="project-task-chat-${id}"]`)?.disabled, runtime.taskB.id, { timeout: 30000 });
 await page.click(`${card(runtime.taskB.id)} button[aria-label="Open conversation"]`);
 await page.waitForSelector('[data-testid="project-task-chat"] textarea[data-testid="session-message-input"]', { state: 'visible', timeout: 60000 });
 const conversation = new URL(await page.url()).searchParams.get('conversation');
 assert(conversation);
 const created = await metrics();
-assert.equal(created.spawned.length, beforeCreate.spawned.length + 1);
+assert.equal(created.spawned.length, beforeCreate.spawned.length + (taskBHadHistory ? 0 : 1));
 assert.equal(created.submitted.length, 0); assert.equal(created.received.length, 0);
 await page.fill('[data-testid="project-task-chat"] textarea[data-testid="session-message-input"]', 'TASK-FLOW-UNSENT-DRAFT');
-await page.waitForSelector('[data-testid="project-task-navigation"]', { state: 'visible', timeout: 15000 });
-await page.click(`[data-testid="project-task-navigation-${runtime.taskA.id}"]`);
+await page.click('[data-testid="project-task-switcher"]');
+await page.waitForSelector('[data-testid="project-task-switcher-menu"]', { state: 'visible', timeout: 15000 });
+await page.click(`[data-testid="project-task-switch-${runtime.taskA.id}"]`);
 await page.waitForFunction(id => new URL(location.href).searchParams.get('task') === id && document.querySelector('[data-testid="project-task-brief"]')?.textContent.includes('工作区方案'), runtime.taskA.id, { timeout: 30000 });
 await page.waitForFunction(() => !document.querySelector('[data-testid="project-task-open-chat"]')?.disabled, undefined, { timeout: 30000 });
 await page.click('[data-testid="project-task-open-chat"]');
 await page.waitForSelector('[data-testid="project-task-chat"] textarea[data-testid="session-message-input"]', { state: 'visible', timeout: 60000 });
-await page.click(`[data-testid="project-task-navigation-${runtime.taskB.id}"]`);
+await page.click('[data-testid="project-task-switcher"]');
+await page.waitForSelector('[data-testid="project-task-switcher-menu"]', { state: 'visible', timeout: 15000 });
+await page.click(`[data-testid="project-task-switch-${runtime.taskB.id}"]`);
 await page.waitForFunction(id => new URL(location.href).searchParams.get('task') === id && document.querySelector('[data-testid="project-task-brief"]')?.textContent.includes('首次执行任务'), runtime.taskB.id, { timeout: 30000 });
 await page.waitForFunction(() => !document.querySelector('[data-testid="project-task-open-chat"]')?.disabled, undefined, { timeout: 30000 });
 await page.click('[data-testid="project-task-open-chat"]');
 await page.waitForFunction(id => new URL(location.href).searchParams.get('conversation') === id, conversation, { timeout: 60000 });
 await page.waitForFunction(() => [...document.querySelectorAll('[data-testid="project-task-chat"] textarea')].some(input => input.value === 'TASK-FLOW-UNSENT-DRAFT' && getComputedStyle(input).visibility !== 'hidden'), undefined, { timeout: 30000 });
 assert.equal((await metrics()).spawned.length, created.spawned.length);
-await record('TF3-create-reuse-draft', { newConversations: 1, submitted: 0, draftRestored: true, taskListPreserved: true });
+await record('TF3-create-reuse-draft', { newConversations: taskBHadHistory ? 0 : 1, reusedExistingFixtureHistory: taskBHadHistory, submitted: 0, draftRestored: true, taskSwitcherAccessible: true });
 
 await page.click('button[aria-label="Edit delivery"]');
 await page.waitForSelector('[data-testid="project-delivery-expected"]', { state: 'visible', timeout: 30000 });

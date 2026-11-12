@@ -19,6 +19,7 @@ import { FileWorkspace } from '@/components/fileWorkspace/FileWorkspace';
 import { PanelTabs } from '@/components/PanelTabs';
 import { useCachedProjectResource } from './useProjectData';
 import { ProjectDetailsPanel } from './ProjectDetailsPanel';
+import { ProjectConversationHeader } from './ProjectConversationHeader';
 import { ProjectConversationEmptyState } from './ProjectConversationEmptyState';
 import { GoalBoardButton as Button } from './GoalBoardButton';
 import { projectPanelGap, canSplitProjectFile } from './projectWorkspaceLayout';
@@ -26,7 +27,7 @@ import { projectPanelGap, canSplitProjectFile } from './projectWorkspaceLayout';
 export type ProjectOverviewProps = {
     machineId: string; scopePath: string; title: string; conversationId?: string;
     agent: 'codex' | 'claude'; offline: boolean; connecting?: boolean; revision?: string; surface: string;
-    selectConversation: (id: string) => void; children: React.ReactNode; navigation?: React.ReactNode; navigationCollapsed?: boolean; onToggleNavigation?: () => void;
+    selectConversation: (id: string) => void; children: React.ReactNode;
 };
 export function ProjectOverviewWorkspace(props: ProjectOverviewProps) {
     const binding = React.useMemo(() => projectScopeFiles(props.machineId, props.scopePath), [props.machineId, props.scopePath]);
@@ -48,42 +49,43 @@ function OverviewContent(props: ProjectOverviewProps) {
             return session.directory === scopePath && !isProjectSessionDeleted(session.sessionId) && (!metadata || (metadata.machineId === machineId && (!metadata.goalBoard || (!metadata.goalBoard.taskId && metadata.goalBoard.featurePath === scopePath))));
         }).sort((a, b) => b.updatedAt - a.updatedAt || b.sessionId.localeCompare(a.sessionId));
     const conversationId = history.find(session => session.sessionId === props.conversationId)?.sessionId;
+    const showChat = !!props.conversationId;
     const [busy, setBusy] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
     const [tab, setTab] = React.useState('details');
     const [center, setCenter] = React.useState('tasks');
-    const [historyOpen, setHistoryOpen] = React.useState(false);
     const { width } = useWindowDimensions();
     const [rowWidth, setRowWidth] = React.useState(0);
     const wide = width >= 1100;
     const rightWidth = Math.min(340, Math.max(280, rowWidth * 0.3));
     const fileOpen = workspace.enabled && workspace.snapshot.open;
-    const split = wide && canSplitProjectFile(rowWidth, rightWidth, props.navigation ? 244 : 0);
+    const split = wide && fileOpen && showChat && tab === 'files' && canSplitProjectFile(rowWidth, rightWidth, 0);
     const alive = React.useRef(true);
     const opening = React.useRef(false);
     const focus = React.useRef(0);
     useFocusEffect(React.useCallback(() => { focus.current++; return () => { focus.current++; }; }, []));
     const latestConversation = React.useRef(props.conversationId); latestConversation.current = props.conversationId;
-    const attempt = React.useRef<string | undefined>(undefined);
+    const attempt = React.useRef<{ action: 'new' | 'continue'; id: string } | undefined>(undefined);
     React.useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
     React.useEffect(() => { if (props.conversationId) setCenter('chat'); }, [props.conversationId]);
-    const start = async () => {
+    const start = async (forceNew = false) => {
         if (opening.current) return;
         // Always verify the scope's own history before creating anything.
         opening.current = true; setBusy(true); setError(null);
         const owner = getRuntimeAccountSelection(), requestedConversation = latestConversation.current, epoch = focus.current;
         const isCurrent = () => alive.current && focus.current === epoch && getRuntimeAccountSelection() === owner && latestConversation.current === requestedConversation;
         try {
-            const fresh = offline ? [] : await loadProjectScopeHistory(machineId, scopePath);
+            const fresh = offline || forceNew ? [] : await loadProjectScopeHistory(machineId, scopePath);
             const sessions = [...new Map([...history, ...fresh].map(session => [session.sessionId, session])).values()]
                 .filter(session => session.directory === scopePath && !isProjectSessionDeleted(session.sessionId))
                 .sort((a, b) => b.updatedAt - a.updatedAt || b.sessionId.localeCompare(a.sessionId));
             if (!isCurrent()) return;
-            let id = sessions[0]?.sessionId;
+            let id = forceNew ? undefined : sessions[0]?.sessionId;
             if (!id) {
                 if (offline || !canCreateProjectConversation()) return;
-                attempt.current ??= `goal-scope-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-                const result = await machineStartGoalAuthor(machineId, { scopePath, requestId: attempt.current, agent: props.agent });
+                const action = forceNew ? 'new' : 'continue';
+                if (attempt.current?.action !== action) attempt.current = { action, id: `goal-scope-${Date.now()}-${Math.random().toString(36).slice(2)}` };
+                const result = await machineStartGoalAuthor(machineId, { scopePath, requestId: attempt.current.id, agent: props.agent });
                 if (result.type !== 'success') throw new Error(result.type === 'error' ? result.errorMessage : t('projectGoals.overviewUnavailable'));
                 id = result.sessionId;
             }
@@ -105,11 +107,12 @@ function OverviewContent(props: ProjectOverviewProps) {
         void workspace.openReference(path).then(() => { if (alreadyOpen) return workspace.controller.refresh(path); });
     };
     const showFiles = () => { setTab('files'); if (!wide) setCenter('details'); };
+    const changeTab = (value: string) => { setTab(value); if (value === 'details' && showChat) setCenter('chat'); };
     const info = overview.value;
     const chatDisabled = busy || (!history.length && (offline || !canCreateProjectConversation()));
     const maximized = fileOpen && workspace.maximized;
-    const panel = <ProjectDetailsPanel testID="project-scope-panel" style={{ backgroundColor: surface, ...(wide ? { width: rightWidth, marginLeft: projectPanelGap } : { flex: 1 }) }} tab={tab} onTab={setTab}
-        header={<>{(conversationId || fileOpen) && props.onToggleNavigation && <Button variant="toolbar" label={t(props.navigationCollapsed ? 'projectGoals.showTasks' : 'projectGoals.collapseTasks')} onPress={props.onToggleNavigation}><Ionicons name="list-outline" size={16} color={theme.colors.textSecondary} /></Button>}<Ionicons name="compass-outline" size={17} color={theme.colors.textLink} /><Text style={styles.label}>{t('projectGoals.globalOverview')}</Text></>}
+    const panel = <ProjectDetailsPanel testID="project-scope-panel" style={{ backgroundColor: surface, ...(wide ? { width: rightWidth, marginLeft: projectPanelGap } : { flex: 1 }) }} tab={tab} onTab={changeTab}
+        header={<><Ionicons name="compass-outline" size={17} color={theme.colors.textLink} /><Text style={styles.label}>{t('projectGoals.globalOverview')}</Text></>}
         footer={<><Button variant="primary" testID="project-scope-open-chat" label={t(history.length ? 'projectGoals.continueChat' : 'projectGoals.openChat')} disabled={chatDisabled} onPress={() => { void start(); }}><Ionicons name="chatbubble-outline" size={16} color={theme.colors.text} /><Text style={styles.body}>{t(history.length ? 'projectGoals.continueChat' : 'projectGoals.openChat')}</Text></Button>{busy && <ActivityIndicator color={theme.colors.textLink} size="small" />}</>}>
         {tab === 'files' ? <WorkspaceDirectoryTree sessionId={conversationId ?? ''} rootPath={scopePath} listDirectory={listDirectory} onOpenFile={openFile} /> : <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.brief}>
             <Text accessibilityRole="header" style={styles.title}>{info?.title || props.title}</Text>
@@ -123,18 +126,17 @@ function OverviewContent(props: ProjectOverviewProps) {
         </ScrollView>}
         {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
     </ProjectDetailsPanel>;
-    const chat = <View style={[styles.center, { backgroundColor: surface }]} testID="project-scope-chat"><View style={styles.history}>
-        <Button variant="toolbar" label={t('projectGoals.history')} expanded={historyOpen} onPress={() => setHistoryOpen(value => !value)}><Ionicons name="time-outline" size={16} color={theme.colors.textSecondary} /><Text style={styles.meta}>{t('projectGoals.history')} · {history.length}</Text></Button>
-        </View>{historyOpen && <ScrollView style={{ flexGrow: 0, maxHeight: 180 }}>{history.map(session => <Button variant="row" key={session.sessionId} selected={session.sessionId === conversationId} label={session.title} onPress={() => { props.selectConversation(session.sessionId); setHistoryOpen(false); }}><Text numberOfLines={2} style={styles.body}>{session.title}</Text></Button>)}{historyResource.error && <Text style={styles.error}>{historyResource.error}</Text>}</ScrollView>}
+    const chat = <View style={[styles.center, { backgroundColor: surface }]} testID="project-scope-chat">
+        <ProjectConversationHeader testIDPrefix="project-scope" sessions={history} selectedId={conversationId} onSelect={id => { props.selectConversation(id); setCenter('chat'); }} onNew={canCreateProjectConversation() ? () => { void start(true); } : undefined} onRefresh={() => { void historyResource.refresh(); }} loading={historyResource.loading} error={historyResource.error} onRetry={() => { void historyResource.refresh(); }} busy={busy} offline={offline} />
         {conversationId ? <SessionView key={conversationId} id={conversationId} embedded fullWidth emptyState={appendDraft => <ProjectConversationEmptyState task={{ title: props.title, goal: info?.goal ?? '' }} onDraft={appendDraft} onFiles={showFiles} scrollable={false} />} /> : <View style={styles.brief}><Text style={styles.meta}>{t(historyResource.loading ? 'common.loading' : 'projectGoals.sessionUnavailable')}</Text></View>}
     </View>;
     return <View style={styles.area} testID="project-overview-workspace">
-        {!wide && <View style={styles.compactTabs}><PanelTabs activeTab={center} onTabChange={setCenter} testIDPrefix="project-overview" tabs={[{ key: 'tasks', label: t('projectGoals.tasks'), icon: 'grid-outline' }, ...(conversationId ? [{ key: 'chat', label: t('projectGoals.discussion'), icon: 'chatbubble-outline' as const }] : []), ...(fileOpen ? [{ key: 'file', label: t('projectGoals.files'), icon: 'document-outline' as const }] : []), { key: 'details', label: t('projectGoals.globalOverview'), icon: 'compass-outline' }]} /></View>}
+        {!wide && <View style={styles.compactTabs}><PanelTabs activeTab={center} onTabChange={setCenter} testIDPrefix="project-overview" tabs={[{ key: 'tasks', label: t('projectGoals.tasks'), icon: 'grid-outline' }, ...(showChat ? [{ key: 'chat', label: t('projectGoals.discussion'), icon: 'chatbubble-outline' as const }] : []), ...(fileOpen ? [{ key: 'file', label: t('projectGoals.files'), icon: 'document-outline' as const }] : []), { key: 'details', label: t('projectGoals.globalOverview'), icon: 'compass-outline' }]} /></View>}
         <View style={styles.row} onLayout={event => setRowWidth(Math.round(event.nativeEvent.layout.width))}>
-            {wide ? <>{!maximized && (conversationId || fileOpen) && props.navigation}<View style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
-                {!maximized && conversationId && fileOpen && !split && <View style={styles.compactTabs}><PanelTabs testIDPrefix="project-scope-center" activeTab={center === 'file' ? 'file' : 'chat'} onTabChange={setCenter} tabs={[{ key: 'chat', label: t('projectGoals.discussion'), icon: 'chatbubble-outline' }, { key: 'file', label: t('projectGoals.files'), icon: 'document-outline' }]} /></View>}
-                <View style={styles.row}>{!conversationId && !fileOpen && props.children}{!maximized && conversationId && <View style={{ flex: 1, minWidth: 0, minHeight: 0, ...(fileOpen && !split && center === 'file' ? { display: 'none' as const } : {}) }}>{chat}</View>}{fileOpen && <View style={{ flex: 1, minWidth: 0, minHeight: 0, marginLeft: !maximized && split && conversationId ? projectPanelGap : 0, ...(!maximized && conversationId && !split && center !== 'file' ? { display: 'none' as const } : {}) }}><FileWorkspace sessionId={conversationId ?? ''} framed readingSurface="inherited" fileTreeExpanded={tab === 'files'} onToggleFileTree={() => setTab(value => value === 'files' ? 'details' : 'files')} /></View>}</View>
-            </View>{panel}</> : center === 'details' ? panel : center === 'file' && fileOpen ? <FileWorkspace sessionId={conversationId ?? ''} framed readingSurface="inherited" /> : center === 'chat' && conversationId ? chat : props.children}
+            {wide ? <><View style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
+                {!maximized && showChat && fileOpen && !split && center === 'file' && <View style={styles.compactTabs}><PanelTabs testIDPrefix="project-scope-center" activeTab={center === 'file' ? 'file' : 'chat'} onTabChange={setCenter} tabs={[{ key: 'chat', label: t('projectGoals.discussion'), icon: 'chatbubble-outline' }, { key: 'file', label: t('projectGoals.files'), icon: 'document-outline' }]} /></View>}
+                <View style={styles.row}>{!showChat && !fileOpen && props.children}{!maximized && showChat && <View style={{ flex: 1, minWidth: 0, minHeight: 0, ...(fileOpen && !split && center === 'file' ? { display: 'none' as const } : {}) }}>{chat}</View>}{fileOpen && <View style={{ flex: 1, minWidth: 0, minHeight: 0, marginLeft: !maximized && split && showChat ? projectPanelGap : 0, ...(!maximized && showChat && !split && center !== 'file' ? { display: 'none' as const } : {}) }}><FileWorkspace sessionId={conversationId ?? ''} framed readingSurface="inherited" fileTreeExpanded={tab === 'files'} onToggleFileTree={() => changeTab(tab === 'files' ? 'details' : 'files')} /></View>}</View>
+            </View>{panel}</> : center === 'details' ? panel : center === 'file' && fileOpen ? <FileWorkspace sessionId={conversationId ?? ''} framed readingSurface="inherited" /> : center === 'chat' && showChat ? chat : props.children}
         </View>
     </View>;
 }
