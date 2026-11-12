@@ -212,10 +212,6 @@ class ConversationScreenActions(
     val onOpenTool: ((String) -> Unit)? = null,
     /** How a workspace's folders read, for naming one of its files from the attach sheet; null where they can't. */
     val workspace: ((workspaceId: String) -> com.slopus.happy.ui.files.WorkspaceSource)? = null,
-    /** Sends a suggested reply ([com.slopus.happy.conversation.Conversation.sendReply]). */
-    val onQuickReply: (ConversationRow.Replies, Int) -> Unit = { _, _ -> },
-    /** Sends a chat UI component's action ([com.slopus.happy.conversation.Conversation.press]). */
-    val onUiAction: (com.slopus.happy.conversation.ui.UiOffer, com.slopus.happy.conversation.ui.UiAction) -> Unit = { _, _ -> },
 )
 
 /**
@@ -255,8 +251,6 @@ fun ConversationScreen(
     roleCanSend: Boolean = true,
     /** The person's role starts new work: the header's compose shows. */
     roleCanCompose: Boolean = true,
-    /** The person's role holds a permission: chat UI's controls they may not use show disabled. */
-    roleAllows: (permission: String) -> Boolean = { true },
 ) {
     RecomposeProbe.mark(ConversationScreenTags.PROBE_SCREEN)
     val colors = HappyTheme.colors
@@ -303,12 +297,6 @@ fun ConversationScreen(
     val videoLabel = stringResource(R.string.artifact_video)
     val folds = remember(listState) { FoldHold(listState) }
     val videos = rememberVideoOpening(store::video)
-    // An archived chat, or one not made yet, takes no presses.
-    val presses by rememberUpdatedState(state.created && state.agent?.archivedAt == null)
-    // A suggested reply is a send: it goes where the composer would, from whoever may write here.
-    val sends by rememberUpdatedState(presses && roleCanSend)
-    val allows by rememberUpdatedState(roleAllows)
-    val catalog by rememberUpdatedState(state.catalog)
     val rowActions = remember(actions, legacy, pictures, media, store, pictureLabel, videoLabel, asks, folds, videos) {
         ConversationRowActions(
             legacy = legacy,
@@ -335,14 +323,6 @@ fun ConversationScreen(
             kept = store.kept,
             videos = videos,
             pages = actions.pages,
-            ui = UiRowActions(
-                reply = { replies, index -> if (sends) actions.onQuickReply(replies, index) },
-                replies = { sends },
-                press = { offer, action -> if (presses) actions.onUiAction(offer, action) },
-                presses = { presses },
-                allowed = { permission -> allows(permission) },
-                catalog = { catalog },
-            ),
         )
     }
     val atNewest by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }

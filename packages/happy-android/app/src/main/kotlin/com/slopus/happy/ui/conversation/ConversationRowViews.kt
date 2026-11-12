@@ -147,8 +147,6 @@ class ConversationRowActions(
     val videos: VideoOpening? = null,
     /** HTML artifacts shown inline under their cards; null where none are. */
     val pages: InlinePages? = null,
-    /** What chat UI and suggested replies act with; null where the rows are only read, and nothing of theirs takes a tap. */
-    val ui: UiRowActions? = null,
 )
 
 /** Plays the recording [ref] whose tile is [key]: in the viewer, once it can ([VideoOpening]). */
@@ -244,9 +242,6 @@ fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: Co
                     }
                 }
             }
-            is ConversationRow.Ui -> UiComponentRow(row, actions.ui, content)
-            is ConversationRow.UiMedia -> UiMediaRow(row, actions, content)
-            is ConversationRow.Replies -> QuickRepliesRow(row, bubble, actions.ui, content)
             is ConversationRow.Collaborator -> CollaboratorProse(row, actions.legacy, content)
             is ConversationRow.Failure -> FailureRow(row, actions, content)
             is ConversationRow.Ask -> AskRow(row, actions.asks, content)
@@ -349,7 +344,6 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
                 tapLabel = toggle,
                 body = if (prose != null) { _ -> UserProse(row, prose, cut, actions.legacy) } else null,
             )
-            if (row.suggested) SuggestedLine()
         }
     } else if (row.pictures.isNotEmpty()) {
         Box(

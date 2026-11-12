@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="conversation_quick_reply">↩ Proponowana odpowiedź</string>
-    <string name="conversation_ui_tree_show_all">Pokaż wszystkie (%1$d)</string>
-    <string name="conversation_ui_model_title">Model domyślny</string>
-    <string name="conversation_ui_model_reading">Odczytywanie modeli oferowanych przez tego Happy Agent…</string>
-    <string name="conversation_ui_model_saving">Zapisywanie…</string>
-    <string name="conversation_ui_model_line">Nowe czaty zaczynają się tutaj. Istniejące czaty zachowują swój.</string>
-</resources>

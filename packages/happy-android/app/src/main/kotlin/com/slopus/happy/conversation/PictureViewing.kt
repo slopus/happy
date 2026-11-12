@@ -183,7 +183,6 @@ object ConversationViewing {
                 }
                 is ConversationRow.Picture -> entries += Entry(ViewerItem(pictureKey(row.key, 0), pictureLabel), inline = row.image)
                 is ConversationRow.Media -> entries += presented(row.items, pictureLabel, videoLabel)
-                is ConversationRow.UiMedia -> entries += presented(row.items, pictureLabel, videoLabel)
                 else -> Unit
             }
         }

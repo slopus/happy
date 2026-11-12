@@ -137,11 +137,6 @@ extension Strings {
     }
     public static let sending = "Sending…"
     public static let sendFailed = "Not sent. Tap to retry."
-    /// Under a person's message that is a quick reply.
-    public static let uiSuggested = "↩ Suggested reply"
-    /// The `default_model` component's pickers.
-    public static let uiDefaultModel = "Default model"
-    public static let uiEffort = "Effort"
     /// A failed turn's card (happyAgentConversationProject.ts, conversationFailureText.ts).
     public static let failure = "Failure"
     public static let retry = "Retry"

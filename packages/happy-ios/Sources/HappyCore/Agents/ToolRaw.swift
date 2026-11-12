@@ -8,6 +8,12 @@ import HappyWire
 /// Any other call is shown on its screen from the raw data,
 /// so it is kept, every string cut to `maxString` characters so one long
 /// read or output can't swell the kept conversation.
+///
+/// Chat-based onboarding is deferred. If revisited, prefer settings
+/// widgets, top-level tools like MCP apps, or general Card/Button/Text/
+/// Column UI (json-render/A2UI/ChatGPT-style), not this widget protocol.
+/// Unrecognized or malformed presentations use ordinary tool rows and
+/// bounded raw data, including historical calls.
 public enum ToolRaw {
     /// Presentations that say everything the call's screen shows.
     static let complete: Set<String> = ["exec_command", "file_diff", "media", "artifact", "background_terminal_interaction", "compaction"]

@@ -138,16 +138,6 @@ final class ChatSendFlight {
         return Source(text: layout.words == nil ? nil : text, textOrigin: origin, field: field, snapshot: snapshot, layout: layout)
     }
 
-    /// A quick reply's pill and its words, in `host`: the bubble grows
-    /// from the pill as it would from the input field (whose edge it
-    /// widens by the bubble's padding, the pill's own), and the words
-    /// leave the pill.
-    static func source(pill: CGRect, label: CGRect, text: ChatTextLayout, in host: UIView) -> Source {
-        let field = pill.insetBy(dx: label.minX - pill.minX, dy: 0)
-        let layout = SendFlightLayout.Source(screen: host.bounds, field: field, text: label, scrolls: false)
-        return Source(text: layout.words == nil ? nil : text, textOrigin: label.origin, field: field, snapshot: nil, layout: layout)
-    }
-
     /// Whether the transition may fly at all: not for a reader up in history
     /// (`distance` from the end), nor with Reduce Motion on.
     static func flies(distance: CGFloat) -> Bool {

@@ -6,9 +6,6 @@ import com.slopus.happy.chat.long
 import com.slopus.happy.chat.num
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
-import com.slopus.happy.conversation.ui.QuickReply
-import com.slopus.happy.conversation.ui.UiActionRecord
-import com.slopus.happy.conversation.ui.UiDocument
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -141,14 +138,6 @@ sealed interface Presentation {
     data class AgentSpawn(val model: String?) : Presentation
     /** What was typed into a background terminal (`background_terminal_interaction`), and the command it runs. */
     data class Terminal(val input: String, val command: String?) : Presentation
-    /**
-     * What `show_ui` showed: its [document], and the media its `media`
-     * components name by index among [items], null where one doesn't read.
-     * [raw] is the presentation as sent, which is what the phone keeps.
-     */
-    data class Ui(val document: UiDocument, val items: List<MediaItem?>, val raw: JsonObject) : Presentation
-    /** What `suggest_replies` suggested ([com.slopus.happy.conversation.ui.QuickReplies]); [raw] as [Ui]'s. */
-    data class QuickReplies(val options: List<String>, val raw: JsonObject) : Presentation
 
     companion object {
         fun parse(value: JsonElement?): Presentation? {
@@ -221,8 +210,9 @@ sealed interface Presentation {
                 )
                 "agent_spawn" -> AgentSpawn(o["model"].obj?.get("name").str)
                 "background_terminal_interaction" -> Terminal(o["input"].str.orEmpty(), o["command"].str)
-                "ui" -> Ui(UiDocument.parse(o["ui"]) ?: return null, o["items"].arr.orEmpty().map(MediaItem::parse), o)
-                "quick_replies" -> QuickReplies(com.slopus.happy.conversation.ui.QuickReplies.options(o) ?: return null, o)
+                // Chat onboarding is deferred; future widgets belong in Settings, top-level
+                // MCP-app-like tools, or a general Card/Button/Text/Column UI system.
+                // Historical and unknown presentations leave the call as a generic tool row.
                 else -> null
             }
         }
@@ -322,12 +312,6 @@ sealed interface Block {
     data class File(val attachment: String, val name: String, val mimeType: String? = null, val size: Long? = null) : Block
     /** One context compaction, inside a service message: `running`, then `completed` or `failed`. */
     data class Compaction(val status: String) : Block
-    /** Chat UI the daemon wrote into an agent message (`ui`); [raw] is the block as sent, which is what the phone keeps. */
-    data class Ui(val document: UiDocument, val raw: JsonObject) : Block
-    /** One attempt at a chat UI action, the one block of its service message (`action`); [raw] as [Ui]'s. */
-    data class Action(val record: UiActionRecord, val raw: JsonObject) : Block
-    /** Replies the daemon suggested itself in an agent message (`quick_replies`); [raw] as [Ui]'s. */
-    data class QuickReplies(val options: List<String>, val raw: JsonObject) : Block
     data class Unknown(val type: String) : Block
 
     companion object {
@@ -364,10 +348,6 @@ sealed interface Block {
                     if (attachment != null && name != null) File(attachment, name, o["mimeType"].str, o["size"].num?.toLong()) else Unknown(type)
                 }
                 "compaction" -> Compaction(o["status"].str ?: "running")
-                // One that doesn't read is skipped as an unknown block is: the message still reads.
-                "ui" -> UiDocument.parse(o["ui"])?.let { Ui(it, o) } ?: Unknown(type)
-                "action" -> UiActionRecord.parse(o)?.let { Action(it, o) } ?: Unknown(type)
-                "quick_replies" -> com.slopus.happy.conversation.ui.QuickReplies.options(o)?.let { QuickReplies(it, o) } ?: Unknown(type)
                 else -> Unknown(type)
             }
         }
@@ -389,13 +369,9 @@ data class Message(
     /** An error service message's typed failure, kept as sent. */
     val failure: JsonObject? = null,
     val error: JsonObject? = null,
-    /** A person's message that is a suggested reply: which one, as the daemon checked it on the send. */
-    val quickReply: QuickReply? = null,
 ) {
     val text: String get() = content.filterIsInstance<Block.Text>().joinToString("\n") { it.text }
 
-    /** The attempt at a chat UI action this records, where it is an attempt record: a service message of one `action` block. */
-    val attempt: UiActionRecord? get() = if (role == "service") (content.singleOrNull() as? Block.Action)?.record else null
 
     companion object {
         fun parse(value: JsonElement?): Message? {
@@ -411,7 +387,6 @@ data class Message(
                 userId = o["metadata"].obj?.get("userId").str,
                 failure = o["failure"].obj,
                 error = o["error"].obj,
-                quickReply = QuickReply.parse(o["quickReply"]),
             )
         }
     }
@@ -421,9 +396,8 @@ data class Message(
  * A run of history: the messages one turn of work holds, oldest first, and
  * once it ended when and why (`completed`, `steering`, `abort`, `error`,
  * `compaction`). One the server stored already finished, outside any turn
- * (`kind: "standalone"`), is no turn of work: a chat UI attempt record
- * lives in one, and so does a message the server wrote itself with no run
- * open.
+ * (`kind: "standalone"`), is no turn of work: a message the server wrote
+ * itself with no run open lives in one.
  */
 data class Run(
     val id: String,

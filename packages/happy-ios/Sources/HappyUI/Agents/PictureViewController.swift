@@ -54,13 +54,13 @@ struct Picture: Equatable {
                 switch piece {
                 case .picture(let id, _, _):
                     pictures.append(Picture(key: MediaLoader.sentKey(id), thumbhash: nil, label: Strings.picture))
-                case .gallery(let media, _), .tree(let media, _), .mediaRows(let media, _):
+                case .gallery(let media, _), .tree(let media, _):
                     for one in media where one.isVisual && !one.isVideo {
                         pictures.append(Picture(one))
                     }
                 case .sentFile(let file) where file.isVisual && !file.isVideo:
                     pictures.append(Picture(key: MediaLoader.sentKey(file.id), thumbhash: nil, label: file.name))
-                case .text, .file, .artifact, .sidebarProposal, .sentFile, .ui, .quickReplies:
+                case .text, .file, .artifact, .sidebarProposal, .sentFile:
                     break
                 }
             }

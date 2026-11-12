@@ -102,6 +102,50 @@ class ToolCallsTest {
         assertEquals(listOf(Presentation.Search.Source("Spec", "https://evanw.github.io/thumbhash/")), (call.presentation as Presentation.Search).sources)
     }
 
+    @Test fun `historical and unknown presentations remain generic calls with their raw data`() {
+        val cases = listOf(
+            "show_ui" to """{"type":"ui","ui":{"id":"u","components":[{"id":"model","type":"default_model","props":{}}]}}""",
+            "suggest_replies" to """{"type":"quick_replies","options":["Yes","No"]}""",
+            "show_ui" to """{"type":"ui","ui":42}""",
+            "suggest_replies" to """{"type":"quick_replies","options":false}""",
+            "future_tool" to """{"type":"future","items":[1,2]}""",
+        )
+        for ((name, presentation) in cases) {
+            val message = Message.parse(Json.parseToJsonElement("""{
+                "id":"m","role":"agent","createdAt":1,"content":[
+                  {"type":"text","text":"Before"},
+                  {"type":"tool_call","id":"c","name":"$name","status":"completed",
+                   "arguments":{"value":"input"},"result":{"output":"result"},"presentation":$presentation},
+                  {"type":"text","text":"After"}]}"""))!!
+            val call = message.content[1] as Block.ToolCall
+            assertNull(name, call.presentation)
+            assertEquals(name, ToolKind.ToolCall, ToolKind.of(name, call.presentation))
+            val rows = ConversationRowBuilder.build(message, "a", null, false)
+            assertEquals(name, listOf("m:0", "m:1", "m:2"), rows.map { it.key })
+            assertEquals(name, name, (rows[1] as ConversationRow.Tool).name)
+            val kept = Message.parse(KeptConversation.messageJson(message))!!
+            val back = kept.content[1] as Block.ToolCall
+            assertEquals(name, call.arguments, back.arguments)
+            assertEquals(name, call.result, back.result)
+            assertEquals(name, rows, ConversationRowBuilder.build(kept, "a", null, false))
+        }
+    }
+
+    @Test fun `retired widget blocks are skipped while neighboring text and user messages still read`() {
+        val message = Message.parse(Json.parseToJsonElement("""{
+            "id":"m","role":"agent","createdAt":1,"content":[
+              {"type":"text","text":"Before"},{"type":"ui","ui":{}},
+              {"type":"quick_replies","options":["Yes"]},{"type":"text","text":"After"}]}"""))!!
+        assertEquals(listOf("Before", "After"), ConversationRowBuilder.build(message, "a", null, false).map { (it as ConversationRow.Text).text })
+        val user = Message.parse(Json.parseToJsonElement("""{
+            "id":"u","role":"user","createdAt":2,"quickReply":{"messageId":"m","index":0},
+            "content":[{"type":"text","text":"Yes"}]}"""))!!
+        assertEquals("Yes", (ConversationRowBuilder.build(user, "a", null, false).single() as ConversationRow.User).text)
+        val attempt = Message.parse(Json.parseToJsonElement("""{
+            "id":"attempt","role":"service","createdAt":3,"content":[{"type":"action","outcome":"pending"}]}"""))!!
+        assertTrue(ConversationRowBuilder.build(attempt, "a", null, false).isEmpty())
+    }
+
     @Test fun `raw strings past the limit are cut and say so`() {
         val long = "x".repeat(ToolData.LIMIT + 10)
         val call = block("""{"type":"tool_call","id":"c","name":"mystery","status":"completed","arguments":{"a":"short"},"result":{"output":"$long"}}""")

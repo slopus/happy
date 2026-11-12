@@ -20,12 +20,6 @@ import com.slopus.happy.chat.num
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
 import com.slopus.happy.connection.AgentConnectionException
-import com.slopus.happy.conversation.ui.QuickReply
-import com.slopus.happy.conversation.ui.UiAction
-import com.slopus.happy.conversation.ui.UiActions
-import com.slopus.happy.conversation.ui.UiComponent
-import com.slopus.happy.conversation.ui.UiOffer
-import com.slopus.happy.conversation.ui.UiPresses
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -219,8 +213,6 @@ class Conversation(
         var skill: String? = null,
         /** A voice call's words ([sendAs]). */
         val voice: Boolean = false,
-        /** A suggested reply tapped ([sendReply]): [text] is its option, exactly. */
-        val quickReply: QuickReply? = null,
         var accepted: Boolean = false,
         var failure: Problem? = null,
         val sentAt: Long,
@@ -274,8 +266,6 @@ class Conversation(
     private val messages = HashMap<String, Message>()
     private val pending = ArrayList<String>()
     private val outgoing = ArrayList<Outgoing>()
-    /** Chat UI presses from here, and the refusals that are still news ([press]). */
-    private val presses = UiPresses(ConversationApi::clientId)
     private var agent: AgentInfo? = null
     private var mode: Mode? = null
     private var picked: Mode? = null
@@ -668,7 +658,6 @@ class Conversation(
         when (event.type) {
             "message.created", "message.updated" -> {
                 val message = Message.parse(payload["message"]) ?: return
-                hear(message)
                 messages[message.id] = message
                 outgoing.removeAll { it.id == message.id }
                 uploads.clear(message.id)
@@ -880,81 +869,6 @@ class Conversation(
         true
     }
 
-    /**
-     * Sends option [index] of the suggestion [replies]: an ordinary send of
-     * the option's words, exactly, with `quickReply` naming it, in order
-     * with the composer's sends. The draft is left as it is. Nothing goes
-     * where the option isn't there, or from a stack that takes no tap now
-     * ([ConversationRow.Replies.live]), so a second tap sends nothing.
-     */
-    fun sendReply(replies: ConversationRow.Replies, index: Int) {
-        val text = replies.options.getOrNull(index) ?: return
-        scope.launch(lane) {
-            if (closed || snapshot.rows.none { it is ConversationRow.Replies && it.key == replies.key && it.live }) return@launch
-            queue(Outgoing(ConversationApi.clientId(), text, emptyList(), quickReply = replies.reply(index), sentAt = now()))
-            publish()
-            pump()
-        }
-    }
-
-    /**
-     * Sends a chat UI component's [action] on its [offer] to the actions
-     * route. No bubble: the component is busy until the press is answered,
-     * and shows what was refused ([UiWork]), as the answer's attempt record
-     * says or the refusal of the request itself. Nothing goes where the
-     * offer isn't in the transcript, its component doesn't take the action
-     * ([UiActions.takes]), or a press of the offer is already on its way.
-     *
-     * Only the action's redacted form is kept while it goes ([UiPresses]).
-     * The answer's `result` is not read, for no action this build sends has
-     * one. An action that has is where a result store joins: kept here by
-     * offer and published with the row, never held in a row's composition,
-     * which a lazy list drops as it scrolls away.
-     */
-    fun press(offer: UiOffer, action: UiAction) {
-        scope.launch(lane) {
-            if (!created || closed) return@launch
-            val row = snapshot.rows.firstOrNull { it is ConversationRow.Ui && it.offer == offer } as ConversationRow.Ui? ?: return@launch
-            if (!UiActions.takes(row.component, action)) return@launch
-            val id = presses.begin(offer, action) { it in messages } ?: return@launch
-            publish()
-            try {
-                val record = withRetries { api.act(agentId, id, offer, action) }
-                presses.answered(offer)
-                hear(record)
-                join(record)
-                keepSoon()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // Turned down, nothing was recorded. Unanswered, the same press again is the same attempt.
-                val problem = describe(e)
-                if (e is ConversationApiException && e.status in 400..499) presses.refused(offer, action, problem) else presses.lost(offer, id, action, problem)
-            }
-            publish()
-        }
-    }
-
-    /**
-     * A message the computer answered with joins history. Its run is the
-     * events' to announce (`run.finished`, then `message.created`), so until
-     * they have it waits among the messages no run holds yet.
-     */
-    private fun join(message: Message) {
-        messages[message.id] = message
-        if (message.id !in pending && runs.none { message.id in it.second }) pending += message.id
-    }
-
-    /**
-     * A message that came while the chat is open, in an event or as a
-     * press's answer, before it replaces what was known: an attempt record
-     * that says something new is news for its component ([UiPresses.heard]).
-     */
-    private fun hear(message: Message) {
-        val record = message.attempt ?: return
-        if (record.outcome != messages[message.id]?.attempt?.outcome) presses.heard(record)
-    }
-
     /** The newest run that is a turn, which may still be going: a standalone run ([Run.standalone]) is none. */
     private fun lastTurn(): String? = runs.lastOrNull { runInfo[it.first]?.standalone != true }?.first
 
@@ -1159,8 +1073,7 @@ class Conversation(
         scope.launch(lane) {
             val send = outgoing.firstOrNull { it.id == id && it.failure != null } ?: return@launch
             outgoing.remove(send)
-            // A suggested reply's words were never typed: nothing goes back to the composer.
-            if (send.quickReply == null && draft.isBlank() && send.text.isNotEmpty()) {
+            if (draft.isBlank() && send.text.isNotEmpty()) {
                 setDraftNow(send.text)
                 publish { it.copy(draftArrivals = it.draftArrivals + 1) }
             } else {
@@ -1197,7 +1110,7 @@ class Conversation(
                                 uploads.set(UploadBoard.pictureKey(next.id, index), if (share >= 1f) UploadPhase.Done else UploadPhase.Uploading(share))
                             }
                         }
-                        withContext(progress) { api.send(agentId, next.id, wire(next), images, mode, next.toolRequest, attachments, next.quickReply) }
+                        withContext(progress) { api.send(agentId, next.id, wire(next), images, mode, next.toolRequest, attachments) }
                     }
                     // All there, whatever the transport told on the way; the echo clears them.
                     images.indices.forEach { uploads.set(UploadBoard.pictureKey(next.id, it), UploadPhase.Done) }
@@ -1438,7 +1351,6 @@ class Conversation(
     /** Reads the computer's models again (`config.updated`, a reconnect): hidden accounts and models, names, windows. */
     private fun rereadCatalog() {
         scope.launch(lane) {
-            val mark = presses.mark()
             val found = try {
                 api.catalog()
             } catch (e: CancellationException) {
@@ -1447,13 +1359,9 @@ class Conversation(
                 return@launch
             }
             catalogRead = null
-            // Asked for after it, the default model is newer than any refusal to change it.
-            val settled = presses.read(UiComponent.DefaultModel.TYPE, mark)
             if (found != catalog) {
                 catalog = found
                 adoptStartMode()
-                publish()
-            } else if (settled) {
                 publish()
             }
         }
@@ -1484,7 +1392,6 @@ class Conversation(
     /** The computer's models, read once; a failed read is asked again next time. */
     private suspend fun readCatalog(): ModeCatalog {
         catalog?.let { return it }
-        val mark = presses.mark()
         val read = catalogRead ?: scope.async(lane) { api.catalog() }.also { catalogRead = it }
         val found = try {
             read.await()
@@ -1496,7 +1403,6 @@ class Conversation(
         }
         if (catalog == null) {
             catalog = found
-            presses.read(UiComponent.DefaultModel.TYPE, mark)
             adoptStartMode()
             publish()
         }
@@ -1728,24 +1634,6 @@ class Conversation(
         }
     }
 
-    /** Every message the computer has, in order: each run's, then those waiting for one. */
-    private fun history(): List<Message> = (runs.flatMap { it.second } + pending).mapNotNull(messages::get)
-
-    /**
-     * Lays over each chat UI row how its actions go ([UiWork]): the press
-     * on its way from here, whether the newest attempt on its offer by
-     * anyone is still pending, and a refusal that is still news.
-     */
-    private fun workOn(rows: MutableList<ConversationRow>) {
-        val newest = HashMap<UiOffer, Boolean>()
-        for (message in history()) message.attempt?.let { newest[it.offer] = it.outcome.pending }
-        rows.replaceAll { row ->
-            if (row !is ConversationRow.Ui) return@replaceAll row
-            val work = UiWork(presses.sending(row.offer), newest[row.offer] == true, presses.problem(row.offer))
-            if (work == row.work) row else row.copy(work = work)
-        }
-    }
-
     private fun derive(base: ConversationState): ConversationState {
         val agent = agent
         val working = running || agent?.isWorking == true || outgoing.any { it.accepted }
@@ -1757,12 +1645,10 @@ class Conversation(
             val streaming = working && runId == lastRun
             val turn = ArrayList<ConversationRow>()
             var tools = 0
-            val replies = QuickReplyPlacement()
             for (id in ids) messages[id]?.let { message ->
                 if (message.role == "agent") tools += message.content.count { it is Block.ToolCall }
-                replies.add(turn, message.role, settled(sentAt(builder.rows(message, agentId, parentAgentId, streaming && message.role == "agent")), waiting))
+                turn += settled(sentAt(builder.rows(message, agentId, parentAgentId, streaming && message.role == "agent")), waiting)
             }
-            replies.place(turn)
             val info = runInfo[runId]
             // A standalone run is no turn: what the server wrote in it stands as it is, with no end and no fold.
             if (info?.standalone == true) {
@@ -1803,13 +1689,9 @@ class Conversation(
             val delivery = send.failure?.let(Delivery::Failed) ?: if (send.accepted) Delivery.Pending else Delivery.Sending
             val time = shownAt.getOrPut(send.id) { send.sentAt }
             val text = shown(send)
-            rows += ConversationRow.User("${send.id}:user", send.id, text, com.slopus.happy.chat.markdown.parseMarkdown(text, hasSettingsPage), send.images + send.thumbnails, delivery, time, suggested = send.quickReply != null)
+            rows += ConversationRow.User("${send.id}:user", send.id, text, com.slopus.happy.chat.markdown.parseMarkdown(text, hasSettingsPage), send.images + send.thumbnails, delivery, time)
         }
         if (opened.isNotEmpty()) rows.replaceAll { if (it is ConversationRow.User && it.key in opened) it.copy(opened = true) else it }
-        if (rows.any { it is ConversationRow.Replies }) {
-            QuickReplyRows.mark(rows, history(), outgoing.mapNotNull { it.quickReply }, unsent = outgoing.isNotEmpty())
-        }
-        if (rows.any { it is ConversationRow.Ui }) workOn(rows)
         builder.forget(messages.keys)
         val produced = running &&
             runs.firstOrNull { it.first == lastRun }?.second.orEmpty().any { id -> messages[id]?.let { it.role == "agent" && it.content.isNotEmpty() } == true }

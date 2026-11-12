@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="conversation_quick_reply">↩ Suggested reply</string>
-    <string name="conversation_ui_tree_show_all">Show all (%1$d)</string>
-    <string name="conversation_ui_model_title">Default model</string>
-    <string name="conversation_ui_model_reading">Reading the models this Happy Agent offers…</string>
-    <string name="conversation_ui_model_saving">Saving…</string>
-    <string name="conversation_ui_model_line">New chats start here. Chats you already have keep their own.</string>
-</resources>

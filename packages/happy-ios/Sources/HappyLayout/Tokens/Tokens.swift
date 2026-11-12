@@ -38,9 +38,6 @@ extension Palette {
     public static let question = ColorToken("#FF3B30", "#FF453A")
     /// The person's own message (`--user-message-background`).
     public static let userBubble = ColorToken("#f0eee6", "#2c2c2e")
-    /// A quick reply not sent: halfway from the bubble to the ground, as
-    /// words the person hasn't said yet.
-    public static let quickReplyBubble = ColorToken("#f8f7f3", "#212123")
     /// A secondary button's fill (`--surface-high`), ringed in `--divider`.
     public static let button = ColorToken("#f8f8f8", "#171717")
     /// The sidebar's ground (`--groupped-background`).

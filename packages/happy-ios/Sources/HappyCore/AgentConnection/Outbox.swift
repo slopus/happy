@@ -20,12 +20,10 @@ public struct QueuedMessage: Codable, Equatable, Sendable {
     public var failure: String?
     /// A skill command's `read_skill` request; absent from every other send.
     public var toolRequest: AgentWire.ToolCallRequest?
-    /// The suggested reply it is; absent from every other send.
-    public var quickReply: QuickReply?
     public init(id: String, agentID: String, text: String, pictures: [Picture], mode: AgentWire.Mode?, files: [QueuedFile]? = nil, workspaceID: String? = nil,
-                toolRequest: AgentWire.ToolCallRequest? = nil, quickReply: QuickReply? = nil) {
+                toolRequest: AgentWire.ToolCallRequest? = nil) {
         self.id = id; self.agentID = agentID; self.text = text; self.pictures = pictures; self.mode = mode
-        self.files = files; self.workspaceID = workspaceID; self.toolRequest = toolRequest; self.quickReply = quickReply
+        self.files = files; self.workspaceID = workspaceID; self.toolRequest = toolRequest
     }
 }
 

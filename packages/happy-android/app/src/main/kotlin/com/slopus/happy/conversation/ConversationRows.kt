@@ -5,11 +5,6 @@ import com.slopus.happy.chat.markdown.MarkdownBlock
 import com.slopus.happy.chat.markdown.parseMarkdown
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
-import com.slopus.happy.conversation.ui.QuickReply
-import com.slopus.happy.conversation.ui.UiAction
-import com.slopus.happy.conversation.ui.UiComponent
-import com.slopus.happy.conversation.ui.UiDocument
-import com.slopus.happy.conversation.ui.UiOffer
 import com.slopus.happy.references.HappyReferences
 import com.slopus.happy.references.References
 import kotlinx.serialization.json.JsonObject
@@ -79,8 +74,6 @@ sealed interface ConversationRow {
         val opened: Boolean = false,
         /** On a team's computer, the member who wrote it, by user ID; null for one still on its way and outside a team. */
         val author: String? = null,
-        /** Its words are a reply the agent suggested ([QuickReply]): the bubble says so. */
-        val suggested: Boolean = false,
     ) : ConversationRow
 
     /**
@@ -119,45 +112,6 @@ sealed interface ConversationRow {
      * as the tool asked (0: justified rows), under the [tool]'s line.
      */
     data class Media(override val key: String, val items: List<MediaRef>, val columns: Int = 0, val tool: ToolUse? = null) : ConversationRow
-
-    /**
-     * One component of chat UI, from an agent message's `ui` block or a
-     * `show_ui` call's presentation, named as a press names it ([offer]).
-     * A component is drawn whole or not at all: a type this build doesn't
-     * draw, or one it can't draw whole, is [UiComponent.Other], its fallback
-     * line. [work] is how its actions go, which the conversation lays over
-     * the row as built.
-     */
-    data class Ui(override val key: String, val offer: UiOffer, val component: UiComponent, val work: UiWork = UiWork.Idle) : ConversationRow
-
-    /**
-     * A chat UI `media` component whole: every item it names among its
-     * `show_ui` call's, in its order, read on demand as [Media]'s are, each
-     * with its label or none. Laid out by the one rule every client shares
-     * ([com.slopus.happy.conversation.ui.UiMediaLayout]), files among the
-     * pictures, so it is a row of its own kind and not a [Media].
-     */
-    data class UiMedia(override val key: String, val items: List<MediaRef>, val labels: List<String?>) : ConversationRow
-
-    /**
-     * Replies an agent message suggested: its own `quick_replies` block
-     * ([toolCallId] null) or a `suggest_replies` call's presentation. The
-     * conversation puts the stack under all the agent wrote in its turn
-     * before a person's message ([QuickReplyPlacement]) and lays over it the
-     * option a person's message sent ([chosen]) and whether it takes a tap
-     * ([live]: the newest, while nobody has written since).
-     */
-    data class Replies(
-        override val key: String,
-        val messageId: String,
-        val toolCallId: String?,
-        val options: List<String>,
-        val chosen: Int? = null,
-        val live: Boolean = false,
-    ) : ConversationRow {
-        /** What a send of option [index] says it is. */
-        fun reply(index: Int) = QuickReply(messageId, toolCallId, index)
-    }
 
     /**
      * An artifact a tool made or changed, under the [tool]'s line; `shows: "latest"` follows it, else it opens [version].
@@ -239,20 +193,6 @@ sealed interface ConversationRow {
 }
 
 enum class NoticeKind { Compacting, Compacted, CompactionFailed }
-
-/**
- * How a component's actions go: one on its way from this phone ([sending],
- * its secret fields left out), the newest attempt by anyone not settled yet
- * ([pending]), or the last one refused while that is still news ([problem]).
- */
-@Immutable
-data class UiWork(val sending: UiAction? = null, val pending: Boolean = false, val problem: Problem? = null) {
-    val busy: Boolean get() = sending != null || pending
-
-    companion object {
-        val Idle = UiWork()
-    }
-}
 
 /** Where a question's answer stands. */
 @Immutable
@@ -402,7 +342,7 @@ class ConversationRowBuilder(
                 val pictures = message.content.filterIsInstance<Block.Image>()
                 if (text.isEmpty() && pictures.isEmpty()) return emptyList()
                 val delivery = if (message.status == "pending") Delivery.Pending else Delivery.Sent
-                return listOf(ConversationRow.User("$id:user", id, text, parseMarkdown(text, hasPage), pictures, delivery, message.createdAt, author = message.userId, suggested = message.quickReply != null))
+                return listOf(ConversationRow.User("$id:user", id, text, parseMarkdown(text, hasPage), pictures, delivery, message.createdAt, author = message.userId))
             }
             val rows = ArrayList<ConversationRow>()
             message.content.forEachIndexed { index, block ->
@@ -419,10 +359,8 @@ class ConversationRowBuilder(
                         rows += ConversationRow.Reasoning(key, it, streaming && index == message.content.lastIndex, growing?.invoke(key, it, false))
                     }
                     is Block.Image -> rows += ConversationRow.Picture(key, block)
-                    is Block.ToolCall -> rows += toolRows(key, id, block, references)
-                    is Block.QuickReplies -> rows += ConversationRow.Replies(key, id, null, block.options)
-                    is Block.Ui -> rows += uiRows(key, id, block.document, null, emptyList())
-                    is Block.Compaction, is Block.File, is Block.Action, is Block.Unknown -> Unit
+                    is Block.ToolCall -> rows += toolRows(key, block, references)
+                    is Block.Compaction, is Block.File, is Block.Unknown -> Unit
                 }
             }
             return rows
@@ -432,35 +370,7 @@ class ConversationRowBuilder(
         private fun inlineCandidate(presentation: Presentation): String? =
             (presentation as? Presentation.Artifact)?.takeIf { it.artifactType == "html" && it.shows == "latest" }?.artifactId
 
-        /**
-         * A document's components, one row each, top to bottom, keyed by
-         * [key] and the component's id. One with nothing to draw, not even
-         * a fallback line, has no row. `media` names the [items] of the call
-         * that showed the document ([toolCallId]).
-         */
-        private fun uiRows(key: String, messageId: String, document: UiDocument, toolCallId: String?, items: List<MediaItem?>): List<ConversationRow> =
-            document.components.mapNotNull { component ->
-                val rowKey = "$key:${component.id}"
-                val offer = UiOffer(messageId, document.id, component.id)
-                when (component) {
-                    is UiComponent.FileTree, is UiComponent.DefaultModel -> ConversationRow.Ui(rowKey, offer, component)
-                    is UiComponent.Media -> media(rowKey, component, toolCallId, items) ?: fallback(rowKey, offer, component)
-                    else -> fallback(rowKey, offer, component)
-                }
-            }
-
-        /** [component] whole, or null: outside a call, or naming an item the call doesn't have. */
-        private fun media(key: String, component: UiComponent.Media, toolCallId: String?, items: List<MediaItem?>): ConversationRow.UiMedia? {
-            if (toolCallId == null) return null
-            val refs = component.items.map { MediaRef(toolCallId, it.mediaIndex, items.getOrNull(it.mediaIndex) ?: return null) }
-            return ConversationRow.UiMedia(key, refs, component.items.map { it.label })
-        }
-
-        /** [component] as its fallback line; null where the daemon wrote none. */
-        private fun fallback(key: String, offer: UiOffer, component: UiComponent): ConversationRow.Ui? =
-            component.fallback.takeIf { it.isNotBlank() }?.let { ConversationRow.Ui(key, offer, UiComponent.Other(component.id, it)) }
-
-        private fun toolRows(key: String, messageId: String, call: Block.ToolCall, references: References?): List<ConversationRow> {
+        private fun toolRows(key: String, call: Block.ToolCall, references: References?): List<ConversationRow> {
             if (call.name == Question.TOOL_NAME && call.id != null) {
                 // Answered, as the card the call keeps says, or else its result: it settles here.
                 // Otherwise the conversation decides (Conversation.derive).
@@ -475,10 +385,6 @@ class ConversationRowBuilder(
             val skill = if (call.name == Conversation.READ_SKILL) (call.arguments as? JsonObject)?.get("name").str else null
             val tool = ToolUse(call.name, call.status, call.presentation, skill, call.id, ToolHint.of(call), ToolSummary.of(call.name, call.arguments))
             return when (val p = call.presentation) {
-                // What show_ui showed stands in its call's place: the components, no line.
-                is Presentation.Ui -> uiRows(key, messageId, p.document, call.id, p.items).ifEmpty { listOf(ConversationRow.Tool(key, call.id, tool)) }
-                // So does what suggest_replies suggested: the stack.
-                is Presentation.QuickReplies -> listOf(if (call.id == null) ConversationRow.Tool(key, null, tool) else ConversationRow.Replies(key, messageId, call.id, p.options))
                 is Presentation.Media -> if (call.id == null || p.items.isEmpty()) {
                     listOf(ConversationRow.Tool(key, call.id, tool))
                 } else {

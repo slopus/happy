@@ -6,9 +6,6 @@ import com.slopus.happy.chat.str
 import com.slopus.happy.connection.AgentConnectionException
 import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.connection.TransportResponse
-import com.slopus.happy.conversation.ui.QuickReply
-import com.slopus.happy.conversation.ui.UiAction
-import com.slopus.happy.conversation.ui.UiOffer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -156,8 +153,6 @@ open class ConversationApi(
         mode: Mode,
         toolRequest: ToolRequest? = null,
         attachments: List<SentAttachment> = emptyList(),
-        /** The suggested reply [text] is, exactly: the daemon checks it, and answers `400` where it isn't. */
-        quickReply: QuickReply? = null,
     ): Message? {
         val body = buildJsonObject {
             put("id", id)
@@ -173,7 +168,6 @@ open class ConversationApi(
             )
             put("delivery", "steer")
             put("clientMetadata", buildJsonObject { put("composer", "mobile") })
-            quickReply?.let { put("quickReply", it.json()) }
             sendingDevice()?.let { put("deviceId", it) }
             if (images.isNotEmpty() || attachments.isNotEmpty() || toolRequest != null) put("content", buildJsonArray {
                 images.forEach { add(buildJsonObject { put("type", "image"); put("mimeType", it.mimeType); put("data", it.data) }) }
@@ -194,26 +188,6 @@ open class ConversationApi(
         // Pictures make it a file's size: a file's client and deadline.
         val category = if (images.isEmpty()) RequestCategory.Query else RequestCategory.File
         return Message.parse(call("POST", "/v0/agents/${escape(agentId)}/send", body, category)["message"])
-    }
-
-    /**
-     * One press of a chat UI component, to `POST /v0/agents/:agentId/actions`
-     * under the client's [id], the attempt's idempotency key: the same id
-     * again answers what the first did. The answer is the attempt's record,
-     * a service message of one `action` block; a refusal on its merits is a
-     * record whose outcome is `rejected`, while `400`, `403`, `404`, `409`
-     * and `429` record nothing. Its `result` is not read: no action this
-     * build sends answers with one.
-     */
-    open suspend fun act(agentId: String, id: String, offer: UiOffer, action: UiAction): Message {
-        val body = buildJsonObject {
-            put("id", id)
-            put("messageId", offer.messageId)
-            put("uiId", offer.uiId)
-            put("componentId", offer.componentId)
-            put("action", action.json())
-        }
-        return Message.parse(call("POST", "/v0/agents/${escape(agentId)}/actions", body)["record"])?.takeIf { it.attempt != null } ?: throw invalid()
     }
 
     /**

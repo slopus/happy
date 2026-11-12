@@ -186,6 +186,16 @@ class ToolCallScreenTest {
         shot("plan")
     }
 
+    @Test fun `a historical widget call opens as generic fields with no widget controls`() {
+        val historical = call("""{"type":"tool_call","id":"old","name":"show_ui","status":"completed",
+            "presentation":{"type":"ui","ui":{"id":"u","components":[{"id":"model","type":"default_model","props":{}}]}},
+            "arguments":{"title":"Old widget"},"result":{"output":"Recorded"}}""")
+        show(ToolCallScreenState(call = historical, reading = false))
+        rule.onNodeWithText("Tool call").assertIsDisplayed()
+        rule.onNodeWithText("Old widget").assertIsDisplayed()
+        rule.onNodeWithText("Recorded").assertIsDisplayed()
+    }
+
     @Test fun `while reading it whole the screen says so`() {
         show(ToolCallScreenState(call = command.copy(arguments = null), reading = false, readingWhole = true))
         rule.onNodeWithText("Reading the whole call…").performScrollTo().assertIsDisplayed()

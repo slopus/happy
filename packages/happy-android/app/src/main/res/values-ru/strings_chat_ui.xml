@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="conversation_quick_reply">↩ Предложенный ответ</string>
-    <string name="conversation_ui_tree_show_all">Показать все (%1$d)</string>
-    <string name="conversation_ui_model_title">Модель по умолчанию</string>
-    <string name="conversation_ui_model_reading">Читаем модели этого Happy Agent…</string>
-    <string name="conversation_ui_model_saving">Сохраняем…</string>
-    <string name="conversation_ui_model_line">Новые чаты начинаются с неё. Существующие чаты сохраняют свою.</string>
-</resources>

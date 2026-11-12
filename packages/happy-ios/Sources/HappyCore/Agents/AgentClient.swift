@@ -59,14 +59,11 @@ public final class AgentClient: Sendable {
         let body = try raw ?? json.map { try encoder.encode($0) }
         let response: HTTP1Response
         if let sent, let body, headers.isEmpty {
-            // An upload whose progress is heard: its answer holds no chat UI.
+            // An upload whose progress is heard.
             response = try await transport.send(method: method, path: path, credential: token, body: body, category: category, sent: sent)
             if response.status == 401 { throw AgentClientError.revoked }
             return try Self.checked(response)
         }
-        // Chat UI as itself, not its fallback text, on every other request.
-        var headers = headers
-        headers[ChatUi.protocolHeader] = String(ChatUi.protocolVersion)
         if let sent, let body {
             response = try await transport.send(method: method, path: path, credential: token, body: body, headers: headers, category: category, sent: sent)
         } else {
@@ -407,10 +404,8 @@ public final class AgentClient: Sendable {
     /// Always steering, as desktop sends: mid-turn it is taken at the next
     /// boundary rather than waiting behind the run; idle, it starts one.
     /// `progress` hears each image's share written, in order, as the body goes out.
-    /// `quickReply` names the suggested reply `text` is; the computer
-    /// checks it and refuses a send whose words aren't that option.
     public func sendMessage(_ agentId: String, id: String, text: String, images: [(mimeType: String, data: Data)], toolRequest: AgentWire.ToolCallRequest? = nil,
-        quickReply: QuickReply? = nil, mode: AgentWire.Mode, progress: (@Sendable ([Double]) -> Void)? = nil) async throws {
+        mode: AgentWire.Mode, progress: (@Sendable ([Double]) -> Void)? = nil) async throws {
         guard images.allSatisfy({ $0.data.count <= AttachmentRules.maxInlineImageBytes }),
               images.reduce(0, { $0 + $1.data.count }) <= AttachmentRules.maxInlineImageTotalBytes else {
             throw AttachmentRules.invalid("Inline images exceed the model's image limit.")
@@ -428,7 +423,6 @@ public final class AgentClient: Sendable {
             } + (toolRequest.map { [$0.json] } ?? []))
         }
         object["mode"] = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(mode))
-        if let quickReply { object["quickReply"] = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(quickReply)) }
         // Only to a computer that takes it: an older one refuses the whole send.
         if let deviceId = environment.sendingDeviceId { object["deviceId"] = .string(deviceId) }
         let path = "/v0/agents/\(Self.escape(agentId))/send"
@@ -508,19 +502,6 @@ public final class AgentClient: Sendable {
 
     public func abort(_ agentId: String) async throws {
         _ = try await send("POST", "/v0/agents/\(Self.escape(agentId))/abort", json: .object([:]))
-    }
-
-    /// One press on a chat UI component (`POST /v0/agents/:agentId/actions`):
-    /// its attempt record. `id` is the attempt's: sent again, the computer
-    /// answers with the record it already holds.
-    public func act(_ agentId: String, id: String, offer: UiOffer, action: UiAction) async throws -> AgentWire.Message {
-        let object: [String: JSONValue] = [
-            "id": .string(id), "messageId": .string(offer.messageId), "uiId": .string(offer.uiId), "componentId": .string(offer.componentId),
-            "action": .object(["type": .string(action.type), "payload": action.payload]),
-        ]
-        let response = try await decode(JSONValue.self, "POST", "/v0/agents/\(Self.escape(agentId))/actions", json: .object(object))
-        guard let record = try? response["record"]?.decode(as: AgentWire.Message.self) else { throw AgentClientError.invalidResponse }
-        return record
     }
 
     /// A failed turn run again (`…/messages/:id/retry`), or moved to another
@@ -677,7 +658,7 @@ public final class AgentClient: Sendable {
     /// `hello`; the stream ends when the connection does, or when nothing,
     /// not even a heartbeat, has come for `silence`.
     public func events(after cursor: String?) async throws -> AsyncThrowingStream<ServerSentEvent, Error> {
-        var headers = [ChatUi.protocolHeader: String(ChatUi.protocolVersion)]
+        var headers: [String: String] = [:]
         if let cursor { headers["Last-Event-ID"] = cursor }
         let response = try await transport.stream(path: "/v0/events/stream", credential: token, headers: headers)
         if response.status == 401 { throw AgentClientError.revoked }

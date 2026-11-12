@@ -1070,11 +1070,6 @@ final class ChatUltraQAProbe: NSObject {
         case .copyMenu: "copyMenu"
         case .selectable: "selectable"
         case .markdownSelectable: "markdownSelectable"
-        case .ui(let tap):
-            switch tap.kind {
-            case .card(let shown, _): "ui:\(shown.offer.key)"
-            case .reply(let replies, let index): "reply:\(replies.messageId):\(index)"
-            }
         }
     }
 

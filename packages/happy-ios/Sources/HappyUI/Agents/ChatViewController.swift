@@ -1134,7 +1134,6 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     private var planKey: ChatPlanner.Key {
         var key = ChatPlanner.Key(width: transcriptWidth, maxContentWidth: ContentWidth.maxWidth, environment: traitCollection.textEnvironment, references: subagentReferences, subagentTitles: chat.subagentTitles, pageHeights: pageHeights)
         key.server = session.server
-        if case .cloud(let permissions) = session.gate { key.uiGranted = permissions?.granted ?? [] }
         // Only a failure card reads the composer's model; without one the
         // key stays the warm chat's, so its rows planned ahead are taken.
         if chat.items.contains(where: { if case .failure = $0.role { true } else { false } }) {
@@ -1180,82 +1179,6 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             }
         }
         return TurnFold.fold(items, expanded: expandedTurns)
-    }
-
-    /// A press on a chat UI component's control, or on a quick reply,
-    /// which is sent as the person's words at once.
-    private func press(_ tap: ChatUiTap) {
-        guard !previewing else { return }
-        switch tap.kind {
-        case .card(let shown, let control):
-            press(control, on: shown)
-        case .reply(let replies, let index):
-            guard mayWrite != false else { return }
-            // As the composer's send: the reader is carried to the end, and
-            // at the end the message flies in, from its pill: the words were
-            // never the composer's, and a draft there stays as it is.
-            Haptics.play(.send)
-            let id = ClientID.make()
-            if sendFlies, let source = replySource(replies, index: index) {
-                ultra.flight = ChatSendFlight(source: source, host: view, message: id)
-            }
-            followsNewest = true
-            ultra.revealNextSend(animated: true)
-            let conversation = conversation
-            Task { await conversation.sendQuickReply(replies, index: index, id: id) }
-        }
-    }
-
-    /// A quick reply's pill and its words as drawn now, in the view.
-    private func replySource(_ replies: QuickReplies, index: Int) -> ChatSendFlight.Source? {
-        guard let canvas = ultra.canvas(forPlan: "replies:\(replies.messageId):\(replies.toolCallId ?? "")"), let plan = canvas.plan,
-              let pill = plan.hits.first(where: { $0.action == .ui(ChatUiTap(kind: .reply(replies, index))) })?.frame else { return nil }
-        for case let .text(text, frame) in plan.items where pill.contains(frame) {
-            return ChatSendFlight.source(pill: canvas.convert(pill, to: view), label: canvas.convert(frame, to: view), text: text, in: view)
-        }
-        return nil
-    }
-
-    /// A live component's control: a default model picked, then its effort.
-    private func press(_ control: UiCard.Tap, on shown: UiShown) {
-        switch control {
-        case .pickModel:
-            guard let defaults = shown.defaults else { return }
-            let sheet = UIAlertController(title: Strings.uiDefaultModel, message: nil, preferredStyle: .actionSheet)
-            for choice in defaults.choices {
-                let name = [choice.model.name, choice.provider.name].compactMap { $0 }.joined(separator: " · ")
-                sheet.addAction(UIAlertAction(title: name, style: .default) { [weak self] _ in
-                    self?.pickEffort(choice.model, provider: choice.provider.id, on: shown)
-                })
-            }
-            sheet.addAction(UIAlertAction(title: Strings.cancel, style: .cancel))
-            sheet.popoverPresentationController?.sourceView = view
-            sheet.popoverPresentationController?.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
-            present(sheet, animated: true)
-        }
-    }
-
-    /// The default model's effort, asked for when the model has more than one.
-    private func pickEffort(_ model: ModelCatalog.Model, provider: String, on shown: UiShown) {
-        func set(_ effort: String) {
-            act(UiAction(type: "default_model.set", payload: .object(["providerId": .string(provider), "modelId": .string(model.id), "effort": .string(effort)])), on: shown)
-        }
-        guard model.efforts.count > 1 else { return set(model.efforts.first ?? model.defaultEffort) }
-        let sheet = UIAlertController(title: Strings.uiEffort, message: model.name, preferredStyle: .actionSheet)
-        for effort in model.efforts {
-            sheet.addAction(UIAlertAction(title: effort, style: .default) { _ in set(effort) })
-        }
-        sheet.addAction(UIAlertAction(title: Strings.cancel, style: .cancel))
-        sheet.popoverPresentationController?.sourceView = view
-        sheet.popoverPresentationController?.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
-        present(sheet, animated: true)
-    }
-
-    /// Sends a component's action; the component shows how it goes.
-    private func act(_ action: UiAction, on shown: UiShown) {
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        let conversation = conversation
-        Task { await conversation.act(shown, action: action) }
     }
 
     /// The question waiting on the person, with what is ticked.
@@ -1486,21 +1409,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             card.accessibilityFrameInContainerSpace = hit.frame
             return card
         }
-        // Quick replies and a card's buttons, each pressed on its own (a
-        // double tap lands on it): the one sent selected, one that can't be
-        // used now dimmed.
-        let controls = plan.controls.map { control -> UIAccessibilityElement in
-            let element = UIAccessibilityElement(accessibilityContainer: row)
-            element.accessibilityLabel = control.label
-            var traits: UIAccessibilityTraits = .button
-            if control.selected { traits.insert(.selected) }
-            if control.action == nil { traits.insert(.notEnabled) }
-            element.accessibilityTraits = traits
-            element.accessibilityIdentifier = "control"
-            element.accessibilityFrameInContainerSpace = control.frame
-            return element
-        }
-        let media: [Any] = (row.mediaViews as [Any]) + (cards as [Any]) + (cardsHosted as [Any]) + (controls as [Any])
+        let media: [Any] = (row.mediaViews as [Any]) + (cards as [Any]) + (cardsHosted as [Any])
         row.isAccessibilityElement = media.isEmpty
         if media.isEmpty {
             row.accessibilityElements = nil
@@ -2208,8 +2117,6 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             pick(questionId: questionId, promptId: promptId, option: option)
         case .questionSubmit(let questionId):
             submit(questionId: questionId)
-        case .ui(let tap):
-            press(tap)
         default:
             break
         }
