@@ -132,16 +132,20 @@ public struct SettingsLayout: Equatable, Sendable {
         public var textHeight: CGFloat?
         /// A quieter line under the title.
         public var subtitle: Bool
+        /// That line wrapped, measured at `titleWidth`: the row grows for it.
+        /// Nil is one line.
+        public var subtitleHeight: CGFloat?
         /// A row led by art: its title's and line's heights, measured at
         /// `SettingsLayout.artTextWidth`. The row grows to hold them; the
         /// art never changes size.
         public var art: ArtText?
-        public init(hasIcon: Bool, valueWidth: CGFloat? = nil, accessory: Accessory, textHeight: CGFloat? = nil, subtitle: Bool = false, art: ArtText? = nil) {
+        public init(hasIcon: Bool, valueWidth: CGFloat? = nil, accessory: Accessory, textHeight: CGFloat? = nil, subtitle: Bool = false, subtitleHeight: CGFloat? = nil, art: ArtText? = nil) {
             self.hasIcon = hasIcon
             self.valueWidth = valueWidth
             self.accessory = accessory
             self.textHeight = textHeight
             self.subtitle = subtitle
+            self.subtitleHeight = subtitleHeight
             self.art = art
         }
     }
@@ -272,6 +276,12 @@ public struct SettingsLayout: Equatable, Sendable {
         max(0, width - 2 * Metrics.side - Metrics.textX - Metrics.trailing - Metrics.chevron.width - Metrics.valueGap)
     }
 
+    /// The width a plain row's title, and a wrapped line under it, has on
+    /// a page `width` wide.
+    public static func titleWidth(_ spec: RowSpec, width: CGFloat) -> CGFloat {
+        row(spec, y: 0, width: max(0, width - 2 * Metrics.side), last: true).title.width
+    }
+
     /// The width a text row's text is measured at.
     public static func textWidth(_ width: CGFloat) -> CGFloat {
         max(0, width - 2 * Metrics.side - Metrics.plainTextX - Metrics.trailing)
@@ -317,7 +327,8 @@ public struct SettingsLayout: Equatable, Sendable {
             )
         }
         let textX = spec.hasIcon ? M.textX : M.plainTextX
-        let height = spec.subtitle ? M.subtitledRow : M.row
+        let subtitleHeight = max(M.subtitleHeight, spec.subtitleHeight ?? 0)
+        let height = spec.subtitle ? M.subtitledRow + subtitleHeight - M.subtitleHeight : M.row
         var right = width - M.trailing
         var chevron: CGRect?
         var toggle: CGRect?
@@ -348,7 +359,7 @@ public struct SettingsLayout: Equatable, Sendable {
             chevron: chevron,
             toggle: toggle,
             separator: last ? nil : CGRect(x: textX, y: y + height - M.separator, width: width - textX, height: M.separator),
-            subtitle: spec.subtitle ? CGRect(x: textX, y: title.maxY, width: title.width, height: M.subtitleHeight) : nil
+            subtitle: spec.subtitle ? CGRect(x: textX, y: title.maxY, width: title.width, height: subtitleHeight) : nil
         )
     }
 }
