@@ -1,7 +1,6 @@
 //! `v3SessionRoutes.ts`: seq-paged message reads and batched sends.
 
-use super::sessions::{message_from_row, owns_session, MESSAGE_COLS};
-use crate::models::Message;
+use super::sessions::owns_session;
 use crate::app::App;
 use crate::h;
 use crate::http::{HResult, Reply, Req, Router};
@@ -43,7 +42,14 @@ pub fn register(r: &mut Router) {
             .params(object(vec![("sessionId", string())]))
             .query(object(vec![("items", coerce_number().int().min(1.0).optional())]))
             .handle(h!(test_writer));
+        // Test-only: no more history row deletion, offloaded rows back in Postgres.
+        r.get("/__test/history/hold").handle(h!(test_history_hold));
     }
+}
+
+async fn test_history_hold(app: Arc<App>, _req: Req) -> HResult {
+    let pages = crate::history::test_hold(&app).await?;
+    Reply::json(json!({ "rehydrated": pages }))
 }
 
 async fn test_writer(app: Arc<App>, req: Req) -> HResult {
@@ -69,27 +75,9 @@ async fn get_messages(app: Arc<App>, req: Req) -> HResult {
             anyhow::bail!("Unable to fit integer value '{}' into an INT4 (32-bit signed integer).", v);
         }
     }
-    let rows = match before {
-        Some(b) => {
-            sqlx::query(&format!(r#"SELECT {} FROM "SessionMessage" WHERE "sessionId" = $1 AND "seq" < $2 ORDER BY "seq" DESC LIMIT $3"#, MESSAGE_COLS))
-                .bind(&sid)
-                .bind(b as i64)
-                .bind(limit + 1)
-                .fetch_all(&app.pool)
-                .await?
-        }
-        None => {
-            sqlx::query(&format!(r#"SELECT {} FROM "SessionMessage" WHERE "sessionId" = $1 AND "seq" > $2 ORDER BY "seq" ASC LIMIT $3"#, MESSAGE_COLS))
-                .bind(&sid)
-                .bind(after.unwrap_or(0.0) as i64)
-                .bind(limit + 1)
-                .fetch_all(&app.pool)
-                .await?
-        }
-    };
+    let rows = crate::history::read_seq(&app, &sid, before.map(|b| b as i64), after.unwrap_or(0.0) as i64, limit + 1).await?;
     let has_more = rows.len() as i64 > limit;
     let page = if has_more { &rows[..limit as usize] } else { &rows[..] };
-    let page: Vec<Message> = page.iter().map(message_from_row).collect();
     crate::history::shadow(&app, &sid, &page, true);
     let messages: Vec<Value> = page.iter().map(|m| m.json()).collect();
     Reply::json(json!({"messages": messages, "hasMore": has_more}))

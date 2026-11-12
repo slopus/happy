@@ -13,7 +13,7 @@ async function dumpDb(t, sql, label) {
     for (const [name, q] of [
         ['db accounts', `SELECT "publicKey","seq","settings","settingsVersion" FROM "Account" ORDER BY "publicKey"`],
         ['db sessions', `SELECT "id","tag","seq","metadata","agentState",encode("dataEncryptionKey",'base64') AS dek,"active","projectId" FROM "Session" ORDER BY "tag","metadata"`],
-        ['db messages', `SELECT "seq","localId","content" FROM "SessionMessage" ORDER BY "seq"`],
+        ['db messages', `SELECT "seq","localId","content" FROM "SessionMessage" ORDER BY "seq","localId","content"::text`], // tie order fixed (history-stress runs this on a full database)
         ['db term', `SELECT "publicKey","supportsV2","response" FROM "TerminalAuthRequest" ORDER BY "publicKey"`],
         ['db acct', `SELECT "publicKey","response" FROM "AccountAuthRequest" ORDER BY "publicKey"`],
     ]) {
@@ -137,6 +137,8 @@ export async function scenario(t, { sql }) {
     await t.req('create same tag', 'POST', '/v1/sessions', { body: { tag: 't1', metadata: 'm2' }, headers: H });
     await t.req('create same tag null project', 'POST', '/v1/sessions', { body: { tag: 't1', metadata: 'm2', projectId: null }, headers: H });
     const s2 = await t.req('create 2', 'POST', '/v1/sessions', { body: { tag: 't2', metadata: 'm', dataEncryptionKey: 'not base64!!' }, headers: H });
+    // Session lists sort by updatedAt: two sessions created in the same millisecond tie, in either order.
+    await new Promise((r) => setTimeout(r, 5));
     const s3 = await t.req('create 3', 'POST', '/v1/sessions', { body: { tag: 't3', metadata: 'm', dataEncryptionKey: '' }, headers: H });
     await t.req('create other user', 'POST', '/v1/sessions', { body: { tag: 't1', metadata: 'other' }, headers: H2 });
     await t.req('list v1', 'GET', '/v1/sessions', { headers: H });

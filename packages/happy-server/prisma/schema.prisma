@@ -167,7 +167,8 @@ model SessionMessage {
 //
 
 /// One page: the rows of a session with seq in [startSeq, endSeq], as a zstd
-/// JSON object at objectKey. state: pending | verified | bad.
+/// JSON object at objectKey. state: pending | verified | offloaded (its rows
+/// deleted from SessionMessage) | bad.
 model SessionMessagePage {
     id           String    @id
     sessionId    String
@@ -182,6 +183,7 @@ model SessionMessagePage {
     state        String
     createdAt    DateTime  @default(now())
     verifiedAt   DateTime?
+    offloadedAt  DateTime?
 
     @@unique([sessionId, startSeq])
     @@index([state])

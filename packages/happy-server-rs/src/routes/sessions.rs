@@ -249,14 +249,7 @@ async fn messages_v1(app: Arc<App>, req: Req) -> HResult {
     if find_session(&app, &sid, &req.user_id).await?.is_none() {
         return Reply::code(404, json!({"error": "Session not found"}));
     }
-    let rows = sqlx::query(&format!(
-        r#"SELECT {} FROM "SessionMessage" WHERE "sessionId" = $1 ORDER BY "createdAt" DESC, "seq" DESC LIMIT 150"#,
-        MESSAGE_COLS
-    ))
-    .bind(&sid)
-    .fetch_all(&app.pool)
-    .await?;
-    let rows: Vec<Message> = rows.iter().map(message_from_row).collect();
+    let rows = crate::history::read_latest(&app, &sid, 150).await?;
     crate::history::shadow(&app, &sid, &rows, false);
     let messages: Vec<Value> = rows.iter().map(|m| m.json()).collect();
     Reply::json(json!({ "messages": messages }))

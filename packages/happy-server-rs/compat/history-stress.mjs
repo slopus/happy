@@ -1,26 +1,37 @@
-// History offload (HISTORY_OFFLOAD=shadow) against the Rust server alone: many
-// sessions with burned seqs, duplicate localIds, equal seqs, empty and large
-// content and out-of-order createdAt, paged with tiny caps; every page checked
-// against the database row for row. Then shadow reads, incremental pages, session
-// delete, tampering, the throttle, and crash points (kill after each write step,
-// restart, converge).
-//   node history-stress.mjs [all|stress|crash|throttle]   (run by history-stress.sh)
-// HISTORY_S3=1: pages go to the private MinIO bucket history-rs (withminio.sh).
-import { execFileSync, spawn } from 'node:child_process';
+// History offload against the Rust server alone.
+// - stress (shadow): many sessions with burned seqs, duplicate localIds, equal
+//   seqs, empty and large content and out-of-order createdAt, paged with tiny
+//   caps; every page checked against the database row for row. Then shadow reads,
+//   incremental pages, session delete, tampering.
+// - crash: kill after each write step, restart, converge.
+// - throttle.
+// - retain: every v3 page (after/before, limits 1/7/100/500) and v1 compared with
+//   the same reads in off mode, during and after deletion; rehydrate (one session,
+//   crash, all, again) back to an identical table; the TS server on the rehydrated
+//   database (the same reads, then phase1 against the Rust server on a copy);
+//   duplicate localIds of deleted rows; session delete.
+// - retain-crash: kill inside and after a deletion transaction, restart, converge.
+//   node history-stress.mjs [all|stress|crash|throttle|retain|retain-crash]   (run by history-stress.sh)
+// HISTORY_S3=1: pages go to the MinIO bucket happy-rs (withminio.sh), the default S3_BUCKET.
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { Recorder } from './lib.mjs';
-import { login } from './phase2.mjs';
+import { connected, login } from './phase2.mjs';
 
 const COMPAT = path.dirname(fileURLToPath(import.meta.url));
 const WORK = process.env.WORK;
 const PORT = 3202;
 const BASE = `http://127.0.0.1:${PORT}`;
 const S3 = process.env.HISTORY_S3 === '1';
-const BUCKET = 'history-rs';
+const BUCKET = 'happy-rs'; // rsserver.sh: S3_BUCKET=happy plus -rs
+// The object key prefix: hex HMAC-SHA256(PBKDF2-SHA512(master secret, label), session id).
+const PREFIX_KEY = crypto.pbkdf2Sync(process.env.HANDY_MASTER_SECRET || 'test-master-secret', 'happy history object key', 210000, 64, 'sha512');
+const prefixOf = (sid) => crypto.createHmac('sha256', PREFIX_KEY).update(sid).digest('hex');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const HOUR = 3600_000;
 
@@ -42,7 +53,6 @@ async function minio() {
         const require = createRequire(fileURLToPath(new URL('../../happy-server/package.json', import.meta.url)));
         const { Client } = require('minio');
         minioClient = new Client({ endPoint: '127.0.0.1', port: Number(process.env.MINIO_PORT || 9187), useSSL: false, accessKey: 'compatadmin', secretKey: 'compatsecret', region: 'us-east-1' });
-        if (!(await minioClient.bucketExists(BUCKET))) await minioClient.makeBucket(BUCKET, 'us-east-1'); // private: no policy
     }
     return minioClient;
 }
@@ -69,10 +79,20 @@ async function objects(db) {
         const dir = path.join(WORK, `data-${db}`, 'history');
         if (!fs.existsSync(dir)) return out;
         for (const sid of fs.readdirSync(dir)) {
-            for (const f of fs.readdirSync(path.join(dir, sid))) out.set(`history/${sid}/${f}`, fs.readFileSync(path.join(dir, sid, f)));
+            for (const f of fs.readdirSync(path.join(dir, sid))) {
+                // A write in progress (temporary file, renamed into place): see leftoverTmp.
+                if (!f.endsWith('.tmp')) out.set(`history/${sid}/${f}`, fs.readFileSync(path.join(dir, sid, f)));
+            }
         }
     }
     return out;
+}
+
+/** Local store: temporary files of interrupted writes still there. */
+function leftoverTmp(db) {
+    const dir = path.join(WORK, `data-${db}`, 'history');
+    if (S3 || !fs.existsSync(dir)) return [];
+    return fs.readdirSync(dir).flatMap((p) => fs.readdirSync(path.join(dir, p)).filter((f) => f.endsWith('.tmp')));
 }
 
 async function resetBucket() {
@@ -101,8 +121,9 @@ function start(db, env = {}) {
         HISTORY_PAGE_MAX_BYTES: '4000',
         HISTORY_OFFLOAD_ROWS_PER_SEC: '100000',
         HISTORY_OFFLOAD_CONCURRENCY: '4',
+        HISTORY_RETAIN_ROWS_PER_SEC: '100000',
+        HISTORY_SCAN_PAUSE: '20ms',
         HAPPY_RS_TEST_HOOKS: '1',
-        ...(S3 ? { HISTORY_S3_BUCKET: BUCKET } : {}),
         ...env,
     };
     const log = fs.openSync(path.join(WORK, `hist-${db}.log`), 'a');
@@ -275,6 +296,7 @@ async function checkAll(db, label, { capRows = 7, capBytes = 4000, retentionMs =
     }
     const localIds = json(db, `SELECT * FROM "SessionMessageLocalId" ORDER BY "sessionId", "localId"`);
     const keys = new Set(pages.map((p) => p.objectKey));
+    check(keys.size === pages.length, `${label}: duplicate object keys`);
     for (const k of objs.keys()) check(keys.has(k), `${label}: orphan object ${k}`);
     for (const p of pages) check(sessions.includes(p.sessionId), `${label}: page of a deleted session ${p.objectKey}`);
     let nPages = 0;
@@ -288,7 +310,7 @@ async function checkAll(db, label, { capRows = 7, capBytes = 4000, retentionMs =
             const ok = blocked.includes(sid) ? ['verified', 'bad'] : ['verified'];
             check(ok.includes(p.state), `${label}: ${p.objectKey} is ${p.state}`);
             check(p.startSeq === next, `${label}: ${p.objectKey} starts at ${p.startSeq}, expected ${next}`);
-            check(p.objectKey === `history/${sid}/${p.startSeq}-${p.endSeq}.json.zst`, `${label}: key ${p.objectKey}`);
+            check(p.objectKey === `history/${prefixOf(sid)}/${p.startSeq}-${p.endSeq}.json.zst` && !p.objectKey.includes(sid), `${label}: key ${p.objectKey}`);
             next = p.endSeq + 1;
             const inRange = rs.filter((r) => r.seq >= p.startSeq && r.seq <= p.endSeq);
             nRows += inRange.length;
@@ -325,9 +347,8 @@ async function checkAll(db, label, { capRows = 7, capBytes = 4000, retentionMs =
 }
 
 function createHash(b) {
-    return require_('node:crypto').createHash('sha256').update(b).digest('hex');
+    return crypto.createHash('sha256').update(b).digest('hex');
 }
-const require_ = createRequire(import.meta.url);
 
 async function freshdb(db) {
     execFileSync(path.join(COMPAT, 'freshdb.sh'), [db], { stdio: 'inherit' });
@@ -338,7 +359,7 @@ async function freshdb(db) {
 
 function logProblems(db) {
     const log = fs.readFileSync(path.join(WORK, `hist-${db}.log`), 'utf8');
-    return log.split('\n').filter((l) => /is bad|shadow read mismatch|shadow read of session|offload of session .* stopped|offload sweep failed|page verifier failed|pending page .* not finished/.test(l));
+    return log.split('\n').filter((l) => /is bad|is damaged|is missing|shadow read mismatch|shadow read of session|offload of session .* stopped|retain of session .* stopped|offload sweep failed|page verifier failed|pending page .* not finished|rehydrating page/.test(l));
 }
 
 // ---------------------------------------------------------------------------
@@ -454,18 +475,6 @@ async function stress() {
     await sleep(3000);
     check(Number(psql(db, `SELECT count(*) FROM "SessionMessagePage" WHERE "sessionId" = ${lit(victim)}`)) === before, 'a bad page stops its session');
     await stop();
-    if (S3) {
-        // Pages go to HISTORY_S3_BUCKET, not the public S3_BUCKET.
-        const leaked = await new Promise((resolve, reject) => {
-            const ks = [];
-            const st = minioClient.listObjectsV2('happy-rs', 'history/', true);
-            st.on('data', (o) => ks.push(o.name));
-            st.on('end', () => resolve(ks));
-            st.on('error', reject);
-        });
-        check(leaked.length === 0, `${leaked.length} pages in the public bucket`);
-        console.log(`  public bucket happy-rs: ${leaked.length} history objects`);
-    }
     const problems = logProblems(db).filter((l) => !l.includes(victim));
     check(problems.length === 0, `no other problem in the log (${problems.slice(0, 3).join(' | ')})`);
     // Restore the row so the final check sees the bad page as the only exception.
@@ -488,6 +497,7 @@ async function crash() {
         const code = await Promise.race([server.exited, sleep(60_000).then(() => 'timeout')]);
         server = undefined;
         const st = json(db, `SELECT "state", count(*) AS n FROM "SessionMessagePage" GROUP BY "state" ORDER BY "state"`).map((r) => `${r.state}=${r.n}`).join(' ');
+        const keysBefore = new Map(json(db, `SELECT "id", "objectKey" FROM "SessionMessagePage"`).map((r) => [r.id, r.objectKey]));
         const objs = (await objects(db)).size;
         check(code === 86, `${point}: exit code ${code}`);
         start(db);
@@ -497,6 +507,11 @@ async function crash() {
         const dup = json(db, `SELECT a."objectKey" FROM "SessionMessagePage" a JOIN "SessionMessagePage" b ON a."sessionId" = b."sessionId" AND a."id" <> b."id" AND a."startSeq" <= b."endSeq" AND b."startSeq" <= a."endSeq"`);
         check(dup.length === 0, `${point}: overlapping pages`);
         check(r.pages > 0, `${point}: pages written`);
+        // Recovery finishes a page under the key its row already has.
+        const keysAfter = new Map(json(db, `SELECT "id", "objectKey" FROM "SessionMessagePage"`).map((r) => [r.id, r.objectKey]));
+        check([...keysBefore].every(([id, k]) => keysAfter.get(id) === k), `${point}: a page changed its key in recovery`);
+        check(new Set(keysAfter.values()).size === keysAfter.size, `${point}: duplicate keys`);
+        check(leftoverTmp(db).length === 0, `${point}: temporary files left: ${leftoverTmp(db)}`);
         await stop();
         check(logProblems(db).length === 0, `${point}: problems in the log`);
     }
@@ -525,11 +540,363 @@ async function throttle() {
     await stop();
 }
 
+
+// ---------------------------------------------------------------------------
+// Retain
+// ---------------------------------------------------------------------------
+
+/** Every SessionMessage row by session, ordered by (seq, id), as the routes see them. */
+function dumpRows(db) {
+    const rows = json(db, `${ROWS.replace('FROM "SessionMessage"', ', "sessionId" FROM "SessionMessage"')} ORDER BY "sessionId", "seq", "id"`);
+    const by = new Map();
+    for (const r of rows) {
+        const sid = r.sessionId;
+        delete r.sessionId;
+        r.createdAt = Number(r.createdAt);
+        r.updatedAt = Number(r.updatedAt);
+        if (!by.has(sid)) by.set(sid, []);
+        by.get(sid).push(r);
+    }
+    return by;
+}
+
+/** The whole table, every column, as one hash. */
+const tableHash = (db) =>
+    psql(db, `SELECT md5(COALESCE(string_agg(concat_ws('|', "id", "sessionId", "seq", "localId", "content"::text, "createdAt", "updatedAt"), E'\n' ORDER BY "id"), '')) FROM "SessionMessage"`).trim();
+
+/** Raw response bodies of every v3 page (after and before, limits 1/7/100/500) and v1, per session. */
+async function record(base, H, sids) {
+    const out = new Map();
+    const get = async (p) => (await fetch(base + p, { headers: H })).text();
+    for (const sid of sids) {
+        for (const limit of [1, 7, 100, 500]) {
+            for (const dir of ['after', 'before']) {
+                let cursor = dir === 'after' ? 0 : 1_000_000;
+                for (let n = 0; n < 1000; n++) {
+                    const path = `/v3/sessions/${sid}/messages?${dir}_seq=${cursor}&limit=${limit}`;
+                    const text = await get(path);
+                    out.set(path, text);
+                    const r = JSON.parse(text);
+                    if (!r.messages?.length || !r.hasMore) break;
+                    cursor = r.messages[r.messages.length - 1].seq;
+                }
+            }
+        }
+        const path = `/v1/sessions/${sid}/messages`;
+        out.set(path, await get(path));
+    }
+    return out;
+}
+
+function compareRecords(label, want, have) {
+    let same = 0;
+    const diffs = [];
+    for (const [k, v] of want) {
+        if (have.get(k) === v) same++;
+        else diffs.push(k);
+    }
+    for (const k of have.keys()) if (!want.has(k)) diffs.push(k);
+    console.log(`  ${label}: ${want.size} reads, ${same} identical, ${diffs.length} different${diffs.length ? ' (' + diffs.slice(0, 3).join(', ') + ')' : ''}`);
+    check(diffs.length === 0 && same === want.size, `${label}: reads differ`);
+}
+
+/**
+ * Pages against the truth (every row there should be, by session): contiguous
+ * from seq 1, keyed by the derived prefix, objects equal to the truth; an
+ * offloaded page's rows gone from the table, a verified page's all there; table
+ * plus offloaded pages = the truth; localIds of the paged ranges; no orphans.
+ * `drained`: no verified page past the window is left (blocked sessions aside).
+ */
+async function checkRetain(db, truth, label, { retentionMs = HOUR, drained = true } = {}) {
+    const before = failures;
+    const pages = json(db, `SELECT * FROM "SessionMessagePage" ORDER BY "sessionId", "startSeq"`);
+    const objs = await objects(db);
+    const table = dumpRows(db);
+    const localIds = json(db, `SELECT * FROM "SessionMessageLocalId"`);
+    const keys = new Set(pages.map((p) => p.objectKey));
+    check(keys.size === pages.length, `${label}: duplicate keys`);
+    for (const k of objs.keys()) check(keys.has(k), `${label}: orphan object ${k}`);
+    const cutoff = Date.now() - retentionMs;
+    const n = { offloaded: 0, verified: 0, rowsOut: 0 };
+    for (const [sid, rows] of truth) {
+        const ps = pages.filter((p) => p.sessionId === sid);
+        const inTable = table.get(sid) || [];
+        const blocked = ps.some((p) => p.state === 'bad');
+        let next = 1;
+        const merged = [...inTable];
+        for (const p of ps) {
+            check(p.startSeq === next, `${label}: page ${sid} ${p.startSeq} starts after a gap`);
+            next = p.endSeq + 1;
+            check(p.objectKey === `history/${prefixOf(sid)}/${p.startSeq}-${p.endSeq}.json.zst`, `${label}: key of ${sid} ${p.startSeq}`);
+            const want = rows.filter((r) => r.seq >= p.startSeq && r.seq <= p.endSeq);
+            const b = objs.get(p.objectKey);
+            if (!b && p.state === 'pending') {
+                // Killed before its PUT: the rows are all still in the table.
+                const here = inTable.filter((r) => r.seq >= p.startSeq && r.seq <= p.endSeq);
+                check(JSON.stringify(here) === JSON.stringify(want), `${label}: pending page ${sid} ${p.startSeq} lost rows`);
+                continue;
+            }
+            if (!check(b, `${label}: object of ${sid} ${p.startSeq} missing`)) continue;
+            check(createHash(b) === p.sha256, `${label}: sha256 of ${sid} ${p.startSeq}`);
+            const file = JSON.parse(zlib.zstdDecompressSync(b).toString('utf8'));
+            check(JSON.stringify(file.rows) === JSON.stringify(want), `${label}: page ${sid} ${p.startSeq} differs from the truth`);
+            const here = inTable.filter((r) => r.seq >= p.startSeq && r.seq <= p.endSeq);
+            if (p.state === 'offloaded') {
+                n.offloaded++;
+                n.rowsOut += want.length;
+                check(here.length === 0, `${label}: offloaded page ${sid} ${p.startSeq} still has ${here.length} rows`);
+                merged.push(...file.rows);
+            } else {
+                n.verified++;
+                check(JSON.stringify(here) === JSON.stringify(want), `${label}: ${p.state} page ${sid} ${p.startSeq} lost rows`);
+                if (drained && p.state === 'verified' && !blocked) {
+                    check(new Date(p.maxCreatedAt + 'Z').getTime() >= cutoff, `${label}: verified page ${sid} ${p.startSeq} past the window kept its rows`);
+                }
+            }
+        }
+        merged.sort((x, y) => x.seq - y.seq || (x.id < y.id ? -1 : 1));
+        check(JSON.stringify(merged) === JSON.stringify(rows), `${label}: session ${sid}: table plus pages differ from the truth`);
+        const paged = ps.filter((p) => p.state === 'verified' || p.state === 'offloaded').reduce((a, p) => Math.max(a, p.endSeq), 0);
+        const wantL = rows.filter((r) => r.seq <= paged && r.localId !== null).map((r) => `${r.localId}=${r.seq}`).sort();
+        const haveL = localIds.filter((l) => l.sessionId === sid).map((l) => `${l.localId}=${l.seq}`).sort();
+        check(JSON.stringify(wantL) === JSON.stringify(haveL), `${label}: session ${sid} localIds ${haveL.length} vs ${wantL.length}`);
+    }
+    for (const p of pages) check(truth.has(p.sessionId), `${label}: page of a deleted session`);
+    console.log(`  ${label}: ${pages.length} pages (${n.offloaded} offloaded, ${n.verified} verified), ${n.rowsOut} rows only in pages, ${objs.size} objects: ${failures === before ? 'ok' : failures - before + ' failures'}`);
+    return n;
+}
+
+/** Waits until nothing is pending and no verified page past the window is left to delete. */
+async function retained(db, { timeout = 180_000, retention = '1 hour' } = {}) {
+    const t0 = Date.now();
+    let stable = 0;
+    let last = '';
+    while (Date.now() - t0 < timeout) {
+        await sleep(700);
+        const [r] = json(db, `SELECT count(*) FILTER (WHERE "state" = 'pending') AS pending, count(*) AS total, count(*) FILTER (WHERE "state" = 'offloaded') AS off,
+            count(*) FILTER (WHERE "state" = 'verified' AND "maxCreatedAt" < now() AT TIME ZONE 'UTC' - interval '${retention}'
+                AND NOT EXISTS (SELECT 1 FROM "SessionMessagePage" b WHERE b."sessionId" = p."sessionId" AND b."state" = 'bad')) AS deletable
+            FROM "SessionMessagePage" p`);
+        const now = `${r.total}/${r.off}`;
+        if (Number(r.pending) === 0 && Number(r.deletable) === 0 && now === last) {
+            if (++stable >= 3) return Date.now() - t0;
+        } else stable = 0;
+        last = now;
+    }
+    throw new Error('retain did not settle');
+}
+
+/** Runs the Rust binary's `rehydrate`; returns [exit code, output]. */
+function rehydrateCmd(db, args = [], env = {}) {
+    const r = spawnSync(path.join(COMPAT, 'rsserver.sh'), [db, String(PORT)], {
+        env: { ...process.env, HAPPY_RS_TEST_HOOKS: '1', RS_COMMAND: ['rehydrate', ...args].join(' '), ...env },
+        encoding: 'utf8',
+    });
+    return [r.status, (r.stdout + r.stderr).trim()];
+}
+
+async function seedRetain(db, nApi, nSynth) {
+    start(db, { HISTORY_OFFLOAD: 'off' });
+    await ready();
+    const a = await api(db);
+    const sids = [];
+    for (let i = 0; i < nApi + nSynth; i++) sids.push(await a.session(`r-${i}`));
+    for (const sid of sids.slice(0, nApi)) {
+        for (let k = 0; k < 5; k++) {
+            await a.send(sid, [{ localId: `a${k}`, content: content() }, { localId: `b${k}`, content: content() }]);
+            await a.send(sid, [{ localId: `b${k}`, content: content() }, { localId: `c${k}`, content: content() }]); // b: duplicate
+        }
+    }
+    await stop();
+    psql(db, `UPDATE "SessionMessage" SET "createdAt" = "createdAt" - interval '3 hours', "updatedAt" = "updatedAt" - interval '3 hours'`);
+    for (const [i, sid] of sids.slice(nApi).entries()) {
+        const kind = i % 7 === 1 ? 'young-hole' : i % 7 === 2 ? 'young' : i % 7 === 3 ? 'empty' : 'mixed';
+        if (kind !== 'empty') insert(db, sid, synth(sid, 5 + Math.floor(rand() * 80), { kind }));
+    }
+    return sids;
+}
+
+async function retain() {
+    const db = 'd_hist_retain';
+    console.log(`retain (${S3 ? 'MinIO bucket ' + BUCKET : 'local store'})`);
+    await freshdb(db);
+    const sids = await seedRetain(db, 8, 32);
+    // 1. The reads with every row in Postgres (offload off).
+    start(db, { HISTORY_OFFLOAD: 'off' });
+    await ready();
+    const a = await api(db);
+    const baseline = await record(BASE, a.H, sids);
+    await stop();
+    const truth = dumpRows(db);
+    for (const sid of sids) if (!truth.has(sid)) truth.set(sid, []);
+    const hash0 = tableHash(db);
+    console.log(`  ${sids.length} sessions, ${[...truth.values()].reduce((x, r) => x + r.length, 0)} messages, ${baseline.size} reads recorded in off mode`);
+    // 2. Retain, deleting slowly; reads compared while it runs, then all of them.
+    start(db, { HISTORY_OFFLOAD: 'retain', HISTORY_RETAIN_ROWS_PER_SEC: '60' });
+    await ready();
+    let during = 0;
+    let duringBad = 0;
+    const t0 = Date.now();
+    for (let i = 0; Date.now() - t0 < 12_000; i++) {
+        const sid = sids[i % sids.length];
+        const one = await record(BASE, a.H, [sid]);
+        for (const [k, v] of one) {
+            during++;
+            if (baseline.get(k) !== v) duringBad++;
+        }
+    }
+    const mid = json(db, `SELECT count(*) FILTER (WHERE "state" = 'offloaded') AS off, count(*) AS total FROM "SessionMessagePage"`)[0];
+    console.log(`  during deletion (${mid.off} of ${mid.total} pages offloaded after 12 s): ${during} reads, ${duringBad} different`);
+    check(during > 0 && duringBad === 0, 'reads during deletion differ from off mode');
+    check(Number(mid.off) > 0 && Number(mid.off) < Number(mid.total), 'the comparison ran mid-transition');
+    console.log(`  settled in ${await retained(db)} ms more`);
+    compareRecords('retain vs off', baseline, await record(BASE, a.H, sids));
+    const n = await checkRetain(db, truth, 'after retain');
+    check(n.rowsOut > 0, 'rows deleted');
+    const m = await metrics();
+    console.log(`  metrics: rows deleted ${m.history_rows_deleted_total}, pages offloaded ${m['history_pages_total:offloaded']}, shadow ok ${m['history_shadow_reads_total:ok'] ?? 0} mismatch ${m['history_shadow_reads_total:mismatch'] ?? 0}, blocked ${m.history_sessions_blocked}`);
+    check(m.history_rows_deleted_total === n.rowsOut, 'history_rows_deleted_total');
+    await stop();
+    // 3. Off mode with offloaded pages still merges them.
+    start(db, { HISTORY_OFFLOAD: 'off' });
+    await ready();
+    const some = sids.slice(0, 10);
+    const subset = new Map([...baseline].filter(([k]) => some.some((sid) => k.includes(`/${sid}/`))));
+    compareRecords('off mode with offloaded pages vs off', subset, await record(BASE, a.H, some));
+    await stop();
+    // 4. Rehydrate: one session, then a crash inside a page's transaction, then all, then again.
+    const one = sids[0];
+    let [code, out] = rehydrateCmd(db, ['--session', one]);
+    console.log(`  rehydrate --session: exit ${code}: ${out.split('\n').pop()}`);
+    check(code === 0, 'rehydrate --session');
+    check(JSON.stringify(dumpRows(db).get(one)) === JSON.stringify(truth.get(one)), 'rehydrate --session restored its rows');
+    check(Number(psql(db, `SELECT count(*) FROM "SessionMessagePage" WHERE "state" = 'offloaded' AND "sessionId" <> ${lit(one)}`)) > 0, 'rehydrate --session left the others');
+    const offBefore = Number(psql(db, `SELECT count(*) FROM "SessionMessagePage" WHERE "state" = 'offloaded'`));
+    [code, out] = rehydrateCmd(db, [], { HAPPY_RS_OFFLOAD_CRASH: 'rehydrate_in_tx' });
+    const offAfter = Number(psql(db, `SELECT count(*) FROM "SessionMessagePage" WHERE "state" = 'offloaded'`));
+    console.log(`  rehydrate killed inside a page's transaction: exit ${code}, offloaded pages ${offBefore} → ${offAfter}`);
+    check(code === 86 && offAfter === offBefore, 'the crashed page rolled back');
+    [code, out] = rehydrateCmd(db);
+    console.log(`  rehydrate: exit ${code}: ${out.split('\n').pop()}`);
+    check(code === 0, 'rehydrate');
+    [code, out] = rehydrateCmd(db);
+    console.log(`  rehydrate again: exit ${code}: ${out.split('\n').pop()}`);
+    check(code === 0 && out.includes('done: 0 pages'), 'rehydrate is idempotent');
+    const hash1 = tableHash(db);
+    console.log(`  SessionMessage after the round trip: md5 ${hash1} (before: ${hash0})`);
+    check(hash1 === hash0, 'the rehydrated table is identical');
+    // 5. The TS server on the rehydrated database: the same reads, then phase1 against the Rust server on a copy.
+    const copy = 'd_hist_retain_copy';
+    psql('postgres', `DROP DATABASE IF EXISTS "${copy}"`);
+    psql('postgres', `CREATE DATABASE "${copy}" TEMPLATE "${db}"`);
+    const ts = spawn(path.join(COMPAT, 'tsserver.sh'), [db, '3201'], { env: process.env, stdio: ['ignore', fs.openSync(path.join(WORK, 'hist-ts.log'), 'w'), fs.openSync(path.join(WORK, 'hist-ts.log'), 'a')] });
+    const tsExit = new Promise((r) => ts.on('exit', r));
+    try {
+        for (let i = 0; i < 240; i++) {
+            try {
+                await fetch('http://127.0.0.1:3201/');
+                break;
+            } catch {
+                await sleep(250);
+            }
+        }
+        const t = new Recorder('http://127.0.0.1:3201');
+        const token = await login(t, 7);
+        compareRecords('TS server on the rehydrated database vs off', baseline, await record('http://127.0.0.1:3201', { authorization: 'Bearer ' + token }, sids));
+        start(copy, { HISTORY_OFFLOAD: 'off' });
+        await ready();
+        const r = spawnSync('node', [path.join(COMPAT, 'run.mjs'), 'phase1', 'http://127.0.0.1:3201', db, BASE, copy], { env: process.env, encoding: 'utf8' });
+        const lines = (r.stdout || '').split('\n');
+        const at = lines.findIndex((l) => l.startsWith('phase1:'));
+        console.log(`  phase1, TS on the rehydrated database vs Rust on a copy: ${at < 0 ? r.stderr : lines.slice(at, at + 6).join('\n    ')}`);
+        check(r.status === 0, 'phase1 on the rehydrated database');
+        await stop();
+    } finally {
+        ts.kill('SIGTERM');
+        await tsExit;
+    }
+    // phase1 wrote to both; the truth is the database from here on, and the pages verified again.
+    const truth2 = dumpRows(db);
+    // 6. Retain again, then duplicates of deleted rows and a session delete.
+    start(db, { HISTORY_OFFLOAD: 'retain' });
+    await ready();
+    await retained(db);
+    await checkRetain(db, truth2, 'retain again');
+    const sid = sids[1];
+    const old = truth.get(sid).find((r) => r.localId === 'a0');
+    check(old && Number(psql(db, `SELECT count(*) FROM "SessionMessage" WHERE "sessionId" = ${lit(sid)} AND "localId" = 'a0'`)) === 0, 'a0 lives only in a page');
+    const seq0 = Number(psql(db, `SELECT "seq" FROM "Session" WHERE "id" = ${lit(sid)}`));
+    const sent = await a.send(sid, [{ localId: 'a0', content: 'again' }, { localId: 'n1', content: 'new' }]);
+    const sentA0 = sent.messages.find((m) => m.localId === 'a0');
+    const sentN1 = sent.messages.find((m) => m.localId === 'n1');
+    check(JSON.stringify(sentA0) === JSON.stringify({ id: old.id, seq: old.seq, localId: 'a0', createdAt: old.createdAt, updatedAt: old.updatedAt }), `v3 duplicate of a deleted row answers with it (${JSON.stringify(sentA0)})`);
+    check(sentN1?.seq === seq0 + 1, 'v3: the new message takes the next seq');
+    const again = await a.send(sid, [{ localId: 'a0', content: 'third' }]);
+    check(JSON.stringify(again.messages) === JSON.stringify([sentA0]), 'v3 all-duplicate send');
+    const rec = new Recorder(BASE);
+    const ss = await connected(rec, 'ss', { token: a.token, clientType: 'session-scoped', sessionId: sid });
+    ss.emit('message', { sid, message: 'dup', localId: 'b0' }); // a deleted row's localId: burns a seq, writes nothing
+    await sleep(500);
+    ss.emit('message', { sid, message: 'fresh', localId: 'n2' });
+    await sleep(800);
+    const seqs = json(db, `SELECT "seq", "localId" FROM "SessionMessage" WHERE "sessionId" = ${lit(sid)} AND "seq" > ${seq0} ORDER BY "seq"`);
+    const seq1 = Number(psql(db, `SELECT "seq" FROM "Session" WHERE "id" = ${lit(sid)}`));
+    console.log(`  duplicates of deleted rows: v3 a0 → seq ${sentA0?.seq} (original ${old.seq}); new rows ${JSON.stringify(seqs)}; Session.seq ${seq0} → ${seq1}`);
+    check(JSON.stringify(seqs) === JSON.stringify([{ seq: seq0 + 1, localId: 'n1' }, { seq: seq0 + 3, localId: 'n2' }]) && seq1 === seq0 + 3, 'socket duplicate burns a seq and writes nothing');
+    check(Number(psql(db, `SELECT count(*) FROM "SessionMessage" WHERE "sessionId" = ${lit(sid)} AND "localId" IN ('a0', 'b0')`)) === 0, 'no duplicate row');
+    ss.close?.();
+    const doomed = sids[2];
+    check((await a.del(doomed)).success === true, 'delete');
+    await sleep(1500);
+    check(Number(psql(db, `SELECT count(*) FROM "SessionMessagePage" WHERE "sessionId" = ${lit(doomed)}`)) === 0, 'deleted session: no pages');
+    check(Number(psql(db, `SELECT count(*) FROM "SessionMessageLocalId" WHERE "sessionId" = ${lit(doomed)}`)) === 0, 'deleted session: no localIds');
+    check(![...(await objects(db)).keys()].some((k) => k.startsWith(`history/${prefixOf(doomed)}/`)), 'deleted session: no objects');
+    const truth3 = new Map(truth2);
+    truth3.delete(doomed);
+    truth3.set(sid, [...truth2.get(sid), ...dumpRows(db).get(sid).filter((r) => r.seq > seq0)]);
+    await checkRetain(db, truth3, 'after duplicates and delete', { drained: false });
+    await stop();
+    const problems = logProblems(db);
+    check(problems.length === 0, `problems in the log (${problems.slice(0, 3).join(' | ')})`);
+}
+
+async function retainCrash() {
+    console.log(`retain crash points (${S3 ? 'MinIO' : 'local store'})`);
+    for (const point of ['retain_in_tx', 'retain_after_commit']) {
+        const db = `d_hist_rcrash_${point}`;
+        await freshdb(db);
+        const sids = await seedRetain(db, 2, 6);
+        start(db, { HISTORY_OFFLOAD: 'off' });
+        await ready();
+        const a = await api(db);
+        const baseline = await record(BASE, a.H, sids);
+        await stop();
+        const truth = dumpRows(db);
+        for (const sid of sids) if (!truth.has(sid)) truth.set(sid, []);
+        start(db, { HISTORY_OFFLOAD: 'retain', HAPPY_RS_OFFLOAD_CRASH: point });
+        const code = await Promise.race([server.exited, sleep(60_000).then(() => 'timeout')]);
+        server = undefined;
+        const st = json(db, `SELECT "state", count(*) AS n FROM "SessionMessagePage" GROUP BY "state" ORDER BY "state"`).map((r) => `${r.state}=${r.n}`).join(' ');
+        check(code === 86, `${point}: exit code ${code}`);
+        await checkRetain(db, truth, `${point}: killed with ${st}`, { drained: false });
+        start(db, { HISTORY_OFFLOAD: 'retain' });
+        await ready();
+        await retained(db);
+        await checkRetain(db, truth, `${point}: restarted`);
+        check(leftoverTmp(db).length === 0, `${point}: temporary files left: ${leftoverTmp(db)}`);
+        compareRecords(`${point}: reads vs off`, baseline, await record(BASE, a.H, sids));
+        await stop();
+        check(logProblems(db).length === 0, `${point}: problems in the log`);
+    }
+}
+
 const what = process.argv[2] || 'all';
 try {
     if (what === 'all' || what === 'stress') await stress();
     if (what === 'all' || what === 'crash') await crash();
     if (what === 'all' || what === 'throttle') await throttle();
+    if (what === 'all' || what === 'retain') await retain();
+    if (what === 'all' || what === 'retain-crash') await retainCrash();
 } finally {
     await stop();
 }

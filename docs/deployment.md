@@ -114,9 +114,23 @@ from `Dockerfile.server`.
 4. **Migrations.** Nothing to undo. The Rust server never runs migrations in
    production (`prisma migrate deploy` stays with the TS tooling). Its only
    schema, the history offload tables below, is additive and the TS server
-   ignores it. With `HISTORY_OFFLOAD=shadow` every message is still in
-   Postgres, so a rollback loses nothing; sessions the TS server deletes leave
-   their pages behind (see "History offload").
+   ignores it. Sessions the TS server deletes leave their pages behind (see
+   "History offload").
+5. **History.** The TS server reads only Postgres. If `HISTORY_OFFLOAD=retain`
+   ever ran, old history lives only in object storage, so put it back before
+   the switch:
+   - Restart the Rust server with `HISTORY_OFFLOAD=shadow`, so it stops deleting.
+     Reads keep merging pages until every row is back.
+   - Run `happy-server-rs rehydrate` once, for example as a one-off Job from the
+     same image and secrets. It copies every offloaded page's rows back into
+     `SessionMessage`, one transaction per page. It is idempotent and resumable,
+     so a failed or interrupted run is simply run again. `--session <id>` does
+     one session. The table needs room for every offloaded row again.
+   - Go on with the rollback once it reports `done: … 0 failed`. A second run
+     must report `done: 0 pages`.
+
+   With `HISTORY_OFFLOAD=shadow` or `off` (never `retain`), every message is
+   still in Postgres and there is nothing to do.
 
 Data written by the Rust server is valid for the TS server:
 - **`Session.updatedAt` / `Account.updatedAt`.** Group commit bumps them once per
@@ -138,87 +152,140 @@ Data written by the Rust server is valid for the TS server:
 ## History offload
 
 The Rust server can move old session messages out of Postgres into object
-storage (`packages/happy-server-rs/src/history.rs`). It is built in two stages,
-and only the first exists so far:
+storage (`packages/happy-server-rs/src/history.rs`):
 
-- `HISTORY_OFFLOAD=off` (default): nothing happens.
-- `HISTORY_OFFLOAD=shadow` (stage A): a background job copies messages older
-  than `HISTORY_DB_RETENTION` (default `3d`) into pages, while every row stays
-  in Postgres. Clients are still served from Postgres. Each history read is also
-  compared with the pages, off the response path.
-- `HISTORY_OFFLOAD=retain` (stage B, not built yet; the server refuses to start
-  with it): Postgres keeps only the retention window, older history lives only
-  in pages, and reads merge the two.
+- `HISTORY_OFFLOAD=off` (default): no background job.
+- `HISTORY_OFFLOAD=shadow`: a background job copies messages older than
+  `HISTORY_DB_RETENTION` (default `3d`) into pages, while every row stays in
+  Postgres. Reads are served from Postgres, and each one is also compared with
+  the pages off the response path.
+- `HISTORY_OFFLOAD=retain`: the same job, plus it deletes from Postgres the
+  rows of verified pages older than the window. The page becomes `offloaded`.
+  Reads merge Postgres with the offloaded pages on every route (v1 and v3
+  `GET /messages`, and the localId duplicate checks of v3 sends and socket
+  messages). Clients see the same bytes as with every row in Postgres.
+
+Reads merge in every mode once an offloaded page exists, so switching from
+`retain` back to `shadow` or `off` stops the deletion but keeps old history
+readable. `happy-server-rs rehydrate` puts the rows back (see "Rolling back to
+the TS server").
 
 **Pages.** A page is the rows of one session with seq in `[startSeq, endSeq]`
 (1000 rows or 4 MiB at most): zstd-compressed JSON with each row's id, seq,
-localId, content (the jsonb text as Postgres prints it) and ms timestamps.
-Object key `history/<sessionId>/<startSeq>-<endSeq>.json.zst`, in
-`HISTORY_S3_BUCKET` (default `S3_BUCKET`). Pages of a session follow each other
-from seq 1 and only cover a seq prefix whose rows are all past the window, so a
-page never changes. Each page is indexed in `SessionMessagePage`
-(`pending` → `verified`, or `bad`), and its localIds go to
-`SessionMessageLocalId` (for stage B's duplicate check). Both tables come from
-the Prisma migration `20261112000000_add_session_message_pages`. They have no
-foreign keys, so deleting a session is never blocked. The Rust server deletes a
-deleted session's objects and rows after the delete commits.
+localId, content (the jsonb text as Postgres prints it) and ms timestamps. Pages
+of a session follow each other from seq 1 and only cover a seq prefix whose rows
+are all past the window, so a page never changes. Each page is indexed in
+`SessionMessagePage`:
+- states: `pending` → `verified` → `offloaded`, or `bad`;
+- its localIds go to `SessionMessageLocalId`, so a duplicate send of a deleted
+  row is still recognised. The v3 duplicate is answered with the original
+  message, and the socket duplicate still burns a seq.
 
-**Writing.** One pass over all sessions, then `HISTORY_OFFLOAD_INTERVAL`
-(default `5m`) of rest. For each page: insert the `pending` row, PUT the object,
-GET it back and compare it with the rows, then `verified` plus its localIds in
-one transaction. A mismatch marks the page `bad`, which stops that session (and
-logs the session and seq range). After a crash, the next pass finishes or
-rebuilds `pending` pages. The job is throttled to
-`HISTORY_OFFLOAD_ROWS_PER_SEC` (2000) across `HISTORY_OFFLOAD_CONCURRENCY` (2)
-sessions at a time. Rows younger than `HISTORY_OFFLOAD_SETTLE` (`1m`) are never
-paged, whatever the retention. A sampled re-check (`HISTORY_VERIFY_SAMPLE` 20
-pages every `HISTORY_VERIFY_INTERVAL` 10 m) compares verified pages with
-Postgres again.
+Both tables come from the Prisma migration
+`20261112000000_add_session_message_pages` (plus
+`20261112000001_session_message_page_offloaded_at` for retain). They have no
+foreign keys, so
+deleting a session is never blocked. The Rust server deletes a deleted
+session's objects and rows after the delete commits.
+
+**Object keys.** The format is
+`history/<prefix>/<startSeq>-<endSeq>.json.zst`, in `HISTORY_S3_BUCKET`
+(default `S3_BUCKET`; `DATA_DIR/history` without S3).
+- `<prefix>` is the hex HMAC-SHA256 of the session id. Its key is derived from
+  `HANDY_MASTER_SECRET` with the label `happy history object key`, the same way
+  the auth keys are derived (PBKDF2-SHA512).
+- Session ids are not secret, since they appear in URLs and logs; the prefix
+  cannot be computed without the master secret.
+- `SessionMessagePage.objectKey` is the key of record for reads and deletes. The
+  derivation only names new pages and the prefix listed when a session is
+  deleted.
+- Rotating `HANDY_MASTER_SECRET` changes the prefix of new pages only. Old pages
+  stay reachable through their stored keys.
+- Keys are never sent to clients or logged; logs name the session and seq
+  range.
+
+History in the bucket is safe for three reasons:
+- message content is encrypted on the client;
+- object names carry the secret-keyed prefix;
+- anonymous listing stays disabled on the bucket (`?list-type=2` on
+  `files.cluster-fluster.com/happy/` returns 403).
+
+Re-enabling anonymous ListBucket would expose every history object name.
+
+**The job.** It runs inside the server process, one pass at a time:
+- **Session scan:** each pass pages through sessions by id, 100 at a time, with
+  `HISTORY_SCAN_PAUSE` (`200ms`) between chunks, then rests for
+  `HISTORY_OFFLOAD_INTERVAL` (`5m`).
+- **Writing a page:** insert the `pending` row, PUT the object, GET it back and
+  compare it with the rows, then mark it `verified` and record its localIds in
+  one transaction.
+- **Retain:** before deleting, the object is compared with the rows again. The
+  deletion transaction then re-checks the page (still verified, old enough, no
+  bad page in the session), deletes its rows (one page, at most 1000 rows) and
+  marks it `offloaded`.
+- **Bad pages:** a mismatch marks the page `bad`. That stops the session's
+  offload and deletion, and the log names the session and seq range.
+- **Crashes:** the next pass finishes or rebuilds `pending` pages under their
+  stored key. A deletion is all or nothing.
+- **Verifier:** a sampled re-check (`HISTORY_VERIFY_SAMPLE` 20 pages every
+  `HISTORY_VERIFY_INTERVAL` 10 m) compares verified pages with Postgres and
+  checks offloaded objects.
+- **Throttles:** `HISTORY_OFFLOAD_ROWS_PER_SEC` (500) and
+  `HISTORY_RETAIN_ROWS_PER_SEC` (500), across `HISTORY_OFFLOAD_CONCURRENCY` (1)
+  sessions at a time.
+- **Settle time:** rows younger than `HISTORY_OFFLOAD_SETTLE` (`1m`) are never
+  paged, whatever the retention.
+- **Kill switch:** `HISTORY_OFFLOAD=off` takes effect at the next start. The
+  mode is read from the environment, and changing a Deployment's environment
+  restarts the pod anyway. Old history stays readable (see above).
 
 **Metrics** (all Rust-only):
-- `history_offload_backlog_rows`: old rows not yet paged (per session, updated
-  as the pass reaches it, so during the first pass it covers only the sessions
-  seen so far).
-- `history_pages_total{state=written|verified|bad}` and
-  `history_offloaded_bytes_total`.
+- `history_offload_backlog_rows`: old rows not yet paged. It is per session
+  and updated as each pass reaches the session, so during the first pass it
+  counts only the sessions seen so far. Old rows behind a younger row in the
+  same session are not counted until that row ages.
+- `history_pages_total{state=written|verified|offloaded|bad}`,
+  `history_offloaded_bytes_total`, `history_rows_deleted_total`.
+- `history_sessions_blocked`: sessions with a bad page. Alert when it is above 0.
 - `history_shadow_reads_total{result=ok|mismatch|error}`: reads compared with
-  pages.
+  verified pages.
 - `history_verifier_checks_total{result=ok|mismatch}`.
 - `history_storage_errors_total{op=get|put|delete}`.
 
-Any `bad` page, shadow `mismatch` or verifier `mismatch` is a bug; the matching
-log line names the session and seq. Shadow `error` means a page could not be
-read (see the storage errors).
-
-**Bucket.** The production `S3_BUCKET` serves avatars and attachments to the
-public through `S3_PUBLIC_URL`. Message content is end-to-end encrypted, but
-history pages should not be world-readable: set `HISTORY_S3_BUCKET` to a
-private bucket that the same credentials can write.
+Any `bad` page, shadow `mismatch` or verifier `mismatch` is a bug. Shadow
+`error` means a page could not be read (see the storage errors). In retain mode
+a page that cannot be read fails the read that needs it with a 500.
 
 **Rollout plan** (not executed):
-1. **Shadow.** Deploy with `HISTORY_OFFLOAD=shadow` and `HISTORY_S3_BUCKET`
-   set. The deploy runs the migration first. Watch for some days:
-   - the backlog drains to about 0;
-   - `bad` pages, shadow mismatches and verifier mismatches stay at 0;
-   - storage errors are rare;
-   - Postgres load during the first pass is acceptable (lower
-     `HISTORY_OFFLOAD_ROWS_PER_SEC` if not).
-   - Spot-check: `SELECT "state", count(*), sum("count"), sum("bytes") FROM
+1. **Shadow.** Deploy with `HISTORY_OFFLOAD=shadow`; the deploy runs the
+   migration first.
+   - For the first backfill, start with the defaults (500 rows/s, one session
+     at a time: about 43M rows a day). If Postgres CPU and I/O stay
+     comfortable, raise `HISTORY_OFFLOAD_ROWS_PER_SEC` to 2000 and
+     `HISTORY_OFFLOAD_CONCURRENCY` to 2. Lower them if not. Each change
+     restarts the pod.
+   - Watch for some days:
+     - the backlog drains to about 0;
+     - `history_sessions_blocked`, shadow mismatches and verifier mismatches
+       stay at 0;
+     - storage errors are rare.
+   - Spot-check with `SELECT "state", count(*), sum("count"), sum("bytes") FROM
      "SessionMessagePage" GROUP BY 1`.
-2. **Retain** (after stage B ships). Switch to `HISTORY_OFFLOAD=retain`. Rows
-   of verified pages older than the window are deleted in small throttled
-   batches.
+2. **Retain.** Switch to `HISTORY_OFFLOAD=retain`. Deletion runs at
+   `HISTORY_RETAIN_ROWS_PER_SEC` (500), one page per transaction. Watch
+   `history_rows_deleted_total`, read latency on `/v3/sessions/:id/messages`
+   and the shadow metrics. To stop deleting, switch back to `shadow`.
 3. **Database size.** Watch `pg_total_relation_size('"SessionMessage"')`.
    Deleted rows free space for reuse after autovacuum, but the table file does
    not shrink by itself. Reclaiming the disk needs `pg_repack` or `VACUUM FULL`
    (which locks the table).
 
-**Turning it off.** `HISTORY_OFFLOAD=off` stops the job; pages and index rows
-stay. In shadow mode they can be dropped at any time: delete the
-`history/` prefix of the bucket and `TRUNCATE "SessionMessagePage",
-"SessionMessageLocalId"`. After a rollback to the TS server, sessions it
-deletes keep their pages. The Rust server's verifier removes such pages when
-it samples them; the cleanup above removes them all.
+**Cleanup.** After a rollback to the TS server, sessions it deletes keep their
+pages. The Rust server's verifier removes such pages when it samples them. In
+`shadow` mode every page can be dropped at any time: delete the `history/`
+prefix of the bucket, then `TRUNCATE "SessionMessagePage",
+"SessionMessageLocalId"`. Never do this after `retain` without running
+`rehydrate` first.
 
 ## Local dev helpers
 The server package includes scripts for local infrastructure:

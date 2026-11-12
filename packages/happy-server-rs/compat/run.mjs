@@ -12,7 +12,18 @@ const sqlFor = (db) => async (q) => execFileSync('psql', ['-h', PG.host, '-p', P
 const a = new Recorder(aBase);
 await scenario(a, { sql: sqlFor(aDb), side: 'ts', other: bBase });
 const b = new Recorder(bBase);
-await scenario(b, { sql: sqlFor(bDb), side: 'rs', other: aBase });
+// HISTORY_OFFLOAD=retain: before a query reads SessionMessage, the Rust server stops
+// deleting rows and puts the offloaded ones back (compat/history-compat.sh).
+const rsSql = process.env.HISTORY_OFFLOAD === 'retain'
+    ? async (q) => {
+        if (q.includes('"SessionMessage"')) {
+            const r = await fetch(bBase + '/__test/history/hold');
+            if (r.status !== 200) throw new Error('history hold: ' + r.status + ' ' + (await r.text()));
+        }
+        return sqlFor(bDb)(q);
+    }
+    : sqlFor(bDb);
+await scenario(b, { sql: rsSql, side: 'rs', other: aBase });
 
 if (process.env.DUMP) {
     const fs = await import('node:fs');

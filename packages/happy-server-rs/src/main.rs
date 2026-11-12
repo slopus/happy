@@ -74,7 +74,19 @@ fn run() -> anyhow::Result<()> {
             tracing::info!("applied {} migration(s)", n);
             Ok(())
         }),
-        other => anyhow::bail!("unknown command {:?} (expected serve or migrate)", other),
+        "rehydrate" => rt.block_on(async {
+            // `rehydrate [--session <id>]`: the rows of offloaded history pages back into Postgres.
+            let args: Vec<String> = std::env::args().skip(2).collect();
+            let session = match args.as_slice() {
+                [] => None,
+                [flag, id] if flag == "--session" => Some(id.clone()),
+                _ => anyhow::bail!("usage: happy-server-rs rehydrate [--session <id>]"),
+            };
+            let pool = db::connect(&config.database_url, 4).await?;
+            let app = App::new(config, pool);
+            history::rehydrate(&app, session.as_deref()).await
+        }),
+        other => anyhow::bail!("unknown command {:?} (expected serve, migrate or rehydrate)", other),
     }
 }
 
@@ -86,6 +98,7 @@ async fn serve(config: config::Config) -> anyhow::Result<()> {
     let pool = db::connect(&config.database_url, config.db_pool_size).await?;
     let app = Arc::new(App::new(config, pool));
     app.files.load().await?;
+    history::init(&app).await?;
 
     spawn_background(&app);
 

@@ -19,6 +19,7 @@
 use crate::app::App;
 use crate::db;
 use crate::events::{new_message_update, Filter};
+use crate::history;
 use crate::models::Message;
 use crate::routes::sessions::{find_session, message_from_row, owns_session, MESSAGE_COLS};
 use crate::util::{cuid, naive_to_ms};
@@ -131,6 +132,12 @@ struct Sent {
     updated_at: i64,
 }
 
+impl From<&history::PageRow> for Sent {
+    fn from(r: &history::PageRow) -> Sent {
+        Sent { id: r.id.clone(), seq: r.seq, local_id: r.local_id.clone(), created_at: r.created_at, updated_at: r.updated_at }
+    }
+}
+
 impl Sent {
     fn json(&self) -> Value {
         json!({"id": self.id, "seq": self.seq, "localId": self.local_id, "createdAt": self.created_at, "updatedAt": self.updated_at})
@@ -193,16 +200,29 @@ async fn write(app: &Arc<App>, sid: &str, items: &[Item]) -> anyhow::Result<Writ
             Item::V3(v) => lids.extend(v.messages.iter().map(|(l, _)| l.clone())),
         }
     }
-    let found = sqlx::query(
-        r#"SELECT s."accountId", m."id", m."seq", m."localId", m."createdAt", m."updatedAt"
-           FROM "Session" s LEFT JOIN "SessionMessage" m ON m."sessionId" = s."id" AND m."localId" = ANY($2)
-           WHERE s."id" = $1"#,
-    )
+    // With history offloaded, a localId may be known only from its page (the
+    // row is gone): `SessionMessageLocalId` has its seq, the page the rest.
+    let found = if history::merging(app) {
+        sqlx::query(
+            r#"SELECT s."accountId", m."id", m."seq", m."localId", m."createdAt", m."updatedAt", NULL::int4 AS "pagedSeq", NULL::text AS "pagedLocalId"
+               FROM "Session" s LEFT JOIN "SessionMessage" m ON m."sessionId" = s."id" AND m."localId" = ANY($2)
+               WHERE s."id" = $1
+               UNION ALL
+               SELECT NULL, NULL, NULL, NULL, NULL, NULL, l."seq", l."localId" FROM "SessionMessageLocalId" l
+               WHERE l."sessionId" = $1 AND l."localId" = ANY($2)"#,
+        )
+    } else {
+        sqlx::query(
+            r#"SELECT s."accountId", m."id", m."seq", m."localId", m."createdAt", m."updatedAt", NULL::int4 AS "pagedSeq", NULL::text AS "pagedLocalId"
+               FROM "Session" s LEFT JOIN "SessionMessage" m ON m."sessionId" = s."id" AND m."localId" = ANY($2)
+               WHERE s."id" = $1"#,
+        )
+    }
     .bind(sid)
     .bind(&lids)
     .fetch_all(&app.pool)
     .await?;
-    let owner: Option<String> = found.first().map(|r| r.get("accountId"));
+    let owner: Option<String> = found.iter().find_map(|r| r.get::<Option<String>, _>("accountId"));
     let mut known: HashMap<String, Known> = HashMap::new();
     for r in &found {
         let id: Option<String> = r.get("id");
@@ -215,6 +235,14 @@ async fn write(app: &Arc<App>, sid: &str, items: &[Item]) -> anyhow::Result<Writ
                 updated_at: naive_to_ms(r.get("updatedAt")),
             };
             known.insert(s.local_id.clone().unwrap_or_default(), Known::Stored(s));
+        }
+    }
+    for r in &found {
+        if let (Some(seq), Some(l)) = (r.get::<Option<i32>, _>("pagedSeq"), r.get::<Option<String>, _>("pagedLocalId")) {
+            if !known.contains_key(&l) {
+                let row = history::paged_row(app, sid, &l, seq).await?;
+                known.insert(l, Known::Stored(Sent::from(&row)));
+            }
         }
     }
 
@@ -401,11 +429,13 @@ async fn socket_single(app: &Arc<App>, sid: &str, m: SocketMessage) {
             db::allocate_session_seq_batch(&mut c, sid, 1).await?[0]
         };
         if let Some(l) = &m.local_id {
-            let existing: Option<(String,)> = sqlx::query_as(r#"SELECT "id" FROM "SessionMessage" WHERE "sessionId" = $1 AND "localId" = $2 LIMIT 1"#)
-                .bind(sid)
-                .bind(l)
-                .fetch_optional(&app.pool)
-                .await?;
+            let sql = if history::merging(app) {
+                r#"SELECT "id" FROM "SessionMessage" WHERE "sessionId" = $1 AND "localId" = $2
+                   UNION ALL SELECT "localId" FROM "SessionMessageLocalId" WHERE "sessionId" = $1 AND "localId" = $2 LIMIT 1"#
+            } else {
+                r#"SELECT "id" FROM "SessionMessage" WHERE "sessionId" = $1 AND "localId" = $2 LIMIT 1"#
+            };
+            let existing: Option<(String,)> = sqlx::query_as(sql).bind(sid).bind(l).fetch_optional(&app.pool).await?;
             if existing.is_some() {
                 return Ok(());
             }
@@ -451,8 +481,8 @@ async fn v3_single(app: &Arc<App>, sid: &str, uid: &str, unique: &[(String, Stri
         return Ok(V3Outcome::NotFound);
     }
     let content_by_local: HashMap<String, String> = unique.iter().cloned().collect();
-    let (s, unique) = (sid.to_string(), unique.to_vec());
-    let (existing, created) = db::tx(&app.pool, move |c| {
+    let (s, unique, merging) = (sid.to_string(), unique.to_vec(), history::merging(app));
+    let (mut existing, paged, created) = db::tx(&app.pool, move |c| {
         Box::pin(async move {
             let local_ids: Vec<String> = unique.iter().map(|(l, _)| l.clone()).collect();
             let existing: Vec<Sent> = sqlx::query(
@@ -465,7 +495,23 @@ async fn v3_single(app: &Arc<App>, sid: &str, uid: &str, unique: &[(String, Stri
             .iter()
             .map(sent_from_row)
             .collect();
-            let new: Vec<&(String, String)> = unique.iter().filter(|(l, _)| !existing.iter().any(|e| e.local_id.as_deref() == Some(l.as_str()))).collect();
+            // localIds whose rows live only in history pages (read after commit).
+            let paged: Vec<(String, i32)> = if merging {
+                sqlx::query_as(r#"SELECT "localId","seq" FROM "SessionMessageLocalId" WHERE "sessionId" = $1 AND "localId" = ANY($2)"#)
+                    .bind(&s)
+                    .bind(&local_ids)
+                    .fetch_all(&mut *c)
+                    .await?
+                    .into_iter()
+                    .filter(|(l, _): &(String, i32)| !existing.iter().any(|e| e.local_id.as_deref() == Some(l.as_str())))
+                    .collect()
+            } else {
+                vec![]
+            };
+            let new: Vec<&(String, String)> = unique
+                .iter()
+                .filter(|(l, _)| !existing.iter().any(|e| e.local_id.as_deref() == Some(l.as_str())) && !paged.iter().any(|(p, _)| p == l))
+                .collect();
             let seqs = db::allocate_session_seq_batch(&mut *c, &s, new.len() as i32).await?;
             let mut created: Vec<Sent> = Vec::new();
             if !new.is_empty() {
@@ -491,10 +537,13 @@ async fn v3_single(app: &Arc<App>, sid: &str, uid: &str, unique: &[(String, Stri
                 .map(sent_from_row)
                 .collect();
             }
-            Ok((existing, created))
+            Ok((existing, paged, created))
         })
     })
     .await?;
+    for (l, seq) in paged {
+        existing.push(Sent::from(&history::paged_row(app, sid, &l, seq).await?));
+    }
 
     let mut created = created;
     created.sort_by_key(|m| m.seq);

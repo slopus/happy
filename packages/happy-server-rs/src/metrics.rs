@@ -29,6 +29,8 @@ pub struct Metrics {
     pub history_storage_errors: IntCounterVec,
     pub history_shadow: IntCounterVec,
     pub history_verifier: IntCounterVec,
+    pub history_sessions_blocked: IntGauge,
+    pub history_rows_deleted: IntCounter,
     /// prom-client prints HELP/TYPE for a labelled metric before its first
     /// series; the prometheus crate leaves the family out.
     families: Vec<(String, String, &'static str)>,
@@ -81,13 +83,15 @@ impl Metrics {
                 .buckets(vec![1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0]),
         )
         .unwrap();
-        let history_pages = IntCounterVec::new(Opts::new("history_pages_total", "History pages by outcome (written, verified, bad)"), &["state"]).unwrap();
+        let history_pages = IntCounterVec::new(Opts::new("history_pages_total", "History pages by outcome (written, verified, offloaded, bad)"), &["state"]).unwrap();
         let history_bytes = IntCounter::new("history_offloaded_bytes_total", "Compressed bytes of history pages written to object storage").unwrap();
         let history_backlog = IntGauge::new("history_offload_backlog_rows", "Messages older than the retention window not yet in a page (last sweep)").unwrap();
         let history_storage_errors =
             IntCounterVec::new(Opts::new("history_storage_errors_total", "History page object storage errors by operation"), &["op"]).unwrap();
         let history_shadow = IntCounterVec::new(Opts::new("history_shadow_reads_total", "Shadow comparisons of served messages with history pages"), &["result"]).unwrap();
         let history_verifier = IntCounterVec::new(Opts::new("history_verifier_checks_total", "Sampled re-checks of verified history pages"), &["result"]).unwrap();
+        let history_sessions_blocked = IntGauge::new("history_sessions_blocked", "Sessions whose history offload stopped at a bad page").unwrap();
+        let history_rows_deleted = IntCounter::new("history_rows_deleted_total", "Message rows deleted from Postgres after their page was verified (retain)").unwrap();
         let log_lines_dropped = IntCounter::new("log_lines_dropped_total", "Log lines dropped because stdout could not keep up").unwrap();
         // No Redis stream here: the lag is always 0 (exported so dashboards and alerts keep working).
         let redis_stream_lag = Gauge::new("redis_stream_lag_ms", "Milliseconds between this pod read cursor and stream HEAD").unwrap();
@@ -113,6 +117,8 @@ impl Metrics {
             Box::new(history_storage_errors.clone()),
             Box::new(history_shadow.clone()),
             Box::new(history_verifier.clone()),
+            Box::new(history_sessions_blocked.clone()),
+            Box::new(history_rows_deleted.clone()),
             Box::new(redis_stream_lag),
         ];
         let mut families = Vec::new();
@@ -150,6 +156,8 @@ impl Metrics {
             history_storage_errors,
             history_shadow,
             history_verifier,
+            history_sessions_blocked,
+            history_rows_deleted,
             families,
         }
     }
