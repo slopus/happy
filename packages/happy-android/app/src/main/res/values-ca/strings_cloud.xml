@@ -85,4 +85,6 @@
     <string name="cloud_invite_email_mismatch">Aquesta invitació es va enviar a %1$s. Inicia la sessió amb aquest correu per unir-te.</string>
     <string name="cloud_invite_email_mismatch_unknown">Aquesta invitació es va enviar a un altre correu. Inicia la sessió amb aquest correu per unir-te.</string>
     <string name="cloud_invite_other_account">Inicia la sessió amb un altre compte</string>
+    <string name="cloud_invite_not_now">Ara no</string>
+    <string name="cloud_invite_inviter">%1$s t\'ha convidat</string>
 </resources>

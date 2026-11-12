@@ -85,4 +85,6 @@
     <string name="cloud_invite_email_mismatch">To zaproszenie wysłano na %1$s. Zaloguj się tym adresem, aby dołączyć.</string>
     <string name="cloud_invite_email_mismatch_unknown">To zaproszenie wysłano na inny adres e-mail. Zaloguj się nim, aby dołączyć.</string>
     <string name="cloud_invite_other_account">Zaloguj się na inne konto</string>
+    <string name="cloud_invite_not_now">Nie teraz</string>
+    <string name="cloud_invite_inviter">%1$s zaprasza cię</string>
 </resources>

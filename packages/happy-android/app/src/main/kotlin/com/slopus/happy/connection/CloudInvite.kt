@@ -44,7 +44,10 @@ data class CloudInvite(val token: String) {
  * address until the accept) and the name of the role it gives, the
  * server's own words ("Viewer").
  */
-data class CloudInvitePreview(val server: CloudServer, val roleName: String?)
+data class CloudInvitePreview(val server: CloudServer, val roleName: String?, val inviter: CloudInviter? = null)
+
+/** Who sent the invite: their name, and their picture as a data: URL when they have one. */
+data class CloudInviter(val name: String, val image: String?)
 
 /**
  * A preview's picture: the bytes of a base64 `data:image/…` URL, which is

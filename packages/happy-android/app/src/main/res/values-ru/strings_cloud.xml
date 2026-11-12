@@ -85,4 +85,6 @@
     <string name="cloud_invite_email_mismatch">Приглашение отправлено на %1$s. Войдите с этой почтой, чтобы присоединиться.</string>
     <string name="cloud_invite_email_mismatch_unknown">Приглашение отправлено на другую почту. Войдите с ней, чтобы присоединиться.</string>
     <string name="cloud_invite_other_account">Войти с другим аккаунтом</string>
+    <string name="cloud_invite_not_now">Не сейчас</string>
+    <string name="cloud_invite_inviter">%1$s приглашает вас</string>
 </resources>

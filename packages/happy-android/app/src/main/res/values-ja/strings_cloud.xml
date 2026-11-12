@@ -85,4 +85,6 @@
     <string name="cloud_invite_email_mismatch">この招待は %1$s 宛てに送られました。そのメールアドレスでサインインして参加してください。</string>
     <string name="cloud_invite_email_mismatch_unknown">この招待は別のメールアドレス宛てに送られました。そのメールアドレスでサインインして参加してください。</string>
     <string name="cloud_invite_other_account">別のアカウントでサインイン</string>
+    <string name="cloud_invite_not_now">後で</string>
+    <string name="cloud_invite_inviter">%1$s さんから招待されました</string>
 </resources>

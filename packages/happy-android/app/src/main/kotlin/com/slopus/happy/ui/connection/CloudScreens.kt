@@ -63,6 +63,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -142,6 +145,8 @@ object CloudTags {
     const val PASSWORD = "cloud.password"
     const val SLIDES = "cloud.slides"
     const val CREATE = "cloud.create"
+    const val INVITE_SERVER = "cloud.invite.server"
+    const val INVITER = "cloud.invite.inviter"
     const val GOOGLE = "cloud.google"
     const val EMAIL = "cloud.email"
     const val EMAIL_CODE = "cloud.email.code"
@@ -172,6 +177,15 @@ object CloudSpec {
     val noteGap = 12.dp
     /** The welcome's slides hold longer than the first screen's: their lines run two or three (iOS's 12 s). */
     const val ADVANCE_MILLIS = 12_000L
+    /** An invite's note: room for three lines in its pill, kept whether or not it says anything. */
+    val inviteNote = 70.dp
+    /** An invite's server picture, in the scene's place. */
+    val inviteServerAvatar = 112.dp
+    /** Who sent an invite, beside "<name> invited you". */
+    val inviterAvatar = 28.dp
+    /** One step's content giving way to the next's, in place. */
+    const val SWAP_MILLIS = 150
+
     /** Cards and fields: the theme's surface, a little see-through so the gradient reads behind them. */
     const val SURFACE_ALPHA = 0.92f
 }
@@ -201,6 +215,14 @@ private fun CloudFrame(
     /** Over the title in [art]'s place, and staying while the keyboard is up: a picture to choose. */
     top: (@Composable () -> Unit)? = null,
     columnMaxWidth: Dp = CloudSpec.columnMaxWidth,
+    /** The lines [body] keeps room for, so a shorter one moves nothing. */
+    bodyMinLines: Int = 1,
+    /**
+     * Buttons as wide as the column whatever they say, the secondary a
+     * surface pill, and its room kept without one: a screen whose states
+     * swap in place.
+     */
+    steadyButtons: Boolean = false,
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
     val dark = HappyTheme.colors.dark
@@ -256,6 +278,7 @@ private fun CloudFrame(
                             style = StartGallerySpec.body.copy(lineBreak = LineBreak.Paragraph),
                             color = text.copy(alpha = StartSpec.SECONDARY_ALPHA),
                             textAlign = TextAlign.Center,
+                            minLines = bodyMinLines,
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
@@ -263,23 +286,30 @@ private fun CloudFrame(
                 }
                 Spacer(Modifier.weight(1f))
                 Spacer(Modifier.height(StartGallerySpec.margin))
+                val buttonWidth = if (steadyButtons) {
+                    Modifier.padding(horizontal = CloudSpec.sidePadding).widthIn(max = columnMaxWidth).fillMaxWidth()
+                } else {
+                    Modifier.widthIn(min = StartSpec.connectMinWidth).width(IntrinsicSize.Max)
+                }
                 if (primary != null) {
                     RoundButton(
                         title = primary.title,
                         onClick = primary.onClick,
                         enabled = primary.enabled,
                         loading = primary.loading,
-                        modifier = Modifier.widthIn(min = StartSpec.connectMinWidth).width(IntrinsicSize.Max).testTag(CloudTags.PRIMARY),
+                        modifier = buttonWidth.testTag(CloudTags.PRIMARY),
                     )
                 }
-                if (secondary != null) {
+                if (secondary != null || steadyButtons) {
                     Spacer(Modifier.height(8.dp))
                     RoundButton(
-                        title = secondary.title,
-                        onClick = secondary.onClick,
-                        enabled = secondary.enabled,
+                        title = secondary?.title ?: "",
+                        onClick = secondary?.onClick ?: {},
+                        enabled = secondary?.enabled ?: false,
                         display = RoundButtonDisplay.Inverted,
-                        modifier = Modifier.widthIn(min = StartSpec.connectMinWidth).width(IntrinsicSize.Max).testTag(CloudTags.SECONDARY),
+                        // A pill of its own, as the cards are: never a bare line of text.
+                        modifier = (if (secondary != null) buttonWidth.testTag(CloudTags.SECONDARY) else buttonWidth.alpha(0f).clearAndSetSemantics {})
+                            .then(if (steadyButtons) Modifier.clip(RoundedCornerShape(percent = 50)).background(HappyTheme.colors.surface.copy(alpha = CloudSpec.SURFACE_ALPHA)) else Modifier),
                     )
                 }
             }
@@ -812,10 +842,14 @@ fun CloudCreateScreen(
 }
 
 /**
- * An invite link's Join screen: the server it opens and the role it gives,
- * then Join, which signs in to Happy Cloud first when [signedIn] isn't.
- * An invite that can't be used says why; one sent to another address
- * offers signing in with another account.
+ * An invite link's Join screen: the server's picture in the scene's place,
+ * who invited the person, the server's `@name` and the role it gives, then
+ * Join, which signs in to Happy Cloud first when [signedIn] isn't. Every
+ * step keeps one layout, so nothing jumps as it loads, joins or fails: room
+ * for the picture, the same title, a two-line body, a line each for the
+ * server and the inviter, a note's room for why it can't go on, and two
+ * buttons as wide as the column. Another address's invite offers another
+ * account.
  */
 @Composable
 fun CloudInviteScreen(
@@ -827,50 +861,103 @@ fun CloudInviteScreen(
     onOtherAccount: () -> Unit,
     onBack: () -> Unit,
 ) {
-    when (step) {
-        is CloudInviteStep.Refused -> {
-            val refusal = step.refusal
-            CloudFrame(
-                title = stringResource(R.string.cloud_invite_refused_title),
-                body = when (refusal) {
-                    CloudInviteRefusal.Expired -> stringResource(R.string.cloud_invite_expired)
-                    CloudInviteRefusal.Revoked -> stringResource(R.string.cloud_invite_revoked)
-                    CloudInviteRefusal.UsedUp -> stringResource(R.string.cloud_invite_used_up)
-                    CloudInviteRefusal.Unknown -> stringResource(R.string.cloud_invite_unknown)
-                    is CloudInviteRefusal.EmailMismatch -> refusal.emailHint?.let { stringResource(R.string.cloud_invite_email_mismatch, CloudEmail.unbroken(it)) }
-                        ?: stringResource(R.string.cloud_invite_email_mismatch_unknown)
-                },
-                art = R.raw.state_owl,
-                primary = if (refusal is CloudInviteRefusal.EmailMismatch) CloudAction(stringResource(R.string.cloud_invite_other_account), onOtherAccount)
-                else CloudAction(stringResource(R.string.common_ok), onBack),
-                onBack = onBack,
-            )
-        }
-        else -> {
-            val ready = step as? CloudInviteStep.Ready
-            val failure = (step as? CloudInviteStep.Unloaded)?.reason ?: ready?.failure
-            CloudFrame(
-                title = stringResource(R.string.cloud_invite_title),
-                body = ready?.let { stringResource(R.string.cloud_invite_detail, it.preview.server.title) },
-                art = R.raw.state_owl,
-                primary = when {
-                    step is CloudInviteStep.Unloaded -> CloudAction(stringResource(R.string.team_server_try_again), onRetry)
-                    ready != null -> CloudAction(
-                        stringResource(if (signedIn) R.string.cloud_join_button else R.string.cloud_invite_sign_in),
-                        onJoin,
-                        enabled = !ready.joining,
-                        loading = ready.joining,
-                    )
-                    else -> null
-                },
-                onBack = onBack,
-            ) {
-                when {
-                    ready != null -> ServerCard(ready.preview.server, join = null, enabled = false, image = image, onJoin = null, roleName = ready.preview.roleName)
-                    step is CloudInviteStep.Loading || step is CloudInviteStep.Joined -> Spinner()
+    val colors = HappyTheme.colors
+    val preview = when (step) {
+        is CloudInviteStep.Ready -> step.preview
+        is CloudInviteStep.Refused -> step.preview
+        else -> null
+    }
+    val refusal = (step as? CloudInviteStep.Refused)?.refusal
+    val failure = (step as? CloudInviteStep.Unloaded)?.reason ?: (step as? CloudInviteStep.Ready)?.failure
+    val note = when (refusal) {
+        null -> failure?.let { stringResource(cloudFailureText(it)) }
+        CloudInviteRefusal.Expired -> stringResource(R.string.cloud_invite_expired)
+        CloudInviteRefusal.Revoked -> stringResource(R.string.cloud_invite_revoked)
+        CloudInviteRefusal.UsedUp -> stringResource(R.string.cloud_invite_used_up)
+        CloudInviteRefusal.Unknown -> stringResource(R.string.cloud_invite_unknown)
+        is CloudInviteRefusal.EmailMismatch -> refusal.emailHint?.let { stringResource(R.string.cloud_invite_email_mismatch, CloudEmail.unbroken(it)) }
+            ?: stringResource(R.string.cloud_invite_email_mismatch_unknown)
+    }
+    val joining = (step as? CloudInviteStep.Ready)?.joining == true || step is CloudInviteStep.Joined
+    val join = stringResource(if (signedIn) R.string.cloud_join_button else R.string.cloud_invite_sign_in)
+    val notNow = CloudAction(stringResource(R.string.cloud_invite_not_now), onBack, enabled = !joining)
+    val (primary, secondary) = when {
+        refusal is CloudInviteRefusal.EmailMismatch -> CloudAction(stringResource(R.string.cloud_invite_other_account), onOtherAccount) to notNow
+        refusal != null -> CloudAction(stringResource(R.string.common_ok), onBack) to null
+        step is CloudInviteStep.Unloaded -> CloudAction(stringResource(R.string.team_server_try_again), onRetry) to notNow
+        else -> CloudAction(join, onJoin, enabled = step is CloudInviteStep.Ready && !joining, loading = joining) to notNow
+    }
+    val line = happyTextStyle(fontSize = 15, lineHeight = 20)
+    CloudFrame(
+        title = stringResource(R.string.cloud_invite_title),
+        body = when {
+            refusal != null -> stringResource(R.string.cloud_invite_refused_title)
+            preview != null -> stringResource(R.string.cloud_invite_detail, preview.server.title)
+            else -> ""
+        },
+        bodyMinLines = 2,
+        top = {
+            Box(Modifier.size(CloudSpec.art), contentAlignment = Alignment.Center) {
+                Crossfade(preview?.server, animationSpec = tween(CloudSpec.SWAP_MILLIS), label = "invite server") { server ->
+                    if (server != null) {
+                        ServerAvatar(server, image, CloudSpec.inviteServerAvatar)
+                    } else {
+                        Box(Modifier.size(CloudSpec.inviteServerAvatar).clip(CircleShape).background(colors.surface.copy(alpha = CloudSpec.SURFACE_ALPHA)), contentAlignment = Alignment.Center) {
+                            if (step is CloudInviteStep.Loading) Spinner() else Icon(Ionicon.LinkOutline, CloudSpec.inviteServerAvatar / 3, colors.textSecondary)
+                        }
+                    }
                 }
-                if (failure != null) NotePill(stringResource(cloudFailureText(failure)), HappyTheme.colors.textDestructive)
             }
+        },
+        primary = primary,
+        secondary = secondary,
+        steadyButtons = true,
+        onBack = onBack,
+    ) {
+        Crossfade(preview, animationSpec = tween(CloudSpec.SWAP_MILLIS), label = "invite details") { shown ->
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(CloudSpec.rowGap), modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    shown?.let { listOfNotNull("@${it.server.name}", it.roleName).joinToString(" · ") } ?: "",
+                    style = line,
+                    color = colors.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    minLines = 1,
+                    modifier = Modifier.testTag(CloudTags.INVITE_SERVER),
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.height(CloudSpec.inviterAvatar).testTag(CloudTags.INVITER),
+                ) {
+                    val inviter = shown?.inviter
+                    if (inviter != null) {
+                        InviterAvatar(inviter.name, inviter.image, image, CloudSpec.inviterAvatar)
+                        Text(stringResource(R.string.cloud_invite_inviter, inviter.name), style = line, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        }
+        Box(Modifier.fillMaxWidth().heightIn(min = CloudSpec.inviteNote), contentAlignment = Alignment.TopCenter) {
+            Crossfade(note, animationSpec = tween(CloudSpec.SWAP_MILLIS), label = "invite note") { shown ->
+                if (shown != null) NotePill(shown, colors.textDestructive)
+            }
+        }
+    }
+}
+
+/** Who sent an invite: their picture, or their initials on the surface without one. */
+@Composable
+private fun InviterAvatar(name: String, picture: String?, image: suspend (String) -> ByteArray?, size: Dp) {
+    val colors = HappyTheme.colors
+    val bytes by produceState<ByteArray?>(null, picture) { value = picture?.let { image(it) } }
+    Box(Modifier.size(size).clip(CircleShape).background(colors.surfaceHigh), contentAlignment = Alignment.Center) {
+        val shown = bytes
+        if (shown != null) {
+            RemoteImage(shown, null, Modifier.matchParentSize(), cacheKey = picture)
+        } else {
+            val initials = remember(name) { name.trim().split(Regex("\\s+")).filter(String::isNotEmpty).take(2).joinToString("") { it.take(1) }.uppercase() }
+            Text(initials, style = happyTextStyle(fontSize = 11, lineHeight = 14, weight = FontWeight.SemiBold), color = colors.textSecondary)
         }
     }
 }
