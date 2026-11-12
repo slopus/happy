@@ -112,12 +112,11 @@ final class TeamTaskAuthorTests: XCTestCase {
         XCTAssertEqual(SidebarRows.profileMark(bos, agentId: "bos-agent"), .placeholder(seed: "bo"))
     }
 
-    /// A teammate's task says whose it is under its title; the person's own, one not read and one nobody owns don't.
-    func testATeammatesTaskIsNamedUnderItsTitle() throws {
+    /// A task's row is its title alone; its picture, not a line under it,
+    /// says whose it is.
+    func testTeamTasksHaveNoLineUnderTheirTitle() throws {
         let details = Dictionary(SidebarRows.make(try desktop(), settings: [:], users: Self.read).map { ($0.label, $0.detail) }, uniquingKeysWith: { first, _ in first })
-        XCTAssertEqual(details["Ada's"], "Ada")
-        XCTAssertEqual(details["Bo's"], "Bo")
-        for label in ["Mine", "Cy's", "Nobody's", "Research"] { XCTAssertNil(details[label] ?? nil, label) }
+        for label in ["Mine", "Ada's", "Bo's", "Cy's", "Nobody's", "Research"] { XCTAssertNil(details[label] ?? nil, label) }
     }
 
     func testBotsSurfacesAndProjectsAreUnchangedInATeam() throws {

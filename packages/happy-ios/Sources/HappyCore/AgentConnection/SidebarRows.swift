@@ -47,7 +47,6 @@ public enum SidebarRows {
                 status: muted ? .none : status(agent), unread: !muted && agent.unread != nil,
                 isHappy: owner?.systemKey == "chief_of_staff", agentId: agent.id, workspaceId: agent.workspaceId, targetKind: kind)
             row.targetId = owner?.id
-            if kind == "task", let owner { row.detail = ownerName(owner, profile: desktop.profile, users: users) }
             // The Chief of Staff never, whatever an older server says.
             row.canArchive = owner?.systemKey != "chief_of_staff" && owner?.canArchive == true
             row.activityTime = agent.activityAt.map(Rows.minute)
@@ -195,14 +194,6 @@ public enum SidebarRows {
         let photo = author == me ? profile?.photo : users[author]?.photo
         guard let photo else { return .placeholder(seed: author) }
         return .image(path: TeamUser.photoPath(author), thumbhash: photo.thumbhash)
-    }
-
-    /// A team task's line under its title: the teammate it belongs to, once
-    /// read. Nil for the person's own, outside a team, or before the name comes.
-    static func ownerName(_ task: DesktopSnapshot.Owner, profile: DesktopSnapshot.Profile?, users: [String: TeamUser]) -> String? {
-        guard let me = profile?.userId, let author = task.ownerUserId, author != me,
-              let name = users[author]?.name.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return nil }
-        return name
     }
 
     /// The active tasks the person isn't in, as rows that open their
