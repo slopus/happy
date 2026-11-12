@@ -41,7 +41,7 @@ public struct UserEnvironment: Equatable, Sendable {
             deviceKind: kind,
             timeZone: name(timeZone.identifier),
             utcOffsetMinutes: (-720...840).contains(offset) ? offset : nil,
-            locale: name(locale.identifier(.bcp47)),
+            locale: name(bcp47(locale)),
             languages: Array(languages.compactMap(name).prefix(16)),
             hourCycle: hourCycle(locale.hourCycle),
             firstDayOfWeek: isoWeekday(calendar.firstWeekday),
@@ -80,6 +80,13 @@ public struct UserEnvironment: Equatable, Sendable {
     /// `Calendar.firstWeekday` (1 Sunday … 7 Saturday) in ISO numbering.
     static func isoWeekday(_ firstWeekday: Int) -> Int? {
         (1...7).contains(firstWeekday) ? (firstWeekday + 5) % 7 + 1 : nil
+    }
+
+    /// The locale as a BCP 47 tag. The autoupdating locale on iOS 26 answers
+    /// `identifier(.bcp47)` with its ICU identifier (`en_US`), so the tag is
+    /// taken from a fixed copy of it.
+    static func bcp47(_ locale: Locale) -> String {
+        Locale(identifier: locale.identifier).identifier(.bcp47)
     }
 
     /// The BCP 47 name of a calendar the API takes; nil for one it doesn't.

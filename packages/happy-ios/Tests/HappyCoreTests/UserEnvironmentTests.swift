@@ -55,6 +55,8 @@ final class UserEnvironmentTests: XCTestCase {
         XCTAssertEqual(american.firstDayOfWeek, 7)
         XCTAssertEqual(american.calendar, "iso8601")
         XCTAssertEqual(american.locale, "en-US")
+        // The autoupdating locale is reported as a tag too, never as `en_US`.
+        XCTAssertFalse(UserEnvironment.bcp47(.autoupdatingCurrent).contains("_"))
         XCTAssertEqual(american.languages, [])
         // An empty language list is left out of the report, not sent as one it refuses.
         XCTAssertNil(american.report(deviceId: "d")["languages"])
