@@ -1467,8 +1467,6 @@ failedContinueTask: "未完了の作業を続ける",
             badgePlanMode: 'プランモード',
         },
         taskPermission: {
-            useDefaults: '既定の設定を使用',
-            moreOptions: 'その他',
             pickerTitle: '操作をどのように承認しますか？',
             automatic: 'Auto approve',
             automaticDescription: 'Allow workspace operations and request approval on failure. Device and outer sandbox limits still apply.',

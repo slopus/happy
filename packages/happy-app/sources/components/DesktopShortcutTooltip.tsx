@@ -1,3 +1,4 @@
+import { ComposerTooltipHost } from './ComposerTooltipHost';
 import * as React from 'react';
 import { Text, View } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
@@ -72,7 +73,7 @@ export const ComposerTooltip = React.memo(function ComposerTooltip(props: {
     testID: string;
     visible: boolean;
 }) {
-    return <DesktopShortcutTooltip {...props} align="center" placement="above" anchorRelative compact showCaret={false} />;
+    return <ComposerTooltipHost visible={props.visible}><DesktopShortcutTooltip {...props} align="center" placement="above" anchorRelative compact showCaret={false} /></ComposerTooltipHost>;
 });
 
 const styles = StyleSheet.create((theme) => ({

@@ -1464,8 +1464,6 @@ failedContinueTask: "Continue unfinished task",
             badgePlanMode: 'plan mode',
         },
         taskPermission: {
-            useDefaults: 'Use defaults',
-            moreOptions: 'More',
             pickerTitle: 'How should actions be approved?',
             automatic: 'Auto approve',
             automaticDescription: 'Allow workspace actions; ask for approval on failure',

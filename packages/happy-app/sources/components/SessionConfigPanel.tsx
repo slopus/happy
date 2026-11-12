@@ -1527,13 +1527,6 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                     level={getTaskPermissionLevelForAgentMode(selectedAgent, currentPermission?.key)}
                                     currentMode={currentPermission?.key}
                                     unavailableReason={null}
-                                    extraModes={permissionModes.filter(mode => mode.key === 'default' || mode.key === 'read-only').map(mode => ({
-                                        key: mode.key, label: mode.key === 'default' ? t('agentInput.taskPermission.useDefaults') : mode.name,
-                                        onSelect: () => {
-                                            setPermissionIndex(permissionModes.findIndex(option => option.key === mode.key));
-                                            draft.setPermissionMode(mode.key);
-                                        },
-                                    }))}
                                     onLevelChange={async level => {
                                         const mode = getAgentPermissionModeForTaskLevel(selectedAgent, level);
                                         const index = permissionModes.findIndex(option => option.key === mode);

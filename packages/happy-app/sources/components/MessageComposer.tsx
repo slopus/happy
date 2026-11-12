@@ -224,9 +224,9 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         flexShrink: 0,
     },
     sendButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
+        width: Platform.select({ web: 32, default: 40 }),
+        height: Platform.select({ web: 32, default: 40 }),
+        borderRadius: Platform.select({ web: 16, default: 20 }),
         justifyContent: 'center',
         alignItems: 'center',
         flexShrink: 0,
@@ -252,9 +252,9 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         ...Typography.default('semiBold'),
     },
     imagePickerButton: {
-        width: 40,
-        height: 40,
-        borderRadius: Platform.select({ default: 20, android: 22 }),
+        width: Platform.select({ web: 32, default: 40 }),
+        height: Platform.select({ web: 32, default: 40 }),
+        borderRadius: Platform.select({ web: 16, default: 20, android: 22 }),
         alignItems: 'center',
         justifyContent: 'center',
         marginRight: 4,
@@ -980,7 +980,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                     >
                                         <Ionicons
                                             name="add"
-                                            size={24}
+                                            size={Platform.OS === 'web' ? 20 : 24}
                                             color={(props.selectedImages?.length ?? 0) > 0
                                                 ? theme.colors.radio.active
                                                 : theme.colors.button.secondary.tint}
@@ -1066,7 +1066,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                         ) : isAbortConfirmationArmed ? (
                                             <Text style={styles.abortConfirmationLabel}>Esc</Text>
                                         ) : (
-                                            <ComposerActionIcon stop={isAbortAction} color={theme.colors.button.composer.tint} />
+                                            <ComposerActionIcon size={Platform.OS === 'web' ? 20 : 24} stop={isAbortAction} color={theme.colors.button.composer.tint} />
                                         )}
                                         <ComposerTooltip testID="composer-send-tooltip" label={(isAbortAction || isAbortConfirmationArmed) ? t('agentInput.stop') : (props.sendLabel ?? t('keyboardShortcuts.sendMessage'))} visible={Platform.OS === 'web' && hoveredAction === 'send'} />
                                     </Pressable>

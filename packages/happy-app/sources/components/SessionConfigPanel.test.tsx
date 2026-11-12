@@ -257,14 +257,8 @@ describe('SessionConfigPanel composer layout', () => {
         act(() => renderer.root.findByProps({ testID: 'session-composer-permission-trigger' }).props.onPress());
         await act(async () => renderer.root.findByProps({ testID: 'session-composer-permission-option-automatic' }).props.onPress());
         expect(mocks.setPermissionMode).toHaveBeenCalledWith('safe-yolo');
-        act(() => renderer.root.findByProps({ testID: 'session-composer-permission-trigger' }).props.onPress());
-        act(() => renderer.root.findByProps({ testID: 'session-composer-permission-more' }).props.onPress());
-        act(() => renderer.root.findByProps({ testID: 'session-composer-permission-extra-read-only' }).props.onKeyDown({ key: ' ', preventDefault: vi.fn() }));
-        expect(mocks.setPermissionMode).toHaveBeenCalledWith('read-only');
-        act(() => renderer.root.findByProps({ testID: 'session-composer-permission-trigger' }).props.onPress());
-        act(() => renderer.root.findByProps({ testID: 'session-composer-permission-more' }).props.onPress());
-        act(() => renderer.root.findByProps({ testID: 'session-composer-permission-extra-default' }).props.onPress());
-        expect(mocks.setPermissionMode).toHaveBeenCalledWith('default');
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-permission-more' })).toHaveLength(0);
+
 
     });
 

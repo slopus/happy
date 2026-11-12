@@ -580,9 +580,8 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                                                 props.onEffortChange(option.key);
                                                             }
                                                         }}
-                                                        style={({ hovered }: { pressed: boolean; hovered?: boolean }) => [
+                                                        style={[
                                                             styles.step,
-                                                            hovered && styles.stepHover,
                                                             {
                                                                 left: `${levels.length > 1 ? (index * 100) / (levels.length - 1) : 0}%`,
                                                             },
@@ -687,7 +686,6 @@ const styles = StyleSheet.create((theme) => ({
         alignItems: 'center',
         justifyContent: 'center',
     },
-    stepHover: { borderRadius: 16, backgroundColor: theme.colors.surfaceSelected },
     dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: theme.colors.textSecondary },
     passed: { backgroundColor: theme.colors.switch.thumb.active, opacity: 0.35 },
     knobPosition: { position: 'absolute', top: 0, width: 32, height: 32, marginLeft: -16 },

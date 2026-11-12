@@ -1466,8 +1466,6 @@ failedContinueTask: "Continua la tasca pendent",
             badgePlanMode: 'Mode de planificació',
         },
         taskPermission: {
-            useDefaults: 'Utilitza els valors predeterminats',
-            moreOptions: 'Més',
             pickerTitle: 'Com s’han d’aprovar les accions?',
             automatic: 'Auto approve',
             automaticDescription: 'Allow workspace operations and request approval on failure. Device and outer sandbox limits still apply.',
