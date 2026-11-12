@@ -125,8 +125,8 @@ extension AgentTransport {
 
 /// The computer's API, one transport per account. HTTPS uses
 /// platform-verified TLS; otherwise it goes over the account's
-/// `TailcatClients`: one client for the event stream, one for queries, up to
-/// eight for files and the browser, and `server.tailcat` is a logical
+/// `TailcatClients`: one client for the event stream and queries, up to
+/// three for files and the browser, and `server.tailcat` is a logical
 /// authority, never a DNS lookup. Each HTTP request owns a fresh TCP stream.
 /// A query must be answered within 35 seconds, a file within 15 minutes.
 public final class AgentHTTPTransport: SelfMeteringTransport {
@@ -214,6 +214,8 @@ public final class AgentHTTPTransport: SelfMeteringTransport {
         for category in RequestCategory.allCases { await reset(category) }
     }
 
+    /// `.realtime` and `.query` share a Tailcat client: resetting either
+    /// lets go of both.
     public func reset(_ category: RequestCategory) async {
         await clients.reset(category)
         await publicFlows.close(category)
@@ -247,8 +249,9 @@ public final class AgentHTTPTransport: SelfMeteringTransport {
     }
 
     /// Lets go of `lease`'s client after a failure on it; HTTPS has none.
-    func reset(_ lease: TailcatClients<Tunnel>.Lease?) async {
-        if let lease { await clients.reset(lease) }
+    /// `ifSilent`, a client the event stream shares stays while it brings bytes back.
+    func reset(_ lease: TailcatClients<Tunnel>.Lease?, ifSilent: Bool = false) async {
+        if let lease { await clients.reset(lease, ifSilent: ifSilent) }
     }
 
     /// A TCP flow to the computer over `lease`'s client, or over HTTPS
@@ -281,7 +284,8 @@ public final class AgentHTTPTransport: SelfMeteringTransport {
         do {
             return try await exchange(lease: lease, category: category, method: method, path: path, credential: credential, body: body, headers: headers, timeout: Self.deadline(category), sent: sent)
         } catch {
-            if Self.lostTunnel(error) { await reset(lease) }
+            // The stream's heartbeats say whether the tunnel is gone or only this request.
+            if Self.lostTunnel(error) { await reset(lease, ifSilent: true) }
             throw error
         }
     }
@@ -402,20 +406,27 @@ final class PublicFlows: @unchecked Sendable {
     }
 }
 
-/// A flow that holds its client's lease until it is closed, or dropped.
+/// A flow that holds its client's lease until it is closed, or dropped, and
+/// tells it each time bytes come back.
 final class LeasedStream: BrowserStream, @unchecked Sendable {
     let base: any BrowserStream
     private let release: @Sendable () -> Void
+    private let heard: @Sendable () -> Void
 
     init<Client: AnyObject & Sendable>(_ base: any BrowserStream, lease: TailcatClients<Client>.Lease) {
         self.base = base
         release = { lease.release() }
+        heard = { lease.heard() }
     }
 
     deinit { release() }
 
     var authority: String { base.authority }
-    func read(maximumBytes: Int) async throws -> Data { try await base.read(maximumBytes: maximumBytes) }
+    func read(maximumBytes: Int) async throws -> Data {
+        let bytes = try await base.read(maximumBytes: maximumBytes)
+        if !bytes.isEmpty { heard() }
+        return bytes
+    }
     func write(_ data: Data) async throws { try await base.write(data) }
 
     func close() async {

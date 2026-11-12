@@ -25,11 +25,12 @@ final class TailcatClientsTests: XCTestCase {
         func add(_ client: Client) { lock.withLock { list.append(client) } }
     }
 
+    /// A clock the test moves; by default past the second that makes a file request long.
     private final class Clock: @unchecked Sendable {
         private let lock = NSLock()
-        private var time: TimeInterval = 0
-        var now: TimeInterval { lock.withLock { time } }
-        func advance() { lock.withLock { time += 1.1 } }
+        private var instant = ContinuousClock.now
+        var now: ContinuousClock.Instant { lock.withLock { instant } }
+        func advance(_ duration: Duration = .milliseconds(1100)) { lock.withLock { instant += duration } }
     }
 
     private func pool(_ made: Made, clock: Clock = Clock(), idleTimeout: Duration = .seconds(45)) -> TailcatClients<Client> {
@@ -40,23 +41,26 @@ final class TailcatClientsTests: XCTestCase {
         }, disconnect: { $0.close() })
     }
 
-    func testEachCategoryHasItsOwnClientUnderItsOwnNodeKey() async throws {
+    func testTheStreamAndQueriesShareAClientAndFilesHaveTheirOwn() async throws {
         let made = Made()
         let clients = pool(made)
         let realtime = try await clients.lease(.realtime)
         let query = try await clients.lease(.query)
         let file = try await clients.lease(.file)
-        XCTAssertEqual(made.all.map(\.category), [.realtime, .query, .file])
-        XCTAssertEqual(Set(made.all.map(\.key)).count, 3)
-        // A category's next request reuses its client, busy or not.
+        XCTAssertIdentical(query.client, realtime.client)
+        XCTAssertNotIdentical(file.client, realtime.client)
+        XCTAssertEqual(made.all.map(\.category), [.realtime, .file])
+        XCTAssertEqual(Set(made.all.map(\.key)).count, 2)
+        XCTAssertEqual(clients.count(.query), 1)
+        // The next stream or query reuses the shared client, busy or not.
         let realtimeAgain = try await clients.lease(.realtime)
         let queryAgain = try await clients.lease(.query)
         XCTAssertIdentical(realtimeAgain.client, realtime.client)
-        XCTAssertIdentical(queryAgain.client, query.client)
+        XCTAssertIdentical(queryAgain.client, realtime.client)
         file.release()
         let fileAgain = try await clients.lease(.file)
         XCTAssertIdentical(fileAgain.client, file.client)
-        XCTAssertEqual(made.all.count, 3)
+        XCTAssertEqual(made.all.count, 2)
     }
 
     func testParallelSmallFilesShareOneClient() async throws {
@@ -163,7 +167,7 @@ final class TailcatClientsTests: XCTestCase {
         let again = try await clients.lease(.file)
         XCTAssertIdentical(again.slot, second.slot)
         XCTAssertNotIdentical(again.client, second.client)
-        XCTAssertEqual(Set(made.all.map(\.key)).count, 5)
+        XCTAssertEqual(Set(made.all.map(\.key)).count, 4)
         // A late reset for the old failure leaves the new client be.
         await clients.reset(second)
         XCTAssertFalse(again.client.closed)
@@ -171,22 +175,73 @@ final class TailcatClientsTests: XCTestCase {
         XCTAssertIdentical(realtimeAgain.client, realtime.client)
     }
 
-    func testResettingACategoryLeavesTheOthers() async throws {
+    func testResettingFilesLeavesTheSharedClient() async throws {
         let made = Made()
         let clients = pool(made)
         let realtime = try await clients.lease(.realtime)
-        let query = try await clients.lease(.query)
         var files: [TailcatClients<Client>.Lease] = []
         for _ in 1...3 { files.append(try await clients.lease(.file)) }
         await clients.reset(.file)
         XCTAssertTrue(files.allSatisfy(\.client.closed))
         XCTAssertFalse(realtime.client.closed)
-        XCTAssertFalse(query.client.closed)
-        await clients.reset(.query)
-        XCTAssertTrue(query.client.closed)
-        XCTAssertFalse(realtime.client.closed)
+    }
+
+    /// A move (`SyncEngine.moved`) resets `.realtime`: the shared client is
+    /// made again for the stream and the queries both, and files stay.
+    func testResettingTheStreamRemakesTheSharedClient() async throws {
+        let made = Made()
+        let clients = pool(made)
+        let realtime = try await clients.lease(.realtime)
+        let file = try await clients.lease(.file)
+        await clients.reset(.realtime)
+        XCTAssertTrue(realtime.client.closed)
+        XCTAssertFalse(file.client.closed)
+        let query = try await clients.lease(.query)
+        let stream = try await clients.lease(.realtime)
+        XCTAssertNotIdentical(query.client, realtime.client)
+        XCTAssertIdentical(stream.client, query.client)
+        XCTAssertEqual(made.all.count, 3)
+    }
+
+    /// A query that timed out while the stream's heartbeats came keeps the
+    /// shared client, so the stream stays; once nothing came for
+    /// `carrierHeardWithin`, the next failure lets it go.
+    func testAFailedQueryKeepsTheSharedClientWhileItIsHeard() async throws {
+        let made = Made()
+        let clock = Clock()
+        let clients = pool(made, clock: clock)
+        let stream = try await clients.lease(.realtime)
+        let query = try await clients.lease(.query)
+        clock.advance(.seconds(15))
+        stream.heard()
+        clock.advance(.seconds(15))
+        await clients.reset(query, ifSilent: true)
+        XCTAssertFalse(stream.client.closed)
+        query.release()
         let next = try await clients.lease(.query)
-        XCTAssertNotIdentical(next.client, query.client)
+        XCTAssertIdentical(next.client, stream.client)
+
+        clock.advance(.seconds(10))
+        let late = try await clients.lease(.query)
+        await clients.reset(late, ifSilent: true)
+        XCTAssertTrue(stream.client.closed)
+        let remade = try await clients.lease(.query)
+        XCTAssertNotIdentical(remade.client, stream.client)
+    }
+
+    /// The stream's own failure, and any file's, resets its client whatever was heard.
+    func testTheStreamsFailureResetsTheSharedClient() async throws {
+        let made = Made()
+        let clients = pool(made)
+        let stream = try await clients.lease(.realtime)
+        let file = try await clients.lease(.file)
+        stream.heard()
+        file.heard()
+        await clients.reset(file, ifSilent: true)
+        XCTAssertTrue(file.client.closed)
+        XCTAssertFalse(stream.client.closed)
+        await clients.reset(stream)
+        XCTAssertTrue(stream.client.closed)
     }
 
     func testCloseClosesEveryClientAndNothingConnectsAfter() async throws {
@@ -199,7 +254,7 @@ final class TailcatClientsTests: XCTestCase {
         await clients.close()
         XCTAssertTrue(made.all.allSatisfy(\.closed))
         do { _ = try await clients.lease(.query); XCTFail("leased after close") } catch is CancellationError {}
-        XCTAssertEqual(made.all.count, 3)
+        XCTAssertEqual(made.all.count, 2)
     }
 
     func testAFailedConnectIsTriedAgain() async throws {
@@ -228,7 +283,7 @@ final class TailcatClientsTests: XCTestCase {
         _ = try? await transport.send(method: "POST", path: "/v0/agents/a1/send", credential: "token", body: Data("{}".utf8), category: .file) { _ in }
         _ = try? await transport.stream(path: "/v0/events/stream", credential: "token", headers: [:])
         _ = try? await transport.browserConnection()
-        XCTAssertEqual(asked.all.map(\.category), [.query, .file, .file, .file, .realtime, .file])
+        XCTAssertEqual(asked.all.map(\.category), [.realtime, .file, .file, .file, .realtime, .file])
         XCTAssertEqual(Set(asked.all.map(\.key)).count, 6)
     }
 

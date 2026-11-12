@@ -1,10 +1,10 @@
 import Foundation
 import Tailcat
 
-/// What a request to the computer is for. Each category has Tailcat
-/// clients of its own (`TailcatClients`) and its own deadline, so a long
-/// upload or a broken file client never holds up the event stream or the
-/// next call.
+/// What a request to the computer is for. Each category has its own
+/// deadline; the event stream and queries share one Tailcat client and
+/// files have clients of their own (`TailcatClients`), so a long upload or
+/// a broken file client never holds up the event stream or the next call.
 public enum RequestCategory: Sendable, CaseIterable {
     /// The event stream: one request that stays open while the computer talks.
     case realtime
@@ -14,13 +14,22 @@ public enum RequestCategory: Sendable, CaseIterable {
     /// images, tool-call media, artifact files; and the in-app browser's
     /// streams, which carry whole pages.
     case file
+
+    /// The category whose clients carry this one's requests: a query goes
+    /// over the event stream's client, each on a TCP flow of its own.
+    var carrier: RequestCategory { self == .query ? .realtime : self }
 }
 
 /// File clients one agent connection may have up at once.
 let maxFileClients = 3
 
-/// One agent connection's Tailcat clients: one for `.realtime`, one for
-/// `.query` and up to `maxFileClients` for `.file`, each made on first
+/// How recently the shared client must have brought bytes back to be kept
+/// through a failure on it: the daemon writes the event stream a heartbeat
+/// every 15 seconds.
+let carrierHeardWithin: Duration = .seconds(20)
+
+/// One agent connection's Tailcat clients: one shared by `.realtime` and
+/// `.query`, and up to `maxFileClients` for `.file`, each made on first
 /// use. Every connect is made with a node key of its own, fresh each time:
 /// the computer and the DERP relay tell clients apart by node key, and a
 /// relay keeps one connection per key, dropping the older of two that
@@ -31,7 +40,10 @@ let maxFileClients = 3
 /// flow); another is made only when every client carries a request older
 /// than a second, up to the cap. Extra clients close after 45 idle seconds.
 /// A failure resets only the client it happened on (`reset(_ lease:)`);
-/// the others, the event stream's included, stay.
+/// the others, the event stream's included, stay. A failed query resets
+/// the shared client only once nothing has come back over it for
+/// `carrierHeardWithin`: one that timed out while the stream's heartbeats
+/// arrived never drops the stream. The stream's own failures reset it.
 final class TailcatClients<Client: AnyObject & Sendable>: @unchecked Sendable {
     typealias Connect = @Sendable (RequestCategory, NodePrivateKey) async throws -> Client
     typealias Disconnect = @Sendable (Client) async -> Void
@@ -44,9 +56,11 @@ final class TailcatClients<Client: AnyObject & Sendable>: @unchecked Sendable {
         fileprivate var client: Client?
         fileprivate var connecting: Task<Client, Error>?
         fileprivate var inFlight = 0
-        fileprivate var requests: [UUID: TimeInterval] = [:]
+        fileprivate var requests: [UUID: ContinuousClock.Instant] = [:]
         fileprivate var idle: Task<Void, Never>?
         fileprivate var idleGeneration = 0
+        /// When `client` last brought bytes back, or connected.
+        fileprivate var heard: ContinuousClock.Instant?
         init(category: RequestCategory, index: Int) { self.category = category; self.index = index }
     }
 
@@ -69,19 +83,22 @@ final class TailcatClients<Client: AnyObject & Sendable>: @unchecked Sendable {
                 pool.release(slot, request: request)
             }
         }
+
+        /// Bytes came back over this lease's client.
+        func heard() { pool.heard(self) }
     }
 
     private let connect: Connect
     private let disconnect: Disconnect
     private let fileLimit: Int
-    private let now: @Sendable () -> TimeInterval
+    private let now: @Sendable () -> ContinuousClock.Instant
     private let idleTimeout: Duration
     private let newKey: @Sendable () throws -> NodePrivateKey
     private let lock = NSLock()
     private var slots: [Slot] = []
     private var closed = false
 
-    init(fileLimit: Int = maxFileClients, now: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }, idleTimeout: Duration = .seconds(45), newKey: @escaping @Sendable () throws -> NodePrivateKey = { try NodePrivateKey.generate() },
+    init(fileLimit: Int = maxFileClients, now: @escaping @Sendable () -> ContinuousClock.Instant = { .now }, idleTimeout: Duration = .seconds(45), newKey: @escaping @Sendable () throws -> NodePrivateKey = { try NodePrivateKey.generate() },
          connect: @escaping Connect, disconnect: @escaping Disconnect) {
         self.fileLimit = fileLimit; self.now = now; self.idleTimeout = idleTimeout
         self.newKey = newKey; self.connect = connect; self.disconnect = disconnect
@@ -98,7 +115,7 @@ final class TailcatClients<Client: AnyObject & Sendable>: @unchecked Sendable {
         let request = UUID()
         let slot = try locked {
             guard !closed else { throw CancellationError() }
-            let slot = pick(category)
+            let slot = pick(category.carrier)
             slot.inFlight += 1
             slot.requests[request] = now()
             slot.idle?.cancel(); slot.idle = nil; slot.idleGeneration += 1
@@ -118,7 +135,7 @@ final class TailcatClients<Client: AnyObject & Sendable>: @unchecked Sendable {
         let time = now()
         if let idlest = own.min(by: { $0.inFlight < $1.inFlight }) {
             if idlest.inFlight == 0 || own.count >= limit { return idlest }
-            if let short = own.filter({ !$0.requests.values.contains(where: { time - $0 >= 1 }) }).min(by: { $0.inFlight < $1.inFlight }) { return short }
+            if let short = own.filter({ !$0.requests.values.contains(where: { time - $0 >= .seconds(1) }) }).min(by: { $0.inFlight < $1.inFlight }) { return short }
         }
         let slot = Slot(category: category, index: (own.map(\.index).max() ?? -1) + 1)
         slots.append(slot)
@@ -167,7 +184,7 @@ final class TailcatClients<Client: AnyObject & Sendable>: @unchecked Sendable {
             // The first caller back keeps it; callers that waited on the same connect see it up once.
             let (kept, owner, isClosed) = locked { () -> (Bool, Bool, Bool) in
                 let owner = slot.connecting == task
-                if owner { slot.connecting = nil; if !closed { slot.client = made } }
+                if owner { slot.connecting = nil; if !closed { slot.client = made; slot.heard = now() } }
                 return (!closed && slot.client === made, owner, closed)
             }
             if kept { return made }
@@ -178,21 +195,28 @@ final class TailcatClients<Client: AnyObject & Sendable>: @unchecked Sendable {
         }
     }
 
+    fileprivate func heard(_ lease: Lease) {
+        locked { if lease.slot.client === lease.client { lease.slot.heard = now() } }
+    }
+
     /// Lets go of `lease`'s client after a failure on it, if its slot still
-    /// holds it; the next request there connects again.
-    func reset(_ lease: Lease) async {
+    /// holds it; the next request there connects again. `ifSilent`, the
+    /// shared client stays while it was heard from within `carrierHeardWithin`.
+    func reset(_ lease: Lease, ifSilent: Bool = false) async {
         let old = locked { () -> Client? in
             guard lease.slot.client === lease.client else { return nil }
+            if ifSilent, lease.slot.category == .realtime, let heard = lease.slot.heard, now() - heard < carrierHeardWithin { return nil }
             lease.slot.client = nil
             return lease.client
         }
         if let old { await disconnect(old) }
     }
 
-    /// Lets go of every client of `category`; the other categories' stay.
+    /// Lets go of every client carrying `category`: the shared one for
+    /// `.realtime` or `.query`, the files' for `.file`. The others stay.
     func reset(_ category: RequestCategory) async {
         let old = locked { () -> [Client] in
-            slots.filter { $0.category == category }.compactMap { slot in
+            slots.filter { $0.category == category.carrier }.compactMap { slot in
                 defer { slot.client = nil }
                 return slot.client
             }
@@ -218,6 +242,6 @@ final class TailcatClients<Client: AnyObject & Sendable>: @unchecked Sendable {
     /// Every connected client, busy or not; none is let go.
     func connected() -> [Client] { locked { slots.compactMap(\.client) } }
 
-    /// How many places `category` has, connected or not.
-    func count(_ category: RequestCategory) -> Int { locked { slots.filter { $0.category == category }.count } }
+    /// How many places `category`'s requests have, connected or not.
+    func count(_ category: RequestCategory) -> Int { locked { slots.filter { $0.category == category.carrier }.count } }
 }

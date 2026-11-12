@@ -270,9 +270,10 @@ public actor SyncEngine {
     /// The phone's way out moved (Wi-Fi to cellular): the stream went out
     /// the old way, where it can hang with nothing said until its
     /// 40-second silence while home says online. It is opened again at
-    /// once on a new tunnel, every other tunnel woken (`resumed`), and the
-    /// header says "connecting…" until the stream answers. Does nothing
-    /// while the engine is paused, or once it was paused meanwhile.
+    /// once on a new tunnel, which queries share, every other tunnel woken
+    /// (`resumed`), and the header says "connecting…" until the stream
+    /// answers. Does nothing while the engine is paused, or once it was
+    /// paused meanwhile.
     public func moved() async {
         guard !stopped, runner != nil else { return }
         await client.transport.reset(.realtime)
