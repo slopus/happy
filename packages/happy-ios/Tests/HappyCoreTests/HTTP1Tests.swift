@@ -79,6 +79,7 @@ final class HTTP1Tests: XCTestCase {
         XCTAssertEqual(opener.opened, 1)
         XCTAssertEqual(idle.count, 1)
         XCTAssertFalse(flow.closed)
+        XCTAssertFalse(flow.aborted)
         let written = String(decoding: flow.written, as: UTF8.self)
         XCTAssertEqual(written.components(separatedBy: "GET /v0/health HTTP/1.1\r\n").count, 4)
         XCTAssertFalse(written.lowercased().contains("connection:"))
@@ -94,6 +95,24 @@ final class HTTP1Tests: XCTestCase {
         XCTAssertEqual(response.body, Data("OK".utf8))
         XCTAssertEqual(idle.count, 0)
         XCTAssertTrue(flow.closed)
+        XCTAssertFalse(flow.aborted)
+    }
+
+    /// A read let go of halfway through its answer (the app going to the
+    /// background with home loading) resets its flow: the computer stops
+    /// sending the rest rather than sending it all to be discarded.
+    func testAnAnswerLetGoOfHalfwayResetsItsFlow() async throws {
+        let flow = FakeFlow(replies: [Data("HTTP/1.1 200 OK\r\nContent-Length: 1000\r\n\r\nOK".utf8)])
+        let opener = Opener(flow), idle = IdleFlows(), transport = makeTransport()
+        let read = Task { [transport, idle, opener] in
+            try await transport.exchange(method: "GET", path: "/v0/health", credential: "token", body: nil, headers: [:], idle: idle, sent: nil) { try opener.open() }
+        }
+        try await Task.sleep(for: .milliseconds(50))
+        read.cancel()
+        do { _ = try await read.value; XCTFail("a cancelled read answered") } catch {}
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertTrue(flow.aborted)
+        XCTAssertEqual(idle.count, 0)
     }
 
     func testAGetOnAKeptFlowGoneQuietGoesAgainOnANewOne() async throws {
@@ -228,6 +247,7 @@ private final class FakeFlow: BrowserStream, @unchecked Sendable {
     private var writer: CheckedContinuation<Void, Error>?
     private var ended = false
     private var isClosed = false
+    private var isAborted = false
     private var bytes = Data()
     /// Ends the flow after each reply, as a server that closes would.
     var endAfterReply = false
@@ -238,6 +258,7 @@ private final class FakeFlow: BrowserStream, @unchecked Sendable {
     init(replies: [Data]) { self.replies = replies }
 
     var closed: Bool { lock.withLock { isClosed } }
+    var aborted: Bool { lock.withLock { isAborted } }
     var written: Data { lock.withLock { bytes } }
 
     func feed(_ data: Data) {
@@ -315,5 +336,10 @@ private final class FakeFlow: BrowserStream, @unchecked Sendable {
         }
         reading?.resume(throwing: PairingError.unavailable)
         writing?.resume(throwing: PairingError.unavailable)
+    }
+
+    func abort() async {
+        lock.withLock { isAborted = true }
+        await close()
     }
 }

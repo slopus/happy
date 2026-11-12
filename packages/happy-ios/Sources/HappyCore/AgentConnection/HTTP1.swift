@@ -427,11 +427,12 @@ public final class AgentHTTPTransport: SelfMeteringTransport {
                     }
                 }
             } catch {
-                await stream.close()
+                // Cut off or given up on: the computer stops sending the rest.
+                await stream.abort()
                 if reused, received == 0, method == "GET", !Task.isCancelled, !(error is CancellationError) { throw StaleFlow() }
                 throw error
             }
-        } onCancel: { Task { await stream.close() } })
+        } onCancel: { Task { await stream.abort() } })
     }
 
     /// `data` written to `stream`, or `PairingError.unavailable` once
@@ -606,6 +607,11 @@ final class LeasedStream: BrowserStream, @unchecked Sendable {
 
     func close() async {
         await base.close()
+        release()
+    }
+
+    func abort() async {
+        await base.abort()
         release()
     }
 }

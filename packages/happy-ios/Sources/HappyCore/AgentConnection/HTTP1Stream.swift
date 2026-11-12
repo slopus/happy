@@ -59,6 +59,7 @@ extension TailcatHTTPTransport {
                 let reader = Task {
                     defer { silence?.cancel() }
                     var decoder = HTTP1BodyDecoder(chunked: chunked)
+                    var ended = false
                     do {
                         let content = try coding.map(ContentDecoder.init)
                         var bytes = rest
@@ -71,15 +72,20 @@ extension TailcatHTTPTransport {
                             bytes = try await stream.read(maximumBytes: 65536)
                             if bytes.isEmpty { break }
                         }
+                        ended = true
                         continuation.finish()
                     } catch { continuation.finish(throwing: error) }
-                    await stream.close()
+                    // Let go of before its end: the computer stops sending.
+                    if ended { await stream.close() } else { await stream.abort() }
                 }
-                continuation.onTermination = { _ in reader.cancel(); Task { await stream.close() } }
+                continuation.onTermination = { termination in
+                    reader.cancel()
+                    if case .cancelled = termination { Task { await stream.abort() } }
+                }
             }
             return HTTP1Stream(status: responseHead.status, headers: responseHead.headers, body: body)
         } catch {
-            await stream.close()
+            await stream.abort()
             // No answer on a stream the tunnel opened: the far side may
             // have restarted and forgotten it.
             if EventStreamPolicy.resetsTunnel, !Task.isCancelled, Self.lostTunnel(error) { await reset(lease) }

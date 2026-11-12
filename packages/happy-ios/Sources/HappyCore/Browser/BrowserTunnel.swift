@@ -7,10 +7,15 @@ public protocol BrowserStream: Sendable {
     func read(maximumBytes: Int) async throws -> Data
     func write(_ data: Data) async throws
     func close() async
+    /// Lets go of a stream whose answer is no longer wanted. Over Tailcat
+    /// it is reset, so the computer stops sending: `close` would take the
+    /// rest of the answer in and discard it.
+    func abort() async
 }
 
 extension BrowserStream {
     public var authority: String { "server.tailcat" }
+    public func abort() async { await close() }
 }
 
 extension TailcatConnection: BrowserStream {}

@@ -189,6 +189,11 @@ public final class MeteredStream: BrowserStream, @unchecked Sendable {
         await base.close()
         markClosed()
     }
+
+    public func abort() async {
+        await base.abort()
+        markClosed()
+    }
 }
 
 /// A transport that counts its own wire (flows, bytes, its tunnel) once
