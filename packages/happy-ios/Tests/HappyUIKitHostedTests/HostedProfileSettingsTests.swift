@@ -201,10 +201,10 @@ final class HostedProfileSettingsTests: XCTestCase {
         for gone in ["edit-name", "change-agent-name", "change-agent-avatar", "status"] {
             XCTAssertFalse(cards.joined().contains(gone), "\(gone) is still on the page: \(cards)")
         }
-        XCTAssertTrue(cards.contains(["profile"]), "the Profile row is not a card of its own: \(cards)")
-        XCTAssertEqual(cards.firstIndex(of: ["profile"]), 1, "Profile is not right under the accounts")
-        XCTAssertEqual(cards[2], ["support-boba"], "Support Happy is not right under Profile: \(cards)")
-        XCTAssertEqual(cards[3], ["appearance", "agent-voice", "agents", "data-storage"], "a card is left between Support Happy and Appearance: \(cards)")
+        // Desktop's first group: General (Appearance), Account (Profile), Voice, and Data and Storage.
+        XCTAssertEqual(cards[1], ["appearance", "profile", "agent-voice", "data-storage"], "Profile is not in the first group: \(cards)")
+        XCTAssertEqual(cards[2], ["support-boba"], "Support Happy is not right under the first group: \(cards)")
+        XCTAssertEqual(cards[3], ["agents", "usage"], "Agents is not after Support Happy: \(cards)")
         XCTAssertEqual(settings.shownRow("profile")?.title, "Profile")
         XCTAssertTrue(settings.agentButton.isDescendant(of: settings.view) && !settings.agentButton.isHidden, "the agent's picture isn't on the page")
         XCTAssertTrue(settings.navigationItem.rightBarButtonItems?.isEmpty ?? true, "the bar still has a button left of search")
@@ -218,7 +218,7 @@ final class HostedProfileSettingsTests: XCTestCase {
         // Found by search: Settings' own, and home's (`SettingsIndex`).
         let ids = SettingsIndex.computer.map(\.id)
         XCTAssertFalse(ids.contains("edit-name"))
-        XCTAssertEqual(Array(ids.prefix(3)), ["profile", "change-agent-name", "change-agent-avatar"])
+        XCTAssertEqual(Array(ids.drop { $0 != "profile" }.prefix(3)), ["profile", "change-agent-name", "change-agent-avatar"])
         XCTAssertFalse(ids.contains("status"), "Status is still found by search")
         XCTAssertEqual(HappyCore.Search.ranked(SettingsIndex.computer, query: "profile") { $0.title }.first?.id, "profile")
         XCTAssertEqual(HappyCore.Search.ranked(SettingsIndex.computer, query: "agent avatar") { $0.title }.first?.id, "change-agent-avatar")

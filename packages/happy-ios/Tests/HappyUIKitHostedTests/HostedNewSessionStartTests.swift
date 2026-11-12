@@ -204,7 +204,7 @@ final class HostedNewSessionStartTests: XCTestCase {
         let settings = SettingsViewController(context: context, computer: computerID)
         let navigation = try await host(settings)
         try await wait { settings.shownRow("agents") != nil }
-        XCTAssertTrue(settings.shownRowIDs.contains(["appearance", "agent-voice", "agents", "data-storage"]), "\(settings.shownRowIDs)")
+        XCTAssertTrue(settings.shownRowIDs.contains(["appearance", "profile", "agent-voice", "data-storage"]), "\(settings.shownRowIDs)")
         XCTAssertEqual(settings.shownRow("agents")?.title, "Agents")
         XCTAssertNil(settings.shownRow("new-sessions"))
         try await keep("settings-agents-row")

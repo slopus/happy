@@ -155,8 +155,8 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
             let (navigation, window) = try await host(settings, style: style)
             try await until { settings.shownRow("profile")?.value == "Alex Rivera" }
             let cards = settings.shownRowIDs
-            XCTAssertEqual(cards.firstIndex(of: ["profile"]), 1)
-            XCTAssertEqual(cards.firstIndex(of: ["support-boba"]), 2, "Support Happy is not right under Profile: \(cards)")
+            XCTAssertEqual(cards.firstIndex(of: ["appearance", "profile", "agent-voice", "data-storage"]), 1)
+            XCTAssertEqual(cards.firstIndex(of: ["support-boba"]), 2, "Support Happy is not right under the first group: \(cards)")
             XCTAssertEqual(settings.shownRow("agent-voice")?.value, "12 min left")
             XCTAssertEqual(settings.shownRow("support-boba")?.title, "Happy is open source")
             XCTAssertEqual(settings.shownRow("support-boba")?.subtitle, "Support by sending us boba, get 2 hours of calls with agents")

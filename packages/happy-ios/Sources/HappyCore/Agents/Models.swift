@@ -340,8 +340,10 @@ public struct AccountUsage: Equatable, Sendable {
     public var limitResets: Date?
     /// Its sign-in is missing or was refused, so nothing can be sent to it.
     public var signedOut = false
+    /// The plan the service names ("Max 20×"), when it names one.
+    public var planName: String?
 
-    public init(week: Window? = nil, session: Window? = nil, updatedAt: Date? = nil, refreshing: Bool = false, refreshError: String? = nil, limited: Bool = false, limitResets: Date? = nil, signedOut: Bool = false) {
+    public init(week: Window? = nil, session: Window? = nil, updatedAt: Date? = nil, refreshing: Bool = false, refreshError: String? = nil, limited: Bool = false, limitResets: Date? = nil, signedOut: Bool = false, planName: String? = nil) {
         self.week = week
         self.session = session
         self.updatedAt = updatedAt
@@ -350,6 +352,7 @@ public struct AccountUsage: Equatable, Sendable {
         self.limited = limited
         self.limitResets = limitResets
         self.signedOut = signedOut
+        self.planName = planName
     }
 
     /// Every account with a reading, a read in flight or a failed read.
@@ -391,7 +394,8 @@ public struct AccountUsage: Equatable, Sendable {
                 refreshError: refreshError,
                 limited: exhausted,
                 limitResets: exhausted ? resets.map(date) : nil,
-                signedOut: signedOut
+                signedOut: signedOut,
+                planName: reading?["planName"]?.stringValue
             )
         }
         return usage

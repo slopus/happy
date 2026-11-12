@@ -97,6 +97,9 @@ public struct SettingsLayout: Equatable, Sendable {
         /// A card's footer: under it by this, inset from its sides by this.
         public static let footerGap: CGFloat = 8
         public static let footerInset: CGFloat = 16
+        /// A card's header (desktop's group names: Agents, Team,
+        /// Advanced): over it by this, inset as a footer is.
+        public static let headerGap: CGFloat = 8
         /// A text row (a key, a long line): its text this far from the
         /// row's top and bottom.
         public static let textPadding: CGFloat = 14
@@ -175,6 +178,8 @@ public struct SettingsLayout: Equatable, Sendable {
         /// The line under the card that says what it is for, in the
         /// page's space.
         public var footer: CGRect?
+        /// The group's name over the card, in the page's space.
+        public var header: CGRect? = nil
     }
 
     public var strip: CGRect
@@ -193,8 +198,10 @@ public struct SettingsLayout: Equatable, Sendable {
     /// among the others, not a row of circles) the name starts where the
     /// strip would have, and nothing else moves. A `picture` (its side)
     /// is centred there instead, the name under it. `footers` are the
-    /// measured heights of the cards' footers, at `footerWidth`, by card.
-    public init(width: CGFloat, nameHeight: CGFloat, subtitleHeight: CGFloat, cards specs: [[RowSpec]], footers: [CGFloat?] = [], searching: Bool = false, showsStrip: Bool = true, picture side: CGFloat? = nil) {
+    /// measured heights of the cards' footers, at `footerWidth`, by card;
+    /// `headers` their headers', at the same width, each over its card,
+    /// the gap above it kept.
+    public init(width: CGFloat, nameHeight: CGFloat, subtitleHeight: CGFloat, cards specs: [[RowSpec]], footers: [CGFloat?] = [], headers: [CGFloat?] = [], searching: Bool = false, showsStrip: Bool = true, picture side: CGFloat? = nil) {
         typealias M = Metrics
         strip = showsStrip ? CGRect(x: 0, y: M.stripTop, width: width, height: ProfileCarousel.Metrics.height) : .zero
         picture = !showsStrip && !searching ? side.map { CGRect(x: ((width - $0) / 2).rounded(), y: M.stripTop, width: $0, height: $0) } ?? .zero : .zero
@@ -208,6 +215,11 @@ public struct SettingsLayout: Equatable, Sendable {
         var cards: [Card] = []
         var bottom = searching ? M.stripTop : subtitle.maxY
         for (index, spec) in specs.enumerated() where !spec.isEmpty {
+            var header: CGRect?
+            if headers.indices.contains(index), let height = headers[index], height > 0 {
+                header = CGRect(x: M.side + M.footerInset, y: y, width: Self.footerWidth(width), height: height)
+                y += height + M.headerGap
+            }
             var rows: [Row] = []
             var rowY: CGFloat = 0
             for (index, row) in spec.enumerated() {
@@ -219,7 +231,7 @@ public struct SettingsLayout: Equatable, Sendable {
             if footers.indices.contains(index), let height = footers[index], height > 0 {
                 footer = CGRect(x: M.side + M.footerInset, y: frame.maxY + M.footerGap, width: Self.footerWidth(width), height: height)
             }
-            cards.append(Card(frame: frame, rows: rows, footer: footer))
+            cards.append(Card(frame: frame, rows: rows, footer: footer, header: header))
             bottom = footer?.maxY ?? frame.maxY
             y = bottom + M.cardGap
         }

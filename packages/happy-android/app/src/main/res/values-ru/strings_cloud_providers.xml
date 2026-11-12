@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="cloud_providers_title">ИИ-провайдеры</string>
+    <string name="cloud_providers_title">Инференс</string>
     <string name="cloud_providers_included">Включено</string>
     <string name="cloud_providers_team">Команда</string>
     <string name="cloud_providers_mine">Мой аккаунт</string>

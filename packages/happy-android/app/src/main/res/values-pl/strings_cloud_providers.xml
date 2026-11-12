@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="cloud_providers_title">Dostawcy AI</string>
+    <string name="cloud_providers_title">Inferencja</string>
     <string name="cloud_providers_included">W cenie</string>
     <string name="cloud_providers_team">Zespół</string>
     <string name="cloud_providers_mine">Moje konto</string>

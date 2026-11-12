@@ -114,17 +114,18 @@ fun agentSettingsIndex(projectsAvailable: Boolean = true, notificationsAvailable
     fun row(id: String, title: String, icon: Ionicon, place: AgentSettingsPlace = AgentSettingsPlace.Settings, ask: String? = null) =
         AgentSettingsRow(id, title, icon, place, ask)
     return listOfNotNull(
+        row(AgentSettingsTags.APPEARANCE, stringResource(R.string.settings_appearance), Ionicon.ColorPaletteOutline),
+        row(AgentPagesTags.HIDE_PROJECTS_ROW, stringResource(R.string.settings_hide_projects), Ionicon.FolderOutline, AgentSettingsPlace.Appearance).takeIf { projectsAvailable },
         row(AgentSettingsTags.PROFILE, stringResource(R.string.settings_account_profile), Ionicon.PersonCircleOutline),
         row(AgentSettingsTags.ASK_NAME, stringResource(R.string.agent_settings_edit_name), Ionicon.CreateOutline, AgentSettingsPlace.Ask, stringResource(R.string.agent_settings_edit_name_prefix)),
         row(AgentSettingsTags.ASK_AVATAR, stringResource(R.string.agent_settings_edit_avatar), Ionicon.ImageOutline, AgentSettingsPlace.Ask, stringResource(R.string.agent_settings_edit_avatar_prefix)),
-        row(AgentVoiceTags.SUPPORT, stringResource(R.string.agent_voice_support_title), Ionicon.Heart),
-        row(AgentSettingsTags.APPEARANCE, stringResource(R.string.settings_appearance), Ionicon.ColorPaletteOutline),
-        row(AgentPagesTags.HIDE_PROJECTS_ROW, stringResource(R.string.settings_hide_projects), Ionicon.FolderOutline, AgentSettingsPlace.Appearance).takeIf { projectsAvailable },
         row(AgentVoiceTags.ROW, stringResource(R.string.agent_voice_title), Ionicon.MicOutline),
-        row(AgentAgentsTags.ROW, stringResource(R.string.settings_agents), Ionicon.OptionsOutline),
         row(DataStorageTags.ROW, stringResource(R.string.data_storage_title), Ionicon.ServerOutline),
-        row(AgentSharingTags.ROW, stringResource(R.string.sharing_title), Ionicon.PeopleOutline),
         row(CloudPushTags.ROW, stringResource(R.string.cloud_push_title), Ionicon.NotificationsOutline).takeIf { notificationsAvailable },
+        row(AgentVoiceTags.SUPPORT, stringResource(R.string.agent_voice_support_title), Ionicon.Heart),
+        row(AgentAgentsTags.ROW, stringResource(R.string.settings_agents), Ionicon.OptionsOutline),
+        row(AgentUsageTags.ROW, stringResource(R.string.usage_title), Ionicon.AnalyticsOutline),
+        row(AgentSharingTags.ROW, stringResource(R.string.sharing_title), Ionicon.PeopleOutline),
         row(PrivacyTags.ROW, stringResource(R.string.settings_account_privacy), Ionicon.LockClosedOutline),
         row(SettingsPageTags.ADD_AGENT, stringResource(R.string.settings_add_agent), Ionicon.Add),
         row(SettingsTags.WHATS_NEW, stringResource(R.string.settings_whats_new), Ionicon.SparklesOutline),
@@ -183,6 +184,8 @@ class AgentSettingsActions(
     val onProviders: (() -> Unit)? = null,
     /** Cloud pool monitoring and node management; absent without pools.manage. */
     val onComputePools: (() -> Unit)? = null,
+    /** Usage: what the provider accounts spent and what is left of their plans; null where it isn't offered. */
+    val onUsage: (() -> Unit)? = null,
     /** Every Cloud member can manage their own notifications, including read-only members. */
     val onNotifications: (() -> Unit)? = null,
     /** Privacy: this phone's Analytics switch. */
@@ -202,9 +205,12 @@ data class AgentPerson(val name: String = "", val photo: ImageBitmap? = null, va
  * a connection's page: the agent's own picture, large and centred, with a
  * pencil badge whose menu asks its Chief of Staff to change its picture or
  * name (nothing is sent until the person sends it), its name and link
- * status under it; every account on the phone with Add Agent; the person's
- * own Profile here, with Support Happy's boba row under it; Appearance
- * (the theme and the desktop's Hide projects); Privacy; About; Disconnect, after a
+ * status under it; every account on the phone with Add Agent; then
+ * desktop's sidebar groups: the first (Appearance, the theme and the
+ * desktop's Hide projects; the person's own Profile; Voice;
+ * Data and Storage; Notifications), Support Happy's boba row under it,
+ * Agents (Agents, Inference, Compute, Usage), Team (Sharing, Members); Privacy;
+ * the agent's version; About; Disconnect, after a
  * confirm. A device token can't reach
  * the agent's device list (API.md, "Credentials on the connector's
  * socket"), so disconnecting forgets the agent on this phone only.
@@ -241,9 +247,21 @@ fun AgentConnectionSettingsScreen(
         )
     }
     val search = rememberSettingsSearch()
+    // Desktop's sidebar, group for group (AppHappyAgentSettingsView): its
+    // unheaded first group (General, here Appearance; Account, here Profile;
+    // Voice; the phone's Data and Storage; and the Cloud server's
+    // Notifications), then Agents (what new sessions start on, Inference,
+    // Compute, Usage) and Team. The phone's own cards keep their places: the accounts at the top,
+    // Support Happy under the first group, Privacy and About at the end.
     val sections = listOf(
         SettingsSection(
-            listOf(
+            listOfNotNull(
+                SettingsEntry(
+                    id = AgentSettingsTags.APPEARANCE,
+                    title = stringResource(R.string.settings_appearance),
+                    icon = { SettingsTile(Ionicon.ColorPaletteOutline, SettingsTiles.purple) },
+                    onClick = actions.onAppearance,
+                ),
                 SettingsEntry(
                     id = AgentSettingsTags.PROFILE,
                     title = stringResource(R.string.settings_account_profile),
@@ -251,56 +269,12 @@ fun AgentConnectionSettingsScreen(
                     detail = person.name.takeIf { it.isNotEmpty() },
                     onClick = actions.onProfile,
                 ),
-            ),
-        ),
-        SettingsSection(
-            listOf(
-                SettingsEntry(
-                    id = AgentSettingsTags.APPEARANCE,
-                    title = stringResource(R.string.settings_appearance),
-                    icon = { SettingsTile(Ionicon.ColorPaletteOutline, SettingsTiles.purple) },
-                    onClick = actions.onAppearance,
-                ),
                 agentVoiceEntry(voice, actions.onVoice),
-            ) + listOfNotNull(
-                // Where the relay's Agents row is: after Voice.
-                actions.onAgents?.let { open ->
-                    SettingsEntry(
-                        id = AgentAgentsTags.ROW,
-                        title = stringResource(R.string.settings_agents),
-                        icon = { SettingsTile(Ionicon.OptionsOutline, SettingsTiles.teal) },
-                        onClick = open,
-                    )
-                },
                 actions.onDataStorage?.let { open ->
                     SettingsEntry(
                         id = DataStorageTags.ROW,
                         title = stringResource(R.string.data_storage_title),
                         icon = { SettingsTile(Ionicon.ServerOutline, SettingsTiles.green) },
-                        onClick = open,
-                    )
-                },
-                actions.onSharing?.let { open ->
-                    SettingsEntry(
-                        id = AgentSharingTags.ROW,
-                        title = stringResource(R.string.sharing_title),
-                        icon = { SettingsTile(Ionicon.PeopleOutline, SettingsTiles.blue) },
-                        onClick = open,
-                    )
-                },
-                actions.onProviders?.let { open ->
-                    SettingsEntry(
-                        id = CloudProvidersTags.ROW,
-                        title = stringResource(R.string.cloud_providers_title),
-                        icon = { SettingsTile(Ionicon.SparklesOutline, SettingsTiles.orange) },
-                        onClick = open,
-                    )
-                },
-                actions.onMembers?.let { open ->
-                    SettingsEntry(
-                        id = CloudTags.MEMBERS,
-                        title = stringResource(R.string.cloud_members),
-                        icon = { SettingsTile(Ionicon.PeopleOutline, SettingsTiles.indigo) },
                         onClick = open,
                     )
                 },
@@ -312,28 +286,81 @@ fun AgentConnectionSettingsScreen(
                         onClick = open,
                     )
                 },
-                // Compute closes Data and Storage's card.
+            ),
+        ),
+        SettingsSection(
+            listOfNotNull(
+                actions.onAgents?.let { open ->
+                    SettingsEntry(
+                        id = AgentAgentsTags.ROW,
+                        title = stringResource(R.string.settings_agents),
+                        icon = { SettingsTile(Ionicon.OptionsOutline, SettingsTiles.teal) },
+                        onClick = open,
+                    )
+                },
+                actions.onProviders?.let { open ->
+                    SettingsEntry(
+                        id = CloudProvidersTags.ROW,
+                        title = stringResource(R.string.cloud_providers_title),
+                        icon = { SettingsTile(Ionicon.SparklesOutline, SettingsTiles.indigo) },
+                        onClick = open,
+                    )
+                },
+                // Compute follows Inference, as desktop's Agents group has it.
                 actions.onComputePools?.let { open ->
                     SettingsEntry(
                         id = ComputePoolsTags.ROW,
                         title = stringResource(R.string.compute_pools_title),
-                        icon = { SettingsTile(Ionicon.ServerOutline, SettingsTiles.indigo) },
+                        icon = { SettingsTile(Ionicon.ServerOutline, SettingsTiles.blue) },
+                        onClick = open,
+                    )
+                },
+                // Usage closes the group, after Compute.
+                actions.onUsage?.let { open ->
+                    SettingsEntry(
+                        id = AgentUsageTags.ROW,
+                        title = stringResource(R.string.usage_title),
+                        icon = { SettingsTile(Ionicon.AnalyticsOutline, SettingsTiles.teal) },
                         onClick = open,
                     )
                 },
             ),
+            title = stringResource(R.string.settings_group_agents),
+        ),
+        SettingsSection(
+            listOfNotNull(
+                actions.onSharing?.let { open ->
+                    SettingsEntry(
+                        id = AgentSharingTags.ROW,
+                        title = stringResource(R.string.sharing_title),
+                        icon = { SettingsTile(Ionicon.PeopleOutline, SettingsTiles.teal) },
+                        onClick = open,
+                    )
+                },
+                actions.onMembers?.let { open ->
+                    SettingsEntry(
+                        id = CloudTags.MEMBERS,
+                        title = stringResource(R.string.cloud_members),
+                        icon = { SettingsTile(Ionicon.PeopleOutline, SettingsTiles.orange) },
+                        onClick = open,
+                    )
+                },
+            ),
+            title = stringResource(R.string.settings_group_team),
         ),
         privacySection(actions.onPrivacy),
         SettingsSection(
-            listOfNotNull(daemonVersion?.takeIf(String::isNotBlank)?.let { version ->
-                SettingsEntry(
-                    id = AgentSettingsTags.DAEMON_VERSION,
-                    title = "${stringResource(R.string.account_kind_agent)} · ${stringResource(R.string.common_version)}",
-                    detail = version,
-                    icon = { SettingsTile(Ionicon.InformationCircleOutline, SettingsTiles.gray) },
-                    chevron = false,
-                )
-            }),
+            listOfNotNull(
+                daemonVersion?.takeIf(String::isNotBlank)?.let { version ->
+                    SettingsEntry(
+                        id = AgentSettingsTags.DAEMON_VERSION,
+                        title = "${stringResource(R.string.account_kind_agent)} · ${stringResource(R.string.common_version)}",
+                        detail = version,
+                        icon = { SettingsTile(Ionicon.InformationCircleOutline, SettingsTiles.gray) },
+                        chevron = false,
+                    )
+                },
+            ),
         ),
         // Support Happy's boba row is this page's Support us, and its page manages subscriptions.
         aboutSection(about, aboutActions),
@@ -370,7 +397,7 @@ fun AgentConnectionSettingsScreen(
                 ItemList(scrollState = scroll) {
                     SettingsHeader(profile, edit)
                     AccountsCard(accounts, accountActions)
-                    // Support Happy right under Profile, the first card.
+                    // Support Happy right under the first group.
                     for ((index, section) in sections.withIndex()) {
                         SettingsCard(section)
                         if (index == 0) SupportBobaCard(aboutActions.onSupport, subscribed = voice.offer == Offer.Subscribed)
@@ -498,6 +525,7 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
             onMembers = if (cloud) ({ nav.navigate(CloudMembersRoute(connectionId)) }) else null,
             onProviders = if (cloud) ({ nav.openCloudProviders(connectionId) }) else null,
             onComputePools = if (pools) ({ nav.navigate(CloudComputePoolsRoute(connectionId)) }) else null,
+            onUsage = { nav.navigate(AgentUsageRoute(connectionId)) },
             onNotifications = if (cloud) ({ nav.navigate(CloudPushSettingsRoute(connectionId)) }) else null,
             onPrivacy = { nav.navigate(PrivacyRoute) },
             onAskChief = if (askChief) ({ prefix -> nav.openChiefOfStaff(connectionId, prefix) }) else null,

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="cloud_providers_title">AI プロバイダ</string>
+    <string name="cloud_providers_title">推論</string>
     <string name="cloud_providers_included">付属</string>
     <string name="cloud_providers_team">チーム</string>
     <string name="cloud_providers_mine">マイアカウント</string>

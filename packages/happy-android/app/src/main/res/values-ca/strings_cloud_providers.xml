@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="cloud_providers_title">Proveïdors d\'IA</string>
+    <string name="cloud_providers_title">Inferència</string>
     <string name="cloud_providers_included">Inclòs</string>
     <string name="cloud_providers_team">Equip</string>
     <string name="cloud_providers_mine">El meu compte</string>

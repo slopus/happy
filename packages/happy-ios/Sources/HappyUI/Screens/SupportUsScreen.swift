@@ -88,5 +88,12 @@ extension Array where Element == SettingsRow {
         if !rows.isEmpty { rows[rows.count - 1].footer = footer }
         return rows
     }
+
+    /// The card with `header` over it, said by its first row.
+    func withHeader(_ header: String) -> [SettingsRow] {
+        var rows = self
+        if !rows.isEmpty { rows[0].header = header }
+        return rows
+    }
 }
 #endif

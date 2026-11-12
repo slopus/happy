@@ -184,9 +184,9 @@ final class HostedSettingsUnifiedTests: XCTestCase {
 
         XCTAssertEqual(settings.shownRowIDs, [
             ["account:\(computer)", "account:\(happy)", SettingsIndex.connectAgent.id],
-            ["profile"],
+            ["appearance", "profile", "agent-voice", "data-storage"],
             ["support-boba"],
-            ["appearance", "agent-voice", "agents", "data-storage"],
+            ["agents", "usage"],
             [SettingsIndex.privacySettings.id],
             SettingsIndex.aboutRows.map(\.id),
             ["disconnect"],
@@ -201,6 +201,22 @@ final class HostedSettingsUnifiedTests: XCTestCase {
         XCTAssertNil(settings.shownRow("support-us"))
 
         try await capture(window, "settings-computer")
+        withExtendedLifetime((navigation, account)) {}
+    }
+
+    /// Usage closes Agents on every agent connection and pushes its page.
+    func testUsageOpensFromAComputersPage() async throws {
+        let (account, context, computers) = try await rig(computers: 1)
+        let settings = SettingsViewController(context: context, computer: try XCTUnwrap(computers.first))
+        let (navigation, _) = try await host(settings)
+        let shown = try await until { settings.shownRow(SettingsIndex.usage.id) != nil }
+        XCTAssertTrue(shown, "no Usage row: \(settings.shownRowIDs)")
+        XCTAssertEqual(settings.shownRow(SettingsIndex.usage.id)?.title, "Usage")
+        settings.tapRow(SettingsIndex.usage.id)
+        let opened = try await until { navigation.topViewController is UsageViewController && navigation.transitionCoordinator == nil }
+        XCTAssertTrue(opened, "Usage didn't open: \(String(describing: navigation.topViewController))")
+        XCTAssertEqual(navigation.topViewController?.title, "Usage")
+        XCTAssertTrue(SettingsIndex.computer.contains(SettingsIndex.usage), "search doesn't find it")
         withExtendedLifetime((navigation, account)) {}
     }
 

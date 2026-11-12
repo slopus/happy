@@ -375,6 +375,18 @@ public final class AgentClient: Sendable {
         AccountUsage.project(try await decode(JSONValue.self, "GET", "/v0/usage"))
     }
 
+    /// `GET /v0/usage` as it came: each account's plan reading and the
+    /// rolling token windows Settings › Usage reads (`UsageOverview`).
+    public func usageResponse() async throws -> JSONValue {
+        try await decode(JSONValue.self, "GET", "/v0/usage")
+    }
+
+    /// `GET /v0/usage/daily`: the last `days` local days in `timeZone`
+    /// (an IANA name) that spent tokens (`DailyUsage.read`).
+    public func dailyUsage(days: Int, timeZone: String) async throws -> JSONValue {
+        try await decode(JSONValue.self, "GET", "/v0/usage/daily?days=\(days)&tz=\(Self.escape(timeZone))")
+    }
+
     /// Asks for fresher readings of these accounts; they arrive as
     /// `provider.usage.updated`.
     public func refreshAccountUsage(_ providerIds: [String]) async throws {

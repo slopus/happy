@@ -60,7 +60,7 @@ class AgentSettingsIndexTest {
         AgentConnectionSettingsScreen(
             profile = SettingsProfile("agent-connection-1", "Studio", "Connected"),
             accounts = SettingsFixtures.accounts,
-            actions = AgentSettingsActions(onDataStorage = {}, onSharing = {}, onAgents = {}),
+            actions = AgentSettingsActions(onDataStorage = {}, onSharing = {}, onAgents = {}, onUsage = {}),
             about = AboutInfo("1.8.0 (412)"),
         )
     }
@@ -75,8 +75,8 @@ class AgentSettingsIndexTest {
         rule.waitForIdle()
         assertEquals(
             listOf(
-                AgentSettingsTags.PROFILE, AgentSettingsTags.ASK_NAME, AgentSettingsTags.ASK_AVATAR, AgentVoiceTags.SUPPORT, AgentSettingsTags.APPEARANCE,
-                AgentPagesTags.HIDE_PROJECTS_ROW, AgentVoiceTags.ROW, AgentAgentsTags.ROW, DataStorageTags.ROW, AgentSharingTags.ROW, PrivacyTags.ROW, com.slopus.happy.ui.settings.SettingsPageTags.ADD_AGENT,
+                AgentSettingsTags.APPEARANCE, AgentPagesTags.HIDE_PROJECTS_ROW, AgentSettingsTags.PROFILE, AgentSettingsTags.ASK_NAME, AgentSettingsTags.ASK_AVATAR,
+                AgentVoiceTags.ROW, DataStorageTags.ROW, AgentVoiceTags.SUPPORT, AgentAgentsTags.ROW, AgentUsageTags.ROW, AgentSharingTags.ROW, PrivacyTags.ROW, com.slopus.happy.ui.settings.SettingsPageTags.ADD_AGENT,
                 SettingsTags.WHATS_NEW, SettingsTags.GITHUB, SettingsTags.REPORT_ISSUE, SettingsTags.PRIVACY, SettingsTags.TERMS, SettingsTags.VERSION,
             ),
             index.map { it.id },

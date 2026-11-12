@@ -135,8 +135,8 @@ class AgentConnectionSettingsTest {
     @Test
     fun cardsAndRows() {
         show()
-        // Support Happy is a card of its own, right under Profile, and the page's only Support us.
-        rule.onAllNodesWithTag(ItemGroupTags.CARD, useUnmergedTree = true).assertCountEquals(7)
+        // Desktop's first group (Appearance, Profile, Voice), then Support Happy, a card of its own and the page's only Support us; Agents is under AGENTS.
+        rule.onAllNodesWithTag(ItemGroupTags.CARD, useUnmergedTree = true).assertCountEquals(6)
         rule.onNode(hasText("Steve") and hasAnyAncestor(hasTestTag(SettingsPageTags.account("account-1"))), useUnmergedTree = true).assertExists()
         rule.node(SettingsPageTags.account("agent-connection-2")).performClick()
         rule.node(SettingsPageTags.ADD_AGENT).performScrollTo().performClick()
@@ -146,8 +146,10 @@ class AgentConnectionSettingsTest {
         rule.node(SettingsTags.SUPPORT).assertDoesNotExist()
         rule.node(SettingsTags.MANAGE_SUBSCRIPTIONS).assertDoesNotExist()
         rule.node(SettingsTags.VERSION).performScrollTo().assertIsDisplayed()
-        assertTrue(rule.node(AgentVoiceTags.SUPPORT).bounds.top > rule.node(AgentSettingsTags.PROFILE).bounds.bottom)
-        assertTrue(rule.node(AgentVoiceTags.SUPPORT).bounds.bottom < rule.node(AgentSettingsTags.APPEARANCE).bounds.top)
+        val first = hasTestTag(ItemGroupTags.CARD) and hasAnyDescendant(hasTestTag(AgentSettingsTags.APPEARANCE)) and
+            hasAnyDescendant(hasTestTag(AgentSettingsTags.PROFILE)) and hasAnyDescendant(hasTestTag(AgentVoiceTags.ROW))
+        rule.onNode(first, useUnmergedTree = true).assertExists()
+        rule.onNode(first and hasAnyDescendant(hasTestTag(AgentVoiceTags.SUPPORT)), useUnmergedTree = true).assertDoesNotExist()
         rule.node(AgentVoiceTags.ROW).performScrollTo().assertIsDisplayed()
     }
 
@@ -176,24 +178,34 @@ class AgentConnectionSettingsTest {
         assertEquals(listOf(false), set)
     }
 
-    /** On Happy Cloud, Compute is the last row of Data and Storage's card, under that name. */
+    /**
+     * On Happy Cloud, desktop's groups: Data and Storage and Notifications
+     * close the first, Agents is Agents, Inference, Compute then Usage, Team is
+     * Sharing then Members; each headed by its name, and no Advanced.
+     */
     @Test
-    fun computePoolsCloseDataAndStoragesCard() {
+    fun cloudRowsAreInDesktopsGroups() {
         rule.setHappyContent {
             AgentConnectionSettingsScreen(
                 profile = SettingsProfile("agent-connection-1", "Studio", "Connected"),
                 accounts = accounts,
-                actions = AgentSettingsActions(onDataStorage = {}, onSharing = {}, onAgents = {}, onMembers = {}, onProviders = {}, onComputePools = {}, onNotifications = {}),
+                actions = AgentSettingsActions(onDataStorage = {}, onSharing = {}, onAgents = {}, onMembers = {}, onProviders = {}, onComputePools = {}, onNotifications = {}, onUsage = {}),
                 about = AboutInfo("1.8.0 (412)"),
             )
         }
-        val card = hasTestTag(ItemGroupTags.CARD) and hasAnyDescendant(hasTestTag(DataStorageTags.ROW))
-        rule.onNode(card and hasAnyDescendant(hasTestTag(ComputePoolsTags.ROW)), useUnmergedTree = true).assertExists()
-        val rows = listOf(DataStorageTags.ROW, AgentSharingTags.ROW, CloudProvidersTags.ROW, CloudTags.MEMBERS, CloudPushTags.ROW, ComputePoolsTags.ROW)
-            .map { rule.node(it).bounds }
-        assertEquals(rows.sortedBy { it.top }, rows)
+        fun card(vararg tags: String) = rule.onNode(tags.fold(hasTestTag(ItemGroupTags.CARD)) { m, t -> m and hasAnyDescendant(hasTestTag(t)) }, useUnmergedTree = true)
+        card(AgentSettingsTags.APPEARANCE, AgentVoiceTags.ROW, DataStorageTags.ROW, CloudPushTags.ROW).assertExists()
+        card(AgentAgentsTags.ROW, CloudProvidersTags.ROW, ComputePoolsTags.ROW, AgentUsageTags.ROW).assertExists()
+        card(AgentSharingTags.ROW, CloudTags.MEMBERS).assertExists()
+        rule.onNode(hasTestTag(ItemGroupTags.CARD) and hasAnyDescendant(hasTestTag(DataStorageTags.ROW)) and hasAnyDescendant(hasTestTag(ComputePoolsTags.ROW)), useUnmergedTree = true).assertDoesNotExist()
+        rule.onNodeWithText("AGENTS").assertExists()
+        rule.onNodeWithText("TEAM").assertExists()
+        rule.onNodeWithText("ADVANCED").assertDoesNotExist()
         rule.onNode(hasTestTag(ComputePoolsTags.ROW) and hasAnyDescendant(hasText("Compute")), useUnmergedTree = true).assertExists()
-        assertDp("Compute ends the card", rule.onNode(card, useUnmergedTree = true).bounds.bottom, rows.last().bottom)
+        rule.onNode(hasTestTag(CloudProvidersTags.ROW) and hasAnyDescendant(hasText("Inference")), useUnmergedTree = true).assertExists()
+        rule.onNode(hasTestTag(AgentUsageTags.ROW) and hasAnyDescendant(hasText("Usage")), useUnmergedTree = true).assertExists()
+        // Usage closes the group, under Compute.
+        assertTrue(rule.onNode(hasTestTag(AgentUsageTags.ROW), useUnmergedTree = true).fetchSemanticsNode().positionInRoot.y > rule.onNode(hasTestTag(ComputePoolsTags.ROW), useUnmergedTree = true).fetchSemanticsNode().positionInRoot.y)
     }
 
     /**

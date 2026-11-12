@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Settings › Usage: the activity grid and each account's windows and models. -->
+    <string name="usage_title">用量</string>
+    <string name="usage_activity">活动</string>
+    <string name="usage_tokens_year">过去一年 %1$s 个 token</string>
+    <string name="usage_tokens_since">自 %2$s 起 %1$s 个 token</string>
+    <string name="usage_tokens_count">%1$s 个 token</string>
+    <string name="usage_one_token">1 个 token</string>
+    <string name="usage_no_usage">无用量</string>
+    <string name="usage_left">剩余 %1$d%%</string>
+    <string name="usage_window_day">日 %1$s</string>
+    <string name="usage_window_week">周 %1$s</string>
+    <string name="usage_window_month">月 %1$s</string>
+    <string name="usage_empty_title">暂无用量</string>
+    <string name="usage_empty_detail">账号报告其套餐或使用 token 后，会显示在这里。</string>
+    <string name="usage_grid_label">每日 token 用量</string>
+    <string name="usage_strip_label">%1$s 每日 token 用量</string>
+</resources>

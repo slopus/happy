@@ -5,7 +5,7 @@
   Translated in values-*/ (AndroidStringsTranslatedTest).
 -->
 <resources>
-    <string name="cloud_providers_title">AI providers</string>
+    <string name="cloud_providers_title">Inference</string>
     <string name="cloud_providers_included">Included</string>
     <string name="cloud_providers_team">Team</string>
     <string name="cloud_providers_mine">My account</string>

@@ -5,7 +5,7 @@ import HappyCore
 // words are shared with Android and desktop, word for word.
 extension Strings {
     enum Providers {
-        static let title = "AI providers"
+        static let title = "Inference"
         static let included = "Included"
         static let team = "Team"
         static let mine = "My account"

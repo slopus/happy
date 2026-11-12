@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_group_agents">Agenti</string>
+    <string name="settings_group_team">Team</string>
+</resources>

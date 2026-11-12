@@ -357,6 +357,26 @@ win:
   `agentSettingsIndex()` (iOS's `SettingsIndex.computer`):
   `openAgentSettingsRow` opens the agent's Settings or Appearance page with
   `reveal`, or Chief of Staff with the ask for name and avatar.
+- **Settings › Usage** (`ui/connection/AgentUsage.kt`, every agent
+  connection; the last row of AGENTS) is desktop's
+  HappyAgentUsageSettings and UsageActivityGrid. Read on opening and every
+  minute while open: `GET /v0/usage` (`UsageAccount.parse`: plan windows
+  and each model's day, week and month tokens) and, behind
+  `DailyUsageSource` (`agent/UsageHistory.kt`), `GET
+  /v0/usage/daily?days=371&tz=<zone>`. The live source answers null on any
+  failure and, after a 404, never asks that connection again; a failed
+  read keeps what was shown. The year grid (the later of `since` and
+  today−364, through today) is weeks as columns, Monday on top, 10 cells
+  on a 12 pitch, levels the quartiles of its own non-zero days
+  (`activityLevels`), the link colour at 25/45/70/100%; tokens are input +
+  output + cacheWrite. It scrolls sideways and opens on today; a tapped
+  cell shows a callout (date with year, tokens, top three models, or "No
+  usage"). Then services and their accounts, most history tokens first:
+  each with its 30-day strip (only if it spent), week and session rows,
+  "Updated …", and one line per model that spent. Nothing failed is ever
+  put into words: no error text, and an account with no windows, no
+  model tokens and no history is left out (`usageVendors`).
+  `UsageFixtures` is the test and shot data (`UsageShots`).
 - **Agent home search** looks and moves as iOS's
   (`HappyCore/Agents/Search.swift`, `SearchShown.swift`,
   `ui/connection/AgentSearch.kt`) and lists what desktop's ⌘K palette

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Settings › Usage: the activity grid and each account's windows and models. -->
+    <string name="usage_title">Использование</string>
+    <string name="usage_activity">Активность</string>
+    <string name="usage_tokens_year">%1$s токенов за последний год</string>
+    <string name="usage_tokens_since">%1$s токенов с %2$s</string>
+    <string name="usage_tokens_count">%1$s токенов</string>
+    <string name="usage_one_token">1 токен</string>
+    <string name="usage_no_usage">Не использовалось</string>
+    <string name="usage_left">Осталось %1$d%%</string>
+    <string name="usage_window_day">%1$s за день</string>
+    <string name="usage_window_week">%1$s за неделю</string>
+    <string name="usage_window_month">%1$s за месяц</string>
+    <string name="usage_empty_title">Пока ничего</string>
+    <string name="usage_empty_detail">Аккаунт появится здесь, как только сообщит о своём тарифе или потратит токены.</string>
+    <string name="usage_grid_label">Токены по дням</string>
+    <string name="usage_strip_label">Токены %1$s по дням</string>
+</resources>

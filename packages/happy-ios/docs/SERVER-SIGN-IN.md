@@ -484,7 +484,7 @@ ported from happy-agent-client's `happyLinks.ts`.
   agent's message one is drawn as a link and opens where
   `SettingsLinkPlace` says: `general` Settings, `account` Profile, `voice`
   the computer's Voice row, `servers` Happy Cloud's servers (Settings off
-  Happy Cloud). `providers` opens the native AI providers list on Cloud.
+  Happy Cloud). `providers` opens the native Inference list (the AI providers) on Cloud.
   Its `add` chooser offers the server's ChatGPT sign-in, a Claude setup
   token when enabled (Claude's only way in: no browser sign-in, whatever
   the server says), and OpenAI, Anthropic and Grok API keys.

@@ -97,7 +97,7 @@ final class HostedComputeMonitoringTests: XCTestCase {
         let navigation = try await host(settings)
         XCTAssertNotNil(settings.shownRow("computes"))
         // The last row of Data and Storage's card, not a card of its own.
-        XCTAssertEqual(settings.shownRowIDs.first { $0.contains("data-storage") }?.last, "computes", "\(settings.shownRowIDs)")
+        XCTAssertEqual(settings.shownRowIDs.first { $0.contains("computes") }, ["agents", "providers", "computes", "usage"], "Compute follows Inference in Agents, Usage closes it: \(settings.shownRowIDs)")
         SettingsLinks.open(.computes, session: session, from: settings)
         try await until { navigation.topViewController is ComputeViewController && navigation.transitionCoordinator == nil }
         let page = try XCTUnwrap(navigation.topViewController as? ComputeViewController)

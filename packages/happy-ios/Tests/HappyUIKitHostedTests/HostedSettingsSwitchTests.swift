@@ -272,7 +272,7 @@ final class HostedSettingsSwitchTests: XCTestCase {
         XCTAssertEqual(settings.shownProfileID, app.first)
 
         let legs: [(UIUserInterfaceStyle, String, String, Bool, UIViewController.Type, [String])] = [
-            (.light, app.first, connection, true, AgentHomeViewController.self, ["profile"]),
+            (.light, app.first, connection, true, AgentHomeViewController.self, ["appearance", "profile", "agent-voice", "data-storage"]),
             (.dark, connection, app.first, false, LegacyHomeViewController.self, ["account", "backup-restore"]),
         ]
         for (style, from, to, computer, kind, second) in legs {
@@ -336,7 +336,7 @@ final class HostedSettingsSwitchTests: XCTestCase {
         XCTAssertFalse(search.isActive, "search is still open")
         XCTAssertFalse(settings.navigationItem.hidesBackButton, "back is still aside")
         XCTAssertEqual(settings.shownRowIDs.first?.last, SettingsIndex.connectAgent.id, "the page is still search's")
-        XCTAssertEqual(settings.shownRowIDs.dropFirst().first, ["profile"])
+        XCTAssertEqual(settings.shownRowIDs.dropFirst().first, ["appearance", "profile", "agent-voice", "data-storage"])
 
         let replaced = try await until { self.homeAccount(app.navigation) == connection }
         XCTAssertTrue(replaced, "home was never replaced: \(app.navigation.viewControllers)")

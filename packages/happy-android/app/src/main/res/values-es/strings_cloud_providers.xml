@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="cloud_providers_title">Proveedores de IA</string>
+    <string name="cloud_providers_title">Inferencia</string>
     <string name="cloud_providers_included">Incluido</string>
     <string name="cloud_providers_team">Equipo</string>
     <string name="cloud_providers_mine">Mi cuenta</string>

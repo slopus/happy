@@ -290,6 +290,8 @@ struct SettingsRow {
     var toggled: ((Bool) -> Void)?
     /// The line under this row's card, said by the card's last row.
     var footer: String?
+    /// On a card's first row: the group's name over the card.
+    var header: String?
     /// A block of text the card's width (a secret key), in monospace.
     var isCode = false
     /// Quieter, for a row that can't be used here.
@@ -381,6 +383,11 @@ final class SettingsCardView: UIView {
     /// Each card's footer, its last row's, measured at the page's `width`.
     static func footers(_ cards: [[SettingsRow]], width: CGFloat) -> [CGFloat?] {
         cards.map { card in card.last?.footer.map { height($0, font: SettingsFooters.font, width: SettingsLayout.footerWidth(width)) } }
+    }
+
+    /// Each card's header, its first row's, as it is drawn: one line.
+    static func headers(_ cards: [[SettingsRow]]) -> [CGFloat?] {
+        cards.map { card in card.first?.header.map { _ in ceil(SettingsFooters.font.lineHeight) } }
     }
 
     private static func height(_ text: String, font: UIFont, width: CGFloat) -> CGFloat {
@@ -628,17 +635,24 @@ final class SettingsCardView: UIView {
     }
 }
 
-/// The lines under settings' cards, each where the layout put it.
+/// The lines under settings' cards, each where the layout put it; or, as
+/// `headers`, the group names over them, in capitals as iOS writes them.
 final class SettingsFooters {
     static let font = Fonts.ui(.regular, size: 13)
     private weak var container: UIView?
     private var labels: [UILabel] = []
+    private let headers: Bool
 
-    init(in container: UIView) { self.container = container }
+    init(in container: UIView, headers: Bool = false) {
+        self.container = container
+        self.headers = headers
+    }
 
-    /// `texts` by card, at `layout`'s footer frames.
+    /// `texts` by card, at `layout`'s footer (or header) frames.
     func show(_ texts: [String?], layout: [SettingsLayout.Card]) {
-        let shown = zip(texts, layout).compactMap { text, card in text.flatMap { text in card.footer.map { (text, $0) } } }
+        let shown = zip(texts, layout).compactMap { text, card in
+            text.flatMap { text in (headers ? card.header : card.footer).map { (headers ? text.uppercased() : text, $0) } }
+        }
         while labels.count < shown.count {
             let label = UILabel()
             label.font = Self.font

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- An agent connection's settings groups: desktop's sidebar headers (AppHappyAgentSettingsView), word for word; the phones have no Advanced. -->
+    <string name="settings_group_agents">Agents</string>
+    <string name="settings_group_team">Team</string>
+</resources>

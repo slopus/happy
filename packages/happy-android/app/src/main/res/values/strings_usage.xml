@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Settings › Usage: the activity grid and each account's windows and models. -->
+    <string name="usage_title">Usage</string>
+    <string name="usage_activity">Activity</string>
+    <string name="usage_tokens_year">%1$s tokens in the last year</string>
+    <string name="usage_tokens_since">%1$s tokens since %2$s</string>
+    <string name="usage_tokens_count">%1$s tokens</string>
+    <string name="usage_one_token">1 token</string>
+    <string name="usage_no_usage">No usage</string>
+    <string name="usage_left">%1$d%% left</string>
+    <string name="usage_window_day">%1$s day</string>
+    <string name="usage_window_week">%1$s week</string>
+    <string name="usage_window_month">%1$s month</string>
+    <string name="usage_empty_title">No usage yet</string>
+    <string name="usage_empty_detail">Once an account reports its plan or spends tokens, it appears here.</string>
+    <string name="usage_grid_label">Tokens used each day</string>
+    <string name="usage_strip_label">Tokens %1$s used each day</string>
+</resources>

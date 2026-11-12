@@ -246,9 +246,9 @@ final class HappyCloudUITests: XCTestCase {
         let gear = app.buttons["settings"].firstMatch
         require(gear.waitForExistence(timeout: 5), "no settings on the home")
         gear.tap()
-        let row = app.descendants(matching: .any).matching(NSPredicate(format: "label == 'AI providers'")).firstMatch
+        let row = app.descendants(matching: .any).matching(NSPredicate(format: "label == 'Inference'")).firstMatch
         for _ in 0..<4 where !row.isHittable { app.swipeUp() }
-        require(row.waitForExistence(timeout: 10), "no AI providers in Settings")
+        require(row.waitForExistence(timeout: 10), "no Inference in Settings")
         capture("40-settings")
         row.tap()
         let free = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Happy (free)'")).firstMatch

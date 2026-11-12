@@ -23,6 +23,22 @@ final class SettingsFooterLayoutTests: XCTestCase {
         XCTAssertEqual(layout.contentHeight, 236 + 32)
     }
 
+    /// Desktop's group names over their cards: the header where the card
+    /// would have started, inset as a footer, the card 8 under it.
+    func testAHeaderSitsOverItsCardAndPushesItDown() {
+        let row = L.RowSpec(hasIcon: true, accessory: .chevron)
+        let layout = L(width: 402, nameHeight: 0, subtitleHeight: 0, cards: [[row], [row, row], [row]], headers: [nil, 18, 0], searching: true)
+        XCTAssertNil(layout.cards[0].header)
+        XCTAssertEqual(layout.cards[0].frame, CGRect(x: 16, y: 8, width: 370, height: 52))
+        // A card's gap under the first, then the header, then 8, then the card.
+        XCTAssertEqual(layout.cards[1].header, CGRect(x: 32, y: 84, width: 338, height: 18))
+        XCTAssertEqual(layout.cards[1].frame, CGRect(x: 16, y: 110, width: 370, height: 104))
+        // A zero height is no header.
+        XCTAssertNil(layout.cards[2].header)
+        XCTAssertEqual(layout.cards[2].frame.minY, 238)
+        XCTAssertEqual(layout.contentHeight, 290 + 32)
+    }
+
     func testTheLastCardsFooterEndsThePage() {
         let row = L.RowSpec(hasIcon: false, accessory: .none)
         let layout = L(width: 402, nameHeight: 0, subtitleHeight: 0, cards: [[row]], footers: [60], searching: true)

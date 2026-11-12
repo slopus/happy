@@ -69,6 +69,18 @@ class SettingsShots {
         )
     }
 
+    /** A Happy Cloud server's: every group desktop's sidebar has that a phone does. */
+    private val cloud: @Composable () -> Unit = {
+        AgentConnectionSettingsScreen(
+            SettingsProfile("agent-connection-1", "@acme", "Connected"),
+            AccountMenu(listOf(AccountMenuEntry("agent-connection-1", "@acme", agent = true, active = true))),
+            AgentSettingsActions(onDataStorage = {}, onSharing = {}, onAgents = {}, onMembers = {}, onProviders = {}, onComputePools = {}, onNotifications = {}),
+            AboutInfo("1.8.0 (412)"),
+            person = AgentPerson("Steve"),
+        )
+    }
+
+    @Test fun cloudLight() = shot("settings-cloud", content = cloud)
     @Test fun happyLight() = shot("settings-happy", content = happy)
     @Test fun happyDark() = shot("settings-happy-dark", dark = true, content = happy)
     @Test fun agentLight() = shot("settings-agent", content = agent)

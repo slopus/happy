@@ -155,6 +155,13 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
             agentFeed = AgentFeedHarness(window: window, arguments: arguments)
             return
         }
+        // Settings › Usage over made-up readings (`-usageHistory year|recent|none|unsupported`,
+        // `-usageTapsDay` to tell a day).
+        if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "usage" {
+            let history = arguments.firstIndex(of: "-usageHistory").flatMap { arguments.indices.contains($0 + 1) ? UsagePreview.History(rawValue: arguments[$0 + 1]) : nil }
+            window.rootViewController = UsagePreview.make(history: history ?? .year, tapsDay: arguments.contains("-usageTapsDay"))
+            return
+        }
         if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "cloud" {
             cloud = CloudHarness(window: window, arguments: arguments)
             return

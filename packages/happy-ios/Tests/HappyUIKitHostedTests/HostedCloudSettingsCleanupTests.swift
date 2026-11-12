@@ -125,6 +125,49 @@ final class HostedCloudSettingsCleanupTests: XCTestCase {
         XCTAssertEqual(page.shownFooters, [Strings.SettingsAccount.privacyDescription])
     }
 
+    /// The AI providers row and its page read Inference, desktop's word;
+    /// its id stays `providers`, which links and search keep.
+    func testTheProvidersRowReadsInference() async throws {
+        let (context, id) = try await rig(server: HappyCloud.server(named: "settings-test"))
+        let settings = SettingsViewController(context: context, computer: id)
+        let navigation = try await host(settings)
+        XCTAssertEqual(settings.shownRow(SettingsIndex.providers.id)?.title, "Inference", "\(settings.shownRowIDs)")
+        settings.tapRow(SettingsIndex.providers.id)
+        try await until { navigation.topViewController is ProvidersViewController && navigation.transitionCoordinator == nil }
+        XCTAssertEqual(navigation.topViewController?.title, "Inference")
+    }
+
+    /// Desktop's sidebar, group for group: the unheaded first group
+    /// (Appearance, Profile, Voice, Data and Storage), then Agents (the
+    /// Agents row, then Inference and Compute on Cloud only); the phone's
+    /// own cards where they were.
+    func testSettingsAreGroupedAsDesktopsSidebar() async throws {
+        for (server, agentsGroup) in [(HappyCloud.server(named: "settings-test"), true), ("https://self-hosted.example", false), (nil, false)] {
+            let (context, id) = try await rig(server: server)
+            let settings = SettingsViewController(context: context, computer: id)
+            let navigation = try await host(settings)
+            let cards = settings.shownRowIDs
+            if let window = navigation.view.window, let scroll = settings.view.subviews.compactMap({ $0 as? UIScrollView }).first {
+                // The groups, for a person to look at: the page scrolled to its first group.
+                scroll.setContentOffset(CGPoint(x: 0, y: 330 - scroll.adjustedContentInset.top), animated: false)
+                window.layoutIfNeeded()
+                let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+                let shot = XCTAttachment(image: image)
+                shot.name = "settings-groups-\(agentsGroup ? "cloud" : server == nil ? "paired" : "self-hosted")"
+                shot.lifetime = .keepAlways
+                add(shot)
+            }
+            let first = try XCTUnwrap(cards.firstIndex { $0.contains(SettingsIndex.appearance.id) }, "\(server ?? "paired"): \(cards)")
+            XCTAssertEqual(cards[first], [SettingsIndex.appearance.id, SettingsIndex.profile.id, SettingsIndex.agentVoice.id, SettingsIndex.dataStorage.id])
+            XCTAssertEqual(cards[first + 1], [SettingsIndex.supportBoba.id])
+            XCTAssertEqual(cards[first + 2].first, SettingsIndex.agents.id)
+            XCTAssertEqual(cards[first + 2].contains(SettingsIndex.providers.id), agentsGroup, "\(cards)")
+            XCTAssertEqual(settings.shownHeaders, ["AGENTS"])
+            XCTAssertEqual(cards[first + 3], [SettingsIndex.privacySettings.id])
+            XCTAssertEqual(cards.last, ["disconnect"])
+        }
+    }
+
     func testLocalSearchKeepsThePolicyVaultLock() async throws {
         let (context, id) = try await rig(server: HappyCloud.server(named: "settings-test"))
         let home = HomeViewController(context: context, computer: id)
