@@ -111,7 +111,6 @@ extension Strings {
     public static let newWorkTask = "Task"
     public static let newWorkBot = "Bot"
     public static let newWorkName = "Name (optional)"
-    public static let newWorkTaskNote = "A task names itself from its first message unless you name it."
     public static let newWorkBotNote = "A bot is one lasting conversation with a folder of its own."
 
     // The working line (AgentWorkingStatus.tsx, happyAgentConnection's `activityOf`).

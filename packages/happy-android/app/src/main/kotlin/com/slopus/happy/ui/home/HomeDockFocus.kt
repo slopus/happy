@@ -75,6 +75,8 @@ import com.slopus.happy.model.resolveStartButton
 import com.slopus.happy.model.resolveStartProgress
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.StateArt
+import com.slopus.happy.ui.chat.NewWorkArtAbove
 import com.slopus.happy.ui.components.PickerSheetOption
 import com.slopus.happy.ui.components.PopupMotion
 import com.slopus.happy.ui.components.PickerSheetPanel
@@ -219,6 +221,8 @@ fun HomeDockFocus(state: HomeDockState, actions: HomeDockActions, modifier: Modi
                 .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars)),
         ) {
             if (state.bot != null && standalone) {
+                // A bot stands under the robot, in the room over the header, at the size that room allows.
+                if (state.creatingBot) NewWorkArtAbove(StateArt.Ready, Modifier.weight(1f))
                 BotKindHeader(
                     state.creatingBot,
                     onChange = { bot -> if (starting) refuse() else actions.onBotKindChange(bot) },

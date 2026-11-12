@@ -27,6 +27,8 @@ final class StateSceneTests: XCTestCase {
         .podcastMic: "f90db7a207596916bc5c0b22db6e3ca40f2e24008b015bc654ee1aa5ff724284",
         // The 🎟️ sticker supplied for the empty Artifacts list (PROVENANCE.md).
         .tickets: "8715ac66cadbd7cba548b81f7366e190592a7c515811c0df69d65ac8e9db51d4",
+        // The 🎬 sticker Kirill supplied for new work's Task (PROVENANCE.md).
+        .clapperBoard: "321f9dfe9e03985a6da6168300fcea7f1d9f886bc111c38fd78043f4fc2244ae",
         // Desktop's, for Happy Cloud's welcome (PROVENANCE.md).
         .closedLock: "f6087f51de1ccc7dea5cfb9853292bc14271e86e9390a8fbc9514b31b32a0ad8",
         .openHands: "7b5b9d98156057d2fb4cb895f0a462e943942be190dd0a302935e2ef306420b4",

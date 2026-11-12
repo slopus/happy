@@ -244,28 +244,26 @@ final class NewWorkUITests: XCTestCase {
 
     func testTaskOrBotIsMadeAsChosen() {
         launch()
-        // A task, named.
+        // A task asks no name: its first message names it.
         compose()
         let name = app.textFields["new-work-name"]
-        XCTAssertTrue(name.waitForExistence(timeout: 5))
-        name.tap()
-        name.typeText("Billing cleanup")
-        XCTAssertEqual(traced()["responder"], "name")
-        composer.tap()
+        XCTAssertTrue(app.segmentedControls["new-work-kind"].waitForExistence(timeout: 5))
+        XCTAssertFalse(name.exists, "a task asks no name")
         XCTAssertEqual(traced()["responder"], "composer")
         composer.typeText("Audit the exports")
         sendWhenStill()
-        XCTAssertTrue(app.navigationBars.staticTexts["Billing cleanup"].waitForExistence(timeout: 10), "the task wasn't named as given")
+        XCTAssertTrue(app.navigationBars.staticTexts["Audit the exports"].waitForExistence(timeout: 10), "the task wasn't named by its first message")
         XCTAssertTrue(app.keyboards.firstMatch.exists, "the keyboard went down with the first message")
-        XCTAssertFalse(app.textFields["new-work-name"].isHittable, "the panel stayed up")
-        capture("new-work-task-named")
+        XCTAssertFalse(app.segmentedControls["new-work-kind"].isHittable, "the panel stayed up")
+        capture("new-work-task")
         app.navigationBars.buttons.firstMatch.tap()
-        XCTAssertTrue(row("Billing cleanup").waitForExistence(timeout: 10))
+        XCTAssertTrue(row("Audit the exports").waitForExistence(timeout: 10))
 
         // A bot, unnamed: its first message names it.
         compose()
-        XCTAssertEqual(name.value as? String, name.placeholderValue, "the next new work kept the last one's name")
         app.segmentedControls["new-work-kind"].buttons["Bot"].tap()
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        XCTAssertEqual(name.value as? String, name.placeholderValue, "the next new work kept the last one's name")
         capture("new-work-bot")
         composer.tap()
         composer.typeText("Watch the release")
@@ -325,16 +323,17 @@ final class NewWorkUITests: XCTestCase {
     /// The panel's middle against the bar's foot and the composer's top,
     /// as the screen shows them.
     private func assertCentredOnScreen(line: UInt = #line) {
+        // A task's block is its picture, where there is room, over the kind.
         let panel = home == .grouped
-            ? app.segmentedControls["new-work-kind"].frame.union(app.textFields["new-work-name"].frame)
+            ? [app.descendants(matching: .any)["new-work-art"], app.segmentedControls["new-work-kind"]].filter(\.exists).map(\.frame).reduce(CGRect.null) { $0.union($1) }
             : [app.buttons["new-work-machine"], app.buttons["new-work-folder"]].filter(\.exists).map(\.frame).reduce(CGRect.null) { $0.union($1) }
         let bar = app.navigationBars.firstMatch.frame
         // Legacy's card is the composer text view's: its edge is the room's.
         let input = home == .grouped ? app.otherElements["input"].frame : composer.frame
         XCTAssertGreaterThan(panel.minY, bar.maxY, line: line)
         XCTAssertLessThan(panel.maxY, input.minY, line: line)
-        // The control and field are the block's top; its note runs under
-        // them, so the block's middle is a little below theirs.
+        // A legacy block's note runs under its rows, so the block's middle
+        // is a little below theirs.
         let room = (bar.maxY + input.minY) / 2
         XCTAssertEqual(panel.midY, room, accuracy: 40, "the panel isn't in the middle: \(panel) between \(bar.maxY) and \(input.minY)", line: line)
     }

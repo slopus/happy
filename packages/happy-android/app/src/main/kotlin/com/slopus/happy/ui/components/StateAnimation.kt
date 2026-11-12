@@ -51,7 +51,9 @@ import com.slopus.happy.ui.theme.happyTextStyle
  * happy-app animations. [Tickets] is not desktop's: a Telegram sticker
  * (`"tgs": 1`, in-point 60) Steve chose for the Artifacts list, kept as
  * given; Lottie's progress runs from its in-point, so it starts at frame
- * 60. Errors, offline, a search that found nothing and
+ * 60. [Action] is not desktop's either: the 🎬 Telegram sticker Kirill chose
+ * for new work's Task, gunzipped and kept as given (happy-ios
+ * `Resources/Animations/PROVENANCE.md`). Errors, offline, a search that found nothing and
  * small inline tiles get no picture, as on desktop: a glyph at most.
  * Waiting has none either (desktop's snail): a read shows the platform's
  * spinner ([LoadingIndicator]).
@@ -71,6 +73,9 @@ enum class StateArt(@RawRes val raw: Int) {
 
     /** Nothing made to keep yet: the empty Artifacts list (yellow ticket, `8715ac66…`). */
     Tickets(R.raw.state_tickets),
+
+    /** A task about to be made: over new work's Task, as a bot stands under [Ready] (clapper board, `321f9dfe…`). */
+    Action(R.raw.state_clapper_board),
 }
 
 object StateAnimationTags {

@@ -8,14 +8,19 @@ import UIKit
 /// (`NewWorkLayout`), on both homes. The composer stays where it is, and
 /// its first message makes what was chosen here.
 ///
-/// - `.work` (Happy Agent): Task (the default) or Bot, an optional name,
-///   and a line saying what that kind is. Desktop asks a bot's name the
-///   same way ("generated if left blank"); here a task's too.
+/// - `.work` (Happy Agent): Task (the default) or Bot. A bot takes an
+///   optional name and a line saying what it is, as desktop asks it
+///   ("generated if left blank"); a task asks nothing and names itself
+///   from its first message, as one sent with a blank name always has.
 /// - `.session` (a legacy account): the computer, shown only when the
 ///   account has more than one, the folder on it, and the harness. Where
 ///   the computer's Happy Agent makes bots or tasks, Session | Bot | Task
 ///   heads it, as home's dock did: a task asks only the computer, a bot
 ///   the computer and its name, which it can't go without.
+///
+/// A bot stands under the robot and a task under the clapper board, the
+/// empty states' 128 (`NewWorkLayout.Metrics.art`). Each plays once as its
+/// kind is picked, and again on a tap; a session has none.
 final class NewWorkPanel: UIView, UITextFieldDelegate {
     enum Mode {
         case work
@@ -31,6 +36,9 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
     let folder = NewWorkMenuRow(icon: .ionicons("folder-outline"))
     let harness = NewWorkMenuRow(icon: .ionicons("hardware-chip-outline"))
     private let note = UILabel()
+    let art = StateSceneView(scene: .clapperBoard, size: NewWorkLayout.Metrics.art, replayLabel: Strings.Tablet.replayIllustration)
+    /// The kind's picture; nil for a session.
+    private(set) var artScene: StateScene?
 
     /// `.session`: why the bot's name is refused, until it is typed into:
     /// a red edge on the field and the reason, in red, in place of its
@@ -66,11 +74,16 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
     var onBotName: ((String) -> String)?
 
     var choice: NewTask.Choice {
-        get { NewTask.Choice(kind: kind.selectedSegmentIndex == 1 ? .bot : .task, name: name.text ?? "") }
+        get {
+            let bot = kind.selectedSegmentIndex == 1
+            // A task is never named here: it goes as a blank name does.
+            return NewTask.Choice(kind: bot ? .bot : .task, name: bot ? name.text ?? "" : "")
+        }
         set {
             kind.selectedSegmentIndex = newValue.kind == .bot ? 1 : 0
-            if name.text != newValue.name { name.text = newValue.name }
+            if newValue.kind == .bot, name.text != newValue.name { name.text = newValue.name }
             showNote()
+            showArt(newValue.kind == .bot ? .robot : .clapperBoard)
         }
     }
 
@@ -114,6 +127,7 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
         harness.isHidden = current != .session
         field.isHidden = current != .bot
         note.isHidden = current != .bot
+        showArt(Self.art(current))
         if current != .bot { validation = nil }
         if current != .bot, name.isFirstResponder { onReturn?() }
         superview?.setNeedsLayout()
@@ -139,6 +153,9 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
         note.textColor = UIColor(Palette.textSecondary)
         note.textAlignment = .center
         note.numberOfLines = 0
+        art.accessibilityIdentifier = "new-work-art"
+        art.isHidden = true
+        addSubview(art)
         field.addSubview(name)
         switch mode {
         case .work:
@@ -147,6 +164,7 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
             name.autocapitalizationType = .sentences
             for view in [kind, field, note] { addSubview(view) }
             showNote()
+            showArt(.clapperBoard)
         case .session:
             kind.accessibilityLabel = Strings.Home.composerKindLabel
             kind.removeAllSegments()
@@ -197,26 +215,29 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
         case .work:
             return NewWorkLayout(
                 width: width, sides: sides, top: top, bottom: bottom,
-                kindHeight: kind.intrinsicContentSize.height, rows: 1,
-                note: measuredNote
+                kindHeight: kind.intrinsicContentSize.height, rows: field.isHidden ? 0 : 1,
+                note: note.isHidden ? nil : measuredNote, art: artScene != nil
             )
         case .session:
             return NewWorkLayout(
                 width: width, sides: sides, top: top, bottom: bottom,
                 kindHeight: kind.isHidden ? nil : kind.intrinsicContentSize.height,
                 givingWay: sessionRows.count,
-                note: note.isHidden ? nil : measuredNote
+                note: note.isHidden ? nil : measuredNote, art: artScene != nil
             )
         }
     }
 
     func place(_ layout: NewWorkLayout) {
         frame = layout.block
+        // Short of room the picture shrinks, then goes; it never moves what is asked.
+        art.isHidden = artScene == nil || layout.art == nil
+        if let frame = layout.art { art.frame = frame }
         if let frame = layout.kind { kind.frame = frame }
         if let frame = layout.note { note.frame = frame }
         switch mode {
         case .work:
-            field.frame = layout.rows[0]
+            if let frame = layout.rows.first { field.frame = frame }
         case .session:
             for (row, frame) in zip(sessionRows, layout.rows) { row.frame = frame }
             // Short of room the note gives way first (`NewWorkLayout`).
@@ -228,7 +249,7 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
     /// Only the controls take touches: a drag anywhere else is the
     /// transcript's, which takes the keyboard down.
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
-        let controls: [UIView] = mode == .work ? [kind, field] : [kind, machine, folder, harness, field]
+        let controls: [UIView] = mode == .work ? [art, kind, field] : [art, kind, machine, folder, harness, field]
         return controls.contains { !$0.isHidden && $0.frame.insetBy(dx: -8, dy: -8).contains(point) }
     }
 
@@ -254,12 +275,37 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
         }
     }
 
+    /// `.work`: a bot's name and what a bot is; a task has neither.
     private func showNote() {
-        let text = kind.selectedSegmentIndex == 1 ? Strings.newWorkBotNote : Strings.newWorkTaskNote
-        if note.text != text {
-            note.text = text
-            superview?.setNeedsLayout()
+        let bot = kind.selectedSegmentIndex == 1
+        if note.text != Strings.newWorkBotNote { note.text = Strings.newWorkBotNote }
+        guard field.isHidden == bot else { return }
+        field.isHidden = !bot
+        note.isHidden = !bot
+        if !bot, name.isFirstResponder { onReturn?() }
+        superview?.setNeedsLayout()
+    }
+
+    private static func art(_ kind: HomeDockKind) -> StateScene? {
+        switch kind {
+        case .session: nil
+        case .bot: .robot
+        case .task: .clapperBoard
         }
+    }
+
+    /// The kind's picture, played once as the kind is picked: a new scene
+    /// plays as it arrives, the one already there plays again.
+    private func showArt(_ scene: StateScene?) {
+        guard scene != artScene else { return }
+        artScene = scene
+        superview?.setNeedsLayout()
+        guard let scene else {
+            art.isHidden = true
+            return
+        }
+        art.isHidden = false
+        if art.scene != scene { art.scene = scene } else { art.replay() }
     }
 
     @objc private func kindChanged() {
@@ -267,6 +313,7 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
         switch mode {
         case .work:
             showNote()
+            showArt(kind.selectedSegmentIndex == 1 ? .robot : .clapperBoard)
             onChange?(choice)
         case .session:
             guard sessionKinds.indices.contains(kind.selectedSegmentIndex) else { return }

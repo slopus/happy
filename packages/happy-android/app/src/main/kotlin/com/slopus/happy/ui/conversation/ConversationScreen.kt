@@ -82,6 +82,7 @@ import com.slopus.happy.conversation.NewWork
 import com.slopus.happy.conversation.WorkChoice
 import com.slopus.happy.ui.chat.NewWorkChoicePanel
 import com.slopus.happy.ui.chat.NewWorkRoom
+import com.slopus.happy.ui.chat.art
 import com.slopus.happy.ui.chat.MessageCallbacks
 import com.slopus.happy.ui.chat.SessionStatusColors
 import com.slopus.happy.ui.chat.PrimaryAction
@@ -543,12 +544,12 @@ fun ConversationScreen(
                             TranscriptPhase.Rows -> Transcript(state, listState, bubble, rowActions, actions.onLoadOlder, top, dockHeight, glass, keyboard, flight, folds)
                         }
                     }
-                    // New work: Task or Bot and a name, centred between the bar and the composer, riding the
-                    // keyboard with it; it fades once the work is made.
+                    // New work: Task or Bot and a name under the kind's picture, centred between the bar and the
+                    // composer, riding the keyboard with it; it fades once the work is made.
                     // As last chosen, for the fade after it is made.
                     val last = remember { arrayOfNulls<NewWork>(1) }
                     (state.newWork?.also { last[0] = it } ?: last[0])?.let { shown ->
-                        NewWorkRoom(state.newWork != null, Modifier.riding(keyboard, 0.5f).padding(top = barFoot).keyboardPadding(keyboard, dockHeight)) {
+                        NewWorkRoom(state.newWork != null, Modifier.riding(keyboard, 0.5f).padding(top = barFoot).keyboardPadding(keyboard, dockHeight), art = shown.choice.kind.art) {
                             NewWorkChoicePanel(shown, onChange = actions.onChoiceChange, onReturn = { nameReturns++ })
                         }
                     }

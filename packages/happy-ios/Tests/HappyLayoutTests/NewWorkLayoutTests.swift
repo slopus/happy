@@ -173,4 +173,60 @@ final class NewWorkLayoutTests: XCTestCase {
         XCTAssertEqual(layout.block.height, 3 * M.rowHeight + 2 * M.rowGap)
         XCTAssertEqual(layout.block.midY, (106 + 420) / 2, accuracy: 0.001)
     }
+
+    // MARK: The kind's picture
+
+    /// With room the picture stands centred over the kind, an empty
+    /// state's 128 and 16 above it, and the block keeps centring as one.
+    func testThePictureStandsOverTheKind() throws {
+        let layout = NewWorkLayout(width: 393, top: 106, bottom: 760, kindHeight: 32, rows: 1, note: note, art: true)
+        XCTAssertTrue(layout.fits)
+        XCTAssertEqual(layout.art, CGRect(x: (320 - 128) / 2, y: 0, width: 128, height: 128))
+        let shift = 128 + M.artToKind
+        XCTAssertEqual(try XCTUnwrap(layout.kind).minY, shift)
+        XCTAssertEqual(layout.rows[0].minY, shift + 32 + M.kindToRows)
+        XCTAssertEqual(layout.block.height, try XCTUnwrap(layout.note).maxY)
+        XCTAssertEqual(layout.block.midY, (106 + 760) / 2, accuracy: 0.001)
+    }
+
+    /// A task asks nothing: its block is the picture and the kind, ending
+    /// at the kind so the pair centres as one.
+    func testATaskEndsAtItsKind() throws {
+        let layout = NewWorkLayout(width: 393, top: 106, bottom: 760, kindHeight: 32, rows: 0, note: nil, art: true)
+        XCTAssertTrue(layout.rows.isEmpty)
+        XCTAssertEqual(layout.block.height, try XCTUnwrap(layout.kind).maxY)
+        XCTAssertEqual(layout.block.height, 128 + M.artToKind + 32)
+        XCTAssertEqual(layout.block.midY, (106 + 760) / 2, accuracy: 0.001)
+    }
+
+    /// Short of room it shrinks to 96, then 64, then goes, and what the
+    /// block asks and says stays as it was.
+    func testShortOfRoomThePictureShrinksThenGoes() {
+        let height = 32 + M.kindToRows + M.rowHeight + M.rowsToNote + 40
+        for side: CGFloat in [96, 64] {
+            let layout = NewWorkLayout(width: 393, top: 100, bottom: 100 + height + side + M.artToKind + 2 * M.margin, kindHeight: 32, rows: 1, note: note, art: true)
+            XCTAssertEqual(layout.art?.width, side)
+            XCTAssertNotNil(layout.note, "\(side): the note stays")
+        }
+        let none = NewWorkLayout(width: 393, top: 100, bottom: 100 + height + 64 + M.artToKind + 2 * M.margin - 1, kindHeight: 32, rows: 1, note: note, art: true)
+        XCTAssertNil(none.art)
+        XCTAssertTrue(none.fits)
+        XCTAssertEqual(none, work(top: 100, bottom: 100 + height + 64 + M.artToKind + 2 * M.margin - 1))
+    }
+
+    /// A legacy account's bot: the robot shrinks and goes before the note.
+    func testABotsPictureGivesWayBeforeTheNote() throws {
+        let full = NewWorkLayout(width: 393, top: 103, bottom: 760, kindHeight: 32, givingWay: 2, note: botNote, art: true)
+        XCTAssertEqual(full.art?.width, 128)
+        XCTAssertEqual(try XCTUnwrap(full.kind).minY, 128 + M.artToKind)
+        XCTAssertTrue(full.showsNote)
+        let rows = 32 + M.kindToRows + 2 * M.rowHeight + M.rowGap + M.rowsToNote + 72
+        let small = NewWorkLayout(width: 393, top: 103, bottom: 103 + rows + 64 + M.artToKind + 2 * M.margin, kindHeight: 32, givingWay: 2, note: botNote, art: true)
+        XCTAssertEqual(small.art?.width, 64)
+        XCTAssertTrue(small.showsNote)
+        let none = NewWorkLayout(width: 393, top: 103, bottom: 103 + rows + 2 * M.margin, kindHeight: 32, givingWay: 2, note: botNote, art: true)
+        XCTAssertNil(none.art)
+        XCTAssertTrue(none.showsNote, "the note outlasts the picture")
+        XCTAssertEqual(none, bot(bottom: 103 + rows + 2 * M.margin))
+    }
 }

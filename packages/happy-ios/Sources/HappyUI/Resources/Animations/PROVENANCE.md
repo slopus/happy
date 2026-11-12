@@ -107,6 +107,21 @@ a play from progress 0 starts at its in-point, frame 60. Its author and
 licence are **not verified**: confirm them before a release build ships it.
 Android ships the same bytes for its empty Artifacts list.
 
+## `clapper-board.json`, new work's Task
+
+Not desktop's, and not under `LICENSE` here. Supplied by Kirill on 11
+November 2026 for new work's Task (`NewWorkPanel`, the `clapperBoard` scene;
+a bot stands under the robot) as a Telegram sticker file,
+`action for tasks.tgs` (SHA-256
+`764ae6522784fb6ed9dcc7a40674216b79f11756046e2fc625f3df03c84868ad`), and
+committed as that file gunzipped, byte for byte ("Clapper Board", 512×512,
+60 fps, frames 0–151; SHA-256
+`321f9dfe9e03985a6da6168300fcea7f1d9f886bc111c38fd78043f4fc2244ae`). Its
+`"tgs":1` key stays, as the other stickers' do. Its author and licence are
+**not verified**: confirm them before a release build ships it.
+`packages/happy-android/app/src/main/res/raw/state_clapper_board.json` is the
+same bytes.
+
 ## `record-bin.json`, a cancelled recording
 
 Not desktop's, and not under `LICENSE` here. Telegram-iOS's

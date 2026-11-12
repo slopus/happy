@@ -30,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -63,6 +64,8 @@ import com.slopus.happy.conversation.WorkChoice
 import com.slopus.happy.conversation.WorkKind
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.StateAnimation
+import com.slopus.happy.ui.components.StateArt
 import com.slopus.happy.ui.components.rememberReduceMotion
 import com.slopus.happy.ui.home.BotKindSpec
 import com.slopus.happy.ui.theme.HappyTheme
@@ -80,6 +83,8 @@ object NewWorkTags {
     const val MACHINE_STATUS = "newWork.machineStatus"
     const val FOLDER = "newWork.folder"
     const val HARNESS = "newWork.harness"
+    /** The kind's picture over the block. */
+    fun art(art: StateArt) = "newWork.art.${art.name}"
 }
 
 /** happy-ios NewWorkLayout's metrics and NewWorkPanel's type. */
@@ -105,20 +110,70 @@ object NewWorkSpec {
     const val FADE_MILLIS = 200
     val field = happyTextStyle(fontSize = 16)
     val note = happyTextStyle(fontSize = 13, lineHeight = 18)
+    /**
+     * The kind's picture over the block, an empty state's 128
+     * ([StateAnimation]'s), 16 over the kind. Short of room (the keyboard is
+     * up as the screen opens) it is the next of [artSizes], then none: it
+     * goes before anything the block asks or says (happy-ios NewWorkLayout).
+     */
+    val art = 128.dp
+    val artSizes = listOf(art, 96.dp, 64.dp)
+    val artToKind = 16.dp
 
     /** The block's width in a room [width] wide: 24 in from either side, at most 320. */
     fun blockWidth(width: Dp): Dp = minOf(maxWidth, width - side * 2).coerceAtLeast(0.dp)
 }
 
+/** The picture new work of this kind stands under: the robot for a bot, the clapper board for a task. */
+val WorkKind.art: StateArt
+    get() = when (this) {
+        WorkKind.Bot -> StateArt.Ready
+        WorkKind.Task -> StateArt.Action
+    }
+
+/**
+ * [art] as new work wears it: played once as its kind is picked (each pick
+ * is a new play; returning to a kind plays it again), and again on a tap.
+ */
+@Composable
+fun NewWorkArt(art: StateArt, modifier: Modifier = Modifier) {
+    Box(modifier.testTag(NewWorkTags.art(art))) {
+        key(art) { StateAnimation(art, size = NewWorkSpec.art) }
+    }
+}
+
+/** The largest of [NewWorkSpec.artSizes] whose picture and gap fit in [room] px beside [rest] px, or null. */
+private fun androidx.compose.ui.unit.Density.artSide(room: Int, rest: Int): Int? =
+    NewWorkSpec.artSizes.map { it.roundToPx() }.firstOrNull { room >= rest + it + NewWorkSpec.artToKind.roundToPx() }
+
+/**
+ * [art] at the foot of the room this fills, [NewWorkSpec.artToKind] over
+ * what follows: the largest of [NewWorkSpec.artSizes] that leaves a margin
+ * over it, else nothing.
+ */
+@Composable
+fun NewWorkArtAbove(art: StateArt, modifier: Modifier = Modifier) {
+    Layout({ NewWorkArt(art) }, modifier.fillMaxWidth()) { measurables, constraints ->
+        val width = constraints.maxWidth
+        val height = constraints.maxHeight
+        val side = artSide(height, NewWorkSpec.margin.roundToPx())
+        val picture = side?.let { measurables.single().measure(Constraints.fixed(it, it)) }
+        layout(width, height) {
+            picture?.place((width - picture.width) / 2, height - NewWorkSpec.artToKind.roundToPx() - picture.height)
+        }
+    }
+}
+
 /**
  * New work's block, centred in the room between the bar and the composer
  * that this fills (happy-ios NewWorkLayout): [NewWorkSpec.blockWidth] wide,
- * shown only with at least 12 left over and under it. The composer rides the
- * keyboard and the room ends at it, so the block moves with it, in the same
- * frame. Going ([shown] false) it fades out over 0.2 s, ease-out, and is gone.
+ * shown only with at least 12 left over and under it, under the kind's
+ * [art] where there is room for it. The composer rides the keyboard and the
+ * room ends at it, so the block moves with it, in the same frame. Going
+ * ([shown] false) it fades out over 0.2 s, ease-out, and is gone.
  */
 @Composable
-fun NewWorkRoom(shown: Boolean, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+fun NewWorkRoom(shown: Boolean, modifier: Modifier = Modifier, art: StateArt? = null, content: @Composable () -> Unit) {
     val reduceMotion = rememberReduceMotion()
     val alpha by animateFloatAsState(
         if (shown) 1f else 0f,
@@ -126,14 +181,26 @@ fun NewWorkRoom(shown: Boolean, modifier: Modifier = Modifier, content: @Composa
         label = "new work",
     )
     if (!shown && alpha == 0f) return
-    Layout(content, modifier.fillMaxSize()) { measurables, constraints ->
+    Layout({
+        Box { content() }
+        if (art != null) NewWorkArt(art)
+    }, modifier.fillMaxSize()) { measurables, constraints ->
         val width = constraints.maxWidth
         val height = constraints.maxHeight
         val blockWidth = NewWorkSpec.blockWidth(width.toDp()).roundToPx()
-        val block = measurables.single().measure(Constraints(minWidth = blockWidth, maxWidth = blockWidth))
-        val fits = height >= block.height + 2 * NewWorkSpec.margin.roundToPx()
+        val block = measurables[0].measure(Constraints(minWidth = blockWidth, maxWidth = blockWidth))
+        val margin = NewWorkSpec.margin.roundToPx()
+        val side = if (measurables.size > 1) artSide(height, block.height + 2 * margin) else null
+        val picture = side?.let { measurables[1].measure(Constraints.fixed(it, it)) }
+        val above = picture?.let { it.height + NewWorkSpec.artToKind.roundToPx() } ?: 0
+        val total = above + block.height
+        val fits = height >= total + 2 * margin
         layout(width, height) {
-            if (fits) block.placeWithLayer((width - blockWidth) / 2, (height - block.height) / 2) { this.alpha = alpha }
+            if (fits) {
+                val top = (height - total) / 2
+                picture?.placeWithLayer((width - picture.width) / 2, top) { this.alpha = alpha }
+                block.placeWithLayer((width - blockWidth) / 2, top + above) { this.alpha = alpha }
+            }
         }
     }
 }
@@ -141,12 +208,14 @@ fun NewWorkRoom(shown: Boolean, modifier: Modifier = Modifier, content: @Composa
 /**
  * Happy Agent's new work (happy-ios NewWorkPanel `.work`): Task or Bot, a
  * segmented control 220 wide (Home's Session | Bot look: 32 high, 2 in,
- * radius 9; the picked segment surfaceHighest, radius 7; 13 semibold), 16
- * over the name, a 44 capsule on the input ground with its 16 text centred,
- * "Name (optional)" until typed; 10 under it a line saying what the kind is
- * (13/18 secondary, centred, wrapping). Every change goes to [onChange] as
- * it is made, a kind change with a tick. Return in the name goes on to the
- * composer ([onReturn]). Fixed once its first message is in.
+ * radius 9; the picked segment surfaceHighest, radius 7; 13 semibold). A
+ * task asks nothing more: it goes with a blank name, which its first
+ * message fills. A bot asks, 16 under it, its name, a 44 capsule on the
+ * input ground with its 16 text centred, "Name (optional)" until typed, and
+ * 10 under that says what a bot is (13/18 secondary, centred, wrapping).
+ * Every change goes to [onChange] as it is made, a kind change with a tick.
+ * Return in the name goes on to the composer ([onReturn]). Fixed once its
+ * first message is in.
  */
 @Composable
 fun NewWorkChoicePanel(work: NewWork, onChange: (WorkChoice) -> Unit, onReturn: () -> Unit) {
@@ -160,8 +229,10 @@ fun NewWorkChoicePanel(work: NewWork, onChange: (WorkChoice) -> Unit, onReturn: 
             selected = if (work.choice.kind == WorkKind.Bot) 1 else 0,
             enabled = enabled,
             tag = { NewWorkTags.kind(if (it == 1) WorkKind.Bot else WorkKind.Task) },
-            onPick = { onChange(WorkChoice(if (it == 1) WorkKind.Bot else WorkKind.Task, name)) },
+            // A task is never named here: it goes as a blank name does.
+            onPick = { onChange(if (it == 1) WorkChoice(WorkKind.Bot, name) else WorkChoice(WorkKind.Task, "")) },
         )
+        if (work.choice.kind != WorkKind.Bot) return@Column
         Spacer(Modifier.height(NewWorkSpec.kindToRows))
         NewWorkNameField(
             value = name,
@@ -176,7 +247,7 @@ fun NewWorkChoicePanel(work: NewWork, onChange: (WorkChoice) -> Unit, onReturn: 
         )
         Spacer(Modifier.height(NewWorkSpec.rowsToNote))
         Text(
-            stringResource(if (work.choice.kind == WorkKind.Bot) R.string.new_work_bot_note else R.string.new_work_task_note),
+            stringResource(R.string.new_work_bot_note),
             style = NewWorkSpec.note,
             color = colors.textSecondary,
             textAlign = TextAlign.Center,
@@ -402,10 +473,10 @@ fun NewWorkNameField(
 
 /**
  * A Happy account's new work, centred between the bar and the composer
- * (happy-ios NewWorkLayout(givingWay:)): the optional [kind] control over
- * field-high [rows] and an optional [note]. What it asks is what the first
- * send makes, so short of room it gives way instead of going: the note
- * first, then the gaps close (16 → 14 under the kind, which the computer's
+ * (happy-ios NewWorkLayout(givingWay:)): the kind's optional [art] over the
+ * optional [kind] control, field-high [rows] and an optional [note]. What it
+ * asks is what the first send makes, so short of room it gives way instead
+ * of going: the picture shrinks and goes, then the note, then the gaps close (16 → 14 under the kind, which the computer's
  * chip still clears; 8 → 6 between rows); only with no room even then is it
  * pinned 12 under the bar. Going ([shown] false) it fades out over 0.2 s,
  * ease-out, as [NewWorkRoom].
@@ -417,6 +488,7 @@ fun NewWorkGivingWay(
     rows: List<@Composable () -> Unit>,
     note: (@Composable () -> Unit)?,
     modifier: Modifier = Modifier,
+    art: StateArt? = null,
 ) {
     val reduceMotion = rememberReduceMotion()
     val alpha by animateFloatAsState(
@@ -426,7 +498,10 @@ fun NewWorkGivingWay(
     )
     if (!shown && alpha == 0f) return
     val slots = listOfNotNull(kind) + rows + listOfNotNull(note)
-    Layout({ slots.forEach { slot -> Box { slot() } } }, modifier.fillMaxSize().testTag(NewWorkTags.PANEL)) { measurables, constraints ->
+    Layout({
+        slots.forEach { slot -> Box { slot() } }
+        if (art != null) NewWorkArt(art)
+    }, modifier.fillMaxSize().testTag(NewWorkTags.PANEL)) { measurables, constraints ->
         val width = constraints.maxWidth
         val height = constraints.maxHeight
         val blockWidth = NewWorkSpec.blockWidth(width.toDp()).roundToPx()
@@ -442,17 +517,29 @@ fun NewWorkGivingWay(
             return y
         }
         val margin = NewWorkSpec.margin.roundToPx()
-        val attempts = listOf(
-            Triple(NewWorkSpec.kindToRows.roundToPx(), NewWorkSpec.rowGap.roundToPx(), true),
-            Triple(NewWorkSpec.kindToRows.roundToPx(), NewWorkSpec.rowGap.roundToPx(), false),
-            Triple(NewWorkSpec.tightKindToRows.roundToPx(), NewWorkSpec.tightRowGap.roundToPx(), false),
+        val artGap = NewWorkSpec.artToKind.roundToPx()
+        val kindToRows = NewWorkSpec.kindToRows.roundToPx()
+        val rowGapPx = NewWorkSpec.rowGap.roundToPx()
+        // (picture, kind gap, row gap, note): the picture at each size first, then none.
+        val sides = if (art != null) NewWorkSpec.artSizes.map { it.roundToPx() } else emptyList()
+        val attempts = sides.map { GivingWay(it, kindToRows, rowGapPx, true) } + listOf(
+            GivingWay(null, kindToRows, rowGapPx, true),
+            GivingWay(null, kindToRows, rowGapPx, false),
+            GivingWay(null, NewWorkSpec.tightKindToRows.roundToPx(), NewWorkSpec.tightRowGap.roundToPx(), false),
         )
-        val (kindGap, rowGap, withNote) = attempts.firstOrNull { (k, r, n) -> height >= stackHeight(k, r, n) + 2 * margin } ?: attempts.last()
-        val total = stackHeight(kindGap, rowGap, withNote)
+        fun total(attempt: GivingWay) = (attempt.art?.let { it + artGap } ?: 0) + stackHeight(attempt.kindGap, attempt.rowGap, attempt.withNote)
+        val chosen = attempts.firstOrNull { height >= total(it) + 2 * margin } ?: attempts.last()
+        val (side, kindGap, rowGap, withNote) = chosen
+        val picture = side?.let { measurables.last().measure(Constraints.fixed(it, it)) }
+        val total = total(chosen)
         val fits = height >= total + 2 * margin
         val left = (width - blockWidth) / 2
         layout(width, height) {
             var y = if (fits) (height - total) / 2 else margin
+            picture?.let {
+                it.placeWithLayer(left + (blockWidth - it.width) / 2, y) { this.alpha = alpha }
+                y += it.height + artGap
+            }
             kindPlaceable?.let {
                 it.placeWithLayer(left + (blockWidth - it.width) / 2, y) { this.alpha = alpha }
                 y += it.height + kindGap
@@ -468,3 +555,6 @@ fun NewWorkGivingWay(
         }
     }
 }
+
+/** One way [NewWorkGivingWay] may stand: the picture's side (null, none), the gaps, and whether the note shows. */
+private data class GivingWay(val art: Int?, val kindGap: Int, val rowGap: Int, val withNote: Boolean)

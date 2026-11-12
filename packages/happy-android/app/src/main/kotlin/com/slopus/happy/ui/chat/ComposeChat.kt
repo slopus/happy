@@ -74,6 +74,7 @@ import com.slopus.happy.ui.components.HappyDropdownMenu
 import com.slopus.happy.ui.components.HappyMenuItem
 import com.slopus.happy.ui.components.HappyMenuSection
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.StateArt
 import com.slopus.happy.ui.components.Prompt
 import com.slopus.happy.ui.components.PromptModal
 import com.slopus.happy.ui.home.HomeServices
@@ -490,6 +491,11 @@ fun ComposeTarget(compose: ComposeChat, onReturn: () -> Unit = {}) {
             null
         },
         modifier = Modifier.testTag(ComposeChatTags.TARGET),
+        art = when (kind) {
+            ComposeKind.Session -> null
+            ComposeKind.Bot -> StateArt.Ready
+            ComposeKind.Task -> StateArt.Action
+        },
     )
 }
 

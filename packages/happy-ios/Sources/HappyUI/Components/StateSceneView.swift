@@ -40,6 +40,9 @@ public enum StateScene: String, CaseIterable, Sendable {
     /// Nothing made yet where what agents make is kept: the Artifacts list
     /// with none (a 🎟️ sticker; `PROVENANCE.md`).
     case tickets
+    /// A task about to be made: over new work's Task (a 🎬 sticker;
+    /// `PROVENANCE.md`). A bot stands under the `robot`.
+    case clapperBoard = "clapper-board"
     /// Happy Cloud's welcome (desktop's CLOUD_SLIDES): permissions, and its
     /// source shared with those who review it.
     case closedLock = "closed-lock"

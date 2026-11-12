@@ -32,6 +32,7 @@ import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.chat.NewWorkSpec
 import com.slopus.happy.ui.chat.NewWorkTags
 import com.slopus.happy.ui.chat.PrimaryAction
+import com.slopus.happy.ui.components.StateArt
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import org.junit.Assert.assertEquals
@@ -45,8 +46,10 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * New work's Task or Bot (happy-ios NewWorkPanel `.work`, NewWorkLayout):
  * one block 24 in from either side and at most 320 wide, centred between
- * the bar and the composer; the kind 220 wide, 16 over a 44 name, 10 over
- * the line saying what the kind is. It fades once the work is made.
+ * the bar and the composer, under the kind's picture 16 over it; the kind
+ * 220 wide. A task asks nothing more and goes with a blank name; a bot's
+ * kind stands 16 over a 44 name, 10 over the line saying what a bot is. It
+ * fades once the work is made.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)
@@ -68,18 +71,37 @@ class NewWorkPanelTest {
         )
     }
 
-    @Test fun `the block is centred between the bar and the composer, at most 320 wide`() {
+    @Test fun `a task is its picture over the kind, centred between the bar and the composer, at most 320 wide`() {
         show()
         val panel = rule.node(NewWorkTags.PANEL).bounds
         assertDp("320 wide", 320, panel.width)
         assertDp("centred across", ((411 - 320) / 2f).dp, panel.left)
-        val bar = rule.node(ConversationScreenTags.BAR).bounds
-        val composer = rule.node(ConversationComposerTags.COMPOSER).bounds
-        assertEquals("centred between the bar and the composer", ((bar.bottom + composer.top) / 2).value, ((panel.top + panel.bottom) / 2).value, 1f)
-
+        val art = rule.node(NewWorkTags.art(StateArt.Action)).bounds
+        assertDp("an empty state's 128", NewWorkSpec.art, art.width)
+        assertDp("square", art.width, art.height)
+        assertDp("over the middle", panel.left + (320.dp - art.width) / 2, art.left)
         val kind = rule.node(NewWorkTags.KIND).bounds
+        assertDp("16 over the kind", art.bottom + 16.dp, kind.top)
         assertDp("kind 220", 220, kind.width)
         assertDp("kind centred", panel.left + 50.dp, kind.left)
+        val bar = rule.node(ConversationScreenTags.BAR).bounds
+        val composer = rule.node(ConversationComposerTags.COMPOSER).bounds
+        assertEquals("centred between the bar and the composer", ((bar.bottom + composer.top) / 2).value, ((art.top + panel.bottom) / 2).value, 1f)
+        // A task asks no name and says nothing under the kind: its first message names it.
+        rule.node(NewWorkTags.NAME_FIELD).assertDoesNotExist()
+        rule.node(NewWorkTags.NOTE).assertDoesNotExist()
+        assertDp("the kind ends the block", panel.bottom, kind.bottom)
+        // The old empty line gives way to the panel.
+        rule.node(ConversationScreenTags.EMPTY).assertDoesNotExist()
+    }
+
+    @Test fun `a bot asks its name under the kind, and says what it is`() {
+        state = state.copy(newWork = NewWork(WorkChoice(WorkKind.Bot)))
+        show()
+        val panel = rule.node(NewWorkTags.PANEL).bounds
+        val art = rule.node(NewWorkTags.art(StateArt.Ready)).bounds
+        val kind = rule.node(NewWorkTags.KIND).bounds
+        assertDp("16 over the kind", art.bottom + 16.dp, kind.top)
         val name = rule.node(NewWorkTags.NAME_FIELD).bounds
         assertDp("16 under the kind", kind.bottom + 16.dp, name.top)
         assertDp("name full width", 320, name.width)
@@ -87,9 +109,6 @@ class NewWorkPanelTest {
         val note = rule.node(NewWorkTags.NOTE).bounds
         assertDp("10 under the name", name.bottom + 10.dp, note.top)
         assertDp("the note ends the block", panel.bottom, note.bottom)
-        // The old empty line gives way to the panel.
-        rule.node(ConversationScreenTags.EMPTY).assertDoesNotExist()
-        rule.onNodeWithText("A task names itself from its first message unless you name it.").assertExists()
     }
 
     @Test fun `Bot and a name are handed on as picked, and the line follows the kind`() {
@@ -100,12 +119,21 @@ class NewWorkPanelTest {
         rule.node(NewWorkTags.kind(WorkKind.Bot)).assertIsSelected()
         rule.node(NewWorkTags.kind(WorkKind.Task)).assertIsNotSelected()
         rule.node(NewWorkTags.NOTE).assertTextEquals("A bot is one lasting conversation with a folder of its own.")
+        rule.node(NewWorkTags.art(StateArt.Ready)).assertExists()
+        rule.node(NewWorkTags.art(StateArt.Action)).assertDoesNotExist()
         rule.node(NewWorkTags.NAME).performTextInput("Release Bot")
         rule.waitForIdle()
         assertEquals(WorkChoice(WorkKind.Bot, "Release Bot"), choices.last())
+        // Back to a task: it goes with a blank name, whatever was typed for the bot.
+        rule.node(NewWorkTags.kind(WorkKind.Task)).performClick()
+        rule.waitForIdle()
+        assertEquals(WorkChoice(WorkKind.Task, ""), choices.last())
+        rule.node(NewWorkTags.NAME_FIELD).assertDoesNotExist()
+        rule.node(NewWorkTags.art(StateArt.Action)).assertExists()
     }
 
     @Test fun `Return in the name goes on to the composer`() {
+        state = state.copy(newWork = NewWork(WorkChoice(WorkKind.Bot)))
         show()
         rule.node(NewWorkTags.NAME).performTextInput("Notes")
         rule.node(NewWorkTags.NAME).performImeAction()
@@ -163,6 +191,8 @@ class NewWorkPanelTest {
     @Test
     @Config(qualifiers = "w411dp-h260dp-xxhdpi")
     fun `with no room between the bar and the composer the block doesn't show`() {
+        // A bot's block: its name and note make it the taller kind.
+        state = state.copy(newWork = NewWork(WorkChoice(WorkKind.Bot)))
         show()
         val shown = rule.onAllNodes(androidx.compose.ui.test.hasTestTag(NewWorkTags.PANEL), useUnmergedTree = true)
             .fetchSemanticsNodes().any { it.layoutInfo.isPlaced }

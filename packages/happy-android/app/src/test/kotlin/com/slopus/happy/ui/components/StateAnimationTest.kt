@@ -35,7 +35,7 @@ import java.security.MessageDigest
 class StateAnimationTest {
     @get:Rule val rule = createComposeRule()
 
-    /** happy-desktop assets/animations/PROVENANCE.md's hashes (and the ticket's as Steve gave it): the same bytes, unmodified. */
+    /** happy-desktop assets/animations/PROVENANCE.md's hashes (and the ticket's and clapper board's as given): the same bytes, unmodified. */
     @Test
     fun theFilesAreDesktopsExactBytes() {
         val expected = mapOf(
@@ -44,6 +44,7 @@ class StateAnimationTest {
             StateArt.Done to "b14e504ce3467a6b",
             StateArt.Owl to "95402270d116a310",
             StateArt.Tickets to "8715ac66cadbd7cb",
+            StateArt.Action to "321f9dfe9e03985a",
         )
         val resources = RuntimeEnvironment.getApplication().resources
         for ((art, hash) in expected) {
