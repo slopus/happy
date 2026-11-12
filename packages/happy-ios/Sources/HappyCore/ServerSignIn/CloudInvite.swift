@@ -40,13 +40,14 @@ public struct CloudInvitePreview: Decodable, Equatable, Sendable {
 
         public var imageData: Data? { CloudInvitePreview.bytes(image) }
     }
-    /// Who sent it.
+    /// Who sent it: their display name, which they may never have set, and
+    /// their picture. nil once they deleted their account.
     public struct Inviter: Decodable, Equatable, Sendable {
-        public var name: String
+        public var name: String?
         /// A `data:` URL, or nil.
         public var image: String?
 
-        public init(name: String, image: String? = nil) { self.name = name; self.image = image }
+        public init(name: String?, image: String? = nil) { self.name = name; self.image = image }
 
         public var imageData: Data? { CloudInvitePreview.bytes(image) }
     }

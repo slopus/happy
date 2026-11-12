@@ -541,7 +541,7 @@ final class CloudScreensTests: XCTestCase {
     /// welcome, the invite kept for the next sign-in, which opens on it.
     func testAnInviteForAnotherEmailSignsInAgainAndComesBackToIt() async throws {
         let http = CloudHTTP()
-        await http.answer("POST /v1/invites/preview", 200, #"{"server":{"name":"acme","displayName":null,"image":null},"roleName":"Member","expiresAt":"2026-11-19T09:28:08Z"}"#)
+        await http.answer("POST /v1/invites/preview", 200, #"{"server":{"name":"acme","displayName":null,"image":null},"inviter":{"name":null,"image":null},"roleName":"Member","expiresAt":"2026-11-19T09:28:08Z"}"#)
         await http.answer("POST /v1/invites/accept", 403, #"{"code":"email_mismatch","error":"This invitation is for another email address.","emailHint":"s…@…"}"#)
         let account = CloudAccount.preview(token: "account", http: http)
         CloudScreens.account = account
@@ -556,6 +556,10 @@ final class CloudScreensTests: XCTestCase {
         await settle { screen.phase == .refused(.emailMismatch(hint: "s…@…")) }
         screen.view.layoutIfNeeded()
         XCTAssertEqual(frames(screen), offered, "nothing moved for the mismatch")
+        XCTAssertEqual(screen.handle.string, "@acme", "the server stays")
+        XCTAssertEqual(screen.name.string, "acme", "no display name: its name")
+        XCTAssertEqual(screen.inviter.string, "", "an inviter without a name isn't shown")
+        XCTAssertEqual(screen.inviterPicture.alpha, 0)
         XCTAssertEqual(screen.status.string, "This invite was sent to another email address (s…@…). Sign in with that one to join.")
         XCTAssertEqual(screen.primary.title, "Use Another Account")
         screen.primary.tapped()

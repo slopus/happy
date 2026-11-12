@@ -103,6 +103,25 @@ enum CloudScreens {
         if let start = navigation.viewControllers.last(where: { !($0 is CloudFlowScreen) }) { navigation.popToViewController(start, animated: true) }
     }
 
+    /// Opens the connection `id`, a server already on this phone, and ends
+    /// the flow.
+    static func open(_ id: String, context: AppContext, from controller: UIViewController) async throws {
+        let accounts = context.account
+        if !accounts.showsAgentConnections { await accounts.setShowsAgentConnections(true) }
+        accounts.cancelAddingAccount()
+        let opened = accounts.agentConnections.activeID != id
+        try await accounts.switchAccount(to: id)
+        finish(from: controller, opened: opened)
+    }
+
+    /// The connection already on this phone (and not signed out there) to
+    /// `server`.
+    static func connection(to server: CloudServer, context: AppContext) -> String? {
+        guard let origin = server.origin, let existing = HappyCloud.connection(to: origin, in: context.account.agentConnections.accounts),
+              !existing.revoked else { return nil }
+        return existing.id
+    }
+
     /// The server isn't kept without the member's name.
     struct NameNeeded: Error {}
 
@@ -948,8 +967,7 @@ final class CloudServersViewController: CloudStageViewController {
     /// Already on this phone (and not signed out there), or joined here.
     private func connection(for server: CloudServer) -> String? {
         if let here = joined.last(where: { $0.server == server.id }) { return here.connection }
-        guard let origin = server.origin, let existing = HappyCloud.connection(to: origin, in: context.account.agentConnections.accounts), !existing.revoked else { return nil }
-        return existing.id
+        return CloudScreens.connection(to: server, context: context)
     }
 
     private func rebuild() {
@@ -1023,13 +1041,8 @@ final class CloudServersViewController: CloudStageViewController {
         }
         let id = joined.last?.connection ?? (servers ?? []).lazy.compactMap { self.connection(for: $0) }.first
         guard let id else { return }
-        let accounts = context.account
-        if !accounts.showsAgentConnections { await accounts.setShowsAgentConnections(true) }
-        accounts.cancelAddingAccount()
-        let opened = accounts.agentConnections.activeID != id
         do {
-            try await accounts.switchAccount(to: id)
-            CloudScreens.finish(from: self, opened: opened)
+            try await CloudScreens.open(id, context: context, from: self)
         } catch {
             say(CloudScreens.problem(error))
         }

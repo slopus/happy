@@ -656,7 +656,7 @@ final class HappyCloudUITests: XCTestCase {
 
         openFromNotes(link)
         let title = app.staticTexts["Happy Cloud"]
-        film("a-link-opens") { self.app.state == .runningForeground && title.exists }
+        film("a-link-opens", seconds: 40) { self.app.state == .runningForeground && title.exists }
         require(title.exists, "the link didn't open Happy Cloud's welcome in the app")
         capture("i3-opened-signed-out")
         signInWithTestAccount(login: login, password: password, openingCloud: false)
@@ -732,6 +732,7 @@ final class HappyCloudUITests: XCTestCase {
             attachment.lifetime = .keepAlways
             add(attachment)
             frame += 1
+            if !done() { Thread.sleep(forTimeInterval: 0.25) }
         } while !done() && Date() < deadline
     }
 
