@@ -27,12 +27,15 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.connection.CloudAccount
 import com.slopus.happy.connection.CloudAccountState
 import com.slopus.happy.connection.CloudException
+import com.slopus.happy.connection.CloudInvite
+import com.slopus.happy.connection.inviteImage
 import com.slopus.happy.connection.CloudName
 import com.slopus.happy.connection.CloudProvider
 import com.slopus.happy.connection.CloudServer
@@ -44,6 +47,9 @@ import com.slopus.happy.connection.ServerSignInState
 import com.slopus.happy.ui.HomeRoute
 import com.slopus.happy.ui.page
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
@@ -59,6 +65,9 @@ import kotlinx.serialization.Serializable
 
 /** Bootstrap a server; [first] when the account has none, where Back signs out. */
 @Serializable data class CloudCreateRoute(val first: Boolean = false)
+
+/** An invite link's Join screen; its token waits in [CloudInvites], never in the route. */
+@Serializable data object CloudInviteRoute
 
 /** Continue with email: the address, then [CloudEmailCodeRoute] for the code mailed to it. */
 @Serializable data object CloudEmailRoute
@@ -93,6 +102,7 @@ fun NavGraphBuilder.cloudRoutes(graph: AppGraph, nav: NavHostController) {
     val account = graph.cloudAccount ?: return
     page<CloudRoute> { Cloud(graph, account, nav) }
     page<CloudCreateRoute> { entry -> CloudCreate(graph, account, nav, entry.toRoute<CloudCreateRoute>().first) }
+    page<CloudInviteRoute> { CloudInviteEntry(graph, account, nav) }
     page<CloudEmailRoute> { CloudEmailStart(account, nav) }
     page<CloudEmailCodeRoute> { entry -> CloudEmailCode(account, nav, entry.toRoute<CloudEmailCodeRoute>().email) }
     page<CloudMembersRoute> { entry -> CloudMembers(graph, nav, entry.toRoute<CloudMembersRoute>().connectionId) }
@@ -148,13 +158,15 @@ private fun Cloud(graph: AppGraph, account: CloudAccount, nav: NavHostController
     val accounts by graph.agentConnections.accounts.collectAsStateWithLifecycle()
     LaunchedEffect(state) {
         if (state != CloudAccountState.SignedIn) return@LaunchedEffect
+        // Signed in for an invite link: back to its Join screen, which accepts it.
+        if (nav.popBackStack<CloudInviteRoute>(inclusive = false)) return@LaunchedEffect
         picker.load()
         // Back from the browser, where an invite link may have added a server.
         serversOnReturn(graph.isForeground, account::servers).collect(picker::show)
     }
     // No servers yet: Bootstrap leads, and its Back signs out (desktop's create with nothing to go back to).
     LaunchedEffect(state, picker.servers) {
-        if (state == CloudAccountState.SignedIn && picker.servers?.isEmpty() == true) {
+        if (state == CloudAccountState.SignedIn && picker.servers?.isEmpty() == true && nav.currentDestination?.hasRoute<CloudRoute>() == true) {
             // Not this empty list again on the way back: it loads anew, with any server joined in the browser meanwhile.
             picker.clear()
             nav.navigate(CloudCreateRoute(first = true)) { launchSingleTop = true }
@@ -337,6 +349,54 @@ private fun CloudCreate(graph: AppGraph, account: CloudAccount, nav: NavHostCont
         },
         onBack = back,
         first = first,
+    )
+}
+
+/** The open invite's flow, kept across the sign-in it may need; a newer link's replaces it. */
+private class CloudInviteHolder(private val account: CloudAccount) : ViewModel() {
+    var flow by mutableStateOf<CloudInviteFlow?>(null)
+        private set
+    private var scope: CoroutineScope? = null
+
+    fun open(invite: CloudInvite) {
+        scope?.cancel()
+        val next = CoroutineScope(viewModelScope.coroutineContext + Job(viewModelScope.coroutineContext[Job]))
+        scope = next
+        flow = CloudInviteFlow(invite, account, next)
+    }
+}
+
+@Composable
+private fun CloudInviteEntry(graph: AppGraph, account: CloudAccount, nav: NavHostController) {
+    val holder = viewModel { CloudInviteHolder(account) }
+    val incoming by CloudInvites.pending.collectAsStateWithLifecycle()
+    LaunchedEffect(incoming) {
+        CloudInvites.take()?.let(holder::open)
+        // Restored after the process went: the token went with it.
+        if (holder.flow == null) nav.popBackStack()
+    }
+    // A pass whose hour is up signs out here, so Join asks for the sign-in rather than failing.
+    LaunchedEffect(Unit) { account.signedIn() }
+    val flow = holder.flow ?: return
+    val state by account.state.collectAsStateWithLifecycle()
+    val step = flow.step
+    LaunchedEffect(step) {
+        val joined = step as? CloudInviteStep.Joined ?: return@LaunchedEffect
+        nav.popBackStack<CloudInviteRoute>(inclusive = true)
+        nav.openCloudServer(graph, joined.server)
+    }
+    val signIn = { nav.navigate(CloudRoute) { launchSingleTop = true } }
+    CloudInviteScreen(
+        step = step,
+        signedIn = state == CloudAccountState.SignedIn,
+        image = { url -> inviteImage(url) ?: account.image(url) },
+        onJoin = { flow.join(signIn) },
+        onRetry = flow::load,
+        onOtherAccount = {
+            account.signOut()
+            flow.signInAgain(signIn)
+        },
+        onBack = { nav.popBackStack() },
     )
 }
 

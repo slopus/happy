@@ -3,6 +3,7 @@ package com.slopus.happy.ui.connect
 import android.content.Intent
 import com.slopus.happy.agent.HappyLink
 import com.slopus.happy.agent.HappyUrls
+import com.slopus.happy.connection.CloudInvite
 import com.slopus.happy.guest.GuestInvitation
 import com.slopus.happy.push.ACTION_OPEN_PUSH
 import com.slopus.happy.push.EXTRA_PUSH_SESSION_ID
@@ -85,6 +86,13 @@ sealed interface DeepLink {
         override fun toString() = "GuestInvite(…)"
     }
 
+    /**
+     * A Happy Cloud server's private invite ([CloudInvite]): its Join
+     * screen, signed in to Happy Cloud first if need be. Opens whether or
+     * not the app has an account. The token never prints.
+     */
+    data class CloudServerInvite(val invite: CloudInvite) : DeepLink
+
     /** `/`, and app paths with no screen on Android (excluded features, or none at all): Home. */
     data object Home : DeepLink
 }
@@ -103,6 +111,7 @@ sealed interface DeepLink {
 fun parseDeepLink(link: String): DeepLink? {
     if (HappyCode.isAgentPairing(link)) return DeepLink.AgentPairing(link.trim())
     GuestInvitation.parse(link)?.let { return DeepLink.GuestInvite(it.url) }
+    CloudInvite.parse(link)?.let { return DeepLink.CloudServerInvite(it) }
     // happy-app's own `happy://settings/…` paths keep their screens: from outside, a settings link opens only in its instance form.
     if (HappyUrls.owns(link.trim()) && !APP_SETTINGS.containsMatchIn(link.trim())) {
         val url = HappyUrls.parse(link.trim()) ?: return null

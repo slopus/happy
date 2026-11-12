@@ -74,4 +74,15 @@
     <string name="cloud_email_unavailable">邮箱登录暂时无法使用，请稍后再试。</string>
     <string name="cloud_email_unsupported">邮箱登录尚未开放。</string>
     <string name="cloud_email_rate_limited">尝试次数过多，请稍等片刻再试。</string>
+    <string name="cloud_invite_title">你收到了邀请</string>
+    <string name="cloud_invite_detail">加入 Happy Cloud 上的 %1$s。</string>
+    <string name="cloud_invite_sign_in">登录后加入</string>
+    <string name="cloud_invite_refused_title">无法使用此邀请</string>
+    <string name="cloud_invite_expired">此邀请已过期。请向发送者索取新的链接。</string>
+    <string name="cloud_invite_revoked">此邀请已被撤回。请向发送者索取新的链接。</string>
+    <string name="cloud_invite_used_up">此邀请已被使用。请向发送者索取新的链接。</string>
+    <string name="cloud_invite_unknown">此邀请链接无效。请确认你打开的是完整的链接。</string>
+    <string name="cloud_invite_email_mismatch">此邀请发送给了 %1$s。请用该邮箱登录后加入。</string>
+    <string name="cloud_invite_email_mismatch_unknown">此邀请发送给了另一个邮箱。请用该邮箱登录后加入。</string>
+    <string name="cloud_invite_other_account">使用其他账号登录</string>
 </resources>

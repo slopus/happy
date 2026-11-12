@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The builds that offer Happy Cloud (connection/HappyCloud.kt: debug and
+  preview): its invite links open the app. https://INVITE/#<token>, and the
+  older https://WEB/join#<token>; each host's /.well-known/assetlinks.json
+  must list this build's package and signing certificate to verify.
+  The same in src/debug and src/preview; keep them alike.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Exported in the main manifest already; repeated so this overlay stands alone for lint. -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="https" android:host="${happyCloudInviteHost}" android:path="/" />
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="https" android:host="${happyCloudWebHost}" android:path="/join" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

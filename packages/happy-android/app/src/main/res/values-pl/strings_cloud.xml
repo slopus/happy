@@ -74,4 +74,15 @@
     <string name="cloud_email_unavailable">Logowanie przez e-mail chwilowo nie działa. Spróbuj za chwilę.</string>
     <string name="cloud_email_unsupported">Logowanie przez e-mail nie jest jeszcze dostępne.</string>
     <string name="cloud_email_rate_limited">Zbyt wiele prób. Odczekaj chwilę i spróbuj ponownie.</string>
+    <string name="cloud_invite_title">Masz zaproszenie</string>
+    <string name="cloud_invite_detail">Dołącz do %1$s w Happy Cloud.</string>
+    <string name="cloud_invite_sign_in">Zaloguj się, aby dołączyć</string>
+    <string name="cloud_invite_refused_title">Tego zaproszenia nie można użyć</string>
+    <string name="cloud_invite_expired">To zaproszenie wygasło. Poproś nadawcę o nowy link.</string>
+    <string name="cloud_invite_revoked">To zaproszenie zostało wycofane. Poproś nadawcę o nowy link.</string>
+    <string name="cloud_invite_used_up">To zaproszenie zostało już wykorzystane. Poproś nadawcę o nowy link.</string>
+    <string name="cloud_invite_unknown">Ten link z zaproszeniem jest nieprawidłowy. Sprawdź, czy otwarto cały link.</string>
+    <string name="cloud_invite_email_mismatch">To zaproszenie wysłano na %1$s. Zaloguj się tym adresem, aby dołączyć.</string>
+    <string name="cloud_invite_email_mismatch_unknown">To zaproszenie wysłano na inny adres e-mail. Zaloguj się nim, aby dołączyć.</string>
+    <string name="cloud_invite_other_account">Zaloguj się na inne konto</string>
 </resources>

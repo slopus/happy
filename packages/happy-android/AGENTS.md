@@ -1239,11 +1239,27 @@ change its wire behaviour on Android alone.
   typed after an `@`, checked with `GET /v1/servers/availability` as the
   person pauses, then `POST /v1/servers`), going straight into its server.
   An account with no servers opens on Bootstrap (`CloudCreateRoute(first)`).
-  There is no join with a code: an invite is a private link
-  (`https://happybases.com/join#<token>`) accepted on the web, so Join a
-  server loads its list again each time the app comes back to the
-  foreground (`serversOnReturn`), and the first Bootstrap gives way to the
-  list, still signed in, once the account has a server.
+  There is no join with a code: an invite is a private link,
+  `https://INVITE/#<token>` (`HAPPY_CLOUD_INVITE`, default
+  join.happy.engineering) or the older `https://WEB/join#<token>`, the
+  token 43 characters of base64url in the fragment (`CloudInvite.parse`).
+  In debug and preview (the builds with Happy Cloud) both hosts are
+  `autoVerify` app links (`src/debug` and `src/preview` manifests, alike),
+  verified when the host's `assetlinks.json` lists the build's package and
+  signing certificate; elsewhere the browser's join page takes it. In the
+  app, `DeepLink.CloudServerInvite` hands the token to `CloudInvites` (in
+  memory only, never a route or saved state; it never prints) and opens
+  `CloudInviteRoute`: `CloudInviteFlow` previews it (`POST
+  /v1/invites/preview`, no account token) and shows the server and role
+  with Join. Join accepts (`POST /v1/invites/accept`, the account token)
+  and opens the server as Join on the list does; signed out, it goes
+  through the Cloud sign-in, which hands back to the invite once signed in
+  (`Cloud` pops to `CloudInviteRoute`), and accepts with the same token.
+  Expired, revoked, used up, unknown and another address's invites say so
+  (`CloudInviteRefusal`); another address's offers signing in with another
+  account. Join a server also loads its list again each time the app comes
+  back to the foreground (`serversOnReturn`), and the first Bootstrap gives
+  way to the list, still signed in, once the account has a server.
   Back on Join a server, or on that first Bootstrap, signs the account out,
   so Continue can use another (desktop's); not while a join runs. Joining
   or creating signs in with no browser: `POST /v1/servers/:id/token` with the account token

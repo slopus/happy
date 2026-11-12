@@ -518,6 +518,70 @@ class CloudAccountTest {
         assertEquals(2, server.requestCount)
     }
 
+    private val invite = CloudInvite("AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_abcde")
+
+    /** The preview reads before any sign-in, with no account token; the accept is the account's. */
+    @Test
+    fun anInvitePreviewsSignedOutAndAcceptsSignedIn() = runBlocking {
+        val account = account()
+        server.enqueue(json("""{"server":{"name":"acme","displayName":"Acme","image":"data:image/png;base64,iVBORw0KGgo="},"roleName":"Viewer","expiresAt":"2026-11-19T09:28:08.851234Z"}"""))
+        val preview = account.previewInvite(invite)
+        assertEquals("Acme", preview.server.title)
+        assertEquals("@acme", "@${preview.server.name}")
+        assertEquals("Viewer", preview.roleName)
+        assertEquals("data:image/png;base64,iVBORw0KGgo=", preview.server.image?.url)
+        assertEquals(listOf(0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A), inviteImage(preview.server.image!!.url)!!.map { it.toInt() and 0xFF })
+        assertEquals(null, inviteImage("https://evil.example/a.png"))
+        val asked = server.takeRequest()
+        assertEquals("POST /v1/invites/preview", "${asked.method} ${asked.target}")
+        assertEquals("""{"token":"${invite.token}"}""", asked.body?.utf8())
+        assertEquals(null, asked.headers["Authorization"])
+
+        // Signed out, the accept asks for the sign-in and sends nothing.
+        assertFails(CloudException.Reason.SignInRequired) { account.acceptInvite(invite) }
+        assertEquals(1, server.requestCount)
+
+        val pass = jwt(audience, tag = "a1")
+        signIn(account, pass)
+        server.enqueue(json("""{"server":{"id":"6f1c","name":"acme","displayName":"acme","url":"https://acme.happy.computer/","webUrl":"https://acme.happybases.com/","image":null,"createdAt":"2026-11-12T09:00:00Z"}}"""))
+        val joined = account.acceptInvite(invite)
+        assertEquals("6f1c", joined.id)
+        assertEquals("https://acme.happy.computer", joined.origin)
+        val accept = server.takeRequest()
+        assertEquals("POST /v1/invites/accept", "${accept.method} ${accept.target}")
+        assertEquals("Bearer $pass", accept.headers["Authorization"])
+        assertEquals("""{"token":"${invite.token}"}""", accept.body?.utf8())
+    }
+
+    @Test
+    fun anInviteThatCantBeUsedSaysWhy() = runBlocking {
+        val account = account()
+        signIn(account, jwt(audience, tag = "a1"))
+        val answers = listOf(
+            json("""{"code":"expired","error":"Expired"}""", 410) to CloudInviteRefusal.Expired,
+            json("""{"code":"revoked","error":"Revoked"}""", 410) to CloudInviteRefusal.Revoked,
+            json("""{"code":"exhausted","error":"Used up"}""", 410) to CloudInviteRefusal.UsedUp,
+            json("""{"code":"accepted","error":"Already accepted"}""", 410) to CloudInviteRefusal.UsedUp,
+            json("""{"code":"invalid","error":"No such invite"}""", 410) to CloudInviteRefusal.Unknown,
+            json("""{"code":"email_mismatch","error":"Wrong email","emailHint":"s…@…"}""", 403) to CloudInviteRefusal.EmailMismatch("s…@…"),
+        )
+        for ((answer, refusal) in answers) {
+            server.enqueue(answer)
+            try {
+                account.acceptInvite(invite)
+                fail("expected $refusal")
+            } catch (e: CloudInviteException) {
+                assertEquals(refusal, e.refusal)
+            }
+        }
+        server.enqueue(json("""{"code":"unavailable","error":"Try again"}""", 503))
+        assertFails(CloudException.Reason.Unreachable) { account.previewInvite(invite) }
+        // A 401 on the accept is the pass over.
+        server.enqueue(json("""{"code":"unauthorized"}""", 401))
+        assertFails(CloudException.Reason.SignInRequired) { account.acceptInvite(invite) }
+        assertEquals(CloudAccountState.SignedOut(expired = true), account.state.value)
+    }
+
     private suspend fun assertFails(reason: CloudException.Reason, block: suspend () -> Unit) {
         try {
             block()

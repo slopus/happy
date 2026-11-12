@@ -1,5 +1,7 @@
 package com.slopus.happy.ui.connect
 
+import com.slopus.happy.ui.connection.CloudInviteRoute
+import com.slopus.happy.ui.connection.CloudInvites
 import com.slopus.happy.connection.PairingStart
 import com.slopus.happy.ui.components.LocalOverlays
 import com.slopus.happy.ui.guest.GuestChatEntry
@@ -89,6 +91,12 @@ fun DeepLinkEffect(
             nav.navigate(GuestChatRoute(link.url))
             return@LaunchedEffect
         }
+        // A Happy Cloud invite is the Cloud account's, not the open one's: it opens signed in or out.
+        if (link is DeepLink.CloudServerInvite) {
+            CloudInvites.offer(link.invite)
+            nav.navigate(CloudInviteRoute) { launchSingleTop = true }
+            return@LaunchedEffect
+        }
         if (!signedIn) {
             if (link is DeepLink.Screen && link.signedOut) nav.navigate(link.route)
             return@LaunchedEffect
@@ -99,7 +107,7 @@ fun DeepLinkEffect(
             is DeepLink.Session -> onOpenSession?.invoke(link.id)
             is DeepLink.Screen -> nav.navigate(link.route)
             DeepLink.Home -> nav.popBackStack(HomeRoute, inclusive = false)
-            is DeepLink.AgentPairing, is DeepLink.Instance, is DeepLink.OnConnection, is DeepLink.GuestInvite -> Unit
+            is DeepLink.AgentPairing, is DeepLink.Instance, is DeepLink.OnConnection, is DeepLink.GuestInvite, is DeepLink.CloudServerInvite -> Unit
         }
     }
 }
