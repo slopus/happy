@@ -439,7 +439,10 @@ export const SidebarView = React.memo(({
     const openDesktopSessionLists = () => {
         setAppConversationsActive(false);
         setDesktopSidebarMode(desktopSidebarListMode);
-        if (desktopPrimaryNavigation && pathname === '/projects' && (!leftVisible || desktopSidebarMode === desktopSidebarListMode)) toggleLeftSidebar();
+        if (desktopPrimaryNavigation && pathname === '/projects') {
+            if (!leftVisible || desktopSidebarMode === desktopSidebarListMode) toggleLeftSidebar();
+            return;
+        }
         if (mobileNavigation) setMobilePanel('sessions');
         else if (pathname === '/projects' || advisorSidebarActive || pathname.startsWith('/apps/conversations')) go('/');
     };
@@ -447,7 +450,10 @@ export const SidebarView = React.memo(({
     const openArchive = () => {
         setAppConversationsActive(false);
         setDesktopSidebarMode('archive');
-        if (desktopPrimaryNavigation && pathname === '/projects' && (!leftVisible || desktopSidebarMode === 'archive')) toggleLeftSidebar();
+        if (desktopPrimaryNavigation && pathname === '/projects') {
+            if (!leftVisible || desktopSidebarMode === 'archive') toggleLeftSidebar();
+            return;
+        }
         if (mobileNavigation) setMobilePanel('sessions');
         else if (pathname === '/projects' || pathname.startsWith('/apps/conversations')) go('/');
     };
