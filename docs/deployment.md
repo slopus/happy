@@ -84,6 +84,53 @@ Production migrations run before the rolling update, so they must remain
 compatible with the currently running release; destructive changes require an
 expand/contract deployment.
 
+## Rolling back to the TS server
+
+Production switched to the Rust server in `922bde535` ("Run the Rust server in
+production"). Every commit before it, up to `88aefd73f`, builds the TS image
+from `Dockerfile.server`.
+
+1. **Image.** Redeploy the last `docker.korshakov.com/handy-server` tag that
+   TeamCity built before `922bde535`, or run `Lab_HappyServer` on `88aefd73f`.
+   On `main`, `git revert 922bde535` restores both `Dockerfile.server` and
+   `handy.yaml` in one commit.
+2. **Manifest.** The TS settings in `handy.yaml`, as before `922bde535`:
+   - `replicas: 3`
+   - `strategy: RollingUpdate` with `maxUnavailable: 0`, `maxSurge: 2`
+   - `REDIS_URL=redis://happy-redis:6379` back in `env`; remove `HAPPY_WORKERS`
+   - readiness probe `initialDelaySeconds: 30`, `periodSeconds: 60`, `timeoutSeconds: 30`
+   - PodDisruptionBudget `minAvailable: 1` (instead of `maxUnavailable: 1`)
+
+   The `happy-redis` StatefulSet stays deployed under the Rust server, so the
+   TS adapter finds it.
+3. **Order.** The rollback rollout uses the new strategy (RollingUpdate), so the
+   Rust pod and the new TS pods would serve side by side for a while. Writes stay
+   correct (every seq is an atomic `UPDATE … RETURNING`), but sockets on the Rust
+   pod cannot reach RPC targets or rooms on the TS pods, and the reverse. Stop the
+   Rust pod first:
+   `kubectl scale deployment/handy-server --replicas=0`, then apply the TS
+   manifest. The Rust server's advisory lock is per session, so it is released
+   when the pod exits; the TS server never takes it.
+4. **Migrations.** Nothing to undo. The Rust server adds no schema and never runs
+   migrations in production (`prisma migrate deploy` stays with the TS tooling).
+
+Data written by the Rust server is valid for the TS server:
+- **`Session.updatedAt` / `Account.updatedAt`.** Group commit bumps them once per
+  batch instead of once per message. The value is the batch's write time, at or
+  after every message in it, and it still increases. So `/v1/sessions` (ordered
+  by `updatedAt`) sorts the same, and `/v2/sessions?changedSince=` still reports
+  the session as changed.
+- **User and session seqs.** Batches take consecutive ranges from the same
+  `Account.seq` and `Session.seq` counters with one atomic `UPDATE`, so nothing
+  is skipped or reused. The TS server continues from the stored values, and
+  clients see no gap or repeat.
+- **Message rows** have the TS shape: client-side millisecond `createdAt` and
+  `updatedAt`, cuid ids, `{"t":"encrypted","c":…}` jsonb content.
+- **Other differences** are not stored state (see
+  `packages/happy-server-rs/QUIRKS.md`, "Known deviations"). One exception:
+  avatar thumbhashes computed by the Rust server can differ slightly for
+  resized images (deviation 15). They stay valid.
+
 ## Local dev helpers
 The server package includes scripts for local infrastructure:
 - `pnpm --filter happy-server db` (Postgres in Docker)
