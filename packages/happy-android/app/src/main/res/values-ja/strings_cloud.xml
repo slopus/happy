@@ -60,4 +60,5 @@
     <string name="cloud_invite_button">参加</string>
     <string name="cloud_sign_in_apple">Appleでサインイン</string>
     <string name="cloud_sign_in_github">GitHub でサインイン</string>
+    <string name="cloud_sign_in_google">Google で続行</string>
 </resources>

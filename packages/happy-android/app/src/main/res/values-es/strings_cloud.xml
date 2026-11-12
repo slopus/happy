@@ -60,4 +60,5 @@
     <string name="cloud_invite_button">Unirse</string>
     <string name="cloud_sign_in_apple">Iniciar sesión con Apple</string>
     <string name="cloud_sign_in_github">Iniciar sesión con GitHub</string>
+    <string name="cloud_sign_in_google">Continuar con Google</string>
 </resources>

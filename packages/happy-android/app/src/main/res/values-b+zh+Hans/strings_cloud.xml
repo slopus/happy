@@ -60,4 +60,5 @@
     <string name="cloud_invite_button">加入</string>
     <string name="cloud_sign_in_apple">通过 Apple 登录</string>
     <string name="cloud_sign_in_github">使用 GitHub 登录</string>
+    <string name="cloud_sign_in_google">使用 Google 账号继续</string>
 </resources>

@@ -33,6 +33,7 @@ import com.slopus.happy.connection.CloudException
 import com.slopus.happy.connection.CloudName
 import com.slopus.happy.connection.CloudProvider
 import com.slopus.happy.connection.CloudServer
+import com.slopus.happy.connection.GoogleSignIn
 import com.slopus.happy.connection.HappyCloud
 import com.slopus.happy.connection.ServerSignInFlow
 import com.slopus.happy.connection.ServerSignInState
@@ -121,6 +122,15 @@ private fun Cloud(graph: AppGraph, account: CloudAccount, nav: NavHostController
         if (result.resultCode == AuthTabIntent.RESULT_OK) result.resultUri?.let { graph.oauthCallback(it.toString()) }
     }
     val openBrowser = { provider: CloudProvider -> openAuthTab(context, authTab, account.browserUrl(provider), dark) }
+    // Google's own sheet; with no Google account or Play services here, Google's sign-in in the Auth Tab instead.
+    val google = remember { GoogleSignIn() }
+    val scope = rememberCoroutineScope()
+    val signInWithGoogle = {
+        scope.launch {
+            if (!account.signInWithGoogle { nonce -> google.credential(context, nonce) }) openBrowser(CloudProvider.Google)
+        }
+        Unit
+    }
     val accounts by graph.agentConnections.accounts.collectAsStateWithLifecycle()
     LaunchedEffect(state) { if (state == CloudAccountState.SignedIn) picker.load() }
     // No servers yet: Bootstrap leads, and its Back signs out (desktop's create with nothing to go back to).
@@ -162,6 +172,7 @@ private fun Cloud(graph: AppGraph, account: CloudAccount, nav: NavHostController
         joins = picker.joins,
         image = account::image,
         onOpenBrowser = openBrowser,
+        onSignInWithGoogle = signInWithGoogle,
         signInWithPassword = account::signInWithPassword,
         onReload = picker::load,
         onJoinServer = { server ->

@@ -29,6 +29,7 @@ import com.slopus.happy.ui.setHappyContent
 import com.slopus.happy.ui.start.StartGalleryTags
 import com.slopus.happy.ui.start.StartSlide
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.width
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -63,6 +64,7 @@ class CloudWelcomeTest {
             joins = joins,
             image = { null },
             onOpenBrowser = { taps += "browser ${it.id}" },
+            onSignInWithGoogle = { taps += "google" },
             signInWithPassword = { login, password -> tries += login to password; answers.removeFirst() },
             onReload = {},
             onJoinServer = { taps += "join ${it.name}" },
@@ -117,10 +119,32 @@ class CloudWelcomeTest {
         assertEquals(listOf("browser apple", "browser github", "back"), taps)
     }
 
-    /** While the code is exchanged neither can be pressed again. */
+    /**
+     * Continue with Google, Google's button (its G, 20, 10 before the words),
+     * 12 over Apple and as wide, a pill as tall as the others; Apple and
+     * GitHub stay where they were.
+     */
     @Test
-    fun whileFinishingBothWait() {
+    fun continueWithGoogleStandsOverApple() {
+        screen()
+        val google = rule.node(CloudTags.GOOGLE).bounds
+        val apple = rule.node(CloudTags.PRIMARY).bounds
+        val github = rule.node(CloudTags.SECONDARY).bounds
+        rule.node(CloudTags.GOOGLE).assert(hasAnyDescendant(hasText("Continue with Google")))
+        assertDp("apple 12 under google", google.bottom + 12.dp, apple.top)
+        assertDp("as tall as apple", apple.height, google.height)
+        assertDp("50 tall", 50.dp, google.height)
+        assertDp("as wide as apple", apple.width, google.width)
+        assertDp("github still 24 above the bottom", (891 - 24).dp, github.bottom)
+        rule.onNodeWithText("Continue with Google").performClick()
+        assertEquals(listOf("google"), taps)
+    }
+
+    /** While Google's sheet is up or the code is exchanged none can be pressed again. */
+    @Test
+    fun whileFinishingAllWait() {
         screen(CloudAccountState.Finishing)
+        rule.node(CloudTags.GOOGLE).assertIsNotEnabled()
         rule.node(CloudTags.PRIMARY).assertIsNotEnabled()
         rule.node(CloudTags.SECONDARY).assertIsNotEnabled()
     }

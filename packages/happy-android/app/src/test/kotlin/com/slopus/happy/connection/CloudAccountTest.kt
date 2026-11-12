@@ -163,6 +163,91 @@ class CloudAccountTest {
         assertEquals(false, account.signedIn())
     }
 
+    /** Google on the phone: the ID token and the raw nonce it was asked with go to the native route, for the same hour's pass. */
+    @Test
+    fun signsInWithGoogleOnThePhoneForTheSameHour() = runBlocking {
+        val account = account()
+        val access = jwt(audience, tag = "g1")
+        server.enqueue(token(access))
+        var asked: String? = null
+        val signedIn = account.signInWithGoogle { nonce ->
+            asked = nonce
+            // The welcome waits while Google's sheet is up.
+            assertEquals(CloudAccountState.Finishing, account.state.value)
+            GoogleCredential.Token("google.id.token")
+        }
+        assertEquals(true, signedIn)
+        assertEquals(CloudAccountState.SignedIn, account.state.value)
+        val nonce = requireNotNull(asked)
+        // 32 random bytes, base64url without padding.
+        assertEquals(true, Regex("[A-Za-z0-9_-]{43}").matches(nonce))
+        val request = server.takeRequest()
+        assertEquals("POST", request.method)
+        assertEquals("/v1/auth/native", request.target)
+        assertEquals(null, request.headers["Authorization"])
+        assertEquals("application/json; charset=utf-8", request.headers["Content-Type"])
+        assertEquals("""{"provider":"google","idToken":"google.id.token","nonce":"$nonce"}""", request.body?.utf8())
+        // From here it is the browser's pass: servers with it, and signed out at its hour.
+        server.enqueue(json("""{"servers":[]}"""))
+        assertEquals(emptyList<CloudServer>(), account.servers())
+        assertEquals("Bearer $access", server.takeRequest().headers["Authorization"])
+        now += 3_600_000L - 119_000L
+        assertEquals(false, account.signedIn())
+        assertEquals(CloudAccountState.SignedOut(expired = true), account.state.value)
+    }
+
+    @Test
+    fun eachGoogleSignInHasAFreshNonce() = runBlocking {
+        val account = account()
+        val nonces = mutableListOf<String>()
+        repeat(2) { account.signInWithGoogle { nonces += it; GoogleCredential.Cancelled } }
+        assertEquals(2, nonces.toSet().size)
+        assertEquals(0, server.requestCount)
+    }
+
+    /** A refused ID token (401 `invalid_token`) is a failed sign-in, not an ended pass; nor is any other bad answer a pass. */
+    @Test
+    fun aRefusedGoogleSignInSaysWhyAndSignsNothingIn() = runBlocking {
+        val account = account()
+        val google: suspend (String) -> GoogleCredential = { GoogleCredential.Token("id") }
+        for ((answer, reason) in listOf(
+            json("""{"code":"invalid_token","error":"That sign-in could not be verified."}""", code = 401) to ServerAuthException.Reason.Rejected,
+            json("""{"code":"unsupported_provider"}""", code = 400) to ServerAuthException.Reason.Denied,
+            json("""{"code":"internal"}""", code = 503) to ServerAuthException.Reason.Unreachable,
+            json("""{"token_type":"Bearer"}""") to ServerAuthException.Reason.InvalidToken,
+            token(jwt("https://acme.example/", tag = "x")) to ServerAuthException.Reason.WrongAudience,
+        )) {
+            server.enqueue(answer)
+            assertEquals(true, account.signInWithGoogle(google))
+            assertEquals(CloudAccountState.Failed(reason), account.state.value)
+            assertEquals(false, account.signedIn())
+        }
+        assertEquals(5, server.requestCount)
+    }
+
+    /** Closing Google's sheet says nothing; no Google account here asks for the browser's sign-in; a broken one says it failed. */
+    @Test
+    fun aCancelIsSilentAndNoAccountFallsBackToTheBrowser() = runBlocking {
+        val account = account()
+        assertEquals(true, account.signInWithGoogle { GoogleCredential.Cancelled })
+        assertEquals(CloudAccountState.SignedOut(), account.state.value)
+        assertEquals(false, account.signInWithGoogle { GoogleCredential.Unavailable })
+        assertEquals(CloudAccountState.SignedOut(), account.state.value)
+        // The browser's sign-in goes straight to Google.
+        assertEquals("google", account.browserUrl(CloudProvider.Google).toHttpUrl().queryParameter("provider"))
+        assertEquals(true, account.signInWithGoogle { GoogleCredential.Failed })
+        assertEquals(CloudAccountState.Failed(ServerAuthException.Reason.Denied), account.state.value)
+        assertEquals(0, server.requestCount)
+    }
+
+    /** Google's browser sign-in is the same web sign-in as Apple's and GitHub's. */
+    @Test
+    fun signsInWithGoogleInTheBrowserTheSameWay() = runBlocking {
+        val account = account()
+        signIn(account, jwt(audience, tag = "a1"), CloudProvider.Google)
+        assertEquals(CloudAccountState.SignedIn, account.state.value)
+    }
+
     @Test
     fun listsServersWithTheAccountToken() = runBlocking {
         val access = jwt(audience, tag = "a1")

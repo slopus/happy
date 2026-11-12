@@ -18,3 +18,10 @@
 
 # BouncyCastle is used through its low-level classes only; R8 strips the rest.
 -dontwarn org.bouncycastle.**
+
+# Credential Manager finds its Google Play services provider by reflection
+# (developer.android.com, "Sign in your user with Credential Manager").
+-if class androidx.credentials.CredentialManager
+-keep class androidx.credentials.playservices.** {
+  *;
+}

@@ -3,6 +3,7 @@ package com.slopus.happy.ui.connection
 import androidx.annotation.RawRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
@@ -60,6 +62,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -74,6 +77,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -136,6 +140,7 @@ object CloudTags {
     const val SLIDES = "cloud.slides"
     const val CREATE = "cloud.create"
     const val INVITE = "cloud.invite"
+    const val GOOGLE = "cloud.google"
     fun server(name: String) = "cloud.server.$name"
     fun join(name: String) = "cloud.join.$name"
     fun member(accountId: String) = "cloud.member.$accountId"
@@ -347,6 +352,8 @@ fun CloudScreen(
     image: suspend (String) -> ByteArray?,
     /** Sign in with Apple or GitHub, in the app. */
     onOpenBrowser: (CloudProvider) -> Unit,
+    /** Continue with Google: Google's own sheet, on the phone. */
+    onSignInWithGoogle: () -> Unit,
     /** A test account's sign-in, for the welcome's hidden form. */
     signInWithPassword: suspend (login: String, password: String) -> PasswordSignIn,
     onReload: () -> Unit,
@@ -360,7 +367,7 @@ fun CloudScreen(
     when (state) {
         // Signed out, waiting for the Auth Tab, finishing, or why it failed: all the welcome, its one button saying which.
         is CloudAccountState.SignedOut, CloudAccountState.InBrowser, CloudAccountState.Finishing, is CloudAccountState.Failed ->
-            CloudWelcome(state, onOpenBrowser, signInWithPassword, onBack)
+            CloudWelcome(state, onOpenBrowser, onSignInWithGoogle, signInWithPassword, onBack)
         CloudAccountState.SignedIn -> {
             val joining = CloudJoin.Joining in joins.values
             fun joined(server: CloudServer) = joins[server.id] == CloudJoin.Joined || (joins[server.id] == null && server.origin in here)
@@ -406,11 +413,12 @@ fun CloudScreen(
  * Cloud's slides ([CloudSlides]) as the first screen's [StartGallery] on its
  * gradient, desktop's scenes drifting down the sides ([CloudDrift]), and at
  * the bottom Sign in with Apple in Start's place and Sign in with GitHub
- * under it in Use Happy Cloud's, as iOS. Each opens that provider's sign-in
- * in the app ([CloudProvider]: Apple has no native sign-in on Android, and
- * the accounts service refuses Google). Over them, a note: the hour up, or
- * why the last sign-in failed. While the code is exchanged the one pressed
- * spins.
+ * under it in Use Happy Cloud's, as iOS, with Continue with Google 12 over
+ * them ([GoogleButton]). Apple and GitHub open that provider's sign-in in
+ * the app (Apple has no native sign-in on Android); Google's is its own
+ * sheet on the phone. Over them, a note: the hour up, or why the last
+ * sign-in failed. While the sheet is up or the code is exchanged the one
+ * pressed spins.
  *
  * The slides' art pressed [UNLOCK_TAPS] times within [UNLOCK_MILLIS]
  * reveals a test account's sign-in, login and password, for people and
@@ -422,6 +430,7 @@ fun CloudScreen(
 private fun CloudWelcome(
     state: CloudAccountState,
     onSignIn: (CloudProvider) -> Unit,
+    onSignInWithGoogle: () -> Unit,
     signInWithPassword: suspend (login: String, password: String) -> PasswordSignIn,
     onBack: () -> Unit,
 ) {
@@ -437,6 +446,12 @@ private fun CloudWelcome(
     )
     val apple = action(CloudProvider.Apple, stringResource(R.string.cloud_sign_in_apple))
     val github = action(CloudProvider.GitHub, stringResource(R.string.cloud_sign_in_github))
+    val google = CloudAction(
+        stringResource(R.string.cloud_sign_in_google),
+        { pressed = CloudProvider.Google; onSignInWithGoogle() },
+        enabled = state != CloudAccountState.Finishing,
+        loading = state == CloudAccountState.Finishing && pressed == CloudProvider.Google,
+    )
     if (!unlocked) {
         val colors = HappyTheme.colors
         val note = when (state) {
@@ -446,6 +461,7 @@ private fun CloudWelcome(
         }
         CloudDeck(
             note = note,
+            google = google,
             primary = apple,
             secondary = github,
             onArtPress = remember {
@@ -505,14 +521,14 @@ private const val UNLOCK_MILLIS = 4_000L
  * The welcome's frame, the first screen's with back: the gradient, the
  * drift, the clear bar, [CloudSlides] centred between the bar's row and the
  * buttons (16 kept above and below, moving on every 12 s), then [note] if
- * any, 12 over [primary] where Start is, and [secondary] where Use Happy
+ * any, 12 over [google] if any, 12 over [primary] where Start is, and [secondary] where Use Happy
  * Cloud is: 12 under it, 24 above the bottom inset, both as wide as the
  * wider (at least 280), [primary] rising to make room. It scrolls when it
  * outgrows the window. The drift keeps clear of the slides and of the
  * note and buttons.
  */
 @Composable
-private fun CloudDeck(note: Pair<String, Color?>?, primary: CloudAction, secondary: CloudAction?, onArtPress: (Long) -> Unit, onBack: () -> Unit) {
+private fun CloudDeck(note: Pair<String, Color?>?, google: CloudAction?, primary: CloudAction, secondary: CloudAction?, onArtPress: (Long) -> Unit, onBack: () -> Unit) {
     val dark = HappyTheme.colors.dark
     val text = if (dark) StartSpec.darkText else StartSpec.lightText
     var root by remember { mutableStateOf<LayoutCoordinates?>(null) }
@@ -556,6 +572,10 @@ private fun CloudDeck(note: Pair<String, Color?>?, primary: CloudAction, seconda
                     }
                     // Start and Use Happy Cloud's places, as wide as the wider; both filled, as iOS: two ways in, neither the lesser.
                     Column(Modifier.widthIn(min = StartSpec.connectMinWidth).width(IntrinsicSize.Max)) {
+                        if (google != null) {
+                            GoogleButton(google, Modifier.testTag(CloudTags.GOOGLE))
+                            Spacer(Modifier.height(StartSpec.cloudGap))
+                        }
                         RoundButton(
                             title = primary.title,
                             onClick = primary.onClick,
@@ -587,6 +607,52 @@ private fun CloudDeck(note: Pair<String, Color?>?, primary: CloudAction, seconda
         }
     }
 }
+/**
+ * Continue with Google, as Google's branding guidelines draw it
+ * (developers.google.com/identity/branding-guidelines): the full-colour G,
+ * 20, 10 before "Continue with Google" in medium weight, both centred; a
+ * pill as tall as [RoundButton]'s Large (50) with its sides' 24. In the dark
+ * theme Google's neutral button (#F2F2F2, #1F1F1F text, no stroke), a light
+ * pill like the others there; in the light theme Google's light one (white,
+ * a 1 #747775 stroke, #1F1F1F text). Disabled is 50%; while loading a
+ * spinner stands over the hidden content, as RoundButton's.
+ */
+@Composable
+private fun GoogleButton(action: CloudAction, modifier: Modifier = Modifier) {
+    val dark = HappyTheme.colors.dark
+    val shape = RoundedCornerShape(percent = 50)
+    val size = RoundButtonSize.Large
+    val text = Color(0xFF1F1F1F)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .alpha(if (action.enabled) 1f else 0.5f)
+            .defaultMinSize(minWidth = 64.dp, minHeight = size.height)
+            .clip(shape)
+            .background(if (dark) Color(0xFFF2F2F2) else Color.White)
+            .then(if (dark) Modifier else Modifier.border(1.dp, Color(0xFF747775), shape))
+            .clickable(enabled = action.enabled && !action.loading, role = Role.Button, onClick = action.onClick)
+            .padding(horizontal = size.paddingHorizontal),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.alpha(if (action.loading) 0f else 1f),
+        ) {
+            Image(painterResource(R.drawable.google_g), contentDescription = null, modifier = Modifier.size(20.dp))
+            Text(
+                action.title,
+                style = happyTextStyle(fontSize = size.fontSize, lineHeight = size.lineHeight, weight = FontWeight.Medium),
+                color = text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (action.loading) CircularProgressIndicator(modifier = Modifier.size(20.dp), color = text, strokeWidth = 2.dp)
+    }
+}
+
 /** A quiet action in a screen's column, in the gradient's text colour: desktop's ghost buttons under the list. */
 @Composable
 private fun CloudLink(action: CloudAction, tag: String) {

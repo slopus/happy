@@ -1187,13 +1187,29 @@ change its wire behaviour on Android alone.
   open-hands, desktop's Lottie files minified, and its words) as the first
   screen's `StartGallery`, with desktop's scenes drifting down the sides
   (`CloudDrift`), then Sign in with Apple where Start is and Sign in with
-  GitHub under it where Use Happy Cloud is (iOS's). Each opens the
-  **account** sign-in in an Auth Tab (androidx.browser, ephemeral; a Custom
-  Tab where there is none): PKCE against the accounts origin's `/authorize`
-  and `/token`, `client_id` `happy`, `resource` the accounts origin, nothing
-  discovered, and `provider=apple` or `github` (`CloudProvider`), which skips
-  the page's chooser. Both are web sign-ins: Apple has no native one on
-  Android, and the service refuses Google. The account
+  GitHub under it where Use Happy Cloud is (iOS's), with Continue with
+  Google 12 over them (Google's branded button: its G, the neutral pill in
+  the dark theme, the light one with its stroke in the light). Apple and
+  GitHub open the **account** sign-in in an Auth Tab (androidx.browser,
+  ephemeral; a Custom Tab where there is none): PKCE against the accounts
+  origin's `/authorize` and `/token`, `client_id` `happy`, `resource` the
+  accounts origin, nothing discovered, and `provider=apple` or `github`
+  (`CloudProvider`), which skips the page's chooser. Apple has no native
+  sign-in on Android. Google's is native (`connection/GoogleSignIn.kt`,
+  `CloudAccount.signInWithGoogle`): Credential Manager's
+  `GetSignInWithGoogleOption` for the accounts service's web client
+  (`BuildConfig.GOOGLE_SERVER_CLIENT_ID`, one public ID for every variant;
+  `HAPPY_CLOUD_GOOGLE_CLIENT_ID` or `-Phappy.cloudGoogleClientId` points a
+  build elsewhere) with a fresh random nonce, then `POST /v1/auth/native`
+  `{provider: "google", idToken, nonce}` (the raw nonce) for the same
+  hour's pass, its `aud` checked as the browser's; a 401 there is the ID
+  token refused, never a pass ending. Closing the sheet says nothing; no
+  Google account or Play services on the phone (`NoCredentialException`
+  and the like) opens Google's web sign-in (`provider=google`) in the Auth
+  Tab instead. Google knows each variant by package and signing SHA-1,
+  registered as Android clients in project happy-coder-9fe36: a build
+  signed with another key (any machine's own debug keystore) gets no Google
+  sign-in from the sheet. The account
   token is a pass of about an hour with no refresh (token lifetimes v4): held
   in memory only, never stored, never refreshed, and only ever sent to the
   accounts API. Past its hour (two minutes' margin), or on any 401 from the

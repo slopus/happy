@@ -60,4 +60,5 @@
     <string name="cloud_invite_button">Unisciti</string>
     <string name="cloud_sign_in_apple">Accedi con Apple</string>
     <string name="cloud_sign_in_github">Accedi con GitHub</string>
+    <string name="cloud_sign_in_google">Continua con Google</string>
 </resources>

@@ -49,10 +49,12 @@ data class CloudServerImage(val thumbhash: String? = null, val width: Int? = nul
 
 /**
  * A way to sign in to the account, by the accounts service's `provider`
- * hint. Both are web sign-ins on Android: Apple has no native sign-in here,
- * and the service refuses Google (`unsupported_provider`).
+ * hint. Apple and GitHub are web sign-ins on Android (Apple has no native
+ * one here). Google signs in on the phone through Credential Manager
+ * ([CloudAccount.signInWithGoogle]), and on the web where it has no account
+ * to offer.
  */
-enum class CloudProvider(val id: String) { Apple("apple"), GitHub("github") }
+enum class CloudProvider(val id: String) { Apple("apple"), GitHub("github"), Google("google") }
 
 /** What `GET /v1/servers/availability` says of a name. */
 enum class CloudName { Available, Taken, Reserved, Invalid }
@@ -133,9 +135,9 @@ class CloudAccount(
 
     /**
      * [provider]'s sign-in, starting a fresh one each time: the PKCE request
-     * with `provider=apple` or `github`, which makes the accounts service skip
-     * its chooser and redirect straight to Apple or GitHub (an unknown
-     * provider shows the chooser; Google is refused, 400).
+     * with `provider=apple`, `github` or `google`, which makes the accounts
+     * service skip its chooser and redirect straight to that provider (an
+     * unknown provider shows the chooser).
      */
     fun browserUrl(provider: CloudProvider): String {
         val next = auth.begin(origin, method, ServerSignInFlow.REDIRECT_URI)
@@ -192,6 +194,59 @@ class CloudAccount(
             status == 401 || status == 400 -> PasswordSignIn.Wrong
             status >= 500 -> PasswordSignIn.Failed(CloudException.Reason.Unreachable)
             else -> PasswordSignIn.Failed(CloudException.Reason.Failed)
+        }
+    }
+
+    /**
+     * Signs in with Google on the phone: [credential] asks Credential Manager
+     * for an ID token bound to a fresh random nonce, and `POST
+     * /v1/auth/native` trades it, with the same raw nonce, for the same hour's
+     * pass as the browser's. A pass for anything but [origin] is refused. The
+     * welcome waits ([CloudAccountState.Finishing]) from the sheet's opening
+     * to the answer; a cancel goes back to signed out, saying nothing. Returns
+     * false when the phone had no Google sign-in to offer (no account, no
+     * Google Play services), for the browser's instead.
+     */
+    suspend fun signInWithGoogle(credential: suspend (nonce: String) -> GoogleCredential): Boolean {
+        // A second press before the first one's sheet: that one goes on.
+        if (mutableState.value == CloudAccountState.Finishing) return true
+        pending = null
+        mutableState.value = CloudAccountState.Finishing
+        try {
+            val nonce = nonce()
+            val got = credential(nonce)
+            mutableState.value = when (got) {
+                is GoogleCredential.Token -> signInNatively(CloudProvider.Google, got.idToken, nonce)
+                GoogleCredential.Cancelled, GoogleCredential.Unavailable -> CloudAccountState.SignedOut()
+                GoogleCredential.Failed -> CloudAccountState.Failed(ServerAuthException.Reason.Denied)
+            }
+            return got != GoogleCredential.Unavailable
+        } finally {
+            // Left before an answer (the screen went): not waiting any more.
+            if (mutableState.value == CloudAccountState.Finishing) mutableState.value = CloudAccountState.SignedOut()
+        }
+    }
+
+    /** `POST /v1/auth/native`: a 401 is the ID token refused, never a pass ending; nothing was signed in yet. */
+    private suspend fun signInNatively(provider: CloudProvider, idToken: String, nonce: String): CloudAccountState {
+        val body = JsonObject(mapOf("provider" to JsonPrimitive(provider.id), "idToken" to JsonPrimitive(idToken), "nonce" to JsonPrimitive(nonce)))
+        val (status, root) = try {
+            send("POST", "/v1/auth/native", body, token = null)
+        } catch (_: CloudException) {
+            return CloudAccountState.Failed(ServerAuthException.Reason.Unreachable)
+        }
+        fun field(key: String) = (root?.get(key) as? JsonPrimitive)?.contentOrNull
+        return when {
+            status == 200 -> {
+                val token = field("access_token")?.takeIf { it.isNotEmpty() } ?: return CloudAccountState.Failed(ServerAuthException.Reason.InvalidToken)
+                if (!ServerAuthClient.audienceIs(token, origin)) return CloudAccountState.Failed(ServerAuthException.Reason.WrongAudience)
+                val life = field("expires_in")?.toLongOrNull()?.takeIf { it > 0 }?.let { it * 1000 } ?: PASS_MILLIS
+                access = AccessToken(token, now() + life)
+                CloudAccountState.SignedIn
+            }
+            status == 401 -> CloudAccountState.Failed(ServerAuthException.Reason.Rejected)
+            status >= 500 -> CloudAccountState.Failed(ServerAuthException.Reason.Unreachable)
+            else -> CloudAccountState.Failed(ServerAuthException.Reason.Denied)
         }
     }
 
@@ -387,5 +442,11 @@ class CloudAccount(
         /** A lockout's length when a 429 doesn't say (test accounts: 15 minutes). */
         private const val LOCKOUT_SECONDS = 900L
         private val json = Json { ignoreUnknownKeys = true }
+
+        /** A native sign-in's nonce: 32 random bytes, base64url. Google puts it in the ID token as given, and the service checks it is the one sent. */
+        internal fun nonce(): String {
+            val bytes = ByteArray(32).also(java.security.SecureRandom()::nextBytes)
+            return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+        }
     }
 }

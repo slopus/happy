@@ -61,6 +61,16 @@ val happyCloudWeb = providers.environmentVariable("HAPPY_CLOUD_WEB").orNull?.tak
     ?: providers.gradleProperty("happy.cloudWeb").orNull?.takeIf { it.isNotBlank() }
     ?: "happybases.com"
 
+// Sign in with Google for the Happy Cloud account: the accounts service's web
+// OAuth client (project happy-coder-9fe36), which Google's ID tokens are issued
+// to and the service checks as their audience. Public, the same for every
+// variant; Google tells the variants apart by package and signing SHA-1.
+// HAPPY_CLOUD_GOOGLE_CLIENT_ID or -Phappy.cloudGoogleClientId points a build at
+// another accounts deployment's client.
+val happyCloudGoogleClientId = providers.environmentVariable("HAPPY_CLOUD_GOOGLE_CLIENT_ID").orNull?.takeIf { it.isNotBlank() }
+    ?: providers.gradleProperty("happy.cloudGoogleClientId").orNull?.takeIf { it.isNotBlank() }
+    ?: "902947412706-bem666be0cu3ju6lnic2go91hsl256co.apps.googleusercontent.com"
+
 // The agent connection voice call's public ElevenLabs agent
 // (docs/agent-voice-call.md): never in the repository, so from the
 // environment, -Phappy.callAgentV3Id or the ignored local.properties. Named
@@ -135,6 +145,7 @@ android {
         buildConfigField("String", "HAPPY_CLOUD_BASE", groovy.json.JsonOutput.toJson(happyCloudBase))
         buildConfigField("String", "HAPPY_CLOUD_ACCOUNTS", groovy.json.JsonOutput.toJson(happyCloudAccounts))
         buildConfigField("String", "HAPPY_CLOUD_WEB", groovy.json.JsonOutput.toJson(happyCloudWeb))
+        buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", groovy.json.JsonOutput.toJson(happyCloudGoogleClientId))
         buildConfigField("String", "REVENUE_CAT_GOOGLE_KEY", groovy.json.JsonOutput.toJson(revenueCatGoogleKey))
         buildConfigField("String", "POSTHOG_KEY", groovy.json.JsonOutput.toJson(postHogKey))
         // Existing relay voice agent, retained for compatibility with installed clients.
@@ -492,6 +503,9 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.browser)
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services.auth)
+    implementation(libs.googleid)
     implementation(libs.androidx.swiperefreshlayout)
 
     implementation(platform(libs.compose.bom))

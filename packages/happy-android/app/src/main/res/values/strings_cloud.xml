@@ -62,4 +62,5 @@
     <string name="cloud_invite_button">Join server</string>
     <string name="cloud_sign_in_apple">Sign in with Apple</string>
     <string name="cloud_sign_in_github">Sign in with GitHub</string>
+    <string name="cloud_sign_in_google">Continue with Google</string>
 </resources>
