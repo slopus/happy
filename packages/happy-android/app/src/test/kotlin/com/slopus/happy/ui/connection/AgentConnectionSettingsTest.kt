@@ -239,13 +239,13 @@ class AgentConnectionSettingsTest {
             AgentConnectionSettingsScreen(
                 profile = SettingsProfile("agent-connection-1", "Studio", "Connected"),
                 accounts = accounts,
-                actions = AgentSettingsActions(onDataStorage = {}, onSharing = {}, onAgents = {}, onMembers = {}, onProviders = {}, onComputePools = {}, onNotifications = {}, onUsage = {}),
+                actions = AgentSettingsActions(onDataStorage = {}, onSharing = {}, onAgents = {}, onMembers = {}, onProviders = {}, onCompute = {}, onNotifications = {}, onUsage = {}),
                 about = AboutInfo("1.8.0 (412)"),
             )
         }
         fun card(vararg tags: String) = rule.onNode(tags.fold(hasTestTag(ItemGroupTags.CARD)) { m, t -> m and hasAnyDescendant(hasTestTag(t)) }, useUnmergedTree = true)
         card(AgentSettingsTags.APPEARANCE, AgentVoiceTags.ROW, DataStorageTags.ROW, CloudPushTags.ROW).assertExists()
-        card(AgentAgentsTags.ROW, CloudProvidersTags.ROW, ComputePoolsTags.ROW, AgentUsageTags.ROW).assertExists()
+        card(AgentAgentsTags.ROW, CloudProvidersTags.ROW, ComputeTags.ROW, AgentUsageTags.ROW).assertExists()
         card(CloudTags.MEMBERS).assertExists()
         card(AgentSharingTags.ROW, CloudTags.MEMBERS).assertDoesNotExist()
         rule.onAllNodesWithTag(AgentSharingTags.ROW, useUnmergedTree = true).assertCountEquals(1)
@@ -253,15 +253,15 @@ class AgentConnectionSettingsTest {
         rule.onNodeWithText("Sharing").assertDoesNotExist()
         // Right after Data and Storage.
         assertTrue(rule.onNode(hasTestTag(AgentSharingTags.ROW), useUnmergedTree = true).fetchSemanticsNode().positionInRoot.y > rule.onNode(hasTestTag(DataStorageTags.ROW), useUnmergedTree = true).fetchSemanticsNode().positionInRoot.y)
-        rule.onNode(hasTestTag(ItemGroupTags.CARD) and hasAnyDescendant(hasTestTag(DataStorageTags.ROW)) and hasAnyDescendant(hasTestTag(ComputePoolsTags.ROW)), useUnmergedTree = true).assertDoesNotExist()
+        rule.onNode(hasTestTag(ItemGroupTags.CARD) and hasAnyDescendant(hasTestTag(DataStorageTags.ROW)) and hasAnyDescendant(hasTestTag(ComputeTags.ROW)), useUnmergedTree = true).assertDoesNotExist()
         rule.onNodeWithText("AGENTS").assertExists()
         rule.onNodeWithText("TEAM").assertExists()
         rule.onNodeWithText("ADVANCED").assertDoesNotExist()
-        rule.onNode(hasTestTag(ComputePoolsTags.ROW) and hasAnyDescendant(hasText("Compute")), useUnmergedTree = true).assertExists()
+        rule.onNode(hasTestTag(ComputeTags.ROW) and hasAnyDescendant(hasText("Compute")), useUnmergedTree = true).assertExists()
         rule.onNode(hasTestTag(CloudProvidersTags.ROW) and hasAnyDescendant(hasText("Inference")), useUnmergedTree = true).assertExists()
         rule.onNode(hasTestTag(AgentUsageTags.ROW) and hasAnyDescendant(hasText("Usage")), useUnmergedTree = true).assertExists()
         // Usage closes the group, under Compute.
-        assertTrue(rule.onNode(hasTestTag(AgentUsageTags.ROW), useUnmergedTree = true).fetchSemanticsNode().positionInRoot.y > rule.onNode(hasTestTag(ComputePoolsTags.ROW), useUnmergedTree = true).fetchSemanticsNode().positionInRoot.y)
+        assertTrue(rule.onNode(hasTestTag(AgentUsageTags.ROW), useUnmergedTree = true).fetchSemanticsNode().positionInRoot.y > rule.onNode(hasTestTag(ComputeTags.ROW), useUnmergedTree = true).fetchSemanticsNode().positionInRoot.y)
     }
 
     /**

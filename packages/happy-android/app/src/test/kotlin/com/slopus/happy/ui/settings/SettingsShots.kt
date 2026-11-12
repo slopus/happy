@@ -74,7 +74,7 @@ class SettingsShots {
         AgentConnectionSettingsScreen(
             SettingsProfile("agent-connection-1", "@acme", "Connected"),
             AccountMenu(listOf(AccountMenuEntry("agent-connection-1", "@acme", agent = true, active = true))),
-            AgentSettingsActions(onDataStorage = {}, onSharing = {}, onAgents = {}, onMembers = {}, onProviders = {}, onComputePools = {}, onNotifications = {}, onUsage = {}),
+            AgentSettingsActions(onDataStorage = {}, onSharing = {}, onAgents = {}, onMembers = {}, onProviders = {}, onCompute = {}, onNotifications = {}, onUsage = {}),
             AboutInfo("1.8.0 (412)"),
             person = AgentPerson("Steve"),
         )

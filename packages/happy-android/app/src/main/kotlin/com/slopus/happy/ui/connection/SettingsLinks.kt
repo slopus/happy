@@ -22,7 +22,7 @@ sealed interface SettingsPlace {
     data object Members : SettingsPlace
     /** Instructions are documents in the server's Policy vault. */
     data object Instructions : SettingsPlace
-    data object ComputePools : SettingsPlace
+    data object Compute : SettingsPlace
     /**
      * Happy Cloud's AI providers: the list, with [add]'s flow over it when a
      * link asks for one ([CloudProviderFlow]), kept in [destination] when it says.
@@ -43,7 +43,7 @@ object SettingsLinks {
         "members" -> if (cloud) SettingsPlace.Members else null
         "instructions" -> if (cloud) SettingsPlace.Instructions else null
         "mobile-access", "experimental", "dev", "server" -> null
-        "computes" -> if (cloud) SettingsPlace.ComputePools else null
+        "computes" -> if (cloud) SettingsPlace.Compute else null
         // The shared targets (w8548): the list, the chooser, each flow. Import is the desktop's; here it is the chooser.
         "providers", "providers/add", "providers/import", "providers/add/openai", "providers/add/anthropic", "providers/add/api-key" ->
             if (!cloud) null else SettingsPlace.Providers(
@@ -75,7 +75,7 @@ fun NavHostController.openSettingsLink(graph: AppGraph, connectionId: String, pa
         SettingsPlace.Voice -> navigate(AgentVoiceRoute(connectionId))
         SettingsPlace.Members -> navigate(CloudMembersRoute(connectionId))
         SettingsPlace.Instructions -> navigate(CloudInstructionsRoute(connectionId))
-        SettingsPlace.ComputePools -> navigate(CloudComputePoolsRoute(connectionId))
+        SettingsPlace.Compute -> navigate(CloudComputeRoute(connectionId))
         is SettingsPlace.Providers -> openCloudProviders(connectionId, place.add, place.destination)
         SettingsPlace.Servers -> {
             // As the account menu's Connect: a pass whose hour is up opens on the sign-in.

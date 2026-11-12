@@ -109,7 +109,7 @@ fun NavGraphBuilder.cloudRoutes(graph: AppGraph, nav: NavHostController) {
     page<MemberProfileRoute> { entry -> MemberProfileEntry(graph, nav, entry.toRoute<MemberProfileRoute>()) }
     page<CloudInstructionsRoute> { entry -> CloudInstructions(graph, nav, entry.toRoute<CloudInstructionsRoute>().connectionId) }
     cloudProviderRoutes(graph, nav)
-    cloudComputePoolRoutes(graph, nav)
+    cloudComputeRoutes(graph, nav)
     cloudPushSettingsRoutes(graph, nav)
 }
 
