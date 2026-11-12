@@ -22,7 +22,7 @@ import { ProjectDetailsPanel } from './ProjectDetailsPanel';
 import { ProjectConversationHeader } from './ProjectConversationHeader';
 import { ProjectConversationEmptyState } from './ProjectConversationEmptyState';
 import { GoalBoardButton as Button } from './GoalBoardButton';
-import { projectPanelGap, canSplitProjectFile } from './projectWorkspaceLayout';
+import { projectPanelGap, getProjectCatalogWidth } from './projectWorkspaceLayout';
 
 export type ProjectOverviewProps = {
     machineId: string; scopePath: string; title: string; conversationId?: string;
@@ -59,7 +59,8 @@ function OverviewContent(props: ProjectOverviewProps) {
     const wide = width >= 1100;
     const rightWidth = Math.min(340, Math.max(280, rowWidth * 0.3));
     const fileOpen = workspace.enabled && workspace.snapshot.open;
-    const split = wide && fileOpen && showChat && tab === 'files' && canSplitProjectFile(rowWidth, rightWidth, 0);
+    const centerOpen = showChat || fileOpen;
+    const catalogWidth = getProjectCatalogWidth(rowWidth, rightWidth);
     const alive = React.useRef(true);
     const opening = React.useRef(false);
     const focus = React.useRef(0);
@@ -106,11 +107,12 @@ function OverviewContent(props: ProjectOverviewProps) {
         const alreadyOpen = !!workspace.controller.getSnapshot().documents[path];
         void workspace.openReference(path).then(() => { if (alreadyOpen) return workspace.controller.refresh(path); });
     };
-    const showFiles = () => { setTab('files'); if (!wide) setCenter('details'); };
-    const changeTab = (value: string) => { setTab(value); if (value === 'details' && showChat) setCenter('chat'); };
+    const showFiles = () => { setTab('files'); if (!wide) setCenter('details'); else if (fileOpen) setCenter('file'); };
+    const changeTab = (value: string) => { setTab(value); if (value === 'details' && showChat) setCenter('chat'); else if (value === 'files' && fileOpen) setCenter('file'); };
     const info = overview.value;
     const chatDisabled = busy || (!history.length && (offline || !canCreateProjectConversation()));
     const maximized = fileOpen && workspace.maximized;
+    React.useEffect(() => { if (!fileOpen && workspace.maximized) workspace.setMaximized(false); }, [fileOpen, workspace.maximized, workspace.setMaximized]);
     const panel = <ProjectDetailsPanel testID="project-scope-panel" style={{ backgroundColor: surface, ...(wide ? { width: rightWidth, marginLeft: projectPanelGap } : { flex: 1 }) }} tab={tab} onTab={changeTab}
         header={<><Ionicons name="compass-outline" size={17} color={theme.colors.textLink} /><Text style={styles.label}>{t('projectGoals.globalOverview')}</Text></>}
         footer={<><Button variant="primary" testID="project-scope-open-chat" label={t(history.length ? 'projectGoals.continueChat' : 'projectGoals.openChat')} disabled={chatDisabled} onPress={() => { void start(); }}><Ionicons name="chatbubble-outline" size={16} color={theme.colors.text} /><Text style={styles.body}>{t(history.length ? 'projectGoals.continueChat' : 'projectGoals.openChat')}</Text></Button>{busy && <ActivityIndicator color={theme.colors.textLink} size="small" />}</>}>
@@ -133,10 +135,11 @@ function OverviewContent(props: ProjectOverviewProps) {
     return <View style={styles.area} testID="project-overview-workspace">
         {!wide && <View style={styles.compactTabs}><PanelTabs activeTab={center} onTabChange={setCenter} testIDPrefix="project-overview" tabs={[{ key: 'tasks', label: t('projectGoals.tasks'), icon: 'grid-outline' }, ...(showChat ? [{ key: 'chat', label: t('projectGoals.discussion'), icon: 'chatbubble-outline' as const }] : []), ...(fileOpen ? [{ key: 'file', label: t('projectGoals.files'), icon: 'document-outline' as const }] : []), { key: 'details', label: t('projectGoals.globalOverview'), icon: 'compass-outline' }]} /></View>}
         <View style={styles.row} onLayout={event => setRowWidth(Math.round(event.nativeEvent.layout.width))}>
-            {wide ? <><View style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
-                {!maximized && showChat && fileOpen && !split && center === 'file' && <View style={styles.compactTabs}><PanelTabs testIDPrefix="project-scope-center" activeTab={center === 'file' ? 'file' : 'chat'} onTabChange={setCenter} tabs={[{ key: 'chat', label: t('projectGoals.discussion'), icon: 'chatbubble-outline' }, { key: 'file', label: t('projectGoals.files'), icon: 'document-outline' }]} /></View>}
-                <View style={styles.row}>{!showChat && !fileOpen && props.children}{!maximized && showChat && <View style={{ flex: 1, minWidth: 0, minHeight: 0, ...(fileOpen && !split && center === 'file' ? { display: 'none' as const } : {}) }}>{chat}</View>}{fileOpen && <View style={{ flex: 1, minWidth: 0, minHeight: 0, marginLeft: !maximized && split && showChat ? projectPanelGap : 0, ...(!maximized && showChat && !split && center !== 'file' ? { display: 'none' as const } : {}) }}><FileWorkspace sessionId={conversationId ?? ''} framed readingSurface="inherited" fileTreeExpanded={tab === 'files'} onToggleFileTree={() => changeTab(tab === 'files' ? 'details' : 'files')} /></View>}</View>
-            </View>{panel}</> : center === 'details' ? panel : center === 'file' && fileOpen ? <FileWorkspace sessionId={conversationId ?? ''} framed readingSurface="inherited" /> : center === 'chat' && showChat ? chat : props.children}
+            {wide ? <><View testID="project-scope-catalog" style={[{ minWidth: 0, minHeight: 0 }, centerOpen ? { width: catalogWidth, flexBasis: catalogWidth, flexGrow: 0, flexShrink: 0, marginRight: projectPanelGap } : { flex: 1 }, maximized && { display: 'none' }]}>{props.children}</View>
+                {centerOpen && <View style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
+                    {!maximized && showChat && fileOpen && center === 'file' && <View style={styles.compactTabs}><PanelTabs testIDPrefix="project-scope-center" activeTab={center === 'file' ? 'file' : 'chat'} onTabChange={setCenter} tabs={[{ key: 'chat', label: t('projectGoals.discussion'), icon: 'chatbubble-outline' }, { key: 'file', label: t('projectGoals.files'), icon: 'document-outline' }]} /></View>}
+                    <View style={styles.row}>{!maximized && showChat && <View style={{ flex: 1, minWidth: 0, minHeight: 0, ...(fileOpen && center === 'file' ? { display: 'none' as const } : {}) }}>{chat}</View>}{fileOpen && <View style={{ flex: 1, minWidth: 0, minHeight: 0, ...(!maximized && showChat && center !== 'file' ? { display: 'none' as const } : {}) }}><FileWorkspace sessionId={conversationId ?? ''} framed readingSurface="inherited" fileTreeExpanded={tab === 'files'} onToggleFileTree={() => changeTab(tab === 'files' ? 'details' : 'files')} /></View>}</View>
+                </View>}{panel}</> : center === 'details' ? panel : center === 'file' && fileOpen ? <FileWorkspace sessionId={conversationId ?? ''} framed readingSurface="inherited" /> : center === 'chat' && showChat ? chat : props.children}
         </View>
     </View>;
 }

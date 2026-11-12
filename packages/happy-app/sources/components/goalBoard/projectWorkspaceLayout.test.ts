@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getProjectChatWidth, getProjectChatMaximumWidth, getProjectTaskNavigationWidth, canSplitProjectFile } from './projectWorkspaceLayout';
+import { getProjectCatalogWidth, getProjectChatWidth, getProjectChatMaximumWidth, getProjectTaskNavigationWidth, canSplitProjectFile } from './projectWorkspaceLayout';
 
 describe('project three-column allocation', () => {
     it('shares the space at laptop widths instead of squeezing the conversation', () => {
@@ -23,4 +23,15 @@ describe('project three-column allocation', () => {
         expect(canSplitProjectFile(1120, 320, 220)).toBe(false);
         expect(canSplitProjectFile(1280, 320, 0)).toBe(true);
     });
+});
+
+it('keeps cards and a readable center within the desktop work area', () => {
+    for (const [row, right] of [[1010, 303], [1180, 320], [1580, 320], [1820, 340]]) {
+        const cards = getProjectCatalogWidth(row, right);
+        expect(cards).toBeGreaterThanOrEqual(280);
+        expect(cards).toBeLessThanOrEqual(620);
+        expect(row - right - 20 - cards).toBeGreaterThanOrEqual(360);
+    }
+    expect(getProjectCatalogWidth(1580, 320)).toBeGreaterThanOrEqual(554);
+    expect(getProjectCatalogWidth(0, 320)).toBe(0);
 });

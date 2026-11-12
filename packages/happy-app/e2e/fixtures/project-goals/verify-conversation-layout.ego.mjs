@@ -8,20 +8,24 @@ const runtime = JSON.parse(await fs.readFile(config.runtimePath, 'utf8'));
 const task = await taskSpace(config.taskSpaceId), page = task.page('p1');
 assert.equal((await task.tabs()).find(tab => tab.label === 'p1')?.targetId, config.targetId);
 const results = [], frames = [];
-const directory = path.join(path.dirname(config.runtimePath), config.record ? 'conversation-layout-replay' : 'conversation-layout');
+const directory = path.join(path.dirname(config.runtimePath), config.record ? 'visible-cards-replay' : 'visible-cards');
 await fs.mkdir(directory, { recursive: true });
 const metrics = async () => (await fetch(runtime.controllerUrl + '/metrics')).json();
 const route = (extra = {}) => runtime.webUrl + '/projects?' + Object.entries({ machine: runtime.machineId, project: runtime.projectPath, feature: runtime.featurePath, ...extra }).map(([key, value]) => key + '=' + encodeURIComponent(value)).join('&');
 const input = '[data-testid="project-task-chat"] textarea[data-testid="session-message-input"]';
 const scopeInput = '[data-testid="project-scope-chat"] textarea[data-testid="session-message-input"]';
 const visible = async selector => page.evaluate(selector => [...document.querySelectorAll(selector)].some(node => { const r = node.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(node).visibility !== 'hidden'; }), selector);
-const geometry = async (chatId, panelId) => page.evaluate(({ chatId, panelId }) => {
+const geometry = async (chatId, panelId) => {
+    const catalogId = panelId === 'project-task-panel' ? 'project-task-catalog' : 'project-scope-catalog';
+    await page.waitForFunction(id => [...document.querySelectorAll(`[data-testid="${id}"]`)].some(e => e.getBoundingClientRect().width >= 280), catalogId, { timeout: 10000 });
+    return page.evaluate(({ chatId, panelId }) => {
     const find = selector => [...document.querySelectorAll(selector)].find(node => { const r = node.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(node).visibility !== 'hidden'; });
     const box = node => { if (!node) return null; const r = node.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height, right: r.right, bottom: r.bottom }; };
-    return { chat: box(find(`[data-testid="${chatId}"]`)), panel: box(find(`[data-testid="${panelId}"]`)), file: box(find('[data-testid="file-workspace"]')), tree: box(find(`[data-testid="${panelId}"] [data-testid="workspace-directory-tree"]`)), taskNavigation: !!find('[data-testid="project-task-navigation"]'), viewport: innerWidth, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+    return { catalog: box(find(`[data-testid="${panelId === 'project-task-panel' ? 'project-task-catalog' : 'project-scope-catalog'}"]`)), chat: box(find(`[data-testid="${chatId}"]`)), panel: box(find(`[data-testid="${panelId}"]`)), file: box(find('[data-testid="file-workspace"]')), tree: box(find(`[data-testid="${panelId}"] [data-testid="workspace-directory-tree"]`)), taskNavigation: !!find('[data-testid="project-task-navigation"]'), viewport: innerWidth, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth };
 }, { chatId, panelId });
-const assertTwo = g => { assert(g.chat && g.panel); assert(!g.taskNavigation); assert(g.chat.x < 110); assert(Math.abs(g.chat.y - g.panel.y) <= 1); assert(Math.abs(g.chat.bottom - g.panel.bottom) <= 1); assert(g.chat.right <= g.panel.x + 1); assert(g.panel.right <= g.viewport + 1); assert(g.chat.width > g.panel.width); assert(g.overflow <= 1); assert(!g.file); };
-const assertThree = g => { assert(g.chat && g.file && g.tree); assert(!g.taskNavigation); assert(g.chat.width >= 300 && g.file.width >= 300); assert(g.chat.right <= g.file.x + 1); assert(g.file.right <= g.tree.x + 1); assert(g.tree.right <= g.viewport + 1); assert(g.overflow <= 1); };
+};
+const assertConversation = g => { assert(g.catalog && g.chat && g.panel); assert(!g.taskNavigation); assert(g.catalog.x < 110 && g.catalog.width >= 280); assert(g.catalog.right <= g.chat.x + 1); assert(Math.abs(g.chat.y - g.panel.y) <= 1); assert(Math.abs(g.chat.bottom - g.panel.bottom) <= 1); assert(g.chat.right <= g.panel.x + 1); assert(g.panel.right <= g.viewport + 1); assert(g.chat.width >= 360); assert(g.overflow <= 1); assert(!g.file); };
+const assertDocument = g => { assert(g.catalog && g.file && g.tree && !g.chat); assert(!g.taskNavigation); assert(g.catalog.width >= 280 && g.file.width >= 360); assert(g.catalog.right <= g.file.x + 1); assert(g.file.right <= g.tree.x + 1); assert(g.tree.right <= g.viewport + 1); assert(g.overflow <= 1); };
 const checkpoint = async label => {
     if (config.record) await new Promise(resolve => setTimeout(resolve, 900));
     if (!config.capture) return;
@@ -33,6 +37,12 @@ const checkpoint = async label => {
     frames.push({ label, ...receipt }); console.log({ frame: label, ...receipt });
 };
 const record = async (id, evidence) => { results.push({ id, status: 'pass', evidence }); await fs.writeFile(path.join(directory, 'results.json'), JSON.stringify({ cases: results, frames, boundaries: runtime.boundaries }, null, 2)); console.log({ case: id, status: 'pass', ...evidence }); };
+// Use eight synthetic cards so desktop narrowing and independent catalog scrolling are real.
+for (let number = 3; number <= 8; number++) {
+    const directory = path.join(runtime.featurePath, 'tasks', `${String(number).padStart(2, '0')}-layout-card`);
+    await fs.mkdir(directory, { recursive: true });
+    await fs.writeFile(path.join(directory, 'index.md'), `---\nstatus: pending\n---\n# 附加验收任务 ${number}\n目标：保留原卡片与会话并排。\n`);
+}
 await page.cdp('Emulation.setDeviceMetricsOverride', { width: 1680, height: 885, deviceScaleFactor: 1, mobile: false });
 await page.goto(route(), { timeout: 60000 });
 await page.waitForSelector(`[data-testid="project-task-chat-${runtime.taskA.id}"]`, { state: 'visible', timeout: 60000 });
@@ -42,9 +52,9 @@ await page.click(`[data-testid="project-task-chat-${runtime.taskA.id}"]`);
 await page.waitForSelector(input, { state: 'visible', timeout: 60000 });
 const original = new URL(await page.url()).searchParams.get('conversation'); assert([...runtime.sessionIds, ...initial.spawned.filter(session => session.directory === runtime.taskDirectory).map(session => session.sessionId)].includes(original));
 assert.equal((await metrics()).spawned.length, initial.spawned.length);
-assertTwo(await geometry('project-task-chat', 'project-task-panel'));
-await checkpoint('Task 会话直接位于详情左侧，无常驻任务列');
-await record('CL1-task-two-columns', { reused: original, newSessions: 0, geometry: await geometry('project-task-chat', 'project-task-panel') });
+assertConversation(await geometry('project-task-chat', 'project-task-panel'));
+await checkpoint('原任务卡片保留在左侧，直接并排展示会话和详情');
+await record('VC1-cards-chat-details', { reused: original, newSessions: 0, geometry: await geometry('project-task-chat', 'project-task-panel') });
 
 const artifact = runtime.taskA.artifacts.find(file => file.name === '产品方案'); assert(artifact);
 await page.click(`[data-testid="project-deliverable-${artifact.id}"]`);
@@ -52,14 +62,14 @@ await page.waitForSelector('[data-testid="file-workspace"]', { state: 'visible',
 await page.waitForFunction(() => [...document.querySelectorAll('[data-testid="file-workspace"]')].some(node => node.innerText.includes('END-PROJECT-DELIVERY-V1')), undefined, { timeout: 30000 });
 assert(!await visible('[data-testid="project-task-panel"] [data-testid="workspace-directory-tree"]'));
 await page.click('[data-testid="project-task-files-tab"]');
-await page.waitForSelector(input, { state: 'visible', timeout: 30000 });
+await page.waitForSelector('[data-testid="file-workspace"]', { state: 'visible', timeout: 30000 });
 await page.waitForSelector('[data-testid="project-task-panel"] [data-testid="workspace-directory-tree"]', { state: 'visible', timeout: 30000 });
-assertThree(await geometry('project-task-chat', 'project-task-panel'));
-await checkpoint('显式文件树展开后：会话、文件正文、文件树三栏');
+assertDocument(await geometry('project-task-chat', 'project-task-panel'));
+await checkpoint('原卡片保留，文件正文与文件树按需展示');
 await page.click('[data-testid="project-task-details-tab"]');
 await page.waitForSelector(input, { state: 'visible', timeout: 30000 });
-assertTwo(await geometry('project-task-chat', 'project-task-panel'));
-await record('CL2-explicit-file-columns', { threeColumnsOnlyWithTree: true, restoredTwoColumns: true });
+assertConversation(await geometry('project-task-chat', 'project-task-panel'));
+await record('VC2-cards-document-tree', { cardsRemainVisible: true, restoredConversation: true });
 
 await page.fill(input, 'LAYOUT-ORIGINAL-DRAFT');
 const beforeNew = (await metrics()).spawned.length;
@@ -83,7 +93,7 @@ await page.click('[data-testid="project-task-history"]'); await page.click(`[dat
 await page.waitForFunction(() => [...document.querySelectorAll('[data-testid="project-task-chat"] textarea')].some(node => node.value === 'LAYOUT-NEW-DRAFT' && getComputedStyle(node).visibility !== 'hidden'), undefined, { timeout: 30000 });
 assert.equal((await metrics()).spawned.length, beforeNew + 1);
 await checkpoint('顶部新建与历史切换，原会话草稿保留');
-await record('CL3-task-new-history-drafts', { createdSessions: 1, draftIsolation: true, escapeKeepsRouteAndFocus: true });
+await record('VC3-task-new-history-drafts', { createdSessions: 1, draftIsolation: true, escapeKeepsRouteAndFocus: true });
 
 await page.goto(route(), { timeout: 60000 });
 await page.waitForSelector('[data-testid="project-scope-open-chat"]', { state: 'visible', timeout: 30000 });
@@ -95,7 +105,7 @@ await page.waitForFunction(() => !document.querySelector('[data-testid="project-
 await page.click('[data-testid="project-scope-open-chat"]');
 await page.waitForSelector(scopeInput, { state: 'visible', timeout: 60000 });
 const scopeOriginal = new URL(await page.url()).searchParams.get('conversation'); assert(scopeOriginal);
-assertTwo(await geometry('project-scope-chat', 'project-scope-panel'));
+assertConversation(await geometry('project-scope-chat', 'project-scope-panel'));
 await page.fill(scopeInput, 'SCOPE-ORIGINAL-DRAFT');
 await page.click('[data-testid="project-scope-new-chat"]');
 await page.waitForFunction(previous => !!new URL(location.href).searchParams.get('conversation') && new URL(location.href).searchParams.get('conversation') !== previous, scopeOriginal, { timeout: 60000 });
@@ -107,34 +117,66 @@ for (const id of runtime.sessionIds) assert(!await visible(`[data-testid="projec
 await page.click(`[data-testid="project-scope-history-${scopeOriginal}"]`);
 await page.waitForFunction(() => [...document.querySelectorAll('[data-testid="project-scope-chat"] textarea')].some(node => node.value === 'SCOPE-ORIGINAL-DRAFT'), undefined, { timeout: 30000 });
 assert.equal((await metrics()).spawned.length, beforeScope + scopeCreates);
-assertTwo(await geometry('project-scope-chat', 'project-scope-panel'));
-await checkpoint('全局目标会话同样两栏，支持新建和范围内历史切换');
-await record('CL4-scope-two-columns-new-history', { scopeOriginal, scopeNew, createdSessions: scopeCreates, scopeHistoryIsolated: true, draftRestored: true });
+assertConversation(await geometry('project-scope-chat', 'project-scope-panel'));
+await checkpoint('全局会话同样保留卡片，支持新建和范围内历史切换');
+await record('VC4-scope-cards-new-history', { scopeOriginal, scopeNew, createdSessions: scopeCreates, scopeHistoryIsolated: true, draftRestored: true });
 
 await page.goto(route({ task: runtime.taskA.id }), { timeout: 60000 });
 await page.waitForSelector(`[data-testid="project-deliverable-${artifact.id}"]`, { state: 'visible', timeout: 30000 });
 await page.click(`[data-testid="project-deliverable-${artifact.id}"]`);
 await page.waitForSelector('[data-testid="file-workspace"]', { state: 'visible', timeout: 30000 });
-assert(!await visible('[data-testid="project-task-chat"]'));
+assert(!await visible('[data-testid="project-task-chat"]')); await page.waitForFunction(() => document.querySelector('[data-testid="project-task-catalog"]')?.getBoundingClientRect().width >= 280, undefined, { timeout: 10000 });
 await page.reload({ timeout: 60000 });
 await page.waitForSelector('[data-testid="file-workspace"]', { state: 'visible', timeout: 30000 });
 await page.waitForFunction(() => [...document.querySelectorAll('[data-testid="file-workspace"]')].some(node => node.innerText.includes('END-PROJECT-DELIVERY-V1')), undefined, { timeout: 30000 });
-assert(!await visible('[data-testid="project-task-chat"]'));
+assert(!await visible('[data-testid="project-task-chat"]')); await page.waitForFunction(() => document.querySelector('[data-testid="project-task-catalog"]')?.getBoundingClientRect().width >= 280, undefined, { timeout: 10000 });
 await checkpoint('无会话恢复文件，正文可读且没有空白聊天列');
-await record('CL5-file-restore-without-chat', { documentVisibleAfterReload: true, blankChatColumn: false });
+await record('VC5-file-restore-with-cards', { documentVisibleAfterReload: true, blankChatColumn: false });
 
 await page.cdp('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
 await page.goto(route({ task: runtime.taskA.id, conversation: original }), { timeout: 60000 });
 await page.waitForSelector(input, { state: 'visible', timeout: 30000 });
-assertTwo(await geometry('project-task-chat', 'project-task-panel'));
+assertConversation(await geometry('project-task-chat', 'project-task-panel'));
 await page.click('[data-testid="project-task-files-tab"]');
 await page.waitForSelector('[data-testid="file-workspace"]', { state: 'visible', timeout: 30000 });
-assertThree(await geometry('project-task-chat', 'project-task-panel'));
+assertDocument(await geometry('project-task-chat', 'project-task-panel'));
 await page.click('[data-testid="project-task-details-tab"]');
 await page.waitForSelector(input, { state: 'visible', timeout: 30000 });
-assertTwo(await geometry('project-task-chat', 'project-task-panel'));
-await checkpoint('1280×720 收起文件树后恢复会话与详情两栏');
-await record('CL6-laptop-columns', { viewport: '1280x720', noOverflow: true, twoThreeTwo: true });
+assertConversation(await geometry('project-task-chat', 'project-task-panel'));
+await checkpoint('1280×720 原卡片始终可见，正文与会话切换无横向溢出');
+await record('VC6-laptop-columns', { viewport: '1280x720', noOverflow: true, cardsAlwaysVisible: true });
+// Explicit maximization is reversible even when closing the file before restoring it.
+await page.click('[data-testid="project-task-files-tab"]');
+await page.waitForSelector('[data-testid="file-workspace"]', { state: 'visible', timeout: 30000 });
+await page.click('button[aria-label="Expand file area"]');
+await page.waitForFunction(() => document.querySelector('[data-testid="project-task-catalog"]')?.getBoundingClientRect().width === 0, undefined, { timeout: 10000 });
+await page.click('button[aria-label="Close file workspace"]');
+await page.waitForSelector(input, { state: 'visible', timeout: 30000 });
+assertConversation(await geometry('project-task-chat', 'project-task-panel'));
+await checkpoint('关闭放大的文件后，原卡片和会话同时恢复');
+await page.click('[data-testid="project-task-details-tab"]');
+await page.click(`[data-testid="project-deliverable-${artifact.id}"]`);
+await page.waitForSelector('[data-testid="file-workspace"]', { state: 'visible', timeout: 30000 });
+await page.waitForFunction(() => document.querySelector('[data-testid="project-task-catalog"]')?.getBoundingClientRect().width >= 280, undefined, { timeout: 10000 });
+await page.click('[data-testid="project-task-details-tab"]');
+await page.waitForSelector(input, { state: 'visible', timeout: 30000 });
+await record('VC7-close-maximized-file', { cardsAndChatRecovered: true, reopenKeepsCards: true });
+// Card navigation is its own case; per-session draft isolation is already covered by VC3.
+const beforeSwitch = (await metrics()).spawned.length;
+await page.mouse.move(200, 450); await page.mouse.wheel(0, 500);
+await page.waitForFunction(id => { const e = document.querySelector(`[data-testid="project-task-chat-${id}"]`); const c = document.querySelector('[data-testid="project-task-catalog"]'); if (!e || !c) return false; const r = e.getBoundingClientRect(), b = c.getBoundingClientRect(); return r.top >= b.top && r.bottom <= b.bottom; }, runtime.taskB.id, { timeout: 10000 });
+await page.click(`[data-testid="project-task-chat-${runtime.taskB.id}"]`);
+await page.waitForFunction(id => new URL(location.href).searchParams.get('task') === id && document.querySelector('[data-testid="project-task-brief"]')?.innerText.includes('首次执行任务') && !!new URL(location.href).searchParams.get('conversation'), runtime.taskB.id, { timeout: 60000 });
+await page.waitForSelector(input, { state: 'visible', timeout: 30000 });
+await page.mouse.move(200, 450); await page.mouse.wheel(0, -900);
+await page.waitForFunction(id => { const e = document.querySelector(`[data-testid="project-task-chat-${id}"]`); const c = document.querySelector('[data-testid="project-task-catalog"]'); if (!e || !c) return false; const r = e.getBoundingClientRect(), b = c.getBoundingClientRect(); return r.top >= b.top && r.bottom <= b.bottom; }, runtime.taskA.id, { timeout: 10000 });
+await page.click(`[data-testid="project-task-chat-${runtime.taskA.id}"]`);
+await page.waitForFunction(id => new URL(location.href).searchParams.get('task') === id && document.querySelector('[data-testid="project-task-brief"]')?.innerText.includes('工作区方案') && !!new URL(location.href).searchParams.get('conversation'), runtime.taskA.id, { timeout: 30000 });
+await page.waitForSelector(input, { state: 'visible', timeout: 30000 });
+assertConversation(await geometry('project-task-chat', 'project-task-panel'));
+assert.equal((await metrics()).spawned.length, beforeSwitch);
+await checkpoint('直接在原卡片区滚动、切换任务会话，已有历史不重复新建');
+await record('VC8-card-switch', { catalogScrollAndCardActions: true, reusedKnownCardConversation: true, newSessions: 0 });
 const final = await metrics(); assert.equal(final.submitted.length, 0); assert.equal(final.received.length, 0);
 await fs.writeFile(path.join(directory, 'results.json'), JSON.stringify({ cases: results, frames, boundaries: runtime.boundaries, submitted: 0, received: 0, original, created, scopeOriginal, scopeNew }, null, 2));
 console.log({ completed: true, cases: results.length, directory, modelInstructions: 0 }); console.log(await page.snapshot());

@@ -81,9 +81,9 @@ it('separate explicit new actions use distinct idempotency keys', async () => {
     expect(calls).toHaveLength(2);
     expect(calls[0][1].requestId).not.toBe(calls[1][1].requestId);
 });
-it('an unresolved selected conversation reserves the chat slot without rendering the catalog or an unverified session', () => {
+it('an unresolved selected conversation keeps the catalog beside the reserved chat slot without rendering an unverified session', () => {
     setup('not-yet-verified');
-    expect(renderer.root.findAllByType('div')).toHaveLength(0);
+    expect(renderer.root.findAllByType('div')).toHaveLength(1);
     expect(renderer.root.findAllByType('Session')).toHaveLength(0);
     expect(renderer.root.findAllByProps({ testID: 'project-scope-chat' })).toHaveLength(1);
 });
@@ -94,7 +94,7 @@ it('history switching keeps the details panel and uses the selected scope sessio
     expect(renderer.root.findByProps({ testID: 'project-scope-panel' })).toBeDefined();
     expect(machineStartGoalAuthor).not.toHaveBeenCalled();
 });
-it('an open document only splits beside chat after the file tree is explicitly requested', () => {
+it('keeps cards visible while switching the center between conversation and document', () => {
     mock.history = [session]; mock.fileOpen = true; setup('existing');
     act(() => renderer.root.findAllByType('View').find((node: any) => node.props.onLayout).props.onLayout({ nativeEvent: { layout: { width: 1600 } } }));
     expect(renderer.root.findByType('File').parent.props.style.display).toBe('none');
@@ -102,6 +102,7 @@ it('an open document only splits beside chat after the file tree is explicitly r
     act(() => renderer.root.findByProps({ testID: 'project-scope-panel' }).props.onTab('files'));
     expect(renderer.root.findByType('File').parent.props.style.display).toBeUndefined();
     expect(renderer.root.findAllByType('Tree')).toHaveLength(1);
+    expect(renderer.root.findAllByType('div')).toHaveLength(1);
     act(() => renderer.root.findByProps({ testID: 'project-scope-panel' }).props.onTab('details'));
     expect(renderer.root.findByType('File').parent.props.style.display).toBe('none');
     expect(renderer.root.findAllByType('Tabs')).toHaveLength(0);

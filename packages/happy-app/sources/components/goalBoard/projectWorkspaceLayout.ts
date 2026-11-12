@@ -3,6 +3,12 @@ import { getWorkspaceChatMaximumWidth, getWorkspaceChatWidth, workspaceResizeWid
 export const projectPanelGap = 10;
 export const projectFileDefaultMaximumWidth = 760;
 
+/** Keep the original cards visible while reserving a usable conversation/document. */
+export function getProjectCatalogWidth(rowWidth: number, rightWidth: number) {
+    const available = Math.max(0, rowWidth - rightWidth - 2 * projectPanelGap);
+    return Math.min(620, Math.max(0, available - 360), Math.max(280, Math.floor(available * 0.46)));
+}
+
 export function getProjectTaskNavigationWidth(rowWidth: number) {
     return Math.min(264, Math.max(220, Math.floor(rowWidth * 0.18)));
 }
