@@ -2,7 +2,7 @@ import * as React from 'react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveRunningSessionTurnModes } from '@/utils/runningSessionTurnModes';
-import { SessionComposerModeSelector, getModePanelPlacement } from './SessionComposerModeSelector';
+import { SessionComposerModeSelector, getModePanelPlacement, formatComposerModelName } from './SessionComposerModeSelector';
 
 // @ts-expect-error react-test-renderer has no declarations in this workspace.
 import TestRenderer from 'react-test-renderer';
@@ -345,6 +345,38 @@ describe('SessionComposerModeSelector', () => {
         expect(onEffortChange).toHaveBeenCalledWith('xhigh');
         expect(renderer.root.findAllByProps({ testID: 'session-composer-effort-default' })).toHaveLength(0);
         act(() => renderer.unmount());
+    });
+
+    it('keeps the dragged position continuous and the committed value while props catch up', () => {
+        const onEffortChange = vi.fn();
+        let renderer: any;
+        const props = { online: true, model: modelOptions[0], modelOptions,
+            effort: effortOptions[0], effortOptions, onModelChange: vi.fn(), onEffortChange };
+        act(() => { renderer = TestRenderer.create(<SessionComposerModeSelector {...props} />); });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        const track = renderer.root.findByProps({ testID: 'session-composer-effort-track' });
+        act(() => track.props.onLayout({ nativeEvent: { layout: { width: 200 } } }));
+        const pointer = (clientX: number) => ({ clientX, pointerId: 1, preventDefault: () => {},
+            currentTarget: { setPointerCapture: () => {}, getBoundingClientRect: () => ({ left: 100 }) } });
+        act(() => track.props.onPointerDown(pointer(116)));
+        act(() => track.props.onPointerMove(pointer(140)));
+        const knob = () => renderer.root.findByProps({ testID: 'session-composer-effort-knob' });
+        expect(parseFloat(knob().props.style.at(-1).left)).toBeGreaterThan(0);
+        expect(parseFloat(knob().props.style.at(-1).left)).toBeLessThan(50);
+        act(() => track.props.onPointerMove(pointer(284)));
+        act(() => track.props.onPointerUp());
+        expect(onEffortChange).toHaveBeenCalledWith('xhigh');
+        expect(knob().props.style.at(-1).left).toBe('100%');
+        act(() => renderer.update(<SessionComposerModeSelector {...props} effort={effortOptions[1]} />));
+        expect(knob().props.style.at(-1).left).toBe('100%');
+        act(() => renderer.unmount());
+    });
+
+    it('formats known GPT model identifiers while preserving other provider names', () => {
+        expect(formatComposerModelName('gpt-6.1-sol')).toBe('GPT-6.1 Sol');
+        expect(formatComposerModelName('GPT-6 ASTRA')).toBe('GPT-6 Astra');
+        expect(formatComposerModelName('gpt-5.3-codex-spark')).toBe('GPT-5.3 Codex Spark');
+        expect(formatComposerModelName('provider/custom-model')).toBe('provider/custom-model');
     });
 
     it('places the panel below an anchor near the top of a short viewport', () => {

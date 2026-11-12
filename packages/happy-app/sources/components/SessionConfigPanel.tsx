@@ -1973,7 +1973,14 @@ const styles = StyleSheet.create((theme) => ({
         justifyContent: 'center',
         backgroundColor: theme.colors.surface,
     },
-    composerContextRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4, paddingHorizontal: 10, paddingVertical: 4, marginHorizontal: 10, borderBottomLeftRadius: 16, borderBottomRightRadius: 16, backgroundColor: theme.colors.surface },
+    composerContextRow: {
+        flexDirection: 'row', alignItems: 'center', gap: 4,
+        minWidth: 0, minHeight: 42, paddingHorizontal: 10, paddingVertical: 4,
+        marginHorizontal: 10, marginTop: -1,
+        borderBottomLeftRadius: 16, borderBottomRightRadius: 16,
+        borderWidth: StyleSheet.hairlineWidth, borderTopWidth: 0,
+        borderColor: theme.colors.divider, backgroundColor: theme.colors.surfaceHighest,
+    },
     composerConfigBox: {
         minWidth: 0,
         flex: 1,
@@ -1989,13 +1996,14 @@ const styles = StyleSheet.create((theme) => ({
     },
     composerConfigChip: {
         height: 32,
-        maxWidth: 190,
+        minWidth: 0,
+        maxWidth: '100%',
+        flexShrink: 1,
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
         paddingHorizontal: 9,
-        borderRadius: 16,
-        backgroundColor: theme.colors.surfaceHigh,
+        borderRadius: 10,
     },
     composerConfigCompactTrigger: {
         height: 32,

@@ -1522,6 +1522,7 @@ failedContinueTask: "繼續未完成的工作",
         },
         effort: {
             title: '工作量',
+            select: '選擇推理強度',
             fastOn: 'Fast 已開啟',
             fastOff: 'Fast 關閉',
         },

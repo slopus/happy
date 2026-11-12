@@ -1466,6 +1466,7 @@ failedContinueTask: "Continuar tarefa pendente",
         },
         effort: {
             title: 'ESFORÇO',
+            select: 'Escolher intensidade de raciocínio',
             fastOn: 'Fast ativado',
             fastOff: 'Fast desativado',
         },

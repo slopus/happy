@@ -1468,6 +1468,7 @@ failedContinueTask: "未完了の作業を続ける",
         },
         effort: {
             title: 'エフォート',
+            select: '推論強度を選択',
             fastOn: 'Fast オン',
             fastOff: 'Fast オフ',
         },

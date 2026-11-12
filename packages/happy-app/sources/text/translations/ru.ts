@@ -1483,6 +1483,7 @@ failedContinueTask: "Продолжить незавершённую задач�
         },
         effort: {
             title: 'УСИЛИЕ',
+            select: 'Выбрать глубину рассуждений',
             fastOn: 'Fast включён',
             fastOff: 'Fast выключен',
         },

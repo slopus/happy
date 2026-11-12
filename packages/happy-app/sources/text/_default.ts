@@ -1759,6 +1759,7 @@ failedContinueTask: "Continue unfinished task",
         },
         effort: {
             title: 'EFFORT',
+            select: 'Select reasoning effort',
             fastOn: 'Fast On',
             fastOff: 'Fast Off',
         },

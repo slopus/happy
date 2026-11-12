@@ -47,10 +47,20 @@ function spaceActivation(action: () => void) {
         : {};
 }
 
+/** Normalize recognizable GPT catalog identifiers without changing provider-specific names. */
+export function formatComposerModelName(name: string): string {
+    const match = name.trim().match(/^gpt[\s_-]*(\d+(?:\.\d+)?)(?:[\s_-]+([a-z][a-z0-9\s_-]*))?$/i);
+    if (!match) {
+        return name.replace(/^(opus|sonnet|haiku)(?=\s|$)/i, (value) => value[0].toUpperCase() + value.slice(1).toLowerCase());
+    }
+    const suffix = match[2] ? ` ${match[2].split(/[\s_-]+/).map((part) => part[0].toUpperCase() + part.slice(1).toLowerCase()).join(' ')}` : '';
+    return `GPT-${match[1]}${suffix}`;
+}
+
 type ModePanelAnchor = { x: number; y: number; width: number; height: number };
 
 export function getModePanelPlacement(width: number, height: number, anchor: ModePanelAnchor | null) {
-    const panelWidth = Math.min(330, Math.max(0, width - 24));
+    const panelWidth = Math.min(292, Math.max(0, width - 24));
     const left = anchor
         ? Math.max(8, Math.min(width - panelWidth - 8, anchor.x + anchor.width - panelWidth))
         : 12;
@@ -81,12 +91,15 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
         return () => animation.stop();
     }, [open, shimmer]);
     const [modelHovered, setModelHovered] = React.useState(false);
+    const [fastHovered, setFastHovered] = React.useState(false);
+    const [knobHovered, setKnobHovered] = React.useState(false);
     const [modelsOpen, setModelsOpen] = React.useState(false);
     const [search, setSearch] = React.useState('');
     const trackRef = React.useRef<View>(null);
     const [trackWidth, setTrackWidth] = React.useState(0);
     const dragIndex = React.useRef<number | null>(null);
-    const [previewIndex, setPreviewIndex] = React.useState<number | null>(null);
+    const [previewFraction, setPreviewFraction] = React.useState<number | null>(null);
+    const [pendingEffort, setPendingEffort] = React.useState<string | null>(null);
     const [anchor, setAnchor] = React.useState<ModePanelAnchor | null>(null);
     const enabled =
         props.online &&
@@ -95,7 +108,10 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
             (props.supportsFast && !!props.onFastModeChange));
     const close = React.useCallback(() => {
         dragIndex.current = null;
-        setPreviewIndex(null);
+        setPreviewFraction(null);
+        setModelHovered(false);
+        setFastHovered(false);
+        setKnobHovered(false);
         setOpen(false);
         setModelsOpen(false);
         setSearch('');
@@ -103,10 +119,16 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
     React.useEffect(() => {
         if (!enabled) close();
     }, [enabled, close]);
+    const effortKeys = props.effortOptions.map((option) => option.key).join('\0');
     React.useEffect(() => {
         dragIndex.current = null;
-        setPreviewIndex(null);
-    }, [props.model?.key, props.effortOptions]);
+        setPreviewFraction(null);
+        setPendingEffort(null);
+        setModelHovered(false);
+    }, [props.model?.key, effortKeys]);
+    React.useEffect(() => {
+        if (pendingEffort && props.effort?.key === pendingEffort) setPendingEffort(null);
+    }, [pendingEffort, props.effort?.key]);
     React.useEffect(() => {
         if (!open || Platform.OS !== 'web' || typeof window === 'undefined') return;
         const onKeyDown = (event: KeyboardEvent) => {
@@ -141,15 +163,15 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
     };
     const placement = getModePanelPlacement(width, height, anchor);
     const levels = props.effortOptions.filter((option) => option.key !== 'default').map((option) => ({
-        ...option, name: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'].includes(option.key.toLowerCase()) ? option.key.toLowerCase() : option.name,
+        ...option, name: ['max', 'ultra'].includes(option.key.toLowerCase()) ? `${option.key[0].toUpperCase()}${option.key.slice(1).toLowerCase()}` : ['minimal', 'low', 'medium', 'high', 'xhigh'].includes(option.key.toLowerCase()) ? option.key.toLowerCase() : option.name,
     }));
     const defaultOption = levels.find((option) => option.key === 'medium') ?? levels[0];
-    const effectiveEffort = props.effort?.key === 'default' ? defaultOption : levels.find((level) => level.key === props.effort?.key) ?? props.effort;
+    const effectiveEffort = pendingEffort ? levels.find((level) => level.key === pendingEffort) ?? props.effort : props.effort?.key === 'default' ? defaultOption : levels.find((level) => level.key === props.effort?.key) ?? props.effort;
     const selectedIndex = levels.findIndex((option) => option.key === effectiveEffort?.key);
-    const effortIndex = previewIndex ?? selectedIndex;
-    const effortFraction = levels.length > 1 && effortIndex >= 0 ? effortIndex / (levels.length - 1) : 0;
+    const effortIndex = previewFraction === null ? selectedIndex : Math.round(previewFraction * Math.max(0, levels.length - 1));
+    const effortFraction = previewFraction ?? (levels.length > 1 && effortIndex >= 0 ? effortIndex / (levels.length - 1) : 0);
     const isUltra = levels[effortIndex]?.key?.toLowerCase() === 'ultra';
-    const particleCount = effortIndex > 0 ? Math.round(4 + effortFraction * 18) : 0;
+    const particleCount = effortFraction > 0 ? Math.round(4 + effortFraction * 18) : 0;
     const particleStyles = React.useMemo(() => Array.from({ length: 16 }, (_, particle) => {
         const phase = ((particle + 1) * 0.61803398875) % 1;
         const travel = Math.max(trackWidth, 1);
@@ -162,21 +184,23 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
             }) }],
         };
     }), [shimmer, trackWidth]);
-    const slideTransition = Platform.OS === 'web' ? ({ transition: 'left 90ms ease-out, width 90ms ease-out' } as any) : undefined;
+    const hoverTransition = Platform.OS === 'web' ? ({ transition: 'background-color 140ms ease, transform 140ms ease' } as any) : undefined;
+    const slideTransition = Platform.OS === 'web' && previewFraction === null ? ({ transition: 'left 120ms ease-out, width 120ms ease-out' } as any) : undefined;
     const selectEffortAt = (offsetX: number) => {
         if (trackWidth <= 32 || levels.length === 0) return;
         const fraction = Math.max(0, Math.min(1, (offsetX - 16) / (trackWidth - 32)));
         const index = Math.round(fraction * (levels.length - 1));
-        if (dragIndex.current !== index) {
-            dragIndex.current = index;
-            setPreviewIndex(index);
-        }
+        dragIndex.current = index;
+        setPreviewFraction(fraction);
     };
     const finishDrag = (commit: boolean) => {
         const option = dragIndex.current === null ? undefined : levels[dragIndex.current];
         dragIndex.current = null;
-        setPreviewIndex(null);
-        if (commit && option && option.key !== props.effort?.key) props.onEffortChange(option.key);
+        if (commit && option && option.key !== props.effort?.key) {
+            setPendingEffort(option.key);
+            props.onEffortChange(option.key);
+        }
+        setPreviewFraction(null);
     };
     return (
         <View
@@ -214,8 +238,8 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                     />
                 ) : null}
                 <Text style={styles.triggerText} numberOfLines={1}>
-                    {props.model?.name ?? t('agentInput.model.title')}
-                    {effectiveEffort ? <Text style={isUltra ? styles.ultraTitle : styles.triggerEffort}> {effectiveEffort.name}</Text> : null}
+                    {open ? t('agentInput.effort.select') : formatComposerModelName(props.model?.name ?? t('agentInput.model.title'))}
+                    {!open && effectiveEffort ? <Text style={isUltra ? styles.ultraTitle : styles.triggerEffort}> {effectiveEffort.name}</Text> : null}
                 </Text>
                 {enabled ? (
                     <Ionicons
@@ -302,7 +326,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                     >
                                         {props.modelOptions
                                             .filter((option) =>
-                                                `${option.name} ${option.description ?? ''}`
+                                                `${option.name} ${formatComposerModelName(option.name)} ${option.description ?? ''}`
                                                     .toLocaleLowerCase()
                                                     .includes(search.trim().toLocaleLowerCase()),
                                             )
@@ -312,14 +336,15 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                                     testID={`session-composer-model-${option.key}`}
                                                     {...spaceActivation(() => {
                                                         props.onModelChange(option.key);
+                                                        setModelHovered(false);
                                                         setModelsOpen(false);
                                                         setSearch('');
                                                     })}
                                                     accessibilityRole="radio"
                                                     accessibilityLabel={
                                                         option.description
-                                                            ? `${option.name}, ${option.description}`
-                                                            : option.name
+                                                            ? `${formatComposerModelName(option.name)}, ${option.description}`
+                                                            : formatComposerModelName(option.name)
                                                     }
                                                     accessibilityState={{
                                                         checked: props.model?.key === option.key,
@@ -327,22 +352,17 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                                     aria-checked={props.model?.key === option.key}
                                                     onPress={() => {
                                                         props.onModelChange(option.key);
+                                                        setModelHovered(false);
                                                         setModelsOpen(false);
                                                         setSearch('');
                                                     }}
                                                     style={({ pressed }) => [
                                                         styles.option,
-                                                        props.model?.key === option.key && styles.selected,
                                                         pressed && styles.pressed,
                                                     ]}
                                                 >
                                                     <View style={styles.grow}>
-                                                        <Text style={styles.optionText}>{option.name}</Text>
-                                                        {option.description ? (
-                                                            <Text style={styles.description}>
-                                                                {option.description}
-                                                            </Text>
-                                                        ) : null}
+                                                        <Text style={styles.optionText}>{formatComposerModelName(option.name)}</Text>
                                                     </View>
                                                     {props.model?.key === option.key ? (
                                                         <Ionicons
@@ -374,11 +394,9 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                                 disabled={!props.supportsFast || !props.onFastModeChange}
                                                 onPress={() => props.onFastModeChange?.(!props.fastMode)}
                                                 accessibilityHint={!props.supportsFast ? t('settingsAccount.notAvailable') : undefined}
-                                                style={({ pressed }) => [
-                                                    styles.iconButton,
-                                                    props.fastMode && styles.selected,
-                                                    pressed && styles.pressed,
-                                                ]}
+                                                onHoverIn={() => setFastHovered(true)}
+                                                onHoverOut={() => setFastHovered(false)}
+                                                style={[styles.iconButton, hoverTransition, fastHovered && styles.pressed]}
                                             >
                                                 <Ionicons
                                                     name={props.fastMode ? 'flash' : 'flash-outline'}
@@ -399,18 +417,18 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                             accessibilityRole="button"
                                             accessibilityState={{ disabled: props.modelOptions.length < 2 }}
                                             disabled={props.modelOptions.length < 2}
-                                            onPress={() => setModelsOpen(true)}
+                                            onPress={() => { setModelHovered(false); setModelsOpen(true); }}
                                             onHoverIn={() => setModelHovered(true)}
                                             onHoverOut={() => setModelHovered(false)}
-                                            style={({ pressed }) => [styles.center, (pressed || modelHovered) && styles.centerHover]}
+                                            style={({ pressed }) => [styles.center, hoverTransition, (pressed || modelHovered) && styles.centerHover]}
                                         >
                                             {effectiveEffort ? (
                                                 <Text style={[styles.levelTitle, isUltra && styles.ultraTitle]}>
-                                                    {previewIndex === null ? effectiveEffort.name : levels[previewIndex]?.name}
+                                                    {previewFraction === null ? effectiveEffort.name : levels[effortIndex]?.name}
                                                 </Text>
                                             ) : null}
                                             <Text style={styles.modelLink} numberOfLines={1}>
-                                                {props.model?.name ?? t('agentInput.model.title')}
+                                                {formatComposerModelName(props.model?.name ?? t('agentInput.model.title'))}
                                                 {props.modelOptions.length > 1 ? '  ›' : ''}
                                             </Text>
                                         </Pressable>
@@ -453,13 +471,11 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                                           );
                                                       },
                                                       onPointerMove: (event: any) => {
-                                                          if (dragIndex.current !== null)
-                                                              selectEffortAt(
-                                                                  event.clientX -
-                                                                      event.currentTarget.getBoundingClientRect()
-                                                                          .left,
-                                                              );
+                                                          const offset = event.clientX - event.currentTarget.getBoundingClientRect().left;
+                                                          if (dragIndex.current !== null) selectEffortAt(offset);
+                                                          else setKnobHovered(Math.abs(offset - (16 + Math.max(0, trackWidth - 32) * effortFraction)) <= 20);
                                                       },
+                                                      onPointerLeave: () => setKnobHovered(false),
                                                       onPointerUp: () => finishDrag(true),
                                                       onPointerCancel: () => finishDrag(false),
                                                   }
@@ -472,7 +488,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                                       onResponderTerminate: () => finishDrag(false),
                                                   })}
                                         >
-                                            {effortIndex > 0 ? (
+                                            {effortFraction > 0 ? (
                                                 <View pointerEvents="none" style={[styles.fill, slideTransition, {
                                                     width: 16 + Math.max(0, trackWidth - 32) * effortFraction,
                                                 }]}>
@@ -520,16 +536,22 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                                     <Pressable
                                                         key={option.key}
                                                         testID={`session-composer-effort-${option.key}`}
-                                                        {...spaceActivation(() =>
-                                                            props.onEffortChange(option.key),
-                                                        )}
+                                                        {...spaceActivation(() => {
+                                                            setPendingEffort(option.key);
+                                                            props.onEffortChange(option.key);
+                                                        })}
                                                         accessibilityRole="radio"
                                                         accessibilityLabel={option.name}
-                                                        aria-checked={props.effort?.key === option.key}
+                                                        aria-checked={effectiveEffort?.key === option.key}
                                                         accessibilityState={{
-                                                            checked: props.effort?.key === option.key,
+                                                            checked: effectiveEffort?.key === option.key,
                                                         }}
-                                                        onPress={() => props.onEffortChange(option.key)}
+                                                        onPress={(event) => {
+                                                            if (Platform.OS !== 'web' || !event?.nativeEvent || (event.nativeEvent as any).detail === 0) {
+                                                                setPendingEffort(option.key);
+                                                                props.onEffortChange(option.key);
+                                                            }
+                                                        }}
                                                         style={[
                                                             styles.step,
                                                             {
@@ -537,18 +559,13 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                                             },
                                                         ]}
                                                     >
-                                                        <View
-                                                            style={[
-                                                                styles.dot,
-                                                                index < effortIndex && styles.passed,
-                                                            ]}
-                                                        />
+                                                        {index > effortIndex ? <View style={styles.dot} /> : null}
                                                     </Pressable>
                                                 ))}
                                                 {effortIndex >= 0 ? (
                                                     <View pointerEvents="none" testID="session-composer-effort-knob" style={[styles.knobPosition, slideTransition, {
                                                         left: `${effortFraction * 100}%`,
-                                                    }]}><View style={styles.knob} /></View>
+                                                    }]}><View style={[styles.knob, hoverTransition, (knobHovered || previewFraction !== null) && styles.knobHover]} /></View>
                                                 ) : null}
                                             </View>
                                         </View>
@@ -589,23 +606,23 @@ const styles = StyleSheet.create((theme) => ({
     modalRoot: { flex: 1 },
     backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
     panel: {
-        borderRadius: 20,
+        borderRadius: 18,
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: theme.colors.divider,
         backgroundColor: theme.colors.input.background,
         overflow: 'hidden',
         shadowColor: theme.colors.shadow.color,
-        shadowOffset: { width: 0, height: 4 },
+        shadowOffset: { width: 0, height: 6 },
         shadowOpacity: theme.colors.shadow.opacity,
-        shadowRadius: 12,
+        shadowRadius: 16,
         elevation: 8,
     },
-    settings: { paddingHorizontal: 18, paddingTop: 17, paddingBottom: 18 },
+    settings: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14 },
     panelHead: { flexDirection: 'row', alignItems: 'flex-start' },
     iconButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
     centerSlot: { flex: 1, alignItems: 'center', minWidth: 0 },
     center: { alignItems: 'center', maxWidth: '100%', borderRadius: 10, paddingVertical: 4, paddingHorizontal: 12 },
-    centerHover: { backgroundColor: theme.colors.surfacePressed, shadowColor: theme.colors.shadow.color, shadowOffset: { width: 0, height: 2 }, shadowOpacity: theme.colors.shadow.opacity, shadowRadius: 5, elevation: 2 },
+    centerHover: { backgroundColor: theme.colors.surfacePressed },
     levelTitle: {
         color: theme.colors.text,
         fontSize: 18,
@@ -616,7 +633,7 @@ const styles = StyleSheet.create((theme) => ({
     modelLink: { color: theme.colors.textSecondary, fontSize: 13, marginTop: 2, ...Typography.default() },
     track: {
         height: 32,
-        marginTop: 18,
+        marginTop: 12,
         borderRadius: 16,
         backgroundColor: theme.colors.slider.track,
     },
@@ -657,6 +674,7 @@ const styles = StyleSheet.create((theme) => ({
         shadowRadius: 4,
         elevation: 2,
     },
+    knobHover: { transform: [{ scale: 1.06 }] },
     models: { flexShrink: 1, minHeight: 0 },
     modelsHead: {
         paddingHorizontal: 10,

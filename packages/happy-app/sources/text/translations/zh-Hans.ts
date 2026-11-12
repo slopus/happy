@@ -1644,6 +1644,7 @@ failedContinueTask: "继续未完成的任务",
         },
         effort: {
             title: '工作量',
+            select: '选择推理强度',
             fastOn: 'Fast 已开启',
             fastOff: 'Fast 关闭',
         },

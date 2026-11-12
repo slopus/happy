@@ -1467,6 +1467,7 @@ failedContinueTask: "Continua la tasca pendent",
         },
         effort: {
             title: 'ESFORÇ',
+            select: 'Tria la intensitat de raonament',
             fastOn: 'Fast activat',
             fastOff: 'Fast desactivat',
         },

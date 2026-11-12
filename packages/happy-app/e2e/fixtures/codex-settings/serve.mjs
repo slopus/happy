@@ -49,7 +49,7 @@ async function main() {
     assert((await fetch(`${serverUrl}/v1/account/settings`, { method: 'POST', headers, body: JSON.stringify({ expectedVersion: settings.settingsVersion, settings: encode({ preferredLanguage: 'zh-Hans' }) }) })).ok);
     const machineId = randomUUID();
     const project = path.join(directory, 'project');
-    const machineMetadata = { host: 'codex-settings-fixture.local', displayName: '隔离验收机器', platform: 'darwin', happyCliVersion: 'fixture', homeDir: directory, happyHomeDir: path.join(directory, 'cli/home'), cliAvailability: { codex: true, claude: true, gemini: false, openclaw: false, detectedAt: Date.now() } };
+    const machineMetadata = { host: 'codex-settings-fixture.local', displayName: 'long-device-name-example.local', platform: 'darwin', happyCliVersion: 'fixture', homeDir: directory, happyHomeDir: path.join(directory, 'cli/home'), cliAvailability: { codex: true, claude: true, gemini: false, openclaw: false, detectedAt: Date.now() } };
     assert((await fetch(`${serverUrl}/v1/machines`, { method: 'POST', headers, body: JSON.stringify({ id: machineId, metadata: encode(machineMetadata), dataEncryptionKey: null }) })).ok);
     async function createSession(name = '统一设置验收', flavor = 'codex') {
         const metadata = { path: project, homeDir: directory, host: machineMetadata.host, name, machineId, flavor, lifecycleState: 'running', startedBy: 'terminal', models, currentModelCode: 'gpt-6.1-terra', thoughtLevels: levels, currentThoughtLevelCode: 'high' };

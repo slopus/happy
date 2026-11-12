@@ -1467,6 +1467,7 @@ failedContinueTask: "Continuar tarea pendiente",
         },
         effort: {
             title: 'ESFUERZO',
+            select: 'Elegir intensidad de razonamiento',
             fastOn: 'Fast activado',
             fastOff: 'Fast desactivado',
         },

@@ -1483,6 +1483,7 @@ failedContinueTask: "Kontynuuj niedokończone zadanie",
         },
         effort: {
             title: 'WYSIŁEK',
+            select: 'Wybierz poziom rozumowania',
             fastOn: 'Fast włączony',
             fastOff: 'Fast wyłączony',
         },

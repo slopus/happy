@@ -1465,6 +1465,7 @@ failedContinueTask: "Continua il lavoro in sospeso",
         },
         effort: {
             title: 'IMPEGNO',
+            select: 'Scegli intensità di ragionamento',
             fastOn: 'Fast attivo',
             fastOff: 'Fast disattivato',
         },
