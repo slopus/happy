@@ -77,6 +77,7 @@
     <string name="cloud_invite_title">Вас пригласили</string>
     <string name="cloud_invite_detail">Присоединяйтесь к %1$s в Happy Cloud.</string>
     <string name="cloud_invite_sign_in">Войти и присоединиться</string>
+    <string name="cloud_invite_wrong_email">Войдите с приглашённой почтой</string>
     <string name="cloud_invite_unavailable">Приглашение недоступно</string>
     <string name="cloud_invite_expired">Срок действия приглашения истёк. Попросите отправителя прислать новую ссылку.</string>
     <string name="cloud_invite_revoked">Приглашение отозвано. Попросите отправителя прислать новую ссылку.</string>

@@ -77,6 +77,7 @@
     <string name="cloud_invite_title">你收到了邀請</string>
     <string name="cloud_invite_detail">加入 Happy Cloud 上的 %1$s。</string>
     <string name="cloud_invite_sign_in">登入後加入</string>
+    <string name="cloud_invite_wrong_email">請使用受邀電子郵件</string>
     <string name="cloud_invite_unavailable">邀請無法使用</string>
     <string name="cloud_invite_expired">此邀請已過期。請向傳送者索取新的連結。</string>
     <string name="cloud_invite_revoked">此邀請已被撤回。請向傳送者索取新的連結。</string>

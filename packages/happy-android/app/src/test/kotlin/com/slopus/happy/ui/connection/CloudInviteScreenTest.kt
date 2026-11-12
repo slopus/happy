@@ -85,6 +85,7 @@ class CloudInviteScreenTest {
     @Test
     fun anotherAddressesInviteOffersAnotherAccount() {
         screen(CloudInviteStep.Refused(CloudInviteRefusal.EmailMismatch("s…@…"), preview))
+        rule.onNodeWithText("Use your invited email").assertExists()
         rule.onNodeWithText("This invite was sent to ${CloudEmail.unbroken("s…@…")} Sign in with that email to join.").assertExists()
         rule.onNodeWithText("Sign in with another account").performClick()
         assertEquals(listOf("other"), taps)

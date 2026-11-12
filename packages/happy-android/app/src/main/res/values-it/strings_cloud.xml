@@ -77,6 +77,7 @@
     <string name="cloud_invite_title">Hai un invito</string>
     <string name="cloud_invite_detail">Unisciti a %1$s su Happy Cloud.</string>
     <string name="cloud_invite_sign_in">Accedi per unirti</string>
+    <string name="cloud_invite_wrong_email">Usa l\'email invitata</string>
     <string name="cloud_invite_unavailable">Invito non disponibile</string>
     <string name="cloud_invite_expired">Questo invito è scaduto. Chiedi a chi te l\'ha inviato un nuovo link.</string>
     <string name="cloud_invite_revoked">Questo invito è stato ritirato. Chiedi a chi te l\'ha inviato un nuovo link.</string>
