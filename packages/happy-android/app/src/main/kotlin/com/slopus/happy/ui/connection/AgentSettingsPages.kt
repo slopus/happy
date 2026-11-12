@@ -31,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -429,7 +430,6 @@ private fun AgentProfile(source: com.slopus.happy.agent.AgentProfileSource, seed
     // Every time it shows, not only when the agent says so.
     LaunchedEffect(source) { source.refresh() }
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
     var alert by remember { mutableStateOf<Alert?>(null) }
     val ok = stringResource(R.string.common_ok)
     val couldNotSave = stringResource(R.string.settings_could_not_save_profile)
@@ -446,21 +446,48 @@ private fun AgentProfile(source: com.slopus.happy.agent.AgentProfileSource, seed
             }
         }
     }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        uri ?: return@rememberLauncherForActivityResult
-        attempt(couldNotChange) {
-            val jpeg = withContext(Dispatchers.IO) { ProfilePhoto.prepare { context.contentResolver.openInputStream(uri) ?: throw java.io.IOException("Unreadable") } }
-            source.setPhoto(jpeg)
-        }
-    }
+    val choosePhoto = rememberProfilePhotoPicker(
+        onPicked = { jpeg -> attempt(couldNotChange) { source.setPhoto(jpeg) } },
+        onFailed = { e -> alert = Alert(couldNotChange, e.message ?: "", listOf(AlertButton(ok))) },
+    )
     AgentProfileScreen(
         seed = seed,
         state = state,
         photo = photo,
         onRename = { name -> attempt(couldNotSave) { source.rename(name) } },
-        onChangePhoto = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+        onChangePhoto = choosePhoto,
         onRemovePhoto = { attempt(couldNotRemove) { source.removePhoto() } },
         onBack = onBack,
     )
     alert?.let { HappyAlert(it, onDismiss = { alert = null }) }
+}
+
+/**
+ * The system photo picker for a profile picture, as Settings › Profile and
+ * Create your profile open it: the pick prepared as a picture is sent
+ * ([ProfilePhoto.prepare]: upright, its middle square, JPEG) and handed to
+ * [onPicked]; [onFailed] when it can't be read as an image. Nothing happens
+ * when the picker is closed. Returns what opens it.
+ */
+@Composable
+internal fun rememberProfilePhotoPicker(onPicked: (ByteArray) -> Unit, onFailed: (Exception) -> Unit): () -> Unit {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val picked by rememberUpdatedState(onPicked)
+    val failed by rememberUpdatedState(onFailed)
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            val jpeg = try {
+                withContext(Dispatchers.IO) { ProfilePhoto.prepare { context.contentResolver.openInputStream(uri) ?: throw java.io.IOException("Unreadable") } }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                failed(e)
+                return@launch
+            }
+            picked(jpeg)
+        }
+    }
+    return { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
 }

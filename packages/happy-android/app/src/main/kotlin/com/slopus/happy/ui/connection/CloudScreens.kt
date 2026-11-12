@@ -34,7 +34,15 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import com.slopus.happy.ui.components.MaterialSymbols
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import com.slopus.happy.ui.start.StartControl
@@ -179,6 +187,9 @@ private fun CloudFrame(
     secondary: CloudAction? = null,
     /** The bar's ⋮: what is done rarely, out of the way of the one action. */
     menu: List<CloudAction> = emptyList(),
+    /** Over the title in [art]'s place, and staying while the keyboard is up: a picture to choose. */
+    top: (@Composable () -> Unit)? = null,
+    columnMaxWidth: Dp = CloudSpec.columnMaxWidth,
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
     val dark = HappyTheme.colors.dark
@@ -198,7 +209,7 @@ private fun CloudFrame(
                 Spacer(Modifier.height(StartSpec.controlsPadding + StartSpec.control + StartGallerySpec.margin))
                 Spacer(Modifier.weight(1f))
                 Column(
-                    Modifier.padding(horizontal = CloudSpec.sidePadding).widthIn(max = CloudSpec.columnMaxWidth).fillMaxWidth(),
+                    Modifier.padding(horizontal = CloudSpec.sidePadding).widthIn(max = columnMaxWidth).fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(CloudSpec.gap),
                 ) {
@@ -215,6 +226,10 @@ private fun CloudFrame(
                             },
                             size = CloudSpec.art,
                         )
+                        Spacer(Modifier.height(CloudSpec.artGap - CloudSpec.gap))
+                    }
+                    if (top != null) {
+                        top()
                         Spacer(Modifier.height(CloudSpec.artGap - CloudSpec.gap))
                     }
                     Text(
@@ -757,32 +772,108 @@ fun CloudConnectingScreen(handle: String, failed: ServerAuthException.Reason?, i
 }
 
 /**
- * A new member's name on a Happy Cloud server, on the gradient as the
- * screens before it (the team server sign-in's name step, restyled): the
- * server has no profile for them until it is named (`userId: null`), and
- * nothing is filled in for them.
+ * Create your profile: a new member's name and picture on a Happy Cloud
+ * server, on the gradient as the screens before it, its column at most
+ * [CloudProfileSpec.columnMaxWidth]. The server has no profile for them
+ * until it is named (`userId: null`). Their picture 120 round over the
+ * title, the placeholder [seed] picks until one is chosen (the server's
+ * own, as its connection will wear it: never the name, which may arrive
+ * late or be typed over), with a camera
+ * badge; it and "Add photo" (then "Change photo") under it open the
+ * picker. The field starts from [suggested] (the server's, on Happy Cloud
+ * the account's) with the keyboard up; Continue saves the name, then the
+ * picture, which is optional, spinning through both. [failed]: the name
+ * wasn't saved, said in plain words.
  */
 @Composable
-fun CloudNameScreen(handle: String, saving: Boolean, failed: Boolean, onSubmit: (String) -> Unit, onBack: () -> Unit) {
-    var name by rememberSaveable { mutableStateOf("") }
+fun CloudProfileScreen(
+    handle: String,
+    seed: String,
+    suggested: String?,
+    photo: ImageBitmap?,
+    saving: Boolean,
+    failed: Boolean,
+    onChoosePhoto: () -> Unit,
+    onSubmit: (String) -> Unit,
+    onBack: () -> Unit,
+) {
+    // The cursor after a suggested name, as iOS: ready to add to it or take it.
+    var field by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(suggested.orEmpty().let { TextFieldValue(it, TextRange(it.length)) }) }
+    val name = field.text
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     CloudFrame(
-        title = stringResource(R.string.team_server_name_title),
-        body = stringResource(R.string.team_server_name_detail, handle),
-        art = R.raw.state_sparkles,
+        title = stringResource(R.string.cloud_profile_title),
+        body = stringResource(R.string.cloud_profile_detail, handle),
         primary = CloudAction(stringResource(R.string.common_continue), { onSubmit(name) }, enabled = name.isNotBlank() && !saving, loading = saving),
         onBack = onBack,
+        columnMaxWidth = CloudProfileSpec.columnMaxWidth,
+        top = { ProfilePicturePicker(photo, seed, enabled = !saving, onChoosePhoto) },
     ) {
-        CloudField(
-            name,
-            { name = it },
-            stringResource(R.string.team_server_name_placeholder),
-            ServerSignInTags.NAME,
-            !saving,
-            KeyboardType.Text,
-            ImeAction.Done,
-            capitalization = KeyboardCapitalization.Words,
+        CloudNameField(
+            field,
+            { field = it },
+            enabled = !saving,
+            onDone = { if (name.isNotBlank() && !saving) onSubmit(name) },
+            modifier = Modifier.focusRequester(focus),
         )
-        if (failed) NotePill(stringResource(R.string.team_server_name_failed), HappyTheme.colors.textDestructive)
+        if (failed) NotePill(stringResource(R.string.cloud_profile_name_failed), HappyTheme.colors.textDestructive)
+    }
+}
+
+object CloudProfileTags {
+    const val PICTURE = "cloudProfile.picture"
+    const val PHOTO = "cloudProfile.photo"
+}
+
+object CloudProfileSpec {
+    val picture = 120.dp
+    val badge = 36.dp
+    val badgeIcon = 18.dp
+    val buttonGap = 6.dp
+    val buttonHeight = 32.dp
+    /** Narrower than the other Cloud screens': a field and a picture, not a list. */
+    val columnMaxWidth = 420.dp
+}
+
+/** The picture, round, with its camera badge bottom-right, and the text button under it: both open the picker. */
+@Composable
+private fun ProfilePicturePicker(photo: ImageBitmap?, seed: String, enabled: Boolean, onChoose: () -> Unit) {
+    val colors = HappyTheme.colors
+    val text = if (colors.dark) StartSpec.darkText else StartSpec.lightText
+    val label = stringResource(if (photo == null) R.string.cloud_profile_add_photo else R.string.cloud_profile_change_photo)
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            Modifier
+                .size(CloudProfileSpec.picture)
+                .clickable(enabled = enabled, role = Role.Button, onClick = onChoose)
+                .semantics { contentDescription = label }
+                .testTag(CloudProfileTags.PICTURE),
+        ) {
+            PersonPicture(photo, seed, CloudProfileSpec.picture)
+            Box(
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .size(CloudProfileSpec.badge)
+                    .clip(CircleShape)
+                    .background(colors.surface),
+                contentAlignment = Alignment.Center,
+            ) {
+                androidx.compose.material3.Icon(MaterialSymbols.PhotoCamera, contentDescription = null, tint = colors.text, modifier = Modifier.size(CloudProfileSpec.badgeIcon))
+            }
+        }
+        Box(
+            Modifier
+                .padding(top = CloudProfileSpec.buttonGap)
+                .heightIn(min = CloudProfileSpec.buttonHeight)
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(enabled = enabled, role = Role.Button, onClick = onChoose)
+                .testTag(CloudProfileTags.PHOTO)
+                .padding(horizontal = 12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(label, style = happyTextStyle(fontSize = 16, lineHeight = 20, weight = FontWeight.SemiBold), color = text)
+        }
     }
 }
 
@@ -813,6 +904,27 @@ private fun CloudField(
             keyboardOptions = KeyboardOptions(capitalization = capitalization, autoCorrectEnabled = false, keyboardType = keyboard, imeAction = ime),
             visualTransformation = transformation,
             modifier = Modifier.testTag(tag),
+        )
+    }
+}
+
+/** [CloudField] for a name: its own cursor (a prefilled one at the end, as iOS), words capitalized, Done sending it. */
+@Composable
+private fun CloudNameField(value: TextFieldValue, onChange: (TextFieldValue) -> Unit, enabled: Boolean, onDone: () -> Unit, modifier: Modifier) {
+    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(CloudSpec.fieldRadius)).background(HappyTheme.colors.surface.copy(alpha = CloudSpec.SURFACE_ALPHA))) {
+        HappyTextField(
+            value = value,
+            onValueChange = onChange,
+            placeholder = stringResource(R.string.team_server_name_placeholder),
+            textStyle = happyTextStyle(fontSize = 18, lineHeight = 24),
+            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp),
+            minHeight = CloudSpec.fieldMinHeight,
+            cornerRadius = CloudSpec.fieldRadius,
+            singleLine = true,
+            enabled = enabled,
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, autoCorrectEnabled = false, keyboardType = KeyboardType.Text, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { onDone() }),
+            modifier = modifier.testTag(ServerSignInTags.NAME),
         )
     }
 }

@@ -156,7 +156,7 @@ fun ServerSignInScreen(
                     Line(stringResource(R.string.team_server_finishing), body)
                 }
                 is ServerSignInState.NeedsName -> {
-                    var name by rememberSaveable { mutableStateOf("") }
+                    var name by rememberSaveable { mutableStateOf(state.suggested.orEmpty()) }
                     Line(stringResource(R.string.team_server_name_title), title)
                     Line(stringResource(R.string.team_server_name_detail, host(state.server)), body, secondary = true)
                     Field(

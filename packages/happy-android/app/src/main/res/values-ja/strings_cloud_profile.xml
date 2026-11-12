@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_profile_title">プロフィールを作成</string>
+    <string name="cloud_profile_detail">%1$s で、チームとエージェントにはこう表示されます。</string>
+    <string name="cloud_profile_add_photo">写真を追加</string>
+    <string name="cloud_profile_change_photo">写真を変更</string>
+    <string name="cloud_profile_name_failed">名前を保存できませんでした。接続を確認して、もう一度お試しください。</string>
+    <string name="cloud_profile_photo_failed">写真をアップロードできませんでした。あとで 設定 › プロフィール から追加できます。</string>
+</resources>

@@ -214,9 +214,11 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
     }
 
     /// A Happy Cloud member whose profile onboarding says isn't saved
-    /// (`Onboarding.needsName`) is asked their name over home, with the
-    /// name Apple gave this sign-in offered, else the server's suggestion;
-    /// saved as the profile's name (`PATCH /v0/profile`).
+    /// (`Onboarding.needsName`) gets Create your profile over home, the name
+    /// Apple gave this sign-in offered, else the server's suggestion; saved
+    /// as the profile's name (`PATCH /v0/profile`, with the suggested
+    /// email), then any picture. Not Now leaves it unsaved, and this home
+    /// doesn't ask again.
     private func askNameIfNeeded() {
         guard !askedName, let session = Session.session(for: id, context: context), session.isCloud,
               let onboarding = session.onboarding, view.window != nil, presentedViewController == nil else { return }
@@ -228,15 +230,30 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
             let suggested = (try? await client.profile())?.name
             guard let self else { return }
             guard view.window != nil, presentedViewController == nil else { askedName = false; return }
-            guard let name = await NamePrompt.ask(on: self, message: Strings.ServerSignIn.nameCloudMessage, prefill: CloudScreens.appleName ?? suggested, cancel: Strings.ServerSignIn.nameLater) else { return }
-            do {
+            let screen = CloudProfileViewController(
+                context: context, handle: HappyCloud.handle(server: session.server) ?? session.computerName,
+                prefill: CloudScreens.appleName ?? suggested, seed: context.account.agentConnections.placeholderSeed(for: id) ?? id
+            ) { name, photo in
                 let profile = try await client.profile()
-                _ = try await client.renameProfile(name, version: profile.version)
+                _ = try await client.renameProfile(name, email: profile.email, version: profile.version)
                 CloudScreens.appleName = nil
-            } catch {
-                askedName = false
-                Alerts.show(Strings.Common.error, Store.describe(error), on: self)
+                guard let photo else { return true }
+                return (try? await client.setProfilePhoto(photo, contentType: "image/jpeg")) != nil
             }
+            screen.navigationItem.leftBarButtonItem = UIBarButtonItem(title: Strings.ServerSignIn.nameLater, primaryAction: UIAction { [weak screen] _ in
+                screen?.dismiss(animated: true)
+            })
+            let navigation = UINavigationController(rootViewController: screen)
+            navigation.modalPresentationStyle = .fullScreen
+            AppCoordinator.applyAppearance(to: navigation.navigationBar)
+            screen.finished = { [weak self, weak navigation] photoSaved in
+                guard let photoSaved else { return }
+                navigation?.dismiss(animated: true) {
+                    guard let self, !photoSaved else { return }
+                    Alerts.show(Strings.CloudConnect.photoFailed, on: self)
+                }
+            }
+            present(navigation, animated: true)
         }
     }
 
@@ -395,6 +412,8 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         launchCall()
         #endif
         standing = true
+        // A picture Create your profile couldn't upload, said once landed.
+        if presentedViewController == nil, let note = CloudScreens.takePhotoNote() { Alerts.show(note, on: self) }
         askNameIfNeeded()
         // The bar and the toolbar are where home rests: the list's room is
         // read from them again (`HomeListRoom`).

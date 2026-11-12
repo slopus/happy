@@ -81,6 +81,14 @@ final class ProfileTests: XCTestCase {
         let body = try JSONDecoder().decode(JSONValue.self, from: XCTUnwrap(sent[1].body))
         XCTAssertEqual(body["name"], .string("Steve K"))
         XCTAssertNotNil(body["mutationId"]?.stringValue)
+        XCTAssertNil(body["email"], "a rename sends no email")
+
+        // Create your profile sends the suggested email with the name.
+        _ = try await client.renameProfile("Steve K", email: "s@example.com", version: saved.version)
+        let renamed = await server.sent
+        let withEmail = try JSONDecoder().decode(JSONValue.self, from: XCTUnwrap(renamed.last?.body))
+        XCTAssertEqual(withEmail["email"], .string("s@example.com"))
+        XCTAssertEqual(withEmail["name"], .string("Steve K"))
 
         // Changed on another device since: refused, read again, saved.
         let stale = saved.version

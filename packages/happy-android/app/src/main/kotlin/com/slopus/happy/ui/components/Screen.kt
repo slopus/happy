@@ -17,7 +17,9 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -138,6 +140,7 @@ fun HappyTextField(
     singleLine: Boolean = false,
     enabled: Boolean = true,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
     /** Hides what is typed, for a value no one should read over a shoulder. */
     visualTransformation: VisualTransformation = VisualTransformation.None,
 ) {
@@ -156,10 +159,54 @@ fun HappyTextField(
         textStyle = style,
         cursorBrush = SolidColor(colors.text),
         keyboardOptions = keyboardOptions,
+        keyboardActions = keyboardActions,
         visualTransformation = visualTransformation,
         decorationBox = { inner ->
             Box(modifier = Modifier.padding(contentPadding)) {
                 if (value.isEmpty()) Text(text = placeholder, style = style.copy(color = colors.input.placeholder))
+                inner()
+            }
+        },
+    )
+}
+
+/** [HappyTextField] over a [TextFieldValue], for a field that places its own cursor (a prefilled one, at the end). */
+@Composable
+fun HappyTextField(
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    placeholder: String,
+    textStyle: TextStyle,
+    contentPadding: PaddingValues,
+    minHeight: Dp,
+    cornerRadius: Dp,
+    modifier: Modifier = Modifier,
+    singleLine: Boolean = false,
+    enabled: Boolean = true,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+) {
+    val colors = HappyTheme.colors
+    val style = textStyle.copy(color = colors.input.text)
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = minHeight)
+            .clip(RoundedCornerShape(cornerRadius))
+            .background(colors.surfaceHigh),
+        enabled = enabled,
+        singleLine = singleLine,
+        textStyle = style,
+        cursorBrush = SolidColor(colors.text),
+        keyboardOptions = keyboardOptions,
+        keyboardActions = keyboardActions,
+        visualTransformation = visualTransformation,
+        decorationBox = { inner ->
+            Box(modifier = Modifier.padding(contentPadding)) {
+                if (value.text.isEmpty()) Text(text = placeholder, style = style.copy(color = colors.input.placeholder))
                 inner()
             }
         },

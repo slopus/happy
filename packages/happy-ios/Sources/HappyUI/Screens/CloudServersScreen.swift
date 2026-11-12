@@ -87,10 +87,23 @@ enum CloudScreens {
     /// The server isn't kept without the member's name.
     struct NameNeeded: Error {}
 
+    /// A picture picked on Create your profile that didn't upload, said
+    /// once the person has landed (`takePhotoNote`).
+    static var photoNotePending = false
+
+    /// The photo note, once: what shows it says it.
+    static func takePhotoNote() -> String? {
+        guard photoNotePending else { return nil }
+        photoNotePending = false
+        return Strings.CloudConnect.photoFailed
+    }
+
     /// Signs this phone in to `server` with a token from the accounts API
     /// (no browser) and keeps it; `open` opens it too. A server that wants
-    /// the member's profile first asks their name on `controller`. Returns
-    /// the connection's id.
+    /// the member's profile first pushes Create your profile over
+    /// `controller`, which saves their name and any picture before the
+    /// server is kept, and comes back to `controller`. Returns the
+    /// connection's id.
     static func join(_ server: CloudServer, account: CloudAccount, context: AppContext, on controller: UIViewController, open: Bool,
                      makeFlow: (String) throws -> ServerSignInFlow = { try ServerSignInFlow.cloud($0) }) async throws -> String {
         guard let origin = server.origin else { throw ServerSignInError.invalidURL }
@@ -98,14 +111,34 @@ enum CloudScreens {
         let flow = try makeFlow(origin)
         var signedIn = try await flow.signedIn(access: access, grant: grant, installation: .recorded)
         if signedIn.needsProfile {
+            guard let navigation = controller.navigationController else { throw NameNeeded() }
             let suggested = await flow.suggestedName(for: signedIn)
-            guard let name = await NamePrompt.ask(on: controller, message: Strings.ServerSignIn.nameCloudMessage, prefill: appleName ?? suggested) else {
-                throw NameNeeded()
+            let unsaved = signedIn
+            let saved = Saved()
+            let screen = CloudProfileViewController(
+                context: context, handle: HappyCloud.handle(server.name), prefill: appleName ?? suggested, seed: server.name
+            ) { name, photo in
+                let named = try await flow.saveProfile(name, for: unsaved)
+                saved.signedIn = named
+                guard let photo else { return true }
+                return (try? await flow.saveProfilePhoto(photo, for: named)) != nil
             }
-            signedIn = try await flow.saveProfile(name, for: signedIn)
+            let photoSaved: Bool? = await withCheckedContinuation { continuation in
+                screen.finished = { continuation.resume(returning: $0) }
+                navigation.pushViewController(screen, animated: true)
+            }
+            guard let photoSaved, let named = saved.signedIn else { throw NameNeeded() }
+            signedIn = named
             appleName = nil
+            if !photoSaved { photoNotePending = true }
+            navigation.popToViewController(controller, animated: true)
         }
         return try await context.account.addServer(signedIn, open: open)
+    }
+
+    /// What Create your profile saved, read once it is done.
+    private final class Saved: @unchecked Sendable {
+        var signedIn: ServerSignInFlow.SignedIn?
     }
 
     /// Why a join failed, in words.
@@ -374,6 +407,8 @@ class CloudStageViewController: UIViewController, CloudFlowScreen {
     }
     let secondary: RoundButton?
     private let keyboardProbe = UIView()
+    /// The keyboard's top the screen last scrolled for.
+    private var scrolledForKeyboard: CGFloat?
     /// Back (or the edge swipe) to the step before signs the account out:
     /// Join a server, and Bootstrap when the account has no server.
     var signsOutOnBack = false
@@ -431,6 +466,12 @@ class CloudStageViewController: UIViewController, CloudFlowScreen {
         }
     }
 
+    /// The art's side: the scene's, or a step's own art's.
+    var artSide: CGFloat { art == nil ? 0 : StartLayout.Metrics.art }
+    /// A line under the art, as measured; zero without one.
+    var captionSize: CGSize { .zero }
+    /// Places a step's own art and the line under it.
+    func layoutArt(_ art: CGRect, caption: CGRect) {}
     /// How tall the step's own part is at `width`.
     func contentHeight(width: CGFloat) -> CGFloat { 0 }
     /// Places the step's own part in `content`'s bounds.
@@ -452,7 +493,7 @@ class CloudStageViewController: UIViewController, CloudFlowScreen {
         }
         let layout = CloudStageLayout(
             size: size, safeArea: safeArea, keyboardTop: keyboardProbe.frame.maxY,
-            art: art == nil ? 0 : StartLayout.Metrics.art,
+            art: artSide, caption: captionSize,
             title: titleLabel.measurable,
             body: bodyLabel.string.isEmpty ? .fixed(.zero) : bodyLabel.measurable,
             content: Measurable { [unowned self] width in CGSize(width: width, height: contentHeight(width: width)) },
@@ -462,7 +503,15 @@ class CloudStageViewController: UIViewController, CloudFlowScreen {
         scroll.contentSize = CGSize(width: size.width, height: layout.contentHeight)
         scroll.contentInset.bottom = layout.keyboardInset
         scroll.verticalScrollIndicatorInsets.bottom = layout.keyboardInset
+        // Once each time the keyboard moves: the action stays in sight,
+        // and a finger's scroll after that is left alone.
+        let keyboardTop = keyboardProbe.frame.maxY
+        if scrolledForKeyboard != keyboardTop {
+            scrolledForKeyboard = keyboardTop
+            if !scroll.isDragging { scroll.contentOffset.y = layout.keyboardOffset }
+        }
         art?.setLayoutFrame(layout.art)
+        layoutArt(layout.art, caption: layout.caption)
         titleLabel.setLayoutFrame(layout.title)
         bodyLabel.setLayoutFrame(layout.body)
         content.setLayoutFrame(layout.content)
@@ -918,6 +967,7 @@ final class CloudServersViewController: CloudStageViewController {
             do {
                 let id = try await CloudScreens.join(server, account: account, context: context, on: self, open: false)
                 joined.append((server.id, id))
+                if let note = CloudScreens.takePhotoNote() { say(note, problem: false) }
             } catch CloudAccountError.signInRequired {
                 joining.remove(server.id)
                 return CloudScreens.signedOut(context: context, from: self)
@@ -950,9 +1000,9 @@ final class CloudServersViewController: CloudStageViewController {
         }
     }
 
-    private func say(_ text: String?) {
+    private func say(_ text: String?, problem: Bool = true) {
         status.string = text ?? ""
-        status.textColor = UIColor(Palette.textDestructive)
+        status.textColor = UIColor(problem ? Palette.textDestructive : Palette.startTextSecondary)
         relayout()
     }
 
@@ -1439,6 +1489,13 @@ public enum CloudScreensPreview {
             navigation.pushViewController(join, animated: false)
             if let name { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { join.nameField.text.text = name; join.codeField.text.text = "pcmurcvd"; join.edited() } }
         case "connecting": navigation.pushViewController(CloudConnectingViewController(context: context, account: account, server: server, startsAtOnce: false), animated: false)
+        case "profile", "profileFilled", "profilePhoto":
+            let profile = CloudProfileViewController(context: context, handle: HappyCloud.handle(server.name), prefill: screen == "profile" ? nil : name ?? "Alex Rivera", seed: server.name) { _, _ in
+                try await Task.sleep(for: .seconds(2))
+                return true
+            }
+            navigation.pushViewController(profile, animated: false)
+            if screen == "profilePhoto" { profile.choose(CloudProfileViewController.previewPhoto()) }
         default: break
         }
         AppCoordinator.applyAppearance(to: navigation.navigationBar)

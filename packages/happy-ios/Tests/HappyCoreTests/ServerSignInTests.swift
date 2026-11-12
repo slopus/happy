@@ -387,9 +387,37 @@ final class SignInRequiredTests: XCTestCase {
         let member = try await flow.saveProfile("Steve", for: signedIn)
         XCTAssertFalse(member.needsProfile)
         XCTAssertEqual(member.record.userId, "u1")
+        // The suggested email goes with the name, as desktop sends it.
+        let writes = await daemon.writes
+        let patch = try XCTUnwrap(writes.first { $0.method == "PATCH" })
+        XCTAssertEqual(patch.path, "/v0/profile")
+        XCTAssertEqual(patch.headers["If-Match"], "v0")
+        let fields = try XCTUnwrap(JSONSerialization.jsonObject(with: patch.body ?? Data()) as? [String: String])
+        XCTAssertEqual(fields["name"], "Steve")
+        XCTAssertEqual(fields["email"], "s@example.com")
+        // Then the picture, as a JPEG, under the same token.
+        try await flow.saveProfilePhoto(Data([0xFF, 0xD8, 0xFF]), for: member)
+        let afterPhoto = await daemon.writes
+        let put = try XCTUnwrap(afterPhoto.last)
+        XCTAssertEqual(put.method, "PUT")
+        XCTAssertEqual(put.path, "/v0/profile/photo")
+        XCTAssertEqual(put.headers["Content-Type"], "image/jpeg")
+        XCTAssertEqual(put.body, Data([0xFF, 0xD8, 0xFF]))
+        await daemon.answer("/v0/profile/photo", HTTP1Response(status: 413))
+        do {
+            try await flow.saveProfilePhoto(Data([0xFF]), for: member)
+            XCTFail("a refused picture throws")
+        } catch {}
         await daemon.answer("/v0/profile", HTTP1Response(status: 200, body: Data(#"{"profile":{"name":null,"updatedAt":0,"version":"v0"}}"#.utf8)))
         let none = await flow.suggestedName(for: signedIn)
         XCTAssertNil(none, "no suggestion, an empty field")
+        // No suggested email: none is sent.
+        _ = try await flow.saveProfile("Steve", for: signedIn)
+        let lastWrites = await daemon.writes
+        let bare = try XCTUnwrap(lastWrites.last { $0.method == "PATCH" })
+        let sent = try XCTUnwrap(JSONSerialization.jsonObject(with: bare.body ?? Data()) as? [String: String])
+        XCTAssertNil(sent["email"])
+        XCTAssertEqual(sent["name"], "Steve")
     }
 
     func testHappyCloudServersAreNamedUnderTheBase() throws {
@@ -646,9 +674,12 @@ private final class Clock: @unchecked Sendable {
 private actor Daemon: AgentTransport {
     var answers: [String: [HTTP1Response]] = [:]
     var seen: [(path: String, credential: String)] = []
+    /// What was written: its method, path, body and headers.
+    var writes: [(method: String, path: String, body: Data?, headers: [String: String])] = []
     func answer(_ path: String, _ responses: HTTP1Response...) { answers[path] = responses }
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         seen.append((path, credential))
+        if method != "GET" { writes.append((method, path, body, headers)) }
         guard var queue = answers[path], !queue.isEmpty else { return HTTP1Response(status: 200, body: Data("{}".utf8)) }
         let next = queue.removeFirst()
         answers[path] = queue.isEmpty ? [next] : queue

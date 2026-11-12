@@ -24,9 +24,13 @@ private actor CloudHTTP: HTTPTransport {
 private actor CloudDaemon: AgentTransport {
     var requests: [(method: String, path: String, body: Data?)] = []
     var answers: [String: String] = [:]
+    /// Refusals by `METHOD path`, with words of the server's own.
+    var refusals: [String: Int] = [:]
     func answer(_ path: String, _ body: String) { answers[path] = body }
+    func refuse(_ request: String, _ status: Int?) { refusals[request] = status }
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         requests.append((method, path, body))
+        if let status = refusals["\(method) \(path)"] { return HTTP1Response(status: status, body: Data(#"{"code":"internal","error":"Internal boom"}"#.utf8)) }
         return HTTP1Response(status: 200, body: Data((answers[path] ?? "{}").utf8))
     }
     func browserConnection() async throws -> any BrowserStream { throw BrowserError.unavailable }
@@ -109,11 +113,11 @@ final class CloudScreensTests: XCTestCase {
         XCTAssertEqual(screen.status.string, "Something broke.")
     }
 
-    /// A member a cloud server has no profile for (`userId` null) is
-    /// asked "What's your name?", offered Apple's name from this sign-in,
-    /// else the server's suggestion; what they give is saved as their
-    /// name, never one made up. Cancelled, the screen says the server
-    /// needs it.
+    /// A member a cloud server has no profile for (`userId` null) gets
+    /// Create your profile, offered Apple's name from this sign-in, else
+    /// the server's suggestion; what they give is saved as their name,
+    /// never one made up, then their picture. Back saves nothing, and the
+    /// screen says the server needs a name.
     func testANamelessMemberIsAskedTheirNameOnConnect() async throws {
         let origin = HappyCloud.server(named: "acme")
         let http = CloudHTTP()
@@ -122,44 +126,128 @@ final class CloudScreensTests: XCTestCase {
         let daemon = CloudDaemon()
         await daemon.answer("/v0/health", #"{"ready":true}"#)
         await daemon.answer("/v0/profile", #"{"profile":{"name":"Steve K","email":"s@example.com","updatedAt":0,"version":"v0"}}"#)
-        func connect(apple: String?) async throws -> (CloudConnectingViewController, UIAlertController) {
+        func connect(apple: String?) async throws -> (CloudConnectingViewController, CloudProfileViewController, UINavigationController) {
             CloudScreens.appleName = apple
             let screen = CloudConnectingViewController(context: context(), account: CloudAccount.preview(token: "account", http: http),
                                                        server: CloudServer(id: "s1", name: "acme", url: origin + "/", role: .member))
             screen.makeFlow = { try ServerSignInFlow.cloud($0, http: http, makeTransport: { _ in daemon }) }
-            show(UINavigationController(rootViewController: screen))
-            await settle { screen.presentedViewController is UIAlertController }
-            return (screen, try XCTUnwrap(screen.presentedViewController as? UIAlertController, "no name step"))
-        }
-        typealias Handler = @convention(block) (UIAlertAction) -> Void
-        func tap(_ action: UIAlertAction) throws {
-            unsafeBitCast(try XCTUnwrap(action.value(forKey: "handler") as AnyObject?), to: Handler.self)(action)
+            let navigation = UINavigationController(rootViewController: screen)
+            show(navigation)
+            await settle { navigation.topViewController is CloudProfileViewController && navigation.transitionCoordinator == nil }
+            let profile = try XCTUnwrap(navigation.topViewController as? CloudProfileViewController, "no profile step")
+            profile.view.layoutIfNeeded()
+            return (screen, profile, navigation)
         }
 
-        // The server's suggestion, then Cancel: nothing saved, and why.
-        var (screen, alert) = try await connect(apple: nil)
-        XCTAssertEqual(alert.title, "What’s your name?")
-        XCTAssertEqual(alert.textFields?.first?.text, "Steve K")
-        try tap(try XCTUnwrap(alert.actions.first { $0.style == .cancel }))
-        alert.dismiss(animated: false)
-        try await Task.sleep(for: .milliseconds(200))
-        let none = await daemon.requests.contains { $0.method == "PATCH" }
+        // The server's suggestion, then Back: nothing saved, and why.
+        var (screen, profile, navigation) = try await connect(apple: nil)
+        XCTAssertEqual(profile.titleLabel.string, "Create your profile")
+        XCTAssertEqual(profile.bodyLabel.string, "This is how your team and agents see you on @acme.")
+        XCTAssertEqual(profile.nameField.text.text, "Steve K")
+        XCTAssertEqual(profile.photoButton.title(for: .normal), "Add photo")
+        XCTAssertEqual(profile.seed, "acme", "the server's identity picks the placeholder, never a name")
+        XCTAssertTrue(profile.primary.isEnabled)
+        navigation.popViewController(animated: false)
+        await settle { screen.bodyLabel.string == Strings.ServerSignIn.nameNeeded }
+        XCTAssertEqual(screen.bodyLabel.string, Strings.ServerSignIn.nameNeeded)
+        let none = await daemon.requests.contains { $0.method != "GET" }
         XCTAssertFalse(none, "no name made up")
         window?.isHidden = true
 
-        // Apple's name over the suggestion; Continue saves what's typed.
-        (screen, alert) = try await connect(apple: "Steve Korshakov")
-        XCTAssertEqual(alert.textFields?.first?.text, "Steve Korshakov")
-        alert.textFields?.first?.text = "Steve"
+        // Apple's name over the suggestion. An empty name can't continue;
+        // a refused one says so in the same words whatever the server said.
+        (screen, profile, navigation) = try await connect(apple: "Steve Korshakov")
+        XCTAssertEqual(profile.nameField.text.text, "Steve Korshakov")
+        XCTAssertEqual(profile.seed, "acme")
+        profile.nameField.text.text = "  "
+        profile.edited()
+        XCTAssertFalse(profile.primary.isEnabled, "no name, no Continue")
+        profile.nameField.text.text = "Steve"
+        profile.edited()
+        XCTAssertEqual(profile.seed, "acme", "the placeholder doesn't follow the typing")
+        profile.choose(CloudProfileViewController.previewPhoto())
+        XCTAssertEqual(profile.photoButton.title(for: .normal), "Change photo")
+        await daemon.refuse("PATCH /v0/profile", 500)
+        profile.primary.tapped()
+        await settle { !profile.status.string.isEmpty }
+        XCTAssertEqual(profile.status.string, "Couldn’t save your name. Check your connection and try again.")
+        await settle { !profile.primary.isLoading }
+        let unsentPhoto = await daemon.requests.contains { $0.method == "PUT" }
+        XCTAssertFalse(unsentPhoto, "no picture before a name")
+
+        // Continue saves the name, with the suggested email, then the picture.
+        await daemon.refuse("PATCH /v0/profile", nil)
         await http.answer("GET /v0/authentication", 200, #"{"authenticated":true,"userId":"u1","methods":[]}"#)
-        try tap(try XCTUnwrap(alert.actions.first { $0.style == .default }))
-        alert.dismiss(animated: false)
-        await settle { await daemon.requests.contains { $0.method == "PATCH" } }
-        let patch = await daemon.requests.first { $0.method == "PATCH" }
-        XCTAssertEqual(patch?.path, "/v0/profile")
-        let body = try JSONSerialization.jsonObject(with: try XCTUnwrap(patch?.body)) as? [String: Any]
+        profile.primary.tapped()
+        await settle { await daemon.requests.contains { $0.method == "PUT" } }
+        let writes = await daemon.requests.filter { $0.method != "GET" }
+        XCTAssertEqual(writes.map(\.method), ["PATCH", "PATCH", "PUT"])
+        XCTAssertEqual(writes.last?.path, "/v0/profile/photo")
+        XCTAssertEqual(writes.last?.body?.prefix(2), Data([0xFF, 0xD8]), "a JPEG")
+        let body = try JSONSerialization.jsonObject(with: try XCTUnwrap(writes[1].body)) as? [String: Any]
         XCTAssertEqual(body?["name"] as? String, "Steve")
+        XCTAssertEqual(body?["email"] as? String, "s@example.com")
+        await settle { navigation.topViewController === screen && navigation.transitionCoordinator == nil }
+        XCTAssertTrue(navigation.topViewController === screen, "back on the server it was joining")
+        XCTAssertNil(CloudScreens.appleName)
+        XCTAssertNil(CloudScreens.takePhotoNote(), "the picture went")
+        window?.isHidden = true
+    }
+
+    /// A picture that doesn't upload never holds the person up: the server
+    /// is kept, and it is said once they have landed.
+    func testAPictureThatDoesntUploadIsSaidAfterLanding() async throws {
+        let origin = HappyCloud.server(named: "acme")
+        let http = CloudHTTP()
+        await http.answer("POST /v1/servers/s1/token", 200, #"{"access_token":"\#(token(for: origin + "/"))","token_type":"Bearer","expires_in":3600}"#)
+        await http.answer("GET /v0/authentication", 200, #"{"authenticated":true,"userId":null,"methods":[]}"#)
+        let daemon = CloudDaemon()
+        await daemon.answer("/v0/health", #"{"ready":true}"#)
+        await daemon.answer("/v0/profile", #"{"profile":{"name":null,"updatedAt":0,"version":"v0"}}"#)
+        await daemon.refuse("PUT /v0/profile/photo", 500)
         CloudScreens.appleName = nil
+        let screen = CloudConnectingViewController(context: context(), account: CloudAccount.preview(token: "account", http: http),
+                                                   server: CloudServer(id: "s1", name: "acme", url: origin + "/", role: .member))
+        screen.makeFlow = { try ServerSignInFlow.cloud($0, http: http, makeTransport: { _ in daemon }) }
+        let navigation = UINavigationController(rootViewController: screen)
+        show(navigation)
+        await settle { navigation.topViewController is CloudProfileViewController && navigation.transitionCoordinator == nil }
+        let profile = try XCTUnwrap(navigation.topViewController as? CloudProfileViewController)
+        XCTAssertEqual(profile.nameField.text.text ?? "", "", "no suggestion, an empty field")
+        XCTAssertEqual(profile.seed, "acme")
+        XCTAssertFalse(profile.primary.isEnabled)
+        profile.nameField.text.text = "Steve"
+        profile.edited()
+        profile.choose(CloudProfileViewController.previewPhoto())
+        await http.answer("GET /v0/authentication", 200, #"{"authenticated":true,"userId":"u1","methods":[]}"#)
+        profile.primary.tapped()
+        await settle { navigation.topViewController === screen && navigation.transitionCoordinator == nil }
+        XCTAssertEqual(profile.status.string, "", "the name went")
+        let patches = await daemon.requests.filter { $0.method == "PATCH" }
+        let body = try JSONSerialization.jsonObject(with: try XCTUnwrap(patches.first?.body)) as? [String: Any]
+        XCTAssertNil(body?["email"], "no suggested email, none sent")
+        XCTAssertEqual(CloudScreens.takePhotoNote(), "Your photo didn’t upload. You can add it later in Settings › Profile.")
+        XCTAssertNil(CloudScreens.takePhotoNote(), "said once")
+    }
+
+    /// A member the server already has a name for is never asked again.
+    func testANamedMemberIsNotAsked() async throws {
+        let origin = HappyCloud.server(named: "acme")
+        let http = CloudHTTP()
+        await http.answer("POST /v1/servers/s1/token", 200, #"{"access_token":"\#(token(for: origin + "/"))","token_type":"Bearer","expires_in":3600}"#)
+        await http.answer("GET /v0/authentication", 200, #"{"authenticated":true,"userId":"u1","methods":[]}"#)
+        let daemon = CloudDaemon()
+        await daemon.answer("/v0/health", #"{"ready":true}"#)
+        let screen = CloudConnectingViewController(context: context(), account: CloudAccount.preview(token: "account", http: http),
+                                                   server: CloudServer(id: "s1", name: "acme", url: origin + "/", role: .member))
+        screen.makeFlow = { try ServerSignInFlow.cloud($0, http: http, makeTransport: { _ in daemon }) }
+        let navigation = UINavigationController(rootViewController: screen)
+        show(navigation)
+        await settle { await daemon.requests.contains { $0.path == "/v0/health" } }
+        try? await Task.sleep(for: .milliseconds(300))
+        XCTAssertFalse(navigation.viewControllers.contains { $0 is CloudProfileViewController })
+        let asked = await daemon.requests.contains { $0.path.hasPrefix("/v0/profile") }
+        XCTAssertFalse(asked)
     }
 
     func testTappingJoinJoinsAndAMissingCodeSaysSo() async throws {

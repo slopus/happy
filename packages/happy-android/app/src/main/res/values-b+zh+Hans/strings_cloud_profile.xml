@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_profile_title">创建你的个人资料</string>
+    <string name="cloud_profile_detail">你的团队和代理在 %1$s 上会这样看到你。</string>
+    <string name="cloud_profile_add_photo">添加照片</string>
+    <string name="cloud_profile_change_photo">更换照片</string>
+    <string name="cloud_profile_name_failed">无法保存你的名字。请检查网络连接后重试。</string>
+    <string name="cloud_profile_photo_failed">你的照片未能上传。你可以稍后在“设置 › 个人资料”中添加。</string>
+</resources>

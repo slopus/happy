@@ -76,15 +76,18 @@ public struct CloudWelcomeLayout: Equatable, Sendable {
 ///                                the screen's edge where there is none)
 ///
 /// What is above the actions is centred in the room over them, as
-/// desktop's centred setup pages are. The actions ride the keyboard; the
-/// rest rises only as much as it must to stay clear of them, never above
-/// its top margin, and past that the screen scrolls.
+/// desktop's centred setup pages are. The actions ride the keyboard and
+/// the rest stays centred in the room left over them, never above its top
+/// margin; past that the screen scrolls.
 public struct CloudStageLayout: Equatable, Sendable {
     public enum Metrics {
         public static let sidePadding: CGFloat = StartLayout.Metrics.sidePadding
         public static let columnMaxWidth: CGFloat = StartLayout.Metrics.columnMaxWidth
         public static let top: CGFloat = 24
         public static let artGap: CGFloat = 24
+        /// Between the art and a caption under it (Create your profile's
+        /// Add photo).
+        public static let captionGap: CGFloat = 8
         public static let titleGap: CGFloat = 12
         public static let bodyGap: CGFloat = 32
         public static let actionsGap: CGFloat = 24
@@ -110,6 +113,8 @@ public struct CloudStageLayout: Equatable, Sendable {
     }
 
     public var art: CGRect
+    /// Under the art, centred; zero without one.
+    public var caption: CGRect
     public var title: CGRect
     public var body: CGRect
     public var content: CGRect
@@ -118,6 +123,9 @@ public struct CloudStageLayout: Equatable, Sendable {
     public var contentHeight: CGFloat
     /// How far the keyboard covers the scroll view, for its bottom inset.
     public var keyboardInset: CGFloat
+    /// Where the screen scrolls to while the keyboard is up so the last
+    /// action rests 16 over it: zero when everything already fits.
+    public var keyboardOffset: CGFloat
 
     /// The column's width in a window this size: what the step's own parts
     /// and its actions are measured at.
@@ -127,9 +135,10 @@ public struct CloudStageLayout: Equatable, Sendable {
 
     /// `safeArea` includes the bar. `keyboardTop` is the keyboard's top in
     /// the view, the safe area's bottom while it is down. `art` is the
-    /// scene's side, zero without one; an empty `body` or `content`
-    /// measures zero tall and takes no gap.
-    public init(size: CGSize, safeArea: LayoutInsets, keyboardTop: CGFloat? = nil, art side: CGFloat = 0,
+    /// scene's side, zero without one, and `caption` the size of a line
+    /// under it, zero without one; an empty `body` or `content` measures
+    /// zero tall and takes no gap.
+    public init(size: CGSize, safeArea: LayoutInsets, keyboardTop: CGFloat? = nil, art side: CGFloat = 0, caption captionSize: CGSize = .zero,
                 title: Measurable, body: Measurable, content: Measurable, actions: [Action]) {
         typealias M = Metrics
         let width = max(0, size.width - safeArea.horizontal)
@@ -141,6 +150,8 @@ public struct CloudStageLayout: Equatable, Sendable {
 
         var block = titleHeight
         if side > 0 { block += side + M.artGap }
+        let captioned = side > 0 && captionSize.height > 0
+        if captioned { block += M.captionGap + captionSize.height }
         if bodyHeight > 0 { block += M.titleGap + bodyHeight }
         if contentHeight > 0 { block += M.bodyGap + contentHeight }
         let actionsHeight = actions.enumerated().reduce(CGFloat(0)) { $0 + $1.element.height + ($1.offset > 0 ? $1.element.gap : 0) }
@@ -149,15 +160,16 @@ public struct CloudStageLayout: Equatable, Sendable {
         let resting = size.height - edge - M.bottomPadding
         let bottom = min(resting, (keyboardTop ?? size.height) - M.bottomPadding)
         let minTop = safeArea.top + M.top
-        // Centred over the actions while the keyboard is down…
-        let free = resting - actionsHeight - M.actionsGap - minTop - block
+        // Centred over the actions, wherever the keyboard has put them.
+        let free = bottom - actionsHeight - M.actionsGap - minTop - block
         var y = minTop + max(0, free / 2)
-        // …and lifted only as far as the keyboard's actions need.
-        let over = y + block + M.actionsGap - (bottom - actionsHeight)
-        if over > 0 { y = max(minTop, y - over) }
 
         art = side > 0 ? CGRect(x: safeArea.left + (width - side) / 2, y: y, width: side, height: side) : .zero
-        if side > 0 { y += side + M.artGap }
+        if side > 0 { y += side }
+        let captionWidth = min(column, captionSize.width)
+        caption = captioned ? CGRect(x: safeArea.left + (width - captionWidth) / 2, y: y + M.captionGap, width: captionWidth, height: captionSize.height) : .zero
+        if captioned { y += M.captionGap + captionSize.height }
+        if side > 0 { y += M.artGap }
         self.title = CGRect(x: x, y: y, width: column, height: titleHeight)
         y += titleHeight
         if bodyHeight > 0 { y += M.titleGap }
@@ -178,6 +190,7 @@ public struct CloudStageLayout: Equatable, Sendable {
         self.actions = frames
         self.contentHeight = max(size.height, top + edge + M.bottomPadding)
         keyboardInset = keyboardTop.map { max(0, size.height - $0 - edge) } ?? 0
+        keyboardOffset = keyboardTop == nil ? 0 : max(0, (frames.last?.maxY ?? y) - bottom)
     }
 }
 
@@ -255,5 +268,33 @@ public struct CloudServerRowLayout: Equatable, Sendable {
         let textTop = (height - M.titleHeight - M.subtitleHeight) / 2
         title = CGRect(x: textX, y: textTop, width: textWidth, height: M.titleHeight)
         subtitle = CGRect(x: textX, y: title.maxY, width: textWidth, height: M.subtitleHeight)
+    }
+}
+
+/// Create your profile's picture: the person's photo, else their
+/// placeholder, round, with a camera badge on its edge at the bottom right.
+public enum CloudProfileLayout {
+    public enum Metrics {
+        public static let avatar: CGFloat = 120
+        public static let badge: CGFloat = 36
+        public static let badgeGlyph: CGFloat = 18
+        /// The badge's border, the gradient's colour, to part it from the photo.
+        public static let badgeBorder: CGFloat = 3
+        /// "Add photo": its text, and room around it for a thumb.
+        public static let captionHeight: CGFloat = 32
+        public static let captionPadding: CGFloat = 12
+    }
+
+    /// The badge over `avatar`: its centre on the circle's edge, at 45°.
+    public static func badge(avatar: CGRect) -> CGRect {
+        typealias M = Metrics
+        let reach = avatar.width / 2 * 0.70710678
+        let centre = CGPoint(x: avatar.midX + reach, y: avatar.midY + reach)
+        return CGRect(x: (centre.x - M.badge / 2).rounded(), y: (centre.y - M.badge / 2).rounded(), width: M.badge, height: M.badge)
+    }
+
+    /// The caption's size for its text `width` as measured.
+    public static func caption(textWidth: CGFloat) -> CGSize {
+        CGSize(width: textWidth.rounded(.up) + 2 * Metrics.captionPadding, height: Metrics.captionHeight)
     }
 }

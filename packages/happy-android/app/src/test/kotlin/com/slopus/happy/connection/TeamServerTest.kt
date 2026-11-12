@@ -548,9 +548,12 @@ class TeamServerTest {
         sso.enqueue(json("""{"authenticated":true,"userId":null,"methods":[]}"""))
         // The code's installation, checked before the name.
         sso.enqueue(health(INSTANCE))
+        // What the server suggests: the name to start from, and the email saved with it.
+        sso.enqueue(json("""{"profile":{"userId":null,"name":" Steve K ","email":"steve@acme.example"}}"""))
         daemon.valid += access1
         flow.callback("happy://oauth/callback?code=c1&state=$state")
-        withTimeout(5_000) { flow.state.first { it is ServerSignInState.NeedsName } }
+        val asking = withTimeout(5_000) { flow.state.first { it is ServerSignInState.NeedsName } } as ServerSignInState.NeedsName
+        assertEquals("Steve K", asking.suggested)
         // The access token expired while the name was typed: refreshed (rotating) once, and saved.
         sso.enqueue(json("""{"error":"Unauthorized","code":"unauthorized"}""", 401))
         sso.enqueue(json("""{"access_token":"$access2","token_type":"Bearer","expires_in":600,"refresh_token":"refresh-2"}"""))
@@ -566,6 +569,7 @@ class TeamServerTest {
         val requests = (0 until sso.requestCount).map { sso.takeRequest() }
         val patches = requests.filter { it.method == "PATCH" }
         assertEquals(listOf("Bearer $access1", "Bearer $access2"), patches.map { it.headers["Authorization"] })
+        assertEquals("""{"name":"Steve","email":"steve@acme.example"}""", patches.last().body?.utf8())
         assertEquals(listOf("Bearer $access1"), requests.filter { it.target == "/v0/health" }.map { it.headers["Authorization"] })
     }
 
@@ -688,13 +692,81 @@ class TeamServerTest {
     fun aNewMembersHealthBehindTheProfileGateIsCheckedAfterTheName() = runBlocking {
         val connections = connections()
         val flow = ServerSignInFlow(scope, connections, auth, expectedInstance = INSTANCE)
-        throughBrowser(flow, null, json("""{"error":"Unauthorized","code":"unauthorized"}""", 401))
+        throughBrowser(flow, null, json("""{"error":"Unauthorized","code":"unauthorized"}""", 401), json("""{"profile":{}}"""))
         withTimeout(5_000) { flow.state.first { it is ServerSignInState.NeedsName } }
         sso.enqueue(json("""{"profile":{}}"""))
         sso.enqueue(health("z9y8x7w6v5u4t3s2r1q0p9o8"))
         flow.submitName("Steve")
         val failed = withTimeout(5_000) { flow.state.first { it is ServerSignInState.Failed } } as ServerSignInState.Failed
         assertEquals(ServerAuthException.Reason.WrongServer, failed.reason)
+        assertEquals(emptyList<AgentConnection>(), connections.accounts.value)
+    }
+
+    @Test
+    fun aNewMembersPhotoGoesUpAfterTheirNameRefreshedOnce() = runBlocking {
+        val connections = connections()
+        val server = "https://localhost:${sso.port}"
+        val flow = ServerSignInFlow(scope, connections, auth)
+        // No name to suggest: the field starts empty, and no email is sent.
+        throughBrowser(flow, null, json("""{"profile":{"userId":null,"name":null,"email":null}}"""))
+        val asking = withTimeout(5_000) { flow.state.first { it is ServerSignInState.NeedsName } } as ServerSignInState.NeedsName
+        assertEquals(null, asking.suggested)
+        val jpeg = byteArrayOf(-1, -40, -1, 1, 2, 3)
+        flow.choosePhoto(jpeg)
+        assertTrue((flow.state.value as ServerSignInState.NeedsName).photo.contentEquals(jpeg))
+        val access2 = jwt(server, tag = "access-2")
+        sso.enqueue(json("""{"profile":{}}"""))
+        // The photo's token expired: refreshed once, and the photo sent again with the new one.
+        sso.enqueue(json("""{"error":"Unauthorized","code":"unauthorized"}""", 401))
+        sso.enqueue(json("""{"access_token":"$access2","token_type":"Bearer","expires_in":600,"refresh_token":"refresh-2"}"""))
+        sso.enqueue(json("""{"profile":{"photo":{"thumbhash":"abc"}}}"""))
+        sso.enqueue(json("""{"authenticated":true,"userId":"u1","methods":[]}"""))
+        daemon.valid += access2
+        flow.submitName("  Ada  ")
+        assertTrue((flow.state.value as ServerSignInState.NeedsName).saving)
+        val done = withTimeout(5_000) { flow.state.first { it is ServerSignInState.Done || it is ServerSignInState.Failed } }
+        assertTrue(done.toString(), done is ServerSignInState.Done && !done.photoFailed)
+        val requests = (0 until sso.requestCount).map { sso.takeRequest() }
+        val profile = requests.filter { it.target.startsWith("/v0/profile") && it.method != "GET" }
+        assertEquals(listOf("PATCH /v0/profile", "PUT /v0/profile/photo", "PUT /v0/profile/photo"), profile.map { "${it.method} ${it.target}" })
+        assertEquals("""{"name":"Ada"}""", profile[0].body?.utf8())
+        assertEquals("image/jpeg", profile[1].headers["Content-Type"])
+        assertTrue(profile[2].body?.toByteArray()?.contentEquals(jpeg) == true)
+        assertEquals("Bearer $access2", profile[2].headers["Authorization"])
+    }
+
+    @Test
+    fun aPhotoThatWontGoUpStillLands() = runBlocking {
+        val connections = connections()
+        val flow = ServerSignInFlow(scope, connections, auth)
+        throughBrowser(flow, null, json("""{"profile":{"name":"Ada"}}"""))
+        withTimeout(5_000) { flow.state.first { it is ServerSignInState.NeedsName } }
+        flow.choosePhoto(byteArrayOf(1, 2, 3))
+        sso.enqueue(json("""{"profile":{}}"""))
+        sso.enqueue(json("""{"error":"Too large","code":"payload_too_large"}""", 413))
+        sso.enqueue(json("""{"authenticated":true,"userId":"u1","methods":[]}"""))
+        flow.submitName("Ada")
+        val done = withTimeout(5_000) { flow.state.first { it is ServerSignInState.Done || it is ServerSignInState.Failed } }
+        assertTrue(done.toString(), done is ServerSignInState.Done && done.photoFailed)
+        assertEquals(1, connections.accounts.value.size)
+    }
+
+    @Test
+    fun aNameThatWontSaveKeepsThePhotoAndSendsNoPhoto() = runBlocking {
+        val connections = connections()
+        val flow = ServerSignInFlow(scope, connections, auth)
+        throughBrowser(flow, null, json("""{"profile":{"name":"Ada"}}"""))
+        withTimeout(5_000) { flow.state.first { it is ServerSignInState.NeedsName } }
+        val jpeg = byteArrayOf(1, 2, 3)
+        flow.choosePhoto(jpeg)
+        sso.enqueue(json("""{"error":"Bad","code":"invalid_request"}""", 400))
+        flow.submitName("Ada")
+        val failed = withTimeout(5_000) { flow.state.first { it is ServerSignInState.NeedsName && it.failed } } as ServerSignInState.NeedsName
+        assertTrue(failed.photo.contentEquals(jpeg))
+        assertEquals("Ada", failed.suggested)
+        assertFalse(failed.saving)
+        val requests = (0 until sso.requestCount).map { sso.takeRequest() }
+        assertEquals(0, requests.count { it.target == "/v0/profile/photo" })
         assertEquals(emptyList<AgentConnection>(), connections.accounts.value)
     }
 

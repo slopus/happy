@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_profile_title">Utwórz profil</string>
+    <string name="cloud_profile_detail">Tak widzą Cię Twój zespół i agenci na %1$s.</string>
+    <string name="cloud_profile_add_photo">Dodaj zdjęcie</string>
+    <string name="cloud_profile_change_photo">Zmień zdjęcie</string>
+    <string name="cloud_profile_name_failed">Nie udało się zapisać imienia. Sprawdź połączenie i spróbuj ponownie.</string>
+    <string name="cloud_profile_photo_failed">Zdjęcie nie zostało przesłane. Możesz dodać je później w Ustawienia › Profil.</string>
+</resources>

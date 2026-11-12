@@ -145,6 +145,9 @@ data class OAuthCredential(
     override fun toString() = "OAuthCredential(methodId=$methodId, clientId=$clientId, canRefresh=$canRefresh)"
 }
 
+/** A new member's profile as the server suggests it: their [name] to prefill, and an [email] saved with it. */
+data class ProfileSuggestion(val name: String?, val email: String?)
+
 /** An access token, held in memory only, and when it stops working. */
 class AccessToken(val value: String, val expiresAtMillis: Long?) {
     override fun toString() = "AccessToken(expiresAt=$expiresAtMillis)"
@@ -237,12 +240,31 @@ class ServerAuthClient(
     }
 
     /**
-     * Saves the new member's [name] (`PATCH /v0/profile`): until a team
-     * member has a profile, the daemon refuses everything else with `401`.
-     * An expired [token] is SignInRequired.
+     * What the server suggests for a member who hasn't saved a profile
+     * (`GET /v0/profile` while it is the empty onboarding one; on Happy
+     * Cloud, the account's name and email), as iOS's `suggestedName`. Null
+     * when it can't be read: the person types their name.
      */
-    suspend fun saveName(origin: AgentOrigin, token: String, name: String) {
-        val body = Json.encodeToString(JsonObject.serializer(), JsonObject(mapOf("name" to JsonPrimitive(name))))
+    suspend fun suggestedProfile(origin: AgentOrigin, token: String): ProfileSuggestion? {
+        val (status, _, body) = try {
+            call(Request.Builder().url("${origin.value}/v0/profile").header("Accept", "application/json").header("Authorization", "Bearer $token").build())
+        } catch (_: ServerAuthException) {
+            return null
+        }
+        val profile = (if (status == 200) parse(body) else null)?.get("profile") as? JsonObject ?: return null
+        fun text(key: String) = (profile[key] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()?.takeIf { it.isNotEmpty() }
+        return ProfileSuggestion(text("name"), text("email"))
+    }
+
+    /**
+     * Saves the new member's [name] (`PATCH /v0/profile`), with the [email]
+     * the server suggested, if any: until a team member has a profile, the
+     * daemon refuses everything else with `401`. An expired [token] is
+     * SignInRequired.
+     */
+    suspend fun saveName(origin: AgentOrigin, token: String, name: String, email: String? = null) {
+        val fields = buildMap { put("name", JsonPrimitive(name)); email?.let { put("email", JsonPrimitive(it)) } }
+        val body = Json.encodeToString(JsonObject.serializer(), JsonObject(fields))
         val (status, _, _) = call(
             Request.Builder().url("${origin.value}/v0/profile")
                 .header("Accept", "application/json")
@@ -250,14 +272,32 @@ class ServerAuthClient(
                 .patch(body.toRequestBody("application/json".toMediaType()))
                 .build(),
         )
-        if (status != 200) throw ServerAuthException(
-            when (status) {
-                401 -> ServerAuthException.Reason.SignInRequired
-                in 500..599 -> ServerAuthException.Reason.Unreachable
-                else -> ServerAuthException.Reason.Rejected
-            },
-        )
+        if (status != 200) throw profileFailure(status)
     }
+
+    /**
+     * Saves [jpeg] as the new member's picture (`PUT /v0/profile/photo`),
+     * once their name is: the daemon refuses it before. An expired [token]
+     * is SignInRequired.
+     */
+    suspend fun savePhoto(origin: AgentOrigin, token: String, jpeg: ByteArray) {
+        val (status, _, _) = call(
+            Request.Builder().url("${origin.value}/v0/profile/photo")
+                .header("Accept", "application/json")
+                .header("Authorization", "Bearer $token")
+                .put(jpeg.toRequestBody("image/jpeg".toMediaType()))
+                .build(),
+        )
+        if (status != 200) throw profileFailure(status)
+    }
+
+    private fun profileFailure(status: Int) = ServerAuthException(
+        when (status) {
+            401 -> ServerAuthException.Reason.SignInRequired
+            in 500..599 -> ServerAuthException.Reason.Unreachable
+            else -> ServerAuthException.Reason.Rejected
+        },
+    )
 
     /**
      * Health's `instanceId` at [origin] with [token] (edge SSO §8): the

@@ -1230,6 +1230,22 @@ change its wire behaviour on Android alone.
   first screen's Grain Gradient (`StartSpec` palettes, onboarding's 28/34
   title, a scene above it) with one primary action at the bottom
   (`CloudScreens.kt`, `CloudFrame`); servers are cards on it.
+  A new member, whose profile has no name yet (`userId: null`, or the
+  profile gate on a server already kept, `ServerSignInFlow.onboard`), gets
+  Create your profile (`CloudProfileScreen`, its column at most 420): their
+  picture 120 round in the scene's place, the placeholder the server's own
+  (`HappyCloud.serverName`, as its connection wears it; never the name),
+  with a camera badge; it and
+  "Add photo" (then "Change photo") open Settings › Profile's picker and
+  crop (`rememberProfilePhotoPicker`, `ProfilePhoto.prepare`), the JPEG kept
+  in `NeedsName.photo`. The field starts from `GET /v0/profile`'s name (on
+  Happy Cloud, the account's: Android's web sign-in learns none from Apple
+  or GitHub itself), the cursor after it, with the keyboard up. Continue PATCHes the name, with
+  the suggested email if there is one, then PUTs the picture
+  (`ServerAuthClient.savePhoto`), spinning through both, each refreshed once
+  on a 401. A name that fails says so in plain words, never the server's; a
+  picture that fails still lands, with a toast to add it later
+  (`ServerSignInState.Done.photoFailed`).
   Besides Apple and GitHub, one sign-in is hidden: the welcome's slide art pressed ten
   times within four seconds (`CloudWelcome`) reveal a test account's login
   and password, for people and agents testing without Apple or GitHub.

@@ -1,10 +1,7 @@
 #if canImport(UIKit)
 import HappyCore
 import HappyLayout
-import ImageIO
-import PhotosUI
 import UIKit
-import UniformTypeIdentifiers
 
 /// The person's own profile on a paired computer, opened from Settings'
 /// Profile row: their picture (else the placeholder their ID picks), large
@@ -12,7 +9,7 @@ import UniformTypeIdentifiers
 /// name as a field in a settings card, and "Remove Photo" while there is a
 /// picture. A change shows at once and stays until the computer answers
 /// (`ProfileSource`); a failure puts the computer's back and says so.
-final class ProfileViewController: UIViewController, UITextFieldDelegate, PHPickerViewControllerDelegate {
+final class ProfileViewController: UIViewController, UITextFieldDelegate {
     private let source: ProfileSource
     private let scroll = UIScrollView()
     private let avatar = UIImageView()
@@ -24,6 +21,7 @@ final class ProfileViewController: UIViewController, UITextFieldDelegate, PHPick
     private var rows: [[SettingsRow]] = []
     private var watch: Watch?
     private var appeared = false
+    private lazy var photoPicker = ProfilePhotoPicker { [weak self] in self?.setPhoto($0) }
 
     /// What the page shows now, card by card: for the tests.
     var shownRowIDs: [[String]] { rows.map { $0.map(\.id) } }
@@ -185,44 +183,8 @@ final class ProfileViewController: UIViewController, UITextFieldDelegate, PHPick
     // MARK: Photo
 
     @objc private func pickPhoto() {
-        guard presentedViewController == nil else { return }
         if nameField.isFirstResponder { nameField.resignFirstResponder() }
-        var configuration = PHPickerConfiguration()
-        configuration.filter = .images
-        configuration.selectionLimit = 1
-        configuration.preferredAssetRepresentationMode = .current
-        let picker = PHPickerViewController(configuration: configuration)
-        picker.delegate = self
-        present(picker, animated: true)
-    }
-
-    nonisolated func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-        let item = results.first.map { PickedPhoto(provider: $0.itemProvider) }
-        MainActor.assumeIsolated {
-            picker.dismiss(animated: true)
-            guard let item else { return }
-            Task { [weak self] in
-                guard let image = await Self.load(item) else { return }
-                self?.setPhoto(image)
-            }
-        }
-    }
-
-    /// The picker's file only lives inside its callback, so it is decoded,
-    /// cut square and shrunk there, off the main thread.
-    private nonisolated static func load(_ item: PickedPhoto) async -> UIImage? {
-        await withCheckedContinuation { continuation in
-            _ = item.provider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { @Sendable url, _ in
-                guard let url, let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return continuation.resume(returning: nil) }
-                let options: [CFString: Any] = [
-                    kCGImageSourceCreateThumbnailFromImageAlways: true,
-                    kCGImageSourceCreateThumbnailWithTransform: true,
-                    kCGImageSourceThumbnailMaxPixelSize: 2048,
-                ]
-                guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return continuation.resume(returning: nil) }
-                continuation.resume(returning: ProfileSource.prepare(UIImage(cgImage: image)))
-            }
-        }
+        photoPicker.present(from: self)
     }
 
     func setPhoto(_ image: UIImage) {
@@ -248,10 +210,4 @@ final class ProfileViewController: UIViewController, UITextFieldDelegate, PHPick
     }
 }
 
-/// The picker's item. NSItemProvider is safe to hand across threads (its
-/// loads call back on their own queues), but this SDK doesn't mark it
-/// Sendable.
-private struct PickedPhoto: @unchecked Sendable {
-    let provider: NSItemProvider
-}
 #endif

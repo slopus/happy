@@ -116,8 +116,12 @@ extension AgentClient {
     /// `PATCH /v0/profile` with the name, naming `version` (`If-Match`).
     /// One that lost a race reads the newer version and saves over that,
     /// once, as a rename does.
-    public func renameProfile(_ name: String, version: String) async throws -> AgentWire.Profile {
-        let body: JSONValue = .object(["name": .string(name), "mutationId": .string(ClientID.make())])
+    /// `email`, when given, is saved with it (Create your profile sends the
+    /// one the server suggests).
+    public func renameProfile(_ name: String, email: String? = nil, version: String) async throws -> AgentWire.Profile {
+        var fields: [String: JSONValue] = ["name": .string(name), "mutationId": .string(ClientID.make())]
+        if let email, !email.isEmpty { fields["email"] = .string(email) }
+        let body: JSONValue = .object(fields)
         var version = version
         for attempt in 0..<2 {
             do {

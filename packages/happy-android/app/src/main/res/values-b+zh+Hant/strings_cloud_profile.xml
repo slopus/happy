@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_profile_title">建立你的個人資料</string>
+    <string name="cloud_profile_detail">你的團隊和代理在 %1$s 上會這樣看到你。</string>
+    <string name="cloud_profile_add_photo">新增照片</string>
+    <string name="cloud_profile_change_photo">更換照片</string>
+    <string name="cloud_profile_name_failed">無法儲存你的名字。請檢查連線後再試一次。</string>
+    <string name="cloud_profile_photo_failed">你的照片未能上傳。你可以稍後在「設定 › 個人資料」中新增。</string>
+</resources>

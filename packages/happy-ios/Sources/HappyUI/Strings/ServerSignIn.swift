@@ -27,7 +27,6 @@ extension Strings {
         static let nameTitle = "What’s your name?"
         static let nameMessage = "This is the first time you’re signing in to this server. Your name shows to your team."
         static let namePlaceholder = "Name"
-        static let nameCloudMessage = "Your name shows to your team."
         static let nameLater = "Not Now"
         static let nameNeeded = "This server needs your name before you can use it."
         static let cloudAction = "Connect to Happy Cloud"

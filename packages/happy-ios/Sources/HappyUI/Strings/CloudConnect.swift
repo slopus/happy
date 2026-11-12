@@ -62,5 +62,17 @@ extension Strings {
         static let codePlaceholder = "Invite code"
 
         static let failedTitle = "Couldn’t connect"
+
+        /// Create your profile, as agreed with desktop: a member's name and
+        /// picture before their first server opens.
+        static let profileTitle = "Create your profile"
+        static func profileMessage(_ handle: String) -> String { "This is how your team and agents see you on \(handle)." }
+        static let addPhoto = "Add photo"
+        static let changePhoto = "Change photo"
+        static let profileNamePlaceholder = "Your name"
+        /// Every way saving the name can fail; never the server's words.
+        static let nameFailed = "Couldn’t save your name. Check your connection and try again."
+        /// Said once the person has landed: the picture never holds them up.
+        static let photoFailed = "Your photo didn’t upload. You can add it later in Settings › Profile."
     }
 }

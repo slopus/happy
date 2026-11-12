@@ -152,7 +152,7 @@ final class ProfileSource {
         return Task {
             defer { picked[id] = nil }
             do {
-                guard let data = await Task.detached(operation: { image.jpegData(compressionQuality: 0.85) }).value else { throw AgentClientError.invalidResponse }
+                guard let data = await ProfilePhotoPicker.jpeg(image) else { throw AgentClientError.invalidResponse }
                 let saved = try await client.setProfilePhoto(data, contentType: "image/jpeg")
                 // The bytes are the ones just sent: shown as they are, never read back.
                 if state.pendingPhoto == hold { showPhoto(image, hash: saved.photo?.thumbhash) }

@@ -105,8 +105,6 @@ public struct ServerSignInFlow: Sendable {
         return (try? JSONDecoder().decode(Health.self, from: health.body))?.instanceId
     }
 
-    /// Saves `name` as the person's profile, which makes them a member the
-    /// rest of the API lets in (API.md, Profile).
     /// The name the server suggests for a member who hasn't saved a
     /// profile: `GET /v0/profile`'s `name` while it's unsaved (on Happy
     /// Cloud, the account's). Nil when there's none or the read fails.
@@ -119,15 +117,21 @@ public struct ServerSignInFlow: Sendable {
         return name?.isEmpty == false ? name : nil
     }
 
+    /// Saves `name` as the person's profile, which makes them a member the
+    /// rest of the API lets in (API.md, Profile), with the email the server
+    /// suggests, as desktop sends it; none when it suggests none.
     public func saveProfile(_ name: String, for signedIn: SignedIn) async throws -> SignedIn {
         let transport = makeTransport(origin)
         defer { Task { await transport.close() } }
         let token = signedIn.access.token
         let current = try await transport.request("/v0/profile", credential: token)
         guard current.status == 200 else { throw SignInRequired.check(current) ? ServerSignInError.rejected : AgentClientError.status(current.status, code: nil, message: nil) }
-        struct Profile: Decodable { struct Body: Decodable { let version: String? }; let profile: Body }
-        let version = (try? JSONDecoder().decode(Profile.self, from: current.body))?.profile.version
-        let body = try JSONSerialization.data(withJSONObject: ["name": name, "mutationId": ClientID.make()])
+        struct Profile: Decodable { struct Body: Decodable { let version: String?; let email: String? }; let profile: Body }
+        let read = (try? JSONDecoder().decode(Profile.self, from: current.body))?.profile
+        let version = read?.version
+        var fields = ["name": name, "mutationId": ClientID.make()]
+        if let email = read?.email?.trimmingCharacters(in: .whitespacesAndNewlines), !email.isEmpty { fields["email"] = email }
+        let body = try JSONSerialization.data(withJSONObject: fields)
         let saved = try await transport.request("/v0/profile", credential: token, method: "PATCH", body: body, headers: version.map { ["If-Match": $0] } ?? [:])
         guard (200..<300).contains(saved.status) else {
             if SignInRequired.check(saved) { throw ServerSignInError.rejected }
@@ -140,5 +144,18 @@ public struct ServerSignInFlow: Sendable {
         var next = signedIn
         next.record.userId = who.userId
         return next
+    }
+
+    /// Saves `jpeg` as the person's picture (`PUT /v0/profile/photo`); only
+    /// once their name is, as the rest of the API refuses them until then.
+    public func saveProfilePhoto(_ jpeg: Data, for signedIn: SignedIn) async throws {
+        let transport = makeTransport(origin)
+        defer { Task { await transport.close() } }
+        let saved = try await transport.request("/v0/profile/photo", credential: signedIn.access.token, method: "PUT", body: jpeg,
+                                                headers: ["Content-Type": "image/jpeg"], category: .file)
+        guard (200..<300).contains(saved.status) else {
+            if SignInRequired.check(saved) { throw ServerSignInError.rejected }
+            throw AgentClientError.status(saved.status, code: nil, message: nil)
+        }
     }
 }

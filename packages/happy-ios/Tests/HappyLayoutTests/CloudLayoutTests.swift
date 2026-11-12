@@ -90,16 +90,17 @@ final class CloudLayoutTests: XCTestCase {
     }
 
     /// Typing a name: the action rides the keyboard, 16 over it, and what
-    /// is above rises only enough to stay 24 clear of it.
-    func testTheActionRidesTheKeyboardAndTheRestRisesOnlyAsFarAsItMust() {
+    /// is above stays centred in the room left over it.
+    func testTheActionRidesTheKeyboardAndTheRestCentresOverIt() {
         let layout = CloudStageLayout(size: phone, safeArea: barred, keyboardTop: 516, title: .fixed(width: 300, height: 34), body: .fixed(width: 300, height: 24),
                                       content: .fixed(width: 345, height: 90), actions: [.init(height: 50)])
-        XCTAssertEqual(layout.title, CGRect(x: 24, y: 234, width: 345, height: 34))
-        XCTAssertEqual(layout.body, CGRect(x: 24, y: 280, width: 345, height: 24))
-        XCTAssertEqual(layout.content, CGRect(x: 24, y: 336, width: 345, height: 90))
+        XCTAssertEqual(layout.title, CGRect(x: 24, y: 180.5, width: 345, height: 34))
+        XCTAssertEqual(layout.body, CGRect(x: 24, y: 226.5, width: 345, height: 24))
+        XCTAssertEqual(layout.content, CGRect(x: 24, y: 282.5, width: 345, height: 90))
         XCTAssertEqual(layout.actions, [CGRect(x: 24, y: 450, width: 345, height: 50)])
-        XCTAssertEqual(layout.actions[0].minY - layout.content.maxY, 24)
+        XCTAssertEqual(layout.title.minY - (103 + 24), layout.actions[0].minY - 24 - layout.content.maxY)
         XCTAssertEqual(layout.keyboardInset, 852 - 516 - 34)
+        XCTAssertEqual(layout.keyboardOffset, 0, "it fits: nothing scrolls")
     }
 
     /// Too tall for the room over the keyboard: it starts at its top margin,
@@ -171,5 +172,88 @@ final class CloudLayoutTests: XCTestCase {
         XCTAssertEqual(row.subtitle, CGRect(x: 74, y: 39, width: 141, height: 20))
         let wide = CloudServerRowLayout(width: 345, button: CGSize(width: 120, height: 32))
         XCTAssertEqual(wide.button.width, 120)
+    }
+
+    // MARK: Create your profile
+
+    /// The picture's caption: "Add photo" as measured, with room for a thumb.
+    private let caption = CloudProfileLayout.caption(textWidth: 85.3)
+    /// The name's field and the line under it.
+    private let profileContent = Measurable.fixed(width: 345, height: 58)
+
+    /// The picture, 120 and round, Add photo 8 under it, then the title,
+    /// its line, the field and Continue, centred over Continue.
+    func testAProfileOnAPhone() {
+        XCTAssertEqual(caption, CGSize(width: 110, height: 32))
+        let layout = CloudStageLayout(size: phone, safeArea: barred, art: CloudProfileLayout.Metrics.avatar, caption: caption,
+                                      title: .fixed(width: 300, height: 34), body: .fixed(width: 300, height: 48), content: profileContent, actions: [.init(height: 50)])
+        XCTAssertEqual(layout.art, CGRect(x: 136.5, y: 243.5, width: 120, height: 120))
+        XCTAssertEqual(layout.caption, CGRect(x: 141.5, y: 371.5, width: 110, height: 32))
+        XCTAssertEqual(layout.title, CGRect(x: 24, y: 427.5, width: 345, height: 34))
+        XCTAssertEqual(layout.body, CGRect(x: 24, y: 473.5, width: 345, height: 48))
+        XCTAssertEqual(layout.content, CGRect(x: 24, y: 553.5, width: 345, height: 58))
+        XCTAssertEqual(layout.actions, [CGRect(x: 24, y: 752, width: 345, height: 50)])
+        XCTAssertEqual(layout.keyboardOffset, 0)
+        XCTAssertEqual(CloudProfileLayout.badge(avatar: layout.art), CGRect(x: 221, y: 328, width: 36, height: 36))
+    }
+
+    /// The keyboard up, as it is when the screen shows: everything rises to
+    /// the top margin, Continue 24 under the field, and the screen scrolls
+    /// so Continue rests 16 over the keyboard.
+    func testAProfileOverTheKeyboard() {
+        let layout = CloudStageLayout(size: phone, safeArea: barred, keyboardTop: 516, art: CloudProfileLayout.Metrics.avatar, caption: caption,
+                                      title: .fixed(width: 300, height: 34), body: .fixed(width: 300, height: 48), content: profileContent, actions: [.init(height: 50)])
+        XCTAssertEqual(layout.art, CGRect(x: 136.5, y: 127, width: 120, height: 120))
+        XCTAssertEqual(layout.caption, CGRect(x: 141.5, y: 255, width: 110, height: 32))
+        XCTAssertEqual(layout.title, CGRect(x: 24, y: 311, width: 345, height: 34))
+        XCTAssertEqual(layout.content, CGRect(x: 24, y: 437, width: 345, height: 58))
+        XCTAssertEqual(layout.actions, [CGRect(x: 24, y: 519, width: 345, height: 50)])
+        XCTAssertEqual(layout.contentHeight, 852)
+        XCTAssertEqual(layout.keyboardInset, 302)
+        XCTAssertEqual(layout.keyboardOffset, 69)
+        XCTAssertEqual(layout.actions[0].maxY - layout.keyboardOffset, 516 - 16)
+        // The scroll view can go that far.
+        XCTAssertGreaterThanOrEqual(layout.contentHeight + layout.keyboardInset - 852, layout.keyboardOffset)
+    }
+
+    /// A tablet: the same column, 440 wide, in the middle.
+    func testAProfileOnATablet() {
+        let layout = CloudStageLayout(size: CGSize(width: 1024, height: 1366), safeArea: LayoutInsets(top: 74, left: 0, bottom: 20, right: 0),
+                                      art: CloudProfileLayout.Metrics.avatar, caption: caption, title: .fixed(width: 300, height: 34),
+                                      body: .fixed(width: 300, height: 48), content: .fixed(width: 440, height: 94), actions: [.init(height: 50)])
+        XCTAssertEqual(layout.art, CGRect(x: 452, y: 475, width: 120, height: 120))
+        XCTAssertEqual(layout.caption, CGRect(x: 457, y: 603, width: 110, height: 32))
+        XCTAssertEqual(layout.title, CGRect(x: 292, y: 659, width: 440, height: 34))
+        XCTAssertEqual(layout.body, CGRect(x: 292, y: 705, width: 440, height: 48))
+        XCTAssertEqual(layout.content, CGRect(x: 292, y: 785, width: 440, height: 94))
+        XCTAssertEqual(layout.actions, [CGRect(x: 292, y: 1280, width: 440, height: 50)])
+        XCTAssertEqual(CloudProfileLayout.badge(avatar: layout.art), CGRect(x: 536, y: 559, width: 36, height: 36))
+    }
+
+    /// A tablet with its keyboard up: Continue rides it and the rest rises
+    /// with it, centred in the room left over Continue; nothing scrolls.
+    func testAProfileOverATabletsKeyboard() {
+        let layout = CloudStageLayout(size: CGSize(width: 1024, height: 1366), safeArea: LayoutInsets(top: 74, left: 0, bottom: 20, right: 0), keyboardTop: 980,
+                                      art: CloudProfileLayout.Metrics.avatar, caption: caption, title: .fixed(width: 300, height: 34),
+                                      body: .fixed(width: 300, height: 48), content: .fixed(width: 440, height: 94), actions: [.init(height: 50)])
+        XCTAssertEqual(layout.art, CGRect(x: 452, y: 292, width: 120, height: 120))
+        XCTAssertEqual(layout.caption, CGRect(x: 457, y: 420, width: 110, height: 32))
+        XCTAssertEqual(layout.title, CGRect(x: 292, y: 476, width: 440, height: 34))
+        XCTAssertEqual(layout.body, CGRect(x: 292, y: 522, width: 440, height: 48))
+        XCTAssertEqual(layout.content, CGRect(x: 292, y: 602, width: 440, height: 94))
+        XCTAssertEqual(layout.actions, [CGRect(x: 292, y: 914, width: 440, height: 50)])
+        XCTAssertEqual(layout.actions[0].maxY, 980 - 16)
+        XCTAssertEqual(layout.art.minY - (74 + 24), layout.actions[0].minY - 24 - layout.content.maxY)
+        XCTAssertEqual(layout.keyboardOffset, 0)
+    }
+
+    /// A caption needs art to sit under; without one it takes no room.
+    func testACaptionWithoutArtTakesNoRoom() {
+        let bare = CloudStageLayout(size: phone, safeArea: barred, title: .fixed(width: 300, height: 34), body: .fixed(width: 300, height: 48),
+                                    content: .fixed(width: 0, height: 0), actions: [.init(height: 50)])
+        let captioned = CloudStageLayout(size: phone, safeArea: barred, caption: caption, title: .fixed(width: 300, height: 34), body: .fixed(width: 300, height: 48),
+                                         content: .fixed(width: 0, height: 0), actions: [.init(height: 50)])
+        XCTAssertEqual(captioned, bare)
+        XCTAssertEqual(bare.caption, .zero)
     }
 }

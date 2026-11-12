@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_profile_title">Создайте профиль</string>
+    <string name="cloud_profile_detail">Так вас видят команда и агенты на %1$s.</string>
+    <string name="cloud_profile_add_photo">Добавить фото</string>
+    <string name="cloud_profile_change_photo">Сменить фото</string>
+    <string name="cloud_profile_name_failed">Не удалось сохранить имя. Проверьте подключение и попробуйте ещё раз.</string>
+    <string name="cloud_profile_photo_failed">Фото не загрузилось. Его можно добавить позже в Настройки › Профиль.</string>
+</resources>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_profile_title">Crea tu perfil</string>
+    <string name="cloud_profile_detail">Así es como te ven tu equipo y los agentes en %1$s.</string>
+    <string name="cloud_profile_add_photo">Añadir foto</string>
+    <string name="cloud_profile_change_photo">Cambiar foto</string>
+    <string name="cloud_profile_name_failed">No se pudo guardar tu nombre. Comprueba la conexión e inténtalo de nuevo.</string>
+    <string name="cloud_profile_photo_failed">Tu foto no se subió. Puedes añadirla más tarde en Configuración › Perfil.</string>
+</resources>

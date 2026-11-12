@@ -25,10 +25,22 @@ sealed interface ServerSignInState {
 
     data class Finishing(val server: String) : ServerSignInState
 
-    /** A new team member: the server needs a name before it lets them in. */
-    data class NeedsName(val server: String, val saving: Boolean = false, val failed: Boolean = false) : ServerSignInState
+    /**
+     * A new team member: the server needs a name before it lets them in.
+     * [suggested] is the server's (on Happy Cloud, the account's) to start
+     * from; [photo] the picture chosen, a prepared JPEG sent after the name
+     * (compared by reference). [saving] lasts through both.
+     */
+    data class NeedsName(
+        val server: String,
+        val saving: Boolean = false,
+        val failed: Boolean = false,
+        val suggested: String? = null,
+        val photo: ByteArray? = null,
+    ) : ServerSignInState
 
-    data class Done(val account: AgentConnection) : ServerSignInState
+    /** Kept; [photoFailed]: the name was saved and the picture chosen with it wasn't. */
+    data class Done(val account: AgentConnection, val photoFailed: Boolean = false) : ServerSignInState
 
     data class Failed(val server: String?, val reason: ServerAuthException.Reason) : ServerSignInState
 }
@@ -82,6 +94,9 @@ class ServerSignInFlow(
 
     /** Who this grant signed in, once the server says (a new member: after their name is saved). */
     private var member: String? = null
+
+    /** A new member's profile as the server suggests it: the name shown, the email saved with theirs. */
+    private var suggestion: ProfileSuggestion? = null
     private var job: Job? = null
     private var reported = false
 
@@ -90,16 +105,29 @@ class ServerSignInFlow(
 
     /**
      * [replacing] is signed in but has no profile on its server yet (the
-     * profile gate): asks for the name with the token it has, no browser.
+     * profile gate): asks for the name with the token it has, no browser,
+     * from the server's suggestion when it can be read.
      */
     fun onboard(address: String) {
-        origin = try {
+        val parsed = try {
             ServerAuthClient.parseAddress(address)
         } catch (e: ServerAuthException) {
             mutableState.value = ServerSignInState.Failed(null, e.reason)
             return
         }
-        mutableState.value = ServerSignInState.NeedsName(address)
+        origin = parsed
+        mutableState.value = ServerSignInState.Finishing(address)
+        job?.cancel()
+        job = scope.launch {
+            suggestion = try {
+                replacing?.let { id -> connections.credentials(id)?.let { connections.bearer(id, it) } }?.let { auth.suggestedProfile(parsed, it) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
+            mutableState.value = ServerSignInState.NeedsName(address, suggested = suggestion?.name)
+        }
     }
 
     /** Starts signing in to [address]: a scanned code's origin, or a server signing in again. */
@@ -177,36 +205,66 @@ class ServerSignInFlow(
         if (userId != null) return finish()
         // A new member: checked before the name, so none is saved on another server, unless health is behind the profile gate too.
         verify(origin, signedIn.first.access.value, beforeProfile = true)
-        mutableState.value = ServerSignInState.NeedsName(origin.value)
+        suggestion = auth.suggestedProfile(origin, signedIn.first.access.value)
+        mutableState.value = ServerSignInState.NeedsName(origin.value, suggested = suggestion?.name)
     }
 
-    /** A new member's name, saved before the server is kept. */
+    /** [jpeg], a prepared picture, as the new member's: sent once their name is. */
+    fun choosePhoto(jpeg: ByteArray) {
+        val asking = mutableState.value as? ServerSignInState.NeedsName ?: return
+        if (!asking.saving) mutableState.value = asking.copy(photo = jpeg)
+    }
+
+    /**
+     * A new member's name, with the email the server suggested, saved
+     * before the server is kept; then the picture they chose, if any, as
+     * the daemon takes nothing else before the name. A picture that doesn't
+     * go up doesn't keep them out ([ServerSignInState.Done.photoFailed]).
+     */
     fun submitName(name: String) {
         val origin = origin ?: return
+        val asking = mutableState.value as? ServerSignInState.NeedsName ?: return
+        if (asking.saving) return
         val granted = grant?.first?.access
         if (granted == null && replacing == null) return
         val trimmed = name.trim().takeIf { it.isNotEmpty() } ?: return
-        mutableState.value = ServerSignInState.NeedsName(origin.value, saving = true)
+        val email = suggestion?.email
+        mutableState.value = asking.copy(saving = true, failed = false)
         job = scope.launch {
+            var token = ""
+            // The access token expired while the person typed: refreshed once, and sent again.
+            suspend fun send(request: suspend (String) -> Unit) {
+                try {
+                    request(token)
+                } catch (e: ServerAuthException) {
+                    if (e.reason != ServerAuthException.Reason.SignInRequired) throw e
+                    token = renewed(token) ?: throw e
+                    request(token)
+                }
+            }
             try {
-                val token = granted?.value ?: replacing?.let { id ->
+                token = granted?.value ?: replacing?.let { id ->
                     connections.bearer(id, connections.credentials(id) ?: throw ServerAuthException(ServerAuthException.Reason.SignInRequired))
                 }!!
-                try {
-                    auth.saveName(origin, token, trimmed)
-                } catch (e: ServerAuthException) {
-                    // The access token expired while the person typed: refreshed once, and sent again.
-                    if (e.reason != ServerAuthException.Reason.SignInRequired) throw e
-                    auth.saveName(origin, renewed(token) ?: throw e, trimmed)
-                }
+                send { auth.saveName(origin, it, trimmed, email) }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
-                mutableState.value = ServerSignInState.NeedsName(origin.value, failed = true)
+                mutableState.value = asking.copy(saving = false, failed = true)
                 return@launch
             }
+            val photoFailed = asking.photo?.let { jpeg ->
+                try {
+                    send { auth.savePhoto(origin, it, jpeg) }
+                    false
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    true
+                }
+            } ?: false
             try {
-                finish()
+                finish(photoFailed)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ServerAuthException) {
@@ -250,13 +308,13 @@ class ServerSignInFlow(
         event?.let(record)
     }
 
-    private suspend fun finish() {
+    private suspend fun finish(photoFailed: Boolean = false) {
         val origin = origin ?: return
         val onboarded = replacing.takeIf { grant == null }
         if (onboarded != null) {
             // Onboarded with the token it had: the connection goes on as it was.
             connections.update(onboarded) { it.copy(signInRequired = false, profileRequired = false) }
-            connections.accounts.value.firstOrNull { it.id == onboarded }?.let { mutableState.value = ServerSignInState.Done(it) }
+            connections.accounts.value.firstOrNull { it.id == onboarded }?.let { mutableState.value = ServerSignInState.Done(it, photoFailed) }
             return
         }
         val (granted, credential) = grant ?: return
@@ -266,7 +324,7 @@ class ServerSignInFlow(
             ?: throw ServerAuthException(ServerAuthException.Reason.Rejected)
         val account = connections.addServer(origin, credential.copy(userId = userId), granted.access, fallbackName = HappyCloud.handle(origin.value) ?: origin.host, replacing = replacing)
         grant = null
-        mutableState.value = ServerSignInState.Done(account)
+        mutableState.value = ServerSignInState.Done(account, photoFailed)
         if (replacing != null && account.id != replacing) onReplaced(account.id)
     }
 
