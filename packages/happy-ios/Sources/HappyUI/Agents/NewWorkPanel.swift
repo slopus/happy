@@ -37,7 +37,7 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
     let machine = NewWorkMenuRow(icon: .ionicons("desktop-outline"), showsStatus: true)
     let folder = NewWorkMenuRow(icon: .ionicons("folder-outline"))
     let harness = NewWorkMenuRow(icon: .ionicons("hardware-chip-outline"))
-    private let note = UILabel()
+    let note = UILabel()
     let art = StateSceneView(scene: .clapperBoard, size: NewWorkLayout.Metrics.art, play: .onDemand, replayLabel: Strings.Tablet.replayIllustration, immediate: true)
     /// The kind's picture; nil for a session.
     private(set) var artScene: StateScene?
@@ -155,6 +155,11 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
         note.textColor = UIColor(Palette.textSecondary)
         note.textAlignment = .center
         note.numberOfLines = 0
+        for (room, text) in [(botNoteRoom, Strings.newWorkBotNote), (taskNoteRoom, Strings.newWorkTaskNote)] {
+            room.font = note.font
+            room.numberOfLines = 0
+            room.text = text
+        }
         art.accessibilityIdentifier = "new-work-art"
         art.isHidden = true
         addSubview(art)
@@ -204,6 +209,19 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
 
     private var measuredNote: Measurable { Self.measured(note) }
 
+    /// `.work`: a bot's note, laid out for either kind, so Task | Bot moves
+    /// nothing; a task's stands in the name's place, over that room.
+    private let botNoteRoom = UILabel()
+    private let taskNoteRoom = UILabel()
+    private var measuredRoom: Measurable {
+        let bot = Self.measured(botNoteRoom), task = Self.measured(taskNoteRoom)
+        return Measurable { width in
+            let room = bot.size(fitting: width)
+            let task = task.size(fitting: width).height - NewWorkLayout.Metrics.rowHeight - NewWorkLayout.Metrics.rowsToNote
+            return CGSize(width: room.width, height: max(room.height, task))
+        }
+    }
+
     private static func measured(_ label: UILabel) -> Measurable {
         Measurable { width in
             let size = label.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
@@ -218,9 +236,9 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
         case .work:
             return NewWorkLayout(
                 width: width, sides: sides, top: top, bottom: bottom,
-                // A task lays out a bot's name and note too, hidden.
+                // A task lays out a bot's name and note's room too.
                 kindHeight: kind.intrinsicContentSize.height, rows: 1,
-                note: measuredNote, art: artScene != nil
+                note: measuredRoom, art: artScene != nil
             )
         case .session:
             return NewWorkLayout(
@@ -242,6 +260,11 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
         switch mode {
         case .work:
             if let frame = layout.rows.first { field.frame = frame }
+            // A task's note, top-aligned in the name's place.
+            if field.isHidden, let row = layout.rows.first, let room = layout.note {
+                let height = Self.measured(note).size(fitting: room.width).height
+                note.frame = CGRect(x: room.minX, y: row.minY, width: room.width, height: height)
+            }
         case .session:
             for (row, frame) in zip(sessionRows, layout.rows) { row.frame = frame }
             // Short of room the note gives way first (`NewWorkLayout`).
@@ -279,14 +302,14 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
         }
     }
 
-    /// `.work`: a bot's name and what a bot is; a task shows neither, but
-    /// keeps their room.
+    /// `.work`: a bot's name and what a bot is; a task says what a task is
+    /// in the name's place, keeping a bot's room.
     private func showNote() {
         let bot = kind.selectedSegmentIndex == 1
-        if note.text != Strings.newWorkBotNote { note.text = Strings.newWorkBotNote }
+        let text = bot ? Strings.newWorkBotNote : Strings.newWorkTaskNote
+        if note.text != text { note.text = text }
         guard field.isHidden == bot else { return }
         field.isHidden = !bot
-        note.isHidden = !bot
         if !bot, name.isFirstResponder { onReturn?() }
         superview?.setNeedsLayout()
     }

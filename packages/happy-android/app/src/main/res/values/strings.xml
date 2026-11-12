@@ -1043,8 +1043,8 @@
     <string name="new_work_task">Task</string>
     <string name="new_work_bot">Bot</string>
     <string name="new_work_name">Name (optional)</string>
-    <string name="new_work_task_note">A task names itself from its first message unless you name it.</string>
-    <string name="new_work_bot_note">A bot is one lasting conversation with a folder of its own.</string>
+    <string name="new_work_task_note">A task is for one-off work. It can work across several projects and start subtasks of its own.</string>
+    <string name="new_work_bot_note">A bot is like a colleague: one lasting conversation with a folder of its own. Give it a name, then tell it what to do.</string>
     <string name="new_work_task_failed">The task could not be started. %1$s Your text and attachments are still here.</string>
     <string name="new_work_bot_failed">The bot could not be started. %1$s Your text and attachments are still here.</string>
 </resources>

@@ -218,11 +218,11 @@ fun NewWorkRoom(shown: Boolean, modifier: Modifier = Modifier, art: StateArt? = 
  * Happy Agent's new work (happy-ios NewWorkPanel `.work`): Task or Bot, a
  * segmented control 220 wide (Home's Session | Bot look: 32 high, 2 in,
  * radius 9; the picked segment surfaceHighest, radius 7; 13 semibold). A
- * task asks nothing more: it goes with a blank name, which its first
- * message fills. A bot asks, 16 under it, its name, a 44 capsule on the
- * input ground with its 16 text centred, "Name (optional)" until typed, and
- * 10 under that says what a bot is (13/18 secondary, centred, wrapping).
- * A task keeps that room empty, so switching moves nothing.
+ * task asks nothing more: it goes with a blank name, and 16 under the
+ * kind says what a task is (13/18 secondary, centred, wrapping). A bot
+ * asks, 16 under it, its name, a 44 capsule on the input ground with its
+ * 16 text centred, "Name (optional)" until typed, and 10 under that says
+ * what a bot is, alike. A task keeps a bot's room, so switching moves nothing.
  * Every change goes to [onChange] as it is made, a kind change with a tick.
  * Return in the name goes on to the composer ([onReturn]). Fixed once its
  * first message is in.
@@ -242,9 +242,18 @@ fun NewWorkChoicePanel(work: NewWork, onChange: (WorkChoice) -> Unit, onReturn: 
             // A task is never named here: it goes as a blank name does.
             onPick = { onChange(if (it == 1) WorkChoice(WorkKind.Bot, name) else WorkChoice(WorkKind.Task, "")) },
         )
-        // A task asks nothing more, but keeps a bot's room empty, so Task | Bot moves nothing.
+        // A task asks no name, but keeps a bot's room, so Task | Bot moves nothing.
         val bot = work.choice.kind == WorkKind.Bot
         Spacer(Modifier.height(NewWorkSpec.kindToRows))
+        val note: @Composable (Int, Modifier) -> Unit = { text, modifier ->
+            Text(
+                stringResource(text),
+                style = NewWorkSpec.note,
+                color = colors.textSecondary,
+                textAlign = TextAlign.Center,
+                modifier = modifier.fillMaxWidth(),
+            )
+        }
         if (bot) {
             NewWorkNameField(
                 value = name,
@@ -257,17 +266,18 @@ fun NewWorkChoicePanel(work: NewWork, onChange: (WorkChoice) -> Unit, onReturn: 
                 onReturn = onReturn,
                 capitalization = KeyboardCapitalization.Sentences,
             )
+            Spacer(Modifier.height(NewWorkSpec.rowsToNote))
+            note(R.string.new_work_bot_note, Modifier.testTag(NewWorkTags.NOTE))
         } else {
-            Spacer(Modifier.height(NewWorkSpec.rowHeight))
+            // A task's note stands in the name's place, over a bot's room.
+            Box {
+                Column(Modifier.reserved()) {
+                    Spacer(Modifier.height(NewWorkSpec.rowHeight + NewWorkSpec.rowsToNote))
+                    note(R.string.new_work_bot_note, Modifier)
+                }
+                note(R.string.new_work_task_note, Modifier.testTag(NewWorkTags.NOTE))
+            }
         }
-        Spacer(Modifier.height(NewWorkSpec.rowsToNote))
-        Text(
-            stringResource(R.string.new_work_bot_note),
-            style = NewWorkSpec.note,
-            color = colors.textSecondary,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().then(if (bot) Modifier.testTag(NewWorkTags.NOTE) else Modifier.reserved()),
-        )
     }
 }
 

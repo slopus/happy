@@ -1024,8 +1024,8 @@
     <string name="new_work_task">任务</string>
     <string name="new_work_bot">机器人</string>
     <string name="new_work_name">名称（可选）</string>
-    <string name="new_work_task_note">如果不命名，任务会根据第一条消息自行命名。</string>
-    <string name="new_work_bot_note">机器人是一段长期持续的对话，拥有自己的文件夹。</string>
+    <string name="new_work_task_note">任务用于一次性的工作。它可以跨多个项目，并自行启动子任务。</string>
+    <string name="new_work_bot_note">机器人就像一位同事：一段长期持续的对话，拥有自己的文件夹。给它起个名字，然后告诉它要做什么。</string>
     <string name="new_work_task_failed">无法启动任务。%1$s你的文字和附件仍保留在这里。</string>
     <string name="new_work_bot_failed">无法启动机器人。%1$s你的文字和附件仍保留在这里。</string>
 </resources>

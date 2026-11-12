@@ -1062,8 +1062,8 @@
     <string name="new_work_task">Tarea</string>
     <string name="new_work_bot">Bot</string>
     <string name="new_work_name">Nombre (opcional)</string>
-    <string name="new_work_task_note">Una tarea toma su nombre de su primer mensaje, salvo que le pongas uno.</string>
-    <string name="new_work_bot_note">Un bot es una conversación duradera con su propia carpeta.</string>
+    <string name="new_work_task_note">Una tarea es para trabajo puntual. Puede abarcar varios proyectos y lanzar sus propias subtareas.</string>
+    <string name="new_work_bot_note">Un bot es como un compañero: una conversación duradera con su propia carpeta. Ponle un nombre y luego dile qué hacer.</string>
     <string name="new_work_task_failed">No se pudo iniciar la tarea. %1$s Tu texto y tus adjuntos siguen aquí.</string>
     <string name="new_work_bot_failed">No se pudo iniciar el bot. %1$s Tu texto y tus adjuntos siguen aquí.</string>
 </resources>

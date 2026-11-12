@@ -1081,8 +1081,8 @@
     <string name="new_work_task">Zadanie</string>
     <string name="new_work_bot">Bot</string>
     <string name="new_work_name">Nazwa (opcjonalnie)</string>
-    <string name="new_work_task_note">Zadanie nazwie się samo od pierwszej wiadomości, chyba że nadasz mu nazwę.</string>
-    <string name="new_work_bot_note">Bot to jedna trwała rozmowa z własnym folderem.</string>
+    <string name="new_work_task_note">Zadanie służy do jednorazowej pracy. Może obejmować kilka projektów i uruchamiać własne podzadania.</string>
+    <string name="new_work_bot_note">Bot jest jak współpracownik: jedna trwała rozmowa z własnym folderem. Nadaj mu nazwę, a potem powiedz, co ma robić.</string>
     <string name="new_work_task_failed">Nie udało się rozpocząć zadania. %1$s Twój tekst i załączniki wciąż tu są.</string>
     <string name="new_work_bot_failed">Nie udało się uruchomić bota. %1$s Twój tekst i załączniki wciąż tu są.</string>
 </resources>

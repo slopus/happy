@@ -470,8 +470,8 @@ final class HostedComposeTests: XCTestCase {
 
     /// Happy Agent's new work: a task asks no name, so it goes as a blank
     /// name does, under the clapper board; a bot asks its name and says
-    /// what it is, under the robot. A task keeps that room empty, so
-    /// Task | Bot moves nothing.
+    /// what it is, under the robot. A task says what it is in the name's
+    /// place and keeps a bot's room, so Task | Bot moves nothing.
     func testATaskAsksNoNameAndABotDoes() async throws {
         let scene = try await hostedActiveScene()
         let window = hostedKeyWindow(in: scene)
@@ -489,12 +489,16 @@ final class HostedComposeTests: XCTestCase {
         XCTAssertFalse(panel.art.isHidden)
         XCTAssertEqual(panel.kind.frame.minY, NewWorkLayout.Metrics.art + NewWorkLayout.Metrics.artToKind)
         XCTAssertGreaterThan(panel.frame.height, panel.kind.frame.maxY + NewWorkLayout.Metrics.rowHeight, "a bot's room, kept")
+        XCTAssertEqual(panel.note.text, Strings.newWorkTaskNote)
+        XCTAssertEqual(panel.note.frame.minY, panel.kind.frame.maxY + NewWorkLayout.Metrics.kindToRows, "in the name's place")
         let task = [panel.frame, panel.art.frame, panel.kind.frame]
 
         panel.kind.selectedSegmentIndex = 1
         panel.kind.sendActions(for: .valueChanged)
         lay()
         XCTAssertFalse(panel.name.superview?.isHidden ?? true, "a bot asks its name")
+        XCTAssertEqual(panel.note.text, Strings.newWorkBotNote)
+        XCTAssertEqual(panel.note.frame.minY, panel.name.superview!.frame.maxY + NewWorkLayout.Metrics.rowsToNote)
         XCTAssertEqual(panel.artScene, .robot)
         XCTAssertEqual([panel.frame, panel.art.frame, panel.kind.frame], task, "Task to Bot moves nothing")
 
@@ -708,6 +712,7 @@ final class HostedComposeTests: XCTestCase {
         try await until { Self.subview(AgentInputCardView.self, in: newWork.view)?.textView.isFirstResponder == true }
         try await Task.sleep(for: .milliseconds(400))
         keep(window, "main-new-work")
+
 
         // Compose on new work standing empty: it is the one, so it stays.
         newWork.compose()

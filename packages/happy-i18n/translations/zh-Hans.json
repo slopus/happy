@@ -1091,8 +1091,8 @@
     "newWork.task": "任务",
     "newWork.bot": "机器人",
     "newWork.name": "名称（可选）",
-    "newWork.taskNote": "如果不命名，任务会根据第一条消息自行命名。",
-    "newWork.botNote": "机器人是一段长期持续的对话，拥有自己的文件夹。",
+    "newWork.taskNote": "任务用于一次性的工作。它可以跨多个项目，并自行启动子任务。",
+    "newWork.botNote": "机器人就像一位同事：一段长期持续的对话，拥有自己的文件夹。给它起个名字，然后告诉它要做什么。",
     "newWork.taskFailed": {
       "t": "无法启动任务。${reason}你的文字和附件仍保留在这里。"
     },

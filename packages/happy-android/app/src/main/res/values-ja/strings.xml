@@ -1024,8 +1024,8 @@
     <string name="new_work_task">タスク</string>
     <string name="new_work_bot">ボット</string>
     <string name="new_work_name">名前（任意）</string>
-    <string name="new_work_task_note">名前を付けなければ、タスクは最初のメッセージから名前が付きます。</string>
-    <string name="new_work_bot_note">ボットは専用のフォルダーを持つ、ずっと続くひとつの会話です。</string>
+    <string name="new_work_task_note">タスクは一度きりの作業向けです。複数のプロジェクトにまたがって作業し、自分でサブタスクを始めることもできます。</string>
+    <string name="new_work_bot_note">ボットは同僚のような存在です。専用のフォルダーを持つ、ずっと続くひとつの会話です。名前を付けて、何をするか伝えましょう。</string>
     <string name="new_work_task_failed">タスクを開始できませんでした。%1$sテキストと添付ファイルはそのまま残っています。</string>
     <string name="new_work_bot_failed">ボットを開始できませんでした。%1$sテキストと添付ファイルはそのまま残っています。</string>
 </resources>

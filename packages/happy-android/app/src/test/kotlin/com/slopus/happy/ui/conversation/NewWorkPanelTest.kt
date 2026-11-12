@@ -43,11 +43,13 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
+private const val BOT_NOTE = "A bot is like a colleague: one lasting conversation with a folder of its own. Give it a name, then tell it what to do."
+
 /**
  * New work's Task or Bot (happy-ios NewWorkPanel `.work`, NewWorkLayout):
  * one block 24 in from either side and at most 320 wide, centred between
  * the bar and the composer, under the kind's picture 16 over it; the kind
- * 220 wide. A task asks nothing more and goes with a blank name; a bot's
+ * 220 wide. A task goes with a blank name, 16 under the kind saying what a task is; a bot's
  * kind stands 16 over a 44 name, 10 over the line saying what a bot is. It
  * fades once the work is made.
  */
@@ -87,10 +89,12 @@ class NewWorkPanelTest {
         val bar = rule.node(ConversationScreenTags.BAR).bounds
         val composer = rule.node(ConversationComposerTags.COMPOSER).bounds
         assertEquals("centred between the bar and the composer", ((bar.bottom + composer.top) / 2).value, ((art.top + panel.bottom) / 2).value, 1f)
-        // A task asks no name and says nothing under the kind: its first message names it.
+        // A task asks no name; 16 under the kind it says what a task is.
         rule.node(NewWorkTags.NAME_FIELD).assertDoesNotExist()
-        rule.node(NewWorkTags.NOTE).assertDoesNotExist()
-        rule.onNodeWithText("A bot is one lasting conversation with a folder of its own.").assertDoesNotExist()
+        val note = rule.node(NewWorkTags.NOTE)
+        note.assertTextEquals("A task is for one-off work. It can work across several projects and start subtasks of its own.")
+        assertDp("16 under the kind", kind.bottom + 16.dp, note.bounds.top)
+        rule.onNodeWithText(BOT_NOTE).assertDoesNotExist()
         assertTrue("a bot's room kept under the kind", panel.bottom > kind.bottom + 16.dp + 44.dp)
         // The old empty line gives way to the panel.
         rule.node(ConversationScreenTags.EMPTY).assertDoesNotExist()
@@ -152,7 +156,7 @@ class NewWorkPanelTest {
         rule.waitForIdle()
         rule.node(NewWorkTags.kind(WorkKind.Bot)).assertIsSelected()
         rule.node(NewWorkTags.kind(WorkKind.Task)).assertIsNotSelected()
-        rule.node(NewWorkTags.NOTE).assertTextEquals("A bot is one lasting conversation with a folder of its own.")
+        rule.node(NewWorkTags.NOTE).assertTextEquals(BOT_NOTE)
         rule.node(NewWorkTags.art(StateArt.Ready)).assertExists()
         rule.node(NewWorkTags.art(StateArt.Action)).assertDoesNotExist()
         rule.node(NewWorkTags.NAME).performTextInput("Release Bot")

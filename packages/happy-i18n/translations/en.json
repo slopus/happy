@@ -1141,8 +1141,8 @@
     "newWork.task": "Task",
     "newWork.bot": "Bot",
     "newWork.name": "Name (optional)",
-    "newWork.taskNote": "A task names itself from its first message unless you name it.",
-    "newWork.botNote": "A bot is one lasting conversation with a folder of its own.",
+    "newWork.taskNote": "A task is for one-off work. It can work across several projects and start subtasks of its own.",
+    "newWork.botNote": "A bot is like a colleague: one lasting conversation with a folder of its own. Give it a name, then tell it what to do.",
     "newWork.taskFailed": {
       "t": "The task could not be started. ${reason} Your text and attachments are still here."
     },
