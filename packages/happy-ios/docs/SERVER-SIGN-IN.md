@@ -111,8 +111,8 @@ accounts and servers v1, with v4's token lifetimes.
   signs in, or, while the account's pass lasts, goes straight to Join a
   server. Opened again after the pass ended, a note over Continue says so.
 - **Sign in** (`CloudSignInViewController`, `CloudAccount`): "Sign in or
-  create your Happy Cloud account.", with two buttons, both native to the
-  app; there is no other way and no chooser page. Either way it ends in a
+  create your Happy Cloud account.", with three buttons, all native to the
+  app; there is no other way and no chooser page. Every way ends in a
   pass: an account token whose `aud` must be the accounts origin, good for
   an hour, with no refresh token.
   - *Sign in with Apple* (`CloudApple`): Apple's own button.
@@ -133,6 +133,32 @@ accounts and servers v1, with v4's token lifetimes.
     pick another GitHub account, and iOS asks no "wants to use … to sign
     in" first; passwords and passkeys still fill. A refresh token, if one
     came, is dropped.
+  - *Continue with email* (`CloudEmailViewController`,
+    `CloudEmailCodeViewController`, `Screens/CloudEmailSignInScreen.swift`):
+    a one-time code by email (WorkOS Magic Auth behind the accounts
+    service), with no browser, a filled button 12 under GitHub's, as wide.
+    Two steps, each on the gradient like the rest:
+    1. *Sign in with email*: the address (`.emailAddress`), then Send code,
+       `POST /v1/auth/email/start` `{ email }`, answered `202 {}`.
+    2. *Check your email*: "Enter the 6-digit code we sent to …", a field
+       with `.oneTimeCode` and the number pad, so Mail's code fills it. It
+       keeps digits only, six at most, and the sixth checks the code at
+       once: `POST /v1/auth/email/verify` `{ email, code }` answers the
+       same account token JSON as `/v1/auth/native`, accepted the same way
+       (the pass, its refresh token dropped), then Join a server in both
+       steps' place, so Back goes to the welcome. Resend code waits 60 s
+       after each code sent, its title counting down ("Resend code in
+       0:42"); Change email goes back to the address, kept.
+
+    Refusals are `{ code, error }`, said under the field: `400
+    invalid_email`, `400 invalid_code` and `502 unavailable` in the
+    service's words (ours when it gives none); a wrong code is cleared.
+    `400 unsupported_provider` (email sign-in not set up) reads "Email
+    sign-in isn’t available yet. Sign in with Apple or GitHub."
+    (`Strings.CloudEmail.failure`). `429 rate_limited` says its `error` and
+    makes the button that asked wait `retryAfter` seconds (else the
+    `Retry-After` header's, else a minute), counting down in its title:
+    Send code, Verify or Resend code (`CloudAccountError.rateLimited`).
   - *A test account* (`CloudTestSignIn`), for testing every surface without
     Apple or GitHub: ten taps on the welcome's Happy mark within four
     seconds open Sign in with a login and password form, which isn't there
@@ -191,8 +217,9 @@ accounts and servers v1, with v4's token lifetimes.
   `profile` step isn't done (`Onboarding.needsName`) asks the same over
   home, once a launch, with Not Now. A name in the profile alone decides
   nothing.
-- **Sign-in methods.** Apple natively and GitHub in the app's own sheet,
-  straight to GitHub; no Google or email anywhere in the app.
+- **Sign-in methods.** Apple natively, GitHub in the app's own sheet,
+  straight to GitHub, and a code by email typed in the app; no Google
+  anywhere in the app.
 - **Sign Out of Happy Cloud**, in the account switcher's menu while the
   pass is held, forgets the pass. The servers stay connected.
 - **Removing a cloud server** drops it on the phone and revokes its
@@ -543,6 +570,25 @@ Access tokens are unsigned JWTs for `https://localhost:8443/`;
 `/control/split` advertises a token URL on another site (`/control/bind`
 undoes it).
 It accepts only `happy://oauth/callback`, PKCE S256 and the `resource`.
+
+`ServerSignInTests` also covers Happy Cloud's account sign-ins: Apple's,
+a test account's, and email's two requests with every refusal and the
+`429` wait from the body or the header. `CloudEmailScreensTests`
+(HappyUIKitTests) covers email's steps: the welcome's button, Send code,
+the code field, Resend code's and a `429`'s countdowns, Change email, and
+the servers after the right code.
+
+`scripts/cloud-email-mock/server.mjs` plays the accounts service's email
+routes and servers list over plain HTTP on 8790 (a fixed code, `123456`;
+special addresses for each refusal; a `429` after three codes a minute or
+three wrong codes). `scripts/cloud-email-mock/run-device-test.sh` (on a
+Mac) starts it and runs `CloudEmailSignInUITests` on a connected phone or a
+simulator (`DEVICE`) in the chat harness, whose `-cloudAccounts <origin>`
+sends the welcome's sign-ins there, then exports the screenshots. On a
+phone whose UI automation can't be turned on, the harness's own
+`-cloudScreen email -cloudName <address> -cloudSend -cloudCode <code>`
+fills the address, taps Send code and types the code through the same
+screens and requests, for `devicectl` screenshots.
 
 `Tests/HappyWireTests/ServerLinkTests.swift`: the server code's grammar,
 formatting, and every malformed form. `ScanRouteTests` routes it from any

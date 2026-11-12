@@ -566,6 +566,95 @@ final class SignInRequiredTests: XCTestCase {
         }
     }
 
+    /// Email sign-in's first half: the address alone goes to the accounts
+    /// service, unsigned, and `202 {}` means a code is on its way. Each
+    /// refusal keeps its code and words; `429 rate_limited` says when to
+    /// ask again, from the body or else the `Retry-After` header.
+    func testHappyCloudEmailSignInSendsACode() async throws {
+        let accounts = HappyCloud.accounts, start = accounts + "/v1/auth/email/start"
+        let http = ScriptedHTTP()
+        http.on(start) { request in
+            XCTAssertEqual(request.method, "POST")
+            XCTAssertNil(request.headers["Authorization"])
+            XCTAssertEqual(request.headers["Content-Type"], "application/json")
+            let body = try JSONSerialization.jsonObject(with: request.body ?? Data()) as? [String: String]
+            XCTAssertEqual(body, ["email": "steve@example.com"])
+            return HTTPResponse(status: 202, body: Data("{}".utf8))
+        }
+        try await CloudAccount.startEmailSignIn(email: "steve@example.com", http: http)
+        XCTAssertEqual(http.requests.count, 1)
+
+        let refusals: [(Int, String, String)] = [
+            (400, "invalid_email", "Enter a valid email address."),
+            (400, "unsupported_provider", "Email sign-in isn't available."),
+            (502, "unavailable", "Email sign-in is unavailable. Try again."),
+        ]
+        for (status, code, message) in refusals {
+            http.json(start, status: status, #"{"code":"\#(code)","error":"\#(message)"}"#)
+            await XCTAssertThrowsAsync(try await CloudAccount.startEmailSignIn(email: "steve@example.com", http: http)) {
+                XCTAssertEqual($0 as? CloudAccountError, .refused(status: status, code: code, message: message))
+            }
+        }
+
+        http.on(start) { _ in
+            HTTPResponse(status: 429, body: Data(#"{"code":"rate_limited","error":"Too many codes. Wait a minute.","retryAfter":42}"#.utf8), headers: ["Retry-After": "42"])
+        }
+        await XCTAssertThrowsAsync(try await CloudAccount.startEmailSignIn(email: "steve@example.com", http: http)) {
+            XCTAssertEqual($0 as? CloudAccountError, .rateLimited(retryAfter: 42, message: "Too many codes. Wait a minute."))
+        }
+        http.on(start) { _ in HTTPResponse(status: 429, body: Data(#"{"code":"rate_limited","error":"Slow down."}"#.utf8), headers: ["retry-after": "17"]) }
+        await XCTAssertThrowsAsync(try await CloudAccount.startEmailSignIn(email: "steve@example.com", http: http)) {
+            XCTAssertEqual($0 as? CloudAccountError, .rateLimited(retryAfter: 17, message: "Slow down."), "the header's wait when the body has none")
+        }
+    }
+
+    /// Email sign-in's second half: the address and the code answer the
+    /// same one-hour pass as Apple's, bound to the accounts service. A
+    /// wrong code, an ended sign-in and a lockout each say which, and a 401
+    /// here is a refusal, not an ended pass.
+    func testHappyCloudEmailCodeSignsIn() async throws {
+        let accounts = HappyCloud.accounts, verify = accounts + "/v1/auth/email/verify"
+        let http = ScriptedHTTP()
+        let pass = jwt("acc-mail", aud: accounts + "/")
+        http.on(verify) { request in
+            XCTAssertEqual(request.method, "POST")
+            XCTAssertNil(request.headers["Authorization"])
+            let body = try JSONSerialization.jsonObject(with: request.body ?? Data()) as? [String: String]
+            XCTAssertEqual(body, ["email": "steve@example.com", "code": "123456"])
+            return HTTPResponse(status: 200, body: Data(#"{"access_token":"\#(pass)","refresh_token":"r1","token_type":"Bearer","expires_in":3600}"#.utf8))
+        }
+        let account = try await CloudAccount.signIn(email: "steve@example.com", code: "123456", http: http)
+        XCTAssertTrue(account.isLive())
+        XCTAssertEqual(account.expiresAt.timeIntervalSinceNow, 3600, accuracy: 5)
+        // The pass is what the account's calls carry.
+        http.json(accounts + "/v1/servers", #"{"servers":[]}"#)
+        _ = try await account.servers()
+        XCTAssertEqual(http.requests.last?.headers["Authorization"], "Bearer \(pass)")
+
+        let refusals: [(Int, String, String)] = [
+            (400, "invalid_code", "That code didn't work."),
+            (400, "invalid_email", "Enter a valid email address."),
+            (400, "unsupported_provider", "Email sign-in isn't available."),
+            (502, "unavailable", "Email sign-in is unavailable. Try again."),
+            (401, "invalid_code", "That code has expired."),
+        ]
+        for (status, code, message) in refusals {
+            http.json(verify, status: status, #"{"code":"\#(code)","error":"\#(message)"}"#)
+            await XCTAssertThrowsAsync(try await CloudAccount.signIn(email: "steve@example.com", code: "000000", http: http)) {
+                XCTAssertEqual($0 as? CloudAccountError, .refused(status: status, code: code, message: message))
+            }
+        }
+        http.on(verify) { _ in HTTPResponse(status: 429, body: Data(#"{"code":"rate_limited","error":"Too many tries.","retryAfter":60}"#.utf8), headers: ["Retry-After": "60"]) }
+        await XCTAssertThrowsAsync(try await CloudAccount.signIn(email: "steve@example.com", code: "000000", http: http)) {
+            XCTAssertEqual($0 as? CloudAccountError, .rateLimited(retryAfter: 60, message: "Too many tries."))
+        }
+        // A pass for anything else is refused.
+        http.json(verify, #"{"access_token":"\#(jwt("x", aud: "https://acme.example/"))"}"#)
+        await XCTAssertThrowsAsync(try await CloudAccount.signIn(email: "steve@example.com", code: "123456", http: http)) {
+            XCTAssertEqual($0 as? OAuthError, .wrongAudience)
+        }
+    }
+
     /// Removing a cloud server revokes its refresh token's family at the
     /// accounts service; a grant without one sends nothing.
     func testHappyCloudRevokesARemovedServersSession() async throws {

@@ -13,13 +13,18 @@ final class CloudNavigationController: UINavigationController, AccountAddingFlow
 /// first of them.
 protocol CloudFlowScreen: AccountAddingFlow {}
 
+/// A sign-in step after the welcome, replaced by the servers once signed
+/// in.
+protocol CloudSignInStep: CloudFlowScreen {}
+
 /// Happy Cloud's screens, full screen on the first screen's Grain Gradient,
 /// in desktop's order (CloudConnectScreen.tsx):
 ///
 /// 1. Welcome: desktop's Cloud slides in the first screen's gallery, and
-///    under them the sign-in: Sign in with Apple (native) and Sign in
-///    with GitHub (GitHub's page in the app, straight from the accounts
-///    service). Skipped while the account's hour-long pass lasts.
+///    under them the sign-in: Sign in with Apple (native), Sign in with
+///    GitHub (GitHub's page in the app, straight from the accounts
+///    service) and Continue with email (a code sent by email, typed in the
+///    app). Skipped while the account's hour-long pass lasts.
 /// 2. Join a server: each of the account's servers with Join; several can
 ///    be joined, then Continue opens the last. Bootstrap a new one and Join
 ///    with an invite under them. An account with none starts at Bootstrap.
@@ -47,13 +52,13 @@ enum CloudScreens {
         return CloudWelcomeViewController(context: context)
     }
 
-    /// Signed in: the servers, in the test sign-in's place, so Back goes
-    /// to the welcome.
+    /// Signed in: the servers, in the sign-in steps' place (the test
+    /// account's, or email's two), so Back goes to the welcome.
     static func signedIn(_ account: CloudAccount, context: AppContext, from controller: UIViewController) {
         self.account = account
         guard let navigation = controller.navigationController else { return }
         var stack = navigation.viewControllers
-        if stack.last is CloudTestSignInViewController { stack.removeLast() }
+        while stack.last is CloudSignInStep { stack.removeLast() }
         stack.append(CloudServersViewController(context: context, account: account))
         navigation.setViewControllers(stack, animated: true)
     }
@@ -141,6 +146,8 @@ private func dressCloudScreen(_ controller: UIViewController, gradient: GrainGra
 /// - Sign in with GitHub: the accounts service's authorization request
 ///   with `provider=github`, which goes straight to GitHub, in the app's
 ///   own browser sheet.
+/// - Continue with email: the address, then the code sent to it
+///   (`CloudEmailViewController`), all in the app.
 ///
 /// A note over the buttons says when the account's sign-in has ended, or
 /// why one failed. Ten taps on the cloud mark within four seconds open a
@@ -164,11 +171,13 @@ final class CloudWelcomeViewController: UIViewController, CloudFlowScreen, ASWeb
     let gallery = StartGalleryView(slides: CloudWelcomeViewController.slides, interval: CloudWelcomeViewController.advanceInterval)
     private(set) var appleButton: ASAuthorizationAppleIDButton?
     let github = RoundButton(title: Strings.CloudConnect.github)
+    let email = RoundButton(title: Strings.CloudEmail.action)
     let note = StartGalleryView.bodyLabel("")
     private var taps = CloudLogoTaps()
     private var browser: ASWebAuthenticationSession?
     private var apple: CloudApple?
-    /// Where the test account's sign-in goes; the tests' fake accounts.
+    /// Where the test account's and email's sign-ins go; the tests' fake
+    /// accounts.
     var http: any HTTPTransport = NoRedirectURLSessionTransport()
 
     init(context: AppContext, expired: Bool = false) {
@@ -194,10 +203,16 @@ final class CloudWelcomeViewController: UIViewController, CloudFlowScreen, ASWeb
         view.addSubview(scroll)
         github.accessibilityIdentifier = "cloud-github"
         github.action = { [weak self] in await self?.signInWithGitHub() }
+        email.accessibilityIdentifier = "cloud-email"
+        email.onTap = { [weak self] in
+            guard let self else { return }
+            say(nil)
+            navigationController?.pushViewController(CloudEmailViewController(context: context, http: http), animated: true)
+        }
         if HappyCloud.isOffered(in: context.variant) {
             gallery.onArtTap = { [weak self] in self?.logoTapped(at: Date()) }
         }
-        for subview in [gallery, note, github] as [UIView] { scroll.addSubview(subview) }
+        for subview in [gallery, note, github, email] as [UIView] { scroll.addSubview(subview) }
         updateAppleButton()
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.updateAppleButton() }
     }
@@ -234,15 +249,19 @@ final class CloudWelcomeViewController: UIViewController, CloudFlowScreen, ASWeb
         if let bar = navigationController?.navigationBar, !bar.isHidden {
             insets.top = max(0, insets.top - bar.frame.height)
         }
-        // GitHub's as wide as its label; Apple's as tall, as wide as the wider.
+        // GitHub's and email's as wide as their labels; Apple's as tall, all
+        // as wide as the widest.
         let metrics = RoundButtonMetrics.of(github.size)
-        let label = github.label.measurable.size(fitting: .greatestFiniteMagnitude)
-        let githubSize = CGSize(width: ceil(label.width) + metrics.paddingHorizontal * 2, height: github.layout(width: StartLayout.Metrics.buttonMinWidth).size.height)
+        func measured(_ button: RoundButton) -> CGSize {
+            let label = button.label.measurable.size(fitting: .greatestFiniteMagnitude)
+            return CGSize(width: ceil(label.width) + metrics.paddingHorizontal * 2, height: button.layout(width: StartLayout.Metrics.buttonMinWidth).size.height)
+        }
         let layout = CloudWelcomeLayout(
             size: view.bounds.size,
             safeArea: LayoutInsets(insets),
             button: CGSize(width: 0, height: metrics.height),
-            secondary: githubSize,
+            secondary: measured(github),
+            tertiary: measured(email),
             note: note.string.isEmpty ? nil : note.measurable,
             slides: gallery.slides,
             dots: gallery.dotsSize
@@ -255,6 +274,7 @@ final class CloudWelcomeViewController: UIViewController, CloudFlowScreen, ASWeb
         appleButton?.setLayoutFrame(layout.button)
         appleButton?.cornerRadius = layout.button.height / 2
         github.setLayoutFrame(layout.secondary)
+        email.setLayoutFrame(layout.tertiary)
         // The drift keeps clear of the art, every slide's words, the dots,
         // the note and the buttons.
         let start = layout.start, gallery = start.gallery
@@ -263,7 +283,7 @@ final class CloudWelcomeViewController: UIViewController, CloudFlowScreen, ASWeb
                    height: (start.bodies.map(\.maxY).max() ?? title.maxY) - title.minY)
         }
         let avoid = [start.art.offsetBy(dx: gallery.minX, dy: gallery.minY), words ?? .zero, start.dots.offsetBy(dx: gallery.minX, dy: gallery.minY),
-                     layout.note, layout.button, layout.secondary]
+                     layout.note, layout.button, layout.secondary, layout.tertiary]
         drift.avoid = avoid.filter { !$0.isEmpty }.map { scroll.convert($0, to: view) }
     }
 
@@ -502,7 +522,7 @@ final class CloudTestSignIn: UIView {
 /// A test account's sign-in, for testing every surface without Apple or
 /// GitHub: its login and password, opened by ten taps on the welcome's
 /// Happy mark in development and preview builds.
-final class CloudTestSignInViewController: CloudStageViewController, UITextFieldDelegate {
+final class CloudTestSignInViewController: CloudStageViewController, CloudSignInStep, UITextFieldDelegate {
     let problem = StartGalleryView.bodyLabel("")
     private(set) var testSignIn: CloudTestSignIn?
     /// Where the test account's sign-in goes; the tests' fake accounts.
@@ -1289,13 +1309,20 @@ final class CloudField: UIView {
 /// device screenshots (`-screen cloud -cloudScreen …`): `welcome`,
 /// `expired`, `test`, `servers` (two of the preview's own),
 /// `empty` (none: Bootstrap), `live` (the account's, under the token),
-/// `create`, `join`, `connecting`.
+/// `create`, `join`, `connecting`, `email` and `code` (email's two steps,
+/// the address in `name`). `http` is where the welcome's sign-ins go. On
+/// `email`, `send` taps Send code once the address is in, and `code` is
+/// then typed into the code step, as a person would: the phone's run
+/// against scripts/cloud-email-mock, where UI tests can't drive it.
 public enum CloudScreensPreview {
     @MainActor
-    public static func make(context: AppContext, token: String, screen: String, name: String?) -> UINavigationController {
+    public static func make(context: AppContext, token: String, screen: String, name: String?,
+                            http: any HTTPTransport = NoRedirectURLSessionTransport(), send: Bool = false, code: String? = nil) -> UINavigationController {
         let account = CloudAccount.preview(token: token, expiresAt: nil)
         CloudScreens.account = screen == "expired" ? nil : account
-        let navigation = UINavigationController(rootViewController: CloudWelcomeViewController(context: context, expired: screen == "expired"))
+        let welcome = CloudWelcomeViewController(context: context, expired: screen == "expired")
+        welcome.http = http
+        let navigation = UINavigationController(rootViewController: welcome)
         let server = CloudServer(id: "preview", name: name ?? "acme", url: "", role: .owner, displayName: "Acme")
         let list = [server, CloudServer(id: "preview-2", name: "globex-labs", url: "", role: .member, displayName: "Globex Labs")]
         switch screen {
@@ -1312,6 +1339,31 @@ public enum CloudScreensPreview {
             navigation.pushViewController(join, animated: false)
             if let name { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { join.nameField.text.text = name; join.codeField.text.text = "pcmurcvd"; join.edited() } }
         case "connecting": navigation.pushViewController(CloudConnectingViewController(context: context, account: account, server: server, startsAtOnce: false), animated: false)
+        case "email", "code":
+            let email = CloudEmailViewController(context: context, http: http)
+            navigation.pushViewController(email, animated: false)
+            if let name {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    email.field.text.text = name
+                    email.edited()
+                    guard send else { return }
+                    email.primary.tapped()
+                    Task {
+                        var waited = 0
+                        while !(navigation.topViewController is CloudEmailCodeViewController), waited < 100 {
+                            try? await Task.sleep(for: .milliseconds(100))
+                            waited += 1
+                        }
+                        guard let step = navigation.topViewController as? CloudEmailCodeViewController, let code else { return }
+                        try? await Task.sleep(for: .seconds(1))
+                        step.field.text.text = code
+                        step.edited()
+                    }
+                }
+            }
+            if screen == "code" {
+                navigation.pushViewController(CloudEmailCodeViewController(context: context, email: name ?? "you@example.com", http: http, sentAt: Date()), animated: false)
+            }
         default: break
         }
         AppCoordinator.applyAppearance(to: navigation.navigationBar)

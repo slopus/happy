@@ -75,11 +75,15 @@ public enum CloudAccountError: Error, Equatable, Sendable {
     /// A test account's password tried too often; it opens again after
     /// `retryAfter` seconds.
     case locked(retryAfter: TimeInterval?)
+    /// Email codes asked for or tried too often (`429 rate_limited`); ask
+    /// again after `retryAfter` seconds.
+    case rateLimited(retryAfter: TimeInterval?, message: String?)
     case invalidResponse
 }
 
 /// The Happy Cloud account: a one-hour pass from the accounts service
-/// (Sign in with Apple, or the authorization code flow in the browser),
+/// (Sign in with Apple, a code sent by email, or the authorization code
+/// flow in the browser),
 /// good for the picker's calls and for minting a token per server. It has
 /// no refresh token and is never stored: held in memory with its expiry,
 /// and once it ends, or any accounts call answers 401, the person signs in
@@ -161,15 +165,51 @@ public actor CloudAccount {
         let response = try await http.send(HTTPRequest(method: "POST", url: URL(string: HappyCloud.accounts + "/v1/auth/password")!,
                                                        headers: ["Accept": "application/json", "Content-Type": "application/json"],
                                                        body: try JSONEncoder().encode(["login": login, "password": password])))
-        if response.status == 429 {
-            struct Locked: Decodable { let retryAfter: TimeInterval? }
-            let retryAfter = (try? JSONDecoder().decode(Locked.self, from: response.body))?.retryAfter
-                ?? response.headers.first { $0.key.lowercased() == "retry-after" }.flatMap { TimeInterval($0.value) }
-            throw CloudAccountError.locked(retryAfter: retryAfter)
-        }
+        if response.status == 429 { throw CloudAccountError.locked(retryAfter: retryAfter(response)) }
         guard (200..<300).contains(response.status) else { throw refusal(response, endsPass: false) }
         let (access, _) = try OAuthTokenClient(http: http, now: now).accept(response.body, previous: grant, typed: false)
         return CloudAccount(access: access, http: http, now: now)
+    }
+
+    /// Sends a one-time sign-in code to `email` (`POST /v1/auth/email/start`,
+    /// answered `202`). The first half of signing in by email; no browser.
+    public static func startEmailSignIn(email: String, http: any HTTPTransport = NoRedirectURLSessionTransport()) async throws {
+        let response = try await http.send(HTTPRequest(method: "POST", url: URL(string: HappyCloud.accounts + "/v1/auth/email/start")!,
+                                                       headers: ["Accept": "application/json", "Content-Type": "application/json"],
+                                                       body: try JSONEncoder().encode(["email": email])))
+        try checkEmailAnswer(response)
+    }
+
+    /// Signs in with the code `startEmailSignIn` sent to `email`
+    /// (`POST /v1/auth/email/verify`): the same pass as Apple's.
+    public static func signIn(email: String, code: String,
+                              http: any HTTPTransport = NoRedirectURLSessionTransport(), now: @escaping @Sendable () -> Date = Date.init) async throws -> CloudAccount {
+        let response = try await http.send(HTTPRequest(method: "POST", url: URL(string: HappyCloud.accounts + "/v1/auth/email/verify")!,
+                                                       headers: ["Accept": "application/json", "Content-Type": "application/json"],
+                                                       body: try JSONEncoder().encode(["email": email, "code": code])))
+        try checkEmailAnswer(response)
+        let (access, _) = try OAuthTokenClient(http: http, now: now).accept(response.body, previous: grant, typed: false)
+        return CloudAccount(access: access, http: http, now: now)
+    }
+
+    /// A refused email step: `429 rate_limited` with when to ask again,
+    /// else `{ code, error }` (`invalid_email`, `invalid_code`,
+    /// `unsupported_provider`, `unavailable`).
+    private static func checkEmailAnswer(_ response: HTTPResponse) throws {
+        if response.status == 429 {
+            struct Failure: Decodable { let error: String? }
+            let message = (try? JSONDecoder().decode(Failure.self, from: response.body))?.error
+            throw CloudAccountError.rateLimited(retryAfter: retryAfter(response), message: message)
+        }
+        guard (200..<300).contains(response.status) else { throw refusal(response, endsPass: false) }
+    }
+
+    /// A 429's wait in seconds: the body's `retryAfter`, else the
+    /// `Retry-After` header's.
+    private static func retryAfter(_ response: HTTPResponse) -> TimeInterval? {
+        struct Wait: Decodable { let retryAfter: TimeInterval? }
+        return (try? JSONDecoder().decode(Wait.self, from: response.body))?.retryAfter
+            ?? response.headers.first { $0.key.lowercased() == "retry-after" }.flatMap { TimeInterval($0.value.trimmingCharacters(in: .whitespaces)) }
     }
 
     #if DEBUG
