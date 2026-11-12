@@ -87,4 +87,6 @@
     <string name="cloud_invite_email_mismatch">This invite was sent to %1$s. Sign in with that email to join.</string>
     <string name="cloud_invite_email_mismatch_unknown">This invite was sent to another email. Sign in with that email to join.</string>
     <string name="cloud_invite_other_account">Sign in with another account</string>
+    <string name="cloud_invite_not_now">Not now</string>
+    <string name="cloud_invite_inviter">%1$s invited you</string>
 </resources>

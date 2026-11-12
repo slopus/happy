@@ -381,7 +381,8 @@ class CloudAccount(
         val name = text(server, "name") ?: throw CloudException(CloudException.Reason.Failed)
         // Its picture comes inline, as a data: URL; the server has no id or address until the accept.
         val image = text(server, "image")?.let { CloudServerImage(url = it) }
-        return CloudInvitePreview(CloudServer(id = "", name = name, url = "", displayName = text(server, "displayName"), image = image), text(body, "roleName"))
+        val inviter = (body["inviter"] as? JsonObject)?.let { who -> text(who, "name")?.let { CloudInviter(it, text(who, "image")) } }
+        return CloudInvitePreview(CloudServer(id = "", name = name, url = "", displayName = text(server, "displayName"), image = image), text(body, "roleName"), inviter)
     }
 
     /** Accepts [invite] for the signed-in account (`POST /v1/invites/accept`): the server it is on now. */

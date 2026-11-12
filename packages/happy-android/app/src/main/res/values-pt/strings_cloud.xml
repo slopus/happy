@@ -85,4 +85,6 @@
     <string name="cloud_invite_email_mismatch">Este convite foi enviado para %1$s. Entre com esse e-mail para participar.</string>
     <string name="cloud_invite_email_mismatch_unknown">Este convite foi enviado para outro e-mail. Entre com esse e-mail para participar.</string>
     <string name="cloud_invite_other_account">Entrar com outra conta</string>
+    <string name="cloud_invite_not_now">Agora não</string>
+    <string name="cloud_invite_inviter">%1$s convidou você</string>
 </resources>

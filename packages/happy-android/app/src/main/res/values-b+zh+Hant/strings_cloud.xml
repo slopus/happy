@@ -85,4 +85,6 @@
     <string name="cloud_invite_email_mismatch">此邀請傳送給了 %1$s。請用該電子郵件登入後加入。</string>
     <string name="cloud_invite_email_mismatch_unknown">此邀請傳送給了另一個電子郵件。請用該電子郵件登入後加入。</string>
     <string name="cloud_invite_other_account">使用其他帳號登入</string>
+    <string name="cloud_invite_not_now">暫不</string>
+    <string name="cloud_invite_inviter">%1$s 邀請了你</string>
 </resources>

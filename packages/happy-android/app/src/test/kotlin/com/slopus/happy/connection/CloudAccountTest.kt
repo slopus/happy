@@ -524,11 +524,12 @@ class CloudAccountTest {
     @Test
     fun anInvitePreviewsSignedOutAndAcceptsSignedIn() = runBlocking {
         val account = account()
-        server.enqueue(json("""{"server":{"name":"acme","displayName":"Acme","image":"data:image/png;base64,iVBORw0KGgo="},"roleName":"Viewer","expiresAt":"2026-11-19T09:28:08.851234Z"}"""))
+        server.enqueue(json("""{"server":{"name":"acme","displayName":"Acme","image":"data:image/png;base64,iVBORw0KGgo="},"roleName":"Viewer","expiresAt":"2026-11-19T09:28:08.851234Z","inviter":{"name":"Ada Lovelace","image":null}}"""))
         val preview = account.previewInvite(invite)
         assertEquals("Acme", preview.server.title)
         assertEquals("@acme", "@${preview.server.name}")
         assertEquals("Viewer", preview.roleName)
+        assertEquals(CloudInviter("Ada Lovelace", image = null), preview.inviter)
         assertEquals("data:image/png;base64,iVBORw0KGgo=", preview.server.image?.url)
         assertEquals(listOf(0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A), inviteImage(preview.server.image!!.url)!!.map { it.toInt() and 0xFF })
         assertEquals(null, inviteImage("https://evil.example/a.png"))
