@@ -607,6 +607,9 @@ class AppGraph(
         chime = CompletionChime(appContext)::play,
     )
 
+    /** This installation's id: the push relay's `deviceId`, and the device environment reports name. */
+    private val installationId = com.slopus.happy.push.InstallationId(appContext)
+
     val cloudPush = com.slopus.happy.push.CloudPushRuntime(
         appContext, agentConnections, { agentSessions.session(it)?.client }, isForeground, scope,
         ExpoSecureStore(
@@ -614,7 +617,13 @@ class AppGraph(
             keys = secureStoreKeys,
             keychainService = com.slopus.happy.push.CloudPushRuntime.KEYCHAIN_SERVICE,
         ),
+        installationId,
     )
+
+    /** Each computer that takes it is told this phone's time zone and language. */
+    private val userEnvironment = com.slopus.happy.agent.UserEnvironmentRuntime(
+        appContext, openAgentId, isForeground, { agentSessions.session(it)?.client }, installationId, scope,
+    ).also { it.start() }
 
     init {
         analyticsTarget?.let(::startAnalytics)

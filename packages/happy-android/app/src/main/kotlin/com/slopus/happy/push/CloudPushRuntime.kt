@@ -29,6 +29,8 @@ class CloudPushRuntime(
     foreground: StateFlow<Boolean>,
     private val scope: CoroutineScope,
     store: ExpoSecureStore,
+    /** This installation's id, shared with the environment reports ([com.slopus.happy.agent.UserEnvironmentRuntime]). */
+    private val installation: InstallationId = InstallationId(context),
 ) {
     private fun account(value: AgentConnection): CloudPushAccount? = value.userId?.let { user ->
         value.server?.takeIf { HappyCloud.isServer(it) && !value.revoked && !value.signInRequired && !value.profileRequired }
@@ -40,7 +42,6 @@ class CloudPushRuntime(
         connections.accounts.value.any { account(it) == candidate }
     })
     private val relay = HappyPushRelay(OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).callTimeout(30, TimeUnit.SECONDS).build())
-    private val installation = InstallationId(context)
     private val sync = CloudPushSync(
         accounts, foreground, context.networkPath().returns(), registrations, ::api, FcmTokenSource(context),
         exchange = { native -> relay.exchange(native, installation.getOrCreate(), context.packageName, locale()) },
