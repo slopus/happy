@@ -612,6 +612,54 @@ final class CloudScreensTests: XCTestCase {
         XCTAssertFalse(CloudCreateViewController(context: context(), account: account).signsOutOnBack, "a second server's Back doesn't")
     }
 
+    /// Only Back signs out. A first Bootstrap (Back signs out) giving way
+    /// to Connecting, which then ends the flow over the server as the
+    /// coordinator does, its stack swapped for the new home, keeps the
+    /// account; so does a servers list or an invite's Connecting ending so.
+    /// The next Happy Cloud or invite link opens signed in.
+    func testOnlyBackSignsOutNotTheFlowEndingOverTheServer() async throws {
+        let http = CloudHTTP()
+        let account = CloudAccount.preview(token: "account", http: http)
+        CloudScreens.account = account
+        defer { CloudScreens.account = nil }
+        let start = UIViewController()
+        let navigation = UINavigationController(rootViewController: start)
+        let create = CloudCreateViewController(context: context(), account: account, first: true)
+        navigation.pushViewController(create, animated: false)
+        show(navigation)
+        await settle { create.viewIfLoaded?.window != nil && navigation.transitionCoordinator == nil }
+        CloudConnectingViewController.replace(create, context: context(), account: account,
+                                              server: CloudServer(id: "s1", name: "acme", url: "https://acme.happy-clusters.com/", role: .owner))
+        await settle { navigation.topViewController is CloudConnectingViewController && navigation.transitionCoordinator == nil }
+        XCTAssertIdentical(CloudScreens.account, account, "Bootstrap giving way to Connecting isn't Back")
+        let connecting = try XCTUnwrap(navigation.topViewController as? CloudConnectingViewController)
+        XCTAssertTrue(connecting.signsOutOnBack, "with nothing under it, its Back still signs out")
+        navigation.setViewControllers([UIViewController()], animated: false)
+        await settle { navigation.transitionCoordinator == nil }
+        XCTAssertIdentical(CloudScreens.account, account, "the flow ending over the server isn't Back")
+        XCTAssertTrue(CloudScreens.first(context: context()) is CloudServersViewController, "Happy Cloud again opens signed in")
+
+        let servers = CloudServersViewController(context: context(), account: account, load: { [] })
+        navigation.setViewControllers([start, servers], animated: false)
+        await settle { servers.viewIfLoaded?.window != nil && navigation.transitionCoordinator == nil }
+        navigation.setViewControllers([UIViewController()], animated: false)
+        await settle { navigation.transitionCoordinator == nil }
+        XCTAssertIdentical(CloudScreens.account, account, "nor the list's flow ending")
+
+        await http.answer("POST /v1/invites/preview", 200, #"{"server":{"name":"acme","displayName":null,"image":null},"inviter":null,"roleName":"Member","expiresAt":"2026-11-19T09:28:08Z"}"#)
+        await http.answer("POST /v1/invites/accept", 200, #"{"server":{"id":"s1","name":"acme","displayName":"acme","url":"https://acme.happy-clusters.com/","image":null}}"#)
+        let invite = CloudInviteViewController(context: context(), account: account, invite: Self.invite)
+        invite.connecting = { CloudConnectingViewController(context: self.context(), account: account, server: $0, startsAtOnce: false) }
+        navigation.setViewControllers([start, invite], animated: false)
+        await settle { invite.primary.isEnabled && navigation.transitionCoordinator == nil }
+        invite.primary.tapped()
+        await settle { navigation.topViewController is CloudConnectingViewController && navigation.transitionCoordinator == nil }
+        navigation.setViewControllers([UIViewController()], animated: false)
+        await settle { navigation.transitionCoordinator == nil }
+        XCTAssertIdentical(CloudScreens.account, account, "nor an invite's")
+        XCTAssertTrue(CloudScreens.first(context: context(), invite: Self.invite) is CloudInviteViewController, "the next invite link opens on Join")
+    }
+
     /// An account pass for `audience`, as the accounts service signs one.
     private static func jwt(audience: String) -> String {
         func part(_ json: String) -> String {

@@ -716,6 +716,66 @@ final class HappyCloudUITests: XCTestCase {
         }
     }
 
+    /// An account with no server bootstraps its first, which connects and
+    /// lands on its home; then Happy Cloud, from the switcher, and an
+    /// invite link both open still signed in: the servers list and Join,
+    /// not the welcome. Runs with `TEST_RUNNER_FIRST_LOGIN`/`_PASSWORD`
+    /// (an account with no server), `CLOUD_*` and `INVITE_URL`.
+    func testAFirstBootstrapKeepsTheAccountSignedIn() throws {
+        guard let login = env["FIRST_LOGIN"], let password = env["FIRST_PASSWORD"], let link = env["INVITE_URL"].flatMap(URL.init(string:)),
+              let accounts = env["CLOUD_ACCOUNTS"], let base = env["CLOUD_BASE"], let web = env["CLOUD_WEB"], let invite = env["CLOUD_INVITE"]
+        else { throw XCTSkip("no first-bootstrap run") }
+        app.launchArguments = ["-HappyCloudAccounts", accounts, "-HappyCloudBase", base, "-HappyCloudWeb", web, "-HappyCloudInvite", invite]
+        app.launch()
+        signInWithTestAccount(login: login, password: password)
+        let name = element("cloud-create-name")
+        film("a-first-bootstrap", seconds: 30) { name.exists }
+        require(name.exists, "no first Bootstrap for an account with no server")
+        capture("b1-first-bootstrap")
+        name.tap()
+        let server = "ios-first-\(Int(Date().timeIntervalSince1970) % 1_000_000)"
+        name.typeText(server)
+        let save = element("cloud-create-save")
+        film("b-name", seconds: 15) { save.isEnabled }
+        // The keyboard has carried the button up: tapped where it rests.
+        Thread.sleep(forTimeInterval: 1.5)
+        save.tap()
+        let profile = element("cloud-profile-name")
+        let switcher = element("account-switcher")
+        if !element("cloud-connecting").waitForExistence(timeout: 5), name.exists, save.isEnabled { save.tap() }
+        film("c-connecting", seconds: 90) { profile.exists || switcher.exists }
+        if profile.exists {
+            profile.tap()
+            profile.typeText("QA First")
+            element("cloud-profile-continue").tap()
+        }
+        film("d-lands", seconds: 90) { switcher.exists }
+        require(switcher.exists, "Bootstrap didn't land on @\(server)'s home")
+        Thread.sleep(forTimeInterval: 3)
+        capture("b2-server-home")
+
+        switcher.tap()
+        let cloud = element("account-cloud")
+        require(cloud.waitForExistence(timeout: 5), "no Connect to Happy Cloud in the switcher")
+        cloud.tap()
+        let servers = element("cloud-servers")
+        let welcome = element("cloud-welcome")
+        film("e-cloud-again", seconds: 20) { servers.exists || welcome.exists }
+        Thread.sleep(forTimeInterval: 1.5)
+        capture("b3-cloud-again")
+        XCTAssertTrue(servers.exists, "Happy Cloud again opened the welcome: the first Bootstrap signed the account out")
+        let close = app.buttons["cloud-close"]
+        if close.exists { close.tap() }
+        Thread.sleep(forTimeInterval: 1.5)
+
+        XCUIDevice.shared.system.open(link)
+        let join = element("cloud-invite-join")
+        film("f-invite", seconds: 30) { join.exists || welcome.exists }
+        Thread.sleep(forTimeInterval: 1.5)
+        capture("b4-invite-link")
+        XCTAssertTrue(join.exists, "an invite link opened the welcome: the first Bootstrap signed the account out")
+    }
+
     /// The invite screen's title, status line and button, where they are.
     private func inviteFrames() -> [CGRect] {
         [element("cloud-invite-title").frame, element("cloud-invite-status").frame, element("cloud-invite-join").frame]

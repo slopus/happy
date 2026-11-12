@@ -551,8 +551,12 @@ class CloudStageViewController: UIViewController, CloudFlowScreen, CloudTyping, 
     /// sideways with the step, not down).
     private var showing = false
     /// Back (or the edge swipe) to the step before signs the account out:
-    /// Join a server, and Bootstrap when the account has no server.
+    /// Join a server, and Bootstrap when the account has no server. Only
+    /// Back: giving way to the next step, or the flow ending over the
+    /// server, keeps it.
     var signsOutOnBack = false
+    /// The screen under this one when it last came in, which Back returns to.
+    private weak var under: UIViewController?
     /// The actions' places are kept while they are hidden (Continue until a
     /// server is joined, Try Again until a connection fails), so showing one
     /// moves nothing. Off for a step whose only action is in its content.
@@ -650,6 +654,7 @@ class CloudStageViewController: UIViewController, CloudFlowScreen, CloudTyping, 
         super.viewDidAppear(animated)
         // Back after an edge swipe let go of halfway, too.
         showing = true
+        if let stack = navigationController?.viewControllers, let index = stack.firstIndex(of: self) { under = index > 0 ? stack[index - 1] : nil }
         if let field = typingField, !field.isFirstResponder { field.becomeFirstResponder() }
     }
 
@@ -664,7 +669,9 @@ class CloudStageViewController: UIViewController, CloudFlowScreen, CloudTyping, 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         showing = false
-        guard signsOutOnBack, isMovingFromParent else { return }
+        // Back leaves the screen under this one on top; a step replacing
+        // this one, or the coordinator's new home, doesn't.
+        guard signsOutOnBack, isMovingFromParent, let under, navigationController?.topViewController === under else { return }
         // Only once Back has really gone back: an edge swipe let go of halfway stays.
         if let coordinator = transitionCoordinator {
             coordinator.animate(alongsideTransition: nil) { context in
