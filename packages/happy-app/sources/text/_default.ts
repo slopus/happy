@@ -16,6 +16,22 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const en = {
     projectGoals: {
+        favorites: "Favorites",
+        archivedProjects: "Archived",
+        deletedProjects: "Deleted",
+        favoriteProject: "Add to favorites",
+        unfavoriteProject: "Remove from favorites",
+        archiveProject: "Archive project",
+        restoreProject: "Restore project",
+        deleteProject: "Delete project",
+        librarySaveFailed: "Could not save this change. Please try again.",
+        noMatchingProjects: "No matching projects",
+        noFavorites: "No favorite projects yet",
+        noArchivedProjects: "No archived projects",
+        noDeletedProjects: "No deleted projects",
+        favoriteHint: "Click the star on a project to save it here.",
+        projectActions: ({ title }: { title: string }) => `Actions for ${title}`,
+        deleteProjectMessage: ({ title }: { title: string }) => `Move “${title}” to Deleted? You can restore it there. Project files and conversations are kept. This change is saved only on this device.`,
         agreeDelivery: "Agree delivery",
         editDelivery: "Edit delivery",
         selectFinals: "Select final deliverables",

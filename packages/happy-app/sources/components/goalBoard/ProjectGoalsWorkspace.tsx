@@ -42,7 +42,8 @@ import { openExternalUrl } from '@/utils/openExternalUrl';
 import { GoalBoardButton as Button } from './GoalBoardButton';
 import { GoalBoardCard } from './GoalBoardCard';
 import { RunningTaskBorder } from './RunningTaskBorder';
-import { ProjectGallery, ProjectGalleryLoading, ProjectFeatureGallery } from './ProjectGallery';
+import { ProjectGalleryLoading, ProjectFeatureGallery } from './ProjectGallery';
+import { ProjectLibrary } from './ProjectLibrary';
 import { canCreateProjectConversation, canConfirmProjectDeliverable, openProjectGoalConversation } from '@/sync/projectGoals';
 import { getProjectPreviewMachineId } from '@/sync/projectGoals';
 import { selectProjectMachine } from './projectMachine';
@@ -316,9 +317,8 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
                 {params.task && feature && !task && <Text style={styles.error}>{t('projectGoals.taskMissing')}</Text>}
                 {!data.contentLoaded && (data.status === 'loading' || data.status === 'connecting') ? <ProjectLoading kind={scopeDesktop ? params.feature ? 'tasks' : params.project ? 'features' : 'projects' : 'projects'} /> : feature ? <TaskCards onDelivery={target => setDeliveryTasks([target])} tasks={tasks} query={query} status={statusFilter} setStatus={setStatusFilter} onSelect={id => go({ task: id })} mobile={mobile} actionLabel={target => { const cached = readProjectCache(projectCacheKey('history', machineId, feature!.featurePath, target.id), projectHistorySchema); const known = data.board?.sessions[target.id] ?? cached?.value.sessions; return t(known ? known.length ? 'projectGoals.continueChat' : 'projectGoals.openChat' : 'projectGoals.chooseChat'); }} onAction={target => { if (mobile) void cardAction.continueTask(target); else void openCardConversation(target); }} offline={data.offline} busy={busy || cardAction.busy} hideExecution />
                     : project ? <ProjectFeatureGallery entries={[...(project.direct ? [project.direct] : []), ...project.features].filter(entry => (entry.title + (entry.summary || '')).toLowerCase().includes(query.toLowerCase()))} projectPath={project.projectPath} onSelect={chooseFeature} />
-                        : <><View style={styles.libraryHeading}><Text style={styles.sectionTitle}>{t('projectGoals.projectLibrary')}</Text><Text style={styles.meta}>{data.loaded ? data.projects.length : '—'}</Text></View><ProjectGallery projects={data.projects.filter(project => (project.title + (project.summary || '')).toLowerCase().includes(query.toLowerCase()))} onSelect={chooseProject} /></>}
+                        : <ProjectLibrary key={machineId} machineId={machineId} projects={data.projects} loaded={data.loaded} query={query} onSelect={chooseProject} />}
                 {data.status === 'offline' && <Empty text={t('projectGoals.offlineArchive')} />}
-                {data.status === 'ready' && !data.projects.length && <Empty text={t('projectGoals.emptyProjects')} />}
                 {feature && !tasks.length && <Empty text={t('projectGoals.emptyTasks')} />}
             </ScrollView></ScopeCatalog>}
         {feature && !!deliveryTasks?.length && <ProjectDeliveryEditor key={JSON.stringify([accountKey(), machineId, feature.featurePath])} machineId={machineId} featurePath={feature.featurePath} tasks={deliveryTasks} onClose={() => setDeliveryTasks(null)} onSaved={data.refresh} onDiscuss={target => { setDeliveryTasks(null); if (mobile) void cardAction.continueTask(target); else void openCardConversation(target); }} />}
@@ -332,7 +332,7 @@ function ScopeCatalog({ scopePath, children, enabled, ...props }: Omit<React.Com
 function ProjectLoading({ kind }: { kind: 'projects' | 'features' | 'tasks' }) {
     return <View testID="project-loading" accessibilityLabel={t('projectGoals.loadingArchive')} accessibilityState={{ busy: true }} style={{ gap: 20 }}>
         <Text style={styles.meta}>{t('projectGoals.loadingArchive')}</Text>
-        {kind !== 'tasks' ? <ProjectGalleryLoading /> : <View style={styles.grid} testID="project-tasks-loading">{Array.from({ length: 6 }, (_, i) => <View key={i} style={styles.taskCard}><View style={[styles.taskCardContent, styles.loadingCard, { minHeight: 230 }]}><View style={[styles.skeletonLine, { width: '30%' }]} /><View style={[styles.skeletonLine, { width: '75%' }]} /><View style={[styles.skeletonLine, { width: '90%' }]} /><View style={[styles.skeletonLine, { width: '65%' }]} /></View></View>)}</View>}
+        {kind !== 'tasks' ? <ProjectGalleryLoading compact={kind === 'projects'} /> : <View style={styles.grid} testID="project-tasks-loading">{Array.from({ length: 6 }, (_, i) => <View key={i} style={styles.taskCard}><View style={[styles.taskCardContent, styles.loadingCard, { minHeight: 230 }]}><View style={[styles.skeletonLine, { width: '30%' }]} /><View style={[styles.skeletonLine, { width: '75%' }]} /><View style={[styles.skeletonLine, { width: '90%' }]} /><View style={[styles.skeletonLine, { width: '65%' }]} /></View></View>)}</View>}
     </View>;
 }
 
@@ -595,7 +595,6 @@ const styles = StyleSheet.create(theme => ({
     catalog: { flex: 1, minWidth: 0 }, catalogContent: { paddingHorizontal: 22, paddingTop: 28, paddingBottom: 36, gap: 24 },
     catalogHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 },
     heading: { fontSize: 28, lineHeight: 38, color: theme.colors.text, ...Typography.default('semiBold') },
-    libraryHeading: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 12 },
     search: { minWidth: 180, maxWidth: 320, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider, backgroundColor: theme.colors.surface, color: theme.colors.text, fontSize: 13 },
     grid: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', gap: 14 },
     loadingCard: { borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider, backgroundColor: theme.colors.surface, gap: 18 },
@@ -619,7 +618,7 @@ const styles = StyleSheet.create(theme => ({
     taskArea: { flex: 1, minHeight: 0, minWidth: 0, padding: 10 }, workspaceRow: { flex: 1, minHeight: 0, flexDirection: 'row' },
     taskPanel: { minHeight: 0, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider, overflow: 'hidden' }, panelHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 48, padding: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider },
     tabs: { flexDirection: 'row', minHeight: 48, paddingHorizontal: 12, paddingVertical: 5, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider },
-    detailScroll: { flex: 1, minHeight: 0 }, sectionTitle: { fontSize: 12, color: theme.colors.textSecondary, ...Typography.default('semiBold') },
+    detailScroll: { flex: 1, minHeight: 0 },
     deliverable: { gap: 9, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider, padding: 10 },
     footer: { padding: 12, gap: 8, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider },
     chat: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, minHeight: 0, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider, overflow: 'hidden' }, historyHeader: { flexDirection: 'row', alignItems: 'center', minHeight: 48, paddingHorizontal: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider },

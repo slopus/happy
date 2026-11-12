@@ -48,6 +48,10 @@ export interface SessionManagementPreferences {
 export function loadProjectWorkspaceCache(): string | undefined { return mmkv.getString('project-workspace-cache-v1'); }
 export function saveProjectWorkspaceCache(value: string): void { mmkv.set('project-workspace-cache-v1', value); }
 
+/** Project organization is a durable preference, separate from the expiring archive cache. */
+export function loadProjectLibraryPreferences(): string | undefined { return mmkv.getString('project-library-v1'); }
+export function saveProjectLibraryPreferences(value: string): void { mmkv.set('project-library-v1', value); }
+
 export function loadSettings(): { settings: Settings, version: number | null } {
     const settings = mmkv.getString('settings');
     if (settings) {
