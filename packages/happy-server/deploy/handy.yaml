@@ -35,6 +35,11 @@ spec:
         # slower past ~8 workers (packages/happy-server-rs/COMPAT.md).
         - name: HAPPY_WORKERS
           value: "8"
+        # History offload, stage A: old messages copied to S3_BUCKET under history/,
+        # rows kept in Postgres, reads checked against the pages. Default throttles
+        # (docs/deployment.md, "History offload"). Never retain without a decision.
+        - name: HISTORY_OFFLOAD
+          value: shadow
         - name: S3_PUBLIC_URL
           value: https://files.cluster-fluster.com/happy
         # Minio uses S3_HOST when constructing presigned upload/download URLs.
