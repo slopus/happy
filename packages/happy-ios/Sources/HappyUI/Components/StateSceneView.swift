@@ -40,9 +40,9 @@ public enum StateScene: String, CaseIterable, Sendable {
     /// Nothing made yet where what agents make is kept: the Artifacts list
     /// with none (a 🎟️ sticker; `PROVENANCE.md`).
     case tickets
-    /// A task about to be made: over new work's Task (a 🎬 sticker;
+    /// A task about to be made: over new work's Task (a 🪄 sticker;
     /// `PROVENANCE.md`). A bot stands under the `robot`.
-    case clapperBoard = "clapper-board"
+    case magicWand = "magic-wand"
     /// Happy Cloud's welcome (desktop's CLOUD_SLIDES): permissions, and its
     /// source shared with those who review it.
     case closedLock = "closed-lock"
@@ -53,12 +53,12 @@ public enum StateScene: String, CaseIterable, Sendable {
     case cloudVariation = "cloud-variation"
     case tree
 
-    /// Whether it rests on its first frame rather than its last: the
-    /// clapper board, whose last frame has wiped its "Action!". Such a scene
-    /// plays only when asked, from the start to the end once, and then
-    /// shows its first frame again.
+    /// Whether it rests on its first frame rather than its last: the magic
+    /// wand, a loop whose ends are the same still wand, so a tap plays its
+    /// whole spell from the start. Such a scene plays only when asked, from
+    /// the start to the end once, and then shows its first frame again.
     var restsOnFirstFrame: Bool {
-        self == .clapperBoard
+        self == .magicWand
     }
 }
 
@@ -141,7 +141,7 @@ public final class StateSceneView: UIView {
     }
 
     /// `immediate`: its picture is there in the very frame it first goes on
-    /// screen, as new work's robot and clapper board are. A scene already
+    /// screen, as new work's robot and magic wand are. A scene already
     /// read (`preload`) is put up at once; one not yet read is read here, on
     /// the main thread, rather than leave a blank frame while it arrives.
     public init(scene: StateScene, size: CGFloat, play: Play = .onAppear, replayLabel: String, immediate: Bool = false) {

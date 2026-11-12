@@ -1146,8 +1146,8 @@
     "newWork.task": "Tasca",
     "newWork.bot": "Bot",
     "newWork.name": "Nom (opcional)",
-    "newWork.taskNote": "Una tasca és per a una feina puntual. Pot abastar diversos projectes i iniciar les seves pròpies subtasques.",
-    "newWork.botNote": "Un bot és com un company: una conversa duradora amb una carpeta pròpia. Posa-li un nom i després digues-li què ha de fer.",
+    "newWork.taskNote": "Una tasca és una feina, gran o petita. Pot abastar diversos projectes i passar-ne parts a subtasques.",
+    "newWork.botNote": "Un bot és com un company: una conversa duradora amb una carpeta pròpia. Digues-li què ha de fer al teu primer missatge.",
     "newWork.taskFailed": {
       "t": "No s’ha pogut iniciar la tasca. ${reason} El teu text i els adjunts encara hi són."
     },

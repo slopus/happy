@@ -37,7 +37,7 @@ class HappyApplication : Application() {
                 // What the first screens would otherwise read on the main thread: the push preferences, the glass switch.
                 traced("PushServices") { PushServices.get(this) }
                 com.slopus.happy.ui.components.glassBlurEnabled(this)
-                // New work's robot and clapper board, there in its first frame.
+                // New work's robot and magic wand, there in its first frame.
                 traced("StateCompositions") { StateCompositions.preload(this, listOf(StateArt.Action, StateArt.Ready)) }
             } catch (e: Throwable) {
                 built.completeExceptionally(e)

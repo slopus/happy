@@ -469,7 +469,7 @@ final class HostedComposeTests: XCTestCase {
     }
 
     /// Happy Agent's new work: a task asks no name, so it goes as a blank
-    /// name does, under the clapper board; a bot asks its name and says
+    /// name does, under the magic wand; a bot asks its name and says
     /// what it is, under the robot. A task says what it is in the name's
     /// place and keeps a bot's room, so Task | Bot moves nothing.
     func testATaskAsksNoNameAndABotDoes() async throws {
@@ -485,7 +485,7 @@ final class HostedComposeTests: XCTestCase {
         lay()
         XCTAssertEqual(panel.choice.kind, .task)
         XCTAssertTrue(panel.name.superview?.isHidden ?? false, "a task asks no name")
-        XCTAssertEqual(panel.artScene, .clapperBoard)
+        XCTAssertEqual(panel.artScene, .magicWand)
         XCTAssertFalse(panel.art.isHidden)
         XCTAssertEqual(panel.kind.frame.minY, NewWorkLayout.Metrics.art + NewWorkLayout.Metrics.artToKind)
         XCTAssertGreaterThan(panel.frame.height, panel.kind.frame.maxY + NewWorkLayout.Metrics.rowHeight, "a bot's room, kept")
@@ -531,7 +531,7 @@ final class HostedComposeTests: XCTestCase {
         XCTAssertEqual(panel.choice.name, "", "a task is never named here")
     }
 
-    /// Bot stands under the robot and Task under the clapper board, each
+    /// Bot stands under the robot and Task under the magic wand, each
     /// still as its kind is picked, and played only by a tap; a session
     /// has none.
     func testEachKindStandsUnderItsPicture() async throws {
@@ -549,7 +549,7 @@ final class HostedComposeTests: XCTestCase {
         XCTAssertTrue(panel.art.isHidden)
         let moves = !UIAccessibility.isReduceMotionEnabled
         var places: [HomeDockKind: [CGRect]] = [:]
-        for (kind, scene) in [(HomeDockKind.bot, StateScene.robot), (.session, nil), (.bot, .robot), (.task, .clapperBoard)] {
+        for (kind, scene) in [(HomeDockKind.bot, StateScene.robot), (.session, nil), (.bot, .robot), (.task, .magicWand)] {
             try pick(kind, in: panel)
             try await until { panel.sessionKind == kind }
             XCTAssertEqual(panel.artScene, scene, "\(kind)")

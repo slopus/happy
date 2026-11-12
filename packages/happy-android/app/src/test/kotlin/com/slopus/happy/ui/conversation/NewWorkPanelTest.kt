@@ -43,7 +43,7 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-private const val BOT_NOTE = "A bot is like a colleague: one lasting conversation with a folder of its own. Give it a name, then tell it what to do."
+private const val BOT_NOTE = "A bot is like a colleague: one lasting conversation with a folder of its own. Tell it what to do in your first message."
 
 /**
  * New work's Task or Bot (happy-ios NewWorkPanel `.work`, NewWorkLayout):
@@ -92,7 +92,7 @@ class NewWorkPanelTest {
         // A task asks no name; 16 under the kind it says what a task is.
         rule.node(NewWorkTags.NAME_FIELD).assertDoesNotExist()
         val note = rule.node(NewWorkTags.NOTE)
-        note.assertTextEquals("A task is for one-off work. It can work across several projects and start subtasks of its own.")
+        note.assertTextEquals("A task is one piece of work, big or small. It can reach across several projects and hand parts off to subtasks.")
         assertDp("16 under the kind", kind.bottom + 16.dp, note.bounds.top)
         rule.onNodeWithText(BOT_NOTE).assertDoesNotExist()
         assertTrue("a bot's room kept under the kind", panel.bottom > kind.bottom + 16.dp + 44.dp)

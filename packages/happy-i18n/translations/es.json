@@ -1146,8 +1146,8 @@
     "newWork.task": "Tarea",
     "newWork.bot": "Bot",
     "newWork.name": "Nombre (opcional)",
-    "newWork.taskNote": "Una tarea es para trabajo puntual. Puede abarcar varios proyectos y lanzar sus propias subtareas.",
-    "newWork.botNote": "Un bot es como un compañero: una conversación duradera con su propia carpeta. Ponle un nombre y luego dile qué hacer.",
+    "newWork.taskNote": "Una tarea es un trabajo, grande o pequeño. Puede abarcar varios proyectos y delegar partes en subtareas.",
+    "newWork.botNote": "Un bot es como un compañero: una conversación duradera con su propia carpeta. Dile qué hacer en tu primer mensaje.",
     "newWork.taskFailed": {
       "t": "No se pudo iniciar la tarea. ${reason} Tu texto y tus adjuntos siguen aquí."
     },

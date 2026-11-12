@@ -1183,8 +1183,8 @@
     "newWork.task": "Zadanie",
     "newWork.bot": "Bot",
     "newWork.name": "Nazwa (opcjonalnie)",
-    "newWork.taskNote": "Zadanie służy do jednorazowej pracy. Może obejmować kilka projektów i uruchamiać własne podzadania.",
-    "newWork.botNote": "Bot jest jak współpracownik: jedna trwała rozmowa z własnym folderem. Nadaj mu nazwę, a potem powiedz, co ma robić.",
+    "newWork.taskNote": "Zadanie to jedna praca, duża lub mała. Może obejmować kilka projektów i przekazywać części podzadaniom.",
+    "newWork.botNote": "Bot jest jak współpracownik: jedna trwała rozmowa z własnym folderem. Powiedz mu, co ma robić, w pierwszej wiadomości.",
     "newWork.taskFailed": {
       "t": "Nie udało się rozpocząć zadania. ${reason} Twój tekst i załączniki wciąż tu są."
     },

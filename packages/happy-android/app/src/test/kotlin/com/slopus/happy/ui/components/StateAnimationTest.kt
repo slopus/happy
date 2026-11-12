@@ -41,7 +41,7 @@ import java.security.MessageDigest
 class StateAnimationTest {
     @get:Rule val rule = createComposeRule()
 
-    /** happy-desktop assets/animations/PROVENANCE.md's hashes (and the ticket's and clapper board's as given): the same bytes, unmodified. */
+    /** happy-desktop assets/animations/PROVENANCE.md's hashes (and the ticket's and magic wand's as given): the same bytes, unmodified. */
     @Test
     fun theFilesAreDesktopsExactBytes() {
         val expected = mapOf(
@@ -50,7 +50,7 @@ class StateAnimationTest {
             StateArt.Done to "b14e504ce3467a6b",
             StateArt.Owl to "95402270d116a310",
             StateArt.Tickets to "8715ac66cadbd7cb",
-            StateArt.Action to "321f9dfe9e03985a",
+            StateArt.Action to "6d23637e2b8e7d83",
         )
         val resources = RuntimeEnvironment.getApplication().resources
         for ((art, hash) in expected) {
@@ -71,26 +71,28 @@ class StateAnimationTest {
     }
 
     /**
-     * The clapper board rests on its first frame, the plain board: no letter
-     * of "Action!" has popped in there, and every one is gone again before
-     * its last frame, so the last isn't worth holding. The rest keep their last.
+     * The magic wand rests on its first frame, the still wand: its spell
+     * (the light, sparkles, dust and bursts) comes in after it and is gone
+     * again before its last, which is the same still wand, so a tap plays
+     * the whole spell from rest. The rest keep their last.
      */
     @Test
-    fun theClapperBoardRestsOnItsPlainFirstFrame() {
+    fun theMagicWandRestsOnItsStillFirstFrame() {
         assertEquals(listOf(StateArt.Action), StateArt.entries.filter { it.restsOnFirstFrame })
         val json = RuntimeEnvironment.getApplication().resources.openRawResource(StateArt.Action.raw).use { org.json.JSONObject(it.reader().readText()) }
         val first = json.getDouble("ip")
         val last = json.getDouble("op") - 1
         val layers = json.getJSONArray("layers")
-        val letters = (0 until layers.length()).map { layers.getJSONObject(it) }
-            .filter { it.getString("nm").substringBefore(' ') in setOf("A", "C", "T", "I", "O", "N", "!", "do") }
-        assertEquals("both strokes of every letter", 24, letters.size)
-        for (letter in letters) {
-            val name = letter.getString("nm")
-            val pop = letter.getJSONObject("ks").getJSONObject("s").getJSONArray("k").getJSONObject(0)
-            assertTrue("$name not yet in at $first", pop.getDouble("t") > first && pop.getJSONArray("s").getDouble(0) == 0.0)
-            assertTrue("$name gone by $last", letter.getDouble("op") <= last)
+        val spell = (0 until layers.length()).map { layers.getJSONObject(it) }
+            .filter { it.getString("nm").substringBefore(' ') in setOf("light", "sparcles", "boom", "Particle") || it.getString("nm").startsWith("dust") }
+        assertEquals("every part of the spell", 33, spell.size)
+        for (layer in spell) {
+            val name = layer.getString("nm")
+            assertTrue("$name not yet in at $first", layer.getDouble("ip") > first)
+            assertTrue("$name gone by $last", layer.getDouble("op") <= last)
         }
+        val wand = (0 until layers.length()).map { layers.getJSONObject(it) }.first { it.getString("nm") == "wand" }
+        assertTrue("the wand is there throughout", wand.getDouble("ip") <= first && wand.getDouble("op") > last)
     }
 
     /**
@@ -104,12 +106,12 @@ class StateAnimationTest {
         StateCompositions.forget()
         rule.mainClock.autoAdvance = false
         rule.setHappyContent { NewWorkArt(StateArt.Action) }
-        assertNotNull("the clapper board read as it is composed", StateCompositions.peek(StateArt.Action.raw))
+        assertNotNull("the magic wand read as it is composed", StateCompositions.peek(StateArt.Action.raw))
         assertNotNull("and the robot under it", StateCompositions.peek(StateArt.Ready.raw))
         val pixels = rule.node(NewWorkTags.art(StateArt.Action)).captureToImage().toPixelMap()
         val ground = pixels[0, 0]
         val drawn = (0 until pixels.width step 4).sumOf { x -> (0 until pixels.height step 4).count { y -> pixels[x, y] != ground } }
-        assertTrue("the board is drawn: $drawn", drawn > 100)
+        assertTrue("the wand is drawn: $drawn", drawn > 100)
     }
 
     @Test

@@ -1146,8 +1146,8 @@
     "newWork.task": "Attività",
     "newWork.bot": "Bot",
     "newWork.name": "Nome (facoltativo)",
-    "newWork.taskNote": "Un’attività è per un lavoro una tantum. Può coprire più progetti e avviare sottoattività proprie.",
-    "newWork.botNote": "Un bot è come un collega: una conversazione duratura con una cartella tutta sua. Dagli un nome, poi digli cosa fare.",
+    "newWork.taskNote": "Un’attività è un singolo lavoro, grande o piccolo. Può estendersi su più progetti e affidare delle parti a sottoattività.",
+    "newWork.botNote": "Un bot è come un collega: una conversazione duratura con una cartella tutta sua. Digli cosa fare nel tuo primo messaggio.",
     "newWork.taskFailed": {
       "t": "Impossibile avviare l’attività. ${reason} Il testo e gli allegati sono ancora qui."
     },

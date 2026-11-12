@@ -1062,8 +1062,8 @@
     <string name="new_work_task">Attività</string>
     <string name="new_work_bot">Bot</string>
     <string name="new_work_name">Nome (facoltativo)</string>
-    <string name="new_work_task_note">Un’attività è per un lavoro una tantum. Può coprire più progetti e avviare sottoattività proprie.</string>
-    <string name="new_work_bot_note">Un bot è come un collega: una conversazione duratura con una cartella tutta sua. Dagli un nome, poi digli cosa fare.</string>
+    <string name="new_work_task_note">Un’attività è un singolo lavoro, grande o piccolo. Può estendersi su più progetti e affidare delle parti a sottoattività.</string>
+    <string name="new_work_bot_note">Un bot è come un collega: una conversazione duratura con una cartella tutta sua. Digli cosa fare nel tuo primo messaggio.</string>
     <string name="new_work_task_failed">Impossibile avviare l’attività. %1$s Il testo e gli allegati sono ancora qui.</string>
     <string name="new_work_bot_failed">Impossibile avviare il bot. %1$s Il testo e gli allegati sono ancora qui.</string>
 </resources>

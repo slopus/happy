@@ -1062,8 +1062,8 @@
     <string name="new_work_task">Tasca</string>
     <string name="new_work_bot">Bot</string>
     <string name="new_work_name">Nom (opcional)</string>
-    <string name="new_work_task_note">Una tasca és per a una feina puntual. Pot abastar diversos projectes i iniciar les seves pròpies subtasques.</string>
-    <string name="new_work_bot_note">Un bot és com un company: una conversa duradora amb una carpeta pròpia. Posa-li un nom i després digues-li què ha de fer.</string>
+    <string name="new_work_task_note">Una tasca és una feina, gran o petita. Pot abastar diversos projectes i passar-ne parts a subtasques.</string>
+    <string name="new_work_bot_note">Un bot és com un company: una conversa duradora amb una carpeta pròpia. Digues-li què ha de fer al teu primer missatge.</string>
     <string name="new_work_task_failed">No s’ha pogut iniciar la tasca. %1$s El teu text i els adjunts encara hi són.</string>
     <string name="new_work_bot_failed">No s’ha pogut iniciar el bot. %1$s El teu text i els adjunts encara hi són.</string>
 </resources>

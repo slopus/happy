@@ -1081,8 +1081,8 @@
     <string name="new_work_task">Задача</string>
     <string name="new_work_bot">Бот</string>
     <string name="new_work_name">Название (необязательно)</string>
-    <string name="new_work_task_note">Задача — для разовой работы. Она может охватывать несколько проектов и запускать свои подзадачи.</string>
-    <string name="new_work_bot_note">Бот — как коллега: один долгий разговор со своей папкой. Дайте ему имя, а потом скажите, что делать.</string>
+    <string name="new_work_task_note">Задача — это одна работа, большая или маленькая. Она может охватывать несколько проектов и передавать части подзадачам.</string>
+    <string name="new_work_bot_note">Бот — как коллега: один долгий разговор со своей папкой. Скажите ему, что делать, в первом сообщении.</string>
     <string name="new_work_task_failed">Не удалось запустить задачу. %1$s Ваш текст и вложения на месте.</string>
     <string name="new_work_bot_failed">Не удалось запустить бота. %1$s Ваш текст и вложения на месте.</string>
 </resources>

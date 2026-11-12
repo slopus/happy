@@ -128,7 +128,7 @@ object NewWorkSpec {
 /** Room kept for what another kind shows: laid out, but neither drawn nor read out. */
 fun Modifier.reserved(): Modifier = alpha(0f).clearAndSetSemantics {}
 
-/** The picture new work of this kind stands under: the robot for a bot, the clapper board for a task. */
+/** The picture new work of this kind stands under: the robot for a bot, the magic wand for a task. */
 val WorkKind.art: StateArt
     get() = when (this) {
         WorkKind.Bot -> StateArt.Ready

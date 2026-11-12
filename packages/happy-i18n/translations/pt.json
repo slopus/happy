@@ -1146,8 +1146,8 @@
     "newWork.task": "Tarefa",
     "newWork.bot": "Bot",
     "newWork.name": "Nome (opcional)",
-    "newWork.taskNote": "Uma tarefa é para um trabalho pontual. Ela pode abranger vários projetos e iniciar suas próprias subtarefas.",
-    "newWork.botNote": "Um bot é como um colega: uma conversa duradoura com uma pasta própria. Dê um nome a ele e depois diga o que fazer.",
+    "newWork.taskNote": "Uma tarefa é um trabalho, grande ou pequeno. Ela pode abranger vários projetos e passar partes para subtarefas.",
+    "newWork.botNote": "Um bot é como um colega: uma conversa duradoura com uma pasta própria. Diga o que ele deve fazer na sua primeira mensagem.",
     "newWork.taskFailed": {
       "t": "Não foi possível iniciar a tarefa. ${reason} Seu texto e seus anexos continuam aqui."
     },

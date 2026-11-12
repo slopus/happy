@@ -20,7 +20,7 @@ import UIKit
 ///   the computer and its name, which it can't go without. A task keeps
 ///   the bot's name and note as empty room, so Bot | Task moves nothing.
 ///
-/// A bot stands under the robot and a task under the clapper board, the
+/// A bot stands under the robot and a task under the magic wand, the
 /// empty states' 128 (`NewWorkLayout.Metrics.art`), still: each plays only
 /// when tapped, once, and comes back to rest. A session has none.
 final class NewWorkPanel: UIView, UITextFieldDelegate {
@@ -38,7 +38,7 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
     let folder = NewWorkMenuRow(icon: .ionicons("folder-outline"))
     let harness = NewWorkMenuRow(icon: .ionicons("hardware-chip-outline"))
     let note = UILabel()
-    let art = StateSceneView(scene: .clapperBoard, size: NewWorkLayout.Metrics.art, play: .onDemand, replayLabel: Strings.Tablet.replayIllustration, immediate: true)
+    let art = StateSceneView(scene: .magicWand, size: NewWorkLayout.Metrics.art, play: .onDemand, replayLabel: Strings.Tablet.replayIllustration, immediate: true)
     /// The kind's picture; nil for a session.
     private(set) var artScene: StateScene?
 
@@ -85,7 +85,7 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
             kind.selectedSegmentIndex = newValue.kind == .bot ? 1 : 0
             if newValue.kind == .bot, name.text != newValue.name { name.text = newValue.name }
             showNote()
-            showArt(newValue.kind == .bot ? .robot : .clapperBoard)
+            showArt(newValue.kind == .bot ? .robot : .magicWand)
         }
     }
 
@@ -171,7 +171,7 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
             name.autocapitalizationType = .sentences
             for view in [kind, field, note] { addSubview(view) }
             showNote()
-            showArt(.clapperBoard)
+            showArt(.magicWand)
         case .session:
             kind.accessibilityLabel = Strings.Home.composerKindLabel
             kind.removeAllSegments()
@@ -318,7 +318,7 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
         switch kind {
         case .session: nil
         case .bot: .robot
-        case .task: .clapperBoard
+        case .task: .magicWand
         }
     }
 
@@ -340,7 +340,7 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
         switch mode {
         case .work:
             showNote()
-            showArt(kind.selectedSegmentIndex == 1 ? .robot : .clapperBoard)
+            showArt(kind.selectedSegmentIndex == 1 ? .robot : .magicWand)
             onChange?(choice)
         case .session:
             guard sessionKinds.indices.contains(kind.selectedSegmentIndex) else { return }

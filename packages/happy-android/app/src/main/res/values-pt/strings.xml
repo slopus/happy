@@ -1062,8 +1062,8 @@
     <string name="new_work_task">Tarefa</string>
     <string name="new_work_bot">Bot</string>
     <string name="new_work_name">Nome (opcional)</string>
-    <string name="new_work_task_note">Uma tarefa é para um trabalho pontual. Ela pode abranger vários projetos e iniciar suas próprias subtarefas.</string>
-    <string name="new_work_bot_note">Um bot é como um colega: uma conversa duradoura com uma pasta própria. Dê um nome a ele e depois diga o que fazer.</string>
+    <string name="new_work_task_note">Uma tarefa é um trabalho, grande ou pequeno. Ela pode abranger vários projetos e passar partes para subtarefas.</string>
+    <string name="new_work_bot_note">Um bot é como um colega: uma conversa duradoura com uma pasta própria. Diga o que ele deve fazer na sua primeira mensagem.</string>
     <string name="new_work_task_failed">Não foi possível iniciar a tarefa. %1$s Seu texto e seus anexos continuam aqui.</string>
     <string name="new_work_bot_failed">Não foi possível iniciar o bot. %1$s Seu texto e seus anexos continuam aqui.</string>
 </resources>

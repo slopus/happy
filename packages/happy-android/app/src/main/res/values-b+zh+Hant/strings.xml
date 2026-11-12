@@ -1024,8 +1024,8 @@
     <string name="new_work_task">任務</string>
     <string name="new_work_bot">機器人</string>
     <string name="new_work_name">名稱（選填）</string>
-    <string name="new_work_task_note">任務用於一次性的工作。它可以跨多個專案，並自行啟動子任務。</string>
-    <string name="new_work_bot_note">機器人就像一位同事：一段長期持續的對話，擁有自己的資料夾。為它取個名字，然後告訴它要做什麼。</string>
+    <string name="new_work_task_note">任務是一項工作，可大可小。它可以跨多個專案，並把部分工作交給子任務。</string>
+    <string name="new_work_bot_note">機器人就像一位同事：一段長期持續的對話，擁有自己的資料夾。在第一則訊息裡告訴它要做什麼。</string>
     <string name="new_work_task_failed">無法啟動任務。%1$s你的文字和附件仍保留在這裡。</string>
     <string name="new_work_bot_failed">無法啟動機器人。%1$s你的文字和附件仍保留在這裡。</string>
 </resources>

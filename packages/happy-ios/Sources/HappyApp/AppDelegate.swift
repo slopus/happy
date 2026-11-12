@@ -70,7 +70,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             deviceId: { (try? installation.read())?.lowercased() }, current: { .current(kind: kind) })
         coordinator.start()
         // New work's pictures, read now off the main thread, are on screen in its first frame.
-        StateSceneView.preload([.clapperBoard, .robot])
+        StateSceneView.preload([.magicWand, .robot])
         #if DEBUG || HAPPY_FIXTURES
         GymFrameMeter.installIfAsked(in: window)
         ScreenFilm.startIfAsked()

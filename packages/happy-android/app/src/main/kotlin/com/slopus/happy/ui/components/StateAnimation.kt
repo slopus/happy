@@ -57,7 +57,7 @@ import java.util.concurrent.ConcurrentHashMap
  * happy-app animations. [Tickets] is not desktop's: a Telegram sticker
  * (`"tgs": 1`, in-point 60) Steve chose for the Artifacts list, kept as
  * given; Lottie's progress runs from its in-point, so it starts at frame
- * 60. [Action] is not desktop's either: the 🎬 Telegram sticker Kirill chose
+ * 60. [Action] is not desktop's either: the 🪄 Telegram sticker Kirill chose
  * for new work's Task, gunzipped and kept as given (happy-ios
  * `Resources/Animations/PROVENANCE.md`). Errors, offline, a search that found nothing and
  * small inline tiles get no picture, as on desktop: a glyph at most.
@@ -81,10 +81,10 @@ enum class StateArt(@RawRes val raw: Int, val restsOnFirstFrame: Boolean = false
     Tickets(R.raw.state_tickets),
 
     /**
-     * A task about to be made: over new work's Task, as a bot stands under [Ready] (clapper board, `321f9dfe…`).
-     * It rests on its first frame, as its last has wiped "Action!" (happy-ios `StateScene.restsOnFirstFrame`).
+     * A task about to be made: over new work's Task, as a bot stands under [Ready] (magic wand, `6d23637e…`).
+     * It rests on its first frame, so a tap plays its whole spell (happy-ios `StateScene.restsOnFirstFrame`).
      */
-    Action(R.raw.state_clapper_board, restsOnFirstFrame = true),
+    Action(R.raw.state_magic_wand, restsOnFirstFrame = true),
 }
 
 object StateAnimationTags {
@@ -127,7 +127,7 @@ object StateCompositions {
  * shows the last frame and never moves. Art that [StateArt.restsOnFirstFrame]
  * holds its first frame instead, and shows it again after each play.
  * [immediate], it is there in the very first frame it is shown (new work's
- * robot and clapper board): read now if [StateCompositions] doesn't have it.
+ * robot and magic wand): read now if [StateCompositions] doesn't have it.
  */
 @Composable
 fun StateAnimation(art: StateArt, modifier: Modifier = Modifier, size: Dp = 128.dp, autoplay: Boolean = true, immediate: Boolean = false) {

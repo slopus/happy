@@ -111,8 +111,8 @@ extension Strings {
     public static let newWorkTask = "Task"
     public static let newWorkBot = "Bot"
     public static let newWorkName = "Name (optional)"
-    public static let newWorkTaskNote = "A task is for one-off work. It can work across several projects and start subtasks of its own."
-    public static let newWorkBotNote = "A bot is like a colleague: one lasting conversation with a folder of its own. Give it a name, then tell it what to do."
+    public static let newWorkTaskNote = "A task is one piece of work, big or small. It can reach across several projects and hand parts off to subtasks."
+    public static let newWorkBotNote = "A bot is like a colleague: one lasting conversation with a folder of its own. Tell it what to do in your first message."
 
     // The working line (AgentWorkingStatus.tsx, happyAgentConnection's `activityOf`).
     public static let phaseWaitingForModel = "Waiting for model"
