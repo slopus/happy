@@ -89,6 +89,9 @@ public actor SyncEngine {
     /// much of it the newest read taken began after: home is stale while
     /// they differ, a read cancelled on its way included.
     private var signalled = 0
+    /// The newest event among the news since a read last began; nil while
+    /// some of it named none.
+    private var newsThrough: String?
     private var covered = 0
     /// The newest journal event taken in, and the daemon process a read
     /// verified: back on that process with nothing stale, the stream picks
@@ -468,7 +471,9 @@ public actor SyncEngine {
                 // Asked for first, so the reads beside it usually begin after
                 // it and cover what came before it (`coverStream`).
                 await events.start(after: resuming ? streamCursor : nil)
-                if !resuming { await readAgain(generation) }
+                // The chat on screen is read beside a replay, however long
+                // the replay takes to come through.
+                if resuming { await spaces.externalOpening(replays: true) } else { await readAgain(generation) }
                 for try await frame in events.stream {
                     guard current(generation) else { return }
                     streamHeard = .now
@@ -569,14 +574,14 @@ public actor SyncEngine {
                             switch AgentUpdate.apply(event["payload"] ?? .null, to: &desktop!, index: index) {
                             case .applied(let patches): agentsMoved(patches)
                             case .unchanged: break
-                            case .reread: scheduleReconcile(generation)
+                            case .reread: scheduleReconcile(generation, news: frame.id)
                             }
                         }
                     } else if let type = event["type"]?.stringValue,
                               type == "agent.created" || ["project.", "workspace.", "bot.", "task.", "surface."].contains(where: type.hasPrefix) {
                         // Agents' context, commands and drafts aren't home's;
                         // settings were taken in above.
-                        scheduleReconcile(generation)
+                        scheduleReconcile(generation, news: frame.id)
                     }
                     // Taken in: applied, or home marked stale for it.
                     if let id = frame.id {
@@ -659,7 +664,11 @@ public actor SyncEngine {
     /// Home read again: at once on connecting, else for news, at most one
     /// read on its way and `rereadInterval` after the last, so news coming
     /// together is read once; and again with backoff until a read lands.
-    private func scheduleReconcile(_ generation: Int, soon: Bool = true) {
+    /// `news`: the event that asked, which a read whose cursor is at or past
+    /// it already has, as a replay's news has once a read beside it lands.
+    private func scheduleReconcile(_ generation: Int, soon: Bool = true, news id: String? = nil) {
+        if let id, let cursor, id <= cursor { return }
+        newsThrough = dirty ? newsThrough.flatMap { through in id.map { max(through, $0) } } : id
         dirty = true
         signalled += 1
         guard refresh == nil else { return }
@@ -677,6 +686,8 @@ public actor SyncEngine {
                     lastRead = .now
                     try await reconcile(generation)
                     failures = 0
+                    // News that came during the read, all of which it has.
+                    if dirty, let through = newsThrough, let cursor, through <= cursor { dirty = false; covered = signalled }
                 } catch {
                     // Signed out: the stream says so.
                     guard current(generation), (error as? AgentClientError) != .revoked else { break }

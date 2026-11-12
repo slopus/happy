@@ -172,12 +172,13 @@ public actor Store {
         return true
     }
 
-    /// The account's stream opens from now (`SyncEngine`): the
-    /// conversations followed are read at once, beside it.
-    public func externalOpening() {
+    /// The account's stream opens (`SyncEngine`): the conversations
+    /// followed are read at once, beside it. `replays`: it picks up where
+    /// it left off, and only those on screen are read.
+    public func externalOpening(replays: Bool = false) {
         let stale = pausedSinceOpening
         pausedSinceOpening = false
-        for listener in listeners.values { listener.continuation.yield(.resync(from: nil, stale: stale)) }
+        for listener in listeners.values { listener.continuation.yield(.resync(from: nil, stale: stale, replays: replays)) }
     }
 
     /// The account's stream is open. It carries everything after
@@ -316,10 +317,12 @@ public actor Store {
     /// read again. `from` is where the stream began, which a read that
     /// began after it covers; nil while it is still opening. `stale`: the
     /// engine was paused since the stream last opened, so a read on its way
-    /// may be on a tunnel the suspension left dead.
+    /// may be on a tunnel the suspension left dead. `replays`: the stream
+    /// picks up where it left off and brings what was missed; only what is
+    /// on screen is read beside it, to show before the replay is through.
     public enum ConversationEvent: Sendable {
         case event(JSONValue)
-        case resync(from: String?, stale: Bool = false)
+        case resync(from: String?, stale: Bool = false, replays: Bool = false)
     }
 
     private var listeners: [UUID: (key: String, continuation: AsyncStream<ConversationEvent>.Continuation)] = [:]

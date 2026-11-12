@@ -54,6 +54,12 @@ private actor PathServer: AgentTransport {
         for stream in streams { stream.continuation.yield(Data("id: \(cursor)\nevent: message\ndata: \(json)\n\n".utf8)) }
     }
     func dropStreams() { streams.forEach { $0.continuation.finish() } }
+    /// `event` again under `id`, as a replay brings it.
+    func replay(_ event: JSONValue, id: String) {
+        let json = String(data: try! JSONEncoder().encode(event), encoding: .utf8)!
+        for stream in streams { stream.continuation.yield(Data("id: \(id)\nevent: message\ndata: \(json)\n\n".utf8)) }
+    }
+    func journalCursor() -> String { cursor }
 
     private var cursor: String { String(format: "c%04d", journal) }
 
@@ -246,11 +252,14 @@ final class SyncPathTests: XCTestCase {
                 XCTAssertTrue(shown.texts.contains("text of a1"), "the runs held were let go")
             } else {
                 XCTAssertNotNil(from)
+                // The chat on screen reads only what is new, beside the replay.
+                try await eventually("the new run") { shown.texts.contains("text of a-r3") }
                 try await Task.sleep(for: .milliseconds(200))
                 let again = await server.reads()
                 XCTAssertEqual(again, reads)
-                let asked = await server.queries().count
-                XCTAssertEqual(asked, queries)
+                let asked = await server.queries().dropFirst(queries)
+                XCTAssertEqual(asked.count, 1, "\(asked)")
+                XCTAssertTrue(asked.first?.contains("after=a2") == true, "\(asked)")
             }
             await conversation.stop()
             await engine.stop()
@@ -297,6 +306,59 @@ final class SyncPathTests: XCTestCase {
         await server.holdMessageReads(false)
         try await eventually("shown") { shown.snapshot.synced && shown.texts.contains("text of a2") }
         await conversation.stop()
+        await engine.stop()
+    }
+
+    /// Back in the foreground into an open chat, within the window: the
+    /// chat reads what is new at once, while the stream's replay, however
+    /// slow, has yet to bring it.
+    func testAForegroundIntoAnOpenChatReadsItWithoutWaitingForTheReplay() async throws {
+        let server = PathServer()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder())
+        await engine.start()
+        let (conversation, shown) = await open(engine, client)
+        try await eventually("settled") { let home = await Self.home(engine); return home.live && !home.syncing && shown.snapshot.synced }
+        await engine.pause()
+        await server.addRun("r3")
+        await server.holdHellos(true)
+        await engine.start()
+        // The stream hasn't said a word; the chat has what is new.
+        try await eventually("the new run") { shown.texts.contains("text of a-r3") }
+        let from = await server.lastStreamHeaders()?["Last-Event-ID"]
+        XCTAssertNotNil(from)
+        await server.holdHellos(false)
+        await conversation.stop()
+        await engine.stop()
+    }
+
+    /// News a read of home already has asks for no read: a replay's, once
+    /// the read beside it has landed, and one that came during a read
+    /// whose cursor is past it.
+    func testNewsAReadAlreadyHasReadsNothing() async throws {
+        let server = PathServer()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder(), rereadInterval: .zero)
+        await engine.start()
+        try await eventually("live") { let home = await Self.home(engine); return home.live && !home.syncing }
+        try await Task.sleep(for: .milliseconds(100))
+        let reads = await server.reads()
+        let news: JSONValue = .object(["type": .string("project.updated"), "payload": .object(["projectId": .string("p")])])
+        await server.replay(news, id: await server.journalCursor())
+        try await Task.sleep(for: .milliseconds(300))
+        let replayed = await server.reads()
+        XCTAssertEqual(replayed, reads, "a replay's news read home again")
+
+        await server.holdDesktopReads(true)
+        await server.emit(news)
+        try await eventually("the read") { await server.reads() == reads + 1 }
+        let at = await server.journalCursor()
+        for _ in 0..<5 { await server.replay(news, id: at) }
+        try await Task.sleep(for: .milliseconds(100))
+        await server.holdDesktopReads(false)
+        try await Task.sleep(for: .milliseconds(400))
+        let after = await server.reads()
+        XCTAssertEqual(after, reads + 1, "news the read had read home again")
         await engine.stop()
     }
 
