@@ -61,4 +61,23 @@
     <string name="cloud_sign_in_apple">Entrar com a Apple</string>
     <string name="cloud_sign_in_github">Entrar com o GitHub</string>
     <string name="cloud_sign_in_google">Continuar com o Google</string>
+    <string name="cloud_sign_in_email">Continuar com e-mail</string>
+    <string name="cloud_email_title">Entrar com e-mail</string>
+    <string name="cloud_email_detail">Enviaremos um código de 6 dígitos para seu e-mail. Sem senha.</string>
+    <string name="cloud_email_placeholder">Endereço de e-mail</string>
+    <string name="cloud_email_send">Enviar código</string>
+    <string name="cloud_email_wait">Tente novamente em %1$s</string>
+    <string name="cloud_email_code_title">Confira seu e-mail</string>
+    <string name="cloud_email_code_detail">Digite o código de 6 dígitos que enviamos para %1$s.</string>
+    <string name="cloud_email_code_placeholder">Código de 6 dígitos</string>
+    <string name="cloud_email_verify">Verificar</string>
+    <string name="cloud_email_resend">Reenviar código</string>
+    <string name="cloud_email_resend_in">Reenviar em %1$s</string>
+    <string name="cloud_email_resent">Enviamos um novo código.</string>
+    <string name="cloud_email_change">Alterar e-mail</string>
+    <string name="cloud_email_invalid">Isso não parece um endereço de e-mail.</string>
+    <string name="cloud_email_code_wrong">Esse código está errado ou expirou.</string>
+    <string name="cloud_email_unavailable">O login por e-mail não está funcionando agora. Tente novamente em instantes.</string>
+    <string name="cloud_email_unsupported">O login por e-mail ainda não está disponível.</string>
+    <string name="cloud_email_rate_limited">Muitas tentativas. Aguarde um momento e tente novamente.</string>
 </resources>

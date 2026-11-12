@@ -52,7 +52,8 @@ data class CloudServerImage(val thumbhash: String? = null, val width: Int? = nul
  * hint. Apple and GitHub are web sign-ins on Android (Apple has no native
  * one here). Google signs in on the phone through Credential Manager
  * ([CloudAccount.signInWithGoogle]), and on the web where it has no account
- * to offer.
+ * to offer. Email is no provider: its code is asked for and typed in the
+ * app ([CloudAccount.startEmail], [CloudAccount.verifyEmail]).
  */
 enum class CloudProvider(val id: String) { Apple("apple"), GitHub("github"), Google("google") }
 
@@ -75,6 +76,31 @@ sealed interface PasswordSignIn {
     data class Locked(val minutes: Long) : PasswordSignIn
 
     data class Failed(val reason: CloudException.Reason) : PasswordSignIn
+}
+
+/** How asking for an email code ([CloudAccount.startEmail]) or typing it ([CloudAccount.verifyEmail]) went. */
+sealed interface EmailSignIn {
+    /** The code is on its way to the address. */
+    data object Sent : EmailSignIn
+
+    data object SignedIn : EmailSignIn
+
+    /** `invalid_email`: not an address the service takes. */
+    data object InvalidEmail : EmailSignIn
+
+    /** `invalid_code`: wrong, or expired; the service doesn't say which. */
+    data object InvalidCode : EmailSignIn
+
+    /** `unavailable`: the service couldn't reach its email sign-in just now. */
+    data object Unavailable : EmailSignIn
+
+    /** `unsupported_provider`: this service has no email sign-in; [message] is its own words, shown as they came. */
+    data class Unsupported(val message: String?) : EmailSignIn
+
+    /** `429 rate_limited`: nothing more for [seconds]; [message] is the service's own words. */
+    data class RateLimited(val seconds: Long, val message: String?) : EmailSignIn
+
+    data class Failed(val reason: CloudException.Reason) : EmailSignIn
 }
 
 /** Where the Happy Cloud account stands. */
@@ -180,17 +206,9 @@ class CloudAccount(
         } catch (e: CloudException) {
             return PasswordSignIn.Failed(e.reason)
         }
-        fun field(key: String) = (body?.get(key) as? JsonPrimitive)?.contentOrNull
         return when {
-            status == 200 -> {
-                val token = field("access_token")?.takeIf { it.isNotEmpty() } ?: return PasswordSignIn.Failed(CloudException.Reason.Failed)
-                val life = field("expires_in")?.toLongOrNull()?.takeIf { it > 0 }?.let { it * 1000 } ?: PASS_MILLIS
-                access = AccessToken(token, now() + life)
-                pending = null
-                mutableState.value = CloudAccountState.SignedIn
-                PasswordSignIn.SignedIn
-            }
-            status == 429 -> PasswordSignIn.Locked(((field("retryAfter")?.toLongOrNull() ?: LOCKOUT_SECONDS) + 59) / 60)
+            status == 200 -> if (signedInWith(body)) PasswordSignIn.SignedIn else PasswordSignIn.Failed(CloudException.Reason.Failed)
+            status == 429 -> PasswordSignIn.Locked((((body?.get("retryAfter") as? JsonPrimitive)?.contentOrNull?.toLongOrNull() ?: LOCKOUT_SECONDS) + 59) / 60)
             status == 401 || status == 400 -> PasswordSignIn.Wrong
             status >= 500 -> PasswordSignIn.Failed(CloudException.Reason.Unreachable)
             else -> PasswordSignIn.Failed(CloudException.Reason.Failed)
@@ -248,6 +266,60 @@ class CloudAccount(
             status >= 500 -> CloudAccountState.Failed(ServerAuthException.Reason.Unreachable)
             else -> CloudAccountState.Failed(ServerAuthException.Reason.Denied)
         }
+    }
+
+    /**
+     * Emails a one-time code to [email] (`POST /v1/auth/email/start`, no
+     * browser), for [verifyEmail]. Asking again sends a new one.
+     */
+    suspend fun startEmail(email: String): EmailSignIn {
+        val answer = try {
+            send("POST", "/v1/auth/email/start", JsonObject(mapOf("email" to JsonPrimitive(email))), token = null)
+        } catch (e: CloudException) {
+            return EmailSignIn.Failed(e.reason)
+        }
+        return if (answer.status in 200..299) EmailSignIn.Sent else emailRefusal(answer)
+    }
+
+    /**
+     * Signs in with the [code] emailed to [email] (`POST
+     * /v1/auth/email/verify`), for the same hour's pass as the browser's
+     * sign-in and kept as the password's is.
+     */
+    suspend fun verifyEmail(email: String, code: String): EmailSignIn {
+        val answer = try {
+            send("POST", "/v1/auth/email/verify", JsonObject(mapOf("email" to JsonPrimitive(email), "code" to JsonPrimitive(code))), token = null)
+        } catch (e: CloudException) {
+            return EmailSignIn.Failed(e.reason)
+        }
+        if (answer.status == 200) return if (signedInWith(answer.body)) EmailSignIn.SignedIn else EmailSignIn.Failed(CloudException.Reason.Failed)
+        return emailRefusal(answer)
+    }
+
+    /** Why the email sign-in said no, by its `code`; a 429 waits for `Retry-After`, or its `retryAfter`. */
+    private fun emailRefusal(answer: Answer): EmailSignIn {
+        fun field(key: String) = (answer.body?.get(key) as? JsonPrimitive)?.contentOrNull
+        val message = field("error")?.takeIf { it.isNotBlank() }
+        return when {
+            answer.status == 429 -> EmailSignIn.RateLimited(answer.retryAfter ?: field("retryAfter")?.toLongOrNull()?.takeIf { it > 0 } ?: EMAIL_WAIT_SECONDS, message)
+            field("code") == "invalid_email" -> EmailSignIn.InvalidEmail
+            field("code") == "invalid_code" -> EmailSignIn.InvalidCode
+            field("code") == "unsupported_provider" -> EmailSignIn.Unsupported(message)
+            field("code") == "unavailable" -> EmailSignIn.Unavailable
+            answer.status >= 500 -> EmailSignIn.Failed(CloudException.Reason.Unreachable)
+            else -> EmailSignIn.Failed(CloudException.Reason.Failed)
+        }
+    }
+
+    /** A password's or email code's token answer: the hour's pass, kept in memory as the browser's is. False when it holds no token. */
+    private fun signedInWith(body: JsonObject?): Boolean {
+        fun field(key: String) = (body?.get(key) as? JsonPrimitive)?.contentOrNull
+        val token = field("access_token")?.takeIf { it.isNotEmpty() } ?: return false
+        val life = field("expires_in")?.toLongOrNull()?.takeIf { it > 0 }?.let { it * 1000 } ?: PASS_MILLIS
+        access = AccessToken(token, now() + life)
+        pending = null
+        mutableState.value = CloudAccountState.SignedIn
+        return true
     }
 
     /** After a failure, or the page closed: back to signed out, to sign in again. */
@@ -390,12 +462,11 @@ class CloudAccount(
 
     /** One accounts API request. A 401 is the pass over: signed out, never retried. */
     private suspend fun call(verb: String, path: String, body: JsonObject? = null): Pair<Int, JsonObject> {
-        val answer = send(verb, path, body, bearer())
-        if (answer.first == 401) {
+        val (status, root) = send(verb, path, body, bearer())
+        if (status == 401) {
             expire()
             throw CloudException(CloudException.Reason.SignInRequired)
         }
-        val (status, root) = answer
         if (status in 200..299) return status to (root ?: throw CloudException(CloudException.Reason.Failed))
         throw CloudException(
             when ((root?.get("code") as? JsonPrimitive)?.contentOrNull) {
@@ -407,7 +478,10 @@ class CloudAccount(
         )
     }
 
-    private suspend fun send(verb: String, path: String, body: JsonObject?, token: String?): Pair<Int, JsonObject?> = withContext(Dispatchers.IO) {
+    /** An accounts API answer: its status, its JSON object if it was one, and a `Retry-After` in seconds. */
+    private data class Answer(val status: Int, val body: JsonObject?, val retryAfter: Long? = null)
+
+    private suspend fun send(verb: String, path: String, body: JsonObject?, token: String?): Answer = withContext(Dispatchers.IO) {
         val request = Request.Builder().url("${origin.value}$path")
             .header("Accept", "application/json")
             .apply { if (token != null) header("Authorization", "Bearer $token") }
@@ -415,7 +489,11 @@ class CloudAccount(
             .build()
         try {
             http.newCall(request).execute().use { response ->
-                response.code to runCatching { json.parseToJsonElement(response.peekBody(MAX_BODY).string()) as? JsonObject }.getOrNull()
+                Answer(
+                    response.code,
+                    runCatching { json.parseToJsonElement(response.peekBody(MAX_BODY).string()) as? JsonObject }.getOrNull(),
+                    response.header("Retry-After")?.trim()?.toLongOrNull()?.takeIf { it > 0 },
+                )
             }
         } catch (e: IOException) {
             throw CloudException(CloudException.Reason.Unreachable).initCause(e)
@@ -441,6 +519,8 @@ class CloudAccount(
         private const val PASS_MILLIS = 3_600_000L
         /** A lockout's length when a 429 doesn't say (test accounts: 15 minutes). */
         private const val LOCKOUT_SECONDS = 900L
+        /** An email 429's wait when it says none: a resend's own cooldown. */
+        private const val EMAIL_WAIT_SECONDS = 60L
         private val json = Json { ignoreUnknownKeys = true }
 
         /** A native sign-in's nonce: 32 random bytes, base64url. Google puts it in the ID token as given, and the service checks it is the one sent. */

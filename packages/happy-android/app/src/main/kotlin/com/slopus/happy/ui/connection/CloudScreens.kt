@@ -70,6 +70,8 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.autofill.ContentType
+import androidx.compose.ui.semantics.contentType
 import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Rect
@@ -102,6 +104,7 @@ import com.slopus.happy.connection.CloudException
 import com.slopus.happy.connection.CloudName
 import com.slopus.happy.connection.CloudProvider
 import com.slopus.happy.connection.CloudServer
+import com.slopus.happy.connection.EmailSignIn
 import com.slopus.happy.connection.PasswordSignIn
 import com.slopus.happy.connection.ServerAuthException
 import com.slopus.happy.ui.components.HappyTextField
@@ -141,6 +144,10 @@ object CloudTags {
     const val CREATE = "cloud.create"
     const val INVITE = "cloud.invite"
     const val GOOGLE = "cloud.google"
+    const val EMAIL = "cloud.email"
+    const val EMAIL_CODE = "cloud.email.code"
+    const val EMAIL_SIGN_IN = "cloud.email.signIn"
+    const val CHANGE_EMAIL = "cloud.email.change"
     fun server(name: String) = "cloud.server.$name"
     fun join(name: String) = "cloud.join.$name"
     fun member(accountId: String) = "cloud.member.$accountId"
@@ -354,6 +361,8 @@ fun CloudScreen(
     onOpenBrowser: (CloudProvider) -> Unit,
     /** Continue with Google: Google's own sheet, on the phone. */
     onSignInWithGoogle: () -> Unit,
+    /** Continue with email: its address, then the code mailed to it ([CloudEmailScreen]). */
+    onEmail: () -> Unit,
     /** A test account's sign-in, for the welcome's hidden form. */
     signInWithPassword: suspend (login: String, password: String) -> PasswordSignIn,
     onReload: () -> Unit,
@@ -367,7 +376,7 @@ fun CloudScreen(
     when (state) {
         // Signed out, waiting for the Auth Tab, finishing, or why it failed: all the welcome, its one button saying which.
         is CloudAccountState.SignedOut, CloudAccountState.InBrowser, CloudAccountState.Finishing, is CloudAccountState.Failed ->
-            CloudWelcome(state, onOpenBrowser, onSignInWithGoogle, signInWithPassword, onBack)
+            CloudWelcome(state, onOpenBrowser, onSignInWithGoogle, onEmail, signInWithPassword, onBack)
         CloudAccountState.SignedIn -> {
             val joining = CloudJoin.Joining in joins.values
             fun joined(server: CloudServer) = joins[server.id] == CloudJoin.Joined || (joins[server.id] == null && server.origin in here)
@@ -416,7 +425,9 @@ fun CloudScreen(
  * under it in Use Happy Cloud's, as iOS, with Continue with Google 12 over
  * them ([GoogleButton]). Apple and GitHub open that provider's sign-in in
  * the app (Apple has no native sign-in on Android); Google's is its own
- * sheet on the phone. Over them, a note: the hour up, or why the last
+ * sheet on the phone. Under them, the quiet Continue with email, which
+ * signs in with a code mailed to the person and no browser
+ * ([CloudEmailScreen]). Over them, a note: the hour up, or why the last
  * sign-in failed. While the sheet is up or the code is exchanged the one
  * pressed spins.
  *
@@ -431,6 +442,7 @@ private fun CloudWelcome(
     state: CloudAccountState,
     onSignIn: (CloudProvider) -> Unit,
     onSignInWithGoogle: () -> Unit,
+    onEmail: () -> Unit,
     signInWithPassword: suspend (login: String, password: String) -> PasswordSignIn,
     onBack: () -> Unit,
 ) {
@@ -452,6 +464,7 @@ private fun CloudWelcome(
         enabled = state != CloudAccountState.Finishing,
         loading = state == CloudAccountState.Finishing && pressed == CloudProvider.Google,
     )
+    val email = CloudAction(stringResource(R.string.cloud_sign_in_email), onEmail, enabled = state != CloudAccountState.Finishing)
     if (!unlocked) {
         val colors = HappyTheme.colors
         val note = when (state) {
@@ -464,6 +477,7 @@ private fun CloudWelcome(
             google = google,
             primary = apple,
             secondary = github,
+            quiet = email,
             onArtPress = remember {
                 { at: Long ->
                     presses.addLast(at)
@@ -523,12 +537,14 @@ private const val UNLOCK_MILLIS = 4_000L
  * buttons (16 kept above and below, moving on every 12 s), then [note] if
  * any, 12 over [google] if any, 12 over [primary] where Start is, and [secondary] where Use Happy
  * Cloud is: 12 under it, 24 above the bottom inset, both as wide as the
- * wider (at least 280), [primary] rising to make room. It scrolls when it
+ * wider (at least 280), [primary] rising to make room. [quiet], a text
+ * action in the gradient's text colour, goes right under [secondary] and
+ * takes its 24 above the bottom, the two buttons rising. It scrolls when it
  * outgrows the window. The drift keeps clear of the slides and of the
  * note and buttons.
  */
 @Composable
-private fun CloudDeck(note: Pair<String, Color?>?, google: CloudAction?, primary: CloudAction, secondary: CloudAction?, onArtPress: (Long) -> Unit, onBack: () -> Unit) {
+private fun CloudDeck(note: Pair<String, Color?>?, google: CloudAction?, primary: CloudAction, secondary: CloudAction?, quiet: CloudAction?, onArtPress: (Long) -> Unit, onBack: () -> Unit) {
     val dark = HappyTheme.colors.dark
     val text = if (dark) StartSpec.darkText else StartSpec.lightText
     var root by remember { mutableStateOf<LayoutCoordinates?>(null) }
@@ -591,10 +607,20 @@ private fun CloudDeck(note: Pair<String, Color?>?, google: CloudAction?, primary
                                     enabled = secondary.enabled,
                                     loading = secondary.loading,
                                     modifier = Modifier
-                                        .padding(top = StartSpec.cloudGap, bottom = StartSpec.cloudBottomPadding)
+                                        .padding(top = StartSpec.cloudGap, bottom = if (quiet == null) StartSpec.cloudBottomPadding else 0.dp)
                                         .testTag(CloudTags.SECONDARY),
                                 )
                             }
+                        }
+                        if (quiet != null) {
+                            RoundButton(
+                                title = quiet.title,
+                                onClick = quiet.onClick,
+                                enabled = quiet.enabled,
+                                display = RoundButtonDisplay.Inverted,
+                                contentColor = text,
+                                modifier = Modifier.fillMaxWidth().padding(bottom = StartSpec.cloudBottomPadding).testTag(CloudTags.EMAIL_SIGN_IN),
+                            )
                         }
                     }
                 }
@@ -813,6 +839,135 @@ fun CloudJoinScreen(
     }
 }
 /**
+ * Continue with email, its first step: the address, then Send code, which
+ * mails a one-time code to it (`POST /v1/auth/email/start`) and goes on to
+ * [CloudEmailCodeScreen]. Why it was refused shows under the field. While
+ * the service asks to wait ([wait], seconds), Send code says how long.
+ */
+@Composable
+fun CloudEmailScreen(
+    email: String,
+    busy: Boolean,
+    outcome: EmailSignIn?,
+    wait: Long,
+    onEmail: (String) -> Unit,
+    onSend: () -> Unit,
+    onBack: () -> Unit,
+) {
+    CloudFrame(
+        title = stringResource(R.string.cloud_email_title),
+        body = stringResource(R.string.cloud_email_detail),
+        art = R.raw.state_cloud_variation,
+        primary = CloudAction(
+            if (wait > 0) stringResource(R.string.cloud_email_wait, CloudEmail.countdown(wait)) else stringResource(R.string.cloud_email_send),
+            onSend,
+            enabled = CloudEmail.plausible(email) && wait <= 0 && !busy,
+            loading = busy,
+        ),
+        onBack = onBack,
+    ) {
+        CloudField(email, onEmail, stringResource(R.string.cloud_email_placeholder), CloudTags.EMAIL, !busy, KeyboardType.Email, ImeAction.Done, autofill = ContentType.EmailAddress)
+        EmailNote(outcome)
+    }
+}
+
+/**
+ * Continue with email, its second step: the 6-digit code mailed to [email],
+ * typed (or filled in by the keyboard's one-time code) and checked as its
+ * sixth digit comes, or with Verify (`POST /v1/auth/email/verify`). The
+ * field stays enabled through a check, so the keyboard stays up for the
+ * next try. Resend code under it waits a minute after each code
+ * ([resendWait]); Change email goes back to the address. While the service
+ * asks to wait ([wait]), Verify and Resend both say how long.
+ */
+@Composable
+fun CloudEmailCodeScreen(
+    email: String,
+    code: String,
+    busy: Boolean,
+    outcome: EmailSignIn?,
+    wait: Long,
+    resendWait: Long,
+    onCode: (String) -> Unit,
+    onVerify: () -> Unit,
+    onResend: () -> Unit,
+    onChangeEmail: () -> Unit,
+    onBack: () -> Unit,
+) {
+    val resendIn = maxOf(wait, resendWait)
+    CloudFrame(
+        title = stringResource(R.string.cloud_email_code_title),
+        body = stringResource(R.string.cloud_email_code_detail, CloudEmail.unbroken(email)),
+        art = R.raw.state_tickets,
+        primary = CloudAction(
+            if (wait > 0) stringResource(R.string.cloud_email_wait, CloudEmail.countdown(wait)) else stringResource(R.string.cloud_email_verify),
+            onVerify,
+            enabled = code.length == CloudEmail.CODE_LENGTH && wait <= 0 && !busy,
+            loading = busy,
+        ),
+        secondary = CloudAction(
+            if (resendIn > 0) stringResource(R.string.cloud_email_resend_in, CloudEmail.countdown(resendIn)) else stringResource(R.string.cloud_email_resend),
+            onResend,
+            enabled = resendIn <= 0 && !busy,
+        ),
+        onBack = onBack,
+    ) {
+        CloudField(
+            code,
+            { onCode(CloudEmail.typedCode(it)) },
+            stringResource(R.string.cloud_email_code_placeholder),
+            CloudTags.EMAIL_CODE,
+            // Never disabled: the keyboard stays up through a check, for the next try.
+            true,
+            KeyboardType.NumberPassword,
+            ImeAction.Done,
+            autofill = ContentType.SmsOtpCode,
+        )
+        EmailNote(outcome)
+        CloudLink(CloudAction(stringResource(R.string.cloud_email_change), onChangeEmail, enabled = !busy), CloudTags.CHANGE_EMAIL)
+    }
+}
+
+/** Under an email step's field: why it was refused, in red; a resend's new code, quietly. */
+@Composable
+private fun EmailNote(outcome: EmailSignIn?) {
+    val red = HappyTheme.colors.textDestructive
+    when (outcome) {
+        EmailSignIn.Sent -> NotePill(stringResource(R.string.cloud_email_resent), null)
+        EmailSignIn.InvalidEmail -> NotePill(stringResource(R.string.cloud_email_invalid), red)
+        EmailSignIn.InvalidCode -> NotePill(stringResource(R.string.cloud_email_code_wrong), red)
+        EmailSignIn.Unavailable -> NotePill(stringResource(R.string.cloud_email_unavailable), red)
+        // The service's own words where it gave some, shown as they came.
+        is EmailSignIn.Unsupported -> NotePill(outcome.message ?: stringResource(R.string.cloud_email_unsupported), red)
+        is EmailSignIn.RateLimited -> NotePill(outcome.message ?: stringResource(R.string.cloud_email_rate_limited), red)
+        is EmailSignIn.Failed -> NotePill(stringResource(cloudFailureText(outcome.reason)), red)
+        EmailSignIn.SignedIn, null -> Unit
+    }
+}
+
+/** Continue with email's rules: what may be sent, what is typed, and how a wait reads. */
+internal object CloudEmail {
+    const val CODE_LENGTH = 6
+    /** A new code waits this long after the last one. */
+    const val RESEND_SECONDS = 60L
+
+    /** Worth asking the service about: something, an @, something; it decides the rest (`invalid_email`). */
+    fun plausible(email: String): Boolean {
+        val at = email.trim().indexOf('@')
+        return at > 0 && at < email.trim().length - 1
+    }
+
+    /** A code as typed or pasted: its digits, at most six. */
+    fun typedCode(text: String): String = text.filter { it in '0'..'9' }.take(CODE_LENGTH)
+
+    /** [email] kept on one line: word joiners between its characters, so it never breaks at its dot or @. */
+    fun unbroken(email: String): String = email.toList().joinToString("\u2060")
+
+    /** A wait as m:ss, the same in every language. */
+    fun countdown(seconds: Long): String = "%d:%02d".format(java.util.Locale.ROOT, seconds / 60, seconds % 60)
+}
+
+/**
  * A Happy Cloud server's sign-in, in place of the plain team server screen:
  * "Connecting to @name…" while the server is found, the browser comes back
  * by itself and the code is exchanged; or why it failed, with Try again.
@@ -955,6 +1110,8 @@ private fun CloudField(
     ime: ImeAction,
     transformation: VisualTransformation = VisualTransformation.None,
     capitalization: KeyboardCapitalization = KeyboardCapitalization.None,
+    /** What autofill may offer here: an email address, a one-time code. */
+    autofill: ContentType? = null,
 ) {
     Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(CloudSpec.fieldRadius)).background(HappyTheme.colors.surface.copy(alpha = CloudSpec.SURFACE_ALPHA))) {
         HappyTextField(
@@ -969,7 +1126,7 @@ private fun CloudField(
             enabled = enabled,
             keyboardOptions = KeyboardOptions(capitalization = capitalization, autoCorrectEnabled = false, keyboardType = keyboard, imeAction = ime),
             visualTransformation = transformation,
-            modifier = Modifier.testTag(tag),
+            modifier = Modifier.testTag(tag).then(if (autofill == null) Modifier else Modifier.semantics { contentType = autofill }),
         )
     }
 }

@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.connection
 
+import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.ActivityResultLauncher
@@ -12,7 +13,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -34,6 +37,7 @@ import com.slopus.happy.connection.CloudName
 import com.slopus.happy.connection.CloudProvider
 import com.slopus.happy.connection.CloudServer
 import com.slopus.happy.connection.GoogleSignIn
+import com.slopus.happy.connection.EmailSignIn
 import com.slopus.happy.connection.HappyCloud
 import com.slopus.happy.connection.ServerSignInFlow
 import com.slopus.happy.connection.ServerSignInState
@@ -51,6 +55,11 @@ import kotlinx.serialization.Serializable
 @Serializable data class CloudCreateRoute(val first: Boolean = false)
 
 @Serializable data object CloudJoinRoute
+
+/** Continue with email: the address, then [CloudEmailCodeRoute] for the code mailed to it. */
+@Serializable data object CloudEmailRoute
+
+@Serializable data class CloudEmailCodeRoute(val email: String)
 
 /**
  * Happy Cloud's way in, provided at the app's root: the first screen's Use
@@ -81,6 +90,8 @@ fun NavGraphBuilder.cloudRoutes(graph: AppGraph, nav: NavHostController) {
     page<CloudRoute> { Cloud(graph, account, nav) }
     page<CloudCreateRoute> { entry -> CloudCreate(graph, account, nav, entry.toRoute<CloudCreateRoute>().first) }
     page<CloudJoinRoute> { CloudJoin(graph, account, nav) }
+    page<CloudEmailRoute> { CloudEmailStart(account, nav) }
+    page<CloudEmailCodeRoute> { entry -> CloudEmailCode(account, nav, entry.toRoute<CloudEmailCodeRoute>().email) }
     page<CloudMembersRoute> { entry -> CloudMembers(graph, nav, entry.toRoute<CloudMembersRoute>().connectionId) }
     page<MemberProfileRoute> { entry -> MemberProfileEntry(graph, nav, entry.toRoute<MemberProfileRoute>()) }
     page<CloudInstructionsRoute> { entry -> CloudInstructions(graph, nav, entry.toRoute<CloudInstructionsRoute>().connectionId) }
@@ -173,6 +184,7 @@ private fun Cloud(graph: AppGraph, account: CloudAccount, nav: NavHostController
         image = account::image,
         onOpenBrowser = openBrowser,
         onSignInWithGoogle = signInWithGoogle,
+        onEmail = { nav.navigate(CloudEmailRoute) { launchSingleTop = true } },
         signInWithPassword = account::signInWithPassword,
         onReload = picker::load,
         onJoinServer = { server ->
@@ -322,6 +334,124 @@ private fun CloudJoin(graph: AppGraph, account: CloudAccount, nav: NavHostContro
         },
         onBack = { nav.popBackStack() },
     )
+}
+
+/**
+ * Continue with email's first step: Send code mails one to the address and
+ * opens its code step. A 429 holds Send code for its `Retry-After`.
+ */
+@Composable
+private fun CloudEmailStart(account: CloudAccount, nav: NavHostController) {
+    var email by rememberSaveable { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var outcome by remember { mutableStateOf<EmailSignIn?>(null) }
+    var waitUntil by rememberSaveable { mutableLongStateOf(0L) }
+    val wait = secondsUntil(waitUntil)
+    val scope = rememberCoroutineScope()
+    CloudEmailScreen(
+        email = email,
+        busy = busy,
+        outcome = outcome,
+        wait = wait,
+        onEmail = { email = it; outcome = null },
+        onSend = {
+            val address = email.trim()
+            busy = true
+            outcome = null
+            scope.launch {
+                try {
+                    when (val answer = account.startEmail(address)) {
+                        EmailSignIn.Sent -> nav.navigate(CloudEmailCodeRoute(address)) { launchSingleTop = true }
+                        else -> {
+                            if (answer is EmailSignIn.RateLimited) waitUntil = SystemClock.elapsedRealtime() + answer.seconds * 1000
+                            outcome = answer
+                        }
+                    }
+                } finally {
+                    busy = false
+                }
+            }
+        },
+        onBack = { nav.popBackStack() },
+    )
+}
+
+/**
+ * Continue with email's code step, for [email]: the code is checked as its
+ * sixth digit comes, and the account is signed in as with a password, back
+ * to Happy Cloud's servers; a wrong code is cleared. Resend waits a minute after each code, and a
+ * 429 holds Verify and Resend for its `Retry-After`.
+ */
+@Composable
+private fun CloudEmailCode(account: CloudAccount, nav: NavHostController, email: String) {
+    var code by rememberSaveable { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var outcome by remember { mutableStateOf<EmailSignIn?>(null) }
+    // The first code was sent on the way here.
+    var resendUntil by rememberSaveable { mutableLongStateOf(SystemClock.elapsedRealtime() + CloudEmail.RESEND_SECONDS * 1000) }
+    var waitUntil by rememberSaveable { mutableLongStateOf(0L) }
+    val wait = secondsUntil(waitUntil)
+    val resendWait = secondsUntil(resendUntil)
+    val scope = rememberCoroutineScope()
+    fun ask(call: suspend () -> EmailSignIn) {
+        busy = true
+        outcome = null
+        scope.launch {
+            try {
+                when (val answer = call()) {
+                    EmailSignIn.SignedIn -> nav.popBackStack(CloudRoute, inclusive = false)
+                    else -> {
+                        when (answer) {
+                            is EmailSignIn.RateLimited -> waitUntil = SystemClock.elapsedRealtime() + answer.seconds * 1000
+                            EmailSignIn.Sent -> resendUntil = SystemClock.elapsedRealtime() + CloudEmail.RESEND_SECONDS * 1000
+                            // Cleared for the next try, the keyboard still up.
+                            EmailSignIn.InvalidCode -> code = ""
+                            else -> Unit
+                        }
+                        outcome = answer
+                    }
+                }
+            } finally {
+                busy = false
+            }
+        }
+    }
+    val verify = { if (!busy && wait <= 0 && code.length == CloudEmail.CODE_LENGTH) ask { account.verifyEmail(email, code) } }
+    CloudEmailCodeScreen(
+        email = email,
+        code = code,
+        busy = busy,
+        outcome = outcome,
+        wait = wait,
+        resendWait = resendWait,
+        onCode = onCode@{ typed ->
+            if (busy) return@onCode
+            val complete = typed.length == CloudEmail.CODE_LENGTH && code.length != CloudEmail.CODE_LENGTH
+            code = typed
+            if (typed.length < CloudEmail.CODE_LENGTH) outcome = null
+            // The sixth digit, typed or filled in, checks it: nothing more to press.
+            if (complete) verify()
+        },
+        onVerify = verify,
+        onResend = { ask { account.startEmail(email) } },
+        onChangeEmail = { nav.popBackStack() },
+        onBack = { nav.popBackStack() },
+    )
+}
+
+/** Whole seconds left until [until] (elapsed realtime), counting down each second; 0 once it is past. */
+@Composable
+private fun secondsUntil(until: Long): Long {
+    fun left() = ((until - SystemClock.elapsedRealtime() + 999) / 1000).coerceAtLeast(0)
+    var seconds by remember(until) { mutableLongStateOf(left()) }
+    LaunchedEffect(until) {
+        while (seconds > 0) {
+            // To the next whole second left.
+            delay((until - SystemClock.elapsedRealtime()).mod(1000L).takeIf { it > 0 } ?: 1000L)
+            seconds = left()
+        }
+    }
+    return seconds
 }
 
 /** Server names as typed: lower case, only what a name may hold, at most 32. */

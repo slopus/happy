@@ -63,4 +63,23 @@
     <string name="cloud_sign_in_apple">Sign in with Apple</string>
     <string name="cloud_sign_in_github">Sign in with GitHub</string>
     <string name="cloud_sign_in_google">Continue with Google</string>
+    <string name="cloud_sign_in_email">Continue with email</string>
+    <string name="cloud_email_title">Sign in with email</string>
+    <string name="cloud_email_detail">We’ll email you a 6-digit code. No password needed.</string>
+    <string name="cloud_email_placeholder">Email address</string>
+    <string name="cloud_email_send">Send code</string>
+    <string name="cloud_email_wait">Try again in %1$s</string>
+    <string name="cloud_email_code_title">Check your email</string>
+    <string name="cloud_email_code_detail">Enter the 6-digit code we sent to %1$s.</string>
+    <string name="cloud_email_code_placeholder">6-digit code</string>
+    <string name="cloud_email_verify">Verify</string>
+    <string name="cloud_email_resend">Resend code</string>
+    <string name="cloud_email_resend_in">Resend in %1$s</string>
+    <string name="cloud_email_resent">We sent you a new code.</string>
+    <string name="cloud_email_change">Change email</string>
+    <string name="cloud_email_invalid">That doesn’t look like an email address.</string>
+    <string name="cloud_email_code_wrong">That code is wrong or has expired.</string>
+    <string name="cloud_email_unavailable">Email sign-in isn’t working right now. Try again in a moment.</string>
+    <string name="cloud_email_unsupported">Email sign-in isn’t available yet.</string>
+    <string name="cloud_email_rate_limited">Too many tries. Wait a moment, then try again.</string>
 </resources>

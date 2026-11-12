@@ -61,4 +61,23 @@
     <string name="cloud_sign_in_apple">Appleでサインイン</string>
     <string name="cloud_sign_in_github">GitHub でサインイン</string>
     <string name="cloud_sign_in_google">Google で続行</string>
+    <string name="cloud_sign_in_email">メールで続ける</string>
+    <string name="cloud_email_title">メールでサインイン</string>
+    <string name="cloud_email_detail">6桁のコードをメールでお送りします。パスワードは不要です。</string>
+    <string name="cloud_email_placeholder">メールアドレス</string>
+    <string name="cloud_email_send">コードを送信</string>
+    <string name="cloud_email_wait">%1$s 後に再試行</string>
+    <string name="cloud_email_code_title">メールを確認</string>
+    <string name="cloud_email_code_detail">%1$s に送信した6桁のコードを入力してください。</string>
+    <string name="cloud_email_code_placeholder">6桁のコード</string>
+    <string name="cloud_email_verify">確認</string>
+    <string name="cloud_email_resend">コードを再送信</string>
+    <string name="cloud_email_resend_in">%1$s 後に再送信</string>
+    <string name="cloud_email_resent">新しいコードを送信しました。</string>
+    <string name="cloud_email_change">メールアドレスを変更</string>
+    <string name="cloud_email_invalid">メールアドレスの形式ではないようです。</string>
+    <string name="cloud_email_code_wrong">コードが間違っているか、有効期限が切れています。</string>
+    <string name="cloud_email_unavailable">現在メールでのサインインを利用できません。しばらくしてからお試しください。</string>
+    <string name="cloud_email_unsupported">メールでのサインインはまだ利用できません。</string>
+    <string name="cloud_email_rate_limited">試行回数が多すぎます。少し待ってからお試しください。</string>
 </resources>

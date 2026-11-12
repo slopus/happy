@@ -1209,7 +1209,19 @@ change its wire behaviour on Android alone.
   Tab instead. Google knows each variant by package and signing SHA-1,
   registered as Android clients in project happy-coder-9fe36: a build
   signed with another key (any machine's own debug keystore) gets no Google
-  sign-in from the sheet. The account
+  sign-in from the sheet. Under them, the quiet "Continue with email"
+  signs in with no browser (WorkOS Magic Auth behind the accounts service):
+  the address (`CloudEmailRoute`, `POST /v1/auth/email/start`), then the
+  6-digit code mailed to it (`CloudEmailCodeRoute`, `POST
+  /v1/auth/email/verify`, checked as its sixth digit comes; the field
+  carries the one-time-code autofill hint), for the same hour's pass as the
+  password sign-in below (`CloudAccount.startEmail`/`verifyEmail`,
+  `EmailSignIn`). Resend waits 60 s after each code and Change email goes
+  back. `invalid_email`, `invalid_code` and `unavailable` read in our words;
+  `unsupported_provider` and `429 rate_limited` show the service's own
+  `error`, and a 429 holds Send code, Verify and Resend for its
+  `Retry-After` (else `retryAfter`, else 60 s), counting down in m:ss. The
+  account
   token is a pass of about an hour with no refresh (token lifetimes v4): held
   in memory only, never stored, never refreshed, and only ever sent to the
   accounts API. Past its hour (two minutes' margin), or on any 401 from the

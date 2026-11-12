@@ -61,4 +61,23 @@
     <string name="cloud_sign_in_apple">Inicia la sessió amb Apple</string>
     <string name="cloud_sign_in_github">Inicia la sessió amb GitHub</string>
     <string name="cloud_sign_in_google">Continua amb Google</string>
+    <string name="cloud_sign_in_email">Continua amb el correu</string>
+    <string name="cloud_email_title">Inicia la sessió amb el correu</string>
+    <string name="cloud_email_detail">T’enviarem un codi de 6 xifres per correu. Sense contrasenya.</string>
+    <string name="cloud_email_placeholder">Adreça de correu</string>
+    <string name="cloud_email_send">Envia el codi</string>
+    <string name="cloud_email_wait">Torna-ho a provar d’aquí a %1$s</string>
+    <string name="cloud_email_code_title">Mira el correu</string>
+    <string name="cloud_email_code_detail">Introdueix el codi de 6 xifres que hem enviat a %1$s.</string>
+    <string name="cloud_email_code_placeholder">Codi de 6 xifres</string>
+    <string name="cloud_email_verify">Verifica</string>
+    <string name="cloud_email_resend">Torna a enviar el codi</string>
+    <string name="cloud_email_resend_in">Torna a enviar d’aquí a %1$s</string>
+    <string name="cloud_email_resent">T’hem enviat un codi nou.</string>
+    <string name="cloud_email_change">Canvia el correu</string>
+    <string name="cloud_email_invalid">No sembla una adreça de correu.</string>
+    <string name="cloud_email_code_wrong">El codi és incorrecte o ha caducat.</string>
+    <string name="cloud_email_unavailable">L’inici de sessió per correu no funciona ara mateix. Torna-ho a provar d’aquí a una estona.</string>
+    <string name="cloud_email_unsupported">L’inici de sessió per correu encara no està disponible.</string>
+    <string name="cloud_email_rate_limited">Massa intents. Espera un moment i torna-ho a provar.</string>
 </resources>

@@ -61,4 +61,23 @@
     <string name="cloud_sign_in_apple">Iniciar sesión con Apple</string>
     <string name="cloud_sign_in_github">Iniciar sesión con GitHub</string>
     <string name="cloud_sign_in_google">Continuar con Google</string>
+    <string name="cloud_sign_in_email">Continuar con correo</string>
+    <string name="cloud_email_title">Inicia sesión con tu correo</string>
+    <string name="cloud_email_detail">Te enviaremos un código de 6 dígitos por correo. Sin contraseña.</string>
+    <string name="cloud_email_placeholder">Correo electrónico</string>
+    <string name="cloud_email_send">Enviar código</string>
+    <string name="cloud_email_wait">Inténtalo en %1$s</string>
+    <string name="cloud_email_code_title">Revisa tu correo</string>
+    <string name="cloud_email_code_detail">Introduce el código de 6 dígitos que enviamos a %1$s.</string>
+    <string name="cloud_email_code_placeholder">Código de 6 dígitos</string>
+    <string name="cloud_email_verify">Verificar</string>
+    <string name="cloud_email_resend">Reenviar código</string>
+    <string name="cloud_email_resend_in">Reenviar en %1$s</string>
+    <string name="cloud_email_resent">Te enviamos un código nuevo.</string>
+    <string name="cloud_email_change">Cambiar correo</string>
+    <string name="cloud_email_invalid">Eso no parece una dirección de correo.</string>
+    <string name="cloud_email_code_wrong">Ese código es incorrecto o ha caducado.</string>
+    <string name="cloud_email_unavailable">El inicio de sesión por correo no funciona ahora mismo. Inténtalo en un momento.</string>
+    <string name="cloud_email_unsupported">El inicio de sesión por correo aún no está disponible.</string>
+    <string name="cloud_email_rate_limited">Demasiados intentos. Espera un momento y vuelve a intentarlo.</string>
 </resources>

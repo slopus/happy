@@ -61,4 +61,23 @@
     <string name="cloud_sign_in_apple">通过 Apple 登录</string>
     <string name="cloud_sign_in_github">使用 GitHub 登录</string>
     <string name="cloud_sign_in_google">使用 Google 账号继续</string>
+    <string name="cloud_sign_in_email">使用邮箱继续</string>
+    <string name="cloud_email_title">使用邮箱登录</string>
+    <string name="cloud_email_detail">我们会向你的邮箱发送 6 位验证码，无需密码。</string>
+    <string name="cloud_email_placeholder">邮箱地址</string>
+    <string name="cloud_email_send">发送验证码</string>
+    <string name="cloud_email_wait">%1$s 后重试</string>
+    <string name="cloud_email_code_title">查看你的邮箱</string>
+    <string name="cloud_email_code_detail">输入我们发送到 %1$s 的 6 位验证码。</string>
+    <string name="cloud_email_code_placeholder">6 位验证码</string>
+    <string name="cloud_email_verify">验证</string>
+    <string name="cloud_email_resend">重新发送验证码</string>
+    <string name="cloud_email_resend_in">%1$s 后重新发送</string>
+    <string name="cloud_email_resent">已向你发送新的验证码。</string>
+    <string name="cloud_email_change">更换邮箱</string>
+    <string name="cloud_email_invalid">这看起来不像邮箱地址。</string>
+    <string name="cloud_email_code_wrong">验证码错误或已过期。</string>
+    <string name="cloud_email_unavailable">邮箱登录暂时无法使用，请稍后再试。</string>
+    <string name="cloud_email_unsupported">邮箱登录尚未开放。</string>
+    <string name="cloud_email_rate_limited">尝试次数过多，请稍等片刻再试。</string>
 </resources>

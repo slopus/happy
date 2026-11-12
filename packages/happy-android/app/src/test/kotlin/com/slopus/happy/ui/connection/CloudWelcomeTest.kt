@@ -65,6 +65,7 @@ class CloudWelcomeTest {
             image = { null },
             onOpenBrowser = { taps += "browser ${it.id}" },
             onSignInWithGoogle = { taps += "google" },
+            onEmail = { taps += "email" },
             signInWithPassword = { login, password -> tries += login to password; answers.removeFirst() },
             onReload = {},
             onJoinServer = { taps += "join ${it.name}" },
@@ -88,9 +89,13 @@ class CloudWelcomeTest {
         rule.mainClock.autoAdvance = true
     }
 
-    /** Desktop's five slides in its order, with its words (the first in Liquid Metal), then Sign in with Apple and with GitHub in the first screen's two places. */
+    /**
+     * Desktop's five slides in its order, with its words (the first in Liquid
+     * Metal), then Sign in with Apple and with GitHub in the first screen's
+     * two places, and the quiet Continue with email right under them.
+     */
     @Test
-    fun theWelcomeIsDesktopsSlidesThenAppleAndGitHub() {
+    fun theWelcomeIsDesktopsSlidesThenAppleGitHubAndEmail() {
         assertEquals(StartSlide.Art.Cloud, CloudSlides[0].art)
         assertEquals(
             listOf(R.raw.state_robot, R.raw.state_closed_lock, R.raw.state_sparkles, R.raw.state_open_hands),
@@ -108,15 +113,20 @@ class CloudWelcomeTest {
         rule.node(CloudTags.PRIMARY).assert(hasAnyDescendant(hasText("Sign in with Apple")))
         rule.node(CloudTags.SECONDARY).assert(hasAnyDescendant(hasText("Sign in with GitHub")))
         assertDp("github 12 under apple", apple.bottom + 12.dp, github.top)
-        assertDp("github 24 above the bottom", (891 - 24).dp, github.bottom)
+        val email = rule.node(CloudTags.EMAIL_SIGN_IN).bounds
+        rule.node(CloudTags.EMAIL_SIGN_IN).assert(hasAnyDescendant(hasText("Continue with email")))
+        assertDp("email right under github", github.bottom, email.top)
+        assertDp("email 24 above the bottom", (891 - 24).dp, email.bottom)
         assertDp("as wide as each other", apple.width, github.width)
+        assertDp("email as wide too", apple.width, email.width)
         assertDp("centred", (PHONE_WIDTH / 2f).dp, (apple.left + apple.right) / 2)
         rule.onNodeWithText("Continue").assertDoesNotExist()
         rule.onNodeWithText("Other ways", substring = true).assertDoesNotExist()
         rule.onNodeWithText("Sign in with Apple").performClick()
         rule.onNodeWithText("Sign in with GitHub").performClick()
+        rule.onNodeWithText("Continue with email").performClick()
         rule.node(HeaderTags.LEFT).performClick()
-        assertEquals(listOf("browser apple", "browser github", "back"), taps)
+        assertEquals(listOf("browser apple", "browser github", "email", "back"), taps)
     }
 
     /**
@@ -135,7 +145,7 @@ class CloudWelcomeTest {
         assertDp("as tall as apple", apple.height, google.height)
         assertDp("50 tall", 50.dp, google.height)
         assertDp("as wide as apple", apple.width, google.width)
-        assertDp("github still 24 above the bottom", (891 - 24).dp, github.bottom)
+        assertDp("github still right over email", rule.node(CloudTags.EMAIL_SIGN_IN).bounds.top, github.bottom)
         rule.onNodeWithText("Continue with Google").performClick()
         assertEquals(listOf("google"), taps)
     }
@@ -147,6 +157,7 @@ class CloudWelcomeTest {
         rule.node(CloudTags.GOOGLE).assertIsNotEnabled()
         rule.node(CloudTags.PRIMARY).assertIsNotEnabled()
         rule.node(CloudTags.SECONDARY).assertIsNotEnabled()
+        rule.node(CloudTags.EMAIL_SIGN_IN).assertIsNotEnabled()
     }
 
     /** A failed sign-in stays on the welcome: why, in red over the button, which tries again. */

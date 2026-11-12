@@ -61,4 +61,23 @@
     <string name="cloud_sign_in_apple">Вход с Apple</string>
     <string name="cloud_sign_in_github">Войти через GitHub</string>
     <string name="cloud_sign_in_google">Продолжить с Google</string>
+    <string name="cloud_sign_in_email">Продолжить с email</string>
+    <string name="cloud_email_title">Вход по email</string>
+    <string name="cloud_email_detail">Мы пришлём на почту 6-значный код. Пароль не нужен.</string>
+    <string name="cloud_email_placeholder">Адрес email</string>
+    <string name="cloud_email_send">Отправить код</string>
+    <string name="cloud_email_wait">Повторите через %1$s</string>
+    <string name="cloud_email_code_title">Проверьте почту</string>
+    <string name="cloud_email_code_detail">Введите 6-значный код, который мы отправили на %1$s.</string>
+    <string name="cloud_email_code_placeholder">6-значный код</string>
+    <string name="cloud_email_verify">Подтвердить</string>
+    <string name="cloud_email_resend">Отправить ещё раз</string>
+    <string name="cloud_email_resend_in">Отправить ещё раз через %1$s</string>
+    <string name="cloud_email_resent">Мы отправили новый код.</string>
+    <string name="cloud_email_change">Изменить email</string>
+    <string name="cloud_email_invalid">Это не похоже на адрес email.</string>
+    <string name="cloud_email_code_wrong">Код неверный или устарел.</string>
+    <string name="cloud_email_unavailable">Вход по email сейчас не работает. Попробуйте чуть позже.</string>
+    <string name="cloud_email_unsupported">Вход по email пока недоступен.</string>
+    <string name="cloud_email_rate_limited">Слишком много попыток. Подождите немного и попробуйте снова.</string>
 </resources>
