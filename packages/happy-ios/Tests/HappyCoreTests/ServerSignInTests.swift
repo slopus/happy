@@ -539,6 +539,31 @@ final class SignInRequiredTests: XCTestCase {
         XCTAssertNil(keychain.stored(item))
     }
 
+    /// Continue with Google: the same endpoint with Google's ID token and
+    /// the raw nonce it was bound to, and nothing else: no authorization
+    /// code and no name, which Google's token carries itself.
+    func testHappyCloudSignsInWithGoogle() async throws {
+        let accounts = HappyCloud.accounts
+        let http = ScriptedHTTP()
+        let pass = jwt("acc-g", aud: accounts + "/")
+        http.on(accounts + "/v1/auth/native") { request in
+            XCTAssertEqual(request.method, "POST")
+            XCTAssertEqual(request.headers["Content-Type"], "application/json")
+            XCTAssertNil(request.headers["Authorization"])
+            let body = try JSONSerialization.jsonObject(with: request.body ?? Data()) as? [String: String]
+            XCTAssertEqual(body, ["provider": "google", "idToken": "google.id.token", "nonce": "raw-nonce"])
+            return HTTPResponse(status: 200, body: Data(#"{"access_token":"\#(pass)","expires_in":3600}"#.utf8))
+        }
+        let account = try await CloudAccount.signIn(provider: "google", idToken: "google.id.token", nonce: "raw-nonce", authorizationCode: nil, name: nil, http: http)
+        XCTAssertTrue(account.isLive())
+        XCTAssertEqual(http.requests.count, 1)
+        // A token without the nonce, or for another client, is refused: a failure, not an ended pass.
+        http.json(accounts + "/v1/auth/native", status: 401, #"{"code":"invalid_token","error":"That sign-in could not be verified."}"#)
+        await XCTAssertThrowsAsync(try await CloudAccount.signIn(provider: "google", idToken: "bad", nonce: "raw-nonce", authorizationCode: nil, name: nil, http: http)) {
+            XCTAssertEqual($0 as? CloudAccountError, .refused(status: 401, code: "invalid_token", message: "That sign-in could not be verified."))
+        }
+    }
+
     /// A test account signs in with its login and password and gets the
     /// same one-hour pass; a wrong password and a lockout say which.
     func testHappyCloudTestAccountSignsInWithAPassword() async throws {

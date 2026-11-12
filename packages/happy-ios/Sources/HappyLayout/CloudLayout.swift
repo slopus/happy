@@ -6,42 +6,52 @@ import CoreGraphics
 /// Happy Cloud's welcome (CloudWelcomeViewController), laid out as the
 /// first screen is so the two read as one flow: desktop's Cloud slides in
 /// the first screen's gallery at its place, Continue with Apple where Start
-/// is and Sign in with GitHub where Use Happy Cloud is under it (12 under,
-/// at least 24 above the bottom inset, Apple's rising to make room), both
-/// as wide as the wider. A note (the account's sign-in has ended, or why a
-/// sign-in failed) sits 12 over Apple's, and the slides centre again over
-/// it all.
+/// is, Continue with Google 12 under it, and Sign in with GitHub where Use
+/// Happy Cloud is under them (12 under, at least 24 above the bottom inset,
+/// Apple's and Google's rising to make room), all as wide as the widest.
+/// A note (the account's sign-in has ended, or why a sign-in failed) sits
+/// 12 over Apple's, and the slides centre again over it all.
 public struct CloudWelcomeLayout: Equatable, Sendable {
     public enum Metrics {
         /// Between the note and the button under it.
         public static let noteGap: CGFloat = 12
+        /// Between Apple's button and Google's.
+        public static let googleGap: CGFloat = StartLayout.Metrics.buttonGap
     }
 
-    /// The first screen's layout with the two buttons as Start and Use
-    /// Happy Cloud: the gallery, its pages and dots, and the scrolled
-    /// content's height.
+    /// The first screen's layout with Apple's and Google's buttons as Start
+    /// and GitHub's as Use Happy Cloud: the gallery, its pages and dots,
+    /// and the scrolled content's height.
     public var start: StartLayout
     /// Continue with Apple.
     public var button: CGRect
-    /// Sign in with GitHub, under it.
+    /// Continue with Google, under it; zero without one.
+    public var google: CGRect
+    /// Sign in with GitHub, under them.
     public var secondary: CGRect
     /// The note over the buttons; zero without one.
     public var note: CGRect
 
     /// `safeArea` is the first screen's (without this one's bar, which
-    /// sits over the first screen's top row). `button` and `secondary` are
-    /// the two buttons' own sizes.
-    public init(size: CGSize, safeArea: LayoutInsets, button buttonSize: CGSize, secondary: CGSize, note: Measurable? = nil,
-                slides: [StartLayout.Slide], dots: CGSize) {
+    /// sits over the first screen's top row). `button`, `google` and
+    /// `secondary` are the buttons' own sizes; a zero `google` leaves
+    /// Google's out.
+    public init(size: CGSize, safeArea: LayoutInsets, button buttonSize: CGSize, google googleSize: CGSize = .zero, secondary: CGSize,
+                note: Measurable? = nil, slides: [StartLayout.Slide], dots: CGSize) {
         let width = max(0, size.width - safeArea.horizontal)
         let column = min(StartLayout.Metrics.columnMaxWidth, max(0, width - StartLayout.Metrics.sidePadding * 2))
         let noteSize = note?.size(fitting: column) ?? .zero
         let noteRoom = noteSize.height > 0 ? noteSize.height + Metrics.noteGap : 0
-        // The note and Apple's button are one block where Start is.
-        start = StartLayout(size: size, safeArea: safeArea, button: CGSize(width: buttonSize.width, height: buttonSize.height + noteRoom),
+        let googleRoom = googleSize.height > 0 ? Metrics.googleGap + googleSize.height : 0
+        // The note, Apple's button and Google's are one block where Start is.
+        start = StartLayout(size: size, safeArea: safeArea,
+                            button: CGSize(width: max(buttonSize.width, googleSize.width), height: noteRoom + buttonSize.height + googleRoom),
                             cloud: secondary, slides: slides, dots: dots)
         let block = start.button
-        button = CGRect(x: block.minX, y: block.maxY - buttonSize.height, width: block.width, height: buttonSize.height)
+        button = CGRect(x: block.minX, y: block.maxY - googleRoom - buttonSize.height, width: block.width, height: buttonSize.height)
+        google = googleSize.height > 0
+            ? CGRect(x: block.minX, y: block.maxY - googleSize.height, width: block.width, height: googleSize.height)
+            : .zero
         self.secondary = start.cloud
         self.note = noteSize.height > 0
             ? CGRect(x: safeArea.left + (width - column) / 2, y: block.minY, width: column, height: noteSize.height)

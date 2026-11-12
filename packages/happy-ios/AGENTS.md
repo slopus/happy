@@ -675,6 +675,10 @@ identical and checks the variant keys:
 
 Every variant asks for push (`aps-environment`). Production adds associated
 domains; development and preview add Sign in with Apple for Happy Cloud.
+Each variant has its own Google iOS client for Continue with Google:
+`HAPPY_GOOGLE_CLIENT` in `project.yml`'s Happy target, which the plists
+turn into `GIDClientID` and its reversed-client-ID URL scheme. xtool doesn't
+expand it, so an xtool build's Continue with Google fails at Google.
 
 ### Versioning
 
@@ -733,7 +737,10 @@ and preview ship the same number on their own listings.
 - Don't add a dependency without saying why in the PR. Current ones:
   - GRDB;
   - swift-crypto, Linux only;
-  - swift-asn1, which swift-crypto pulls in.
+  - swift-asn1, which swift-crypto pulls in;
+  - GoogleSignIn-iOS, iOS only, for Happy Cloud's Continue with Google
+    (with AppAuth, GTMAppAuth, gtm-session-fetcher and app-check, which it
+    pulls in).
 
 ## Workstreams
 

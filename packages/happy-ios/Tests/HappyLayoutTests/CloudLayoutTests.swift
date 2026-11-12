@@ -48,6 +48,30 @@ final class CloudLayoutTests: XCTestCase {
         XCTAssertEqual(noted.start.gallery.minY, plain.start.gallery.minY - 26)
     }
 
+    /// Continue with Google sits 12 under Apple's in Start's block, which
+    /// rises to make room; GitHub's stays where Use Happy Cloud is, and all
+    /// three are as wide as the widest. The note still sits 12 over Apple's.
+    func testGooglesButtonSitsUnderApplesAndAllThreeShareAWidth() {
+        let safe = LayoutInsets(top: 59, left: 0, bottom: 34, right: 0)
+        let apple = CGSize(width: 0, height: 50), github = CGSize(width: 236, height: 50)
+        let dots = CGSize(width: 150, height: 26)
+        let plain = CloudWelcomeLayout(size: phone, safeArea: safe, button: apple, secondary: github, slides: slides(), dots: dots)
+        let welcome = CloudWelcomeLayout(size: phone, safeArea: safe, button: apple, google: CGSize(width: 252, height: 50), secondary: github,
+                                         slides: slides(), dots: dots)
+        XCTAssertEqual(welcome.button, CGRect(x: 56.5, y: 852 - 34 - 24 - 50 - 12 - 50 - 12 - 50, width: 280, height: 50))
+        XCTAssertEqual(welcome.google, CGRect(x: 56.5, y: 852 - 34 - 24 - 50 - 12 - 50, width: 280, height: 50))
+        XCTAssertEqual(welcome.secondary, plain.secondary)
+        XCTAssertEqual(welcome.start.gallery.minY, plain.start.gallery.minY - 31)
+        XCTAssertEqual(plain.google, .zero)
+
+        let wide = CloudWelcomeLayout(size: phone, safeArea: safe, button: apple, google: CGSize(width: 300, height: 50), secondary: github,
+                                      note: .fixed(width: 300, height: 40), slides: slides(), dots: dots)
+        XCTAssertEqual([wide.button.width, wide.google.width, wide.secondary.width], [300, 300, 300])
+        XCTAssertEqual(wide.button.minX, 46.5)
+        XCTAssertEqual(wide.google.minY, welcome.google.minY)
+        XCTAssertEqual(wide.note, CGRect(x: 24, y: wide.button.minY - 12 - 40, width: 345, height: 40))
+    }
+
     // MARK: A step
 
     /// Sign in: the scene, the title and its line centred over Apple's and

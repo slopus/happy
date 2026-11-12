@@ -18,9 +18,19 @@
 				<string>happy</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.google.signin</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.$(HAPPY_GOOGLE_CLIENT)</string>
+			</array>
+		</dict>
 	</array>
 	<key>CFBundleVersion</key>
 	<string>160</string>
+	<key>GIDClientID</key>
+	<string>$(HAPPY_GOOGLE_CLIENT).apps.googleusercontent.com</string>
 	<key>HappyAppVariant</key>
 	<string>production</string>
 	<key>HappyCallAgentID</key>

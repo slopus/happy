@@ -54,6 +54,9 @@ let package = Package(
         // build; scenes play on its Core Animation engine, off the main
         // thread's render loop.
         .package(url: "https://github.com/airbnb/lottie-spm.git", exact: "4.5.2"),
+        // Happy Cloud's Continue with Google: Google's own sign-in, whose ID
+        // token, bound to a nonce, the accounts service takes natively.
+        .package(url: "https://github.com/google/GoogleSignIn-iOS.git", exact: "10.1.0"),
     ],
     targets: [
         .target(name: "HappyGuest", dependencies: [cryptoBackend]),
@@ -106,6 +109,7 @@ let package = Package(
                 .product(name: "ElevenLabs", package: "elevenlabs-swift-sdk", condition: .when(platforms: [.iOS])),
                 .product(name: "UltraView", package: "ultraview", condition: .when(platforms: [.iOS])),
                 .product(name: "Lottie", package: "lottie-spm", condition: .when(platforms: [.iOS])),
+                .product(name: "GoogleSignIn", package: "GoogleSignIn-iOS", condition: .when(platforms: [.iOS])),
             ],
             // Fonts and images live with the code that draws them, so
             // `Bundle.module` resolves the same way under xtool and Xcode.

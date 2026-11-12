@@ -86,19 +86,26 @@ targets:
         # expo-notifications plugin writes it; signing for distribution
         # replaces it with the profile's "production". Production also has
         # its associated domain.
+        #
+        # HAPPY_GOOGLE_CLIENT is the variant's own iOS OAuth client for
+        # Continue with Google (public, not a secret): the Info.plists make
+        # GIDClientID and its reversed URL scheme from it.
       configs:
         Debug:
           PRODUCT_BUNDLE_IDENTIFIER: com.slopus.happy.dev
           INFOPLIST_FILE: App/Info-Development.plist
           CODE_SIGN_ENTITLEMENTS: App/Happy.entitlements
+          HAPPY_GOOGLE_CLIENT: 902947412706-3563t62iimaknc7lq6fdhgcgna7eff1l
         Preview:
           PRODUCT_BUNDLE_IDENTIFIER: com.slopus.happy.preview
           INFOPLIST_FILE: App/Info-Preview.plist
           CODE_SIGN_ENTITLEMENTS: App/Happy.entitlements
+          HAPPY_GOOGLE_CLIENT: 902947412706-0s9bb1000luv6d9vkdbau31h2i69gad0
         Release:
           PRODUCT_BUNDLE_IDENTIFIER: com.ex3ndr.happy
           INFOPLIST_FILE: App/Info-Production.plist
           CODE_SIGN_ENTITLEMENTS: App/Happy-Production.entitlements
+          HAPPY_GOOGLE_CLIENT: 902947412706-3a9fl74rsj3566r0a9i2310mgeu1qd09
           CURRENT_PROJECT_VERSION: "160"
   HappyMac:
     # Genuine AppKit/macOS SDK target. No UIKit, Catalyst or iPad binary.

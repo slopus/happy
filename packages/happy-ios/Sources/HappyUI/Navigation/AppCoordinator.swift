@@ -188,6 +188,9 @@ public final class AppCoordinator {
         // A sign-in's redirect belongs to its browser session, which takes
         // it before iOS opens the app; a stray one opens nothing.
         if OAuthRedirect.isCallback(url) { return true }
+        // Google's redirect (its reversed client ID's scheme) goes to its
+        // sign-in, which usually takes it in its own session first.
+        if CloudGoogle.handle(url) { return true }
         let text = url.absoluteString
         guard HappyCode(text) != .notHappy else {
             // An entity or file link: opened only on the installation it names.

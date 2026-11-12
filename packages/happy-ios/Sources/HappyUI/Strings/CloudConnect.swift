@@ -21,7 +21,10 @@ extension Strings {
         /// has ended.
         static let expired = "Your Happy Cloud sign-in has ended. Sign in again."
 
-        /// The welcome's second way in, under Apple's own button.
+        /// The welcome's second way in, under Apple's own button, in the
+        /// words Google's branding guidelines give it.
+        static let google = "Continue with Google"
+        /// The third, under Google's.
         static let github = "Sign in with GitHub"
         /// A test account's sign-in.
         static let signInTitle = "Sign in"

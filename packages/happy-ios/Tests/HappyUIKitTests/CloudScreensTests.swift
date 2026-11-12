@@ -192,7 +192,8 @@ final class CloudScreensTests: XCTestCase {
     // MARK: The welcome and sign-in
 
     /// Desktop's five Cloud slides, word for word, and the sign-in under
-    /// them: Apple's own button where Start is, GitHub under it, as wide.
+    /// them: Apple's own button where Start is, Google's under it, GitHub
+    /// under that, all as wide.
     func testTheWelcomeIsDesktopsCloudSlidesOverTheSignIn() {
         let welcome = CloudWelcomeViewController(context: context())
         show(UINavigationController(rootViewController: welcome))
@@ -204,9 +205,15 @@ final class CloudScreensTests: XCTestCase {
         XCTAssertEqual(apple?.accessibilityIdentifier, "cloud-apple")
         XCTAssertEqual(welcome.github.title, "Sign in with GitHub")
         XCTAssertEqual(welcome.github.display, .filled)
+        XCTAssertEqual(welcome.google.accessibilityIdentifier, "cloud-google")
+        XCTAssertEqual(welcome.google.accessibilityLabel, "Continue with Google")
         XCTAssertEqual(apple?.frame.width, welcome.github.frame.width)
+        XCTAssertEqual(welcome.google.frame.width, welcome.github.frame.width)
         XCTAssertEqual(apple?.frame.minX, welcome.github.frame.minX)
-        XCTAssertEqual((apple?.frame.maxY ?? 0) + 12, welcome.github.frame.minY)
+        XCTAssertEqual(welcome.google.frame.minX, welcome.github.frame.minX)
+        XCTAssertEqual(welcome.google.frame.height, apple?.frame.height)
+        XCTAssertEqual((apple?.frame.maxY ?? 0) + 12, welcome.google.frame.minY)
+        XCTAssertEqual(welcome.google.frame.maxY + 12, welcome.github.frame.minY)
         XCTAssertGreaterThan(apple?.frame.minY ?? 0, welcome.gallery.frame.maxY)
         XCTAssertEqual(welcome.note.string, "")
         XCTAssertEqual(welcome.note.frame.height, 0)

@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import AuthenticationServices
 import CryptoKit
+import GoogleSignIn
 import HappyCore
 import HappyLayout
 import UIKit
@@ -17,9 +18,10 @@ protocol CloudFlowScreen: AccountAddingFlow {}
 /// in desktop's order (CloudConnectScreen.tsx):
 ///
 /// 1. Welcome: desktop's Cloud slides in the first screen's gallery, and
-///    under them the sign-in: Sign in with Apple (native) and Sign in
-///    with GitHub (GitHub's page in the app, straight from the accounts
-///    service). Skipped while the account's hour-long pass lasts.
+///    under them the sign-in: Sign in with Apple and Continue with Google
+///    (both native) and Sign in with GitHub (GitHub's page in the app,
+///    straight from the accounts service). Skipped while the account's
+///    hour-long pass lasts.
 /// 2. Join a server: each of the account's servers with Join; several can
 ///    be joined, then Continue opens the last. Bootstrap a new one and Join
 ///    with an invite under them. An account with none starts at Bootstrap.
@@ -132,12 +134,14 @@ private func dressCloudScreen(_ controller: UIViewController, gradient: GrainGra
 
 /// Happy Cloud's welcome, desktop's (`CLOUD_SLIDES` in a `WelcomeScreen`),
 /// with the sign-in in its action's place: its slides in the first screen's
-/// gallery, at the first screen's place, Sign in with Apple where Start is
-/// and Sign in with GitHub under it where Use Happy Cloud is
-/// (`CloudWelcomeLayout`).
+/// gallery, at the first screen's place, Sign in with Apple where Start is,
+/// Continue with Google under it, and Sign in with GitHub under them where
+/// Use Happy Cloud is (`CloudWelcomeLayout`).
 ///
 /// - Sign in with Apple: Apple's own button, Sign in with Apple, then
 ///   `POST /v1/auth/native`.
+/// - Continue with Google: Google's button (`CloudGoogleButton`), Google's
+///   own sign-in, then `POST /v1/auth/native` the same way.
 /// - Sign in with GitHub: the accounts service's authorization request
 ///   with `provider=github`, which goes straight to GitHub, in the app's
 ///   own browser sheet.
@@ -163,11 +167,13 @@ final class CloudWelcomeViewController: UIViewController, CloudFlowScreen, ASWeb
     let drift = SetupDriftView(scenes: CloudWelcomeViewController.drift)
     let gallery = StartGalleryView(slides: CloudWelcomeViewController.slides, interval: CloudWelcomeViewController.advanceInterval)
     private(set) var appleButton: ASAuthorizationAppleIDButton?
+    let google = CloudGoogleButton()
     let github = RoundButton(title: Strings.CloudConnect.github)
     let note = StartGalleryView.bodyLabel("")
     private var taps = CloudLogoTaps()
     private var browser: ASWebAuthenticationSession?
     private var apple: CloudApple?
+    private var signingInWithGoogle = false
     /// Where the test account's sign-in goes; the tests' fake accounts.
     var http: any HTTPTransport = NoRedirectURLSessionTransport()
 
@@ -192,12 +198,13 @@ final class CloudWelcomeViewController: UIViewController, CloudFlowScreen, ASWeb
         scroll.showsVerticalScrollIndicator = false
         scroll.alwaysBounceVertical = false
         view.addSubview(scroll)
+        google.addAction(UIAction { [weak self] _ in Task { await self?.signInWithGoogle() } }, for: .touchUpInside)
         github.accessibilityIdentifier = "cloud-github"
         github.action = { [weak self] in await self?.signInWithGitHub() }
         if HappyCloud.isOffered(in: context.variant) {
             gallery.onArtTap = { [weak self] in self?.logoTapped(at: Date()) }
         }
-        for subview in [gallery, note, github] as [UIView] { scroll.addSubview(subview) }
+        for subview in [gallery, note, google, github] as [UIView] { scroll.addSubview(subview) }
         updateAppleButton()
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.updateAppleButton() }
     }
@@ -234,7 +241,8 @@ final class CloudWelcomeViewController: UIViewController, CloudFlowScreen, ASWeb
         if let bar = navigationController?.navigationBar, !bar.isHidden {
             insets.top = max(0, insets.top - bar.frame.height)
         }
-        // GitHub's as wide as its label; Apple's as tall, as wide as the wider.
+        // GitHub's as wide as its label, Google's as its "G" and words;
+        // Apple's as tall, all as wide as the widest.
         let metrics = RoundButtonMetrics.of(github.size)
         let label = github.label.measurable.size(fitting: .greatestFiniteMagnitude)
         let githubSize = CGSize(width: ceil(label.width) + metrics.paddingHorizontal * 2, height: github.layout(width: StartLayout.Metrics.buttonMinWidth).size.height)
@@ -242,6 +250,7 @@ final class CloudWelcomeViewController: UIViewController, CloudFlowScreen, ASWeb
             size: view.bounds.size,
             safeArea: LayoutInsets(insets),
             button: CGSize(width: 0, height: metrics.height),
+            google: CGSize(width: google.sizeThatFits(.zero).width, height: metrics.height),
             secondary: githubSize,
             note: note.string.isEmpty ? nil : note.measurable,
             slides: gallery.slides,
@@ -254,6 +263,7 @@ final class CloudWelcomeViewController: UIViewController, CloudFlowScreen, ASWeb
         note.setLayoutFrame(layout.note)
         appleButton?.setLayoutFrame(layout.button)
         appleButton?.cornerRadius = layout.button.height / 2
+        google.setLayoutFrame(layout.google)
         github.setLayoutFrame(layout.secondary)
         // The drift keeps clear of the art, every slide's words, the dots,
         // the note and the buttons.
@@ -263,7 +273,7 @@ final class CloudWelcomeViewController: UIViewController, CloudFlowScreen, ASWeb
                    height: (start.bodies.map(\.maxY).max() ?? title.maxY) - title.minY)
         }
         let avoid = [start.art.offsetBy(dx: gallery.minX, dy: gallery.minY), words ?? .zero, start.dots.offsetBy(dx: gallery.minX, dy: gallery.minY),
-                     layout.note, layout.button, layout.secondary]
+                     layout.note, layout.button, layout.google, layout.secondary]
         drift.avoid = avoid.filter { !$0.isEmpty }.map { scroll.convert($0, to: view) }
     }
 
@@ -287,6 +297,24 @@ final class CloudWelcomeViewController: UIViewController, CloudFlowScreen, ASWeb
             CloudScreens.appleName = identity.name ?? CloudScreens.appleName
             let account = try await CloudAccount.signIn(provider: "apple", idToken: identity.idToken, nonce: identity.nonce,
                                                         authorizationCode: identity.authorizationCode, name: identity.name)
+            CloudScreens.signedIn(account, context: context, from: self)
+        } catch OAuthError.cancelled {
+        } catch {
+            say(Strings.HappyCloud.failure(error))
+        }
+    }
+
+    /// Google's own sign-in, then the accounts service with the nonce its ID
+    /// token was bound to, as Apple's; cancelling it says nothing.
+    private func signInWithGoogle() async {
+        guard !signingInWithGoogle else { return }
+        signingInWithGoogle = true
+        defer { signingInWithGoogle = false }
+        say(nil)
+        do {
+            let identity = try await CloudGoogle.signIn(presenting: self)
+            let account = try await CloudAccount.signIn(provider: "google", idToken: identity.idToken, nonce: identity.nonce,
+                                                        authorizationCode: nil, name: nil)
             CloudScreens.signedIn(account, context: context, from: self)
         } catch OAuthError.cancelled {
         } catch {
@@ -603,7 +631,7 @@ final class CloudApple: NSObject, ASAuthorizationControllerDelegate, ASAuthoriza
         }
     }
 
-    private static func nonce() -> String {
+    static func nonce() -> String {
         var bytes = [UInt8](repeating: 0, count: 32)
         _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
         return bytes.map { String(format: "%02x", $0) }.joined()
@@ -633,6 +661,105 @@ final class CloudApple: NSObject, ASAuthorizationControllerDelegate, ASAuthoriza
     private func finish(_ result: Result<Identity, any Error>) {
         continuation?.resume(with: result)
         continuation = nil
+    }
+}
+
+/// One Continue with Google: Google's own sign-in (GoogleSignIn, with the
+/// variant's `GIDClientID` from its Info.plist), its ID token bound to a
+/// fresh nonce, which goes back raw with it. Google's session isn't kept:
+/// the account is the accounts service's, and the next sign-in asks again.
+@MainActor
+enum CloudGoogle {
+    struct Identity { let idToken: String; let nonce: String }
+
+    static func signIn(presenting controller: UIViewController) async throws -> Identity {
+        let nonce = CloudApple.nonce()
+        let idToken: String = try await withCheckedThrowingContinuation { continuation in
+            GIDSignIn.sharedInstance.signIn(withPresenting: controller, hint: nil, additionalScopes: nil, nonce: nonce) { result, error in
+                if let idToken = result?.user.idToken?.tokenString { return continuation.resume(returning: idToken) }
+                let cancelled = (error as? GIDSignInError)?.code == .canceled
+                continuation.resume(throwing: cancelled ? OAuthError.cancelled : error ?? OAuthError.invalidResponse)
+            }
+        }
+        GIDSignIn.sharedInstance.signOut()
+        return Identity(idToken: idToken, nonce: nonce)
+    }
+
+    /// Google's redirect, if `url` is one; the app opens nothing for it.
+    static func handle(_ url: URL) -> Bool { GIDSignIn.sharedInstance.handle(url) }
+}
+
+/// Continue with Google, by Google's branding guidelines: its standard "G"
+/// and its words on Google's light button where Apple's is black, and on
+/// its dark one where Apple's is white (`Palette.google*`), the pill and
+/// the words' size and weight Apple's (`GoogleButtonLayout`).
+final class CloudGoogleButton: UIControl {
+    private let mark = GoogleMarkView()
+    private let label = UILabel()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        accessibilityIdentifier = "cloud-google"
+        isAccessibilityElement = true
+        accessibilityLabel = Strings.CloudConnect.google
+        accessibilityTraits = .button
+        layer.borderWidth = 1
+        layer.cornerCurve = .continuous
+        label.text = Strings.CloudConnect.google
+        label.font = .systemFont(ofSize: 19, weight: .medium)
+        label.lineBreakMode = .byTruncatingTail
+        for view in [mark, label] as [UIView] {
+            view.isUserInteractionEnabled = false
+            addSubview(view)
+        }
+        applyColors()
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.applyColors() }
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override var isHighlighted: Bool {
+        didSet { alpha = isHighlighted ? 0.7 : 1 }
+    }
+
+    private func applyColors() {
+        backgroundColor = UIColor(Palette.googleButtonFill).resolvedColor(with: traitCollection)
+        layer.borderColor = UIColor(Palette.googleButtonStroke).resolvedColor(with: traitCollection).cgColor
+        label.textColor = UIColor(Palette.googleButtonText)
+    }
+
+    private var labelSize: CGSize { label.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)) }
+
+    override func sizeThatFits(_ size: CGSize) -> CGSize {
+        CGSize(width: GoogleButtonLayout.width(label: labelSize), height: size.height)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layer.cornerRadius = bounds.height / 2
+        let layout = GoogleButtonLayout(size: bounds.size, label: labelSize)
+        mark.setLayoutFrame(layout.mark)
+        label.setLayoutFrame(layout.label)
+    }
+}
+
+/// Google's "G" (`GoogleMark`), aspect-fit.
+final class GoogleMarkView: UIView {
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isOpaque = false
+        contentMode = .redraw
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ rect: CGRect) {
+        guard let context = UIGraphicsGetCurrentContext() else { return }
+        for layer in GoogleMark.graphic.fitted(into: bounds) {
+            context.addPath(layer.path.cgPath)
+            context.setFillColor(UIColor(layer.color).cgColor)
+            context.fillPath()
+        }
     }
 }
 
