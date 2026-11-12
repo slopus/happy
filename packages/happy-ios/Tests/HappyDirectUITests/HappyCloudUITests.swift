@@ -703,6 +703,13 @@ final class HappyCloudUITests: XCTestCase {
             let frames = inviteFrames()
             report(state, frames)
             XCTAssertEqual(frames, ready, "\(state) moved the title, the status line or the button")
+            if state == "expired" {
+                // Show My Servers: the servers list, Bootstrap a new one a button under it.
+                join.tap()
+                film("f-servers", seconds: 20) { self.element("cloud-servers").exists }
+                Thread.sleep(forTimeInterval: 2)
+                capture("i8-servers")
+            }
             let close = app.buttons["cloud-close"]
             if close.exists { close.tap() }
             Thread.sleep(forTimeInterval: 1.5)
