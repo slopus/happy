@@ -11,6 +11,7 @@ final class TailcatConfigurationTests: XCTestCase {
             XCTAssertTrue(config.relayFirst)
             XCTAssertEqual(config.connectTimeout, 20)
             XCTAssertEqual(try config.privateKey?.publicKey.rawValue, try key.publicKey.rawValue)
+            XCTAssertEqual((config.mapCache as? FileDERPMapCache)?.directory.lastPathComponent, "tailcat")
         }
         XCTAssertEqual(try Set(keys.map { try $0.publicKey.rawValue }).count, 3)
     }

@@ -158,8 +158,13 @@ public final class AgentHTTPTransport: SelfMeteringTransport {
         config.privateKey = key
         // Serve the first request over DERP while this client's direct path is probed.
         config.relayFirst = true
+        config.mapCache = mapCache
         return config
     }
+
+    /// The relay map saved across launches: a cold launch connects with it
+    /// at once instead of fetching it first.
+    static let mapCache = FileDERPMapCache(directory: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("tailcat", isDirectory: true))
 
     /// `connect` makes one client of `category` with its own node key.
     init(port: UInt16, publicUrl: String? = nil, tailcatAvailable: Bool = true, connect: @escaping @Sendable (RequestCategory, NodePrivateKey) async throws -> TailcatClient) {
