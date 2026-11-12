@@ -207,7 +207,7 @@ vi.mock('./navigation/Header', () => ({ Header: 'Header' }));
 vi.mock('./layout', () => ({ layout: { maxWidth: 720, headerMaxWidth: 720 } }));
 vi.mock('./MessageComposer', () => ({ MessageComposer: 'MessageComposer' }));
 vi.mock('./SubmittedAttachmentPreview', () => ({ SubmittedAttachmentPreview: 'SubmittedAttachmentPreview' }));
-vi.mock('./SessionConfigPanel', () => ({ SessionConfigPanel: 'SessionConfigPanel' }));
+vi.mock('./SessionConfigPanel', () => ({ SessionConfigPanel: ({ renderComposer }: any) => renderComposer?.({ leading: null, trailing: null, below: null }) ?? null }));
 vi.mock('./ComposeHomeParticles', () => ({ ComposeHomeParticles: 'ComposeHomeParticles' }));
 vi.mock('./Avatar', () => ({ Avatar: 'Avatar' }));
 vi.mock('./RightSwipePanelHost', () => ({ RightSwipePanelHost: 'RightSwipePanelHost', useRightSwipePanel: () => null }));

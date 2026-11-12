@@ -806,8 +806,8 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
         })
         : 0;
 
-    const composerConfigControls = (
-        <View style={styles.newSessionComposerControls} testID="new-session-composer-controls">
+    const composerModeSwitch = (
+        <View style={styles.newSessionComposerControls}>
             {headerModeSwitchExperience.visible && (
                 <View style={styles.headerModeSwitch}>
                     {HEADER_MODE_SWITCH_ITEMS.map((item) => {
@@ -835,7 +835,6 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                     })}
                 </View>
             )}
-            <SessionConfigPanel ref={configPanelRef} layout="composer" collapsible={false} />
         </View>
     );
 
@@ -1148,7 +1147,9 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                             </Pressable>
                         </View>
                     )}
-                    <MessageComposer
+                    <SessionConfigPanel ref={configPanelRef} layout="composer" collapsible={false}
+                        renderComposer={(controls) => (
+                        <MessageComposer
                         ref={composerInputRef}
                         mode="home"
                         placeholder={activeImageAgent
@@ -1171,7 +1172,11 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                         onAddImages={canAttach ? addImages : undefined}
                         onPrepareAddImages={canAttach ? prepareAddImages : undefined}
                         imageAttachmentsOnly={!!activeImageAgent || agentType === 'opencode'}
-                        leadingControls={composerConfigControls}
+                        leadingControls={<>{composerModeSwitch}{controls.leading}</>}
+                        trailingControls={controls.trailing}
+                        belowComposer={controls.below}
+                    />
+                        )}
                     />
                     <Text style={styles.byline}>{t('composeHome.byline')}</Text>
                 </View>
@@ -1315,11 +1320,9 @@ const styles = StyleSheet.create((theme) => ({
     },
     newSessionComposerControls: {
         minWidth: 0,
-        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
         gap: 4,
-        overflow: 'hidden',
     },
     headerModeSwitch: {
         flexDirection: 'row',

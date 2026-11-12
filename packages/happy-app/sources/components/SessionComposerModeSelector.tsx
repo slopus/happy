@@ -1,5 +1,7 @@
 import * as React from 'react';
 import {
+    Animated,
+    Easing,
     Modal,
     Platform,
     Pressable,
@@ -10,6 +12,7 @@ import {
     View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
@@ -67,6 +70,17 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
     const { width, height } = useWindowDimensions();
     const triggerRef = React.useRef<View>(null);
     const [open, setOpen] = React.useState(false);
+    const shimmer = React.useRef(new Animated.Value(0)).current;
+    React.useEffect(() => {
+        if (!open || Platform.OS === 'web') return;
+        shimmer.setValue(0);
+        const animation = Animated.loop(Animated.timing(shimmer, {
+            toValue: 1, duration: 5000, easing: Easing.linear, useNativeDriver: true,
+        }));
+        animation.start();
+        return () => animation.stop();
+    }, [open, shimmer]);
+    const [modelHovered, setModelHovered] = React.useState(false);
     const [modelsOpen, setModelsOpen] = React.useState(false);
     const [search, setSearch] = React.useState('');
     const trackRef = React.useRef<View>(null);
@@ -126,17 +140,37 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
         }
     };
     const placement = getModePanelPlacement(width, height, anchor);
-    const levels = props.effortOptions.filter((option) => option.key !== 'default');
-    const defaultOption = props.effortOptions.find((option) => option.key === 'default');
-    const selectedIndex = levels.findIndex((option) => option.key === props.effort?.key);
+    const levels = props.effortOptions.filter((option) => option.key !== 'default').map((option) => ({
+        ...option, name: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'].includes(option.key.toLowerCase()) ? option.key.toLowerCase() : option.name,
+    }));
+    const defaultOption = levels.find((option) => option.key === 'medium') ?? levels[0];
+    const effectiveEffort = props.effort?.key === 'default' ? defaultOption : levels.find((level) => level.key === props.effort?.key) ?? props.effort;
+    const selectedIndex = levels.findIndex((option) => option.key === effectiveEffort?.key);
     const effortIndex = previewIndex ?? selectedIndex;
     const effortFraction = levels.length > 1 && effortIndex >= 0 ? effortIndex / (levels.length - 1) : 0;
+    const isUltra = levels[effortIndex]?.key?.toLowerCase() === 'ultra';
+    const particleCount = effortIndex > 0 ? Math.round(4 + effortFraction * 18) : 0;
+    const particleStyles = React.useMemo(() => Array.from({ length: 16 }, (_, particle) => {
+        const phase = ((particle + 1) * 0.61803398875) % 1;
+        const travel = Math.max(trackWidth, 1);
+        return {
+            left: 0 as const,
+            top: 4 + ((particle * 17 + 5) % 24),
+            transform: [{ translateX: shimmer.interpolate({
+                inputRange: [0, phase, Math.min(phase + 0.0001, 1), 1],
+                outputRange: [phase * travel, 0, travel, phase * travel],
+            }) }],
+        };
+    }), [shimmer, trackWidth]);
+    const slideTransition = Platform.OS === 'web' ? ({ transition: 'left 90ms ease-out, width 90ms ease-out' } as any) : undefined;
     const selectEffortAt = (offsetX: number) => {
         if (trackWidth <= 32 || levels.length === 0) return;
         const fraction = Math.max(0, Math.min(1, (offsetX - 16) / (trackWidth - 32)));
         const index = Math.round(fraction * (levels.length - 1));
-        dragIndex.current = index;
-        setPreviewIndex(index);
+        if (dragIndex.current !== index) {
+            dragIndex.current = index;
+            setPreviewIndex(index);
+        }
     };
     const finishDrag = (commit: boolean) => {
         const option = dragIndex.current === null ? undefined : levels[dragIndex.current];
@@ -154,7 +188,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
             <Pressable
                 testID="session-composer-mode-trigger"
                 accessibilityRole="button"
-                accessibilityLabel={`${t('agentInput.model.title')}: ${props.model?.name ?? ''}${props.effort ? `, ${t('agentInput.effort.title')}: ${props.effort.name}` : ''}${props.supportsFast && props.fastMode ? ', Fast' : ''}`}
+                accessibilityLabel={`${t('agentInput.model.title')}: ${props.model?.name ?? ''}${effectiveEffort ? `, ${t('agentInput.effort.title')}: ${effectiveEffort.name}` : ''}${props.supportsFast && props.fastMode ? ', Fast' : ''}`}
                 accessibilityHint={
                     enabled
                         ? undefined
@@ -181,7 +215,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                 ) : null}
                 <Text style={styles.triggerText} numberOfLines={1}>
                     {props.model?.name ?? t('agentInput.model.title')}
-                    {props.effort ? ` · ${props.effort.name}` : ''}
+                    {effectiveEffort ? <Text style={isUltra ? styles.ultraTitle : styles.triggerEffort}> {effectiveEffort.name}</Text> : null}
                 </Text>
                 {enabled ? (
                     <Ionicons
@@ -324,7 +358,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                             ) : (
                                 <View style={styles.settings}>
                                     <View style={styles.panelHead}>
-                                        {props.supportsFast ? (
+                                        {(props.unifiedCodex || props.supportsFast) ? (
                                             <Pressable
                                                 testID="session-composer-fast-toggle"
                                                 {...spaceActivation(() =>
@@ -335,10 +369,11 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                                 aria-checked={props.fastMode === true}
                                                 accessibilityState={{
                                                     checked: props.fastMode === true,
-                                                    disabled: !props.onFastModeChange,
+                                                    disabled: !props.supportsFast || !props.onFastModeChange,
                                                 }}
-                                                disabled={!props.onFastModeChange}
+                                                disabled={!props.supportsFast || !props.onFastModeChange}
                                                 onPress={() => props.onFastModeChange?.(!props.fastMode)}
+                                                accessibilityHint={!props.supportsFast ? t('settingsAccount.notAvailable') : undefined}
                                                 style={({ pressed }) => [
                                                     styles.iconButton,
                                                     props.fastMode && styles.selected,
@@ -358,28 +393,27 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                         ) : (
                                             <View style={styles.iconButton} />
                                         )}
-                                        <View style={styles.center}>
-                                            {props.effort ? (
-                                                <Text style={styles.levelTitle}>
-                                                    {previewIndex === null
-                                                        ? props.effort.name
-                                                        : levels[previewIndex]?.name}
+                                        <View style={styles.centerSlot}>
+                                        <Pressable
+                                            testID="session-composer-open-models"
+                                            accessibilityRole="button"
+                                            accessibilityState={{ disabled: props.modelOptions.length < 2 }}
+                                            disabled={props.modelOptions.length < 2}
+                                            onPress={() => setModelsOpen(true)}
+                                            onHoverIn={() => setModelHovered(true)}
+                                            onHoverOut={() => setModelHovered(false)}
+                                            style={({ pressed }) => [styles.center, (pressed || modelHovered) && styles.centerHover]}
+                                        >
+                                            {effectiveEffort ? (
+                                                <Text style={[styles.levelTitle, isUltra && styles.ultraTitle]}>
+                                                    {previewIndex === null ? effectiveEffort.name : levels[previewIndex]?.name}
                                                 </Text>
                                             ) : null}
-                                            <Pressable
-                                                testID="session-composer-open-models"
-                                                accessibilityRole="button"
-                                                accessibilityState={{
-                                                    disabled: props.modelOptions.length < 2,
-                                                }}
-                                                disabled={props.modelOptions.length < 2}
-                                                onPress={() => setModelsOpen(true)}
-                                            >
-                                                <Text style={styles.modelLink} numberOfLines={1}>
-                                                    {props.model?.name ?? t('agentInput.model.title')} · Codex
-                                                    {props.modelOptions.length > 1 ? '  ›' : ''}
-                                                </Text>
-                                            </Pressable>
+                                            <Text style={styles.modelLink} numberOfLines={1}>
+                                                {props.model?.name ?? t('agentInput.model.title')}
+                                                {props.modelOptions.length > 1 ? '  ›' : ''}
+                                            </Text>
+                                        </Pressable>
                                         </View>
                                         <Pressable
                                             testID="session-composer-effort-reset"
@@ -429,20 +463,57 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                                       onPointerUp: () => finishDrag(true),
                                                       onPointerCancel: () => finishDrag(false),
                                                   }
-                                                : {})}
+                                                : {
+                                                      onStartShouldSetResponderCapture: () => true,
+                                                      onStartShouldSetResponder: () => true,
+                                                      onResponderGrant: (event: any) => selectEffortAt(event.nativeEvent.locationX),
+                                                      onResponderMove: (event: any) => selectEffortAt(event.nativeEvent.locationX),
+                                                      onResponderRelease: () => finishDrag(true),
+                                                      onResponderTerminate: () => finishDrag(false),
+                                                  })}
                                         >
-                                            {effortIndex >= 0 ? (
-                                                <View
-                                                    pointerEvents="none"
-                                                    style={[
-                                                        styles.fill,
-                                                        {
-                                                            width:
-                                                                16 +
-                                                                Math.max(0, trackWidth - 32) * effortFraction,
-                                                        },
-                                                    ]}
-                                                />
+                                            {effortIndex > 0 ? (
+                                                <View pointerEvents="none" style={[styles.fill, slideTransition, {
+                                                    width: 16 + Math.max(0, trackWidth - 32) * effortFraction,
+                                                }]}>
+                                                    {isUltra ? (
+                                                        <LinearGradient
+                                                            colors={['#1647d6', '#8b70ff', '#ab62f5', '#7340f4']}
+                                                            start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }}
+                                                            style={StyleSheet.absoluteFillObject}
+                                                        />
+                                                    ) : null}
+                                                    {Platform.OS === 'web' ? (
+                                                        <>
+                                                            {React.createElement('style', null,
+                                                                '@keyframes paws-effort-star { from { transform: translate3d(0,0,0) } to { transform: translate3d(-100%,0,0) } }')}
+                                                            {Array.from({ length: 22 }, (_, particle) => {
+                                                                const phase = ((particle + 1) * 0.61803398875) % 1;
+                                                                const duration = 3.2 + (particle % 5) * 0.08;
+                                                                return React.createElement('div', {
+                                                                    key: particle,
+                                                                    'data-effort-particle': particle,
+                                                                    style: {
+                                                                        position: 'absolute', width: trackWidth, height: 3,
+                                                                        top: 4 + ((particle * 17 + 5) % 24), left: 0,
+                                                                        pointerEvents: 'none',
+                                                                        opacity: particle < particleCount ? 0.48 + (particle % 4) * 0.14 : 0,
+                                                                        animation: `paws-effort-star ${duration}s linear infinite`,
+                                                                        animationDelay: `${-phase * duration}s`,
+                                                                    },
+                                                                }, React.createElement('div', { style: {
+                                                                    position: 'absolute', left: '100%', width: 3, height: 3,
+                                                                    borderRadius: '50%', background: '#fff',
+                                                                    boxShadow: '0 0 4px rgba(255,255,255,.65)',
+                                                                } }));
+                                                            })}
+                                                        </>
+                                                    ) : particleStyles.map((style, particle) => (
+                                                        <Animated.View key={particle} style={[styles.particle, style, {
+                                                            opacity: particle < particleCount ? 0.48 + (particle % 4) * 0.14 : 0,
+                                                        }]} />
+                                                    ))}
+                                                </View>
                                             ) : null}
                                             <View style={styles.steps}>
                                                 {levels.map((option, index) => (
@@ -470,11 +541,15 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                                             style={[
                                                                 styles.dot,
                                                                 index < effortIndex && styles.passed,
-                                                                index === effortIndex && styles.knob,
                                                             ]}
                                                         />
                                                     </Pressable>
                                                 ))}
+                                                {effortIndex >= 0 ? (
+                                                    <View pointerEvents="none" testID="session-composer-effort-knob" style={[styles.knobPosition, slideTransition, {
+                                                        left: `${effortFraction * 100}%`,
+                                                    }]}><View style={styles.knob} /></View>
+                                                ) : null}
                                             </View>
                                         </View>
                                     ) : null}
@@ -508,6 +583,7 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 13,
         ...Typography.default('semiBold'),
     },
+    triggerEffort: { color: theme.colors.textSecondary, ...Typography.default() },
     disabled: { opacity: 0.58 },
     pressed: { backgroundColor: theme.colors.surfacePressed },
     modalRoot: { flex: 1 },
@@ -527,13 +603,16 @@ const styles = StyleSheet.create((theme) => ({
     settings: { paddingHorizontal: 18, paddingTop: 17, paddingBottom: 18 },
     panelHead: { flexDirection: 'row', alignItems: 'flex-start' },
     iconButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
-    center: { flex: 1, alignItems: 'center', minWidth: 0 },
+    centerSlot: { flex: 1, alignItems: 'center', minWidth: 0 },
+    center: { alignItems: 'center', maxWidth: '100%', borderRadius: 10, paddingVertical: 4, paddingHorizontal: 12 },
+    centerHover: { backgroundColor: theme.colors.surfacePressed, shadowColor: theme.colors.shadow.color, shadowOffset: { width: 0, height: 2 }, shadowOpacity: theme.colors.shadow.opacity, shadowRadius: 5, elevation: 2 },
     levelTitle: {
-        color: theme.colors.accent,
+        color: theme.colors.text,
         fontSize: 18,
         lineHeight: 24,
         ...Typography.default('semiBold'),
     },
+    ultraTitle: { color: '#9348ff' },
     modelLink: { color: theme.colors.textSecondary, fontSize: 13, marginTop: 2, ...Typography.default() },
     track: {
         height: 32,
@@ -546,9 +625,12 @@ const styles = StyleSheet.create((theme) => ({
         top: 0,
         bottom: 0,
         left: 0,
-        borderRadius: 16,
-        backgroundColor: theme.colors.accent,
+        borderTopLeftRadius: 16,
+        borderBottomLeftRadius: 16,
+        backgroundColor: '#000000',
+        overflow: 'hidden',
     },
+    particle: { position: 'absolute', width: 3, height: 3, borderRadius: 2, backgroundColor: '#ffffff' },
     steps: { position: 'absolute', top: 0, bottom: 0, left: 16, right: 16 },
     step: {
         position: 'absolute',
@@ -561,13 +643,14 @@ const styles = StyleSheet.create((theme) => ({
     },
     dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: theme.colors.textSecondary },
     passed: { backgroundColor: theme.colors.switch.thumb.active, opacity: 0.35 },
+    knobPosition: { position: 'absolute', top: 0, width: 32, height: 32, marginLeft: -16 },
     knob: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
+        width: 32,
+        height: 32,
+        borderRadius: 16,
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: theme.colors.divider,
-        backgroundColor: theme.colors.switch.thumb.active,
+        backgroundColor: '#ffffff',
         shadowColor: theme.colors.shadow.color,
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: theme.colors.shadow.opacity,

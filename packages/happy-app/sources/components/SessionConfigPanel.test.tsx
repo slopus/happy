@@ -50,6 +50,8 @@ vi.mock('react-native', async () => {
         : null;
 
     return {
+        Animated: { Value: class { setValue() {} interpolate() { return 1; } }, View: 'AnimatedView', loop: () => ({ start() {}, stop() {} }), sequence: () => ({}), timing: () => ({}) },
+        Easing: { linear: () => ({}) },
         ActivityIndicator: 'ActivityIndicator',
         Image: 'Image',
         KeyboardAvoidingView: 'KeyboardAvoidingView',
@@ -65,6 +67,7 @@ vi.mock('react-native', async () => {
     };
 });
 vi.mock('expo-glass-effect', () => ({ GlassView: 'GlassView' }));
+vi.mock('expo-linear-gradient', () => ({ LinearGradient: 'LinearGradient' }));
 vi.mock('@expo/vector-icons', () => ({
     Ionicons: 'Ionicons',
     MaterialCommunityIcons: 'MaterialCommunityIcons',
@@ -233,7 +236,7 @@ describe('SessionConfigPanel composer layout', () => {
         expect(renderer.root.findByProps({ testID: 'new-session-composer-config' })).toBeDefined();
         expect(renderer.root.findByProps({ testID: 'session-config-machine-trigger' })).toBeDefined();
         expect(renderer.root.findByProps({ testID: 'session-config-path-trigger' })).toBeDefined();
-        expect(renderer.root.findByProps({ testID: 'session-config-agent-trigger' })).toBeDefined();
+        expect(renderer.root.findAllByProps({ testID: 'session-config-agent-trigger' })).toHaveLength(0);
         expect(renderer.root.findAllByProps({ testID: 'session-config-worktree-trigger' })).toHaveLength(0);
         expect(renderer.root.findByProps({ testID: 'session-config-permission-trigger' })).toBeDefined();
         expect(renderer.root.findByProps({ testID: 'session-composer-mode-trigger' })).toBeDefined();
@@ -244,7 +247,7 @@ describe('SessionConfigPanel composer layout', () => {
         expect(controls.props.style).toMatchObject({ flexDirection: 'row', flexWrap: 'wrap' });
         act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
         act(() => renderer.root.findByProps({ testID: 'session-composer-open-models' }).props.onPress());
-        act(() => renderer.root.findByProps({ testID: 'session-composer-model-gpt-5.6-terra' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-composer-model-codex::gpt-5.6-terra' }).props.onPress());
         expect(mocks.setModelMode).toHaveBeenCalledWith('gpt-5.6-terra');
         expect(ref.current.getSelection().modelKey).toBe('gpt-5.6-terra');
         act(() => renderer.root.findByProps({ testID: 'session-composer-fast-toggle' }).props.onPress());
@@ -393,33 +396,16 @@ describe('SessionConfigPanel composer layout', () => {
         expect(onChange).toHaveBeenCalledWith('/Users/other');
     });
 
-    it('opens Android model options in a modal and closes it on Back', async () => {
+    it('opens the unified model panel on Android and closes it on Back', async () => {
         (Platform as { OS: string }).OS = 'android';
-        mocks.viewport.width = 390;
-        mocks.viewport.height = 420;
         await act(async () => {
             renderer = TestRenderer.create(<SessionConfigPanel layout="composer" collapsible={false} />);
             await Promise.resolve();
         });
-
-        act(() => renderer.root.findByProps({ testID: 'session-config-model-trigger' }).props.onPress());
-        expect(renderer.root.findByProps({ testID: 'session-config-picker-model' }).props.accessibilityViewIsModal).toBe(true);
-        expect(renderer.root.findAllByProps({ testID: 'session-config-inline-picker-model' })).toHaveLength(0);
-        const lastModel = renderer.root.findByProps({ accessibilityLabel: 'gpt-5.6-terra' });
-        let ancestor = lastModel.parent;
-        let scrollableAncestors = 0;
-        let innerListSupportsNestedScroll = false;
-        while (ancestor && ancestor.props.testID !== 'session-config-picker-model') {
-            if (ancestor.type === 'ScrollView') {
-                scrollableAncestors += 1;
-                if (scrollableAncestors === 1) innerListSupportsNestedScroll = ancestor.props.nestedScrollEnabled === true;
-            }
-            ancestor = ancestor.parent;
-        }
-        expect(scrollableAncestors).toBeGreaterThanOrEqual(2);
-        expect(innerListSupportsNestedScroll).toBe(true);
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        expect(renderer.root.findByProps({ testID: 'session-composer-mode-panel' })).toBeDefined();
         act(() => renderer.root.findByType('Modal').props.onRequestClose());
-        expect(renderer.root.findAllByProps({ testID: 'session-config-picker-model' })).toHaveLength(0);
+        expect(renderer.root.findAllByProps({ testID: 'session-composer-mode-panel' })).toHaveLength(0);
     });
 
     it('clears a selected worktree when its machine or project scope changes', async () => {

@@ -41,8 +41,8 @@ describe('resolveRunningSessionTurnModes', () => {
                 flavor: 'codex', currentModelCode: 'gpt-6-astra', currentThoughtLevelCode: 'ultra',
             } } as any;
             const result = resolveRunningSessionTurnModes({ session, agentDefaultOverrides: {}, translate });
-            expect(result.effortLevel?.key).toBe('default');
-            expect(resolveMessageModeMeta(session).effort).toBeNull();
+            expect(result.effortLevel?.key).toBe('medium');
+            expect(resolveMessageModeMeta(session).effort).toBe('medium');
         }
     });
 
@@ -83,7 +83,21 @@ describe('resolveRunningSessionTurnModes', () => {
         expect(result.effortLevel?.key).toBe('high');
     });
 
-    it('shows Codex default effort as an explicit picker value', () => {
+    it('uses a supported effort when a model has no medium level', async () => {
+        const { resolveMessageModeMeta } = await import('@/sync/messageMeta');
+        const session = { modelMode: 'gpt-custom', effortLevel: 'default', metadata: {
+            flavor: 'codex', currentModelCode: 'gpt-custom', thoughtLevels: [
+                { code: 'high', value: 'high' }, { code: 'max', value: 'max' },
+            ],
+        } } as any;
+        expect(resolveRunningSessionTurnModes({ session, agentDefaultOverrides: {}, translate }).effortLevel?.key).toBe('high');
+        expect(resolveMessageModeMeta(session).effort).toBe('high');
+        const withoutExplicitEffort = { ...session, effortLevel: null };
+        expect(resolveRunningSessionTurnModes({ session: withoutExplicitEffort, agentDefaultOverrides: {}, translate }).effortLevel?.key).toBe('high');
+        expect(resolveMessageModeMeta(withoutExplicitEffort).effort).toBe('high');
+    });
+
+    it('uses Codex model and effort defaults', () => {
         const result = resolveRunningSessionTurnModes({
             session: {
                 modelMode: null,
@@ -94,8 +108,8 @@ describe('resolveRunningSessionTurnModes', () => {
             translate,
         });
 
-        expect(result.modelMode?.key).toBe('default');
-        expect(result.effortLevel).toMatchObject({ key: 'default', name: 'default effort' });
+        expect(result.modelMode?.key).toBe('gpt-6.1-sol');
+        expect(result.effortLevel?.key).toBe('medium');
     });
 
     it('only enables Fast for the selected Codex model priority tier', () => {

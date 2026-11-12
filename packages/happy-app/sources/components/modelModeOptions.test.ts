@@ -132,8 +132,8 @@ describe('modelModeOptions', () => {
         expect(getDefaultModelKey('ask')).toBe('deepseek/deepseek-v4-flash');
         expect(getDefaultEffortKey('ask')).toBeNull();
         expect(getDefaultPermissionModeKey('codex')).toBe('yolo');
-        expect(getDefaultModelKey('codex')).toBe('default');
-        expect(getDefaultEffortKey('codex')).toBeNull();
+        expect(getDefaultModelKey('codex')).toBe('gpt-6.1-sol');
+        expect(getDefaultEffortKey('codex')).toBe('medium');
     });
 
     it('keeps ask mode as provider-backed chat with DeepSeek strength choices', () => {

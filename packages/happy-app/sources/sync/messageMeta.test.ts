@@ -12,8 +12,8 @@ describe('resolveMessageModeMeta', () => {
 
         expect(meta).toEqual({
             permissionMode: 'yolo',
-            model: null,
-            effort: null,
+            model: 'gpt-6.1-sol',
+            effort: 'medium',
         });
     });
 
@@ -131,8 +131,8 @@ describe('resolveMessageModeMeta', () => {
 
         expect(meta).toEqual({
             permissionMode: 'yolo',
-            model: null,
-            effort: null,
+            model: 'gpt-6.1-sol',
+            effort: 'medium',
         });
     });
 
@@ -152,8 +152,8 @@ describe('resolveMessageModeMeta', () => {
 
         expect(meta).toEqual({
             permissionMode: 'yolo',
-            model: null,
-            effort: null,
+            model: 'gpt-6.1-sol',
+            effort: 'medium',
         });
     });
 
@@ -200,7 +200,7 @@ describe('resolveMessageModeMeta', () => {
             metadata: { flavor: 'codex' },
         } as any);
 
-        expect(meta).toEqual({ permissionMode: 'yolo', model: null, effort: null });
+        expect(meta).toEqual({ permissionMode: 'yolo', model: 'gpt-6.1-sol', effort: 'medium' });
     });
 
     it('records CLI-reported current values before falling back to settings defaults', () => {

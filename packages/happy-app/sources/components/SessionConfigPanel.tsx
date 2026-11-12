@@ -753,6 +753,7 @@ export interface SessionConfigPanelProps {
     collapsible?: boolean;
     /** Fired (in an effect) whenever a picker opens/closes — for host backdrops. */
     onPickerOpenChange?: (open: boolean) => void;
+    renderComposer?: (controls: { leading: React.ReactNode; trailing: React.ReactNode; below: React.ReactNode }) => React.ReactNode;
 }
 
 /**
@@ -765,7 +766,7 @@ export interface SessionConfigPanelProps {
  * handle.
  */
 export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, SessionConfigPanelProps>(
-    function SessionConfigPanel({ layout = 'inline', collapsible = true, onPickerOpenChange }, ref) {
+    function SessionConfigPanel({ layout = 'inline', collapsible = true, onPickerOpenChange, renderComposer }, ref) {
         const { theme } = useUnistyles();
         const viewport = useWindowDimensions();
         const isSidebar = layout === 'sidebar';
@@ -1001,6 +1002,15 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
             () => getSuggestedModelModes(selectedAgent, modelMetadata, t),
             [modelMetadata, selectedAgent],
         );
+        // A model choice carries its execution agent, so the composer needs only one picker.
+        const unifiedModels = React.useMemo(() => availableAgents.flatMap((item) => {
+            const metadata = getLatestSessionModelMetadata({ sessions, selectedMachineId, agent: item.key });
+            const options = getSuggestedModelModes(item.key, metadata, t);
+            const concrete = options.filter((model) => model.key !== 'default');
+            return (concrete.length ? concrete : options).map((model) => ({
+                ...model, key: `${item.key}::${model.key}`,
+            }));
+        }), [availableAgents, sessions, selectedMachineId]);
         const configExperience = React.useMemo(
             () => getSessionConfigExperience(selectedAgent),
             [selectedAgent],
@@ -1460,19 +1470,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         ) : null;
 
         if (isComposer) {
-            return (
-                <>
-                    <View
-                        testID="new-session-composer-config"
-                        style={[
-                            styles.composerConfigBox,
-                            activePicker && isWeb && styles.configBoxWithPopover,
-                        ]}
-                    >
-                        <View
-                            testID="new-session-composer-config-controls"
-                            style={styles.composerConfigContent}
-                        >
+            const machineControls = <View testID="new-session-composer-context" style={styles.composerContextRow}>
                             <Pressable
                                 ref={(node) => capturePickerTrigger('machine', node)}
                                 testID="session-config-machine-trigger"
@@ -1507,28 +1505,9 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                 </Pressable>
                             )}
 
-                            {!isOffline && !configExperience.isAskMode && (
-                                <Pressable
-                                    ref={(node) => capturePickerTrigger('agent', node)}
-                                    testID="session-config-agent-trigger"
-                                    accessibilityRole="button"
-                                    accessibilityLabel={`${t('agents.title')}: ${agent.label}`}
-                                    accessibilityState={{ expanded: activePicker === 'agent' }}
-                                    aria-expanded={activePicker === 'agent'}
-                                    onPress={(event) => togglePicker('agent', event)}
-                                    style={(p) => [styles.composerConfigChip, p.pressed && styles.composerConfigChipPressed]}
-                                >
-                                    <RNImage
-                                        source={agentIcons[agent.key]}
-                                        style={[styles.composerAgentIcon, { tintColor: theme.colors.textSecondary }]}
-                                        resizeMode="contain"
-                                    />
-                                    <Text style={styles.composerConfigChipText} numberOfLines={1}>{agent.label}</Text>
-                                    <Ionicons name="chevron-down" size={11} color={theme.colors.textSecondary} />
-                                </Pressable>
-                            )}
-
-                            {!isOffline && showPermission && (
+            </View>;
+            const permissionControl = <>{
+!isOffline && showPermission && (
                                 <Pressable
                                     ref={(node) => capturePickerTrigger('permission', node)}
                                     testID="session-config-permission-trigger"
@@ -1547,86 +1526,58 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                     <Text style={styles.composerConfigCompactText} numberOfLines={1}>{currentPermission?.name}</Text>
                                     <Ionicons name="chevron-down" size={11} color={theme.colors.textSecondary} />
                                 </Pressable>
-                            )}
-
-                            {isWeb && selectedAgent === 'codex' && !isOffline && (showModel || showEffort || supportsFast) && (
+                            )
+            }</>;
+            const modelControl = <>{
+!isOffline && !configExperience.isAskMode && (
                                 <SessionComposerModeSelector
+                                    unifiedCodex={selectedAgent === 'codex'}
                                     online={!isOffline}
-                                    model={currentModel ?? null}
-                                    modelOptions={modelModes}
+                                    model={currentModel ? { ...currentModel, key: `${selectedAgent}::${currentModel.key}` } : null}
+                                    modelOptions={unifiedModels}
                                     effort={showEffort ? currentEffort : null}
                                     effortOptions={showEffort ? effortLevels : []}
                                     fastMode={fastMode}
                                     supportsFast={supportsFast}
                                     onFastModeChange={setFastMode}
                                     onModelChange={(key) => {
-                                        const next = modelModes.findIndex((mode) => mode.key === key);
-                                        if (next >= 0) { setModelIndex(next); draft.setModelMode(modelModes[next].key); }
+                                        const separator = key.indexOf('::');
+                                        if (separator < 0) return;
+                                        const nextAgent = key.slice(0, separator) as NewSessionAgentType;
+                                        const nextModel = key.slice(separator + 2);
+                                        if (nextAgent === selectedAgent) {
+                                            const nextIndex = modelModes.findIndex((mode) => mode.key === nextModel);
+                                            if (nextIndex >= 0) setModelIndex(nextIndex);
+                                        } else {
+                                            draft.setAgentType(nextAgent);
+                                        }
+                                        draft.setModelMode(nextModel);
+                                        draft.setEffortLevel(null);
                                     }}
                                     onEffortChange={(key) => {
                                         const next = effortLevels.findIndex((level) => level.key === key);
                                         if (next >= 0) { setEffortIndex(next); draft.setEffortLevel(effortLevels[next].key); }
                                     }}
                                 />
-                            )}
-                            {(!isWeb || selectedAgent !== 'codex') && !isOffline && showModel && (
-                                <Pressable
-                                    ref={(node) => capturePickerTrigger('model', node)}
-                                    testID="session-config-model-trigger"
-                                    accessibilityRole="button"
-                                    accessibilityLabel={currentModel.name}
-                                    accessibilityState={{ expanded: activePicker === 'model' }}
-                                    aria-expanded={activePicker === 'model'}
-                                    onPress={(event) => togglePicker('model', event)}
-                                    style={(p) => [styles.composerConfigCompactTrigger, p.pressed && styles.composerConfigChipPressed]}
-                                >
-                                    <Text style={styles.composerConfigCompactText} numberOfLines={1}>{currentModel.name}</Text>
-                                    <Ionicons name="chevron-down" size={11} color={theme.colors.textSecondary} />
-                                </Pressable>
-                            )}
-
-                            {(!isWeb || selectedAgent !== 'codex') && !isOffline && showEffort && (
-                                <Pressable
-                                    ref={(node) => capturePickerTrigger('effort', node)}
-                                    testID="session-config-effort-trigger"
-                                    accessibilityRole="button"
-                                    accessibilityLabel={`Effort: ${currentEffort?.name}`}
-                                    accessibilityState={{ expanded: activePicker === 'effort' }}
-                                    aria-expanded={activePicker === 'effort'}
-                                    onPress={(event) => togglePicker('effort', event)}
-                                    style={(p) => [styles.composerConfigCompactTrigger, p.pressed && styles.composerConfigChipPressed]}
-                                >
-                                    <Text style={styles.composerConfigCompactText} numberOfLines={1}>{currentEffort?.name}</Text>
-                                    <Ionicons name="chevron-down" size={11} color={theme.colors.textSecondary} />
-                                </Pressable>
-                            )}
-
-                            {(!isWeb || selectedAgent !== 'codex') && !isOffline && supportsFast && (
-                                <Pressable
-                                    accessibilityRole="switch"
-                                    accessibilityLabel="Fast"
-                                    accessibilityState={{ checked: fastMode }}
-                                    testID="session-config-fast-toggle"
-                                    onPress={() => setFastMode((enabled) => !enabled)}
-                                    style={(p) => [styles.composerFastToggle, p.pressed && styles.composerConfigChipPressed]}
-                                >
-                                    <Ionicons name="flash-outline" size={14} color={fastMode ? theme.colors.accent : theme.colors.textSecondary} />
-                                </Pressable>
-                            )}
-                        </View>
-
-                        {renderActivePickerPopover('machine')}
-                        {configExperience.showPath && renderActivePickerPopover('path')}
-                        {!configExperience.isAskMode && renderActivePickerPopover('agent')}
-                        {renderActivePickerPopover('worktree')}
-                        {renderActivePickerPopover('permission')}
-                        {(!isWeb || selectedAgent !== 'codex') && renderActivePickerPopover('model')}
-                        {(!isWeb || selectedAgent !== 'codex') && renderActivePickerPopover('effort')}
+                            )
+            }</>;
+            const pickers = <>
+                {renderActivePickerPopover('machine')}
+                {configExperience.showPath && renderActivePickerPopover('path')}
+                {renderActivePickerPopover('permission')}
+                {modalPicker}
+            </>;
+            if (renderComposer) {
+                return <>{renderComposer({ leading: permissionControl, trailing: modelControl, below: machineControls })}{pickers}</>;
+            }
+            return <>
+                <View testID="new-session-composer-config" style={[styles.composerConfigBox, activePicker && isWeb && styles.configBoxWithPopover]}>
+                    <View testID="new-session-composer-config-controls" style={styles.composerConfigContent}>
+                        {machineControls}{permissionControl}{modelControl}
                     </View>
-
-                    {modalPicker}
-                </>
-            );
+                    {pickers}
+                </View>
+            </>;
         }
 
         return (
@@ -2022,6 +1973,7 @@ const styles = StyleSheet.create((theme) => ({
         justifyContent: 'center',
         backgroundColor: theme.colors.surface,
     },
+    composerContextRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4, paddingHorizontal: 10, paddingVertical: 4, marginHorizontal: 10, borderBottomLeftRadius: 16, borderBottomRightRadius: 16, backgroundColor: theme.colors.surface },
     composerConfigBox: {
         minWidth: 0,
         flex: 1,

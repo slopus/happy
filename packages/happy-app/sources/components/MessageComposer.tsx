@@ -1,4 +1,3 @@
-import { SessionComposerModeSelector as LegacySessionComposerModeSelector } from './LegacySessionComposerModeSelector';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { View, Platform, useWindowDimensions, Text, ActivityIndicator, Pressable } from 'react-native';
@@ -36,7 +35,6 @@ import {
     type SessionComposerPermissionSelectorConfig,
 } from './SessionComposerPermissionSelector';
 import {
-    SessionComposerDirectorySelector,
     type SessionComposerDirectorySelectorConfig,
 } from './SessionComposerDirectorySelector';
 import { resolveComposerPrimaryAction } from './composerPrimaryAction';
@@ -104,6 +102,8 @@ interface MessageComposerProps {
     zenMode?: boolean;
     /** Optional controls rendered at the leading edge of the composer's footer. */
     leadingControls?: React.ReactNode;
+    trailingControls?: React.ReactNode;
+    belowComposer?: React.ReactNode;
     /** Pending contextual content, such as selected-passage annotations. */
     hasContext?: boolean;
     contextContent?: React.ReactNode;
@@ -195,8 +195,10 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     actionButtonsLeft: {
         flexDirection: 'row',
-        gap: 8,
+        gap: 4,
+        alignItems: 'center',
         flex: 1,
+        minWidth: 0,
         overflow: 'hidden',
     },
     machineLabel: {
@@ -902,12 +904,6 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                             contextWarning={contextWarning}
                         />
 
-                        <AgentInputContextChips
-                            machineName={props.machineName}
-                            onMachineClick={props.onMachineClick}
-                            currentPath={props.currentPath}
-                            onPathClick={props.onPathClick}
-                        />
                     </>
                 )}
 
@@ -924,7 +920,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                         />
                     )}
                     {/* Input field */}
-                    <View style={[styles.inputContainer, props.minHeight ? { minHeight: props.minHeight } : undefined]}>
+                    <View style={[styles.inputContainer, !isSession && { minHeight: Platform.OS === 'web' ? 68 : 48 }, props.minHeight ? { minHeight: props.minHeight } : undefined]}>
                         <View style={predictionText ? styles.predictionEditor : styles.inputEditor}>
                             <MultiTextInput
                                 testID={isSession ? 'session-message-input' : 'new-session-message-input'}
@@ -956,72 +952,6 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                 {props.zenMode && <View style={{ flex: 1 }} />}
                                 {!props.zenMode && <View style={styles.actionButtonsLeft}>
 
-                                {props.leadingControls}
-
-                                {isSession && props.directorySelector && supportsDesktopComposerModeSelector({
-                                    isWeb: Platform.OS === 'web',
-                                    windowWidth: screenWidth,
-                                }) ? (
-                                    <SessionComposerDirectorySelector
-                                        {...props.directorySelector}
-                                        onInvalidStateChange={setDirectoryInvalid}
-                                    />
-                                ) : null}
-
-                                {/* Agent selector button (session only) */}
-                                {isSession && props.agentType && props.onAgentClick && (
-                                    <Pressable
-                                        onPress={() => {
-                                            props.onDismissPrediction?.();
-                                            hapticsLight();
-                                            props.onAgentClick?.();
-                                        }}
-                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                        style={(p) => ({
-                                            flexDirection: 'row',
-                                            alignItems: 'center',
-                                            borderRadius: Platform.select({ default: 16, android: 20 }),
-                                            paddingHorizontal: 10,
-                                            paddingVertical: 6,
-                                            justifyContent: 'center',
-                                            height: 32,
-                                            opacity: p.pressed ? 0.7 : 1,
-                                            gap: 6,
-                                        })}
-                                    >
-                                        <Octicons
-                                            name="cpu"
-                                            size={14}
-                                            color={theme.colors.button.secondary.tint}
-                                        />
-                                        <Text style={{
-                                            fontSize: 13,
-                                            color: theme.colors.button.secondary.tint,
-                                            fontWeight: '600',
-                                            ...Typography.default('semiBold'),
-                                        }}>
-                                            {props.agentType === 'claude'
-                                                ? t('agentInput.agent.claude')
-                                                : props.agentType === 'codex'
-                                                    ? t('agentInput.agent.codex')
-                                                    : props.agentType === 'opencode'
-                                                        ? 'OpenCode'
-                                                    : props.agentType === 'openclaw'
-                                                        ? t('agentInput.agent.openclaw')
-                                                        : t('agentInput.agent.gemini')}
-                                        </Text>
-                                    </Pressable>
-                                )}
-
-                                {/* Git Status Badge (session only) */}
-                                {isSession && (
-                                    <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
-                                )}
-
-                                </View>}
-
-                                {/* Right cluster: image picker + send (image sits at far right, next to send) */}
-                                <View style={styles.actionButtonsRight}>
                                 {/* Image picker button (expImageUpload) */}
                                 {props.onPickImages && (
                                     <Pressable
@@ -1040,8 +970,8 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                         ]}
                                     >
                                         <Ionicons
-                                            name="attach"
-                                            size={18}
+                                            name="add"
+                                            size={24}
                                             color={(props.selectedImages?.length ?? 0) > 0
                                                 ? theme.colors.radio.active
                                                 : theme.colors.button.secondary.tint}
@@ -1049,8 +979,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                     </Pressable>
                                 )}
 
-                                {/* Inline execution controls are desktop affordances. Narrow Web and native
-                                    layouts keep the compact composer and use the existing session menu. */}
+
                                 {isSession && props.permissionSelector && supportsDesktopComposerModeSelector({
                                     isWeb: Platform.OS === 'web',
                                     windowWidth: screenWidth,
@@ -1058,11 +987,23 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                     <SessionComposerPermissionSelector {...props.permissionSelector} />
                                 ) : null}
 
-                                {isSession && props.modeSelector && supportsDesktopComposerModeSelector({
-                                    isWeb: Platform.OS === 'web',
-                                    windowWidth: screenWidth,
-                                }) ? (
-                                    props.modeSelector.unifiedCodex ? <SessionComposerModeSelector {...props.modeSelector} /> : <LegacySessionComposerModeSelector {...props.modeSelector} />
+
+                                {props.leadingControls}
+
+                                {/* Git Status Badge (session only) */}
+                                {isSession && (
+                                    <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
+                                )}
+
+                                </View>}
+
+                                {/* Right cluster: image picker + send (image sits at far right, next to send) */}
+                                <View style={styles.actionButtonsRight}>
+                                {/* Inline execution controls are desktop affordances. Narrow Web and native
+                                    layouts keep the compact composer and use the existing session menu. */}
+                                {props.trailingControls}
+                                {isSession && props.modeSelector ? (
+                                    <SessionComposerModeSelector {...props.modeSelector} />
                                 ) : null}
 
                                 {/* Primary action: stop while running and empty, send when there is a payload. */}
@@ -1134,24 +1075,10 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                             </View>
                         </View>
                     </View>
-                    {isSession && !props.zenMode && props.machineName && !props.onMachineClick && supportsDesktopComposerModeSelector({
-                        isWeb: Platform.OS === 'web',
-                        windowWidth: screenWidth,
-                    }) ? (
-                        <View
-                            testID="session-composer-machine"
-                            accessibilityLabel={`${t('devTools.machine')}: ${props.machineName}`}
-                            style={styles.machineLabel}
-                        >
-                            <Ionicons name="desktop-outline" size={15} color={theme.colors.textSecondary} />
-                            <Text style={styles.machineLabelText} numberOfLines={1} ellipsizeMode="tail">
-                                {props.machineName}
-                            </Text>
-                        </View>
-                    ) : null}
 
                 </View>
                 </Shaker>
+                {props.belowComposer}
             </View>
         </View>
     );

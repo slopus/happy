@@ -25,7 +25,7 @@ const models = [
     { code: 'gpt-6-astra', value: 'GPT-6 Astra', description: '复杂推理任务', serviceTiers: [] },
     ...Array.from({ length: 18 }, (_, index) => ({ code: `fixture-model-${index + 1}`, value: `能力边界样本 ${index + 1}`, description: '用于验证长列表，不表示可调用的真实模型', serviceTiers: [] })),
 ];
-const levels = ['low', 'medium', 'high', 'xhigh', 'max'].map((code, i) => ({ code, value: ['低', '中', '高', '极高', 'Max'][i], description: ['适合简单、快速的问题', '日常任务的轻量推理', '平衡速度与复杂任务', '为复杂任务投入更多推理', '适合最有挑战的任务'][i] }));
+const levels = ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'].map((code, i) => ({ code, value: ['轻度', '中', '高', '极高', 'Max', 'Ultra'][i], description: ['适合简单、快速的问题', '日常任务的轻量推理', '平衡速度与复杂任务', '为复杂任务投入更多推理', '适合最有挑战的任务', '最高强度'][i] }));
 async function main() {
     environment = await createEnvironment({ noSwitch: true });
     setEnvironmentTemplate(environment, 'authenticated-empty');
@@ -46,7 +46,7 @@ async function main() {
     const { io } = require('socket.io-client');
     const encode = value => encryption.encodeBase64(encryption.encryptLegacy(value, key));
     const settings = await (await fetch(`${serverUrl}/v1/account/settings`, { headers })).json();
-    assert((await fetch(`${serverUrl}/v1/account/settings`, { method: 'POST', headers, body: JSON.stringify({ expectedVersion: settings.settingsVersion, settings: encode({ preferredLanguage: 'zh-Hans', agentDefaultOverrides: { codex: { modelMode: 'gpt-6.1-terra', effortLevel: 'high', permissionMode: 'yolo' } } }) }) })).ok);
+    assert((await fetch(`${serverUrl}/v1/account/settings`, { method: 'POST', headers, body: JSON.stringify({ expectedVersion: settings.settingsVersion, settings: encode({ preferredLanguage: 'zh-Hans' }) }) })).ok);
     const machineId = randomUUID();
     const project = path.join(directory, 'project');
     const machineMetadata = { host: 'codex-settings-fixture.local', displayName: '隔离验收机器', platform: 'darwin', happyCliVersion: 'fixture', homeDir: directory, happyHomeDir: path.join(directory, 'cli/home'), cliAvailability: { codex: true, claude: true, gemini: false, openclaw: false, detectedAt: Date.now() } };

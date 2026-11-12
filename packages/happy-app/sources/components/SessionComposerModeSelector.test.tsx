@@ -8,6 +8,8 @@ import { SessionComposerModeSelector, getModePanelPlacement } from './SessionCom
 import TestRenderer from 'react-test-renderer';
 
 vi.mock('react-native', () => ({
+    Animated: { Value: class { setValue() {} interpolate() { return 1; } }, View: 'AnimatedView', loop: () => ({ start() {}, stop() {} }), sequence: () => ({}), timing: () => ({}) },
+    Easing: { linear: () => ({}) },
     Platform: { OS: 'web' },
     Modal: ({ visible, children }: any) => (visible ? children : null),
     ScrollView: 'ScrollView',
@@ -17,6 +19,7 @@ vi.mock('react-native', () => ({
     View: 'View',
     useWindowDimensions: () => ({ width: 390, height: 844 }),
 }));
+vi.mock('expo-linear-gradient', () => ({ LinearGradient: 'LinearGradient' }));
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}) } }));
 vi.mock('@/components/haptics', () => ({ hapticsLight: vi.fn() }));
@@ -172,9 +175,9 @@ describe('SessionComposerModeSelector', () => {
         act(() => trigger().props.onPress());
         expect(background(false)).toBe('#333');
         const reset = renderer.root.findByProps({ testID: 'session-composer-effort-reset' });
-        expect(reset.props.accessibilityHint).toBe('default effort');
+        expect(reset.props.accessibilityHint).toBe('medium');
         act(() => reset.props.onPress());
-        expect(onEffortChange).toHaveBeenCalledWith('default');
+        expect(onEffortChange).toHaveBeenCalledWith('medium');
         expect(renderer.root.findAllByType('Text').some((node: any) =>
             ['default effort', 'agentInput.effort.fastOff'].includes(node.props.children),
         )).toBe(false);
@@ -202,6 +205,41 @@ describe('SessionComposerModeSelector', () => {
         expect(trigger.props.disabled).toBe(true);
         expect(trigger.props.accessibilityHint).toBe('offline');
         expect(renderer.root.findAllByProps({ testID: 'session-composer-mode-panel' })).toHaveLength(0);
+        act(() => renderer.unmount());
+    });
+
+    it('renders empty, black and Ultra gradient tracks for the reference states', () => {
+        const levels = [
+            { key: 'low', name: '轻度' },
+            { key: 'max', name: 'Max' },
+            { key: 'ultra', name: 'Ultra' },
+        ];
+        const props = { online: true, model: modelOptions[0], modelOptions,
+            effortOptions: levels, onModelChange: vi.fn(), onEffortChange: vi.fn() };
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SessionComposerModeSelector {...props} effort={levels[0]} />); });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        expect(renderer.root.findAllByType('AnimatedView')).toHaveLength(0);
+        expect(renderer.root.findAllByType('LinearGradient')).toHaveLength(0);
+        act(() => renderer.update(<SessionComposerModeSelector {...props} effort={levels[1]} />));
+        expect(renderer.root.findAllByProps({ 'data-effort-particle': 0 })).toHaveLength(1);
+        expect(renderer.root.findAllByType('LinearGradient')).toHaveLength(0);
+        act(() => renderer.update(<SessionComposerModeSelector {...props} effort={levels[2]} />));
+        expect(renderer.root.findAllByType('LinearGradient')).toHaveLength(1);
+        expect(renderer.root.findAllByProps({ 'data-effort-particle': 21 })).toHaveLength(1);
+        act(() => renderer.unmount());
+    });
+
+    it('keeps Fast visible when Codex does not advertise support and uses effort keys as labels', () => {
+        const levels = [{ key: 'medium', name: '中' }, { key: 'high', name: '高' }];
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SessionComposerModeSelector online unifiedCodex
+            model={modelOptions[0]} modelOptions={modelOptions} effort={levels[0]} effortOptions={levels}
+            onModelChange={vi.fn()} onEffortChange={vi.fn()} onFastModeChange={vi.fn()} />); });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        expect(renderer.root.findByProps({ testID: 'session-composer-fast-toggle' }).props.disabled).toBe(true);
+        expect(renderer.root.findByProps({ testID: 'session-composer-effort-high' }).props.accessibilityLabel).toBe('high');
+        expect(renderer.root.findByProps({ testID: 'session-composer-effort-medium' }).props.accessibilityLabel).toBe('medium');
         act(() => renderer.unmount());
     });
 

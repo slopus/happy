@@ -341,12 +341,13 @@ export function normalizeModelEffortKey(
     effortKey: string | null | undefined,
     metadata?: Metadata | null,
 ): string | null | undefined {
-    if (flavor !== 'codex' || !['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna'].includes(modelKey) || !effortKey) {
-        return effortKey;
-    }
-    return getEffortLevelsForModel(flavor, modelKey, metadata).some((level) => level.key === effortKey)
-        ? effortKey
-        : 'default';
+    if (flavor !== 'codex') return effortKey;
+    const levels = getEffortLevelsForModel(flavor, modelKey, metadata).filter((level) => level.key !== 'default');
+    const fallback = levels.find((level) => level.key === 'medium')?.key ?? levels[0]?.key ?? null;
+    if (effortKey === 'default' || !effortKey) return fallback;
+    const hasRelevantCatalog = metadata?.currentModelCode === modelKey && !!metadata.thoughtLevels?.length;
+    if (!hasRelevantCatalog && !['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna'].includes(modelKey)) return effortKey;
+    return levels.some((level) => level.key === effortKey) ? effortKey : fallback;
 }
 
 // Default effort for a model — highest the model allows

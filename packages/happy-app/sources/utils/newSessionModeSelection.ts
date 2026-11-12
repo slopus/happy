@@ -17,6 +17,7 @@ type ResolveSelectionKeyArgs = {
     fallbackKey: string | null | undefined;
     codeDefaultKey?: string | null;
     followDraftKeys?: string[];
+    followCodeDefault?: boolean;
     options: ModeOption[];
 };
 
@@ -44,13 +45,14 @@ function resolveSelectionKey({
     fallbackKey,
     codeDefaultKey,
     followDraftKeys = [],
+    followCodeDefault = false,
     options,
 }: ResolveSelectionKeyArgs): string {
     const followsDefault = (
         !draftKey
         || followDraftKeys.includes(draftKey)
         || (
-            !!codeDefaultKey
+            followCodeDefault && !!codeDefaultKey
             && !!fallbackKey
             && draftKey === codeDefaultKey
             && draftKey !== fallbackKey
@@ -79,16 +81,7 @@ function resolveEffortKey({
         return null;
     }
 
-    const followsDefault = (
-        !draftKey
-        || draftKey === 'default'
-        || (
-            !!codeDefaultKey
-            && !!fallbackKey
-            && draftKey === codeDefaultKey
-            && draftKey !== fallbackKey
-        )
-    );
+    const followsDefault = !draftKey || draftKey === 'default';
 
     if (!followsDefault && hasOption(options, draftKey)) {
         return draftKey;
@@ -99,7 +92,7 @@ function resolveEffortKey({
     if (hasOption(options, draftKey)) {
         return draftKey;
     }
-    return options[0]?.key ?? null;
+    return options.find((option) => option.key !== 'default')?.key ?? null;
 }
 
 export function resolveNewSessionModeSelection(args: {
@@ -122,6 +115,7 @@ export function resolveNewSessionModeSelection(args: {
         fallbackKey: effectiveDefaults.permissionMode,
         codeDefaultKey: codeDefaults.permissionMode,
         followDraftKeys: ['default'],
+        followCodeDefault: true,
         options: permissionOptions,
     });
 

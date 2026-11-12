@@ -33,7 +33,7 @@ const codeAgentDefaults: Record<AgentKey, AgentDefaultConfig> = {
     // `yolo` and maps it to the Claude SDK's bypass mode.
     ask: { permissionMode: 'default', modelMode: 'deepseek/deepseek-v4-flash', effortLevel: null },
     claude: { permissionMode: 'bypassPermissions', modelMode: 'opus', effortLevel: 'medium' },
-    codex: { permissionMode: 'yolo', modelMode: 'default', effortLevel: null },
+    codex: { permissionMode: 'yolo', modelMode: 'gpt-6.1-sol', effortLevel: 'medium' },
     gemini: { permissionMode: 'default', modelMode: 'gemini-2.5-pro', effortLevel: null },
     opencode: { permissionMode: 'default', modelMode: 'sub2api/gpt-5.5', effortLevel: null },
     openclaw: { permissionMode: 'default', modelMode: 'default', effortLevel: null },

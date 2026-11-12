@@ -36,7 +36,7 @@ describe('resolveNewSessionModeSelection', () => {
         });
     });
 
-    it('prefers an override over stale stored code defaults', () => {
+    it('preserves explicit model and effort picks that match code defaults', () => {
         expect(resolveNewSessionModeSelection({
             agent: 'claude',
             permissionMode: 'bypassPermissions',
@@ -51,8 +51,8 @@ describe('resolveNewSessionModeSelection', () => {
             },
         })).toEqual({
             permissionMode: 'plan',
-            modelMode: 'sonnet',
-            effortLevel: 'xhigh',
+            modelMode: 'opus',
+            effortLevel: 'medium',
         });
     });
 
@@ -65,8 +65,8 @@ describe('resolveNewSessionModeSelection', () => {
             agentDefaultOverrides: {},
         })).toEqual({
             permissionMode: 'yolo',
-            modelMode: 'default',
-            effortLevel: 'default',
+            modelMode: 'gpt-6.1-sol',
+            effortLevel: 'medium',
         });
     });
 
@@ -84,6 +84,13 @@ describe('resolveNewSessionModeSelection', () => {
         })).toMatchObject({
             permissionMode: 'yolo',
         });
+    });
+
+    it('preserves explicitly selected Codex defaults over different user defaults', () => {
+        expect(resolveNewSessionModeSelection({ agent: 'codex', permissionMode: 'default',
+            modelMode: 'gpt-6.1-sol', effortLevel: 'medium',
+            agentDefaultOverrides: { codex: { modelMode: 'gpt-6-astra', effortLevel: 'high' } },
+        })).toMatchObject({ modelMode: 'gpt-6.1-sol', effortLevel: 'medium' });
     });
 
     it('keeps explicit non-default draft picks', () => {
@@ -104,6 +111,15 @@ describe('resolveNewSessionModeSelection', () => {
             modelMode: 'gpt-5.5',
             effortLevel: 'high',
         });
+    });
+
+    it('chooses a supported effort when medium is unavailable', () => {
+        expect(resolveNewSessionModeSelection({ agent: 'codex', permissionMode: 'default',
+            modelMode: 'gpt-live', effortLevel: null, agentDefaultOverrides: {},
+            modelOptions: [{ key: 'gpt-live', name: 'gpt-live' }],
+            effortMetadata: { path: '/repo', host: 'machine', currentModelCode: 'gpt-live',
+                thoughtLevels: [{ code: 'high', value: 'high' }, { code: 'max', value: 'max' }] },
+        }).effortLevel).toBe('high');
     });
 
     it('uses dynamic model options when resolving new-session defaults', () => {
