@@ -28,6 +28,7 @@ mod summary;
 mod socket;
 mod storage;
 mod util;
+mod writer;
 mod zod;
 
 use app::App;

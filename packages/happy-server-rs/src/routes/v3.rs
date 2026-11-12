@@ -2,14 +2,11 @@
 
 use super::sessions::{message_from_row, owns_session, MESSAGE_COLS};
 use crate::app::App;
-use crate::events::{new_message_update, Filter};
 use crate::h;
 use crate::http::{HResult, Reply, Req, Router};
-use crate::util::{cuid, naive_to_ms};
+use crate::writer;
 use crate::zod::{array, coerce_number, object, string};
 use serde_json::{json, Value};
-use sqlx::Row;
-use std::collections::HashMap;
 use std::sync::Arc;
 
 fn not_both(v: &Value) -> bool {
@@ -38,6 +35,22 @@ pub fn register(r: &mut Router) {
             array(object(vec![("content", string()), ("localId", string().min(1.0))])).min(1.0).max(100.0),
         )]))
         .handle(h!(send_messages));
+
+    if writer::hooks::enabled() {
+        // Test-only: `?items=N` holds the session's next batch until N items are queued.
+        r.get("/__test/writer/:sessionId")
+            .params(object(vec![("sessionId", string())]))
+            .query(object(vec![("items", coerce_number().int().min(1.0).optional())]))
+            .handle(h!(test_writer));
+    }
+}
+
+async fn test_writer(app: Arc<App>, req: Req) -> HResult {
+    let sid = req.param("sessionId");
+    if let Some(n) = req.query_field("items").and_then(|v| v.as_f64()) {
+        writer::hooks::set_gate(&sid, n as usize);
+    }
+    Reply::json(json!({"queued": writer::hooks::queued(&app, &sid), "batches": writer::hooks::batches(&sid)}))
 }
 
 async fn get_messages(app: Arc<App>, req: Req) -> HResult {
@@ -79,32 +92,7 @@ async fn get_messages(app: Arc<App>, req: Req) -> HResult {
     Reply::json(json!({"messages": messages, "hasMore": has_more}))
 }
 
-struct Sent {
-    id: String,
-    seq: i32,
-    local_id: Option<String>,
-    created_at: i64,
-    updated_at: i64,
-}
-
-impl Sent {
-    fn json(&self) -> Value {
-        json!({"id": self.id, "seq": self.seq, "localId": self.local_id, "createdAt": self.created_at, "updatedAt": self.updated_at})
-    }
-}
-
-fn sent_from_row(r: &sqlx::postgres::PgRow) -> Sent {
-    Sent {
-        id: r.get("id"),
-        seq: r.get("seq"),
-        local_id: r.get("localId"),
-        created_at: naive_to_ms(r.get("createdAt")),
-        updated_at: naive_to_ms(r.get("updatedAt")),
-    }
-}
-
 async fn send_messages(app: Arc<App>, req: Req) -> HResult {
-    let uid = req.user_id.clone();
     let sid = req.param("sessionId");
     let input: Vec<(String, String)> = req
         .body_field("messages")
@@ -121,86 +109,20 @@ async fn send_messages(app: Arc<App>, req: Req) -> HResult {
         })
         .unwrap_or_default();
 
-    if !owns_session(&app, &sid, &uid).await? {
-        return Reply::code(404, json!({"error": "Session not found"}));
-    }
-
     // First message per localId wins.
-    let mut unique: Vec<(String, String)> = Vec::new();
+    let mut messages: Vec<(String, String)> = Vec::new();
     for (lid, content) in input {
-        if !unique.iter().any(|(l, _)| *l == lid) {
-            unique.push((lid, content));
-        }
-    }
-    let content_by_local: HashMap<String, String> = unique.iter().cloned().collect();
-
-    let s = sid.clone();
-    let (existing, created) = crate::db::tx(&app.pool, move |c| {
-        Box::pin(async move {
-            let local_ids: Vec<String> = unique.iter().map(|(l, _)| l.clone()).collect();
-            let existing: Vec<Sent> = sqlx::query(
-                r#"SELECT "id","seq","localId","createdAt","updatedAt" FROM "SessionMessage" WHERE "sessionId" = $1 AND "localId" = ANY($2)"#,
-            )
-            .bind(&s)
-            .bind(&local_ids)
-            .fetch_all(&mut *c)
-            .await?
-            .iter()
-            .map(sent_from_row)
-            .collect();
-            let new: Vec<&(String, String)> = unique.iter().filter(|(l, _)| !existing.iter().any(|e| e.local_id.as_deref() == Some(l.as_str()))).collect();
-            let seqs = crate::db::allocate_session_seq_batch(&mut *c, &s, new.len() as i32).await?;
-            let mut created: Vec<Sent> = Vec::new();
-            if !new.is_empty() {
-                let now = crate::db::now();
-                let ids: Vec<String> = new.iter().map(|_| cuid()).collect();
-                let lids: Vec<String> = new.iter().map(|(l, _)| l.clone()).collect();
-                let contents: Vec<String> = new.iter().map(|(_, c)| json!({"t": "encrypted", "c": c}).to_string()).collect();
-                created = sqlx::query(
-                    r#"INSERT INTO "SessionMessage" ("id","sessionId","localId","seq","content","createdAt","updatedAt")
-                       SELECT t.id, $1, t.lid, t.seq, t.content::jsonb, $5, $5
-                       FROM UNNEST($2::text[], $3::text[], $4::int4[], $6::text[]) AS t(id, lid, seq, content)
-                       RETURNING "id","seq","localId","createdAt","updatedAt""#,
-                )
-                .bind(&s)
-                .bind(&ids)
-                .bind(&lids)
-                .bind(&seqs)
-                .bind(now)
-                .bind(&contents)
-                .fetch_all(&mut *c)
-                .await?
-                .iter()
-                .map(sent_from_row)
-                .collect();
-            }
-            Ok((existing, created))
-        })
-    })
-    .await?;
-
-    let mut created = created;
-    created.sort_by_key(|m| m.seq);
-    let to_emit: Vec<&Sent> = created.iter().filter(|m| m.local_id.as_ref().and_then(|l| content_by_local.get(l)).is_some_and(|c| !c.is_empty())).collect();
-    if !to_emit.is_empty() {
-        // One allocation for the whole batch: the same consecutive user seqs the TS
-        // server hands out one by one, in the same message order.
-        let first = crate::db::allocate_user_seq_batch(&app.pool, &uid, to_emit.len() as i32).await?;
-        for (i, m) in to_emit.iter().enumerate() {
-            let content = &content_by_local[m.local_id.as_ref().unwrap()];
-            let msg = json!({
-                "id": m.id,
-                "seq": m.seq,
-                "content": {"t": "encrypted", "c": content},
-                "localId": m.local_id,
-                "createdAt": m.created_at,
-                "updatedAt": m.updated_at,
-            });
-            app.hub.emit_update(&uid, new_message_update(&msg, &sid, first + i as i32), Filter::Session(&sid), None);
+        if !messages.iter().any(|(l, _)| *l == lid) {
+            messages.push((lid, content));
         }
     }
 
-    let mut all: Vec<&Sent> = existing.iter().chain(created.iter()).collect();
-    all.sort_by_key(|m| m.seq);
-    Reply::json(json!({"messages": all.iter().map(|m| m.json()).collect::<Vec<_>>()}))
+    // Ownership, the transaction and the updates run in the session's writer,
+    // possibly batched with other writes (see writer.rs).
+    let (reply, outcome) = tokio::sync::oneshot::channel();
+    writer::submit(&app, &sid, writer::Item::V3(writer::V3Send { user_id: req.user_id.clone(), messages, reply }));
+    match outcome.await.map_err(|_| anyhow::anyhow!("message writer stopped"))?? {
+        writer::V3Outcome::NotFound => Reply::code(404, json!({"error": "Session not found"})),
+        writer::V3Outcome::Sent(body) => Reply::json(body),
+    }
 }

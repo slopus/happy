@@ -69,7 +69,7 @@ validation (params → body → querystring, before auth), `R` = zod response sc
 - [x] `POST /v1/sessions/:sessionId/archive` A S
 - [x] `DELETE /v1/sessions/:sessionId` A S — cascade + `delete-session` + blob cleanup
 - [x] `GET /v3/sessions/:sessionId/messages` A S — `after_seq`/`before_seq`/`limit`/`hasMore`
-- [x] `POST /v3/sessions/:sessionId/messages` A S — localId dedup, batch seq, `new-message`
+- [x] `POST /v3/sessions/:sessionId/messages` A S — localId dedup, batch seq, `new-message`; group commit with socket messages (QUIRKS deviation 9)
 
 ### Session avatars (`sessionAvatarRoutes.ts`)
 - [x] `POST /v1/sessions/:sessionId/avatar/request-upload` A S — 60/min/account limiter
@@ -189,7 +189,7 @@ frame header bits, the 15 s heartbeat, a refused handshake, and close by frame, 
       30 s ack timeout (`operation has timed out`), 2 s presence poll / 2 misses (`RPC target disconnected`)
 - [x] `update-metadata` (ack), `update-state` (ack)
 - [x] `session-alive` (activity cache, 30 s threshold, 5 s batched flush, stop suppression)
-- [x] `message` (per-socket FIFO lock; seq allocated even for duplicates; skip sender)
+- [x] `message` (per-socket FIFO lock; seq allocated even for duplicates; skip sender). Written through the session's group-commit writer, shared with v3 sends (QUIRKS deviation 9, `compat/phase4-batch`)
 - [x] `session-end`
 - [x] `session-subscribe` / `session-unsubscribe` (ack; machine-scoped only; shared FIFO lock)
 - [x] `machine-alive`, `machine-update-metadata` (ack), `machine-update-state` (ack)
@@ -235,6 +235,7 @@ frame header bits, the 15 s heartbeat, a refused handshake, and close by frame, 
 | new: `HAPPY_WORKERS` | — | [x] tokio worker threads (default: allowed CPUs, cgroup `cpu.max` aware). Past ~8 workers RPC round trips get slower (tokio parks and wakes idle workers on every hop: 8–9 context switches per call at 16–48 workers vs 0.07 at 4); cap it on big hosts |
 | new: `DATABASE_POOL_SIZE` | — | [x] sqlx pool size (default: `connection_limit` URL param, else 4 × workers clamped to 10..200) |
 | new: `HAPPY_LOG` | — | [x] tracing filter (default by `NODE_ENV`, see QUIRKS deviation 18) |
+| new: `HAPPY_RS_TEST_HOOKS` | — | [x] `1` adds `GET /__test/writer/:sessionId[?items=N]` (hold a session's next message batch until N items are queued; report batches), for `compat/phase4-batch`. Never set in production |
 | new: `HAPPY_RS_EXPO_PUSH_URL`, `HAPPY_RS_ELEVENLABS_API`, `HAPPY_RS_GITHUB_OAUTH_BASE`, `HAPPY_RS_GITHUB_API_BASE` | — | [x] third-party endpoints, for tests (the TS server gets the same through `compat/fetch-mock.mjs`) |
 
 ## Dead code in the TS server (not ported)

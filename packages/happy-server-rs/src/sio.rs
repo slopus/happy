@@ -229,6 +229,7 @@ impl Session {
             rooms: Default::default(),
             acks: Default::default(),
             queues: Default::default(),
+            last_message: Default::default(),
         });
         self.sio.socket = Some(s.clone());
         self.sio.connect_timeout_at = None;

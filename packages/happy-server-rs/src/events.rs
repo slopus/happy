@@ -53,6 +53,9 @@ pub struct SocketHandle {
     pub acks: Mutex<HashMap<u64, oneshot::Sender<Vec<Value>>>>,
     /// Per-socket FIFO queues standing in for the handlers' `AsyncLock`s.
     pub queues: Mutex<HashMap<&'static str, mpsc::UnboundedSender<BoxFuture<'static, ()>>>>,
+    /// The last `message` handed to a session writer, until it is written: a
+    /// message for another session waits for it, as TS's per-socket lock would.
+    pub last_message: Mutex<Option<(String, oneshot::Receiver<()>)>>,
 }
 
 #[derive(Default)]

@@ -1,6 +1,6 @@
 //! prom-client metrics (`metrics2.ts`), same names, labels and buckets.
 
-use prometheus::{CounterVec, Encoder, Gauge, GaugeVec, HistogramOpts, HistogramVec, IntCounter, Opts, Registry, TextEncoder};
+use prometheus::{CounterVec, Encoder, Gauge, GaugeVec, Histogram, HistogramOpts, HistogramVec, IntCounter, Opts, Registry, TextEncoder};
 use std::collections::HashMap;
 
 pub struct Metrics {
@@ -20,6 +20,8 @@ pub struct Metrics {
     pub rpc_fetch_timeouts: CounterVec,
     /// Not in the TS server: log lines the non-blocking writer had to drop.
     pub log_lines_dropped: IntCounter,
+    /// Not in the TS server: items (socket messages, v3 requests) per group-commit batch.
+    pub message_batch_size: Histogram,
     /// prom-client prints HELP/TYPE for a labelled metric before its first
     /// series; the prometheus crate leaves the family out.
     families: Vec<(String, String, &'static str)>,
@@ -67,6 +69,11 @@ impl Metrics {
         )
         .unwrap();
         let rpc_fetch_timeouts = CounterVec::new(Opts::new("rpc_fetchsockets_timeouts_total", "Cross-replica fetchSockets timeouts by context"), &["context"]).unwrap();
+        let message_batch_size = Histogram::with_opts(
+            HistogramOpts::new("message_write_batch_size", "Socket messages and v3 message requests written per group-commit batch")
+                .buckets(vec![1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0]),
+        )
+        .unwrap();
         let log_lines_dropped = IntCounter::new("log_lines_dropped_total", "Log lines dropped because stdout could not keep up").unwrap();
         // No Redis stream here: the lag is always 0 (exported so dashboards and alerts keep working).
         let redis_stream_lag = Gauge::new("redis_stream_lag_ms", "Milliseconds between this pod read cursor and stream HEAD").unwrap();
@@ -85,6 +92,7 @@ impl Metrics {
             Box::new(rpc_lookup_retries.clone()),
             Box::new(rpc_fetch_timeouts.clone()),
             Box::new(log_lines_dropped.clone()),
+            Box::new(message_batch_size.clone()),
             Box::new(redis_stream_lag),
         ];
         let mut families = Vec::new();
@@ -115,6 +123,7 @@ impl Metrics {
             rpc_lookup_retries,
             rpc_fetch_timeouts,
             log_lines_dropped,
+            message_batch_size,
             families,
         }
     }

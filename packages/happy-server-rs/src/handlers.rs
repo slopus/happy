@@ -13,7 +13,7 @@ use crate::engine::Cmd;
 use crate::events::{self, ConnType, Filter, SocketHandle};
 use crate::js;
 use crate::models::{Artifact, Machine, ARTIFACT_COLS, MACHINE_COLS};
-use crate::routes::sessions::{find_session, message_from_row, MESSAGE_COLS};
+use crate::routes::sessions::find_session;
 use crate::socket;
 use crate::util::{cuid, ms_to_naive, naive_to_ms, now_ms, stablelib_b64_decode};
 use anyhow::{anyhow, bail};
@@ -392,42 +392,23 @@ async fn message(app: Arc<App>, s: Arc<SocketHandle>, args: Args) {
             if s.conn_type == ConnType::SessionScoped { s.session_id.as_deref().unwrap_or("") } else { "N/A" }
         );
         let sid = pstr(sid)?;
-        if find_session(&app, sid, &s.user_id).await?.is_none() {
-            return Ok(());
-        }
-        let local_id = local_id.and_then(|v| v.as_str());
+        let local_id = local_id.and_then(|v| v.as_str()).map(str::to_string);
         let content = js::stringify(&json!({"t": "encrypted", "c": socket::buffers_to_json(message)}));
-        let upd_seq = db::allocate_user_seq_pool(&app.pool, &s.user_id).await?;
-        let msg_seq = {
-            let mut c = app.pool.acquire().await?;
-            db::allocate_session_seq_batch(&mut c, sid, 1).await?[0]
-        };
-        if let Some(l) = local_id {
-            let existing: Option<(String,)> = sqlx::query_as(r#"SELECT "id" FROM "SessionMessage" WHERE "sessionId" = $1 AND "localId" = $2 LIMIT 1"#)
-                .bind(sid)
-                .bind(l)
-                .fetch_optional(&app.pool)
-                .await?;
-            if existing.is_some() {
-                return Ok(());
+        // Same session: the writer's queue keeps the order. Another session: wait
+        // until the previous message is written, like TS's per-socket lock.
+        let previous = s.last_message.lock().take();
+        if let Some((prev_sid, written)) = previous {
+            if prev_sid != sid {
+                let _ = written.await;
             }
         }
-        let now = db::now();
-        let row = sqlx::query(&format!(
-            r#"INSERT INTO "SessionMessage" ("id","sessionId","seq","content","localId","createdAt","updatedAt")
-               VALUES ($1,$2,$3,$4::jsonb,$5,$6,$6) RETURNING {}"#,
-            MESSAGE_COLS
-        ))
-        .bind(cuid())
-        .bind(sid)
-        .bind(msg_seq)
-        .bind(&content)
-        .bind(local_id)
-        .bind(now)
-        .fetch_one(&app.pool)
-        .await?;
-        let msg = message_from_row(&row);
-        app.hub.emit_update(&s.user_id, events::new_message_update(&msg.json(), sid, upd_seq), Filter::Session(sid), Some(&s.id));
+        let (done, written) = tokio::sync::oneshot::channel();
+        *s.last_message.lock() = Some((sid.to_string(), written));
+        crate::writer::submit(
+            &app,
+            sid,
+            crate::writer::Item::Socket(crate::writer::SocketMessage { user_id: s.user_id.clone(), socket_id: s.id.clone(), local_id, content, done }),
+        );
         Ok(())
     }
     .await;

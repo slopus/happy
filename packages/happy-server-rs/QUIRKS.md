@@ -222,6 +222,15 @@ Differences accepted on purpose. Everything else is a bug.
    is bumped once instead of once per message. This assumes the TS server is never
    live on the same database at the same time: switching servers is stop one, then
    start the other. The advisory lock only keeps a second *Rust* instance out.
+   The same holds for **group commit** (`writer.rs`): socket `message` events and v3
+   sends for one session queue behind the write in flight and are written together,
+   in one statement that takes the session seqs, the user seqs and inserts every
+   row, in arrival order. Seqs, burned seqs (duplicate localIds), duplicates inside a
+   batch, v3 responses and updates are those of the TS handlers run one after
+   another (`compat/phase4-batch`); a batch that fails is replayed one message at a
+   time through the TS-shaped code paths. What differs: `Session.updatedAt` and
+   `Account.updatedAt` are bumped once per batch rather than once per message, and
+   messages of one batch become visible together, at its commit.
 10. **Inputs that crash the TS process.** A throw inside a handler's `catch` block,
     a client-sent `error` event (unhandled EventEmitter `error`), and an `rpc-call`
     whose `method` is not a string all end the TS process. The Rust server logs the
@@ -256,4 +265,5 @@ Differences accepted on purpose. Everything else is a bug.
     `log-writer: dropped N log lines` line follows once the queue drains, and the
     count is exported as `log_lines_dropped_total` on `/metrics`.
 19. **`/metrics` extras.** `redis_stream_lag_ms` is exported as a constant `0` (there is
-    no Redis stream), and `log_lines_dropped_total` exists only in the Rust server.
+    no Redis stream). `log_lines_dropped_total` and `message_write_batch_size` (items per
+    group-commit batch) exist only in the Rust server.

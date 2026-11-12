@@ -15,6 +15,8 @@ full_page_writes = off
 max_connections = 400
 CONF
 fi
-pg_ctl -D "$WORK/pgdata" -l "$WORK/pg.log" -o "-p $PGPORT" -w start >/dev/null || { tail -5 "$WORK/pg.log"; exit 1; }
+# PG_DURABLE=1: fsync and synchronous commit on, as in production (put WORK on a real disk).
+DURABLE=${PG_DURABLE:+-c fsync=on -c synchronous_commit=on -c full_page_writes=on}
+pg_ctl -D "$WORK/pgdata" -l "$WORK/pg.log" -o "-p $PGPORT $DURABLE" -w start >/dev/null || { tail -5 "$WORK/pg.log"; exit 1; }
 trap 'pg_ctl -D "$WORK/pgdata" -m fast stop >/dev/null' EXIT
 "$@"

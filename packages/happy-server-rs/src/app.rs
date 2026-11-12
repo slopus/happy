@@ -8,6 +8,7 @@ use crate::events::Hub;
 use crate::http::Router;
 use crate::metrics::Metrics;
 use crate::storage::files::Files;
+use crate::writer::Writers;
 use sqlx::PgPool;
 use std::sync::Arc;
 
@@ -21,6 +22,7 @@ pub struct App {
     pub metrics: Arc<Metrics>,
     pub files: Files,
     pub activity: ActivityCache,
+    pub writers: Writers,
 }
 
 impl App {
@@ -33,6 +35,7 @@ impl App {
             files: Files::new(&config),
             activity: ActivityCache::new(pool.clone(), metrics.clone()),
             hub: Hub::default(),
+            writers: Writers::default(),
             engine: Engine::default(),
             router,
             metrics,

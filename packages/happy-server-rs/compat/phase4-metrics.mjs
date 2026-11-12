@@ -28,6 +28,7 @@ function comparable(fams) {
     for (const [name, f] of Object.entries(fams).sort()) {
         if (name.startsWith('prisma_')) continue; // QUIRKS deviation 3
         if (name === 'log_lines_dropped_total') continue; // Rust only (non-blocking log writer)
+        if (name === 'message_write_batch_size') continue; // Rust only (group commit)
         const series = {};
         for (const [k, v] of Object.entries(f.series).sort()) {
             if (k.includes('_sum{') || k.includes('_bucket{')) continue; // timings; _count stays
