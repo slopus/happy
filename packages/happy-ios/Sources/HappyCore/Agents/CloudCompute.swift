@@ -1,16 +1,16 @@
 import Foundation
 import HappyWire
 
-/// How a machine takes agents, fixed by the config on the machine itself:
+/// How a computer takes agents, fixed by the config on the computer itself:
 /// isolated sandboxes, the host shared by every agent, the host held by one
-/// agent at a time, or a member's own machine for their own agents. A
-/// machine's mode carries what only that mode has.
+/// agent at a time, or a member's own computer for their own agents. A
+/// computer's mode carries what only that mode has.
 public enum ComputeMode: Equatable, Sendable {
     case sandbox
     case shared
     /// `holder` is nil while no agent has joined it.
     case exclusive(holder: ComputeHolder?)
-    /// `owner` is the member's user ID; nil for a machine that joined
+    /// `owner` is the member's user ID; nil for a computer that joined
     /// before owners were kept.
     case `private`(owner: String?)
 
@@ -40,15 +40,15 @@ public enum ComputeMode: Equatable, Sendable {
 
 public enum ComputePlatform: String, Equatable, Sendable { case macOS, linux, windows }
 
-/// The agent holding an exclusive machine; its title is nil when the reader
+/// The agent holding an exclusive computer; its title is nil when the reader
 /// may not read that agent's conversation.
 public struct ComputeHolder: Decodable, Equatable, Sendable {
     public let id: String
     public let title: String?
 }
 
-/// What the reader may do with compute: add a machine in any mode and free
-/// a held one (`pools.manage`), use machines and add a private one of their
+/// What the reader may do with compute: add a computer in any mode and free
+/// a held one (`pools.manage`), use computers and add a private one of their
 /// own (`compute.use`), or nothing at all.
 public enum ComputeAccess: Equatable, Sendable {
     case none, use, manage
@@ -59,7 +59,7 @@ public enum ComputeAccess: Equatable, Sendable {
         self = gate.allows(.poolsManage) ? .manage : .use
     }
 
-    /// The modes it may add a machine in.
+    /// The modes it may add a computer in.
     public var modes: [ComputeMode.Kind] {
         switch self {
         case .none: []
@@ -84,10 +84,10 @@ public struct ComputeCapacity: Decodable, Equatable, Sendable {
     }
 }
 
-/// One machine from `/v0/compute/nodes`. A member reads its identity, mode
+/// One computer from `/v0/computers`. A member reads its identity, mode
 /// and description; host facts, capacity and placements come only to
 /// `pools.manage`, so they stay nil for everyone else.
-public struct ComputeNode: Decodable, Equatable, Sendable {
+public struct Computer: Decodable, Equatable, Sendable {
     public enum Status: String, Decodable, Sendable { case online, offline, draining, enrolling, revoked }
 
     /// Startup host totals. Missing facts remain unknown.
@@ -128,7 +128,7 @@ public struct ComputeNode: Decodable, Equatable, Sendable {
     }
 
     /// Whether `access` may rename it and change its description: a
-    /// manager, or the owner of a private machine.
+    /// manager, or the owner of a private computer.
     public func editable(by access: ComputeAccess, userId: String?) -> Bool {
         access == .manage || ownedBy(userId)
     }
@@ -177,10 +177,10 @@ public struct ComputeNode: Decodable, Equatable, Sendable {
 }
 
 /// An agent waiting for the reader to let it join one of their private
-/// machines (`GET /v0/compute/approvals`).
+/// computers (`GET /v0/computers/approvals`).
 public struct ComputeApproval: Decodable, Equatable, Sendable {
-    public let nodeId: String
-    public let nodeName: String?
+    public let computerId: String
+    public let computerName: String?
     /// Nil when the reader may not read that agent's conversation.
     public let agentTitle: String?
     public let agentId: String
@@ -188,10 +188,10 @@ public struct ComputeApproval: Decodable, Equatable, Sendable {
     public let createdAt: Double
 
     /// The one request it is.
-    public var id: String { "\(nodeId)/\(agentId)" }
+    public var id: String { "\(computerId)/\(agentId)" }
 }
 
-/// The one-time join token a new machine installs with, shown once.
+/// The one-time join token a new computer installs with, shown once.
 public struct ComputeInstall: Decodable, Equatable, Sendable {
     public struct Commands: Decodable, Equatable, Sendable {
         public let unix: String
@@ -213,7 +213,7 @@ public struct ComputeInstall: Decodable, Equatable, Sendable {
     public let commands: Commands?
 
     /// The commands this mode can run: the shell one for the Unix systems
-    /// it supports, and PowerShell only for a private machine, the one mode
+    /// it supports, and PowerShell only for a private computer, the one mode
     /// Windows has.
     public var shown: [Command] {
         guard let commands else { return [] }
@@ -224,9 +224,9 @@ public struct ComputeInstall: Decodable, Equatable, Sendable {
     }
 }
 
-/// What a new machine will be: its mode, and the name and description it
+/// What a new computer will be: its mode, and the name and description it
 /// joins with.
-public struct ComputeMachineDraft: Equatable, Sendable {
+public struct ComputerDraft: Equatable, Sendable {
     public var mode: ComputeMode.Kind
     public var name = ""
     public var description = ""
@@ -238,24 +238,24 @@ public struct ComputeMachineDraft: Equatable, Sendable {
     }
 }
 
-/// Adding a machine: choose its mode, then name and describe it, then mint
+/// Adding a computer: choose its mode, then name and describe it, then mint
 /// the token and show its install commands. Changes that don't belong to
 /// the current step are ignored.
-public enum ComputeMachineAdd: Equatable, Sendable {
-    case choosing(ComputeMachineDraft)
-    case describing(ComputeMachineDraft)
-    case creating(ComputeMachineDraft)
-    case failed(ComputeMachineDraft, message: String)
+public enum ComputerAdd: Equatable, Sendable {
+    case choosing(ComputerDraft)
+    case describing(ComputerDraft)
+    case creating(ComputerDraft)
+    case failed(ComputerDraft, message: String)
     /// Shown once; closing the flow forgets it.
     case shown(ComputeInstall)
 
     /// Nil when the reader may add nothing. A member starts on private,
     /// the only mode they have.
-    public static func start(_ access: ComputeAccess) -> ComputeMachineAdd? {
-        access.modes.first.map { .choosing(ComputeMachineDraft(mode: $0)) }
+    public static func start(_ access: ComputeAccess) -> ComputerAdd? {
+        access.modes.first.map { .choosing(ComputerDraft(mode: $0)) }
     }
 
-    public var draft: ComputeMachineDraft? {
+    public var draft: ComputerDraft? {
         switch self {
         case .choosing(let draft), .describing(let draft), .creating(let draft), .failed(let draft, _): draft
         case .shown: nil
@@ -282,7 +282,7 @@ public enum ComputeMachineAdd: Equatable, Sendable {
 
     /// A change to the name or description, which takes back a refusal the
     /// earlier draft got.
-    public mutating func edit(_ change: (inout ComputeMachineDraft) -> Void) {
+    public mutating func edit(_ change: (inout ComputerDraft) -> Void) {
         switch self {
         case .describing(var draft), .failed(var draft, _):
             change(&draft)
@@ -316,13 +316,13 @@ public struct ComputeFailure: Error, Equatable, Sendable {
     public init(_ message: String) { self.message = message }
 }
 
-/// `POST /v0/compute/join-tokens`: an empty name or description is left out.
+/// `POST /v0/computers/join-tokens`: an empty name or description is left out.
 public struct ComputeJoinTokenRequest: Equatable, Sendable {
     public let mode: ComputeMode.Kind
     public let name: String?
     public let description: String?
 
-    public init(_ draft: ComputeMachineDraft) {
+    public init(_ draft: ComputerDraft) {
         mode = draft.mode
         name = Self.trimmed(draft.name)
         description = Self.trimmed(draft.description)
@@ -341,14 +341,14 @@ public struct ComputeJoinTokenRequest: Equatable, Sendable {
     }
 }
 
-/// `PATCH /v0/compute/nodes/:id`: only what changed; a cleared description
+/// `PATCH /v0/computers/:id`: only what changed; a cleared description
 /// is sent as `null`. Nil when nothing changed or the name was emptied.
-public struct ComputeNodePatch: Equatable, Sendable {
+public struct ComputerPatch: Equatable, Sendable {
     public let name: String?
     /// `.some(nil)` clears it.
     public let description: String??
 
-    public init?(_ node: ComputeNode, name: String, description: String) {
+    public init?(_ node: Computer, name: String, description: String) {
         guard let name = ComputeJoinTokenRequest.trimmed(name) else { return nil }
         let description = ComputeJoinTokenRequest.trimmed(description)
         self.name = name == node.displayName ? nil : name
@@ -365,40 +365,40 @@ public struct ComputeNodePatch: Equatable, Sendable {
 }
 
 extension AgentClient {
-    /// Every machine the reader may see, revoked ones left out; one the
+    /// Every computer the reader may see, revoked ones left out; one the
     /// phone can't read is skipped, never the whole list.
-    public func computeNodes() async throws -> [ComputeNode] {
-        struct Response: Decodable { let nodes: [Lossy<ComputeNode>] }
-        return try await decode(Response.self, "GET", "/v0/compute/nodes").nodes.compactMap(\.value).filter { $0.status != .revoked }
+    public func computers() async throws -> [Computer] {
+        struct Response: Decodable { let computers: [Lossy<Computer>] }
+        return try await decode(Response.self, "GET", "/v0/computers").computers.compactMap(\.value).filter { $0.status != .revoked }
     }
 
-    public func computeNode(_ id: String) async throws -> ComputeNode {
-        struct Response: Decodable { let node: ComputeNode }
-        return try await decode(Response.self, "GET", "/v0/compute/nodes/\(Self.escape(id))").node
+    public func computer(_ id: String) async throws -> Computer {
+        struct Response: Decodable { let computer: Computer }
+        return try await decode(Response.self, "GET", "/v0/computers/\(Self.escape(id))").computer
     }
 
-    /// The requests to join the reader's private machines, oldest first.
-    public func computeApprovals() async throws -> [ComputeApproval] {
+    /// The requests to join the reader's private computers, oldest first.
+    public func computerApprovals() async throws -> [ComputeApproval] {
         struct Response: Decodable { let approvals: [Lossy<ComputeApproval>] }
-        return try await decode(Response.self, "GET", "/v0/compute/approvals").approvals.compactMap(\.value).sorted { $0.createdAt < $1.createdAt }
+        return try await decode(Response.self, "GET", "/v0/computers/approvals").approvals.compactMap(\.value).sorted { $0.createdAt < $1.createdAt }
     }
 
-    public func createComputeJoinToken(_ request: ComputeJoinTokenRequest) async throws -> ComputeInstall {
-        try await decode(ComputeInstall.self, "POST", "/v0/compute/join-tokens", json: request.json)
+    public func createComputerJoinToken(_ request: ComputeJoinTokenRequest) async throws -> ComputeInstall {
+        try await decode(ComputeInstall.self, "POST", "/v0/computers/join-tokens", json: request.json)
     }
 
-    public func updateComputeNode(_ id: String, _ patch: ComputeNodePatch) async throws {
-        _ = try await send("PATCH", "/v0/compute/nodes/\(Self.escape(id))", json: patch.json)
+    public func updateComputer(_ id: String, _ patch: ComputerPatch) async throws {
+        _ = try await send("PATCH", "/v0/computers/\(Self.escape(id))", json: patch.json)
     }
 
-    /// Frees an exclusive machine; the agent that held it, if any.
+    /// Frees an exclusive computer; the agent that held it, if any.
     @discardableResult
-    public func releaseComputeLock(_ id: String) async throws -> String? {
+    public func releaseComputerLock(_ id: String) async throws -> String? {
         struct Response: Decodable { let previousHolder: String? }
-        return try await decode(Response.self, "POST", "/v0/compute/nodes/\(Self.escape(id))/release-lock", json: .object([:])).previousHolder
+        return try await decode(Response.self, "POST", "/v0/computers/\(Self.escape(id))/release-lock", json: .object([:])).previousHolder
     }
 
-    public func answerComputeApproval(_ approval: ComputeApproval, approve: Bool) async throws {
-        _ = try await send("POST", "/v0/compute/approvals/\(Self.escape(approval.nodeId))/\(Self.escape(approval.agentId))", json: .object(["approve": .bool(approve)]))
+    public func answerComputerApproval(_ approval: ComputeApproval, approve: Bool) async throws {
+        _ = try await send("POST", "/v0/computers/approvals/\(Self.escape(approval.computerId))/\(Self.escape(approval.agentId))", json: .object(["approve": .bool(approve)]))
     }
 }

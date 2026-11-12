@@ -1,16 +1,16 @@
 import Foundation
 
-/// Settings › Compute's list: the machines agents can join, online first,
-/// and the requests to join the reader's private machines.
-public struct ComputeMachines: Equatable, Sendable {
-    public let nodes: [ComputeNode]
+/// Settings › Compute's list: the computers agents can join, online first,
+/// and the requests to join the reader's private computers.
+public struct Computers: Equatable, Sendable {
+    public let computers: [Computer]
     public let approvals: [ComputeApproval]
-    /// Member names by user ID, for the private machines of others a
+    /// Member names by user ID, for the private computers of others a
     /// manager sees; a member with no saved name is left out.
     public let owners: [String: String]
 
-    public init(nodes: [ComputeNode], approvals: [ComputeApproval], owners: [String: String] = [:]) {
-        self.nodes = nodes.sorted {
+    public init(computers: [Computer], approvals: [ComputeApproval], owners: [String: String] = [:]) {
+        self.computers = computers.sorted {
             $0.status == .online && $1.status != .online
                 || ($0.status == .online) == ($1.status == .online) && $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
         }
@@ -25,12 +25,12 @@ public struct ComputeMachines: Equatable, Sendable {
 @MainActor
 public final class ComputeMonitor {
     public enum Page: Equatable, Sendable {
-        case machines
-        case machine(String)
+        case computers
+        case computer(String)
     }
     public enum Snapshot: Equatable, Sendable {
-        case machines(ComputeMachines)
-        case machine(ComputeNode)
+        case computers(Computers)
+        case computer(Computer)
     }
     public enum Failure: Equatable, Sendable { case unavailable, forbidden, missing, signedOut }
 
@@ -47,10 +47,11 @@ public final class ComputeMonitor {
     /// Owner names already asked for, kept for the page's life.
     private var owners: [String: String?] = [:]
 
-    /// A machine joining, leaving or changing says `runners.updated`; a
-    /// request to join one of the reader's machines, or its answer,
-    /// `compute.approvals.updated`. Neither carries a payload.
-    public static let refreshEvents = ["runners.updated", "compute.approvals.updated"]
+    /// A computer joining, leaving or changing says `runners.updated` and
+    /// `compute.nodes.updated`; a request to join one of the reader's
+    /// computers, or its answer, `compute.approvals.updated`. None carries
+    /// a payload.
+    public static let refreshEvents = ["runners.updated", "compute.nodes.updated", "compute.approvals.updated"]
 
     public init(client: AgentClient, page: Page) {
         self.client = client
@@ -107,13 +108,13 @@ public final class ComputeMonitor {
                 let next: Snapshot
                 var named: [String: String?] = [:]
                 switch page {
-                case .machines:
-                    async let nodes = client.computeNodes()
-                    async let approvals = client.computeApprovals()
-                    let (listed, waiting) = try await (nodes, approvals)
+                case .computers:
+                    async let computers = client.computers()
+                    async let approvals = client.computerApprovals()
+                    let (listed, waiting) = try await (computers, approvals)
                     named = await Self.names(listed, known: known, client: client)
-                    next = .machines(ComputeMachines(nodes: listed, approvals: waiting, owners: named.compactMapValues { $0 }))
-                case .machine(let id): next = .machine(try await client.computeNode(id))
+                    next = .computers(Computers(computers: listed, approvals: waiting, owners: named.compactMapValues { $0 }))
+                case .computer(let id): next = .computer(try await client.computer(id))
                 }
                 guard !Task.isCancelled, let self, visible, allowed else { return }
                 owners = named.isEmpty ? owners : named
@@ -140,11 +141,11 @@ public final class ComputeMonitor {
         }
     }
 
-    /// The names of the private machines' owners, asked for only while one
+    /// The names of the private computers' owners, asked for only while one
     /// isn't known yet. A failed read leaves them unnamed, not the list.
-    private nonisolated static func names(_ nodes: [ComputeNode], known: [String: String?], client: AgentClient) async -> [String: String?] {
-        let owners = Set(nodes.compactMap { node -> String? in
-            if case .private(let owner?) = node.mode { return owner }
+    private nonisolated static func names(_ computers: [Computer], known: [String: String?], client: AgentClient) async -> [String: String?] {
+        let owners = Set(computers.compactMap { computer -> String? in
+            if case .private(let owner?) = computer.mode { return owner }
             return nil
         })
         let missing = owners.subtracting(known.keys)

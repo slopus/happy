@@ -9,37 +9,37 @@ extension Strings {
         static let loading = "Loading…"
         static let unknown = "Unknown"
         static let denied = "Your role can't use compute on this server."
-        static let missing = "This machine is no longer available."
+        static let missing = "This computer is no longer available."
         static let failed = "Couldn’t refresh. Tap to retry."
         static let stale = "Showing the last reading."
 
-        static let machines = "Machines"
-        static let noMachines = "No machine has joined yet."
-        static func machinesNote(_ access: ComputeAccess) -> String {
+        static let computers = "Computers"
+        static let noComputers = "No computer has joined yet."
+        static func computersNote(_ access: ComputeAccess) -> String {
             switch access {
-            case .manage: "Agents choose a machine and join it. Its mode decides who can join and how agents share it."
-            case .use: "Agents choose a machine and join it. You can add a private machine of your own."
-            case .none: "Agents choose a machine and join it. Your role can see them but not add one."
+            case .manage: "Agents choose a computer and join it. Its mode decides who can join and how agents share it."
+            case .use: "Agents choose a computer and join it. You can add a private computer of your own."
+            case .none: "Agents choose a computer and join it. Your role can see them but not add one."
             }
         }
-        static let addMachine = "Add Machine"
+        static let addComputer = "Add Computer"
         static let details = "Show Details"
         static let edit = "Edit"
         static let release = "Release"
-        static func releaseTitle(_ machine: String) -> String { "Release \(machine)?" }
+        static func releaseTitle(_ computer: String) -> String { "Release \(computer)?" }
         static func releaseMessage(_ holder: String) -> String {
             "\(holder) runs nothing more there until it joins again."
         }
-        static let releaseNote = "Release frees the machine from the agent holding it, so another agent can join."
+        static let releaseNote = "Release frees the computer from the agent holding it, so another agent can join."
         static let actionFailed = "That didn’t go through"
 
         static let joinRequests = "Join requests"
-        static let joinRequestsNote = "Your agents are asking to join your private machines. An approved agent can use the machine until it leaves."
+        static let joinRequestsNote = "Your agents are asking to join your private computers. An approved agent can use the computer until it leaves."
         static let approve = "Approve"
         static let deny = "Deny"
         static let anAgent = "An agent"
-        static let yourMachine = "your machine"
-        static func wantsToJoin(_ machine: String, _ when: String) -> String { "Wants to join \(machine) · \(when)" }
+        static let yourComputer = "your computer"
+        static func wantsToJoin(_ computer: String, _ when: String) -> String { "Wants to join \(computer) · \(when)" }
 
         static func mode(_ kind: ComputeMode.Kind) -> String {
             switch kind {
@@ -54,7 +54,7 @@ extension Strings {
             case .sandbox: "Each agent works in its own isolated sandbox, with optional CPU and memory limits. Linux only."
             case .shared: "Every agent works directly on the host. Only other agents’ workspaces are hidden. Linux only."
             case .exclusive: "One agent at a time works on the host. The rest see it as busy. Linux and macOS."
-            case .private: "Your own machine. Only your agents can join, and you approve each one. Linux, macOS and Windows."
+            case .private: "Your own computer. Only your agents can join, and you approve each one. Linux, macOS and Windows."
             }
         }
         static let yours = "Yours"
@@ -62,7 +62,7 @@ extension Strings {
         static func heldBy(_ title: String?) -> String { "Held by \(title ?? "an agent")" }
         static let free = "Free"
 
-        static func status(_ status: ComputeNode.Status, held: Bool) -> String {
+        static func status(_ status: Computer.Status, held: Bool) -> String {
             switch status {
             case .online: held ? "In use" : "Online"
             case .offline: "Offline"
@@ -80,28 +80,28 @@ extension Strings {
             }
         }
 
-        // Adding a machine.
+        // Adding a computer.
         static let next = "Next"
         static let create = "Create"
         static let modeNeedsAdmin = "Admin only"
-        static let modeLockedHint = "Adding a machine in this mode needs admin permission."
+        static let modeLockedHint = "Adding a computer in this mode needs admin permission."
         static let name = "Name"
         static let namePlaceholder = "Its hostname"
-        static let nameHint = "Optional. Agents see this name; it starts as the machine’s hostname."
+        static let nameHint = "Optional. Agents see this name; it starts as the computer’s hostname."
         static let description = "Description"
-        static let descriptionPlaceholder = "What agents should know about this machine"
-        static let descriptionHint = "Optional. Agents read it when they choose a machine."
-        static let editDescriptionHint = "Agents read it when they choose a machine."
+        static let descriptionPlaceholder = "What agents should know about this computer"
+        static let descriptionHint = "Optional. Agents read it when they choose a computer."
+        static let editDescriptionHint = "Agents read it when they choose a computer."
         static let noInstall = "No install command"
         static let notSaved = "Not saved"
-        static let editMachine = "Edit Machine"
+        static let editComputer = "Edit Computer"
         static let installTitle = "Install"
         static func installNote(_ kind: ComputeMode.Kind) -> String {
             switch kind {
-            case .sandbox: "Run this on a Linux machine. It installs the Happy supervisor as root, joins the machine, and gives each agent its own sandbox."
-            case .shared: "Run this on a Linux machine. It installs the Happy supervisor with sudo and joins the machine in shared mode."
-            case .exclusive: "Run this on the machine. It installs the Happy supervisor with sudo and joins the machine in exclusive mode."
-            case .private: "Run this on your own machine, signed in as yourself. It needs no sudo: the Happy supervisor runs on your own account, and the machine joins as yours."
+            case .sandbox: "Run this on a Linux computer. It installs the Happy supervisor as root, joins the computer, and gives each agent its own sandbox."
+            case .shared: "Run this on a Linux computer. It installs the Happy supervisor with sudo and joins the computer in shared mode."
+            case .exclusive: "Run this on the computer. It installs the Happy supervisor with sudo and joins the computer in exclusive mode."
+            case .private: "Run this on your own computer, signed in as yourself. It needs no sudo: the Happy supervisor runs on your own account, and the computer joins as yours."
             }
         }
         static func expires(_ at: Date, now: Date = Date()) -> String {
@@ -127,7 +127,7 @@ extension Strings {
         static let copied = "Copied"
         static let invalidInstall = "Happy Cloud didn’t send an install command."
 
-        // A machine's facts.
+        // A computer's facts.
         static let cpu = "Logical CPU cores"
         static let memory = "Physical RAM"
         static let disk = "Workspace volume"
