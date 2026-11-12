@@ -126,6 +126,12 @@ public actor Store {
     private var places = Places()
     private var placesReload: Task<Void, Never>?
     private var placesDirty = false
+    /// When the bots and tasks were last read (~0.8 MB on a busy
+    /// computer), and what came meanwhile that their read could not follow.
+    private var placesRead: ContinuousClock.Instant?
+    private var placesHeld: [JSONValue]?
+    /// How soon after a read news may read the bots and tasks again.
+    private let placesRereadInterval: Duration
     /// An `agent.updated` the sidebar follows, drawn with the others that
     /// come within 250 ms (`followAgentsSoon`).
     private var followingAgents: Task<Void, Never>?
@@ -137,8 +143,9 @@ public actor Store {
     private var attentionIdle: Task<Void, Never>?
     private var attentionVisible = true
 
-    public init(client: AgentClient, offline: OfflineFile? = nil, intents: IntentOutbox? = nil, labels: Rows.Labels = Rows.Labels()) {
+    public init(client: AgentClient, offline: OfflineFile? = nil, intents: IntentOutbox? = nil, labels: Rows.Labels = Rows.Labels(), placesRereadInterval: Duration = .seconds(10)) {
         self.client = client
+        self.placesRereadInterval = placesRereadInterval
         self.offline = offline
         self.intents = intents
         self.labels = labels
@@ -256,7 +263,7 @@ public actor Store {
         await flush()
         following?.cancel(); following = nil
         loading?.cancel(); loading = nil
-        placesReload?.cancel(); placesReload = nil
+        placesReload?.cancel(); placesReload = nil; placesHeld = nil
         followingAgents?.cancel(); followingAgents = nil
         attentionIdle?.cancel(); attentionIdle = nil
         keeping?.cancel(); keeping = nil
@@ -455,18 +462,28 @@ public actor Store {
     /// The bots and tasks are stale: read once things settle, and once
     /// more for news that came during the read, as home's own loop does
     /// (Proofs/: `Refresh`). Starting the wait again with each piece of
-    /// news, as this did, never read while news kept coming.
+    /// news, as this did, never read while news kept coming. A read is
+    /// `placesRereadInterval` after the last at the soonest, and what came
+    /// during it is taken in after it, in order: a working agent's updates
+    /// follow the copy just read rather than asking for the lists again
+    /// with every word.
     private func schedulePlacesReload() {
         placesDirty = true
         guard placesReload == nil else { return }
         placesReload = Task {
             while placesDirty {
-                try? await Task.sleep(for: .milliseconds(300))
+                let due = max(.now + .milliseconds(300), placesRead.map { $0 + placesRereadInterval } ?? .now)
+                try? await Task.sleep(until: due, clock: .continuous)
                 guard !Task.isCancelled else { return }
                 placesDirty = false
-                guard let (bots, tasks) = try? await (client.bots(), client.tasks()) else { placesDirty = true; break }
-                guard !Task.isCancelled else { return }
+                placesRead = .now
+                placesHeld = []
+                guard let (bots, tasks) = try? await (client.bots(), client.tasks()) else { placesHeld = nil; placesDirty = true; break }
+                guard !Task.isCancelled else { placesHeld = nil; return }
                 adoptPlaces(bots: bots, tasks: tasks)
+                let held = placesHeld ?? []
+                placesHeld = nil
+                for event in held { receive(event) }
             }
             placesReload = nil
         }
@@ -646,11 +663,13 @@ public actor Store {
                 if agents.drawn(id) != drawn { followAgentsSoon() }
                 return
             }
+            if placesHeld != nil { placesHeld?.append(event); return }
             schedulePlacesReload()
         case "agent.created":
             if let agent = payload["agent"] { agents.created(agent); rebuildPlaces() }
         case "bot.created", "bot.updated", "task.created", "task.updated", "task.joined", "task.left":
             if let membership = payload["membership"] { adoptMembership(membership) }
+            if placesHeld != nil { placesHeld?.append(event); return }
             schedulePlacesReload()
         case "task.membership.updated":
             guard let membership = payload["membership"] else { return }
