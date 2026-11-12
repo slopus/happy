@@ -46,6 +46,7 @@ pub struct Config {
     pub elevenlabs_api: String,
     pub github_oauth_base: String,
     pub github_api_base: String,
+    pub history: crate::history::HistoryConfig,
 }
 
 fn var(k: &str) -> Option<String> {
@@ -116,6 +117,7 @@ impl Config {
             elevenlabs_api: var("HAPPY_RS_ELEVENLABS_API").unwrap_or_else(|| "https://api.elevenlabs.io/v1/convai".into()),
             github_oauth_base: var("HAPPY_RS_GITHUB_OAUTH_BASE").unwrap_or_else(|| "https://github.com".into()),
             github_api_base: var("HAPPY_RS_GITHUB_API_BASE").unwrap_or_else(|| "https://api.github.com".into()),
+            history: crate::history::HistoryConfig::from_env()?,
         })
     }
 

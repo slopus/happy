@@ -1,6 +1,6 @@
 //! prom-client metrics (`metrics2.ts`), same names, labels and buckets.
 
-use prometheus::{CounterVec, Encoder, Gauge, GaugeVec, Histogram, HistogramOpts, HistogramVec, IntCounter, Opts, Registry, TextEncoder};
+use prometheus::{CounterVec, Encoder, Gauge, GaugeVec, Histogram, HistogramOpts, HistogramVec, IntCounter, IntCounterVec, IntGauge, Opts, Registry, TextEncoder};
 use std::collections::HashMap;
 
 pub struct Metrics {
@@ -22,6 +22,13 @@ pub struct Metrics {
     pub log_lines_dropped: IntCounter,
     /// Not in the TS server: items (socket messages, v3 requests) per group-commit batch.
     pub message_batch_size: Histogram,
+    /// Not in the TS server: history offload (`history.rs`).
+    pub history_pages: IntCounterVec,
+    pub history_bytes: IntCounter,
+    pub history_backlog: IntGauge,
+    pub history_storage_errors: IntCounterVec,
+    pub history_shadow: IntCounterVec,
+    pub history_verifier: IntCounterVec,
     /// prom-client prints HELP/TYPE for a labelled metric before its first
     /// series; the prometheus crate leaves the family out.
     families: Vec<(String, String, &'static str)>,
@@ -74,6 +81,13 @@ impl Metrics {
                 .buckets(vec![1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0]),
         )
         .unwrap();
+        let history_pages = IntCounterVec::new(Opts::new("history_pages_total", "History pages by outcome (written, verified, bad)"), &["state"]).unwrap();
+        let history_bytes = IntCounter::new("history_offloaded_bytes_total", "Compressed bytes of history pages written to object storage").unwrap();
+        let history_backlog = IntGauge::new("history_offload_backlog_rows", "Messages older than the retention window not yet in a page (last sweep)").unwrap();
+        let history_storage_errors =
+            IntCounterVec::new(Opts::new("history_storage_errors_total", "History page object storage errors by operation"), &["op"]).unwrap();
+        let history_shadow = IntCounterVec::new(Opts::new("history_shadow_reads_total", "Shadow comparisons of served messages with history pages"), &["result"]).unwrap();
+        let history_verifier = IntCounterVec::new(Opts::new("history_verifier_checks_total", "Sampled re-checks of verified history pages"), &["result"]).unwrap();
         let log_lines_dropped = IntCounter::new("log_lines_dropped_total", "Log lines dropped because stdout could not keep up").unwrap();
         // No Redis stream here: the lag is always 0 (exported so dashboards and alerts keep working).
         let redis_stream_lag = Gauge::new("redis_stream_lag_ms", "Milliseconds between this pod read cursor and stream HEAD").unwrap();
@@ -93,6 +107,12 @@ impl Metrics {
             Box::new(rpc_fetch_timeouts.clone()),
             Box::new(log_lines_dropped.clone()),
             Box::new(message_batch_size.clone()),
+            Box::new(history_pages.clone()),
+            Box::new(history_bytes.clone()),
+            Box::new(history_backlog.clone()),
+            Box::new(history_storage_errors.clone()),
+            Box::new(history_shadow.clone()),
+            Box::new(history_verifier.clone()),
             Box::new(redis_stream_lag),
         ];
         let mut families = Vec::new();
@@ -124,6 +144,12 @@ impl Metrics {
             rpc_fetch_timeouts,
             log_lines_dropped,
             message_batch_size,
+            history_pages,
+            history_bytes,
+            history_backlog,
+            history_storage_errors,
+            history_shadow,
+            history_verifier,
             families,
         }
     }

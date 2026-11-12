@@ -211,6 +211,10 @@ frame header bits, the 15 s heartbeat, a refused handshake, and close by frame, 
 - [x] Session/machine timeout sweep (10 min inactivity, every 60 s)
 - [x] Activity cache flush (5 s) + cleanup (5 min)
 - [x] DB record-count gauges (60 s)
+- new: history offload (`HISTORY_OFFLOAD=shadow`, `src/history.rs`): pages old messages to object
+  storage and checks reads against them; clients still read Postgres. `compat/history-shadow.sh`
+  runs the differential scenarios in this mode, `compat/history-stress.sh` checks the pages,
+  crash recovery and the throttle (with `withminio.sh`: a private MinIO bucket)
 
 ## Environment variables
 
@@ -236,6 +240,14 @@ frame header bits, the 15 s heartbeat, a refused handshake, and close by frame, 
 | new: `DATABASE_POOL_SIZE` | — | [x] sqlx pool size (default: `connection_limit` URL param, else 4 × workers clamped to 10..200) |
 | new: `HAPPY_LOG` | — | [x] tracing filter (default by `NODE_ENV`, see QUIRKS deviation 18) |
 | new: `HAPPY_RS_TEST_HOOKS` | — | [x] `1` adds `GET /__test/writer/:sessionId[?items=N]` (hold a session's next message batch until N items are queued; report batches), for `compat/phase4-batch`. Never set in production |
+| new: `HISTORY_OFFLOAD` | — | `off` (default) or `shadow`; `retain` is stage B and refused for now |
+| new: `HISTORY_DB_RETENTION`, `HISTORY_OFFLOAD_SETTLE` | — | messages younger than either (default `3d`, `1m`) are never paged |
+| new: `HISTORY_S3_BUCKET` | — | bucket for pages (default `S3_BUCKET`); without `S3_HOST`, `DATA_DIR/history` |
+| new: `HISTORY_PAGE_MAX_ROWS`, `HISTORY_PAGE_MAX_BYTES` | — | page caps (1000 rows, 4 MiB of row data) |
+| new: `HISTORY_OFFLOAD_ROWS_PER_SEC`, `HISTORY_OFFLOAD_CONCURRENCY`, `HISTORY_OFFLOAD_INTERVAL` | — | throttle (2000 rows/s, 2 sessions at a time), pause between passes (`5m`) |
+| new: `HISTORY_VERIFY_INTERVAL`, `HISTORY_VERIFY_SAMPLE` | — | sampled re-check of verified pages (20 every `10m`) |
+| new: `HISTORY_CACHE_BYTES` | — | decoded pages kept for shadow reads (64 MiB) |
+| new: `HAPPY_RS_OFFLOAD_CRASH` | — | with `HAPPY_RS_TEST_HOOKS=1`: exit (code 86) at `after_pending`, `after_put`, `before_verified` or `after_verify`, for `compat/history-stress.sh` |
 | new: `HAPPY_RS_EXPO_PUSH_URL`, `HAPPY_RS_ELEVENLABS_API`, `HAPPY_RS_GITHUB_OAUTH_BASE`, `HAPPY_RS_GITHUB_API_BASE` | — | [x] third-party endpoints, for tests (the TS server gets the same through `compat/fetch-mock.mjs`) |
 
 ## Dead code in the TS server (not ported)

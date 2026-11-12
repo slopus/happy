@@ -111,8 +111,12 @@ from `Dockerfile.server`.
    `kubectl scale deployment/handy-server --replicas=0`, then apply the TS
    manifest. The Rust server's advisory lock is per session, so it is released
    when the pod exits; the TS server never takes it.
-4. **Migrations.** Nothing to undo. The Rust server adds no schema and never runs
-   migrations in production (`prisma migrate deploy` stays with the TS tooling).
+4. **Migrations.** Nothing to undo. The Rust server never runs migrations in
+   production (`prisma migrate deploy` stays with the TS tooling). Its only
+   schema, the history offload tables below, is additive and the TS server
+   ignores it. With `HISTORY_OFFLOAD=shadow` every message is still in
+   Postgres, so a rollback loses nothing; sessions the TS server deletes leave
+   their pages behind (see "History offload").
 
 Data written by the Rust server is valid for the TS server:
 - **`Session.updatedAt` / `Account.updatedAt`.** Group commit bumps them once per
@@ -130,6 +134,91 @@ Data written by the Rust server is valid for the TS server:
   `packages/happy-server-rs/QUIRKS.md`, "Known deviations"). One exception:
   avatar thumbhashes computed by the Rust server can differ slightly for
   resized images (deviation 15). They stay valid.
+
+## History offload
+
+The Rust server can move old session messages out of Postgres into object
+storage (`packages/happy-server-rs/src/history.rs`). It is built in two stages,
+and only the first exists so far:
+
+- `HISTORY_OFFLOAD=off` (default): nothing happens.
+- `HISTORY_OFFLOAD=shadow` (stage A): a background job copies messages older
+  than `HISTORY_DB_RETENTION` (default `3d`) into pages, while every row stays
+  in Postgres. Clients are still served from Postgres. Each history read is also
+  compared with the pages, off the response path.
+- `HISTORY_OFFLOAD=retain` (stage B, not built yet; the server refuses to start
+  with it): Postgres keeps only the retention window, older history lives only
+  in pages, and reads merge the two.
+
+**Pages.** A page is the rows of one session with seq in `[startSeq, endSeq]`
+(1000 rows or 4 MiB at most): zstd-compressed JSON with each row's id, seq,
+localId, content (the jsonb text as Postgres prints it) and ms timestamps.
+Object key `history/<sessionId>/<startSeq>-<endSeq>.json.zst`, in
+`HISTORY_S3_BUCKET` (default `S3_BUCKET`). Pages of a session follow each other
+from seq 1 and only cover a seq prefix whose rows are all past the window, so a
+page never changes. Each page is indexed in `SessionMessagePage`
+(`pending` → `verified`, or `bad`), and its localIds go to
+`SessionMessageLocalId` (for stage B's duplicate check). Both tables come from
+the Prisma migration `20261112000000_add_session_message_pages`. They have no
+foreign keys, so deleting a session is never blocked. The Rust server deletes a
+deleted session's objects and rows after the delete commits.
+
+**Writing.** One pass over all sessions, then `HISTORY_OFFLOAD_INTERVAL`
+(default `5m`) of rest. For each page: insert the `pending` row, PUT the object,
+GET it back and compare it with the rows, then `verified` plus its localIds in
+one transaction. A mismatch marks the page `bad`, which stops that session (and
+logs the session and seq range). After a crash, the next pass finishes or
+rebuilds `pending` pages. The job is throttled to
+`HISTORY_OFFLOAD_ROWS_PER_SEC` (2000) across `HISTORY_OFFLOAD_CONCURRENCY` (2)
+sessions at a time. Rows younger than `HISTORY_OFFLOAD_SETTLE` (`1m`) are never
+paged, whatever the retention. A sampled re-check (`HISTORY_VERIFY_SAMPLE` 20
+pages every `HISTORY_VERIFY_INTERVAL` 10 m) compares verified pages with
+Postgres again.
+
+**Metrics** (all Rust-only):
+- `history_offload_backlog_rows`: old rows not yet paged (per session, updated
+  as the pass reaches it, so during the first pass it covers only the sessions
+  seen so far).
+- `history_pages_total{state=written|verified|bad}` and
+  `history_offloaded_bytes_total`.
+- `history_shadow_reads_total{result=ok|mismatch|error}`: reads compared with
+  pages.
+- `history_verifier_checks_total{result=ok|mismatch}`.
+- `history_storage_errors_total{op=get|put|delete}`.
+
+Any `bad` page, shadow `mismatch` or verifier `mismatch` is a bug; the matching
+log line names the session and seq. Shadow `error` means a page could not be
+read (see the storage errors).
+
+**Bucket.** The production `S3_BUCKET` serves avatars and attachments to the
+public through `S3_PUBLIC_URL`. Message content is end-to-end encrypted, but
+history pages should not be world-readable: set `HISTORY_S3_BUCKET` to a
+private bucket that the same credentials can write.
+
+**Rollout plan** (not executed):
+1. **Shadow.** Deploy with `HISTORY_OFFLOAD=shadow` and `HISTORY_S3_BUCKET`
+   set. The deploy runs the migration first. Watch for some days:
+   - the backlog drains to about 0;
+   - `bad` pages, shadow mismatches and verifier mismatches stay at 0;
+   - storage errors are rare;
+   - Postgres load during the first pass is acceptable (lower
+     `HISTORY_OFFLOAD_ROWS_PER_SEC` if not).
+   - Spot-check: `SELECT "state", count(*), sum("count"), sum("bytes") FROM
+     "SessionMessagePage" GROUP BY 1`.
+2. **Retain** (after stage B ships). Switch to `HISTORY_OFFLOAD=retain`. Rows
+   of verified pages older than the window are deleted in small throttled
+   batches.
+3. **Database size.** Watch `pg_total_relation_size('"SessionMessage"')`.
+   Deleted rows free space for reuse after autovacuum, but the table file does
+   not shrink by itself. Reclaiming the disk needs `pg_repack` or `VACUUM FULL`
+   (which locks the table).
+
+**Turning it off.** `HISTORY_OFFLOAD=off` stops the job; pages and index rows
+stay. In shadow mode they can be dropped at any time: delete the
+`history/` prefix of the bucket and `TRUNCATE "SessionMessagePage",
+"SessionMessageLocalId"`. After a rollback to the TS server, sessions it
+deletes keep their pages. The Rust server's verifier removes such pages when
+it samples them; the cleanup above removes them all.
 
 ## Local dev helpers
 The server package includes scripts for local infrastructure:

@@ -23,6 +23,7 @@ pub struct App {
     pub files: Files,
     pub activity: ActivityCache,
     pub writers: Writers,
+    pub history: crate::history::History,
 }
 
 impl App {
@@ -33,6 +34,7 @@ impl App {
         App {
             auth: Auth::new(&config.master_secret),
             files: Files::new(&config),
+            history: crate::history::History::new(&config),
             activity: ActivityCache::new(pool.clone(), metrics.clone()),
             hub: Hub::default(),
             writers: Writers::default(),

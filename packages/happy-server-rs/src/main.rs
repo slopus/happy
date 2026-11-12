@@ -15,6 +15,7 @@ mod engine;
 mod events;
 mod fetch;
 mod handlers;
+mod history;
 mod http;
 mod js;
 mod logwriter;
@@ -141,6 +142,7 @@ async fn serve(config: config::Config) -> anyhow::Result<()> {
 
 fn spawn_background(app: &Arc<App>) {
     tokio::spawn(presence::run(app.clone()));
+    history::spawn(app);
     if app.config.is_production {
         summary::enable();
         tokio::spawn(async move {

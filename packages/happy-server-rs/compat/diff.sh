@@ -13,5 +13,7 @@ rm -rf "$WORK/data-d_ts_$S" "$WORK/data-d_rs_$S"
 for i in $(seq 1 80); do curl -s -o /dev/null http://127.0.0.1:3201/ && curl -s -o /dev/null http://127.0.0.1:3202/ && break; sleep 0.5; done
 node "$COMPAT/run.mjs" $S http://127.0.0.1:3201 d_ts_$S http://127.0.0.1:3202 d_rs_$S
 RC=$?
+# RS_METRICS_DUMP=1 (with METRICS_ENABLED=true): keep the Rust server's /metrics.
+[ -n "$RS_METRICS_DUMP" ] && curl -s http://127.0.0.1:9202/metrics > "$WORK/rs-$S.metrics"
 kill $TS $RS; wait $TS $RS 2>/dev/null
 exit $RC

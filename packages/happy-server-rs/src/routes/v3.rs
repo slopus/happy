@@ -1,6 +1,7 @@
 //! `v3SessionRoutes.ts`: seq-paged message reads and batched sends.
 
 use super::sessions::{message_from_row, owns_session, MESSAGE_COLS};
+use crate::models::Message;
 use crate::app::App;
 use crate::h;
 use crate::http::{HResult, Reply, Req, Router};
@@ -88,7 +89,9 @@ async fn get_messages(app: Arc<App>, req: Req) -> HResult {
     };
     let has_more = rows.len() as i64 > limit;
     let page = if has_more { &rows[..limit as usize] } else { &rows[..] };
-    let messages: Vec<Value> = page.iter().map(|r| message_from_row(r).json()).collect();
+    let page: Vec<Message> = page.iter().map(message_from_row).collect();
+    crate::history::shadow(&app, &sid, &page, true);
+    let messages: Vec<Value> = page.iter().map(|m| m.json()).collect();
     Reply::json(json!({"messages": messages, "hasMore": has_more}))
 }
 

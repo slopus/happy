@@ -161,6 +161,42 @@ model SessionMessage {
 }
 
 //
+// History offload (happy-server-rs, HISTORY_OFFLOAD): old session messages as
+// pages in object storage. No relations, so deleting a session is never blocked;
+// the Rust server removes a deleted session's pages after the delete commits.
+//
+
+/// One page: the rows of a session with seq in [startSeq, endSeq], as a zstd
+/// JSON object at objectKey. state: pending | verified | bad.
+model SessionMessagePage {
+    id           String    @id
+    sessionId    String
+    startSeq     Int
+    endSeq       Int
+    count        Int
+    objectKey    String
+    bytes        Int
+    sha256       String
+    minCreatedAt DateTime
+    maxCreatedAt DateTime
+    state        String
+    createdAt    DateTime  @default(now())
+    verifiedAt   DateTime?
+
+    @@unique([sessionId, startSeq])
+    @@index([state])
+}
+
+/// The localIds of verified pages, for deduplication once their rows are gone.
+model SessionMessageLocalId {
+    sessionId String
+    localId   String
+    seq       Int
+
+    @@id([sessionId, localId])
+}
+
+//
 // Github
 //
 
