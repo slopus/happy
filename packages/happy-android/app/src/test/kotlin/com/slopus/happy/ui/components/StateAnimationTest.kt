@@ -66,26 +66,26 @@ class StateAnimationTest {
     }
 
     /**
-     * The clapper board rests where "Action!" is whole: every letter layer is
-     * drawn there (they go from frame 93) and has finished popping in (by 43),
-     * and the board is still (34 to 75).
+     * The clapper board rests on its first frame, the plain board: no letter
+     * of "Action!" has popped in there, and every one is gone again before
+     * its last frame, so the last isn't worth holding. The rest keep their last.
      */
     @Test
-    fun theClapperBoardRestsWithActionWritten() {
-        val rest = StateArt.Action.restFrame!!
+    fun theClapperBoardRestsOnItsPlainFirstFrame() {
+        assertEquals(listOf(StateArt.Action), StateArt.entries.filter { it.restsOnFirstFrame })
         val json = RuntimeEnvironment.getApplication().resources.openRawResource(StateArt.Action.raw).use { org.json.JSONObject(it.reader().readText()) }
+        val first = json.getDouble("ip")
+        val last = json.getDouble("op") - 1
         val layers = json.getJSONArray("layers")
         val letters = (0 until layers.length()).map { layers.getJSONObject(it) }
             .filter { it.getString("nm").substringBefore(' ') in setOf("A", "C", "T", "I", "O", "N", "!", "do") }
         assertEquals("both strokes of every letter", 24, letters.size)
         for (letter in letters) {
             val name = letter.getString("nm")
-            assertTrue("$name drawn at $rest", letter.getDouble("ip") <= rest && rest < letter.getDouble("op"))
-            val scale = letter.getJSONObject("ks").getJSONObject("s").getJSONArray("k")
-            assertTrue("$name popped in by $rest", scale.getJSONObject(scale.length() - 1).getDouble("t") <= rest)
+            val pop = letter.getJSONObject("ks").getJSONObject("s").getJSONArray("k").getJSONObject(0)
+            assertTrue("$name not yet in at $first", pop.getDouble("t") > first && pop.getJSONArray("s").getDouble(0) == 0.0)
+            assertTrue("$name gone by $last", letter.getDouble("op") <= last)
         }
-        assertTrue("the board is still", rest in 43f..74f)
-        assertEquals("the bot keeps its last frame", null, StateArt.Ready.restFrame)
     }
 
     @Test

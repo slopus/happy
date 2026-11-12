@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
+import com.slopus.happy.ui.components.segmentThumb
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 
@@ -65,7 +66,7 @@ class HomeDockBot(
  * The focused dock's header while bots can be made (HomeDock.tsx
  * focusHeader): Session | Bot, a segmented control at most 260 wide (32
  * high, 2 in, radius 9 on glass backgroundSubtle; the picked segment
- * surfaceHighest, radius 7; 13 semibold labels, secondary unless picked);
+ * [segmentThumb], radius 7; 13 semibold labels, secondary unless picked);
  * while Bot is picked, 10 under it, what a bot is for, 13/18 secondary,
  * centred, at most 340 wide.
  */
@@ -93,7 +94,7 @@ fun BotKindHeader(creatingBot: Boolean, onChange: (Boolean) -> Unit, modifier: M
                         .weight(1f)
                         .fillMaxSize()
                         .clip(RoundedCornerShape(BotKindSpec.segmentItemRadius))
-                        .background(if (selected) colors.surfaceHighest else Color.Transparent)
+                        .background(if (selected) colors.segmentThumb() else Color.Transparent)
                         .clickable(role = Role.RadioButton) { onChange(bot) }
                         .semantics { this.selected = selected },
                     contentAlignment = Alignment.Center,

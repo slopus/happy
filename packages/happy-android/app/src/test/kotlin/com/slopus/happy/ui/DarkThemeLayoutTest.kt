@@ -67,7 +67,8 @@ import org.robolectric.annotation.GraphicsMode
  * - The composer and dock glass border: `glass.border`, white at 0.14 in
  *   dark and 0.82 in light.
  * - BotKindHeader / NativeSegmentedControl: the Session | Bot track in
- *   glass.backgroundSubtle and the chosen segment on surfaceHighest #282828.
+ *   glass.backgroundSubtle and the chosen segment on iOS's raised grey
+ *   #636366 (`segmentThumb`), which surfaceHighest #282828 was too dark to show.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)
@@ -167,6 +168,6 @@ class DarkThemeLayoutTest {
     fun theBotKindUsesTheDarkSurfaces() {
         rule.setHappyContent(dark = true) { BotKindHeader(creatingBot = true, onChange = {}) }
         val segment = rule.node(BotKindTags.kind(true)).captureToImage().toPixelMap()
-        assertTrue("chosen segment on surfaceHighest", painted(setOf(segment[2, segment.height / 2].toArgb()), hex(0x282828)))
+        assertTrue("chosen segment raised in grey", painted(setOf(segment[2, segment.height / 2].toArgb()), hex(0x636366)))
     }
 }

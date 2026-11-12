@@ -21,9 +21,11 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
+import com.slopus.happy.ui.chat.NewWorkSegments
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -58,6 +60,28 @@ class SegmentedTabsTest {
         rule.node("source").assertIsNotSelected().performClick().assertIsSelected()
         rule.node("rendered").assertIsNotSelected()
     }
+
+    /**
+     * New work's Task | Bot (and Session | Bot | Task, Home's Session | Bot,
+     * the feed's tabs) raise the pick the same way: light keeps
+     * surfaceHighest; dark takes iOS's grey, well clear of the track.
+     */
+    private fun checkNewWork(dark: Boolean) {
+        val surface = if (dark) Color(0xFF161616) else Color.White
+        rule.setHappyContent(dark = dark) {
+            Box(Modifier.background(surface)) {
+                NewWorkSegments(listOf("Task", "Bot"), selected = 0, enabled = true, tag = { "kind.$it" }, onPick = {})
+            }
+        }
+        val picked = rule.node("kind.0").captureToImage().toPixelMap().let { it[2, it.height / 2] }
+        val other = rule.node("kind.1").captureToImage().toPixelMap().let { it[2, it.height / 2] }
+        assertEquals(if (dark) Color(0xFF636366) else Color(0xFFF0F0F0), picked)
+        val lift = (picked.red + picked.green + picked.blue - other.red - other.green - other.blue) / 3
+        if (dark) assertTrue("the pick stands out of the track: $lift", lift > 0.2f)
+    }
+
+    @Test fun lightNewWorkKind() = checkNewWork(false)
+    @Test fun darkNewWorkKind() = checkNewWork(true)
 
     @Test fun lightToolbar() = check(false)
     @Test fun darkToolbar() = check(true)

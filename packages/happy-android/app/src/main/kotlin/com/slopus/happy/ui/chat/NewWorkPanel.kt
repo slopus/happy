@@ -68,6 +68,7 @@ import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.StateAnimation
 import com.slopus.happy.ui.components.StateArt
 import com.slopus.happy.ui.components.rememberReduceMotion
+import com.slopus.happy.ui.components.segmentThumb
 import com.slopus.happy.ui.home.BotKindSpec
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
@@ -317,7 +318,7 @@ fun NewWorkMenuRow(
 
 /**
  * New work's kind control: Home's Session | Bot look (32 high, 2 in,
- * radius 9; the picked segment surfaceHighest, radius 7; 13 semibold),
+ * radius 9; the picked segment [segmentThumb], radius 7; 13 semibold),
  * [NewWorkSpec.kindWidth] wide. A pick other than [selected] ticks and goes
  * to [onPick]; a segment off in [segmentEnabled] shows dimmed and takes no
  * press. [enabled] false fixes the whole control.
@@ -352,7 +353,7 @@ fun NewWorkSegments(
                     .weight(1f)
                     .heightIn(min = BotKindSpec.segmentHeight - BotKindSpec.segmentPadding * 2)
                     .clip(RoundedCornerShape(BotKindSpec.segmentItemRadius))
-                    .background(if (picked) colors.surfaceHighest else Color.Transparent)
+                    .background(if (picked) colors.segmentThumb() else Color.Transparent)
                     .clickable(enabled = pickable, role = Role.RadioButton) {
                         if (!picked) {
                             haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)

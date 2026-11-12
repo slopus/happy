@@ -22,7 +22,15 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.ui.home.BotKindSpec
+import com.slopus.happy.ui.theme.HappyColors
 import com.slopus.happy.ui.theme.HappyTheme
+
+/**
+ * A segmented control's picked segment: [light] in light mode; in dark mode
+ * the grey iOS's UISegmentedControl raises (#636366), which stands out on
+ * any dark track where surfaceHighest (#282828) all but vanishes.
+ */
+fun HappyColors.segmentThumb(light: Color = surfaceHighest): Color = if (dark) Color(0xFF636366) else light
 
 /** One segment of [SegmentedTabs]: what it says and its test tag. */
 data class Segment(val label: String, val tag: String)
@@ -56,7 +64,7 @@ fun SegmentedTabs(segments: List<Segment>, selected: Int, onPick: (Int) -> Unit,
                     .widthIn(min = 64.dp)
                     .heightIn(min = BotKindSpec.segmentHeight - BotKindSpec.segmentPadding * 2)
                     .clip(RoundedCornerShape(BotKindSpec.segmentItemRadius))
-                    .background(if (picked) { if (colors.dark) Color(0xFF636366) else Color.White } else Color.Transparent)
+                    .background(if (picked) colors.segmentThumb(light = Color.White) else Color.Transparent)
                     .clickable(role = Role.Tab) {
                         if (!picked) {
                             haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)

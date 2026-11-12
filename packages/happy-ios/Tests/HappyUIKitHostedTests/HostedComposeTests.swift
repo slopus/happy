@@ -557,11 +557,7 @@ final class HostedComposeTests: XCTestCase {
             try await until { panel.art.isLoaded && !panel.art.isHidden }
             try await Task.sleep(for: .milliseconds(300))
             XCTAssertFalse(panel.art.isAnimating, "\(kind): still until tapped")
-            if let rest = scene.restFrame {
-                XCTAssertEqual(panel.art.currentFrame, rest, accuracy: 0.5, "\(kind): at rest")
-            } else {
-                XCTAssertEqual(panel.art.progress, 1, accuracy: 0.001, "\(kind): at rest")
-            }
+            XCTAssertEqual(panel.art.progress, scene.restsOnFirstFrame ? 0 : 1, accuracy: 0.001, "\(kind): at rest")
             let art = try XCTUnwrap(panel.art.superview).convert(panel.art.frame, to: chat.view)
             XCTAssertEqual(art.size, CGSize(width: NewWorkLayout.Metrics.art, height: NewWorkLayout.Metrics.art), "\(kind): never smaller")
             XCTAssertEqual(art.midX, panel.convert(panel.kind.frame, to: chat.view).midX, accuracy: 0.5, "\(kind): over the kind")

@@ -53,12 +53,12 @@ public enum StateScene: String, CaseIterable, Sendable {
     case cloudVariation = "cloud-variation"
     case tree
 
-    /// The frame it rests on, when that is not its last: the clapper board
-    /// with "Action!" written on it, which its last frame has wiped. Such a
-    /// scene plays only when asked, a whole turn from this frame back to it
-    /// (the sticker loops), and otherwise holds it.
-    var restFrame: CGFloat? {
-        self == .clapperBoard ? 60 : nil
+    /// Whether it rests on its first frame rather than its last: the
+    /// clapper board, whose last frame has wiped its "Action!". Such a scene
+    /// plays only when asked, from the start to the end once, and then
+    /// shows its first frame again.
+    var restsOnFirstFrame: Bool {
+        self == .clapperBoard
     }
 }
 
@@ -69,8 +69,8 @@ public enum StateScene: String, CaseIterable, Sendable {
 /// in the app, so any new one is a scene drawn here. The scene plays once when the state it illustrates
 /// appears and then holds its last frame, which for every animation is the
 /// pose it was drawn to return to, so the held picture is worth holding. A
-/// scene whose last frame isn't that pose names the one it is
-/// (`StateScene.restFrame`), and moves only when asked.
+/// scene whose last frame isn't that pose rests on its first instead
+/// (`StateScene.restsOnFirstFrame`), and moves only when asked.
 /// After that it moves only when a reader asks: a tap, or the accessibility
 /// action. A replay is refused while one is running, so a repeated tap
 /// cannot turn "again" into a loop.
@@ -242,30 +242,25 @@ public final class StateSceneView: UIView {
     /// Plays it again, if it is not already playing and motion is allowed.
     /// This is what a tap and the accessibility action do.
     public func replay() {
-        guard !UIAccessibility.isReduceMotionEnabled, let animation = animationView.animation, !isPlaying else { return }
-        guard let rest = scene.restFrame else {
-            animationView.currentProgress = 0
+        guard !UIAccessibility.isReduceMotionEnabled, animationView.animation != nil, !isPlaying else { return }
+        animationView.currentProgress = 0
+        guard scene.restsOnFirstFrame else {
             start()
             return
         }
-        // Round from its rest frame: on to the end, then from the start back to it.
+        // Once through, then its first frame again.
         hasPlayed = true
         isPlaying = true
-        animationView.play(fromFrame: rest, toFrame: animation.endFrame, loopMode: .playOnce) { [weak self] finished in
+        animationView.play(fromProgress: 0, toProgress: 1, loopMode: .playOnce) { [weak self] finished in
             guard let self, finished, self.isPlaying else { return }
-            self.animationView.play(fromFrame: animation.startFrame, toFrame: rest, loopMode: .playOnce) { [weak self] _ in
-                self?.isPlaying = false
-            }
+            self.isPlaying = false
+            self.hold()
         }
     }
 
-    /// The frame it holds: its rest frame, or its last.
+    /// The frame it holds: its first, or its last.
     private func hold() {
-        if let rest = scene.restFrame {
-            animationView.currentFrame = rest
-        } else {
-            animationView.currentProgress = 1
-        }
+        animationView.currentProgress = scene.restsOnFirstFrame ? 0 : 1
     }
 
     /// Hears every tap, motion reduced or not.
@@ -313,9 +308,6 @@ public final class StateSceneView: UIView {
     /// Where the one play has got to, 0…1. The last frame is 1.
     var progress: CGFloat { animationView.currentProgress }
 
-    /// The frame shown now. Tests read this.
-    var currentFrame: CGFloat { animationView.currentFrame }
-
     /// Whether the animation has been read yet.
     var isLoaded: Bool { animationView.animation != nil }
 
@@ -340,9 +332,9 @@ public final class StateSceneView: UIView {
             return
         }
         guard !isPlaying else { return }
-        if scene.restFrame != nil {
-            // It moves only when asked; a turn cut short goes back to rest.
-            if animationView.currentFrame != scene.restFrame { hold() }
+        if scene.restsOnFirstFrame {
+            // It moves only when asked; a play cut short goes back to rest.
+            if animationView.currentProgress != 0 { hold() }
             return
         }
         switch play {
