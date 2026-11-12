@@ -708,7 +708,7 @@ private fun GoogleButton(action: CloudAction, modifier: Modifier = Modifier) {
     }
 }
 
-/** A quiet action in a screen's column, in the gradient's text colour: desktop's ghost buttons under the list. */
+/** A quiet action in a screen's column: a surface pill, as the cards and the secondary buttons are, never bare text. */
 @Composable
 private fun CloudLink(action: CloudAction, tag: String) {
     val dark = HappyTheme.colors.dark
@@ -718,7 +718,12 @@ private fun CloudLink(action: CloudAction, tag: String) {
         enabled = action.enabled,
         display = RoundButtonDisplay.Inverted,
         contentColor = if (dark) StartSpec.darkText else StartSpec.lightText,
-        modifier = Modifier.testTag(tag),
+        modifier = Modifier
+            .widthIn(min = StartSpec.connectMinWidth)
+            .width(IntrinsicSize.Max)
+            .clip(RoundedCornerShape(percent = 50))
+            .background(HappyTheme.colors.surface.copy(alpha = CloudSpec.SURFACE_ALPHA))
+            .testTag(tag),
     )
 }
 
