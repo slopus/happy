@@ -2,6 +2,12 @@ import Foundation
 import HappyWire
 import Tailcat
 
+/// A candidate in a foreground race owns only its TCP flow. A failure
+/// there must not replace the tunnel under a different, winning flow.
+enum EventStreamPolicy {
+    @TaskLocal static var resetsTunnel: Bool = true
+}
+
 extension TailcatHTTPTransport {
     static func safe(path: String, credential: String, headers: [String: String]) -> Bool {
         path.hasPrefix("/") && !path.contains("\r") && !path.contains("\n") && !path.contains(" ")
@@ -18,7 +24,7 @@ extension TailcatHTTPTransport {
         let stream: any BrowserStream
         do { stream = try await flow(lease, .realtime) } catch {
             lease?.release()
-            if Self.lostTunnel(error) { await reset(lease) }
+            if EventStreamPolicy.resetsTunnel, !Task.isCancelled, Self.lostTunnel(error) { await reset(lease) }
             throw error
         }
         do {
@@ -71,7 +77,7 @@ extension TailcatHTTPTransport {
             await stream.close()
             // No answer on a stream the tunnel opened: the far side may
             // have restarted and forgotten it.
-            if Self.lostTunnel(error) { await reset(lease) }
+            if EventStreamPolicy.resetsTunnel, !Task.isCancelled, Self.lostTunnel(error) { await reset(lease) }
             throw error
         }
     }

@@ -35,6 +35,9 @@ public final class AgentConnections {
     /// How long coming back waits for an engine's tunnels to wake before
     /// it starts the engine and the pairings' checks anyway (`resume`).
     var wakeLimit: Duration = .seconds(5)
+    /// The platform's background execution lease. Without one an event
+    /// stream is closed immediately, never left retransmitting to a frozen app.
+    public var streamHold: SyncEngine.StreamHold = { _ in nil }
     /// This device's environment, told to each computer that takes it when
     /// its engine starts, back in the foreground, and when the time zone or
     /// locale changes (`AgentClient.reportEnvironment`). Nil tells none.
@@ -173,7 +176,7 @@ public final class AgentConnections {
         if signedOut(id) { return nil }
         if let engine = engines[id] { return engine }
         guard let client = agentClient(for: id) else { return nil }
-        let engine = SyncEngine(client: client, directory: OfflineFile.directory(for: id))
+        let engine = SyncEngine(client: client, directory: OfflineFile.directory(for: id), streamHold: streamHold)
         engines[id] = engine
         if foreground && activeID == id {
             Task { await engine.start() }
@@ -393,6 +396,9 @@ public final class AgentConnections {
         foreground = active; generation &+= 1
         if !active { suspended = Set(engines.keys) }
         let pending = jobs; jobs.removeAll()
+        // Acquire execution time before waiting for the identity checks to
+        // wind down: iOS may otherwise suspend us before the hold is armed.
+        if !active, let id = activeID, let engine = engines[id] { await engine.background() }
         pending.values.forEach { $0.cancel() }
         for job in pending.values { await job.value }
         guard foreground == active else { return }
@@ -404,7 +410,8 @@ public final class AgentConnections {
         if case let (id, engine)? = open { await resume(id, engine) }
         for (id, engine) in engines where id != open?.0 {
             guard foreground == active else { return }
-            await engine.pause()
+            if !active && id == activeID { await engine.background() }
+            else { await engine.pause() }
         }
         guard foreground == active else { return }
         if !active {
@@ -425,7 +432,7 @@ public final class AgentConnections {
     /// the rekey. The pairings' checks don't wait for it (`setForeground`).
     private func resume(_ id: String, _ engine: SyncEngine) async {
         if suspended.remove(id) != nil { await waitAtMost(wakeLimit) { await engine.client.resumed() } }
-        await engine.start()
+        await engine.foreground()
         reportEnvironment(to: engine.client)
     }
 

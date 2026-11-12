@@ -657,7 +657,7 @@ public final class AgentClient: Sendable {
     /// The journal as it happens, from `after` when given. The first frame is
     /// `hello`; the stream ends when the connection does, or when nothing,
     /// not even a heartbeat, has come for `silence`.
-    public func events(after cursor: String?) async throws -> AsyncThrowingStream<ServerSentEvent, Error> {
+    public func events(after cursor: String?, resetOnSilence: Bool = true) async throws -> AsyncThrowingStream<ServerSentEvent, Error> {
         var headers: [String: String] = [:]
         if let cursor { headers["Last-Event-ID"] = cursor }
         let response = try await transport.stream(path: "/v0/events/stream", credential: token, headers: headers)
@@ -669,7 +669,7 @@ public final class AgentClient: Sendable {
             let reader = Task {
                 var parser = ServerSentEventParser()
                 let heard = Heard()
-                let watchdog = Self.watch(continuation, transport: transport, heard: heard)
+                let watchdog = Self.watch(continuation, transport: transport, heard: heard, resetOnSilence: resetOnSilence)
                 defer { watchdog.cancel() }
                 do {
                     for try await bytes in body {
@@ -700,14 +700,14 @@ public final class AgentClient: Sendable {
     /// One sleeper for the stream's life, woken at the silence deadline and
     /// put back to sleep if bytes came meanwhile: not a task made and
     /// cancelled for every chunk.
-    private static func watch(_ continuation: AsyncThrowingStream<ServerSentEvent, Error>.Continuation, transport: any AgentTransport, heard: Heard) -> Task<Void, Never> {
+    private static func watch(_ continuation: AsyncThrowingStream<ServerSentEvent, Error>.Continuation, transport: any AgentTransport, heard: Heard, resetOnSilence: Bool) -> Task<Void, Never> {
         Task {
             while true {
                 let due = heard.lastHeard + silence
                 guard (try? await Task.sleep(until: due, clock: .continuous)) != nil else { return }
                 if ContinuousClock.now >= heard.lastHeard + silence { break }
             }
-            await transport.reset(.realtime)
+            if resetOnSilence { await transport.reset(.realtime) }
             continuation.finish(throwing: PairingError.unavailable)
         }
     }

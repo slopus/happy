@@ -29,6 +29,13 @@ enum CompositionRoot {
                 }
             }
         )
+        account.agentConnections.streamHold = { expired in
+            await MainActor.run { () -> (@Sendable () async -> Void)? in
+                let lease = EventStreamLease(expired: expired)
+                guard lease.acquired else { return nil }
+                return { await lease.end() }
+            }
+        }
         startAnalytics(bundle: bundle, variant: variant, version: version)
         return AppContext(account: account, variant: variant, version: version)
     }
@@ -53,6 +60,29 @@ enum CompositionRoot {
             .appendingPathComponent("Happy", isDirectory: true)
     }
 }
+
+/// Background time for a held event stream. The engine closes it at its
+/// own deadline, before this runs out; if iOS ends the time first, the
+/// stream is told to close and the task ends at once, as iOS requires.
+@MainActor
+private final class EventStreamLease {
+    private var task: UIBackgroundTaskIdentifier = .invalid
+    var acquired: Bool { task != .invalid }
+
+    init(expired: @escaping @Sendable () -> Void) {
+        task = UIApplication.shared.beginBackgroundTask(withName: "happy.events") { [weak self] in
+            expired()
+            self?.end()
+        }
+    }
+
+    func end() {
+        guard task != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(task)
+        task = .invalid
+    }
+}
+
 /// One background task for however many sends are in flight, so a send
 /// that started in the foreground can finish after the app is backgrounded.
 /// New sends don't start while backgrounded (`SyncEngine.setBackgrounded`).

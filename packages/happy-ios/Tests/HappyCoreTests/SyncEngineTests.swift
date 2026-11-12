@@ -31,6 +31,9 @@ private actor SyncFixture: AgentTransport {
     /// Intents heard: `read:<agent>`, `archive:<task>`.
     var acts: [String] = []
     var refuseArchive = false
+    var closedStreams: Set<Int> = []
+    func closedStreamCount() -> Int { closedStreams.count }
+    func streamClosed(_ id: Int) { closedStreams.insert(id) }
 
     func heardActs() -> [String] { acts }
     func refuseArchives() { refuseArchive = true }
@@ -100,6 +103,11 @@ private actor SyncFixture: AgentTransport {
     func emit(id: String, _ event: JSONValue) {
         let json = String(data: try! JSONEncoder().encode(event), encoding: .utf8)!
         continuations.forEach { $0.yield(Data("id: \(id)\nevent: message\ndata: \(json)\n\n".utf8)) }
+    }
+    func dropStreams() { continuations.forEach { $0.finish(throwing: URLError(.networkConnectionLost)) } }
+    func emitHeld(id: String, _ event: JSONValue) {
+        let json = String(data: try! JSONEncoder().encode(event), encoding: .utf8)!
+        continuations.first?.yield(Data("id: \(id)\nevent: message\ndata: \(json)\n\n".utf8))
     }
     func renameProject(withNewsDuringReads reads: Int) {
         newsDuringReads = reads
@@ -204,6 +212,8 @@ private actor SyncFixture: AgentTransport {
         guard online else { throw URLError(.notConnectedToInternet) }
         streamHeaders.append(headers)
         let (body, continuation) = AsyncThrowingStream<Data, Error>.makeStream()
+        let streamID = streamHeaders.count
+        continuation.onTermination = { [weak self] _ in Task { await self?.streamClosed(streamID) } }
         continuations.append(continuation)
         let process = daemonId.map { ",\"daemonId\":\"\($0)\"" } ?? ""
         let gap = nextHelloGap ? "true" : "false"
@@ -216,6 +226,180 @@ private actor SyncFixture: AgentTransport {
 }
 
 final class SyncEngineTests: XCTestCase {
+    private actor StreamLease {
+        var expired: (@Sendable () -> Void)?
+        var releases = 0
+        func acquire(_ expired: @escaping @Sendable () -> Void) -> (@Sendable () async -> Void)? {
+            self.expired = expired
+            return { await self.release() }
+        }
+        func release() { releases += 1 }
+        func expire() { expired?() }
+        func releaseCount() -> Int { releases }
+    }
+
+    func testShortBackgroundHoldsThenRacesFreshStream() async throws {
+        let transport = SyncFixture(), lease = StreamLease()
+        await transport.setDaemon("d1")
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil,
+                                streamHold: { await lease.acquire($0) })
+        await engine.start()
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        let reads = await transport.bootstrapReads()
+        await engine.background()
+        let closed = await transport.closedStreamCount()
+        XCTAssertEqual(closed, 0)
+        let delivering = await engine.deliveryAllowed
+        XCTAssertFalse(delivering)
+        await engine.foreground()
+        try await eventually { await transport.streamsOpened() == 2 }
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        let after = await transport.bootstrapReads()
+        XCTAssertEqual(after, reads, "same daemon resumes without rereading bootstrap")
+        try await eventually { await transport.closedStreamCount() == 1 }
+        await engine.stop()
+    }
+
+    func testBackgroundLeaseExpirationClosesHeldStream() async throws {
+        let transport = SyncFixture(), lease = StreamLease()
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil,
+                                streamHold: { await lease.acquire($0) })
+        await engine.start()
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        await engine.background()
+        await lease.expire()
+        try await eventually { await transport.closedStreamCount() == 1 }
+        try await eventually { await lease.releaseCount() == 1 }
+        await engine.foreground()
+        try await eventually { await transport.streamsOpened() == 2 }
+        await engine.stop()
+    }
+
+    func testHeldFrameWinsAndResumesQueuedDeliveryWithoutFreshHello() async throws {
+        let transport = SyncFixture(), lease = StreamLease()
+        await transport.setDaemon("d1")
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil,
+                                streamHold: { await lease.acquire($0) })
+        await engine.start()
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        let reads = await transport.bootstrapReads()
+        await engine.background()
+        await engine.markRead("last-agent")
+        let before = await transport.heardActs()
+        XCTAssertTrue(before.isEmpty)
+        await transport.holdNextHello()
+        await engine.foreground()
+        try await eventually { await transport.streamsOpened() == 2 }
+        let unproven = await engine.deliveryAllowed
+        XCTAssertFalse(unproven)
+        let reconnected = await transport.bootstrapReads()
+        XCTAssertEqual(reconnected, reads)
+        await transport.emitHeld(id: "held", .object(["type": .string("git.updated"), "payload": .object([:])]))
+        try await eventually { await transport.heardActs().contains("read:last-agent") }
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        await engine.stop()
+    }
+
+    func testBackgroundDeadlineClosesHeldStreamWithoutExpirationCallback() async throws {
+        let transport = SyncFixture(), lease = StreamLease()
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil,
+                                streamHold: { await lease.acquire($0) }, streamHoldDuration: .milliseconds(30))
+        await engine.start()
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        await engine.background()
+        try await eventually { await transport.closedStreamCount() == 1 }
+        _ = try await wait(engine) { !$0.live }
+        await engine.foreground()
+        try await eventually { await transport.streamsOpened() == 2 }
+        await engine.stop()
+    }
+
+    func testMoveWhileBackgroundedDropsHeldFlowWithoutOpeningAnother() async throws {
+        let transport = SyncFixture(), lease = StreamLease()
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil,
+                                streamHold: { await lease.acquire($0) })
+        await engine.start()
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        await engine.background()
+        await engine.moved()
+        let count = await transport.streamsOpened()
+        XCTAssertEqual(count, 1)
+        await engine.foreground()
+        try await eventually { await transport.streamsOpened() == 2 }
+        await engine.stop()
+    }
+
+    func testHeldFlowLostWhileBackgroundedReconnectsOnForeground() async throws {
+        let transport = SyncFixture(), lease = StreamLease()
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil,
+                                streamHold: { await lease.acquire($0) })
+        await engine.start()
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        await engine.background()
+        await transport.dropStreams()
+        _ = try await wait(engine) { !$0.live }
+        await engine.foreground()
+        try await eventually { await transport.streamsOpened() == 2 }
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        await engine.stop()
+    }
+
+    func testSilentRaceClosesBothAndReconnects() async throws {
+        let transport = SyncFixture(), lease = StreamLease()
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil,
+                                streamHold: { await lease.acquire($0) })
+        await engine.start()
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        await engine.background()
+        await transport.configure(online: false)
+        await engine.foreground()
+        // Nothing wins within the race's few seconds: the held flow is
+        // closed, the tunnel reset, and the stream opened as after any loss.
+        for _ in 0..<200 where await !transport.heardResets().contains(.realtime) {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        let closed = await transport.closedStreamCount()
+        XCTAssertEqual(closed, 1)
+        await transport.configure(online: true)
+        _ = try await wait(engine) { $0.live && !$0.syncing && !$0.reconnecting }
+        let delivering = await engine.deliveryAllowed
+        XCTAssertTrue(delivering)
+        await engine.stop()
+    }
+
+    func testFreshHelloAfterBackgroundDetectsDaemonRestart() async throws {
+        let transport = SyncFixture(), lease = StreamLease()
+        await transport.setDaemon("d1")
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil,
+                                streamHold: { await lease.acquire($0) })
+        await engine.start()
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        let reads = await transport.bootstrapReads()
+        await engine.background()
+        await transport.setDaemon("d2")
+        await engine.foreground()
+        try await eventually { await transport.bootstrapReads() > reads }
+        await engine.stop()
+    }
+
+    func testRepeatedEventIDIsDeliveredOnlyOnce() async throws {
+        let transport = SyncFixture()
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        await engine.start()
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        let reads = await transport.bootstrapReads()
+        let event: JSONValue = .object(["type": .string("workspace.updated"), "payload": .object([:])])
+        await transport.emit(id: "once", event)
+        try await eventually { await transport.bootstrapReads() > reads }
+        _ = try await wait(engine) { !$0.syncing }
+        let after = await transport.bootstrapReads()
+        await transport.emit(id: "once", event)
+        try await Task.sleep(for: .milliseconds(100))
+        let duplicated = await transport.bootstrapReads()
+        XCTAssertEqual(duplicated, after)
+        await engine.stop()
+    }
+
     private struct Timeout: Error {}
     private func wait(_ engine: SyncEngine, _ predicate: @escaping @Sendable (HomeSnapshot) -> Bool) async throws -> HomeSnapshot {
         try await withThrowingTaskGroup(of: HomeSnapshot.self) { group in

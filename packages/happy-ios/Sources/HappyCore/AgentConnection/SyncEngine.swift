@@ -115,6 +115,19 @@ public actor SyncEngine {
     private var snapshot = HomeSnapshot()
     private var listeners: [UUID: AsyncStream<HomeSnapshot>.Continuation] = [:]
     private var runner: Task<Void, Never>?
+    private var eventStream: EventStreamRace?
+    /// UIKit supplies a short execution lease; nil means no safe hold.
+    public typealias StreamHold = @Sendable (@escaping @Sendable () -> Void) async -> (@Sendable () async -> Void)?
+    private let streamHold: StreamHold
+    private let streamHoldDuration: Duration
+    private var backgrounded = false
+    private var holdID: UUID?
+    private var holdDeadline: ContinuousClock.Instant?
+    private var holdTimer: Task<Void, Never>?
+    private var releaseHold: (@Sendable () async -> Void)?
+    private var heldVerification = false
+    private var eventIDs: Set<String> = []
+    private var eventOrder: [String] = []
     private var refresh: Task<Void, Never>?
     private var delivery: Task<Void, Never>?
     private var messageDelivery: Task<Void, Never>?
@@ -146,8 +159,10 @@ public actor SyncEngine {
     private var gitInterest: Set<String> = []
     private var gitSnapshots: [String: WorkspaceLineChanges] = [:]
 
-    public init(client: AgentClient, directory: URL?) {
+    public init(client: AgentClient, directory: URL?, streamHold: @escaping StreamHold = { _ in nil }, streamHoldDuration: Duration = .seconds(25)) {
         self.client = client
+        self.streamHold = streamHold
+        self.streamHoldDuration = min(.seconds(25), streamHoldDuration)
         url = directory?.appendingPathComponent("direct.sqlite")
         offline = directory.map(OfflineFile.init(directory:))
         attachmentDirectory = (directory ?? FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
@@ -208,7 +223,7 @@ public actor SyncEngine {
         for listener in profileListeners.values { listener.yield() }
     }
 
-    public var deliveryAllowed: Bool { !stopped && runner != nil && verified }
+    public var deliveryAllowed: Bool { !stopped && !backgrounded && runner != nil && verified }
 
     /// Started and not paused since: its tunnels are up, or on their way.
     var running: Bool { !stopped && runner != nil }
@@ -217,6 +232,7 @@ public actor SyncEngine {
 
     public func start() {
         guard !stopped, runner == nil else { return }
+        backgrounded = false
         generation += 1
         verified = false
         let generation = generation
@@ -226,20 +242,77 @@ public actor SyncEngine {
         }
     }
 
+    /// Keep only a short app switch warm. The lease's expiration closes
+    /// before iOS freezes us; a sleeping Swift timer alone is not a bound.
+    public func background() async {
+        guard !backgrounded else { return }
+        backgrounded = true
+        // Only a verified stream is held: a held winner brings no hello to verify.
+        guard !stopped, runner != nil, snapshot.live, verified, eventStream != nil else { await pause(); return }
+        let id = UUID()
+        holdID = id
+        let deadline = ContinuousClock.now + streamHoldDuration
+        holdDeadline = deadline
+        let release = await streamHold { [weak self] in Task { await self?.expireHold(id) } }
+        guard holdID == id else { await release?(); return }
+        releaseHold = release
+        guard release != nil else { await expireHold(id); return }
+        holdTimer = Task {
+            do { try await Task.sleep(until: deadline, clock: .continuous) } catch { return }
+            await self.expireHold(id)
+        }
+        await intents.setOnline(false)
+    }
+
+    private func expireHold(_ id: UUID) async {
+        guard holdID == id, backgrounded else { return }
+        await pause()
+    }
+
+    public func foreground() async {
+        guard !stopped else { return }
+        let wasBackgrounded = backgrounded
+        // Past its deadline, or ended while away, the held run is over.
+        if backgrounded, holdDeadline.map({ ContinuousClock.now >= $0 }) == true || (runner != nil && eventStream == nil) {
+            guard await pause() else { return }
+        }
+        backgrounded = false
+        holdID = nil; holdDeadline = nil
+        holdTimer?.cancel(); holdTimer = nil
+        let release = releaseHold; releaseHold = nil
+        if wasBackgrounded, let eventStream, runner != nil {
+            heldVerification = true
+            verified = false
+            snapshot.live = false; snapshot.reconnecting = true
+            publish()
+            await eventStream.race(after: streamCursor)
+        } else { start() }
+        await release?()
+    }
+
     /// Whether this pause still owns the engine when done: no other pause
     /// or start came while it wound down.
     @discardableResult
     public func pause() async -> Bool {
         generation += 1
         verified = false
+        heldVerification = false
         let pausedGeneration = generation
+        holdID = nil; holdDeadline = nil
+        holdTimer?.cancel(); holdTimer = nil
+        let release = releaseHold; releaseHold = nil
+        let events = eventStream; eventStream = nil
         let tasks = [runner, refresh, delivery, messageDelivery, usersRead, gitWatcher].compactMap { $0 }
-        await feed.disconnected()
-        await lookups.disconnected()
         gitWatcher = nil; gitInterest = []
         runner = nil; refresh = nil; delivery = nil; messageDelivery = nil; usersRead = nil
         deriving?.cancel(); deriving = nil
         tasks.forEach { $0.cancel() }
+        await events?.close()
+        await release?()
+        guard generation == pausedGeneration else { return false }
+        await feed.disconnected()
+        guard generation == pausedGeneration else { return false }
+        await lookups.disconnected()
         for task in tasks { await task.value }
         // A start while the tasks wound down owns the outbox now: taking it
         // offline here held every intent back while home said live.
@@ -282,7 +355,7 @@ public actor SyncEngine {
         snapshot.reconnecting = true
         let client = client
         Task { await client.resumed() }
-        if await pause() { start() }
+        if await pause(), !backgrounded { start() }
     }
 
     public func stop() async {
@@ -354,6 +427,7 @@ public actor SyncEngine {
         }
         var attempt = 0
         while current(generation) {
+            var resetStream = false
             do {
                 sidebarSyncing = false
                 snapshot.syncing = true
@@ -363,7 +437,7 @@ public actor SyncEngine {
                 // neither home nor any conversation is read again. A flapping
                 // network read the whole bootstrap, and every warm chat, on
                 // every reconnect (Proofs/: `Refresh.resume_is_current`).
-                let resuming = desktop != nil && verifiedDaemon != nil && streamCursor != nil && covered == signalled
+                var resuming = desktop != nil && verifiedDaemon != nil && streamCursor != nil && covered == signalled
                 if !resuming {
                     try await reconcile(generation)
                     // The server answered: what is left is catching up.
@@ -373,10 +447,29 @@ public actor SyncEngine {
                     beginMessageDelivery(generation)
                     await intents.setOnline(deliveryAllowed)
                 }
-                let stream = try await client.events(after: resuming ? streamCursor : cursor)
-                for try await frame in stream {
+                let client = client
+                let events = EventStreamRace { cursor in
+                    try await EventStreamPolicy.$resetsTunnel.withValue(false) {
+                        try await client.events(after: cursor, resetOnSilence: false)
+                    }
+                }
+                eventStream = events
+                await events.start(after: resuming ? streamCursor : cursor)
+                for try await frame in events.stream {
                     guard current(generation) else { return }
+                    // A held connection proves itself by bringing a frame;
+                    // a fresh one must first verify its hello's daemon.
+                    if frame.event != "hello", heldVerification, !backgrounded {
+                        heldVerification = false
+                        verified = true
+                        snapshot.live = true; snapshot.reconnecting = false
+                        publish()
+                        beginDelivery(generation)
+                        beginMessageDelivery(generation)
+                        await intents.setOnline(deliveryAllowed)
+                    }
                     if frame.event == "hello" {
+                        heldVerification = false
                         sidebarSyncing = true
                         snapshot.syncing = true
                         snapshot.live = true; snapshot.error = nil; snapshot.reconnecting = false; attempt = 0
@@ -389,6 +482,7 @@ public actor SyncEngine {
                         let daemon = hello["daemonId"]?.stringValue
                         // Everything since the cursor follows, from the same process.
                         let continued = resuming && !gap && hello["resumed"] == .bool(true) && daemon != nil && daemon == verifiedDaemon
+                        if !continued { eventIDs = []; eventOrder = [] }
                         if resuming {
                             // Something was missed, or another process answered:
                             // it is read, and its owner checked, before anything
@@ -414,6 +508,7 @@ public actor SyncEngine {
                         if !continued { readAuthors(generation, again: Set(users.keys)) }
                         // Conversations and lists read again only for what they missed.
                         try await resyncSidebar(generation, resync: !continued)
+                        resuming = true
                         continue
                     }
                     if DocumentStreams.isDocumentFrame(frame.event) {
@@ -421,6 +516,9 @@ public actor SyncEngine {
                         continue
                     }
                     guard let event = try? JSONValue.decode(Data(frame.data.utf8)) else { continue }
+                    if let id = frame.id {
+                        guard !eventIDs.contains(id) else { continue }
+                    }
                     await spaces.externalEvent(event)
                     guard current(generation) else { return }
                     if event["type"]?.stringValue?.hasPrefix("feed.") == true { await feed.receive(event) }
@@ -461,19 +559,41 @@ public actor SyncEngine {
                        ["project.", "workspace.", "bot.", "task.", "agent.", "surface.", "user_settings."].contains(where: type.hasPrefix),
                        type != "agent.draft.updated" { scheduleReconcile(generation) }
                     // Taken in: applied, or home marked stale for it.
-                    if let id = frame.id { streamCursor = id }
+                    if let id = frame.id {
+                        streamCursor = id
+                        eventIDs.insert(id); eventOrder.append(id)
+                        if eventOrder.count > 512 { eventIDs.remove(eventOrder.removeFirst()) }
+                    }
                 }
             } catch AgentClientError.revoked {
+                guard current(generation) else { return }
+                let revokedStream = eventStream; eventStream = nil
+                await revokedStream?.close()
                 snapshot.live = false; snapshot.reconnecting = false
                 snapshot.error = client.signsIn ? "Your sign-in to this server has ended. Sign in again." : "This device was disconnected. Pair it again."
                 publish()
                 return
             } catch {
                 guard current(generation) else { return }
+                resetStream = !(error is AgentClientError) && TailcatHTTPTransport.lostTunnel(error)
                 snapshot.live = false
                 snapshot.reconnecting = true
                 publish()
             }
+            guard current(generation) else { return }
+            let endedStream = eventStream; eventStream = nil
+            await endedStream?.close()
+            // A race candidate's watchdog must never reset the winner's
+            // tunnel. Only after all readers end may the tunnel be replaced.
+            guard current(generation) else { return }
+            if backgrounded {
+                Task {
+                    guard self.generation == generation, self.backgrounded else { return }
+                    await self.pause()
+                }
+                return
+            }
+            if resetStream { await client.transport.reset(.realtime) }
             await documents.closed()
             guard current(generation) else { return }
             snapshot.live = false
