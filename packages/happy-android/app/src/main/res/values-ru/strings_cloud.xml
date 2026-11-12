@@ -28,7 +28,7 @@
     <string name="cloud_members_sign_in">Войдите в Happy Cloud, чтобы увидеть, кто на этом сервере.</string>
     <string name="cloud_leave">Покинуть сервер</string>
     <string name="cloud_leave_confirm_title">Покинуть %1$s?</string>
-    <string name="cloud_leave_confirm_message">Вы потеряете доступ к его агентам и задачам на всех устройствах. Вернуться можно по новому коду приглашения.</string>
+    <string name="cloud_leave_confirm_message">Вы потеряете доступ к его агентам и задачам на всех устройствах. Вернуться можно по новой ссылке-приглашению.</string>
     <string name="cloud_leave_last_owner">Вы его единственный владелец, поэтому не можете его покинуть.</string>
     <string name="cloud_test_title">Вход с тестовой учётной записью.</string>
     <string name="cloud_test_login">Логин</string>

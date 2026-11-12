@@ -28,7 +28,7 @@
     <string name="cloud_members_sign_in">このサーバーのメンバーを見るには Happy Cloud にサインインしてください。</string>
     <string name="cloud_leave">サーバーから退出</string>
     <string name="cloud_leave_confirm_title">%1$s から退出しますか？</string>
-    <string name="cloud_leave_confirm_message">すべての端末でこのサーバーのエージェントとタスクにアクセスできなくなります。新しい招待コードで戻れます。</string>
+    <string name="cloud_leave_confirm_message">すべての端末でこのサーバーのエージェントとタスクにアクセスできなくなります。新しい招待リンクで戻れます。</string>
     <string name="cloud_leave_last_owner">唯一のオーナーなので退出できません。</string>
     <string name="cloud_test_title">テストアカウントでサインインします。</string>
     <string name="cloud_test_login">ログイン</string>
