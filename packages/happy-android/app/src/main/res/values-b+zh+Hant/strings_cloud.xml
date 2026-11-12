@@ -28,7 +28,7 @@
     <string name="cloud_members_sign_in">登入 Happy Cloud 以查看此伺服器上的成員。</string>
     <string name="cloud_leave">離開伺服器</string>
     <string name="cloud_leave_confirm_title">離開 %1$s？</string>
-    <string name="cloud_leave_confirm_message">你將在所有裝置上失去它的代理程式和任務。可以用新的邀請碼重新加入。</string>
+    <string name="cloud_leave_confirm_message">你將在所有裝置上失去它的代理程式和任務。可以用新的邀請連結重新加入。</string>
     <string name="cloud_leave_last_owner">你是它唯一的擁有者，因此不能離開。</string>
     <string name="cloud_test_title">使用測試帳號登入。</string>
     <string name="cloud_test_login">登入名稱</string>

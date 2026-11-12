@@ -28,7 +28,7 @@
     <string name="cloud_members_sign_in">Inicia la sessió a Happy Cloud per veure qui hi ha en aquest servidor.</string>
     <string name="cloud_leave">Surt del servidor</string>
     <string name="cloud_leave_confirm_title">Vols sortir de %1$s?</string>
-    <string name="cloud_leave_confirm_message">Perdràs els seus agents i tasques a tots els dispositius. Pots tornar amb un codi d\'invitació nou.</string>
+    <string name="cloud_leave_confirm_message">Perdràs els seus agents i tasques a tots els dispositius. Pots tornar amb un enllaç d\'invitació nou.</string>
     <string name="cloud_leave_last_owner">N\'ets l\'únic propietari, així que no en pots sortir.</string>
     <string name="cloud_test_title">Inicia la sessió amb un compte de prova.</string>
     <string name="cloud_test_login">Usuari</string>
