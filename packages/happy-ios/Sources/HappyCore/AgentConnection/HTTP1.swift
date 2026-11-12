@@ -127,8 +127,10 @@ extension AgentTransport {
 /// platform-verified TLS; otherwise it goes over the account's
 /// `TailcatClients`: one client for the event stream and queries, up to
 /// three for files and the browser, and `server.tailcat` is a logical
-/// authority, never a DNS lookup. Each HTTP request owns a fresh TCP stream.
-/// A query must be answered within 35 seconds, a file within 15 minutes.
+/// authority, never a DNS lookup. A request over Tailcat goes on a flow its
+/// client kept open from an earlier one (`IdleFlows`), or a new one; over
+/// HTTPS each request owns a fresh stream, closed once answered. A query
+/// must be answered within 35 seconds, a file within 15 minutes.
 public final class AgentHTTPTransport: SelfMeteringTransport {
     let port: UInt16
     let publicUrl: String?
@@ -139,10 +141,12 @@ public final class AgentHTTPTransport: SelfMeteringTransport {
     let clients: TailcatClients<Tunnel>
     private let publicFlows = PublicFlows()
 
-    /// One Tailcat client, and its id with the recorder while it is up.
+    /// One Tailcat client, its id with the recorder while it is up, and
+    /// the flows it keeps open between requests.
     final class Tunnel: Sendable {
         let client: TailcatClient
         let id: UUID?
+        let idle = IdleFlows()
         init(_ client: TailcatClient, id: UUID?) { self.client = client; self.id = id }
     }
 
@@ -182,6 +186,7 @@ public final class AgentHTTPTransport: SelfMeteringTransport {
             }
         }, disconnect: { tunnel in
             if let id = tunnel.id { meter.metrics?.tunnelDown(id) }
+            await tunnel.idle.shut()
             await tunnel.client.close()
         })
     }
@@ -234,10 +239,16 @@ public final class AgentHTTPTransport: SelfMeteringTransport {
     /// rebound, and an expired session rekeyed at once rather than at the
     /// next 30-second idle mark. All at once: a wake can wait on its relay
     /// connecting again, and one at a time the last tunnel woke only after
-    /// every relay before it.
+    /// every relay before it. The flows kept between requests are let go:
+    /// one may have gone out the old way, or died with the suspension.
     public func resumed() async {
         await withTaskGroup(of: Void.self) { group in
-            for tunnel in clients.connected() { group.addTask { await tunnel.client.wake() } }
+            for tunnel in clients.connected() {
+                group.addTask {
+                    await tunnel.idle.drop()
+                    await tunnel.client.wake()
+                }
+            }
         }
     }
 
@@ -263,12 +274,17 @@ public final class AgentHTTPTransport: SelfMeteringTransport {
     /// without one, counted on the channel the request that opens it names
     /// (`MetricsScope.channel`). Closing it lets go of the lease.
     func flow(_ lease: TailcatClients<Tunnel>.Lease?, _ category: RequestCategory) async throws -> any BrowserStream {
+        let counted = try await openFlow(lease, category)
+        return lease.map { LeasedStream(counted, lease: $0) } ?? counted
+    }
+
+    /// `flow` without the lease: one a request may leave open for the next.
+    private func openFlow(_ lease: TailcatClients<Tunnel>.Lease?, _ category: RequestCategory) async throws -> any BrowserStream {
         let raw: any BrowserStream
         if let lease { raw = try await lease.client.client.openTCP(port: port) }
         else if let publicUrl { raw = try publicFlows.open(AgentOrigin(publicUrl), category) }
         else { throw PairingError.unavailable }
-        let counted = meter.metrics.map { MeteredStream(raw, metrics: $0, channel: MetricsScope.channel ?? (lease == nil ? .http : .tailcat)) } ?? raw
-        return lease.map { LeasedStream(counted, lease: $0) } ?? counted
+        return meter.metrics.map { MeteredStream(raw, metrics: $0, channel: MetricsScope.channel ?? (lease == nil ? .http : .tailcat)) } ?? raw
     }
 
     /// How long `category`'s request may take, written and answered.
@@ -329,43 +345,97 @@ public final class AgentHTTPTransport: SelfMeteringTransport {
     private func exchange(lease: TailcatClients<Tunnel>.Lease?, category: RequestCategory, method: String, path: String, credential: String, body: Data?, headers: [String: String], timeout: Duration, sent: (@Sendable (Int) -> Void)?) async throws -> HTTP1Response {
         try await withThrowingTaskGroup(of: HTTP1Response.self) { group in
             group.addTask {
-                let stream = try await self.flow(lease, category)
-                return try await withTaskCancellationHandler {
-                    do {
-                        var head = "\(method) \(path) HTTP/1.1\r\nHost: \(self.authority)\r\nAuthorization: Bearer \(credential)\r\nConnection: close\r\nAccept: application/json\r\nContent-Length: \(body?.count ?? 0)\r\n"
-                        // JSON unless the caller names the type (a picture's bytes).
-                        if body != nil, !headers.keys.contains(where: { $0.lowercased() == "content-type" }) { head += "Content-Type: application/json\r\n" }
-                        // A large JSON answer comes compressed, unless the caller says otherwise.
-                        if !headers.keys.contains(where: { $0.lowercased() == "accept-encoding" }) { head += "Accept-Encoding: \(ContentCoding.accepted)\r\n" }
-                        for (name, value) in headers { head += "\(name): \(value)\r\n" }
-                        try await stream.write(Data((head + "\r\n").utf8))
-                        if let body {
-                            var offset = 0
-                            while offset < body.count {
-                                try Task.checkCancellation()
-                                let end = min(body.count, offset + 256 * 1024)
-                                try await stream.write(Data(body[offset..<end]))
-                                offset = end
-                                // Written to the tunnel: what a sending picture's ring shows.
-                                sent?(offset)
-                            }
-                        }
-                        var parser = HTTP1Parser()
-                        while true {
-                            try Task.checkCancellation()
-                            let bytes = try await stream.read(maximumBytes: 65536)
-                            if let response = try parser.append(bytes, eof: bytes.isEmpty) {
-                                await stream.close()
-                                return try ContentCoding.decoded(response)
-                            }
-                        }
-                    } catch { await stream.close(); throw error }
-                } onCancel: { Task { await stream.close() } }
+                let response = try await self.exchange(method: method, path: path, credential: credential, body: body, headers: headers, idle: lease?.client.idle, sent: sent) {
+                    try await self.openFlow(lease, category)
+                }
+                // An answer came back over the client: it is there (`reset(_:ifSilent:)`).
+                lease?.heard()
+                return response
             }
             group.addTask { try await Task.sleep(for: timeout); throw PairingError.unavailable }
             defer { group.cancelAll() }
             guard let response = try await group.next() else { throw PairingError.unavailable }
             return response
+        }
+    }
+
+    /// The request on the newest flow `idle` kept, or on a new one from
+    /// `open`; a response framed to its last byte leaves its flow in `idle`
+    /// for the next request. A kept flow can have been let go by the
+    /// computer as the request went out: a GET that got not a byte back on
+    /// one goes again, once, on a new flow. Any other method's failure is
+    /// thrown, as it may have been done. Without `idle` (HTTPS) the stream
+    /// is closed once answered.
+    func exchange(method: String, path: String, credential: String, body: Data?, headers: [String: String], idle: IdleFlows?, sent: (@Sendable (Int) -> Void)?,
+                  staleAfter: Duration = AgentHTTPTransport.staleAfter, open: () async throws -> any BrowserStream) async throws -> HTTP1Response {
+        let epoch = idle?.epoch ?? 0
+        if let idle, let kept = await idle.take() {
+            do { return try await exchange(on: kept, reused: true, epoch: epoch, method: method, path: path, credential: credential, body: body, headers: headers, idle: idle, sent: sent, staleAfter: staleAfter) }
+            catch is StaleFlow {}
+        }
+        return try await exchange(on: try await open(), reused: false, epoch: epoch, method: method, path: path, credential: credential, body: body, headers: headers, idle: idle, sent: sent, staleAfter: staleAfter)
+    }
+
+    /// How long a kept flow has to show it is still there: the computer
+    /// taking the request's head, a Tailcat write returning once it is
+    /// acknowledged. A flow gone quiet holds a request no longer, and a
+    /// slow answer on a live one is waited for as on a new one.
+    static let staleAfter: Duration = .seconds(5)
+
+    /// A kept flow that carried a GET's request and nothing back.
+    private struct StaleFlow: Error {}
+
+    private func exchange(on stream: any BrowserStream, reused: Bool, epoch: Int, method: String, path: String, credential: String, body: Data?, headers: [String: String], idle: IdleFlows?, sent: (@Sendable (Int) -> Void)?, staleAfter: Duration) async throws -> HTTP1Response {
+        var received = 0
+        // Decoded once the flow is kept or closed: its reuse depends only on the framing.
+        return try ContentCoding.decoded(try await withTaskCancellationHandler {
+            do {
+                var head = "\(method) \(path) HTTP/1.1\r\nHost: \(self.authority)\r\nAuthorization: Bearer \(credential)\r\nAccept: application/json\r\nContent-Length: \(body?.count ?? 0)\r\n"
+                // JSON unless the caller names the type (a picture's bytes).
+                if body != nil, !headers.keys.contains(where: { $0.lowercased() == "content-type" }) { head += "Content-Type: application/json\r\n" }
+                // A large JSON answer comes compressed, unless the caller says otherwise.
+                if !headers.keys.contains(where: { $0.lowercased() == "accept-encoding" }) { head += "Accept-Encoding: \(ContentCoding.accepted)\r\n" }
+                for (name, value) in headers { head += "\(name): \(value)\r\n" }
+                let headBytes = Data((head + "\r\n").utf8)
+                if reused { try await Self.write(headBytes, to: stream, within: staleAfter) } else { try await stream.write(headBytes) }
+                if let body {
+                    var offset = 0
+                    while offset < body.count {
+                        try Task.checkCancellation()
+                        let end = min(body.count, offset + 256 * 1024)
+                        try await stream.write(Data(body[offset..<end]))
+                        offset = end
+                        // Written to the tunnel: what a sending picture's ring shows.
+                        sent?(offset)
+                    }
+                }
+                var parser = HTTP1Parser()
+                while true {
+                    try Task.checkCancellation()
+                    let bytes = try await stream.read(maximumBytes: 65536)
+                    received += bytes.count
+                    if let response = try parser.append(bytes, eof: bytes.isEmpty) {
+                        if let idle, parser.reusable, !Task.isCancelled { await idle.put(stream, epoch: epoch) }
+                        else { await stream.close() }
+                        return response
+                    }
+                }
+            } catch {
+                await stream.close()
+                if reused, received == 0, method == "GET", !Task.isCancelled, !(error is CancellationError) { throw StaleFlow() }
+                throw error
+            }
+        } onCancel: { Task { await stream.close() } })
+    }
+
+    /// `data` written to `stream`, or `PairingError.unavailable` once
+    /// `limit` passes first.
+    private static func write(_ data: Data, to stream: any BrowserStream, within limit: Duration) async throws {
+        try await withThrowingTaskGroup(of: Bool.self) { group in
+            group.addTask { try await stream.write(data); return true }
+            group.addTask { try await Task.sleep(for: limit); return false }
+            defer { group.cancelAll() }
+            guard try await group.next() == true else { throw PairingError.unavailable }
         }
     }
 }
@@ -410,6 +480,98 @@ final class PublicFlows: @unchecked Sendable {
             return closing
         }
         for (_, stream) in closing { await stream.close() }
+    }
+}
+
+/// One Tailcat client's flows left open by the requests before, newest
+/// last, so the next request skips a TCP handshake over the relay and the
+/// computer the process it starts for each connection. Each is read while
+/// it waits: a byte, the end or an error says the computer let it go, and
+/// it is closed and forgotten, as it is once idle for `idleLimit`, under
+/// the computer's 60 seconds. At most four are kept.
+final class IdleFlows: @unchecked Sendable {
+    private struct Entry {
+        let id: UUID
+        let flow: any BrowserStream
+        /// True once `take` called it off with the flow still open.
+        let watch: Task<Bool, Never>
+    }
+
+    static let limit = 4
+    let idleLimit: Duration
+    private let lock = NSLock()
+    private var entries: [Entry] = []
+    private var dropped = 0
+    private var isShut = false
+
+    init(idleLimit: Duration = .seconds(50)) { self.idleLimit = idleLimit }
+
+    var count: Int { lock.withLock { entries.count } }
+
+    /// Which `drop` a request began after: a flow `put` with an older one
+    /// may have gone out the old way, and is closed.
+    var epoch: Int { lock.withLock { dropped } }
+
+    /// Keeps `flow`, unless shut or dropped since `epoch`: then closes it.
+    func put(_ flow: any BrowserStream, epoch: Int) async {
+        let id = UUID(), idleLimit = idleLimit
+        let watch = Task { [weak self] () -> Bool in
+            let open = await withTaskGroup(of: Bool.self) { group in
+                group.addTask {
+                    do { _ = try await flow.read(maximumBytes: 1) } catch { return Task.isCancelled }
+                    return false
+                }
+                group.addTask { (try? await Task.sleep(for: idleLimit)) == nil }
+                defer { group.cancelAll() }
+                return await group.next() ?? false
+            }
+            if !open { await self?.evict(id) }
+            return open
+        }
+        let entry = Entry(id: id, flow: flow, watch: watch)
+        let closing = lock.withLock { () -> [Entry] in
+            guard !isShut, epoch == dropped else { return [entry] }
+            entries.append(entry)
+            return entries.count > Self.limit ? [entries.removeFirst()] : []
+        }
+        for entry in closing { await close(entry) }
+    }
+
+    /// The newest flow still open, no longer read or kept; nil when none is.
+    func take() async -> (any BrowserStream)? {
+        while let entry = lock.withLock({ entries.popLast() }) {
+            entry.watch.cancel()
+            if await entry.watch.value { return entry.flow }
+            await entry.flow.close()
+        }
+        return nil
+    }
+
+    /// Closes every flow kept, and every one a request already under way
+    /// puts back; flows of later requests are kept again.
+    func drop() async {
+        let closing = lock.withLock { () -> [Entry] in
+            dropped += 1
+            defer { entries.removeAll() }
+            return entries
+        }
+        for entry in closing { await close(entry) }
+    }
+
+    /// Closes every flow kept, and every one put after.
+    func shut() async {
+        lock.withLock { isShut = true }
+        await drop()
+    }
+
+    private func evict(_ id: UUID) async {
+        guard let entry = lock.withLock({ entries.firstIndex { $0.id == id }.map { entries.remove(at: $0) } }) else { return }
+        await close(entry)
+    }
+
+    private func close(_ entry: Entry) async {
+        entry.watch.cancel()
+        await entry.flow.close()
     }
 }
 
@@ -469,6 +631,11 @@ final class MeterSlot: @unchecked Sendable {
 struct HTTP1Parser {
     private var data = Data()
     private let limit = 8 * 1024 * 1024
+    /// Whether the connection may carry another request, once the response
+    /// is whole: HTTP/1.1, not `Connection: close`, and framed by its length
+    /// or chunks to exactly the last byte read. A body that ends with the
+    /// connection, or bytes past the response, end it.
+    private(set) var reusable = false
 
     mutating func append(_ bytes: Data, eof: Bool) throws -> HTTP1Response? {
         guard data.count + bytes.count <= limit + 65536 else { throw PairingError.invalidResponse }
@@ -489,7 +656,9 @@ struct HTTP1Parser {
             headers[name] = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
         }
         let body = Data(data[divider.upperBound...])
-        if status == 204 || status == 304 { return HTTP1Response(status: status, headers: headers) }
+        let closes = headers["connection"]?.lowercased().split(separator: ",").contains { $0.trimmingCharacters(in: .whitespaces) == "close" } ?? false
+        let persistent = statusParts[0] == "HTTP/1.1" && !closes
+        if status == 204 || status == 304 { reusable = persistent && body.isEmpty; return HTTP1Response(status: status, headers: headers) }
         if let transfer = headers["transfer-encoding"] {
             guard transfer.lowercased() == "chunked", headers["content-length"] == nil else { throw PairingError.invalidResponse }
             var cursor = 0; var decoded = Data(); var chunks = 0
@@ -505,8 +674,14 @@ struct HTTP1Parser {
                 guard chunks <= 65536 else { throw PairingError.invalidResponse }
                 if count == 0 {
                     // No trailers, or bounded trailers terminated by a blank line.
-                    if body.count >= cursor + 2, body[cursor..<cursor + 2] == Data("\r\n".utf8) { return HTTP1Response(status: status, headers: headers, body: decoded) }
-                    if let end = body.range(of: Data("\r\n\r\n".utf8), in: cursor..<body.count), end.upperBound - cursor <= 32768 { return HTTP1Response(status: status, headers: headers, body: decoded) }
+                    if body.count >= cursor + 2, body[cursor..<cursor + 2] == Data("\r\n".utf8) {
+                        reusable = persistent && body.count == cursor + 2
+                        return HTTP1Response(status: status, headers: headers, body: decoded)
+                    }
+                    if let end = body.range(of: Data("\r\n\r\n".utf8), in: cursor..<body.count), end.upperBound - cursor <= 32768 {
+                        reusable = persistent && body.count == end.upperBound
+                        return HTTP1Response(status: status, headers: headers, body: decoded)
+                    }
                     guard body.count - cursor <= 32768, !eof else { throw PairingError.invalidResponse }; return nil
                 }
                 guard body.count >= cursor + count + 2 else { if eof { throw PairingError.invalidResponse }; return nil }
@@ -516,7 +691,10 @@ struct HTTP1Parser {
         }
         if let length = headers["content-length"] {
             guard let count = Int(length), count >= 0, count <= limit else { throw PairingError.invalidResponse }
-            if body.count >= count { return HTTP1Response(status: status, headers: headers, body: Data(body.prefix(count))) }
+            if body.count >= count {
+                reusable = persistent && body.count == count
+                return HTTP1Response(status: status, headers: headers, body: Data(body.prefix(count)))
+            }
             if eof { throw PairingError.invalidResponse }; return nil
         }
         guard body.count <= limit else { throw PairingError.invalidResponse }
