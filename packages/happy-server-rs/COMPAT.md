@@ -165,6 +165,12 @@ Engine.IO 6.6 and Socket.IO 4.8 server semantics are reimplemented in `engine.rs
 `socket.rs` (parser), `sio.rs` (namespace/socket lifecycle) and `handlers.rs`/`rpc.rs`.
 Covered by `compat/phase2.mjs` and a socket.io-client 4.8 run (websocket-only and
 polling→upgrade). EIO3 and other namespaces are refused exactly as the TS server does.
+The native apps' hand-written clients (happy-ios `SocketIOClient.swift` over
+URLSessionWebSocketTask, happy-android `SocketIoClient.kt` over OkHttp 5) are replayed
+byte for byte by `compat/phase4-mobile.mjs`: their upgrade request headers (with and
+without a `permessage-deflate` offer, which neither server accepts), the 101 response,
+frame header bits, the 15 s heartbeat, a refused handshake, and close by frame, by
+`41`, and by a dropped TCP connection.
 
 - [x] Engine.IO handshake (`0{sid,upgrades,pingInterval,pingTimeout,maxPayload}`), heartbeat, close
 - [x] Polling transport + websocket upgrade (`2probe`/`3probe`/`5`, `6` noop)
