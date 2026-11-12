@@ -1472,6 +1472,8 @@ failedContinueTask: "Продолжить незавершённую задач�
             badgePlanMode: 'Режим планирования',
         },
         taskPermission: {
+            automatic: 'Auto approve',
+            automaticDescription: 'Allow workspace operations and request approval on failure. Device and outer sandbox limits still apply.',
             title: 'Разрешения',
             confirm: 'Требует подтверждения',
             confirmShort: 'Спросить',

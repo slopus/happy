@@ -63,8 +63,9 @@ export function getCodexPermissionModes(translate: Translate): PermissionMode[] 
     return [
         { key: 'default', name: translate('agentInput.codexPermissionMode.default'), description: null },
         { key: 'read-only', name: translate('agentInput.codexPermissionMode.readOnly'), description: null },
-        { key: 'safe-yolo', name: translate('agentInput.codexPermissionMode.safeYolo'), description: null },
-        { key: 'yolo', name: translate('agentInput.codexPermissionMode.yolo'), description: null },
+        { key: 'acceptEdits', name: translate('agentInput.taskPermission.confirm'), description: translate('agentInput.taskPermission.confirmDescription') },
+        { key: 'safe-yolo', name: translate('agentInput.taskPermission.automatic'), description: translate('agentInput.taskPermission.automaticDescription') },
+        { key: 'yolo', name: translate('agentInput.taskPermission.fullAccess'), description: translate('agentInput.taskPermission.fullAccessDescription') },
     ];
 }
 

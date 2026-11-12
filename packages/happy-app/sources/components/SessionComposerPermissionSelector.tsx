@@ -5,6 +5,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { hapticsLight } from '@/components/haptics';
+import { DesktopShortcutTooltip } from './DesktopShortcutTooltip';
 import type { SessionTaskPermissionController } from '@/hooks/useSessionTaskPermission';
 import type { TaskPermissionLevel } from '@/utils/taskPermissionModes';
 
@@ -12,23 +13,26 @@ export type SessionComposerPermissionSelectorConfig = SessionTaskPermissionContr
     compact?: boolean;
 };
 
-const LEVELS: TaskPermissionLevel[] = ['confirm', 'full-access'];
+const LEVELS: TaskPermissionLevel[] = ['confirm', 'automatic', 'full-access'];
 
 function labelForLevel(level: TaskPermissionLevel | null): string {
     if (level === 'full-access') {
-        return t('agentInput.codexPermissionMode.badgeYolo').toUpperCase();
+        return t('agentInput.taskPermission.fullAccess');
     }
+    if (level === 'automatic') return t('agentInput.taskPermission.automatic');
     return t('agentInput.taskPermission.confirm');
 }
 
 function shortLabelForLevel(level: TaskPermissionLevel | null): string {
     if (level === 'full-access') {
-        return t('agentInput.codexPermissionMode.badgeYolo').toUpperCase();
+        return t('agentInput.taskPermission.fullAccessShort');
     }
+    if (level === 'automatic') return t('agentInput.taskPermission.automatic');
     return t('agentInput.taskPermission.confirmShort');
 }
 
 function descriptionForLevel(level: TaskPermissionLevel): string {
+    if (level === 'automatic') return t('agentInput.taskPermission.automaticDescription');
     return level === 'full-access'
         ? t('agentInput.taskPermission.fullAccessDescription')
         : t('agentInput.taskPermission.confirmDescription');
@@ -40,17 +44,20 @@ export const SessionComposerPermissionSelector = React.memo(function SessionComp
     const { theme } = useUnistyles();
     const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
     const [open, setOpen] = React.useState(false);
+    const [hovered, setHovered] = React.useState(false);
+    const [hoveredLevel, setHoveredLevel] = React.useState<TaskPermissionLevel | null>(null);
     const [selecting, setSelecting] = React.useState(false);
     const triggerRef = React.useRef<any>(null);
     const firstOptionRef = React.useRef<any>(null);
     const wasOpenRef = React.useRef(false);
     const [anchor, setAnchor] = React.useState<{ x: number; y: number; width: number; height: number } | null>(null);
     const enabled = props.online && props.supported && !selecting;
+    const legacyLabel = props.currentMode === 'read-only' ? t('agentInput.codexPermissionMode.readOnly') : t('agentInput.codexPermissionMode.default');
     const currentFullLabel = props.supported
-        ? labelForLevel(props.level)
+        ? (props.supportsAutomatic && props.level === null ? legacyLabel : labelForLevel(props.level))
         : t('agentInput.taskPermission.unavailable');
     const currentTriggerLabel = props.supported
-        ? shortLabelForLevel(props.level)
+        ? (props.supportsAutomatic && props.level === null ? legacyLabel : shortLabelForLevel(props.level))
         : t('agentInput.taskPermission.unavailable');
 
     React.useEffect(() => {
@@ -139,12 +146,14 @@ export const SessionComposerPermissionSelector = React.memo(function SessionComp
                 accessibilityState={{ disabled: !enabled, expanded: open }}
                 aria-expanded={open}
                 disabled={!enabled}
-                onPress={openPicker}
+                onPress={() => { setHovered(false); openPicker(); }}
+                onHoverIn={() => setHovered(true)}
+                onHoverOut={() => setHovered(false)}
                 hitSlop={6}
                 style={({ pressed }) => [
                     styles.trigger,
                     !enabled && styles.triggerDisabled,
-                    pressed && styles.triggerPressed,
+                    (pressed || hovered) && styles.triggerPressed,
                 ]}
             >
                 <Ionicons
@@ -163,6 +172,7 @@ export const SessionComposerPermissionSelector = React.memo(function SessionComp
                     <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={11} color={theme.colors.textSecondary} />
                 ) : null}
             </Pressable>
+            <DesktopShortcutTooltip testID="session-composer-permission-tooltip" label={t('agentInput.taskPermission.title')} visible={Platform.OS === 'web' && hovered && !open} placement="above" compact />
             {props.online && props.unavailableReason ? (
                 <Text testID="session-composer-permission-disabled-reason" style={styles.disabledReason} numberOfLines={1}>
                     {props.unavailableReason}
@@ -197,7 +207,7 @@ export const SessionComposerPermissionSelector = React.memo(function SessionComp
                         <Text style={styles.pickerTitle}>{t('agentInput.taskPermission.title')}</Text>
                         <Text style={styles.pickerHint}>{t('agentInput.taskPermission.changesNextMessages')}</Text>
                         <View accessibilityRole="radiogroup">
-                            {LEVELS.map((level) => {
+                            {LEVELS.filter(level => level !== 'automatic' || props.supportsAutomatic).map((level) => {
                                 const selected = level === props.level;
                                 const label = labelForLevel(level);
                                 const description = descriptionForLevel(level);
@@ -211,7 +221,9 @@ export const SessionComposerPermissionSelector = React.memo(function SessionComp
                                         aria-checked={selected}
                                         accessibilityLabel={`${label}. ${description}`}
                                         onPress={() => void selectLevel(level)}
-                                        style={({ pressed }) => [styles.option, pressed && styles.optionPressed]}
+                                        onHoverIn={() => setHoveredLevel(level)}
+                                        onHoverOut={() => setHoveredLevel(null)}
+                                        style={({ pressed }) => [styles.option, (pressed || hoveredLevel === level) && styles.optionPressed]}
                                     >
                                         <Ionicons
                                             name={selected ? 'checkmark-circle' : 'ellipse-outline'}

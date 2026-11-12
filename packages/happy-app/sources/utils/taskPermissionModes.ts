@@ -1,8 +1,8 @@
-export type TaskPermissionLevel = 'confirm' | 'full-access';
+export type TaskPermissionLevel = 'confirm' | 'automatic' | 'full-access';
 
 export type TaskPermissionAgent = 'claude' | 'codex' | 'gemini';
 
-type TaskPermissionMapping = Record<TaskPermissionLevel, string>;
+type TaskPermissionMapping = Partial<Record<TaskPermissionLevel, string>>;
 
 const TASK_PERMISSION_MAPPINGS: Record<TaskPermissionAgent, TaskPermissionMapping> = {
     claude: {
@@ -11,6 +11,7 @@ const TASK_PERMISSION_MAPPINGS: Record<TaskPermissionAgent, TaskPermissionMappin
     },
     codex: {
         confirm: 'acceptEdits',
+        automatic: 'safe-yolo',
         'full-access': 'yolo',
     },
     gemini: {
@@ -43,7 +44,7 @@ export function getAgentPermissionModeForTaskLevel(
     level: TaskPermissionLevel,
 ): string | null {
     const agent = resolveTaskPermissionAgent(flavor);
-    return agent ? TASK_PERMISSION_MAPPINGS[agent][level] : null;
+    return agent ? TASK_PERMISSION_MAPPINGS[agent][level] ?? null : null;
 }
 
 /**
@@ -60,6 +61,8 @@ export function getTaskPermissionLevelForAgentMode(
         return null;
     }
 
+    if (agent === 'codex' && (mode === 'default' || mode === 'read-only')) return null;
+    if (agent === 'codex' && mode === 'safe-yolo') return 'automatic';
     return mode === 'yolo' || mode === 'bypassPermissions'
         ? 'full-access'
         : 'confirm';

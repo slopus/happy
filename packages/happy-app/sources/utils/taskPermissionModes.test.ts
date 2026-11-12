@@ -33,8 +33,8 @@ describe('task permission mode adapter', () => {
     );
 
     it('never overstates non-bypass historical modes as full access', () => {
-        expect(getTaskPermissionLevelForAgentMode('codex', 'read-only')).toBe('confirm');
-        expect(getTaskPermissionLevelForAgentMode('codex', 'safe-yolo')).toBe('confirm');
+        expect(getTaskPermissionLevelForAgentMode('codex', 'read-only')).toBeNull();
+        expect(getTaskPermissionLevelForAgentMode('codex', 'safe-yolo')).toBe('automatic');
         expect(getTaskPermissionLevelForAgentMode('claude', 'plan')).toBe('confirm');
         expect(getTaskPermissionLevelForAgentMode('claude', 'acceptEdits')).toBe('confirm');
     });

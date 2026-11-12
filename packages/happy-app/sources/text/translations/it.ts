@@ -1454,6 +1454,8 @@ failedContinueTask: "Continua il lavoro in sospeso",
             badgePlanMode: 'Modalità piano',
         },
         taskPermission: {
+            automatic: 'Auto approve',
+            automaticDescription: 'Allow workspace operations and request approval on failure. Device and outer sandbox limits still apply.',
             title: 'Autorizzazioni',
             confirm: 'Richiede conferma',
             confirmShort: 'Chiedi',

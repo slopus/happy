@@ -1748,6 +1748,8 @@ failedContinueTask: "Continue unfinished task",
             badgePlanMode: 'plan mode',
         },
         taskPermission: {
+            automatic: 'Auto approve',
+            automaticDescription: 'Allow workspace operations and request approval on failure. Device and outer sandbox limits still apply.',
             title: 'Permissions',
             confirm: 'Needs confirmation',
             confirmShort: 'Ask first',

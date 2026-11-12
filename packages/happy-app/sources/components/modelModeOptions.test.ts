@@ -193,7 +193,7 @@ describe('modelModeOptions', () => {
             operatingModes: [{ code: 'metadata-only', value: 'Metadata Mode', description: null }],
         } as any, translate);
 
-        expect(modes.map((mode) => mode.key)).toEqual(['default', 'read-only', 'safe-yolo', 'yolo']);
+        expect(modes.map((mode) => mode.key)).toEqual(['default', 'read-only', 'acceptEdits', 'safe-yolo', 'yolo']);
     });
 
     it('applies hacks to metadata-provided operating modes for custom ACP agents', () => {

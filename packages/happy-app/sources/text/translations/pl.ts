@@ -1472,6 +1472,8 @@ failedContinueTask: "Kontynuuj niedokończone zadanie",
             badgePlanMode: 'Tryb planowania',
         },
         taskPermission: {
+            automatic: 'Auto approve',
+            automaticDescription: 'Allow workspace operations and request approval on failure. Device and outer sandbox limits still apply.',
             title: 'Uprawnienia',
             confirm: 'Wymaga potwierdzenia',
             confirmShort: 'Pytaj',

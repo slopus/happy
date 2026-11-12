@@ -165,7 +165,7 @@ describe('SessionComposerModeSelector', () => {
             renderer = TestRenderer.create(
                 <SessionComposerModeSelector online model={modelOptions[0]} modelOptions={modelOptions}
                     effort={effortOptions[0]} effortOptions={[{ key: 'default', name: 'default effort' }, ...effortOptions]}
-                    onModelChange={vi.fn()} onEffortChange={onEffortChange} supportsFast />,
+                    onModelChange={vi.fn()} onEffortChange={onEffortChange} onReset={() => onEffortChange('medium')} supportsFast />,
             );
         });
         const trigger = () => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' });
@@ -175,7 +175,7 @@ describe('SessionComposerModeSelector', () => {
         act(() => trigger().props.onPress());
         expect(background(false)).toBe('#333');
         const reset = renderer.root.findByProps({ testID: 'session-composer-effort-reset' });
-        expect(reset.props.accessibilityHint).toBe('medium');
+        expect(reset.props.accessibilityHint).toBe('Medium');
         act(() => reset.props.onPress());
         expect(onEffortChange).toHaveBeenCalledWith('medium');
         expect(renderer.root.findAllByType('Text').some((node: any) =>
@@ -183,6 +183,47 @@ describe('SessionComposerModeSelector', () => {
         )).toBe(false);
         act(() => renderer.root.findByProps({ testID: 'session-composer-mode-picker-scrim' }).props.onPress());
         expect(background(false)).toBeUndefined();
+        act(() => renderer.unmount());
+    });
+
+    it('resets model, effort and Fast together', () => {
+        const onModelChange = vi.fn(), onEffortChange = vi.fn(), onFastModeChange = vi.fn();
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SessionComposerModeSelector online unifiedCodex
+            model={{ key: 'gpt-6-astra', name: 'gpt-6-astra' }}
+            modelOptions={[{ key: 'gpt-6-astra', name: 'gpt-6-astra' }, { key: 'gpt-6.1-sol', name: 'gpt-6.1-sol' }]}
+            effort={{ key: 'high', name: 'high' }} effortOptions={effortOptions}
+            fastMode supportsFast onModelChange={onModelChange} onEffortChange={onEffortChange} onFastModeChange={onFastModeChange} />); });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'session-composer-effort-reset' }).props.onPress());
+        expect(onModelChange).toHaveBeenCalledWith('gpt-6.1-sol');
+        expect(onEffortChange).toHaveBeenCalledWith('medium');
+        expect(onFastModeChange).toHaveBeenCalledWith(false);
+        act(() => renderer.unmount());
+    });
+
+    it('allows the supplied reset without effort options and disables it when the default model is unavailable', () => {
+        const onReset = vi.fn(); let renderer: any;
+        const props = { online: true, model: modelOptions[0], modelOptions, effort: null, effortOptions: [], onModelChange: vi.fn(), onEffortChange: vi.fn() };
+        act(() => { renderer = TestRenderer.create(<SessionComposerModeSelector {...props} onReset={onReset} />); });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        const reset = () => renderer.root.findByProps({ testID: 'session-composer-effort-reset' });
+        expect(reset().props.disabled).toBe(false);
+        act(() => reset().props.onPress()); expect(onReset).toHaveBeenCalledOnce();
+        act(() => renderer.update(<SessionComposerModeSelector {...props} />));
+        expect(reset().props.disabled).toBe(true);
+        act(() => renderer.unmount());
+    });
+
+    it('creates full-width moving particles on the first opening before track measurement', () => {
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SessionComposerModeSelector online model={modelOptions[0]} modelOptions={modelOptions}
+            effort={effortOptions[1]} effortOptions={effortOptions} onModelChange={vi.fn()} onEffortChange={vi.fn()} />); });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
+        const particle = renderer.root.findByProps({ 'data-effort-particle': 0 });
+        expect(particle.props.style.width).toBe('100%');
+        expect(particle.props.style.animation).toContain('paws-effort-star');
+        expect(particle.props.style.opacity).toBeGreaterThan(0);
         act(() => renderer.unmount());
     });
 
@@ -238,8 +279,8 @@ describe('SessionComposerModeSelector', () => {
             onModelChange={vi.fn()} onEffortChange={vi.fn()} onFastModeChange={vi.fn()} />); });
         act(() => renderer.root.findByProps({ testID: 'session-composer-mode-trigger' }).props.onPress());
         expect(renderer.root.findByProps({ testID: 'session-composer-fast-toggle' }).props.disabled).toBe(true);
-        expect(renderer.root.findByProps({ testID: 'session-composer-effort-high' }).props.accessibilityLabel).toBe('high');
-        expect(renderer.root.findByProps({ testID: 'session-composer-effort-medium' }).props.accessibilityLabel).toBe('medium');
+        expect(renderer.root.findByProps({ testID: 'session-composer-effort-high' }).props.accessibilityLabel).toBe('High');
+        expect(renderer.root.findByProps({ testID: 'session-composer-effort-medium' }).props.accessibilityLabel).toBe('Medium');
         act(() => renderer.unmount());
     });
 

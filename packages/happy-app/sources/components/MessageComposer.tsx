@@ -1,6 +1,7 @@
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { View, Platform, useWindowDimensions, Text, ActivityIndicator, Pressable } from 'react-native';
+import { DesktopShortcutTooltip } from './DesktopShortcutTooltip';
 import { AgentInputAttachmentStrip } from './AgentInputAttachmentStrip';
 import type { AttachmentPreview } from '@/sync/attachmentTypes';
 import type { AttachmentGalleryPresentation } from '@/utils/attachmentGalleryLayout';
@@ -148,7 +149,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         borderRadius: Platform.select({ default: 16, android: 20 }),
         borderWidth: 1,
         borderColor: theme.dark ? theme.colors.divider : '#C9C9CE',
-        overflow: 'hidden',
+        overflow: Platform.OS === 'web' ? 'visible' : 'hidden',
         paddingVertical: 2,
         paddingBottom: 8,
         paddingHorizontal: 8,
@@ -199,7 +200,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         alignItems: 'center',
         flex: 1,
         minWidth: 0,
-        overflow: 'hidden',
+        overflow: Platform.OS === 'web' ? 'visible' : 'hidden',
     },
     machineLabel: {
         flexDirection: 'row',
@@ -492,6 +493,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const { width: screenWidth } = useWindowDimensions();
+    const [hoveredAction, setHoveredAction] = React.useState<'attach' | 'send' | null>(null);
     const [directoryInvalid, setDirectoryInvalid] = React.useState(false);
     const isSendBlocked = (props.blockSend ?? false)
         || directoryInvalid
@@ -963,10 +965,12 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                             props.onPickImages?.();
                                         }}
                                         hitSlop={8}
+                                        onHoverIn={() => setHoveredAction('attach')}
+                                        onHoverOut={() => setHoveredAction(null)}
                                         style={(p) => [
                                             styles.imagePickerButton,
                                             (props.selectedImages?.length ?? 0) > 0 && styles.imagePickerButtonActive,
-                                            p.pressed && { opacity: 0.7 },
+                                            (p.pressed || hoveredAction === 'attach') && { backgroundColor: theme.colors.surfacePressed },
                                         ]}
                                     >
                                         <Ionicons
@@ -976,6 +980,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                                 ? theme.colors.radio.active
                                                 : theme.colors.button.secondary.tint}
                                         />
+                                        <DesktopShortcutTooltip testID="composer-attach-tooltip" label={t('imageUpload.chooseSourceTitle')} visible={Platform.OS === 'web' && hoveredAction === 'attach'} placement="above" compact />
                                     </Pressable>
                                 )}
 
@@ -1025,12 +1030,14 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                             ? t('keyboardShortcuts.stopRunningAgent')
                                             : (props.sendLabel ?? t('keyboardShortcuts.sendMessage'))}
                                         accessibilityHint={(isAbortAction || isAbortConfirmationArmed) ? undefined : props.sendHint}
+                                        onHoverIn={() => setHoveredAction('send')}
+                                        onHoverOut={() => setHoveredAction(null)}
                                         style={(p) => ({
                                             width: '100%',
                                             height: '100%',
                                             alignItems: 'center',
                                             justifyContent: 'center',
-                                            opacity: p.pressed ? 0.7 : 1,
+                                            opacity: p.pressed || hoveredAction === 'send' ? 0.75 : 1,
                                         })}
                                         hitSlop={Platform.OS === 'web'
                                             ? { top: 5, bottom: 10, left: 0, right: 0 }
@@ -1069,6 +1076,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                                 ]}
                                             />
                                         )}
+                                        <DesktopShortcutTooltip testID="composer-send-tooltip" label={(isAbortAction || isAbortConfirmationArmed) ? t('keyboardShortcuts.stopRunningAgent') : (props.sendLabel ?? t('keyboardShortcuts.sendMessage'))} visible={Platform.OS === 'web' && hoveredAction === 'send'} placement="above" align="right" compact />
                                     </Pressable>
                                 </Shaker>
                                 </View>
@@ -1086,6 +1094,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
 
 // Git Status Button Component
 function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?: () => void }) {
+    const [hovered, setHovered] = React.useState(false);
     const hasMeaningfulGitStatus = useHasMeaningfulGitStatus(sessionId || '');
     const styles = stylesheet;
     const { theme } = useUnistyles();
@@ -1105,8 +1114,11 @@ function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?:
                 height: 32,
                 opacity: p.pressed ? 0.7 : 1,
                 flex: 1,
-                overflow: 'hidden',
+                overflow: Platform.OS === 'web' ? 'visible' : 'hidden',
+                backgroundColor: hovered ? theme.colors.surfacePressed : 'transparent',
             })}
+            onHoverIn={() => setHovered(true)}
+            onHoverOut={() => setHovered(false)}
             hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
             onPress={() => {
                 hapticsLight();
@@ -1122,6 +1134,7 @@ function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?:
                     color={theme.colors.button.secondary.tint}
                 />
             )}
+            <DesktopShortcutTooltip testID="composer-git-tooltip" label="Git" visible={Platform.OS === 'web' && hovered} placement="above" compact />
         </Pressable>
     );
 }

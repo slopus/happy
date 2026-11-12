@@ -1825,12 +1825,17 @@ function SessionViewLoaded({
         modelOptions: nextTurnModes.availableModels,
         effort: nextTurnModes.effortLevel,
         effortOptions: nextTurnModes.availableEffortLevels,
+        onReset: session.metadata?.flavor === 'codex' && nextTurnModes.availableModels.some(model => model.key === 'gpt-6.1-sol') ? () => {
+            storage.getState().updateSessionModelMode(sessionId, 'gpt-6.1-sol');
+            storage.getState().updateSessionEffortLevel(sessionId, 'medium');
+            storage.getState().updateSessionFastMode(sessionId, false);
+        } : undefined,
         onModelChange: handleModelChange,
         onEffortChange: handleEffortChange,
         fastMode: session.fastMode === true,
         supportsFast: nextTurnModes.supportsFast,
         onFastModeChange: handleFastModeChange,
-    }), [handleEffortChange, handleFastModeChange, handleModelChange, isDisconnected, nextTurnModes, session.fastMode, session.metadata?.flavor]);
+    }), [handleEffortChange, handleFastModeChange, handleModelChange, isDisconnected, nextTurnModes, session.fastMode, session.metadata?.flavor, sessionId]);
 
     // Attachment state（图片/音视频，会话内默认可用）。pickAttachment 弹出
     // 图片/音视频选择器；音视频不支持的 flavor 由 sendMessage 兜底提示。

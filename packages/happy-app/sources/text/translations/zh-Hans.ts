@@ -1633,6 +1633,8 @@ failedContinueTask: "继续未完成的任务",
             badgePlanMode: '计划模式',
         },
         taskPermission: {
+            automatic: '帮我批准',
+            automaticDescription: '允许工作区内的操作，失败时请求批准；设备和外层沙箱限制仍然适用。',
             title: '权限',
             confirm: '需要确认',
             confirmShort: '需确认',

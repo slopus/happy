@@ -19,7 +19,9 @@ import {
 export type SessionTaskPermissionController = {
     online: boolean;
     supported: boolean;
+    supportsAutomatic?: boolean;
     level: TaskPermissionLevel | null;
+    currentMode?: string | null;
     unavailableReason: string | null;
     onLevelChange: (level: TaskPermissionLevel) => Promise<boolean>;
 };
@@ -81,8 +83,10 @@ export function useSessionTaskPermission(
     return React.useMemo(() => ({
         online,
         supported,
+        supportsAutomatic: agent === 'codex',
+        currentMode: currentAgentMode,
         level,
         unavailableReason,
         onLevelChange,
-    }), [level, onLevelChange, online, supported, unavailableReason]);
+    }), [agent, currentAgentMode, level, onLevelChange, online, supported, unavailableReason]);
 }

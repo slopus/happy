@@ -1455,6 +1455,8 @@ failedContinueTask: "Continuar tarefa pendente",
             badgePlanMode: 'Modo de planejamento',
         },
         taskPermission: {
+            automatic: 'Auto approve',
+            automaticDescription: 'Allow workspace operations and request approval on failure. Device and outer sandbox limits still apply.',
             title: 'Permissões',
             confirm: 'Requer confirmação',
             confirmShort: 'Perguntar',

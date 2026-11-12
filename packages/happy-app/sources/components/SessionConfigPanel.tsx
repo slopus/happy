@@ -1,3 +1,4 @@
+import { DesktopShortcutTooltip } from './DesktopShortcutTooltip';
 import { SessionComposerModeSelector } from './SessionComposerModeSelector';
 import React from 'react';
 import {
@@ -173,6 +174,7 @@ export function PickerContent({
 }) {
     const { theme } = useUnistyles();
     const [search, setSearch] = React.useState('');
+    const [hoveredOption, setHoveredOption] = React.useState<string | null>(null);
     const shouldShowSearch = !embedded || items.length + (fixedItems?.length ?? 0) > 4;
 
     const filtered = React.useMemo(() => {
@@ -193,10 +195,12 @@ export function PickerContent({
                 style={(p) => [
                     pickerStyles.option,
                     embedded && pickerStyles.embeddedOption,
-                    p.pressed && pickerStyles.optionPressed,
+                    (p.pressed || hoveredOption === item.key) && pickerStyles.optionPressed,
                     item.dimmed && { opacity: 0.45 },
                 ]}
                 onPress={() => onSelect(item.key)}
+                onHoverIn={() => setHoveredOption(item.key)}
+                onHoverOut={() => setHoveredOption(null)}
             >
                 <Octicons
                     name={isSelected ? 'check-circle-fill' : 'circle'}
@@ -816,6 +820,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
         const [modelIndex, setModelIndex] = React.useState(0);
         const [effortIndex, setEffortIndex] = React.useState(0);
         const [fastMode, setFastMode] = React.useState(false);
+        const [hoveredComposerControl, setHoveredComposerControl] = React.useState<'machine' | 'path' | 'permission' | null>(null);
         const [activePicker, setActivePicker] = React.useState<PickerType | null>(null);
         const activePickerRef = React.useRef<PickerType | null>(null);
         const previousPickerRef = React.useRef<PickerType | null>(null);
@@ -1479,14 +1484,17 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                 accessibilityState={{ expanded: activePicker === 'machine' }}
                                 aria-expanded={activePicker === 'machine'}
                                 onPress={(event) => togglePicker('machine', event)}
-                                style={(p) => [styles.composerConfigChip, p.pressed && styles.composerConfigChipPressed]}
+                                onHoverIn={() => setHoveredComposerControl('machine')}
+                                onHoverOut={() => setHoveredComposerControl(null)}
+                                style={(p) => [styles.composerConfigChip, (p.pressed || hoveredComposerControl === 'machine') && styles.composerConfigChipPressed]}
                             >
                                 <View style={[styles.composerStatusDot, {
                                     backgroundColor: isOffline ? theme.colors.status.disconnected : theme.colors.status.connected,
                                 }]} />
                                 <Text style={styles.composerConfigChipText} numberOfLines={1}>{machineName}</Text>
                                 <Ionicons name="chevron-down" size={11} color={theme.colors.textSecondary} />
-                            </Pressable>
+                            <DesktopShortcutTooltip testID="composer-machine-tooltip" label={t('devTools.machine')} visible={isWeb && hoveredComposerControl === 'machine' && activePicker !== 'machine'} placement="above" compact />
+                                </Pressable>
 
                             {!isOffline && configExperience.showPath && (
                                 <Pressable
@@ -1497,11 +1505,14 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                     accessibilityState={{ expanded: activePicker === 'path' }}
                                     aria-expanded={activePicker === 'path'}
                                     onPress={(event) => togglePicker('path', event)}
-                                    style={(p) => [styles.composerConfigChip, p.pressed && styles.composerConfigChipPressed]}
+                                onHoverIn={() => setHoveredComposerControl('path')}
+                                onHoverOut={() => setHoveredComposerControl(null)}
+                                    style={(p) => [styles.composerConfigChip, (p.pressed || hoveredComposerControl === 'path') && styles.composerConfigChipPressed]}
                                 >
                                     <Ionicons name="folder-outline" size={14} color={theme.colors.textSecondary} />
                                     <Text style={styles.composerConfigChipText} numberOfLines={1}>{pathName}</Text>
                                     <Ionicons name="chevron-down" size={11} color={theme.colors.textSecondary} />
+                                <DesktopShortcutTooltip testID="composer-path-tooltip" label={'Project'} visible={isWeb && hoveredComposerControl === 'path' && activePicker !== 'path'} placement="above" compact />
                                 </Pressable>
                             )}
 
@@ -1516,7 +1527,9 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                     accessibilityState={{ expanded: activePicker === 'permission' }}
                                     aria-expanded={activePicker === 'permission'}
                                     onPress={(event) => togglePicker('permission', event)}
-                                    style={(p) => [styles.composerConfigCompactTrigger, p.pressed && styles.composerConfigChipPressed]}
+                                onHoverIn={() => setHoveredComposerControl('permission')}
+                                onHoverOut={() => setHoveredComposerControl(null)}
+                                    style={(p) => [styles.composerConfigCompactTrigger, (p.pressed || hoveredComposerControl === 'permission') && styles.composerConfigChipPressed]}
                                 >
                                     <Ionicons
                                         name={permissionStyle?.icon ?? 'shield-outline'}
@@ -1525,6 +1538,7 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                     />
                                     <Text style={styles.composerConfigCompactText} numberOfLines={1}>{currentPermission?.name}</Text>
                                     <Ionicons name="chevron-down" size={11} color={theme.colors.textSecondary} />
+                                <DesktopShortcutTooltip testID="composer-permission-tooltip" label={t('agentInput.taskPermission.title')} visible={isWeb && hoveredComposerControl === 'permission' && activePicker !== 'permission'} placement="above" compact />
                                 </Pressable>
                             )
             }</>;
@@ -1540,6 +1554,14 @@ export const SessionConfigPanel = React.forwardRef<SessionConfigPanelHandle, Ses
                                     fastMode={fastMode}
                                     supportsFast={supportsFast}
                                     onFastModeChange={setFastMode}
+                                    onReset={unifiedModels.some(option => option.key === 'codex::gpt-6.1-sol') ? () => {
+                                        draft.setAgentType('codex');
+                                        draft.setModelMode('gpt-6.1-sol');
+                                        draft.setEffortLevel('medium');
+                                        setFastMode(false);
+                                        const modelIndex = modelModes.findIndex(mode => mode.key === 'gpt-6.1-sol');
+                                        if (selectedAgent === 'codex' && modelIndex >= 0) setModelIndex(modelIndex);
+                                    } : undefined}
                                     onModelChange={(key) => {
                                         const separator = key.indexOf('::');
                                         if (separator < 0) return;

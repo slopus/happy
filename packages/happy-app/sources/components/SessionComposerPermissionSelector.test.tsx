@@ -48,7 +48,12 @@ vi.mock('@/text', () => ({
         'agentInput.taskPermission.confirm': 'Needs confirmation',
         'agentInput.taskPermission.confirmShort': 'Ask first',
         'agentInput.taskPermission.confirmDescription': 'Uses the agent confirmation flow for actions that need extra permission. Device and outer sandbox limits still apply.',
-        'agentInput.codexPermissionMode.badgeYolo': 'yolo',
+        'agentInput.taskPermission.fullAccess': 'Full access',
+        'agentInput.taskPermission.fullAccessShort': 'Full',
+        'agentInput.taskPermission.automatic': 'Auto approve',
+        'agentInput.taskPermission.automaticDescription': 'Allows workspace operations and asks on failure.',
+        'agentInput.codexPermissionMode.readOnly': 'Read Only',
+        'agentInput.codexPermissionMode.default': 'CLI settings',
         'agentInput.taskPermission.fullAccessDescription': 'Bypasses agent confirmations where supported. Device and outer sandbox limits still apply.',
         'agentInput.taskPermission.changesNextMessages': 'Applies to messages sent after this change.',
         'agentInput.taskPermission.unavailable': 'Unavailable',
@@ -144,12 +149,34 @@ describe('SessionComposerPermissionSelector', () => {
         expect(confirmOption.props.accessibilityLabel).toContain('outer sandbox limits still apply');
         expect(fullOption.props.accessibilityRole).toBe('radio');
         expect(fullOption.props.accessibilityState).toEqual({ checked: false });
-        expect(fullOption.props.accessibilityLabel).toContain('YOLO.');
+        expect(fullOption.props.accessibilityLabel).toContain('Full access.');
         expect(fullOption.props.accessibilityLabel).toContain('where supported');
         expect(fullOption.props.accessibilityLabel).toContain('outer sandbox limits still apply');
 
         act(() => vi.runOnlyPendingTimers());
         expect(mocks.firstOptionFocus).toHaveBeenCalledOnce();
+    });
+
+    it('does not label read-only as confirmation and applies confirmation when selected', async () => {
+        const onLevelChange = vi.fn().mockResolvedValue(true);
+        act(() => { renderer = TestRenderer.create(<SessionComposerPermissionSelector online supported supportsAutomatic currentMode="read-only" level={null} unavailableReason={null} onLevelChange={onLevelChange} />); });
+        const trigger = renderer.root.findByProps({ testID: 'session-composer-permission-trigger' });
+        expect(trigger.props.accessibilityLabel).toBe('Task permissions: Read Only');
+        act(() => trigger.props.onPress());
+        const option = renderer.root.findByProps({ testID: 'session-composer-permission-option-confirm' });
+        expect(option.props.accessibilityState.checked).toBe(false);
+        await act(async () => { option.props.onPress(); });
+        expect(onLevelChange).toHaveBeenCalledWith('confirm');
+    });
+
+    it('offers the restricted automatic option only for supported Codex sessions', async () => {
+        const onLevelChange = vi.fn().mockResolvedValue(true);
+        act(() => { renderer = TestRenderer.create(<SessionComposerPermissionSelector online supported supportsAutomatic level="confirm" unavailableReason={null} onLevelChange={onLevelChange} />); });
+        act(() => renderer.root.findByProps({ testID: 'session-composer-permission-trigger' }).props.onPress());
+        const option = renderer.root.findByProps({ testID: 'session-composer-permission-option-automatic' });
+        expect(option.props.accessibilityLabel).toContain('asks on failure');
+        await act(async () => { option.props.onPress(); });
+        expect(onLevelChange).toHaveBeenCalledWith('automatic');
     });
 
     it('closes on Escape and restores focus to its trigger', () => {
@@ -241,9 +268,9 @@ describe('SessionComposerPermissionSelector', () => {
         const trigger = renderer.root.findByProps({ testID: 'session-composer-permission-trigger' });
         expect(trigger.props.disabled).toBe(true);
         expect(trigger.props.accessibilityHint).toBe('Machine offline');
-        expect(trigger.props.accessibilityLabel).toBe('Task permissions: YOLO');
+        expect(trigger.props.accessibilityLabel).toBe('Task permissions: Full access');
         expect(renderer.root.findByProps({ testID: 'session-composer-permission-trigger-label' }).props.children)
-            .toBe('YOLO');
+            .toBe('Full');
         expect(renderer.root.findAllByProps({ testID: 'session-composer-permission-disabled-reason' })).toHaveLength(0);
     });
 });
