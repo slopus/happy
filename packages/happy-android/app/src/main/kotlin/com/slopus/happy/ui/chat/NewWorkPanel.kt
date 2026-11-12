@@ -64,7 +64,7 @@ import com.slopus.happy.conversation.WorkKind
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.rememberReduceMotion
-import com.slopus.happy.ui.home.BotFaceSpec
+import com.slopus.happy.ui.home.BotKindSpec
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 
@@ -253,10 +253,10 @@ fun NewWorkSegments(
         modifier = modifier
             .testTag(NewWorkTags.KIND)
             .width(NewWorkSpec.kindWidth)
-            .heightIn(min = BotFaceSpec.segmentHeight)
-            .clip(RoundedCornerShape(BotFaceSpec.segmentRadius))
+            .heightIn(min = BotKindSpec.segmentHeight)
+            .clip(RoundedCornerShape(BotKindSpec.segmentRadius))
             .background(colors.glass.backgroundSubtle)
-            .padding(BotFaceSpec.segmentPadding),
+            .padding(BotKindSpec.segmentPadding),
     ) {
         labels.forEachIndexed { index, label ->
             val picked = index == selected
@@ -265,8 +265,8 @@ fun NewWorkSegments(
                 modifier = Modifier
                     .testTag(tag(index))
                     .weight(1f)
-                    .heightIn(min = BotFaceSpec.segmentHeight - BotFaceSpec.segmentPadding * 2)
-                    .clip(RoundedCornerShape(BotFaceSpec.segmentItemRadius))
+                    .heightIn(min = BotKindSpec.segmentHeight - BotKindSpec.segmentPadding * 2)
+                    .clip(RoundedCornerShape(BotKindSpec.segmentItemRadius))
                     .background(if (picked) colors.surfaceHighest else Color.Transparent)
                     .clickable(enabled = pickable, role = Role.RadioButton) {
                         if (!picked) {
@@ -279,7 +279,7 @@ fun NewWorkSegments(
             ) {
                 Text(
                     label,
-                    style = BotFaceSpec.segmentLabel,
+                    style = BotKindSpec.segmentLabel,
                     color = when {
                         picked -> colors.text
                         pickable || !enabled -> colors.textSecondary

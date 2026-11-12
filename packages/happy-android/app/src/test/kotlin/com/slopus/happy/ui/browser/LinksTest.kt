@@ -43,9 +43,6 @@ import com.slopus.happy.ui.chat.userMessageBubblePalette
 import com.slopus.happy.ui.connection.PlaceRead
 import com.slopus.happy.ui.connection.SurfaceBody
 import com.slopus.happy.ui.connection.SurfaceScreen
-import com.slopus.happy.ui.home.BotFacePicker
-import com.slopus.happy.ui.home.BotFaceTags
-import com.slopus.happy.ui.home.HomeDockBot
 import com.slopus.happy.ui.onboarding.DESKTOP_URL
 import com.slopus.happy.ui.onboarding.LinkComputerContent
 import com.slopus.happy.ui.onboarding.OnboardingContentTags
@@ -299,15 +296,6 @@ class LinksTest {
         rule.setHappyContent { ProvideLinks(opener(calls)) { LinkComputerContent(onToggle = {}, onOpenDesktopSite = { opened++ }) } }
         assertLinkSite({ rule.node(OnboardingContentTags.INSTALL_BODY) }, DESKTOP_URL, calls)
         assertEquals(1, opened)
-    }
-
-    @Test fun botFaceCreditLink() {
-        val calls = Calls()
-        val opened = mutableListOf<String>()
-        val bot = HomeDockBot(creating = true, name = "", faces = listOf(null, null, null, null), slot = 0, artist = "Ada", artistUrl = url)
-        rule.setHappyContent { ProvideLinks(opener(calls)) { BotFacePicker(bot, onPick = {}, onRoll = {}, onOpenUrl = { opened += it }) } }
-        assertLinkSite({ rule.node(BotFaceTags.CREDIT) }, url, calls)
-        assertEquals(listOf(url), opened)
     }
 
     @Test fun aboutRowsOfferTheMenuAndStillOpenOnATap() {

@@ -480,7 +480,7 @@ final class AnalyticsTests: XCTestCase {
         XCTAssertEqual(Analytics.started(launch(), .made), [opened])
         XCTAssertEqual(Analytics.started(launch(), .failure(URLError(.timedOut))), [], "a conversation that never started")
         XCTAssertEqual(Analytics.started(launch(target: .task(name: "Secret")), .refused), [.taskCreated(result: .failed, errorCode: .refused)])
-        XCTAssertEqual(Analytics.started(launch(bot: .init(name: "Ada", faceSeed: "s")), .failure(URLError(.notConnectedToInternet))),
+        XCTAssertEqual(Analytics.started(launch(bot: .init(name: "Ada")), .failure(URLError(.notConnectedToInternet))),
                        [.botCreated(source: .home, result: .failed, errorCode: .offline)])
         XCTAssertEqual(Analytics.started(launch(target: .bot(name: "Ada")), .made), [.botCreated(source: .home, result: .ok, errorCode: nil), opened])
         XCTAssertEqual(Analytics.started(launch(model: "opus"), .made).last?.properties["model_family"], .string("other"),

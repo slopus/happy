@@ -71,6 +71,19 @@ final class AvatarShaderTests: XCTestCase {
         }
     }
 
+    /// A placeholder has one clock: a view that comes later (a row drawn
+    /// again, the chat opened from it) joins it rather than starting over
+    /// at its phase, and other placeholders keep their own.
+    func testEveryViewOfAPlaceholderReadsOneClock() {
+        var clock = AvatarShader.Clock()
+        XCTAssertEqual(clock.elapsed(7, now: 100), 0, "the first view starts on its picture")
+        XCTAssertEqual(clock.elapsed(7, now: 160), 60)
+        XCTAssertEqual(clock.origin(7, now: 500), 100, "a later view joins it")
+        XCTAssertEqual(clock.elapsed(8, now: 160), 0)
+        XCTAssertEqual(clock.elapsed(7, now: 50), 0, "never before it started")
+        XCTAssertEqual(AvatarShader.speed, 2, "one rate, whatever the size")
+    }
+
     func testTheGrainGrowsWithTheAvatar() {
         XCTAssertEqual(AvatarShader.grainCell(pixels: 144), 1)
         XCTAssertEqual(AvatarShader.grainCell(pixels: 1080), 2)

@@ -7,16 +7,30 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
- * happy-ios 00b47cb84's rules on Android: how fast a placeholder moves for
- * its size, at what rate it is drawn, and which accounts move (`liveSeed`).
+ * happy-ios's rules on Android: how fast a placeholder moves, on whose
+ * clock, at what rate it is drawn, and which accounts move (`liveSeed`).
  */
 class AvatarSpeedTest {
-    /** AvatarShader.speed(side:): 2x at 48 and under, 1.5x above; 20 frames a second, in one place. */
+    /** AvatarShader.speed: 2x at every size, so one seed is one frame everywhere; 20 frames a second, in one place. */
     @Test
-    fun speedBySize() {
-        for (side in listOf(10f, 24f, 30f, 44f, 48f)) assertEquals("$side", 2f, AvatarShader.speed(side))
-        for (side in listOf(48.5f, 56f, 100f, 128f)) assertEquals("$side", 1.5f, AvatarShader.speed(side))
+    fun oneSpeedForEverySize() {
+        assertEquals(2f, AvatarShader.SPEED)
         assertEquals(20, AvatarShader.FRAMES_PER_SECOND)
+    }
+
+    /**
+     * A placeholder has one clock: a view that comes later (a row composed
+     * again, the chat opened from it, home come back to) joins it rather
+     * than starting over at its phase, and other placeholders keep their own.
+     */
+    @Test
+    fun everyViewOfAPlaceholderReadsOneClock() {
+        val clock = AvatarShader.Clock()
+        assertEquals("the first view starts on its picture", 1_000L, clock.origin(7, 1_000L))
+        assertEquals("a later view joins it", 1_000L, clock.origin(7, 61_000L))
+        assertEquals(61_000L, clock.origin(8, 61_000L))
+        val parameters = AvatarShader.parameters(7)
+        assertEquals(parameters.phase + 120f, AvatarShader.time(parameters, 61_000L - clock.origin(7, 61_000L), AvatarShader.SPEED), 1e-3f)
     }
 
     /** The same clock as happy-ios's: its phase, plus seconds on screen times its speed; the phase when still. */

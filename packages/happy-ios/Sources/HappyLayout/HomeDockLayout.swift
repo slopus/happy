@@ -132,8 +132,7 @@ public struct HomeDockLayout: Equatable, Sendable {
 /// capsule's 56 to the card's height and everything above rides on it.
 ///
 /// A bot lives on a computer and nowhere else: making one keeps only the
-/// machine row, and the faces it may wear take the place of the rest,
-/// lined up with the icon column (`focusConfigFaces`).
+/// machine row.
 public struct HomeDockFocusLayout: Equatable, Sendable {
     public enum Metrics {
         public static let configPaddingHorizontal: CGFloat = 24
@@ -162,10 +161,6 @@ public struct HomeDockFocusLayout: Equatable, Sendable {
         public static let progressPaddingHorizontal: CGFloat = 16
         public static let progressGap: CGFloat = 6
         public static let progressDot: CGFloat = 6
-        /// Around the faces a bot may wear.
-        public static let facesPaddingHorizontal: CGFloat = 6
-        public static let facesPaddingTop: CGFloat = 6
-        public static let facesPaddingBottom: CGFloat = 4
     }
 
     public struct Input {
@@ -183,8 +178,6 @@ public struct HomeDockFocusLayout: Equatable, Sendable {
         public var progress: Measurable?
         /// "To interrupt press stop", while Stop can stop it.
         public var hint: Measurable?
-        /// The faces' words, while a bot is being made.
-        public var faces: BotFacePickerLayout.Text?
 
         public init(
             size: CGSize,
@@ -194,8 +187,7 @@ public struct HomeDockFocusLayout: Equatable, Sendable {
             rows: [Measurable],
             triggerLine: CGFloat = Metrics.triggerLine,
             progress: Measurable? = nil,
-            hint: Measurable? = nil,
-            faces: BotFacePickerLayout.Text? = nil
+            hint: Measurable? = nil
         ) {
             self.size = size
             self.safeBottom = safeBottom
@@ -205,7 +197,6 @@ public struct HomeDockFocusLayout: Equatable, Sendable {
             self.triggerLine = triggerLine
             self.progress = progress
             self.hint = hint
-            self.faces = faces
         }
     }
 
@@ -225,11 +216,6 @@ public struct HomeDockFocusLayout: Equatable, Sendable {
     }
 
     public var rows: [Row]
-    /// The faces' line, below the rows; it reveals as one more row.
-    public var faces: CGRect?
-    /// The picker inside that line, and its frames in its own space.
-    public var facePicker: CGRect?
-    public var facePickerLayout: BotFacePickerLayout?
     /// The composer's shell.
     public var composer: CGRect
     public var progress: CGRect?
@@ -294,10 +280,7 @@ public struct HomeDockFocusLayout: Equatable, Sendable {
         // RN's row is its 42, the icon's box or the trigger's sizing copy;
         // the menu's own label (the system's body font) is centred in it.
         let heights = values.map { _ in max(M.rowMinHeight, M.iconBox, input.triggerLine) }
-        let picker = input.faces.map { BotFacePickerLayout(width: rowWidth - 2 * M.facesPaddingHorizontal, text: $0) }
-        let facesHeight = picker.map { M.facesPaddingTop + $0.size.height + M.facesPaddingBottom }
-        let lines = heights + (facesHeight.map { [$0] } ?? [])
-        let total = lines.reduce(0, +) + CGFloat(max(0, lines.count - 1)) * M.rowSpacing
+        let total = heights.reduce(0, +) + CGFloat(max(0, heights.count - 1)) * M.rowSpacing
         var y = composer.minY - M.configPaddingBottom - total
         rows = zip(values, heights).map { value, rowHeight in
             let frame = CGRect(x: rowX, y: y, width: rowWidth, height: rowHeight)
@@ -308,21 +291,6 @@ public struct HomeDockFocusLayout: Equatable, Sendable {
                 trigger: CGRect(x: triggerX, y: frame.minY, width: triggerWidth, height: rowHeight),
                 value: CGRect(x: triggerX, y: frame.midY - value.height / 2, width: min(value.width, valueLane), height: value.height)
             )
-        }
-        if let picker, let facesHeight {
-            let line = CGRect(x: rowX, y: y, width: rowWidth, height: facesHeight)
-            faces = line
-            facePicker = CGRect(
-                x: line.minX + M.facesPaddingHorizontal,
-                y: line.minY + M.facesPaddingTop,
-                width: picker.size.width,
-                height: picker.size.height
-            )
-            facePickerLayout = picker
-        } else {
-            faces = nil
-            facePicker = nil
-            facePickerLayout = nil
         }
     }
 

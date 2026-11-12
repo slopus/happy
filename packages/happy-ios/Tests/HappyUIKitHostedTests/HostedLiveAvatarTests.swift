@@ -95,6 +95,8 @@ final class HostedLiveAvatarTests: XCTestCase {
         XCTAssertEqual(live.index, AvatarPlaceholder.index(seed: "session-2"))
         XCTAssertTrue(live.monochrome)
         try await until { live.drawn && !live.isHidden }
+        // Its first frame is drawn at once; its still picture decodes after.
+        try await until { avatar.glyph.image != nil }
 
         LiveAvatars.isEnabled = false
         XCTAssertNil(Self.live(in: avatar))

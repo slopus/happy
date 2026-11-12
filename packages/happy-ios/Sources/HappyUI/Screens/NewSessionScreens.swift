@@ -18,7 +18,6 @@ extension SessionStarter {
             metadataTransport: session.realtime,
             saveInitialModes: { [sender = session.sender] in try await sender.saveInitialModes(sessionId: $0, patch: $1) },
             refreshSessions: { await sync.run(.sessions) },
-            paintBotFace: { try await BotFacePainter.png(seed: $0) },
             attachmentPlan: { [sender = session.sender] message, sessionId in
                 try await sender.attachmentPlan(for: message, sessionId: sessionId)
             },
@@ -821,17 +820,6 @@ extension NewSessionViewController: SessionStarterPresenter {
 
     func showAttachmentsNotSupported() {
         Alerts.show(Strings.ImageUpload.notSupportedTitle, Strings.ImageUpload.notSupportedMessage, on: self)
-    }
-
-    /// Never asked here: this screen starts sessions, not bots.
-    func offerBotFaceRetry(_ message: String) async -> Bool {
-        await Alerts.confirm(
-            Strings.Home.botFaceNotSet,
-            message,
-            confirmTitle: Strings.Home.botFaceTryAgain,
-            cancelTitle: Strings.Home.botFaceNotNow,
-            on: navigationController ?? self
-        )
     }
 }
 #endif

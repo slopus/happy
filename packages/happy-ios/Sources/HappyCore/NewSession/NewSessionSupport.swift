@@ -6,7 +6,6 @@ public enum NewSessionStartPhase: String, Sendable {
     case worktree
     case spawning
     case opening
-    case avatar
 }
 
 /// newSessionProgress.NewSessionPrimaryAction.
@@ -26,7 +25,6 @@ public enum NewSessionProgress {
         case nil: return nil
         case .worktree: return picksWorkspaces ? "Creating workspace…" : "Creating worktree…"
         case .spawning: return createsBot ? "Creating bot…" : createsTask ? "Creating task…" : "Starting \(agentName)…"
-        case .avatar: return "Putting on a face…"
         case .opening: return createsBot ? "Opening bot…" : createsTask ? "Opening task…" : "Opening session…"
         }
     }

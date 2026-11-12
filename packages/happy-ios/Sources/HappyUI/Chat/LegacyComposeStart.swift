@@ -273,12 +273,11 @@ final class LegacyComposeStart: NSObject {
         }
         self.sessionId = sessionId
         // Only what was sent is cleared: edits made while it ran stay. The
-        // next compose offers a session again, and a next bot a clean name
-        // and fresh faces, as home's dock did.
+        // next compose offers a session again, and a next bot a clean name,
+        // as home's dock did.
         if drafts.draft.input == text { drafts.setInput("") }
         if bot.createsBot {
             if drafts.botName == bot.botName { drafts.setBotName("") }
-            drafts.rollBotFaces()
             drafts.setCreatesBot(false)
         }
         if createsTask { drafts.setCreatesTask(false) }
@@ -420,18 +419,6 @@ extension LegacyComposeStart: SessionStarterPresenter {
     func showAttachmentsNotSupported() {
         guard let host else { return }
         Alerts.show(Strings.ImageUpload.notSupportedTitle, Strings.ImageUpload.notSupportedMessage, on: host)
-    }
-
-    /// The bot is made but wears no face: asked over its chat.
-    func offerBotFaceRetry(_ message: String) async -> Bool {
-        guard let host else { return false }
-        return await Alerts.confirm(
-            Strings.Home.botFaceNotSet,
-            message,
-            confirmTitle: Strings.Home.botFaceTryAgain,
-            cancelTitle: Strings.Home.botFaceNotNow,
-            on: host
-        )
     }
 }
 

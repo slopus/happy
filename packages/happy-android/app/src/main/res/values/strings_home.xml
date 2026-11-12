@@ -82,18 +82,8 @@
     <string name="home_dock_bot_lede">Bots are virtual colleagues great for recurring work like releases, competitor analysis, or to own a large feature across several projects and worktrees</string>
     <string name="home_dock_bot_name_placeholder">Name your bot</string>
     <string name="home_dock_create_bot">Create bot</string>
-    <string name="home_dock_bot_avatar">Avatar</string>
-    <string name="home_dock_bot_face">Face %1$d</string>
-    <string name="home_dock_bot_roll">Roll four new faces</string>
-    <string name="home_dock_bot_art_by">Art by</string>
     <string name="home_dock_creating_bot">Creating bot…</string>
-    <string name="home_dock_bot_avatar_progress">Putting on a face…</string>
     <string name="home_dock_opening_bot">Opening bot…</string>
-    <string name="home_dock_bot_face_failed_title">Picture not set</string>
-    <string name="home_dock_bot_face_upload_failed">%1$s is ready, but its picture couldn’t be uploaded. You can try again without creating another bot.</string>
-    <string name="home_dock_bot_face_failed">%1$s is ready, but its picture couldn\'t be set. Try again.</string>
-    <string name="home_dock_bot_not_now">Not now</string>
-    <string name="home_dock_bot_try_again">Try again</string>
     <!-- useStartSessionFromDraft.ts's refusals and failures (StartRefusal, StartResult.Failed). -->
     <string name="home_start_no_machine">Please select a machine</string>
     <string name="home_start_unknown_machine">This session’s computer is not registered with this account, so nothing can start a session on it. Check that Happy is running there and signed in to this account.</string>

@@ -350,7 +350,6 @@ internal fun startProgressText(step: StartProgress): String = when (step) {
     is StartProgress.Starting -> stringResource(R.string.home_dock_starting, step.agentName)
     StartProgress.CreatingBot -> stringResource(R.string.home_dock_creating_bot)
     StartProgress.CreatingTask -> stringResource(R.string.compose_creating_task)
-    StartProgress.Avatar -> stringResource(R.string.home_dock_bot_avatar_progress)
     is StartProgress.Opening -> stringResource(
         when {
             step.bot -> R.string.home_dock_opening_bot

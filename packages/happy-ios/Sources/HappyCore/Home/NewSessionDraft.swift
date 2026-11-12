@@ -152,19 +152,15 @@ public enum BotName {
     }
 }
 
-/// The bot the composer would make: whether it makes one, the name, and the
-/// faces on offer with the one picked.
+/// The bot the composer would make: whether it makes one, and the name. It
+/// wears the placeholder its ID picks (`AvatarPlaceholder`).
 public struct NewSessionBotDraft: Equatable, Sendable {
     public var createsBot: Bool
     public var botName: String
-    public var faceSeeds: [String]
-    public var faceSlot: Int
 
-    public init(createsBot: Bool, botName: String, faceSeeds: [String], faceSlot: Int) {
+    public init(createsBot: Bool, botName: String) {
         self.createsBot = createsBot
         self.botName = botName
-        self.faceSeeds = faceSeeds
-        self.faceSlot = faceSlot
     }
 }
 
@@ -187,10 +183,6 @@ public final class NewSessionDraftStore {
     /// Not persisted either.
     public var pickedMachineId: String?
     public private(set) var botName = ""
-    /// The four faces on offer, as seeds; `botFaceSlot` says which one the
-    /// bot gets.
-    public private(set) var botFaceSeeds = NewSessionDraftStore.rollBotFaceSeeds()
-    public private(set) var botFaceSlot = 0
     /// Files picked for the first message; temporary, so never persisted.
     public var attachments: [OutgoingAttachment] = []
 
@@ -327,38 +319,9 @@ public final class NewSessionDraftStore {
         notify()
     }
 
-    public func setBotFaceSlot(_ slot: Int) {
-        guard botFaceSeeds.indices.contains(slot) else { return }
-        botFaceSlot = slot
-        notify()
-    }
-
-    /// Four new faces; the slot stays where it was.
-    public func rollBotFaces() {
-        botFaceSeeds = Self.rollBotFaceSeeds()
-        notify()
-    }
-
-    /// The face the bot gets.
-    public var botFaceSeed: String {
-        botFaceSeeds[botFaceSlot]
-    }
-
     /// What a bot start reads off the composer (`botUnchanged`).
     public var bot: NewSessionBotDraft {
-        NewSessionBotDraft(createsBot: createsBot, botName: botName, faceSeeds: botFaceSeeds, faceSlot: botFaceSlot)
-    }
-
-    /// utils/botFace.ts `rollBotFaceSeeds`: four seeds of eight base-36
-    /// characters, far more faces than there are bots.
-    public static func rollBotFaceSeeds() -> [String] {
-        var generator = SystemRandomNumberGenerator()
-        return rollBotFaceSeeds(using: &generator)
-    }
-
-    static func rollBotFaceSeeds<G: RandomNumberGenerator>(using generator: inout G) -> [String] {
-        let digits = Array("0123456789abcdefghijklmnopqrstuvwxyz")
-        return (0..<4).map { _ in String((0..<8).map { _ in digits[Int.random(in: 0..<digits.count, using: &generator)] }) }
+        NewSessionBotDraft(createsBot: createsBot, botName: botName)
     }
 
     private func update(_ change: (inout NewSessionDraft) -> Void) {

@@ -189,7 +189,7 @@ fun resolveHappyAgentSpawnTarget(projectId: String?, workspaceSelection: String,
 }
 
 /** newSessionProgress.ts: no canceling phase; Stop hands the composer back at once. */
-enum class StartPhase { Worktree, Spawning, Avatar, Opening }
+enum class StartPhase { Worktree, Spawning, Opening }
 
 sealed interface StartProgress {
     data class CreatingWorkspace(val workspace: Boolean) : StartProgress
@@ -197,8 +197,6 @@ sealed interface StartProgress {
     data object CreatingBot : StartProgress
     /** A task's words follow the bot's (happy-ios NewSessionProgress). */
     data object CreatingTask : StartProgress
-    /** "Putting on a face…": the bot's picture is painted, uploaded and worn. */
-    data object Avatar : StartProgress
     data class Opening(val bot: Boolean = false, val task: Boolean = false) : StartProgress
 }
 
@@ -211,7 +209,6 @@ fun resolveStartProgress(phase: StartPhase?, agentName: String, picksWorkspaces:
         createsTask -> StartProgress.CreatingTask
         else -> StartProgress.Starting(agentName)
     }
-    StartPhase.Avatar -> StartProgress.Avatar
     StartPhase.Opening -> StartProgress.Opening(createsBot, createsTask && !createsBot)
 }
 

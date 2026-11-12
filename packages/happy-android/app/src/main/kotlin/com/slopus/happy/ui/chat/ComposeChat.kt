@@ -25,8 +25,6 @@ import com.slopus.happy.model.ComposeOffline
 import com.slopus.happy.model.describeBotNameProblem
 import com.slopus.happy.model.sanitizeBotName
 import com.slopus.happy.ui.components.MenuSpec
-import com.slopus.happy.ui.home.BotFaceFailure
-import com.slopus.happy.ui.home.BotFaceLeg
 import com.slopus.happy.ui.home.HARNESS_SETUP_HELP_URL
 import com.slopus.happy.ui.theme.HappyTheme
 import java.util.Locale
@@ -149,7 +147,6 @@ class ComposeChat internal constructor(
     private val scope: CoroutineScope,
     private val resources: android.content.res.Resources,
     started: MutableState<String?>,
-    private val retryFace: suspend (sessionId: String, seed: String) -> BotFaceFailure? = { _, _ -> null },
 ) {
     companion object {
         /** How long a started session's row is on its way before its absence means deleted (iOS `recordWait`). */
@@ -173,7 +170,6 @@ class ComposeChat internal constructor(
     internal var notices by mutableStateOf<List<Alert>>(emptyList())
     internal var confirming by mutableStateOf<Pair<String, CompletableDeferred<Boolean>>?>(null)
     internal var prompting by mutableStateOf<Prompt?>(null)
-    internal var faceRetry by mutableStateOf<FaceRetry?>(null)
 
     /** Why the bot's name is refused, said inside its field until it is typed into. */
     var nameProblem by mutableStateOf<String?>(null)
@@ -235,16 +231,15 @@ class ComposeChat internal constructor(
         starting = true
         scope.launch {
             try {
-                val request = if (kind == ComposeKind.Bot) BotRequest(bot.name.trim(), bot.faceSeed) else null
+                val request = if (kind == ComposeKind.Bot) BotRequest(bot.name.trim()) else null
                 val result = newSession.starter.start(attachments = picked, bot = request, botMessage = true, task = kind == ComposeKind.Task) { directory ->
                     CompletableDeferred<Boolean>().also { confirming = directory to it }.await()
                 }
                 when (result) {
                     is StartResult.Started -> {
-                        // The next compose offers a session again; a next bot a clean name and fresh faces.
+                        // The next compose offers a session again; a next bot a clean name.
                         if (request != null) newSession.botCreated(bot)
                         if (kind == ComposeKind.Task) newSession.taskCreated()
-                        result.faceFailure?.let { failure -> if (request != null) faceRetry = FaceRetry(result.sessionId, request, failure) }
                         picked.forEach { images?.remove(it.id) }
                         // The starter cleared what it sent; anything left was typed since.
                         val rest = newSession.draft.value.input
@@ -277,14 +272,6 @@ class ComposeChat internal constructor(
         newSession.setBotName(sanitizeBotName(name))
     }
 
-    /** Only the face, on the bot already made; another failure offers it again. */
-    internal fun retryFace(retry: FaceRetry) {
-        scope.launch {
-            val again = retryFace(retry.sessionId, retry.bot.faceSeed)
-            faceRetry = again?.let { retry.copy(failure = it) }
-        }
-    }
-
     /** The screen went before the machine answered: the start stops; the draft stays. */
     internal fun leave() {
         if (composing && starting) newSession.starter.cancel()
@@ -300,9 +287,6 @@ class ComposeChat internal constructor(
     private fun error(message: String) = Alert(resources.getString(R.string.common_error), message, listOf(AlertButton(resources.getString(R.string.common_ok))))
 }
 
-/** A bot made from the empty chat that couldn't put on its face: offered again over its chat. */
-internal data class FaceRetry(val sessionId: String, val bot: BotRequest, val failure: BotFaceFailure)
-
 /** The route's [ComposeChat], or null for a route that isn't one. */
 @Composable
 fun rememberComposeChat(graph: AppGraph, routeId: String): ComposeChat? {
@@ -316,7 +300,7 @@ fun rememberComposeChat(graph: AppGraph, routeId: String): ComposeChat? {
     val compose = remember(routeId, newSession, scope, resources) {
         // A computer picked on an earlier compose holds a kept bot or task no longer: this one routes it again.
         newSession.forgetPickedMachine()
-        ComposeChat(routeId, newSession, scope, resources, started) { id, seed -> services.retryBotFace(context.applicationContext, id, seed) }
+        ComposeChat(routeId, newSession, scope, resources, started)
     }
     DisposableEffect(compose) { onDispose { compose.leave() } }
     return compose
@@ -365,26 +349,10 @@ fun ComposeChat.progress(): String? {
     return startProgressText(step)
 }
 
-/** The start's alerts and questions: an error, the images' notices, "Create Directory?", the custom path, a bot's face. */
+/** The start's alerts and questions: an error, the images' notices, "Create Directory?", the custom path. */
 @Composable
 fun ComposeChat.Dialogs() {
     alert?.let { HappyAlert(it, onDismiss = { alert = null }) }
-    faceRetry?.let { retry ->
-        HappyAlert(
-            Alert(
-                stringResource(R.string.home_dock_bot_face_failed_title),
-                stringResource(
-                    if (retry.failure.leg == BotFaceLeg.Uploading) R.string.home_dock_bot_face_upload_failed else R.string.home_dock_bot_face_failed,
-                    retry.bot.name,
-                ),
-                listOf(
-                    AlertButton(stringResource(R.string.home_dock_bot_not_now)),
-                    AlertButton(stringResource(R.string.home_dock_bot_try_again)) { retryFace(retry) },
-                ),
-            ),
-            onDismiss = { faceRetry = null },
-        )
-    }
     notices.firstOrNull()?.let { notice -> HappyAlert(notice, onDismiss = { notices = notices.drop(1) }) }
     prompting?.let { PromptModal(it, onDismiss = { prompting = null }) }
     confirming?.let { (directory, answer) ->

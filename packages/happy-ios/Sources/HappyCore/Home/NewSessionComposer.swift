@@ -243,13 +243,13 @@ public final class NewSessionComposer {
         )
     }
 
-    /// The bot the draft names: Happy Agent on the chosen computer, named
-    /// and wearing the picked face, with no first message.
+    /// The bot the draft names: Happy Agent on the chosen computer, named,
+    /// with no first message.
     public func launchBot() -> Result<NewSessionLaunch, NewSessionLaunch.Refusal> {
         NewSessionLaunch.resolve(
             draft: drafts.draft,
             pickedAgent: drafts.draft.pickedAgentType,
-            bot: (name: drafts.botName, faceSeed: drafts.botFaceSeed),
+            botName: drafts.botName,
             machines: snapshot.machines.machines,
             sessions: canonicalSessions,
             agentDefaultOverrides: AccountSettings(snapshot.settings).agentDefaultOverrides,
@@ -284,11 +284,11 @@ public final class NewSessionComposer {
     }
 
     /// The bot the draft names; `prompt` and `attachments`, when given, are
-    /// its first message, sent once it wears its face.
+    /// its first message, sent once it is open.
     public func launchBotPrepared(prompt: String = "", attachments: [OutgoingAttachment] = []) async -> Result<NewSessionLaunch, NewSessionLaunch.Refusal> {
         await waitForIdle()
         return await deriver.launch(snapshot: snapshot, revision: snapshotRevision, draft: drafts.draft,
-                                    bot: (name: drafts.botName, faceSeed: drafts.botFaceSeed), prompt: prompt, attachments: attachments)
+                                    botName: drafts.botName, prompt: prompt, attachments: attachments)
     }
 
     // MARK: Refresh

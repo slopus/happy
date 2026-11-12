@@ -8,11 +8,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import com.slopus.happy.AppGraph
 import com.slopus.happy.BuildConfig
-import com.slopus.happy.attachments.AttachmentPreview
 import com.slopus.happy.attachments.AttachmentServices
 import com.slopus.happy.attachments.AttachmentUploadResult
 import com.slopus.happy.attachments.readAttachmentBytes
-import com.slopus.happy.model.BOT_FACE_PAINT_SIZE
 import com.slopus.happy.model.Machine
 import com.slopus.happy.model.Session
 import com.slopus.happy.model.SessionListGrouping
@@ -76,7 +74,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * The home screens' long-lived state, one per [AppGraph]: the list derived
  * in the background and kept warm between visits, unread chats, the archive
  * in flight, the store-version check, pending chats, and lazily the
- * new-session composer, the review ask and the bot faces. The draft is reset
+ * new-session composer and the review ask. The draft is reset
  * after a logout wipes the stored data ([AppGraph.afterLogoutWipe]).
  */
 class HomeServices private constructor(private val graph: AppGraph) {
@@ -291,7 +289,6 @@ class HomeServices private constructor(private val graph: AppGraph) {
             ),
             awaitSession = ::awaitSession,
             scope = scope,
-            faces = botFaceWearer(context),
         )
         val resources = context.resources
         NewSessionServices(drafts, snapshots, settings, machineActions, starter, newSessionLabels(resources), resources::getString, scope)
@@ -311,42 +308,6 @@ class HomeServices private constructor(private val graph: AppGraph) {
         val store = playStoreReview ?: PlayStoreReview(context.applicationContext).also { playStoreReview = it }
         return prompter to store
     }
-
-    private var botFaces: BotFaces? = null
-
-    /** The bundled bot faces, read from the assets once. */
-    @Synchronized
-    fun botFaces(context: Context): BotFaces = botFaces ?: BotFaces.assets(context.applicationContext).also { botFaces = it }
-
-    /**
-     * wearBotFace: painted here, uploaded as the bot's attachment `face.png`,
-     * then worn (setAvatar). Each step fails under its own name.
-     */
-    private fun botFaceWearer(context: Context) = BotFaceWearer { sessionId, seed ->
-        val bytes = try {
-            botFaces(context).paint(seed)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            return@BotFaceWearer BotFaceFailure(BotFaceLeg.Painting, e.message ?: "The face could not be painted.")
-        }
-        val face = AttachmentPreview("face-$seed", "", BOT_FACE_PAINT_SIZE, BOT_FACE_PAINT_SIZE, "image/png", bytes.size.toLong(), "face.png")
-        val uploaded = AttachmentServices.of(graph).transfers?.upload(sessionId, listOf(face)) { bytes }?.uploaded?.singleOrNull()
-            ?: return@BotFaceWearer BotFaceFailure(BotFaceLeg.Uploading, "The picture could not be uploaded.")
-        val ops = account.value?.sessionOps ?: return@BotFaceWearer BotFaceFailure(BotFaceLeg.Wearing, "Not signed in")
-        try {
-            ops.setAvatar(sessionId, uploaded.ref, bytes.size.toLong(), "image/png")
-            null
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.e("HomeServices", "[bot] The face could not be put on the bot: ${e.message}")
-            BotFaceFailure(BotFaceLeg.Wearing, e.message ?: "The picture could not be set.")
-        }
-    }
-
-    /** offerBotFaceRetry's Try again: only the face, on the bot already made. */
-    suspend fun retryBotFace(context: Context, sessionId: String, seed: String): BotFaceFailure? = botFaceWearer(context).wear(sessionId, seed)
 
     /** sync.ts ensureSessionReady: the new session's row in the store, pulled in by a sync if need be. */
     private suspend fun awaitSession(id: String): Boolean {

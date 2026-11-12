@@ -36,10 +36,8 @@ import com.slopus.happy.ui.chat.SessionNoticeTags
 import com.slopus.happy.ui.diff.DiffFileView
 import com.slopus.happy.ui.diff.DiffTags
 import com.slopus.happy.ui.diff.LocalDiffSyntax
-import com.slopus.happy.ui.home.BotFacePicker
-import com.slopus.happy.ui.home.BotFaceTags
+import com.slopus.happy.ui.home.BotKindTags
 import com.slopus.happy.ui.home.BotKindHeader
-import com.slopus.happy.ui.home.HomeDockBot
 import com.slopus.happy.ui.theme.rgba
 import com.slopus.happy.ui.usage.ContextGauge
 import com.slopus.happy.ui.usage.UsageRowTags
@@ -68,9 +66,8 @@ import org.robolectric.annotation.GraphicsMode
  * - AgentInputAttachmentStrip: the remove button on surfaceHigh #1E1E1E.
  * - The composer and dock glass border: `glass.border`, white at 0.14 in
  *   dark and 0.82 in light.
- * - BotFacePicker / NativeSegmentedControl: the picked face ringed in text
- *   (white), the Session | Bot track in glass.backgroundSubtle and the
- *   chosen segment on surfaceHighest #282828.
+ * - BotKindHeader / NativeSegmentedControl: the Session | Bot track in
+ *   glass.backgroundSubtle and the chosen segment on surfaceHighest #282828.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)
@@ -167,16 +164,9 @@ class DarkThemeLayoutTest {
     }
 
     @Test
-    fun theBotPickerUsesTheDarkSurfaces() {
-        rule.setHappyContent(dark = true) {
-            Column {
-                BotKindHeader(creatingBot = true, onChange = {})
-                BotFacePicker(HomeDockBot(true, "Bot", listOf(null, null, null, null), slot = 1, null, null), onPick = {}, onRoll = {}, onOpenUrl = {})
-            }
-        }
-        val segment = rule.node(BotFaceTags.kind(true)).captureToImage().toPixelMap()
+    fun theBotKindUsesTheDarkSurfaces() {
+        rule.setHappyContent(dark = true) { BotKindHeader(creatingBot = true, onChange = {}) }
+        val segment = rule.node(BotKindTags.kind(true)).captureToImage().toPixelMap()
         assertTrue("chosen segment on surfaceHighest", painted(setOf(segment[2, segment.height / 2].toArgb()), hex(0x282828)))
-        assertTrue("picked face ringed in white", painted(rule.node(BotFaceTags.face(1)).paints(), Color.White))
-        assertFalse("unpicked face has no ring", painted(rule.node(BotFaceTags.face(0)).paints(), Color.White))
     }
 }

@@ -2,11 +2,8 @@ package com.slopus.happy.journeys
 
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsSelected
-import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
-import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -17,7 +14,7 @@ import com.slopus.happy.ui.assertActionsLabelled
 import com.slopus.happy.ui.chat.ChatScreenTags
 import com.slopus.happy.ui.connect.DeepLinks
 import com.slopus.happy.ui.connect.parseDeepLink
-import com.slopus.happy.ui.home.BotFaceTags
+import com.slopus.happy.ui.home.BotKindTags
 import com.slopus.happy.ui.home.FlatRowTags
 import com.slopus.happy.ui.home.HomeDockTags
 import com.slopus.happy.ui.node
@@ -41,10 +38,9 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * Bots: on a Happy Agent that publishes `capabilities.bots` the
  * new-session screen (`/new`; compose's empty chat makes sessions only, as
- * iOS's does) offers Session | Bot; a named bot with a picked face is
- * created on it. Its face upload fails, so "Picture not set" offers to try again on the
- * bot already made, which uploads the face and has the bot wear it, and the
- * bot's chat opens; no second bot is made.
+ * iOS's does) offers Session | Bot; a named bot is created on it, and its
+ * chat opens. No face is painted, uploaded or worn: the bot wears the
+ * placeholder its ID picks.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(AndroidJUnit4::class)
@@ -59,10 +55,8 @@ class BotJourneyTest {
     @After
     fun tearDown() = journey.close()
 
-    private fun dialogButton(text: String) = rule.onNode(hasText(text) and hasClickAction() and hasAnyAncestor(isDialog()))
-
     @Test
-    fun createABotAndRetryItsFace() {
+    fun createABot() {
         server.addMachine(
             AGENT,
             buildJsonObject {
@@ -90,41 +84,30 @@ class BotJourneyTest {
             buildJsonObject { put("type", "success"); put("sessionId", BOT) }
         }
         val avatars = journey.rpc(BOT, "setAvatar") { buildJsonObject { put("success", true) } }
-        // The first upload of the face is refused.
-        synchronized(server) { server.failAttachmentUploads += 413 }
 
         val graph = journey.graph()
         journey.signIn(graph)
         rule.setContent { HappyApp(graph) }
         rule.waitFor(FlatRowTags.ROW)
 
-        // `/new`, then Bot: named, wearing the third face.
+        // `/new`, then Bot: named.
         DeepLinks.offer(parseDeepLink("happy://new")!!)
-        rule.waitFor(BotFaceTags.KIND)
-        rule.node(BotFaceTags.kind(true)).performClick()
-        rule.waitFor(BotFaceTags.PICKER)
-        rule.node(BotFaceTags.kind(true)).assertIsSelected()
-        rule.node(BotFaceTags.face(2)).performClick()
+        rule.waitFor(BotKindTags.KIND)
+        rule.node(BotKindTags.kind(true)).performClick()
+        rule.waitFor(BotKindTags.LEDE)
+        rule.node(BotKindTags.kind(true)).assertIsSelected()
         rule.node(HomeDockTags.INPUT).performTextInput("Release Bot")
         rule.assertActionsLabelled()
         rule.onNode(hasContentDescription("Create bot") and hasClickAction(), useUnmergedTree = true).performClick()
 
-        // Made, but without its face: try again on the same bot.
-        rule.waitForText("Picture not set")
-        rule.waitForText("Release Bot is ready, but its picture couldn’t be uploaded", substring = true)
-        rule.assertActionsLabelled()
-        assertTrue(avatars.isEmpty())
-        dialogButton("Try again").performClick()
-        rule.waitUntil(10_000) { avatars.isNotEmpty() }
         rule.waitFor(ChatScreenTags.SCREEN)
 
         assertEquals(1, spawns.size)
         val spawn = spawns.single()
         assertEquals("happy-agent-spawn", spawn["type"]!!.jsonPrimitive.content)
         assertTrue(spawn.toString(), "Release Bot" in spawn["target"]!!.jsonObject.toString())
-        val avatar = avatars.single()
-        assertEquals("image/png", avatar["mimeType"]!!.jsonPrimitive.content)
-        assertTrue(avatar["ref"]!!.jsonPrimitive.content in server.attachments)
+        assertTrue(avatars.isEmpty())
+        assertTrue(server.attachments.isEmpty())
         // No first message: a bot is made, not asked.
         assertTrue(server.sentRecords(BOT).isEmpty())
     }

@@ -81,11 +81,13 @@ private var SemanticsPropertyReceiver.placeholderIndex by PlaceholderIndexKey
  *
  * Where it [may move][animated] and Animated Avatars is on, on Android 13
  * and later it is drawn as its live shader instead ([AVATAR_SHADER_AGSL]),
- * starting on the still picture's frame (its phase), [AvatarShader.speed]
- * times the package's rate for its size: [AvatarShader.FRAMES_PER_SECOND]
- * frames a second from one shared clock, only while composed (a lazy list's rows on
- * screen) and its screen is resumed, at most [LiveAvatarClock.MAX_LIVE] at
- * once (the rest stay still). With animations removed or in battery saver
+ * on its placeholder's own clock ([LiveAvatarClock.origin]), which every
+ * view of it shares and which starts on the still picture's frame (its
+ * phase), at [AvatarShader.SPEED] times the package's rate:
+ * [AvatarShader.FRAMES_PER_SECOND] frames a second, only while composed (a
+ * lazy list's rows on screen) and its screen is resumed, at most
+ * [LiveAvatarClock.MAX_LIVE] at once (the rest hold the clock's frame of
+ * the moment). With animations removed or in battery saver
  * each holds its picture, as happy-ios does under Reduce Motion or Low
  * Power Mode. Older Android, or a shader that won't build, draws the still
  * picture.
@@ -116,20 +118,21 @@ fun PlaceholderAvatar(
             onDispose { LiveAvatarClock.leave(token) }
         }
         val moving by remember(token) { derivedStateOf { token in LiveAvatarClock.live.value } }
-        if (moving) {
-            val parameters = remember(index) { AvatarShader.parameters(index) }
-            val started = remember(index) { SystemClock.uptimeMillis() }
-            val speed = AvatarShader.speed(size.value)
-            Box(
-                box.testTag(PlaceholderAvatarTags.LIVE).drawBehind {
-                    val time = AvatarShader.time(parameters, LiveAvatarClock.millis.longValue - started, speed)
-                    drawIntoCanvas { canvas ->
-                        AvatarShaderProgram.draw(canvas.nativeCanvas, parameters, time, this.size.width, monochrome)
-                    }
-                },
-            )
-            return
-        }
+        val parameters = remember(index) { AvatarShader.parameters(index) }
+        val started = remember(index) { LiveAvatarClock.origin(index) }
+        // Moving, it follows the clock's ticks; held (its screen not
+        // resumed, or past the cap), it shows the clock's frame of the
+        // moment, so starting or stopping changes nothing on screen.
+        Box(
+            box.testTag(if (moving) PlaceholderAvatarTags.LIVE else PlaceholderAvatarTags.STILL).drawBehind {
+                val now = if (moving) LiveAvatarClock.millis.longValue else SystemClock.uptimeMillis()
+                val time = AvatarShader.time(parameters, now - started, AvatarShader.SPEED)
+                drawIntoCanvas { canvas ->
+                    AvatarShaderProgram.draw(canvas.nativeCanvas, parameters, time, this.size.width, monochrome)
+                }
+            },
+        )
+        return
     }
     StillPlaceholder(index, pixels, box, monochrome)
 }
@@ -254,6 +257,11 @@ object LiveAvatarClock {
 
     /** Whether the clock is running, for tests. */
     val isTicking: Boolean get() = ticking
+
+    private val clock = AvatarShader.Clock()
+
+    /** When placeholder [index]'s clock started, in [SystemClock.uptimeMillis]'s time: the first time any view showed it. */
+    fun origin(index: Int): Long = clock.origin(index, SystemClock.uptimeMillis())
 
     private fun update() {
         val next = if (joined.size <= MAX_LIVE) joined.toSet() else joined.take(MAX_LIVE).toSet()

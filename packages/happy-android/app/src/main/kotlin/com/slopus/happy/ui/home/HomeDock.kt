@@ -164,9 +164,6 @@ class HomeDockActions(
     /** Session | Bot: true makes a bot. */
     val onBotKindChange: (Boolean) -> Unit = {},
     val onBotNameChange: (String) -> Unit = {},
-    val onBotFacePick: (Int) -> Unit = {},
-    val onBotFacesRoll: () -> Unit = {},
-    val onOpenUrl: (String) -> Unit = {},
 )
 
 internal val HomeDockState.attachedImages get() = if (canAttachImages && !creatingBot) images else emptyList()

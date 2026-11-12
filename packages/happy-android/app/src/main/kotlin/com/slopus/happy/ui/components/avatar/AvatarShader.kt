@@ -7,8 +7,8 @@ import kotlin.math.max
  * happy-ios's AvatarShader.swift: the placeholders as live shaders, what
  * @craftedstudios/shaders draws each one with ([avatarShaderTable], made
  * from its own code), and the clock. At its phase a placeholder's shader
- * draws the picture it was made from, so the live one starts where the
- * still one is.
+ * draws the picture it was made from, so the first live one starts where
+ * the still one is.
  */
 object AvatarShader {
     /** The shader's branch for each effect (renderer.js `FX`). */
@@ -39,13 +39,25 @@ object AvatarShader {
     const val GRAIN = 0.07f
 
     /**
-     * How fast a live placeholder [side] dp across moves: its clock's rate,
-     * 1 the package's own (happy-ios's `speed(side:)`). At the package's
-     * rate a row's avatar changes about a third as much each second as
-     * Settings' large one and reads as still, so small ones run at twice it
-     * and large ones (Settings, a chat's mark) at one and a half.
+     * How fast a live placeholder moves: its clock's rate, 1 the package's
+     * own, at which a row's avatar reads as still (happy-ios's `speed`).
+     * Every size runs at the same rate, so a row, its chat's mark and
+     * Settings' large picture of the same seed show the same frame.
      */
-    fun speed(side: Float): Float = if (side <= 48f) 2f else 1.5f
+    const val SPEED = 2f
+
+    /**
+     * When each placeholder's clock started: the first time any view asked
+     * for it (happy-ios's `AvatarShader.Clock`). Every view of a placeholder
+     * reads the one clock, so a row composed again, a screen opened from it
+     * or come back to shows the frame the others show, never its phase again.
+     */
+    class Clock {
+        private val origins = HashMap<Int, Long>()
+
+        /** Placeholder [index]'s origin, [now] if nothing has asked yet. */
+        fun origin(index: Int, now: Long): Long = origins.getOrPut(index) { now }
+    }
 
     /** The frames a second live placeholders are drawn at (happy-ios's `framesPerSecond`). */
     const val FRAMES_PER_SECOND = 20

@@ -300,7 +300,6 @@ private struct SplitComposeMachine: HomeOps, HomeSessionOps {
                 metadataTransport: account.realtime,
                 saveInitialModes: { [sender = account.sender] in try await sender.saveInitialModes(sessionId: $0, patch: $1) },
                 refreshSessions: {},
-                paintBotFace: { _ in throw URLError(.cannotConnectToHost) },
                 attachmentPlan: { [sender = account.sender] message, sessionId in try await sender.attachmentPlan(for: message, sessionId: sessionId) },
                 spawnRequests: account.spawnRequests
             ))

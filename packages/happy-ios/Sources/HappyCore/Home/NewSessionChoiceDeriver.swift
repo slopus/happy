@@ -127,7 +127,7 @@ actor NewSessionChoiceDeriver {
     }
 
     func launch(snapshot: LegacyHomeSnapshot, revision: UInt64, draft: NewSessionDraft,
-                bot: (name: String, faceSeed: String)? = nil, createsTask: Bool = false, prompt: String,
+                botName: String? = nil, createsTask: Bool = false, prompt: String,
                 attachments: [OutgoingAttachment]) -> Result<NewSessionLaunch, NewSessionLaunch.Refusal> {
         ThreadRules.assertOffMain()
         let rows: [SessionRecord]
@@ -137,7 +137,7 @@ actor NewSessionChoiceDeriver {
             canonicalPoolBuildCount += 1
             rows = Self.canonicalPool(snapshot.sessions)
         }
-        return NewSessionLaunch.resolve(draft: draft, pickedAgent: draft.pickedAgentType, bot: bot, createsTask: createsTask,
+        return NewSessionLaunch.resolve(draft: draft, pickedAgent: draft.pickedAgentType, botName: botName, createsTask: createsTask,
                                         machines: snapshot.machines.machines, sessions: rows,
                                         agentDefaultOverrides: AccountSettings(snapshot.settings).agentDefaultOverrides,
                                         prompt: prompt, attachments: attachments)

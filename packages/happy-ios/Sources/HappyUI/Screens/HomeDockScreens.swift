@@ -14,8 +14,8 @@ import UIKit
 /// until the session is open, and Stop gives it back at once.
 ///
 /// Where the computer's Happy Agent can make bots, the composer makes one
-/// instead: the text is the bot's name, and the face it wears is picked
-/// above.
+/// instead: the text is the bot's name. It wears the placeholder its ID
+/// picks.
 @MainActor
 final class HomeDockController: NSObject {
     let restingView: HomeDockView
@@ -34,8 +34,6 @@ final class HomeDockController: NSObject {
     /// The dock's own text heights at the text size, made off the main
     /// thread (`HomeDockText`).
     let text = HomeDockTextStore()
-    /// "Picture not set" offers waiting for the composer to go.
-    private var faceOffers: [(message: String, answer: CheckedContinuation<Bool, Never>)] = []
 
     init(restingView: HomeDockView, host: UIViewController, context: AppContext, session: AccountSession, snapshot: LegacyHomeSnapshot) {
         self.restingView = restingView
@@ -155,7 +153,6 @@ final class HomeDockController: NSObject {
         focus = nil
         updateVisibility(from: .focus)
         render()
-        showFaceOffers()
     }
 
     /// ProjectRow's `+` (ProjectHomeList.tsx `createWorkspace`): the draft
@@ -181,10 +178,9 @@ final class HomeDockController: NSObject {
             let bot = drafts.bot
             let composer = composer
             guard let sessionId = await start({ await composer.launchBotPrepared() }) else { return false }
-            // The next bot starts from a clean name and fresh faces; the
-            // composer goes back to offering a session, the ordinary case.
+            // The next bot starts from a clean name; the composer goes back
+            // to offering a session, the ordinary case.
             if drafts.botName == bot.botName { drafts.setBotName("") }
-            drafts.rollBotFaces()
             drafts.setCreatesBot(false)
             open(sessionId)
             return true
@@ -307,47 +303,13 @@ extension HomeDockController: SessionStarterPresenter {
         guard let controller = presenterController else { return }
         Alerts.show(Strings.ImageUpload.notSupportedTitle, Strings.ImageUpload.notSupportedMessage, on: controller)
     }
-
-    /// Asked once the composer has gone: the bot's session opens beneath,
-    /// and the question must outlive the composer it was made from.
-    func offerBotFaceRetry(_ message: String) async -> Bool {
-        await withCheckedContinuation { continuation in
-            faceOffers.append((message, continuation))
-            showFaceOffers()
-        }
-    }
-
-    private func showFaceOffers() {
-        guard focus == nil, !faceOffers.isEmpty else { return }
-        let anchor = host?.navigationController ?? host
-        guard var top = anchor?.view.window?.rootViewController ?? anchor else {
-            for offer in faceOffers { offer.answer.resume(returning: false) }
-            faceOffers = []
-            return
-        }
-        while let presented = top.presentedViewController, !presented.isBeingDismissed { top = presented }
-        let offers = faceOffers
-        faceOffers = []
-        for offer in offers {
-            let controller = top
-            Task { @MainActor in
-                offer.answer.resume(returning: await Alerts.confirm(
-                    Strings.Home.botFaceNotSet,
-                    offer.message,
-                    confirmTitle: Strings.Home.botFaceTryAgain,
-                    cancelTitle: Strings.Home.botFaceNotNow,
-                    on: controller
-                ))
-            }
-        }
-    }
 }
 
 /// The open composer (HomeDock.tsx's focus mode): a modal over home that
 /// blurs and dims the list, stacks the machine, project, worktree and
 /// harness pickers over the composer card, and rides on the keyboard.
-/// Where bots can be made, Session | Bot heads the screen; a bot keeps the
-/// machine row and offers faces in place of the rest.
+/// Where bots can be made, Session | Bot heads the screen; a bot keeps only
+/// the machine row.
 ///
 /// Every frame comes from `HomeDockFocusLayout`, every opening and closing
 /// value from `HomeDockFocusMotion`, driven frame by frame. The pickers
@@ -373,8 +335,6 @@ final class HomeDockFocusViewController: UIViewController {
     /// The segments `kindControl` holds, for the computer's Happy Agent.
     private var offeredKinds: [HomeDockKind] = [.session, .bot]
     private let lede = StyledLabel(style: TextStyles.homeDockLede, color: Palette.textSecondary, lines: 0, alignment: .center)
-    private let facesLine = HomeDockRevealLineView(passesThrough: false)
-    private let facePicker = BotFacePickerView()
     /// Which text the card holds: the prompt, or the bot's name.
     private var cardHoldsBotName: Bool?
     /// The other one, measured for a switch.
@@ -424,8 +384,7 @@ final class HomeDockFocusViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        // The pickers, the lede, the faces' words, the status line and the
-        // card follow the person's text size; every height is measured at
+        // The pickers, the lede, the status line and the card follow the person's text size; every height is measured at
         // it off the main thread (`HomeDockText`, the card's own).
         followsTextSize()
         view.backgroundColor = .clear
@@ -459,21 +418,6 @@ final class HomeDockFocusViewController: UIViewController {
             self.refuse()
         }, for: .touchUpInside)
         view.addSubview(header)
-
-        facePicker.onPick = { [weak self] slot in self?.controller?.composer.drafts.setBotFaceSlot(slot) }
-        facePicker.onRoll = { [weak self] in self?.controller?.composer.drafts.rollBotFaces() }
-        facesLine.addSubview(facePicker)
-        facesLine.blocker.addAction(UIAction { [weak self] _ in
-            guard let self else { return }
-            AgentInputCardView.shake(self.facesLine, .refusal)
-            self.refuse()
-        }, for: .touchUpInside)
-        dock.addSubview(facesLine)
-        if controller?.composer.choices.supportsBots == true {
-            // The faces' outlines are parsed once, off the main thread,
-            // before anyone asks for a bot.
-            Task.detached(priority: .utility) { _ = BotFaceStyle.adventurerNeutral.canvas }
-        }
 
         progressDot.backgroundColor = UIColor(Palette.statusConnecting)
         progressDot.isPulsing = true
@@ -602,10 +546,6 @@ final class HomeDockFocusViewController: UIViewController {
         header.refusing = starting
         kindControl.selectedSegmentIndex = kinds.firstIndex(of: HomeDockKind.current(createsBot: createsBot, createsTask: createsTask)) ?? 0
         lede.isHidden = !createsBot
-        facesLine.isHidden = !createsBot
-        facesLine.refusing = starting
-        facePicker.seeds = drafts.botFaceSeeds
-        facePicker.slot = drafts.botFaceSlot
         // One field for both: switching keeps the keyboard up.
         let text = createsBot ? drafts.botName : controller.prompt
         if cardHoldsBotName != createsBot || (createsBot && card.text != text) {
@@ -991,7 +931,7 @@ final class HomeDockFocusViewController: UIViewController {
         // The heights made off the main thread for this width and text
         // size; until they land (the first open after a new text size, for
         // a frame at most past the open's wait) the lines are the styles'
-        // own and the lede and faces measure their labels.
+        // own and the lede measures its label.
         let key = textKey
         let text = controller?.text.text(for: key)
         if text == nil { controller?.text.prepare(key) }
@@ -1003,8 +943,7 @@ final class HomeDockFocusViewController: UIViewController {
             rows: shownRows.map(\.valueLabel.measurable),
             triggerLine: text?.triggerLine ?? TextStyles.homeDockRowValue.oneLine(in: environment),
             progress: showsProgress ? text.map { HomeDockText.line(progressLabel, $0.progressLine) } ?? progressLabel.measurable : nil,
-            hint: showsProgress && !progressHint.isHidden ? text.map { HomeDockText.line(progressHint, $0.progressLine) } ?? progressHint.measurable : nil,
-            faces: facesLine.isHidden ? nil : text.map { facePicker.text(headingLine: $0.faceHeadingLine, creditLine: $0.creditLine) } ?? facePicker.text
+            hint: showsProgress && !progressHint.isHidden ? text.map { HomeDockText.line(progressHint, $0.progressLine) } ?? progressHint.measurable : nil
         ))
 
         // Each line reveals in turn from the top.
@@ -1014,13 +953,6 @@ final class HomeDockFocusViewController: UIViewController {
             place(row, frame.frame, CGAffineTransform(translationX: 0, y: reveal.offsetY))
             row.alpha = reveal.alpha
             row.apply(frame)
-        }
-        if let line = layout.faces, let picker = layout.facePicker, let pickerLayout = layout.facePickerLayout {
-            let reveal = motion.row(shownRows.count)
-            place(facesLine, line, CGAffineTransform(translationX: 0, y: reveal.offsetY))
-            facesLine.alpha = reveal.alpha
-            facePicker.setLayoutFrame(picker.offsetBy(dx: -line.minX, dy: -line.minY))
-            facePicker.apply(pickerLayout)
         }
 
         // Session | Bot holds the top of the screen, off the keyboard, and

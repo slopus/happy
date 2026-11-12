@@ -27,16 +27,14 @@ public struct NewSessionLaunch: Sendable {
     public var prompt: String
     public var attachments: [OutgoingAttachment]
     public var signature: SpawnRequests.Signature
-    /// The bot being made, and the face it is to wear.
+    /// The bot being made. It wears the placeholder its ID picks.
     public var bot: Bot?
 
     public struct Bot: Equatable, Sendable {
         public var name: String
-        public var faceSeed: String
 
-        public init(name: String, faceSeed: String) {
+        public init(name: String) {
             self.name = name
-            self.faceSeed = faceSeed
         }
     }
 
@@ -82,9 +80,6 @@ public protocol SessionStarterPresenter: AnyObject {
     func showStartError(_ message: String)
     /// "Create Directory?": the directory doesn't exist yet.
     func confirmDirectoryCreation(_ directory: String) async -> Bool
-    /// "Picture not set": the bot was made but its face didn't take. True
-    /// to try the face again.
-    func offerBotFaceRetry(_ message: String) async -> Bool
     /// `imageUpload.notSupported`: the new session's agent takes none of
     /// the pictures, so they were not sent.
     func showAttachmentsNotSupported()
@@ -110,9 +105,6 @@ public final class SessionStarter {
         public var saveInitialModes: @Sendable (String, SessionAgentModesPatch) async throws -> Void
         /// sync.ts `refreshSessions`.
         public var refreshSessions: @Sendable () async -> Void
-        /// utils/botFacePaint.ts `paintBotFace`: a seed's face as PNG
-        /// bytes, painted off the main thread.
-        public var paintBotFace: @Sendable (String) async throws -> Data
         /// `OutboxSender.attachmentPlan`: which pictures the session's agent
         /// takes. It reads the store, so it runs off the main thread.
         public var attachmentPlan: @Sendable (OutgoingMessage, String) async throws -> AttachmentSendPlan
@@ -131,7 +123,6 @@ public final class SessionStarter {
             metadataTransport: any MetadataUpdateTransport,
             saveInitialModes: @escaping @Sendable (String, SessionAgentModesPatch) async throws -> Void,
             refreshSessions: @escaping @Sendable () async -> Void,
-            paintBotFace: @escaping @Sendable (String) async throws -> Data,
             attachmentPlan: @escaping @Sendable (OutgoingMessage, String) async throws -> AttachmentSendPlan,
             spawnRequests: SpawnRequests,
             sleep: @escaping @Sendable (Int) async -> Void = Environment.taskSleep
@@ -142,7 +133,6 @@ public final class SessionStarter {
             self.metadataTransport = metadataTransport
             self.saveInitialModes = saveInitialModes
             self.refreshSessions = refreshSessions
-            self.paintBotFace = paintBotFace
             self.attachmentPlan = attachmentPlan
             self.spawnRequests = spawnRequests
             self.sleep = sleep
@@ -157,35 +147,6 @@ public final class SessionStarter {
         public static let worktreeFailed = "Failed to create worktree"
         public static let stillSyncing = "The session was created, but it is still syncing. It should appear shortly."
         public static let startFailed = "Failed to start session"
-
-        /// A bot whose face couldn't be uploaded.
-        public static func faceNotUploaded(_ botName: String) -> String {
-            "\(botName) is ready, but its picture couldn’t be uploaded. You can try again without creating another bot."
-        }
-
-        /// A bot whose face couldn't be painted or put on.
-        public static func faceNotSet(_ botName: String) -> String {
-            "\(botName) is ready, but its picture couldn't be set. Try again."
-        }
-    }
-
-    /// Where putting a face on a bot stopped (`BotFaceLeg`). Each leg is
-    /// named, since the three do different things and a bare message
-    /// doesn't say which was running.
-    public struct BotFaceFailure: Error, Equatable, Sendable {
-        public enum Leg: String, Sendable {
-            case painting = "painting the face"
-            case uploading = "uploading the face"
-            case wearing = "asking the bot to wear it"
-        }
-
-        public var leg: Leg
-        public var message: String
-
-        public init(leg: Leg, message: String) {
-            self.leg = leg
-            self.message = message
-        }
     }
 
     private let environment: Environment
@@ -349,24 +310,6 @@ public final class SessionStarter {
                 Task { try? await sessionOps.sessionSetAgentModes(sessionId: sessionId, patch: patch, transport: transport) }
             }
 
-            if let bot = launch.bot {
-                // The face travels as a session attachment, then the bot is
-                // asked to wear it. A face that can't be painted or
-                // delivered is no reason to lose the bot just made: it
-                // opens without one, and says so.
-                showPhase(.avatar)
-                let paint = environment.paintBotFace
-                guard let worn = await run.race({
-                    await Self.wearBotFace(sessionId: sessionId, seed: bot.faceSeed, paint: paint, sessionOps: sessionOps)
-                }) else {
-                    Task { @MainActor in await self.stopAbandoned(sessionId, launch: launch, run: run) }
-                    return nil
-                }
-                if let failure = worn {
-                    offerBotFaceRetry(sessionId: sessionId, bot: bot, failure: failure)
-                }
-            }
-
             if !launch.prompt.isEmpty || !launch.attachments.isEmpty {
                 guard isCurrent() else {
                     requests.complete(clientRequestId)
@@ -493,69 +436,6 @@ public final class SessionStarter {
         case .requestToApproveDirectoryCreation(let missing):
             guard let presenter, await presenter.confirmDirectoryCreation(missing) else { return nil }
             return await spawn(launch, directory: directory, clientRequestId: clientRequestId, run: run, approved: true)
-        }
-    }
-
-    /// Paints the chosen face and puts it on the bot behind a session that
-    /// is already open (`wearBotFace`). Reported rather than thrown: the
-    /// bot exists by now, and the caller decides what a missing face means.
-    nonisolated static func wearBotFace(
-        sessionId: String,
-        seed: String,
-        paint: @Sendable (String) async throws -> Data,
-        sessionOps: any HomeSessionOps
-    ) async -> BotFaceFailure? {
-        let bytes: Data
-        do {
-            bytes = try await paint(seed)
-        } catch {
-            return BotFaceFailure(leg: .painting, message: "\(BotFaceFailure.Leg.painting.rawValue): \(describe(error))")
-        }
-        let uploaded: (ref: String, size: Int)
-        do {
-            uploaded = try await sessionOps.uploadSessionBlob(sessionId: sessionId, name: "face.png", bytes: bytes)
-        } catch {
-            return BotFaceFailure(leg: .uploading, message: "\(BotFaceFailure.Leg.uploading.rawValue): \(describe(error))")
-        }
-        do {
-            try await sessionOps.sessionSetAvatar(
-                sessionId: sessionId,
-                picture: SessionAvatarPicture(ref: uploaded.ref, size: uploaded.size, mimeType: .png)
-            )
-        } catch {
-            return BotFaceFailure(leg: .wearing, message: "\(BotFaceFailure.Leg.wearing.rawValue): \(describe(error))")
-        }
-        return nil
-    }
-
-    /// `offerBotFaceRetry`: says the face didn't take, and tries only the
-    /// face again for as long as the person asks. The bot is open by now,
-    /// so this outlives the start.
-    private func offerBotFaceRetry(sessionId: String, bot: NewSessionLaunch.Bot, failure: BotFaceFailure) {
-        Self.offerBotFaceRetry(
-            presenter: presenter,
-            sessionId: sessionId,
-            bot: bot,
-            failure: failure,
-            paint: environment.paintBotFace,
-            sessionOps: environment.sessionOps
-        )
-    }
-
-    private static func offerBotFaceRetry(
-        presenter: (any SessionStarterPresenter)?,
-        sessionId: String,
-        bot: NewSessionLaunch.Bot,
-        failure: BotFaceFailure,
-        paint: @escaping @Sendable (String) async throws -> Data,
-        sessionOps: any HomeSessionOps
-    ) {
-        let message = failure.leg == .uploading ? Message.faceNotUploaded(bot.name) : Message.faceNotSet(bot.name)
-        Task { @MainActor [weak presenter] in
-            guard let presenter, await presenter.offerBotFaceRetry(message) else { return }
-            if let next = await wearBotFace(sessionId: sessionId, seed: bot.faceSeed, paint: paint, sessionOps: sessionOps) {
-                offerBotFaceRetry(presenter: presenter, sessionId: sessionId, bot: bot, failure: next, paint: paint, sessionOps: sessionOps)
-            }
         }
     }
 

@@ -64,8 +64,6 @@ final class HomeDockTextSizeTests: XCTestCase {
                     XCTAssertEqual(size(label(TextStyles.homeDockEntry, Strings.Home.dockPlaceholder, in: host), .greatestFiniteMagnitude).height, text.entryLine, "entry, \(at)")
                     XCTAssertEqual(size(label(TextStyles.homeDockRowValue, "MacBook Pro", in: host), .greatestFiniteMagnitude).height, text.triggerLine, "trigger, \(at)")
                     XCTAssertEqual(size(label(TextStyles.homeDockProgress, Strings.Home.interruptHint, in: host), .greatestFiniteMagnitude).height, text.progressLine, "progress, \(at)")
-                    XCTAssertEqual(size(label(TextStyles.botFaceHeading, Strings.Home.botFaceHeading, in: host), .greatestFiniteMagnitude).height, text.faceHeadingLine, "faces, \(at)")
-                    XCTAssertEqual(size(label(TextStyles.botFaceCredit, Strings.Home.botFaceCreditLead, in: host), .greatestFiniteMagnitude).height, text.creditLine, "credit, \(at)")
                     let lede = label(TextStyles.homeDockLede, Strings.Home.botLede, lines: 0, alignment: .center, in: host)
                     XCTAssertEqual(size(lede, key.ledeWidth), text.lede, "lede at \(width), \(at)")
                     host.subviews.forEach { $0.removeFromSuperview() }
@@ -132,7 +130,7 @@ final class HomeDockTextSizeTests: XCTestCase {
         XCTAssertEqual(answers.count, 1)
     }
 
-    func testTheFacesCreditAndALinksValueScale() {
+    func testALinksValueScales() {
         for category in categories {
             let m = TextScale(TextSizeCategory(category)).multiplier
             let host = host(category, 3)

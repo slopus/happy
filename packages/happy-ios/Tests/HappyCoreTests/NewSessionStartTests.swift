@@ -340,10 +340,10 @@ final class SpawnRequestsTests: XCTestCase {
     }
 
     func testABotIsItsOwnRequest() async {
-        let first = requests.requestId(for: changed { $0.bot = (name: "Release Captain", faceSeed: "abc12345") })
-        XCTAssertEqual(requests.requestId(for: changed { $0.bot = (name: "Release Captain", faceSeed: "abc12345") }), first)
-        XCTAssertNotEqual(requests.requestId(for: changed { $0.bot = (name: "Release Cap", faceSeed: "abc12345") }), first)
-        XCTAssertNotEqual(base, changed { $0.bot = (name: "Bot", faceSeed: "abc12345") })
+        let first = requests.requestId(for: changed { $0.botName = "Release Captain" })
+        XCTAssertEqual(requests.requestId(for: changed { $0.botName = "Release Captain" }), first)
+        XCTAssertNotEqual(requests.requestId(for: changed { $0.botName = "Release Cap" }), first)
+        XCTAssertNotEqual(base, changed { $0.botName = "Bot" })
     }
 
     func testTwoAccountsKeepIdenticalRequestsAndCallbacksSeparate() async {
@@ -464,10 +464,6 @@ private actor FakeSessionOps: HomeSessionOps {
     var readyFailures = 0
     var uploads: [(sessionId: String, name: String, bytes: Data)] = []
     var avatars: [(String, SessionAvatarPicture)] = []
-    var uploadFailures = 0
-    var avatarFailures = 0
-    private var avatarGate: CheckedContinuation<Void, Never>?
-    private var holdsAvatar = false
     private var readySession: String?
     private var readyGate: CheckedContinuation<Void, Never>?
 
@@ -478,16 +474,6 @@ private actor FakeSessionOps: HomeSessionOps {
         readySession = nil
         readyGate?.resume()
         readyGate = nil
-    }
-    func failUpload(times: Int) { uploadFailures = times }
-    func failAvatar(times: Int) { avatarFailures = times }
-    func holdAvatar() { holdsAvatar = true }
-    var isHoldingAvatar: Bool { avatarGate != nil }
-
-    func releaseAvatar() {
-        holdsAvatar = false
-        avatarGate?.resume()
-        avatarGate = nil
     }
 
     func sessionKill(sessionId: String) async throws -> SessionKillResponse {
@@ -500,11 +486,6 @@ private actor FakeSessionOps: HomeSessionOps {
     }
 
     func sessionSetAvatar(sessionId: String, picture: SessionAvatarPicture) async throws {
-        if holdsAvatar { await withCheckedContinuation { avatarGate = $0 } }
-        if avatarFailures > 0 {
-            avatarFailures -= 1
-            throw StartTestError.notWorn
-        }
         avatars.append((sessionId, picture))
     }
 
@@ -524,10 +505,6 @@ private actor FakeSessionOps: HomeSessionOps {
     }
 
     func uploadSessionBlob(sessionId: String, name: String, bytes: Data) async throws -> (ref: String, size: Int) {
-        if uploadFailures > 0 {
-            uploadFailures -= 1
-            throw StartTestError.notUploaded
-        }
         uploads.append((sessionId, name, bytes))
         return ("blob:\(name)", bytes.count)
     }
@@ -535,16 +512,10 @@ private actor FakeSessionOps: HomeSessionOps {
 
 private enum StartTestError: Error, LocalizedError {
     case notSynced
-    case notUploaded
-    case notWorn
-    case notPainted
 
     var errorDescription: String? {
         switch self {
         case .notSynced: "The message was not sent: this session has not finished syncing. Please try again."
-        case .notUploaded: "Network request failed"
-        case .notWorn: "RPC timed out"
-        case .notPainted: "The face could not be painted."
         }
     }
 }
@@ -610,20 +581,8 @@ private struct FakeTransport: MetadataUpdateTransport {
 private actor Recorder {
     var sleeps: [Int] = []
     var refreshes = 0
-    var painted: [String] = []
-    var paintFailures = 0
     func slept(_ ms: Int) { sleeps.append(ms) }
     func refreshed() { refreshes += 1 }
-    func failPaint(times: Int) { paintFailures = times }
-
-    func paint(_ seed: String) throws -> Data {
-        if paintFailures > 0 {
-            paintFailures -= 1
-            throw StartTestError.notPainted
-        }
-        painted.append(seed)
-        return Data("png:\(seed)".utf8)
-    }
 }
 
 @MainActor
@@ -631,16 +590,8 @@ private final class FakePresenter: SessionStarterPresenter {
     var errors: [String] = []
     var asked: [String] = []
     var approves = true
-    var faceOffers: [String] = []
-    /// The answers to "Picture not set", in turn; then "Not now".
-    var retriesFace: [Bool] = []
 
     func showStartError(_ message: String) { errors.append(message) }
-
-    func offerBotFaceRetry(_ message: String) async -> Bool {
-        faceOffers.append(message)
-        return retriesFace.isEmpty ? false : retriesFace.removeFirst()
-    }
 
     var notSupported = 0
     func showAttachmentsNotSupported() { notSupported += 1 }
@@ -675,7 +626,6 @@ final class SessionStarterTests: XCTestCase {
                 await sender.saveInitialModes(patch)
             },
             refreshSessions: { await recorder.refreshed() },
-            paintBotFace: { try await recorder.paint($0) },
             attachmentPlan: { [pictures, planGate] message, _ in
                 await planGate.pass()
                 return pictures.plan(message)
@@ -716,16 +666,16 @@ final class SessionStarterTests: XCTestCase {
             signature: SpawnRequests.Signature(
                 machineId: "m1", agent: agent.rawValue, place: "~/happy", worktree: worktree,
                 modelKey: model, permissionMode: permission, effort: effort,
-                bot: bot.map { (name: $0.name, faceSeed: $0.faceSeed) }
+                botName: bot?.name
             ),
             bot: bot
         )
     }
 
-    private func botLaunch(_ name: String = "Captain", seed: String = "k3x9a0b2") -> NewSessionLaunch {
+    private func botLaunch(_ name: String = "Captain") -> NewSessionLaunch {
         launch(
             agent: .rig, rig: RigSessionCreationTests.rigMachine, permission: "auto", model: "codex:shared-model", effort: "high",
-            prompt: "", bot: NewSessionLaunch.Bot(name: name, faceSeed: seed)
+            prompt: "", bot: NewSessionLaunch.Bot(name: name)
         )
     }
 
@@ -1157,87 +1107,21 @@ extension SessionStarterTests {
         XCTAssertEqual(again, "p7")
     }
 
-    // MARK: A bot's face (`wearBotFace`)
+    // MARK: A bot
 
-    func testABotWearsItsFaceBeforeItOpens() async {
+    func testABotOpensWearingNoFace() async {
         await ops.script([.success(sessionId: "b1")])
         let sessionId = await makeStarter().start(botLaunch(), isCurrentTarget: { true })
         await settle()
 
         XCTAssertEqual(sessionId, "b1")
-        XCTAssertEqual(phases, [.spawning, .opening, .avatar, nil])
-        let painted = await recorder.painted
-        XCTAssertEqual(painted, ["k3x9a0b2"])
+        XCTAssertEqual(phases, [.spawning, .opening, nil])
         let uploads = await sessionOps.uploads
-        XCTAssertEqual(uploads.map(\.sessionId), ["b1"])
-        XCTAssertEqual(uploads.map(\.name), ["face.png"])
-        XCTAssertEqual(uploads.first?.bytes, Data("png:k3x9a0b2".utf8))
-        let avatars = await sessionOps.avatars
-        XCTAssertEqual(avatars.map(\.0), ["b1"])
-        XCTAssertEqual(avatars.first?.1, SessionAvatarPicture(ref: "blob:face.png", size: 12, mimeType: .png))
-        let sent = await sender.sent
-        XCTAssertTrue(sent.isEmpty, "a bot takes no first message")
-        XCTAssertTrue(presenter.faceOffers.isEmpty)
-    }
-
-    func testASessionWearsNoFace() async {
-        await ops.script([.success(sessionId: "s1")])
-        _ = await makeStarter().start(launch(), isCurrentTarget: { true })
-        await settle()
-        XCTAssertFalse(phases.contains(.avatar))
-        let painted = await recorder.painted
-        XCTAssertTrue(painted.isEmpty)
-    }
-
-    func testAFaceThatWontUploadStillOpensTheBotAndCanBeTriedAgain() async {
-        await ops.script([.success(sessionId: "b2")])
-        await sessionOps.failUpload(times: 1)
-        presenter.retriesFace = [true]
-        let sessionId = await makeStarter().start(botLaunch("Release Captain"), isCurrentTarget: { true })
-        XCTAssertEqual(sessionId, "b2", "a missing face is no reason to lose the bot")
-        for _ in 0..<200 where await sessionOps.avatars.isEmpty { await Task.yield() }
-
-        XCTAssertEqual(presenter.faceOffers, [
-            "Release Captain is ready, but its picture couldn’t be uploaded. You can try again without creating another bot.",
-        ])
-        let painted = await recorder.painted
-        XCTAssertEqual(painted.count, 2, "Try again paints and uploads the face alone")
-        let avatars = await sessionOps.avatars
-        XCTAssertEqual(avatars.map(\.0), ["b2"])
-        let spawned = await ops.spawned
-        XCTAssertEqual(spawned.count, 1, "no second bot")
-    }
-
-    func testAFaceThatWontPaintOrBeWornSaysItWasntSet() async {
-        await ops.script([.success(sessionId: "b3")])
-        await recorder.failPaint(times: 1)
-        presenter.retriesFace = [true]
-        await sessionOps.failAvatar(times: 1)
-        _ = await makeStarter().start(botLaunch(), isCurrentTarget: { true })
-        for _ in 0..<200 where presenter.faceOffers.count < 2 { await Task.yield() }
-
-        let notSet = "Captain is ready, but its picture couldn't be set. Try again."
-        XCTAssertEqual(presenter.faceOffers, [notSet, notSet], "painting, then wearing, failed; Not now ends it")
+        XCTAssertTrue(uploads.isEmpty, "nothing is painted or uploaded: it wears the placeholder its ID picks")
         let avatars = await sessionOps.avatars
         XCTAssertTrue(avatars.isEmpty)
-    }
-
-    func testStopWhileTheFaceGoesOnPutsTheBotDown() async {
-        await ops.script([.success(sessionId: "b4")])
-        await sessionOps.holdAvatar()
-        let starter = makeStarter()
-        let started = Task { await starter.start(botLaunch(), isCurrentTarget: { true }) }
-        while !(await sessionOps.isHoldingAvatar) { await Task.yield() }
-        XCTAssertEqual(starter.phase, .avatar)
-
-        starter.cancel()
-        let result = await started.value
-        XCTAssertNil(result)
-        for _ in 0..<200 where await recorder.refreshes == 0 { await Task.yield() }
-        let kills = await sessionOps.kills
-        XCTAssertEqual(kills, ["b4"], "Happy Agent's kill also retires the bot")
-        await sessionOps.releaseAvatar()
-        XCTAssertTrue(presenter.errors.isEmpty)
+        let sent = await sender.sent
+        XCTAssertTrue(sent.isEmpty, "a bot takes no first message")
     }
 }
 
@@ -1456,8 +1340,8 @@ final class NewSessionChoicesTests: XCTestCase {
     }
 
     func testRefusals() {
-        func refusal(_ draft: NewSessionDraft, machines: [MachineRecord], picked: NewSessionDraft.Agent? = nil, bot: (name: String, faceSeed: String)? = nil) -> NewSessionLaunch.Refusal? {
-            if case .failure(let refusal) = NewSessionLaunch.resolve(draft: draft, pickedAgent: picked, bot: bot, machines: machines, sessions: [], agentDefaultOverrides: [:], prompt: "x", attachments: []) {
+        func refusal(_ draft: NewSessionDraft, machines: [MachineRecord], picked: NewSessionDraft.Agent? = nil, bot: String? = nil) -> NewSessionLaunch.Refusal? {
+            if case .failure(let refusal) = NewSessionLaunch.resolve(draft: draft, pickedAgent: picked, botName: bot, machines: machines, sessions: [], agentDefaultOverrides: [:], prompt: "x", attachments: []) {
                 return refusal
             }
             return nil
@@ -1465,8 +1349,8 @@ final class NewSessionChoicesTests: XCTestCase {
         XCTAssertEqual(refusal(NewSessionDraft(), machines: [machine("m1")]), .selectMachine)
         XCTAssertEqual(refusal(NewSessionDraft(selectedMachineId: "elsewhere"), machines: [machine("m1")]), .machineNotRegistered)
         XCTAssertEqual(refusal(NewSessionDraft(selectedMachineId: "m1"), machines: [machine("m1", active: false)]), .happyCLIOffline)
-        XCTAssertEqual(refusal(NewSessionDraft(selectedMachineId: "m1"), machines: [machine("m1")], bot: (name: " ", faceSeed: "a")), .botName("Give the bot a name"))
-        XCTAssertEqual(refusal(NewSessionDraft(selectedMachineId: "m1"), machines: [machine("m1"), rigMachine("rig1", sibling: "m1")], bot: (name: "Cap", faceSeed: "a")), .cannotCreateBots)
+        XCTAssertEqual(refusal(NewSessionDraft(selectedMachineId: "m1"), machines: [machine("m1")], bot: " "), .botName("Give the bot a name"))
+        XCTAssertEqual(refusal(NewSessionDraft(selectedMachineId: "m1"), machines: [machine("m1"), rigMachine("rig1", sibling: "m1")], bot: "Cap"), .cannotCreateBots)
         XCTAssertEqual(refusal(NewSessionDraft(selectedMachineId: "m1", selectedProjectId: "p1"), machines: [machine("m1")], picked: .claude), .projectNeedsHappyAgent)
         XCTAssertEqual(NewSessionLaunch.Refusal.happyCLIUnavailable.errorDescription, "Happy CLI is not available on your computer. Run `happy daemon start` on your computer, then try again.")
     }
@@ -1497,13 +1381,13 @@ final class NewSessionChoicesTests: XCTestCase {
 
         let bot = try NewSessionLaunch.resolve(
             draft: NewSessionDraft(input: "", selectedMachineId: "m1"),
-            pickedAgent: nil, bot: (name: " Captain ", faceSeed: "abc"), machines: machines, sessions: sessions,
+            pickedAgent: nil, botName: " Captain ", machines: machines, sessions: sessions,
             agentDefaultOverrides: [:], prompt: " Plan the release ", attachments: []
         ).get()
         XCTAssertEqual(bot.target, .bot(name: "Captain"))
         XCTAssertEqual(bot.prompt, "Plan the release", "an empty chat's first send is the bot's first message")
-        XCTAssertEqual(bot.signature.bot?.name, "Captain")
-        XCTAssertEqual(bot.bot, NewSessionLaunch.Bot(name: "Captain", faceSeed: "abc"), "the start knows the face to put on")
+        XCTAssertEqual(bot.signature.botName, "Captain")
+        XCTAssertEqual(bot.bot, NewSessionLaunch.Bot(name: "Captain"))
         XCTAssertNil(workspace.bot)
     }
 
@@ -1655,42 +1539,19 @@ final class NewSessionChoicesTests: XCTestCase {
         let drafts = composer.drafts
         drafts.setCreatesBot(true)
         drafts.setBotName("  Captain ")
-        drafts.setBotFaceSlot(2)
         let launch = try composer.launchBot().get()
         XCTAssertEqual(launch.machineId, "rig1")
         XCTAssertEqual(launch.agent, .rig)
         XCTAssertEqual(launch.target, .bot(name: "Captain"))
-        XCTAssertEqual(launch.bot, NewSessionLaunch.Bot(name: "Captain", faceSeed: drafts.botFaceSeeds[2]))
+        XCTAssertEqual(launch.bot, NewSessionLaunch.Bot(name: "Captain"))
         XCTAssertEqual(launch.prompt, "")
         XCTAssertTrue(launch.attachments.isEmpty)
 
         let started = drafts.draft
         let bot = drafts.bot
         XCTAssertTrue(composer.isCurrentTarget(started, bot: bot))
-        drafts.setBotFaceSlot(1)
-        XCTAssertFalse(composer.isCurrentTarget(started, bot: bot), "another face is another bot")
-        drafts.setBotFaceSlot(2)
-        drafts.rollBotFaces()
-        XCTAssertFalse(composer.isCurrentTarget(started, bot: bot))
-    }
-
-    @MainActor
-    func testBotFacesRollTogetherAndKeepTheSlot() {
-        let drafts = NewSessionDraftStore(settings: LocalSettings(storage: InMemoryKeyValueStore()))
-        XCTAssertEqual(drafts.botFaceSeeds.count, 4)
-        XCTAssertEqual(drafts.botFaceSlot, 0)
-        for seed in drafts.botFaceSeeds {
-            XCTAssertEqual(seed.count, 8)
-            XCTAssertTrue(seed.allSatisfy { $0.isNumber || ("a"..."z").contains($0) }, seed)
-        }
-        drafts.setBotFaceSlot(3)
-        drafts.setBotFaceSlot(4)
-        XCTAssertEqual(drafts.botFaceSlot, 3, "only the four faces on offer")
-        let before = drafts.botFaceSeeds
-        drafts.rollBotFaces()
-        XCTAssertNotEqual(drafts.botFaceSeeds, before)
-        XCTAssertEqual(drafts.botFaceSlot, 3)
-        XCTAssertEqual(drafts.botFaceSeed, drafts.botFaceSeeds[3])
+        drafts.setBotName("Mate")
+        XCTAssertFalse(composer.isCurrentTarget(started, bot: bot), "another name is another bot")
     }
 
     @MainActor
@@ -1703,8 +1564,7 @@ final class NewSessionChoicesTests: XCTestCase {
         XCTAssertEqual(composer.choices.promptPlaceholder, "Name your bot")
         let choices = composer.choices
         composer.drafts.setBotName("Cap")
-        composer.drafts.rollBotFaces()
-        XCTAssertEqual(changes, 3, "what shows the name and faces is told")
+        XCTAssertEqual(changes, 2, "what shows the name is told")
         XCTAssertEqual(composer.choices, choices)
     }
 
@@ -2010,7 +1870,6 @@ extension NewSessionChoicesTests {
             metadataTransport: FakeTransport(),
             saveInitialModes: { _, _ in },
             refreshSessions: {},
-            paintBotFace: { Data("png:\($0)".utf8) },
             attachmentPlan: { message, _ in
                 AttachmentSendPlan(accepted: message.attachments, rejected: [], shouldShowUnsupportedAlert: false, shouldSendText: true)
             },

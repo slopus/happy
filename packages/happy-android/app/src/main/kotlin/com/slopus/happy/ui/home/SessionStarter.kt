@@ -81,8 +81,6 @@ sealed interface StartResult {
     data class Started(
         val sessionId: String,
         val notices: List<AttachmentNotice> = emptyList(),
-        /** A bot that came without its face: offerBotFaceRetry. */
-        val faceFailure: BotFaceFailure? = null,
     ) : StartResult
     data class Refused(val refusal: StartRefusal) : StartResult
     /** The machine, git or the server said no; [message] in their words, or ours where they gave none. */
@@ -120,7 +118,6 @@ class SessionStarter(
     /** sync.ensureSessionReady: true once the session is in the store. */
     private val awaitSession: suspend (String) -> Boolean,
     private val scope: CoroutineScope,
-    private val faces: BotFaceWearer = BotFaceWearer { _, _ -> BotFaceFailure(BotFaceLeg.Painting, "No faces here") },
     private val requestId: () -> String = { UUID.randomUUID().toString() },
 ) {
     private val phaseState = MutableStateFlow<StartPhase?>(null)
@@ -319,7 +316,7 @@ class SessionStarter(
             // A task has no place but its computer.
             machine.id, agent.wire, if (task) "task" else draftProjectId?.let { "project:$it" } ?: selectedPath, worktree,
             options.modelMode ?: options.modelId, options.permissionMode, options.effortLevel ?: options.effort,
-            bot?.let { "bot:${it.name}:${it.faceSeed}" },
+            bot?.let { "bot:${it.name}" },
         ).joinToString("\u0000")
         return Prepared.Ready(
             machine = machine,
@@ -350,7 +347,6 @@ class SessionStarter(
         phaseState.value = StartPhase.Opening
         val job = currentCoroutineContext()[Job]
         var notices = emptyList<AttachmentNotice>()
-        var faceFailure: BotFaceFailure? = null
         try {
             if (!awaitSession(sessionId)) {
                 createdSessions.remove(prepared.signature)
@@ -358,12 +354,6 @@ class SessionStarter(
                 return StartResult.Failed(Words.ours(R.string.home_start_failed))
             }
             prepared.modes?.let { sender.pinModes(sessionId, it) }
-            // A face that cannot be painted or delivered is no reason to lose the bot: it opens without one.
-            prepared.bot?.let { bot ->
-                phaseState.value = StartPhase.Avatar
-                faceFailure = faces.wear(sessionId, bot.faceSeed)
-                phaseState.value = StartPhase.Opening
-            }
             // The dock's bot takes no first message: the prompt typed for a session stays in the draft.
             val prompt = if (prepared.sendsMessage) draft.input.trim() else ""
             val sent = try {
@@ -389,7 +379,7 @@ class SessionStarter(
         requestIds.remove(prepared.signature)
         // Only what was consumed is cleared: text typed meanwhile stays.
         if (prepared.sendsMessage) drafts.change { current -> if (current.input == draft.input) current.copy(input = "") else current }
-        return StartResult.Started(sessionId, notices, faceFailure)
+        return StartResult.Started(sessionId, notices)
     }
 
     /** The worktree, if one is asked for, then the spawn. */

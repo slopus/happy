@@ -118,20 +118,12 @@ extension Strings {
         /// `common.create`.
         public static var create: String { localized("common.create", "Create") }
 
-        // Making a bot (HomeDock.tsx, BotFacePicker.tsx), in English there.
+        // Making a bot (HomeDock.tsx), in English there.
         public static let composerSession = "Session"
         public static let composerBot = "Bot"  // HomeDock.tsx:117, spelled out
         public static let composerKindLabel = "What to create"  // HomeDock.tsx:2148, spelled out
         public static let botLede = "Bots are virtual colleagues great for recurring work like releases, competitor analysis, or to own a large feature across several projects and worktrees"  // HomeDock.tsx:121, spelled out
         public static let createBot = "Create bot"  // HomeDock.tsx:2033, spelled out
-        public static let botFaceHeading = "Avatar"  // BotFacePicker.tsx:101, spelled out
-        public static func botFaceLabel(_ index: Int) -> String { "Face \(index + 1)" }  // BotFacePicker.tsx:112, spelled out
-        public static let rollBotFaces = "Roll four new faces"  // BotFacePicker.tsx:124, spelled out
-        public static let botFaceCreditLead = "Art by "  // BotFacePicker.tsx:130, spelled out
-        // useStartSessionFromDraft.ts `offerBotFaceRetry`.
-        public static let botFaceNotSet = "Picture not set"  // useStartSessionFromDraft.ts:208, spelled out
-        public static let botFaceNotNow = "Not now"  // useStartSessionFromDraft.ts:213, spelled out
-        public static let botFaceTryAgain = "Try again"  // useStartSessionFromDraft.ts:215, spelled out
     }
 
     /// The new-session screen (app/(app)/new/index.tsx). Its picker copy

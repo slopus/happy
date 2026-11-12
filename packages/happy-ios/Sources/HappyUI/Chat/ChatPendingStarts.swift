@@ -149,9 +149,6 @@ extension ChatPendingStarts: SessionStarterPresenter {
         )
     }
 
-    /// Never asked: the strip starts no bots.
-    func offerBotFaceRetry(_ message: String) async -> Bool { false }
-
     /// Never asked: the strip's starts carry no pictures.
     func showAttachmentsNotSupported() {}
 }

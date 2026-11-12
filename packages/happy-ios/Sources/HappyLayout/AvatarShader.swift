@@ -1,7 +1,7 @@
 /// The placeholders as live shaders: what @craftedstudios/shaders draws each
 /// one with (`AvatarShaderTable.swift`, made from its own code), and the
 /// clock. At its phase a placeholder's shader draws the picture it was
-/// made from, so the live one starts where the still one is.
+/// made from, so the first live one starts where the still one is.
 public enum AvatarShader {
     /// The shader's branch for each effect (renderer.js `FX`).
     public enum Effect: Int, Sendable, CaseIterable {
@@ -31,13 +31,32 @@ public enum AvatarShader {
     public static let scale: Float = 1
     public static let grain: Float = 0.07
 
-    /// How fast a live placeholder `side` points across moves: its
-    /// clock's rate, 1 the package's own. At the package's rate a row's
-    /// avatar changes about a third as much each second as Settings' large
-    /// one and reads as still, so small ones run at twice it and large
-    /// ones (Settings, Profile, a chat's mark) at one and a half.
-    public static func speed(side: Float) -> Float {
-        side <= 48 ? 2 : 1.5
+    /// How fast a live placeholder moves: its clock's rate, 1 the
+    /// package's own, at which a row's avatar reads as still. Every size
+    /// runs at the same rate, so a row, its chat's mark and Settings' large
+    /// picture of the same seed show the same frame.
+    public static let speed: Float = 2
+
+    /// When each placeholder's clock started: the first time any view asked
+    /// for it. Every view of a placeholder reads the one clock, so a row
+    /// drawn again, a screen opened from it or come back to, or a view
+    /// reused for it shows the frame the others show, never its phase again.
+    public struct Clock: Sendable {
+        private var origins: [Int: Double] = [:]
+
+        public init() {}
+
+        /// Placeholder `index`'s origin, `now` if nothing has asked yet.
+        public mutating func origin(_ index: Int, now: Double) -> Double {
+            if let origin = origins[index] { return origin }
+            origins[index] = now
+            return now
+        }
+
+        /// Seconds placeholder `index`'s clock has run at `now`.
+        public mutating func elapsed(_ index: Int, now: Double) -> Double {
+            max(0, now - origin(index, now: now))
+        }
     }
 
     /// The frames a second live placeholders are drawn at. 30 looks the

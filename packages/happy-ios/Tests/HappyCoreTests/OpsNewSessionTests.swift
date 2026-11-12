@@ -25,7 +25,6 @@ final class OpsNewSessionTests: XCTestCase {
         XCTAssertEqual(NewSessionProgress.label(phase: .spawning, agentName: "Codex", picksWorkspaces: false), "Starting Codex…")
         XCTAssertEqual(NewSessionProgress.label(phase: .spawning, agentName: "Happy", picksWorkspaces: false, createsBot: true), "Creating bot…")
         XCTAssertEqual(NewSessionProgress.label(phase: .opening, agentName: "Happy", picksWorkspaces: false, createsBot: true), "Opening bot…")
-        XCTAssertEqual(NewSessionProgress.label(phase: .avatar, agentName: "Happy", picksWorkspaces: false), "Putting on a face…")
         XCTAssertEqual(NewSessionProgress.primaryAction(canSubmit: true, phase: .spawning, canCancel: true), .stop)
         XCTAssertEqual(NewSessionProgress.primaryAction(canSubmit: true, phase: .opening, canCancel: false), .busy)
         XCTAssertEqual(NewSessionProgress.primaryAction(canSubmit: true, phase: nil, canCancel: false), .send)

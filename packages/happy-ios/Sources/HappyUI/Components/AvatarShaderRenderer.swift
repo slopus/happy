@@ -32,13 +32,16 @@ public enum LiveAvatars {
 struct ShaderDrawing: Equatable {
     var index = 0
     var monochrome = false
-    /// The clock's rate; nil, an avatar's for its size (`AvatarShader.speed`).
+    /// The clock's rate; nil, every avatar's (`AvatarShader.speed`).
     var speed: Float?
 }
 
 /// One placeholder as its live shader, filling the view it is put in (which
 /// clips it). Hidden until its first frame, so the still picture under it
-/// shows until then; that frame is the still picture's own, at its phase.
+/// shows until then. The frame is the placeholder's clock's
+/// (`AvatarShader.Clock`), shared with every other view of it, and drawn as
+/// the view is laid out, so the still picture doesn't show a different one
+/// first.
 final class LiveAvatarView: UIView {
     override class var layerClass: AnyClass { CAMetalLayer.self }
     var metalLayer: CAMetalLayer { layer as! CAMetalLayer }
@@ -46,8 +49,6 @@ final class LiveAvatarView: UIView {
     private(set) var drawing = ShaderDrawing()
     var index: Int { drawing.index }
     var monochrome: Bool { drawing.monochrome }
-    /// When this placeholder first showed; its clock runs from there.
-    private(set) var started = CACurrentMediaTime()
     /// A frame of the current placeholder is on screen.
     var drawn = false
 
@@ -76,19 +77,32 @@ final class LiveAvatarView: UIView {
 
     func draw(_ drawing: ShaderDrawing) {
         guard drawing != self.drawing || !drawn else { return }
-        if drawing.index != self.drawing.index { started = CACurrentMediaTime() }
         let restyled = drawing.index != self.drawing.index || drawing.monochrome != self.drawing.monochrome
         self.drawing = drawing
         drawn = false
         // A new placeholder waits for its frame; a new speed of the same
         // one keeps what it shows until the next.
         if restyled { isHidden = true }
+        setNeedsLayout()
         AvatarShaderRenderer.shared?.wake()
     }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        if window != nil { AvatarShaderRenderer.shared?.add(self) } else { AvatarShaderRenderer.shared?.remove(self) }
+        if window != nil {
+            // Back on screen, it catches up with its clock at once rather
+            // than showing the frame it left with.
+            drawn = false
+            setNeedsLayout()
+            AvatarShaderRenderer.shared?.add(self)
+        } else {
+            AvatarShaderRenderer.shared?.remove(self)
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if !drawn { AvatarShaderRenderer.shared?.drawFirst(self) }
     }
 }
 
@@ -112,6 +126,8 @@ final class AvatarShaderRenderer {
     private var pipeline: MTLRenderPipelineState?
     private var compiling: Task<MTLRenderPipelineState?, Never>?
     private let views = NSHashTable<LiveAvatarView>.weakObjects()
+    /// Every placeholder's one clock, whichever view draws it.
+    private var clock = AvatarShader.Clock()
     private var link: CADisplayLink?
     private var background = false
     /// Frames put on screen so far, for tests.
@@ -243,14 +259,18 @@ final class AvatarShaderRenderer {
             return
         }
         guard let pipeline, !background else { return }
-        // Past the cap the largest keep moving; the rest show their pictures.
+        // Past the cap the largest keep moving; the rest hold the frame
+        // they have, drawn once if they have none.
         let showing = all.filter(Self.isShowing).sorted { $0.bounds.width > $1.bounds.width }
-        let live = showing.prefix(Self.maxLive)
-        for view in showing.dropFirst(Self.maxLive) where view.drawn {
-            view.drawn = false
-            view.isHidden = true
-        }
-        draw(live.filter { Self.animates || !$0.drawn }, pipeline: pipeline)
+        let live = showing.prefix(Self.maxLive).filter { Self.animates || !$0.drawn }
+        draw(live + showing.dropFirst(Self.maxLive).filter { !$0.drawn }, pipeline: pipeline)
+    }
+
+    /// `view`'s first frame now, with the transaction it is laid out in,
+    /// rather than at the next tick.
+    func drawFirst(_ view: LiveAvatarView) {
+        guard let pipeline, !background, !view.drawn, views.contains(view), Self.isShowing(view) else { return }
+        _ = draw([view], pipeline: pipeline, now: CACurrentMediaTime(), inTransaction: true)
     }
 
     /// A first frame is presented with the transaction it was laid out in,
@@ -273,7 +293,7 @@ final class AvatarShaderRenderer {
         guard !due.isEmpty, let buffer = queue.makeCommandBuffer() else { return false }
         var drawables: [(LiveAvatarView, CAMetalDrawable)] = []
         for view in due {
-            guard let frame = Self.frame(view, now: now) else { continue }
+            guard let frame = frame(view, now: now) else { continue }
             let size = CGSize(width: frame.pixels, height: frame.pixels)
             if view.metalLayer.drawableSize != size { view.metalLayer.drawableSize = size }
             view.metalLayer.presentsWithTransaction = inTransaction
@@ -326,15 +346,22 @@ final class AvatarShaderRenderer {
         var time: Float
     }
 
-    private static func frame(_ view: LiveAvatarView, now: CFTimeInterval) -> Frame? {
+    private func frame(_ view: LiveAvatarView, now: CFTimeInterval) -> Frame? {
         let side = max(view.bounds.width, view.bounds.height)
         guard side > 0 else { return nil }
         let scale = min(view.window?.screen.scale ?? 3, 3)
-        let pixels = min(maxPixels, Int((side * scale).rounded(.up)))
+        let pixels = min(Self.maxPixels, Int((side * scale).rounded(.up)))
         let parameters = AvatarShader.parameters(view.index)
-        let speed = view.drawing.speed ?? AvatarShader.speed(side: Float(side))
-        let elapsed = animates ? (now - view.started) * Double(speed) : 0
-        return Frame(pixels: pixels, parameters: parameters, monochrome: view.monochrome, time: AvatarShader.time(parameters, elapsed: elapsed))
+        return Frame(pixels: pixels, parameters: parameters, monochrome: view.monochrome, time: time(of: view, now: now))
+    }
+
+    /// The shader's clock for `view` at `now`: its placeholder's, the same
+    /// for every view of it; its phase while they hold still.
+    func time(of view: LiveAvatarView, now: CFTimeInterval) -> Float {
+        let parameters = AvatarShader.parameters(view.index)
+        let elapsed = clock.elapsed(view.index, now: now)
+        let speed = view.drawing.speed ?? AvatarShader.speed
+        return AvatarShader.time(parameters, elapsed: Self.animates ? elapsed * Double(speed) : 0)
     }
 
     private struct Uniforms {

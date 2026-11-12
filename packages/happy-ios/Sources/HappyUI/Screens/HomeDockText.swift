@@ -25,9 +25,6 @@ struct HomeDockText: Equatable, Sendable {
     let triggerLine: CGFloat
     /// "Starting Claude Code…" and "To interrupt press stop".
     let progressLine: CGFloat
-    /// The faces' "Avatar" and their credit.
-    let faceHeadingLine: CGFloat
-    let creditLine: CGFloat
     /// The bot's lede, centred, wrapped at `key.ledeWidth`.
     let lede: CGSize
 
@@ -40,8 +37,6 @@ struct HomeDockText: Equatable, Sendable {
         entryLine = TextStyles.homeDockEntry.oneLine(in: text)
         triggerLine = TextStyles.homeDockRowValue.oneLine(in: text)
         progressLine = TextStyles.homeDockProgress.oneLine(in: text)
-        faceHeadingLine = TextStyles.botFaceHeading.oneLine(in: text)
-        creditLine = TextStyles.botFaceCredit.oneLine(in: text)
         lede = NoSessionsMeasure.measure(key.lede, style: TextStyles.homeDockLede, lines: 0, alignment: .center, environment: text, width: key.ledeWidth)
     }
 

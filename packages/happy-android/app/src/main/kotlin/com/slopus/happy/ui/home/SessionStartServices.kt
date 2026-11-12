@@ -90,17 +90,3 @@ class LiveFirstMessageSender(
         }
     }
 }
-
-/** Which of the bot face's three steps failed (useStartSessionFromDraft's `BotFaceLeg`). */
-enum class BotFaceLeg { Painting, Uploading, Wearing }
-
-/** A face the bot could not be given: the bot is fine, and the face can be tried again on it. */
-data class BotFaceFailure(val leg: BotFaceLeg, val message: String)
-
-/**
- * wearBotFace: paint the seed's face, put it in the bot's attachments, ask
- * the bot to wear it. Null once it is worn; otherwise the step that failed.
- */
-fun interface BotFaceWearer {
-    suspend fun wear(sessionId: String, seed: String): BotFaceFailure?
-}

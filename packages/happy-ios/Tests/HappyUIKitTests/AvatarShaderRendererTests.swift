@@ -69,6 +69,22 @@ final class AvatarShaderRendererTests: XCTestCase {
         }
     }
 
+    /// A row and the chat's large mark of one placeholder show one frame,
+    /// however much later the mark came: it doesn't start over at its phase.
+    func testEveryViewOfAPlaceholderShowsOneFrame() throws {
+        let renderer = try XCTUnwrap(AvatarShaderRenderer.shared, "no Metal")
+        AvatarShaderRenderer.holdsStill = false
+        defer { AvatarShaderRenderer.holdsStill = nil }
+        let row = LiveAvatarView(frame: CGRect(x: 0, y: 0, width: 30, height: 30))
+        row.draw(ShaderDrawing(index: 61))
+        let now = CACurrentMediaTime()
+        let first = renderer.time(of: row, now: now)
+        let mark = LiveAvatarView(frame: CGRect(x: 0, y: 0, width: 88, height: 88))
+        mark.draw(ShaderDrawing(index: 61))
+        XCTAssertEqual(renderer.time(of: mark, now: now + 30), renderer.time(of: row, now: now + 30))
+        XCTAssertEqual(renderer.time(of: mark, now: now + 30), first + 30 * AvatarShader.speed, accuracy: 1e-3)
+    }
+
     func testBlackAndWhiteIsGrey() async throws {
         let renderer = try XCTUnwrap(AvatarShaderRenderer.shared, "no Metal")
         let image = try await XCTUnwrapAsync(await renderer.image(index: 7, pixels: 48, monochrome: true))

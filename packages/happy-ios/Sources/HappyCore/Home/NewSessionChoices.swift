@@ -530,7 +530,7 @@ extension NewSessionLaunch {
     public static func resolve(
         draft: NewSessionDraft,
         pickedAgent: NewSessionDraft.Agent?,
-        bot: (name: String, faceSeed: String)? = nil,
+        botName: String? = nil,
         createsTask: Bool = false,
         machines: [MachineRecord],
         sessions: [SessionRecord],
@@ -543,13 +543,13 @@ extension NewSessionLaunch {
         guard let choice = MachineChoice.find(in: choices, machineId: draft.selectedMachineId) else {
             return .failure(draft.selectedMachineId == nil ? .selectMachine : .machineNotRegistered)
         }
-        let botName = bot?.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let botName = botName?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let botName, let problem = BotName.problem(botName) {
             return .failure(.botName(problem))
         }
         // A bot or a task is always Happy Agent's: only it makes them.
-        let createsTask = createsTask && bot == nil
-        let agent: NewSessionDraft.Agent = bot != nil || createsTask
+        let createsTask = createsTask && botName == nil
+        let agent: NewSessionDraft.Agent = botName != nil || createsTask
             ? .rig
             : NewSessionDraft.Agent(rawValue: choice.resolveNewSessionAgent(stored: draft.agentType.rawValue, picked: pickedAgent?.rawValue)) ?? draft.agentType
         let agentChanged = agent != draft.agentType
@@ -561,7 +561,7 @@ extension NewSessionLaunch {
         }
         let rig = agent == .rig ? RigSessionCreation(metadata: machine.metadata) : nil
         if agent == .rig && rig == nil { return .failure(.cannotStartHappyAgent) }
-        if bot != nil && rig?.supportsBots != true { return .failure(.cannotCreateBots) }
+        if botName != nil && rig?.supportsBots != true { return .failure(.cannotCreateBots) }
         if createsTask && rig?.supportsTasks != true { return .failure(.cannotCreateTasks) }
 
         let cliVersion = machine.metadata?["happyCliVersion"]?.stringValue
@@ -644,9 +644,9 @@ extension NewSessionLaunch {
                 modelKey: model.key,
                 permissionMode: permission.key,
                 effort: effort?.key,
-                bot: botName.map { (name: $0, faceSeed: bot?.faceSeed ?? "") }
+                botName: botName
             ),
-            bot: botName.map { Bot(name: $0, faceSeed: bot?.faceSeed ?? "") }
+            bot: botName.map { Bot(name: $0) }
         ))
     }
 }

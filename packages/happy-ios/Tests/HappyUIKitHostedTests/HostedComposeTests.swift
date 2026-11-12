@@ -179,7 +179,6 @@ final class HostedComposeTests: XCTestCase {
                 metadataTransport: account.realtime,
                 saveInitialModes: { [sender = account.sender] in try await sender.saveInitialModes(sessionId: $0, patch: $1) },
                 refreshSessions: {},
-                paintBotFace: { _ in throw URLError(.cannotConnectToHost) },
                 attachmentPlan: { [sender = account.sender] message, sessionId in try await sender.attachmentPlan(for: message, sessionId: sessionId) },
                 spawnRequests: account.spawnRequests
             ))
@@ -411,15 +410,6 @@ final class HostedComposeTests: XCTestCase {
         XCTAssertEqual(log.spawned.map(\.directory), [Self.studioFolder])
     }
 
-    /// Takes an alert down once it has finished coming up: one dismissed
-    /// mid-presentation stays.
-    private func dismissAlert(on chat: UIViewController) async throws {
-        try await until {
-            if let alert = chat.presentedViewController, !alert.isBeingPresented { alert.dismiss(animated: false) }
-            return chat.presentedViewController == nil
-        }
-    }
-
     /// Picks a segment of the panel's Session | Bot | Task as a tap does.
     private func pick(_ kind: HomeDockKind, in panel: NewWorkPanel) throws {
         panel.kind.selectedSegmentIndex = try XCTUnwrap(panel.sessionKinds.firstIndex(of: kind))
@@ -478,8 +468,7 @@ final class HostedComposeTests: XCTestCase {
 
     /// A bot needs its name: without one the name field asks for it in
     /// place (no alert), and the text stays;
-    /// named, it is made on Happy Agent, and a face that couldn't be
-    /// painted is offered again over the chat.
+    /// named, it is made on Happy Agent and opens, wearing no face.
     func testLegacyBotNeedsItsNameAndTakesTheFirstMessage() async throws {
         let log = SpawnLog()
         let (home, navigation, window, account, _) = try await legacyHome(happyAgent: true, log: log)
@@ -516,17 +505,8 @@ final class HostedComposeTests: XCTestCase {
         let composerView = try XCTUnwrap(Self.subview(SessionComposerView.self, in: chat.view))
         try await until { !composerView.sending }
         card.delegate?.agentInputCardDidPressSend(card)
-        try await until { chat.presentedViewController is UIAlertController }
-        let offer = try XCTUnwrap(chat.presentedViewController as? UIAlertController)
-        XCTAssertEqual(offer.title, "Picture not set")
-        // Not now. `UIAlertAction` keeps its handler private; a test
-        // reaches it by key.
-        typealias Handler = @convention(block) (UIAlertAction) -> Void
-        let notNow = try XCTUnwrap(offer.actions.first { $0.style == .cancel })
-        let handler = unsafeBitCast(try XCTUnwrap(notNow.value(forKey: "handler") as AnyObject?), to: Handler.self)
-        try await dismissAlert(on: chat)
-        handler(notNow)
         try await until { !chat.isComposing }
+        XCTAssertNil(chat.presentedViewController, "no face to offer again")
         XCTAssertEqual(log.spawned.map(\.machineId), [Self.happyAgent])
         XCTAssertEqual(log.spawned.map(\.happyAgentTarget), [.object(["kind": .string("bot"), "name": .string("Release Captain")])])
         let store = account.store

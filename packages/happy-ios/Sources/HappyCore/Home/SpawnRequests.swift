@@ -28,10 +28,10 @@ public final class SpawnRequests {
         public var modelKey: String?
         public var permissionMode: String?
         public var effort: String?
-        /// The bot being made: its name and the face it will wear.
-        public var bot: (name: String, faceSeed: String)?
+        /// The name of the bot being made.
+        public var botName: String?
 
-        public init(machineId: String?, agent: String, place: String, worktree: String?, modelKey: String?, permissionMode: String?, effort: String?, bot: (name: String, faceSeed: String)? = nil) {
+        public init(machineId: String?, agent: String, place: String, worktree: String?, modelKey: String?, permissionMode: String?, effort: String?, botName: String? = nil) {
             self.machineId = machineId
             self.agent = agent
             self.place = place
@@ -39,7 +39,7 @@ public final class SpawnRequests {
             self.modelKey = modelKey
             self.permissionMode = permissionMode
             self.effort = effort
-            self.bot = bot
+            self.botName = botName
         }
 
         public static func == (lhs: Self, rhs: Self) -> Bool {
@@ -56,7 +56,7 @@ public final class SpawnRequests {
                 .string(modelKey ?? ""),
                 .string(permissionMode ?? ""),
                 .string(effort ?? ""),
-                bot.map { .array([.string($0.name), .string($0.faceSeed)]) } ?? .string(""),
+                botName.map { .array([.string($0)]) } ?? .string(""),
             ])
             return (try? value.encodedString()) ?? ""
         }
