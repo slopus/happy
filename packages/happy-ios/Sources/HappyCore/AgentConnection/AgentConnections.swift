@@ -35,6 +35,13 @@ public final class AgentConnections {
     /// How long coming back waits for an engine's tunnels to wake before
     /// it starts the engine and the pairings' checks anyway (`resume`).
     var wakeLimit: Duration = .seconds(5)
+    /// This device's environment, told to each computer that takes it when
+    /// its engine starts, back in the foreground, and when the time zone or
+    /// locale changes (`AgentClient.reportEnvironment`). Nil tells none.
+    public var environment: UserEnvironmentSource? {
+        didSet { if environment != nil { observeEnvironment() } }
+    }
+    private var environmentObservers: [NSObjectProtocol] = []
 
     public init(credentials: any AgentConnectionCredentialStore, directory: URL?, makeTransport: @escaping @Sendable (AgentConnectionCredentials) -> any AgentTransport = { AgentHTTPTransport(address: $0.address, port: $0.port, publicUrl: $0.publicUrl, tailcatAvailable: $0.tailcatAvailable != false) }) {
         storage = AgentConnectionStorage(credentials: credentials, directory: directory)
@@ -165,7 +172,10 @@ public final class AgentConnections {
         guard let client = agentClient(for: id) else { return nil }
         let engine = SyncEngine(client: client, directory: OfflineFile.directory(for: id))
         engines[id] = engine
-        if foreground && activeID == id { Task { await engine.start() } }
+        if foreground && activeID == id {
+            Task { await engine.start() }
+            reportEnvironment(to: engine.client)
+        }
         return engine
     }
     func credential(for id: String) -> AgentConnectionCredentials? { credentials[id] }
@@ -412,6 +422,33 @@ public final class AgentConnections {
     private func resume(_ id: String, _ engine: SyncEngine) async {
         if suspended.remove(id) != nil { await waitAtMost(wakeLimit) { await engine.client.resumed() } }
         await engine.start()
+        reportEnvironment(to: engine.client)
+    }
+
+    /// Tells `client`'s computer this device's environment, if it changed
+    /// since it was last told. A failed report goes again at the next start.
+    private func reportEnvironment(to client: AgentClient) {
+        guard let source = environment else { return }
+        Task.detached(priority: .utility) {
+            guard let deviceId = source.deviceId() else { return }
+            try? await client.reportEnvironment(source.current(), deviceId: deviceId)
+        }
+    }
+
+    private func observeEnvironment() {
+        guard environmentObservers.isEmpty else { return }
+        environmentObservers = [Notification.Name.NSSystemTimeZoneDidChange, NSLocale.currentLocaleDidChangeNotification].map { name in
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.environmentChanged() }
+            }
+        }
+    }
+
+    /// The time zone or locale changed: each running computer is told now;
+    /// in the background, at the next start.
+    func environmentChanged() {
+        guard foreground else { return }
+        for engine in engines.values { reportEnvironment(to: engine.client) }
     }
 
     private func stop(_ id: String) async {

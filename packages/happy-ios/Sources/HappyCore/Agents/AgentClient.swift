@@ -26,6 +26,8 @@ public final class AgentClient: Sendable {
     public let signsIn: Bool
     /// How the artifact pages read through it ask to be shown.
     public let pageModes = ArtifactPageModes()
+    /// Whether the computer takes this device's environment, and what it was last told.
+    public let environment = UserEnvironmentReports()
 
     init(transport: any AgentTransport, token: String, signsIn: Bool = false) {
         self.transport = transport
@@ -99,6 +101,25 @@ public final class AgentClient: Sendable {
 
     public func health() async throws -> AgentWire.Health {
         try await decode(AgentWire.Health.self, "GET", "/v0/health")
+    }
+
+    /// Tells the computer this device's environment (`PUT /v0/environment`),
+    /// when its health says it takes one and it changed since it was last
+    /// told. Health is asked until it says yes: a computer updated while
+    /// the app runs starts taking reports. A 404 is a computer that doesn't.
+    public func reportEnvironment(_ environment: UserEnvironment, deviceId: String) async throws {
+        if self.environment.takesReports != true {
+            let takes = try await health().capabilities?.userEnvironment == true
+            self.environment.serves(takes, deviceId: deviceId)
+            guard takes else { return }
+        }
+        guard !self.environment.told(environment) else { return }
+        do { _ = try await send("PUT", "/v0/environment", json: environment.report(deviceId: deviceId)) }
+        catch AgentClientError.status(404, _, _) {
+            self.environment.serves(false, deviceId: deviceId)
+            return
+        }
+        self.environment.remember(environment)
     }
 
     public func userSetting(_ key: String) async throws -> JSONValue? {
@@ -391,6 +412,8 @@ public final class AgentClient: Sendable {
         }
         object["mode"] = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(mode))
         if let quickReply { object["quickReply"] = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(quickReply)) }
+        // Only to a computer that takes it: an older one refuses the whole send.
+        if let deviceId = environment.sendingDeviceId { object["deviceId"] = .string(deviceId) }
         let path = "/v0/agents/\(Self.escape(agentId))/send"
         // Pictures make it a file's size: a file's client and deadline.
         let category: RequestCategory = images.isEmpty ? .query : .file

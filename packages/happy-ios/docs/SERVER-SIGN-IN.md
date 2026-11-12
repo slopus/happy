@@ -435,6 +435,29 @@ Previews (the in-app browser's workspace proxy) need a tunnel.
   pings. A tunnel is dead after 45 s with nothing inbound. Tunnels can't be
   resumed: WebKit opens a new one.
 
+## Time zone and language
+
+A computer whose health says `capabilities.userEnvironment` is told this
+phone's environment (happy-agent API.md, "User environment"), so its
+agents know the person's time zone, languages, clock, first weekday and
+calendar.
+
+- `PUT /v0/environment` with `deviceId`, the installation's id
+  (`ExpoInstallationID`, the push exchange's, lowercased), and
+  `deviceKind` `phone` or `tablet`. A field iOS can't name in the API's
+  terms is left out, because one bad field refuses the whole report
+  (`UserEnvironment.current`).
+- Sent when an engine starts, when the app comes back to the foreground
+  (`AgentConnections.resume`), and when the time zone or locale changes.
+  It is sent only when it differs from what that computer was last told.
+  A failed report goes again at the next start, and a 404 stops the
+  reports.
+- Sends name the device (`deviceId`) only once the computer takes
+  reports. An older one refuses the whole send otherwise
+  (`UserEnvironmentReports.sendingDeviceId`).
+- A computer without the capability is asked for its health again at
+  each start, so one updated while the app runs starts getting reports.
+
 ## Instance links
 
 A Happy link that leaves the app names the installation it came from:
