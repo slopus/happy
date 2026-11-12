@@ -95,7 +95,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     private func open(_ activity: NSUserActivity) {
         guard activity.activityType == NSUserActivityTypeBrowsingWeb, let url = activity.webpageURL,
-              GuestInvitation(url: url) != nil else { return }
+              GuestInvitation(url: url) != nil || CloudInvite(url: url) != nil else { return }
         open(url)
     }
 
