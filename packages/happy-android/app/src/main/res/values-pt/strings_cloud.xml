@@ -77,12 +77,12 @@
     <string name="cloud_invite_title">Você foi convidado</string>
     <string name="cloud_invite_detail">Entre em %1$s no Happy Cloud.</string>
     <string name="cloud_invite_sign_in">Entrar para participar</string>
-    <string name="cloud_invite_refused_title">Não é possível usar este convite</string>
+    <string name="cloud_invite_unavailable">Convite indisponível</string>
     <string name="cloud_invite_expired">Este convite expirou. Peça um novo link a quem o enviou.</string>
     <string name="cloud_invite_revoked">Este convite foi retirado. Peça um novo link a quem o enviou.</string>
     <string name="cloud_invite_used_up">Este convite já foi usado. Peça um novo link a quem o enviou.</string>
     <string name="cloud_invite_unknown">Este link de convite não é válido. Verifique se você abriu o link completo.</string>
-    <string name="cloud_invite_email_mismatch">Este convite foi enviado para %1$s. Entre com esse e-mail para participar.</string>
+    <string name="cloud_invite_email_mismatch">Este convite foi enviado para %1$s Entre com esse e-mail para participar.</string>
     <string name="cloud_invite_email_mismatch_unknown">Este convite foi enviado para outro e-mail. Entre com esse e-mail para participar.</string>
     <string name="cloud_invite_other_account">Entrar com outra conta</string>
     <string name="cloud_invite_not_now">Agora não</string>

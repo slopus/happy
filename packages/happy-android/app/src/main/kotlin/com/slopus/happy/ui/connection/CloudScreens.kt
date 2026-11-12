@@ -145,6 +145,7 @@ object CloudTags {
     const val PASSWORD = "cloud.password"
     const val SLIDES = "cloud.slides"
     const val CREATE = "cloud.create"
+    const val TITLE = "cloud.title"
     const val INVITE_SERVER = "cloud.invite.server"
     const val INVITER = "cloud.invite.inviter"
     const val GOOGLE = "cloud.google"
@@ -270,7 +271,7 @@ private fun CloudFrame(
                         style = cappedScale(StartGallerySpec.title.copy(lineBreak = LineBreak.Heading), OnboardingContentSpec.TITLE_MAX_SCALE),
                         color = text,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth().semantics { heading() },
+                        modifier = Modifier.fillMaxWidth().semantics { heading() }.testTag(CloudTags.TITLE),
                     )
                     if (body != null) {
                         Text(
@@ -889,12 +890,8 @@ fun CloudInviteScreen(
     }
     val line = happyTextStyle(fontSize = 15, lineHeight = 20)
     CloudFrame(
-        title = stringResource(R.string.cloud_invite_title),
-        body = when {
-            refusal != null -> stringResource(R.string.cloud_invite_refused_title)
-            preview != null -> stringResource(R.string.cloud_invite_detail, preview.server.title)
-            else -> ""
-        },
+        title = stringResource(if (refusal != null) R.string.cloud_invite_unavailable else R.string.cloud_invite_title),
+        body = preview?.let { stringResource(R.string.cloud_invite_detail, it.server.title) } ?: "",
         bodyMinLines = 2,
         top = {
             Box(Modifier.size(CloudSpec.art), contentAlignment = Alignment.Center) {

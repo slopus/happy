@@ -76,7 +76,7 @@ class CloudInviteScreenTest {
     @Test
     fun anExpiredInviteSaysSo() {
         screen(CloudInviteStep.Refused(CloudInviteRefusal.Expired))
-        rule.onNodeWithText("This invite can’t be used").assertExists()
+        rule.onNodeWithText("Invite unavailable").assertExists()
         rule.onNodeWithText("This invite has expired. Ask whoever sent it for a new link.").assertExists()
         rule.onNodeWithText("OK").performClick()
         assertEquals(listOf("back"), taps)
@@ -85,7 +85,7 @@ class CloudInviteScreenTest {
     @Test
     fun anotherAddressesInviteOffersAnotherAccount() {
         screen(CloudInviteStep.Refused(CloudInviteRefusal.EmailMismatch("s…@…"), preview))
-        rule.onNodeWithText("This invite was sent to ${CloudEmail.unbroken("s…@…")}. Sign in with that email to join.").assertExists()
+        rule.onNodeWithText("This invite was sent to ${CloudEmail.unbroken("s…@…")} Sign in with that email to join.").assertExists()
         rule.onNodeWithText("Sign in with another account").performClick()
         assertEquals(listOf("other"), taps)
     }
@@ -110,7 +110,7 @@ class CloudInviteScreenTest {
         // The detail lines are centred, so only their width follows what they say.
         fun DpRect.rows() = DpRect(0.dp, top, 0.dp, bottom)
         fun layout(): List<DpRect> = listOf(
-            rule.onNodeWithText("You’re invited").bounds,
+            rule.node(CloudTags.TITLE).bounds,
             rule.node(CloudTags.INVITE_SERVER).bounds.rows(),
             rule.node(CloudTags.INVITER).bounds.rows(),
             rule.node(CloudTags.PRIMARY).bounds,
