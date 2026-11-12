@@ -5,6 +5,7 @@ on:
     branches: [ main ]
     paths:
       - 'packages/happy-server/**'
+      - 'packages/happy-server-rs/**'
       - 'packages/happy-server-self-host/**'
       - 'packages/happy-wire/**'
       - 'Dockerfile'
@@ -20,6 +21,7 @@ on:
     branches: [ main ]
     paths:
       - 'packages/happy-server/**'
+      - 'packages/happy-server-rs/**'
       - 'packages/happy-server-self-host/**'
       - 'packages/happy-wire/**'
       - 'Dockerfile'
@@ -58,7 +60,8 @@ jobs:
       run: pnpm --filter @slopus/happy-wire --fail-if-no-match build
 
     # `build` is the production typecheck (tsconfig.build.json, specs excluded).
-    # This is exactly what Dockerfile.server runs, so a break here is a break there.
+    # Dockerfile (standalone) still runs the TS server; Dockerfile.server runs the
+    # Rust port, which the docker-production job below builds and exercises.
     - name: Production typecheck
       run: pnpm --filter happy-server --fail-if-no-match build
 

@@ -3,12 +3,12 @@ kind: Deployment
 metadata:
   name: handy-server
 spec:
+  # The Rust server (Dockerfile.server) is one process per database: no Redis
+  # adapter, and a Postgres advisory lock keeps a second instance from starting.
+  # One replica, and the old pod stops before the new one starts.
   strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 0
-      maxSurge: 2
-  replicas: 3
+    type: Recreate
+  replicas: 1
   selector:
     matchLabels:
       app: handy-server
@@ -31,8 +31,10 @@ spec:
           value: production
         - name: PORT
           value: "3005"
-        - name: REDIS_URL
-          value: redis://happy-redis:6379
+        # Worker threads; the pod has no CPU limit, and RPC round trips get
+        # slower past ~8 workers (packages/happy-server-rs/COMPAT.md).
+        - name: HAPPY_WORKERS
+          value: "8"
         - name: S3_PUBLIC_URL
           value: https://files.cluster-fluster.com/happy
         # Minio uses S3_HOST when constructing presigned upload/download URLs.
@@ -51,13 +53,14 @@ spec:
           periodSeconds: 60
           timeoutSeconds: 30
           failureThreshold: 10
+        # Recreate leaves no pod serving until this passes; the server is up in ~2 s.
         readinessProbe:
           httpGet:
             path: /health
             port: 3005
-          initialDelaySeconds: 30
-          periodSeconds: 60
-          timeoutSeconds: 30
+          initialDelaySeconds: 2
+          periodSeconds: 5
+          timeoutSeconds: 5
           failureThreshold: 10
 ---
 apiVersion: policy/v1
@@ -65,7 +68,8 @@ kind: PodDisruptionBudget
 metadata:
   name: handy-server-pdb
 spec:
-  minAvailable: 1
+  # One replica: minAvailable 1 would block every node drain.
+  maxUnavailable: 1
   selector:
     matchLabels:
       app: handy-server

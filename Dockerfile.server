@@ -1,8 +1,16 @@
-# Stage 1: install dependencies with workspace context
-FROM node:24 AS deps
+# Production image: the Rust server (packages/happy-server-rs), wire-compatible
+# with packages/happy-server. The schema is still the TS server's Prisma schema,
+# and the image keeps the Prisma CLI so `prisma migrate deploy` runs exactly as
+# before (CI and the deploy Job run it from /repo/packages/happy-server).
+#
+# The Rust server is a single process per database (no Redis adapter; it takes a
+# Postgres advisory lock and refuses to start beside another instance), so it
+# must run as one replica, and a deploy must stop the old pod before starting
+# the new one. See packages/happy-server-rs/COMPAT.md and QUIRKS.md.
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y python3 ffmpeg make g++ build-essential && rm -rf /var/lib/apt/lists/*
+# Stage 1: the Prisma CLI and the schema, for migrations
+FROM node:24-bookworm AS deps
+
 RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
 
 WORKDIR /repo
@@ -22,38 +30,40 @@ COPY packages/happy-server/prisma packages/happy-server/prisma
 COPY packages/happy-cli/scripts packages/happy-cli/scripts
 COPY packages/happy-cli/tools packages/happy-cli/tools
 
-RUN SKIP_HAPPY_WIRE_BUILD=1 pnpm install --frozen-lockfile
+RUN SKIP_HAPPY_WIRE_BUILD=1 pnpm install --frozen-lockfile --filter happy-server...
 
-# Stage 2: build the server
-FROM deps AS builder
-
-COPY packages/happy-wire ./packages/happy-wire
-COPY packages/happy-server ./packages/happy-server
-
-RUN pnpm --filter @slopus/happy-wire --fail-if-no-match build
-RUN pnpm --filter happy-server --fail-if-no-match build
-
-# Stage 3: runtime
-FROM node:24 AS runner
+# Stage 2: build the Rust server
+FROM rust:1.99-bookworm AS builder
 
 WORKDIR /repo
 
-# Runtime dependencies
-RUN apt-get update && apt-get install -y python3 ffmpeg && rm -rf /var/lib/apt/lists/*
+# build.rs embeds the Prisma migrations (for `happy-server-rs migrate`).
+COPY packages/happy-server/prisma packages/happy-server/prisma
+COPY packages/happy-server-rs packages/happy-server-rs
+
+RUN cargo build --release --locked --manifest-path packages/happy-server-rs/Cargo.toml --bin happy-server-rs
+
+# Stage 3: runtime
+FROM node:24-bookworm-slim AS runner
+
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates openssl && rm -rf /var/lib/apt/lists/*
+# pnpm as before, for migration commands run through it
 RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
 
-# Set environment to production
+WORKDIR /repo
+
+# Production log level (errors plus the 30 s http:summary line).
 ENV NODE_ENV=production
 
-# Copy necessary files from the builder stage
-COPY --from=builder /repo/node_modules /repo/node_modules
-COPY --from=builder /repo/packages/happy-wire /repo/packages/happy-wire
-COPY --from=builder /repo/packages/happy-server /repo/packages/happy-server
+# Prisma CLI and schema, for `prisma migrate deploy`
+COPY --from=deps /repo/node_modules /repo/node_modules
+COPY --from=deps /repo/packages/happy-server /repo/packages/happy-server
+COPY --from=deps /repo/package.json /repo/pnpm-workspace.yaml /repo/
+
+COPY --from=builder /repo/packages/happy-server-rs/target/release/happy-server-rs /usr/local/bin/happy-server-rs
 
 # Expose the port the app will run on
 EXPOSE 3000
 
-# Command to run the application
-COPY --from=builder /repo/package.json /repo/pnpm-workspace.yaml /repo/
 WORKDIR /repo/packages/happy-server
-CMD ["pnpm", "run", "start"]
+CMD ["happy-server-rs", "serve"]

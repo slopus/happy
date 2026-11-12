@@ -49,11 +49,18 @@ This document describes how to deploy the Happy backend (`packages/happy-server`
 - Debug logging: `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING` (enables file logging + dev log endpoint).
 
 ## Docker image
-A production Dockerfile is provided at `Dockerfile.server`.
+A production Dockerfile is provided at `Dockerfile.server`. It runs the Rust port
+of the server (`packages/happy-server-rs`), which is wire-compatible with
+`packages/happy-server` and uses the same Prisma schema.
 
 Key notes:
 - The server defaults to port `3005` (set `PORT` explicitly in container environments).
-- The image includes FFmpeg and Python for media processing.
+- The image keeps the Prisma CLI, so migrations still run with `prisma migrate deploy`
+  from `/repo/packages/happy-server`.
+- The Rust server is one process per database: no Redis adapter, and a Postgres
+  advisory lock keeps a second instance from starting. Run one replica, and deploy
+  by stopping the old pod before starting the new one (`strategy: Recreate`).
+- `HAPPY_WORKERS` sets the worker threads (default: the CPUs the container may use).
 
 ## Kubernetes manifests
 Example manifests live in `packages/happy-server/deploy`:
