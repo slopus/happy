@@ -435,6 +435,9 @@ final class CloudScreensTests: XCTestCase {
         XCTAssertFalse(screen.bootstrap.isHidden)
         screen.view.layoutIfNeeded()
         XCTAssertGreaterThan(screen.bootstrap.frame.minY, join.convert(join.bounds, to: screen.content).maxY)
+        XCTAssertEqual(screen.bootstrap.display, .filled, "a button, not a line of text")
+        XCTAssertEqual(screen.bootstrap.glass, .regular)
+        XCTAssertEqual(screen.bootstrap.frame.width, screen.content.bounds.width)
     }
 
     /// Back in the app after accepting an invite link in the browser: the
@@ -525,8 +528,11 @@ final class CloudScreensTests: XCTestCase {
         let loading = frames(screen)
         await settle { screen.phase != .loading }
         screen.view.layoutIfNeeded()
+        XCTAssertEqual(screen.titleLabel.string, "Invite unavailable")
+        XCTAssertEqual(screen.bodyLabel.alpha, 0, "no “you’ve been invited” over a refusal")
         XCTAssertEqual(screen.status.string, "This invite has expired. Ask for a new link.")
         XCTAssertEqual(screen.name.string, "")
+        XCTAssertIdentical(screen.picture.image, CloudInviteViewController.linkGlyph, "a link, not an empty disc")
         XCTAssertEqual(screen.primary.title, "Show My Servers")
         XCTAssertFalse(screen.primary.isHidden)
         XCTAssertEqual(frames(screen), loading, "nothing moved for the refusal")
@@ -560,7 +566,9 @@ final class CloudScreensTests: XCTestCase {
         XCTAssertEqual(screen.name.string, "acme", "no display name: its name")
         XCTAssertEqual(screen.inviter.string, "", "an inviter without a name isn't shown")
         XCTAssertEqual(screen.inviterPicture.alpha, 0)
-        XCTAssertEqual(screen.status.string, "This invite was sent to another email address (s…@…). Sign in with that one to join.")
+        XCTAssertEqual(screen.titleLabel.string, "Use your invited email")
+        XCTAssertEqual(screen.bodyLabel.alpha, 1)
+        XCTAssertEqual(screen.status.string, "This invite was sent to s…@… Sign in with that email to join.")
         XCTAssertEqual(screen.primary.title, "Use Another Account")
         screen.primary.tapped()
         await settle { navigation.topViewController is CloudWelcomeViewController && navigation.transitionCoordinator == nil }

@@ -882,7 +882,7 @@ final class CloudServersViewController: CloudStageViewController {
     private var order: [String] = []
     private let spinner = UIActivityIndicatorView(style: .medium)
     let status = StartGalleryView.bodyLabel("")
-    let bootstrap = RoundButton(title: Strings.CloudConnect.bootstrapNew, size: .normal, display: .inverted)
+    let bootstrap = RoundButton(title: Strings.CloudConnect.bootstrapNew, size: .normal)
     private var pictures: [String: UIImage] = [:]
     private var loadingPictures: Set<String> = []
     /// Servers being joined, and those joined from here (server id to
@@ -908,7 +908,8 @@ final class CloudServersViewController: CloudStageViewController {
         primary.isHidden = true
         primary.action = { [weak self] in await self?.primaryTapped() }
         bootstrap.accessibilityIdentifier = "cloud-create"
-        Self.quiet(bootstrap)
+        // A button of its own, not a line of text, under the list.
+        bootstrap.glass = .regular
         bootstrap.onTap = { [weak self] in
             guard let self, joining.isEmpty else { return }
             navigationController?.pushViewController(CloudCreateViewController(context: context, account: account, first: false), animated: true)
@@ -1056,11 +1057,10 @@ final class CloudServersViewController: CloudStageViewController {
 
     private func items(width: CGFloat) -> [CloudColumnLayout.Item] {
         let rowItems = order.map { _ in CloudColumnLayout.Item(height: CloudServerRowLayout.Metrics.height, gap: 12) }
-        let link = { (button: RoundButton) in button.layout(width: width).size }
         return rowItems + [
             .init(size: CGSize(width: 44, height: spinner.isAnimating ? 44 : 0), gap: 12, centred: true),
             .init(height: status.string.isEmpty ? 0 : status.measurable.height(fitting: width), gap: 16),
-            .init(size: link(bootstrap), gap: 16, centred: true),
+            .init(height: bootstrap.layout(width: width).size.height, gap: 16),
         ]
     }
 

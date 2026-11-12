@@ -59,6 +59,9 @@ extension Strings {
         /// An invite link opened in the app.
         static let inviteTitle = "Join a server"
         static let inviteBody = "You’ve been invited to a server on Happy Cloud."
+        /// An invite that can't be taken, and one for another email.
+        static let inviteUnavailable = "Invite unavailable"
+        static let inviteOtherEmail = "Use your invited email"
         static func inviteRole(_ role: String) -> String { "You’ll join as \(role)." }
         static func invitedBy(_ name: String) -> String { "\(name) invited you" }
         static let inviteJoin = "Join"
@@ -70,7 +73,7 @@ extension Strings {
         static let inviteExhausted = "This invite has been used up. Ask for a new link."
         static let inviteAccepted = "This invite has already been accepted. If it was you, the server is in your list."
         static func inviteEmailMismatch(_ hint: String?) -> String {
-            "This invite was sent to another email address\(hint.map { " (\($0))" } ?? ""). Sign in with that one to join."
+            "This invite was sent to \(hint ?? "another email address.") Sign in with that email to join."
         }
         /// Every refusal, for the room its line keeps whatever it says.
         static var inviteRefusals: [String] {
