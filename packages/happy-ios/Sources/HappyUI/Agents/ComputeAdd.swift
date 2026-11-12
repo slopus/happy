@@ -3,16 +3,16 @@ import HappyCore
 import HappyLayout
 import UIKit
 
-/// Adding a machine, in a sheet of its own: its mode, then its name and
+/// Adding a computer, in a sheet of its own: its mode, then its name and
 /// description, then the one-time command that installs it. The steps are
-/// `ComputeMachineAdd`'s; each page shows the step it is and sends the
+/// `ComputerAdd`'s; each page shows the step it is and sends the
 /// person's changes back to it.
 @MainActor
 final class ComputeAddFlow: NSObject, UIAdaptivePresentationControllerDelegate {
-    private(set) var state: ComputeMachineAdd
+    private(set) var state: ComputerAdd
     let access: ComputeAccess
     let navigation = UINavigationController()
-    /// The list, read again once a machine may be on its way.
+    /// The list, read again once a computer may be on its way.
     private let added: () -> Void
     private let client: AgentClient
     /// The sheet went, however it went.
@@ -21,7 +21,7 @@ final class ComputeAddFlow: NSObject, UIAdaptivePresentationControllerDelegate {
     private weak var form: ComputeFormViewController?
 
     init?(access: ComputeAccess, client: AgentClient, added: @escaping () -> Void) {
-        guard let state = ComputeMachineAdd.start(access) else { return nil }
+        guard let state = ComputerAdd.start(access) else { return nil }
         self.state = state
         self.access = access
         self.client = client
@@ -46,7 +46,7 @@ final class ComputeAddFlow: NSObject, UIAdaptivePresentationControllerDelegate {
     /// The modes page showing again: the person went back to it.
     func back() { state.back() }
 
-    func edit(_ change: (inout ComputeMachineDraft) -> Void) { state.edit(change) }
+    func edit(_ change: (inout ComputerDraft) -> Void) { state.edit(change) }
 
     func create() {
         guard creating == nil, let request = state.create() else { return }
@@ -54,7 +54,7 @@ final class ComputeAddFlow: NSObject, UIAdaptivePresentationControllerDelegate {
         let client = client
         creating = Task { @MainActor [weak self] in
             let result: Result<ComputeInstall, ComputeFailure>
-            do { result = .success(try await client.createComputeJoinToken(request)) }
+            do { result = .success(try await client.createComputerJoinToken(request)) }
             catch AgentClientError.invalidResponse { result = .failure(ComputeFailure(Strings.Compute.invalidInstall)) }
             catch { result = .failure(ComputeFailure(ComputeViewController.words(error))) }
             guard let self, !Task.isCancelled else { return }
@@ -93,14 +93,14 @@ final class ComputeAddFlow: NSObject, UIAdaptivePresentationControllerDelegate {
 }
 
 /// The first step: the four modes, each with the sentence that says what
-/// it means. A member may add only a private machine of their own, so the
+/// it means. A member may add only a private computer of their own, so the
 /// others are shown, greyed out.
 final class ComputeModesViewController: SettingsPageViewController {
     private let flow: ComputeAddFlow
 
     init(flow: ComputeAddFlow) {
         self.flow = flow
-        super.init(title: Strings.Compute.addMachine)
+        super.init(title: Strings.Compute.addComputer)
     }
 
     override func viewDidLoad() {
@@ -189,12 +189,12 @@ final class ComputeInstallViewController: SettingsPageViewController {
     }
 }
 
-/// A machine's name and description, in two of Settings' cards: when it is
+/// A computer's name and description, in two of Settings' cards: when it is
 /// added, as that flow's second step, or when someone who may edits it.
 final class ComputeFormViewController: UIViewController, UITextViewDelegate {
     enum Purpose {
         case add(ComputeAddFlow)
-        case edit(ComputeNode, AgentClient, saved: () -> Void)
+        case edit(Computer, AgentClient, saved: () -> Void)
     }
 
     let purpose: Purpose
@@ -213,13 +213,13 @@ final class ComputeFormViewController: UIViewController, UITextViewDelegate {
     init(add flow: ComputeAddFlow) {
         purpose = .add(flow)
         super.init(nibName: nil, bundle: nil)
-        title = Strings.Compute.addMachine
+        title = Strings.Compute.addComputer
     }
 
-    init(edit node: ComputeNode, client: AgentClient, saved: @escaping () -> Void) {
+    init(edit node: Computer, client: AgentClient, saved: @escaping () -> Void) {
         purpose = .edit(node, client, saved: saved)
         super.init(nibName: nil, bundle: nil)
-        title = Strings.Compute.editMachine
+        title = Strings.Compute.editComputer
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -368,7 +368,7 @@ final class ComputeFormViewController: UIViewController, UITextViewDelegate {
 
     func save() {
         guard case .edit(let node, let client, let saved) = purpose, !saving else { return }
-        guard let patch = ComputeNodePatch(node, name: nameField.text ?? "", description: descriptionView.text ?? "") else {
+        guard let patch = ComputerPatch(node, name: nameField.text ?? "", description: descriptionView.text ?? "") else {
             // Nothing changed, or the name was emptied, which Save isn't offered for.
             if !(nameField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { dismiss(animated: true) }
             return
@@ -378,7 +378,7 @@ final class ComputeFormViewController: UIViewController, UITextViewDelegate {
         render()
         Task { @MainActor [weak self] in
             do {
-                try await client.updateComputeNode(node.id, patch)
+                try await client.updateComputer(node.id, patch)
                 saved()
                 self?.dismiss(animated: true)
             } catch {

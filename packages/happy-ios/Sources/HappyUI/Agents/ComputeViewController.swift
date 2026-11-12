@@ -3,8 +3,8 @@ import HappyCore
 import UIKit
 
 /// Settings › Compute on Happy Cloud: the requests to join the reader's
-/// private machines, then every machine agents can join, with its mode,
-/// and adding one; or one machine's own page. Each page owns only its
+/// private computers, then every computer agents can join, with its mode,
+/// and adding one; or one computer's own page. Each page owns only its
 /// visible query, not an account-wide polling loop.
 final class ComputeViewController: SettingsPageViewController {
     private let session: Session
@@ -17,12 +17,12 @@ final class ComputeViewController: SettingsPageViewController {
     private(set) var events: Task<Void, Never>?
     /// Answers sent and not yet settled, approve or not, by request.
     private(set) var answering: [String: Bool] = [:]
-    /// Machines being freed from the agent holding them.
+    /// Computers being freed from the agent holding them.
     private(set) var releasing: Set<String> = []
-    /// Adding a machine, while its sheet is up.
+    /// Adding a computer, while its sheet is up.
     private(set) var adding: ComputeAddFlow?
 
-    init(session: Session, page: ComputeMonitor.Page = .machines) {
+    init(session: Session, page: ComputeMonitor.Page = .computers) {
         self.session = session
         monitor = ComputeMonitor(client: session.client, page: page)
         super.init(title: Strings.Compute.title)
@@ -37,7 +37,7 @@ final class ComputeViewController: SettingsPageViewController {
     }
 
     private var access: ComputeAccess { ComputeAccess(session.gate) }
-    /// Who reads, for which private machines are theirs.
+    /// Who reads, for which private computers are theirs.
     private var viewer: String? { session.home.userId ?? session.context?.account.agentConnections.userId(for: session.accountID) }
 
     override func viewDidLoad() {
@@ -114,39 +114,39 @@ final class ComputeViewController: SettingsPageViewController {
             return cards
         }
         switch snapshot {
-        case .machines(let list):
+        case .computers(let list):
             cards += requestCards(list)
-            var machines = list.nodes.map { machineRow($0, owners: list.owners) }
-            if machines.isEmpty {
-                var none = fact("compute-empty", Text.noMachines)
+            var computers = list.computers.map { computerRow($0, owners: list.owners) }
+            if computers.isEmpty {
+                var none = fact("compute-empty", Text.noComputers)
                 none.dimmed = true
-                machines = [none]
+                computers = [none]
             }
             if access != .none {
-                machines.append(SettingsRow(id: "compute-add", title: Text.addMachine, icon: ("add", .action), accessory: .none, action: { [weak self] in self?.add() }))
+                computers.append(SettingsRow(id: "compute-add", title: Text.addComputer, icon: ("add", .action), accessory: .none, action: { [weak self] in self?.add() }))
             }
-            machines[0].header = Text.machines
-            machines[machines.count - 1].footer = Text.machinesNote(access)
-            cards.append(machines)
-        case .machine(let node):
+            computers[0].header = Text.computers
+            computers[computers.count - 1].footer = Text.computersNote(access)
+            cards.append(computers)
+        case .computer(let node):
             title = node.displayName
-            cards += machinePage(node)
+            cards += computerPage(node)
         }
         return cards
     }
 
     // MARK: Join requests
 
-    /// A card for each request: who asks to join which machine, then
+    /// A card for each request: who asks to join which computer, then
     /// Approve and Deny, so neither is behind a menu.
-    private func requestCards(_ list: ComputeMachines) -> [[SettingsRow]] {
+    private func requestCards(_ list: Computers) -> [[SettingsRow]] {
         typealias Text = Strings.Compute
         let now = Date().timeIntervalSince1970 * 1000
         var cards = list.approvals.map { approval -> [SettingsRow] in
             let answer = answering[approval.id]
-            let machine = approval.nodeName ?? list.nodes.first { $0.id == approval.nodeId }?.displayName ?? Text.yourMachine
+            let computer = approval.computerName ?? list.computers.first { $0.id == approval.computerId }?.displayName ?? Text.yourComputer
             var request = SettingsRow(id: "compute-request-\(approval.id)", title: approval.agentTitle ?? Text.anAgent, icon: ("shield-checkmark-outline", .purple), accessory: .none)
-            request.subtitle = Text.wantsToJoin(machine, Strings.UserProfile.ago(DetailFormat.age(since: approval.createdAt, now: now)).lowercased())
+            request.subtitle = Text.wantsToJoin(computer, Strings.UserProfile.ago(DetailFormat.age(since: approval.createdAt, now: now)).lowercased())
             func choice(_ approve: Bool) -> SettingsRow {
                 var row = SettingsRow(id: "compute-\(approve ? "approve" : "deny")-\(approval.id)", title: approve ? Text.approve : Text.deny,
                                       icon: approve ? ("checkmark", .green) : ("close", .red), accessory: .none)
@@ -174,7 +174,7 @@ final class ComputeViewController: SettingsPageViewController {
         let client = session.client
         Task { @MainActor [weak self] in
             do {
-                try await client.answerComputeApproval(approval, approve: approve)
+                try await client.answerComputerApproval(approval, approve: approve)
                 self?.answering[approval.id] = nil
                 self?.monitor.refresh()
             } catch {
@@ -186,7 +186,7 @@ final class ComputeViewController: SettingsPageViewController {
         }
     }
 
-    // MARK: Machines
+    // MARK: Computers
 
     static func icon(_ kind: ComputeMode.Kind) -> (glyph: String, tile: SettingsRow.Tile) {
         switch kind {
@@ -200,7 +200,7 @@ final class ComputeViewController: SettingsPageViewController {
     /// Its mode, who holds or owns it, and where it runs, then what
     /// agents read about it: a few lines of that in the list, all of it on
     /// its own page.
-    private func machineRow(_ node: ComputeNode, owners: [String: String], whole: Bool = false) -> SettingsRow {
+    private func computerRow(_ node: Computer, owners: [String: String], whole: Bool = false) -> SettingsRow {
         typealias Text = Strings.Compute
         let who: String?
         switch node.mode {
@@ -217,14 +217,14 @@ final class ComputeViewController: SettingsPageViewController {
         row.subtitleLines = whole ? 0 : 4
         if releasing.contains(node.id) { row.valueView = Self.spinner() }
         guard !whole else { return row }
-        let actions = machineActions(node)
+        let actions = computerActions(node)
         if actions.isEmpty {
-            row.action = { [weak self] in self?.open(.machine(node.id)) }
+            row.action = { [weak self] in self?.open(.computer(node.id)) }
         } else {
             row.pullDown = { [weak self] in
                 guard let self else { return nil }
-                let details = UIAction(title: Text.details, image: Glyphs.image("server-outline", size: 17)) { [weak self] _ in self?.open(.machine(node.id)) }
-                return UIMenu(children: [details] + machineActions(node).map { item in
+                let details = UIAction(title: Text.details, image: Glyphs.image("server-outline", size: 17)) { [weak self] _ in self?.open(.computer(node.id)) }
+                return UIMenu(children: [details] + computerActions(node).map { item in
                     UIAction(title: item.title, image: Glyphs.image(item.glyph, size: 17), attributes: item.destructive ? .destructive : []) { _ in item.run() }
                 })
             }
@@ -233,9 +233,9 @@ final class ComputeViewController: SettingsPageViewController {
         return row
     }
 
-    /// Edit for a manager or a private machine's owner, Release for a
+    /// Edit for a manager or a private computer's owner, Release for a
     /// manager while an agent holds it.
-    private func machineActions(_ node: ComputeNode) -> [SettingsRow.MenuItem] {
+    private func computerActions(_ node: Computer) -> [SettingsRow.MenuItem] {
         typealias Text = Strings.Compute
         var items: [SettingsRow.MenuItem] = []
         if node.editable(by: access, userId: viewer) {
@@ -247,9 +247,9 @@ final class ComputeViewController: SettingsPageViewController {
         return items
     }
 
-    private func machinePage(_ node: ComputeNode) -> [[SettingsRow]] {
+    private func computerPage(_ node: Computer) -> [[SettingsRow]] {
         typealias Text = Strings.Compute
-        var cards = [[machineRow(node, owners: [:], whole: true)]]
+        var cards = [[computerRow(node, owners: [:], whole: true)]]
         let lastSeen = node.lastSeenAt.map { Date(timeIntervalSince1970: $0 / 1000).formatted(date: .abbreviated, time: .shortened) } ?? Text.unknown
         let system = [Text.platform(node.os), node.osVersion, node.arch].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
         cards.append([
@@ -304,7 +304,7 @@ final class ComputeViewController: SettingsPageViewController {
         navigationController?.pushViewController(ComputeViewController(session: session, page: page), animated: true)
     }
 
-    func confirmRelease(_ node: ComputeNode) {
+    func confirmRelease(_ node: Computer) {
         typealias Text = Strings.Compute
         guard case .exclusive(let holder?) = node.mode else { return }
         Task { @MainActor [weak self] in
@@ -314,13 +314,13 @@ final class ComputeViewController: SettingsPageViewController {
         }
     }
 
-    func release(_ node: ComputeNode) {
+    func release(_ node: Computer) {
         guard node.releasable(by: access), releasing.insert(node.id).inserted else { return }
         reload()
         let client = session.client
         Task { @MainActor [weak self] in
             do {
-                try await client.releaseComputeLock(node.id)
+                try await client.releaseComputerLock(node.id)
                 self?.releasing.remove(node.id)
                 self?.monitor.refresh()
             } catch {
@@ -332,7 +332,7 @@ final class ComputeViewController: SettingsPageViewController {
         }
     }
 
-    func edit(_ node: ComputeNode) {
+    func edit(_ node: Computer) {
         let form = ComputeFormViewController(edit: node, client: session.client) { [weak self] in self?.monitor.refresh() }
         present(UINavigationController(rootViewController: form), animated: true)
     }
@@ -369,7 +369,7 @@ final class ComputeViewController: SettingsPageViewController {
 }
 
 extension ComputeMode {
-    /// The agent holding an exclusive machine.
+    /// The agent holding an exclusive computer.
     var holder: ComputeHolder? {
         if case .exclusive(let holder) = self { return holder }
         return nil

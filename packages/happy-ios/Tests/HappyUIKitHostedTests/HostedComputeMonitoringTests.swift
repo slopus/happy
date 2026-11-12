@@ -6,7 +6,7 @@ import HappyWire
 import UIKit
 import XCTest
 
-/// A Happy Cloud server's compute routes over fixture machines: one in each
+/// A Happy Cloud server's compute routes over fixture computers: one in each
 /// mode, the reader's own private one, and a member's agent asking to join it.
 private actor ComputeServer: AgentTransport {
     private var granted: [String]
@@ -19,7 +19,7 @@ private actor ComputeServer: AgentTransport {
         "kirills-mbp": "My laptop. Repos under ~/src.",
     ]
     private var held = true
-    private var approvals = [#"{"nodeId":"kirills-mbp","nodeName":"kirills-mbp","agentId":"agent-9","agentTitle":"Refactor the sync engine","createdAt":\#(Date().timeIntervalSince1970 * 1000 - 120_000)}"#]
+    private var approvals = [#"{"computerId":"kirills-mbp","computerName":"kirills-mbp","agentId":"agent-9","agentTitle":"Refactor the sync engine","createdAt":\#(Date().timeIntervalSince1970 * 1000 - 120_000)}"#]
 
     init(granted: [String]) { self.granted = granted }
     func deny() { forbidden = true }
@@ -30,21 +30,21 @@ private actor ComputeServer: AgentTransport {
     private func node(_ id: String, name: String? = nil, status: String = "online", os: String, arch: String, mode: String, owner: String? = nil, holder: String? = nil) -> String {
         let quoted = { (value: String?) in value.map { "\"\($0)\"" } ?? "null" }
         let description = descriptions[id].map { "\"\($0)\"" } ?? "null"
-        var json = #"{"id":"\#(id)","pool":"default","name":\#(quoted(name)),"hostname":"\#(id)","status":"\#(status)","os":"\#(os)","arch":"\#(arch)","version":"0.1.0-\#(os).4","lastSeenAt":1762900000000,"since":1762800000000,"mode":"\#(mode)","description":\#(description),"owner":\#(quoted(owner)),"exclusiveAgent":\#(holder.map { #"{"id":"agent-7","title":"\#($0)"}"# } ?? "null")"#
+        var json = #"{"id":"\#(id)","name":\#(quoted(name)),"hostname":"\#(id)","status":"\#(status)","os":"\#(os)","arch":"\#(arch)","version":"0.1.0-\#(os).4","lastSeenAt":1762900000000,"since":1762800000000,"mode":"\#(mode)","description":\#(description),"owner":\#(quoted(owner)),"exclusiveAgent":\#(holder.map { #"{"id":"agent-7","title":"\#($0)"}"# } ?? "null")"#
         if manager { json += #","sandboxCapacity":{"used":1,"total":4},"host":{"cpuCores":16,"totalMemoryBytes":68719476736,"totalDiskBytes":null},"activeSandboxes":[]"# }
         return json + "}"
     }
 
-    private var nodes: [String] {
-        var nodes = [
+    private var computers: [String] {
+        var computers = [
             node("gpu-01", os: "linux", arch: "x86_64", mode: "sandbox"),
             node("team-box", os: "linux", arch: "aarch64", mode: "shared"),
             node("build-01", os: "macos", arch: "arm64", mode: "exclusive", holder: held ? "Fix flaky login test" : nil),
             node("kirills-mbp", os: "macos", arch: "arm64", mode: "private", owner: "me"),
         ]
-        // Another member's private machine shows only to a manager.
-        if manager { nodes.append(node("alex-pc", status: "offline", os: "windows", arch: "x86_64", mode: "private", owner: "user-alex")) }
-        return nodes
+        // Another member's private computer shows only to a manager.
+        if manager { computers.append(node("alex-pc", status: "offline", os: "windows", arch: "x86_64", mode: "private", owner: "user-alex")) }
+        return computers
     }
 
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
@@ -52,27 +52,29 @@ private actor ComputeServer: AgentTransport {
         requests.append((method, path, sent))
         if path == "/v0/permissions" { return ok(try JSONEncoder().encode(["granted": granted])) }
         if path.hasPrefix("/v0/users") { return ok(#"{"users":[{"id":"user-alex","name":"Alex"}]}"#) }
-        guard path.hasPrefix("/v0/compute/") else { return HTTP1Response(status: 404) }
+        // Only `/v0/computers`: the old node, pool and approval routes are 404 here.
+        guard path == "/v0/computers" || path.hasPrefix("/v0/computers/") else { return HTTP1Response(status: 404) }
         if forbidden {
             return HTTP1Response(status: 403, headers: ["content-type": "application/json"],
                 body: Data(#"{"code":"forbidden","error":"This needs the compute.use permission."}"#.utf8))
         }
-        let parts = path.split(separator: "/").map(String.init)
-        switch (method, parts.dropFirst(2).first, parts.count) {
-        case ("GET", "nodes", 3): return ok("{\"nodes\":[\(nodes.joined(separator: ","))]}")
-        case ("GET", "nodes", 4): return nodes.first { $0.contains(#""id":"\#(parts[3])""#) }.map { ok("{\"node\":\($0)}") } ?? HTTP1Response(status: 404)
-        case ("GET", "approvals", 3): return ok("{\"approvals\":[\(approvals.joined(separator: ","))]}")
-        case ("POST", "approvals", 5):
-            approvals.removeAll { $0.contains(#""agentId":"\#(parts[4])""#) }
-            return ok(#"{"approval":{}}"#)
-        case ("POST", "join-tokens", 3):
+        let parts = path.split(separator: "/").map(String.init).dropFirst(2)
+        func computer(_ id: String) -> String? { computers.first { $0.contains(#""id":"\#(id)""#) } }
+        switch (method, Array(parts)) {
+        case ("GET", []): return ok("{\"computers\":[\(computers.joined(separator: ","))]}")
+        case ("GET", ["approvals"]): return ok("{\"approvals\":[\(approvals.joined(separator: ","))]}")
+        case ("GET", let id) where id.count == 1: return computer(id[0]).map { ok("{\"computer\":\($0)}") } ?? HTTP1Response(status: 404)
+        case ("POST", let answer) where answer.count == 3 && answer[0] == "approvals":
+            approvals.removeAll { $0.contains(#""agentId":"\#(answer[2])""#) }
+            return ok(#"{"approval":{"computerId":"\#(answer[1])","agentId":"\#(answer[2])","requestedBy":"me","state":"approved","createdAt":1,"decidedAt":2}}"#)
+        case ("POST", ["join-tokens"]):
             let mode = sent?["mode"]?.stringValue ?? ""
             let sudo = mode == "private" ? "" : "sudo "
             return ok(#"{"mode":"\#(mode)","token":"hjt_7Kq2xV","expiresAt":\#(Date().timeIntervalSince1970 * 1000 + 3_600_000),"clusterUrl":"https://acme.happy-clusters.com","commands":{"unix":"curl -fsSL https://get.happy-clusters.com/install.sh | \#(sudo)HAPPY_CLUSTER_URL='https://acme.happy-clusters.com' HAPPY_JOIN_TOKEN='hjt_7Kq2xV' HAPPY_COMPUTE_MODE='\#(mode)' sh","windows":"$env:HAPPY_CLUSTER_URL='https://acme.happy-clusters.com'; $env:HAPPY_JOIN_TOKEN='hjt_7Kq2xV'; $env:HAPPY_COMPUTE_MODE='\#(mode)'; irm https://get.happy-clusters.com/install.ps1 | iex"}}"#)
-        case ("PATCH", "nodes", 4):
-            if let description = sent?["description"] { descriptions[parts[3]] = description.stringValue }
-            return ok(#"{"node":{}}"#)
-        case ("POST", "nodes", 5) where parts[4] == "release-lock":
+        case ("PATCH", let id) where id.count == 1:
+            if let description = sent?["description"] { descriptions[id[0]] = description.stringValue }
+            return computer(id[0]).map { ok("{\"computer\":\($0)}") } ?? HTTP1Response(status: 404)
+        case ("POST", let id) where id.count == 2 && id[1] == "release-lock":
             held = false
             return ok(#"{"previousHolder":"agent-7"}"#)
         default: return HTTP1Response(status: 404)
@@ -176,7 +178,7 @@ final class HostedComputeMonitoringTests: XCTestCase {
         XCTAssertTrue(navigation.topViewController === settings)
     }
 
-    /// One flat list, online first: each machine's mode, who holds or owns
+    /// One flat list, online first: each computer's mode, who holds or owns
     /// it, where it runs and what agents read about it.
     func testTheListShowsEveryModeWithItsHolderOwnerAndDescription() async throws {
         let (_, session, server) = try await rig()
@@ -184,8 +186,8 @@ final class HostedComputeMonitoringTests: XCTestCase {
         let navigation = try await host(page)
         try await until { page.shownRow("compute-node-alex-pc")?.subtitle?.contains("Alex’s") == true }
         try await settled(navigation)
-        let machines = try XCTUnwrap(page.shownRowIDs.last)
-        XCTAssertEqual(machines, ["compute-node-build-01", "compute-node-gpu-01", "compute-node-kirills-mbp", "compute-node-team-box", "compute-node-alex-pc", "compute-add"])
+        let computers = try XCTUnwrap(page.shownRowIDs.last)
+        XCTAssertEqual(computers, ["compute-node-build-01", "compute-node-gpu-01", "compute-node-kirills-mbp", "compute-node-team-box", "compute-node-alex-pc", "compute-add"])
         XCTAssertEqual(page.shownRow("compute-node-gpu-01")?.subtitle, "Sandbox · Linux x86_64\nGPU box, CUDA 12.4, use for training. Repo checkouts under /data.")
         XCTAssertEqual(page.shownRow("compute-node-team-box")?.subtitle, "Shared · Linux aarch64\nShared build box with Docker and Node 22.")
         XCTAssertEqual(page.shownRow("compute-node-build-01")?.subtitle, "Exclusive · Held by Fix flaky login test · macOS arm64\nMac mini for iOS builds; Xcode 26 is installed.")
@@ -194,18 +196,18 @@ final class HostedComputeMonitoringTests: XCTestCase {
         XCTAssertEqual(page.shownRow("compute-node-build-01")?.value, "In use")
         XCTAssertEqual(page.shownRow("compute-node-gpu-01")?.value, "Online")
         XCTAssertEqual(page.shownRow("compute-node-alex-pc")?.value, "Offline")
-        // A manager may edit any machine and free the held one.
+        // A manager may edit any computer and free the held one.
         XCTAssertEqual(page.shownRow("compute-node-build-01")?.menu.map(\.title), ["Edit", "Release"])
         XCTAssertEqual(page.shownRow("compute-node-gpu-01")?.menu.map(\.title), ["Edit"])
-        XCTAssertEqual(page.shownHeaders, ["JOIN REQUESTS", "MACHINES"])
+        XCTAssertEqual(page.shownHeaders, ["JOIN REQUESTS", "COMPUTERS"])
         let paths = await server.requests.map(\.path)
-        XCTAssertFalse(paths.contains { $0.contains("/pools") })
+        XCTAssertEqual(Set(paths.filter { $0.hasPrefix("/v0/comput") }), ["/v0/computers", "/v0/computers/approvals"], "nothing under /v0/compute/")
         try screenshot(page, name: "compute-list-manager")
     }
 
-    /// A member sees the team's machines without their monitoring facts,
+    /// A member sees the team's computers without their monitoring facts,
     /// edits only their own, and frees nothing.
-    func testAMemberEditsOnlyTheirOwnMachine() async throws {
+    func testAMemberEditsOnlyTheirOwnComputer() async throws {
         let (_, session, _) = try await rig(granted: Self.member)
         let page = ComputeViewController(session: session)
         let navigation = try await host(page)
@@ -214,7 +216,7 @@ final class HostedComputeMonitoringTests: XCTestCase {
         XCTAssertNil(page.shownRow("compute-node-alex-pc"))
         XCTAssertEqual(page.shownRow("compute-node-kirills-mbp")?.menu.map(\.title), ["Edit"])
         XCTAssertEqual(page.shownRow("compute-node-build-01")?.menu.map(\.title), [])
-        XCTAssertEqual(page.shownFooters.last, "Agents choose a machine and join it. You can add a private machine of your own.")
+        XCTAssertEqual(page.shownFooters.last, "Agents choose a computer and join it. You can add a private computer of your own.")
         try screenshot(page, name: "compute-list-member")
     }
 
@@ -231,14 +233,14 @@ final class HostedComputeMonitoringTests: XCTestCase {
         page.tapRow("compute-approve-kirills-mbp/agent-9")
         XCTAssertNil(page.shownRow("compute-deny-kirills-mbp/agent-9")?.action, "one answer at a time")
         try await until { page.shownRow("compute-request-kirills-mbp/agent-9") == nil }
-        let answer = await server.requests.first { $0.method == "POST" && $0.path.hasPrefix("/v0/compute/approvals/") }
-        XCTAssertEqual(answer?.path, "/v0/compute/approvals/kirills-mbp/agent-9")
+        let answer = await server.requests.first { $0.method == "POST" && $0.path.hasPrefix("/v0/computers/approvals/") }
+        XCTAssertEqual(answer?.path, "/v0/computers/approvals/kirills-mbp/agent-9")
         XCTAssertEqual(answer?.body, .object(["approve": .bool(true)]))
     }
 
-    /// A member adds only a private machine: the other modes are there,
+    /// A member adds only a private computer: the other modes are there,
     /// greyed out; the install has a command for every system and no sudo.
-    func testAMembersAddFlowMakesAPrivateMachine() async throws {
+    func testAMembersAddFlowMakesAPrivateComputer() async throws {
         let (_, session, server) = try await rig(granted: Self.member)
         let page = ComputeViewController(session: session)
         let navigation = try await host(page)
@@ -253,7 +255,7 @@ final class HostedComputeMonitoringTests: XCTestCase {
         XCTAssertNotNil(modes.shownRow("compute-mode-private")?.valueView, "private is chosen")
         try screenshot(modes, name: "compute-add-member-modes")
         modes.tapRow("compute-mode-sandbox")
-        XCTAssertEqual(flow.state, .choosing(ComputeMachineDraft(mode: .private)))
+        XCTAssertEqual(flow.state, .choosing(ComputerDraft(mode: .private)))
 
         flow.next()
         try await settled(flow.navigation)
@@ -272,12 +274,12 @@ final class HostedComputeMonitoringTests: XCTestCase {
         XCTAssertEqual(install.shownRowIDs, [["compute-command-unix", "compute-copy-unix"], ["compute-command-windows", "compute-copy-windows"]])
         XCTAssertEqual(install.shownHeaders, ["MACOS AND LINUX", "WINDOWS (POWERSHELL)"])
         XCTAssertFalse(install.shownRow("compute-command-unix")?.title.contains("sudo") ?? true)
-        XCTAssertTrue(install.shownFooters.last?.hasPrefix("Run this on your own machine, signed in as yourself. It needs no sudo") == true)
+        XCTAssertTrue(install.shownFooters.last?.hasPrefix("Run this on your own computer, signed in as yourself. It needs no sudo") == true)
         XCTAssertTrue(install.shownFooters.last?.hasSuffix("The command works once. It expires in 1 hour.") == true)
         install.tapRow("compute-copy-unix")
         XCTAssertEqual(UIPasteboard.general.string, install.install.commands?.unix)
         XCTAssertEqual(install.shownRow("compute-copy-unix")?.value, "Copied")
-        let minted = await server.requests.first { $0.path == "/v0/compute/join-tokens" }
+        let minted = await server.requests.first { $0.path == "/v0/computers/join-tokens" }
         XCTAssertEqual(minted?.body, .object(["mode": .string("private"), "name": .string("kirills-mini"),
                                              "description": .string("Mac mini on my desk. Simulators and the iPhone 12 are attached.")]))
         try screenshot(install, name: "compute-install-private")
@@ -292,11 +294,13 @@ final class HostedComputeMonitoringTests: XCTestCase {
         try await until { page.shownRow("compute-add") != nil }
         page.tapRow("compute-add")
         let flow = try XCTUnwrap(page.adding)
-        XCTAssertEqual(flow.state, .choosing(ComputeMachineDraft(mode: .sandbox)))
+        XCTAssertEqual(flow.state, .choosing(ComputerDraft(mode: .sandbox)))
         flow.next()
         flow.create()
         try await until { flow.navigation.topViewController is ComputeInstallViewController }
+        try await settled(flow.navigation)
         let install = try XCTUnwrap(flow.navigation.topViewController as? ComputeInstallViewController)
+        install.view.layoutIfNeeded()
         XCTAssertEqual(install.shownHeaders, ["LINUX"])
         XCTAssertTrue(install.shownRow("compute-command-unix")?.title.contains("| sudo HAPPY_CLUSTER_URL") == true)
         flow.close()
@@ -304,7 +308,7 @@ final class HostedComputeMonitoringTests: XCTestCase {
 
     func testEditingSendsOnlyTheChangedDescription() async throws {
         let (_, session, server) = try await rig(granted: Self.member)
-        let page = ComputeViewController(session: session, page: .machine("kirills-mbp"))
+        let page = ComputeViewController(session: session, page: .computer("kirills-mbp"))
         let navigation = try await host(page)
         try await until { page.shownRow("compute-edit") != nil }
         XCTAssertNil(page.shownRow("compute-release"))
@@ -323,23 +327,23 @@ final class HostedComputeMonitoringTests: XCTestCase {
         form.save()
         try await until { navigation.presentedViewController == nil }
         let patch = await server.requests.first { $0.method == "PATCH" }
-        XCTAssertEqual(patch?.path, "/v0/compute/nodes/kirills-mbp")
+        XCTAssertEqual(patch?.path, "/v0/computers/kirills-mbp")
         XCTAssertEqual(patch?.body, .object(["description": .string("My laptop. Repos under ~/src, Xcode 26 and Android Studio.")]))
         try await until { page.shownRow("compute-node-kirills-mbp")?.subtitle?.hasSuffix("Android Studio.") == true }
     }
 
-    func testAManagerReleasesAHeldMachine() async throws {
+    func testAManagerReleasesAHeldComputer() async throws {
         let (_, session, server) = try await rig()
-        let page = ComputeViewController(session: session, page: .machine("build-01"))
+        let page = ComputeViewController(session: session, page: .computer("build-01"))
         _ = try await host(page)
         try await until { page.shownRow("compute-release") != nil }
         XCTAssertEqual(page.shownRow("compute-host-cpu")?.value, "16")
-        guard case .machine(let node)? = page.monitor.snapshot else { return XCTFail("no machine") }
+        guard case .computer(let node)? = page.monitor.snapshot else { return XCTFail("no computer") }
         page.release(node)
         try await until { page.shownRow("compute-release") == nil }
         XCTAssertEqual(page.shownRow("compute-node-build-01")?.value, "Online")
         let release = await server.requests.first { $0.path.hasSuffix("/release-lock") }
-        XCTAssertEqual(release?.path, "/v0/compute/nodes/build-01/release-lock")
+        XCTAssertEqual(release?.path, "/v0/computers/build-01/release-lock")
     }
 
     func testForbiddenResponseRemovesProtectedRows() async throws {

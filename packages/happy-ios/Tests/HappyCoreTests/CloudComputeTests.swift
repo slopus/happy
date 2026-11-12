@@ -30,16 +30,16 @@ private actor ComputeTransport: AgentTransport {
 @MainActor
 final class CloudComputeTests: XCTestCase {
     /// What a member reads of a node (`MEMBER_FIELDS`): no host, capacity or placements.
-    private static let member = #"{"id":"node-1","pool":"default","name":null,"hostname":"worker","status":"online","os":"linux","arch":"x86_64","version":"linux.9","lastSeenAt":1730000000000,"since":1729990000000,"mode":"sandbox","description":"GPU box, CUDA 12.4","owner":null,"exclusiveAgent":null}"#
+    private static let member = #"{"id":"node-1","name":null,"hostname":"worker","status":"online","os":"linux","arch":"x86_64","version":"linux.9","lastSeenAt":1730000000000,"since":1729990000000,"mode":"sandbox","description":"GPU box, CUDA 12.4","owner":null,"exclusiveAgent":null}"#
     /// What a manager reads of the same node.
-    private static let managed = #"{"id":"node-1","pool":"default","name":null,"hostname":"worker","status":"online","version":"linux.9","lastSeenAt":1730000000000,"mode":"sandbox","description":null,"owner":null,"exclusiveAgent":null,"sandboxCapacity":{"used":3,"total":null},"host":null,"activeSandboxes":[{"sandboxId":"s1","agentId":"a1","agentTitle":null}]}"#
+    private static let managed = #"{"id":"node-1","name":null,"hostname":"worker","status":"online","version":"linux.9","lastSeenAt":1730000000000,"mode":"sandbox","description":null,"owner":null,"exclusiveAgent":null,"sandboxCapacity":{"used":3,"total":null},"host":null,"activeSandboxes":[{"sandboxId":"s1","agentId":"a1","agentTitle":null}]}"#
     private static let held = #"{"id":"node-2","name":"build-01","hostname":"build-01.acme","status":"online","mode":"exclusive","description":null,"owner":null,"exclusiveAgent":{"id":"agent-7","title":"Fix login test"}}"#
     private static let mine = #"{"id":"node-3","name":null,"hostname":"kirills-mbp","status":"offline","os":"macos","mode":"private","description":null,"owner":"user-me","exclusiveAgent":null}"#
-    private static let approval = #"{"nodeId":"node-3","nodeName":"kirills-mbp","agentId":"agent-9","agentTitle":null,"createdAt":1730000000000}"#
-    private var nodes: HTTP1Response { response("{\"nodes\":[\(Self.member)]}") }
+    private static let approval = #"{"computerId":"node-3","computerName":"kirills-mbp","agentId":"agent-9","agentTitle":null,"createdAt":1730000000000}"#
+    private var computers: HTTP1Response { response("{\"computers\":[\(Self.member)]}") }
     private var approvals: HTTP1Response { response(#"{"approvals":[]}"#) }
     private func response(_ json: String, status: Int = 200) -> HTTP1Response { HTTP1Response(status: status, body: Data(json.utf8)) }
-    private func node(_ json: String) throws -> ComputeNode { try JSONDecoder().decode(ComputeNode.self, from: Data(json.utf8)) }
+    private func node(_ json: String) throws -> Computer { try JSONDecoder().decode(Computer.self, from: Data(json.utf8)) }
 
     func testAMembersNodeDecodesItsModeAndDescriptionWithoutMonitoringFacts() throws {
         let node = try node(Self.member)
@@ -104,7 +104,7 @@ final class CloudComputeTests: XCTestCase {
     func testApprovalAndInstallDecode() throws {
         let approval = try JSONDecoder().decode(ComputeApproval.self, from: Data(Self.approval.utf8))
         XCTAssertEqual(approval.id, "node-3/agent-9")
-        XCTAssertEqual(approval.nodeName, "kirills-mbp")
+        XCTAssertEqual(approval.computerName, "kirills-mbp")
         XCTAssertNil(approval.agentTitle)
         XCTAssertEqual(approval.createdAt, 1730000000000)
         let json = #"{"mode":"private","token":"jt","expiresAt":1730003600000,"clusterUrl":"https://acme.happy-clusters.com","commands":{"unix":"curl -fsSL https://get/install.sh | HAPPY_COMPUTE_MODE='private' sh","windows":"irm https://get/install.ps1 | iex"}}"#
@@ -121,7 +121,7 @@ final class CloudComputeTests: XCTestCase {
         XCTAssertEqual(none.shown, [])
     }
 
-    /// Windows runs only private machines, macOS no sandbox or shared one.
+    /// Windows runs only private computers, macOS no sandbox or shared one.
     func testEachModeShowsOnlyTheCommandsItsSystemsRun() throws {
         func shown(_ mode: String) throws -> [[ComputePlatform]] {
             let json = #"{"mode":"\#(mode)","token":"t","expiresAt":1,"clusterUrl":"c","commands":{"unix":"u","windows":"w"}}"#
@@ -133,31 +133,31 @@ final class CloudComputeTests: XCTestCase {
         XCTAssertEqual(try shown("private"), [[.macOS, .linux], [.windows]])
     }
 
-    func testAddingAMachineStepsThroughModeDescriptionAndInstall() throws {
-        XCTAssertNil(ComputeMachineAdd.start(.none))
-        var member = try XCTUnwrap(ComputeMachineAdd.start(.use))
-        XCTAssertEqual(member, .choosing(ComputeMachineDraft(mode: .private)))
+    func testAddingAComputerStepsThroughModeDescriptionAndInstall() throws {
+        XCTAssertNil(ComputerAdd.start(.none))
+        var member = try XCTUnwrap(ComputerAdd.start(.use))
+        XCTAssertEqual(member, .choosing(ComputerDraft(mode: .private)))
         member.choose(.sandbox, access: .use)
-        XCTAssertEqual(member, .choosing(ComputeMachineDraft(mode: .private)), "a member can't pick a team mode")
+        XCTAssertEqual(member, .choosing(ComputerDraft(mode: .private)), "a member can't pick a team mode")
 
-        var add = try XCTUnwrap(ComputeMachineAdd.start(.manage))
-        XCTAssertEqual(add, .choosing(ComputeMachineDraft(mode: .sandbox)))
+        var add = try XCTUnwrap(ComputerAdd.start(.manage))
+        XCTAssertEqual(add, .choosing(ComputerDraft(mode: .sandbox)))
         add.edit { $0.name = "ignored" }
         XCTAssertEqual(add.draft?.name, "", "no field before the describing step")
         add.choose(.exclusive, access: .manage)
         add.next()
         add.edit { $0.name = "  build-01 "; $0.description = "\n" }
-        XCTAssertEqual(add, .describing(ComputeMachineDraft(mode: .exclusive, name: "  build-01 ", description: "\n")))
+        XCTAssertEqual(add, .describing(ComputerDraft(mode: .exclusive, name: "  build-01 ", description: "\n")))
         let request = try XCTUnwrap(add.create())
-        XCTAssertEqual(request, ComputeJoinTokenRequest(ComputeMachineDraft(mode: .exclusive, name: "build-01")))
+        XCTAssertEqual(request, ComputeJoinTokenRequest(ComputerDraft(mode: .exclusive, name: "build-01")))
         XCTAssertEqual(request.json, .object(["mode": .string("exclusive"), "name": .string("build-01")]))
         XCTAssertNil(add.create(), "one request at a time")
         add.finish(.failure(ComputeFailure("This needs the pools.manage permission.")))
-        XCTAssertEqual(add, .failed(ComputeMachineDraft(mode: .exclusive, name: "  build-01 ", description: "\n"), message: "This needs the pools.manage permission."))
+        XCTAssertEqual(add, .failed(ComputerDraft(mode: .exclusive, name: "  build-01 ", description: "\n"), message: "This needs the pools.manage permission."))
         add.edit { $0.description = "CUDA" }
-        XCTAssertEqual(add, .describing(ComputeMachineDraft(mode: .exclusive, name: "  build-01 ", description: "CUDA")), "an edit takes the refusal back")
+        XCTAssertEqual(add, .describing(ComputerDraft(mode: .exclusive, name: "  build-01 ", description: "CUDA")), "an edit takes the refusal back")
         add.back()
-        XCTAssertEqual(add, .choosing(ComputeMachineDraft(mode: .exclusive, name: "  build-01 ", description: "CUDA")))
+        XCTAssertEqual(add, .choosing(ComputerDraft(mode: .exclusive, name: "  build-01 ", description: "CUDA")))
         add.next()
         _ = add.create()
         let install = try JSONDecoder().decode(ComputeInstall.self, from: Data(#"{"mode":"exclusive","token":"t","expiresAt":1,"clusterUrl":"c","commands":null}"#.utf8))
@@ -170,72 +170,72 @@ final class CloudComputeTests: XCTestCase {
 
     func testAPatchSendsOnlyWhatChanged() throws {
         let node = try node(Self.member)
-        XCTAssertNil(ComputeNodePatch(node, name: "worker", description: "GPU box, CUDA 12.4"))
-        XCTAssertNil(ComputeNodePatch(node, name: "  ", description: "anything"), "a machine always has a name")
-        XCTAssertEqual(ComputeNodePatch(node, name: "gpu-1 ", description: "GPU box, CUDA 12.4")?.json, .object(["name": .string("gpu-1")]))
-        XCTAssertEqual(ComputeNodePatch(node, name: "worker", description: " ")?.json, .object(["description": .null]))
-        XCTAssertEqual(ComputeNodePatch(node, name: "worker", description: "CUDA 13")?.json, .object(["description": .string("CUDA 13")]))
+        XCTAssertNil(ComputerPatch(node, name: "worker", description: "GPU box, CUDA 12.4"))
+        XCTAssertNil(ComputerPatch(node, name: "  ", description: "anything"), "a computer always has a name")
+        XCTAssertEqual(ComputerPatch(node, name: "gpu-1 ", description: "GPU box, CUDA 12.4")?.json, .object(["name": .string("gpu-1")]))
+        XCTAssertEqual(ComputerPatch(node, name: "worker", description: " ")?.json, .object(["description": .null]))
+        XCTAssertEqual(ComputerPatch(node, name: "worker", description: "CUDA 13")?.json, .object(["description": .string("CUDA 13")]))
     }
 
     func testEndpointsAndEscapedIdentifiers() async throws {
         let revoked = Self.member.replacingOccurrences(of: #""id":"node-1""#, with: #""id":"gone""#).replacingOccurrences(of: #""status":"online""#, with: #""status":"revoked""#)
         let transport = ComputeTransport([
-            response("{\"nodes\":[\(Self.member),\(revoked),{\"id\":\"broken\"}]}"),
-            response("{\"node\":\(Self.held)}"),
+            response("{\"computers\":[\(Self.member),\(revoked),{\"id\":\"broken\"}]}"),
+            response("{\"computer\":\(Self.held)}"),
             response("{\"approvals\":[\(Self.approval)]}"),
             response(#"{"mode":"private","token":"t","expiresAt":1,"clusterUrl":"c","commands":null}"#, status: 201),
-            response(#"{"node":{}}"#),
+            response("{\"computer\":\(Self.member)}"),
             response(#"{"previousHolder":"agent-7"}"#),
             response(#"{"approval":{}}"#),
         ])
         let client = AgentClient(transport: transport, token: "test")
-        let listed = try await client.computeNodes()
-        XCTAssertEqual(listed.map(\.id), ["node-1"], "revoked and unreadable machines are left out")
-        let node = try await client.computeNode("n/?")
+        let listed = try await client.computers()
+        XCTAssertEqual(listed.map(\.id), ["node-1"], "revoked and unreadable computers are left out")
+        let node = try await client.computer("n/?")
         XCTAssertEqual(node.id, "node-2")
-        let approvals = try await client.computeApprovals()
+        let approvals = try await client.computerApprovals()
         XCTAssertEqual(approvals.map(\.id), ["node-3/agent-9"])
-        _ = try await client.createComputeJoinToken(ComputeJoinTokenRequest(ComputeMachineDraft(mode: .private, description: "laptop")))
-        try await client.updateComputeNode("node-1", try XCTUnwrap(ComputeNodePatch(listed[0], name: "worker", description: "")))
-        let holder = try await client.releaseComputeLock("node-2")
+        _ = try await client.createComputerJoinToken(ComputeJoinTokenRequest(ComputerDraft(mode: .private, description: "laptop")))
+        try await client.updateComputer("node-1", try XCTUnwrap(ComputerPatch(listed[0], name: "worker", description: "")))
+        let holder = try await client.releaseComputerLock("node-2")
         XCTAssertEqual(holder, "agent-7")
-        try await client.answerComputeApproval(approvals[0], approve: false)
+        try await client.answerComputerApproval(approvals[0], approve: false)
         let requests = await transport.requests
         XCTAssertEqual(requests.map(\.0), ["GET", "GET", "GET", "POST", "PATCH", "POST", "POST"])
         XCTAssertEqual(requests.map(\.1), [
-            "/v0/compute/nodes", "/v0/compute/nodes/n%2F%3F", "/v0/compute/approvals", "/v0/compute/join-tokens",
-            "/v0/compute/nodes/node-1", "/v0/compute/nodes/node-2/release-lock", "/v0/compute/approvals/node-3/agent-9",
+            "/v0/computers", "/v0/computers/n%2F%3F", "/v0/computers/approvals", "/v0/computers/join-tokens",
+            "/v0/computers/node-1", "/v0/computers/node-2/release-lock", "/v0/computers/approvals/node-3/agent-9",
         ])
         let bodies = await transport.bodies
         XCTAssertEqual(try JSONValue.decode(Data(bodies[3].utf8)), .object(["mode": .string("private"), "description": .string("laptop")]))
         XCTAssertEqual(try JSONValue.decode(Data(bodies[4].utf8)), .object(["description": .null]))
         XCTAssertEqual(try JSONValue.decode(Data(bodies[6].utf8)), .object(["approve": .bool(false)]))
-        XCTAssertFalse(requests.contains { $0.1.contains("/pools") }, "no pool route is called")
+        XCTAssertFalse(requests.contains { $0.1.hasPrefix("/v0/compute/") }, "neither a pool nor an old node route is called")
     }
 
-    func testTheListReadsMachinesAndRequestsOnlineFirstAndNamesOwners() async throws {
+    func testTheListReadsComputersAndRequestsOnlineFirstAndNamesOwners() async throws {
         let other = Self.mine.replacingOccurrences(of: #""owner":"user-me""#, with: #""owner":"user-alex""#).replacingOccurrences(of: #""node-3""#, with: #""node-4""#)
         let transport = ComputeTransport([
-            response("{\"nodes\":[\(Self.mine),\(other),\(Self.held),\(Self.member)]}"),
+            response("{\"computers\":[\(Self.mine),\(other),\(Self.held),\(Self.member)]}"),
             response("{\"approvals\":[\(Self.approval)]}"),
             response(#"{"users":[{"id":"user-alex","name":"Alex"}]}"#),
         ])
-        let monitor = ComputeMonitor(client: AgentClient(transport: transport, token: "test"), page: .machines)
+        let monitor = ComputeMonitor(client: AgentClient(transport: transport, token: "test"), page: .computers)
         monitor.appear(allowed: true)
         await monitor.reading?.value
-        guard case .machines(let list)? = monitor.snapshot else { return XCTFail("no list") }
-        XCTAssertEqual(list.nodes.map(\.displayName), ["build-01", "worker", "kirills-mbp", "kirills-mbp"])
+        guard case .computers(let list)? = monitor.snapshot else { return XCTFail("no list") }
+        XCTAssertEqual(list.computers.map(\.displayName), ["build-01", "worker", "kirills-mbp", "kirills-mbp"])
         XCTAssertEqual(list.approvals.map(\.id), ["node-3/agent-9"])
         XCTAssertEqual(list.owners, ["user-alex": "Alex"])
         let paths = await transport.requests.map(\.1)
-        XCTAssertEqual(Set(paths), ["/v0/compute/nodes", "/v0/compute/approvals", "/v0/users?ids=user-alex,user-me"])
-        XCTAssertEqual(ComputeMonitor.refreshEvents, ["runners.updated", "compute.approvals.updated"])
+        XCTAssertEqual(Set(paths), ["/v0/computers", "/v0/computers/approvals", "/v0/users?ids=user-alex,user-me"])
+        XCTAssertEqual(ComputeMonitor.refreshEvents, ["runners.updated", "compute.nodes.updated", "compute.approvals.updated"])
         monitor.disappear()
     }
 
     func testPermissionLossClearsSnapshotAndStopsRequests() async {
-        let transport = ComputeTransport([nodes, approvals])
-        let monitor = ComputeMonitor(client: AgentClient(transport: transport, token: "test"), page: .machines)
+        let transport = ComputeTransport([computers, approvals])
+        let monitor = ComputeMonitor(client: AgentClient(transport: transport, token: "test"), page: .computers)
         monitor.appear(allowed: true)
         await monitor.reading?.value
         XCTAssertNotNil(monitor.snapshot)
@@ -249,9 +249,9 @@ final class CloudComputeTests: XCTestCase {
     }
 
     func testTransientFailureRetainsStaleFactsBut403ClearsAndLatches() async {
-        let one = response("{\"node\":\(Self.member)}")
+        let one = response("{\"computer\":\(Self.member)}")
         let transport = ComputeTransport([one, HTTP1Response(status: 500), HTTP1Response(status: 403)])
-        let monitor = ComputeMonitor(client: AgentClient(transport: transport, token: "test"), page: .machine("node-1"))
+        let monitor = ComputeMonitor(client: AgentClient(transport: transport, token: "test"), page: .computer("node-1"))
         monitor.appear(allowed: true)
         await monitor.reading?.value
         monitor.refresh()
@@ -271,23 +271,23 @@ final class CloudComputeTests: XCTestCase {
     func testLateResponseCannotRepopulateHiddenPage() async throws {
         let transport = ComputeTransport()
         await transport.suspendNext()
-        let monitor = ComputeMonitor(client: AgentClient(transport: transport, token: "test"), page: .machine("node-1"))
+        let monitor = ComputeMonitor(client: AgentClient(transport: transport, token: "test"), page: .computer("node-1"))
         monitor.appear(allowed: true)
         let reading = try XCTUnwrap(monitor.reading)
         let deadline = ContinuousClock.now + .seconds(3)
         while await transport.held == nil, ContinuousClock.now < deadline { await Task.yield() }
         monitor.disappear(clear: true)
         XCTAssertTrue(reading.isCancelled)
-        await transport.release(response("{\"node\":\(Self.member)}"))
+        await transport.release(response("{\"computer\":\(Self.member)}"))
         await reading.value
         XCTAssertNil(monitor.snapshot)
         XCTAssertNil(monitor.reading)
     }
 
     func testCancelledAppearanceCannotClearTheNewRead() async throws {
-        let transport = ComputeTransport([response("{\"node\":\(Self.member)}")])
+        let transport = ComputeTransport([response("{\"computer\":\(Self.member)}")])
         await transport.suspendNext()
-        let monitor = ComputeMonitor(client: AgentClient(transport: transport, token: "test"), page: .machine("node-1"))
+        let monitor = ComputeMonitor(client: AgentClient(transport: transport, token: "test"), page: .computer("node-1"))
         monitor.appear(allowed: true)
         let old = try XCTUnwrap(monitor.reading)
         let deadline = ContinuousClock.now + .seconds(3)
@@ -305,10 +305,10 @@ final class CloudComputeTests: XCTestCase {
     }
 
     func testRepeatedEventsCoalesceAndHiddenRefreshDoesNothing() async throws {
-        let one = response("{\"node\":\(Self.member)}")
+        let one = response("{\"computer\":\(Self.member)}")
         let transport = ComputeTransport([one])
         await transport.suspendNext()
-        let monitor = ComputeMonitor(client: AgentClient(transport: transport, token: "test"), page: .machine("node-1"))
+        let monitor = ComputeMonitor(client: AgentClient(transport: transport, token: "test"), page: .computer("node-1"))
         monitor.appear(allowed: true)
         let first = try XCTUnwrap(monitor.reading)
         let deadline = ContinuousClock.now + .seconds(3)
@@ -326,8 +326,8 @@ final class CloudComputeTests: XCTestCase {
 
     func testMissingAndSignedOutResponsesNeverKeepProtectedFacts() async {
         for (status, failure) in [(404, ComputeMonitor.Failure.missing), (401, .signedOut)] {
-            let transport = ComputeTransport([response("{\"node\":\(Self.member)}"), HTTP1Response(status: status)])
-            let monitor = ComputeMonitor(client: AgentClient(transport: transport, token: "test"), page: .machine("node-1"))
+            let transport = ComputeTransport([response("{\"computer\":\(Self.member)}"), HTTP1Response(status: status)])
+            let monitor = ComputeMonitor(client: AgentClient(transport: transport, token: "test"), page: .computer("node-1"))
             monitor.appear(allowed: true)
             await monitor.reading?.value
             monitor.refresh()
