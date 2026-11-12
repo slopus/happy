@@ -312,6 +312,7 @@ final class AttachmentTests: XCTestCase {
         XCTAssertTrue(first)
 
         let current = Conversation(client: client, store: engine.spaces, agentId: "recipient", persistence: engine)
+        let updates = Updates(current.updates)
         await current.start()
         for _ in 0..<200 {
             if (await server.saved()).contains(where: { $0.1.hasSuffix("/bootstrap") }) { break }
@@ -330,14 +331,26 @@ final class AttachmentTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(10))
         }
         await engine.spaces.externalResync(loadSidebar: false)
-        var echoed = false
-        for _ in 0..<200 {
-            let kept = try await engine.cachedResource("conversation:recipient")
-            if kept?["outgoing"] == .array([]), kept?["messages"]?["active-screen-send"] != nil { echoed = true; break }
-            try await Task.sleep(for: .milliseconds(10))
+        // The newer chat learns of the old screen's send only from the echo
+        // its read after the deliveries brings.
+        let echoed = await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                await updates.next { $0.items.contains { $0.id == "active-screen-send" || $0.id.hasPrefix("active-screen-send/") } } != nil
+            }
+            group.addTask { try? await Task.sleep(for: .seconds(10)); return false }
+            let first = await group.next() ?? false
+            group.cancelAll()
+            return first
         }
         XCTAssertTrue(echoed)
+        // Kept when it stops, not on its own cadence: the daemon here takes
+        // sends but never starts their run, so whenever an acceptance lands
+        // before the echo the chat counts as working, and a working chat is
+        // kept every 20 s.
         await current.stop()
+        let committed = try await engine.cachedResource("conversation:recipient")
+        XCTAssertEqual(committed?["outgoing"], .array([]))
+        XCTAssertNotNil(committed?["messages"]?["active-screen-send"])
         let firstCopy = engine.attachmentDirectory.appendingPathComponent("old-screen-send/0-source.pdf")
         let secondCopy = engine.attachmentDirectory.appendingPathComponent("active-screen-send/0-source.pdf")
         XCTAssertFalse(FileManager.default.fileExists(atPath: firstCopy.path))
