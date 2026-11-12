@@ -95,11 +95,11 @@ final class CloudInviteViewController: CloudStageViewController {
                     return try await CloudScreens.open(id, context: context, from: self)
                 }
                 // Connecting in the invite's place, over the servers' list
-                // where there is one, so Back never returns to it.
-                let next = connecting(server)
+                // where there is one, so Back never returns to it. The
+                // account stays signed in when the flow ends over the
+                // server, so the next invite link opens straight on Join.
                 let list = navigationController?.viewControllers.last { $0 is CloudServersViewController }
-                (next as? CloudStageViewController)?.signsOutOnBack = list == nil
-                CloudScreens.replace(from: self, with: next, keeping: list)
+                CloudScreens.replace(from: self, with: connecting(server), keeping: list)
             } catch {
                 settle(error)
             }
