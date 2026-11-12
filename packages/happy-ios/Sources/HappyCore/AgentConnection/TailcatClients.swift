@@ -17,7 +17,7 @@ public enum RequestCategory: Sendable, CaseIterable {
 }
 
 /// File clients one agent connection may have up at once.
-let maxFileClients = 8
+let maxFileClients = 3
 
 /// One agent connection's Tailcat clients: one for `.realtime`, one for
 /// `.query` and up to `maxFileClients` for `.file`, each made on first
@@ -27,8 +27,10 @@ let maxFileClients = 8
 /// share one.
 ///
 /// A file request goes to the file client with the fewest requests in
-/// flight; while every one of them is busy, another is made, up to the
-/// cap. A failure resets only the client it happened on (`reset(_ lease:)`);
+/// flight. Parallel short requests share one client (each opens its own TCP
+/// flow); another is made only when every client carries a request older
+/// than a second, up to the cap. Extra clients close after 45 idle seconds.
+/// A failure resets only the client it happened on (`reset(_ lease:)`);
 /// the others, the event stream's included, stay.
 final class TailcatClients<Client: AnyObject & Sendable>: @unchecked Sendable {
     typealias Connect = @Sendable (RequestCategory, NodePrivateKey) async throws -> Client
@@ -42,6 +44,9 @@ final class TailcatClients<Client: AnyObject & Sendable>: @unchecked Sendable {
         fileprivate var client: Client?
         fileprivate var connecting: Task<Client, Error>?
         fileprivate var inFlight = 0
+        fileprivate var requests: [UUID: TimeInterval] = [:]
+        fileprivate var idle: Task<Void, Never>?
+        fileprivate var idleGeneration = 0
         init(category: RequestCategory, index: Int) { self.category = category; self.index = index }
     }
 
@@ -50,17 +55,18 @@ final class TailcatClients<Client: AnyObject & Sendable>: @unchecked Sendable {
         let slot: Slot
         let client: Client
         private let pool: TailcatClients
+        private let request: UUID
         // Guarded by the pool's lock.
         private var released = false
 
-        fileprivate init(slot: Slot, client: Client, pool: TailcatClients) { self.slot = slot; self.client = client; self.pool = pool }
+        fileprivate init(slot: Slot, client: Client, pool: TailcatClients, request: UUID) { self.slot = slot; self.client = client; self.pool = pool; self.request = request }
 
         /// Safe to call more than once, from anywhere.
         func release() {
             pool.locked {
                 guard !released else { return }
                 released = true
-                slot.inFlight -= 1
+                pool.release(slot, request: request)
             }
         }
     }
@@ -68,14 +74,17 @@ final class TailcatClients<Client: AnyObject & Sendable>: @unchecked Sendable {
     private let connect: Connect
     private let disconnect: Disconnect
     private let fileLimit: Int
+    private let now: @Sendable () -> TimeInterval
+    private let idleTimeout: Duration
     private let newKey: @Sendable () throws -> NodePrivateKey
     private let lock = NSLock()
     private var slots: [Slot] = []
     private var closed = false
 
-    init(fileLimit: Int = maxFileClients, newKey: @escaping @Sendable () throws -> NodePrivateKey = { try NodePrivateKey.generate() },
+    init(fileLimit: Int = maxFileClients, now: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }, idleTimeout: Duration = .seconds(45), newKey: @escaping @Sendable () throws -> NodePrivateKey = { try NodePrivateKey.generate() },
          connect: @escaping Connect, disconnect: @escaping Disconnect) {
-        self.fileLimit = fileLimit; self.newKey = newKey; self.connect = connect; self.disconnect = disconnect
+        self.fileLimit = fileLimit; self.now = now; self.idleTimeout = idleTimeout
+        self.newKey = newKey; self.connect = connect; self.disconnect = disconnect
     }
 
     fileprivate func locked<T>(_ body: () throws -> T) rethrows -> T {
@@ -86,15 +95,18 @@ final class TailcatClients<Client: AnyObject & Sendable>: @unchecked Sendable {
     /// A client for `category`, connected; waits while its slot connects.
     /// Throws `CancellationError` once closed.
     func lease(_ category: RequestCategory) async throws -> Lease {
+        let request = UUID()
         let slot = try locked {
             guard !closed else { throw CancellationError() }
             let slot = pick(category)
             slot.inFlight += 1
+            slot.requests[request] = now()
+            slot.idle?.cancel(); slot.idle = nil; slot.idleGeneration += 1
             return slot
         }
-        do { return Lease(slot: slot, client: try await client(slot), pool: self) }
+        do { return Lease(slot: slot, client: try await client(slot), pool: self, request: request) }
         catch {
-            locked { slot.inFlight -= 1 }
+            locked { release(slot, request: request) }
             throw error
         }
     }
@@ -103,10 +115,34 @@ final class TailcatClients<Client: AnyObject & Sendable>: @unchecked Sendable {
     private func pick(_ category: RequestCategory) -> Slot {
         let own = slots.filter { $0.category == category }
         let limit = category == .file ? fileLimit : 1
-        if let idlest = own.min(by: { $0.inFlight < $1.inFlight }), idlest.inFlight == 0 || own.count >= limit { return idlest }
-        let slot = Slot(category: category, index: own.count)
+        let time = now()
+        if let idlest = own.min(by: { $0.inFlight < $1.inFlight }) {
+            if idlest.inFlight == 0 || own.count >= limit { return idlest }
+            if let short = own.filter({ !$0.requests.values.contains(where: { time - $0 >= 1 }) }).min(by: { $0.inFlight < $1.inFlight }) { return short }
+        }
+        let slot = Slot(category: category, index: (own.map(\.index).max() ?? -1) + 1)
         slots.append(slot)
         return slot
+    }
+
+    /// Under the lock. Keep the first file client warm; retire only idle extras.
+    private func release(_ slot: Slot, request: UUID) {
+        slot.requests.removeValue(forKey: request)
+        slot.inFlight -= 1
+        guard !closed, slot.category == .file, slot.index > 0, slot.inFlight == 0 else { return }
+        let generation = slot.idleGeneration
+        let timeout = idleTimeout
+        slot.idle = Task { [weak self] in
+            do { try await Task.sleep(for: timeout) } catch { return }
+            guard let self else { return }
+            let old = self.locked { () -> Client? in
+                guard !self.closed, slot.inFlight == 0, slot.connecting == nil, slot.idleGeneration == generation else { return nil }
+                self.slots.removeAll { $0 === slot }
+                defer { slot.client = nil; slot.idle = nil }
+                return slot.client
+            }
+            if let old { await self.disconnect(old) }
+        }
     }
 
     private func client(_ slot: Slot) async throws -> Client {
@@ -171,6 +207,7 @@ final class TailcatClients<Client: AnyObject & Sendable>: @unchecked Sendable {
             return slots.compactMap { slot in
                 // A connect that finishes anyway is closed by the caller that waited on it.
                 slot.connecting?.cancel()
+                slot.idle?.cancel(); slot.idle = nil
                 defer { slot.client = nil }
                 return slot.client
             }
