@@ -34,6 +34,20 @@ final class CloudLayoutTests: XCTestCase {
         XCTAssertEqual(welcome.note, .zero)
     }
 
+    /// Continue with email sits 12 under GitHub's, as wide, 24 above the
+    /// bottom inset; Apple's and GitHub's rise to make room.
+    func testEmailSitsUnderGitHub() {
+        let safe = LayoutInsets(top: 59, left: 0, bottom: 34, right: 0)
+        let apple = CGSize(width: 220, height: 50), github = CGSize(width: 236, height: 50), email = CGSize(width: 250, height: 50)
+        let welcome = CloudWelcomeLayout(size: phone, safeArea: safe, button: apple, secondary: github, tertiary: email, slides: slides(), dots: CGSize(width: 150, height: 26))
+        XCTAssertEqual(welcome.tertiary, CGRect(x: 56.5, y: 852 - 34 - 24 - 50, width: 280, height: 50))
+        XCTAssertEqual(welcome.secondary, CGRect(x: 56.5, y: 852 - 34 - 24 - 50 - 12 - 50, width: 280, height: 50))
+        XCTAssertEqual(welcome.button, CGRect(x: 56.5, y: 852 - 34 - 24 - 50 - 12 - 50 - 12 - 50, width: 280, height: 50))
+        let plain = CloudWelcomeLayout(size: phone, safeArea: safe, button: apple, secondary: github, slides: slides(), dots: CGSize(width: 150, height: 26))
+        XCTAssertEqual(plain.tertiary, .zero)
+        XCTAssertLessThan(welcome.start.gallery.minY, plain.start.gallery.minY, "the slides centre again over the taller block")
+    }
+
     /// The note sits 12 over Apple's button in the slides' column; the
     /// buttons stay put and the slides centre again over it all.
     func testTheNoteSitsOverTheButtonsAndTheSlidesMakeRoom() {

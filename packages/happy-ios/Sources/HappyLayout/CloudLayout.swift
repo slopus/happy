@@ -8,9 +8,10 @@ import CoreGraphics
 /// the first screen's gallery at its place, Continue with Apple where Start
 /// is, Continue with Google 12 under it, and Sign in with GitHub where Use
 /// Happy Cloud is under them (12 under, at least 24 above the bottom inset,
-/// Apple's and Google's rising to make room), all as wide as the widest.
-/// A note (the account's sign-in has ended, or why a sign-in failed) sits
-/// 12 over Apple's, and the slides centre again over it all.
+/// Apple's and Google's rising to make room), Continue with email 12 under
+/// GitHub's when there is one, all as wide as the widest. A note (the
+/// account's sign-in has ended, or why a sign-in failed) sits 12 over
+/// Apple's, and the slides centre again over it all.
 public struct CloudWelcomeLayout: Equatable, Sendable {
     public enum Metrics {
         /// Between the note and the button under it.
@@ -29,30 +30,40 @@ public struct CloudWelcomeLayout: Equatable, Sendable {
     public var google: CGRect
     /// Sign in with GitHub, under them.
     public var secondary: CGRect
+    /// Continue with email, under GitHub's; zero without it.
+    public var tertiary: CGRect = .zero
     /// The note over the buttons; zero without one.
     public var note: CGRect
 
     /// `safeArea` is the first screen's (without this one's bar, which
-    /// sits over the first screen's top row). `button`, `google` and
-    /// `secondary` are the buttons' own sizes; a zero `google` leaves
-    /// Google's out.
+    /// sits over the first screen's top row). `button`, `google`,
+    /// `secondary` and `tertiary` are the buttons' own sizes; a zero
+    /// `google` or `tertiary` leaves that one out.
     public init(size: CGSize, safeArea: LayoutInsets, button buttonSize: CGSize, google googleSize: CGSize = .zero, secondary: CGSize,
-                note: Measurable? = nil, slides: [StartLayout.Slide], dots: CGSize) {
+                tertiary: CGSize = .zero, note: Measurable? = nil, slides: [StartLayout.Slide], dots: CGSize) {
         let width = max(0, size.width - safeArea.horizontal)
         let column = min(StartLayout.Metrics.columnMaxWidth, max(0, width - StartLayout.Metrics.sidePadding * 2))
         let noteSize = note?.size(fitting: column) ?? .zero
         let noteRoom = noteSize.height > 0 ? noteSize.height + Metrics.noteGap : 0
         let googleRoom = googleSize.height > 0 ? Metrics.googleGap + googleSize.height : 0
-        // The note, Apple's button and Google's are one block where Start is.
+        // The note, Apple's button and Google's are one block where Start is;
+        // GitHub's and email's are one block where Use Happy Cloud is.
+        let lower = tertiary.height > 0
+            ? CGSize(width: max(secondary.width, tertiary.width), height: secondary.height + StartLayout.Metrics.buttonGap + tertiary.height)
+            : secondary
         start = StartLayout(size: size, safeArea: safeArea,
                             button: CGSize(width: max(buttonSize.width, googleSize.width), height: noteRoom + buttonSize.height + googleRoom),
-                            cloud: secondary, slides: slides, dots: dots)
+                            cloud: lower, slides: slides, dots: dots)
         let block = start.button
         button = CGRect(x: block.minX, y: block.maxY - googleRoom - buttonSize.height, width: block.width, height: buttonSize.height)
         google = googleSize.height > 0
             ? CGRect(x: block.minX, y: block.maxY - googleSize.height, width: block.width, height: googleSize.height)
             : .zero
-        self.secondary = start.cloud
+        let cloud = start.cloud
+        self.secondary = CGRect(x: cloud.minX, y: cloud.minY, width: cloud.width, height: secondary.height)
+        if tertiary.height > 0 {
+            self.tertiary = CGRect(x: cloud.minX, y: cloud.maxY - tertiary.height, width: cloud.width, height: tertiary.height)
+        }
         self.note = noteSize.height > 0
             ? CGRect(x: safeArea.left + (width - column) / 2, y: block.minY, width: column, height: noteSize.height)
             : .zero
