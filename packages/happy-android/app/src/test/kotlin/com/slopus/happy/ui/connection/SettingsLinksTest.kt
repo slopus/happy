@@ -24,7 +24,7 @@ class SettingsLinksTest {
         assertEquals(SettingsPlace.Servers, SettingsLinks.place("servers", cloud, cloud = true))
         assertEquals(SettingsPlace.General, SettingsLinks.place("servers", desktop, cloud = false))
         assertEquals(SettingsPlace.Members, SettingsLinks.place("members", cloud, cloud = true))
-        assertEquals(SettingsPlace.ComputePools, SettingsLinks.place("computes", cloud, cloud = true))
+        assertEquals(SettingsPlace.Compute, SettingsLinks.place("computes", cloud, cloud = true))
         assertNull(SettingsLinks.place("computes", desktop, cloud = false))
     }
 

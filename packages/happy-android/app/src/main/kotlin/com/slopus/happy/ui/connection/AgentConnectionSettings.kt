@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.connection
 
+import com.slopus.happy.agent.ComputeAccess
 import com.slopus.happy.agent.Permission
 import com.slopus.happy.agent.AutoJoinKind
 import com.slopus.happy.connection.HappyCloud
@@ -191,8 +192,8 @@ class AgentSettingsActions(
     val onMembers: (() -> Unit)? = null,
     /** AI providers: the Happy Cloud server's connections, and adding ChatGPT, Claude and API keys; null for any other connection. */
     val onProviders: (() -> Unit)? = null,
-    /** Cloud pool monitoring and node management; absent without pools.manage. */
-    val onComputePools: (() -> Unit)? = null,
+    /** Happy Cloud's machines and join requests; absent without compute.use. */
+    val onCompute: (() -> Unit)? = null,
     /** Usage: what the provider accounts spent and what is left of their plans; null where it isn't offered. */
     val onUsage: (() -> Unit)? = null,
     /** A Happy Cloud server: its push settings, on the same Notifications page. Every Cloud member can manage their own, read-only members included. */
@@ -320,10 +321,10 @@ fun AgentConnectionSettingsScreen(
                     )
                 },
                 // Compute follows Inference, as desktop's Agents group has it.
-                actions.onComputePools?.let { open ->
+                actions.onCompute?.let { open ->
                     SettingsEntry(
-                        id = ComputePoolsTags.ROW,
-                        title = stringResource(R.string.compute_pools_title),
+                        id = ComputeTags.ROW,
+                        title = stringResource(R.string.compute_title),
                         icon = { SettingsTile(Ionicon.ServerOutline, SettingsTiles.blue) },
                         onClick = open,
                     )
@@ -527,8 +528,8 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
     // The Chief of Staff is an admin bot: asking it needs a role that manages bots.
     val permissions = session?.permissions?.collectAsStateWithLifecycle()?.value
     val askChief = permissions?.allows(Permission.BOTS_MANAGE) ?: true
-    val pools = canManagePools(cloud, permissions ?: com.slopus.happy.agent.ServerPermissions.Unknown)
-    val actions = remember(graph, nav, connectionId, switcher, cloud, askChief, pools) {
+    val compute = ComputeAccess.of(cloud, permissions ?: com.slopus.happy.agent.ServerPermissions.Unknown) != ComputeAccess.None
+    val actions = remember(graph, nav, connectionId, switcher, cloud, askChief, compute) {
         AgentSettingsActions(
             onBack = { nav.popBackStack() },
             onProfile = { nav.navigate(AgentProfileRoute(connectionId)) },
@@ -539,7 +540,7 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
             onAgents = { nav.navigate(AgentAgentsRoute(connectionId)) },
             onMembers = if (cloud) ({ nav.navigate(CloudMembersRoute(connectionId)) }) else null,
             onProviders = if (cloud) ({ nav.openCloudProviders(connectionId) }) else null,
-            onComputePools = if (pools) ({ nav.navigate(CloudComputePoolsRoute(connectionId)) }) else null,
+            onCompute = if (compute) ({ nav.navigate(CloudComputeRoute(connectionId)) }) else null,
             onUsage = { nav.navigate(AgentUsageRoute(connectionId)) },
             onNotifications = if (cloud) ({ nav.navigate(CloudPushSettingsRoute(connectionId)) }) else null,
             onNotificationsRow = { reveal -> nav.navigate(AgentSharingRoute(connectionId, reveal = reveal)) },

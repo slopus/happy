@@ -24,7 +24,9 @@ object Permission {
     const val PROVIDERS_MANAGE = "providers.manage"
     /** Changing the computer's configuration: the default model. */
     const val CONFIG_MANAGE = "config.manage"
-    /** Monitoring pools and managing their nodes and enrollment commands. */
+    /** Using machines, and adding a private one of one's own. */
+    const val COMPUTE_USE = "compute.use"
+    /** Adding machines in any mode, editing any, and freeing a held one. */
     const val POOLS_MANAGE = "pools.manage"
 
     /**
