@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { createProjectGoalService, type ProjectGoalDependencies, type ProjectSession } from './projectService';
 import { ArtifactStore } from '../artifacts/store';
 import * as parser from './parser';
+import { writeGoalDeliveryAgreement } from '@slopus/happy-wire';
 
 vi.mock('node:fs', async (original) => {
     const fs = await original<typeof import('node:fs')>();
@@ -44,6 +45,55 @@ async function fixture(overrides: Partial<ProjectGoalDependencies> = {}) {
 }
 
 describe('project Goal workspace', () => {
+    it('browses the whole selected goal while rejecting sibling archives and write attempts', async () => {
+        const f = await fixture();
+        const listed = await f.service.files({ featurePath: f.feature, path: f.feature }, 'list', true, true);
+        expect(listed.success).toBe(true);
+        if (!('entries' in listed)) throw new Error('Expected directory response');
+        expect(listed.entries.map(entry => entry.name)).toContain('index.md');
+        const file = await f.service.files({ featurePath: f.feature, path: join(f.feature, 'index.md') }, 'read', true, true);
+        if (!('content' in file) || typeof file.content !== 'string') throw new Error('Expected file response');
+        expect(Buffer.from(file.content, 'base64').toString()).toBe('# Feature');
+        await expect(f.service.files({ featurePath: f.feature, path: join(f.root, 'p/index.md') }, 'read', true, true)).rejects.toThrow();
+        await expect(f.service.files({ featurePath: f.feature, path: join(f.feature, 'index.md'), content: '' }, 'write', true, true)).rejects.toThrow('read-only');
+        await f.put(join(f.root, 'outside.md'), 'private');
+        await symlink(join(f.root, 'outside.md'), join(f.feature, 'escape.md'));
+        await expect(f.service.files({ featurePath: f.feature, path: join(f.feature, 'escape.md') }, 'read', true, true)).rejects.toThrow();
+        await symlink(join(f.root, 'outside.md'), join(f.taskDirectory, 'outside-final.md'));
+        const source = await readFile(join(f.taskDirectory, 'index.md'), 'utf8');
+        await f.put(join(f.taskDirectory, 'index.md'), writeGoalDeliveryAgreement(source, { expectedDeliverables: [], acceptanceCriteria: [], finalOutputs: [{ name: 'Unopenable final', target: 'outside-final.md' }] }));
+        expect((await f.service.board(f.feature)).snapshot.tasks[0].artifacts.find(artifact => artifact.name === 'Unopenable final')).toMatchObject({ available: false, relation: 'output' });
+    });
+    it('persists delivery changes through the actual file API and does not accept final versions', async () => {
+        const f = await fixture();
+        const index = join(f.taskDirectory, 'index.md');
+        const original = await readFile(index, 'utf8');
+        await f.put(join(f.taskDirectory, '成果/报告 #1.md'), 'A real selected final');
+        const content = writeGoalDeliveryAgreement(original, { expectedDeliverables: ['A selected report', '[Report](<成果/报告%20%231.md>)'], acceptanceCriteria: ['Open it'], finalOutputs: [{ name: '最终计划报告', target: '成果/报告 #1.md' }] });
+        const saved = await f.service.files({ ...f.input, path: index, content: Buffer.from(content).toString('base64'), expectedHash: createHash('sha256').update(original).digest('hex') }, 'write');
+        expect(saved.success).toBe(true);
+        const task = (await f.service.board(f.feature)).snapshot.tasks[0];
+        expect(task.expectedDeliverables).toEqual(['A selected report', '[Report](<成果/报告%20%231.md>)']);
+        expect(task.acceptanceCriteria).toEqual(['Open it']);
+        expect(task.artifacts.filter(artifact => artifact.relation === 'output')).toMatchObject([{ name: '最终计划报告', available: true, approval: { status: 'unreviewed' } }]);
+        expect(task.artifacts.find(artifact => artifact.name === 'Report')?.relation).toBe('reference');
+        expect(await readFile(index, 'utf8')).toContain('目标：Actual goal');
+        const stale = await f.service.files({ ...f.input, path: index, content: Buffer.from('old write').toString('base64'), expectedHash: createHash('sha256').update(original).digest('hex') }, 'write');
+        expect(stale.success).toBe(false);
+        expect(await readFile(index, 'utf8')).toBe(content);
+    });
+    it('keeps feature read-only transfers separate from writable project scope transfers', async () => {
+        const f = await fixture();
+        const path = join(f.taskDirectory, 'large-feature.md');
+        await f.put(path, 'x'.repeat(70 * 1024));
+        const input = { featurePath: f.feature, path };
+        const chunk = await f.service.files(input, 'read', true, true);
+        if (!('revision' in chunk) || !('transferId' in chunk)) throw new Error('Expected a file transfer');
+        const next = { ...input, offset: 65536, revision: chunk.revision, transferId: chunk.transferId };
+        await expect(f.service.files(next, 'read', true)).rejects.toThrow('expired or changed');
+        expect(await f.service.files(next, 'read', true, true)).toMatchObject({ success: true, offset: 65536 });
+        await expect(f.service.files({ ...f.input, path }, 'read', true, true)).rejects.toThrow('read-only');
+    });
     it('reads the selected real scope index and counts only that archive, without following symlinks', async () => {
         const f = await fixture();
         await f.put(join(f.feature, 'index.md'), '# Feature\n## 目标\nA real feature goal');

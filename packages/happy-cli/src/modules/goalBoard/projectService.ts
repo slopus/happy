@@ -43,7 +43,7 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
     let disposed = false;
     const watchers = new Map<string, { watcher: FSWatcher; identity: string }>();
     const inFlight = new Map<string, Promise<SpawnSessionResult>>();
-    const transfers = new Map<string, { scope: boolean; featurePath: string; taskId?: string; directory: string; root: string; path: string; revision: string; expiresAt: number }>();
+    const transfers = new Map<string, { scope: boolean; featureReadOnly: boolean; featurePath: string; taskId?: string; directory: string; root: string; path: string; revision: string; expiresAt: number }>();
     const catalog = async () => readCatalog(await discoverRoots(deps.workingDirectory, deps.homeDirectory));
     const entryFor = async (featurePath: string) => {
         if (disposed) throw new Error('Project workspace is closed');
@@ -259,17 +259,19 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
         inFlight.set(operationKey, operation);
         try { return await operation; } finally { inFlight.delete(operationKey); }
     };
-    const files = async (input: unknown, operation: 'list' | 'read' | 'write', scope = false) => {
+    const files = async (input: unknown, operation: 'list' | 'read' | 'write', scope = false, featureReadOnly = false) => {
         const data = taskInput.extend({ taskId: z.string().min(1).max(2048).optional() }).extend({ path: pathInput, content: z.string().max(3 * 1024 * 1024).optional(), expectedHash: z.string().optional(), offset: z.number().int().nonnegative().optional(), revision: z.string().max(200).optional(), transferId: z.string().uuid().optional() }).parse(input);
+        if (featureReadOnly && (operation === 'write' || data.taskId)) throw new Error('Goal overview is read-only');
         let directory: string, root: string;
         const transfer = operation === 'read' && data.transferId ? transfers.get(data.transferId) : undefined;
         if (data.transferId) {
-            if (disposed || !transfer || transfer.expiresAt < Date.now() || transfer.scope !== scope || transfer.featurePath !== data.featurePath || transfer.taskId !== data.taskId || transfer.path !== data.path || transfer.revision !== data.revision) throw new Error('File transfer expired or changed; reopen it');
+            if (disposed || !transfer || transfer.expiresAt < Date.now() || transfer.scope !== scope || transfer.featureReadOnly !== featureReadOnly || transfer.featurePath !== data.featurePath || transfer.taskId !== data.taskId || transfer.path !== data.path || transfer.revision !== data.revision) throw new Error('File transfer expired or changed; reopen it');
             directory = transfer.directory; root = transfer.root;
             if (await safePath(root, directory) !== directory) throw new Error('Task directory changed during transfer');
         } else {
             if ((data.offset ?? 0) !== 0) throw new Error('Start a file transfer at offset zero');
-            if (scope) { const selected = await scopeFor(data.featurePath); directory = selected.directory; root = selected.root; }
+            if (featureReadOnly) { const entry = await entryFor(data.featurePath); directory = entry.featurePath; root = entry.root; }
+            else if (scope) { const selected = await scopeFor(data.featurePath); directory = selected.directory; root = selected.root; }
             else { const selected = await taskFor(data); directory = selected.directory; root = selected.entry.root; }
         }
         const path = await safePath(directory, data.path);
@@ -297,7 +299,7 @@ export function createProjectGoalService(deps: ProjectGoalDependencies) {
             if (offset + bytesRead < source.info.size) {
                 for (const [id, value] of transfers) if (value.expiresAt < Date.now()) transfers.delete(id);
                 if (!data.transferId && transfers.size >= 128) throw new Error('Too many active archive file transfers');
-                transfers.set(transferId, { scope, featurePath: data.featurePath, taskId: data.taskId, directory, root, path: data.path, revision, expiresAt: Date.now() + 60000 });
+                transfers.set(transferId, { scope, featureReadOnly, featurePath: data.featurePath, taskId: data.taskId, directory, root, path: data.path, revision, expiresAt: Date.now() + 60000 });
             } else transfers.delete(transferId);
             return { success: true, content: bytes.subarray(0, bytesRead).toString('base64'), size: source.info.size, revision, offset, transferId };
         } finally { await source.handle.close(); }
@@ -386,6 +388,8 @@ export function registerProjectGoalHandlers(manager: { registerHandler(method: s
     manager.registerHandler('goalProjectAuthor', wrap(service.author));
     manager.registerHandler('goalTaskListDirectory', wrap(input => service.files(input, 'list')));
     manager.registerHandler('goalTaskReadFile', wrap(input => service.files(input, 'read')));
+    manager.registerHandler('goalFeatureListDirectory', wrap(input => service.files(input, 'list', true, true)));
+    manager.registerHandler('goalFeatureReadFile', wrap(input => service.files(input, 'read', true, true)));
     manager.registerHandler('goalTaskWriteFile', wrap(input => service.files(input, 'write')));
     manager.registerHandler('goalTaskApprove', wrap(service.approve));
     return service;

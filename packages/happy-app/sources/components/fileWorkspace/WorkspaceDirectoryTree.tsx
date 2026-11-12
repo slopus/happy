@@ -8,16 +8,20 @@ import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useFileWorkspace } from './context';
 import { WorkspaceButton as Button } from './WorkspaceButton';
+import { DirectoryCache, getDirectoryCache } from './directoryCache';
 
-export function WorkspaceDirectoryTree({ sessionId, rootPath, onOpenFile, listDirectory = sessionWorkspaceListDirectory }: {
+export function WorkspaceDirectoryTree({ sessionId, rootPath, onOpenFile, listDirectory = sessionWorkspaceListDirectory, cacheKey, revision }: {
     sessionId: string;
     rootPath?: string;
     onOpenFile?: (path: string) => void;
     listDirectory?: typeof sessionWorkspaceListDirectory;
+    cacheKey?: string;
+    revision?: string;
 }) {
     const workspace = useFileWorkspace();
     const { theme } = useUnistyles();
-    const [directories, setDirectories] = React.useState<Record<string, { entries?: DirectoryEntry[]; error?: string }>>({});
+    const cache = React.useMemo(() => cacheKey ? getDirectoryCache(cacheKey) : new DirectoryCache(), [cacheKey]);
+    const directories = React.useSyncExternalStore(cache.subscribe, cache.getSnapshot, cache.getSnapshot);
     const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
     const [query, setQuery] = React.useState('');
     const [hidden, setHidden] = React.useState(false);
@@ -27,13 +31,15 @@ export function WorkspaceDirectoryTree({ sessionId, rootPath, onOpenFile, listDi
     const canBrowse = Boolean(rootPath || workspace?.enabled);
     const load = React.useCallback(async (path: string) => {
         if (!accountRuntimeCurrent()) return;
-        const token = {}; requests.current.set(path, token);
-        setDirectories(value => ({ ...value, [path]: {} }));
-        const result = await listDirectory(sessionId, path);
-        if (!alive.current || !accountRuntimeCurrent() || requests.current.get(path) !== token) return;
-        setDirectories(value => ({ ...value, [path]: result.success ? { entries: result.entries ?? [] } : { error: result.error ?? t('fileWorkspace.readError') } }));
-    }, [sessionId, listDirectory]);
-    React.useEffect(() => { alive.current = true; setDirectories({}); setExpanded(new Set()); if (canBrowse && root) void load(root); return () => { alive.current = false; requests.current.clear(); }; }, [root, load, canBrowse]);
+        requests.current.set(path, {});
+        await cache.load(path, () => listDirectory(sessionId, path), accountRuntimeCurrent);
+    }, [sessionId, listDirectory, cache]);
+    React.useEffect(() => { alive.current = true; setExpanded(new Set()); if (canBrowse && root) void load(root); return () => { alive.current = false; requests.current.clear(); }; }, [root, load, canBrowse]);
+    const lastRevision = React.useRef(revision);
+    React.useEffect(() => {
+        const changed = lastRevision.current !== revision; lastRevision.current = revision;
+        if (changed && canBrowse && root) for (const path of [root, ...expanded]) void load(path);
+    }, [revision, root, load, canBrowse, expanded]);
     React.useEffect(() => {
         const active = workspace?.snapshot.active;
         if (!canBrowse || !root || !active?.startsWith(root + '/')) return;
@@ -46,7 +52,7 @@ export function WorkspaceDirectoryTree({ sessionId, rootPath, onOpenFile, listDi
     const rows = (path: string, depth: number): React.ReactNode => {
         const directory = directories[path];
         if (!directory || (!directory.entries && !directory.error)) return <ActivityIndicator key={path} style={{ padding: 12 }} color={theme.colors.textSecondary} />;
-        if (directory.error) return <View key={path} style={{ padding: 12 }}><Text accessibilityRole="alert" style={{ color: theme.colors.textDestructive }}>{directory.error}</Text><Button label={t('common.retry')} onPress={() => { void load(path); }} /></View>;
+        if (directory.error && !directory.entries) return <View key={path} style={{ padding: 12 }}><Text accessibilityRole="alert" style={{ color: theme.colors.textDestructive }}>{directory.error}</Text><Button label={t('common.retry')} onPress={() => { void load(path); }} /></View>;
         const entries = [...directory.entries!].filter(entry => entry.name !== '.' && entry.name !== '..' && !/[\\/]/.test(entry.name) && entry.type !== 'other' && (hidden || !entry.name.startsWith('.')))
             .sort((a, b) => Number(b.type === 'directory') - Number(a.type === 'directory') || a.name.localeCompare(b.name));
         return entries.map(entry => {
@@ -57,7 +63,7 @@ export function WorkspaceDirectoryTree({ sessionId, rootPath, onOpenFile, listDi
             if (!isDirectory && query && !full.toLowerCase().includes(query.toLowerCase())) return null;
             return <React.Fragment key={full}>
                 <DirectoryRow name={entry.name} full={full} depth={depth} directory={isDirectory} open={open} selected={workspace?.snapshot.active === full} onPress={() => {
-                    if (isDirectory) { setExpanded(value => { const next = new Set(value); if (open) next.delete(full); else next.add(full); return next; }); if (!open && !directories[full]) void load(full); }
+                    if (isDirectory) { setExpanded(value => { const next = new Set(value); if (open) next.delete(full); else next.add(full); return next; }); if (!open) void load(full); }
                     else if (onOpenFile) onOpenFile(full);
                     else void workspace?.openReference(full);
                 }} />
@@ -74,6 +80,8 @@ export function WorkspaceDirectoryTree({ sessionId, rootPath, onOpenFile, listDi
         </View>
         <TextInput value={query} onChangeText={setQuery} placeholder={t('fileWorkspace.filter')} accessibilityLabel={t('fileWorkspace.filter')} placeholderTextColor={theme.colors.textSecondary} style={{ color: theme.colors.text, backgroundColor: theme.colors.surface, borderRadius: 7, marginHorizontal: 10, padding: 8, fontSize: 12 }} />
         {query ? <Text style={{ padding: 10, fontSize: 11, color: theme.colors.textSecondary }}>{t('fileWorkspace.searchHint')}</Text> : null}
+        {directories[root]?.entries && directories[root]?.loading && <Text style={{ paddingHorizontal: 10, color: theme.colors.textSecondary }}>{t('projectGoals.refreshCached')}</Text>}
+        {directories[root]?.entries && directories[root]?.error && <Text accessibilityRole="alert" style={{ padding: 10, color: theme.colors.textSecondary }}>{t('projectGoals.cachedReadError')}</Text>}
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingVertical: 8 }}>{rows(root, 0)}</ScrollView>
     </View>;
 }

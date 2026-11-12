@@ -14,6 +14,7 @@ export * from './aiServices';
 export * from './applicationSession';
 
 export * from './goalBoard';
+export * from './goalDelivery';
 export * from './artifacts';
 export * from './composerPrediction';
 export * from './asyncQuestions';

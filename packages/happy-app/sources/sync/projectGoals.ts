@@ -36,7 +36,7 @@ export function getProjectPreviewMachineId() {
 }
 async function sendProjectGoalRequest<T>(machineId: string, method: string, input: unknown): Promise<T> {
     const current = owner();
-    if (isReadOnlyProjectPreview() && !['goalProjects', 'goalProjectRead', 'goalTaskHistory', 'goalTaskListDirectory', 'goalTaskReadFile'].includes(method)
+    if (isReadOnlyProjectPreview() && !['goalProjects', 'goalProjectRead', 'goalTaskHistory', 'goalTaskListDirectory', 'goalTaskReadFile', 'goalFeatureListDirectory', 'goalFeatureReadFile'].includes(method)
         && !(method === 'goalTaskApprove' && canConfirmProjectDeliverable())) throw new Error(t('projectGoals.readOnlyArchive'));
     const transportMethod = isReadOnlyProjectPreview() ? `preview${method[0].toUpperCase()}${method.slice(1)}` : method;
     let response: T;
@@ -141,9 +141,12 @@ export function projectTaskFiles(machineId: string, featurePath: string, task: G
 export function projectScopeFiles(machineId: string, scopePath: string): FileWorkspaceBinding {
     return projectArchiveFiles(machineId, scopePath, scopePath);
 }
-function projectArchiveFiles(machineId: string, featurePath: string, root: string, taskId?: string): FileWorkspaceBinding {
+export function projectFeatureFiles(machineId: string, featurePath: string): FileWorkspaceBinding {
+    return projectArchiveFiles(machineId, featurePath, featurePath, undefined, true);
+}
+function projectArchiveFiles(machineId: string, featurePath: string, root: string, taskId?: string, featureReadOnly = false): FileWorkspaceBinding {
     const input = { featurePath, ...(taskId ? { taskId } : {}) };
-    const prefix = taskId ? 'goalTask' : 'goalScope';
+    const prefix = featureReadOnly ? 'goalFeature' : taskId ? 'goalTask' : 'goalScope';
     const readBytes = async (path: string, signal?: AbortSignal) => {
         let offset = 0, revision: string | undefined, bytes: Uint8Array | undefined, transferId: string | undefined;
         // This is a finite file transfer, driven by byte offsets, not a task/status polling loop.
@@ -163,7 +166,7 @@ function projectArchiveFiles(machineId: string, featurePath: string, root: strin
     return {
         // The provider already includes account, machine and canonical root in
         // its tuple. Avoid nested JSON here: MMKV rejects escaped backslashes.
-        root, machineId, scope: `${isReadOnlyProjectPreview() ? 'goal-preview-readonly' : 'goal-task'}:${taskId ?? 'scope'}`, readOnly: isReadOnlyProjectPreview(),
+        root, machineId, scope: `${isReadOnlyProjectPreview() ? 'goal-preview-readonly' : 'goal-task'}:${featureReadOnly ? 'feature' : taskId ?? 'scope'}`, readOnly: featureReadOnly || isReadOnlyProjectPreview(),
         readBytes: async (path, signal) => (await readBytes(path, signal)).bytes,
         readText: async (path, signal) => {
             const { bytes, hash, fileRevision } = await readBytes(path, signal);
@@ -174,6 +177,7 @@ function projectArchiveFiles(machineId: string, featurePath: string, root: strin
             return { content: new TextDecoder('utf-8', { fatal: true }).decode(bytes), hash, fileRevision };
         },
         writeText: async (path, content, expectedHash) => {
+            if (featureReadOnly) throw new Error(t('projectGoals.readOnlyArchive'));
             let binary = ''; for (const byte of new TextEncoder().encode(content)) binary += String.fromCharCode(byte);
             const result = z.object({ success: z.literal(true), hash: z.string(), revision: z.string() }).parse(await projectGoalRequest(machineId, `${prefix}WriteFile`, { ...input, path, content: btoa(binary), expectedHash }));
             return { hash: result.hash, fileRevision: result.revision };

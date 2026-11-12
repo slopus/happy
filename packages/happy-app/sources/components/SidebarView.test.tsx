@@ -252,6 +252,17 @@ describe('SidebarView Agent space exit', () => {
         act(() => renderer.unmount());
     });
 
+    it.each(['sidebar-session-list-button', 'sidebar-archive-button'])('opens %s from the project workspace', testID => {
+        mocks.pathname = '/projects'; mocks.spaceAgent = null;
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SidebarView desktopDensity desktopPrimaryNavigation />); });
+        const button = renderer.root.findAllByType('Pressable').find((node: any) => node.props.testID === testID);
+        act(() => button.props.onPress());
+        expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith('/');
+        expect(mocks.setDesktopSidebarMode).toHaveBeenCalledWith(testID === 'sidebar-archive-button' ? 'archive' : 'timeline');
+        act(() => renderer.unmount());
+    });
+
     it('ignores a persisted Agent space and renders the regular mobile sidebar', () => {
         let renderer: any;
         act(() => {
@@ -364,14 +375,14 @@ describe('SidebarView Agent space exit', () => {
         act(() => renderer.unmount());
     });
 
-    it('opens the session-list panel from projects while preserving the project route', () => {
+    it('returns from projects to the session workspace when opening the session-list panel', () => {
         mocks.pathname = '/projects'; mocks.spaceAgent = null;
         let renderer: any;
         act(() => { renderer = TestRenderer.create(<SidebarView desktopDensity desktopPrimaryNavigation />); });
         act(() => renderer.root.findByProps({ testID: 'sidebar-session-list-button' }).props.onPress());
         expect(mocks.setDesktopSidebarMode).toHaveBeenCalledWith('timeline');
         expect(mocks.toggleLeftSidebar).toHaveBeenCalledTimes(1);
-        expect(mocks.navigate).not.toHaveBeenCalled();
+        expect(mocks.navigate).toHaveBeenCalledWith('/');
         act(() => renderer.unmount());
     });
 

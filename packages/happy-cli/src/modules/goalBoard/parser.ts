@@ -2,6 +2,7 @@ import { readdir, stat, lstat } from 'node:fs/promises';
 import { basename, dirname, extname, join, resolve, relative } from 'node:path';
 import { createHash } from 'node:crypto';
 import type { GoalArtifact, GoalArtifactKind, GoalBoardSnapshot, GoalTask, GoalTaskStatus } from '@slopus/happy-wire';
+import { readGoalDeliveryAgreement, withoutGoalDeliveryAgreement, writeGoalDeliveryAgreement } from '@slopus/happy-wire';
 import { safePath, within, type CatalogRecord } from './catalog';
 import { openAuthorizedFile } from './authorizedFiles';
 
@@ -136,11 +137,11 @@ async function authorizedSourceParent(root: string, candidate: string, directori
     }
     return undefined;
 }
-async function artifactsOf(root: string, taskPath: string, source: string, directories: Set<string>, finalOnly = false): Promise<GoalArtifact[]> {
+async function artifactsOf(root: string, taskPath: string, source: string, directories: Set<string>, finalOnly = false, agreement = false): Promise<GoalArtifact[]> {
     const artifacts: GoalArtifact[] = [];
     for (const link of linksOf(source)) {
         if (artifacts.length >= 50) break;
-        const isContract = /^(PROMPT|AGENTS|problem|PROGRESS)\.md$/i.test(basename(link.target)) || /契约|合同|任务说明|执行依据|历史|参考|基准|计划|预期/.test(link.name) || /历史|参考|输入|契约|计划|预期|\b(?:references?|inputs?|contracts?|historical|baseline|planned|plans?|expected|future|proposals?)\b/i.test(link.heading + ' ' + link.name);
+        const isContract = !agreement && (/^(PROMPT|AGENTS|problem|PROGRESS)\.md$/i.test(basename(link.target)) || /契约|合同|任务说明|执行依据|历史|参考|基准|计划|预期/.test(link.name) || /历史|参考|输入|契约|计划|预期|\b(?:references?|inputs?|contracts?|historical|baseline|planned|plans?|expected|future|proposals?)\b/i.test(link.heading + ' ' + link.name));
         const explicitOutput = (finalOnly ? /最终(?:产物|交付|成果)|(?:^|\s\/\s)交付产物(?:$|\s\/\s)|\bfinal\s+(?:outputs?|results?|deliverables?)\b/i : /(?:当前|最终|交付)产物|最终(?:交付|成果)|实际(?:产物|产出|成果|交付)|阶段(?:产物|交付)|已(?:产出|交付|生成)|\b(?:(?:actual|final)\s+(?:outputs?|results?|deliverables?)|produced\s+(?:outputs?|files?|reports?)|outputs?|results?)\b/i).test(link.heading);
         if (/^https?:\/\//i.test(link.target)) {
             artifacts.push({ id: digest(link.target), revision: digest(link.target), name: link.name, url: link.target.slice(0, 8192), kind: /\/commit\/[0-9a-f]+/i.test(link.target) ? 'commit' : 'url', relation: !isContract && explicitOutput ? 'output' : 'reference', available: true, description: link.description }); continue;
@@ -153,6 +154,7 @@ async function artifactsOf(root: string, taskPath: string, source: string, direc
         const artifact: GoalArtifact = { id, kind: artifactKind(path), name: link.name, relation, available: false, description: link.description };
         try {
             const actual = await safePath(root, path);
+            if (relation === 'output' && !within(dirname(taskPath), actual)) { artifacts.push(artifact); continue; }
             const info = await stat(actual);
             if (info.isFile()) Object.assign(artifact, { path: actual, available: true, size: info.size, modifiedAt: info.mtimeMs, revision: goalFileRevision(info) });
         } catch {
@@ -239,6 +241,7 @@ export async function parseBoard(entry: CatalogRecord, options: { featureOnly?: 
             const problemPath = join(dirname(task.path), 'problem.md');
             const problemDoc = await load(problemPath).catch(() => '');
             const code = task.code || index.match(/全局\s*(G\d{2,})/)?.[1];
+            const delivery = readGoalDeliveryAgreement(index);
             const result: GoalTask = {
                 id: digest(task.path), code, indexPath: task.path, promptPath,
                 title: titleOf(index) || basename(dirname(task.path)),
@@ -253,6 +256,15 @@ export async function parseBoard(entry: CatalogRecord, options: { featureOnly?: 
                 acceptanceCriteria: items(fields, ['acceptanceCriteria', '验收标准'], [index, prompt], ['验收标准', '验收条件', '通过标准']),
                 artifacts: await artifactsOf(root, task.path, index, directories, options.finalOnly), batch: scalar(fields, ['batch', '批次']) || task.batch,
             };
+            if (delivery) {
+                result.expectedDeliverables = delivery.expectedDeliverables;
+                result.acceptanceCriteria = delivery.acceptanceCriteria;
+                const references = (await artifactsOf(root, task.path, withoutGoalDeliveryAgreement(index), directories, options.finalOnly)).map(artifact => ({ ...artifact, relation: 'reference' as const }));
+                const agreementSource = writeGoalDeliveryAgreement('', { expectedDeliverables: [], acceptanceCriteria: [], finalOutputs: delivery.finalOutputs });
+                const finals = await artifactsOf(root, task.path, agreementSource, directories, true, true);
+                const ids = new Set(finals.map(artifact => artifact.id));
+                result.artifacts = [...finals, ...references.filter(artifact => !ids.has(artifact.id))].slice(0, 50);
+            }
             for (const artifact of result.artifacts) if (artifact.path) directories.add(dirname(artifact.path));
             if (Buffer.byteLength(JSON.stringify(parsed)) + Buffer.byteLength(JSON.stringify(result)) > MAX_METADATA_BYTES) { warn('Snapshot size limit reached; board is truncated'); break; }
             parsed.push(result);

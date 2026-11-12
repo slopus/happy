@@ -9,8 +9,9 @@ import { GoalBoardButton as Button } from './GoalBoardButton';
 import { ProjectSurfaces } from './ProjectSurfaces';
 
 /** The task brief stays readable even when an older archive has no delivery contract. */
-export function ProjectTaskDetails({ task, number, approval, onEdit, editDisabled, children }: {
+export function ProjectTaskDetails({ task, number, approval, onEdit, editDisabled, onDelivery, deliveryDisabled, children }: {
     task: GoalTask; number: number; approval: React.ReactNode; onEdit: () => void; editDisabled: boolean; children: React.ReactNode;
+    onDelivery?: () => void; deliveryDisabled?: boolean;
 }) {
     const surfaces = React.useContext(ProjectSurfaces);
     const { theme } = useUnistyles();
@@ -25,14 +26,14 @@ export function ProjectTaskDetails({ task, number, approval, onEdit, editDisable
             <Text selectable style={styles.goal}>{task.goal || task.title}</Text>
         </View>
         <View style={styles.section}>
-            <Text style={styles.label}>{t('projectGoals.deliveryHeading')}</Text>
+            <View style={styles.heading}><Text style={styles.label}>{t('projectGoals.deliveryHeading')}</Text>{onDelivery && <Button variant="toolbar" label={t('projectGoals.editDelivery')} onPress={onDelivery} disabled={deliveryDisabled}><Text style={styles.link}>{t('projectGoals.editDelivery')}</Text></Button>}</View>
             <View style={[styles.agreement, surfaces && { backgroundColor: surfaces.selected }]} testID="project-task-delivery-agreement">
                 <Text style={styles.agreementLabel}>{t('projectGoals.expected')}</Text>
                 {task.expectedDeliverables.length ? task.expectedDeliverables.map((value, index) => <View key={index} style={styles.item}><Text style={styles.bullet}>•</Text><Text selectable style={styles.body}>{value}</Text></View>) : <Text style={styles.secondary}>{t('projectGoals.noExpected')}</Text>}
             </View>
         </View>
         <View style={styles.section}>
-            <View style={styles.heading}><Text style={styles.label}>{t('projectGoals.finals')}</Text>{outputs.length > 0 && <Text style={styles.number}>{outputs.length}</Text>}</View>
+            <View style={styles.heading}><Text style={styles.label}>{t('projectGoals.finals')}</Text>{onDelivery && <Button variant="toolbar" label={t('projectGoals.selectFinals')} onPress={onDelivery} disabled={deliveryDisabled}><Text style={styles.link}>{t('projectGoals.selectFinals')}</Text></Button>}{outputs.length > 0 && <Text style={styles.number}>{outputs.length}</Text>}</View>
             <Text style={styles.secondary}>{t('projectGoals.confirmationHint')}</Text>
             {outputs.length ? children : <View style={styles.noDelivery} testID="project-task-no-delivery"><Ionicons name="document-text-outline" size={22} color={theme.colors.textSecondary} /><Text style={styles.emptyTitle}>{t('projectGoals.noFinals')}</Text><Text style={styles.secondary}>{t('projectGoals.noFinalsHint')}</Text></View>}
         </View>

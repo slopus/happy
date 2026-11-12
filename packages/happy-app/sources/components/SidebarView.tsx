@@ -441,7 +441,7 @@ export const SidebarView = React.memo(({
         setDesktopSidebarMode(desktopSidebarListMode);
         if (desktopPrimaryNavigation && pathname === '/projects' && (!leftVisible || desktopSidebarMode === desktopSidebarListMode)) toggleLeftSidebar();
         if (mobileNavigation) setMobilePanel('sessions');
-        else if (advisorSidebarActive || pathname.startsWith('/apps/conversations')) go('/');
+        else if (pathname === '/projects' || advisorSidebarActive || pathname.startsWith('/apps/conversations')) go('/');
     };
 
     const openArchive = () => {
@@ -449,7 +449,7 @@ export const SidebarView = React.memo(({
         setDesktopSidebarMode('archive');
         if (desktopPrimaryNavigation && pathname === '/projects' && (!leftVisible || desktopSidebarMode === 'archive')) toggleLeftSidebar();
         if (mobileNavigation) setMobilePanel('sessions');
-        else if (pathname.startsWith('/apps/conversations')) go('/');
+        else if (pathname === '/projects' || pathname.startsWith('/apps/conversations')) go('/');
     };
 
     const openSettingsFromSidebar = React.useCallback(() => {
