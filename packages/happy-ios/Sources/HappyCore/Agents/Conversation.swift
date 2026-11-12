@@ -699,13 +699,17 @@ public actor Conversation {
         for await event in events {
             if Task.isCancelled { return }
             switch event {
-            case .resync(let from):
-                // The stream opening: read now, a read on its way (perhaps
-                // on a tunnel the suspension left dead) asked again. Open: a
+            case .resync(let from, let stale):
+                // The stream opening: read now, a read on its way asked
+                // again only if a pause came since it began (perhaps on a
+                // tunnel the suspension left dead); one on a live tunnel,
+                // as on a launch straight into a chat, is let land. Open: a
                 // read on its way is read again as it lands if it began
                 // before the stream (`adopt`).
                 if let from, heldEvents != nil {
                     streamFrom = from
+                } else if from == nil, !stale, heldEvents != nil {
+                    // The stream's `.resync(from:)` says whether it covers.
                 } else if from.map(covered) != true {
                     // Some may be lost: not current again until the read below is in.
                     snapshot.synced = false

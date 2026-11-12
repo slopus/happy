@@ -17,6 +17,8 @@ private actor PathServer: AgentTransport {
     var journal = 1
     var messageQueries: [String] = []
     var failMessages = 0
+    var holdMessages = false
+    var messageWaiters: [CheckedContinuation<Void, Never>] = []
     var sends = 0
     /// The conversation's runs, oldest first: each with its messages' ids.
     var runs: [(id: String, messages: [String], ended: Bool)] = [("r1", ["u1", "a1"], true), ("r2", ["u2", "a2"], true)]
@@ -31,6 +33,10 @@ private actor PathServer: AgentTransport {
         if !hold { heldHellos.forEach { $0.yield(hello(resumed: false)) }; heldHellos.removeAll() }
     }
     func failNextMessageReads(_ count: Int) { failMessages = count }
+    func holdMessageReads(_ hold: Bool) {
+        holdMessages = hold
+        if !hold { messageWaiters.forEach { $0.resume() }; messageWaiters.removeAll() }
+    }
     /// A new run the phone hasn't seen, finished, and its event.
     func addRun(_ id: String) {
         runs.append((id, ["u-\(id)", "a-\(id)"], true))
@@ -73,6 +79,7 @@ private actor PathServer: AgentTransport {
         } else if path.hasPrefix("/v0/agents/s/messages?") {
             messageQueries.append(path)
             if failMessages > 0 { failMessages -= 1; throw URLError(.timedOut) }
+            if holdMessages { await withCheckedContinuation { messageWaiters.append($0) } }
             var selected = runs
             if let after = URLComponents(string: path)?.queryItems?.first(where: { $0.name == "after" })?.value {
                 guard let index = runs.firstIndex(where: { $0.messages.contains(after) }) else { return .init(status: 404, body: Data("{}".utf8)) }
@@ -270,6 +277,26 @@ final class SyncPathTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(200))
         let again = await server.reads()
         XCTAssertEqual(again, reads)
+        await engine.stop()
+    }
+
+    /// A launch straight into a chat from a push: the chat's read, on its
+    /// way before the stream opens, is let land rather than asked again.
+    func testALaunchIntoAChatKeepsTheChatsReadOnItsWay() async throws {
+        let server = PathServer()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder())
+        await server.holdMessageReads(true)
+        let (conversation, shown) = await open(engine, client)
+        try await eventually("the chat's read") { await server.queries().count == 1 }
+        await engine.start()
+        try await eventually("live") { let home = await Self.home(engine); return home.live }
+        try await Task.sleep(for: .milliseconds(200))
+        let asked = await server.queries().count
+        XCTAssertEqual(asked, 1, "the read on its way was asked again")
+        await server.holdMessageReads(false)
+        try await eventually("shown") { shown.snapshot.synced && shown.texts.contains("text of a2") }
+        await conversation.stop()
         await engine.stop()
     }
 

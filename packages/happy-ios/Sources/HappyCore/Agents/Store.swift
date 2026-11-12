@@ -125,6 +125,8 @@ public actor Store {
     private var me: String?
     private var places = Places()
     private var placesReload: Task<Void, Never>?
+    /// Paused since the stream last opened (`externalOpening`).
+    private var pausedSinceOpening = false
     private var placesDirty = false
     /// When the bots and tasks were last read (~0.8 MB on a busy
     /// computer), and what came meanwhile that their read could not follow.
@@ -173,7 +175,9 @@ public actor Store {
     /// The account's stream opens from now (`SyncEngine`): the
     /// conversations followed are read at once, beside it.
     public func externalOpening() {
-        for listener in listeners.values { listener.continuation.yield(.resync(from: nil)) }
+        let stale = pausedSinceOpening
+        pausedSinceOpening = false
+        for listener in listeners.values { listener.continuation.yield(.resync(from: nil, stale: stale)) }
     }
 
     /// The account's stream is open. It carries everything after
@@ -245,6 +249,7 @@ public actor Store {
     /// Closes the events stream while the app is in the background; what
     /// shows stays, and `start` resumes from the last cursor.
     public func pause() {
+        pausedSinceOpening = true
         following?.cancel(); following = nil
         // Kept now rather than after the app may have been closed.
         if let keeping { keeping.cancel(); self.keeping = nil; saveOffline() }
@@ -309,10 +314,12 @@ public actor Store {
     /// One conversation's events off this store's stream, so an open chat
     /// needs no stream of its own. `resync` means some may have been lost:
     /// read again. `from` is where the stream began, which a read that
-    /// began after it covers; nil while it is still opening.
+    /// began after it covers; nil while it is still opening. `stale`: the
+    /// engine was paused since the stream last opened, so a read on its way
+    /// may be on a tunnel the suspension left dead.
     public enum ConversationEvent: Sendable {
         case event(JSONValue)
-        case resync(from: String?)
+        case resync(from: String?, stale: Bool = false)
     }
 
     private var listeners: [UUID: (key: String, continuation: AsyncStream<ConversationEvent>.Continuation)] = [:]
