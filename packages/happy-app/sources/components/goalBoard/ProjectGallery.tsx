@@ -3,10 +3,11 @@ import { Platform, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import type { GoalProject } from '@slopus/happy-wire';
+import type { GoalBoardCatalogEntry, GoalProject } from '@slopus/happy-wire';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { GoalBoardButton } from './GoalBoardButton';
+import { GoalBoardCard } from './GoalBoardCard';
 
 // Original V2/V2.2 project artwork, bundled locally so cards do not need a third-party image service.
 const covers = [
@@ -15,7 +16,7 @@ const covers = [
     require('@/assets/images/project-goals/harness.jpg'),
     require('@/assets/images/project-goals/mini.jpg'),
 ];
-function coverFor(project: GoalProject) {
+function coverFor(project: Pick<GoalProject, 'projectPath' | 'title'>) {
     if (/happy|paws/i.test(project.title)) return covers[0];
     let hash = 0;
     for (const char of project.projectPath.split('/').pop() || project.title) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
@@ -63,6 +64,32 @@ export function ProjectGallery({ projects, onSelect }: { projects: GoalProject[]
     </View>;
 }
 
+export function ProjectFeatureGallery({ entries, projectPath, onSelect }: {
+    entries: GoalBoardCatalogEntry[];
+    projectPath: string;
+    onSelect: (entry: GoalBoardCatalogEntry) => void;
+}) {
+    const { theme } = useUnistyles();
+    const { cardWidth, setWidth, gridStyle } = useGalleryLayout();
+    return <View style={[styles.grid, gridStyle]} onLayout={event => setWidth(Math.floor(event.nativeEvent.layout.width))} testID="project-feature-gallery">
+        {entries.map(entry => {
+            const title = entry.featurePath === projectPath ? t('projectGoals.tasks') : entry.title;
+            return <GoalBoardCard key={entry.featurePath} style={{ width: cardWidth, maxWidth: '100%', minWidth: 0 }}>
+                <GoalBoardButton variant="card" label={title} onPress={() => onSelect(entry)}>
+                    <View style={styles.featureCover}>
+                        <Image source={coverFor({ projectPath: entry.featurePath, title: entry.title })} contentFit="cover" style={StyleSheet.absoluteFillObject} />
+                    </View>
+                    <View style={styles.featureCaption}>
+                        <Text numberOfLines={2} style={styles.featureTitle}>{title}</Text>
+                        <Text numberOfLines={3} style={styles.featureDescription}>{entry.summary || t('projectGoals.showTasks')}</Text>
+                        <View style={styles.featureMeta}><Ionicons name="folder-open-outline" size={14} color={theme.colors.textSecondary} /><Text style={styles.metaText}>{t('projectGoals.showTasks')}</Text><Ionicons name="arrow-forward" size={15} color={theme.colors.textSecondary} /></View>
+                    </View>
+                </GoalBoardButton>
+            </GoalBoardCard>;
+        })}
+    </View>;
+}
+
 const styles = StyleSheet.create(theme => ({
     grid: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 24, width: '100%' },
     skeleton: { backgroundColor: theme.colors.surfaceSelected },
@@ -77,4 +104,9 @@ const styles = StyleSheet.create(theme => ({
     description: { minHeight: 40, fontSize: 12, lineHeight: 20, color: theme.colors.textSecondary, ...Typography.default() },
     meta: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingTop: 6 },
     metaText: { flex: 1, fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() },
+    featureCover: { width: '100%', aspectRatio: 8 / 5, overflow: 'hidden', backgroundColor: theme.colors.surfaceHigh },
+    featureCaption: { padding: 18, gap: 10 },
+    featureTitle: { minHeight: 48, fontSize: 16, lineHeight: 24, color: theme.colors.text, ...Typography.default('semiBold') },
+    featureDescription: { minHeight: 60, fontSize: 12, lineHeight: 20, color: theme.colors.textSecondary, ...Typography.default() },
+    featureMeta: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.divider },
 }));

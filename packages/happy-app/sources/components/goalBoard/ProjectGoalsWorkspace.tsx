@@ -42,7 +42,7 @@ import { openExternalUrl } from '@/utils/openExternalUrl';
 import { GoalBoardButton as Button } from './GoalBoardButton';
 import { GoalBoardCard } from './GoalBoardCard';
 import { RunningTaskBorder } from './RunningTaskBorder';
-import { ProjectGallery, ProjectGalleryLoading } from './ProjectGallery';
+import { ProjectGallery, ProjectGalleryLoading, ProjectFeatureGallery } from './ProjectGallery';
 import { canCreateProjectConversation, canConfirmProjectDeliverable, openProjectGoalConversation } from '@/sync/projectGoals';
 import { getProjectPreviewMachineId } from '@/sync/projectGoals';
 import { selectProjectMachine } from './projectMachine';
@@ -315,7 +315,7 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
                 {feature && <Button variant="toolbar" label={t('projectGoals.batchDelivery')} disabled={readOnly || data.offline || !tasks.length} onPress={() => setDeliveryTasks(tasks)} testID="project-batch-delivery"><Text style={styles.link}>{t('projectGoals.batchDelivery')}</Text></Button>}
                 {params.task && feature && !task && <Text style={styles.error}>{t('projectGoals.taskMissing')}</Text>}
                 {!data.contentLoaded && (data.status === 'loading' || data.status === 'connecting') ? <ProjectLoading kind={scopeDesktop ? params.feature ? 'tasks' : params.project ? 'features' : 'projects' : 'projects'} /> : feature ? <TaskCards onDelivery={target => setDeliveryTasks([target])} tasks={tasks} query={query} status={statusFilter} setStatus={setStatusFilter} onSelect={id => go({ task: id })} mobile={mobile} actionLabel={target => { const cached = readProjectCache(projectCacheKey('history', machineId, feature!.featurePath, target.id), projectHistorySchema); const known = data.board?.sessions[target.id] ?? cached?.value.sessions; return t(known ? known.length ? 'projectGoals.continueChat' : 'projectGoals.openChat' : 'projectGoals.chooseChat'); }} onAction={target => { if (mobile) void cardAction.continueTask(target); else void openCardConversation(target); }} offline={data.offline} busy={busy || cardAction.busy} hideExecution />
-                    : project ? <View style={styles.grid}>{[...(project.direct ? [project.direct] : []), ...project.features].filter(entry => entry.title.toLowerCase().includes(query.toLowerCase())).map(entry => <CatalogCard key={entry.featurePath} title={entry.featurePath === project.projectPath ? t('projectGoals.tasks') : entry.title} subtitle={entry.summary || t('projectGoals.showTasks')} onPress={() => chooseFeature(entry)} />)}</View>
+                    : project ? <ProjectFeatureGallery entries={[...(project.direct ? [project.direct] : []), ...project.features].filter(entry => (entry.title + (entry.summary || '')).toLowerCase().includes(query.toLowerCase()))} projectPath={project.projectPath} onSelect={chooseFeature} />
                         : <><View style={styles.libraryHeading}><Text style={styles.sectionTitle}>{t('projectGoals.projectLibrary')}</Text><Text style={styles.meta}>{data.loaded ? data.projects.length : '—'}</Text></View><ProjectGallery projects={data.projects.filter(project => (project.title + (project.summary || '')).toLowerCase().includes(query.toLowerCase()))} onSelect={chooseProject} /></>}
                 {data.status === 'offline' && <Empty text={t('projectGoals.offlineArchive')} />}
                 {data.status === 'ready' && !data.projects.length && <Empty text={t('projectGoals.emptyProjects')} />}
@@ -332,7 +332,7 @@ function ScopeCatalog({ scopePath, children, enabled, ...props }: Omit<React.Com
 function ProjectLoading({ kind }: { kind: 'projects' | 'features' | 'tasks' }) {
     return <View testID="project-loading" accessibilityLabel={t('projectGoals.loadingArchive')} accessibilityState={{ busy: true }} style={{ gap: 20 }}>
         <Text style={styles.meta}>{t('projectGoals.loadingArchive')}</Text>
-        {kind === 'projects' ? <ProjectGalleryLoading /> : <View style={styles.grid} testID={`project-${kind}-loading`}>{Array.from({ length: 6 }, (_, i) => <View key={i} style={kind === 'tasks' ? styles.taskCard : styles.catalogCard}><View style={[styles.taskCardContent, styles.loadingCard, kind === 'tasks' ? { minHeight: 230 } : { minHeight: 100 }]}><View style={[styles.skeletonLine, { width: '30%' }]} /><View style={[styles.skeletonLine, { width: '75%' }]} /><View style={[styles.skeletonLine, { width: '90%' }]} /><View style={[styles.skeletonLine, { width: '65%' }]} /></View></View>)}</View>}
+        {kind !== 'tasks' ? <ProjectGalleryLoading /> : <View style={styles.grid} testID="project-tasks-loading">{Array.from({ length: 6 }, (_, i) => <View key={i} style={styles.taskCard}><View style={[styles.taskCardContent, styles.loadingCard, { minHeight: 230 }]}><View style={[styles.skeletonLine, { width: '30%' }]} /><View style={[styles.skeletonLine, { width: '75%' }]} /><View style={[styles.skeletonLine, { width: '90%' }]} /><View style={[styles.skeletonLine, { width: '65%' }]} /></View></View>)}</View>}
     </View>;
 }
 
@@ -343,10 +343,6 @@ function CatalogHeading({ title, subtitle, query, setQuery }: { title: string; s
 }
 
 type TaskStatusFilter = 'all' | GoalTask['status'];
-function CatalogCard({ title, subtitle, onPress }: { title: string; subtitle: string; onPress: () => void }) {
-    const { theme } = useUnistyles();
-    return <GoalBoardCard style={styles.catalogCard}><Button variant="card" label={title} onPress={onPress}><View style={styles.catalogCardContent}><View style={styles.cardBody}><Ionicons name="folder-outline" size={24} color={theme.colors.textLink} /><Text numberOfLines={2} style={styles.cardTitle}>{title}</Text><Text numberOfLines={2} style={styles.meta}>{subtitle}</Text></View><Ionicons name="chevron-forward" size={15} color={theme.colors.textSecondary} /></View></Button></GoalBoardCard>;
-}
 function ApprovalTag({ task }: { task: GoalTask }) {
     const state = taskApproval(task);
     const label = state === 'accepted' ? 'accepted' : state === 'changed' ? 'changed' : state !== 'noDeliverables' ? 'notReviewed'
@@ -602,8 +598,6 @@ const styles = StyleSheet.create(theme => ({
     libraryHeading: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 12 },
     search: { minWidth: 180, maxWidth: 320, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider, backgroundColor: theme.colors.surface, color: theme.colors.text, fontSize: 13 },
     grid: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', gap: 14 },
-    catalogCard: { flexGrow: 1, flexBasis: 280, maxWidth: 440 },
-    catalogCardContent: { padding: 18, flexDirection: 'row', alignItems: 'center', gap: 16 },
     loadingCard: { borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider, backgroundColor: theme.colors.surface, gap: 18 },
     skeletonLine: { height: 10, borderRadius: 5, backgroundColor: theme.colors.surfaceSelected },
     taskBoard: { gap: 20 }, taskFilters: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7 },
