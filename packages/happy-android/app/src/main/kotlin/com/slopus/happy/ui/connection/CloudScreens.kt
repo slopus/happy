@@ -890,7 +890,14 @@ fun CloudInviteScreen(
     }
     val line = happyTextStyle(fontSize = 15, lineHeight = 20)
     CloudFrame(
-        title = stringResource(if (refusal != null) R.string.cloud_invite_unavailable else R.string.cloud_invite_title),
+        title = stringResource(
+            when (refusal) {
+                null -> R.string.cloud_invite_title
+                // The invite is fine; it's the account that isn't the one invited.
+                is CloudInviteRefusal.EmailMismatch -> R.string.cloud_invite_wrong_email
+                else -> R.string.cloud_invite_unavailable
+            },
+        ),
         body = preview?.let { stringResource(R.string.cloud_invite_detail, it.server.title) } ?: "",
         bodyMinLines = 2,
         top = {
