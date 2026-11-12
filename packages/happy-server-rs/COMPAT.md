@@ -232,7 +232,7 @@ frame header bits, the 15 s heartbeat, a refused handshake, and close by frame, 
 | `ELEVENLABS_API_KEY` | voice | [x] |
 | `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING` | dev log route + `.logs/` file | [x] |
 | `HAPPY_STATIC_DIR`, `HAPPY_INJECT_HTML_CONFIG` | self-host webapp | not ported: backend-only |
-| new: `HAPPY_WORKERS` | — | [x] tokio worker threads (default: allowed CPUs, cgroup `cpu.max` aware) |
+| new: `HAPPY_WORKERS` | — | [x] tokio worker threads (default: allowed CPUs, cgroup `cpu.max` aware). Past ~8 workers RPC round trips get slower (tokio parks and wakes idle workers on every hop: 8–9 context switches per call at 16–48 workers vs 0.07 at 4); cap it on big hosts |
 | new: `DATABASE_POOL_SIZE` | — | [x] sqlx pool size (default: `connection_limit` URL param, else 4 × workers clamped to 10..200) |
 | new: `HAPPY_LOG` | — | [x] tracing filter (default by `NODE_ENV`, see QUIRKS deviation 18) |
 | new: `HAPPY_RS_EXPO_PUSH_URL`, `HAPPY_RS_ELEVENLABS_API`, `HAPPY_RS_GITHUB_OAUTH_BASE`, `HAPPY_RS_GITHUB_API_BASE` | — | [x] third-party endpoints, for tests (the TS server gets the same through `compat/fetch-mock.mjs`) |
