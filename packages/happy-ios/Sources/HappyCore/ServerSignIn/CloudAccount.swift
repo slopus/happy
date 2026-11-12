@@ -246,11 +246,6 @@ public actor CloudAccount {
         return try await call("POST", "/v1/servers", body: ["name": name], as: Response.self).server
     }
 
-    public func join(_ name: String, code: String) async throws -> CloudServer {
-        struct Response: Decodable { let server: CloudServer }
-        return try await call("POST", "/v1/servers/join", body: ["name": name, "code": code], as: Response.self).server
-    }
-
     /// A server image's bytes. Only from the accounts origin: the account
     /// token goes nowhere else.
     public func image(_ image: CloudServer.Image) async throws -> Data {

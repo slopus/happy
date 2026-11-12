@@ -250,33 +250,6 @@ final class CloudScreensTests: XCTestCase {
         XCTAssertFalse(asked)
     }
 
-    func testTappingJoinJoinsAndAMissingCodeSaysSo() async throws {
-        let http = CloudHTTP()
-        await http.answer("POST /v1/servers/join", 404, #"{"code":"not_found","error":"No such server."}"#)
-        let screen = CloudJoinViewController(context: context(), account: CloudAccount.preview(token: "account", http: http))
-        show(screen)
-        XCTAssertEqual(screen.titleLabel.string, "Join with an invite")
-        XCTAssertFalse(screen.primary.isEnabled, "Join server waits for both")
-        screen.nameField.text.text = "@acme"
-        screen.edited()
-        XCTAssertFalse(screen.primary.isEnabled)
-        screen.primary.tapped()
-        await settle { !screen.status.string.isEmpty }
-        XCTAssertEqual(screen.status.string, Strings.HappyCloud.joinMissing)
-        await settle { !screen.primary.isLoading }
-        let none = await http.requests.count
-        XCTAssertEqual(none, 0)
-
-        screen.codeField.text.text = "pcmurcvd"
-        screen.edited()
-        XCTAssertTrue(screen.primary.isEnabled)
-        screen.primary.tapped()
-        await settle { screen.status.string == "No server has that name and invite code." }
-        XCTAssertEqual(screen.status.string, "No server has that name and invite code.")
-        let joined = await http.requests.first
-        XCTAssertEqual(try joined.flatMap { try JSONSerialization.jsonObject(with: $0.body ?? Data()) as? [String: String] }, ["name": "acme", "code": "pcmurcvd"])
-    }
-
     // MARK: The welcome and sign-in
 
     /// Desktop's five Cloud slides, word for word, and the sign-in under
@@ -441,7 +414,7 @@ final class CloudScreensTests: XCTestCase {
     // MARK: Join a server
 
     /// Each server with its name, `@name` and Join; no Continue until one
-    /// is joined; Bootstrap a new one and Join with an invite under them.
+    /// is joined; Bootstrap a new one under them, and no invite code.
     func testTheServersEachHaveJoin() async throws {
         let account = CloudAccount.preview(token: "account", http: CloudHTTP())
         let servers = [CloudServer(id: "s1", name: "acme", url: "", role: .owner, displayName: "Acme"),
@@ -458,14 +431,52 @@ final class CloudScreensTests: XCTestCase {
         XCTAssertEqual(join.accessibilityLabel, "Join Acme")
         XCTAssertTrue(screen.primary.isHidden, "no Continue before a join")
         XCTAssertEqual(screen.bootstrap.title, "Bootstrap a new one")
-        XCTAssertEqual(screen.invite.title, "Join with an invite")
+        XCTAssertNil(Self.find("cloud-join", in: screen.view), "invites are links, accepted on the web")
         XCTAssertFalse(screen.bootstrap.isHidden)
         screen.view.layoutIfNeeded()
         XCTAssertGreaterThan(screen.bootstrap.frame.minY, join.convert(join.bounds, to: screen.content).maxY)
     }
 
-    /// No server yet: Bootstrap a server leads, says so, offers an invite,
-    /// and Back from it signs the account out.
+    /// Back in the app after accepting an invite link in the browser: the
+    /// list loads again and the new server is there.
+    func testTheServersReloadWhenTheAppComesBack() async throws {
+        let account = CloudAccount.preview(token: "account", http: CloudHTTP())
+        let acme = CloudServer(id: "s1", name: "acme", url: "", role: .owner)
+        let globex = CloudServer(id: "s2", name: "globex", url: "", role: .member)
+        final class List { var value: [CloudServer] = [] }
+        let list = List()
+        list.value = [acme]
+        let screen = CloudServersViewController(context: context(), account: account, load: { list.value })
+        show(UINavigationController(rootViewController: screen))
+        await settle { Self.find("cloud-server-acme", in: screen.view) != nil }
+        XCTAssertNil(Self.find("cloud-server-globex", in: screen.view))
+        list.value = [acme, globex]
+        NotificationCenter.default.post(name: UIApplication.willEnterForegroundNotification, object: nil)
+        await settle { Self.find("cloud-server-globex", in: screen.view) != nil }
+        XCTAssertNotNil(Self.find("cloud-server-globex", in: screen.view))
+    }
+
+    /// The first Bootstrap, when the account's first server was joined in
+    /// the browser meanwhile: Join a server takes its place.
+    func testTheFirstBootstrapGivesWayToAServerJoinedInTheBrowser() async throws {
+        let http = CloudHTTP()
+        await http.answer("GET /v1/servers", 200, #"{"servers":[{"id":"s1","name":"acme","url":"","role":"member"}]}"#)
+        let account = CloudAccount.preview(token: "account", http: http)
+        CloudScreens.account = account
+        defer { CloudScreens.account = nil }
+        let create = CloudCreateViewController(context: context(), account: account, first: true)
+        let navigation = UINavigationController(rootViewController: CloudWelcomeViewController(context: context()))
+        navigation.pushViewController(create, animated: false)
+        show(navigation)
+        NotificationCenter.default.post(name: UIApplication.willEnterForegroundNotification, object: nil)
+        await settle { navigation.topViewController is CloudServersViewController && navigation.transitionCoordinator == nil }
+        XCTAssertTrue(navigation.topViewController is CloudServersViewController)
+        XCTAssertEqual(navigation.viewControllers.count, 2, "\(navigation.viewControllers)")
+        XCTAssertNotNil(CloudScreens.account, "the account stays signed in")
+    }
+
+    /// No server yet: Bootstrap a server leads, says so, and Back from it
+    /// signs the account out.
     func testNoServersLeadsToBootstrapWhoseBackSignsOut() async throws {
         let account = CloudAccount.preview(token: "account", http: CloudHTTP())
         CloudScreens.account = account
@@ -479,8 +490,6 @@ final class CloudScreensTests: XCTestCase {
         XCTAssertEqual(navigation.viewControllers.count, 2)
         XCTAssertEqual(create.titleLabel.string, "Bootstrap a server")
         XCTAssertEqual(create.bodyLabel.string, "Your account has no servers yet. Name your team’s first one.")
-        XCTAssertFalse(create.invite.isHidden)
-        XCTAssertEqual(create.invite.title, "Have an invite? Join a server")
         XCTAssertFalse(create.primary.isEnabled, "Bootstrap waits for a free name")
         XCTAssertTrue(create.signsOutOnBack)
         navigation.popViewController(animated: false)

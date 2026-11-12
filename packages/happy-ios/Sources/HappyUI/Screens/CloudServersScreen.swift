@@ -28,9 +28,10 @@ protocol CloudSignInStep: CloudFlowScreen {}
 ///    sent by email, typed in the app). Skipped while the account's
 ///    hour-long pass lasts.
 /// 2. Join a server: each of the account's servers with Join; several can
-///    be joined, then Continue opens the last. Bootstrap a new one and Join
-///    with an invite under them. An account with none starts at Bootstrap.
-/// 3. Bootstrap a server, or Join with an invite: then straight into it
+///    be joined, then Continue opens the last. Bootstrap a new one under
+///    them. An account with none starts at Bootstrap. An invite is a link,
+///    accepted on the web; the list loads again when the app comes back.
+/// 3. Bootstrap a server: then straight into it
 ///    (Connecting: a token for the server from the accounts API, no
 ///    browser).
 ///
@@ -836,8 +837,10 @@ final class GoogleMarkView: UIView {
 /// phone. Joining keeps the list, so several can be joined (one after
 /// another, each asking a name if its server wants one); Continue, once
 /// one is in, opens the last joined. Back is held while a join runs.
-/// Bootstrap a new one and Join with an invite sit under the list. An
-/// account with no server goes straight to Bootstrap a server.
+/// Bootstrap a new one sits under the list. An account with no server
+/// goes straight to Bootstrap a server. The list loads again whenever the
+/// app comes back, so a server joined from an invite link in the browser
+/// shows up.
 final class CloudServersViewController: CloudStageViewController {
     private let account: CloudAccount
     /// Where the list comes from: the account's; a preview's own.
@@ -848,7 +851,6 @@ final class CloudServersViewController: CloudStageViewController {
     private let spinner = UIActivityIndicatorView(style: .medium)
     let status = StartGalleryView.bodyLabel("")
     let bootstrap = RoundButton(title: Strings.CloudConnect.bootstrapNew, size: .normal, display: .inverted)
-    let invite = RoundButton(title: Strings.CloudConnect.joinWithInvite, size: .normal, display: .inverted)
     private var pictures: [String: UIImage] = [:]
     private var loadingPictures: Set<String> = []
     /// Servers being joined, and those joined from here (server id to
@@ -874,23 +876,25 @@ final class CloudServersViewController: CloudStageViewController {
         primary.isHidden = true
         primary.action = { [weak self] in await self?.primaryTapped() }
         bootstrap.accessibilityIdentifier = "cloud-create"
-        invite.accessibilityIdentifier = "cloud-join"
-        for link in [bootstrap, invite] { Self.quiet(link) }
+        Self.quiet(bootstrap)
         bootstrap.onTap = { [weak self] in
             guard let self, joining.isEmpty else { return }
             navigationController?.pushViewController(CloudCreateViewController(context: context, account: account, first: false), animated: true)
         }
-        invite.onTap = { [weak self] in
-            guard let self, joining.isEmpty else { return }
-            navigationController?.pushViewController(CloudJoinViewController(context: context, account: account), animated: true)
-        }
         spinner.color = StartViewController.Colors.text
         status.accessibilityIdentifier = "cloud-servers-status"
-        for subview in [spinner, status, bootstrap, invite] as [UIView] { content.addSubview(subview) }
+        for subview in [spinner, status, bootstrap] as [UIView] { content.addSubview(subview) }
+        NotificationCenter.default.addObserver(self, selector: #selector(foregrounded), name: UIApplication.willEnterForegroundNotification, object: nil)
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        Task { await reload() }
+    }
+
+    /// Back from the browser, where an invite link may have added a server.
+    @objc func foregrounded() {
+        guard viewIfLoaded?.window != nil else { return }
         Task { await reload() }
     }
 
@@ -966,7 +970,6 @@ final class CloudServersViewController: CloudStageViewController {
         navigationItem.leftBarButtonItem?.isEnabled = !busy
         navigationController?.interactivePopGestureRecognizer?.isEnabled = !busy
         bootstrap.isEnabled = !busy
-        invite.isEnabled = !busy
         let anyJoined = (servers ?? []).contains { connection(for: $0) != nil }
         primary.title = failedToLoad ? Strings.HappyCloud.tryAgain : Strings.CloudConnect.continueAction
         primary.isHidden = !(failedToLoad || anyJoined)
@@ -1032,7 +1035,6 @@ final class CloudServersViewController: CloudStageViewController {
             .init(size: CGSize(width: 44, height: spinner.isAnimating ? 44 : 0), gap: 12, centred: true),
             .init(height: status.string.isEmpty ? 0 : status.measurable.height(fitting: width), gap: 16),
             .init(size: link(bootstrap), gap: 16, centred: true),
-            .init(size: link(invite), gap: 0, centred: true),
         ]
     }
 
@@ -1041,11 +1043,10 @@ final class CloudServersViewController: CloudStageViewController {
     override func layoutContent() {
         let frames = CloudColumnLayout.stack(items(width: content.bounds.width), width: content.bounds.width).frames
         for (index, id) in order.enumerated() { rows[id]?.setLayoutFrame(frames[index]) }
-        let rest = frames.suffix(4).map { $0 }
+        let rest = frames.suffix(3).map { $0 }
         spinner.setLayoutFrame(rest[0])
         status.setLayoutFrame(rest[1])
         bootstrap.setLayoutFrame(rest[2])
-        invite.setLayoutFrame(rest[3])
     }
 
     /// Its picture, else its ThumbHash, else the placeholder its name picks
@@ -1075,12 +1076,12 @@ final class CloudServersViewController: CloudStageViewController {
 /// Bootstrap a server: its name, as `@name`, checked as it is typed;
 /// Bootstrap once it is free, which makes it with the person as its owner
 /// and goes straight into it. When the account has none yet (`first`) it
-/// says so, offers an invite instead, and Back signs the account out.
+/// says so, Back signs the account out, and coming back to the app with a
+/// server joined from an invite link in the browser opens Join a server.
 final class CloudCreateViewController: CloudStageViewController, UITextFieldDelegate {
     private let account: CloudAccount
     let field = CloudField(prefix: "@", placeholder: Strings.CloudConnect.namePlaceholder)
     let status = StartGalleryView.bodyLabel("")
-    let invite = RoundButton(title: Strings.CloudConnect.haveInvite, size: .normal, display: .inverted)
     private let first: Bool
     private var checking: Task<Void, Never>?
 
@@ -1104,14 +1105,24 @@ final class CloudCreateViewController: CloudStageViewController, UITextFieldDele
         field.text.addTarget(self, action: #selector(edited), for: .editingChanged)
         primary.action = { [weak self] in await self?.create() }
         status.accessibilityIdentifier = "cloud-create-status"
-        invite.accessibilityIdentifier = "cloud-create-invite"
-        Self.quiet(invite)
-        invite.isHidden = !first
-        invite.onTap = { [weak self] in
-            guard let self else { return }
-            navigationController?.pushViewController(CloudJoinViewController(context: context, account: account), animated: true)
+        for subview in [field, status] as [UIView] { content.addSubview(subview) }
+        if first { NotificationCenter.default.addObserver(self, selector: #selector(foregrounded), name: UIApplication.willEnterForegroundNotification, object: nil) }
+    }
+
+    /// The account's first server, joined from an invite link in the
+    /// browser: Join a server takes this one's place.
+    @objc func foregrounded() {
+        guard viewIfLoaded?.window != nil else { return }
+        Task { [weak self, account] in
+            guard let servers = try? await account.servers(), !servers.isEmpty,
+                  let self, let navigation = navigationController, navigation.topViewController === self else { return }
+            // Giving way isn't Back: the account stays signed in.
+            signsOutOnBack = false
+            var stack = navigation.viewControllers
+            stack.removeLast()
+            stack.append(CloudServersViewController(context: context, account: account))
+            navigation.setViewControllers(stack, animated: true)
         }
-        for subview in [field, status, invite] as [UIView] { content.addSubview(subview) }
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -1165,7 +1176,6 @@ final class CloudCreateViewController: CloudStageViewController, UITextFieldDele
         return [
             .init(height: CloudField.height),
             .init(height: hint, gap: 12),
-            .init(size: invite.isHidden ? .zero : invite.layout(width: width).size, gap: 12, centred: true),
         ]
     }
 
@@ -1175,7 +1185,6 @@ final class CloudCreateViewController: CloudStageViewController, UITextFieldDele
         let frames = CloudColumnLayout.stack(items(width: content.bounds.width), width: content.bounds.width).frames
         field.setLayoutFrame(frames[0])
         status.setLayoutFrame(frames[1])
-        invite.setLayoutFrame(frames[2])
     }
 
     /// The primary button's action: `RoundButton` marks itself loading
@@ -1195,95 +1204,7 @@ final class CloudCreateViewController: CloudStageViewController, UITextFieldDele
     }
 }
 
-/// Join with an invite: a server's `@name` and the invite code its owner
-/// gave; Join server once both are there, then straight into it.
-final class CloudJoinViewController: CloudStageViewController, UITextFieldDelegate {
-    private let account: CloudAccount
-    let nameField = CloudField(prefix: "@", placeholder: Strings.CloudConnect.namePlaceholder)
-    let codeField = CloudField(prefix: nil, placeholder: Strings.CloudConnect.codePlaceholder)
-    let status = StartGalleryView.bodyLabel("")
-
-    init(context: AppContext, account: CloudAccount) {
-        self.account = account
-        super.init(context: context, scene: nil, title: Strings.CloudConnect.joinTitle, body: Strings.CloudConnect.joinMessage, primary: Strings.CloudConnect.joinAction)
-    }
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.accessibilityIdentifier = "cloud-join-server"
-        primary.accessibilityIdentifier = "cloud-join-save"
-        primary.isEnabled = false
-        nameField.text.accessibilityIdentifier = "cloud-join-name"
-        nameField.text.accessibilityLabel = "Server name"
-        codeField.text.accessibilityIdentifier = "cloud-join-code"
-        codeField.text.accessibilityLabel = Strings.CloudConnect.codePlaceholder
-        nameField.text.returnKeyType = .next
-        codeField.text.returnKeyType = .join
-        for field in [nameField, codeField] {
-            field.text.delegate = self
-            field.text.addTarget(self, action: #selector(edited), for: .editingChanged)
-        }
-        status.textColor = UIColor(Palette.textDestructive)
-        primary.action = { [weak self] in await self?.join() }
-        for subview in [nameField, codeField, status] { content.addSubview(subview) }
-    }
-
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        nameField.text.becomeFirstResponder()
-    }
-
-    private var filled: Bool {
-        !Strings.HappyCloud.bareName(nameField.text.text ?? "").isEmpty && !(codeField.text.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    @objc func edited() { primary.isEnabled = filled }
-
-    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-        if textField === nameField.text { codeField.text.becomeFirstResponder() } else if filled { primary.tapped() }
-        return false
-    }
-
-    private func items(width: CGFloat) -> [CloudColumnLayout.Item] {
-        [
-            .init(height: CloudField.height),
-            .init(height: CloudField.height, gap: 12),
-            .init(height: max((TextStyles.startSlideBody.lineHeight ?? 24), status.string.isEmpty ? 0 : status.measurable.height(fitting: width)), gap: 12),
-        ]
-    }
-
-    override func contentHeight(width: CGFloat) -> CGFloat { CloudColumnLayout.stack(items(width: width), width: width).height }
-
-    override func layoutContent() {
-        let frames = CloudColumnLayout.stack(items(width: content.bounds.width), width: content.bounds.width).frames
-        nameField.setLayoutFrame(frames[0])
-        codeField.setLayoutFrame(frames[1])
-        status.setLayoutFrame(frames[2])
-    }
-
-    /// The primary button's action; like `create`, it leaves `isLoading`
-    /// to the button.
-    func join() async {
-        let name = Strings.HappyCloud.bareName(nameField.text.text ?? "")
-        let code = (codeField.text.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, !code.isEmpty else {
-            status.string = Strings.HappyCloud.joinMissing
-            return relayout()
-        }
-        status.string = ""
-        do {
-            let server = try await account.join(name, code: code)
-            navigationController?.pushViewController(CloudConnectingViewController(context: context, account: account, server: server), animated: true)
-        } catch CloudAccountError.signInRequired {
-            CloudScreens.signedOut(context: context, from: self)
-        } catch {
-            status.string = Strings.HappyCloud.failure(error)
-        }
-        relayout()
-    }
-}
-
-/// Signing in to a server just made or joined by invite: a token for it
+/// Signing in to a server just made: a token for it
 /// from the accounts API, no browser, then its home. A failure says why,
 /// with Try Again.
 final class CloudConnectingViewController: CloudStageViewController {
@@ -1485,7 +1406,7 @@ final class CloudField: UIView {
 /// device screenshots (`-screen cloud -cloudScreen …`): `welcome`,
 /// `expired`, `test`, `servers` (two of the preview's own),
 /// `empty` (none: Bootstrap), `live` (the account's, under the token),
-/// `create`, `join`, `connecting`, `email` and `code` (email's two steps,
+/// `create`, `connecting`, `email` and `code` (email's two steps,
 /// the address in `name`). `http` is where the welcome's sign-ins go. On
 /// `email`, `send` taps Send code once the address is in, and `code` is
 /// then typed into the code step, as a person would: the phone's run
@@ -1510,10 +1431,6 @@ public enum CloudScreensPreview {
             let create = CloudCreateViewController(context: context, account: account)
             navigation.pushViewController(create, animated: false)
             if let name { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { create.field.text.text = name; create.edited() } }
-        case "join":
-            let join = CloudJoinViewController(context: context, account: account)
-            navigation.pushViewController(join, animated: false)
-            if let name { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { join.nameField.text.text = name; join.codeField.text.text = "pcmurcvd"; join.edited() } }
         case "connecting": navigation.pushViewController(CloudConnectingViewController(context: context, account: account, server: server, startsAtOnce: false), animated: false)
         case "profile", "profileFilled", "profilePhoto":
             let profile = CloudProfileViewController(context: context, handle: HappyCloud.handle(server.name), prefill: screen == "profile" ? nil : name ?? "Alex Rivera", seed: server.name) { _, _ in

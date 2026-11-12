@@ -7,7 +7,6 @@ extension Strings {
     enum HappyCloud {
         /// Settings' About footer on a Happy Cloud server.
         static let aboutFooter = "Happy Cloud runs your team’s agents on your server in the cloud, where your conversations and files are kept. Not affiliated with Anthropic or OpenAI."
-        static let joinMissing = "Enter the server’s name and its invite code."
 
         static let connectingBody = "Signing you in…"
         static let tryAgain = "Try Again"
@@ -36,7 +35,6 @@ extension Strings {
             switch error {
             case CloudAccountError.refused(_, "invalid_credentials", _): return testWrong
             case CloudAccountError.locked(let retryAfter): return testLocked(retryAfter: retryAfter)
-            case CloudAccountError.refused(_, "not_found", _): return "No server has that name and invite code."
             case CloudAccountError.refused(_, "taken", _): return "That name is taken."
             case CloudAccountError.refused(_, "invalid", _): return CloudConnect.invalidName
             case CloudAccountError.refused(_, _, let message?): return message
