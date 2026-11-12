@@ -74,4 +74,15 @@
     <string name="cloud_email_unavailable">El inicio de sesión por correo no funciona ahora mismo. Inténtalo en un momento.</string>
     <string name="cloud_email_unsupported">El inicio de sesión por correo aún no está disponible.</string>
     <string name="cloud_email_rate_limited">Demasiados intentos. Espera un momento y vuelve a intentarlo.</string>
+    <string name="cloud_invite_title">Te han invitado</string>
+    <string name="cloud_invite_detail">Únete a %1$s en Happy Cloud.</string>
+    <string name="cloud_invite_sign_in">Inicia sesión para unirte</string>
+    <string name="cloud_invite_refused_title">No se puede usar esta invitación</string>
+    <string name="cloud_invite_expired">Esta invitación ha caducado. Pide a quien te la envió un enlace nuevo.</string>
+    <string name="cloud_invite_revoked">Esta invitación se retiró. Pide a quien te la envió un enlace nuevo.</string>
+    <string name="cloud_invite_used_up">Esta invitación ya se ha usado. Pide a quien te la envió un enlace nuevo.</string>
+    <string name="cloud_invite_unknown">Este enlace de invitación no es válido. Comprueba que abriste el enlace completo.</string>
+    <string name="cloud_invite_email_mismatch">Esta invitación se envió a %1$s. Inicia sesión con ese correo para unirte.</string>
+    <string name="cloud_invite_email_mismatch_unknown">Esta invitación se envió a otro correo. Inicia sesión con ese correo para unirte.</string>
+    <string name="cloud_invite_other_account">Iniciar sesión con otra cuenta</string>
 </resources>

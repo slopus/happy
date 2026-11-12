@@ -74,4 +74,15 @@
     <string name="cloud_email_unavailable">Вход по email сейчас не работает. Попробуйте чуть позже.</string>
     <string name="cloud_email_unsupported">Вход по email пока недоступен.</string>
     <string name="cloud_email_rate_limited">Слишком много попыток. Подождите немного и попробуйте снова.</string>
+    <string name="cloud_invite_title">Вас пригласили</string>
+    <string name="cloud_invite_detail">Присоединяйтесь к %1$s в Happy Cloud.</string>
+    <string name="cloud_invite_sign_in">Войти и присоединиться</string>
+    <string name="cloud_invite_refused_title">Это приглашение нельзя использовать</string>
+    <string name="cloud_invite_expired">Срок действия приглашения истёк. Попросите отправителя прислать новую ссылку.</string>
+    <string name="cloud_invite_revoked">Приглашение отозвано. Попросите отправителя прислать новую ссылку.</string>
+    <string name="cloud_invite_used_up">Приглашение уже использовано. Попросите отправителя прислать новую ссылку.</string>
+    <string name="cloud_invite_unknown">Ссылка-приглашение недействительна. Проверьте, что вы открыли её целиком.</string>
+    <string name="cloud_invite_email_mismatch">Приглашение отправлено на %1$s. Войдите с этой почтой, чтобы присоединиться.</string>
+    <string name="cloud_invite_email_mismatch_unknown">Приглашение отправлено на другую почту. Войдите с ней, чтобы присоединиться.</string>
+    <string name="cloud_invite_other_account">Войти с другим аккаунтом</string>
 </resources>

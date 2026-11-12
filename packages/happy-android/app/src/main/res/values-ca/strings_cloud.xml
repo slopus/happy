@@ -74,4 +74,15 @@
     <string name="cloud_email_unavailable">L’inici de sessió per correu no funciona ara mateix. Torna-ho a provar d’aquí a una estona.</string>
     <string name="cloud_email_unsupported">L’inici de sessió per correu encara no està disponible.</string>
     <string name="cloud_email_rate_limited">Massa intents. Espera un moment i torna-ho a provar.</string>
+    <string name="cloud_invite_title">T\'han convidat</string>
+    <string name="cloud_invite_detail">Uneix-te a %1$s a Happy Cloud.</string>
+    <string name="cloud_invite_sign_in">Inicia la sessió per unir-te</string>
+    <string name="cloud_invite_refused_title">No es pot fer servir aquesta invitació</string>
+    <string name="cloud_invite_expired">Aquesta invitació ha caducat. Demana un enllaç nou a qui te la va enviar.</string>
+    <string name="cloud_invite_revoked">Aquesta invitació s\'ha retirat. Demana un enllaç nou a qui te la va enviar.</string>
+    <string name="cloud_invite_used_up">Aquesta invitació ja s\'ha fet servir. Demana un enllaç nou a qui te la va enviar.</string>
+    <string name="cloud_invite_unknown">Aquest enllaç d\'invitació no és vàlid. Comprova que has obert l\'enllaç sencer.</string>
+    <string name="cloud_invite_email_mismatch">Aquesta invitació es va enviar a %1$s. Inicia la sessió amb aquest correu per unir-te.</string>
+    <string name="cloud_invite_email_mismatch_unknown">Aquesta invitació es va enviar a un altre correu. Inicia la sessió amb aquest correu per unir-te.</string>
+    <string name="cloud_invite_other_account">Inicia la sessió amb un altre compte</string>
 </resources>

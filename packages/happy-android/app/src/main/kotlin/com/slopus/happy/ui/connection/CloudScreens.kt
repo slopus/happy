@@ -104,6 +104,7 @@ import com.slopus.happy.connection.CloudException
 import com.slopus.happy.connection.CloudName
 import com.slopus.happy.connection.CloudProvider
 import com.slopus.happy.connection.CloudServer
+import com.slopus.happy.connection.CloudInviteRefusal
 import com.slopus.happy.connection.EmailSignIn
 import com.slopus.happy.connection.PasswordSignIn
 import com.slopus.happy.connection.ServerAuthException
@@ -694,10 +695,10 @@ private fun CloudLink(action: CloudAction, tag: String) {
  * A server on the gradient, desktop's row: its picture, display name and
  * `@name`, the person's role where the accounts service still lists one,
  * then Join: a spinner while it joins, and Joined with a check once it is
- * on the phone.
+ * on the phone. Without [onJoin], the server alone (an invite's).
  */
 @Composable
-private fun ServerCard(server: CloudServer, join: CloudJoin?, enabled: Boolean, image: suspend (String) -> ByteArray?, onJoin: () -> Unit) {
+private fun ServerCard(server: CloudServer, join: CloudJoin?, enabled: Boolean, image: suspend (String) -> ByteArray?, onJoin: (() -> Unit)?, roleName: String? = null) {
     val colors = HappyTheme.colors
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -722,7 +723,8 @@ private fun ServerCard(server: CloudServer, join: CloudJoin?, enabled: Boolean, 
             "viewer" -> R.string.cloud_role_viewer
             else -> R.string.cloud_role_member
         }
-        if (role != null) Text(stringResource(role), style = happyTextStyle(fontSize = 14, lineHeight = 18), color = colors.textSecondary)
+        val roleText = roleName ?: role?.let { stringResource(it) }
+        if (roleText != null) Text(roleText, style = happyTextStyle(fontSize = 14, lineHeight = 18), color = colors.textSecondary)
         if (join == CloudJoin.Joined) {
             Row(
                 Modifier.widthIn(min = CloudSpec.joinWidth).testTag(CloudTags.join(server.name)),
@@ -732,7 +734,7 @@ private fun ServerCard(server: CloudServer, join: CloudJoin?, enabled: Boolean, 
                 Icon(Ionicon.Checkmark, 18.dp, colors.success)
                 Text(stringResource(R.string.cloud_server_joined), style = happyTextStyle(fontSize = 15, lineHeight = 20, weight = FontWeight.Medium), color = colors.textSecondary)
             }
-        } else {
+        } else if (onJoin != null) {
             val label = stringResource(R.string.cloud_server_join_label, server.title)
             RoundButton(
                 title = stringResource(R.string.cloud_join_button),
@@ -806,6 +808,70 @@ fun CloudCreateScreen(
             else -> stringResource(R.string.cloud_name_rules) to colors.textDestructive
         }
         NotePill(note, color)
+    }
+}
+
+/**
+ * An invite link's Join screen: the server it opens and the role it gives,
+ * then Join, which signs in to Happy Cloud first when [signedIn] isn't.
+ * An invite that can't be used says why; one sent to another address
+ * offers signing in with another account.
+ */
+@Composable
+fun CloudInviteScreen(
+    step: CloudInviteStep,
+    signedIn: Boolean,
+    image: suspend (String) -> ByteArray?,
+    onJoin: () -> Unit,
+    onRetry: () -> Unit,
+    onOtherAccount: () -> Unit,
+    onBack: () -> Unit,
+) {
+    when (step) {
+        is CloudInviteStep.Refused -> {
+            val refusal = step.refusal
+            CloudFrame(
+                title = stringResource(R.string.cloud_invite_refused_title),
+                body = when (refusal) {
+                    CloudInviteRefusal.Expired -> stringResource(R.string.cloud_invite_expired)
+                    CloudInviteRefusal.Revoked -> stringResource(R.string.cloud_invite_revoked)
+                    CloudInviteRefusal.UsedUp -> stringResource(R.string.cloud_invite_used_up)
+                    CloudInviteRefusal.Unknown -> stringResource(R.string.cloud_invite_unknown)
+                    is CloudInviteRefusal.EmailMismatch -> refusal.emailHint?.let { stringResource(R.string.cloud_invite_email_mismatch, CloudEmail.unbroken(it)) }
+                        ?: stringResource(R.string.cloud_invite_email_mismatch_unknown)
+                },
+                art = R.raw.state_owl,
+                primary = if (refusal is CloudInviteRefusal.EmailMismatch) CloudAction(stringResource(R.string.cloud_invite_other_account), onOtherAccount)
+                else CloudAction(stringResource(R.string.common_ok), onBack),
+                onBack = onBack,
+            )
+        }
+        else -> {
+            val ready = step as? CloudInviteStep.Ready
+            val failure = (step as? CloudInviteStep.Unloaded)?.reason ?: ready?.failure
+            CloudFrame(
+                title = stringResource(R.string.cloud_invite_title),
+                body = ready?.let { stringResource(R.string.cloud_invite_detail, it.preview.server.title) },
+                art = R.raw.state_owl,
+                primary = when {
+                    step is CloudInviteStep.Unloaded -> CloudAction(stringResource(R.string.team_server_try_again), onRetry)
+                    ready != null -> CloudAction(
+                        stringResource(if (signedIn) R.string.cloud_join_button else R.string.cloud_invite_sign_in),
+                        onJoin,
+                        enabled = !ready.joining,
+                        loading = ready.joining,
+                    )
+                    else -> null
+                },
+                onBack = onBack,
+            ) {
+                when {
+                    ready != null -> ServerCard(ready.preview.server, join = null, enabled = false, image = image, onJoin = null, roleName = ready.preview.roleName)
+                    step is CloudInviteStep.Loading || step is CloudInviteStep.Joined -> Spinner()
+                }
+                if (failure != null) NotePill(stringResource(cloudFailureText(failure)), HappyTheme.colors.textDestructive)
+            }
+        }
     }
 }
 

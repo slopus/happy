@@ -54,6 +54,21 @@ class DeepLinksTest {
         assertEquals(DeepLink.GuestInvite(link), DeepLinks.pending.value)
     }
 
+    /** A Happy Cloud invite opens its Join screen, from the build's invite host; its token never prints. */
+    @Test
+    fun aCloudInviteOpensItsJoinScreen() {
+        val token = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_abcde"
+        val host = com.slopus.happy.connection.HappyCloud.inviteHost!!
+        val link = "https://$host/#$token"
+        val invite = DeepLink.CloudServerInvite(com.slopus.happy.connection.CloudInvite(token))
+        assertEquals(invite, parseDeepLink(link))
+        assertEquals(invite, parseDeepLink("https://${com.slopus.happy.connection.HappyCloud.webHost}/join#$token"))
+        assertEquals("CloudServerInvite(invite=CloudInvite(…))", parseDeepLink(link).toString())
+        assertNull(parseDeepLink("https://$host/#short"))
+        assertTrue(DeepLinks.offer(Intent(Intent.ACTION_VIEW, Uri.parse(link))))
+        assertEquals(invite, DeepLinks.pending.value)
+    }
+
     @Test
     fun theTerminalSchemeOpensTheConfirmScreen() {
         assertEquals(DeepLink.Terminal(key), parseDeepLink("happy://terminal?$key"))

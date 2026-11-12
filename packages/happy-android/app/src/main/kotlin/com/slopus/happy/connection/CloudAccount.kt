@@ -135,7 +135,7 @@ class CloudAccount(
     private val auth: ServerAuthClient,
     http: OkHttpClient,
     private val now: () -> Long = System::currentTimeMillis,
-) {
+) : CloudInviteService {
     private val http = http.newBuilder()
         .followRedirects(false)
         .followSslRedirects(false)
@@ -144,7 +144,7 @@ class CloudAccount(
         .build()
 
     private val mutableState = MutableStateFlow<CloudAccountState>(CloudAccountState.SignedOut())
-    val state: StateFlow<CloudAccountState> = mutableState.asStateFlow()
+    override val state: StateFlow<CloudAccountState> = mutableState.asStateFlow()
 
     private var pending: PendingOAuth? = null
     @Volatile private var access: AccessToken? = null
@@ -367,6 +367,49 @@ class CloudAccount(
 
     /** A new server named [name], the person its owner. */
     suspend fun create(name: String): CloudServer = server(call("POST", "/v1/servers", JsonObject(mapOf("name" to JsonPrimitive(name)))).second)
+
+    /**
+     * What [invite] opens (`POST /v1/invites/preview`, no account token, so
+     * it reads before the sign-in): the server and the role it gives.
+     * Throws [CloudInviteException] for an invite that can't be used.
+     */
+    override suspend fun previewInvite(invite: CloudInvite): CloudInvitePreview {
+        val answer = send("POST", "/v1/invites/preview", JsonObject(mapOf("token" to JsonPrimitive(invite.token))), token = null)
+        val body = inviteAnswer(answer)
+        fun text(obj: JsonObject?, key: String) = (obj?.get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
+        val server = body["server"] as? JsonObject
+        val name = text(server, "name") ?: throw CloudException(CloudException.Reason.Failed)
+        // Its picture comes inline, as a data: URL; the server has no id or address until the accept.
+        val image = text(server, "image")?.let { CloudServerImage(url = it) }
+        return CloudInvitePreview(CloudServer(id = "", name = name, url = "", displayName = text(server, "displayName"), image = image), text(body, "roleName"))
+    }
+
+    /** Accepts [invite] for the signed-in account (`POST /v1/invites/accept`): the server it is on now. */
+    override suspend fun acceptInvite(invite: CloudInvite): CloudServer {
+        val answer = send("POST", "/v1/invites/accept", JsonObject(mapOf("token" to JsonPrimitive(invite.token))), bearer())
+        if (answer.status == 401) {
+            expire()
+            throw CloudException(CloudException.Reason.SignInRequired)
+        }
+        return server(inviteAnswer(answer))
+    }
+
+    /** An invite call's body, or why it was refused: the invite's own reasons as [CloudInviteException], the rest as [CloudException]. */
+    private fun inviteAnswer(answer: Answer): JsonObject {
+        val body = answer.body
+        if (answer.status in 200..299) return body ?: throw CloudException(CloudException.Reason.Failed)
+        fun field(key: String) = (body?.get(key) as? JsonPrimitive)?.contentOrNull
+        val refusal = when (field("code")) {
+            "expired" -> CloudInviteRefusal.Expired
+            "revoked" -> CloudInviteRefusal.Revoked
+            "exhausted", "accepted" -> CloudInviteRefusal.UsedUp
+            "invalid" -> CloudInviteRefusal.Unknown
+            "email_mismatch" -> CloudInviteRefusal.EmailMismatch(field("emailHint")?.takeIf { it.isNotBlank() })
+            else -> null
+        }
+        if (refusal != null) throw CloudInviteException(refusal)
+        throw CloudException(if (answer.status >= 500) CloudException.Reason.Unreachable else CloudException.Reason.Failed)
+    }
 
     /**
      * A token for the Happy Cloud server at [origin] (`POST

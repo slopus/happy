@@ -74,4 +74,15 @@
     <string name="cloud_email_unavailable">現在メールでのサインインを利用できません。しばらくしてからお試しください。</string>
     <string name="cloud_email_unsupported">メールでのサインインはまだ利用できません。</string>
     <string name="cloud_email_rate_limited">試行回数が多すぎます。少し待ってからお試しください。</string>
+    <string name="cloud_invite_title">招待が届いています</string>
+    <string name="cloud_invite_detail">Happy Cloud の %1$s に参加しましょう。</string>
+    <string name="cloud_invite_sign_in">サインインして参加</string>
+    <string name="cloud_invite_refused_title">この招待は使用できません</string>
+    <string name="cloud_invite_expired">この招待は期限切れです。送信者に新しいリンクを依頼してください。</string>
+    <string name="cloud_invite_revoked">この招待は取り消されました。送信者に新しいリンクを依頼してください。</string>
+    <string name="cloud_invite_used_up">この招待はすでに使用されています。送信者に新しいリンクを依頼してください。</string>
+    <string name="cloud_invite_unknown">この招待リンクは無効です。リンク全体を開いたか確認してください。</string>
+    <string name="cloud_invite_email_mismatch">この招待は %1$s 宛てに送られました。そのメールアドレスでサインインして参加してください。</string>
+    <string name="cloud_invite_email_mismatch_unknown">この招待は別のメールアドレス宛てに送られました。そのメールアドレスでサインインして参加してください。</string>
+    <string name="cloud_invite_other_account">別のアカウントでサインイン</string>
 </resources>
