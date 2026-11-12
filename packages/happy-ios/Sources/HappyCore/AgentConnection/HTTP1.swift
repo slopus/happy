@@ -387,11 +387,14 @@ public final class AgentHTTPTransport: SelfMeteringTransport {
 
     private func exchange(on stream: any BrowserStream, reused: Bool, epoch: Int, method: String, path: String, credential: String, body: Data?, headers: [String: String], idle: IdleFlows?, sent: (@Sendable (Int) -> Void)?, staleAfter: Duration) async throws -> HTTP1Response {
         var received = 0
-        return try await withTaskCancellationHandler {
+        // Decoded once the flow is kept or closed: its reuse depends only on the framing.
+        return try ContentCoding.decoded(try await withTaskCancellationHandler {
             do {
                 var head = "\(method) \(path) HTTP/1.1\r\nHost: \(self.authority)\r\nAuthorization: Bearer \(credential)\r\nAccept: application/json\r\nContent-Length: \(body?.count ?? 0)\r\n"
                 // JSON unless the caller names the type (a picture's bytes).
                 if body != nil, !headers.keys.contains(where: { $0.lowercased() == "content-type" }) { head += "Content-Type: application/json\r\n" }
+                // A large JSON answer comes compressed, unless the caller says otherwise.
+                if !headers.keys.contains(where: { $0.lowercased() == "accept-encoding" }) { head += "Accept-Encoding: \(ContentCoding.accepted)\r\n" }
                 for (name, value) in headers { head += "\(name): \(value)\r\n" }
                 let headBytes = Data((head + "\r\n").utf8)
                 if reused { try await Self.write(headBytes, to: stream, within: staleAfter) } else { try await stream.write(headBytes) }
@@ -422,7 +425,7 @@ public final class AgentHTTPTransport: SelfMeteringTransport {
                 if reused, received == 0, method == "GET", !Task.isCancelled, !(error is CancellationError) { throw StaleFlow() }
                 throw error
             }
-        } onCancel: { Task { await stream.close() } }
+        } onCancel: { Task { await stream.close() } })
     }
 
     /// `data` written to `stream`, or `PairingError.unavailable` once
