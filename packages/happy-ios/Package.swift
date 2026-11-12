@@ -76,15 +76,12 @@ let package = Package(
                 .product(name: "GRDB", package: "GRDB.swift"),
             ]
         ),
-        // zlib and Brotli for Linux, where Apple's Compression isn't.
-        .systemLibrary(name: "CDecoders", providers: [.apt(["zlib1g-dev", "libbrotli-dev"])]),
         .target(
             name: "HappyCore",
             dependencies: [
                 "HappyCrypto", "HappyWire", "HappyStore",
                 .product(name: "GRDB", package: "GRDB.swift"),
                 .product(name: "Tailcat", package: "tailcat-swift"),
-                .target(name: "CDecoders", condition: .when(platforms: [.linux])),
             ]
         ),
         .target(

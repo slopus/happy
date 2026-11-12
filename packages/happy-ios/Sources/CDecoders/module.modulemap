@@ -1,6 +1,0 @@
-module CDecoders [system] {
-    header "shim.h"
-    link "z"
-    link "brotlidec"
-    export *
-}

@@ -29,8 +29,6 @@ extension TailcatHTTPTransport {
         }
         do {
             var head = "GET \(path) HTTP/1.1\r\nHost: \(authority)\r\nAuthorization: Bearer \(credential)\r\nConnection: close\r\nAccept: text/event-stream\r\n"
-            // A daemon that compresses the stream flushes it after every event.
-            if !headers.keys.contains(where: { $0.lowercased() == "accept-encoding" }) { head += "Accept-Encoding: \(ContentCoding.accepted)\r\n" }
             for (name, value) in headers { head += "\(name): \(value)\r\n" }
             try await stream.write(Data((head + "\r\n").utf8))
             let (responseHead, rest) = try await withThrowingTaskGroup(of: (HTTP1Head, Data).self) { group in
@@ -50,16 +48,13 @@ extension TailcatHTTPTransport {
                 return value
             }
             let chunked = responseHead.headers["transfer-encoding"]?.lowercased() == "chunked"
-            let coding = try ContentCoding.coding(responseHead.headers)
             let body = AsyncThrowingStream<Data, Error> { continuation in
                 let reader = Task {
                     var decoder = HTTP1BodyDecoder(chunked: chunked)
                     do {
-                        let content = try coding.map(ContentDecoder.init)
                         var bytes = rest
                         while true {
-                            var decoded = try decoder.append(bytes)
-                            if let content { decoded = try content.append(decoded, limit: ContentCoding.limit) }
+                            let decoded = try decoder.append(bytes)
                             if !decoded.isEmpty { continuation.yield(decoded) }
                             if decoder.finished { break }
                             try Task.checkCancellation()
