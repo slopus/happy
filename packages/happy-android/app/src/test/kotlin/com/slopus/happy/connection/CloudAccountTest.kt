@@ -478,7 +478,7 @@ class CloudAccountTest {
     }
 
     @Test
-    fun availabilityCreateAndJoinReadTheContractsAnswers() = runBlocking {
+    fun availabilityAndCreateReadTheContractsAnswers() = runBlocking {
         val account = account()
         signIn(account, jwt(audience, tag = "a1"))
         server.enqueue(json("""{"name":"acme","available":true}"""))
@@ -503,14 +503,6 @@ class CloudAccountTest {
         server.enqueue(json("""{"code":"invalid","error":"Bad name"}""", 400))
         assertFails(CloudException.Reason.Invalid) { account.create("a") }
         repeat(2) { server.takeRequest() }
-
-        server.enqueue(json("""{"server":{"id":"s2","name":"beta","url":"https://beta.happy.computer/","role":"member"}}"""))
-        assertEquals("member", account.join("beta", "ABCD1234").role)
-        val join = server.takeRequest()
-        assertEquals("POST /v1/servers/join", "${join.method} ${join.target}")
-        assertEquals("""{"name":"beta","code":"ABCD1234"}""", join.body?.utf8())
-        server.enqueue(json("""{"code":"not_found","error":"No such server"}""", 404))
-        assertFails(CloudException.Reason.NotFound) { account.join("beta", "WRONG") }
     }
 
     @Test

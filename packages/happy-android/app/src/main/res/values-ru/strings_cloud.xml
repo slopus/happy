@@ -13,10 +13,7 @@
     <string name="cloud_create_detail">Назовите новый сервер команды. Имя можно изменить позже.</string>
     <string name="cloud_create_button">Создать</string>
     <string name="cloud_join">Присоединиться к серверу</string>
-    <string name="cloud_join_detail">Введите имя сервера и код приглашения, который вам прислали.</string>
     <string name="cloud_join_button">Присоединиться</string>
-    <string name="cloud_invite_code">Код приглашения</string>
-    <string name="cloud_join_not_found">Нет сервера с таким именем и кодом приглашения.</string>
     <string name="cloud_name_placeholder">имя</string>
     <string name="cloud_name_rules">От 3 до 32 строчных латинских букв, цифр или дефисов; не начинается и не заканчивается дефисом.</string>
     <string name="cloud_name_checking">Проверка…</string>
@@ -54,10 +51,7 @@
     <string name="cloud_server_joined">Добавлен</string>
     <string name="cloud_server_join_label">Присоединиться к %1$s</string>
     <string name="cloud_bootstrap_new">Создать новый</string>
-    <string name="cloud_invite">Присоединиться по приглашению</string>
     <string name="cloud_create_first_detail">У вашего аккаунта пока нет серверов. Назовите первый сервер команды.</string>
-    <string name="cloud_create_have_invite">Есть приглашение? Присоединитесь к серверу</string>
-    <string name="cloud_invite_button">Присоединиться</string>
     <string name="cloud_sign_in_apple">Вход с Apple</string>
     <string name="cloud_sign_in_github">Войти через GitHub</string>
     <string name="cloud_sign_in_google">Продолжить с Google</string>

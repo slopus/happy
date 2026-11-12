@@ -13,10 +13,7 @@
     <string name="cloud_create_detail">チームの新しいサーバーに名前を付けましょう。後で変更できます。</string>
     <string name="cloud_create_button">作成</string>
     <string name="cloud_join">サーバーに参加</string>
-    <string name="cloud_join_detail">サーバー名と、送られてきた招待コードを入力してください。</string>
     <string name="cloud_join_button">参加</string>
-    <string name="cloud_invite_code">招待コード</string>
-    <string name="cloud_join_not_found">その名前と招待コードのサーバーはありません。</string>
     <string name="cloud_name_placeholder">名前</string>
     <string name="cloud_name_rules">3〜32 文字の英小文字・数字・ハイフン（先頭と末尾にハイフンは不可）。</string>
     <string name="cloud_name_checking">確認中…</string>
@@ -54,10 +51,7 @@
     <string name="cloud_server_joined">参加済み</string>
     <string name="cloud_server_join_label">%1$s に参加</string>
     <string name="cloud_bootstrap_new">新しく作成</string>
-    <string name="cloud_invite">招待で参加</string>
     <string name="cloud_create_first_detail">アカウントにはまだサーバーがありません。チームの最初のサーバーに名前を付けましょう。</string>
-    <string name="cloud_create_have_invite">招待がありますか？サーバーに参加</string>
-    <string name="cloud_invite_button">参加</string>
     <string name="cloud_sign_in_apple">Appleでサインイン</string>
     <string name="cloud_sign_in_github">GitHub でサインイン</string>
     <string name="cloud_sign_in_google">Google で続行</string>

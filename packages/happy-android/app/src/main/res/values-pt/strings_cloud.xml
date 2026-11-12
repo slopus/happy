@@ -13,10 +13,7 @@
     <string name="cloud_create_detail">Dê um nome ao novo servidor da sua equipe. Você pode mudá-lo depois.</string>
     <string name="cloud_create_button">Criar</string>
     <string name="cloud_join">Entrar em um servidor</string>
-    <string name="cloud_join_detail">Digite o nome do servidor e o código de convite que você recebeu.</string>
     <string name="cloud_join_button">Entrar</string>
-    <string name="cloud_invite_code">Código de convite</string>
-    <string name="cloud_join_not_found">Nenhum servidor tem esse nome e código de convite.</string>
     <string name="cloud_name_placeholder">nome</string>
     <string name="cloud_name_rules">De 3 a 32 letras minúsculas, dígitos ou hífens, sem hífen no início ou no fim.</string>
     <string name="cloud_name_checking">Verificando…</string>
@@ -54,10 +51,7 @@
     <string name="cloud_server_joined">Adicionado</string>
     <string name="cloud_server_join_label">Entrar em %1$s</string>
     <string name="cloud_bootstrap_new">Criar um novo</string>
-    <string name="cloud_invite">Entrar com um convite</string>
     <string name="cloud_create_first_detail">Sua conta ainda não tem servidores. Dê um nome ao primeiro da sua equipe.</string>
-    <string name="cloud_create_have_invite">Tem um convite? Entre em um servidor</string>
-    <string name="cloud_invite_button">Entrar</string>
     <string name="cloud_sign_in_apple">Entrar com a Apple</string>
     <string name="cloud_sign_in_github">Entrar com o GitHub</string>
     <string name="cloud_sign_in_google">Continuar com o Google</string>

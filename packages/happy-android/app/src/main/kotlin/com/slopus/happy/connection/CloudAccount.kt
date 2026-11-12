@@ -368,10 +368,6 @@ class CloudAccount(
     /** A new server named [name], the person its owner. */
     suspend fun create(name: String): CloudServer = server(call("POST", "/v1/servers", JsonObject(mapOf("name" to JsonPrimitive(name)))).second)
 
-    /** Joins [name] with an owner's invite [code]. A wrong name or code is NotFound, the same for both. */
-    suspend fun join(name: String, code: String): CloudServer =
-        server(call("POST", "/v1/servers/join", JsonObject(mapOf("name" to JsonPrimitive(name), "code" to JsonPrimitive(code)))).second)
-
     /**
      * A token for the Happy Cloud server at [origin] (`POST
      * /v1/servers/:id/token` with the account token, no browser), and the

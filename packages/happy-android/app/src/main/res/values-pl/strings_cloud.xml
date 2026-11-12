@@ -13,10 +13,7 @@
     <string name="cloud_create_detail">Nazwij nowy serwer zespołu. Możesz to później zmienić.</string>
     <string name="cloud_create_button">Utwórz</string>
     <string name="cloud_join">Dołącz do serwera</string>
-    <string name="cloud_join_detail">Wpisz nazwę serwera i otrzymany kod zaproszenia.</string>
     <string name="cloud_join_button">Dołącz</string>
-    <string name="cloud_invite_code">Kod zaproszenia</string>
-    <string name="cloud_join_not_found">Żaden serwer nie ma takiej nazwy i kodu zaproszenia.</string>
     <string name="cloud_name_placeholder">nazwa</string>
     <string name="cloud_name_rules">Od 3 do 32 małych liter, cyfr lub łączników, bez łącznika na początku i na końcu.</string>
     <string name="cloud_name_checking">Sprawdzanie…</string>
@@ -54,10 +51,7 @@
     <string name="cloud_server_joined">Dołączono</string>
     <string name="cloud_server_join_label">Dołącz do %1$s</string>
     <string name="cloud_bootstrap_new">Utwórz nowy</string>
-    <string name="cloud_invite">Dołącz z zaproszeniem</string>
     <string name="cloud_create_first_detail">Twoje konto nie ma jeszcze serwerów. Nazwij pierwszy serwer zespołu.</string>
-    <string name="cloud_create_have_invite">Masz zaproszenie? Dołącz do serwera</string>
-    <string name="cloud_invite_button">Dołącz</string>
     <string name="cloud_sign_in_apple">Zaloguj się przez Apple</string>
     <string name="cloud_sign_in_github">Zaloguj się przez GitHub</string>
     <string name="cloud_sign_in_google">Kontynuuj z Google</string>
