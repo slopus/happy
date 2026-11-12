@@ -415,6 +415,12 @@ public actor Conversation {
     private var behind: [String: Int] = [:]
     /// Events that came while history was being read, applied after it.
     private var heldEvents: [JSONValue]?
+    /// Where the journal stood when the newest read taken began (the
+    /// earlier of its two parts), and where the account's stream began
+    /// while a read was on its way: a read that began before the stream is
+    /// read again, once.
+    private var readCursor: String?
+    private var streamFrom: String?
     /// Subagents made or retitled while history was being read, applied over
     /// the bootstrap's list.
     private var heldChildren: [JSONValue] = []
@@ -649,6 +655,7 @@ public actor Conversation {
                     case .failed(let id, let reason):
                         failed(id, reason)
                         Happenings.errorShown(.messageSend, nil)
+                    case .allowed: deliverWaiting()
                     }
                 }
             }
@@ -687,17 +694,24 @@ public actor Conversation {
                 await questionEvent(envelope)
             }
         }
-        heldEvents = []
         reload()
-        for send in outgoing where !send.accepted && send.failure == nil { deliver(send.id) }
+        deliverWaiting()
         for await event in events {
             if Task.isCancelled { return }
             switch event {
-            case .resync:
-                // Some were lost: not current again until the read below is in.
-                snapshot.synced = false
-                reload()
-                for send in outgoing where !send.accepted && send.failure == nil { deliver(send.id) }
+            case .resync(let from):
+                // The stream opening: read now, a read on its way (perhaps
+                // on a tunnel the suspension left dead) asked again. Open: a
+                // read on its way is read again as it lands if it began
+                // before the stream (`adopt`).
+                if let from, heldEvents != nil {
+                    streamFrom = from
+                } else if from.map(covered) != true {
+                    // Some may be lost: not current again until the read below is in.
+                    snapshot.synced = false
+                    reload()
+                }
+                deliverWaiting()
             case .event(let envelope):
                 if heldEvents != nil { heldEvents?.append(envelope) } else { receive(envelope) }
             }
@@ -706,36 +720,66 @@ public actor Conversation {
 
     // MARK: Reads
 
-    /// The newest runs and what is pending, read whole; events that arrive
-    /// meanwhile are applied after.
+    private func deliverWaiting() {
+        for send in outgoing where !send.accepted && send.failure == nil { deliver(send.id) }
+    }
+
+    /// What is pending, and the runs after the newest finished one held
+    /// here, whole (the newest runs when none is held, or too many came
+    /// since); events that arrive meanwhile are applied after. Asked again
+    /// with backoff until a read lands, saying meanwhile why it didn't.
     private func reload() {
         reading?.cancel()
         if heldEvents == nil { heldEvents = [] }
         let client = client
         let agentId = agentId
         reading = Task {
-            do {
-                async let bootstrap = client.bootstrap(agentId)
-                async let page = client.messages(agentId)
-                let (start, history) = try await (bootstrap, page)
-                if Task.isCancelled { return }
-                adopt(start, history)
-            } catch {
-                if Task.isCancelled { return }
-                reads += 1
-                snapshot.synced = false
-                snapshot.error = Store.describe(error)
-                Happenings.errorShown(.conversationLoad, error)
-                snapshot.loaded = true
-                let held = heldEvents ?? []
-                heldEvents = nil
-                for event in held { receive(event, publishes: false) }
-                publish()
+            var failures = 0
+            var anchored = true
+            while true {
+                if heldEvents == nil { heldEvents = [] }
+                let after = anchored ? anchor() : nil
+                do {
+                    async let bootstrap = client.bootstrap(agentId)
+                    async let page = client.messages(agentId, after: after?.message)
+                    var (start, history) = try await (bootstrap, page)
+                    var since = after?.run
+                    if since != nil, history.hasMore { history = try await client.messages(agentId); since = nil }
+                    if Task.isCancelled { return }
+                    adopt(start, history, since: since)
+                    return
+                } catch {
+                    if Task.isCancelled { return }
+                    // A message the computer no longer holds: the newest runs instead.
+                    if case AgentClientError.status = error { anchored = false }
+                    reads += 1
+                    snapshot.synced = false
+                    snapshot.error = Store.describe(error)
+                    Happenings.errorShown(.conversationLoad, error)
+                    snapshot.loaded = true
+                    let held = heldEvents ?? []
+                    heldEvents = nil
+                    for event in held { receive(event, publishes: false) }
+                    publish()
+                }
+                do { try await Task.sleep(for: .seconds(min(30, 1 << min(failures, 5)))) } catch { return }
+                failures += 1
             }
         }
     }
 
-    private func adopt(_ start: AgentWire.Bootstrap, _ history: AgentWire.MessagesResponse) {
+    /// The newest run held here that has finished, and its last message,
+    /// which a read after brings every run since.
+    private func anchor() -> (run: String, message: String)? {
+        for run in transcript.runs.reversed() where transcript.times[run.id]?.endedAt != nil {
+            if let last = run.messageIds.last { return (run.id, last) }
+        }
+        return nil
+    }
+
+    /// `since`: `history` holds the runs after that one, which is kept
+    /// with every run before it.
+    private func adopt(_ start: AgentWire.Bootstrap, _ history: AgentWire.MessagesResponse, since: String? = nil) {
         reads += 1
         // The agent's own mode stands over the draft's: a draft carries
         // whatever mode its device had, picked or not, and would otherwise
@@ -751,10 +795,12 @@ public actor Conversation {
         var runs: [Transcript.Run] = []
         var messages: [String: AgentWire.Message] = [:]
         var times = transcript.times
-        if persistence != nil && history.hasMore {
+        if let since, let index = transcript.runs.firstIndex(where: { $0.id == since }) {
+            runs = transcript.runs[...index].filter { !refreshed.contains($0.id) }
+        } else if persistence != nil && history.hasMore {
             runs = transcript.runs.filter { !refreshed.contains($0.id) }
-            for id in runs.lazy.flatMap(\.messageIds) { messages[id] = transcript[message: id] }
         }
+        for id in runs.lazy.flatMap(\.messageIds) { messages[id] = transcript[message: id] }
         for run in history.runs {
             runs.append(.init(id: run.id, messageIds: (run.messages ?? []).map(\.id)))
             times[run.id] = RunTime(run)
@@ -778,7 +824,7 @@ public actor Conversation {
         } else if !awaiting {
             activeRun = nil
         }
-        snapshot.hasMore = history.hasMore
+        if since == nil { snapshot.hasMore = history.hasMore }
         if let subagents = start.subagents {
             // desktop's `projectSubagents`: an untitled child is "Subagent".
             snapshot.subagentTitles = Dictionary(subagents.map { ($0.id, $0.title ?? "") }, uniquingKeysWith: { first, _ in first })
@@ -795,7 +841,15 @@ public actor Conversation {
         for event in early { child(event, publishes: false) }
         publish()
         if visible { markRead() }
+        readCursor = start.cursor.flatMap { first in history.cursor.map { min(first, $0) } }
+        if let from = streamFrom {
+            streamFrom = nil
+            if !covered(from) { reload() }
+        }
     }
+
+    /// The newest read taken began after the stream that began at `from`.
+    private func covered(_ from: String) -> Bool { readCursor.map { from <= $0 } == true }
 
     /// Runs older than the first one shown.
     /// A tool call's raw `arguments` and `result` as the computer holds

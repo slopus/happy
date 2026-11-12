@@ -214,7 +214,7 @@ final class ArtifactCatalogFeedTests: XCTestCase {
         XCTAssertEqual(kept?.arrayValue?.last?["deleted"], .bool(true), "kept as a tombstone")
         // A resync reads the whole catalog again.
         let before = await box.reads
-        input.yield(.resync)
+        input.yield(.resync(from: nil))
         try await eventually { await box.reads > before }
         await feed.stop()
     }

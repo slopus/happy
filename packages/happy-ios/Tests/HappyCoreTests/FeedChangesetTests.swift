@@ -102,7 +102,7 @@ final class FeedChangesetTests: XCTestCase {
 
     private func start() async throws -> (FeedComputer, SyncEngine, [FeedRow]) {
         let computer = FeedComputer()
-        let engine = SyncEngine(client: AgentClient(transport: computer, token: "test"), directory: nil)
+        let engine = SyncEngine(client: AgentClient(transport: computer, token: "test"), directory: nil, rereadInterval: .zero)
         await engine.start()
         // Every entry resolved, the newest todo's text and the people read.
         let rows = try await rows(engine) { rows in

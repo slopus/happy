@@ -186,8 +186,12 @@ public actor FeedLibrary {
     public func bootstrap(unread: Int?, cursor: String?) async {
         counted = unread != nil
         if let unread { setUnread(unread, cursor: cursor) }
+        let was = state.available
         await settleAvailability()
         await commit()
+        // Health answered before home's read did: the newest page now, on
+        // its own task, as `connected` reads it.
+        if live, connecting == nil, was != true, state.available == true { Task { await self.refresh() } }
     }
 
     /// The event stream opened: health says whether there is a feed, and

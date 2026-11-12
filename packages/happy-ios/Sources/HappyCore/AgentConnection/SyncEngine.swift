@@ -4,8 +4,8 @@ import HappyWire
 public struct HomeSnapshot: Equatable, Sendable {
     public var loaded = false
     public var live = false
-    /// Bootstrap/sidebar reconciliation is still running. An open stream
-    /// alone does not mean the phone has caught up.
+    /// Home's read on (re)connecting hasn't landed: an open stream alone
+    /// does not mean the phone has caught up.
     public var syncing = true
     public var rows: [Row] = []
     public var allRows: [Row] = []
@@ -95,6 +95,19 @@ public actor SyncEngine {
     /// up from there and nothing is read again.
     private var streamCursor: String?
     private var verifiedDaemon: String?
+    /// When the stream last brought a frame, or was paused while live.
+    private var streamHeard: ContinuousClock.Instant?
+    /// How long the stream may be away and still pick up where it left off.
+    private let resumeWindow: Duration
+    /// How soon after a read news may read home again: news comes with
+    /// agents' work, and each read is the whole bootstrap (~0.5 MB).
+    private let rereadInterval: Duration
+    private var lastRead: ContinuousClock.Instant?
+    /// The process the open stream comes from, and where it began when it
+    /// began from now: until a read that began after it lands
+    /// (`coverStream`), what came before it may be missing from home.
+    private var streamDaemon: String?
+    private var streamStart: String?
     private var intentsFollowing: Task<Void, Never>?
     private var noticeClearing: Task<Void, Never>?
     private let url: URL?
@@ -144,7 +157,6 @@ public actor SyncEngine {
     private var stopped = false
     private var cursor: String?
     private var dirty = false
-    private var sidebarSyncing = false
     /// The team members the listed tasks belong to, as last read, kept
     /// beside the bootstrap (`TeamUser`); those asked for and not named,
     /// left until the stream comes back; and those to read again.
@@ -159,10 +171,14 @@ public actor SyncEngine {
     private var gitInterest: Set<String> = []
     private var gitSnapshots: [String: WorkspaceLineChanges] = [:]
 
-    public init(client: AgentClient, directory: URL?, streamHold: @escaping StreamHold = { _ in nil }, streamHoldDuration: Duration = .seconds(25)) {
+    public init(client: AgentClient, directory: URL?, streamHold: @escaping StreamHold = { _ in nil }, streamHoldDuration: Duration = .seconds(25),
+                resumeWindow: Duration = .seconds(30), rereadInterval: Duration = .seconds(10)) {
         self.client = client
         self.streamHold = streamHold
-        self.streamHoldDuration = min(.seconds(25), streamHoldDuration)
+        // Held only while a resume from the cursor is still taken (`resumeWindow`).
+        self.streamHoldDuration = min(.seconds(25), streamHoldDuration, resumeWindow)
+        self.resumeWindow = resumeWindow
+        self.rereadInterval = rereadInterval
         url = directory?.appendingPathComponent("direct.sqlite")
         offline = directory.map(OfflineFile.init(directory:))
         attachmentDirectory = (directory ?? FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
@@ -322,6 +338,7 @@ public actor SyncEngine {
         await documents.closed()
         await spaces.pause()
         guard generation == pausedGeneration else { return false }
+        if snapshot.live { streamHeard = .now }
         snapshot.live = false
         publish()
         return true
@@ -429,24 +446,18 @@ public actor SyncEngine {
         while current(generation) {
             var resetStream = false
             do {
-                sidebarSyncing = false
                 snapshot.syncing = true
                 publish()
-                // Back on the process a read verified, with nothing stale:
-                // the stream picks up after the last event taken in, and
-                // neither home nor any conversation is read again. A flapping
-                // network read the whole bootstrap, and every warm chat, on
-                // every reconnect (Proofs/: `Refresh.resume_is_current`).
-                var resuming = desktop != nil && verifiedDaemon != nil && streamCursor != nil && covered == signalled
-                if !resuming {
-                    try await reconcile(generation)
-                    // The server answered: what is left is catching up.
-                    if snapshot.reconnecting { snapshot.reconnecting = false; publish() }
-                    streamCursor = cursor
-                    beginDelivery(generation)
-                    beginMessageDelivery(generation)
-                    await intents.setOnline(deliveryAllowed)
-                }
+                // Back soon on the process a read verified: the stream picks
+                // up after the last event taken in, and nothing is read again
+                // but home for news it couldn't apply (Proofs/:
+                // `Refresh.resume_is_current`).
+                // Away longer, its replay (mostly other chats' words: ~0.5 MB
+                // after 30 s, ~3 MB after 200 s on a busy computer) outweighs
+                // reading again, so the stream opens from now, with home and
+                // the chats on screen read beside it.
+                var resuming = desktop != nil && verifiedDaemon != nil && streamCursor != nil
+                    && streamHeard.map { ContinuousClock.now - $0 <= resumeWindow } == true
                 let client = client
                 let events = EventStreamRace { cursor in
                     try await EventStreamPolicy.$resetsTunnel.withValue(false) {
@@ -454,9 +465,13 @@ public actor SyncEngine {
                     }
                 }
                 eventStream = events
-                await events.start(after: resuming ? streamCursor : cursor)
+                // Asked for first, so the reads beside it usually begin after
+                // it and cover what came before it (`coverStream`).
+                await events.start(after: resuming ? streamCursor : nil)
+                if !resuming { await readAgain(generation) }
                 for try await frame in events.stream {
                     guard current(generation) else { return }
+                    streamHeard = .now
                     // A held connection proves itself by bringing a frame;
                     // a fresh one must first verify its hello's daemon.
                     if frame.event != "hello", heldVerification, !backgrounded {
@@ -464,39 +479,40 @@ public actor SyncEngine {
                         verified = true
                         snapshot.live = true; snapshot.reconnecting = false
                         publish()
-                        beginDelivery(generation)
-                        beginMessageDelivery(generation)
-                        await intents.setOnline(deliveryAllowed)
+                        await allowDelivery(generation)
                     }
                     if frame.event == "hello" {
                         heldVerification = false
-                        sidebarSyncing = true
-                        snapshot.syncing = true
-                        snapshot.live = true; snapshot.error = nil; snapshot.reconnecting = false; attempt = 0
-                        watchGit()
-                        publish()
-                        // The bootstrap cursor precedes its reads. Opening from
-                        // it is safe even after a crash, replay or daemon replacement.
                         let hello = try JSONValue.decode(Data(frame.data.utf8))
                         let gap = hello["gap"] == .bool(true)
                         let daemon = hello["daemonId"]?.stringValue
+                        let fresh = !resuming || gap || hello["resumed"] != .bool(true)
                         // Everything since the cursor follows, from the same process.
-                        let continued = resuming && !gap && hello["resumed"] == .bool(true) && daemon != nil && daemon == verifiedDaemon
+                        let continued = resuming && !fresh && daemon != nil && daemon == verifiedDaemon
                         if !continued { eventIDs = []; eventOrder = [] }
-                        if resuming {
-                            // Something was missed, or another process answered:
-                            // it is read, and its owner checked, before anything
-                            // is delivered.
-                            if continued { verified = true } else { verified = false; try await reconcile(generation) }
-                            beginDelivery(generation)
-                            beginMessageDelivery(generation)
-                            await intents.setOnline(deliveryAllowed)
+                        // Something was missed, or another process answered:
+                        // read beside the stream, and its owner checked before
+                        // anything is delivered.
+                        if resuming && !continued { await readAgain(generation) }
+                        snapshot.live = true; snapshot.error = nil; snapshot.reconnecting = false; attempt = 0
+                        snapshot.syncing = !verified
+                        streamDaemon = daemon
+                        verifiedDaemon = verified || continued ? daemon : nil
+                        if fresh { streamCursor = hello["cursor"]?.stringValue ?? streamCursor }
+                        if continued {
+                            verified = true
+                            snapshot.syncing = false
+                            await allowDelivery(generation)
+                            if covered != signalled { scheduleReconcile(generation) }
+                        } else {
+                            // The stream carries what came after this; a read
+                            // that began before it is read again (`reconcile`).
+                            streamStart = hello["cursor"]?.stringValue ?? ""
+                            if refresh == nil { coverStream(generation) }
                         }
-                        verifiedDaemon = verified ? daemon : nil
-                        if gap || hello["resumed"] != .bool(true) { streamCursor = hello["cursor"]?.stringValue ?? streamCursor }
+                        watchGit()
+                        publish()
                         await documents.opened(hello)
-                        // Resuming, the read above already came after the gap.
-                        if gap, !resuming { scheduleReconcile(generation) }
                         profileChanged()
                         // Reads the newest page each time, so a gap loses nothing.
                         await feed.connected()
@@ -507,7 +523,8 @@ public actor SyncEngine {
                         usersMissing = []
                         if !continued { readAuthors(generation, again: Set(users.keys)) }
                         // Conversations and lists read again only for what they missed.
-                        try await resyncSidebar(generation, resync: !continued)
+                        await spaces.externalOpened(missedBefore: continued ? nil : streamStart)
+                        // A later hello is a race candidate's, opened from the cursor.
                         resuming = true
                         continue
                     }
@@ -556,8 +573,11 @@ public actor SyncEngine {
                             }
                         }
                     } else if let type = event["type"]?.stringValue,
-                       ["project.", "workspace.", "bot.", "task.", "agent.", "surface.", "user_settings."].contains(where: type.hasPrefix),
-                       type != "agent.draft.updated" { scheduleReconcile(generation) }
+                              type == "agent.created" || ["project.", "workspace.", "bot.", "task.", "surface."].contains(where: type.hasPrefix) {
+                        // Agents' context, commands and drafts aren't home's;
+                        // settings were taken in above.
+                        scheduleReconcile(generation)
+                    }
                     // Taken in: applied, or home marked stale for it.
                     if let id = frame.id {
                         streamCursor = id
@@ -609,43 +629,64 @@ public actor SyncEngine {
 
     private func current(_ generation: Int) -> Bool { !stopped && !Task.isCancelled && self.generation == generation }
 
-    private func resyncSidebar(_ generation: Int, resync: Bool) async throws {
-        sidebarSyncing = true
-        if !snapshot.syncing { snapshot.syncing = true; publish() }
-        let ready = await spaces.externalResync(loadSidebar: false, resync: resync)
-        guard current(generation) else { throw CancellationError() }
-        guard ready else { throw AgentClientError.invalidResponse }
-        sidebarSyncing = false
-        snapshot.syncing = !snapshot.live || refresh != nil
-        publish()
+    /// The stream opens from now: home and the conversations on screen are
+    /// read beside it, and nothing is delivered until a read has checked
+    /// the computer's owner.
+    private func readAgain(_ generation: Int) async {
+        verified = false
+        streamStart = nil
+        await intents.setOnline(false)
+        if refresh == nil { scheduleReconcile(generation, soon: false) }
+        await spaces.externalOpening()
     }
 
-    private func scheduleReconcile(_ generation: Int) {
+    /// Home read again when the read it holds began before the stream that
+    /// carries what came after it, once (`streamStart`).
+    private func coverStream(_ generation: Int) {
+        guard let start = streamStart else { return }
+        streamStart = nil
+        if (cursor ?? "") < start { scheduleReconcile(generation) }
+    }
+
+    private func allowDelivery(_ generation: Int) async {
+        beginDelivery(generation)
+        beginMessageDelivery(generation)
+        await intents.setOnline(deliveryAllowed)
+        // Conversations send what waited for this.
+        for listener in messageListeners.values { listener.continuation.yield(.allowed) }
+    }
+
+    /// Home read again: at once on connecting, else for news, at most one
+    /// read on its way and `rereadInterval` after the last, so news coming
+    /// together is read once; and again with backoff until a read lands.
+    private func scheduleReconcile(_ generation: Int, soon: Bool = true) {
         dirty = true
         signalled += 1
         guard refresh == nil else { return }
         refresh = Task {
             var failures = 0
+            var now = !soon
             while dirty && current(generation) {
                 do {
-                    try await Task.sleep(for: .milliseconds(200))
+                    if !now {
+                        let due = max(.now + .milliseconds(200), lastRead.map { $0 + rereadInterval } ?? .now)
+                        try await Task.sleep(until: due, clock: .continuous)
+                    }
+                    now = false
                     dirty = false
+                    lastRead = .now
                     try await reconcile(generation)
                     failures = 0
                 } catch {
-                    guard current(generation) else { break }
+                    // Signed out: the stream says so.
+                    guard current(generation), (error as? AgentClientError) != .revoked else { break }
                     dirty = true
                     do { try await Task.sleep(for: .seconds(min(30, 1 << min(failures, 5)))) } catch { break }
                     failures += 1
+                    now = true
                 }
             }
-            if self.generation == generation {
-                refresh = nil
-                if snapshot.live && !sidebarSyncing && snapshot.syncing {
-                    snapshot.syncing = false
-                    publish()
-                }
-            }
+            if self.generation == generation { refresh = nil }
         }
     }
 
@@ -688,8 +729,13 @@ public actor SyncEngine {
         covered = max(covered, asOf)
         self.desktop = self.desktop.map { AgentUpdate.keepingNewer(desktop, than: $0) } ?? desktop
         agentIndex = nil
-        verified = true
         cursor = desktop.cursor
+        if !verified {
+            verified = true
+            if snapshot.live { verifiedDaemon = streamDaemon; snapshot.syncing = false }
+            await allowDelivery(generation)
+        }
+        coverStream(generation)
         await feed.bootstrap(unread: desktop.feedUnread, cursor: desktop.cursor)
         snapshot.settings = try await database.settings()
         // This read began after these were taken, so it has them.
@@ -699,6 +745,8 @@ public actor SyncEngine {
         }
         derive()
         deriveDirectory()
+        // The Feed's names wait for a bootstrap to know the rest by.
+        await wantReferences()
         readAuthors(generation)
     }
 

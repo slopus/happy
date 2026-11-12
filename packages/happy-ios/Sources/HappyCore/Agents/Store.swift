@@ -152,13 +152,8 @@ public actor Store {
     public func startExternal() async { await restoreOffline() }
 
     @discardableResult
-    public func externalResync(loadSidebar: Bool, resync: Bool = true) async -> Bool {
-        // A stream that picked up where it left off replays what they
-        // missed: nothing is read again.
-        if resync {
-            for listener in listeners.values { listener.continuation.yield(.resync) }
-            for listener in typeListeners.values { listener.continuation.yield(.resync) }
-        }
+    public func externalResync(loadSidebar: Bool) async -> Bool {
+        resync(from: nil)
         snapshot.live = true
         if loadSidebar {
             await load()
@@ -166,6 +161,26 @@ public actor Store {
         }
         publish()
         return true
+    }
+
+    /// The account's stream opens from now (`SyncEngine`): the
+    /// conversations followed are read at once, beside it.
+    public func externalOpening() {
+        for listener in listeners.values { listener.continuation.yield(.resync(from: nil)) }
+    }
+
+    /// The account's stream is open. It carries everything after
+    /// `missedBefore`; what came before it, those following read again.
+    /// Nil: it picked up where it left off and replays what they missed.
+    public func externalOpened(missedBefore cursor: String?) {
+        if let cursor { resync(from: cursor) }
+        snapshot.live = true
+        publish()
+    }
+
+    private func resync(from cursor: String?) {
+        for listener in listeners.values { listener.continuation.yield(.resync(from: cursor)) }
+        for listener in typeListeners.values { listener.continuation.yield(.resync(from: cursor)) }
     }
 
     /// The bots, tasks and Surfaces from the account's bootstrap, kept
@@ -261,10 +276,7 @@ public actor Store {
                         let resumed = hello?["resumed"]?.boolValue == true && hello?["gap"]?.boolValue != true
                         if let next = hello?["cursor"]?.stringValue, !resumed || cursor == nil { cursor = next }
                         snapshot.live = true
-                        if !resumed {
-                            for listener in listeners.values { listener.continuation.yield(.resync) }
-                            for listener in typeListeners.values { listener.continuation.yield(.resync) }
-                        }
+                        if !resumed { resync(from: hello?["cursor"]?.stringValue ?? "") }
                         if !resumed || held == nil { await load() } else { publish() }
                         continue
                     }
@@ -288,10 +300,12 @@ public actor Store {
     // MARK: Conversations
 
     /// One conversation's events off this store's stream, so an open chat
-    /// needs no stream of its own. `resync` means some were lost: read again.
+    /// needs no stream of its own. `resync` means some may have been lost:
+    /// read again. `from` is where the stream began, which a read that
+    /// began after it covers; nil while it is still opening.
     public enum ConversationEvent: Sendable {
         case event(JSONValue)
-        case resync
+        case resync(from: String?)
     }
 
     private var listeners: [UUID: (key: String, continuation: AsyncStream<ConversationEvent>.Continuation)] = [:]

@@ -30,4 +30,6 @@ public struct QueuedMessage: Codable, Equatable, Sendable {
 public enum DeliveryEvent: Sendable {
     case accepted(String)
     case failed(String, String)
+    /// The account may deliver again: its computer's owner was checked.
+    case allowed
 }

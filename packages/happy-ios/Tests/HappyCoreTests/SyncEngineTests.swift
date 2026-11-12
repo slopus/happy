@@ -384,7 +384,7 @@ final class SyncEngineTests: XCTestCase {
 
     func testRepeatedEventIDIsDeliveredOnlyOnce() async throws {
         let transport = SyncFixture()
-        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
         await engine.start()
         _ = try await wait(engine) { $0.live && !$0.syncing }
         let reads = await transport.bootstrapReads()
@@ -416,7 +416,7 @@ final class SyncEngineTests: XCTestCase {
 
     func testTransientReconcileFailureRetriesWithoutAnotherEvent() async throws {
         let transport = SyncFixture()
-        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
         await engine.start()
         _ = try await wait(engine) { $0.live }
         await transport.renameProjectAfterOneFailedRead()
@@ -429,7 +429,7 @@ final class SyncEngineTests: XCTestCase {
     /// taken, so home moves at once rather than when the news stops.
     func testNewsDuringEveryReadStillMovesHome() async throws {
         let transport = SyncFixture()
-        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
         await engine.start()
         _ = try await wait(engine) { $0.live }
         await transport.renameProject(withNewsDuringReads: 1_000)
@@ -444,7 +444,7 @@ final class SyncEngineTests: XCTestCase {
     func testAReconnectReadsOnlyWhatItMissed() async throws {
         let transport = SyncFixture()
         await transport.setDaemon("d1")
-        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
         await engine.start()
         _ = try await wait(engine) { $0.live && !$0.syncing }
         let first = await transport.bootstrapReads()
@@ -477,7 +477,7 @@ final class SyncEngineTests: XCTestCase {
     /// does next still goes out.
     func testALatePauseDoesNotTakeALiveEngineOffline() async throws {
         let transport = SyncFixture()
-        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
         await engine.start()
         _ = try await wait(engine) { $0.live && !$0.syncing }
         await transport.holdNextBootstrap()
@@ -504,7 +504,7 @@ final class SyncEngineTests: XCTestCase {
     func testAMoveOpensTheStreamAgainAtOnce() async throws {
         let transport = SyncFixture()
         await transport.setDaemon("d1")
-        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
         await engine.start()
         _ = try await wait(engine) { $0.live && !$0.syncing }
         let reads = await transport.bootstrapReads()
@@ -529,7 +529,7 @@ final class SyncEngineTests: XCTestCase {
     /// the move doesn't start the engine again behind the pause.
     func testAMoveDoesNotUndoAPauseThatCameMeanwhile() async throws {
         let transport = SyncFixture()
-        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
         await engine.start()
         _ = try await wait(engine) { $0.live && !$0.syncing }
         await transport.holdNextReset()
@@ -560,10 +560,10 @@ final class SyncEngineTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         let transport = SyncFixture()
         let mode = AgentWire.Mode(providerId: "test", modelId: "test-model", effort: "low", serviceTier: nil, permissionMode: "auto")
-        let first = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: directory)
+        let first = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: directory, rereadInterval: .zero)
         try await first.enqueueMessage(.init(id: "stable-message", agentID: "never-opened", text: "Offline text", pictures: [], mode: mode))
         await first.stop()
-        let reopened = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: directory)
+        let reopened = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: directory, rereadInterval: .zero)
         await reopened.start()
         _ = try await wait(reopened) { $0.live }
         for _ in 0..<100 {
@@ -583,7 +583,7 @@ final class SyncEngineTests: XCTestCase {
     func testAmbiguousSendAcknowledgementRetainsExactPayloadAndPausesRetries() async throws {
         let transport = SyncFixture()
         await transport.loseNextSendAcknowledgement()
-        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
         await engine.start()
         _ = try await wait(engine) { $0.live }
         let mode = AgentWire.Mode(providerId: "test", modelId: "chosen-model", effort: "high", serviceTier: nil, permissionMode: "auto")
@@ -625,7 +625,7 @@ final class SyncEngineTests: XCTestCase {
         let directory = folder()
         defer { try? FileManager.default.removeItem(at: directory) }
         let transport = SyncFixture()
-        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: directory)
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: directory, rereadInterval: .zero)
         await engine.start()
         _ = try await wait(engine) { $0.live && $0.loaded }
         await engine.pause()
@@ -635,7 +635,7 @@ final class SyncEngineTests: XCTestCase {
         XCTAssertFalse(optimistic.rows.contains { $0.targetKind == "project" })
         await engine.stop()
 
-        let reopened = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: directory)
+        let reopened = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: directory, rereadInterval: .zero)
         await reopened.start()
         let offline = try await wait(reopened) { $0.loaded }
         XCTAssertFalse(offline.live)
@@ -650,8 +650,9 @@ final class SyncEngineTests: XCTestCase {
         XCTAssertEqual(writes.count, 1)
         XCTAssertNotNil(writes.first?["mutationId"]?.stringValue)
         XCTAssertNotNil(writes.first?["updatedAt"]?.numberValue)
+        // A relaunch opens the stream from now, home read beside it: no replay.
         let headers = await transport.streamHeaders
-        XCTAssertTrue(headers.allSatisfy { $0["Last-Event-ID"] == "cursor-1" })
+        XCTAssertTrue(headers.allSatisfy { $0["Last-Event-ID"] == nil })
         await reopened.stop()
     }
 
@@ -661,7 +662,7 @@ final class SyncEngineTests: XCTestCase {
     func testAStartedSessionIsKeptInThePersonsSettings() async throws {
         typealias Key = ModelPreferences.Key
         let transport = SyncFixture()
-        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
         await engine.start()
         _ = try await wait(engine) { $0.live && $0.loaded }
         await engine.pause()
@@ -690,7 +691,7 @@ final class SyncEngineTests: XCTestCase {
 
     func testRemoteSettingChangesHomeAndAStaleOfflineEditAdoptsServerWinner() async throws {
         let transport = SyncFixture()
-        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
         await engine.start()
         _ = try await wait(engine) { $0.live }
         await transport.setProjectsHidden(true)
@@ -713,7 +714,7 @@ final class SyncEngineTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         let transport = SyncFixture()
         await transport.setUnread(task: "last", true)
-        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: directory)
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: directory, rereadInterval: .zero)
         await engine.start()
         let first = try await wait(engine) { $0.live && $0.loaded }
         XCTAssertEqual(first.rows.first { $0.label == "Last created" }?.unread, true)
@@ -728,7 +729,7 @@ final class SyncEngineTests: XCTestCase {
         await engine.stop()
 
         // Killed and opened again, still offline: as the person left it.
-        let reopened = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: directory)
+        let reopened = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: directory, rereadInterval: .zero)
         await reopened.start()
         let offline = try await wait(reopened) { $0.loaded }
         XCTAssertFalse(offline.live)
@@ -753,7 +754,7 @@ final class SyncEngineTests: XCTestCase {
     /// the dot stays off while the read waits.
     func testAStaleReadDoesNotBringTheDotBack() async throws {
         let transport = SyncFixture()
-        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
         await engine.start()
         _ = try await wait(engine) { $0.live && $0.loaded }
         await engine.pause()
@@ -774,7 +775,7 @@ final class SyncEngineTests: XCTestCase {
     /// so; one already in their list, or one home doesn't know, sends nothing.
     func testOpeningASurfaceThePersonIsntInJoinsIt() async throws {
         let transport = SyncFixture()
-        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
         await engine.start()
         let before = try await wait(engine) { $0.live && $0.loaded }
         XCTAssertFalse(before.rows.contains { $0.label == "Other person's document" })
@@ -791,7 +792,7 @@ final class SyncEngineTests: XCTestCase {
     func testARefusedArchiveRollsBackWithANotice() async throws {
         let transport = SyncFixture()
         await transport.refuseArchives()
-        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
         await engine.start()
         _ = try await wait(engine) { $0.live && $0.loaded }
         let kept = await engine.archive(kind: "task", id: "first")
@@ -808,7 +809,7 @@ final class SyncEngineTests: XCTestCase {
     /// retired Stem Cells experiment: the spaces sidebar is never read.
     func testStemCellsSettingLeavesHomeClassic() async throws {
         let transport = SyncFixture()
-        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
         await engine.start()
         let classic = try await wait(engine) { $0.live && $0.loaded && !$0.syncing }
         await transport.turnOnStemCells()

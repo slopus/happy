@@ -63,7 +63,7 @@ keeps it one read behind at most (`merged_keeps_up`, and
 | `Refresh.Step.applied` | `AgentUpdate` → `.applied`: `desktop` changed in place, then `agentsMoved` redraws the rows whose drawn fields moved |
 | `Refresh.Step.begin` / `fail` / `exit` | `scheduleReconcile`'s loop: `while dirty { sleep; dirty = false; reconcile }`, its `catch` (dirty again, back off), and `refresh = nil`; a read cancelled by a disconnect is a `fail` (it never advances `covered`) |
 | `Refresh.Step.gap` | a `hello` with `gap`, or from another `daemonId`, while resuming: home is read before anything is delivered |
-| `resume_is_current`'s premise | `covered == signalled` with a verified `daemonId`: `run` resumes from `streamCursor` and skips the bootstrap read, the conversations' `.resync` and the authors' re-read |
+| `resume_is_current`'s premise | `covered == signalled` with a verified `daemonId`: `run`, back within `resumeWindow`, resumes from `streamCursor` and skips the bootstrap read, the conversations' `.resync` and the authors' re-read; with news outstanding (`covered != signalled`) it resumes too and the refresh loop reads home for it |
 | `Refresh` (the same loop) | `Store.schedulePlacesReload`, reading bots and tasks after an `agent.updated` the sidebar can't follow or a `bot.`/`task.` event; it used to restart its wait on each one and so never read while they kept coming |
 | `Refresh.Step.finish` | `reconcile` taking the read: `self.desktop = keepingNewer(read, than: held)` |
 | `Refresh.droppedTurn` | the removed `guard self.revision == revision else { return }` |

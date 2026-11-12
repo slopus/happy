@@ -32,9 +32,6 @@ public final class AgentConnections {
     /// in the foreground. Coming back to the foreground reads them at once,
     /// and an open account's own stream says whether its computer is there.
     var refreshInterval: Duration = .seconds(600)
-    /// How long coming back waits for an engine's tunnels to wake before
-    /// it starts the engine and the pairings' checks anyway (`resume`).
-    var wakeLimit: Duration = .seconds(5)
     /// The platform's background execution lease. Without one an event
     /// stream is closed immediately, never left retransmitting to a frozen app.
     public var streamHold: SyncEngine.StreamHold = { _ in nil }
@@ -421,17 +418,15 @@ public final class AgentConnections {
     }
 
     /// Starts `id`'s engine. One kept through a suspension holds tunnels
-    /// that may have gone stale with nothing to say so; first they look for
-    /// every way to the computer again, as after a network change on
-    /// screen, before the stream asks them for anything. Waited for only
-    /// `wakeLimit`: a tunnel whose relay iOS reclaimed wakes only once a
-    /// new one is up, over a network that may still be coming back, and
-    /// until then neither the stream nor the pairings' checks started, so
-    /// home said "connecting…" for as long as the slowest wake took. The
-    /// wake goes on; what the stream sends meanwhile waits in Tailcat for
-    /// the rekey. The pairings' checks don't wait for it (`setForeground`).
+    /// that may have gone stale with nothing to say so: they look for every
+    /// way to the computer again, as after a network change on screen,
+    /// beside the engine's first reads rather than before them. Waiting for
+    /// the wake held the stream and the open chat's read back a round trip
+    /// or more, and for as long as the slowest relay took to come back
+    /// over a network still coming back; what is asked meanwhile waits in
+    /// Tailcat for the rekey, or fails and is asked again.
     private func resume(_ id: String, _ engine: SyncEngine) async {
-        if suspended.remove(id) != nil { await waitAtMost(wakeLimit) { await engine.client.resumed() } }
+        if suspended.remove(id) != nil { let client = engine.client; Task { await client.resumed() } }
         await engine.foreground()
         reportEnvironment(to: engine.client)
     }

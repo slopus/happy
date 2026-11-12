@@ -3,7 +3,7 @@ import XCTest
 @testable import HappyCore
 
 /// Gates real reads: opening the event stream and catching up desktop may
-/// complete in different orders.
+/// complete in either order.
 private actor HeaderSyncTransport: AgentTransport {
     private var desktopReads = 0
     private var holdDesktopAfter = Int.max
@@ -60,37 +60,30 @@ final class HeaderSyncLifecycleTests: XCTestCase {
         return await iterator.next()!
     }
 
-    func testBootstrapAndGapRefreshMustFinishBeforeOnlineAndReconnectRepeatsIt() async throws {
+    /// The stream doesn't wait for home's read: it is live at once, and
+    /// home says it is syncing until the read lands, again on each return.
+    func testHomeSyncsUntilItsReadLandsWhileTheStreamIsLive() async throws {
         let transport = HeaderSyncTransport()
         await transport.gateDesktop(after: 0)
         let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
         defer { Task { await transport.releaseDesktop(); await engine.stop() } }
         await engine.start()
         try await wait { await transport.reads() == 1 }
-        var snapshot = await current(engine)
-        XCTAssertTrue(snapshot.syncing)
-        XCTAssertFalse(snapshot.live)
-
-        // Hold the gap's second desktop read.
-        await transport.releaseDesktop()
-        await transport.gateDesktop(after: 1)
-        try await wait { await transport.reads() == 2 }
         try await wait { await self.current(engine).live }
-        snapshot = await current(engine)
-        XCTAssertTrue(snapshot.loaded)
-        XCTAssertTrue(snapshot.syncing, "an open stream waits for the gap's refresh")
+        var snapshot = await current(engine)
+        XCTAssertTrue(snapshot.syncing, "live, but home's read is still on its way")
         await transport.releaseDesktop()
-        try await wait { let value = await self.current(engine); return value.live && !value.syncing && value.settings["test.header-read"]?.numberValue == 2 }
+        try await wait { let value = await self.current(engine); return value.live && !value.syncing && value.settings["test.header-read"]?.numberValue == 1 }
 
         await engine.pause()
         snapshot = await current(engine)
         XCTAssertFalse(snapshot.live)
         await transport.prepareReconnect()
         await engine.start()
-        try await wait { await transport.reads() == 3 }
+        try await wait { await transport.reads() == 2 }
+        try await wait { await self.current(engine).live }
         snapshot = await current(engine)
         XCTAssertTrue(snapshot.syncing)
-        XCTAssertFalse(snapshot.live)
         await transport.releaseDesktop()
         try await wait { let value = await self.current(engine); return value.live && !value.syncing }
         await transport.disconnect()
