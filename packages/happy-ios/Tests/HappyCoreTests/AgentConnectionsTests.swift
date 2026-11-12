@@ -490,6 +490,35 @@ final class AgentConnectionsTests: XCTestCase {
         await manager.setForeground(false)
     }
 
+    /// While the open account's engine runs, its checks and a rename go
+    /// over the engine's tunnels: no transport, so no Tailcat client, of
+    /// their own. Paused, each check has its own again.
+    func testIdentityChecksShareTheRunningEnginesTransport() async throws {
+        let transport = IdentityTransport()
+        let made = Counter()
+        let manager = AgentConnections(credentials: InMemoryAgentConnectionCredentialStore(), directory: nil, makeTransport: { _ in made.increment(); return transport })
+        manager.refreshInterval = .milliseconds(20)
+        let account = try await manager.add(value("shared"), name: "Mac")
+        let engine = try XCTUnwrap(manager.syncEngine(for: account.id))
+        func checks() async -> Int { await transport.paths().filter { $0 == "/v0/config" }.count }
+        func wait(for count: Int) async throws {
+            for _ in 0..<200 where await checks() < count { try await Task.sleep(for: .milliseconds(10)) }
+            let read = await checks()
+            XCTAssertGreaterThanOrEqual(read, count)
+        }
+        try await wait(for: 2)
+        let before = made.value
+        try await wait(for: await checks() + 3)
+        try await manager.rename(account.id, to: "Studio Mac")
+        try await wait(for: await checks() + 1)
+        XCTAssertEqual(made.value, before)
+        await engine.pause()
+        let paused = made.value
+        try await wait(for: await checks() + 2)
+        XCTAssertGreaterThanOrEqual(made.value, paused + 2)
+        try await manager.remove(account.id)
+    }
+
     func testPeriodicIdentityRefreshStopsInBackgroundAndAfterRemoval() async throws {
         let transport = IdentityTransport()
         let manager = AgentConnections(credentials: InMemoryAgentConnectionCredentialStore(), directory: nil, makeTransport: { _ in transport })
@@ -510,6 +539,13 @@ final class AgentConnectionsTests: XCTestCase {
         let removed = await transport.paths().count
         XCTAssertEqual(removed, count)
     }
+}
+
+private final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    var value: Int { lock.withLock { count } }
+    func increment() { lock.withLock { count += 1 } }
 }
 
 private final class FailingAgentCredentialStore: AgentConnectionCredentialStore, @unchecked Sendable {

@@ -210,6 +210,9 @@ public actor SyncEngine {
 
     public var deliveryAllowed: Bool { !stopped && runner != nil && verified }
 
+    /// Started and not paused since: its tunnels are up, or on their way.
+    var running: Bool { !stopped && runner != nil }
+
     private func removeListener(_ id: UUID) { listeners.removeValue(forKey: id) }
 
     public func start() {

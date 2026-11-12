@@ -281,8 +281,9 @@ public final class AgentConnections {
     public func rename(_ id: String, to name: String) async throws {
         guard let credential = credentials[id] else { throw AccountSwitchError.unknownAccount }
         let body = try JSONSerialization.data(withJSONObject: ["node": ["name": name]])
-        let transport = transport(credential, for: id)
-        defer { Task { await transport.close() } }
+        let shared = await runningTransport(id)
+        let transport = shared ?? transport(credential, for: id)
+        defer { if shared == nil { Task { await transport.close() } } }
         // The transport names the body's type itself.
         let response = try await transport.request(method: "PATCH", path: "/v0/config", credential: credential.deviceToken, body: body, headers: [:])
         if response.status == 401 { throw PairingError.revoked }
@@ -454,6 +455,14 @@ public final class AgentConnections {
         for engine in engines.values { reportEnvironment(to: engine.client) }
     }
 
+    /// The transport of `id`'s engine while it runs: a request over it
+    /// opens no tunnel of its own. Nil for one paused or not there, whose
+    /// tunnels a request would open and leave idling on the radio.
+    private func runningTransport(_ id: String) async -> (any AgentTransport)? {
+        guard let engine = engines[id], await engine.running, engines[id] === engine else { return nil }
+        return engine.client.transport
+    }
+
     private func stop(_ id: String) async {
         let job = jobs.removeValue(forKey: id)
         job?.cancel(); await job?.value
@@ -475,12 +484,14 @@ public final class AgentConnections {
                         current.status = attempt == 0 ? .connecting : .retrying
                         await self?.apply(current, generation: generation)
                         while !Task.isCancelled {
-                            // A transport per check, closed after it: its tunnels
-                            // don't idle on the radio until the next one.
-                            let transport = AgentEndpointTransport(endpoint: endpoint, metrics: meter, make: make)
+                            // Over the running engine's tunnels when there are
+                            // some; else a transport per check, closed after it:
+                            // its tunnels don't idle on the radio until the next one.
+                            let shared = await self?.runningTransport(account.id)
+                            let transport = shared ?? AgentEndpointTransport(endpoint: endpoint, metrics: meter, make: make)
                             do { current = try await AgentIdentity.refresh(current, transport: transport, token: credential.deviceToken) }
-                            catch { await transport.close(); throw error }
-                            await transport.close()
+                            catch { if shared == nil { await transport.close() }; throw error }
+                            if shared == nil { await transport.close() }
                             try Task.checkCancellation()
                             await self?.apply(current, generation: generation)
                             attempt = 0
