@@ -271,6 +271,66 @@ final class TailcatClientsTests: XCTestCase {
         XCTAssertEqual(attempts.all.count, 2)
     }
 
+    /// A connect that finishes when the test says.
+    private final class Gate: @unchecked Sendable {
+        private let lock = NSLock()
+        private var open = false
+        private(set) var started = 0
+        private(set) var cancelled = 0
+        func connect() async throws {
+            lock.withLock { started += 1 }
+            while !lock.withLock({ open }) {
+                do { try await Task.sleep(for: .milliseconds(5)) } catch { lock.withLock { cancelled += 1 }; throw error }
+            }
+        }
+        func release() { lock.withLock { open = true } }
+    }
+
+    /// On a relaunch the chat's first reads are let go of for newer ones
+    /// while the shared client still connects (the push-cold restart loop):
+    /// the event stream waiting on the same connect keeps waiting, and gets
+    /// the client that connect makes.
+    func testACancelledCallerLeavesTheSharedConnectToTheOthers() async throws {
+        let made = Made(), gate = Gate()
+        let clients = TailcatClients<Client>(connect: { category, key in
+            try await gate.connect()
+            let client = Client(category: category, key: try key.publicKey.rawValue)
+            made.add(client)
+            return client
+        }, disconnect: { $0.close() })
+        let stream = Task { try await clients.lease(.realtime) }
+        let read = Task { try await clients.lease(.query) }
+        for _ in 0..<200 where gate.started == 0 { try await Task.sleep(for: .milliseconds(5)) }
+        try await Task.sleep(for: .milliseconds(20))
+        read.cancel()
+        try await Task.sleep(for: .milliseconds(20))
+        gate.release()
+        let lease = try await stream.value
+        XCTAssertEqual(gate.started, 1)
+        XCTAssertEqual(gate.cancelled, 0)
+        XCTAssertEqual(made.all.count, 1)
+        XCTAssertIdentical(lease.client, made.all.first)
+        _ = try? await read.value
+        await clients.close()
+    }
+
+    /// Once every caller let go, the connect is let go too.
+    func testAConnectNobodyWaitsForIsCancelled() async throws {
+        let gate = Gate()
+        let clients = TailcatClients<Client>(connect: { category, key in
+            try await gate.connect()
+            return Client(category: category, key: try key.publicKey.rawValue)
+        }, disconnect: { $0.close() })
+        let stream = Task { try await clients.lease(.realtime) }
+        let read = Task { try await clients.lease(.query) }
+        for _ in 0..<200 where gate.started == 0 { try await Task.sleep(for: .milliseconds(5)) }
+        stream.cancel(); read.cancel()
+        for _ in 0..<200 where gate.cancelled == 0 { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertEqual(gate.cancelled, 1)
+        do { _ = try await stream.value; XCTFail("leased after cancel") } catch is CancellationError {}
+        await clients.close()
+    }
+
     func testTheTransportPutsEachKindOfTrafficOnItsCategory() async throws {
         let asked = Made()
         let transport = TailcatHTTPTransport(port: 24781) { category, key in

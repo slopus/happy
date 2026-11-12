@@ -55,6 +55,8 @@ final class TailcatClients<Client: AnyObject & Sendable>: @unchecked Sendable {
         // Guarded by the pool's lock.
         fileprivate var client: Client?
         fileprivate var connecting: Task<Client, Error>?
+        /// Callers waiting on `connecting` and not cancelled.
+        fileprivate var waiting = 0
         fileprivate var inFlight = 0
         fileprivate var requests: [UUID: ContinuousClock.Instant] = [:]
         fileprivate var idle: Task<Void, Never>?
@@ -63,6 +65,9 @@ final class TailcatClients<Client: AnyObject & Sendable>: @unchecked Sendable {
         fileprivate var heard: ContinuousClock.Instant?
         init(category: RequestCategory, index: Int) { self.category = category; self.index = index }
     }
+
+    /// One caller's wait on a slot's connect. Guarded by the pool's lock.
+    private final class Waiter: @unchecked Sendable { var left = false }
 
     /// A request's hold on one client; `release` once its answer or stream is done.
     final class Lease: @unchecked Sendable {
@@ -176,9 +181,29 @@ final class TailcatClients<Client: AnyObject & Sendable>: @unchecked Sendable {
             if let ready { return ready }
             guard let task else { throw CancellationError() }
             let made: Client
-            do { made = try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() } }
-            catch {
-                locked { if slot.connecting == task { slot.connecting = nil } }
+            // One caller cancelled (a read let go of for a newer one) must not
+            // cancel a connect others wait on: the event stream and queries
+            // share it. Only once every caller let go is it cancelled.
+            let waiter = Waiter()
+            locked { slot.waiting += 1 }
+            do {
+                made = try await withTaskCancellationHandler { try await task.value } onCancel: {
+                    self.locked {
+                        guard !waiter.left else { return }
+                        waiter.left = true
+                        slot.waiting -= 1
+                        if slot.waiting == 0, slot.connecting == task { task.cancel() }
+                    }
+                }
+                locked { if !waiter.left { waiter.left = true; slot.waiting -= 1 } }
+            } catch {
+                let retry = locked { () -> Bool in
+                    if !waiter.left { waiter.left = true; slot.waiting -= 1 }
+                    if slot.connecting == task { slot.connecting = nil }
+                    // Cancelled for callers that let go, not for this one: connect again.
+                    return error is CancellationError && !closed && !Task.isCancelled
+                }
+                if retry { continue }
                 throw error
             }
             // The first caller back keeps it; callers that waited on the same connect see it up once.
