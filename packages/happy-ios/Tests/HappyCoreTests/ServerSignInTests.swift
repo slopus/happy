@@ -482,10 +482,6 @@ final class SignInRequiredTests: XCTestCase {
         XCTAssertEqual(roles, [.viewer, .admin, .other("reviewers")])
         XCTAssertEqual(http.requests.last?.headers["Authorization"], "Bearer \(pass)")
 
-        http.json(accounts + "/v1/servers/join", status: 404, #"{"code":"not_found","error":"No such server."}"#)
-        await XCTAssertThrowsAsync(try await account.join("acme", code: "nope")) {
-            XCTAssertEqual($0 as? CloudAccountError, .refused(status: 404, code: "not_found", message: "No such server."))
-        }
         http.json(accounts + "/v1/servers/availability?name=acme", #"{"name":"acme","available":false,"reason":"taken"}"#)
         let taken = try await account.availability("acme")
         XCTAssertEqual(taken, .taken)

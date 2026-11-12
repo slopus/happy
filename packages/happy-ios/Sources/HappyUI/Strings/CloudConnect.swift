@@ -35,13 +35,11 @@ extension Strings {
         static let joined = "Joined"
         static func joinServer(_ name: String) -> String { "Join \(name)" }
         static let bootstrapNew = "Bootstrap a new one"
-        static let joinWithInvite = "Join with an invite"
 
         static let createTitle = "Bootstrap a server"
         static let createMessage = "Name your team’s new server. You can change it later."
         static let createFirstMessage = "Your account has no servers yet. Name your team’s first one."
         static let createAction = "Bootstrap"
-        static let haveInvite = "Have an invite? Join a server"
         static let namePlaceholder = "acme"
         static let checking = "Checking…"
         static let invalidName = "3–32 lowercase letters, digits or dashes, not starting or ending with a dash."
@@ -55,11 +53,6 @@ extension Strings {
             case .invalid: return invalidName
             }
         }
-
-        static let joinTitle = "Join with an invite"
-        static let joinMessage = "Enter the server’s name and the invite code you were sent."
-        static let joinAction = "Join server"
-        static let codePlaceholder = "Invite code"
 
         static let failedTitle = "Couldn’t connect"
 

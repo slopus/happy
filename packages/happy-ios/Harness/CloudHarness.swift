@@ -3,7 +3,7 @@ import HappyCore
 import HappyUI
 import UIKit
 
-/// One of Happy Cloud's screens (`-cloudScreen welcome|servers|create|join|connecting|email|code`,
+/// One of Happy Cloud's screens (`-cloudScreen welcome|servers|create|connecting|email|code`,
 /// a name or email typed with `-cloudName`) under the account token in
 /// `-cloudToken`, for device screenshots. `-cloudAccounts <origin>` sends
 /// the welcome's sign-ins, and the account they make, to a stand-in for

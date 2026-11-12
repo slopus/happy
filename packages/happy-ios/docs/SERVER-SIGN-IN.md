@@ -99,7 +99,7 @@ accounts and servers v1, with v4's token lifetimes.
 - **Screens.** Desktop's steps and words (happy-desktop
   `CloudConnectScreen.tsx`), every one a full-screen page on the first
   screen's grain gradient, under the standard bar with Back: Welcome, Sign
-  in, Join a server, Bootstrap a server, Join with an invite, Connecting.
+  in, Join a server, Bootstrap a server, Connecting.
   With no account yet it's pushed on the first screen; otherwise it's
   presented full screen with a Close button. Android has the same steps
   and copy.
@@ -180,9 +180,13 @@ accounts and servers v1, with v4's token lifetimes.
   phone in to it as Connecting does but stays on the list; once in, the row
   says Joined with a check (as it does for a server already on the phone).
   Joins run one after another, Back is held while one runs, and Continue
-  appears once one is in and opens the last joined. Under the list, two
-  quiet links: Bootstrap a new one and Join with an invite. An account with
-  no server opens on Bootstrap a server instead. Back from Join a server,
+  appears once one is in and opens the last joined. Under the list, a
+  quiet link: Bootstrap a new one. An account with no server opens on
+  Bootstrap a server instead. There is no join with a code: an invite is a
+  private link (`https://happybases.com/join#<token>`) accepted on the web,
+  so the list loads again whenever the app comes back to the foreground,
+  and the first Bootstrap gives way to the list once the account has a
+  server. Back from Join a server,
   or from that first Bootstrap, signs the account out (forgets the pass),
   so Continue can use another. The picture is the ThumbHash at once, then
   the bytes from the listed image `url` under the account token (only ever
@@ -192,12 +196,10 @@ accounts and servers v1, with v4's token lifetimes.
   `.<base>`, checked as it's typed with `GET /v1/servers/availability`
   ("@acme is available", "is taken.", "is reserved.", in a line kept
   whether or not it says anything); Bootstrap, enabled once the name is
-  free, `POST /v1/servers`, then straight into it. **Join with an invite**
-  (`CloudJoinViewController`): the name and the invite code,
-  `POST /v1/servers/join`, then straight into it. Either way Connecting
-  takes the step's place (over Join a server when there is one), so Back
-  never returns to a step that is done.
-- **Connecting** (after Bootstrap or an invite; Join on the list does the
+  free, `POST /v1/servers`, then straight into it. Connecting takes the
+  step's place (over Join a server when there is one), so Back never
+  returns to a step that is done.
+- **Connecting** (after Bootstrap; Join on the list does the
   same in place) asks the accounts service for the server's own tokens,
   `POST /v1/servers/:id/token` under the pass: no browser. The access
   token's `aud` must be `https://<name>.<base>/`, built from the listed
