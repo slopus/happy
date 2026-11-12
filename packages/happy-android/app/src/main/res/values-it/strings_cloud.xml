@@ -60,4 +60,23 @@
     <string name="cloud_invite_button">Unisciti</string>
     <string name="cloud_sign_in_apple">Accedi con Apple</string>
     <string name="cloud_sign_in_github">Accedi con GitHub</string>
+    <string name="cloud_sign_in_email">Continua con l’email</string>
+    <string name="cloud_email_title">Accedi con l’email</string>
+    <string name="cloud_email_detail">Ti invieremo via email un codice di 6 cifre. Nessuna password.</string>
+    <string name="cloud_email_placeholder">Indirizzo email</string>
+    <string name="cloud_email_send">Invia codice</string>
+    <string name="cloud_email_wait">Riprova tra %1$s</string>
+    <string name="cloud_email_code_title">Controlla l’email</string>
+    <string name="cloud_email_code_detail">Inserisci il codice di 6 cifre che abbiamo inviato a %1$s.</string>
+    <string name="cloud_email_code_placeholder">Codice di 6 cifre</string>
+    <string name="cloud_email_verify">Verifica</string>
+    <string name="cloud_email_resend">Invia di nuovo</string>
+    <string name="cloud_email_resend_in">Invia di nuovo tra %1$s</string>
+    <string name="cloud_email_resent">Ti abbiamo inviato un nuovo codice.</string>
+    <string name="cloud_email_change">Cambia email</string>
+    <string name="cloud_email_invalid">Non sembra un indirizzo email.</string>
+    <string name="cloud_email_code_wrong">Il codice è sbagliato o scaduto.</string>
+    <string name="cloud_email_unavailable">L’accesso via email non funziona al momento. Riprova tra poco.</string>
+    <string name="cloud_email_unsupported">L’accesso via email non è ancora disponibile.</string>
+    <string name="cloud_email_rate_limited">Troppi tentativi. Attendi un momento e riprova.</string>
 </resources>

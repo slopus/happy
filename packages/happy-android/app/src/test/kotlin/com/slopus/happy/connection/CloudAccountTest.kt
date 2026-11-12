@@ -164,6 +164,91 @@ class CloudAccountTest {
     }
 
     @Test
+    fun anEmailCodeIsAskedForWithNoToken() = runBlocking {
+        val account = account()
+        server.enqueue(json("{}", code = 202))
+        assertEquals(EmailSignIn.Sent, account.startEmail("ada@example.com"))
+        val request = server.takeRequest()
+        assertEquals("POST", request.method)
+        assertEquals("/v1/auth/email/start", request.target)
+        assertEquals(null, request.headers["Authorization"])
+        assertEquals("""{"email":"ada@example.com"}""", request.body?.utf8())
+        // Asking is not signing in.
+        assertEquals(CloudAccountState.SignedOut(), account.state.value)
+    }
+
+    @Test
+    fun anEmailCodeSignsInForTheSameHourAsAPassword() = runBlocking {
+        val account = account()
+        val access = jwt(audience, tag = "e1")
+        server.enqueue(token(access))
+        assertEquals(EmailSignIn.SignedIn, account.verifyEmail("ada@example.com", "123456"))
+        assertEquals(CloudAccountState.SignedIn, account.state.value)
+        val request = server.takeRequest()
+        assertEquals("/v1/auth/email/verify", request.target)
+        assertEquals(null, request.headers["Authorization"])
+        assertEquals("""{"email":"ada@example.com","code":"123456"}""", request.body?.utf8())
+        server.enqueue(json("""{"servers":[]}"""))
+        assertEquals(emptyList<CloudServer>(), account.servers())
+        assertEquals("Bearer $access", server.takeRequest().headers["Authorization"])
+        now += 3_600_000L - 119_000L
+        assertEquals(false, account.signedIn())
+        assertEquals(CloudAccountState.SignedOut(expired = true), account.state.value)
+    }
+
+    /** Each refusal by its `code`, the same from either endpoint, and the account still signed out. */
+    @Test
+    fun anEmailRefusalSaysWhy() = runBlocking {
+        val account = account()
+        for (path in listOf("start", "verify")) {
+            suspend fun ask() = if (path == "start") account.startEmail("ada@example.com") else account.verifyEmail("ada@example.com", "123456")
+            server.enqueue(json("""{"code":"invalid_email","error":"Enter a valid email address."}""", code = 400))
+            assertEquals(EmailSignIn.InvalidEmail, ask())
+            server.enqueue(json("""{"code":"invalid_code","error":"That code is invalid or expired."}""", code = 400))
+            assertEquals(EmailSignIn.InvalidCode, ask())
+            server.enqueue(json("""{"code":"unavailable","error":"Email sign-in is unavailable."}""", code = 502))
+            assertEquals(EmailSignIn.Unavailable, ask())
+            server.enqueue(json("""{"code":"unsupported_provider","error":"Email sign-in is not configured."}""", code = 400))
+            assertEquals(EmailSignIn.Unsupported("Email sign-in is not configured."), ask())
+            server.enqueue(json("""{"code":"unsupported_provider"}""", code = 400))
+            assertEquals(EmailSignIn.Unsupported(null), ask())
+            server.enqueue(json("""{"code":"internal"}""", code = 503))
+            assertEquals(EmailSignIn.Failed(CloudException.Reason.Unreachable), ask())
+            server.enqueue(json("""{"code":"something_new"}""", code = 400))
+            assertEquals(EmailSignIn.Failed(CloudException.Reason.Failed), ask())
+            server.enqueue(MockResponse.Builder().code(404).body("not json").build())
+            assertEquals(EmailSignIn.Failed(CloudException.Reason.Failed), ask())
+        }
+        // A 200 with no token is no sign-in.
+        server.enqueue(json("""{"token_type":"Bearer"}"""))
+        assertEquals(EmailSignIn.Failed(CloudException.Reason.Failed), account.verifyEmail("ada@example.com", "123456"))
+        assertEquals(CloudAccountState.SignedOut(), account.state.value)
+        assertEquals(false, account.signedIn())
+    }
+
+    /** A 429 waits for its Retry-After, else the body's retryAfter, else a minute; its words are the service's. */
+    @Test
+    fun anEmailRateLimitSaysHowLong() = runBlocking {
+        val account = account()
+        val limited = """{"code":"rate_limited","error":"Too many requests. Try again later.","retryAfter":42}"""
+        server.enqueue(MockResponse.Builder().code(429).addHeader("Content-Type", "application/json").addHeader("Retry-After", "37").body(limited).build())
+        assertEquals(EmailSignIn.RateLimited(37, "Too many requests. Try again later."), account.startEmail("ada@example.com"))
+        server.enqueue(json(limited, code = 429))
+        assertEquals(EmailSignIn.RateLimited(42, "Too many requests. Try again later."), account.verifyEmail("ada@example.com", "123456"))
+        server.enqueue(json("""{"code":"rate_limited"}""", code = 429))
+        assertEquals(EmailSignIn.RateLimited(60, null), account.startEmail("ada@example.com"))
+        assertEquals(CloudAccountState.SignedOut(), account.state.value)
+    }
+
+    @Test
+    fun anEmailSignInOfflineIsUnreachable() = runBlocking {
+        val account = account()
+        server.close()
+        assertEquals(EmailSignIn.Failed(CloudException.Reason.Unreachable), account.startEmail("ada@example.com"))
+        assertEquals(EmailSignIn.Failed(CloudException.Reason.Unreachable), account.verifyEmail("ada@example.com", "123456"))
+    }
+
+    @Test
     fun listsServersWithTheAccountToken() = runBlocking {
         val access = jwt(audience, tag = "a1")
         val account = account()

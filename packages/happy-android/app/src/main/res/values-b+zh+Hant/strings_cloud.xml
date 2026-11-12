@@ -60,4 +60,23 @@
     <string name="cloud_invite_button">加入</string>
     <string name="cloud_sign_in_apple">使用 Apple 登入</string>
     <string name="cloud_sign_in_github">使用 GitHub 登入</string>
+    <string name="cloud_sign_in_email">使用電子郵件繼續</string>
+    <string name="cloud_email_title">使用電子郵件登入</string>
+    <string name="cloud_email_detail">我們會寄送 6 位數驗證碼到你的電子郵件，無需密碼。</string>
+    <string name="cloud_email_placeholder">電子郵件地址</string>
+    <string name="cloud_email_send">傳送驗證碼</string>
+    <string name="cloud_email_wait">%1$s 後重試</string>
+    <string name="cloud_email_code_title">查看你的電子郵件</string>
+    <string name="cloud_email_code_detail">輸入我們寄到 %1$s 的 6 位數驗證碼。</string>
+    <string name="cloud_email_code_placeholder">6 位數驗證碼</string>
+    <string name="cloud_email_verify">驗證</string>
+    <string name="cloud_email_resend">重新傳送驗證碼</string>
+    <string name="cloud_email_resend_in">%1$s 後重新傳送</string>
+    <string name="cloud_email_resent">已寄送新的驗證碼給你。</string>
+    <string name="cloud_email_change">更換電子郵件</string>
+    <string name="cloud_email_invalid">這看起來不像電子郵件地址。</string>
+    <string name="cloud_email_code_wrong">驗證碼錯誤或已過期。</string>
+    <string name="cloud_email_unavailable">電子郵件登入暫時無法使用，請稍後再試。</string>
+    <string name="cloud_email_unsupported">電子郵件登入尚未開放。</string>
+    <string name="cloud_email_rate_limited">嘗試次數過多，請稍候再試。</string>
 </resources>
