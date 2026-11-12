@@ -334,3 +334,46 @@ public enum CloudProfileLayout {
         CGSize(width: textWidth.rounded(.up) + 2 * Metrics.captionPadding, height: Metrics.captionHeight)
     }
 }
+
+/// An invite's own part (CloudInviteViewController), the same in every
+/// state so nothing moves as it loads, fails or joins: the server's picture
+/// centred, its name and `@name` under it, who invited them (a small
+/// picture beside "<name> invited you", the pair centred), and a line for
+/// what the invite says, as tall as `status` whatever it holds.
+public struct CloudInviteLayout: Equatable, Sendable {
+    public enum Metrics {
+        public static let picture: CGFloat = 88
+        public static let nameHeight: CGFloat = 28
+        public static let handleHeight: CGFloat = 20
+        public static let inviter: CGFloat = 24
+        public static let inviterGap: CGFloat = 8
+        public static let nameGap: CGFloat = 14
+        public static let handleGap: CGFloat = 2
+        public static let inviterTopGap: CGFloat = 18
+        public static let statusGap: CGFloat = 18
+    }
+
+    public var picture: CGRect
+    public var name: CGRect
+    public var handle: CGRect
+    public var inviterPicture: CGRect
+    public var inviterLabel: CGRect
+    public var status: CGRect
+    public var height: CGFloat
+
+    /// `inviterLabel` is the label's own width, kept within the column
+    /// beside the picture; `status` the room its line keeps.
+    public init(width: CGFloat, inviterLabel labelWidth: CGFloat, status statusHeight: CGFloat) {
+        typealias M = Metrics
+        picture = CGRect(x: (width - M.picture) / 2, y: 0, width: M.picture, height: M.picture)
+        name = CGRect(x: 0, y: picture.maxY + M.nameGap, width: width, height: M.nameHeight)
+        handle = CGRect(x: 0, y: name.maxY + M.handleGap, width: width, height: M.handleHeight)
+        let label = min(labelWidth, max(0, width - M.inviter - M.inviterGap))
+        let pair = M.inviter + M.inviterGap + label
+        let top = handle.maxY + M.inviterTopGap
+        inviterPicture = CGRect(x: (width - pair) / 2, y: top, width: M.inviter, height: M.inviter)
+        inviterLabel = CGRect(x: inviterPicture.maxX + M.inviterGap, y: top, width: label, height: M.inviter)
+        status = CGRect(x: 0, y: inviterPicture.maxY + M.statusGap, width: width, height: statusHeight)
+        height = status.maxY
+    }
+}

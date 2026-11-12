@@ -1554,9 +1554,9 @@ enum CloudBrowser {
 
 /// A server in Join a server's list, on glass over the gradient: its
 /// picture, its name over `@name`, and Join, Joining, or Joined with a
-/// check (`CloudServerRowLayout`); an invite's shows no button (`none`).
+/// check (`CloudServerRowLayout`).
 final class CloudServerRow: UIView {
-    enum State { case join, joining, joined, none }
+    enum State { case join, joining, joined }
 
     private let glass = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
     let picture = UIImageView()
@@ -1601,7 +1601,7 @@ final class CloudServerRow: UIView {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     private func apply() {
-        join.isHidden = state == .joined || state == .none
+        join.isHidden = state == .joined
         join.isLoading = state == .joining
         if let joinLabel { join.accessibilityLabel = joinLabel }
         joined.isHidden = state != .joined
@@ -1610,11 +1610,7 @@ final class CloudServerRow: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let buttonSize = switch state {
-        case .joined: joined.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: 32))
-        case .none: CGSize.zero
-        case .join, .joining: join.layout(width: 0).size
-        }
+        let buttonSize = state == .joined ? joined.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: 32)) : join.layout(width: 0).size
         let layout = CloudServerRowLayout(width: bounds.width, button: CGSize(width: buttonSize.width, height: max(32, buttonSize.height)))
         glass.setLayoutFrame(bounds)
         picture.setLayoutFrame(layout.picture)

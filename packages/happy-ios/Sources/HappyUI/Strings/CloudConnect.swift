@@ -57,11 +57,10 @@ extension Strings {
         static let failedTitle = "Couldn’t connect"
 
         /// An invite link opened in the app.
-        static func inviteMessage(_ handle: String, role: String?) -> String {
-            role.map { "You’re invited to join \(handle) as \($0)." } ?? "You’re invited to join \(handle)."
-        }
         static let inviteTitle = "Join a server"
-        static let inviteLoading = "Opening the invite…"
+        static let inviteBody = "You’ve been invited to a server on Happy Cloud."
+        static func inviteRole(_ role: String) -> String { "You’ll join as \(role)." }
+        static func invitedBy(_ name: String) -> String { "\(name) invited you" }
         static let inviteJoin = "Join"
         static let inviteShowServers = "Show My Servers"
         static let inviteOtherAccount = "Use Another Account"
@@ -72,6 +71,10 @@ extension Strings {
         static let inviteAccepted = "This invite has already been accepted. If it was you, the server is in your list."
         static func inviteEmailMismatch(_ hint: String?) -> String {
             "This invite was sent to another email address\(hint.map { " (\($0))" } ?? ""). Sign in with that one to join."
+        }
+        /// Every refusal, for the room its line keeps whatever it says.
+        static var inviteRefusals: [String] {
+            [inviteInvalid, inviteExpired, inviteRevoked, inviteExhausted, inviteAccepted, inviteEmailMismatch("m…@…")]
         }
         static func invite(_ error: CloudInviteError) -> String {
             switch error {

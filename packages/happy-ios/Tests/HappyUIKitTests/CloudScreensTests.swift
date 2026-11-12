@@ -488,7 +488,7 @@ final class CloudScreensTests: XCTestCase {
     /// Join takes it and goes on to Connecting.
     func testAnInviteShowsItsServerAndJoinTakesIt() async throws {
         let http = CloudHTTP()
-        await http.answer("POST /v1/invites/preview", 200, #"{"server":{"name":"acme","displayName":"Acme","image":null},"roleName":"Viewer","expiresAt":"2026-11-19T09:28:08.851234Z"}"#)
+        await http.answer("POST /v1/invites/preview", 200, #"{"server":{"name":"acme","displayName":"Acme","image":null},"roleName":"Viewer","expiresAt":"2026-11-19T09:28:08.851234Z","inviter":{"name":"Steve Korshakov","image":null}}"#)
         await http.answer("POST /v1/invites/accept", 200, #"{"server":{"id":"s1","name":"acme","displayName":"acme","url":"https://acme.happy-clusters.com/","image":null}}"#)
         let screen = CloudInviteViewController(context: context(), account: CloudAccount.preview(token: "account", http: http), invite: Self.invite)
         let connecting = UIViewController()
@@ -496,13 +496,21 @@ final class CloudScreensTests: XCTestCase {
         screen.connecting = { connectingTo = $0; return connecting }
         let navigation = UINavigationController(rootViewController: screen)
         show(navigation)
-        await settle { !screen.row.isHidden }
+        screen.view.layoutIfNeeded()
+        let loading = frames(screen)
+        XCTAssertFalse(screen.primary.isEnabled, "Join waits for the invite")
+        await settle { screen.phase != .loading }
+        screen.view.layoutIfNeeded()
         XCTAssertEqual(screen.titleLabel.string, "Join a server")
-        XCTAssertEqual(screen.bodyLabel.string, "You’re invited to join @acme as Viewer.")
-        XCTAssertEqual(screen.row.title.string, "Acme")
-        XCTAssertEqual(screen.row.subtitle.string, "@acme")
+        XCTAssertEqual(screen.bodyLabel.string, "You’ve been invited to a server on Happy Cloud.")
+        XCTAssertEqual(screen.name.string, "Acme")
+        XCTAssertEqual(screen.handle.string, "@acme")
+        XCTAssertEqual(screen.inviter.string, "Steve Korshakov invited you")
+        XCTAssertEqual(screen.inviterPicture.alpha, 1)
+        XCTAssertEqual(screen.status.string, "You’ll join as Viewer.")
         XCTAssertEqual(screen.primary.title, "Join")
         XCTAssertTrue(screen.primary.isEnabled)
+        XCTAssertEqual(frames(screen), loading, "nothing moved once the invite loaded")
         screen.primary.tapped()
         await settle { navigation.topViewController === connecting }
         XCTAssertEqual(connectingTo?.name, "acme")
@@ -518,10 +526,20 @@ final class CloudScreensTests: XCTestCase {
         await http.answer("POST /v1/invites/preview", 410, #"{"code":"expired","error":"This invitation has expired."}"#)
         let screen = CloudInviteViewController(context: context(), account: CloudAccount.preview(token: "account", http: http), invite: Self.invite)
         show(UINavigationController(rootViewController: screen))
+        screen.view.layoutIfNeeded()
+        let loading = frames(screen)
         await settle { screen.phase != .loading }
-        XCTAssertEqual(screen.bodyLabel.string, "This invite has expired. Ask for a new link.")
-        XCTAssertTrue(screen.primary.isHidden)
-        XCTAssertTrue(screen.row.isHidden)
+        screen.view.layoutIfNeeded()
+        XCTAssertEqual(screen.status.string, "This invite has expired. Ask for a new link.")
+        XCTAssertEqual(screen.name.string, "")
+        XCTAssertEqual(screen.primary.title, "Show My Servers")
+        XCTAssertFalse(screen.primary.isHidden)
+        XCTAssertEqual(frames(screen), loading, "nothing moved for the refusal")
+    }
+
+    /// Where the title, line, picture, status and button sit.
+    private func frames(_ screen: CloudInviteViewController) -> [CGRect] {
+        [screen.titleLabel, screen.bodyLabel, screen.picture, screen.name, screen.status, screen.primary].map { $0.convert($0.bounds, to: screen.view) }
     }
 
     /// An invite for another email: Use Another Account goes back to the
@@ -536,10 +554,14 @@ final class CloudScreensTests: XCTestCase {
         let navigation = UINavigationController(rootViewController: CloudScreens.first(context: context(), invite: Self.invite))
         let screen = try XCTUnwrap(navigation.topViewController as? CloudInviteViewController, "signed in: the invite at once")
         show(navigation)
-        await settle { !screen.row.isHidden }
+        await settle { screen.primary.isEnabled }
+        screen.view.layoutIfNeeded()
+        let offered = frames(screen)
         screen.primary.tapped()
         await settle { screen.phase == .refused(.emailMismatch(hint: "s…@…")) }
-        XCTAssertEqual(screen.bodyLabel.string, "This invite was sent to another email address (s…@…). Sign in with that one to join.")
+        screen.view.layoutIfNeeded()
+        XCTAssertEqual(frames(screen), offered, "nothing moved for the mismatch")
+        XCTAssertEqual(screen.status.string, "This invite was sent to another email address (s…@…). Sign in with that one to join.")
         XCTAssertEqual(screen.primary.title, "Use Another Account")
         screen.primary.tapped()
         await settle { navigation.topViewController is CloudWelcomeViewController && navigation.transitionCoordinator == nil }

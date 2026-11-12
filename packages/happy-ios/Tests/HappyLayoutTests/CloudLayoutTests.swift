@@ -300,4 +300,29 @@ final class CloudLayoutTests: XCTestCase {
         XCTAssertEqual(captioned, bare)
         XCTAssertEqual(bare.caption, .zero)
     }
+
+    // MARK: An invite
+
+    /// The picture centred, name and handle under it, the inviter's pair
+    /// centred, and the status line as tall as asked.
+    func testAnInvitesPartsSitAtFixedPlaces() {
+        let layout = CloudInviteLayout(width: 345, inviterLabel: 120, status: 72)
+        XCTAssertEqual(layout.picture, CGRect(x: 128.5, y: 0, width: 88, height: 88))
+        XCTAssertEqual(layout.name, CGRect(x: 0, y: 102, width: 345, height: 28))
+        XCTAssertEqual(layout.handle, CGRect(x: 0, y: 132, width: 345, height: 20))
+        XCTAssertEqual(layout.inviterPicture, CGRect(x: 96.5, y: 170, width: 24, height: 24))
+        XCTAssertEqual(layout.inviterLabel, CGRect(x: 128.5, y: 170, width: 120, height: 24))
+        XCTAssertEqual(layout.status, CGRect(x: 0, y: 212, width: 345, height: 72))
+        XCTAssertEqual(layout.height, 284)
+    }
+
+    /// Only the inviter's pair follows the name's width; nothing else moves.
+    func testOnlyTheInvitersPairFollowsItsName() {
+        let short = CloudInviteLayout(width: 345, inviterLabel: 60, status: 72)
+        let long = CloudInviteLayout(width: 345, inviterLabel: 900, status: 72)
+        XCTAssertEqual(long.inviterLabel, CGRect(x: 32, y: 170, width: 313, height: 24))
+        XCTAssertEqual(long.inviterPicture.minX, 0)
+        XCTAssertEqual(short.inviterPicture.minX, 126.5)
+        XCTAssertEqual([short.picture, short.name, short.handle, short.status], [long.picture, long.name, long.handle, long.status])
+    }
 }

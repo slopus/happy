@@ -65,8 +65,8 @@ final class HappyCloudUITests: XCTestCase {
     /// Happy Cloud), the ten taps and the test account's form, to its
     /// servers. The password is pasted, never typed: XCTest's log keeps
     /// whatever is typed.
-    private func signInWithTestAccount(login: String, password: String) {
-        openCloud(capturing: "01-before")
+    private func signInWithTestAccount(login: String, password: String, openingCloud: Bool = true) {
+        if openingCloud { openCloud(capturing: "01-before") }
 
         // The Happy mark over the first slide's title, which says nothing to
         // VoiceOver: tapped where it is drawn.
@@ -634,6 +634,72 @@ final class HappyCloudUITests: XCTestCase {
             Thread.sleep(forTimeInterval: 0.5)
         }
         return nil
+    }
+
+    /// An invite link (`TEST_RUNNER_INVITE_URL`) opened from Notes opens
+    /// the app on Happy Cloud's welcome; the test account signs in, the
+    /// invite shows its server, and Join lands on that server's home. The
+    /// first launch points the app at the deployment in `CLOUD_ACCOUNTS`,
+    /// `CLOUD_BASE`, `CLOUD_WEB` and `CLOUD_INVITE`, kept for the launch
+    /// the link makes.
+    func testInviteLinkOpensTheAppAndJoins() throws {
+        guard let link = env["INVITE_URL"].flatMap(URL.init(string:)), let login = env["QA_LOGIN"], let password = env["QA_PASSWORD"],
+              let accounts = env["CLOUD_ACCOUNTS"], let base = env["CLOUD_BASE"], let web = env["CLOUD_WEB"], let invite = env["CLOUD_INVITE"]
+        else { throw XCTSkip("no invite run") }
+        app.launchArguments = ["-HappyCloudAccounts", accounts, "-HappyCloudBase", base, "-HappyCloudWeb", web, "-HappyCloudInvite", invite]
+        app.launch()
+        require(first([element("account-switcher"), app.buttons["start-cloud"]], timeout: 30) != nil, "the app didn't start")
+        app.terminate()
+
+        openFromNotes(link)
+        require(app.wait(for: .runningForeground, timeout: 30), "the link didn't open the app")
+        let title = app.staticTexts["Happy Cloud"]
+        require(title.waitForExistence(timeout: 20), "the link didn't open Happy Cloud's welcome")
+        capture("i3-opened-signed-out")
+        signInWithTestAccount(login: login, password: password, openingCloud: false)
+
+        let join = element("cloud-invite-join")
+        require(join.waitForExistence(timeout: 30), "no invite screen after signing in")
+        let enabled = NSPredicate(format: "isEnabled == true")
+        require(XCTWaiter.wait(for: [expectation(for: enabled, evaluatedWith: join)], timeout: 20) == .completed, "the invite never loaded")
+        Thread.sleep(forTimeInterval: 1)
+        capture("i4-invite")
+        tree("i4-invite", app)
+        join.tap()
+
+        let name = element("cloud-profile-name")
+        let switcher = element("account-switcher")
+        if first([name, switcher], timeout: 90) === name {
+            capture("i5-profile")
+            name.tap()
+            name.typeText("QA Peer")
+            element("cloud-profile-continue").tap()
+        }
+        require(switcher.waitForExistence(timeout: 90), "Join didn't land on the server's home")
+        Thread.sleep(forTimeInterval: 4)
+        capture("i6-server-home")
+    }
+
+    /// Writes `link` in a new note and taps it there, as a person would
+    /// open a link they were sent.
+    private func openFromNotes(_ link: URL) {
+        let notes = XCUIApplication(bundleIdentifier: "com.apple.mobilenotes")
+        notes.launch()
+        Thread.sleep(forTimeInterval: 2)
+        let compose = notes.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'new note' OR identifier CONTAINS[c] 'compose'")).firstMatch
+        if compose.waitForExistence(timeout: 10) { compose.tap() } else { capture("i1-notes-no-compose"); tree("i1-notes", notes) }
+        Thread.sleep(forTimeInterval: 1.5)
+        notes.typeText(link.absoluteString + "\n")
+        let done = notes.buttons["Done"].firstMatch
+        if done.waitForExistence(timeout: 5) { done.tap() }
+        Thread.sleep(forTimeInterval: 2)
+        capture("i1-note")
+        tree("i1-note", notes)
+        let tappable = notes.links.firstMatch
+        require(tappable.waitForExistence(timeout: 10), "the note's link isn't a link")
+        tappable.tap()
+        Thread.sleep(forTimeInterval: 2)
+        capture("i2-after-tap")
     }
 
     func testConnectSignUpAndTalkToAnAgent() throws {
