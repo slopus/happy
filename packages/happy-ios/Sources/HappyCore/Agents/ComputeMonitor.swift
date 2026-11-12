@@ -1,18 +1,36 @@
 import Foundation
 
-/// One visible read-only monitoring page. Cancellation and authorization
-/// are checked again after every response, even if a transport ignores cancellation.
+/// Settings › Compute's list: the machines agents can join, online first,
+/// and the requests to join the reader's private machines.
+public struct ComputeMachines: Equatable, Sendable {
+    public let nodes: [ComputeNode]
+    public let approvals: [ComputeApproval]
+    /// Member names by user ID, for the private machines of others a
+    /// manager sees; a member with no saved name is left out.
+    public let owners: [String: String]
+
+    public init(nodes: [ComputeNode], approvals: [ComputeApproval], owners: [String: String] = [:]) {
+        self.nodes = nodes.sorted {
+            $0.status == .online && $1.status != .online
+                || ($0.status == .online) == ($1.status == .online) && $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
+        }
+        self.approvals = approvals
+        self.owners = owners
+    }
+}
+
+/// One visible compute page's reads. Cancellation and authorization are
+/// checked again after every response, even if a transport ignores
+/// cancellation.
 @MainActor
 public final class ComputeMonitor {
     public enum Page: Equatable, Sendable {
-        case pools
-        case pool(String)
-        case node(String)
+        case machines
+        case machine(String)
     }
     public enum Snapshot: Equatable, Sendable {
-        case pools([ComputePool])
-        case pool(ComputePoolDetail)
-        case node(ComputeNode)
+        case machines(ComputeMachines)
+        case machine(ComputeNode)
     }
     public enum Failure: Equatable, Sendable { case unavailable, forbidden, missing, signedOut }
 
@@ -26,8 +44,13 @@ public final class ComputeMonitor {
     private var allowed = false
     private var again = false
     private var poll: Task<Void, Never>?
+    /// Owner names already asked for, kept for the page's life.
+    private var owners: [String: String?] = [:]
 
-    public static let refreshEvents = ["compute.nodes.updated", "compute.pools.updated"]
+    /// A machine joining, leaving or changing says `runners.updated`; a
+    /// request to join one of the reader's machines, or its answer,
+    /// `compute.approvals.updated`. Neither carries a payload.
+    public static let refreshEvents = ["runners.updated", "compute.approvals.updated"]
 
     public init(client: AgentClient, page: Page) {
         self.client = client
@@ -78,16 +101,22 @@ public final class ComputeMonitor {
     public func refresh() {
         guard visible, allowed, failure != .forbidden, failure != .signedOut else { return }
         guard reading == nil else { again = true; return }
-        let client = client, page = page
+        let client = client, page = page, known = owners
         reading = Task { [weak self] in
             do {
                 let next: Snapshot
+                var named: [String: String?] = [:]
                 switch page {
-                case .pools: next = .pools(try await client.computePools())
-                case .pool(let id): next = .pool(try await client.computePool(id))
-                case .node(let id): next = .node(try await client.computeNode(id))
+                case .machines:
+                    async let nodes = client.computeNodes()
+                    async let approvals = client.computeApprovals()
+                    let (listed, waiting) = try await (nodes, approvals)
+                    named = await Self.names(listed, known: known, client: client)
+                    next = .machines(ComputeMachines(nodes: listed, approvals: waiting, owners: named.compactMapValues { $0 }))
+                case .machine(let id): next = .machine(try await client.computeNode(id))
                 }
                 guard !Task.isCancelled, let self, visible, allowed else { return }
+                owners = named.isEmpty ? owners : named
                 snapshot = next
                 failure = nil
             } catch {
@@ -109,5 +138,21 @@ public final class ComputeMonitor {
             changed?()
             if again { again = false; refresh() }
         }
+    }
+
+    /// The names of the private machines' owners, asked for only while one
+    /// isn't known yet. A failed read leaves them unnamed, not the list.
+    private nonisolated static func names(_ nodes: [ComputeNode], known: [String: String?], client: AgentClient) async -> [String: String?] {
+        let owners = Set(nodes.compactMap { node -> String? in
+            if case .private(let owner?) = node.mode { return owner }
+            return nil
+        })
+        let missing = owners.subtracting(known.keys)
+        guard !missing.isEmpty else { return known }
+        guard let users = try? await client.teamUsers(missing.sorted()) else { return known }
+        var names = known
+        for owner in missing { names[owner] = .some(nil) }
+        for user in users where !user.name.isEmpty { names[user.id] = user.name }
+        return names
     }
 }

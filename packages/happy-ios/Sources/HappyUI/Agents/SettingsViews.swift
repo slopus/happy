@@ -277,6 +277,9 @@ struct SettingsRow {
     var accessory: SettingsLayout.Accessory = .chevron
     /// A quieter line under the title (a path, an ID): the row is taller.
     var subtitle: String?
+    /// How many lines it wraps to, 0 for as many as it needs; one line is
+    /// cut in the middle, more at the end.
+    var subtitleLines = 1
     /// Drawn where the value goes, instead of it, at its own size: line
     /// counts, a copy glyph, a spinner.
     var valueView: UIView?
@@ -365,6 +368,13 @@ final class SettingsCardView: UIView {
                     let words = SettingsLayout.artTextWidth(width)
                     let line = row.subtitle.map { height($0, font: fonts.subtitle, width: words) } ?? 0
                     return SettingsLayout.RowSpec(hasIcon: false, accessory: .chevron, art: SettingsLayout.ArtText(title: height(row.title, font: fonts.title, width: words), subtitle: line))
+                }
+                if row.subtitleLines != 1, let line = row.subtitle {
+                    var spec = spec(row)
+                    let font = RowView.subtitleFont
+                    let measured = height(line, font: font, width: SettingsLayout.titleWidth(spec, width: width))
+                    spec.subtitleHeight = row.subtitleLines == 0 ? measured : min(measured, ceil(CGFloat(row.subtitleLines) * font.lineHeight))
+                    return spec
                 }
                 guard row.isCode else { return spec(row) }
                 let text = height(row.title, font: RowView.codeFont, width: SettingsLayout.textWidth(width))
@@ -508,8 +518,8 @@ final class SettingsCardView: UIView {
                 label.text = row.subtitle
                 // An art row's line wraps, at the person's text size.
                 label.font = fonts?.subtitle ?? Self.subtitleFont
-                label.numberOfLines = fonts == nil ? 1 : 0
-                label.lineBreakMode = fonts == nil ? .byTruncatingMiddle : .byWordWrapping
+                label.numberOfLines = fonts == nil ? row.subtitleLines : 0
+                label.lineBreakMode = fonts != nil ? .byWordWrapping : row.subtitleLines == 1 ? .byTruncatingMiddle : .byTruncatingTail
                 label.frame = local(frame)
             } else {
                 subtitle?.isHidden = true

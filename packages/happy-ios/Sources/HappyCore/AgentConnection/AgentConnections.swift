@@ -143,6 +143,9 @@ public final class AgentConnections {
     /// Whether `id` is a team server signed in to, rather than a pairing.
     public func isServer(_ id: String) -> Bool { credentials[id]?.signIn != nil }
 
+    /// The team user the server `id` was signed in as; nil for a pairing.
+    public func userId(for id: String) -> String? { credentials[id]?.signIn?.userId }
+
     /// The origin of the signed-in server `id`.
     public func server(for id: String) -> String? { credentials[id]?.signIn != nil ? credentials[id]?.publicUrl : nil }
 

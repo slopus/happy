@@ -36,7 +36,9 @@ public struct Permissions: Decodable, Equatable, Sendable {
         /// The team's inference providers; the person's own take `providers.own`.
         case providersManage = "providers.manage"
         case providersOwn = "providers.own"
-        /// Read-only Compute pools and node monitoring on this phone.
+        /// Reading and joining machines, and adding a private one of one's own.
+        case computeUse = "compute.use"
+        /// Adding a machine in any mode, freeing a held one, and its host facts.
         case poolsManage = "pools.manage"
     }
 

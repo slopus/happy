@@ -12,6 +12,7 @@ class SettingsPageViewController: UIViewController {
     let scroll = UIScrollView()
     private var cards: [SettingsCardView] = []
     private lazy var footers = SettingsFooters(in: scroll)
+    private lazy var headers = SettingsFooters(in: scroll, headers: true)
     private(set) var rows: [[SettingsRow]] = []
     private var settingsLayout = SettingsLayout(width: 0, nameHeight: 0, subtitleHeight: 0, cards: [], searching: true)
     /// The row home's search found, scrolled to and flashed once shown.
@@ -20,6 +21,7 @@ class SettingsPageViewController: UIViewController {
     /// What the page shows, card by card: for the tests.
     var shownRowIDs: [[String]] { rows.map { $0.map(\.id) } }
     var shownFooters: [String] { footers.texts }
+    var shownHeaders: [String] { headers.texts }
     /// The row `id` as the page shows it.
     func shownRow(_ id: String) -> SettingsRow? { rows.joined().first { $0.id == id } }
     /// Runs the row `id`'s action, as a finger on it would.
@@ -77,13 +79,14 @@ class SettingsPageViewController: UIViewController {
         scroll.frame = view.bounds
         let width = scroll.readableColumn(width: view.bounds.width)
         let specs = SettingsCardView.specs(rows, width: width, traits: traitCollection)
-        let layout = SettingsLayout(width: width, nameHeight: 0, subtitleHeight: 0, cards: specs, footers: SettingsCardView.footers(rows, width: width), searching: true)
+        let layout = SettingsLayout(width: width, nameHeight: 0, subtitleHeight: 0, cards: specs, footers: SettingsCardView.footers(rows, width: width), headers: SettingsCardView.headers(rows), searching: true)
         settingsLayout = layout
         for (index, card) in cards.enumerated() where layout.cards.indices.contains(index) {
             card.frame = layout.cards[index].frame
             card.show(rows[index], layout: layout.cards[index])
         }
         footers.show(rows.map { $0.last?.footer }, layout: layout.cards)
+        headers.show(rows.map { $0.first?.header }, layout: layout.cards)
         scroll.contentSize = CGSize(width: width, height: layout.contentHeight)
     }
 }
