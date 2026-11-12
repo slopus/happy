@@ -6,7 +6,8 @@ import UIKit
 /// An invite link opened in the app, once the account is signed in: the
 /// server it is for (`POST /v1/invites/preview`), its picture, who invited
 /// the person and the role it gives, and Join, which takes it
-/// (`POST /v1/invites/accept`) and goes on to Connecting, as Bootstrap does.
+/// (`POST /v1/invites/accept`) and goes on to Connecting, as Bootstrap does,
+/// or opens the server when it is already on this phone.
 /// An invite that can't be taken says why; one for another email offers to
 /// sign in with another account, the invite kept for after; one already
 /// accepted (perhaps by this account: an email invite answers so even to
@@ -39,6 +40,8 @@ final class CloudInviteViewController: CloudStageViewController {
     private var statusRoom: (width: CGFloat, text: String, height: CGFloat)?
     /// The Connecting step after Join; a test's stand-in.
     var connecting: (CloudServer) -> UIViewController
+    /// What the invite offered, kept when Join is then refused.
+    private var offer: CloudInvitePreview?
     private(set) var phase: Phase = .loading {
         didSet { if isViewLoaded { UIView.transition(with: content, duration: 0.2, options: .transitionCrossDissolve) { self.apply() } } }
     }
@@ -71,7 +74,9 @@ final class CloudInviteViewController: CloudStageViewController {
     private func load() async {
         phase = .loading
         do {
-            phase = .offered(try await account.preview(invite))
+            let offer = try await account.preview(invite)
+            self.offer = offer
+            phase = .offered(offer)
         } catch {
             settle(error)
         }
@@ -82,6 +87,9 @@ final class CloudInviteViewController: CloudStageViewController {
         case .offered:
             do {
                 let server = try await account.accept(invite)
+                if let id = CloudScreens.connection(to: server, context: context) {
+                    return try await CloudScreens.open(id, context: context, from: self)
+                }
                 navigationController?.pushViewController(connecting(server), animated: true)
             } catch {
                 settle(error)
@@ -110,21 +118,21 @@ final class CloudInviteViewController: CloudStageViewController {
     }
 
     private func apply() {
-        let offer: CloudInvitePreview? = if case .offered(let offer) = phase { offer } else { nil }
         if case .loading = phase { spinner.startAnimating() } else { spinner.stopAnimating() }
         picture.image = offer.map { serverPicture($0.server) } ?? AvatarPlaceholderImages.pending(side: CloudInviteLayout.Metrics.picture)
         name.string = offer?.server.title ?? ""
         handle.string = offer.map { HappyCloud.handle($0.server.name) } ?? ""
-        let from = offer?.inviter
-        inviterPicture.image = from.map(inviterPicture)
+        // Nobody to name, nobody shown; their place is kept.
+        let from = offer?.inviter.flatMap { inviter in inviter.name.flatMap { $0.isEmpty ? nil : (inviter, $0) } }
+        inviterPicture.image = from.map { inviterPicture($0.0, name: $0.1) }
         inviterPicture.alpha = from == nil ? 0 : 1
-        inviter.string = from.map { Strings.CloudConnect.invitedBy($0.name) } ?? ""
+        inviter.string = from.map { Strings.CloudConnect.invitedBy($0.1) } ?? ""
         switch phase {
         case .loading, .offered:
             status.string = offer?.roleName.map(Strings.CloudConnect.inviteRole) ?? ""
             status.textColor = UIColor(Palette.startTextSecondary)
             primary.title = Strings.CloudConnect.inviteJoin
-            primary.isEnabled = offer != nil
+            primary.isEnabled = phase != .loading
         case .refused(let error):
             status.string = Strings.CloudConnect.invite(error)
             status.textColor = UIColor(Palette.textDestructive)
@@ -147,17 +155,17 @@ final class CloudInviteViewController: CloudStageViewController {
         if let cached = AvatarPlaceholderImages.cached(seed: server.name, side: side) { return cached }
         Task { [weak self] in
             guard let image = await AvatarPlaceholderImages.image(seed: server.name, side: side), let self,
-                  case .offered(let offer) = phase, offer.server.name == server.name else { return }
+                  offer?.server.name == server.name else { return }
             picture.image = image
         }
         return AvatarPlaceholderImages.pending(side: side)
     }
 
     /// Their picture, else their initials.
-    private func inviterPicture(_ inviter: CloudInvitePreview.Inviter) -> UIImage {
+    private func inviterPicture(_ inviter: CloudInvitePreview.Inviter, name: String) -> UIImage {
         if let data = inviter.imageData, let image = UIImage(data: data) { return image }
         let side = CloudInviteLayout.Metrics.inviter
-        let initials = String(inviter.name.split(separator: " ").prefix(2).compactMap(\.first)).uppercased()
+        let initials = String(name.split(separator: " ").prefix(2).compactMap(\.first)).uppercased()
         let font = UIFont(name: FontFace.semiBold.rawValue, size: 10) ?? .systemFont(ofSize: 10, weight: .semibold)
         return UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { _ in
             UIColor(Palette.startTextSecondary).withAlphaComponent(0.25).setFill()

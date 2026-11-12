@@ -160,6 +160,14 @@ enum CloudScreens {
         finish(from: controller, opened: opened)
     }
 
+    /// The connection already on this phone (and not signed out there) to
+    /// `server`.
+    static func connection(to server: CloudServer, context: AppContext) -> String? {
+        guard let origin = server.origin, let existing = HappyCloud.connection(to: origin, in: context.account.agentConnections.accounts),
+              !existing.revoked else { return nil }
+        return existing.id
+    }
+
     /// The server isn't kept without the member's name.
     struct NameNeeded: Error {}
 
@@ -1182,8 +1190,7 @@ final class CloudServersViewController: CloudStageViewController {
     /// Already on this phone (and not signed out there), or joined here.
     private func connection(for server: CloudServer) -> String? {
         if let here = joined.last(where: { $0.server == server.id }) { return here.connection }
-        guard let origin = server.origin, let existing = HappyCloud.connection(to: origin, in: context.account.agentConnections.accounts), !existing.revoked else { return nil }
-        return existing.id
+        return CloudScreens.connection(to: server, context: context)
     }
 
     private func rebuild() {
