@@ -332,6 +332,29 @@ final class SyncPathTests: XCTestCase {
         await engine.stop()
     }
 
+    /// Back in the foreground with no chat on screen, within the window:
+    /// the chats still followed are left to the replay, and none is read.
+    func testAResumeWithNoChatOnScreenReadsNoChat() async throws {
+        let server = PathServer()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder())
+        await engine.start()
+        let (conversation, shown) = await open(engine, client)
+        try await eventually("settled") { let home = await Self.home(engine); return home.live && !home.syncing && shown.snapshot.synced }
+        await conversation.setVisible(false)
+        let queries = await server.queries().count
+        await engine.pause()
+        await engine.start()
+        try await eventually("live again") { let home = await Self.home(engine); return home.live && !home.syncing }
+        let from = await server.lastStreamHeaders()?["Last-Event-ID"]
+        XCTAssertNotNil(from)
+        try await Task.sleep(for: .milliseconds(300))
+        let asked = await server.queries().dropFirst(queries)
+        XCTAssertEqual(asked.count, 0, "\(asked)")
+        await conversation.stop()
+        await engine.stop()
+    }
+
     /// News a read of home already has asks for no read: a replay's, once
     /// the read beside it has landed, and one that came during a read
     /// whose cursor is past it.
