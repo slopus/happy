@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="sharing_title">Udostępnianie</string>
     <string name="sharing_tasks">Dołączaj do zadań innych osób</string>
     <string name="sharing_surfaces">Dołączaj do dokumentów, list i kalendarzy innych osób</string>
     <string name="sharing_footer">Z wyjątkiem tych, które opuszczono. Wyłączenie tej opcji zachowuje te, do których już dołączono.</string>

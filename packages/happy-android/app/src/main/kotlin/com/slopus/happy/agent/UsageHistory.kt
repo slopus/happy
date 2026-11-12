@@ -9,6 +9,8 @@ import com.slopus.happy.conversation.AccountUsage
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeParseException
@@ -133,22 +135,44 @@ fun interface DailyUsageSource {
     suspend fun read(days: Int, zone: ZoneId): DailyUsage?
 }
 
-/** The connection's own `GET /v0/usage/daily`; a server without it answers 404 once, and isn't asked again. */
+/**
+ * The connection's own `GET /v0/usage/daily`, asked only where its health
+ * says it keeps one (`GET /v0/health` → `capabilities.dailyUsage: true`),
+ * as iOS: the route and the flag ship together, so a health without the
+ * flag, or without capabilities at all, asks nothing. Health is read once
+ * for the source's life, which is the page's while it is open; a health
+ * that can't be read gives nothing this time, so what was shown stays, and
+ * is read again at the next refresh. A server that sets the flag but answers
+ * 404 or 501 isn't asked again.
+ */
 class LiveDailyUsageSource(private val client: AgentClient) : DailyUsageSource {
-    @Volatile private var unsupported = false
+    @Volatile private var offered: Boolean? = null
 
     override suspend fun read(days: Int, zone: ZoneId): DailyUsage? {
-        if (unsupported) return null
+        val known = offered ?: health()?.also { offered = it } ?: return null
+        if (!known) return null
         return try {
             DailyUsage.parse(client.decode<JsonObject>("GET", "/v0/usage/daily?days=$days&tz=${AgentClient.escape(zone.id)}"))
         } catch (e: CancellationException) {
             throw e
         } catch (e: AgentApiException) {
-            if (e.status == 404) unsupported = true
+            if (e.status == 404 || e.status == 501) offered = false
             null
         } catch (_: Exception) {
             null
         }
+    }
+
+    /** Whether health offers the route; null when health couldn't be read. */
+    private suspend fun health(): Boolean? {
+        val answer = try {
+            client.decode<JsonObject>("GET", "/v0/health")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return null
+        }
+        return (answer["capabilities"].obj?.get("dailyUsage") as? JsonPrimitive)?.booleanOrNull == true
     }
 }
 

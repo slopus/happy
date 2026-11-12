@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.connection
 
+import com.slopus.happy.agent.AutoJoinKind
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -76,7 +77,8 @@ class AgentSettingsIndexTest {
         assertEquals(
             listOf(
                 AgentSettingsTags.APPEARANCE, AgentPagesTags.HIDE_PROJECTS_ROW, AgentSettingsTags.PROFILE, AgentSettingsTags.ASK_NAME, AgentSettingsTags.ASK_AVATAR,
-                AgentVoiceTags.ROW, DataStorageTags.ROW, AgentVoiceTags.SUPPORT, AgentAgentsTags.ROW, AgentUsageTags.ROW, AgentSharingTags.ROW, PrivacyTags.ROW, com.slopus.happy.ui.settings.SettingsPageTags.ADD_AGENT,
+                AgentVoiceTags.ROW, DataStorageTags.ROW, AgentSharingTags.ROW, AgentSharingTags.row(AutoJoinKind.Tasks), AgentSharingTags.row(AutoJoinKind.Surfaces),
+                AgentVoiceTags.SUPPORT, AgentAgentsTags.ROW, AgentUsageTags.ROW, PrivacyTags.ROW, com.slopus.happy.ui.settings.SettingsPageTags.ADD_AGENT,
                 SettingsTags.WHATS_NEW, SettingsTags.GITHUB, SettingsTags.REPORT_ISSUE, SettingsTags.PRIVACY, SettingsTags.TERMS, SettingsTags.VERSION,
             ),
             index.map { it.id },
@@ -85,6 +87,26 @@ class AgentSettingsIndexTest {
             rule.onNode(hasTestTag(row.id) and hasAnyDescendant(hasText(row.title)), useUnmergedTree = true).assertExists()
         }
         assertTrue(index.filter { it.place == AgentSettingsPlace.Ask }.all { !it.ask.isNullOrEmpty() })
+    }
+
+    /** Sharing is notifications: its page's switches are found by their own titles, the Cloud push switch only on Cloud. */
+    @Test
+    fun notificationsRowsAreOnItsPageByTheSameTitle() {
+        var index = emptyList<AgentSettingsRow>()
+        var local = emptyList<AgentSettingsRow>()
+        rule.setHappyContent {
+            index = agentSettingsIndex(projectsAvailable = false, notificationsAvailable = true)
+            local = agentSettingsIndex()
+            AgentNotificationsScreen(com.slopus.happy.agent.AgentSharingState.Ready(true, true), { _, _ -> }, {}, push = {
+                CloudPushGroups(com.slopus.happy.push.CloudPushPreferences.State.Loaded(com.slopus.happy.push.CloudPushSettings(true)), true, false, false, {}, {}, {})
+            })
+        }
+        rule.waitForIdle()
+        val rows = index.filter { it.place == AgentSettingsPlace.Notifications }
+        assertEquals(listOf(CloudPushTags.SERVER, AgentSharingTags.row(AutoJoinKind.Tasks), AgentSharingTags.row(AutoJoinKind.Surfaces)), rows.map { it.id })
+        for (row in rows) rule.onNode(hasTestTag(row.id) and hasAnyDescendant(hasText(row.title)), useUnmergedTree = true).assertExists()
+        assertEquals(1, index.count { it.title == "Notifications" })
+        assertTrue(local.none { it.id == CloudPushTags.SERVER })
     }
 
     @Test
@@ -144,6 +166,7 @@ class AgentSettingsIndexTest {
                 composable<StartRoute> { Text("home") }
                 composable<SettingsRoute> { Text("settings") }
                 composable<AgentAppearanceRoute> { Text("appearance") }
+                composable<AgentSharingRoute> { Text("notifications") }
                 composable<ChiefOfStaffRoute> { Text("chief") }
             }
         }
@@ -154,6 +177,7 @@ class AgentSettingsIndexTest {
             entry.destination.hasRoute<StartRoute>() -> "home"
             entry.destination.hasRoute<SettingsRoute>() -> entry.toRoute<SettingsRoute>().let { "settings:${it.reveal}" }
             entry.destination.hasRoute<AgentAppearanceRoute>() -> entry.toRoute<AgentAppearanceRoute>().let { "appearance:${it.connectionId}:${it.reveal}" }
+            entry.destination.hasRoute<AgentSharingRoute>() -> entry.toRoute<AgentSharingRoute>().let { "notifications:${it.connectionId}:${it.reveal}" }
             entry.destination.hasRoute<ChiefOfStaffRoute>() -> entry.toRoute<ChiefOfStaffRoute>().let { "chief:${it.connectionId}:${it.prefix}" }
             else -> null
         }
@@ -173,6 +197,14 @@ class AgentSettingsIndexTest {
             nav.openAgentSettingsRow("c1", AgentSettingsRow(AgentPagesTags.HIDE_PROJECTS_ROW, "Hide projects", com.slopus.happy.ui.components.Ionicon.Add, AgentSettingsPlace.Appearance))
         }
         rule.runOnIdle { assertEquals(listOf("home", "settings:null", "appearance:c1:${AgentPagesTags.HIDE_PROJECTS_ROW}"), stack()) }
+    }
+
+    @Test
+    fun aNotificationsRowOpensItsPageOverSettings() {
+        host()
+        val id = AgentSharingTags.row(AutoJoinKind.Surfaces)
+        rule.runOnIdle { nav.openAgentSettingsRow("c1", AgentSettingsRow(id, "Join", com.slopus.happy.ui.components.Ionicon.Add, AgentSettingsPlace.Notifications)) }
+        rule.runOnIdle { assertEquals(listOf("home", "settings:null", "notifications:c1:$id"), stack()) }
     }
 
     @Test

@@ -100,16 +100,28 @@ public protocol DailyUsageSource: Sendable {
     func dailyUsage(days: Int, timeZone: String) async -> DailyUsageAnswer
 }
 
-/// The connection's own `GET /v0/usage/daily`.
-public struct LiveDailyUsage: DailyUsageSource {
+/// The connection's own `GET /v0/usage/daily`, asked only where its health
+/// says it keeps a daily history (`capabilities.dailyUsage`). Health is read
+/// once for each of these, which a page makes each time it opens; a server
+/// that doesn't say so has no grid and is never asked.
+public actor LiveDailyUsage: DailyUsageSource {
     let client: AgentClient
+    /// What health said; nil until it was read.
+    private var served: Bool?
 
     public init(client: AgentClient) { self.client = client }
 
     public func dailyUsage(days: Int, timeZone: String) async -> DailyUsageAnswer {
+        if served == nil {
+            // Unread, it is asked again next time.
+            guard let said = try? await client.servesDailyUsage() else { return .failed }
+            served = said
+        }
+        guard served == true else { return .unsupported }
         do {
             return .history(DailyUsage.read(try await client.dailyUsage(days: days, timeZone: timeZone)))
         } catch AgentClientError.status(let status, let code, _) where status == 404 || status == 501 || code == "not_found" {
+            // Said so, yet has no such route.
             return .unsupported
         } catch {
             return .failed

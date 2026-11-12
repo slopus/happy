@@ -159,10 +159,8 @@ internal fun NavGraphBuilder.agentSettingsPages(graph: AppGraph, nav: NavHostCon
     page<AgentDataStorageRoute> { entry -> AgentDataStorage(graph, nav, entry.toRoute<AgentDataStorageRoute>().connectionId) }
     page<AgentUsageRoute> { entry -> AgentUsagePage(graph, nav, entry.toRoute<AgentUsageRoute>().connectionId) }
     page<AgentSharingRoute> { entry ->
-        val id = entry.toRoute<AgentSharingRoute>().connectionId
-        val session = remember(id) { graph.agentSessions.session(id) }
-        val state = session?.sharing?.collectAsStateWithLifecycle()?.value ?: com.slopus.happy.agent.AgentSharingState.Loading
-        AgentSharingScreen(state, { kind, enabled -> session?.setAutoJoin(kind, enabled) }, { nav.popBackStack() })
+        val route = entry.toRoute<AgentSharingRoute>()
+        AgentNotificationsPage(graph, nav, route.connectionId, route.reveal)
     }
     page<AgentAgentsRoute> { entry ->
         val id = entry.toRoute<AgentAgentsRoute>().connectionId
@@ -222,7 +220,7 @@ object AgentPagesTags {
 
 /** A page under an agent connection's Settings: its bar on the page's own grey, as Settings' is. */
 @Composable
-internal fun AgentPage(title: String, onBack: () -> Unit, content: @Composable () -> Unit) {
+internal fun AgentPage(title: String, onBack: () -> Unit, listModifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Screen(
         header = {
             AgentTopBar(
@@ -233,7 +231,7 @@ internal fun AgentPage(title: String, onBack: () -> Unit, content: @Composable (
             )
         },
     ) {
-        ItemList { content() }
+        ItemList(listModifier) { content() }
     }
 }
 

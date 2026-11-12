@@ -355,16 +355,33 @@ win:
   a page goes in its `*PageEntries` too; `SettingsSearchTest` checks they
   agree. An agent's home search finds its Settings rows the same way, from
   `agentSettingsIndex()` (iOS's `SettingsIndex.computer`):
-  `openAgentSettingsRow` opens the agent's Settings or Appearance page with
-  `reveal`, or Chief of Staff with the ask for name and avatar.
+  `openAgentSettingsRow` opens the agent's Settings, Appearance or
+  Notifications page with `reveal`, or Chief of Staff with the ask for name
+  and avatar.
+- **Settings › Notifications** is Steve's "Sharing is notifications": one
+  row on every agent connection, after Data and Storage in the first card,
+  a bell on a red tile (`AgentSharingTags.ROW`, which `CloudPushTags.ROW`
+  names too). Its page (`AgentNotificationsPage`, `AgentSharing.kt`) has,
+  on a Happy Cloud server, the push settings first ("Notifications from
+  this server", Device permission, Enable on this device, with their
+  footer; `CloudPushGroups`), then on every connection the two "Join other
+  people's…" switches with theirs. `AgentSharingRoute` (with `reveal`),
+  `CloudPushSettingsRoute` and the `sharing` link all open it. There is no
+  Sharing row and no separate push row; Team is Members alone, on Cloud,
+  with no header where it is empty. Search finds "Notifications" once, and
+  the page's switches by their own titles (`AgentSettingsPlace.Notifications`).
 - **Settings › Usage** (`ui/connection/AgentUsage.kt`, every agent
   connection; the last row of AGENTS) is desktop's
   HappyAgentUsageSettings and UsageActivityGrid. Read on opening and every
   minute while open: `GET /v0/usage` (`UsageAccount.parse`: plan windows
   and each model's day, week and month tokens) and, behind
   `DailyUsageSource` (`agent/UsageHistory.kt`), `GET
-  /v0/usage/daily?days=371&tz=<zone>`. The live source answers null on any
-  failure and, after a 404, never asks that connection again; a failed
+  /v0/usage/daily?days=371&tz=<zone>`, asked only where `GET /v0/health`
+  says `capabilities.dailyUsage: true` (read once per page open, as iOS; the route and the flag ship together,
+  so a false or missing flag, or no capabilities, asks nothing; a health
+  that can't be read is read again at the next refresh). The live source
+  answers null on any failure and, after a 404 or 501, never asks that
+  connection again; a failed
   read keeps what was shown. The year grid (the later of `since` and
   today−364, through today) is weeks as columns, Monday on top, 10 cells
   on a 12 pitch, levels the quartiles of its own non-zero days

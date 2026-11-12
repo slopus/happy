@@ -381,6 +381,11 @@ public final class AgentClient: Sendable {
         try await decode(JSONValue.self, "GET", "/v0/usage")
     }
 
+    /// Whether the server keeps a daily history (`capabilities.dailyUsage`).
+    public func servesDailyUsage() async throws -> Bool {
+        try await decode(JSONValue.self, "GET", "/v0/health")["capabilities"]?["dailyUsage"]?.boolValue == true
+    }
+
     /// `GET /v0/usage/daily`: the last `days` local days in `timeZone`
     /// (an IANA name) that spent tokens (`DailyUsage.read`).
     public func dailyUsage(days: Int, timeZone: String) async throws -> JSONValue {

@@ -1,6 +1,7 @@
 package com.slopus.happy.ui.connection
 
 import com.slopus.happy.agent.Permission
+import com.slopus.happy.agent.AutoJoinKind
 import com.slopus.happy.connection.HappyCloud
 import com.slopus.happy.ui.tablet.BackOrSidebarToggle
 import com.slopus.happy.ui.settings.SettingsTags
@@ -92,8 +93,8 @@ fun NavGraphBuilder.agentHomeRoutes(graph: AppGraph, nav: NavHostController) {
     agentSettingsPages(graph, nav)
 }
 
-/** Where a row of an agent connection's settings is: its page, or the picture's menu (an ask, which runs). */
-enum class AgentSettingsPlace { Settings, Appearance, Ask }
+/** Where a row of an agent connection's settings is: its page, Appearance's or Notifications', or the picture's menu (an ask, which runs). */
+enum class AgentSettingsPlace { Settings, Appearance, Notifications, Ask }
 
 /**
  * One row of an agent connection's settings as home's search finds it
@@ -121,11 +122,14 @@ fun agentSettingsIndex(projectsAvailable: Boolean = true, notificationsAvailable
         row(AgentSettingsTags.ASK_AVATAR, stringResource(R.string.agent_settings_edit_avatar), Ionicon.ImageOutline, AgentSettingsPlace.Ask, stringResource(R.string.agent_settings_edit_avatar_prefix)),
         row(AgentVoiceTags.ROW, stringResource(R.string.agent_voice_title), Ionicon.MicOutline),
         row(DataStorageTags.ROW, stringResource(R.string.data_storage_title), Ionicon.ServerOutline),
-        row(CloudPushTags.ROW, stringResource(R.string.cloud_push_title), Ionicon.NotificationsOutline).takeIf { notificationsAvailable },
+        // Sharing is notifications: one row, and the page's own switches by their titles.
+        row(AgentSharingTags.ROW, stringResource(R.string.cloud_push_title), Ionicon.NotificationsOutline),
+        row(CloudPushTags.SERVER, stringResource(R.string.cloud_push_server), Ionicon.NotificationsOutline, AgentSettingsPlace.Notifications).takeIf { notificationsAvailable },
+        row(AgentSharingTags.row(AutoJoinKind.Tasks), stringResource(R.string.sharing_tasks), Ionicon.PeopleOutline, AgentSettingsPlace.Notifications),
+        row(AgentSharingTags.row(AutoJoinKind.Surfaces), stringResource(R.string.sharing_surfaces), Ionicon.PeopleOutline, AgentSettingsPlace.Notifications),
         row(AgentVoiceTags.SUPPORT, stringResource(R.string.agent_voice_support_title), Ionicon.Heart),
         row(AgentAgentsTags.ROW, stringResource(R.string.settings_agents), Ionicon.OptionsOutline),
         row(AgentUsageTags.ROW, stringResource(R.string.usage_title), Ionicon.AnalyticsOutline),
-        row(AgentSharingTags.ROW, stringResource(R.string.sharing_title), Ionicon.PeopleOutline),
         row(PrivacyTags.ROW, stringResource(R.string.settings_account_privacy), Ionicon.LockClosedOutline),
         row(SettingsPageTags.ADD_AGENT, stringResource(R.string.settings_add_agent), Ionicon.Add),
         row(SettingsTags.WHATS_NEW, stringResource(R.string.settings_whats_new), Ionicon.SparklesOutline),
@@ -140,7 +144,7 @@ fun agentSettingsIndex(projectsAvailable: Boolean = true, notificationsAvailable
 /**
  * Opens [row] as iOS's `SettingsViewController.open(reveal:)` does: the
  * connection's settings, scrolled to the row with it flashing; a row of
- * Appearance's on that page, over settings; an ask runs, the Chief of
+ * Appearance's or Notifications' on that page, over settings; an ask runs, the Chief of
  * Staff's chat opening with its words typed in.
  */
 fun NavHostController.openAgentSettingsRow(connectionId: String, row: AgentSettingsRow) {
@@ -149,6 +153,10 @@ fun NavHostController.openAgentSettingsRow(connectionId: String, row: AgentSetti
         AgentSettingsPlace.Appearance -> {
             navigate(SettingsRoute())
             navigate(AgentAppearanceRoute(connectionId, reveal = row.id))
+        }
+        AgentSettingsPlace.Notifications -> {
+            navigate(SettingsRoute())
+            navigate(AgentSharingRoute(connectionId, reveal = row.id))
         }
         AgentSettingsPlace.Ask -> openChiefOfStaff(connectionId, row.ask.orEmpty())
     }
@@ -175,6 +183,7 @@ class AgentSettingsActions(
     val onVoice: () -> Unit = {},
     /** Data and Storage: the media kept on this phone; null where nothing is kept. */
     val onDataStorage: (() -> Unit)? = null,
+    /** Notifications (it was Sharing): joining other people's tasks and docs, and a Cloud server's push settings. */
     val onSharing: (() -> Unit)? = null,
     /** Agents: what a new chat starts on (desktop's New sessions); null where it isn't offered. */
     val onAgents: (() -> Unit)? = null,
@@ -186,8 +195,10 @@ class AgentSettingsActions(
     val onComputePools: (() -> Unit)? = null,
     /** Usage: what the provider accounts spent and what is left of their plans; null where it isn't offered. */
     val onUsage: (() -> Unit)? = null,
-    /** Every Cloud member can manage their own notifications, including read-only members. */
+    /** A Happy Cloud server: its push settings, on the same Notifications page. Every Cloud member can manage their own, read-only members included. */
     val onNotifications: (() -> Unit)? = null,
+    /** Opens Notifications with one of its rows revealed, as search finds it; null where search shouldn't offer them. */
+    val onNotificationsRow: ((reveal: String) -> Unit)? = null,
     /** Privacy: this phone's Analytics switch. */
     val onPrivacy: () -> Unit = {},
     /** Disconnects this connection; asked for only after the person confirmed. */
@@ -208,8 +219,9 @@ data class AgentPerson(val name: String = "", val photo: ImageBitmap? = null, va
  * status under it; every account on the phone with Add Agent; then
  * desktop's sidebar groups: the first (Appearance, the theme and the
  * desktop's Hide projects; the person's own Profile; Voice;
- * Data and Storage; Notifications), Support Happy's boba row under it,
- * Agents (Agents, Inference, Compute, Usage), Team (Sharing, Members); Privacy;
+ * Data and Storage; Notifications, which is Sharing and on a Cloud server
+ * its push settings too), Support Happy's boba row under it, Agents
+ * (Agents, Inference, Compute, Usage), Team (Members, on Cloud); Privacy;
  * the agent's version; About; Disconnect, after a
  * confirm. A device token can't reach
  * the agent's device list (API.md, "Credentials on the connector's
@@ -249,9 +261,9 @@ fun AgentConnectionSettingsScreen(
     val search = rememberSettingsSearch()
     // Desktop's sidebar, group for group (AppHappyAgentSettingsView): its
     // unheaded first group (General, here Appearance; Account, here Profile;
-    // Voice; the phone's Data and Storage; and the Cloud server's
-    // Notifications), then Agents (what new sessions start on, Inference,
-    // Compute, Usage) and Team. The phone's own cards keep their places: the accounts at the top,
+    // Voice; the phone's Data and Storage; and Notifications, Steve's
+    // "Sharing is notifications"), then Agents (what new sessions start on, Inference,
+    // Compute, Usage) and Team (Members; with none, no header). The phone's own cards keep their places: the accounts at the top,
     // Support Happy under the first group, Privacy and About at the end.
     val sections = listOf(
         SettingsSection(
@@ -278,9 +290,10 @@ fun AgentConnectionSettingsScreen(
                         onClick = open,
                     )
                 },
-                actions.onNotifications?.let { open ->
+                // Sharing is notifications: one row, on every connection; a Cloud server's push settings are on its page too.
+                (actions.onSharing ?: actions.onNotifications)?.let { open ->
                     SettingsEntry(
-                        id = CloudPushTags.ROW,
+                        id = AgentSharingTags.ROW,
                         title = stringResource(R.string.cloud_push_title),
                         icon = { SettingsTile(Ionicon.NotificationsOutline, SettingsTiles.red) },
                         onClick = open,
@@ -329,14 +342,6 @@ fun AgentConnectionSettingsScreen(
         ),
         SettingsSection(
             listOfNotNull(
-                actions.onSharing?.let { open ->
-                    SettingsEntry(
-                        id = AgentSharingTags.ROW,
-                        title = stringResource(R.string.sharing_title),
-                        icon = { SettingsTile(Ionicon.PeopleOutline, SettingsTiles.teal) },
-                        onClick = open,
-                    )
-                },
                 actions.onMembers?.let { open ->
                     SettingsEntry(
                         id = CloudTags.MEMBERS,
@@ -390,7 +395,17 @@ fun AgentConnectionSettingsScreen(
                 SettingsEntry(AgentSettingsTags.ASK_AVATAR, stringResource(R.string.agent_settings_edit_avatar), icon = { SettingsTile(Ionicon.ImageOutline, SettingsTiles.orange) }, chevron = false, onClick = { ask(avatarPrefix) }, closesSearch = true),
             )
             val profiles = settingsProfileEntries(accounts, accountActions.onSwitch)
-            val rows = listOf(addAgentEntry(accountActions), supportBobaEntry(aboutActions.onSupport)) + sections.flatMap { it.rows } + appearance
+            // Notifications' switches by their own titles: found, the page opens on the row.
+            val notifications = actions.onNotificationsRow?.let { open ->
+                fun entry(id: String, title: String, icon: Ionicon) =
+                    SettingsEntry(id, title, icon = { SettingsTile(icon, SettingsTiles.red) }, onClick = { open(id) }, closesSearch = true)
+                listOfNotNull(
+                    entry(CloudPushTags.SERVER, stringResource(R.string.cloud_push_server), Ionicon.NotificationsOutline).takeIf { actions.onNotifications != null },
+                    entry(AgentSharingTags.row(AutoJoinKind.Tasks), stringResource(R.string.sharing_tasks), Ionicon.PeopleOutline),
+                    entry(AgentSharingTags.row(AutoJoinKind.Surfaces), stringResource(R.string.sharing_surfaces), Ionicon.PeopleOutline),
+                )
+            }.orEmpty()
+            val rows = listOf(addAgentEntry(accountActions), supportBobaEntry(aboutActions.onSupport)) + sections.flatMap { it.rows } + appearance + notifications
             SettingsSearchResults(search, settingsSearchResults(search.query, profiles, asks, rows))
         } else {
             SettingsDissolveBox {
@@ -527,6 +542,7 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
             onComputePools = if (pools) ({ nav.navigate(CloudComputePoolsRoute(connectionId)) }) else null,
             onUsage = { nav.navigate(AgentUsageRoute(connectionId)) },
             onNotifications = if (cloud) ({ nav.navigate(CloudPushSettingsRoute(connectionId)) }) else null,
+            onNotificationsRow = { reveal -> nav.navigate(AgentSharingRoute(connectionId, reveal = reveal)) },
             onPrivacy = { nav.navigate(PrivacyRoute) },
             onAskChief = if (askChief) ({ prefix -> nav.openChiefOfStaff(connectionId, prefix) }) else null,
             onRemove = {

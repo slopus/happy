@@ -78,8 +78,11 @@ class CloudPushSettingsTest {
             }
         }
         rule.runOnIdle {
-            assertFalse(local.any { it.id == CloudPushTags.ROW })
+            // One Notifications row everywhere (Sharing is notifications); the push switch only where Cloud offers it.
+            assertEquals("Notifications", local.single { it.id == CloudPushTags.ROW }.title)
             assertEquals("Notifications", cloud.single { it.id == CloudPushTags.ROW }.title)
+            assertFalse(local.any { it.id == CloudPushTags.SERVER })
+            assertEquals("Notifications from this server", cloud.single { it.id == CloudPushTags.SERVER }.title)
         }
     }
 
@@ -95,5 +98,22 @@ class CloudPushSettingsTest {
         rule.setHappyContent { CloudPushSettingsScreen(CloudPushPreferences.State.Loaded(CloudPushSettings(true)), false, false, false, {}, {}, {}, {}, com.slopus.happy.model.settings.PushPermissionStatus.Undetermined) }
         rule.onNodeWithText("Not requested").assertIsDisplayed()
         rule.onNodeWithText("Denied").assertDoesNotExist()
+    }
+
+    /** Sharing is notifications: a Cloud server's one page has its push settings first, then the join switches, each with its footer. */
+    @Test fun theCloudPageIsPushThenJoining() {
+        rule.setHappyContent {
+            AgentNotificationsScreen(com.slopus.happy.agent.AgentSharingState.Ready(true, false), { _, _ -> }, {}, push = {
+                CloudPushGroups(CloudPushPreferences.State.Loaded(CloudPushSettings(true)), false, false, false, {}, {}, {})
+            })
+        }
+        rule.onNodeWithText("Notifications").assertIsDisplayed()
+        val push = rule.node(CloudPushTags.SWITCH).bounds
+        val device = rule.node(CloudPushTags.DEVICE).bounds
+        val tasks = rule.node(AgentSharingTags.toggle(com.slopus.happy.agent.AutoJoinKind.Tasks)).bounds
+        assertTrue(push.top < device.top)
+        assertTrue(device.top < tasks.top)
+        rule.onNodeWithText("Applies to your account on this server", substring = true).assertExists()
+        rule.onNodeWithText("Except ones you left", substring = true).assertExists()
     }
 }

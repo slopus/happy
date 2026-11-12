@@ -63,7 +63,7 @@ class SettingsShots {
                 AccountMenuEntry("agent-connection-1", "Studio", agent = true, active = true),
                 AccountMenuEntry("agent-connection-2", "Old Mac", agent = true),
             )),
-            AgentSettingsActions(),
+            AgentSettingsActions(onDataStorage = {}, onSharing = {}, onAgents = {}, onUsage = {}),
             AboutInfo("1.8.0 (412)"),
             person = AgentPerson("Steve"),
         )
@@ -74,7 +74,7 @@ class SettingsShots {
         AgentConnectionSettingsScreen(
             SettingsProfile("agent-connection-1", "@acme", "Connected"),
             AccountMenu(listOf(AccountMenuEntry("agent-connection-1", "@acme", agent = true, active = true))),
-            AgentSettingsActions(onDataStorage = {}, onSharing = {}, onAgents = {}, onMembers = {}, onProviders = {}, onComputePools = {}, onNotifications = {}),
+            AgentSettingsActions(onDataStorage = {}, onSharing = {}, onAgents = {}, onMembers = {}, onProviders = {}, onComputePools = {}, onNotifications = {}, onUsage = {}),
             AboutInfo("1.8.0 (412)"),
             person = AgentPerson("Steve"),
         )

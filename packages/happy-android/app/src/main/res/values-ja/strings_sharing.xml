@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="sharing_title">共有</string>
     <string name="sharing_tasks">他の人のタスクに参加する</string>
     <string name="sharing_surfaces">他の人のドキュメント、リスト、カレンダーに参加する</string>
     <string name="sharing_footer">退出したものは除きます。オフにしても、すでに参加したものは保持されます。</string>

@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="sharing_title">共享</string>
     <string name="sharing_tasks">加入其他人的任務</string>
     <string name="sharing_surfaces">加入其他人的文件、清單和行事曆</string>
     <string name="sharing_footer">已退出的除外。關閉後，已加入的內容會保留。</string>

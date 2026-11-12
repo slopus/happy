@@ -3,18 +3,29 @@ import HappyWire
 import XCTest
 @testable import HappyCore
 
-/// Answers `/v0/usage/daily` with one status, and says what it was asked.
+/// Answers `/v0/health` with `health` (a status alone when it is a
+/// number) and `/v0/usage/daily` with one status, and says what it was
+/// asked.
 private actor DailyTransport: AgentTransport {
+    static let serves = #"{"ready":true,"capabilities":{"dailyUsage":true}}"#
     let status: Int
     let body: String
+    var health: String
     private(set) var paths: [String] = []
-    init(status: Int, body: String = "{}") {
+    init(status: Int, body: String = "{}", health: String = DailyTransport.serves) {
         self.status = status
         self.body = body
+        self.health = health
     }
+
+    func setHealth(_ health: String) { self.health = health }
 
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         paths.append(path)
+        if path == "/v0/health" {
+            if let status = Int(health) { return HTTP1Response(status: status) }
+            return HTTP1Response(status: 200, body: Data(health.utf8))
+        }
         return HTTP1Response(status: status, body: Data(self.body.utf8))
     }
 
@@ -184,8 +195,9 @@ final class UsageOverviewTests: XCTestCase {
         let answer = await LiveDailyUsage(client: AgentClient(transport: ok, token: "t")).dailyUsage(days: 371, timeZone: "America/Los_Angeles")
         XCTAssertEqual(answer, .history(DailyUsage(since: "2026-11-01", days: [])))
         let paths = await ok.paths
-        XCTAssertEqual(paths, ["/v0/usage/daily?days=371&tz=America%2FLos_Angeles"])
+        XCTAssertEqual(paths, ["/v0/health", "/v0/usage/daily?days=371&tz=America%2FLos_Angeles"])
 
+        // A server that says it keeps one, yet has no such route.
         for (status, body) in [(404, "{}"), (501, "{}"), (400, #"{"code":"not_found","error":"No route"}"#)] {
             let answer = await LiveDailyUsage(client: AgentClient(transport: DailyTransport(status: status, body: body), token: "t")).dailyUsage(days: 371, timeZone: "UTC")
             XCTAssertEqual(answer, .unsupported, "\(status)")
@@ -194,5 +206,46 @@ final class UsageOverviewTests: XCTestCase {
         XCTAssertEqual(failed, .failed)
         let nothing = await LiveDailyUsage(client: AgentClient(transport: DailyTransport(status: 200, body: "{}"), token: "t")).dailyUsage(days: 371, timeZone: "UTC")
         XCTAssertEqual(nothing, .history(nil))
+    }
+
+    func testFlagOnAsksAndHealthIsReadOnce() async throws {
+        let server = DailyTransport(status: 200, body: #"{"since":"2026-11-01","days":[]}"#)
+        let daily = LiveDailyUsage(client: AgentClient(transport: server, token: "t"))
+        for _ in 0..<2 {
+            let answer = await daily.dailyUsage(days: 371, timeZone: "UTC")
+            XCTAssertEqual(answer, .history(DailyUsage(since: "2026-11-01", days: [])))
+        }
+        let paths = await server.paths
+        XCTAssertEqual(paths, ["/v0/health", "/v0/usage/daily?days=371&tz=UTC", "/v0/usage/daily?days=371&tz=UTC"])
+    }
+
+    func testFlagOffOrMissingNeverAsks() async throws {
+        for health in [
+            #"{"ready":true,"capabilities":{"dailyUsage":false,"search":true}}"#,
+            #"{"ready":true,"capabilities":{"search":true}}"#,
+            #"{"ready":true}"#,
+        ] {
+            // It would answer, but isn't asked.
+            let server = DailyTransport(status: 200, body: #"{"since":"2026-11-01","days":[]}"#, health: health)
+            let daily = LiveDailyUsage(client: AgentClient(transport: server, token: "t"))
+            for _ in 0..<2 {
+                let answer = await daily.dailyUsage(days: 371, timeZone: "UTC")
+                XCTAssertEqual(answer, .unsupported, health)
+            }
+            let paths = await server.paths
+            XCTAssertEqual(paths, ["/v0/health"], health)
+        }
+    }
+
+    func testUnreadHealthKeepsWhatWasShownAndIsReadAgain() async throws {
+        let server = DailyTransport(status: 200, body: #"{"since":"2026-11-01","days":[]}"#, health: "503")
+        let daily = LiveDailyUsage(client: AgentClient(transport: server, token: "t"))
+        let first = await daily.dailyUsage(days: 371, timeZone: "UTC")
+        XCTAssertEqual(first, .failed)
+        await server.setHealth(DailyTransport.serves)
+        let second = await daily.dailyUsage(days: 371, timeZone: "UTC")
+        XCTAssertEqual(second, .history(DailyUsage(since: "2026-11-01", days: [])))
+        let paths = await server.paths
+        XCTAssertEqual(paths, ["/v0/health", "/v0/health", "/v0/usage/daily?days=371&tz=UTC"])
     }
 }

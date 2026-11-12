@@ -18,6 +18,8 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextClearance
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -178,10 +180,58 @@ class AgentConnectionSettingsTest {
         assertEquals(listOf(false), set)
     }
 
+    /** A local agent: Notifications (it was Sharing) after Data and Storage, a bell on red, and no Team at all. */
+    @Test
+    fun aLocalAgentsNotificationsCloseTheFirstGroupAndThereIsNoTeam() {
+        var opened = 0
+        rule.setHappyContent {
+            AgentConnectionSettingsScreen(
+                profile = SettingsProfile("agent-connection-1", "Studio", "Connected"),
+                accounts = accounts,
+                actions = AgentSettingsActions(onDataStorage = {}, onSharing = { opened++ }, onAgents = {}),
+                about = AboutInfo("1.8.0 (412)"),
+            )
+        }
+        rule.onNode(
+            hasTestTag(ItemGroupTags.CARD) and hasAnyDescendant(hasTestTag(DataStorageTags.ROW)) and hasAnyDescendant(hasTestTag(AgentSharingTags.ROW)),
+            useUnmergedTree = true,
+        ).assertExists()
+        rule.onNode(hasTestTag(AgentSharingTags.ROW) and hasAnyDescendant(hasText("Notifications")), useUnmergedTree = true).assertExists()
+        rule.onNodeWithText("TEAM").assertDoesNotExist()
+        rule.onNodeWithText("Sharing").assertDoesNotExist()
+        rule.node(AgentSharingTags.ROW).performScrollTo().performClick()
+        assertEquals(1, opened)
+    }
+
+    /** Search finds Notifications once, and its switches by their own titles, which open the page on them. */
+    @Test
+    fun searchFindsNotificationsOnceAndItsSwitches() {
+        val revealed = mutableListOf<String>()
+        rule.setHappyContent {
+            AgentConnectionSettingsScreen(
+                profile = SettingsProfile("agent-connection-1", "Studio", "Connected"),
+                accounts = accounts,
+                actions = AgentSettingsActions(onSharing = {}, onNotifications = {}, onNotificationsRow = { revealed += it }),
+                about = AboutInfo("1.8.0 (412)"),
+            )
+        }
+        rule.node(com.slopus.happy.ui.settings.SettingsSearchTags.OPEN).performClick()
+        rule.node(AgentSearchTags.FIELD).performTextInput("Notif")
+        rule.waitForIdle()
+        rule.onAllNodes(hasText("Notifications"), useUnmergedTree = true).assertCountEquals(1)
+        rule.onNodeWithText("Notifications from this server").assertExists()
+        rule.node(AgentSearchTags.FIELD).performTextClearance()
+        rule.node(AgentSearchTags.FIELD).performTextInput("Join other")
+        rule.waitForIdle()
+        rule.onNodeWithText("Join other people’s tasks").performClick()
+        assertEquals(listOf(AgentSharingTags.row(com.slopus.happy.agent.AutoJoinKind.Tasks)), revealed)
+    }
+
     /**
      * On Happy Cloud, desktop's groups: Data and Storage and Notifications
      * close the first, Agents is Agents, Inference, Compute then Usage, Team is
-     * Sharing then Members; each headed by its name, and no Advanced.
+     * Members alone; each headed by its name, and no Advanced. Sharing is
+     * notifications: one Notifications row, and no Sharing.
      */
     @Test
     fun cloudRowsAreInDesktopsGroups() {
@@ -196,7 +246,13 @@ class AgentConnectionSettingsTest {
         fun card(vararg tags: String) = rule.onNode(tags.fold(hasTestTag(ItemGroupTags.CARD)) { m, t -> m and hasAnyDescendant(hasTestTag(t)) }, useUnmergedTree = true)
         card(AgentSettingsTags.APPEARANCE, AgentVoiceTags.ROW, DataStorageTags.ROW, CloudPushTags.ROW).assertExists()
         card(AgentAgentsTags.ROW, CloudProvidersTags.ROW, ComputePoolsTags.ROW, AgentUsageTags.ROW).assertExists()
-        card(AgentSharingTags.ROW, CloudTags.MEMBERS).assertExists()
+        card(CloudTags.MEMBERS).assertExists()
+        card(AgentSharingTags.ROW, CloudTags.MEMBERS).assertDoesNotExist()
+        rule.onAllNodesWithTag(AgentSharingTags.ROW, useUnmergedTree = true).assertCountEquals(1)
+        rule.onNode(hasTestTag(AgentSharingTags.ROW) and hasAnyDescendant(hasText("Notifications")), useUnmergedTree = true).assertExists()
+        rule.onNodeWithText("Sharing").assertDoesNotExist()
+        // Right after Data and Storage.
+        assertTrue(rule.onNode(hasTestTag(AgentSharingTags.ROW), useUnmergedTree = true).fetchSemanticsNode().positionInRoot.y > rule.onNode(hasTestTag(DataStorageTags.ROW), useUnmergedTree = true).fetchSemanticsNode().positionInRoot.y)
         rule.onNode(hasTestTag(ItemGroupTags.CARD) and hasAnyDescendant(hasTestTag(DataStorageTags.ROW)) and hasAnyDescendant(hasTestTag(ComputePoolsTags.ROW)), useUnmergedTree = true).assertDoesNotExist()
         rule.onNodeWithText("AGENTS").assertExists()
         rule.onNodeWithText("TEAM").assertExists()
