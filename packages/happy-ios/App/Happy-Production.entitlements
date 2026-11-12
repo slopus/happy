@@ -7,6 +7,7 @@
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>applinks:app.happy.engineering</string>
+		<string>applinks:join.happy.engineering</string>
 	</array>
 </dict>
 </plist>

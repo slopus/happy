@@ -84,8 +84,9 @@ targets:
         CODE_SIGN_STYLE: Automatic
         # Every variant has aps-environment "development", as the RN app's
         # expo-notifications plugin writes it; signing for distribution
-        # replaces it with the profile's "production". Production also has
-        # its associated domain.
+        # replaces it with the profile's "production". Every variant opens
+        # Happy Cloud's invite links (join.happy.engineering); production
+        # also has app.happy.engineering.
         #
         # HAPPY_GOOGLE_CLIENT is the variant's own iOS OAuth client for
         # Continue with Google (public, not a secret): the Info.plists make

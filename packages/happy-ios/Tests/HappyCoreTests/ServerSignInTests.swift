@@ -1155,9 +1155,11 @@ final class CloudInviteTests: XCTestCase {
         let http = ScriptedHTTP()
         let account = CloudAccount.preview(token: "pass", http: http)
         let invite = CloudInvite(url: URL(string: "https://join.happy.engineering/#\(Self.token)")!)!
-        http.json(accounts + "/v1/invites/preview", #"{"server":{"name":"acme","displayName":"Acme","image":"data:image/png;base64,iVBORw0KGgo="},"roleName":"Viewer","expiresAt":"2026-11-19T09:28:08.851234Z"}"#)
+        http.json(accounts + "/v1/invites/preview", #"{"server":{"name":"acme","displayName":"Acme","image":"data:image/png;base64,iVBORw0KGgo="},"roleName":"Viewer","expiresAt":"2026-11-19T09:28:08.851234Z","inviter":{"name":"Steve K","image":null}}"#)
         let preview = try await account.preview(invite)
-        XCTAssertEqual(preview, CloudInvitePreview(server: .init(name: "acme", displayName: "Acme", image: "data:image/png;base64,iVBORw0KGgo="), roleName: "Viewer"))
+        XCTAssertEqual(preview, CloudInvitePreview(server: .init(name: "acme", displayName: "Acme", image: "data:image/png;base64,iVBORw0KGgo="), roleName: "Viewer",
+                                                   inviter: .init(name: "Steve K")))
+        XCTAssertNil(preview.inviter?.imageData)
         XCTAssertEqual(preview.server.imageData, Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))
         XCTAssertEqual(try JSONSerialization.jsonObject(with: http.requests.last?.body ?? Data()) as? [String: String], ["token": Self.token])
 

@@ -4,13 +4,19 @@ import HappyLayout
 import UIKit
 
 /// An invite link opened in the app, once the account is signed in: the
-/// server it is for (`POST /v1/invites/preview`) with the role it gives,
-/// and Join, which takes it (`POST /v1/invites/accept`) and goes on to
-/// Connecting, as Bootstrap does. An invite that can't be taken says why;
-/// one for another email offers to sign in with another account, the
-/// invite kept for after. One already accepted (perhaps by this account:
-/// an email invite answers so even to the person who took it) offers the
-/// server list instead.
+/// server it is for (`POST /v1/invites/preview`), its picture, who invited
+/// the person and the role it gives, and Join, which takes it
+/// (`POST /v1/invites/accept`) and goes on to Connecting, as Bootstrap does.
+/// An invite that can't be taken says why; one for another email offers to
+/// sign in with another account, the invite kept for after; one already
+/// accepted (perhaps by this account: an email invite answers so even to
+/// the person who took it) offers the server list.
+///
+/// Every state keeps one layout (`CloudInviteLayout`): the title and line
+/// never change, the server's and the inviter's places are kept while
+/// there is nothing to show in them, the status line keeps the room of the
+/// longest it can say, and the one full-width button only changes its
+/// words. A change cross-fades in place.
 final class CloudInviteViewController: CloudStageViewController {
     enum Phase: Equatable {
         case loading
@@ -21,19 +27,27 @@ final class CloudInviteViewController: CloudStageViewController {
 
     private let account: CloudAccount
     private let invite: CloudInvite
-    let row = CloudServerRow()
+    let picture = UIImageView()
+    let name = StyledLabel(style: TextStyle(.semiBold, size: 22, lineHeight: 28), color: Palette.startText, lines: 1, alignment: .center)
+    let handle = StyledLabel(style: TextStyle(.regular, size: 15, lineHeight: 20), color: Palette.startTextSecondary, lines: 1, alignment: .center)
+    let inviterPicture = UIImageView()
+    let inviter = StyledLabel(style: TextStyle(.regular, size: 15, lineHeight: 20), color: Palette.startTextSecondary, lines: 1)
+    let status = StartGalleryView.bodyLabel("")
     private let spinner = UIActivityIndicatorView(style: .medium)
+    /// Measures each line the status could say, for the room it keeps.
+    private let measure = StartGalleryView.bodyLabel("")
+    private var statusRoom: (width: CGFloat, text: String, height: CGFloat)?
     /// The Connecting step after Join; a test's stand-in.
     var connecting: (CloudServer) -> UIViewController
     private(set) var phase: Phase = .loading {
-        didSet { apply() }
+        didSet { if isViewLoaded { UIView.transition(with: content, duration: 0.2, options: .transitionCrossDissolve) { self.apply() } } }
     }
 
     init(context: AppContext, account: CloudAccount, invite: CloudInvite) {
         self.account = account
         self.invite = invite
         connecting = { CloudConnectingViewController(context: context, account: account, server: $0) }
-        super.init(context: context, scene: nil, title: Strings.CloudConnect.inviteTitle, body: Strings.CloudConnect.inviteLoading,
+        super.init(context: context, scene: nil, title: Strings.CloudConnect.inviteTitle, body: Strings.CloudConnect.inviteBody,
                    primary: Strings.CloudConnect.inviteJoin)
     }
 
@@ -41,10 +55,15 @@ final class CloudInviteViewController: CloudStageViewController {
         super.viewDidLoad()
         view.accessibilityIdentifier = "cloud-invite"
         primary.accessibilityIdentifier = "cloud-invite-join"
+        status.accessibilityIdentifier = "cloud-invite-status"
         primary.action = { [weak self] in await self?.primaryTapped() }
-        row.state = .none
+        for (view, side) in [(picture, CloudInviteLayout.Metrics.picture), (inviterPicture, CloudInviteLayout.Metrics.inviter)] {
+            view.contentMode = .scaleAspectFill
+            view.clipsToBounds = true
+            view.layer.cornerRadius = side / 2
+        }
         spinner.color = StartViewController.Colors.text
-        for subview in [row, spinner] as [UIView] { content.addSubview(subview) }
+        for subview in [picture, spinner, name, handle, inviterPicture, inviter, status] as [UIView] { content.addSubview(subview) }
         apply()
         Task { await load() }
     }
@@ -70,12 +89,12 @@ final class CloudInviteViewController: CloudStageViewController {
         case .refused(.emailMismatch):
             CloudScreens.pendingInvite = invite
             CloudScreens.signedOut(context: context, from: self)
-        case .refused(.accepted):
+        case .refused:
             guard let navigation = navigationController else { return }
             navigation.setViewControllers(Array(navigation.viewControllers.dropLast()) + [CloudServersViewController(context: context, account: account)], animated: true)
         case .failed:
             await load()
-        case .loading, .refused:
+        case .loading:
             break
         }
     }
@@ -91,70 +110,92 @@ final class CloudInviteViewController: CloudStageViewController {
     }
 
     private func apply() {
-        guard isViewLoaded else { return }
-        var body = Strings.CloudConnect.inviteLoading
-        var problem = false
-        row.isHidden = true
-        primary.isHidden = false
-        primary.isEnabled = true
+        let offer: CloudInvitePreview? = if case .offered(let offer) = phase { offer } else { nil }
+        if case .loading = phase { spinner.startAnimating() } else { spinner.stopAnimating() }
+        picture.image = offer.map { serverPicture($0.server) } ?? AvatarPlaceholderImages.pending(side: CloudInviteLayout.Metrics.picture)
+        name.string = offer?.server.title ?? ""
+        handle.string = offer.map { HappyCloud.handle($0.server.name) } ?? ""
+        let from = offer?.inviter
+        inviterPicture.image = from.map(inviterPicture)
+        inviterPicture.alpha = from == nil ? 0 : 1
+        inviter.string = from.map { Strings.CloudConnect.invitedBy($0.name) } ?? ""
         switch phase {
-        case .loading:
-            spinner.startAnimating()
-            primary.isEnabled = false
-        case .offered(let offer):
-            spinner.stopAnimating()
+        case .loading, .offered:
+            status.string = offer?.roleName.map(Strings.CloudConnect.inviteRole) ?? ""
+            status.textColor = UIColor(Palette.startTextSecondary)
             primary.title = Strings.CloudConnect.inviteJoin
-            row.isHidden = false
-            row.title.string = offer.server.title
-            row.subtitle.string = HappyCloud.handle(offer.server.name)
-            row.picture.image = picture(offer.server)
-            body = Strings.CloudConnect.inviteMessage(HappyCloud.handle(offer.server.name), role: offer.roleName)
+            primary.isEnabled = offer != nil
         case .refused(let error):
-            spinner.stopAnimating()
-            body = Strings.CloudConnect.invite(error)
-            problem = true
-            switch error {
-            case .emailMismatch: primary.title = Strings.CloudConnect.inviteOtherAccount
-            case .accepted: primary.title = Strings.CloudConnect.inviteShowServers
-            case .invalid, .expired, .revoked, .exhausted: primary.isHidden = true
-            }
+            status.string = Strings.CloudConnect.invite(error)
+            status.textColor = UIColor(Palette.textDestructive)
+            primary.title = if case .emailMismatch = error { Strings.CloudConnect.inviteOtherAccount } else { Strings.CloudConnect.inviteShowServers }
+            primary.isEnabled = true
         case .failed(let text):
-            spinner.stopAnimating()
-            body = text
-            problem = true
+            status.string = text
+            status.textColor = UIColor(Palette.textDestructive)
             primary.title = Strings.HappyCloud.tryAgain
+            primary.isEnabled = true
         }
-        bodyLabel.string = body
-        bodyLabel.textColor = UIColor(problem ? Palette.textDestructive : Palette.startTextSecondary)
         relayout()
     }
 
     /// Its picture from the preview's `data:` URL, else the placeholder
     /// its name picks, as the server list's.
-    private func picture(_ server: CloudInvitePreview.Server) -> UIImage? {
+    private func serverPicture(_ server: CloudInvitePreview.Server) -> UIImage {
         if let data = server.imageData, let image = UIImage(data: data) { return image }
-        let side = CloudServerRowLayout.Metrics.picture
+        let side = CloudInviteLayout.Metrics.picture
         if let cached = AvatarPlaceholderImages.cached(seed: server.name, side: side) { return cached }
         Task { [weak self] in
-            let image = await AvatarPlaceholderImages.image(seed: server.name, side: side)
-            self?.row.picture.image = image
+            guard let image = await AvatarPlaceholderImages.image(seed: server.name, side: side), let self,
+                  case .offered(let offer) = phase, offer.server.name == server.name else { return }
+            picture.image = image
         }
         return AvatarPlaceholderImages.pending(side: side)
     }
 
-    private func items(width: CGFloat) -> [CloudColumnLayout.Item] {
-        [
-            .init(height: row.isHidden ? 0 : CloudServerRowLayout.Metrics.height),
-            .init(size: CGSize(width: 44, height: spinner.isAnimating ? 44 : 0), gap: 0, centred: true),
-        ]
+    /// Their picture, else their initials.
+    private func inviterPicture(_ inviter: CloudInvitePreview.Inviter) -> UIImage {
+        if let data = inviter.imageData, let image = UIImage(data: data) { return image }
+        let side = CloudInviteLayout.Metrics.inviter
+        let initials = String(inviter.name.split(separator: " ").prefix(2).compactMap(\.first)).uppercased()
+        let font = UIFont(name: FontFace.semiBold.rawValue, size: 10) ?? .systemFont(ofSize: 10, weight: .semibold)
+        return UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { _ in
+            UIColor(Palette.startTextSecondary).withAlphaComponent(0.25).setFill()
+            UIBezierPath(ovalIn: CGRect(x: 0, y: 0, width: side, height: side)).fill()
+            let text = NSAttributedString(string: initials, attributes: [.font: font, .foregroundColor: UIColor(Palette.startText)])
+            let size = text.size()
+            text.draw(at: CGPoint(x: (side - size.width) / 2, y: (side - size.height) / 2))
+        }
     }
 
-    override func contentHeight(width: CGFloat) -> CGFloat { CloudColumnLayout.stack(items(width: width), width: width).height }
+    /// The room of the longest line the status could say at `width`: the
+    /// role, every refusal, and what it says now.
+    private func statusHeight(width: CGFloat) -> CGFloat {
+        if let room = statusRoom, room.width == width, room.text == status.string { return room.height }
+        let lines = Strings.CloudConnect.inviteRefusals + [Strings.CloudConnect.inviteRole("Viewer"), status.string]
+        let height = lines.map { text -> CGFloat in
+            measure.string = text
+            return ceil(measure.measurable.height(fitting: width))
+        }.max() ?? 0
+        statusRoom = (width, status.string, height)
+        return height
+    }
+
+    private func layout(width: CGFloat) -> CloudInviteLayout {
+        CloudInviteLayout(width: width, inviterLabel: ceil(inviter.measurable.size(fitting: width).width), status: statusHeight(width: width))
+    }
+
+    override func contentHeight(width: CGFloat) -> CGFloat { layout(width: width).height }
 
     override func layoutContent() {
-        let frames = CloudColumnLayout.stack(items(width: content.bounds.width), width: content.bounds.width).frames
-        row.setLayoutFrame(frames[0])
-        spinner.setLayoutFrame(frames[1])
+        let layout = layout(width: content.bounds.width)
+        picture.setLayoutFrame(layout.picture)
+        spinner.setLayoutFrame(layout.picture)
+        name.setLayoutFrame(layout.name)
+        handle.setLayoutFrame(layout.handle)
+        inviterPicture.setLayoutFrame(layout.inviterPicture)
+        inviter.setLayoutFrame(layout.inviterLabel)
+        status.setLayoutFrame(layout.status)
     }
 }
 #endif

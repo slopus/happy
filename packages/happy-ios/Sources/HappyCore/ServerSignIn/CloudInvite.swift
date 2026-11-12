@@ -38,18 +38,31 @@ public struct CloudInvitePreview: Decodable, Equatable, Sendable {
 
         public var title: String { displayName.flatMap { $0.isEmpty ? nil : $0 } ?? name }
 
-        /// The picture's bytes, from its base64 `data:` URL.
-        public var imageData: Data? {
-            guard let image, image.hasPrefix("data:"), let comma = image.firstIndex(of: ","),
-                  image[..<comma].hasSuffix(";base64") else { return nil }
-            return Data(base64Encoded: String(image[image.index(after: comma)...]))
-        }
+        public var imageData: Data? { CloudInvitePreview.bytes(image) }
+    }
+    /// Who sent it.
+    public struct Inviter: Decodable, Equatable, Sendable {
+        public var name: String
+        /// A `data:` URL, or nil.
+        public var image: String?
+
+        public init(name: String, image: String? = nil) { self.name = name; self.image = image }
+
+        public var imageData: Data? { CloudInvitePreview.bytes(image) }
     }
     public var server: Server
     public var roleName: String?
+    public var inviter: Inviter?
 
-    public init(server: Server, roleName: String?) {
-        self.server = server; self.roleName = roleName
+    public init(server: Server, roleName: String?, inviter: Inviter? = nil) {
+        self.server = server; self.roleName = roleName; self.inviter = inviter
+    }
+
+    /// A picture's bytes, from its base64 `data:` URL.
+    static func bytes(_ image: String?) -> Data? {
+        guard let image, image.hasPrefix("data:"), let comma = image.firstIndex(of: ","),
+              image[..<comma].hasSuffix(";base64") else { return nil }
+        return Data(base64Encoded: String(image[image.index(after: comma)...]))
     }
 }
 
