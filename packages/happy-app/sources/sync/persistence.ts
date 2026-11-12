@@ -47,6 +47,9 @@ export interface SessionManagementPreferences {
 /** Shares the account's existing local store and logout cleanup. No file bodies or credentials. */
 export function loadProjectWorkspaceCache(): string | undefined { return mmkv.getString('project-workspace-cache-v1'); }
 export function saveProjectWorkspaceCache(value: string): void { mmkv.set('project-workspace-cache-v1', value); }
+/** Authoritative deletions outlive expiring history caches and runtime generations. */
+export function loadProjectSessionDeleted(key: string): boolean { return mmkv.getBoolean(`project-session-deleted-v1:${key}`) === true; }
+export function saveProjectSessionDeleted(key: string): void { mmkv.set(`project-session-deleted-v1:${key}`, true); }
 
 /** Project organization is a durable preference, separate from the expiring archive cache. */
 export function loadProjectLibraryPreferences(): string | undefined { return mmkv.getString('project-library-v1'); }

@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-const mock = vi.hoisted(() => ({ raw: undefined as string | undefined, current: true, account: { key: 'a', scope: 'a', serverUrl: 'https://a.test', generation: '0' } }));
+const mock = vi.hoisted(() => ({ raw: undefined as string | undefined, deleted: new Set<string>(), current: true, account: { key: 'a', scope: 'a', serverUrl: 'https://a.test', generation: '0' } }));
 vi.mock('@/auth/accountRuntime', () => ({ accountRuntimeCurrent: () => mock.current, getRuntimeAccountSelection: () => mock.account }));
-vi.mock('./persistence', () => ({ loadProjectWorkspaceCache: () => mock.raw, saveProjectWorkspaceCache: (raw: string) => { mock.raw = raw; } }));
+vi.mock('./persistence', () => ({ loadProjectWorkspaceCache: () => mock.raw, saveProjectWorkspaceCache: (raw: string) => { mock.raw = raw; }, loadProjectSessionDeleted: (key: string) => mock.deleted.has(key), saveProjectSessionDeleted: (key: string) => { mock.deleted.add(key); } }));
 import { projectCacheKey, projectHistorySchema, readProjectCache, writeProjectCache, removeProjectSessionFromCache, isProjectSessionDeleted, subscribeProjectSessionDeletions, getProjectSessionDeletionRevision } from './projectWorkspaceCache';
 const schema = z.array(z.string());
-beforeEach(() => { mock.raw = undefined; mock.current = true; mock.account = { key: 'a', scope: 'a', serverUrl: 'https://a.test', generation: Math.random().toString() }; delete (globalThis as any).__HAPPY_CONFIG__; });
+beforeEach(() => { mock.raw = undefined; mock.deleted.clear(); mock.current = true; mock.account = { key: 'a', scope: 'a', serverUrl: 'https://a.test', generation: Math.random().toString() }; delete (globalThis as any).__HAPPY_CONFIG__; });
 describe('real project metadata cache', () => {
     it('survives a reload generation but isolates server, account, machine, feature, task and preview', () => {
         const key = projectCacheKey('history', 'm', 'f', 't');
@@ -52,4 +52,20 @@ it('notifies a mounted consumer even when the deleted ID was never hydrated in t
     expect(listener).toHaveBeenCalledOnce(); expect(getProjectSessionDeletionRevision()).toBe(previous + 1);
     expect(readProjectCache('history', projectHistorySchema)?.value.sessions).toEqual([]);
     unsubscribe();
+});
+
+it('retains authoritative deletion across runtime generations and history-cache eviction', () => {
+    const session = { sessionId: 'durably-deleted', directory: '/task', title: 'Task', updatedAt: 1, executed: false };
+    removeProjectSessionFromCache(session.sessionId);
+    mock.raw = undefined;
+    mock.account.generation += 'reload';
+    expect(isProjectSessionDeleted(session.sessionId)).toBe(true);
+    writeProjectCache('history', { sessions: [session] });
+    expect(readProjectCache('history', projectHistorySchema)?.value.sessions).toEqual([]);
+    mock.account.serverUrl = 'https://other.test'; expect(isProjectSessionDeleted(session.sessionId)).toBe(false);
+});
+it('a frozen account cannot persist a deletion into the next runtime', () => {
+    mock.current = false;
+    removeProjectSessionFromCache('do-not-persist');
+    expect(mock.deleted.size).toBe(0);
 });

@@ -1,9 +1,14 @@
 import { z } from 'zod';
 import { GoalProjectSchema, GoalBoardSnapshotSchema, GoalTaskSessionSchema } from '@slopus/happy-wire';
 import { accountRuntimeCurrent, getRuntimeAccountSelection } from '@/auth/accountRuntime';
-import { isProjectSessionDeleted, markProjectSessionDeleted } from './projectSessionLinks';
+import { configureProjectSessionDeletionPersistence, isProjectSessionDeleted, markProjectSessionDeleted } from './projectSessionLinks';
 export { isProjectSessionDeleted, subscribeProjectSessionDeletions, getProjectSessionDeletionRevision } from './projectSessionLinks';
-import { loadProjectWorkspaceCache, saveProjectWorkspaceCache } from './persistence';
+import { loadProjectWorkspaceCache, saveProjectWorkspaceCache, loadProjectSessionDeleted, saveProjectSessionDeleted } from './persistence';
+
+configureProjectSessionDeletionPersistence({
+    has: key => accountRuntimeCurrent() && loadProjectSessionDeleted(key),
+    mark: key => { if (accountRuntimeCurrent()) saveProjectSessionDeleted(key); },
+});
 
 export const projectCatalogSchema = z.array(GoalProjectSchema).max(1000);
 export const projectBoardSchema = z.object({ snapshot: GoalBoardSnapshotSchema, sessions: z.record(z.string(), z.array(GoalTaskSessionSchema).max(1000)) });

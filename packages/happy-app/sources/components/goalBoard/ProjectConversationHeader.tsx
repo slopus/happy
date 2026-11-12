@@ -7,27 +7,38 @@ import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { useProjectModalEscape } from '@/hooks/useProjectModalEscape';
 import { GoalBoardButton as Button } from './GoalBoardButton';
+import { ProjectConversationActions } from './ProjectConversationActions';
 
 /** Scope and task conversations share explicit new/history actions without a permanent task column. */
-export function ProjectConversationHeader({ sessions, selectedId, onSelect, onNew, onRefresh, loading, error, onRetry, onMore, busy, offline, mobile = false, testIDPrefix }: {
+export function ProjectConversationHeader({ sessions, selectedId, onSelect, onNew, onRefresh, loading, error, onRetry, onMore, busy, offline, mobile = false, testIDPrefix, scope = 'task', onGlobal, onClose, manage = false }: {
     sessions: GoalTaskSession[]; selectedId?: string; onSelect: (id: string) => void; onNew?: () => void;
     onRefresh?: () => void; loading?: boolean; error?: string | null; onRetry?: () => void; onMore?: () => void;
     busy?: boolean; offline?: boolean; mobile?: boolean; testIDPrefix: string;
+    scope?: 'task' | 'global'; onGlobal?: () => void; onClose?: () => void; manage?: boolean;
 }) {
     const { theme } = useUnistyles();
     const { width, height } = useWindowDimensions();
     const anchor = React.useRef<View>(null);
     const [open, setOpen] = React.useState(false);
     const [position, setPosition] = React.useState({ x: 12, y: 60 });
+    const [headerWidth, setHeaderWidth] = React.useState(0);
+    const compact = headerWidth < 560;
+    const selection = React.useRef(selectedId); selection.current = selectedId;
+    const mounted = React.useRef(true);
+    React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+    const historyLabel = t(scope === 'global' ? 'projectGoals.globalHistory' : 'projectGoals.history');
     const close = React.useCallback(() => { setOpen(false); queueMicrotask(() => anchor.current?.focus()); }, []);
     const create = () => { close(); onNew?.(); };
     const menuWidth = Math.min(350, width - 24);
-    return <View style={styles.header} testID={`${testIDPrefix}-conversation-header`}>
-        <Button ref={anchor} variant="toolbar" label={t('projectGoals.history')} expanded={open} disabled={busy} testID={`${testIDPrefix}-history`} onPress={() => {
+    return <View style={styles.header} onLayout={event => setHeaderWidth(event.nativeEvent.layout.width)} testID={`${testIDPrefix}-conversation-header`}>
+        {onGlobal && <Button variant="toolbar" label={t('projectGoals.globalConversation')} disabled={busy} testID={`${testIDPrefix}-global-chat`} onPress={onGlobal}><Ionicons name="compass-outline" size={16} color={theme.colors.textLink} />{!mobile && <Text style={styles.link}>{t(headerWidth < 440 ? 'projectGoals.globalConversationCompact' : 'projectGoals.globalConversation')}</Text>}</Button>}
+        <Button ref={anchor} variant="toolbar" label={historyLabel} expanded={open} disabled={busy} testID={`${testIDPrefix}-history`} onPress={() => {
             anchor.current?.measureInWindow((x, y, _w, h) => { setPosition({ x, y: y + h + 6 }); setOpen(true); onRefresh?.(); });
-        }}><Ionicons name="time-outline" size={16} color={theme.colors.textSecondary} /><Text style={styles.meta}>{t('projectGoals.history')} · {sessions.length}</Text><Ionicons name="chevron-down" size={12} color={theme.colors.textSecondary} /></Button>
+        }}><Ionicons name="time-outline" size={16} color={theme.colors.textSecondary} /><Text numberOfLines={1} style={styles.meta}>{compact ? t(scope === 'global' ? 'projectGoals.globalHistoryCompact' : 'projectGoals.taskHistoryCompact') : historyLabel} · {sessions.length}</Text><Ionicons name="chevron-down" size={12} color={theme.colors.textSecondary} /></Button>
         <View style={{ flex: 1 }} />
-        {!mobile && onNew && <Button variant="toolbar" label={t('projectGoals.newChat')} disabled={busy || offline} testID={`${testIDPrefix}-new-chat`} onPress={create}><Ionicons name="add-outline" size={16} color={theme.colors.textLink} /><Text style={styles.link}>{t('projectGoals.newChat')}</Text></Button>}
+        {!mobile && onNew && <Button variant="toolbar" label={t('projectGoals.newChat')} disabled={busy || offline} testID={`${testIDPrefix}-new-chat`} onPress={create}><Ionicons name="add-outline" size={16} color={theme.colors.textLink} />{!compact && <Text style={styles.link}>{t('projectGoals.newChat')}</Text>}</Button>}
+        {manage && selectedId && onClose && <ProjectConversationActions key={selectedId} id={selectedId} testIDPrefix={testIDPrefix} disabled={busy} onClose={() => { if (mounted.current && selection.current === selectedId) onClose(); }} />}
+        {onClose && <Button variant="toolbar" label={t('projectGoals.closeConversation')} testID={`${testIDPrefix}-close-chat`} onPress={onClose}><Ionicons name="close-outline" size={18} color={theme.colors.textSecondary} /></Button>}
         {open && <Modal transparent visible animationType="none" onRequestClose={close}>
             <HistoryEscape onClose={close} />
             <Pressable style={styles.backdrop} accessibilityRole="button" accessibilityLabel={t('common.cancel')} onPress={close} />

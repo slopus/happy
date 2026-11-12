@@ -19,10 +19,9 @@ import { useReducedTransparency } from '@/hooks/useReducedTransparency';
 import { useDesktopWorkspaceLayout } from '@/hooks/useDesktopWorkspaceLayout';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { getSessionName } from '@/utils/sessionUtils';
-import { sync } from '@/sync/sync';
 import { ensureSessionHydratedWithRetry } from '@/sync/ensureSessionHydratedWithRetry';
 import { machineStartGoalAuthor, type DirectoryEntry } from '@/sync/ops';
-import { loadProjectTaskHistory, launchProjectGoalTask, projectGoalRequest, projectTaskFiles, taskApproval, taskCanExecute, projectTaskExecutionAttempted, markProjectTaskExecutionAttempt, clearUndispatchedProjectTaskAttempt, ProjectGoalLaunchError, type ProjectHistoryCursor, isReadOnlyProjectPreview, type ProjectHistoryCandidate } from '@/sync/projectGoals';
+import { loadProjectScopeHistory, loadProjectTaskHistory, launchProjectGoalTask, projectGoalRequest, projectTaskFiles, taskApproval, taskCanExecute, projectTaskExecutionAttempted, markProjectTaskExecutionAttempt, clearUndispatchedProjectTaskAttempt, ProjectGoalLaunchError, type ProjectHistoryCursor, isReadOnlyProjectPreview, type ProjectHistoryCandidate } from '@/sync/projectGoals';
 import { SessionView } from '@/-session/SessionView';
 import { SessionFileWorkspaceProvider } from '@/components/fileWorkspace/SessionFileWorkspaceProvider';
 import { FileWorkspace } from '@/components/fileWorkspace/FileWorkspace';
@@ -32,6 +31,7 @@ import { getProjectCatalogWidth, projectPanelGap } from './projectWorkspaceLayou
 import { ProjectOverviewWorkspace } from './ProjectOverviewWorkspace';
 import { ProjectDetailsPanel } from './ProjectDetailsPanel';
 import { ProjectConversationHeader } from './ProjectConversationHeader';
+import { useProjectConversation } from './useProjectConversation';
 import { ProjectConversationEmptyState } from './ProjectConversationEmptyState';
 import { ProjectTaskSwitcher } from './ProjectTaskSwitcher';
 import { ProjectTaskDetails } from './ProjectTaskDetails';
@@ -248,6 +248,39 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
         } catch (error) { if (alive.current && scopeRef.current === requestedScope) setActionError(error instanceof Error ? error.message : String(error)); }
         finally { cardOpening.current = false; if (alive.current) setBusy(false); }
     };
+    const globalAttempt = React.useRef<{ scope: string; id: string } | undefined>(undefined);
+    const openGlobalConversation = async () => {
+        if (cardOpening.current || busy || !feature) return;
+        cardOpening.current = true; setBusy(true); setActionError(null);
+        const owner = accountKey(), requestedLocation = latestLocation.current, requestedNavigation = navigationEpoch.current;
+        const current = () => alive.current && focused.current && accountKey() === owner && latestLocation.current === requestedLocation && navigationEpoch.current === requestedNavigation;
+        try {
+            const key = projectCacheKey('history', machineId, feature.featurePath);
+            const cached = readProjectCache(key, projectHistorySchema)?.value.sessions ?? [];
+            const fresh = data.offline ? [] : await loadProjectScopeHistory(machineId, feature.featurePath);
+            const sessions = [...new Map([...cached, ...fresh].map(session => [session.sessionId, session])).values()]
+                .filter(session => {
+                    const metadata = storage.getState().sessions[session.sessionId]?.metadata;
+                    return session.directory === feature.featurePath && !isProjectSessionDeleted(session.sessionId) && (!metadata || (metadata.machineId === machineId && (!metadata.goalBoard || (!metadata.goalBoard.taskId && metadata.goalBoard.featurePath === feature.featurePath))));
+                })
+                .sort((a, b) => b.updatedAt - a.updatedAt || b.sessionId.localeCompare(a.sessionId));
+            if (!current()) return;
+            let id = sessions[0]?.sessionId;
+            if (!id) {
+                if (data.offline || !canCreateProjectConversation()) { go({ task: undefined }); return; }
+                if (globalAttempt.current?.scope !== key) globalAttempt.current = { scope: key, id: requestId() };
+                const result = await machineStartGoalAuthor(machineId, { scopePath: feature.featurePath, requestId: globalAttempt.current.id, agent });
+                if (result.type !== 'success') throw new Error(result.type === 'error' ? result.errorMessage : t('projectGoals.sessionUnavailable'));
+                id = result.sessionId;
+                if (!current()) return;
+                sessions.unshift({ sessionId: id, title: feature.title, directory: feature.featurePath, updatedAt: Date.now(), executed: false });
+            }
+            writeProjectCache(key, { sessions });
+            globalAttempt.current = undefined;
+            go({ task: undefined, conversation: id });
+        } catch (error) { if (current()) setActionError(error instanceof Error ? error.message : String(error)); }
+        finally { cardOpening.current = false; if (alive.current) setBusy(false); }
+    };
     const cardAction = useContinueProjectTask({ machineId, featurePath: params.feature, agent, sessions: data.board?.sessions,
         onOpened: (task, conversation) => go({ task, conversation, view: 'chat' }) });
     const tasks = feature?.tasks ?? [];
@@ -312,9 +345,9 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
         {!machineId && data.status === 'offline' ? <Empty text={t('projectGoals.noMachine')} /> : !scopeDesktop && params.author ? <View style={[styles.author, { backgroundColor: photo && !reduced ? 'transparent' : surface }]}><Text style={[styles.meta, { padding: 12 }]}>{t('projectGoals.authoringHint')}</Text><SessionView key={params.author} id={params.author} embedded fullWidth /></View>
             : task && feature ? <TaskWorkspace key={JSON.stringify([machineId, feature.featurePath, task.id])} machineId={machineId} featurePath={feature.featurePath} task={task}
                 editDelivery={setDeliveryTasks} openCardConversation={openCardConversation} featureTitle={feature.title} catalogScrollPosition={scrollPosition} onCatalogScroll={offset => { scrollPosition.current = offset; catalogStates.set(scope, { query, status: statusFilter, scroll: offset }); }} query={query} setQuery={setQuery} statusFilter={statusFilter} setStatusFilter={setStatusFilter}
-                allTasks={tasks} conversationId={params.conversation} agent={agent} offline={data.offline}
+                openGlobalConversation={() => { void openGlobalConversation(); }} globalBusy={busy} allTasks={tasks} conversationId={params.conversation} agent={agent} offline={data.offline}
                 mobileView={params.view} readerPath={params.file} changeView={view => navigate({ view })} openReader={file => navigate({ file, view: 'reader' })} closeReader={navigation.back}
-                refresh={data.refresh} selectTask={id => go({ task: id })} selectConversation={id => navigate({ conversation: id, ...(mobile ? { view: 'chat' } : {}) })} />
+                refresh={data.refresh} selectTask={id => go({ task: id })} selectConversation={id => navigate({ conversation: id, ...(mobile ? { view: id ? 'chat' : 'details' } : {}) })} />
             : <ScopeCatalog enabled={scopeDesktop} scopePath={params.feature ?? project?.projectPath} machineId={machineId} title={feature?.title ?? project?.title ?? ''} connecting={data.status === 'connecting'} conversationId={params.conversation ?? params.author} agent={agent} offline={data.offline} revision={JSON.stringify([feature?.revision, (selectedMachine?.daemonState as { goalProjectRevision?: string } | null)?.goalProjectRevision, scopeRefresh])} surface={surface} selectConversation={id => navigate({ conversation: id, author: undefined })}><ScrollView ref={catalogScroll} onContentSizeChange={() => catalogScroll.current?.scrollTo({ y: scrollPosition.current, animated: false })} onScroll={event => { scrollPosition.current = event.nativeEvent.contentOffset.y; catalogStates.set(scope, { query, status: statusFilter, scroll: scrollPosition.current }); }} scrollEventThrottle={100} style={[styles.catalog, { backgroundColor: surface }]} contentContainerStyle={[styles.catalogContent, mobile && styles.mobileCatalog]}>
                 <CatalogHeading title={feature ? feature.title : params.feature ? t('projectGoals.loadingTasks') : project ? project.title : t('projectGoals.allProjects')} subtitle={feature ? `${tasks.length} ${t('projectGoals.tasks')}` : project ? project.summary || t('projectGoals.subprojects') : t('projectGoals.galleryDescription')} query={query} setQuery={setQuery} />
                 {feature && <Button variant="toolbar" label={t('projectGoals.batchDelivery')} disabled={readOnly || data.offline || !tasks.length} onPress={() => setDeliveryTasks(tasks)} testID="project-batch-delivery"><Text style={styles.link}>{t('projectGoals.batchDelivery')}</Text></Button>}
@@ -382,7 +415,7 @@ export function TaskCards({ onDelivery, tasks, query, status, setStatus, selecte
     </View>;
 }
 
-type TaskWorkspaceProps = { catalogScrollPosition: React.MutableRefObject<number>; onCatalogScroll: (offset: number) => void; editDelivery: (tasks: GoalTask[]) => void; openCardConversation: (task: GoalTask) => Promise<void>; mobileView?: string; readerPath?: string; changeView: (view: string) => void; openReader: (file: string) => void; closeReader: () => void; featureTitle: string; query: string; setQuery: (value: string) => void; statusFilter: TaskStatusFilter; setStatusFilter: (value: TaskStatusFilter) => void; machineId: string; featurePath: string; task: GoalTask; allTasks: GoalTask[]; conversationId?: string; agent: 'codex' | 'claude'; offline: boolean; refresh: () => Promise<void>; selectTask: (id: string) => void; selectConversation: (id: string) => void; };
+type TaskWorkspaceProps = { openGlobalConversation: () => void; globalBusy: boolean; catalogScrollPosition: React.MutableRefObject<number>; onCatalogScroll: (offset: number) => void; editDelivery: (tasks: GoalTask[]) => void; openCardConversation: (task: GoalTask) => Promise<void>; mobileView?: string; readerPath?: string; changeView: (view: string) => void; openReader: (file: string) => void; closeReader: () => void; featureTitle: string; query: string; setQuery: (value: string) => void; statusFilter: TaskStatusFilter; setStatusFilter: (value: TaskStatusFilter) => void; machineId: string; featurePath: string; task: GoalTask; allTasks: GoalTask[]; conversationId?: string; agent: 'codex' | 'claude'; offline: boolean; refresh: () => Promise<void>; selectTask: (id: string) => void; selectConversation: (id?: string) => void; };
 function TaskWorkspace(props: TaskWorkspaceProps) {
     const { machineId, featurePath, task } = props;
     const binding = React.useMemo(() => projectTaskFiles(machineId, featurePath, task), [machineId, featurePath, task.id, task.indexPath]);
@@ -430,19 +463,12 @@ function TaskWorkspaceContent(props: TaskWorkspaceProps) {
     const history = React.useMemo(() => {
         return mergeProjectTaskHistory([...taskHistory.sessions, ...localHistory], Object.values(storage.getState().sessions), { machineId, featurePath, taskId: task.id, directory: workspace.root });
     }, [taskHistory.sessions, localHistory, historyFromStore, deletionRevision, machineId, featurePath, task.id, workspace.root]);
-    const [conversationRetry, retryConversation] = React.useReducer(value => value + 1, 0);
     const conversationId = props.conversationId && !isProjectSessionDeleted(props.conversationId) ? props.conversationId : undefined;
-    const conversation = storage(state => props.conversationId ? state.sessions[props.conversationId] : undefined);
-    const conversationVerified = !!conversation?.metadata && conversation.metadata.machineId === machineId
-        && (projectSessionMatchesTask(conversation.metadata, machineId, featurePath, task.id, workspace.root) || (!conversation.metadata.goalBoard && history.some(value => value.sessionId === props.conversationId)));
-    const conversationRejected = !!props.conversationId && (isProjectSessionDeleted(props.conversationId) || (!!conversation?.metadata && !conversationVerified));
-    React.useEffect(() => {
-        let active = true;
-        if (conversationId && !offline) void sync.ensureSessionHydrated(conversationId).then(ready => {
-            if (active && !ready) setError(t('projectGoals.sessionUnavailable'));
-        }).catch(error => { if (active) setError(error instanceof Error ? error.message : String(error)); });
-        return () => { active = false; };
-    }, [conversationId, conversationRetry, offline]);
+    const conversationState = useProjectConversation(props.conversationId, history.some(value => value.sessionId === props.conversationId), metadata =>
+        metadata.machineId === machineId && (projectSessionMatchesTask(metadata, machineId, featurePath, task.id, workspace.root)
+            || (!metadata.goalBoard && history.some(value => value.sessionId === props.conversationId))));
+    const conversationVerified = conversationState.verified;
+    const conversationRejected = conversationState.rejected;
     const start = async (target: GoalTask, mode: 'chat' | 'execute', keepFileVisible = false, forceNew = false) => {
         if (opening.current) return;
         if (target.id !== task.id) { if (mode === 'chat' && desktop) void props.openCardConversation(target); else selectTask(target.id); return; }
@@ -512,12 +538,12 @@ function TaskWorkspaceContent(props: TaskWorkspaceProps) {
             : <ScrollView style={styles.detailScroll}><ProjectTaskDetails task={task} number={allTasks.indexOf(task) + 1} approval={<ApprovalTag task={task} />} editDisabled={busy || (!history.length && (!canCreateProjectConversation() || offline))} onEdit={() => { void start(task, 'chat'); }} onDelivery={() => props.editDelivery([task])} deliveryDisabled={readOnly || offline || busy}>
                 {task.artifacts.filter(artifact => artifact.relation === 'output').map(artifact => <Deliverable key={artifact.id} {...{ artifact, task, machineId, featurePath, refresh }} openFile={openFile} offline={offline} />)}
             </ProjectTaskDetails></ScrollView>}
-        {(error || conversationRejected) && <Text accessibilityRole="alert" style={[styles.error, { padding: 12 }]}>{error || t('projectGoals.sessionUnavailable')}</Text>}
+        {error && <Text accessibilityRole="alert" style={[styles.error, { padding: 12 }]}>{error}</Text>}
         {!readOnly && task.execution?.state === 'uncertain' && <Text style={[styles.meta, { paddingHorizontal: 14, paddingVertical: 6 }]}>{t('projectGoals.executionUncertain')}</Text>}
     </ProjectDetailsPanel>;
     const chat = <View testID="project-task-chat" style={[styles.chat, { backgroundColor: surface }, wide && fileOpen && compactTab === 'file' && { display: 'none' }]}>
-        <ProjectConversationHeader testIDPrefix="project-task" sessions={history} selectedId={conversationId} onSelect={selectConversation} onNew={canCreateProjectConversation() ? () => { void start(task, 'chat', false, true); } : undefined} onRefresh={() => { void taskHistory.read(); }} loading={taskHistory.loading} error={taskHistory.error} onRetry={() => { void taskHistory.read(); }} onMore={taskHistory.nextCursor ? () => { void taskHistory.read(taskHistory.nextCursor); } : undefined} busy={busy} offline={offline} mobile={mobile} />
-        {conversationId && !conversationVerified ? <View style={styles.empty} testID="project-conversation-loading">{!error && !conversationRejected && !offline && <ActivityIndicator color={theme.colors.textSecondary} />}<Text style={styles.meta}>{error || t(conversationRejected ? 'projectGoals.sessionUnavailable' : offline ? 'projectGoals.offlineArchive' : 'common.loading')}</Text>{error && !offline && <Button label={t('common.retry')} onPress={() => { setError(null); retryConversation(); }}><Text style={styles.link}>{t('common.retry')}</Text></Button>}</View> : conversationId ? <SafeAreaInsetsContext.Provider value={mobile ? { ...safeArea, top: 0, bottom: 0 } : safeArea}><SessionView key={conversationId} id={conversationId} embedded fullWidth projectTaskContext={mobile} emptyState={desktop || mobile ? appendDraft => <ProjectConversationEmptyState task={task} scrollable={false} onDraft={appendDraft} onFiles={showTaskFiles} /> : undefined} /></SafeAreaInsetsContext.Provider> : desktop || mobile ? emptyConversation : <View style={styles.empty}><Text style={styles.cardTitle}>{t('projectGoals.emptyChat')}</Text><Text style={styles.meta}>{t('projectGoals.emptyChatHint')}</Text><Button label={t('projectGoals.openChat')} disabled={busy || offline || !canCreateProjectConversation()} onPress={() => { void start(task, 'chat'); }}><Text style={styles.link}>{t('projectGoals.openChat')}</Text></Button></View>}
+        <ProjectConversationHeader onGlobal={mobile ? undefined : props.openGlobalConversation} onClose={() => { setError(null); selectConversation(undefined); }} manage={!readOnly && conversationVerified} testIDPrefix="project-task" sessions={history} selectedId={conversationId} onSelect={id => { setError(null); selectConversation(id); }} onNew={canCreateProjectConversation() ? () => { void start(task, 'chat', false, true); } : undefined} onRefresh={() => { void taskHistory.read(); }} loading={taskHistory.loading} error={taskHistory.error} onRetry={() => { void taskHistory.read(); }} onMore={taskHistory.nextCursor ? () => { void taskHistory.read(taskHistory.nextCursor); } : undefined} busy={busy || props.globalBusy} offline={offline} mobile={mobile} />
+        {conversationId && !conversationVerified ? <View style={styles.empty} testID="project-conversation-loading">{!conversationState.error && !conversationRejected && !offline && <ActivityIndicator color={theme.colors.textSecondary} />}<Text style={styles.meta}>{conversationState.error || t(conversationRejected ? 'projectGoals.sessionUnavailable' : offline ? 'projectGoals.offlineArchive' : 'common.loading')}</Text>{conversationState.error && <Button label={t('common.retry')} onPress={conversationState.retry}><Text style={styles.link}>{t('common.retry')}</Text></Button>}</View> : conversationId ? <SafeAreaInsetsContext.Provider value={mobile ? { ...safeArea, top: 0, bottom: 0 } : safeArea}><SessionView key={conversationId} id={conversationId} embedded fullWidth projectTaskContext={mobile} emptyState={desktop || mobile ? appendDraft => <ProjectConversationEmptyState task={task} scrollable={false} onDraft={appendDraft} onFiles={showTaskFiles} /> : undefined} /></SafeAreaInsetsContext.Provider> : desktop || mobile ? emptyConversation : <View style={styles.empty}><Text style={styles.cardTitle}>{t('projectGoals.emptyChat')}</Text><Text style={styles.meta}>{t('projectGoals.emptyChatHint')}</Text><Button label={t('projectGoals.openChat')} disabled={busy || offline || !canCreateProjectConversation()} onPress={() => { void start(task, 'chat'); }}><Text style={styles.link}>{t('projectGoals.openChat')}</Text></Button></View>}
     </View>;
     const catalogScroll = React.useRef<ScrollView>(null);
     const catalog = <ScrollView ref={catalogScroll} onContentSizeChange={() => catalogScroll.current?.scrollTo({ y: props.catalogScrollPosition.current, animated: false })} onScroll={event => props.onCatalogScroll(event.nativeEvent.contentOffset.y)} scrollEventThrottle={100} style={[styles.catalog, { backgroundColor: surface, borderRadius: 13 }]} contentContainerStyle={styles.taskCatalogContent}>

@@ -9,7 +9,7 @@ import { Typography } from '@/constants/Typography';
 import { storage } from '@/sync/storage';
 import { getRuntimeAccountSelection } from '@/auth/accountRuntime';
 import { machineStartGoalAuthor, type DirectoryEntry } from '@/sync/ops';
-import { canCreateProjectConversation, loadProjectScope, loadProjectScopeHistory, projectGoalRequest, projectScopeFiles } from '@/sync/projectGoals';
+import { canCreateProjectConversation, isReadOnlyProjectPreview, loadProjectScope, loadProjectScopeHistory, projectGoalRequest, projectScopeFiles } from '@/sync/projectGoals';
 import { projectCacheKey, projectHistorySchema, writeProjectCache, isProjectSessionDeleted } from '@/sync/projectWorkspaceCache';
 import { SessionView } from '@/-session/SessionView';
 import { SessionFileWorkspaceProvider } from '@/components/fileWorkspace/SessionFileWorkspaceProvider';
@@ -20,6 +20,7 @@ import { PanelTabs } from '@/components/PanelTabs';
 import { useCachedProjectResource } from './useProjectData';
 import { ProjectDetailsPanel } from './ProjectDetailsPanel';
 import { ProjectConversationHeader } from './ProjectConversationHeader';
+import { useProjectConversation } from './useProjectConversation';
 import { ProjectConversationEmptyState } from './ProjectConversationEmptyState';
 import { GoalBoardButton as Button } from './GoalBoardButton';
 import { projectPanelGap, getProjectCatalogWidth } from './projectWorkspaceLayout';
@@ -27,7 +28,7 @@ import { projectPanelGap, getProjectCatalogWidth } from './projectWorkspaceLayou
 export type ProjectOverviewProps = {
     machineId: string; scopePath: string; title: string; conversationId?: string;
     agent: 'codex' | 'claude'; offline: boolean; connecting?: boolean; revision?: string; surface: string;
-    selectConversation: (id: string) => void; children: React.ReactNode;
+    selectConversation: (id?: string) => void; children: React.ReactNode;
 };
 export function ProjectOverviewWorkspace(props: ProjectOverviewProps) {
     const binding = React.useMemo(() => projectScopeFiles(props.machineId, props.scopePath), [props.machineId, props.scopePath]);
@@ -48,7 +49,9 @@ function OverviewContent(props: ProjectOverviewProps) {
             const metadata = storedSessions[session.sessionId]?.metadata;
             return session.directory === scopePath && !isProjectSessionDeleted(session.sessionId) && (!metadata || (metadata.machineId === machineId && (!metadata.goalBoard || (!metadata.goalBoard.taskId && metadata.goalBoard.featurePath === scopePath))));
         }).sort((a, b) => b.updatedAt - a.updatedAt || b.sessionId.localeCompare(a.sessionId));
-    const conversationId = history.find(session => session.sessionId === props.conversationId)?.sessionId;
+    const conversationState = useProjectConversation(props.conversationId, history.some(session => session.sessionId === props.conversationId), metadata =>
+        metadata.machineId === machineId && (metadata.goalBoard ? !metadata.goalBoard.taskId && metadata.goalBoard.featurePath === scopePath : metadata.path === scopePath || history.some(session => session.sessionId === props.conversationId)));
+    const conversationId = conversationState.verified ? props.conversationId : undefined;
     const showChat = !!props.conversationId;
     const [busy, setBusy] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
@@ -129,8 +132,8 @@ function OverviewContent(props: ProjectOverviewProps) {
         {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
     </ProjectDetailsPanel>;
     const chat = <View style={[styles.center, { backgroundColor: surface }]} testID="project-scope-chat">
-        <ProjectConversationHeader testIDPrefix="project-scope" sessions={history} selectedId={conversationId} onSelect={id => { props.selectConversation(id); setCenter('chat'); }} onNew={canCreateProjectConversation() ? () => { void start(true); } : undefined} onRefresh={() => { void historyResource.refresh(); }} loading={historyResource.loading} error={historyResource.error} onRetry={() => { void historyResource.refresh(); }} busy={busy} offline={offline} />
-        {conversationId ? <SessionView key={conversationId} id={conversationId} embedded fullWidth emptyState={appendDraft => <ProjectConversationEmptyState task={{ title: props.title, goal: info?.goal ?? '' }} onDraft={appendDraft} onFiles={showFiles} scrollable={false} />} /> : <View style={styles.brief}><Text style={styles.meta}>{t(historyResource.loading ? 'common.loading' : 'projectGoals.sessionUnavailable')}</Text></View>}
+        <ProjectConversationHeader scope="global" onClose={() => { setError(null); props.selectConversation(undefined); }} manage={!isReadOnlyProjectPreview()} testIDPrefix="project-scope" sessions={history} selectedId={conversationId} onSelect={id => { setError(null); props.selectConversation(id); setCenter('chat'); }} onNew={canCreateProjectConversation() ? () => { void start(true); } : undefined} onRefresh={() => { void historyResource.refresh(); }} loading={historyResource.loading} error={historyResource.error} onRetry={() => { void historyResource.refresh(); }} busy={busy} offline={offline} />
+        {conversationId ? <SessionView key={conversationId} id={conversationId} embedded fullWidth emptyState={appendDraft => <ProjectConversationEmptyState task={{ title: props.title, goal: info?.goal ?? '' }} onDraft={appendDraft} onFiles={showFiles} scrollable={false} />} /> : <View style={styles.brief}><Text style={styles.meta}>{conversationState.error || t(conversationState.rejected ? 'projectGoals.sessionUnavailable' : 'common.loading')}</Text>{conversationState.error && <Button label={t('common.retry')} onPress={conversationState.retry}><Text style={styles.link}>{t('common.retry')}</Text></Button>}</View>}
     </View>;
     return <View style={styles.area} testID="project-overview-workspace">
         {!wide && <View style={styles.compactTabs}><PanelTabs activeTab={center} onTabChange={setCenter} testIDPrefix="project-overview" tabs={[{ key: 'tasks', label: t('projectGoals.tasks'), icon: 'grid-outline' }, ...(showChat ? [{ key: 'chat', label: t('projectGoals.discussion'), icon: 'chatbubble-outline' as const }] : []), ...(fileOpen ? [{ key: 'file', label: t('projectGoals.files'), icon: 'document-outline' as const }] : []), { key: 'details', label: t('projectGoals.globalOverview'), icon: 'compass-outline' }]} /></View>}

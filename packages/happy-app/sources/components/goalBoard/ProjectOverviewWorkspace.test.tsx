@@ -11,9 +11,11 @@ vi.mock('react-native-unistyles', () => { const theme = { colors: { text: 'text'
 vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}) } }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('@/auth/accountRuntime', () => ({ getRuntimeAccountSelection: () => mock.owner }));
-vi.mock('@/sync/storage', () => ({ storage: (select: any) => select({ sessions: mock.sessions }) }));
+vi.mock('@/sync/storage', () => ({ storage: Object.assign((select: any) => select({ sessions: mock.sessions }), { getState: () => ({ sessions: mock.sessions }) }) }));
+vi.mock('@/sync/sync', () => ({ sync: { ensureSessionHydrated: vi.fn().mockResolvedValue(false) } }));
+vi.mock('@/sync/projectSessionLinks', () => ({ isProjectSessionDeleted: () => false }));
 vi.mock('@/sync/ops', () => ({ machineStartGoalAuthor: vi.fn() }));
-vi.mock('@/sync/projectGoals', () => ({ canCreateProjectConversation: () => true, loadProjectScope: vi.fn(), loadProjectScopeHistory: vi.fn(), projectGoalRequest: vi.fn(), projectScopeFiles: () => ({}) }));
+vi.mock('@/sync/projectGoals', () => ({ canCreateProjectConversation: () => true, isReadOnlyProjectPreview: () => false, loadProjectScope: vi.fn(), loadProjectScopeHistory: vi.fn(), projectGoalRequest: vi.fn(), projectScopeFiles: () => ({}) }));
 vi.mock('@/sync/projectWorkspaceCache', () => ({ projectCacheKey: (kind: string) => kind, projectHistorySchema: {}, writeProjectCache: vi.fn(), isProjectSessionDeleted: () => false }));
 vi.mock('./useProjectData', () => ({ useCachedProjectResource: (key: string) => ({ value: key === 'overview' ? { title: 'Real scope', goal: 'Real goal', scopePath: '/scope', indexPath: '/scope/index.md', fileCount: 8, countComplete: true } : { sessions: mock.history }, loading: false }) }));
 vi.mock('@/components/fileWorkspace/SessionFileWorkspaceProvider', () => ({ SessionFileWorkspaceProvider: ({ children }: any) => children }));
