@@ -30,7 +30,7 @@ export function DirectoryRootPicker({ roots, currentPath, disabled, onSelect }: 
                             accessibilityState={{ selected: !!selected, disabled: !!disabled }}
                             disabled={disabled}
                             onPress={() => onSelect(root.path)}
-                            style={({ pressed }) => [styles.location, selected && styles.selected, pressed && styles.pressed, disabled && styles.disabled]}
+                            style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [styles.location, selected && styles.selected, !disabled && (pressed || hovered) && styles.pressed, disabled && styles.disabled]}
                         >
                             <Ionicons name={root.kind === 'home' ? 'home-outline' : 'hardware-chip-outline'} size={16} color={theme.colors.textSecondary} />
                             <Text style={styles.name} numberOfLines={1}>{label}</Text>

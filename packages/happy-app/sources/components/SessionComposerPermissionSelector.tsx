@@ -5,7 +5,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { hapticsLight } from '@/components/haptics';
-import { DesktopShortcutTooltip } from './DesktopShortcutTooltip';
+import { ComposerTooltip } from './DesktopShortcutTooltip';
 import type { SessionTaskPermissionController } from '@/hooks/useSessionTaskPermission';
 import type { TaskPermissionLevel } from '@/utils/taskPermissionModes';
 
@@ -172,7 +172,7 @@ export const SessionComposerPermissionSelector = React.memo(function SessionComp
                     <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={11} color={theme.colors.textSecondary} />
                 ) : null}
             </Pressable>
-            <DesktopShortcutTooltip testID="session-composer-permission-tooltip" label={t('agentInput.taskPermission.title')} visible={Platform.OS === 'web' && hovered && !open} placement="above" compact />
+            <ComposerTooltip testID="session-composer-permission-tooltip" label={t('agentInput.taskPermission.title')} visible={Platform.OS === 'web' && hovered && !open} />
             {props.online && props.unavailableReason ? (
                 <Text testID="session-composer-permission-disabled-reason" style={styles.disabledReason} numberOfLines={1}>
                     {props.unavailableReason}
@@ -267,7 +267,7 @@ const styles = StyleSheet.create((theme) => ({
         opacity: 0.58,
     },
     triggerPressed: {
-        backgroundColor: theme.colors.surfaceHigh,
+        backgroundColor: theme.colors.surfaceSelected,
     },
     triggerText: {
         minWidth: 0,
@@ -335,7 +335,7 @@ const styles = StyleSheet.create((theme) => ({
         gap: 9,
     },
     optionPressed: {
-        backgroundColor: theme.colors.surfaceHigh,
+        backgroundColor: theme.colors.surfaceSelected,
     },
     optionCopy: {
         flex: 1,

@@ -18,7 +18,7 @@ import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import type { ModeOption } from '@/components/modelModeOptions';
 import { hapticsLight } from '@/components/haptics';
-import { DesktopShortcutTooltip } from './DesktopShortcutTooltip';
+import { ComposerTooltip } from './DesktopShortcutTooltip';
 
 export type SessionComposerModeSelectorConfig = {
     online: boolean;
@@ -94,6 +94,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
     }, [open, shimmer]);
     const [triggerHovered, setTriggerHovered] = React.useState(false);
     const [modelHovered, setModelHovered] = React.useState(false);
+    const [resetHovered, setResetHovered] = React.useState(false);
     const [fastHovered, setFastHovered] = React.useState(false);
     const [knobHovered, setKnobHovered] = React.useState(false);
     const [modelsOpen, setModelsOpen] = React.useState(false);
@@ -115,6 +116,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
         setTriggerHovered(false);
         setModelHovered(false);
         setFastHovered(false);
+        setResetHovered(false);
         setKnobHovered(false);
         setOpen(false);
         setModelsOpen(false);
@@ -264,7 +266,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                     />
                 ) : null}
             </Pressable>
-            <DesktopShortcutTooltip testID="session-composer-mode-tooltip" label={t('agentInput.effort.select')} visible={Platform.OS === 'web' && triggerHovered && !open && Boolean(enabled)} placement="above" align="right" compact />
+            <ComposerTooltip testID="session-composer-mode-tooltip" label={t('agentInput.effort.select')} visible={Platform.OS === 'web' && triggerHovered && !open && Boolean(enabled)} />
             <Modal
                 visible={open}
                 transparent
@@ -296,7 +298,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                                 setModelsOpen(false);
                                                 setSearch('');
                                             }}
-                                            style={styles.iconButton}
+                                            style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [styles.iconButton, hoverTransition, (pressed || hovered) && styles.pressed]}
                                         >
                                             <Ionicons
                                                 name="chevron-back"
@@ -309,7 +311,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                             accessibilityRole="button"
                                             accessibilityLabel={t('devTools.close')}
                                             onPress={close}
-                                            style={styles.iconButton}
+                                            style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [styles.iconButton, hoverTransition, (pressed || hovered) && styles.pressed]}
                                         >
                                             <Ionicons
                                                 name="close"
@@ -372,9 +374,9 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                                         setModelsOpen(false);
                                                         setSearch('');
                                                     }}
-                                                    style={({ pressed }) => [
-                                                        styles.option,
-                                                        pressed && styles.pressed,
+                                                    style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+                                                        styles.option, hoverTransition,
+                                                        (pressed || hovered) && styles.pressed,
                                                     ]}
                                                 >
                                                     <View style={styles.grow}>
@@ -402,7 +404,6 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                                 )}
                                                 accessibilityRole="switch"
                                                 accessibilityLabel="Fast"
-                                                {...(Platform.OS === 'web' ? { title: props.fastMode ? t('agentInput.effort.fastOn') : t('agentInput.effort.fastOff') } as any : {})}
                                                 aria-checked={props.fastMode === true}
                                                 accessibilityState={{
                                                     checked: props.fastMode === true,
@@ -424,6 +425,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                                             : theme.colors.textSecondary
                                                     }
                                                 />
+                                                <ComposerTooltip testID="composer-fast-tooltip" label={props.fastMode ? t('agentInput.effort.fastOn') : t('agentInput.effort.fastOff')} visible={Platform.OS === 'web' && fastHovered && !!props.supportsFast} />
                                             </Pressable>
                                         ) : (
                                             <View style={styles.iconButton} />
@@ -432,7 +434,6 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                         <Pressable
                                             testID="session-composer-open-models"
                                             accessibilityLabel={t('agentInput.model.title')}
-                                            {...(Platform.OS === 'web' ? { title: t('agentInput.model.title') } as any : {})}
                                             accessibilityRole="button"
                                             accessibilityState={{ disabled: props.modelOptions.length < 2 }}
                                             disabled={props.modelOptions.length < 2}
@@ -450,6 +451,7 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                                 {formatComposerModelName(props.model?.name ?? t('agentInput.model.title'))}
                                                 {props.modelOptions.length > 1 ? '  ›' : ''}
                                             </Text>
+                                            <ComposerTooltip testID="composer-model-list-tooltip" label={t('agentInput.model.title')} visible={Platform.OS === 'web' && modelHovered && props.modelOptions.length > 1} />
                                         </Pressable>
                                         </View>
                                         <Pressable
@@ -458,16 +460,18 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                             accessibilityLabel={t('common.reset')}
                                             accessibilityState={{ disabled: !canReset }}
                                             disabled={!canReset}
-                                            {...(Platform.OS === 'web' ? { title: canReset ? t('common.reset') : t('settingsAccount.notAvailable') } as any : {})}
                                             accessibilityHint={canReset ? defaultOption?.name : t('settingsAccount.notAvailable')}
                                             onPress={reset}
-                                            style={({ pressed }) => [styles.iconButton, !canReset && styles.disabled, pressed && styles.pressed]}
+                                            onHoverIn={() => setResetHovered(true)}
+                                            onHoverOut={() => setResetHovered(false)}
+                                            style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [styles.iconButton, hoverTransition, !canReset && styles.disabled, canReset && (pressed || hovered) && styles.pressed]}
                                         >
                                             <Ionicons
                                                 name="refresh-outline"
                                                 size={20}
                                                 color={theme.colors.textSecondary}
                                             />
+                                            <ComposerTooltip testID="composer-reset-tooltip" label={t('common.reset')} visible={Platform.OS === 'web' && resetHovered && canReset} />
                                         </Pressable>
                                     </View>
                                     {levels.length > 0 ? (
@@ -576,8 +580,9 @@ export const SessionComposerModeSelector = React.memo(function SessionComposerMo
                                                                 props.onEffortChange(option.key);
                                                             }
                                                         }}
-                                                        style={[
+                                                        style={({ hovered }: { pressed: boolean; hovered?: boolean }) => [
                                                             styles.step,
+                                                            hovered && styles.stepHover,
                                                             {
                                                                 left: `${levels.length > 1 ? (index * 100) / (levels.length - 1) : 0}%`,
                                                             },
@@ -626,7 +631,7 @@ const styles = StyleSheet.create((theme) => ({
     },
     triggerEffort: { color: theme.colors.textSecondary, ...Typography.default() },
     disabled: { opacity: 0.58 },
-    pressed: { backgroundColor: theme.colors.surfacePressed },
+    pressed: { backgroundColor: theme.colors.surfaceSelected },
     modalRoot: { flex: 1 },
     backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
     panel: {
@@ -634,7 +639,7 @@ const styles = StyleSheet.create((theme) => ({
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: theme.colors.divider,
         backgroundColor: theme.colors.input.background,
-        overflow: 'hidden',
+        overflow: Platform.OS === 'web' ? 'visible' : 'hidden',
         shadowColor: theme.colors.shadow.color,
         shadowOffset: { width: 0, height: 6 },
         shadowOpacity: theme.colors.shadow.opacity,
@@ -682,6 +687,7 @@ const styles = StyleSheet.create((theme) => ({
         alignItems: 'center',
         justifyContent: 'center',
     },
+    stepHover: { borderRadius: 16, backgroundColor: theme.colors.surfaceSelected },
     dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: theme.colors.textSecondary },
     passed: { backgroundColor: theme.colors.switch.thumb.active, opacity: 0.35 },
     knobPosition: { position: 'absolute', top: 0, width: 32, height: 32, marginLeft: -16 },

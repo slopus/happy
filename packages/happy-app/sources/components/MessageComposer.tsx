@@ -1,7 +1,7 @@
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { View, Platform, useWindowDimensions, Text, ActivityIndicator, Pressable } from 'react-native';
-import { DesktopShortcutTooltip } from './DesktopShortcutTooltip';
+import { ComposerTooltip } from './DesktopShortcutTooltip';
 import { AgentInputAttachmentStrip } from './AgentInputAttachmentStrip';
 import type { AttachmentPreview } from '@/sync/attachmentTypes';
 import type { AttachmentGalleryPresentation } from '@/utils/attachmentGalleryLayout';
@@ -230,6 +230,13 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         alignItems: 'center',
         flexShrink: 0,
         marginLeft: 8,
+    },
+    sendButtonHovered: {
+        shadowColor: theme.colors.shadow.color,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: theme.colors.shadow.opacity,
+        shadowRadius: 5,
+        elevation: 2,
     },
     sendButtonActive: {
         backgroundColor: theme.colors.button.primary.background,
@@ -970,7 +977,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                         style={(p) => [
                                             styles.imagePickerButton,
                                             (props.selectedImages?.length ?? 0) > 0 && styles.imagePickerButtonActive,
-                                            (p.pressed || hoveredAction === 'attach') && { backgroundColor: theme.colors.surfacePressed },
+                                            (p.pressed || hoveredAction === 'attach') && { backgroundColor: theme.colors.surfaceSelected },
                                         ]}
                                     >
                                         <Ionicons
@@ -980,7 +987,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                                 ? theme.colors.radio.active
                                                 : theme.colors.button.secondary.tint}
                                         />
-                                        <DesktopShortcutTooltip testID="composer-attach-tooltip" label={t('imageUpload.chooseSourceTitle')} visible={Platform.OS === 'web' && hoveredAction === 'attach'} placement="above" compact />
+                                        <ComposerTooltip testID="composer-attach-tooltip" label={t('imageUpload.chooseSourceTitle')} visible={Platform.OS === 'web' && hoveredAction === 'attach'} />
                                     </Pressable>
                                 )}
 
@@ -1016,6 +1023,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                     ref={shakerRef}
                                     style={[
                                         styles.sendButton,
+                                        hoveredAction === 'send' && styles.sendButtonHovered,
                                         (isAbortAction || isAbortConfirmationArmed || canPressSendButton || props.isSending)
                                             ? styles.sendButtonActive
                                             : styles.sendButtonInactive
@@ -1037,7 +1045,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                             height: '100%',
                                             alignItems: 'center',
                                             justifyContent: 'center',
-                                            opacity: p.pressed || hoveredAction === 'send' ? 0.75 : 1,
+                                            opacity: p.pressed ? 0.75 : 1,
                                         })}
                                         hitSlop={Platform.OS === 'web'
                                             ? { top: 5, bottom: 10, left: 0, right: 0 }
@@ -1076,7 +1084,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                                 ]}
                                             />
                                         )}
-                                        <DesktopShortcutTooltip testID="composer-send-tooltip" label={(isAbortAction || isAbortConfirmationArmed) ? t('keyboardShortcuts.stopRunningAgent') : (props.sendLabel ?? t('keyboardShortcuts.sendMessage'))} visible={Platform.OS === 'web' && hoveredAction === 'send'} placement="above" align="right" compact />
+                                        <ComposerTooltip testID="composer-send-tooltip" label={(isAbortAction || isAbortConfirmationArmed) ? t('keyboardShortcuts.stopRunningAgent') : (props.sendLabel ?? t('keyboardShortcuts.sendMessage'))} visible={Platform.OS === 'web' && hoveredAction === 'send'} />
                                     </Pressable>
                                 </Shaker>
                                 </View>
@@ -1115,7 +1123,7 @@ function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?:
                 opacity: p.pressed ? 0.7 : 1,
                 flex: 1,
                 overflow: Platform.OS === 'web' ? 'visible' : 'hidden',
-                backgroundColor: hovered ? theme.colors.surfacePressed : 'transparent',
+                backgroundColor: hovered ? theme.colors.surfaceSelected : 'transparent',
             })}
             onHoverIn={() => setHovered(true)}
             onHoverOut={() => setHovered(false)}
@@ -1134,7 +1142,7 @@ function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?:
                     color={theme.colors.button.secondary.tint}
                 />
             )}
-            <DesktopShortcutTooltip testID="composer-git-tooltip" label="Git" visible={Platform.OS === 'web' && hovered} placement="above" compact />
+            <ComposerTooltip testID="composer-git-tooltip" label="Git" visible={Platform.OS === 'web' && hovered} />
         </Pressable>
     );
 }

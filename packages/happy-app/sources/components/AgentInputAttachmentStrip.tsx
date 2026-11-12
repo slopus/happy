@@ -98,12 +98,12 @@ function AttachmentThumbnail({
                     accessibilityLabel={t('common.delete')}
                     onPress={() => onRemove(image.id)}
                     hitSlop={6}
-                    style={(p) => [
+                    style={(p: { pressed: boolean; hovered?: boolean }) => [
                         styles.videoRemoveButton,
                         {
                             backgroundColor: theme.colors.surfaceHigh,
                             borderColor: theme.colors.divider,
-                            opacity: p.pressed ? 0.7 : 1,
+                            opacity: p.pressed || p.hovered ? 0.7 : 1,
                         },
                     ]}
                 >
@@ -127,10 +127,10 @@ function AttachmentThumbnail({
                     accessibilityState={{ expanded: mediaExpanded }}
                     aria-expanded={mediaExpanded}
                     onPress={() => setMediaExpanded((value) => !value)}
-                    style={(p) => [
+                    style={(p: { pressed: boolean; hovered?: boolean }) => [
                         styles.mediaCard,
                         { borderColor: theme.colors.divider, backgroundColor: theme.colors.surfaceHigh },
-                        p.pressed && styles.mediaCardPressed,
+                        (p.pressed || p.hovered) && styles.mediaCardPressed,
                     ]}
                 >
                     <Ionicons
@@ -169,12 +169,12 @@ function AttachmentThumbnail({
                     accessibilityLabel={t('common.delete')}
                     onPress={() => onRemove(image.id)}
                     hitSlop={6}
-                    style={(p) => [
+                    style={(p: { pressed: boolean; hovered?: boolean }) => [
                         styles.removeButton,
                         {
                             backgroundColor: theme.colors.surfaceHigh,
                             borderColor: theme.colors.divider,
-                            opacity: p.pressed ? 0.7 : 1,
+                            opacity: p.pressed || p.hovered ? 0.7 : 1,
                         },
                     ]}
                 >
@@ -209,12 +209,12 @@ function AttachmentThumbnail({
                     accessibilityLabel={t('common.delete')}
                     onPress={() => onRemove(image.id)}
                     hitSlop={6}
-                    style={(p) => [
+                    style={(p: { pressed: boolean; hovered?: boolean }) => [
                         styles.removeButton,
                         {
                             backgroundColor: theme.colors.surfaceHigh,
                             borderColor: theme.colors.divider,
-                            opacity: p.pressed ? 0.7 : 1,
+                            opacity: p.pressed || p.hovered ? 0.7 : 1,
                         },
                     ]}
                 >
@@ -244,7 +244,7 @@ function AttachmentThumbnail({
                     viewerImages.map((it) => ({ uri: it.uri, width: it.width, height: it.height, filename: it.name })),
                     Math.max(0, viewerIndex),
                 )}
-                style={[styles.thumbPressable, displaySize, { borderColor: theme.colors.divider }]}
+                style={(p: { pressed: boolean; hovered?: boolean }) => [styles.thumbPressable, displaySize, { borderColor: p.hovered ? theme.colors.accent : theme.colors.divider, opacity: p.pressed || p.hovered ? 0.85 : 1 }]}
             >
                 <Image
                     source={{ uri: image.uri }}
@@ -258,12 +258,12 @@ function AttachmentThumbnail({
             <Pressable
                 onPress={() => onRemove(image.id)}
                 hitSlop={6}
-                style={(p) => [
+                style={(p: { pressed: boolean; hovered?: boolean }) => [
                     styles.removeButton,
                     {
                         backgroundColor: theme.colors.surfaceHigh,
                         borderColor: theme.colors.divider,
-                        opacity: p.pressed ? 0.7 : 1,
+                        opacity: p.pressed || p.hovered ? 0.7 : 1,
                     },
                 ]}
             >
