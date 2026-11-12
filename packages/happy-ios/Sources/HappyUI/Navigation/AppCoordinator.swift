@@ -443,6 +443,7 @@ public final class AppCoordinator {
         NotificationCenter.default.post(name: Self.rootDidChange, object: window)
         openPendingLink()
         openPendingInstanceLink()
+        openPendingInvite()
         openNotificationSession()
         openInstanceTarget()
     }

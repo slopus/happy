@@ -16,6 +16,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         LegacyFonts.registerBundledFonts()
+        HappyCloud.keepStandIns()
         PushNotifications.shared.install()
         Analytics.shared.reportCrashes()
         // The store's transactions are listened for from the first moment: renewals, approvals, refunds.

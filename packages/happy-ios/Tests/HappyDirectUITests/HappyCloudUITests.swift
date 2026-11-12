@@ -641,7 +641,10 @@ final class HappyCloudUITests: XCTestCase {
     /// invite shows its server, and Join lands on that server's home. The
     /// first launch points the app at the deployment in `CLOUD_ACCOUNTS`,
     /// `CLOUD_BASE`, `CLOUD_WEB` and `CLOUD_INVITE`, kept for the launch
-    /// the link makes.
+    /// the link makes. Then each link in `INVITE_STATES`
+    /// (`name=url,name=url`, `mismatch` joined to see its refusal) opens on
+    /// the same layout: the title, the status line and the button sit where
+    /// they sat when the first invite was ready. Every step is filmed.
     func testInviteLinkOpensTheAppAndJoins() throws {
         guard let link = env["INVITE_URL"].flatMap(URL.init(string:)), let login = env["QA_LOGIN"], let password = env["QA_PASSWORD"],
               let accounts = env["CLOUD_ACCOUNTS"], let base = env["CLOUD_BASE"], let web = env["CLOUD_WEB"], let invite = env["CLOUD_INVITE"]
@@ -652,37 +655,101 @@ final class HappyCloudUITests: XCTestCase {
         app.terminate()
 
         openFromNotes(link)
-        require(app.wait(for: .runningForeground, timeout: 30), "the link didn't open the app")
         let title = app.staticTexts["Happy Cloud"]
-        require(title.waitForExistence(timeout: 20), "the link didn't open Happy Cloud's welcome")
+        film("a-link-opens") { self.app.state == .runningForeground && title.exists }
+        require(title.exists, "the link didn't open Happy Cloud's welcome in the app")
         capture("i3-opened-signed-out")
         signInWithTestAccount(login: login, password: password, openingCloud: false)
 
         let join = element("cloud-invite-join")
-        require(join.waitForExistence(timeout: 30), "no invite screen after signing in")
-        let enabled = NSPredicate(format: "isEnabled == true")
-        require(XCTWaiter.wait(for: [expectation(for: enabled, evaluatedWith: join)], timeout: 20) == .completed, "the invite never loaded")
+        film("b-invite-loads", seconds: 30) { join.exists && join.isEnabled }
+        require(join.isEnabled, "the invite never loaded")
         Thread.sleep(forTimeInterval: 1)
         capture("i4-invite")
         tree("i4-invite", app)
+        let ready = inviteFrames()
+        report("ready", ready)
         join.tap()
 
         let name = element("cloud-profile-name")
         let switcher = element("account-switcher")
-        if first([name, switcher], timeout: 90) === name {
+        film("c-joining", seconds: 90) { name.exists || switcher.exists }
+        if name.exists {
             capture("i5-profile")
             name.tap()
             name.typeText("QA Peer")
             element("cloud-profile-continue").tap()
         }
-        require(switcher.waitForExistence(timeout: 90), "Join didn't land on the server's home")
+        film("d-lands", seconds: 90) { switcher.exists }
+        require(switcher.exists, "Join didn't land on the server's home")
         Thread.sleep(forTimeInterval: 4)
         capture("i6-server-home")
+
+        for pair in (env["INVITE_STATES"] ?? "").split(separator: ",") {
+            let parts = pair.split(separator: "=", maxSplits: 1).map(String.init)
+            guard parts.count == 2, let url = URL(string: parts[1]) else { continue }
+            let state = parts[0]
+            XCUIDevice.shared.system.open(url)
+            let status = element("cloud-invite-status")
+            film("e-\(state)", seconds: 30) { status.exists && !status.label.isEmpty }
+            require(status.exists, "\(state) didn't open the invite")
+            if state == "mismatch" {
+                film("e-\(state)-ready", seconds: 20) { join.isEnabled }
+                join.tap()
+                film("e-\(state)-joined", seconds: 20) { status.label.contains("another email") }
+            }
+            Thread.sleep(forTimeInterval: 1)
+            capture("i7-\(state)")
+            let frames = inviteFrames()
+            report(state, frames)
+            XCTAssertEqual(frames, ready, "\(state) moved the title, the status line or the button")
+            let close = app.buttons["cloud-close"]
+            if close.exists { close.tap() }
+            Thread.sleep(forTimeInterval: 1.5)
+        }
+    }
+
+    /// The invite screen's title, status line and button, where they are.
+    private func inviteFrames() -> [CGRect] {
+        [app.staticTexts["Join a server"].firstMatch.frame, element("cloud-invite-status").frame, element("cloud-invite-join").frame]
+    }
+
+    private func report(_ state: String, _ frames: [CGRect]) {
+        let attachment = XCTAttachment(string: "\(state): title \(frames[0]) status \(frames[1]) button \(frames[2])")
+        attachment.name = "frames-\(state)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    /// Screenshots back to back, named `film-<scene>-<n>`, until `done` or
+    /// `seconds` pass: the frames of a recording.
+    private func film(_ scene: String, seconds: TimeInterval = 20, until done: () -> Bool) {
+        let deadline = Date().addingTimeInterval(seconds)
+        var frame = 0
+        repeat {
+            let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            attachment.name = String(format: "film-%@-%03d", scene, frame)
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            frame += 1
+        } while !done() && Date() < deadline
     }
 
     /// Writes `link` in a new note and taps it there, as a person would
-    /// open a link they were sent.
+    /// open a link they were sent. A simulator has no Notes:
+    /// `OPEN_WITH=system` opens it as the system opens a tapped link.
     private func openFromNotes(_ link: URL) {
+        if env["OPEN_WITH"] == "system" {
+            // A fresh install's association is fetched in the background:
+            // until it is in, the link opens Safari.
+            for _ in 0..<6 {
+                XCUIDevice.shared.system.open(link)
+                if app.wait(for: .runningForeground, timeout: 8) { return }
+                capture("i2-opened-elsewhere")
+                Thread.sleep(forTimeInterval: 10)
+            }
+            return
+        }
         let notes = XCUIApplication(bundleIdentifier: "com.apple.mobilenotes")
         notes.launch()
         Thread.sleep(forTimeInterval: 2)
@@ -698,8 +765,6 @@ final class HappyCloudUITests: XCTestCase {
         let tappable = notes.links.firstMatch
         require(tappable.waitForExistence(timeout: 10), "the note's link isn't a link")
         tappable.tap()
-        Thread.sleep(forTimeInterval: 2)
-        capture("i2-after-tap")
     }
 
     func testConnectSignUpAndTalkToAnAgent() throws {
