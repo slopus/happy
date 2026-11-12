@@ -330,6 +330,8 @@ public final class AgentHTTPTransport: SelfMeteringTransport {
                         var head = "\(method) \(path) HTTP/1.1\r\nHost: \(self.authority)\r\nAuthorization: Bearer \(credential)\r\nConnection: close\r\nAccept: application/json\r\nContent-Length: \(body?.count ?? 0)\r\n"
                         // JSON unless the caller names the type (a picture's bytes).
                         if body != nil, !headers.keys.contains(where: { $0.lowercased() == "content-type" }) { head += "Content-Type: application/json\r\n" }
+                        // A large JSON answer comes compressed, unless the caller says otherwise.
+                        if !headers.keys.contains(where: { $0.lowercased() == "accept-encoding" }) { head += "Accept-Encoding: \(ContentCoding.accepted)\r\n" }
                         for (name, value) in headers { head += "\(name): \(value)\r\n" }
                         try await stream.write(Data((head + "\r\n").utf8))
                         if let body {
@@ -349,7 +351,7 @@ public final class AgentHTTPTransport: SelfMeteringTransport {
                             let bytes = try await stream.read(maximumBytes: 65536)
                             if let response = try parser.append(bytes, eof: bytes.isEmpty) {
                                 await stream.close()
-                                return response
+                                return try ContentCoding.decoded(response)
                             }
                         }
                     } catch { await stream.close(); throw error }
