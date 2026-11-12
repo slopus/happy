@@ -94,7 +94,12 @@ final class CloudInviteViewController: CloudStageViewController {
                 if let id = CloudScreens.connection(to: server, context: context) {
                     return try await CloudScreens.open(id, context: context, from: self)
                 }
-                navigationController?.pushViewController(connecting(server), animated: true)
+                // Connecting in the invite's place, over the servers' list
+                // where there is one, so Back never returns to it.
+                let next = connecting(server)
+                let list = navigationController?.viewControllers.last { $0 is CloudServersViewController }
+                (next as? CloudStageViewController)?.signsOutOnBack = list == nil
+                CloudScreens.replace(from: self, with: next, keeping: list)
             } catch {
                 settle(error)
             }

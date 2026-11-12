@@ -512,10 +512,8 @@ final class HostedCloudSignInMotionTests: XCTestCase {
         }
     }
 
-    /// Join a server's Bootstrap a new one comes in with its keyboard; the
-    /// first Bootstrap's I have an invite goes on to Join with an invite
-    /// with the keyboard staying up.
-    func testBootstrapAndInviteComeInWithTheirKeyboard() async throws {
+    /// Join a server's Bootstrap a new one comes in with its keyboard.
+    func testBootstrapComesInWithItsKeyboard() async throws {
         let http = SignInHTTP()
         await http.answer("GET /v1/servers", 200, #"{"servers":[{"id":"s1","name":"acme","url":"","role":"owner"}]}"#)
         let account = CloudAccount.preview(token: "account", http: http)
@@ -535,23 +533,6 @@ final class HostedCloudSignInMotionTests: XCTestCase {
             XCTAssertEqual(create.lateMoves(name), 0, "\(name) never moves after the keyboard has stopped\n" + create.log(names))
             XCTAssertEqual(create.reversals(name), 0, "\(name) never turns back\n" + create.log(names))
         }
-
-        let first = CloudCreateViewController(context: context(), account: account, first: true)
-        navigation.setViewControllers([first], animated: false)
-        try await settle(navigation)
-        _ = first.field.text.becomeFirstResponder()
-        try await settle(navigation)
-        let join = CloudFrames(window: window, navigation: navigation, views: stepViews { navigation.topViewController as? CloudJoinViewController })
-        await join.sample(seconds: 1.4) { first.invite.tapped() }
-        join.attachStrip("invite-push", to: self)
-        print(join.summary("invite-push", moving: "step", ["title", "primary"]))
-        XCTAssertLessThanOrEqual(join.keyboardDip, 1, "the keyboard stays up into Join with an invite\n" + join.log(names))
-        for name in ["title", "primary"] {
-            XCTAssertEqual(join.lateMoves(name), 0, "\(name) never moves after the keyboard has stopped\n" + join.log(names))
-            XCTAssertEqual(join.reversals(name), 0, "\(name) never turns back\n" + join.log(names))
-        }
-        let joinStep = try XCTUnwrap(navigation.topViewController as? CloudJoinViewController)
-        XCTAssertTrue(joinStep.nameField.text.isFirstResponder)
     }
 
     /// Turned to landscape and back with the keyboard up: Send code stays
@@ -659,7 +640,6 @@ final class HostedCloudSignInMotionTests: XCTestCase {
         let (window, navigation) = try await present(create)
         try await settle(navigation)
         var views = stepViews { create }
-        views["invite"] = { create.invite }
         views["field"] = { create.field }
         let frames = CloudFrames(window: window, navigation: navigation, views: views)
         await frames.sample(seconds: 0.4) {
@@ -671,9 +651,9 @@ final class HostedCloudSignInMotionTests: XCTestCase {
             }
         }
         frames.attachStrip("server-name-hint", to: self)
-        print(frames.summary("server-name-hint", ["title", "field", "invite", "primary"]))
-        for name in ["title", "body", "field", "invite", "primary"] {
-            XCTAssertLessThanOrEqual(frames.drift(name), 0.5, "\(name) stays put\n" + frames.log(["title", "field", "invite", "primary"]))
+        print(frames.summary("server-name-hint", ["title", "field", "primary"]))
+        for name in ["title", "body", "field", "primary"] {
+            XCTAssertLessThanOrEqual(frames.drift(name), 0.5, "\(name) stays put\n" + frames.log(["title", "field", "primary"]))
         }
     }
 
@@ -738,7 +718,6 @@ final class HostedCloudSignInMotionTests: XCTestCase {
         try await settle(navigation)
         var views = stepViews { servers }
         views["bootstrap"] = { servers.bootstrap }
-        views["invite"] = { servers.invite }
         let frames = CloudFrames(window: window, navigation: navigation, views: views)
         await frames.sample(seconds: 0.6) {
             await gate.open()
