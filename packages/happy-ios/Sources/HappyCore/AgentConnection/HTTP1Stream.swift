@@ -21,6 +21,8 @@ extension TailcatHTTPTransport {
     public func stream(path: String, credential: String, headers: [String: String]) async throws -> HTTP1Stream {
         guard Self.safe(path: path, credential: credential, headers: headers) else { throw PairingError.invalidResponse }
         let lease = try await lease(.realtime)
+        let watch = lease?.watch()
+        defer { watch?.cancel() }
         let stream: any BrowserStream
         do { stream = try await flow(lease, .realtime) } catch {
             lease?.release()
@@ -52,7 +54,10 @@ extension TailcatHTTPTransport {
             let chunked = responseHead.headers["transfer-encoding"]?.lowercased() == "chunked"
             let coding = try ContentCoding.coding(responseHead.headers)
             let body = AsyncThrowingStream<Data, Error> { continuation in
+                // Silent past its heartbeat: its client is checked.
+                let silence = lease?.watch(quiet: carrierHeardWithin, repeating: true)
                 let reader = Task {
+                    defer { silence?.cancel() }
                     var decoder = HTTP1BodyDecoder(chunked: chunked)
                     do {
                         let content = try coding.map(ContentDecoder.init)

@@ -188,6 +188,9 @@ public final class AgentHTTPTransport: SelfMeteringTransport {
             if let id = tunnel.id { meter.metrics?.tunnelDown(id) }
             await tunnel.idle.shut()
             await tunnel.client.close()
+        }, check: { tunnel in
+            // The relay pinged and replaced only if silent; direct paths probed.
+            await tunnel.client.wake()
         })
     }
 
@@ -345,6 +348,9 @@ public final class AgentHTTPTransport: SelfMeteringTransport {
     private func exchange(lease: TailcatClients<Tunnel>.Lease?, category: RequestCategory, method: String, path: String, credential: String, body: Data?, headers: [String: String], timeout: Duration, sent: (@Sendable (Int) -> Void)?) async throws -> HTTP1Response {
         try await withThrowingTaskGroup(of: HTTP1Response.self) { group in
             group.addTask {
+                // In a dead relay even the flow's opening and the head's write hang.
+                let watch = lease?.watch()
+                defer { watch?.cancel() }
                 let response = try await self.exchange(method: method, path: path, credential: credential, body: body, headers: headers, idle: lease?.client.idle, sent: sent) {
                     try await self.openFlow(lease, category)
                 }

@@ -28,6 +28,10 @@ let maxFileClients = 3
 /// every 15 seconds.
 let carrierHeardWithin: Duration = .seconds(20)
 
+/// How long a request may go with nothing back over its client before the
+/// client is checked (`TailcatClients.watch`).
+let stallAfter: Duration = .seconds(3)
+
 /// One agent connection's Tailcat clients: one shared by `.realtime` and
 /// `.query`, and up to `maxFileClients` for `.file`, each made on first
 /// use. Every connect is made with a node key of its own, fresh each time:
@@ -44,9 +48,16 @@ let carrierHeardWithin: Duration = .seconds(20)
 /// the shared client only once nothing has come back over it for
 /// `carrierHeardWithin`: one that timed out while the stream's heartbeats
 /// arrived never drops the stream. The stream's own failures reset it.
+///
+/// A relay can go dead with nothing said (a move the system didn't tell
+/// of): a request with nothing back over its client for `stallAfter`, and a
+/// stream silent past its heartbeat, have the client checked (`check`: the
+/// relay pinged, replaced only if it doesn't answer), at most once every
+/// `checkEvery`. A slow answer on a live client costs a ping.
 final class TailcatClients<Client: AnyObject & Sendable>: @unchecked Sendable {
     typealias Connect = @Sendable (RequestCategory, NodePrivateKey) async throws -> Client
     typealias Disconnect = @Sendable (Client) async -> Void
+    typealias Check = @Sendable (Client) async -> Void
 
     /// One client's place: connected, reset and connected again on its own.
     final class Slot: @unchecked Sendable {
@@ -63,6 +74,8 @@ final class TailcatClients<Client: AnyObject & Sendable>: @unchecked Sendable {
         fileprivate var idleGeneration = 0
         /// When `client` last brought bytes back, or connected.
         fileprivate var heard: ContinuousClock.Instant?
+        /// When `client` was last checked (`watch`).
+        fileprivate var checked: ContinuousClock.Instant?
         init(category: RequestCategory, index: Int) { self.category = category; self.index = index }
     }
 
@@ -91,10 +104,17 @@ final class TailcatClients<Client: AnyObject & Sendable>: @unchecked Sendable {
 
         /// Bytes came back over this lease's client.
         func heard() { pool.heard(self) }
+
+        /// A request going out over this lease's client: unless bytes come
+        /// back over the client within `quiet`, it is checked; `repeating`,
+        /// again each time it has been silent that long. Cancel once answered.
+        func watch(quiet: Duration = stallAfter, repeating: Bool = false) -> Task<Void, Never> { pool.watch(self, quiet: quiet, repeating: repeating) }
     }
 
     private let connect: Connect
     private let disconnect: Disconnect
+    private let check: Check
+    private let checkEvery: Duration
     private let fileLimit: Int
     private let now: @Sendable () -> ContinuousClock.Instant
     private let idleTimeout: Duration
@@ -104,9 +124,10 @@ final class TailcatClients<Client: AnyObject & Sendable>: @unchecked Sendable {
     private var closed = false
 
     init(fileLimit: Int = maxFileClients, now: @escaping @Sendable () -> ContinuousClock.Instant = { .now }, idleTimeout: Duration = .seconds(45), newKey: @escaping @Sendable () throws -> NodePrivateKey = { try NodePrivateKey.generate() },
-         connect: @escaping Connect, disconnect: @escaping Disconnect) {
+         checkEvery: Duration = .seconds(5), connect: @escaping Connect, disconnect: @escaping Disconnect, check: @escaping Check = { _ in }) {
         self.fileLimit = fileLimit; self.now = now; self.idleTimeout = idleTimeout
         self.newKey = newKey; self.connect = connect; self.disconnect = disconnect
+        self.check = check; self.checkEvery = checkEvery
     }
 
     fileprivate func locked<T>(_ body: () throws -> T) rethrows -> T {
@@ -222,6 +243,28 @@ final class TailcatClients<Client: AnyObject & Sendable>: @unchecked Sendable {
 
     fileprivate func heard(_ lease: Lease) {
         locked { if lease.slot.client === lease.client { lease.slot.heard = now() } }
+    }
+
+    fileprivate func watch(_ lease: Lease, quiet: Duration, repeating: Bool) -> Task<Void, Never> {
+        let start = now()
+        return Task { [weak self] in
+            var since = start
+            while let pool = self {
+                guard (try? await Task.sleep(for: since + quiet - pool.now())) != nil else { return }
+                let (due, heard) = pool.locked { () -> (Bool?, ContinuousClock.Instant?) in
+                    let slot = lease.slot
+                    guard !pool.closed, slot.client === lease.client else { return (nil, nil) }
+                    if let heard = slot.heard, heard > since { return (false, heard) }
+                    if let checked = slot.checked, pool.now() - checked < pool.checkEvery { return (false, nil) }
+                    slot.checked = pool.now()
+                    return (true, nil)
+                }
+                guard let due else { return }
+                if due { await pool.check(lease.client) }
+                guard repeating else { return }
+                since = heard ?? pool.now()
+            }
+        }
     }
 
     /// Lets go of `lease`'s client after a failure on it, if its slot still

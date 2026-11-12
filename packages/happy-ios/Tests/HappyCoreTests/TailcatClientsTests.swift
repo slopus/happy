@@ -331,6 +331,67 @@ final class TailcatClientsTests: XCTestCase {
         await clients.close()
     }
 
+    /// Checks made, by client.
+    private final class Checks: @unchecked Sendable {
+        private let lock = NSLock()
+        private var list: [Client] = []
+        var all: [Client] { lock.withLock { list } }
+        func add(_ client: Client) { lock.withLock { list.append(client) } }
+    }
+
+    private func watched(_ made: Made, _ checks: Checks, checkEvery: Duration = .seconds(5)) -> TailcatClients<Client> {
+        TailcatClients(checkEvery: checkEvery, connect: { category, key in
+            let client = Client(category: category, key: try key.publicKey.rawValue)
+            made.add(client)
+            return client
+        }, disconnect: { $0.close() }, check: { checks.add($0) })
+    }
+
+    /// A request with nothing back has its client checked, once in five
+    /// seconds however many stall; one answered in time, or on a client
+    /// that brought bytes back meanwhile, has it checked never.
+    func testAStalledRequestChecksItsClientOnceAndAnAnsweredOneNever() async throws {
+        let made = Made(), checks = Checks()
+        let clients = watched(made, checks)
+        let query = try await clients.lease(.query)
+        let answered = query.watch(quiet: .milliseconds(100))
+        try await Task.sleep(for: .milliseconds(20))
+        query.heard()
+        answered.cancel()
+        let heard = query.watch(quiet: .milliseconds(100))
+        try await Task.sleep(for: .milliseconds(20))
+        query.heard()
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertTrue(checks.all.isEmpty)
+        heard.cancel()
+
+        let stalled = (0..<3).map { _ in query.watch(quiet: .milliseconds(50)) }
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(checks.all.count, 1)
+        XCTAssertIdentical(checks.all.first, made.all.first)
+        stalled.forEach { $0.cancel() }
+        query.release()
+        await clients.close()
+    }
+
+    /// A check whose relay answers lets go of nothing: the client and its
+    /// key stay, and the next request goes over it.
+    func testACheckTheRelayAnswersReconnectsNothing() async throws {
+        let made = Made(), checks = Checks()
+        let clients = watched(made, checks, checkEvery: .milliseconds(10))
+        let stream = try await clients.lease(.realtime)
+        let silence = stream.watch(quiet: .milliseconds(50), repeating: true)
+        try await Task.sleep(for: .milliseconds(300))
+        silence.cancel()
+        XCTAssertGreaterThanOrEqual(checks.all.count, 2, "a stream silent on is checked again")
+        let query = try await clients.lease(.query)
+        XCTAssertIdentical(query.client, stream.client)
+        XCTAssertEqual(made.all.count, 1)
+        XCTAssertFalse(made.all[0].closed)
+        query.release(); stream.release()
+        await clients.close()
+    }
+
     func testTheTransportPutsEachKindOfTrafficOnItsCategory() async throws {
         let asked = Made()
         let transport = TailcatHTTPTransport(port: 24781) { category, key in
