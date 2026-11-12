@@ -19,11 +19,11 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
-/** The systems a machine's installer runs on. */
+/** The systems a computer's installer runs on. */
 enum class ComputeSystem { Linux, MacOS, Windows }
 
 /**
- * How a machine takes agents, fixed by the config on the machine itself, and
+ * How a computer takes agents, fixed by the config on the computer itself, and
  * the systems its installer accepts (happy-cluster deploy/README.md,
  * "Installing a node"). Only private installs without sudo.
  */
@@ -38,27 +38,27 @@ enum class ComputeModeKind(val wire: String, val systems: Set<ComputeSystem>) {
     }
 }
 
-/** The agent holding an exclusive machine; [title] is null where the reader may not read its conversation. */
+/** The agent holding an exclusive computer; [title] is null where the reader may not read its conversation. */
 data class ComputeHolder(val agentId: String, val title: String?)
 
-/** Who owns a private machine, as the reader sees them. */
+/** Who owns a private computer, as the reader sees them. */
 sealed interface ComputeOwner {
     data object Reader : ComputeOwner
     data class Member(val userId: String, val name: String?) : ComputeOwner
 }
 
-/** A machine's mode, with what only that mode carries. */
+/** A computer's mode, with what only that mode carries. */
 sealed interface ComputeMode {
     val kind: ComputeModeKind
 
     data object Sandbox : ComputeMode { override val kind get() = ComputeModeKind.Sandbox }
     data object Shared : ComputeMode { override val kind get() = ComputeModeKind.Shared }
     data class Exclusive(val holder: ComputeHolder?) : ComputeMode { override val kind get() = ComputeModeKind.Exclusive }
-    /** [owner] is null for a machine that joined before owners were kept. */
+    /** [owner] is null for a computer that joined before owners were kept. */
     data class Private(val owner: ComputeOwner?) : ComputeMode { override val kind get() = ComputeModeKind.Private }
 }
 
-/** Where a machine stands. A revoked machine is not listed. */
+/** Where a computer stands. A revoked computer is not listed. */
 enum class ComputeStatus(val wire: String) {
     Online("online"), Offline("offline"), Draining("draining"), Enrolling("enrolling");
 
@@ -67,7 +67,7 @@ enum class ComputeStatus(val wire: String) {
     }
 }
 
-/** What the reader may do with compute: add any machine and free a held one, use machines and add a private one, or nothing. */
+/** What the reader may do with compute: add any computer and free a held one, use computers and add a private one, or nothing. */
 enum class ComputeAccess {
     Manage, Use, None;
 
@@ -80,14 +80,14 @@ enum class ComputeAccess {
     }
 }
 
-/** One machine agents can join (`GET /v0/compute/nodes`). */
-data class ComputeMachine(
+/** One computer agents can join (`GET /v0/computers`). */
+data class Computer(
     val id: String,
     /** Its hostname unless someone renamed it. */
     val name: String,
     val status: ComputeStatus,
     val hostname: String?,
-    /** `macos`, `linux` or `windows`, as the machine reported it. */
+    /** `macos`, `linux` or `windows`, as the computer reported it. */
     val os: String?,
     val arch: String?,
     val mode: ComputeMode,
@@ -109,25 +109,25 @@ data class ComputeMachine(
     fun releasable(access: ComputeAccess): Boolean = access == ComputeAccess.Manage && holder != null
 }
 
-/** An agent waiting for the reader to let it join one of their private machines. */
+/** An agent waiting for the reader to let it join one of their private computers. */
 data class ComputeApproval(
-    val machineId: String,
-    val machineName: String?,
+    val computerId: String,
+    val computerName: String?,
     val agentId: String,
     /** Null where the reader may not read that agent's conversation. */
     val agentTitle: String?,
     val createdAt: Long,
 ) {
-    val key: String get() = "$machineId/$agentId"
+    val key: String get() = "$computerId/$agentId"
 }
 
-data class ComputeSnapshot(val machines: List<ComputeMachine>, val approvals: List<ComputeApproval>)
+data class ComputeSnapshot(val computers: List<Computer>, val approvals: List<ComputeApproval>)
 
 /** The install commands, both or neither. */
 class ComputeCommands(val unix: String, val windows: String)
 
 /**
- * A new machine's one-time install. It carries a single-use secret: kept in
+ * A new computer's one-time install. It carries a single-use secret: kept in
  * memory only, never logged or saved, and not a data class so it never prints.
  */
 class ComputeInstall(
@@ -140,19 +140,19 @@ class ComputeInstall(
     val expiresAt: Long,
 )
 
-/** What a new machine will be: its mode, and the name and description it joins with. */
+/** What a new computer will be: its mode, and the name and description it joins with. */
 data class ComputeDraft(val mode: ComputeModeKind, val name: String = "", val description: String = "")
 
 /**
- * Adding a machine, while its page is up: the form, its request, a refusal
+ * Adding a computer, while its page is up: the form, its request, a refusal
  * (the form again, with why), then the install, shown once.
  */
-sealed interface MachineAdd {
-    data class Choosing(val draft: ComputeDraft) : MachineAdd
-    data class Creating(val draft: ComputeDraft) : MachineAdd
+sealed interface ComputerAdd {
+    data class Choosing(val draft: ComputeDraft) : ComputerAdd
+    data class Creating(val draft: ComputeDraft) : ComputerAdd
     /** [reason] is the server's own words; null when it gave none. */
-    data class Failed(val draft: ComputeDraft, val reason: String?) : MachineAdd
-    class Shown(val install: ComputeInstall) : MachineAdd
+    data class Failed(val draft: ComputeDraft, val reason: String?) : ComputerAdd
+    class Shown(val install: ComputeInstall) : ComputerAdd
 
     /** The draft the form shows, or null once the install is shown. */
     val form: ComputeDraft?
@@ -164,7 +164,7 @@ sealed interface MachineAdd {
         }
 
     /** Changes the draft, which takes back a refusal the earlier draft got. A member may pick only private. */
-    fun edit(access: ComputeAccess, change: (ComputeDraft) -> ComputeDraft): MachineAdd {
+    fun edit(access: ComputeAccess, change: (ComputeDraft) -> ComputeDraft): ComputerAdd {
         val draft = when (this) {
             is Choosing -> draft
             is Failed -> draft
@@ -186,8 +186,8 @@ sealed interface MachineAdd {
     val closable: Boolean get() = this !is Creating
 
     companion object {
-        /** A manager starts on sandbox; a member may add only a private machine of their own. */
-        fun open(access: ComputeAccess): MachineAdd? = when (access) {
+        /** A manager starts on sandbox; a member may add only a private computer of their own. */
+        fun open(access: ComputeAccess): ComputerAdd? = when (access) {
             ComputeAccess.Manage -> Choosing(ComputeDraft(ComputeModeKind.Sandbox))
             ComputeAccess.Use -> Choosing(ComputeDraft(ComputeModeKind.Private))
             ComputeAccess.None -> null
@@ -195,8 +195,8 @@ sealed interface MachineAdd {
     }
 }
 
-/** Renaming or describing a machine, while its page is up. */
-data class MachineEdit(val machineId: String, val name: String, val description: String, val phase: Phase = Phase.Editing) {
+/** Renaming or describing a computer, while its page is up. */
+data class ComputerEdit(val computerId: String, val name: String, val description: String, val phase: Phase = Phase.Editing) {
     sealed interface Phase {
         data object Editing : Phase
         data object Saving : Phase
@@ -207,41 +207,41 @@ data class MachineEdit(val machineId: String, val name: String, val description:
     val savable: Boolean get() = phase != Phase.Saving && name.isNotBlank()
 
     /**
-     * `PATCH /v0/compute/nodes/:id`'s body: what differs from [machine], an
+     * `PATCH /v0/computers/:id`'s body: what differs from [computer], an
      * emptied description as `null`, which clears it. Null when nothing
      * changed or the name is empty.
      */
-    fun patch(machine: ComputeMachine): JsonObject? {
+    fun patch(computer: Computer): JsonObject? {
         val name = name.trim().ifEmpty { return null }
         val description = description.trim().ifEmpty { null }
         val body = buildMap<String, JsonElement> {
-            if (name != machine.name) put("name", JsonPrimitive(name))
-            if (description != machine.description) put("description", description?.let(::JsonPrimitive) ?: JsonNull)
+            if (name != computer.name) put("name", JsonPrimitive(name))
+            if (description != computer.description) put("description", description?.let(::JsonPrimitive) ?: JsonNull)
         }
         return body.takeIf { it.isNotEmpty() }?.let(::JsonObject)
     }
 
     companion object {
-        fun open(machine: ComputeMachine) = MachineEdit(machine.id, machine.name, machine.description.orEmpty())
+        fun open(computer: Computer) = ComputerEdit(computer.id, computer.name, computer.description.orEmpty())
     }
 }
 
-/** Happy Cloud's machines in modes (happy-cluster deploy/README.md, "Machines"). Every route needs `compute.use`. */
-object ComputeMachines {
-    private const val ROOT = "/v0/compute"
+/** Happy Cloud's computers in modes (happy-cluster deploy/README.md, "Compute nodes"). Every route needs `compute.use`. */
+object Computers {
+    private const val ROOT = "/v0/computers"
 
-    /** The machines and the reader's join requests. Another member's private machine is [ComputeOwner.Member] with no name yet. */
+    /** The computers and the reader's join requests. Another member's private computer is [ComputeOwner.Member] with no name yet. */
     suspend fun read(client: AgentClient, readerId: String?): ComputeSnapshot {
         require(client.cloud)
-        val nodes = client.decode<JsonObject>("GET", "$ROOT/nodes")
+        val computers = client.decode<JsonObject>("GET", ROOT)
         val approvals = client.decode<JsonObject>("GET", "$ROOT/approvals")
         return ComputeSnapshot(
-            machines = list(nodes, "nodes").mapNotNull { machine(it, readerId) }.sortedWith(onlineFirst),
+            computers = list(computers, "computers").mapNotNull { computer(it, readerId) }.sortedWith(onlineFirst),
             approvals = list(approvals, "approvals").mapNotNull(::approval),
         )
     }
 
-    /** Mints the machine's single-use join token and its install commands. */
+    /** Mints the computer's single-use join token and its install commands. */
     suspend fun create(client: AgentClient, draft: ComputeDraft): ComputeInstall? {
         require(client.cloud)
         val body = buildMap<String, JsonElement> {
@@ -252,28 +252,28 @@ object ComputeMachines {
         return install(client.decode<JsonObject>("POST", "$ROOT/join-tokens", JsonObject(body)))
     }
 
-    suspend fun edit(client: AgentClient, machineId: String, patch: JsonObject) {
+    suspend fun edit(client: AgentClient, computerId: String, patch: JsonObject) {
         require(client.cloud)
-        client.send("PATCH", "$ROOT/nodes/${AgentClient.escape(machineId)}", patch)
+        client.send("PATCH", "$ROOT/${AgentClient.escape(computerId)}", patch)
     }
 
-    /** Frees an exclusive machine from the agent holding it (`pools.manage`). */
-    suspend fun releaseLock(client: AgentClient, machineId: String) {
+    /** Frees an exclusive computer from the agent holding it (`pools.manage`). */
+    suspend fun releaseLock(client: AgentClient, computerId: String) {
         require(client.cloud)
-        client.send("POST", "$ROOT/nodes/${AgentClient.escape(machineId)}/release-lock", JsonObject(emptyMap()))
+        client.send("POST", "$ROOT/${AgentClient.escape(computerId)}/release-lock", JsonObject(emptyMap()))
     }
 
     suspend fun answer(client: AgentClient, approval: ComputeApproval, approve: Boolean) {
         require(client.cloud)
         client.send(
             "POST",
-            "$ROOT/approvals/${AgentClient.escape(approval.machineId)}/${AgentClient.escape(approval.agentId)}",
+            "$ROOT/approvals/${AgentClient.escape(approval.computerId)}/${AgentClient.escape(approval.agentId)}",
             JsonObject(mapOf("approve" to JsonPrimitive(approve))),
         )
     }
 
-    /** A node, or null for a revoked one or one in no mode this phone knows. */
-    internal fun machine(node: JsonObject, readerId: String?): ComputeMachine? {
+    /** A computer, or null for a revoked one or one in no mode this phone knows. */
+    internal fun computer(node: JsonObject, readerId: String?): Computer? {
         val id = node["id"].str?.takeIf { it.isNotBlank() } ?: return null
         val status = ComputeStatus.of(node["status"].str) ?: return null
         val mode = when (ComputeModeKind.of(node["mode"].str) ?: return null) {
@@ -287,7 +287,7 @@ object ComputeMachines {
             })
         }
         val hostname = node["hostname"].text
-        return ComputeMachine(
+        return Computer(
             id = id,
             name = node["name"].text ?: hostname ?: id.take(8),
             status = status,
@@ -302,8 +302,8 @@ object ComputeMachines {
     }
 
     internal fun approval(value: JsonObject): ComputeApproval? = ComputeApproval(
-        machineId = value["nodeId"].str ?: return null,
-        machineName = value["nodeName"].text,
+        computerId = value["computerId"].str ?: return null,
+        computerName = value["computerName"].text,
         agentId = value["agentId"].str ?: return null,
         agentTitle = value["agentTitle"].text,
         createdAt = value["createdAt"].long ?: 0,
@@ -321,8 +321,8 @@ object ComputeMachines {
         )
     }
 
-    /** Online first, then by name, so the machines that can take work lead. */
-    private val onlineFirst = compareBy<ComputeMachine>({ it.status != ComputeStatus.Online }, { it.name.lowercase() })
+    /** Online first, then by name, so the computers that can take work lead. */
+    private val onlineFirst = compareBy<Computer>({ it.status != ComputeStatus.Online }, { it.name.lowercase() })
 
     private val JsonElement?.text: String? get() = str?.takeIf { it.isNotEmpty() }
 
@@ -330,14 +330,14 @@ object ComputeMachines {
 }
 
 /**
- * Settings › Compute's machines and join requests while the page shows:
- * read on every `hello`, `runners.updated` and `compute.approvals.updated`,
- * and every few seconds, since nothing says a machine went offline.
+ * Settings › Compute's computers and join requests while the page shows:
+ * read on every `hello`, `runners.updated`, `compute.nodes.updated` and `compute.approvals.updated`,
+ * and every few seconds, since nothing says a computer went offline.
  */
 class ComputeSource(
     private val client: AgentClient,
     private val readerId: String?,
-    /** Names for member IDs ([TeamDirectory.names]), for the private machines of others a manager sees. */
+    /** Names for member IDs ([TeamDirectory.names]), for the private computers of others a manager sees. */
     private val names: suspend (Set<String>) -> Map<String, String> = { emptyMap() },
 ) {
     sealed interface State {
@@ -353,7 +353,7 @@ class ComputeSource(
     /** A failed read keeps what was shown; only a first read that fails says so. */
     suspend fun refresh() = lock.withLock {
         try {
-            mutable.value = State.Loaded(named(ComputeMachines.read(client, readerId)))
+            mutable.value = State.Loaded(named(Computers.read(client, readerId)))
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -373,25 +373,25 @@ class ComputeSource(
     }
 
     /** Throws what the server said; the install is never kept here. */
-    suspend fun create(draft: ComputeDraft): ComputeInstall? = ComputeMachines.create(client, draft).also { refresh() }
+    suspend fun create(draft: ComputeDraft): ComputeInstall? = Computers.create(client, draft).also { refresh() }
 
-    suspend fun edit(machineId: String, patch: JsonObject) {
-        ComputeMachines.edit(client, machineId, patch)
+    suspend fun edit(computerId: String, patch: JsonObject) {
+        Computers.edit(client, computerId, patch)
         refresh()
     }
 
-    suspend fun releaseLock(machine: ComputeMachine) {
-        ComputeMachines.releaseLock(client, machine.id)
+    suspend fun releaseLock(computer: Computer) {
+        Computers.releaseLock(client, computer.id)
         refresh()
     }
 
     suspend fun answer(approval: ComputeApproval, approve: Boolean) {
-        ComputeMachines.answer(client, approval, approve)
+        Computers.answer(client, approval, approve)
         refresh()
     }
 
     private suspend fun named(snapshot: ComputeSnapshot): ComputeSnapshot {
-        val members = snapshot.machines.mapNotNull { ((it.mode as? ComputeMode.Private)?.owner as? ComputeOwner.Member)?.userId }.toSet()
+        val members = snapshot.computers.mapNotNull { ((it.mode as? ComputeMode.Private)?.owner as? ComputeOwner.Member)?.userId }.toSet()
         if (members.isEmpty()) return snapshot
         val known = try {
             names(members)
@@ -400,14 +400,14 @@ class ComputeSource(
         } catch (_: Exception) {
             emptyMap()
         }
-        return snapshot.copy(machines = snapshot.machines.map { machine ->
-            val owner = (machine.mode as? ComputeMode.Private)?.owner as? ComputeOwner.Member ?: return@map machine
-            machine.copy(mode = ComputeMode.Private(owner.copy(name = known[owner.userId])))
+        return snapshot.copy(computers = snapshot.computers.map { computer ->
+            val owner = (computer.mode as? ComputeMode.Private)?.owner as? ComputeOwner.Member ?: return@map computer
+            computer.copy(mode = ComputeMode.Private(owner.copy(name = known[owner.userId])))
         })
     }
 
     companion object {
         const val POLL_MILLIS = 4_000L
-        val REFRESHED_BY = setOf(AgentEvent.HELLO, "runners.updated", "compute.approvals.updated")
+        val REFRESHED_BY = setOf(AgentEvent.HELLO, "runners.updated", "compute.nodes.updated", "compute.approvals.updated")
     }
 }
