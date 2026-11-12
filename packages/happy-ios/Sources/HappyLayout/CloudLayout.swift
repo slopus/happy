@@ -11,7 +11,9 @@ import CoreGraphics
 /// Apple's and Google's rising to make room), Continue with email 12 under
 /// GitHub's when there is one, all as wide as the widest. A note (the
 /// account's sign-in has ended, or why a sign-in failed) sits 12 over
-/// Apple's, and the slides centre again over it all.
+/// Apple's. A note coming or going moves nothing: where the slides leave
+/// room for `noteRoom` over the buttons it floats there, else that room is
+/// kept under the slides whether or not there is a note.
 public struct CloudWelcomeLayout: Equatable, Sendable {
     public enum Metrics {
         /// Between the note and the button under it.
@@ -38,13 +40,30 @@ public struct CloudWelcomeLayout: Equatable, Sendable {
     /// `safeArea` is the first screen's (without this one's bar, which
     /// sits over the first screen's top row). `button`, `google`,
     /// `secondary` and `tertiary` are the buttons' own sizes; a zero
-    /// `google` or `tertiary` leaves that one out.
+    /// `google` or `tertiary` leaves that one out. `noteRoom` is the most a
+    /// note takes (its longest, two lines), kept for one whether or not
+    /// there is one.
     public init(size: CGSize, safeArea: LayoutInsets, button buttonSize: CGSize, google googleSize: CGSize = .zero, secondary: CGSize,
-                tertiary: CGSize = .zero, note: Measurable? = nil, slides: [StartLayout.Slide], dots: CGSize) {
+                tertiary: CGSize = .zero, note: Measurable? = nil, noteRoom reserved: CGFloat = 0, slides: [StartLayout.Slide], dots: CGSize) {
         let width = max(0, size.width - safeArea.horizontal)
         let column = min(StartLayout.Metrics.columnMaxWidth, max(0, width - StartLayout.Metrics.sidePadding * 2))
         let noteSize = note?.size(fitting: column) ?? .zero
-        let noteRoom = noteSize.height > 0 ? noteSize.height + Metrics.noteGap : 0
+        // Where the slides, laid out with no note, leave the room over the
+        // buttons the note floats there; else the room is always kept.
+        let floating = Self(size: size, safeArea: safeArea, button: buttonSize, google: googleSize, secondary: secondary, tertiary: tertiary,
+                            keptRoom: 0, slides: slides, dots: dots)
+        let dotsBottom = floating.start.gallery.minY + floating.start.dots.maxY
+        let fits = floating.start.button.minY - dotsBottom >= max(reserved, noteSize.height) + Metrics.noteGap * 2
+        let keptRoom = fits ? 0 : max(reserved, noteSize.height) + Metrics.noteGap
+        self.init(size: size, safeArea: safeArea, button: buttonSize, google: googleSize, secondary: secondary, tertiary: tertiary,
+                  keptRoom: keptRoom, slides: slides, dots: dots)
+        let x = safeArea.left + (width - column) / 2
+        self.note = noteSize.height > 0 ? CGRect(x: x, y: button.minY - Metrics.noteGap - noteSize.height, width: column, height: noteSize.height) : .zero
+    }
+
+    /// The welcome with `keptRoom` over Apple's button for a note.
+    private init(size: CGSize, safeArea: LayoutInsets, button buttonSize: CGSize, google googleSize: CGSize, secondary: CGSize,
+                 tertiary: CGSize, keptRoom noteRoom: CGFloat, slides: [StartLayout.Slide], dots: CGSize) {
         let googleRoom = googleSize.height > 0 ? Metrics.googleGap + googleSize.height : 0
         // The note, Apple's button and Google's are one block where Start is;
         // GitHub's and email's are one block where Use Happy Cloud is.
@@ -64,9 +83,7 @@ public struct CloudWelcomeLayout: Equatable, Sendable {
         if tertiary.height > 0 {
             self.tertiary = CGRect(x: cloud.minX, y: cloud.maxY - tertiary.height, width: cloud.width, height: tertiary.height)
         }
-        self.note = noteSize.height > 0
-            ? CGRect(x: safeArea.left + (width - column) / 2, y: block.minY, width: column, height: noteSize.height)
-            : .zero
+        note = .zero
     }
 }
 
@@ -87,7 +104,11 @@ public struct CloudWelcomeLayout: Equatable, Sendable {
 ///                                the screen's edge where there is none)
 ///
 /// What is above the actions is centred in the room over them, as
-/// desktop's centred setup pages are. The actions ride the keyboard and
+/// desktop's centred setup pages are, by its steady measure (`steadyBody`,
+/// `steadyContent`): a status line at the room kept for it, a list at its
+/// loading size. What then comes and goes there grows down from where the
+/// block already is, so an error, a hint or a list arriving never moves
+/// the title. The actions ride the keyboard and
 /// the rest stays centred in the room left over them, never above its top
 /// margin; past that the screen scrolls.
 public struct CloudStageLayout: Equatable, Sendable {
@@ -150,7 +171,8 @@ public struct CloudStageLayout: Equatable, Sendable {
     /// under it, zero without one; an empty `body` or `content` measures
     /// zero tall and takes no gap.
     public init(size: CGSize, safeArea: LayoutInsets, keyboardTop: CGFloat? = nil, art side: CGFloat = 0, caption captionSize: CGSize = .zero,
-                title: Measurable, body: Measurable, content: Measurable, actions: [Action]) {
+                title: Measurable, body: Measurable, content: Measurable, steadyBody: Measurable? = nil, steadyContent: Measurable? = nil,
+                actions: [Action]) {
         typealias M = Metrics
         let width = max(0, size.width - safeArea.horizontal)
         let column = Self.column(size: size, safeArea: safeArea)
@@ -158,13 +180,16 @@ public struct CloudStageLayout: Equatable, Sendable {
         let titleHeight = title.height(fitting: column)
         let bodyHeight = body.height(fitting: column)
         let contentHeight = content.height(fitting: column)
+        let steadyBodyHeight = steadyBody?.height(fitting: column) ?? bodyHeight
+        let steadyContentHeight = steadyContent?.height(fitting: column) ?? contentHeight
 
+        // Measured steady: what may come and go under the title doesn't count.
         var block = titleHeight
         if side > 0 { block += side + M.artGap }
         let captioned = side > 0 && captionSize.height > 0
         if captioned { block += M.captionGap + captionSize.height }
-        if bodyHeight > 0 { block += M.titleGap + bodyHeight }
-        if contentHeight > 0 { block += M.bodyGap + contentHeight }
+        if steadyBodyHeight > 0 { block += M.titleGap + steadyBodyHeight }
+        if steadyContentHeight > 0 { block += M.bodyGap + steadyContentHeight }
         let actionsHeight = actions.enumerated().reduce(CGFloat(0)) { $0 + $1.element.height + ($1.offset > 0 ? $1.element.gap : 0) }
 
         let edge = max(safeArea.bottom, M.bottomPadding)

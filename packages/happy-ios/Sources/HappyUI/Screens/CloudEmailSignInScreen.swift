@@ -4,8 +4,8 @@ import HappyLayout
 import UIKit
 
 /// One of signing in to Happy Cloud by email's two steps: a field, a line
-/// under it that says what went wrong (kept whether or not it says
-/// anything, so typing never moves the page), and buttons that may have to
+/// under it that says what went wrong (its two lines' room kept whether or
+/// not it says anything, so nothing moves when it does), and buttons that may have to
 /// wait, their titles counting down (`update`), once the accounts service
 /// answers `429 rate_limited`. docs/SERVER-SIGN-IN.md, "Happy Cloud".
 class CloudEmailStepViewController: CloudStageViewController, CloudSignInStep, UITextFieldDelegate {
@@ -34,10 +34,7 @@ class CloudEmailStepViewController: CloudStageViewController, CloudSignInStep, U
         tick()
     }
 
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        field.text.becomeFirstResponder()
-    }
+    override var typingField: UITextField? { field.text }
 
     /// What the step shows now: the buttons' titles and whether they can
     /// be used. Whether a wait is still counting down.
@@ -77,14 +74,15 @@ class CloudEmailStepViewController: CloudStageViewController, CloudSignInStep, U
         return now().addingTimeInterval(retryAfter ?? 60)
     }
 
-    func items(width: CGFloat) -> [CloudColumnLayout.Item] {
+    func items(width: CGFloat, steady: Bool = false) -> [CloudColumnLayout.Item] {
         [
             .init(height: CloudField.height),
-            .init(height: max((TextStyles.startSlideBody.lineHeight ?? 24), status.string.isEmpty ? 0 : status.measurable.height(fitting: width)), gap: 12),
+            .init(height: steady ? Self.statusRoom : Self.statusHeight(status, width: width), gap: 12),
         ]
     }
 
     override func contentHeight(width: CGFloat) -> CGFloat { CloudColumnLayout.stack(items(width: width), width: width).height }
+    override func steadyContentHeight(width: CGFloat) -> CGFloat { CloudColumnLayout.stack(items(width: width, steady: true), width: width).height }
 
     override func layoutContent() {
         let frames = CloudColumnLayout.stack(items(width: content.bounds.width), width: content.bounds.width).frames
@@ -138,7 +136,7 @@ final class CloudEmailViewController: CloudEmailStepViewController {
             try await CloudAccount.startEmailSignIn(email: email, http: http)
             let code = CloudEmailCodeViewController(context: context, email: email, http: http, sentAt: now())
             code.now = now
-            navigationController?.pushViewController(code, animated: true)
+            CloudScreens.pushTyping(code, on: navigationController)
         } catch {
             say(Strings.CloudEmail.failure(error))
             if let ends = waitEnds(error) { sendAt = ends; tick() }
@@ -248,8 +246,8 @@ final class CloudEmailCodeViewController: CloudEmailStepViewController {
         tick()
     }
 
-    override func items(width: CGFloat) -> [CloudColumnLayout.Item] {
-        super.items(width: width) + [.init(size: change.layout(width: width).size, gap: 4, centred: true)]
+    override func items(width: CGFloat, steady: Bool = false) -> [CloudColumnLayout.Item] {
+        super.items(width: width, steady: steady) + [.init(size: change.layout(width: width).size, gap: 4, centred: true)]
     }
 
     override func layoutContent() {

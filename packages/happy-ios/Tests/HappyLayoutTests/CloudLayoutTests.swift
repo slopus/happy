@@ -48,18 +48,29 @@ final class CloudLayoutTests: XCTestCase {
         XCTAssertLessThan(welcome.start.gallery.minY, plain.start.gallery.minY, "the slides centre again over the taller block")
     }
 
-    /// The note sits 12 over Apple's button in the slides' column; the
-    /// buttons stay put and the slides centre again over it all.
-    func testTheNoteSitsOverTheButtonsAndTheSlidesMakeRoom() {
+    /// The note sits 12 over Apple's button in the slides' column, and
+    /// coming or going it moves nothing: the room `noteRoom` asks for is
+    /// kept under the slides whether or not there is a note. With no room
+    /// asked, a note where the slides leave none still makes its own.
+    func testTheNoteSitsOverTheButtonsAndMovesNothing() {
         let safe = LayoutInsets(top: 59, left: 0, bottom: 34, right: 0)
-        let apple = CGSize(width: 220, height: 50), github = CGSize(width: 236, height: 50)
-        let plain = CloudWelcomeLayout(size: phone, safeArea: safe, button: apple, secondary: github, slides: slides(), dots: CGSize(width: 150, height: 26))
+        let apple = CGSize(width: 220, height: 50), github = CGSize(width: 236, height: 50), dots = CGSize(width: 150, height: 26)
+        let plain = CloudWelcomeLayout(size: phone, safeArea: safe, button: apple, secondary: github, noteRoom: 48, slides: slides(), dots: dots)
         let noted = CloudWelcomeLayout(size: phone, safeArea: safe, button: apple, secondary: github, note: .fixed(width: 300, height: 40),
-                                       slides: slides(), dots: CGSize(width: 150, height: 26))
+                                       noteRoom: 48, slides: slides(), dots: dots)
         XCTAssertEqual(noted.button, plain.button)
         XCTAssertEqual(noted.secondary, plain.secondary)
         XCTAssertEqual(noted.note, CGRect(x: 24, y: noted.button.minY - 12 - 40, width: 345, height: 40))
-        XCTAssertEqual(noted.start.gallery.minY, plain.start.gallery.minY - 26)
+        XCTAssertEqual(noted.start, plain.start, "the slides stay where they are")
+        XCTAssertLessThanOrEqual(noted.start.gallery.minY + noted.start.dots.maxY, noted.note.minY, "clear of the dots")
+
+        // On a short phone the slides leave no room over the buttons: it is kept anyway.
+        let short = CGSize(width: 375, height: 667), flat = LayoutInsets(top: 20, left: 0, bottom: 0, right: 0)
+        let shortPlain = CloudWelcomeLayout(size: short, safeArea: flat, button: apple, secondary: github, noteRoom: 48, slides: slides(), dots: dots)
+        let shortNoted = CloudWelcomeLayout(size: short, safeArea: flat, button: apple, secondary: github, note: .fixed(width: 300, height: 48),
+                                            noteRoom: 48, slides: slides(), dots: dots)
+        XCTAssertEqual(shortNoted.start, shortPlain.start)
+        XCTAssertLessThanOrEqual(shortNoted.start.gallery.minY + shortNoted.start.dots.maxY, shortNoted.note.minY)
     }
 
     /// Continue with Google sits 12 under Apple's in Start's block, which
@@ -115,6 +126,25 @@ final class CloudLayoutTests: XCTestCase {
         XCTAssertEqual(layout.title.minY - (103 + 24), layout.actions[0].minY - 24 - layout.content.maxY)
         XCTAssertEqual(layout.keyboardInset, 852 - 516 - 34)
         XCTAssertEqual(layout.keyboardOffset, 0, "it fits: nothing scrolls")
+    }
+
+    /// Centred by its steady measure, a step moves nothing above what comes
+    /// and goes: a status line longer than its room, a list where the
+    /// spinner was, a failure in the body's place all grow down from where
+    /// the block is, the actions where they were.
+    func testWhatComesAndGoesGrowsDownAndMovesNothingAbove() {
+        func step(body: CGFloat, content: CGFloat) -> CloudStageLayout {
+            CloudStageLayout(size: phone, safeArea: barred, keyboardTop: 516, title: .fixed(width: 300, height: 34), body: .fixed(width: 300, height: body),
+                             content: .fixed(width: 345, height: content), steadyBody: .fixed(width: 300, height: 24),
+                             steadyContent: .fixed(width: 345, height: 130), actions: [.init(height: 50)])
+        }
+        let steady = step(body: 24, content: 130)
+        for grown in [step(body: 24, content: 154), step(body: 48, content: 130), step(body: 24, content: 100)] {
+            XCTAssertEqual(grown.title, steady.title)
+            XCTAssertEqual(grown.body.minY, steady.body.minY)
+            XCTAssertEqual(grown.actions, steady.actions)
+        }
+        XCTAssertEqual(step(body: 24, content: 154).content.minY, steady.content.minY)
     }
 
     /// Too tall for the room over the keyboard: it starts at its top margin,

@@ -146,8 +146,8 @@ accounts and servers v1, with v4's token lifetimes.
        keeps digits only, six at most, and the sixth checks the code at
        once: `POST /v1/auth/email/verify` `{ email, code }` answers the
        same account token JSON as `/v1/auth/native`, accepted the same way
-       (the pass, its refresh token dropped), then Join a server in both
-       steps' place, so Back goes to the welcome. Resend code waits 60 s
+       (the pass, its refresh token dropped), then Join a server in the
+       place of the welcome and both steps, as after every sign-in. Resend code waits 60 s
        after each code sent, its title counting down ("Resend code in
        0:42"); Change email goes back to the address, kept.
 
@@ -194,7 +194,9 @@ accounts and servers v1, with v4's token lifetimes.
   whether or not it says anything); Bootstrap, enabled once the name is
   free, `POST /v1/servers`, then straight into it. **Join with an invite**
   (`CloudJoinViewController`): the name and the invite code,
-  `POST /v1/servers/join`, then straight into it.
+  `POST /v1/servers/join`, then straight into it. Either way Connecting
+  takes the step's place (over Join a server when there is one), so Back
+  never returns to a step that is done.
 - **Connecting** (after Bootstrap or an invite; Join on the list does the
   same in place) asks the accounts service for the server's own tokens,
   `POST /v1/servers/:id/token` under the pass: no browser. The access
@@ -212,12 +214,36 @@ accounts and servers v1, with v4's token lifetimes.
   name Apple gave this sign-in (only on an Apple ID's first authorization;
   in memory only), else the server's suggestion, which is
   `GET /v0/profile`'s `name` while the profile is unsaved. What they give
-  is saved with `PATCH /v0/profile`. If they cancel, the screen says the
+  is saved with `PATCH /v0/profile`, then the server is kept and opens
+  from that screen, the flow ending over it: nothing pops back to
+  Connecting or the list first. If they cancel, the screen says the
   server needs a name and offers Try Again. The app never makes a name
   up. A connected cloud server whose onboarding still says the member's
   `profile` step isn't done (`Onboarding.needsName`) asks the same over
   home, once a launch, with Not Now. A name in the profile alone decides
   nothing.
+- **Nothing moves but for the keyboard** (`CloudStageViewController`).
+  - A status, error or helper line keeps two lines' room whether or not
+    it says anything, and each step is centred by its steady measure, so
+    a failure, a countdown, "Checking…" or a taken name moves nothing;
+    the list arriving on Join a server grows down from where the spinner
+    was. The welcome keeps the note's room over its buttons.
+  - A step that types (email, code, test account, Bootstrap, Join with an
+    invite, Your name) is pushed with its keyboard (`KeyboardPush`): the
+    push and the keyboard start together, and the step follows the
+    keyboard from its will-change notification on its own duration and
+    curve, in one animation, as the chat's composer does; while a finger
+    drags the keyboard down it follows the layout guide. Between two
+    steps that type (Send code, Change email, I have an invite) the
+    keyboard stays up and only changes kind; back to one that doesn't, it
+    goes down with the pop.
+  - A step done for good is replaced, never pushed over or popped through
+    (`CloudScreens.replace`): signed in by any way, Join a server takes
+    the place of the welcome and every sign-in step, wearing the flow's
+    Close; a server made or joined, Connecting takes Bootstrap's or the
+    invite's.
+  - `HostedCloudSignInMotionTests` reads every display frame of each of
+    these from the presentation layers, the keyboard's top included.
 - **Sign-in methods.** Apple and Google natively, GitHub in the app's own
   sheet, straight to GitHub, and a code by email typed in the app.
 - **Sign Out of Happy Cloud**, in the account switcher's menu while the

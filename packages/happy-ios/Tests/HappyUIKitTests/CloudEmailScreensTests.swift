@@ -198,9 +198,10 @@ final class CloudEmailScreensTests: XCTestCase {
         await http.answer("POST /v1/auth/email/verify", 200, #"{"access_token":"\#(pass)","refresh_token":"r1","token_type":"Bearer","expires_in":3600}"#)
         await http.answer("GET /v1/servers", 200, #"{"servers":[{"id":"s1","name":"acme","url":"","role":"owner"}]}"#)
         type("123456", into: screen.field)
-        await settle { navigation.topViewController is CloudServersViewController }
+        // The stack holds the step going out until the push is over.
+        await settle { navigation.topViewController is CloudServersViewController && navigation.transitionCoordinator == nil }
         XCTAssertTrue(navigation.topViewController is CloudServersViewController, "signed in, as after Apple")
-        XCTAssertTrue(navigation.viewControllers.first === welcome && navigation.viewControllers.count == 2, "Back from the servers is the welcome")
+        XCTAssertEqual(navigation.viewControllers.count, 1, "the servers in the place of every sign-in step: Back never returns to one")
         await settle { await http.requests.contains { $0.url.path == "/v1/servers" } }
         let listed = await http.requests.last { $0.url.path == "/v1/servers" }
         XCTAssertEqual(listed?.headers["Authorization"], "Bearer \(pass)")

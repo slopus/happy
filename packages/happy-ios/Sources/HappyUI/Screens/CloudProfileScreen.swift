@@ -11,10 +11,11 @@ import UIKit
 /// it, else as the server suggests it, with the keyboard up.
 ///
 /// Continue spins while `save` keeps the name, then the picture: the name
-/// first, as the server refuses everything else until there is one. A name
-/// that isn't kept says so under the field, in the same words whatever went
-/// wrong; a picture that isn't is said once the person has landed, and
-/// never holds them up. Back leaves without saving anything.
+/// first, as the server refuses everything else until there is one, and on
+/// until `finished` has opened the server. A name that isn't kept says so
+/// under the field, in the same words whatever went wrong, in room kept for
+/// it; a picture that isn't is said once the person has landed, and never
+/// holds them up. Back leaves without saving anything.
 final class CloudProfileViewController: CloudStageViewController, UITextFieldDelegate {
     /// Saves the name, then `photo` (JPEG) when there is one; throws when
     /// the name isn't saved, else answers whether the picture was.
@@ -36,8 +37,8 @@ final class CloudProfileViewController: CloudStageViewController, UITextFieldDel
     /// The picture picked here, kept on the phone until Continue.
     private(set) var photo: UIImage?
     /// Told once: whether the picture was saved, or nil when the person
-    /// left without saving.
-    var finished: ((Bool?) -> Void)?
+    /// left without saving. Continue spins until it returns.
+    var finished: ((Bool?) async -> Void)?
     private var done = false
 
     private static let buttonFont = Fonts.ui(.semiBold, size: 17)
@@ -104,17 +105,16 @@ final class CloudProfileViewController: CloudStageViewController, UITextFieldDel
         photoButton.tintColor = ink
     }
 
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        if !done { nameField.text.becomeFirstResponder() }
-    }
+    /// The name has the keyboard until it is saved.
+    override var typingField: UITextField? { done ? nil : nameField.text }
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         // Back, or the whole flow put away: nothing saved.
         guard !done, isMovingFromParent || isBeingDismissed || navigationController?.isBeingDismissed == true else { return }
         done = true
-        finished?(nil)
+        let finished = finished
+        Task { await finished?(nil) }
     }
 
     // MARK: Layout
@@ -135,15 +135,16 @@ final class CloudProfileViewController: CloudStageViewController, UITextFieldDel
         photoButton.setLayoutFrame(caption)
     }
 
-    private func items(width: CGFloat) -> [CloudColumnLayout.Item] {
+    /// The status line's room is kept whether or not it says anything.
+    private func items(width: CGFloat, steady: Bool = false) -> [CloudColumnLayout.Item] {
         [
             .init(height: CloudField.height),
-            // Only when there is something to say: the keyboard leaves little room.
-            .init(height: status.string.isEmpty ? 0 : status.measurable.height(fitting: width), gap: 12),
+            .init(height: steady ? Self.statusRoom : Self.statusHeight(status, width: width), gap: 12),
         ]
     }
 
     override func contentHeight(width: CGFloat) -> CGFloat { CloudColumnLayout.stack(items(width: width), width: width).height }
+    override func steadyContentHeight(width: CGFloat) -> CGFloat { CloudColumnLayout.stack(items(width: width, steady: true), width: width).height }
 
     override func layoutContent() {
         let frames = CloudColumnLayout.stack(items(width: content.bounds.width), width: content.bounds.width).frames
@@ -192,24 +193,25 @@ final class CloudProfileViewController: CloudStageViewController, UITextFieldDel
 
     /// Continue: the name, then the picture. Like `join`, it leaves
     /// `isLoading` to the button.
+    /// Saved, the screen stays as it is, keyboard and all, while the
+    /// server opens and the flow ends over it.
     func submit() async {
         let name = name
         guard !name.isEmpty, !done else { return }
         status.string = ""
         relayout()
         setBusy(true)
-        defer { setBusy(false) }
         let picked = photo
         var jpeg: Data?
         if let picked { jpeg = await ProfilePhotoPicker.jpeg(picked) }
         do {
             let photoSaved = try await save(name, jpeg)
             done = true
-            nameField.text.resignFirstResponder()
-            finished?(photoSaved && (picked == nil || jpeg != nil))
+            await finished?(photoSaved && (picked == nil || jpeg != nil))
         } catch {
             status.string = Strings.CloudConnect.nameFailed
             relayout()
+            setBusy(false)
         }
     }
 

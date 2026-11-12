@@ -187,8 +187,11 @@ final class CloudScreensTests: XCTestCase {
         let body = try JSONSerialization.jsonObject(with: try XCTUnwrap(writes[1].body)) as? [String: Any]
         XCTAssertEqual(body?["name"] as? String, "Steve")
         XCTAssertEqual(body?["email"] as? String, "s@example.com")
-        await settle { navigation.topViewController === screen && navigation.transitionCoordinator == nil }
-        XCTAssertTrue(navigation.topViewController === screen, "back on the server it was joining")
+        await settle { !profile.primary.isLoading }
+        XCTAssertTrue(navigation.topViewController === profile && navigation.viewControllers.count == 2,
+                      "the server opens from the profile: nothing pops back to Connecting")
+        XCTAssertEqual(screen.bodyLabel.string, Strings.HappyCloud.connectingBody, "and nothing failed")
+        XCTAssertEqual(screen.context.account.agentConnections.accounts.count, 1, "the server is kept")
         XCTAssertNil(CloudScreens.appleName)
         XCTAssertNil(CloudScreens.takePhotoNote(), "the picture went")
         window?.isHidden = true
@@ -221,7 +224,8 @@ final class CloudScreensTests: XCTestCase {
         profile.choose(CloudProfileViewController.previewPhoto())
         await http.answer("GET /v0/authentication", 200, #"{"authenticated":true,"userId":"u1","methods":[]}"#)
         profile.primary.tapped()
-        await settle { navigation.topViewController === screen && navigation.transitionCoordinator == nil }
+        await settle { !profile.primary.isLoading }
+        XCTAssertTrue(navigation.topViewController === profile, "opened from the profile")
         XCTAssertEqual(profile.status.string, "", "the name went")
         let patches = await daemon.requests.filter { $0.method == "PATCH" }
         let body = try JSONSerialization.jsonObject(with: try XCTUnwrap(patches.first?.body)) as? [String: Any]
@@ -427,9 +431,10 @@ final class CloudScreensTests: XCTestCase {
         await http.answer("GET /v1/servers", 200, #"{"servers":[{"id":"s1","name":"acme","url":"","role":"owner"}]}"#)
         form.password.text.text = "right"
         form.button.tapped()
-        await settle { navigation.topViewController is CloudServersViewController }
+        // The stack holds the step going out until the push is over.
+        await settle { navigation.topViewController is CloudServersViewController && navigation.transitionCoordinator == nil }
         XCTAssertTrue(navigation.topViewController is CloudServersViewController, "signed in, as after Apple")
-        XCTAssertTrue(navigation.viewControllers.first === welcome && navigation.viewControllers.count == 2, "Back from the servers is the welcome")
+        XCTAssertEqual(navigation.viewControllers.count, 1, "the servers in the place of every sign-in step: Back never returns to one")
         XCTAssertEqual(screen.problem.string, "")
         XCTAssertEqual(form.password.text.text ?? "", "", "the password is gone from the field")
         await settle { await http.requests.contains { $0.url.path == "/v1/servers" } }

@@ -126,6 +126,8 @@ private final class StandInTextView: UITextView {
             returnKeyType = traits.returnKeyType ?? .default
             keyboardAppearance = traits.keyboardAppearance ?? .default
             spellCheckingType = traits.spellCheckingType ?? .default
+            // A code's or an address's bar over the keys is part of its height.
+            if let type = traits.textContentType { textContentType = type }
         }
     }
 
