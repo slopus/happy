@@ -696,7 +696,7 @@ final class HappyCloudUITests: XCTestCase {
             if state == "mismatch" {
                 film("e-\(state)-ready", seconds: 20) { join.isEnabled }
                 join.tap()
-                film("e-\(state)-joined", seconds: 20) { status.label.contains("another email") }
+                film("e-\(state)-joined", seconds: 20) { status.label.contains("Sign in with that email") }
             }
             Thread.sleep(forTimeInterval: 1)
             capture("i7-\(state)")
@@ -711,7 +711,7 @@ final class HappyCloudUITests: XCTestCase {
 
     /// The invite screen's title, status line and button, where they are.
     private func inviteFrames() -> [CGRect] {
-        [app.staticTexts["Join a server"].firstMatch.frame, element("cloud-invite-status").frame, element("cloud-invite-join").frame]
+        [element("cloud-invite-title").frame, element("cloud-invite-status").frame, element("cloud-invite-join").frame]
     }
 
     private func report(_ state: String, _ frames: [CGRect]) {

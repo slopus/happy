@@ -1099,7 +1099,7 @@ final class CloudServersViewController: CloudStageViewController {
     private var order: [String] = []
     private let spinner = UIActivityIndicatorView(style: .medium)
     let status = StartGalleryView.bodyLabel("")
-    let bootstrap = RoundButton(title: Strings.CloudConnect.bootstrapNew, size: .normal, display: .inverted)
+    let bootstrap = RoundButton(title: Strings.CloudConnect.bootstrapNew, size: .normal)
     private var pictures: [String: UIImage] = [:]
     private var loadingPictures: Set<String> = []
     /// Servers being joined, and those joined from here (server id to
@@ -1128,7 +1128,8 @@ final class CloudServersViewController: CloudStageViewController {
         primary.isHidden = true
         primary.action = { [weak self] in await self?.primaryTapped() }
         bootstrap.accessibilityIdentifier = "cloud-create"
-        Self.quiet(bootstrap)
+        // A button of its own, not a line of text, under the list.
+        bootstrap.glass = .regular
         bootstrap.onTap = { [weak self] in
             guard let self, joining.isEmpty else { return }
             CloudScreens.pushTyping(CloudCreateViewController(context: context, account: account, first: false), on: navigationController)
@@ -1278,16 +1279,15 @@ final class CloudServersViewController: CloudStageViewController {
         relayout()
     }
 
-    /// The rows, or the spinner while they load; the links; and the
-    /// status line last, in room kept for it, so a join's failure moves
-    /// nothing. The block is centred as it is while loading
+    /// The rows, or the spinner while they load; Bootstrap a new one; and
+    /// the status line last, in room kept for it, so a join's failure
+    /// moves nothing. The block is centred as it is while loading
     /// (`steadyContentHeight`), so the list arriving grows down from it.
     private func items(width: CGFloat, steady: Bool = false) -> [CloudColumnLayout.Item] {
         let rowItems = steady ? [] : order.map { _ in CloudColumnLayout.Item(height: CloudServerRowLayout.Metrics.height, gap: 12) }
-        let link = { (button: RoundButton) in button.layout(width: width).size }
         return rowItems + [
             .init(size: CGSize(width: 44, height: steady || spinner.isAnimating ? 44 : 0), gap: 12, centred: true),
-            .init(size: link(bootstrap), gap: 16, centred: true),
+            .init(height: bootstrap.layout(width: width).size.height, gap: 16),
             .init(height: steady ? Self.statusRoom : Self.statusHeight(status, width: width), gap: 16),
         ]
     }

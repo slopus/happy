@@ -13,9 +13,12 @@ import UIKit
 /// accepted (perhaps by this account: an email invite answers so even to
 /// the person who took it) offers the server list.
 ///
-/// Every state keeps one layout (`CloudInviteLayout`): the title and line
-/// never change, the server's and the inviter's places are kept while
-/// there is nothing to show in them, the status line keeps the room of the
+/// Every state keeps one layout (`CloudInviteLayout`): the title only
+/// changes its words (Invite unavailable for a refusal, Use your invited
+/// email for another email's) and the line under it fades out for a
+/// refusal but keeps its room, the server's and the inviter's places are
+/// kept while there is nothing to show in them (a link glyph in the
+/// server's when the invite can't say which), the status line keeps the room of the
 /// longest it can say, and the one full-width button only changes its
 /// words. A change cross-fades in place.
 final class CloudInviteViewController: CloudStageViewController {
@@ -43,7 +46,7 @@ final class CloudInviteViewController: CloudStageViewController {
     /// What the invite offered, kept when Join is then refused.
     private var offer: CloudInvitePreview?
     private(set) var phase: Phase = .loading {
-        didSet { if isViewLoaded { UIView.transition(with: content, duration: 0.2, options: .transitionCrossDissolve) { self.apply() } } }
+        didSet { if isViewLoaded { UIView.transition(with: scroll, duration: 0.2, options: .transitionCrossDissolve) { self.apply() } } }
     }
 
     init(context: AppContext, account: CloudAccount, invite: CloudInvite) {
@@ -57,6 +60,7 @@ final class CloudInviteViewController: CloudStageViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.accessibilityIdentifier = "cloud-invite"
+        titleLabel.accessibilityIdentifier = "cloud-invite-title"
         primary.accessibilityIdentifier = "cloud-invite-join"
         status.accessibilityIdentifier = "cloud-invite-status"
         primary.action = { [weak self] in await self?.primaryTapped() }
@@ -119,7 +123,20 @@ final class CloudInviteViewController: CloudStageViewController {
 
     private func apply() {
         if case .loading = phase { spinner.startAnimating() } else { spinner.stopAnimating() }
-        picture.image = offer.map { serverPicture($0.server) } ?? AvatarPlaceholderImages.pending(side: CloudInviteLayout.Metrics.picture)
+        let side = CloudInviteLayout.Metrics.picture
+        picture.image = offer.map { serverPicture($0.server) } ?? (phase == .loading ? AvatarPlaceholderImages.pending(side: side) : Self.linkGlyph)
+        // A refusal's line would say the opposite; its room is kept.
+        switch phase {
+        case .refused(.emailMismatch):
+            titleLabel.string = Strings.CloudConnect.inviteOtherEmail
+            bodyLabel.alpha = 1
+        case .refused:
+            titleLabel.string = Strings.CloudConnect.inviteUnavailable
+            bodyLabel.alpha = 0
+        default:
+            titleLabel.string = Strings.CloudConnect.inviteTitle
+            bodyLabel.alpha = 1
+        }
         name.string = offer?.server.title ?? ""
         handle.string = offer.map { HappyCloud.handle($0.server.name) } ?? ""
         // Nobody to name, nobody shown; their place is kept.
@@ -160,6 +177,19 @@ final class CloudInviteViewController: CloudStageViewController {
         }
         return AvatarPlaceholderImages.pending(side: side)
     }
+
+    /// The server's place when the invite can't say which: a link in a
+    /// white circle.
+    static let linkGlyph: UIImage = {
+        let side = CloudInviteLayout.Metrics.picture
+        let symbol = UIImage(systemName: "link", withConfiguration: UIImage.SymbolConfiguration(pointSize: 32, weight: .medium))?
+            .withTintColor(UIColor(Palette.startTextSecondary), renderingMode: .alwaysOriginal)
+        return UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { _ in
+            UIColor.white.setFill()
+            UIBezierPath(ovalIn: CGRect(x: 0, y: 0, width: side, height: side)).fill()
+            if let symbol { symbol.draw(at: CGPoint(x: (side - symbol.size.width) / 2, y: (side - symbol.size.height) / 2)) }
+        }
+    }()
 
     /// Their picture, else their initials.
     private func inviterPicture(_ inviter: CloudInvitePreview.Inviter, name: String) -> UIImage {
