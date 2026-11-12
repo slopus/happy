@@ -554,7 +554,7 @@ final class HostedComposeTests: XCTestCase {
                 continue
             }
             XCTAssertEqual(panel.art.scene, scene)
-            try await until { panel.art.isLoaded && !panel.art.isHidden }
+            XCTAssertTrue(panel.art.isLoaded && !panel.art.isHidden, "\(kind): drawn as soon as it is picked")
             try await Task.sleep(for: .milliseconds(300))
             XCTAssertFalse(panel.art.isAnimating, "\(kind): still until tapped")
             XCTAssertEqual(panel.art.progress, scene.restsOnFirstFrame ? 0 : 1, accuracy: 0.001, "\(kind): at rest")

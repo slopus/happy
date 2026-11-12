@@ -4,6 +4,8 @@ import android.app.Application
 import com.slopus.happy.data.DiskThread
 import com.slopus.happy.diagnostics.traced
 import com.slopus.happy.push.PushServices
+import com.slopus.happy.ui.components.StateArt
+import com.slopus.happy.ui.components.StateCompositions
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
 import kotlin.concurrent.thread
@@ -35,6 +37,8 @@ class HappyApplication : Application() {
                 // What the first screens would otherwise read on the main thread: the push preferences, the glass switch.
                 traced("PushServices") { PushServices.get(this) }
                 com.slopus.happy.ui.components.glassBlurEnabled(this)
+                // New work's robot and clapper board, there in its first frame.
+                traced("StateCompositions") { StateCompositions.preload(this, listOf(StateArt.Action, StateArt.Ready)) }
             } catch (e: Throwable) {
                 built.completeExceptionally(e)
             }

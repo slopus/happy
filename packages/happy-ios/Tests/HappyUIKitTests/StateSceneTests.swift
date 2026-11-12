@@ -267,6 +267,24 @@ final class StateSceneTests: XCTestCase {
         window.isHidden = true
     }
 
+    /// New work's pictures are there in the first frame, even cold, before
+    /// anything has read them: an `immediate` view has its scene from init,
+    /// held at rest, and so has one switched to a scene not yet read.
+    func testAnImmediateSceneIsDrawnFromItsFirstFrameEvenCold() throws {
+        StateSceneView.forgetRead()
+        let view = StateSceneView(scene: .clapperBoard, size: 128, play: .onDemand, replayLabel: "Play again", immediate: true)
+        XCTAssertTrue(view.isLoaded, "read at once, not after a turn of the run loop")
+        let window = shown(view)
+        XCTAssertTrue(view.isLoaded)
+        XCTAssertFalse(view.isAnimating)
+        XCTAssertEqual(view.progress, 0, accuracy: 0.001, "the clapper board at rest")
+        StateSceneView.forgetRead()
+        view.scene = .robot
+        XCTAssertTrue(view.isLoaded, "a kind switched to, unread, is drawn in the same pass")
+        XCTAssertEqual(view.progress, 1, accuracy: 0.001, "the robot at rest")
+        window.isHidden = true
+    }
+
     /// Setting the scene again and again must leave one animation, one box
     /// and no stale play.
     func testRepeatedConfigurationSettles() async throws {

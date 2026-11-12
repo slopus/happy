@@ -149,7 +149,7 @@ fun NewWorkArt(art: StateArt, modifier: Modifier = Modifier) {
             val shown = each == art
             key(each) {
                 Box(if (shown) Modifier.testTag(NewWorkTags.art(each)) else Modifier.reserved()) {
-                    StateAnimation(each, size = NewWorkSpec.art, autoplay = false)
+                    StateAnimation(each, size = NewWorkSpec.art, autoplay = false, immediate = true)
                 }
             }
         }

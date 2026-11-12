@@ -38,7 +38,7 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
     let folder = NewWorkMenuRow(icon: .ionicons("folder-outline"))
     let harness = NewWorkMenuRow(icon: .ionicons("hardware-chip-outline"))
     private let note = UILabel()
-    let art = StateSceneView(scene: .clapperBoard, size: NewWorkLayout.Metrics.art, play: .onDemand, replayLabel: Strings.Tablet.replayIllustration)
+    let art = StateSceneView(scene: .clapperBoard, size: NewWorkLayout.Metrics.art, play: .onDemand, replayLabel: Strings.Tablet.replayIllustration, immediate: true)
     /// The kind's picture; nil for a session.
     private(set) var artScene: StateScene?
 

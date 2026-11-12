@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.components
 
+import android.content.Context
 import androidx.annotation.RawRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,10 +16,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -31,6 +34,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
+import com.airbnb.lottie.LottieComposition
+import com.airbnb.lottie.LottieCompositionFactory
 import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.rememberLottieAnimatable
@@ -40,6 +45,7 @@ import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * The state pictures Happy ships, each for exactly one meaning, as desktop's
@@ -87,6 +93,30 @@ object StateAnimationTags {
 }
 
 /**
+ * State pictures read once and kept: a picture read here is drawn in the
+ * first frame of whatever shows it, where Lottie's own loading leaves that
+ * frame blank while it reads the file on another thread.
+ */
+object StateCompositions {
+    private val read = ConcurrentHashMap<Int, LottieComposition>()
+
+    /** Reads [arts] on this thread, ahead of need: app start does, off the main thread. */
+    fun preload(context: Context, arts: List<StateArt>) {
+        for (art in arts) get(context, art.raw)
+    }
+
+    /** [raw], if it has been read. */
+    fun peek(@RawRes raw: Int): LottieComposition? = read[raw]
+
+    /** [raw], read now on this thread unless it has been already; null if it won't parse. */
+    fun get(context: Context, @RawRes raw: Int): LottieComposition? =
+        read[raw] ?: LottieCompositionFactory.fromRawResSync(context.applicationContext, raw).value?.also { read[raw] = it }
+
+    /** Forgets every picture read, as at launch. Tests start cold with this. */
+    internal fun forget() = read.clear()
+}
+
+/**
  * One state picture in a fixed [size] box (desktop's empty states use 128
  * and 96), drawn whether or not the animation has loaded, so nothing around
  * it moves. As desktop's LottieScene: it plays once when it appears and
@@ -96,12 +126,14 @@ object StateAnimationTags {
  * the background and goes on where it stopped. With animations removed it
  * shows the last frame and never moves. Art that [StateArt.restsOnFirstFrame]
  * holds its first frame instead, and shows it again after each play.
+ * [immediate], it is there in the very first frame it is shown (new work's
+ * robot and clapper board): read now if [StateCompositions] doesn't have it.
  */
 @Composable
-fun StateAnimation(art: StateArt, modifier: Modifier = Modifier, size: Dp = 128.dp, autoplay: Boolean = true) {
+fun StateAnimation(art: StateArt, modifier: Modifier = Modifier, size: Dp = 128.dp, autoplay: Boolean = true, immediate: Boolean = false) {
     // Plays asked for; kept through recreation, so a rotation doesn't replay it.
     var requested by rememberSaveable(art) { mutableIntStateOf(if (autoplay) 1 else 0) }
-    SceneAnimation(art.raw, requested, { requested = it + 1 }, modifier, size, art.restsOnFirstFrame)
+    SceneAnimation(art.raw, requested, { requested = it + 1 }, modifier, size, art.restsOnFirstFrame, immediate)
 }
 
 /**
@@ -109,7 +141,8 @@ fun StateAnimation(art: StateArt, modifier: Modifier = Modifier, size: Dp = 128.
  * once each time [requested] passes the plays it has finished, and
  * otherwise holds its last frame, or its first if [restsOnFirstFrame],
  * shown again once a play ends. A tap asks [onReplay] for one more, with
- * the plays finished so far; null, it can't be tapped.
+ * the plays finished so far; null, it can't be tapped. One already read
+ * ([StateCompositions]), or [immediate], is drawn from its first frame.
  */
 @Composable
 fun SceneAnimation(
@@ -119,17 +152,23 @@ fun SceneAnimation(
     modifier: Modifier = Modifier,
     size: Dp = 128.dp,
     restsOnFirstFrame: Boolean = false,
+    immediate: Boolean = false,
 ) {
     val reduceMotion = rememberReduceMotion()
-    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(raw))
+    val context = LocalContext.current
+    val ready = remember(raw) { if (immediate) StateCompositions.get(context, raw) else StateCompositions.peek(raw) }
+    // Lottie's cache holds what was read here too, so this reads nothing twice.
+    val loading by rememberLottieComposition(LottieCompositionSpec.RawRes(raw))
+    val composition = ready ?: loading
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     val active = lifecycle.isAtLeast(Lifecycle.State.RESUMED)
     val animatable = rememberLottieAnimatable()
     // Plays finished; kept through recreation with [requested].
     var played by rememberSaveable(raw) { mutableIntStateOf(0) }
+    val rest = if (restsOnFirstFrame) 0f else 1f
+    val idle = reduceMotion || played >= requested
     LaunchedEffect(composition, reduceMotion, active, requested) {
         val loaded = composition ?: return@LaunchedEffect
-        val rest = if (restsOnFirstFrame) 0f else 1f
         if (reduceMotion || played >= requested) {
             animatable.snapTo(loaded, progress = rest)
             return@LaunchedEffect
@@ -156,7 +195,8 @@ fun SceneAnimation(
                 ) { if (played >= requested) onReplay(played) }.semantics { contentDescription = label },
             ),
     ) {
-        if (composition != null) LottieAnimation(composition, { animatable.progress }, Modifier.fillMaxSize())
+        // Until the effect has set it, the frame it is about to: at rest, or the start of its play.
+        if (composition != null) LottieAnimation(composition, { if (animatable.composition == null) (if (idle) rest else 0f) else animatable.progress }, Modifier.fillMaxSize())
     }
 }
 

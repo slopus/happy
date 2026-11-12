@@ -116,6 +116,8 @@ public final class StateSceneView: UIView {
 
     private let animationView: LottieAnimationView
     private let play: Play
+    /// Drawn in the first frame it is on screen (`init(immediate:)`).
+    private let immediate: Bool
     /// Only the main actor touches this; it is `nonisolated(unsafe)` so
     /// that `deinit` can cancel without being an isolated deinit, which on
     /// 26.3 is the shape behind the malloc abort the Watch screens hit.
@@ -138,10 +140,15 @@ public final class StateSceneView: UIView {
         didSet { if !waits { attach() } }
     }
 
-    public init(scene: StateScene, size: CGFloat, play: Play = .onAppear, replayLabel: String) {
+    /// `immediate`: its picture is there in the very frame it first goes on
+    /// screen, as new work's robot and clapper board are. A scene already
+    /// read (`preload`) is put up at once; one not yet read is read here, on
+    /// the main thread, rather than leave a blank frame while it arrives.
+    public init(scene: StateScene, size: CGFloat, play: Play = .onAppear, replayLabel: String, immediate: Bool = false) {
         self.scene = scene
         self.sceneSize = size
         self.play = play
+        self.immediate = immediate
         animationView = LottieAnimationView(configuration: LottieConfiguration(renderingEngine: .coreAnimation))
         super.init(frame: CGRect(x: 0, y: 0, width: size, height: size))
         animationView.contentMode = .scaleAspectFit
@@ -198,7 +205,7 @@ public final class StateSceneView: UIView {
         isPlaying = false
         hasPlayed = false
         let scene = scene
-        if switching, let animation = Self.cache.object(forKey: scene.rawValue as NSString) {
+        if immediate || switching, let animation = immediate ? Self.read(scene) : Self.cache.object(forKey: scene.rawValue as NSString) {
             loading = nil
             pending = animation
             attach()
@@ -223,6 +230,20 @@ public final class StateSceneView: UIView {
     /// Each scene read once: Lottie's models are immutable, so every view
     /// showing a scene, now or later, shares one.
     private nonisolated(unsafe) static let cache = NSCache<NSString, LottieAnimation>()
+
+    /// Forgets every scene read, as at launch. Tests start cold with this.
+    static func forgetRead() {
+        cache.removeAllObjects()
+    }
+
+    /// Reads `scenes` off the main thread ahead of need, from app launch, so
+    /// a view made `immediate` finds them read and costs the main thread
+    /// nothing.
+    public static func preload(_ scenes: [StateScene]) {
+        Task.detached(priority: .utility) {
+            for scene in scenes { _ = read(scene) }
+        }
+    }
 
     /// The scene's bytes, read and decoded off the main thread. A file that
     /// is missing or will not decode leaves the view empty, on purpose.

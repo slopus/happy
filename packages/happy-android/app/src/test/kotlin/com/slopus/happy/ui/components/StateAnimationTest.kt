@@ -6,7 +6,9 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -17,9 +19,12 @@ import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.assertActionsLabelled
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
+import com.slopus.happy.ui.chat.NewWorkArt
+import com.slopus.happy.ui.chat.NewWorkTags
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -86,6 +91,25 @@ class StateAnimationTest {
             assertTrue("$name not yet in at $first", pop.getDouble("t") > first && pop.getJSONArray("s").getDouble(0) == 0.0)
             assertTrue("$name gone by $last", letter.getDouble("op") <= last)
         }
+    }
+
+    /**
+     * New work's pictures are read in the composition that first shows
+     * them, cold, and drawn in that first frame: no blank frame while
+     * Lottie reads the file on another thread. The other kind's is read
+     * with it, so switching is as quick.
+     */
+    @Test
+    fun newWorksPicturesAreThereInTheirFirstFrame() {
+        StateCompositions.forget()
+        rule.mainClock.autoAdvance = false
+        rule.setHappyContent { NewWorkArt(StateArt.Action) }
+        assertNotNull("the clapper board read as it is composed", StateCompositions.peek(StateArt.Action.raw))
+        assertNotNull("and the robot under it", StateCompositions.peek(StateArt.Ready.raw))
+        val pixels = rule.node(NewWorkTags.art(StateArt.Action)).captureToImage().toPixelMap()
+        val ground = pixels[0, 0]
+        val drawn = (0 until pixels.width step 4).sumOf { x -> (0 until pixels.height step 4).count { y -> pixels[x, y] != ground } }
+        assertTrue("the board is drawn: $drawn", drawn > 100)
     }
 
     @Test
