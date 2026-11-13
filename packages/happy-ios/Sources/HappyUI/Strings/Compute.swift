@@ -24,7 +24,6 @@ extension Strings {
         }
         static let addComputer = "Add Computer"
         static let details = "Show Details"
-        static let edit = "Edit"
         static let release = "Release"
         static func releaseTitle(_ computer: String) -> String { "Release \(computer)?" }
         static func releaseMessage(_ holder: String) -> String {
@@ -81,20 +80,10 @@ extension Strings {
         }
 
         // Adding a computer.
-        static let next = "Next"
         static let create = "Create"
         static let modeNeedsAdmin = "Admin only"
         static let modeLockedHint = "Adding a computer in this mode needs admin permission."
-        static let name = "Name"
-        static let namePlaceholder = "Its hostname"
-        static let nameHint = "Optional. Agents see this name; it starts as the computer’s hostname."
-        static let description = "Description"
-        static let descriptionPlaceholder = "What agents should know about this computer"
-        static let descriptionHint = "Optional. Agents read it when they choose a computer."
-        static let editDescriptionHint = "Agents read it when they choose a computer."
         static let noInstall = "No install command"
-        static let notSaved = "Not saved"
-        static let editComputer = "Edit Computer"
         static let installTitle = "Install"
         static func installNote(_ kind: ComputeMode.Kind) -> String {
             switch kind {

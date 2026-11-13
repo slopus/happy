@@ -78,16 +78,11 @@ final class CloudComputeTests: XCTestCase {
         XCTAssertThrowsError(try node(Self.member.replacingOccurrences(of: #""mode":"sandbox""#, with: #""mode":"pool""#)))
     }
 
-    func testWhoMayEditAndRelease() throws {
-        let held = try node(Self.held), mine = try node(Self.mine), sandbox = try node(Self.member)
+    func testWhoMayRelease() throws {
+        let held = try node(Self.held), sandbox = try node(Self.member)
         XCTAssertTrue(held.releasable(by: .manage))
         XCTAssertFalse(held.releasable(by: .use))
         XCTAssertFalse(sandbox.releasable(by: .manage))
-        XCTAssertTrue(sandbox.editable(by: .manage, userId: nil))
-        XCTAssertFalse(sandbox.editable(by: .use, userId: "user-me"))
-        XCTAssertTrue(mine.editable(by: .use, userId: "user-me"))
-        XCTAssertFalse(mine.editable(by: .use, userId: "someone-else"))
-        XCTAssertFalse(mine.editable(by: .use, userId: nil))
     }
 
     func testAccessFollowsComputeUseThenPoolsManage() {
@@ -133,7 +128,7 @@ final class CloudComputeTests: XCTestCase {
         XCTAssertEqual(try shown("private"), [[.macOS, .linux], [.windows]])
     }
 
-    func testAddingAComputerStepsThroughModeDescriptionAndInstall() throws {
+    func testAddingAComputerStepsThroughModeAndInstall() throws {
         XCTAssertNil(ComputerAdd.start(.none))
         var member = try XCTUnwrap(ComputerAdd.start(.use))
         XCTAssertEqual(member, .choosing(ComputerDraft(mode: .private)))
@@ -142,39 +137,24 @@ final class CloudComputeTests: XCTestCase {
 
         var add = try XCTUnwrap(ComputerAdd.start(.manage))
         XCTAssertEqual(add, .choosing(ComputerDraft(mode: .sandbox)))
-        add.edit { $0.name = "ignored" }
-        XCTAssertEqual(add.draft?.name, "", "no field before the describing step")
         add.choose(.exclusive, access: .manage)
-        add.next()
-        add.edit { $0.name = "  build-01 "; $0.description = "\n" }
-        XCTAssertEqual(add, .describing(ComputerDraft(mode: .exclusive, name: "  build-01 ", description: "\n")))
         let request = try XCTUnwrap(add.create())
-        XCTAssertEqual(request, ComputeJoinTokenRequest(ComputerDraft(mode: .exclusive, name: "build-01")))
-        XCTAssertEqual(request.json, .object(["mode": .string("exclusive"), "name": .string("build-01")]))
+        XCTAssertEqual(request, ComputeJoinTokenRequest(ComputerDraft(mode: .exclusive)))
+        XCTAssertEqual(request.json, .object(["mode": .string("exclusive")]), "only the mode; it joins under its hostname")
         XCTAssertNil(add.create(), "one request at a time")
+        add.choose(.shared, access: .manage)
+        XCTAssertEqual(add, .creating(ComputerDraft(mode: .exclusive)), "no change while the token is minted")
         add.finish(.failure(ComputeFailure("This needs the pools.manage permission.")))
-        XCTAssertEqual(add, .failed(ComputerDraft(mode: .exclusive, name: "  build-01 ", description: "\n"), message: "This needs the pools.manage permission."))
-        add.edit { $0.description = "CUDA" }
-        XCTAssertEqual(add, .describing(ComputerDraft(mode: .exclusive, name: "  build-01 ", description: "CUDA")), "an edit takes the refusal back")
-        add.back()
-        XCTAssertEqual(add, .choosing(ComputerDraft(mode: .exclusive, name: "  build-01 ", description: "CUDA")))
-        add.next()
+        XCTAssertEqual(add, .failed(ComputerDraft(mode: .exclusive), message: "This needs the pools.manage permission."))
+        add.choose(.shared, access: .manage)
+        XCTAssertEqual(add, .choosing(ComputerDraft(mode: .shared)), "a choice takes the refusal back")
         _ = add.create()
-        let install = try JSONDecoder().decode(ComputeInstall.self, from: Data(#"{"mode":"exclusive","token":"t","expiresAt":1,"clusterUrl":"c","commands":null}"#.utf8))
+        let install = try JSONDecoder().decode(ComputeInstall.self, from: Data(#"{"mode":"shared","token":"t","expiresAt":1,"clusterUrl":"c","commands":null}"#.utf8))
         add.finish(.success(install))
         XCTAssertEqual(add, .shown(install))
         XCTAssertNil(add.draft)
-        add.back()
+        add.choose(.sandbox, access: .manage)
         XCTAssertEqual(add, .shown(install), "a shown install has no way back")
-    }
-
-    func testAPatchSendsOnlyWhatChanged() throws {
-        let node = try node(Self.member)
-        XCTAssertNil(ComputerPatch(node, name: "worker", description: "GPU box, CUDA 12.4"))
-        XCTAssertNil(ComputerPatch(node, name: "  ", description: "anything"), "a computer always has a name")
-        XCTAssertEqual(ComputerPatch(node, name: "gpu-1 ", description: "GPU box, CUDA 12.4")?.json, .object(["name": .string("gpu-1")]))
-        XCTAssertEqual(ComputerPatch(node, name: "worker", description: " ")?.json, .object(["description": .null]))
-        XCTAssertEqual(ComputerPatch(node, name: "worker", description: "CUDA 13")?.json, .object(["description": .string("CUDA 13")]))
     }
 
     func testEndpointsAndEscapedIdentifiers() async throws {
@@ -184,7 +164,6 @@ final class CloudComputeTests: XCTestCase {
             response("{\"computer\":\(Self.held)}"),
             response("{\"approvals\":[\(Self.approval)]}"),
             response(#"{"mode":"private","token":"t","expiresAt":1,"clusterUrl":"c","commands":null}"#, status: 201),
-            response("{\"computer\":\(Self.member)}"),
             response(#"{"previousHolder":"agent-7"}"#),
             response(#"{"approval":{}}"#),
         ])
@@ -195,21 +174,19 @@ final class CloudComputeTests: XCTestCase {
         XCTAssertEqual(node.id, "node-2")
         let approvals = try await client.computerApprovals()
         XCTAssertEqual(approvals.map(\.id), ["node-3/agent-9"])
-        _ = try await client.createComputerJoinToken(ComputeJoinTokenRequest(ComputerDraft(mode: .private, description: "laptop")))
-        try await client.updateComputer("node-1", try XCTUnwrap(ComputerPatch(listed[0], name: "worker", description: "")))
+        _ = try await client.createComputerJoinToken(ComputeJoinTokenRequest(ComputerDraft(mode: .private)))
         let holder = try await client.releaseComputerLock("node-2")
         XCTAssertEqual(holder, "agent-7")
         try await client.answerComputerApproval(approvals[0], approve: false)
         let requests = await transport.requests
-        XCTAssertEqual(requests.map(\.0), ["GET", "GET", "GET", "POST", "PATCH", "POST", "POST"])
+        XCTAssertEqual(requests.map(\.0), ["GET", "GET", "GET", "POST", "POST", "POST"])
         XCTAssertEqual(requests.map(\.1), [
             "/v0/computers", "/v0/computers/n%2F%3F", "/v0/computers/approvals", "/v0/computers/join-tokens",
-            "/v0/computers/node-1", "/v0/computers/node-2/release-lock", "/v0/computers/approvals/node-3/agent-9",
+            "/v0/computers/node-2/release-lock", "/v0/computers/approvals/node-3/agent-9",
         ])
         let bodies = await transport.bodies
-        XCTAssertEqual(try JSONValue.decode(Data(bodies[3].utf8)), .object(["mode": .string("private"), "description": .string("laptop")]))
-        XCTAssertEqual(try JSONValue.decode(Data(bodies[4].utf8)), .object(["description": .null]))
-        XCTAssertEqual(try JSONValue.decode(Data(bodies[6].utf8)), .object(["approve": .bool(false)]))
+        XCTAssertEqual(try JSONValue.decode(Data(bodies[3].utf8)), .object(["mode": .string("private")]))
+        XCTAssertEqual(try JSONValue.decode(Data(bodies[5].utf8)), .object(["approve": .bool(false)]))
         XCTAssertFalse(requests.contains { $0.1.hasPrefix("/v0/compute/") }, "neither a pool nor an old node route is called")
     }
 

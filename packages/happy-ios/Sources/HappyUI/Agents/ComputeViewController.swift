@@ -233,14 +233,10 @@ final class ComputeViewController: SettingsPageViewController {
         return row
     }
 
-    /// Edit for a manager or a private computer's owner, Release for a
-    /// manager while an agent holds it.
+    /// Release for a manager while an agent holds it.
     private func computerActions(_ node: Computer) -> [SettingsRow.MenuItem] {
         typealias Text = Strings.Compute
         var items: [SettingsRow.MenuItem] = []
-        if node.editable(by: access, userId: viewer) {
-            items.append(.init(title: Text.edit, glyph: "create-outline") { [weak self] in self?.edit(node) })
-        }
         if node.releasable(by: access), !releasing.contains(node.id) {
             items.append(.init(title: Text.release, glyph: "exit-outline", destructive: true) { [weak self] in self?.confirmRelease(node) })
         }
@@ -258,9 +254,6 @@ final class ComputeViewController: SettingsPageViewController {
             fact("compute-last-seen", Text.lastSeen, lastSeen),
         ])
         var actions: [SettingsRow] = []
-        if node.editable(by: access, userId: viewer) {
-            actions.append(SettingsRow(id: "compute-edit", title: Text.edit, icon: ("create-outline", .action), accessory: .none, action: { [weak self] in self?.edit(node) }))
-        }
         if node.releasable(by: access) {
             var release = SettingsRow(id: "compute-release", title: Text.release, accessory: .none, destructive: true)
             if releasing.contains(node.id) { release.valueView = Self.spinner(); release.dimmed = true }
@@ -330,11 +323,6 @@ final class ComputeViewController: SettingsPageViewController {
                 Alerts.show(Strings.Compute.actionFailed, Self.words(error), on: self)
             }
         }
-    }
-
-    func edit(_ node: Computer) {
-        let form = ComputeFormViewController(edit: node, client: session.client) { [weak self] in self?.monitor.refresh() }
-        present(UINavigationController(rootViewController: form), animated: true)
     }
 
     func add() {

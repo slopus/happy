@@ -12,7 +12,7 @@ private actor ComputeServer: AgentTransport {
     private var granted: [String]
     private var forbidden = false
     private(set) var requests: [(method: String, path: String, body: JSONValue?)] = []
-    private var descriptions: [String: String] = [
+    private let descriptions: [String: String] = [
         "gpu-01": "GPU box, CUDA 12.4, use for training. Repo checkouts under /data.",
         "team-box": "Shared build box with Docker and Node 22.",
         "build-01": "Mac mini for iOS builds; Xcode 26 is installed.",
@@ -71,9 +71,6 @@ private actor ComputeServer: AgentTransport {
             let mode = sent?["mode"]?.stringValue ?? ""
             let sudo = mode == "private" ? "" : "sudo "
             return ok(#"{"mode":"\#(mode)","token":"hjt_7Kq2xV","expiresAt":\#(Date().timeIntervalSince1970 * 1000 + 3_600_000),"clusterUrl":"https://acme.happy-clusters.com","commands":{"unix":"curl -fsSL https://get.happy-clusters.com/install.sh | \#(sudo)HAPPY_CLUSTER_URL='https://acme.happy-clusters.com' HAPPY_JOIN_TOKEN='hjt_7Kq2xV' HAPPY_COMPUTE_MODE='\#(mode)' sh","windows":"$env:HAPPY_CLUSTER_URL='https://acme.happy-clusters.com'; $env:HAPPY_JOIN_TOKEN='hjt_7Kq2xV'; $env:HAPPY_COMPUTE_MODE='\#(mode)'; irm https://get.happy-clusters.com/install.ps1 | iex"}}"#)
-        case ("PATCH", let id) where id.count == 1:
-            if let description = sent?["description"] { descriptions[id[0]] = description.stringValue }
-            return computer(id[0]).map { ok("{\"computer\":\($0)}") } ?? HTTP1Response(status: 404)
         case ("POST", let id) where id.count == 2 && id[1] == "release-lock":
             held = false
             return ok(#"{"previousHolder":"agent-7"}"#)
@@ -196,9 +193,9 @@ final class HostedComputeMonitoringTests: XCTestCase {
         XCTAssertEqual(page.shownRow("compute-node-build-01")?.value, "In use")
         XCTAssertEqual(page.shownRow("compute-node-gpu-01")?.value, "Online")
         XCTAssertEqual(page.shownRow("compute-node-alex-pc")?.value, "Offline")
-        // A manager may edit any computer and free the held one.
-        XCTAssertEqual(page.shownRow("compute-node-build-01")?.menu.map(\.title), ["Edit", "Release"])
-        XCTAssertEqual(page.shownRow("compute-node-gpu-01")?.menu.map(\.title), ["Edit"])
+        // A manager may only free the held one; nothing is edited here.
+        XCTAssertEqual(page.shownRow("compute-node-build-01")?.menu.map(\.title), ["Release"])
+        XCTAssertEqual(page.shownRow("compute-node-gpu-01")?.menu.map(\.title), [])
         XCTAssertEqual(page.shownHeaders, ["JOIN REQUESTS", "COMPUTERS"])
         let paths = await server.requests.map(\.path)
         XCTAssertEqual(Set(paths.filter { $0.hasPrefix("/v0/comput") }), ["/v0/computers", "/v0/computers/approvals"], "nothing under /v0/compute/")
@@ -206,15 +203,15 @@ final class HostedComputeMonitoringTests: XCTestCase {
     }
 
     /// A member sees the team's computers without their monitoring facts,
-    /// edits only their own, and frees nothing.
-    func testAMemberEditsOnlyTheirOwnComputer() async throws {
+    /// and edits or frees none of them, their own included.
+    func testAMemberSeesComputersWithoutActions() async throws {
         let (_, session, _) = try await rig(granted: Self.member)
         let page = ComputeViewController(session: session)
         let navigation = try await host(page)
         try await until { page.shownRow("compute-node-kirills-mbp") != nil }
         try await settled(navigation)
         XCTAssertNil(page.shownRow("compute-node-alex-pc"))
-        XCTAssertEqual(page.shownRow("compute-node-kirills-mbp")?.menu.map(\.title), ["Edit"])
+        XCTAssertEqual(page.shownRow("compute-node-kirills-mbp")?.menu.map(\.title), [])
         XCTAssertEqual(page.shownRow("compute-node-build-01")?.menu.map(\.title), [])
         XCTAssertEqual(page.shownFooters.last, "Agents choose a computer and join it. You can add a private computer of your own.")
         try screenshot(page, name: "compute-list-member")
@@ -256,16 +253,7 @@ final class HostedComputeMonitoringTests: XCTestCase {
         try screenshot(modes, name: "compute-add-member-modes")
         modes.tapRow("compute-mode-sandbox")
         XCTAssertEqual(flow.state, .choosing(ComputerDraft(mode: .private)))
-
-        flow.next()
-        try await settled(flow.navigation)
-        let form = try XCTUnwrap(flow.navigation.topViewController as? ComputeFormViewController)
-        form.nameField.text = "kirills-mini"
-        form.nameField.sendActions(for: .editingChanged)
-        form.descriptionView.text = "Mac mini on my desk. Simulators and the iPhone 12 are attached."
-        form.textViewDidChange(form.descriptionView)
-        form.view.endEditing(true)
-        try screenshot(form, name: "compute-add-member-form")
+        XCTAssertEqual(modes.navigationItem.rightBarButtonItem?.accessibilityIdentifier, "compute-create", "the mode is the only step before the install")
 
         flow.create()
         try await until { flow.navigation.topViewController is ComputeInstallViewController }
@@ -280,8 +268,7 @@ final class HostedComputeMonitoringTests: XCTestCase {
         XCTAssertEqual(UIPasteboard.general.string, install.install.commands?.unix)
         XCTAssertEqual(install.shownRow("compute-copy-unix")?.value, "Copied")
         let minted = await server.requests.first { $0.path == "/v0/computers/join-tokens" }
-        XCTAssertEqual(minted?.body, .object(["mode": .string("private"), "name": .string("kirills-mini"),
-                                             "description": .string("Mac mini on my desk. Simulators and the iPhone 12 are attached.")]))
+        XCTAssertEqual(minted?.body, .object(["mode": .string("private")]), "no name or description: it joins under its hostname")
         try screenshot(install, name: "compute-install-private")
         flow.close()
         try await until { page.adding == nil && navigation.presentedViewController == nil }
@@ -295,7 +282,6 @@ final class HostedComputeMonitoringTests: XCTestCase {
         page.tapRow("compute-add")
         let flow = try XCTUnwrap(page.adding)
         XCTAssertEqual(flow.state, .choosing(ComputerDraft(mode: .sandbox)))
-        flow.next()
         flow.create()
         try await until { flow.navigation.topViewController is ComputeInstallViewController }
         try await settled(flow.navigation)
@@ -306,30 +292,18 @@ final class HostedComputeMonitoringTests: XCTestCase {
         flow.close()
     }
 
-    func testEditingSendsOnlyTheChangedDescription() async throws {
+    /// A member's own computer offers no actions: it is renamed through
+    /// the cluster's admin bot, and only a manager releases.
+    func testAMembersComputerHasNoActions() async throws {
         let (_, session, server) = try await rig(granted: Self.member)
         let page = ComputeViewController(session: session, page: .computer("kirills-mbp"))
-        let navigation = try await host(page)
-        try await until { page.shownRow("compute-edit") != nil }
+        _ = try await host(page)
+        try await until { page.shownRow("compute-os") != nil }
         XCTAssertNil(page.shownRow("compute-release"))
         XCTAssertNil(page.shownRow("compute-host-cpu"), "a member reads no host facts")
-        page.tapRow("compute-edit")
-        try await settled(navigation)
-        let sheet = try XCTUnwrap(navigation.presentedViewController as? UINavigationController)
-        let form = try XCTUnwrap(sheet.topViewController as? ComputeFormViewController)
-        XCTAssertEqual(form.nameField.text, "kirills-mbp")
-        XCTAssertEqual(form.descriptionView.text, "My laptop. Repos under ~/src.")
-        form.descriptionView.text = "My laptop. Repos under ~/src, Xcode 26 and Android Studio."
-        form.textViewDidChange(form.descriptionView)
-        form.view.endEditing(true)
-        try await Task.sleep(for: .milliseconds(300))
-        try screenshot(form, name: "compute-edit")
-        form.save()
-        try await until { navigation.presentedViewController == nil }
+        try screenshot(page, name: "compute-member-computer")
         let patch = await server.requests.first { $0.method == "PATCH" }
-        XCTAssertEqual(patch?.path, "/v0/computers/kirills-mbp")
-        XCTAssertEqual(patch?.body, .object(["description": .string("My laptop. Repos under ~/src, Xcode 26 and Android Studio.")]))
-        try await until { page.shownRow("compute-node-kirills-mbp")?.subtitle?.hasSuffix("Android Studio.") == true }
+        XCTAssertNil(patch)
     }
 
     func testAManagerReleasesAHeldComputer() async throws {

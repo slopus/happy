@@ -3,10 +3,9 @@ import HappyCore
 import HappyLayout
 import UIKit
 
-/// Adding a computer, in a sheet of its own: its mode, then its name and
-/// description, then the one-time command that installs it. The steps are
-/// `ComputerAdd`'s; each page shows the step it is and sends the
-/// person's changes back to it.
+/// Adding a computer, in a sheet of its own: its mode, then the one-time
+/// command that installs it. The steps are `ComputerAdd`'s; each page
+/// shows the step it is and sends the person's changes back to it.
 @MainActor
 final class ComputeAddFlow: NSObject, UIAdaptivePresentationControllerDelegate {
     private(set) var state: ComputerAdd
@@ -18,7 +17,7 @@ final class ComputeAddFlow: NSObject, UIAdaptivePresentationControllerDelegate {
     /// The sheet went, however it went.
     var closed: (() -> Void)?
     private var creating: Task<Void, Never>?
-    private weak var form: ComputeFormViewController?
+    private weak var modes: ComputeModesViewController?
 
     init?(access: ComputeAccess, client: AgentClient, added: @escaping () -> Void) {
         guard let state = ComputerAdd.start(access) else { return nil }
@@ -27,7 +26,9 @@ final class ComputeAddFlow: NSObject, UIAdaptivePresentationControllerDelegate {
         self.client = client
         self.added = added
         super.init()
-        navigation.setViewControllers([ComputeModesViewController(flow: self)], animated: false)
+        let modes = ComputeModesViewController(flow: self)
+        self.modes = modes
+        navigation.setViewControllers([modes], animated: false)
         navigation.presentationController?.delegate = self
     }
 
@@ -35,22 +36,9 @@ final class ComputeAddFlow: NSObject, UIAdaptivePresentationControllerDelegate {
         state.choose(mode, access: access)
     }
 
-    func next() {
-        state.next()
-        guard case .describing = state else { return }
-        let form = ComputeFormViewController(add: self)
-        self.form = form
-        navigation.pushViewController(form, animated: true)
-    }
-
-    /// The modes page showing again: the person went back to it.
-    func back() { state.back() }
-
-    func edit(_ change: (inout ComputerDraft) -> Void) { state.edit(change) }
-
     func create() {
         guard creating == nil, let request = state.create() else { return }
-        form?.render()
+        modes?.render()
         let client = client
         creating = Task { @MainActor [weak self] in
             let result: Result<ComputeInstall, ComputeFailure>
@@ -67,8 +55,8 @@ final class ComputeAddFlow: NSObject, UIAdaptivePresentationControllerDelegate {
                 navigation.isModalInPresentation = true
                 navigation.setViewControllers([ComputeInstallViewController(install: install, flow: self)], animated: true)
             case .failed(_, let message):
-                form?.render()
-                if let form { Alerts.show(Strings.Compute.noInstall, message, on: form) }
+                modes?.render()
+                if let modes { Alerts.show(Strings.Compute.noInstall, message, on: modes) }
             default:
                 break
             }
@@ -92,7 +80,7 @@ final class ComputeAddFlow: NSObject, UIAdaptivePresentationControllerDelegate {
     }
 }
 
-/// The first step: the four modes, each with the sentence that says what
+/// The only choice: the four modes, each with the sentence that says what
 /// it means. A member may add only a private computer of their own, so the
 /// others are shown, greyed out.
 final class ComputeModesViewController: SettingsPageViewController {
@@ -107,16 +95,24 @@ final class ComputeModesViewController: SettingsPageViewController {
         super.viewDidLoad()
         view.accessibilityIdentifier = "compute-modes"
         navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .cancel, primaryAction: UIAction { [weak self] _ in self?.flow.close() })
-        let next = UIBarButtonItem(title: Strings.Compute.next, primaryAction: UIAction { [weak self] _ in self?.flow.next() })
-        next.style = .done
-        next.accessibilityIdentifier = "compute-next"
-        navigationItem.rightBarButtonItem = next
+        render()
     }
 
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        flow.back()
-        reload()
+    /// Create, or a spinner while the token is minted.
+    func render() {
+        let busy: Bool
+        if case .creating = flow.state { busy = true } else { busy = false }
+        if busy {
+            let spinner = UIActivityIndicatorView(style: .medium)
+            spinner.startAnimating()
+            navigationItem.rightBarButtonItem = UIBarButtonItem(customView: spinner)
+        } else if navigationItem.rightBarButtonItem?.title != Strings.Compute.create {
+            let create = UIBarButtonItem(title: Strings.Compute.create, primaryAction: UIAction { [weak self] _ in self?.flow.create() })
+            create.style = .done
+            create.accessibilityIdentifier = "compute-create"
+            navigationItem.rightBarButtonItem = create
+        }
+        navigationItem.leftBarButtonItem?.isEnabled = !busy
     }
 
     override func makeRows() -> [[SettingsRow]] {
@@ -186,208 +182,6 @@ final class ComputeInstallViewController: SettingsPageViewController {
         }
         cards[cards.count - 1][1].footer = Text.installFooter(install)
         return cards
-    }
-}
-
-/// A computer's name and description, in two of Settings' cards: when it is
-/// added, as that flow's second step, or when someone who may edits it.
-final class ComputeFormViewController: UIViewController, UITextViewDelegate {
-    enum Purpose {
-        case add(ComputeAddFlow)
-        case edit(Computer, AgentClient, saved: () -> Void)
-    }
-
-    let purpose: Purpose
-    private let scroll = UIScrollView()
-    private let nameHeader = UILabel()
-    private let nameCard = UIView()
-    let nameField = UITextField()
-    private let nameHint = UILabel()
-    private let descriptionHeader = UILabel()
-    private let descriptionCard = UIView()
-    let descriptionView = UITextView()
-    private let placeholder = UILabel()
-    private let descriptionHint = UILabel()
-    private var saving = false
-
-    init(add flow: ComputeAddFlow) {
-        purpose = .add(flow)
-        super.init(nibName: nil, bundle: nil)
-        title = Strings.Compute.addComputer
-    }
-
-    init(edit node: Computer, client: AgentClient, saved: @escaping () -> Void) {
-        purpose = .edit(node, client, saved: saved)
-        super.init(nibName: nil, bundle: nil)
-        title = Strings.Compute.editComputer
-    }
-
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        typealias Text = Strings.Compute
-        view.backgroundColor = UIColor(Palette.settingsGround)
-        view.accessibilityIdentifier = "compute-form"
-        navigationItem.largeTitleDisplayMode = .never
-        scroll.alwaysBounceVertical = true
-        scroll.keyboardDismissMode = .interactive
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(scroll)
-        NSLayoutConstraint.activate([
-            scroll.topAnchor.constraint(equalTo: view.topAnchor),
-            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            scroll.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
-        ])
-        for (label, text) in [(nameHeader, Text.name), (descriptionHeader, Text.description)] {
-            label.font = SettingsFooters.font
-            label.textColor = UIColor(Palette.settingsSecondary)
-            label.text = text.uppercased()
-        }
-        let editing: Bool
-        if case .edit = purpose { editing = true } else { editing = false }
-        for (label, text) in [(nameHint, Text.nameHint), (descriptionHint, editing ? Text.editDescriptionHint : Text.descriptionHint)] {
-            label.font = SettingsFooters.font
-            label.textColor = UIColor(Palette.settingsSecondary)
-            label.numberOfLines = 0
-            label.text = text
-        }
-        nameHint.isHidden = editing
-        for card in [nameCard, descriptionCard] {
-            card.backgroundColor = UIColor(Palette.settingsCard)
-            card.layer.cornerRadius = SettingsLayout.Metrics.radius
-            card.layer.cornerCurve = .continuous
-        }
-        nameField.font = SettingsCardView.RowView.titleFont
-        nameField.textColor = UIColor(Palette.settingsText)
-        nameField.placeholder = Text.namePlaceholder
-        nameField.clearButtonMode = .whileEditing
-        nameField.autocorrectionType = .no
-        nameField.autocapitalizationType = .none
-        nameField.returnKeyType = .next
-        nameField.accessibilityIdentifier = "compute-name"
-        nameField.accessibilityLabel = Text.name
-        nameField.addAction(UIAction { [weak self] _ in self?.changed() }, for: .editingChanged)
-        nameField.addAction(UIAction { [weak self] _ in self?.descriptionView.becomeFirstResponder() }, for: .editingDidEndOnExit)
-        descriptionView.font = SettingsCardView.RowView.titleFont
-        descriptionView.textColor = UIColor(Palette.settingsText)
-        descriptionView.backgroundColor = .clear
-        descriptionView.textContainerInset = .zero
-        descriptionView.textContainer.lineFragmentPadding = 0
-        descriptionView.accessibilityIdentifier = "compute-description"
-        descriptionView.accessibilityLabel = Text.description
-        descriptionView.delegate = self
-        placeholder.font = SettingsCardView.RowView.titleFont
-        placeholder.textColor = UIColor(Palette.settingsSecondary)
-        placeholder.text = Text.descriptionPlaceholder
-        placeholder.isAccessibilityElement = false
-        for view in [nameHeader, nameCard, nameField, nameHint, descriptionHeader, descriptionCard, descriptionView, placeholder, descriptionHint] as [UIView] {
-            scroll.addSubview(view)
-        }
-        switch purpose {
-        case .add(let flow):
-            nameField.text = flow.state.draft?.name
-            descriptionView.text = flow.state.draft?.description
-        case .edit(let node, _, _):
-            nameField.text = node.displayName
-            descriptionView.text = node.description ?? ""
-            navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .cancel, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
-        }
-        render()
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        let width = scroll.readableColumn(width: scroll.bounds.width)
-        let hintWidth = SettingsLayout.footerWidth(width)
-        func height(_ label: UILabel) -> CGFloat { label.isHidden ? 0 : ceil(label.sizeThatFits(CGSize(width: hintWidth, height: .greatestFiniteMagnitude)).height) }
-        let layout = ComputeFormLayout(width: width, header: ceil(SettingsFooters.font.lineHeight), line: ceil(SettingsCardView.RowView.titleFont.lineHeight),
-                                       nameHint: height(nameHint), descriptionHint: height(descriptionHint))
-        nameHeader.frame = layout.nameHeader
-        nameCard.frame = layout.nameCard
-        nameField.frame = layout.nameField
-        nameHint.frame = layout.nameHint
-        descriptionHeader.frame = layout.descriptionHeader
-        descriptionCard.frame = layout.descriptionCard
-        descriptionView.frame = layout.descriptionText
-        placeholder.frame = layout.descriptionPlaceholder
-        descriptionHint.frame = layout.descriptionHint
-        scroll.contentSize = CGSize(width: width, height: layout.contentHeight)
-    }
-
-    override func viewIsAppearing(_ animated: Bool) {
-        super.viewIsAppearing(animated)
-        if case .edit = purpose { nameField.becomeFirstResponder() }
-    }
-
-    func textViewDidChange(_ textView: UITextView) { changed() }
-
-    private func changed() {
-        if case .add(let flow) = purpose {
-            let name = nameField.text ?? "", description = descriptionView.text ?? ""
-            flow.edit { $0.name = name; $0.description = description }
-        }
-        render()
-    }
-
-    /// The bar's buttons and the fields as the step or the save stands.
-    func render() {
-        typealias Text = Strings.Compute
-        placeholder.isHidden = !(descriptionView.text ?? "").isEmpty
-        let busy: Bool
-        let item: UIBarButtonItem
-        switch purpose {
-        case .add(let flow):
-            if case .creating = flow.state { busy = true } else { busy = false }
-            item = UIBarButtonItem(title: Text.create, primaryAction: UIAction { [weak self] _ in
-                self?.view.endEditing(true)
-                flow.create()
-            })
-            item.accessibilityIdentifier = "compute-create"
-        case .edit:
-            busy = saving
-            item = UIBarButtonItem(title: Strings.Common.save, primaryAction: UIAction { [weak self] _ in self?.save() })
-            item.isEnabled = !(nameField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            item.accessibilityIdentifier = "compute-save"
-        }
-        item.style = .done
-        if busy {
-            let spinner = UIActivityIndicatorView(style: .medium)
-            spinner.startAnimating()
-            navigationItem.rightBarButtonItem = UIBarButtonItem(customView: spinner)
-        } else if navigationItem.rightBarButtonItem?.title != item.title || navigationItem.rightBarButtonItem?.isEnabled != item.isEnabled {
-            navigationItem.rightBarButtonItem = item
-        }
-        navigationItem.hidesBackButton = busy
-        navigationItem.leftBarButtonItem?.isEnabled = !busy
-        nameField.isEnabled = !busy
-        descriptionView.isEditable = !busy
-        isModalInPresentation = busy
-    }
-
-    func save() {
-        guard case .edit(let node, let client, let saved) = purpose, !saving else { return }
-        guard let patch = ComputerPatch(node, name: nameField.text ?? "", description: descriptionView.text ?? "") else {
-            // Nothing changed, or the name was emptied, which Save isn't offered for.
-            if !(nameField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { dismiss(animated: true) }
-            return
-        }
-        view.endEditing(true)
-        saving = true
-        render()
-        Task { @MainActor [weak self] in
-            do {
-                try await client.updateComputer(node.id, patch)
-                saved()
-                self?.dismiss(animated: true)
-            } catch {
-                guard let self else { return }
-                saving = false
-                render()
-                Alerts.show(Strings.Compute.notSaved, ComputeViewController.words(error), on: self)
-            }
-        }
     }
 }
 #endif

@@ -127,12 +127,6 @@ public struct Computer: Decodable, Equatable, Sendable {
         [name, hostname].compactMap { $0 }.first { !$0.isEmpty } ?? id
     }
 
-    /// Whether `access` may rename it and change its description: a
-    /// manager, or the owner of a private computer.
-    public func editable(by access: ComputeAccess, userId: String?) -> Bool {
-        access == .manage || ownedBy(userId)
-    }
-
     /// Whether `access` may free it from the agent holding it.
     public func releasable(by access: ComputeAccess) -> Bool {
         guard case .exclusive(.some) = mode else { return false }
@@ -224,26 +218,20 @@ public struct ComputeInstall: Decodable, Equatable, Sendable {
     }
 }
 
-/// What a new computer will be: its mode, and the name and description it
-/// joins with.
+/// What a new computer will be: its mode. It joins under its hostname.
 public struct ComputerDraft: Equatable, Sendable {
     public var mode: ComputeMode.Kind
-    public var name = ""
-    public var description = ""
 
-    public init(mode: ComputeMode.Kind, name: String = "", description: String = "") {
+    public init(mode: ComputeMode.Kind) {
         self.mode = mode
-        self.name = name
-        self.description = description
     }
 }
 
-/// Adding a computer: choose its mode, then name and describe it, then mint
-/// the token and show its install commands. Changes that don't belong to
-/// the current step are ignored.
+/// Adding a computer: choose its mode, then mint the token and show its
+/// install commands. Changes that don't belong to the current step are
+/// ignored.
 public enum ComputerAdd: Equatable, Sendable {
     case choosing(ComputerDraft)
-    case describing(ComputerDraft)
     case creating(ComputerDraft)
     case failed(ComputerDraft, message: String)
     /// Shown once; closing the flow forgets it.
@@ -257,36 +245,19 @@ public enum ComputerAdd: Equatable, Sendable {
 
     public var draft: ComputerDraft? {
         switch self {
-        case .choosing(let draft), .describing(let draft), .creating(let draft), .failed(let draft, _): draft
+        case .choosing(let draft), .creating(let draft), .failed(let draft, _): draft
         case .shown: nil
         }
     }
 
+    /// A mode the reader may add, which takes back a refusal the earlier
+    /// draft got.
     public mutating func choose(_ mode: ComputeMode.Kind, access: ComputeAccess) {
-        guard case .choosing(var draft) = self, access.modes.contains(mode) else { return }
-        draft.mode = mode
-        self = .choosing(draft)
-    }
-
-    public mutating func next() {
-        guard case .choosing(let draft) = self else { return }
-        self = .describing(draft)
-    }
-
-    public mutating func back() {
         switch self {
-        case .describing(let draft), .failed(let draft, _): self = .choosing(draft)
-        default: break
-        }
-    }
-
-    /// A change to the name or description, which takes back a refusal the
-    /// earlier draft got.
-    public mutating func edit(_ change: (inout ComputerDraft) -> Void) {
-        switch self {
-        case .describing(var draft), .failed(var draft, _):
-            change(&draft)
-            self = .describing(draft)
+        case .choosing(var draft), .failed(var draft, _):
+            guard access.modes.contains(mode) else { return }
+            draft.mode = mode
+            self = .choosing(draft)
         default: break
         }
     }
@@ -294,7 +265,7 @@ public enum ComputerAdd: Equatable, Sendable {
     /// The token request to send, or nil when this step doesn't send one.
     public mutating func create() -> ComputeJoinTokenRequest? {
         switch self {
-        case .describing(let draft), .failed(let draft, _):
+        case .choosing(let draft), .failed(let draft, _):
             self = .creating(draft)
             return ComputeJoinTokenRequest(draft)
         default: return nil
@@ -316,51 +287,17 @@ public struct ComputeFailure: Error, Equatable, Sendable {
     public init(_ message: String) { self.message = message }
 }
 
-/// `POST /v0/computers/join-tokens`: an empty name or description is left out.
+/// `POST /v0/computers/join-tokens`: only the mode; the computer joins
+/// under its hostname.
 public struct ComputeJoinTokenRequest: Equatable, Sendable {
     public let mode: ComputeMode.Kind
-    public let name: String?
-    public let description: String?
 
     public init(_ draft: ComputerDraft) {
         mode = draft.mode
-        name = Self.trimmed(draft.name)
-        description = Self.trimmed(draft.description)
     }
 
     var json: JSONValue {
-        var body: [String: JSONValue] = ["mode": .string(mode.rawValue)]
-        if let name { body["name"] = .string(name) }
-        if let description { body["description"] = .string(description) }
-        return .object(body)
-    }
-
-    static func trimmed(_ text: String) -> String? {
-        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return text.isEmpty ? nil : text
-    }
-}
-
-/// `PATCH /v0/computers/:id`: only what changed; a cleared description
-/// is sent as `null`. Nil when nothing changed or the name was emptied.
-public struct ComputerPatch: Equatable, Sendable {
-    public let name: String?
-    /// `.some(nil)` clears it.
-    public let description: String??
-
-    public init?(_ node: Computer, name: String, description: String) {
-        guard let name = ComputeJoinTokenRequest.trimmed(name) else { return nil }
-        let description = ComputeJoinTokenRequest.trimmed(description)
-        self.name = name == node.displayName ? nil : name
-        self.description = description == node.description ? nil : .some(description)
-        if self.name == nil, self.description == nil { return nil }
-    }
-
-    var json: JSONValue {
-        var body: [String: JSONValue] = [:]
-        if let name { body["name"] = .string(name) }
-        if let description { body["description"] = description.map(JSONValue.string) ?? .null }
-        return .object(body)
+        .object(["mode": .string(mode.rawValue)])
     }
 }
 
@@ -385,10 +322,6 @@ extension AgentClient {
 
     public func createComputerJoinToken(_ request: ComputeJoinTokenRequest) async throws -> ComputeInstall {
         try await decode(ComputeInstall.self, "POST", "/v0/computers/join-tokens", json: request.json)
-    }
-
-    public func updateComputer(_ id: String, _ patch: ComputerPatch) async throws {
-        _ = try await send("PATCH", "/v0/computers/\(Self.escape(id))", json: patch.json)
     }
 
     /// Frees an exclusive computer; the agent that held it, if any.
