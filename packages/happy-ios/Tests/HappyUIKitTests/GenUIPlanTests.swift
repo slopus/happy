@@ -86,6 +86,37 @@ final class GenUIPlanTests: XCTestCase {
         }
     }
 
+    private func inline(_ type: String, _ props: String) throws -> GenUIPlanner {
+        let json = #"{"genuiRender":1,"compiler":"test","fallback":"x","root":"root","elements":{"root":{"type":"\#(type)","props":\#(props)}}}"#
+        return GenUIPlanner(document: try XCTUnwrap(GenUIRenderDocument.parse(Data(json.utf8))), traits: Self.traits)
+    }
+
+    private func code(lines: Int) throws -> GenUIPlanner {
+        let text = (1...lines).map { "let line\($0) = \($0) // a line long enough to run past a phone's column" }.joined(separator: "\\n")
+        return try inline("code", #"{"text":"\#(text)\n","language":"swift"}"#)
+    }
+
+    func testCodeIsAsTallAsItsLinesUpToTheCapAndScrollsPastIt() throws {
+        let five = try code(lines: 5).plan(width: 358)
+        let twenty = try code(lines: 20).plan(width: 358)
+        let forty = try code(lines: 40).plan(width: 358)
+        XCTAssertEqual(twenty.size.height - five.size.height, 15 * GenUIMetrics.codeLine)
+        XCTAssertEqual(forty.size.height, twenty.size.height)
+        guard let (scroll, frame) = forty.root.flattened().first(where: { if case .scroll = $0.placed.mark { true } else { false } }),
+              case .scroll(let mark) = scroll.mark else { return XCTFail("no scroll") }
+        XCTAssertGreaterThan(mark.contentSize.width, frame.width, "long lines scroll sideways")
+        XCTAssertGreaterThanOrEqual(mark.contentSize.height, 40 * GenUIMetrics.codeLine, "every line can be scrolled to")
+    }
+
+    func testAFigureReservesItsPixelRatioCappedAndLeading() throws {
+        let photo = try inline("image", #"{"file":"assets/a.jpg","width":1600,"height":1067,"thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI","alt":"A photo","shape":"landscape","role":"figure"}"#)
+        XCTAssertEqual(photo.height(width: 358), 239)
+        let tall = try inline("image", #"{"file":"assets/a.jpg","width":1000,"height":2000,"thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI","alt":"A photo","shape":"portrait","role":"figure"}"#)
+        let plan = tall.plan(width: 700)
+        XCTAssertEqual(plan.size.height, GenUIMetrics.figureMaxHeight)
+        XCTAssertEqual(plan.root.frame, CGRect(x: 0, y: 0, width: 210, height: 420))
+    }
+
     func testAPlanIsMadeOncePerWidth() throws {
         let planner = GenUIPlanner(document: try document("11-release"), traits: Self.traits)
         let first = planner.plan(width: 358)

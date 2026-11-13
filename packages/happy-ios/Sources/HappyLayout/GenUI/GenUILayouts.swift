@@ -53,6 +53,9 @@ public enum GenUIMetrics {
     public static let thumb: CGFloat = 40
     public static let thumbRadius: CGFloat = 6
     public static let figureMaxHeight: CGFloat = 420
+    /// A code block's lines; past `codeMaxLines` it scrolls (RENDER.md M8).
+    public static let codeLine: CGFloat = 20
+    public static let codeMaxLines = 20
     /// The carousel: between cards, and how much of the next one shows.
     public static let carouselGap: CGFloat = 12
     public static let carouselPeek: CGFloat = 80
@@ -79,6 +82,24 @@ public enum GenUIMetrics {
     }
 
     /// Height over width for a picture of `shape`.
+    /// A figure's box in `width` (RENDER.md M3): the ratio of its stored
+    /// pixels, or its shape's when they make none, at most
+    /// `figureMaxHeight` tall. A capped figure narrows to keep its ratio and
+    /// stays on the leading edge; its box never follows the loaded bitmap.
+    public static func figure(width: CGFloat, pixels: CGSize, shape: String) -> CGSize {
+        let ratio = pixels.width > 0 && pixels.height > 0 && pixels.width.isFinite && pixels.height.isFinite
+            ? pixels.height / pixels.width : self.ratio(shape)
+        let full = (width * ratio).rounded()
+        guard full > figureMaxHeight else { return CGSize(width: width, height: full) }
+        return CGSize(width: min(width, (figureMaxHeight / ratio).rounded()), height: figureMaxHeight)
+    }
+
+    /// A code block's body for `lines` lines: every one up to
+    /// `codeMaxLines`, never fewer than one.
+    public static func codeBody(lines: Int) -> CGFloat {
+        CGFloat(min(max(lines, 1), codeMaxLines)) * codeLine
+    }
+
     public static func ratio(_ shape: String) -> CGFloat {
         switch shape {
         case "square": 1

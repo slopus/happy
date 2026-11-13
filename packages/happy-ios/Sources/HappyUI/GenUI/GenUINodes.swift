@@ -127,7 +127,7 @@ final class GenUINodeBuilder {
         case .marker(let status, let rail): return marker(status, rail, style)
         case .spark(let values, let ink): return spark(values, ink, style)
         case .plot(let shape): return plot(shape, style)
-        case .image(let image, let radius): return self.image(placed.key, image, radius, placed.frame, style)
+        case .image(let image, let radius): return self.image(placed, image, radius, style)
         case .scroll(let scroll): return self.scroll(placed, scroll, style)
         case .press(let press): return self.press(placed, press, style)
         case .button(let button): return self.button(placed, button, style)
@@ -223,29 +223,18 @@ final class GenUINodeBuilder {
         return node
     }
 
-    private func image(_ key: String, _ image: GenUIImage, _ radius: CGFloat, _ frame: CGRect, _ style: Style) -> UltraNode {
+    private func image(_ placed: GenUIPlaced, _ image: GenUIImage, _ radius: CGFloat, _ style: Style) -> UltraNode {
         var style = style
         style.backgroundColor = Color(GenUITone.neutral.fill)
         style.borderRadius = radius
         style.overflow = .hidden
-        let node = UltraNode(style: style)
+        // An overlay's shade and words are planned over the picture.
+        let node = holding(UltraNode(style: style), placed.children)
         if let placeholder = ThumbHashImages.image(image.thumbhash) { node.drawing = GenUIPictureDrawing(image: placeholder) }
         images.append((node, image.file))
-        if let text = image.overlay {
-            // The last tile of a cut-off gallery, dimmed under how many more.
-            var dim = self.style(CGRect(origin: .zero, size: frame.size))
-            dim.backgroundColor = Color(red: 0, green: 0, blue: 0, alpha: 0.45)
-            dim.pointerEvents = .none
-            let label = UltraNode(style: dim)
-            label.drawing = GenUIDrawing(dark: dark) { bounds in
-                let string = NSAttributedString(string: text, attributes: [.font: Fonts.ui(.semiBold, size: 22), .foregroundColor: UIColor.white])
-                let size = string.size()
-                string.draw(at: CGPoint(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2))
-            }
-            node.addChild(label)
-        }
         node.accessibility = Accessibility(label: image.alt, role: .image)
         if let viewer = image.viewer {
+            let key = placed.key
             node.onPress = { [weak interaction = self.interaction] in interaction?.onViewer?(key, viewer.group, viewer.index) }
             node.pressedOpacity = 0.85
             node.accessibility.role = .button

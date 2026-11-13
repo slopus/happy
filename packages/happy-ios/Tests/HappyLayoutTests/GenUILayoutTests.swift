@@ -11,6 +11,24 @@ final class GenUILayoutTests: XCTestCase {
         Child(measure: { width in CGSize(width: min(width, natural), height: line * ceil(natural / max(1, width))) }, baseline: { _ in 15 }, minWidth: 40, grow: grow)
     }
 
+    func testAFigureTakesItsPixelRatioUpToTheCap() {
+        // 1600×1067 in a phone's column: its own ratio, the column's width.
+        XCTAssertEqual(GenUIMetrics.figure(width: 358, pixels: CGSize(width: 1600, height: 1067), shape: "landscape"), CGSize(width: 358, height: 239))
+        // The same ratio at twice the pixels is the same box.
+        XCTAssertEqual(GenUIMetrics.figure(width: 358, pixels: CGSize(width: 3200, height: 2134), shape: "landscape"), CGSize(width: 358, height: 239))
+        // Twice as tall as wide in a wide column: capped, and narrowed to keep the ratio.
+        XCTAssertEqual(GenUIMetrics.figure(width: 700, pixels: CGSize(width: 1000, height: 2000), shape: "portrait"), CGSize(width: 210, height: 420))
+        // No usable pixels: the shape's ratio.
+        XCTAssertEqual(GenUIMetrics.figure(width: 300, pixels: .zero, shape: "square"), CGSize(width: 300, height: 300))
+    }
+
+    func testCodeShowsItsLinesUpToTheCap() {
+        XCTAssertEqual(GenUIMetrics.codeBody(lines: 0), 20)
+        XCTAssertEqual(GenUIMetrics.codeBody(lines: 5), 100)
+        XCTAssertEqual(GenUIMetrics.codeBody(lines: 20), 400)
+        XCTAssertEqual(GenUIMetrics.codeBody(lines: 300), 400)
+    }
+
     func testAColumnSkipsTheGapsOfEmptyChildren() {
         let layout = GenUIBoxLayout(
             width: 300, padding: LayoutInsets(top: 16, left: 16, bottom: 16, right: 16), row: false, gaps: [20, 20, 20],

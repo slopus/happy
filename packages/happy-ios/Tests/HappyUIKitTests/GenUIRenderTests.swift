@@ -55,6 +55,25 @@ final class GenUIRenderTests: XCTestCase {
         }
     }
 
+    func testLongCodeScrollsBothWays() throws {
+        let text = (1...40).map { "let line\($0) = compute(\($0)) // a line long enough to run past a phone's column" }.joined(separator: "\\n")
+        let json = #"{"genuiRender":1,"compiler":"test","fallback":"x","root":"root","elements":{"root":{"type":"code","props":{"text":"\#(text)"}}}}"#
+        let document = try XCTUnwrap(GenUIRenderDocument.parse(Data(json.utf8)))
+        let plan = GenUIPlanner(document: document, traits: GenUITraits(text: nil, displayScale: 3)).plan(width: 358)
+        let built = GenUINodeBuilder.build(plan, interaction: GenUIInteraction(), dark: false)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 800))
+        let block = GenUIBlockView(frame: CGRect(x: 16, y: 0, width: 358, height: plan.size.height))
+        window.addSubview(block)
+        block.apply(built, files: nil)
+        var scroll: UIScrollView? { block.firstSubview(of: UIScrollView.self) }
+        let shown = expectation(for: NSPredicate { _, _ in (scroll?.contentSize.height ?? 0) > 0 }, evaluatedWith: nil)
+        wait(for: [shown], timeout: 5)
+        let view = try XCTUnwrap(scroll)
+        XCTAssertGreaterThan(view.contentSize.width, view.bounds.width)
+        XCTAssertGreaterThanOrEqual(view.contentSize.height, 40 * GenUIMetrics.codeLine)
+        XCTAssertEqual(view.bounds.height, plan.size.height - 32)
+    }
+
     func testAGroupKeepsOneChoiceAndReportsItOnce() throws {
         let interaction = GenUIInteraction()
         let built = try built("10-choices", interaction: interaction)
@@ -114,6 +133,14 @@ final class GenUIRenderTests: XCTestCase {
         XCTAssertEqual(GenUIPlotShape.color(.named("chartreuse")), theme.muted)
         XCTAssertEqual(GenUIPlotShape.color(.named("brown")), theme.ink["brown"])
         XCTAssertEqual(GenUIPlotShape.color(.named("accent")), theme.ink["accent"])
+    }
+}
+private extension UIView {
+    func firstSubview<T: UIView>(of type: T.Type) -> T? {
+        for view in subviews {
+            if let match = view as? T ?? view.firstSubview(of: type) { return match }
+        }
+        return nil
     }
 }
 #endif

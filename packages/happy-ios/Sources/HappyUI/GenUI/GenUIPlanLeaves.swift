@@ -395,9 +395,13 @@ final class GenUIImageElement: GenUIElement {
     override func natural(_ width: CGFloat) -> CGSize {
         switch image.role {
         case .thumb: CGSize(width: min(width, GenUIMetrics.thumb), height: GenUIMetrics.thumb)
-        case .figure: CGSize(width: width, height: min(GenUIMetrics.figureMaxHeight, (width * GenUIMetrics.ratio(shape.rawValue)).rounded()))
+        case .figure: CGSize(width: width, height: figure(width).height)
         case .tile, .cover: CGSize(width: width, height: (width * GenUIMetrics.ratio(shape.rawValue)).rounded())
         }
+    }
+
+    private func figure(_ width: CGFloat) -> CGSize {
+        GenUIMetrics.figure(width: width, pixels: CGSize(width: image.width, height: image.height), shape: shape.rawValue)
     }
 
     override var minWidth: CGFloat { image.role == .thumb ? GenUIMetrics.thumb : 80 }
@@ -405,6 +409,8 @@ final class GenUIImageElement: GenUIElement {
     override var isLeading: Bool { image.role == .thumb }
 
     override func place(_ frame: CGRect, below: CGFloat) -> GenUIPlaced {
+        var frame = frame
+        if image.role == .figure { frame.size.width = figure(frame.width).width }
         let radius: CGFloat = switch image.role {
         case .figure: GenUIMetrics.imageRadius
         case .cover: GenUIMetrics.coverRadius
@@ -429,20 +435,27 @@ final class GenUICodeElement: GenUIElement {
     private let code: GenUICode
     private let header: NSAttributedString
     private let body: ChatTextLayout
+    private let lines: Int
 
     init(key: String, _ code: GenUICode, context: GenUIPlanContext) {
         self.code = code
         header = genuiLine(code.title ?? code.language ?? "", ChatTextStyles.genuiMicro, Palette.genuiTertiary, in: context.environment)
         let paragraph = NSMutableParagraphStyle()
-        paragraph.minimumLineHeight = 20
-        paragraph.maximumLineHeight = 20
+        paragraph.minimumLineHeight = GenUIMetrics.codeLine
+        paragraph.maximumLineHeight = GenUIMetrics.codeLine
         body = ChatTextLayout(unwrapped: NSAttributedString(string: code.text, attributes: [
             .font: Fonts.mono(bold: false, size: 13), .foregroundColor: UIColor(Palette.syntaxDefault), .paragraphStyle: paragraph,
         ]))
+        // A closing newline ends the last line rather than starting one.
+        lines = code.text.split(separator: "\n", omittingEmptySubsequences: false).count - (code.text.hasSuffix("\n") ? 1 : 0)
         super.init(key: key)
     }
 
-    override func natural(_ width: CGFloat) -> CGSize { CGSize(width: width, height: Self.headerHeight + ceil(body.size.height) + Self.padding) }
+    /// Every line up to the cap (RENDER.md M8); past it the body scrolls down
+    /// as well as sideways.
+    private var shown: CGFloat { GenUIMetrics.codeBody(lines: lines) }
+
+    override func natural(_ width: CGFloat) -> CGSize { CGSize(width: width, height: Self.headerHeight + shown + Self.padding) }
     override var minWidth: CGFloat { 160 }
 
     override func place(_ frame: CGRect, below: CGFloat) -> GenUIPlaced {
@@ -454,7 +467,7 @@ final class GenUICodeElement: GenUIElement {
         let textSize = CGSize(width: ceil(body.size.width), height: ceil(body.size.height))
         var scroll = GenUIPlaced(
             key: "\(key).scroll", frame: CGRect(x: 0, y: h, width: frame.width, height: frame.height - h),
-            mark: .scroll(GenUIScrollMark(contentSize: CGSize(width: textSize.width + 2 * p, height: frame.height - h), stops: []))
+            mark: .scroll(GenUIScrollMark(contentSize: CGSize(width: textSize.width + 2 * p, height: max(frame.height - h, textSize.height + p)), stops: []))
         )
         scroll.children.append(GenUIPlaced(key: "\(key).text", frame: CGRect(x: p, y: 0, width: textSize.width, height: textSize.height), mark: .text(GenUITextMark(layout: body, links: [], plain: code.text))))
         placed.children.append(scroll)
