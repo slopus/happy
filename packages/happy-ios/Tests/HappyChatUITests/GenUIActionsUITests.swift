@@ -80,11 +80,14 @@ final class GenUIActionsUITests: XCTestCase {
         XCTAssertEqual(app.textFields["genui-secret-variable-0"].value as? String, "STRIPE_SECRET_KEY")
         let value = app.secureTextFields["genui-secret-value-0"]
         XCTAssertTrue(value.waitForExistence(timeout: 5))
+        XCTAssertEqual(value.placeholderValue, "Value")
+        shoot("secret-form-empty")
         value.tap()
         value.typeText("sk_test_123")
         shoot("secret-form")
         app.buttons["genui-secret-save"].tap()
-        XCTAssertTrue(app.staticTexts["Added stripe"].waitForExistence(timeout: 10), "not saved")
+        XCTAssertTrue(app.navigationBars["Secret Added"].waitForExistence(timeout: 10), "not saved")
+        XCTAssertTrue(app.staticTexts["Added stripe"].exists)
         shoot("secret-added")
         app.buttons["genui-secret-done"].tap()
         XCTAssertTrue(add.waitForExistence(timeout: 5))
@@ -96,7 +99,7 @@ final class GenUIActionsUITests: XCTestCase {
         XCTAssertEqual(app.secureTextFields["genui-secret-value-0"].placeholderValue, "Keep the stored value")
         shoot("secret-change")
         app.buttons["genui-secret-save"].tap()
-        XCTAssertTrue(app.staticTexts["Updated stripe"].waitForExistence(timeout: 10), "not changed")
+        XCTAssertTrue(app.navigationBars["Secret Updated"].waitForExistence(timeout: 10), "not changed")
         app.buttons["genui-secret-done"].tap()
     }
 }

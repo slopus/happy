@@ -112,8 +112,8 @@ final class GenUIChatEmbedTests: XCTestCase {
         XCTAssertEqual(try runs("acts3").host.origin, false)
         key.server = HappyCloud.server(named: "acme")
         XCTAssertEqual(try runs("acts1").host.server, .cluster)
-        // Happy Cloud's own form isn't here yet: its button stays disabled.
-        XCTAssertFalse(try runs("acts1")(.clusterSecret(GenUIClusterSecretPrefill(kind: .environment, name: "Keys"))))
+        // Happy Cloud opens its own secret form, and not Happy Agent's.
+        XCTAssertTrue(try runs("acts1")(.clusterSecret(GenUIClusterSecretPrefill(kind: .environment, name: "Keys"))))
         XCTAssertFalse(try runs("acts1")(.secret(GenUISecretPrefill(variables: [.init(name: "KEY")]))))
     }
 }

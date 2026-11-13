@@ -44,14 +44,6 @@ final class GenUISecretFormViewController: SettingsPageViewController, UITextFie
         super.init(title: Text.newTitle)
     }
 
-    /// The form in a sheet with its own bar, over `controller`.
-    static func present(_ form: GenUISecretFormViewController, from controller: UIViewController) {
-        let navigation = UINavigationController(rootViewController: form)
-        AppCoordinator.applyAppearance(to: navigation.navigationBar)
-        navigation.isModalInPresentation = true
-        controller.present(navigation, animated: true)
-    }
-
     override func viewDidLoad() {
         super.viewDidLoad()
         view.accessibilityIdentifier = "genui-secret-form"
@@ -131,7 +123,8 @@ final class GenUISecretFormViewController: SettingsPageViewController, UITextFie
     override func reload() {
         super.reload()
         guard isViewLoaded else { return }
-        title = saved == nil ? (draft.changing ? Text.changeTitle : Text.newTitle) : nil
+        if let saved { title = saved.created ? Text.addedTitle : Text.updatedTitle }
+        else { title = draft.changing ? Text.changeTitle : Text.newTitle }
         syncFields()
     }
 
@@ -258,7 +251,8 @@ final class GenUISecretFormViewController: SettingsPageViewController, UITextFie
     private func showSave() {
         if saved != nil {
             navigationItem.leftBarButtonItem = nil
-            navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
+            navigationItem.rightBarButtonItem = UIBarButtonItem(title: Text.done, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
+            navigationItem.rightBarButtonItem?.style = .done
             navigationItem.rightBarButtonItem?.accessibilityIdentifier = "genui-secret-done"
             return
         }

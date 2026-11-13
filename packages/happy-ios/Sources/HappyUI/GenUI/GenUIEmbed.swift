@@ -60,8 +60,7 @@ enum GenUIPlanners {
         let traits = GenUITraits(text: environment, displayScale: environment?.displayScale ?? 2)
         let planner = planner(artifact.id, version: read.version, document: read.document, traits: traits)
         let host = GenUIHost(server: HappyCloud.isCloud(server) ? .cluster : .happyAgent, origin: read.origin != nil, served: references.genUIServed)
-        // Happy Cloud's own secret form isn't in this build yet.
-        let runs = GenUIRuns(host: host, sends: read.origin != nil && read.origin == agentId, forms: host.server == .happyAgent)
+        let runs = GenUIRuns(host: host, sends: read.origin != nil && read.origin == agentId, forms: true)
         return GenUIEmbed(artifactId: artifact.id, version: read.version, title: artifact.title, document: read.document, planner: planner, width: width, runs: runs)
     }
 }

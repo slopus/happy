@@ -44,7 +44,38 @@ enum GenUIActionRunner {
             guard let block, block.identity == identity else { return }
             block.interaction.save(key, secret: saved.secret.id)
         }
-        GenUISecretFormViewController.present(form, from: controller)
+        present(form, from: controller)
+    }
+
+    /// Opens a `cluster_secret` element's form, on the secret it names, or
+    /// else the one it saved before; saved, the element is marked.
+    static func openClusterSecret(_ prefill: GenUIClusterSecretPrefill, key: String, artifactId: String, version: Int, in block: GenUIBlockView,
+                                  client: AgentClient, from controller: UIViewController) {
+        let identity = block.identity
+        let form = GenUIClusterSecretFormViewController(client: client, artifactId: artifactId, version: version, element: key, prefill: prefill,
+                                                        savedId: block.interaction.saved[key]) { [weak block] saved in
+            guard let block, block.identity == identity else { return }
+            block.interaction.save(key, secret: saved.secretId)
+        }
+        present(form, from: controller)
+    }
+
+    /// Opens a secret action's form, if it is one.
+    static func openForm(_ action: GenUIAction, key: String, artifactId: String, version: Int, in block: GenUIBlockView,
+                         client: AgentClient, from controller: UIViewController) {
+        switch action {
+        case .secret(let prefill): openSecret(prefill, key: key, artifactId: artifactId, version: version, in: block, client: client, from: controller)
+        case .clusterSecret(let prefill): openClusterSecret(prefill, key: key, artifactId: artifactId, version: version, in: block, client: client, from: controller)
+        default: break
+        }
+    }
+
+    /// A form in a sheet with its own bar, over `controller`.
+    private static func present(_ form: UIViewController, from controller: UIViewController) {
+        let navigation = UINavigationController(rootViewController: form)
+        AppCoordinator.applyAppearance(to: navigation.navigationBar)
+        navigation.isModalInPresentation = true
+        controller.present(navigation, animated: true)
     }
 }
 #endif
