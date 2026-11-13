@@ -1,0 +1,980 @@
+{
+  "description": "Measuring cases every renderer must pass. Each case measures render documents at a width under the conditions given and checks `expect`. `same height`: every measurement gives one height. `same height per document`: measurements of the same document agree. `switch branches`: the named switch shows the named branch. A `document` is inline or a path relative to docs/genui/render. Conditions left out take their default: images `loaded`, theme `light`, nothing pressed or chosen, host `happy_agent`, animation 0, scrolled `start`. Heights are the platform's own; only equality and branches are checked.",
+  "cases": [
+    {
+      "rule": "M2",
+      "name": "Loading, loaded and failed images measure the same",
+      "measure": [
+        {
+          "document": "compiled/05-gallery-grid.render.json",
+          "width": 390,
+          "images": "pending"
+        },
+        {
+          "document": "compiled/05-gallery-grid.render.json",
+          "width": 390,
+          "images": "loaded"
+        },
+        {
+          "document": "compiled/05-gallery-grid.render.json",
+          "width": 390,
+          "images": "failed"
+        },
+        {
+          "document": "compiled/06-gallery-carousel.render.json",
+          "width": 390,
+          "images": "pending"
+        },
+        {
+          "document": "compiled/06-gallery-carousel.render.json",
+          "width": 390,
+          "images": "failed"
+        }
+      ],
+      "expect": "same height per document"
+    },
+    {
+      "rule": "M2",
+      "name": "Light and dark measure the same",
+      "measure": [
+        {
+          "document": "compiled/01-stats.render.json",
+          "width": 390,
+          "theme": "light"
+        },
+        {
+          "document": "compiled/01-stats.render.json",
+          "width": 390,
+          "theme": "dark"
+        }
+      ],
+      "expect": "same height per document"
+    },
+    {
+      "rule": "M2",
+      "name": "Pressing, choosing and disabling measure the same",
+      "measure": [
+        {
+          "document": "compiled/10-choices.render.json",
+          "width": 390
+        },
+        {
+          "document": "compiled/10-choices.render.json",
+          "width": 390,
+          "pressed": "choices.0"
+        },
+        {
+          "document": "compiled/10-choices.render.json",
+          "width": 390,
+          "chosen": "choices.1"
+        },
+        {
+          "document": "compiled/14-cluster-secret.render.json",
+          "width": 390,
+          "host": "happy_agent"
+        },
+        {
+          "document": "compiled/14-cluster-secret.render.json",
+          "width": 390,
+          "host": "cluster"
+        }
+      ],
+      "expect": "same height per document"
+    },
+    {
+      "rule": "M2",
+      "name": "The active step's motion and a scrolled carousel measure the same",
+      "measure": [
+        {
+          "document": "compiled/09-steps.render.json",
+          "width": 390,
+          "animation": 0
+        },
+        {
+          "document": "compiled/09-steps.render.json",
+          "width": 390,
+          "animation": 0.5
+        },
+        {
+          "document": "compiled/06-gallery-carousel.render.json",
+          "width": 390,
+          "scrolled": "start"
+        },
+        {
+          "document": "compiled/06-gallery-carousel.render.json",
+          "width": 390,
+          "scrolled": "end"
+        }
+      ],
+      "expect": "same height per document"
+    },
+    {
+      "rule": "M3",
+      "name": "A figure's height comes from its pixel ratio, not its file or size",
+      "measure": [
+        {
+          "document": {
+            "genuiRender": 1,
+            "compiler": "conformance",
+            "fallback": "Measuring fixture.",
+            "root": "root",
+            "elements": {
+              "root": {
+                "type": "image",
+                "props": {
+                  "file": "assets/a.jpg",
+                  "width": 1600,
+                  "height": 1067,
+                  "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+                  "alt": "A photo",
+                  "shape": "landscape",
+                  "role": "figure"
+                }
+              }
+            }
+          },
+          "width": 390
+        },
+        {
+          "document": {
+            "genuiRender": 1,
+            "compiler": "conformance",
+            "fallback": "Measuring fixture.",
+            "root": "root",
+            "elements": {
+              "root": {
+                "type": "image",
+                "props": {
+                  "file": "assets/b.jpg",
+                  "width": 3200,
+                  "height": 2134,
+                  "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+                  "alt": "A photo",
+                  "shape": "landscape",
+                  "role": "figure"
+                }
+              }
+            }
+          },
+          "width": 390
+        }
+      ],
+      "expect": "same height"
+    },
+    {
+      "rule": "M3",
+      "name": "A cover's height comes from its shape, not its pixels",
+      "measure": [
+        {
+          "document": {
+            "genuiRender": 1,
+            "compiler": "conformance",
+            "fallback": "Measuring fixture.",
+            "root": "root",
+            "elements": {
+              "root": {
+                "type": "image",
+                "props": {
+                  "file": "assets/a.jpg",
+                  "width": 1600,
+                  "height": 1067,
+                  "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+                  "alt": "A photo",
+                  "shape": "landscape",
+                  "role": "cover"
+                }
+              }
+            }
+          },
+          "width": 390
+        },
+        {
+          "document": {
+            "genuiRender": 1,
+            "compiler": "conformance",
+            "fallback": "Measuring fixture.",
+            "root": "root",
+            "elements": {
+              "root": {
+                "type": "image",
+                "props": {
+                  "file": "assets/b.jpg",
+                  "width": 800,
+                  "height": 1600,
+                  "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+                  "alt": "A photo",
+                  "shape": "landscape",
+                  "role": "cover"
+                }
+              }
+            }
+          },
+          "width": 390
+        }
+      ],
+      "expect": "same height"
+    },
+    {
+      "rule": "M4",
+      "name": "Clamped text past its line count measures the same however long it is",
+      "measure": [
+        {
+          "document": {
+            "genuiRender": 1,
+            "compiler": "conformance",
+            "fallback": "Measuring fixture.",
+            "root": "root",
+            "elements": {
+              "root": {
+                "type": "text",
+                "props": {
+                  "spans": [
+                    {
+                      "text": "The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. "
+                    }
+                  ],
+                  "role": "body",
+                  "overflow": "clamp"
+                }
+              }
+            }
+          },
+          "width": 320
+        },
+        {
+          "document": {
+            "genuiRender": 1,
+            "compiler": "conformance",
+            "fallback": "Measuring fixture.",
+            "root": "root",
+            "elements": {
+              "root": {
+                "type": "text",
+                "props": {
+                  "spans": [
+                    {
+                      "text": "The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. "
+                    }
+                  ],
+                  "role": "body",
+                  "overflow": "clamp"
+                }
+              }
+            }
+          },
+          "width": 320
+        }
+      ],
+      "expect": "same height"
+    },
+    {
+      "rule": "M4",
+      "name": "Truncated text is one line however long it is",
+      "measure": [
+        {
+          "document": {
+            "genuiRender": 1,
+            "compiler": "conformance",
+            "fallback": "Measuring fixture.",
+            "root": "root",
+            "elements": {
+              "root": {
+                "type": "text",
+                "props": {
+                  "spans": [
+                    {
+                      "text": "The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. "
+                    }
+                  ],
+                  "role": "body",
+                  "overflow": "truncate"
+                }
+              }
+            }
+          },
+          "width": 320
+        },
+        {
+          "document": {
+            "genuiRender": 1,
+            "compiler": "conformance",
+            "fallback": "Measuring fixture.",
+            "root": "root",
+            "elements": {
+              "root": {
+                "type": "text",
+                "props": {
+                  "spans": [
+                    {
+                      "text": "The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. The rollout reached every region without a single failed health check, and latency stayed flat. "
+                    }
+                  ],
+                  "role": "body",
+                  "overflow": "truncate"
+                }
+              }
+            }
+          },
+          "width": 320
+        }
+      ],
+      "expect": "same height"
+    },
+    {
+      "rule": "M5",
+      "name": "A switch is compact below 560 of its own width and regular from 560",
+      "measure": [
+        {
+          "document": {
+            "genuiRender": 1,
+            "compiler": "conformance",
+            "fallback": "Measuring fixture.",
+            "root": "root",
+            "elements": {
+              "root": {
+                "type": "switch",
+                "props": {},
+                "slots": {
+                  "compact": [
+                    "compact"
+                  ],
+                  "regular": [
+                    "regular"
+                  ]
+                }
+              },
+              "compact": {
+                "type": "text",
+                "props": {
+                  "spans": [
+                    {
+                      "text": "Compact branch: one value per line.\nRevenue $1.24M\nMargin 31%"
+                    }
+                  ],
+                  "role": "body"
+                }
+              },
+              "regular": {
+                "type": "text",
+                "props": {
+                  "spans": [
+                    {
+                      "text": "Regular branch: values side by side."
+                    }
+                  ],
+                  "role": "body"
+                }
+              }
+            }
+          },
+          "width": 320,
+          "switch": {
+            "root": "compact"
+          }
+        },
+        {
+          "document": {
+            "genuiRender": 1,
+            "compiler": "conformance",
+            "fallback": "Measuring fixture.",
+            "root": "root",
+            "elements": {
+              "root": {
+                "type": "switch",
+                "props": {},
+                "slots": {
+                  "compact": [
+                    "compact"
+                  ],
+                  "regular": [
+                    "regular"
+                  ]
+                }
+              },
+              "compact": {
+                "type": "text",
+                "props": {
+                  "spans": [
+                    {
+                      "text": "Compact branch: one value per line.\nRevenue $1.24M\nMargin 31%"
+                    }
+                  ],
+                  "role": "body"
+                }
+              },
+              "regular": {
+                "type": "text",
+                "props": {
+                  "spans": [
+                    {
+                      "text": "Regular branch: values side by side."
+                    }
+                  ],
+                  "role": "body"
+                }
+              }
+            }
+          },
+          "width": 559,
+          "switch": {
+            "root": "compact"
+          }
+        },
+        {
+          "document": {
+            "genuiRender": 1,
+            "compiler": "conformance",
+            "fallback": "Measuring fixture.",
+            "root": "root",
+            "elements": {
+              "root": {
+                "type": "switch",
+                "props": {},
+                "slots": {
+                  "compact": [
+                    "compact"
+                  ],
+                  "regular": [
+                    "regular"
+                  ]
+                }
+              },
+              "compact": {
+                "type": "text",
+                "props": {
+                  "spans": [
+                    {
+                      "text": "Compact branch: one value per line.\nRevenue $1.24M\nMargin 31%"
+                    }
+                  ],
+                  "role": "body"
+                }
+              },
+              "regular": {
+                "type": "text",
+                "props": {
+                  "spans": [
+                    {
+                      "text": "Regular branch: values side by side."
+                    }
+                  ],
+                  "role": "body"
+                }
+              }
+            }
+          },
+          "width": 560,
+          "switch": {
+            "root": "regular"
+          }
+        },
+        {
+          "document": {
+            "genuiRender": 1,
+            "compiler": "conformance",
+            "fallback": "Measuring fixture.",
+            "root": "root",
+            "elements": {
+              "root": {
+                "type": "switch",
+                "props": {},
+                "slots": {
+                  "compact": [
+                    "compact"
+                  ],
+                  "regular": [
+                    "regular"
+                  ]
+                }
+              },
+              "compact": {
+                "type": "text",
+                "props": {
+                  "spans": [
+                    {
+                      "text": "Compact branch: one value per line.\nRevenue $1.24M\nMargin 31%"
+                    }
+                  ],
+                  "role": "body"
+                }
+              },
+              "regular": {
+                "type": "text",
+                "props": {
+                  "spans": [
+                    {
+                      "text": "Regular branch: values side by side."
+                    }
+                  ],
+                  "role": "body"
+                }
+              }
+            }
+          },
+          "width": 800,
+          "switch": {
+            "root": "regular"
+          }
+        }
+      ],
+      "expect": "switch branches"
+    },
+    {
+      "rule": "M6",
+      "name": "A carousel is as tall as its tallest tile, wherever that tile is",
+      "measure": [
+        {
+          "document": {
+            "genuiRender": 1,
+            "compiler": "conformance",
+            "fallback": "Measuring fixture.",
+            "root": "root",
+            "elements": {
+              "root": {
+                "type": "scroll",
+                "props": {
+                  "shape": "landscape"
+                },
+                "children": [
+                  "tiles.2",
+                  "tiles.0",
+                  "tiles.1"
+                ]
+              },
+              "tiles.0": {
+                "type": "box",
+                "props": {
+                  "role": "tile",
+                  "gap": "related"
+                },
+                "children": [
+                  "tiles.0.image",
+                  "tiles.0.title"
+                ]
+              },
+              "tiles.0.image": {
+                "type": "image",
+                "props": {
+                  "file": "assets/0.jpg",
+                  "width": 1600,
+                  "height": 1067,
+                  "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+                  "alt": "A photo",
+                  "shape": "landscape",
+                  "role": "cover"
+                }
+              },
+              "tiles.0.title": {
+                "type": "text",
+                "props": {
+                  "spans": [
+                    {
+                      "text": "A tile title that wraps onto more lines."
+                    }
+                  ],
+                  "role": "item"
+                }
+              },
+              "tiles.1": {
+                "type": "box",
+                "props": {
+                  "role": "tile",
+                  "gap": "related"
+                },
+                "children": [
+                  "tiles.1.image",
+                  "tiles.1.title"
+                ]
+              },
+              "tiles.1.image": {
+                "type": "image",
+                "props": {
+                  "file": "assets/1.jpg",
+                  "width": 1600,
+                  "height": 1067,
+                  "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+                  "alt": "A photo",
+                  "shape": "landscape",
+                  "role": "cover"
+                }
+              },
+              "tiles.1.title": {
+                "type": "text",
+                "props": {
+                  "spans": [
+                    {
+                      "text": "A tile title that wraps onto more lines."
+                    }
+                  ],
+                  "role": "item"
+                }
+              },
+              "tiles.2": {
+                "type": "box",
+                "props": {
+                  "role": "tile",
+                  "gap": "related"
+                },
+                "children": [
+                  "tiles.2.image",
+                  "tiles.2.title"
+                ]
+              },
+              "tiles.2.image": {
+                "type": "image",
+                "props": {
+                  "file": "assets/2.jpg",
+                  "width": 1600,
+                  "height": 1067,
+                  "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+                  "alt": "A photo",
+                  "shape": "landscape",
+                  "role": "cover"
+                }
+              },
+              "tiles.2.title": {
+                "type": "text",
+                "props": {
+                  "spans": [
+                    {
+                      "text": "A tile title that wraps onto more lines. A tile title that wraps onto more lines. A tile title that wraps onto more lines. A tile title that wraps onto more lines. A tile title that wraps onto more lines. A tile title that wraps onto more lines."
+                    }
+                  ],
+                  "role": "item"
+                }
+              }
+            }
+          },
+          "width": 390
+        },
+        {
+          "document": {
+            "genuiRender": 1,
+            "compiler": "conformance",
+            "fallback": "Measuring fixture.",
+            "root": "root",
+            "elements": {
+              "root": {
+                "type": "scroll",
+                "props": {
+                  "shape": "landscape"
+                },
+                "children": [
+                  "tiles.0",
+                  "tiles.1",
+                  "tiles.2"
+                ]
+              },
+              "tiles.0": {
+                "type": "box",
+                "props": {
+                  "role": "tile",
+                  "gap": "related"
+                },
+                "children": [
+                  "tiles.0.image",
+                  "tiles.0.title"
+                ]
+              },
+              "tiles.0.image": {
+                "type": "image",
+                "props": {
+                  "file": "assets/0.jpg",
+                  "width": 1600,
+                  "height": 1067,
+                  "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+                  "alt": "A photo",
+                  "shape": "landscape",
+                  "role": "cover"
+                }
+              },
+              "tiles.0.title": {
+                "type": "text",
+                "props": {
+                  "spans": [
+                    {
+                      "text": "A tile title that wraps onto more lines."
+                    }
+                  ],
+                  "role": "item"
+                }
+              },
+              "tiles.1": {
+                "type": "box",
+                "props": {
+                  "role": "tile",
+                  "gap": "related"
+                },
+                "children": [
+                  "tiles.1.image",
+                  "tiles.1.title"
+                ]
+              },
+              "tiles.1.image": {
+                "type": "image",
+                "props": {
+                  "file": "assets/1.jpg",
+                  "width": 1600,
+                  "height": 1067,
+                  "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+                  "alt": "A photo",
+                  "shape": "landscape",
+                  "role": "cover"
+                }
+              },
+              "tiles.1.title": {
+                "type": "text",
+                "props": {
+                  "spans": [
+                    {
+                      "text": "A tile title that wraps onto more lines."
+                    }
+                  ],
+                  "role": "item"
+                }
+              },
+              "tiles.2": {
+                "type": "box",
+                "props": {
+                  "role": "tile",
+                  "gap": "related"
+                },
+                "children": [
+                  "tiles.2.image",
+                  "tiles.2.title"
+                ]
+              },
+              "tiles.2.image": {
+                "type": "image",
+                "props": {
+                  "file": "assets/2.jpg",
+                  "width": 1600,
+                  "height": 1067,
+                  "thumbhash": "1QcSHQRnh493V4dIh4eXh1h4kJUI",
+                  "alt": "A photo",
+                  "shape": "landscape",
+                  "role": "cover"
+                }
+              },
+              "tiles.2.title": {
+                "type": "text",
+                "props": {
+                  "spans": [
+                    {
+                      "text": "A tile title that wraps onto more lines. A tile title that wraps onto more lines. A tile title that wraps onto more lines. A tile title that wraps onto more lines. A tile title that wraps onto more lines. A tile title that wraps onto more lines."
+                    }
+                  ],
+                  "role": "item"
+                }
+              }
+            }
+          },
+          "width": 390
+        }
+      ],
+      "expect": "same height"
+    },
+    {
+      "rule": "M7",
+      "name": "A plot's height does not depend on its values",
+      "measure": [
+        {
+          "document": {
+            "genuiRender": 1,
+            "compiler": "conformance",
+            "fallback": "Measuring fixture.",
+            "root": "root",
+            "elements": {
+              "root": {
+                "type": "plot",
+                "props": {
+                  "kind": "line",
+                  "x": [
+                    "Apr",
+                    "May",
+                    "Jun",
+                    "Jul",
+                    "Aug",
+                    "Sep"
+                  ],
+                  "y": {
+                    "min": 0,
+                    "max": 300000,
+                    "ticks": [
+                      {
+                        "value": 0,
+                        "label": "$0k"
+                      },
+                      {
+                        "value": 100000,
+                        "label": "$100k"
+                      },
+                      {
+                        "value": 200000,
+                        "label": "$200k"
+                      },
+                      {
+                        "value": 300000,
+                        "label": "$300k"
+                      }
+                    ]
+                  },
+                  "series": [
+                    {
+                      "name": "Enterprise",
+                      "values": [
+                        120000,
+                        138000,
+                        156000,
+                        198000,
+                        231000,
+                        262000
+                      ],
+                      "labels": [
+                        "$120k",
+                        "$138k",
+                        "$156k",
+                        "$198k",
+                        "$231k",
+                        "$262k"
+                      ],
+                      "color": 1
+                    }
+                  ],
+                  "legend": [
+                    {
+                      "label": "Enterprise",
+                      "color": 1
+                    }
+                  ],
+                  "summary": "Line chart, Apr to Sep."
+                }
+              }
+            }
+          },
+          "width": 390
+        },
+        {
+          "document": {
+            "genuiRender": 1,
+            "compiler": "conformance",
+            "fallback": "Measuring fixture.",
+            "root": "root",
+            "elements": {
+              "root": {
+                "type": "plot",
+                "props": {
+                  "kind": "line",
+                  "x": [
+                    "Apr",
+                    "May",
+                    "Jun",
+                    "Jul",
+                    "Aug",
+                    "Sep"
+                  ],
+                  "y": {
+                    "min": 0,
+                    "max": 300000,
+                    "ticks": [
+                      {
+                        "value": 0,
+                        "label": "$0k"
+                      },
+                      {
+                        "value": 100000,
+                        "label": "$100k"
+                      },
+                      {
+                        "value": 200000,
+                        "label": "$200k"
+                      },
+                      {
+                        "value": 300000,
+                        "label": "$300k"
+                      }
+                    ]
+                  },
+                  "series": [
+                    {
+                      "name": "Enterprise",
+                      "values": [
+                        290000,
+                        110000,
+                        250000,
+                        130000,
+                        270000,
+                        150000
+                      ],
+                      "labels": [
+                        "$290k",
+                        "$110k",
+                        "$250k",
+                        "$130k",
+                        "$270k",
+                        "$150k"
+                      ],
+                      "color": 1
+                    }
+                  ],
+                  "legend": [
+                    {
+                      "label": "Enterprise",
+                      "color": 1
+                    }
+                  ],
+                  "summary": "Line chart, Apr to Sep."
+                }
+              }
+            }
+          },
+          "width": 390
+        }
+      ],
+      "expect": "same height"
+    },
+    {
+      "rule": "M8",
+      "name": "Code never wraps: long lines measure like short ones",
+      "measure": [
+        {
+          "document": {
+            "genuiRender": 1,
+            "compiler": "conformance",
+            "fallback": "Measuring fixture.",
+            "root": "root",
+            "elements": {
+              "root": {
+                "type": "code",
+                "props": {
+                  "text": "const value = xxxxxxxx;\nconst value = xxxxxxxx;\nconst value = xxxxxxxx;",
+                  "language": "ts"
+                }
+              }
+            }
+          },
+          "width": 320
+        },
+        {
+          "document": {
+            "genuiRender": 1,
+            "compiler": "conformance",
+            "fallback": "Measuring fixture.",
+            "root": "root",
+            "elements": {
+              "root": {
+                "type": "code",
+                "props": {
+                  "text": "const value = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx;\nconst value = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx;\nconst value = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx;",
+                  "language": "ts"
+                }
+              }
+            }
+          },
+          "width": 320
+        }
+      ],
+      "expect": "same height"
+    }
+  ]
+}

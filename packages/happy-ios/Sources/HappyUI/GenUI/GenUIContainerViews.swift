@@ -16,7 +16,7 @@ final class GenUIBoxView: GenUIElementView {
     private let leadingWidth: CGFloat
     private let leadingChild: Bool
 
-    init(key: String, _ box: GenUIBox, _ nodes: [GenUINode], context: GenUIContext, place: GenUIPlace) {
+    init(key: String, _ box: GenUIBox, _ nodes: [GenUINode], context: GenUIContext, place: GenUIViewPlace) {
         self.box = box
         var inner = place
         if box.role == .card {
@@ -27,7 +27,7 @@ final class GenUIBoxView: GenUIElementView {
         children = nodes.enumerated().map { index, node in
             var place = inner
             place.first = index == 0
-            return GenUIElements.make(node, context: context, place: place)
+            return GenUIViews.make(node, context: context, place: place)
         }
         leadingWidth = itemRow ? GenUIMetrics.leading(box.leading.rawValue) : 0
         leadingChild = itemRow && children.first?.isLeading == true
@@ -204,13 +204,13 @@ final class GenUIGridView: GenUIElementView {
     private let cells: [GenUIElementView]
     private var rules: [GenUIHairline] = []
 
-    init(key: String, _ grid: GenUIGrid, _ nodes: [GenUINode], context: GenUIContext, place: GenUIPlace) {
+    init(key: String, _ grid: GenUIGrid, _ nodes: [GenUINode], context: GenUIContext, place: GenUIViewPlace) {
         self.grid = grid
         // A cell's text aligns with its column, whatever its own `align`.
         cells = nodes.enumerated().map { index, node in
             var place = place
             place.columnEnd = grid.columns[index % grid.columns.count].align == .end
-            return GenUIElements.make(node, context: context, place: place)
+            return GenUIViews.make(node, context: context, place: place)
         }
         super.init(key: key)
         let rows = (cells.count + grid.columns.count - 1) / max(1, grid.columns.count)
@@ -249,10 +249,10 @@ final class GenUIScrollView: GenUIElementView, UIScrollViewDelegate {
     private let cards: [GenUIElementView]
     private let bleed: CGFloat
 
-    init(key: String, shape: GenUIShape, _ nodes: [GenUINode], context: GenUIContext, place: GenUIPlace) {
+    init(key: String, shape: GenUIShape, _ nodes: [GenUINode], context: GenUIContext, place: GenUIViewPlace) {
         self.shape = shape
         bleed = place.bleed
-        cards = nodes.map { GenUIElements.make($0, context: context, place: place) }
+        cards = nodes.map { GenUIViews.make($0, context: context, place: place) }
         super.init(key: key)
         scroll.showsHorizontalScrollIndicator = false
         scroll.decelerationRate = .fast
@@ -292,9 +292,9 @@ final class GenUISwitchView: GenUIElementView {
     private let compact: GenUIElementView?
     private let regular: GenUIElementView?
 
-    init(key: String, compact: GenUINode?, regular: GenUINode?, context: GenUIContext, place: GenUIPlace) {
-        self.compact = compact.map { GenUIElements.make($0, context: context, place: place) }
-        self.regular = regular.map { GenUIElements.make($0, context: context, place: place) }
+    init(key: String, compact: GenUINode?, regular: GenUINode?, context: GenUIContext, place: GenUIViewPlace) {
+        self.compact = compact.map { GenUIViews.make($0, context: context, place: place) }
+        self.regular = regular.map { GenUIViews.make($0, context: context, place: place) }
         super.init(key: key)
         self.compact.map(addSubview)
         self.regular.map(addSubview)
@@ -339,8 +339,8 @@ final class GenUIPressView: GenUIElementView, GenUIChoice {
     private let role: GenUIPress.Role
     private let reach: CGFloat
 
-    init(key: String, _ press: GenUIPress, _ nodes: [GenUINode], context: GenUIContext, place: GenUIPlace) {
-        let views = nodes.map { GenUIElements.make($0, context: context, place: place) }
+    init(key: String, _ press: GenUIPress, _ nodes: [GenUINode], context: GenUIContext, place: GenUIViewPlace) {
+        let views = nodes.map { GenUIViews.make($0, context: context, place: place) }
         content = views
         role = press.role
         reach = press.role == .item && place.inCard ? GenUIMetrics.cardPadding : 8

@@ -30,9 +30,9 @@ public final class GenUIView: UIView {
     /// chat's side margin, which a bare carousel runs out into.
     public init(document: GenUIRenderDocument, baseURL: URL?, margin: CGFloat = MessageLayout.Metrics.marginH, freezesMotion: Bool = false) {
         context = GenUIContext(document: document, baseURL: baseURL, freezesMotion: freezesMotion)
-        let place = GenUIPlace(inCard: false, bleed: margin)
+        let place = GenUIViewPlace(inCard: false, bleed: margin)
         if let tree = document.tree() {
-            root = GenUIElements.make(tree, context: context, place: place)
+            root = GenUIViews.make(tree, context: context, place: place)
         } else {
             root = GenUITextView(key: "fallback", GenUIText([GenUISpan(document.fallback)], role: .body), place: place, context: context)
         }
@@ -106,7 +106,7 @@ protocol GenUIChoice: AnyObject {
 }
 
 /// Where an element sits, decided by its ancestors.
-struct GenUIPlace {
+struct GenUIViewPlace {
     /// In a card: body text at the card's size, carousels bleed to its edge.
     var inCard: Bool
     /// How far a carousel may run past the column on each side.
@@ -172,8 +172,8 @@ class GenUIElementView: UIView {
 
 /// Builds the view for a node.
 @MainActor
-enum GenUIElements {
-    static func make(_ node: GenUINode, context: GenUIContext, place: GenUIPlace) -> GenUIElementView {
+enum GenUIViews {
+    static func make(_ node: GenUINode, context: GenUIContext, place: GenUIViewPlace) -> GenUIElementView {
         switch node.kind {
         case .box(let box, let children): GenUIBoxView(key: node.key, box, children, context: context, place: place)
         case .grid(let grid, let children): GenUIGridView(key: node.key, grid, children, context: context, place: place)
@@ -236,6 +236,11 @@ func genuiString(
 enum GenUIIcons {
     private static var cache: [String: UIImage] = [:]
 
+    /// Whether `name` has a glyph, from any thread.
+    nonisolated static func exists(_ name: String) -> Bool {
+        !name.contains("/") && GenUIColors.theme?.icons.contains(name) == true
+    }
+
     static func image(_ name: String) -> UIImage? {
         if let image = cache[name] { return image }
         guard !name.contains("/"), let image = UIImage(named: "genui-\(name)", in: .module, compatibleWith: nil)
@@ -255,7 +260,7 @@ enum GenUIIcons {
 }
 
 /// The shared Gen UI colours, read once from the bundled `genui-theme.json`.
-@MainActor
+/// Safe from any thread.
 enum GenUIColors {
     static let theme: GenUITheme? = Bundle.module.url(forResource: "genui-theme", withExtension: "json")
         .flatMap { try? Data(contentsOf: $0) }.flatMap(GenUITheme.parse)
@@ -288,10 +293,10 @@ enum GenUIColors {
 
 extension GenUITone {
     /// A glyph, a bar, a sparkline, a marker or a chart mark in this tone.
-    @MainActor var ink: ColorToken { GenUIColors.ink(self) }
+    var ink: ColorToken { GenUIColors.ink(self) }
     /// Words in this tone, a pill's label included.
-    @MainActor var text: ColorToken { GenUIColors.text(self) }
+    var text: ColorToken { GenUIColors.text(self) }
     /// The ground of a pill or a notice in this tone.
-    @MainActor var fill: ColorToken { GenUIColors.fill(self) }
+    var fill: ColorToken { GenUIColors.fill(self) }
 }
 #endif

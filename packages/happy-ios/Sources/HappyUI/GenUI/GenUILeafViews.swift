@@ -17,7 +17,7 @@ final class GenUITextView: GenUIElementView {
     private var links: [(range: NSRange, url: String)] = []
     private weak var context: GenUIContext?
 
-    init(key: String, _ text: GenUIText, place: GenUIPlace, context: GenUIContext) {
+    init(key: String, _ text: GenUIText, place: GenUIViewPlace, context: GenUIContext) {
         self.text = text
         self.context = context
         let (style, color, tabular) = Self.look(text.role, inCard: place.inCard)

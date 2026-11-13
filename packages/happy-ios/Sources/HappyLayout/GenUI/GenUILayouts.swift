@@ -56,8 +56,9 @@ public enum GenUIMetrics {
     /// The carousel: between cards, and how much of the next one shows.
     public static let carouselGap: CGFloat = 12
     public static let carouselPeek: CGFloat = 80
-    /// Below this width a `switch` draws `compact`: every phone.
-    public static let regularWidth: CGFloat = 600
+    /// Below this width of its own a `switch` draws `compact`: every phone
+    /// (SPEC.md's "wide" is 560pt or more).
+    public static let regularWidth: CGFloat = 560
 
     public static func leading(_ kind: String) -> CGFloat {
         switch kind {
