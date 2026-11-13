@@ -175,8 +175,13 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
             let media = vault.map { ArtifactMedia(client: client, files: $0.files, library: session.media, workspace: { throw BrowserError.unavailable }) }
                 ?? ArtifactMedia(client: client, artifactId: artifact.id, version: version.number, library: session.media)
             self.media = media
-            if file == entry, let render = version.files.first(where: { $0.path == GenUIRenderDocument.path }) {
-                try await showGenUI(render, version: version, media: media)
+            // A `gen_ui` version draws its render document, listed in its
+            // files or not; never its entry as a page.
+            let listed = version.files.first { $0.path == GenUIRenderDocument.path }
+            var isGenUI = file == entry && listed != nil
+            if file == entry, listed == nil, vault == nil { isGenUI = await type() == "gen_ui" }
+            if isGenUI {
+                try await showGenUI(listed, version: version, media: media)
             } else if Self.isMarkdown(file) {
                 try await showDocument(file, version: version, media: media)
             } else if ArtifactMedia.isVisual(file) {
@@ -196,6 +201,13 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
             Analytics.shared.artifactLoadFailed(error, isFile: vault != nil)
             show(message: Strings.artifactUnavailable)
         }
+    }
+
+    /// The artifact's type, read from its object when what opened it didn't
+    /// know (a link); empty when that can't be read.
+    private func type() async -> String {
+        if !artifact.type.isEmpty { return artifact.type }
+        return (try? await session.client.artifact(artifact.id))?["type"]?.stringValue ?? ""
     }
 
     static func isMarkdown(_ file: AgentWire.ArtifactVersion.File) -> Bool {
@@ -392,10 +404,23 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
 
     /// The version's render document, planned at the column's width once
     /// layout knows it; never per frame, again only when the width or the
-    /// text size changes.
-    private func showGenUI(_ render: AgentWire.ArtifactVersion.File, version: AgentWire.ArtifactVersion, media: ArtifactMedia) async throws {
-        _ = media.media(render)
-        guard let body = await media.data(ArtifactMedia.key(render.path)) else { throw AgentClientError.invalidResponse }
+    /// text size changes. One the version's files list reads as they do; one
+    /// they don't (Happy Cloud's) by its path, unavailable only when that
+    /// read fails.
+    private func showGenUI(_ listed: AgentWire.ArtifactVersion.File?, version: AgentWire.ArtifactVersion, media: ArtifactMedia) async throws {
+        let body: Data
+        if let listed {
+            _ = media.media(listed)
+            guard let read = await media.data(ArtifactMedia.key(listed.path)) else { throw AgentClientError.invalidResponse }
+            body = read
+        } else {
+            do {
+                body = try await session.client.genUIRender(artifact.id, version: version.number)
+            } catch AgentClientError.status(404, _, _) {
+                // The version is there; its document isn't.
+                throw AgentClientError.invalidResponse
+            }
+        }
         try Task.checkCancellation()
         let document = await Task.detached(priority: .userInitiated) { GenUIRenderDocument.parse(body) }.value
         guard let document else { return show(message: Strings.artifactUnavailable) }

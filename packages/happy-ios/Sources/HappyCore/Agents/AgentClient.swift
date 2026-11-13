@@ -595,6 +595,18 @@ public final class AgentClient: Sendable {
         return try await send("GET", "/v0/artifacts/\(Self.escape(artifactId))/versions/\(version)/files/\(escaped)", headers: headers, category: .file)
     }
 
+    /// A `gen_ui` version's render document (`GenUIRenderDocument.path`),
+    /// whole, read by its path whether or not the version's files list it:
+    /// a Happy Agent lists it, a Happy Cloud server leaves it out and serves
+    /// it all the same (happy-cluster API.md, "Gen UI artifacts").
+    public func genUIRender(_ artifactId: String, version: Int) async throws -> Data {
+        var data = Data()
+        try await Self.read({ range in
+            try await artifactFile(artifactId, version: version, path: GenUIRenderDocument.path, range: range.map { "bytes=\($0.lowerBound)-\($0.upperBound)" })
+        }, each: { piece, _, _ in data.append(piece) })
+        return data
+    }
+
     /// One answer holds at most 8 MiB, so a whole file is read in ranges
     /// of this size.
     public static let rangeChunk = 4 * 1024 * 1024

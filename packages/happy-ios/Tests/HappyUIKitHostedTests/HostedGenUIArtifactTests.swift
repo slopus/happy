@@ -20,14 +20,15 @@ final class HostedGenUIArtifactTests: XCTestCase {
 
     private var fixtures: URL { Bundle(for: Self.self).resourceURL!.appendingPathComponent("GenUI") }
 
-    private func open(_ daemon: ArtifactDaemon) async throws -> (UIWindow, ArtifactViewController) {
+    /// `type`: what opened it knew the artifact's; empty, as a link opens it.
+    private func open(_ daemon: ArtifactDaemon, type: String = "gen_ui") async throws -> (UIWindow, ArtifactViewController) {
         let account = AccountController(serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "genui-test", credentialStore: InMemoryCredentialStore(), storeDirectory: nil, agentTransport: { _ in daemon })
         await account.agentConnections.setForeground(false)
         let connection = try await account.agentConnections.add(JSONDecoder().decode(AgentConnectionCredentials.self,
             from: Data(#"{"address":"genui-test","port":1,"deviceID":"\#(UUID().uuidString)","deviceToken":"native-secret"}"#.utf8)), name: "Studio Mac")
         let context = AppContext(account: account, variant: .preview, version: "test")
         let session = try XCTUnwrap(Session.session(for: connection.id, context: context))
-        let screen = ArtifactViewController(session: session, artifact: Artifact(id: "art1", version: 3, type: "gen_ui", title: daemon.title, followsLatest: true))
+        let screen = ArtifactViewController(session: session, artifact: Artifact(id: "art1", version: 3, type: type, title: daemon.title, followsLatest: true))
         let navigation = UINavigationController(rootViewController: UIViewController())
         let window = hostedKeyWindow(in: try await hostedActiveScene(), root: navigation)
         navigation.pushViewController(screen, animated: false)
@@ -118,6 +119,40 @@ final class HostedGenUIArtifactTests: XCTestCase {
         try await wait("the message") { message.text != nil }
         XCTAssertEqual(message.text, Strings.artifactUnavailable)
         XCTAssertNil(block(screen))
+    }
+
+    /// Happy Cloud leaves the render document out of a version's files and
+    /// serves it all the same: read by its path, from the chat's card and
+    /// the Artifacts list (which know the type) and from a link (which
+    /// reads it), never the entry's JSON as a page.
+    func testARenderDocumentTheFilesDontListIsReadByItsPath() async throws {
+        let render = try Data(contentsOf: fixtures.appendingPathComponent("05-gallery-grid.render.json"))
+        for type in ["gen_ui", ""] {
+            let daemon = ArtifactDaemon(type: "gen_ui", title: "Trip photos", files: [
+                .init(path: "index.genui.json", mimeType: "application/json", data: Data("{}".utf8)),
+                .init(path: GenUIRenderDocument.path, mimeType: "application/json", data: render),
+            ], unlisted: [GenUIRenderDocument.path])
+            let (_, screen) = try await open(daemon, type: type)
+            try await wait("the document") { block(screen)?.built != nil }
+            let requests = await daemon.requests
+            XCTAssertTrue(requests.contains { $0.hasPrefix("/v0/artifacts/art1/versions/3/files/.genui/render.json") }, "\(requests)")
+            XCTAssertFalse(requests.contains { $0.contains("/files/index.genui.json") }, "\(requests)")
+            XCTAssertTrue(screen.children.isEmpty, "a page opened: \(screen.children)")
+            for step in teardown { step() }
+            teardown = []
+        }
+    }
+
+    func testAnUnlistedDocumentThatCantBeReadSaysSo() async throws {
+        let daemon = ArtifactDaemon(type: "gen_ui", title: "Missing", files: [
+            .init(path: "index.genui.json", mimeType: "application/json", data: Data("{}".utf8)),
+        ])
+        let (_, screen) = try await open(daemon)
+        let message = try XCTUnwrap(screen.view.genuiSubviews.compactMap { $0 as? UILabel }.first { $0.accessibilityIdentifier == "artifact-message" })
+        try await wait("the message") { message.text != nil }
+        XCTAssertEqual(message.text, Strings.artifactUnavailable)
+        XCTAssertNil(block(screen))
+        XCTAssertTrue(screen.children.isEmpty, "a page opened: \(screen.children)")
     }
 
     private func capture(_ window: UIWindow, _ name: String) {

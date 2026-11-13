@@ -24,16 +24,20 @@ actor ArtifactDaemon: AgentTransport {
     let type: String
     let title: String
     let files: [File]
+    /// Served, but left out of the version's files, as Happy Cloud leaves
+    /// out a render document.
+    let unlisted: Set<String>
     let remote: Data
     /// Every API request, with its `Range` when it had one.
     private(set) var requests: [String] = []
     /// Every request line a tunnel carried.
     private(set) var tunneled: [String] = []
 
-    init(type: String, title: String, files: [File], remote: Data = Data()) {
+    init(type: String, title: String, files: [File], unlisted: Set<String> = [], remote: Data = Data()) {
         self.type = type
         self.title = title
         self.files = files
+        self.unlisted = unlisted
         self.remote = remote
     }
 
@@ -53,7 +57,7 @@ actor ArtifactDaemon: AgentTransport {
             return HTTP1Response(status: 200, body: Data(versionJSON.utf8))
         }
         if path == "/v0/artifacts/\(id)" {
-            return HTTP1Response(status: 200, body: Data(#"{"artifact":{"id":"art1","source":{"kind":"workspace","workspaceId":"work1","projectId":"proj1","agentId":"agent1"}}}"#.utf8))
+            return HTTP1Response(status: 200, body: Data(#"{"artifact":{"id":"art1","type":"\#(type)","source":{"kind":"workspace","workspaceId":"work1","projectId":"proj1","agentId":"agent1"}}}"#.utf8))
         }
         if path == "/v0/config" { return HTTP1Response(status: 200, body: Data(#"{"config":{"node":{"name":"Studio Mac"}}}"#.utf8)) }
         return HTTP1Response(status: 200, body: Data("{}".utf8))
@@ -65,7 +69,7 @@ actor ArtifactDaemon: AgentTransport {
 
     private var versionJSON: String {
         let entry = files.first { $0.path.hasSuffix(".md") && !$0.path.contains("/") } ?? files[0]
-        return #"{"version":{"artifactId":"\#(id)","number":\#(number),"title":"\#(title)","entry":\#(object(entry)),"files":[\#(files.map(object).joined(separator: ","))],"background":null}}"#
+        return #"{"version":{"artifactId":"\#(id)","number":\#(number),"title":"\#(title)","entry":\#(object(entry)),"files":[\#(files.filter { !unlisted.contains($0.path) }.map(object).joined(separator: ","))],"background":null}}"#
     }
 
     /// The file route: one range when asked for one, else the whole file.

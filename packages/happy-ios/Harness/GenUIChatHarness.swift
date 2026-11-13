@@ -103,6 +103,9 @@ private struct GenUIChatComputer: AgentTransport {
     let count: Int
     let folder: URL
     let examples: [String]
+    /// Happy Cloud's manifest: each artifact at its second version, whose
+    /// files leave out the render document it serves all the same.
+    let unlisted: Bool
     let secrets = GenUIChatSecrets()
     let clusterSecrets = GenUIChatClusterSecrets()
 
@@ -207,21 +210,23 @@ private struct GenUIChatComputer: AgentTransport {
         let id = parts[2]
         if parts.count == 3 {
             return try Self.json(.object(["artifact": .object([
-                "id": .string(id), "type": .string("gen_ui"), "title": .string(name), "latestVersion": .number(1), "status": .string("active"),
+                "id": .string(id), "type": .string("gen_ui"), "title": .string(name), "latestVersion": .number(unlisted ? 2 : 1), "status": .string("active"),
                 "entry": file(GenUIRenderDocument.path, "application/json"),
             ])]))
         }
         if parts.count == 5, parts[3] == "versions" {
             let assets = ((try? FileManager.default.contentsOfDirectory(atPath: folder.appendingPathComponent("assets").path)) ?? []).sorted()
+            let render = unlisted ? [] : [file(GenUIRenderDocument.path, "application/json", size: document(name)?.count)]
             return try Self.json(.object(["version": .object([
-                "artifactId": .string(id), "number": .number(1), "title": .string(name), "entry": file("index.genui.json", "application/json"),
+                "artifactId": .string(id), "number": .number(Double(Int(parts[4]) ?? (unlisted ? 2 : 1))), "title": .string(name), "entry": file("index.genui.json", "application/json"),
                 "createdBy": .object(["kind": .string("agent"), "agentId": .string("harness"), "botId": .null]),
-                "files": .array([file(GenUIRenderDocument.path, "application/json", size: document(name)?.count)] + assets.map { file("assets/\($0)", "image/jpeg") }),
+                "files": .array(render + assets.map { file("assets/\($0)", "image/jpeg") }),
             ])]))
         }
         if parts.count > 6, parts[3] == "versions", parts[5] == "files" {
             let wanted = parts[6...].joined(separator: "/").removingPercentEncoding ?? ""
-            let data = wanted == GenUIRenderDocument.path ? document(name) : try? Data(contentsOf: folder.appendingPathComponent(wanted))
+            // Unlisted, only the second version's document is there to read.
+            let data = wanted == GenUIRenderDocument.path ? (unlisted && parts[4] != "2" ? nil : document(name)) : try? Data(contentsOf: folder.appendingPathComponent(wanted))
             guard let data else { return HTTP1Response(status: 404, body: Data(#"{"error":"not found"}"#.utf8)) }
             return Self.serve(data, range: headers["Range"])
         }
@@ -255,7 +260,8 @@ private struct GenUIChatComputer: AgentTransport {
 /// A conversation of Gen UI (`-screen genuiChat`, `-genuiCount N`, 50 by
 /// default, `-genuiExamples a,b` to show only those, `actions` among them
 /// the action conformance document; `-genuiCloud` on a Happy Cloud server,
-/// whose `cluster_secret` forms it serves; `-genuiLanguage` its screens' language): every turn a call that shows a `gen_ui` artifact, drawn under
+/// whose `cluster_secret` forms it serves; `-genuiUnlisted` each artifact at a
+/// second version whose files don't list its render document; `-genuiLanguage` its screens' language): every turn a call that shows a `gen_ui` artifact, drawn under
 /// its card. With `HAPPY_GYM_METER=1` it runs the gym's scroll script
 /// (`HAPPY_GYM_SCRIPT`) once the rows are in and prints the meter's reading
 /// as `GENUI_GYM key=value…`, also written to `Documents/genui-gym.txt`.
@@ -274,10 +280,11 @@ final class GenUIChatHarness {
         let folder = Bundle.main.resourceURL!.appendingPathComponent("GenUI")
         let examples = arguments.firstIndex(of: "-genuiExamples").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1].split(separator: ",").map(String.init) : nil }
             ?? GenUIChatComputer.examples
+        let unlisted = arguments.contains("-genuiUnlisted")
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/genui-chat",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
-            agentConnectionCredentialStore: InMemoryAgentConnectionCredentialStore(), agentTransport: { _ in GenUIChatComputer(count: count, folder: folder, examples: examples) },
+            agentConnectionCredentialStore: InMemoryAgentConnectionCredentialStore(), agentTransport: { _ in GenUIChatComputer(count: count, folder: folder, examples: examples, unlisted: unlisted) },
             rnServerImport: { .confirmed(ServerConfig.defaultServerURL) }, transport: GenUIChatHTTP(), connector: GenUIChatSockets()
         )
         self.account = account

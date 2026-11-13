@@ -101,6 +101,29 @@ final class GenUIActionsUITests: XCTestCase {
         app.buttons["genui-secret-cancel"].tap()
     }
 
+    /// Happy Cloud's manifest leaves the render document out of a version's
+    /// files and serves it all the same (`-genuiUnlisted`, at a second
+    /// version): the card and the page it opens draw it, never the entry's
+    /// JSON as a page.
+    func testARenderDocumentTheFilesDontListDrawsOnTheCardAndItsPage() {
+        app.terminate()
+        app.launchArguments += ["-genuiUnlisted"]
+        app.launch()
+        let add = button("Add Stripe keys")
+        reach(add)
+        shoot("unlisted-card")
+        let card = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@", "Open", "actions")).firstMatch
+        reach(card)
+        card.tap()
+        let page = app.otherElements["artifact"]
+        XCTAssertTrue(page.waitForExistence(timeout: 10), "no artifact page")
+        let pageAdd = page.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Add Stripe keys")).firstMatch
+        XCTAssertTrue(pageAdd.waitForExistence(timeout: 20), "the page never drew its Gen UI")
+        XCTAssertEqual(app.webViews.count, 0, "the entry opened as a page")
+        sleep(1)
+        shoot("unlisted-page")
+    }
+
     /// For the eye: a secret card at the largest text size, where its
     /// variable names are wider than their column and break at `_`.
     func testVariableNamesBreakAtUnderscoresWhenNarrow() {

@@ -610,15 +610,7 @@ public actor Store {
     /// drawn disabled.
     private static func genUI(_ client: AgentClient, artifactId: String, version: Int) async -> References.GenUI? {
         async let read = try? client.artifactVersion(artifactId, version: version)
-        var data = Data()
-        do {
-            try await AgentClient.read({ range in
-                try await client.artifactFile(artifactId, version: version, path: GenUIRenderDocument.path, range: range.map { "bytes=\($0.lowerBound)-\($0.upperBound)" })
-            }, each: { piece, _, _ in data.append(piece) })
-        } catch {
-            return nil
-        }
-        guard let document = GenUIRenderDocument.parse(data) else { return nil }
+        guard let data = try? await client.genUIRender(artifactId, version: version), let document = GenUIRenderDocument.parse(data) else { return nil }
         return References.GenUI(version: version, document: document, origin: await read?.origin)
     }
 
