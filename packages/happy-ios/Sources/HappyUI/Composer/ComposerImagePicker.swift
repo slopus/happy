@@ -242,6 +242,12 @@ final class ComposerImagePicker: NSObject, PHPickerViewControllerDelegate {
         return handed
     }
 
+    /// Every pick being read now, read (or gone): for a composer whose send
+    /// takes only pictures that are in.
+    func ready() async {
+        for task in Array(preparations.values) { _ = await task.value }
+    }
+
     /// Removes files a send has its own copies of.
     func discard(_ files: [URL]) {
         for file in Set(files) { staging.remove(file) }

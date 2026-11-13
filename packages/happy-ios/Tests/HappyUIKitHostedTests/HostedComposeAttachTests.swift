@@ -222,8 +222,8 @@ final class HostedComposeAttachTests: XCTestCase {
         XCTAssertTrue(condition(), "never reached the expected state", file: file, line: line)
     }
 
-    /// The "+", as a finger presses it; a photo picked in the menu's grid,
-    /// confirmed into the composer and sent with the composer's send.
+    /// The "+", as a finger presses it; a photo picked in the menu's grid
+    /// and sent with the menu's own send.
     private func sendPhotoFromTheMenu() async throws {
         let plus = try XCTUnwrap(card.addControl as? UIControl, "the + is no control")
         XCTAssertFalse(plus.isHidden, "the empty chat hides its +")
@@ -237,9 +237,7 @@ final class HostedComposeAttachTests: XCTestCase {
         try XCTUnwrap(grid.cellForItem(at: IndexPath(item: 0, section: 0)) as? AttachGridCell).check.sendActions(for: .touchUpInside)
         XCTAssertEqual(sheet.picked, ["fixture-0"])
         try await Task.sleep(for: .milliseconds(400))
-        try XCTUnwrap(view("attach-confirm", in: sheet.view) as? UIControl).sendActions(for: .touchUpInside)
-        try await wait(15) { self.navigation.presentedViewController == nil && self.card.configuration.attachments.count == 1 && !self.card.configuration.attachments.contains(where: \.preparing) }
-        card.delegate?.agentInputCardDidPressSend(card)
+        try XCTUnwrap(view("attach-send", in: sheet.view) as? UIControl).sendActions(for: .touchUpInside)
     }
 
     /// The new session's outbox, read off the main thread.

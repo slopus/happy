@@ -128,7 +128,8 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             guard let self else { return }
             card.setText(text, selection: NSRange(location: (text as NSString).length, length: 0))
             agentInputCardDidChangeText(card)
-        }
+        },
+        send: { [weak self] in self?.sendPressed() }
     ))
 
     /// useActiveSuggestions: the last list and its highlighted row, kept

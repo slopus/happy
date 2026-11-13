@@ -25,7 +25,8 @@ extension Strings {
         public static let preview = "Preview"
         /// The caption field while photos are picked (`MediaPicker.AddCaption`).
         public static let addCaption = "Add a caption..."
-        /// The picked count at the caption's end, which puts them in the
+        public static let send = "Send"
+        /// The picked count at the top right, which puts them in the
         /// message rather than sending them.
         public static let confirmHint = "Adds them to the message"
         /// Telegram's question before a pull or a tap outside drops the picks

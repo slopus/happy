@@ -65,11 +65,9 @@ final class HostedComposerVideoTests: XCTestCase {
         XCTAssertTrue(tile.accessibilityLabel?.contains("picked 1") == true)
         try await keep(window, "composer-plus-video-grid")
         try await Task.sleep(for: .milliseconds(500))
-        // Confirmed into the composer, then its send: the chat shows it.
-        try button("attach-confirm", in: sheet.view).sendActions(for: .touchUpInside)
-        try await wait { chat.presentedViewController == nil && card.configuration.attachments.count == 1 }
-        chat.agentInputCardDidPressSend(card)
-        try await wait { card.configuration.attachments.isEmpty }
+        // Sent from the menu: the composer sends it, and the chat shows it.
+        try button("attach-send", in: sheet.view).sendActions(for: .touchUpInside)
+        try await wait { chat.presentedViewController == nil && card.configuration.attachments.isEmpty }
         try await wait { self.videoTiles(chat.view) == 1 }
         try await keep(window, "composer-video-sent")
 
@@ -83,9 +81,8 @@ final class HostedComposerVideoTests: XCTestCase {
         cell.check.sendActions(for: .touchUpInside)
         try await keep(window, "composer-grid-video-picked")
         try await Task.sleep(for: .milliseconds(500))
-        try button("attach-confirm", in: secondSheet.view).sendActions(for: .touchUpInside)
-        try await wait { chat.presentedViewController == nil && card.configuration.attachments.count == 1 }
-        chat.agentInputCardDidPressSend(card)
+        try button("attach-send", in: secondSheet.view).sendActions(for: .touchUpInside)
+        try await wait { chat.presentedViewController == nil }
         try await wait { self.videoTiles(chat.view) == 2 }
     }
 

@@ -5,9 +5,8 @@ import UIKit
 /// Telegram's glass panel at the foot of the "+" menu (`AttachmentPanel`,
 /// glass): a capsule of tabs with a lens behind the chosen one that a
 /// finger can drag along the bar (`TabSelectionRecognizer`), which turns,
-/// while photos are picked, into the caption field with the confirm at
-/// its end, a check and the count, which takes the picks to the composer;
-/// the same glass stretches from one to the other.
+/// while photos are picked, into the caption field with send; the same
+/// glass stretches from one to the other.
 ///
 /// The lens is Telegram's own for systems without the private liquid lens
 /// (`LiquidLensView`'s legacy selection): a tinted capsule 3 in, the chosen
@@ -16,8 +15,7 @@ import UIKit
 @MainActor
 final class AttachMenuPanel: UIView, UITextViewDelegate, UIGestureRecognizerDelegate {
     var onTab: ((Int) -> Void)?
-    /// The confirm: the picks go to the composer.
-    var onConfirm: (() -> Void)?
+    var onSend: (() -> Void)?
     /// The caption took or gave up the keyboard.
     var onFocus: ((Bool) -> Void)?
     var onCaption: ((String) -> Void)?
@@ -46,12 +44,10 @@ final class AttachMenuPanel: UIView, UITextViewDelegate, UIGestureRecognizerDele
 
     let field = UITextView()
     private let placeholder = UILabel()
-    private let confirm = UIControl()
+    private let send = UIControl()
     private let fieldTap = UITapGestureRecognizer()
-    private let confirmBackground = UIView()
-    private let confirmIcon = UIImageView(image: UIImage(systemName: "checkmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .bold)))
-    private let countLabel = UILabel()
-    private var count = 0
+    private let sendBackground = UIView()
+    private let sendGlyph = UIImageView(image: UIImage(systemName: "arrow.up", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold)))
 
     private var placed: (minX: CGFloat, width: CGFloat, bottom: CGFloat, sides: LayoutInsets, pixel: CGFloat, maxHeight: CGFloat)?
     private(set) var layout: AttachMenuPanelLayout?
@@ -90,30 +86,28 @@ final class AttachMenuPanel: UIView, UITextViewDelegate, UIGestureRecognizerDele
         placeholder.textColor = UIColor(Palette.attachMenuCaptionPlaceholder)
         placeholder.isUserInteractionEnabled = false
         placeholder.isAccessibilityElement = false
-        confirmBackground.backgroundColor = UIColor(Palette.attachMenuAccent)
-        confirmBackground.isUserInteractionEnabled = false
-        confirmIcon.tintColor = UIColor(Palette.attachMenuOnAccent)
-        confirmIcon.contentMode = .center
-        countLabel.font = .monospacedDigitSystemFont(ofSize: 17, weight: .medium)
-        countLabel.textColor = UIColor(Palette.attachMenuOnAccent)
-        confirmBackground.addSubview(confirmIcon)
-        confirmBackground.addSubview(countLabel)
-        confirm.addSubview(confirmBackground)
-        confirm.accessibilityIdentifier = "attach-confirm"
-        confirm.accessibilityHint = Strings.AttachMenu.confirmHint
-        confirm.accessibilityTraits = .button
-        confirm.isAccessibilityElement = true
-        confirm.addAction(UIAction { [weak self] _ in self?.onConfirm?() }, for: .touchUpInside)
-        confirm.addAction(UIAction { [weak self] _ in self?.confirmBackground.alpha = 0.6 }, for: [.touchDown, .touchDragEnter])
-        confirm.addAction(UIAction { [weak self] _ in
-            UIView.animate(withDuration: 0.2) { self?.confirmBackground.alpha = 1 }
+        sendBackground.backgroundColor = UIColor(Palette.attachMenuAccent)
+        sendBackground.isUserInteractionEnabled = false
+        sendGlyph.tintColor = UIColor(Palette.attachMenuOnAccent)
+        sendGlyph.contentMode = .center
+        sendGlyph.isUserInteractionEnabled = false
+        send.addSubview(sendBackground)
+        send.addSubview(sendGlyph)
+        send.accessibilityIdentifier = "attach-send"
+        send.accessibilityLabel = Strings.AttachMenu.send
+        send.accessibilityTraits = .button
+        send.isAccessibilityElement = true
+        send.addAction(UIAction { [weak self] _ in self?.onSend?() }, for: .touchUpInside)
+        send.addAction(UIAction { [weak self] _ in self?.sendBackground.alpha = 0.6 }, for: [.touchDown, .touchDragEnter])
+        send.addAction(UIAction { [weak self] _ in
+            UIView.animate(withDuration: 0.2) { self?.sendBackground.alpha = 1 }
         }, for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit])
-        for view in [field, placeholder, confirm] as [UIView] {
+        for view in [field, placeholder, send] as [UIView] {
             view.alpha = 0
             view.isHidden = true
             glass.contentView.addSubview(view)
         }
-        // Tapping the field anywhere gives it the keyboard; never on the confirm,
+        // Tapping the field anywhere gives it the keyboard; never on send,
         // a plain control whose touch this tap would otherwise cancel.
         fieldTap.addTarget(self, action: #selector(fieldTapped(_:)))
         fieldTap.delegate = self
@@ -209,7 +203,7 @@ final class AttachMenuPanel: UIView, UITextViewDelegate, UIGestureRecognizerDele
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        gestureRecognizer !== fieldTap || touch.view?.isDescendant(of: confirm) != true
+        gestureRecognizer !== fieldTap || touch.view?.isDescendant(of: send) != true
     }
 
     // MARK: Caption
@@ -237,24 +231,12 @@ final class AttachMenuPanel: UIView, UITextViewDelegate, UIGestureRecognizerDele
         if layout?.glass.height != before { onResize?() }
     }
 
-    /// How many are picked, on the confirm; more than none turns the bar
-    /// into the caption, none back.
-    func setCount(_ value: Int, animated: Bool) {
-        if value > 0, value != count {
-            count = value
-            countLabel.text = "\(value)"
-            confirm.accessibilityLabel = Strings.AttachMenu.picked(value)
-            if picking { relayout(animated: animated) }
-        }
-        setPicking(value > 0, animated: animated)
-    }
-
     /// Picked or not: the bar becomes the caption, or back.
-    private func setPicking(_ value: Bool, animated: Bool) {
+    func setPicking(_ value: Bool, animated: Bool) {
         guard value != picking else { return }
         picking = value
         if !value { field.resignFirstResponder() }
-        for view in [field, placeholder, confirm] as [UIView] { view.isHidden = false }
+        for view in [field, placeholder, send] as [UIView] { view.isHidden = false }
         tabsHost.isHidden = false
         tabsHost.isUserInteractionEnabled = !value
         let fade = value ? 0.1 : 0.25
@@ -262,11 +244,11 @@ final class AttachMenuPanel: UIView, UITextViewDelegate, UIGestureRecognizerDele
             self.tabsHost.alpha = value ? 0 : 1
             self.field.alpha = value ? 1 : 0
             self.placeholder.alpha = value ? 1 : 0
-            self.confirm.alpha = value ? 1 : 0
+            self.send.alpha = value ? 1 : 0
         }
         let done = { (_: Bool) in
             guard self.picking == value else { return }
-            for view in [self.field, self.placeholder, self.confirm] as [UIView] { view.isHidden = !value }
+            for view in [self.field, self.placeholder, self.send] as [UIView] { view.isHidden = !value }
             self.tabsHost.isHidden = value
             self.placeholder.isHidden = !value || !self.field.text.isEmpty
         }
@@ -292,14 +274,13 @@ final class AttachMenuPanel: UIView, UITextViewDelegate, UIGestureRecognizerDele
     private func relayout(animated: Bool) {
         guard let placed else { return }
         let focused = field.isFirstResponder
-        let countSize = countLabel.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: 30))
-        let textWidth = AttachMenuPanelLayout.textWidth(width: placed.width, sides: placed.sides, focused: focused, countWidth: countSize.width)
+        let textWidth = AttachMenuPanelLayout.textWidth(width: placed.width, sides: placed.sides, focused: focused)
         let textHeight = field.sizeThatFits(CGSize(width: textWidth, height: .greatestFiniteMagnitude)).height
         let layout = AttachMenuPanelLayout(.init(
             minX: placed.minX, width: placed.width, bottom: placed.bottom, sides: placed.sides,
             titles: plainTabs.map(\.titleSize), selected: selected, picking: picking, focused: focused,
             textHeight: textHeight, placeholder: placeholder.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: 30)),
-            empty: field.text.isEmpty, maxHeight: placed.maxHeight, count: countSize, pixel: placed.pixel
+            empty: field.text.isEmpty, maxHeight: placed.maxHeight, pixel: placed.pixel
         ))
         self.layout = layout
         field.isScrollEnabled = ceil(textHeight) + AttachMenuMetrics.captionPadding > placed.maxHeight
@@ -333,11 +314,10 @@ final class AttachMenuPanel: UIView, UITextViewDelegate, UIGestureRecognizerDele
             }
             self.field.frame = layout.text
             self.placeholder.frame = layout.placeholder
-            self.confirm.frame = layout.confirm
-            self.confirmBackground.frame = layout.confirmBackground.offsetBy(dx: -layout.confirm.minX, dy: -layout.confirm.minY)
-            self.confirmBackground.layer.cornerRadius = layout.confirmBackground.height / 2
-            self.confirmIcon.frame = layout.confirmIcon
-            self.countLabel.frame = layout.confirmLabel
+            self.send.frame = layout.send
+            self.sendBackground.frame = layout.sendBackground.offsetBy(dx: -layout.send.minX, dy: -layout.send.minY)
+            self.sendBackground.layer.cornerRadius = layout.sendBackground.height / 2
+            self.sendGlyph.frame = self.sendBackground.frame
         }
         guard animated, window != nil else { return apply() }
         let curve = AttachMenuMotion.openCurve

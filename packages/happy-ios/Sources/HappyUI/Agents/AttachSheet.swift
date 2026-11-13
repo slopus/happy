@@ -10,8 +10,9 @@ import UIKit
 /// and down to go. Its Gallery tab is the library newest first under a
 /// glass header, the camera live and two cells tall at the top left,
 /// picked in order with numbered circles; the glass tab bar at its foot
-/// turns into the caption with the picked count at its end while anything
-/// is picked, which takes the picks to the composer to send there. Its File
+/// turns into the caption with send while anything is picked, and the
+/// picked count at the top right takes them to the composer instead, to
+/// send from there. Its File
 /// tab offers Files and the system's photo picker.
 ///
 /// The gestures are Telegram's, number for number (`AttachSheetPan`,
@@ -36,8 +37,11 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         /// The system's photo picker, which needs no access.
         case photos
         case files
-        /// Picked in the grid, by the library's ids, in order, to wait in
-        /// the composer with the caption as its text.
+        /// Picked in the grid, by the library's ids, in order, sent now
+        /// with the caption.
+        case send([String], caption: String)
+        /// The same, to wait in the composer with the caption as its text,
+        /// nothing sent.
         case stage([String], caption: String)
     }
 
@@ -106,8 +110,18 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         effect.isInteractive = true
         return effect
     }
+    private static func countEffect() -> UIGlassEffect {
+        let effect = UIGlassEffect(style: .regular)
+        effect.tintColor = UIColor(Palette.attachMenuAccent)
+        return effect
+    }
     private let closeGlass = UIVisualEffectView(effect: AttachSheetViewController.closeEffect())
     private let closeButton = UIButton(type: .custom)
+    private let countGlass = UIVisualEffectView(effect: AttachSheetViewController.countEffect())
+    /// The count's touch: the picks go to the composer.
+    private let countButton = UIButton(type: .custom)
+    private let countIcon = UIImageView(image: UIImage(systemName: "checkmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .bold)))
+    private let countLabel = UILabel()
     private let titleLabel = UILabel()
     private var titleDark = false
     private let gallery = UIView()
@@ -223,8 +237,9 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         files.onFiles = { [weak self] in self?.finish(.files) }
         files.onPhotos = { [weak self] in self?.finish(.photos) }
 
-        // Telegram's glass header: close at the top left, the title in the
-        // middle; the fade under them once the grid scrolls.
+        // Telegram's glass header: close at the top left, the picked count
+        // at the top right, the title in the middle; the fade under them
+        // once the grid scrolls.
         edge.alpha = 0
         closeButton.setImage(UIImage(systemName: "xmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold)), for: .normal)
         closeButton.tintColor = UIColor(Palette.attachMenuControl)
@@ -233,6 +248,24 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         closeButton.addAction(UIAction { [weak self] _ in self?.requestClose() }, for: .touchUpInside)
         closeGlass.cornerConfiguration = .capsule()
         closeGlass.contentView.addSubview(closeButton)
+        countGlass.cornerConfiguration = .capsule()
+        countIcon.tintColor = UIColor(Palette.attachMenuOnAccent)
+        countIcon.contentMode = .center
+        countLabel.font = .monospacedDigitSystemFont(ofSize: 17, weight: .medium)
+        countLabel.textColor = UIColor(Palette.attachMenuOnAccent)
+        countGlass.contentView.addSubview(countIcon)
+        countGlass.contentView.addSubview(countLabel)
+        countButton.isAccessibilityElement = true
+        countButton.accessibilityIdentifier = "attach-count"
+        countButton.accessibilityHint = Strings.AttachMenu.confirmHint
+        countButton.addAction(UIAction { [weak self] _ in self?.stagePicked() }, for: .touchUpInside)
+        countButton.addAction(UIAction { [weak self] _ in self?.countGlass.contentView.alpha = 0.6 }, for: [.touchDown, .touchDragEnter])
+        countButton.addAction(UIAction { [weak self] _ in
+            UIView.animate(withDuration: 0.2) { self?.countGlass.contentView.alpha = 1 }
+        }, for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit])
+        countGlass.contentView.addSubview(countButton)
+        countGlass.alpha = 0
+        countGlass.transform = CGAffineTransform(scaleX: 0.01, y: 0.01)
         titleLabel.font = .monospacedDigitSystemFont(ofSize: 17, weight: .semibold)
         titleLabel.textColor = UIColor(Palette.attachMenuTitle)
         titleLabel.textAlignment = .center
@@ -241,14 +274,14 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
 
         pageFade.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         for view in [gallery, files, edge] as [UIView] { pageFade.addSubview(view) }
-        for view in [pageFade, closeGlass, titleLabel] as [UIView] { body.addSubview(view) }
+        for view in [pageFade, closeGlass, countGlass, titleLabel] as [UIView] { body.addSubview(view) }
 
         panel.setTabs([
             (Strings.AttachMenu.gallery, AttachMenuPanel.glyph("photo.fill.on.rectangle.fill"), "attach-tab-gallery"),
             (Strings.AttachMenu.files, AttachMenuPanel.glyph("doc.fill"), "attach-tab-files"),
         ])
         panel.onTab = { [weak self] index in self?.switchTo(Tab(rawValue: index) ?? .gallery) }
-        panel.onConfirm = { [weak self] in self?.stagePicked() }
+        panel.onSend = { [weak self] in self?.sendPicked() }
         panel.onCaption = { [weak self] text in self?.onCaption?(text) }
         panel.onFocus = { [weak self] focused in self?.captionFocused(focused) }
         panel.onResize = { [weak self] in self?.view.setNeedsLayout() }
@@ -487,9 +520,14 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
     private func layoutHeader() {
         guard let sheet else { return }
         let unbounded = CGSize(width: CGFloat.greatestFiniteMagnitude, height: 44)
-        let header = AttachMenuHeaderLayout(width: body.bounds.width, sides: sheet.sides, title: titleLabel.sizeThatFits(unbounded), arrow: false, pixel: view.hairline)
+        let header = AttachMenuHeaderLayout(width: body.bounds.width, sides: sheet.sides, title: titleLabel.sizeThatFits(unbounded), arrow: false, countText: countLabel.sizeThatFits(unbounded), pixel: view.hairline)
         closeGlass.frame = header.close
         closeButton.frame = closeGlass.bounds
+        countGlass.bounds = CGRect(origin: .zero, size: header.count.size)
+        countGlass.center = CGPoint(x: header.count.midX, y: header.count.midY)
+        countIcon.frame = header.countIcon
+        countLabel.frame = header.countLabel
+        countButton.frame = countGlass.bounds
         titleLabel.setLayoutFrame(header.title)
         edge.frame = header.edge
     }
@@ -510,10 +548,29 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         }
     }
 
-    /// The picked count on the caption's confirm; the panel turns into the
-    /// caption with the first pick and back with the last.
+    /// The picked count at the top right (`SelectedButtonNode`): it grows from
+    /// nothing with the first pick and shrinks away with the last; the
+    /// panel turns into the caption with it.
     private func updateCount(animated: Bool) {
-        panel.setCount(picked.count, animated: animated && shown)
+        let count = picked.count
+        if count > 0 {
+            countLabel.text = "\(count)"
+            countButton.accessibilityLabel = Strings.AttachMenu.picked(count)
+        }
+        layoutHeader()
+        panel.setPicking(count > 0, animated: animated && shown)
+        let visible = count > 0
+        // Gone at once with the last pick, while the glass shrinks away.
+        countButton.isHidden = !visible
+        let apply = {
+            self.countGlass.alpha = visible ? 1 : 0
+            self.countGlass.transform = visible ? .identity : CGAffineTransform(scaleX: 0.01, y: 0.01)
+        }
+        if animated, shown {
+            UIView.animate(withDuration: 0.4, delay: 0, usingSpringWithDamping: 0.78, initialSpringVelocity: 0, options: [.beginFromCurrentState, .allowUserInteraction], animations: apply)
+        } else {
+            apply()
+        }
         view.setNeedsLayout()
     }
 
@@ -805,8 +862,10 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
     private func setContent(shown: Bool) {
         pageFade.alpha = shown ? 1 : 0
         titleLabel.alpha = shown ? 1 : 0
-        closeGlass.effect = shown ? Self.closeEffect() : nil
-        closeGlass.contentView.alpha = shown ? 1 : 0
+        for (glass, effect) in [(closeGlass, Self.closeEffect()), (countGlass, Self.countEffect())] {
+            glass.effect = shown ? effect : nil
+            glass.contentView.alpha = shown ? 1 : 0
+        }
         panel.setShown(shown)
     }
 
@@ -1117,10 +1176,15 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         grid.layoutIfNeeded()
     }
 
-    /// The confirm: the menu goes and the picks wait in the composer,
-    /// nothing sent yet.
-    private func stagePicked() {
+    private func sendPicked() {
         guard !picked.isEmpty else { return }
+        finish(.send(picked, caption: panel.caption))
+    }
+
+    /// The count at the top right: the menu goes and the picks wait in
+    /// the composer, nothing sent yet.
+    private func stagePicked() {
+        guard !picked.isEmpty, !closing else { return }
         finish(.stage(picked, caption: panel.caption))
     }
 

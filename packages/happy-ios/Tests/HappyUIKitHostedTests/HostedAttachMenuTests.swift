@@ -209,11 +209,10 @@ final class HostedAttachMenuTests: XCTestCase {
     // MARK: Library access
 
     /// Full access: the newest first beside the camera, picked in order
-    /// with their numbers; the tab bar turned into the caption with the
-    /// count at its far end, which starts from the draft and writes back to
-    /// it; confirmed, the menu goes and both wait in the composer, which
-    /// has the keyboard, nothing sent until its own send.
-    func testAuthorizedGridPicksInOrderAndStagesThemWithTheCaption() async throws {
+    /// with their numbers; the count beside close, the tab bar turned into
+    /// the caption with send, which starts from the draft and writes back
+    /// to it; sent, the menu goes and the composer sends both with it.
+    func testAuthorizedGridPicksInOrderAndSendsWithTheCaption() async throws {
         try await open(FixtureAttachLibrary(access: .authorized, count: 30))
         card.setText("Draft", selection: NSRange(location: 5, length: 0))
         let sheet = try await menu()
@@ -222,7 +221,8 @@ final class HostedAttachMenuTests: XCTestCase {
         XCTAssertNotNil(view("attach-camera", in: sheet.view), "no camera cell")
         XCTAssertNil(view("attach-no-access", in: sheet.view))
         XCTAssertNil(view("attach-limited", in: sheet.view))
-        XCTAssertNil(view("attach-confirm", in: sheet.view), "a confirm before anything was picked")
+        XCTAssertNil(view("attach-send", in: sheet.view), "send before anything was picked")
+        XCTAssertNil(view("attach-count", in: sheet.view), "a count before anything was picked")
 
         try pick(0, in: grid)
         try pick(1, in: grid)
@@ -232,14 +232,9 @@ final class HostedAttachMenuTests: XCTestCase {
         XCTAssertEqual(first.accessibilityLabel, "Photo, picked 1")
         XCTAssertTrue(second.accessibilityLabel?.hasPrefix("Video, ") == true && second.accessibilityLabel?.hasSuffix("picked 2") == true, second.accessibilityLabel ?? "")
         try await Task.sleep(for: .milliseconds(500))
-        let confirm = try XCTUnwrap(view("attach-confirm", in: sheet.view) as? UIControl)
-        XCTAssertEqual(confirm.accessibilityLabel, "2 selected")
+        let send = try XCTUnwrap(view("attach-send", in: sheet.view) as? UIControl)
+        XCTAssertEqual(view("attach-count", in: sheet.view)?.accessibilityLabel, "2 selected")
         let caption = try XCTUnwrap(view("attach-caption", in: sheet.view) as? UITextView)
-        // The confirm at the caption's far end, nothing after it.
-        let field = caption.convert(caption.bounds, to: sheet.view)
-        let pill = confirm.convert(confirm.bounds, to: sheet.view)
-        XCTAssertGreaterThanOrEqual(pill.minX, field.maxX, "the confirm isn't after the caption's text")
-        XCTAssertEqual(pill.maxX, sheet.panel.glassFrame.maxX, accuracy: 0.5, "the confirm isn't at the bar's far end")
         XCTAssertEqual(caption.text, "Draft", "the caption isn't the draft")
         XCTAssertNil(view("attach-tab-files", in: sheet.view), "the tabs stayed under the caption")
         try await keep("attach-authorized-selected")
@@ -247,15 +242,45 @@ final class HostedAttachMenuTests: XCTestCase {
         caption.text = "Draft and two"
         caption.delegate?.textViewDidChange?(caption)
         XCTAssertEqual(card.text, "Draft and two", "the caption didn't write back to the draft")
-        confirm.sendActions(for: .touchUpInside)
+        send.sendActions(for: .touchUpInside)
+        try await wait(15) { self.chat.presentedViewController == nil && self.card.text.isEmpty && self.card.configuration.attachments.isEmpty }
+    }
+
+    /// The count at the top right takes the picks to the composer instead:
+    /// the menu goes, both wait there with the caption as the text and the
+    /// keyboard up, nothing sent until the composer's own send.
+    func testTheCountAtTheTopRightStagesThePicksWithoutSending() async throws {
+        try await open(FixtureAttachLibrary(access: .authorized, count: 30))
+        card.setText("Draft", selection: NSRange(location: 5, length: 0))
+        let sheet = try await menu()
+        let grid = try XCTUnwrap(view("attach-grid", in: sheet.view) as? UICollectionView)
+        try await wait { grid.visibleCells.count >= 6 }
+        try pick(0, in: grid)
+        try pick(1, in: grid)
+        try await Task.sleep(for: .milliseconds(500))
+        let count = try XCTUnwrap(view("attach-count", in: sheet.view) as? UIControl)
+        XCTAssertEqual(count.accessibilityLabel, "2 selected")
+        // At the header's far right, clear of close and the title.
+        let frame = count.convert(count.bounds, to: sheet.view)
+        let close = try XCTUnwrap(view("attach-close", in: sheet.view)).convert(CGRect(x: 0, y: 0, width: 44, height: 44), to: sheet.view)
+        let title = try XCTUnwrap(view("attach-title", in: sheet.view))
+        XCTAssertEqual(frame.midY, close.midY, accuracy: 0.5, "the count isn't in the header")
+        XCTAssertEqual(sheet.view.bounds.width - frame.maxX, close.minX, accuracy: 6, "the count isn't at the far right")
+        XCTAssertGreaterThan(frame.minX, title.convert(title.bounds, to: sheet.view).maxX, "the count is over the title")
+        XCTAssertNotNil(view("attach-send", in: sheet.view), "the caption lost its send")
+        let caption = try XCTUnwrap(view("attach-caption", in: sheet.view) as? UITextView)
+        caption.text = "Draft and two"
+        caption.delegate?.textViewDidChange?(caption)
+        try await keep("attach-count-top-right")
+
+        count.sendActions(for: .touchUpInside)
         try await wait(15) { self.chat.presentedViewController == nil && self.card.configuration.attachments.count == 2 }
         XCTAssertEqual(card.text, "Draft and two", "the caption isn't the composer's text")
         try await wait { self.card.textView.isFirstResponder }
         try await Task.sleep(for: .milliseconds(500))
         let sent = await computer.sends.count
-        XCTAssertEqual(sent, 0, "the confirm sent")
-        try await keep("attach-authorized-staged")
-        // The composer's own send takes them.
+        XCTAssertEqual(sent, 0, "the count sent")
+        try await keep("attach-count-staged")
         chat.agentInputCardDidPressSend(card)
         try await wait(15) { self.card.text.isEmpty && self.card.configuration.attachments.isEmpty }
     }
@@ -698,10 +723,8 @@ final class HostedAttachMenuTests: XCTestCase {
         let caption = try XCTUnwrap(view("attach-caption", in: sheet.view) as? UITextView)
         caption.text = "Here they are"
         caption.delegate?.textViewDidChange?(caption)
-        // Into the composer, then sent from it.
-        try XCTUnwrap(view("attach-confirm", in: sheet.view) as? UIControl).sendActions(for: .touchUpInside)
-        try await wait(15) { self.chat.presentedViewController == nil && self.card.configuration.attachments.count == 2 }
-        chat.agentInputCardDidPressSend(card)
+        // Sent from the menu, as Telegram's send does.
+        try XCTUnwrap(view("attach-send", in: sheet.view) as? UIControl).sendActions(for: .touchUpInside)
 
         // Both tiles get rings; each only ever moves forward.
         var seen: [ObjectIdentifier: [MediaRingView.State]] = [:]

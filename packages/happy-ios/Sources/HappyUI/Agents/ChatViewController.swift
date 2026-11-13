@@ -1041,7 +1041,9 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             focus: { [weak self] in self?.card.focus() },
             addControl: { [weak self] in self?.card.addControl },
             text: { [weak self] in self?.card.text ?? "" },
-            setText: { [weak self] text in self?.card.setText(text, selection: NSRange(location: (text as NSString).length, length: 0)) }
+            setText: { [weak self] text in self?.card.setText(text, selection: NSRange(location: (text as NSString).length, length: 0)) },
+            send: { [weak self] in self?.send() },
+            sendsWhilePreparing: true
         ))
         presenter.onSettled = { [weak self] added, keyboardWasUp in self?.settleFocus(added: added, keyboardWasUp: keyboardWasUp) }
         return presenter
