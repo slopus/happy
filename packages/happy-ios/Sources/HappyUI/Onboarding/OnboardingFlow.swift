@@ -55,7 +55,10 @@ final class OnboardingFlow {
             guard !later || blocks, let home, home.view.window != nil, home.presentedViewController == nil else { return }
             present(first: dressed(screen(for: step, onboarding: onboarding), blocks: blocks), shown: Self.shown(step), over: home)
         } else if Self.shown(step) != shown {
-            replace(with: dressed(screen(for: step, onboarding: onboarding), blocks: blocks), shown: Self.shown(step))
+            // A step still in use (more invites to send) moves on at its Continue.
+            if (navigation?.viewControllers.first as? any OnboardingStepScreen)?.holds != true {
+                replace(with: dressed(screen(for: step, onboarding: onboarding), blocks: blocks), shown: Self.shown(step))
+            }
         } else {
             if case .waiting(let gates) = step, let notice = navigation?.topViewController as? OnboardingNoticeViewController { notice.show(Self.waiting(gates)) }
             if let top = navigation?.topViewController { dressed(top, blocks: blocks) }
@@ -152,6 +155,12 @@ final class OnboardingFlow {
             return screen
         case .plugins(let plugins):
             let screen = OnboardingPluginsViewController(context: context, session: session, plugins: plugins, optional: gate.requirement == .optional)
+            skips(gate, on: screen)
+            return screen
+        case .teammates:
+            let screen = OnboardingTeammatesViewController(context: context, session: session, handle: HappyCloud.handle(server: session.server) ?? session.computerName,
+                                                           optional: gate.requirement == .optional, web: web)
+            screen.released = { [weak self] in self?.homeAppeared() }
             skips(gate, on: screen)
             return screen
         default:
@@ -407,6 +416,12 @@ final class OnboardingProgressView: UIView {
 @MainActor
 protocol OnboardingStepScreen: CloudStageViewController {
     func say(_ problem: String?)
+    /// Kept on screen after its gate is done, until it lets the flow go on.
+    var holds: Bool { get }
+}
+
+extension OnboardingStepScreen {
+    var holds: Bool { false }
 }
 
 /// One onboarding screen that asks nothing typed: its scene, what it says,

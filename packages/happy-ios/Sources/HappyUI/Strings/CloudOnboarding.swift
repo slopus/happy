@@ -39,6 +39,24 @@ extension Strings {
         static let pluginsFailed = "Couldn’t read the plugins."
         static let tryAgain = "Try Again"
 
+        static let teammatesTitle = "Invite your team"
+        static func teammatesBody(_ handle: String) -> String {
+            "Happy works best together. Invite people by email, and they’ll get a link to join \(handle)."
+        }
+        static let emailPlaceholder = "name@company.com"
+        static let emailLabel = "Email address"
+        static let sendInvite = "Send Invite"
+        static let inviteSent = "Invite sent"
+        static let sent = "Sent"
+        static let emailFailed = "Email not sent"
+        static let shareLink = "Share"
+        static let inviteLink = "Invite link"
+        static let inviteLinkNote = "Anyone with it can join"
+        static let shareInviteLink = "Share Invite Link"
+        static let noEmail = "This server can’t send email yet. Share an invite link instead."
+        static let invitesOnWeb = "This server takes invites in Happy on your computer or on the web."
+        static let inviteFailed = "Couldn’t send the invite. Try again."
+
         static let updateTitle = "Update Happy to continue"
         static let updateBody = "This server asks for a step this version of Happy doesn’t know yet."
         static let updateAction = "Open the App Store"

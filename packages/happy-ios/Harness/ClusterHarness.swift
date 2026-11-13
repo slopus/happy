@@ -89,6 +89,8 @@ actor ClusterServer: AgentTransport {
     /// As deployed before the move (`-production`): the flagged Policy
     /// vault only, no config routes, no `policy.edit` in the catalog.
     let production: Bool
+    /// How invites go (`-invites`): by email; `noemail`, links only; `none`, no route.
+    let invites: String?
     private var instructions = "# Acme\n\nWe build developer tools. Write tests with every change, and keep pull requests small.\n\n## Style\n\n- Swift: UIKit, no storyboards.\n- Prefer plain words in docs.\n"
     private var security = "Never send secrets to a model. Ask before running anything that touches production.\n"
 
@@ -126,8 +128,9 @@ actor ClusterServer: AgentTransport {
         var scope: String { ["profile", "avatar", "mobileApp"].contains(id) ? "member" : "server" }
     }
 
-    init(manager: Bool = true, installed: Bool = true, nameless: Bool = false, gates: String? = nil, servesPlugins: Bool = true, policyVault: Bool = false, production: Bool = false) {
+    init(manager: Bool = true, installed: Bool = true, nameless: Bool = false, gates: String? = nil, servesPlugins: Bool = true, policyVault: Bool = false, production: Bool = false, invites: String? = nil) {
         self.manager = manager
+        self.invites = invites
         self.servesPlugins = servesPlugins
         self.policyVault = policyVault
         self.production = production
@@ -238,6 +241,15 @@ actor ClusterServer: AgentTransport {
         case ("POST", let path) where path.hasPrefix("/v0/cloud/providers/") && path.hasSuffix("/credentials"):
             mark("inference")
             return ok(#"{"credential":{"id":"k1"}}"#, status: 201)
+        case ("POST", "/v0/invites"):
+            // `-invites noemail`: email isn't set up; `none`: no route, as before invites.
+            if invites == "none" { break }
+            let email = sent?["email"]?.stringValue
+            if email != nil, invites == "noemail" { return refuse(503, "email_not_configured", "This server can’t send email.") }
+            next += 1
+            mark("teammates")
+            let delivery = email.map { #","deliveryStatus":"\#($0.hasPrefix("fail") ? "failed" : "sent")""# } ?? ""
+            return ok(#"{"invite":{"id":"inv\#(next)","link":"https://acme.happy.engineering/join#inv\#(next)","expiresAt":"2026-11-20T00:00:00Z","role":"member"\#(delivery)}}"#, status: 201)
         case ("GET", "/v0/plugins"): return ok(Self.catalog)
         case ("GET", "/v0/plugins/installations"):
             // Every member reads them; as deployed before, only managers.
@@ -330,7 +342,7 @@ final class ClusterHarness {
         let server = ClusterServer(manager: !arguments.contains("-member"), installed: !arguments.contains("-fresh"), nameless: arguments.contains("-nameless"),
                                    gates: arguments.firstIndex(of: "-gates").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil },
                                    servesPlugins: !arguments.contains("-noplugins"), policyVault: arguments.contains("-policyvault"),
-                                   production: arguments.contains("-production"))
+                                   production: arguments.contains("-production"), invites: value("-invites", in: arguments))
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/cluster",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
@@ -400,7 +412,8 @@ final class ClusterHarness {
     /// `custom` opens the custom provider's form and `fill` fills it (`-fill`),
     /// `photo` picks a picture, `plugin:<id>` opens a plugin from the
     /// plugins step, `install` and `setup:<method>` act on its page and
-    /// `submit` sends a form, `back` goes back, `skip` and `primary` tap the
+    /// `submit` sends a form, `email:<address>` invites (typed only with a
+    /// trailing `+`), `back` goes back, `skip` and `primary` tap the
     /// screen's actions.
     private func walk(_ steps: String, home: UIViewController, arguments: [String]) async {
         for step in steps.split(separator: ",") {
@@ -428,6 +441,11 @@ final class ClusterHarness {
                 fill(form, arguments: arguments)
             } else if step == "submit", let form = top as? FieldsFormViewController {
                 form.connect()
+            } else if step.hasPrefix("email:"), let teammates = top as? OnboardingTeammatesViewController {
+                let address = step.dropFirst("email:".count)
+                teammates.emailField.text.text = String(address.hasSuffix("+") ? address.dropLast() : address)
+                teammates.edited()
+                if !address.hasSuffix("+") { teammates.primary.tapped() }
             } else if step == "back" {
                 (home.presentedViewController as? UINavigationController)?.popViewController(animated: true)
             } else if step == "photo", let photo = top as? OnboardingPhotoViewController {
