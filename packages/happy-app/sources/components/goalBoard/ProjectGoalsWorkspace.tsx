@@ -56,7 +56,6 @@ import { useRememberProjectLocation } from '@/hooks/useRememberProjectLocation';
 import { useProjectData } from './useProjectData';
 import { getDirectoryCache } from '@/components/fileWorkspace/directoryCache';
 import { ProjectDeliveryEditor } from './ProjectDeliveryEditor';
-import { ProjectFeatureFiles } from './ProjectFeatureFiles';
 import { projectCacheKey, projectHistorySchema, readProjectCache, writeProjectCache, isProjectSessionDeleted, subscribeProjectSessionDeletions, getProjectSessionDeletionRevision } from '@/sync/projectWorkspaceCache';
 import { mergeProjectTaskHistory } from '@/sync/mergeProjectTaskHistory';
 import { projectSessionMatchesTask } from '@/sync/projectGoals';
@@ -175,8 +174,7 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
     const [busy, setBusy] = React.useState(false);
     const [actionError, setActionError] = React.useState<string | null>(null);
     const [deliveryTasks, setDeliveryTasks] = React.useState<GoalTask[] | null>(null);
-    const [featureFilesOpen, setFeatureFilesOpen] = React.useState(false);
-    React.useEffect(() => { setDeliveryTasks(null); setFeatureFilesOpen(false); }, [scope]);
+    React.useEffect(() => { setDeliveryTasks(null); }, [scope]);
     const [agent, setAgent] = React.useState<'codex' | 'claude'>(() => useNewSessionDraft.getState().agentType === 'claude' ? 'claude' : 'codex');
     const alive = React.useRef(true);
     const focused = React.useRef(true);
@@ -304,7 +302,6 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
                     <Ionicons name="folder-open-outline" size={17} color={theme.colors.textSecondary} /><Text style={styles.body}>{t('projectGoals.allProjects')}</Text>
                 </Button>
                 {project && <><Ionicons name="chevron-forward" size={13} color={theme.colors.textSecondary} /><Button variant="toolbar" label={project.title} onPress={() => chooseProject(project)}><Text numberOfLines={1} style={styles.body}>{project.title}</Text></Button></>}
-                {feature && <Button variant="toolbar" label={t('projectGoals.featureFiles')} selected={featureFilesOpen} onPress={() => setFeatureFilesOpen(value => !value)} testID="project-feature-files"><Ionicons name="folder-open-outline" size={16} color={theme.colors.textLink} /><Text style={styles.link}>{t('projectGoals.featureFiles')}</Text></Button>}
                 {feature && feature.featurePath !== project?.projectPath && <><Ionicons name="chevron-forward" size={13} color={theme.colors.textSecondary} /><Button variant="toolbar" label={feature.title} onPress={() => go({ task: undefined })}><Text numberOfLines={1} style={styles.body}>{feature.title}</Text></Button></>}
             </View>
             <View style={styles.line}>
@@ -335,8 +332,6 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
                         <Button variant="row" label={t('projectGoals.refresh')} disabled={data.loading || ((!machineId || data.offline) && !data.canRetryMachine)} onPress={() => { void data.refresh(); }}><Text style={styles.body}>{t(data.loading ? 'projectGoals.refreshing' : 'projectGoals.refresh')}</Text></Button>
                         <Button variant="row" label={t('projectGoals.agent')} onPress={() => setAgent(value => value === 'codex' ? 'claude' : 'codex')}><Text style={styles.body}>{agent === 'codex' ? 'Codex' : 'Claude'}</Text></Button>
                         <Button variant="row" label={t(params.feature ? 'projectGoals.createTask' : 'projectGoals.createProject')} disabled={readOnly || busy || data.offline} onPress={() => { setMoreOpen(false); void organize(); }}><Text style={styles.link}>{t(params.feature ? 'projectGoals.createTask' : 'projectGoals.createProject')}</Text></Button>
-                        {feature && Platform.OS === 'web' && <Button variant="row" label={t('projectGoals.featureFiles')} onPress={() => { setMoreOpen(false); setFeatureFilesOpen(true); }}><Text style={styles.link}>{t('projectGoals.featureFiles')}</Text></Button>}
-                        {feature && <Button variant="row" label={t('projectGoals.batchDelivery')} disabled={readOnly || data.offline || !tasks.length} onPress={() => { setMoreOpen(false); setDeliveryTasks(tasks); }}><Text style={styles.link}>{t('projectGoals.batchDelivery')}</Text></Button>}
                         <Text style={[styles.meta, { padding: 12 }]}>{t('projectGoals.chooseMachine')}</Text>
                         {machines.map(machine => <Button key={machine.id} variant="row" selected={machine.id === machineId} disabled={readOnly} label={machine.metadata?.displayName || machine.id} onPress={() => { setMoreOpen(false); navigate({ machine: machine.id, project: undefined, feature: undefined, task: undefined, conversation: undefined, author: undefined, view: undefined, file: undefined }); }}><Text style={styles.body}>{machine.metadata?.displayName || machine.metadata?.host || machine.id}</Text></Button>)}
                     </ScrollView>
@@ -353,7 +348,6 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
                 refresh={data.refresh} selectTask={id => go({ task: id })} selectConversation={id => navigate({ conversation: id, ...(mobile ? { view: id ? 'chat' : 'details' } : {}) })} />
             : <ScopeCatalog enabled={scopeDesktop} initialTab={params.view === 'files' ? 'files' : undefined} scopePath={params.feature ?? project?.projectPath} machineId={machineId} title={feature?.title ?? project?.title ?? ''} connecting={data.status === 'connecting'} conversationId={params.conversation ?? params.author} agent={agent} offline={data.offline} revision={JSON.stringify([feature?.revision, (selectedMachine?.daemonState as { goalProjectRevision?: string } | null)?.goalProjectRevision, scopeRefresh])} surface={surface} selectConversation={id => navigate({ conversation: id, author: undefined })}><ScrollView ref={catalogScroll} onContentSizeChange={() => catalogScroll.current?.scrollTo({ y: scrollPosition.current, animated: false })} onScroll={event => { scrollPosition.current = event.nativeEvent.contentOffset.y; catalogStates.set(scope, { query, status: statusFilter, scroll: scrollPosition.current }); }} scrollEventThrottle={100} style={[styles.catalog, { backgroundColor: surface }]} contentContainerStyle={[styles.catalogContent, mobile && styles.mobileCatalog]}>
                 <CatalogHeading title={feature ? feature.title : params.feature ? t('projectGoals.loadingTasks') : project ? project.title : t('projectGoals.allProjects')} subtitle={feature ? `${tasks.length} ${t('projectGoals.tasks')}` : project ? project.summary || t('projectGoals.subprojects') : t('projectGoals.galleryDescription')} query={query} setQuery={setQuery} />
-                {feature && <Button variant="toolbar" label={t('projectGoals.batchDelivery')} disabled={readOnly || data.offline || !tasks.length} onPress={() => setDeliveryTasks(tasks)} testID="project-batch-delivery"><Text style={styles.link}>{t('projectGoals.batchDelivery')}</Text></Button>}
                 {params.task && feature && !task && <Text style={styles.error}>{t('projectGoals.taskMissing')}</Text>}
                 {!data.contentLoaded && (data.status === 'loading' || data.status === 'connecting') ? <ProjectLoading kind={scopeDesktop ? params.feature ? 'tasks' : params.project ? 'features' : 'projects' : 'projects'} /> : feature ? <TaskCards onDelivery={target => setDeliveryTasks([target])} tasks={tasks} query={query} status={statusFilter} setStatus={setStatusFilter} onSelect={id => go({ task: id })} mobile={mobile} actionLabel={target => { const cached = readProjectCache(projectCacheKey('history', machineId, feature!.featurePath, target.id), projectHistorySchema); const known = data.board?.sessions[target.id] ?? cached?.value.sessions; return t(known ? known.length ? 'projectGoals.continueChat' : 'projectGoals.openChat' : 'projectGoals.chooseChat'); }} onAction={target => { if (mobile) void cardAction.continueTask(target); else void openCardConversation(target); }} offline={data.offline} busy={busy || cardAction.busy} hideExecution />
                     : project ? <ProjectFeatureLibrary machineId={machineId} entries={[...(project.direct ? [project.direct] : []), ...project.features]} query={query} projectPath={project.projectPath} onSelect={chooseFeature} />
@@ -366,7 +360,6 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
             </ScrollView></ScopeCatalog>}
         {savedFile && <ProjectSavedFile key={savedFile.projectPath} machineId={machineId} item={savedFile} onClose={() => setSavedFile(null)} />}
         {feature && !!deliveryTasks?.length && <ProjectDeliveryEditor key={JSON.stringify([accountKey(), machineId, feature.featurePath])} machineId={machineId} featurePath={feature.featurePath} tasks={deliveryTasks} onClose={() => setDeliveryTasks(null)} onSaved={data.refresh} onDiscuss={target => { setDeliveryTasks(null); if (mobile) void cardAction.continueTask(target); else void openCardConversation(target); }} />}
-        {feature && featureFilesOpen && <ProjectFeatureFiles key={JSON.stringify([accountKey(), machineId, feature.featurePath])} machineId={machineId} featurePath={feature.featurePath} title={feature.title} onClose={() => setFeatureFilesOpen(false)} />}
     </View></ProjectSurfaces.Provider></ProjectWorkspaceWidthProvider>;
 }
 
@@ -551,7 +544,6 @@ function TaskWorkspaceContent(props: TaskWorkspaceProps) {
     const catalogScroll = React.useRef<ScrollView>(null);
     const catalog = <ScrollView ref={catalogScroll} onContentSizeChange={() => catalogScroll.current?.scrollTo({ y: props.catalogScrollPosition.current, animated: false })} onScroll={event => props.onCatalogScroll(event.nativeEvent.contentOffset.y)} scrollEventThrottle={100} style={[styles.catalog, { backgroundColor: surface, borderRadius: 13 }]} contentContainerStyle={styles.taskCatalogContent}>
         <CatalogHeading title={props.featureTitle} subtitle={`${allTasks.length} ${t('projectGoals.tasks')}`} query={props.query} setQuery={props.setQuery} />
-        <Button variant="toolbar" label={t('projectGoals.batchDelivery')} disabled={readOnly || offline} onPress={() => props.editDelivery(allTasks)}><Text style={styles.link}>{t('projectGoals.batchDelivery')}</Text></Button>
         <TaskCards onDelivery={target => props.editDelivery([target])} tasks={allTasks} query={props.query} status={props.statusFilter} setStatus={props.setStatusFilter} selectedId={task.id} onSelect={id => { if (id !== task.id) selectTask(id); else if (showChat) props.openGlobalConversation(); else props.deselectTask(); }} onAction={(task, mode) => { void start(task, mode); }} busy={busy} offline={offline} hideExecution={executionAttempted} />
     </ScrollView>;
     if (mobile && props.mobileView === 'reader' && props.readerPath) {
