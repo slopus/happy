@@ -144,4 +144,34 @@ final class GenUIActionsTests: XCTestCase {
             }
         }
     }
+
+    /// The secret forms' words in every language, each its own but for
+    /// names that stay as they are, with the same `${}` values.
+    func testEveryLanguageSaysTheSecretFormsWords() async {
+        for language in AppLanguage.supported.map(\.code) { _ = await TranslationCatalog.load(language) }
+        let alike: Set<String> = [
+            "native.genuiSecret.variables", "native.genuiClusterSecret.use.ssh", "native.genuiClusterSecret.use.git", "native.genuiClusterSecret.team",
+            "native.genuiClusterSecret.server", "native.genuiClusterSecret.sshHosts", "native.genuiClusterSecret.method.password",
+            "native.genuiClusterSecret.method.token", "native.genuiClusterSecret.portLabel", "native.genuiClusterSecret.portsLabel",
+            "native.genuiClusterSecret.prefixLabel", "native.genuiClusterSecret.reposLabel", "native.genuiClusterSecret.passphraseLabel",
+        ]
+        func values(_ text: String) -> [String] { text.matches(of: /\$\{\w+\}/).map { String($0.output) }.sorted() }
+        for (sources, count) in [(TranslationCatalog.genUISecretSources, 36), (TranslationCatalog.genUIClusterSecretSources, 66)] {
+            let english = sources["en"] ?? [:]
+            XCTAssertEqual(Set(sources.keys), Set(AppLanguage.supported.map(\.code)))
+            XCTAssertEqual(english.count, count)
+            for language in AppLanguage.supported.map(\.code) {
+                let words = sources[language] ?? [:]
+                let catalog = TranslationCatalog.catalog(for: language)
+                XCTAssertEqual(Set(words.keys), Set(english.keys), language)
+                for (key, text) in words {
+                    // Each value given as itself, the words come back as written.
+                    let given = Dictionary(values(text).map { (String($0.dropFirst(2).dropLast()), TranslationValue.text($0)) }) { first, _ in first }
+                    XCTAssertEqual(catalog(key, given), text, "\(language) \(key)")
+                    XCTAssertEqual(values(text), values(english[key] ?? ""), "\(language) \(key)")
+                    if language != "en", !alike.contains(key) { XCTAssertNotEqual(text, english[key], "\(language) \(key) is English") }
+                }
+            }
+        }
+    }
 }

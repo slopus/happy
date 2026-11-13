@@ -136,7 +136,7 @@ final class GenUISecretFormViewController: SettingsPageViewController, UITextFie
             wanted["description"] = (draft.description, false, false, Text.descriptionPlaceholder, Text.description)
             for row in draft.rows {
                 wanted["variable-\(row.id)"] = (row.name, true, false, Text.variablePlaceholder, Text.variableName)
-                wanted["value-\(row.id)"] = (row.value, false, true, draft.changing && row.keeps ? Text.keepPlaceholder : Text.valuePlaceholder, row.name.isEmpty ? Text.value : row.name)
+                wanted["value-\(row.id)"] = (row.value, false, true, draft.changing && row.keeps ? Text.keepPlaceholder : Text.value, row.name.isEmpty ? Text.value : row.name)
             }
         }
         for (id, field) in fields where wanted[id] == nil {

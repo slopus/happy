@@ -255,7 +255,7 @@ private struct GenUIChatComputer: AgentTransport {
 /// A conversation of Gen UI (`-screen genuiChat`, `-genuiCount N`, 50 by
 /// default, `-genuiExamples a,b` to show only those, `actions` among them
 /// the action conformance document; `-genuiCloud` on a Happy Cloud server,
-/// whose `cluster_secret` forms it serves): every turn a call that shows a `gen_ui` artifact, drawn under
+/// whose `cluster_secret` forms it serves; `-genuiLanguage` its screens' language): every turn a call that shows a `gen_ui` artifact, drawn under
 /// its card. With `HAPPY_GYM_METER=1` it runs the gym's scroll script
 /// (`HAPPY_GYM_SCRIPT`) once the rows are in and prints the meter's reading
 /// as `GENUI_GYM key=value…`, also written to `Documents/genui-gym.txt`.
@@ -279,6 +279,10 @@ final class GenUIChatHarness {
             rnServerImport: { .confirmed(ServerConfig.defaultServerURL) }, transport: GenUIChatHTTP(), connector: GenUIChatSockets()
         )
         self.account = account
+        // `-genuiLanguage ru`: the screens speak that language.
+        if let language = arguments.firstIndex(of: "-genuiLanguage").flatMap({ arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }) {
+            AppLocalization.use(await TranslationCatalog.load(language))
+        }
         do {
             await account.agentConnections.setForeground(false)
             let connection: AgentConnection

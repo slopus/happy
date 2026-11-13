@@ -101,6 +101,22 @@ final class GenUIClusterSecretsUITests: XCTestCase {
         app.buttons["Done"].tap()
     }
 
+    /// The endpoint form, for the eye: dark, and in Russian and Japanese.
+    func testTheEndpointFormInDarkAndOtherLanguages() {
+        for (name, arguments) in [("dark", ["-chatDark"]), ("ru", ["-genuiLanguage", "ru"]), ("ja", ["-genuiLanguage", "ja"])] {
+            app.terminate()
+            app.launchArguments = ["-screen", "genuiChat", "-genuiCloud", "-genuiCount", "1", "-genuiExamples", "cluster-secrets"] + arguments
+            app.launch()
+            let add = button("Add Stripe key")
+            reach(add)
+            add.tap()
+            XCTAssertTrue(field("target-0-host").waitForExistence(timeout: 10), "no cluster secret form")
+            sleep(1)
+            shoot("cluster-endpoint-\(name)")
+            if name == "ru" { XCTAssertTrue(app.navigationBars["Новый секрет"].exists) }
+        }
+    }
+
     func testTheOtherTypesOpenPrefilled() {
         let environment = button("Add OpenAI keys")
         reach(environment)
