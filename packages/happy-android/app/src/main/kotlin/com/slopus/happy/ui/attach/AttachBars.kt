@@ -284,10 +284,11 @@ internal fun AttachCaptionBar(
 }
 
 /**
- * The confirm pill at the header's far end: a check and the count, in
- * Telegram's blue, the count bouncing 0.9 → 1 in 180 ms at each change, or
- * a spinner while the picks are read. It puts the picks in the composer
- * ([onConfirm]); nothing is sent.
+ * The confirm pill at the header's far end: a check and the count in the
+ * composer send button's colours ([AttachColors.accent]), the count
+ * bouncing 0.9 → 1 in 180 ms at each change, or a spinner while the picks
+ * are read. It puts the picks in the composer ([onConfirm]); nothing is
+ * sent.
  */
 @Composable
 internal fun ConfirmPill(count: Int, busy: Boolean, enabled: Boolean, colors: AttachColors, onConfirm: () -> Unit, modifier: Modifier = Modifier) {

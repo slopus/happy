@@ -47,5 +47,5 @@ fun ArtifactViewer(items: List<ArtifactMediaItem>, index: Int, media: ArtifactMe
             override suspend fun shareable(key: String, directory: File): File? = media.shareable(key, directory)
         }
     }
-    PictureViewer(pages, index, source, onClose)
+    PictureViewer(pages, index, source, onClose = onClose)
 }

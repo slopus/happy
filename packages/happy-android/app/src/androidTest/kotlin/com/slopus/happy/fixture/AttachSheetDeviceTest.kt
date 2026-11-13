@@ -144,6 +144,7 @@ class AttachSheetDeviceTest {
 
     private fun capture(name: String) {
         SystemClock.sleep(900)
+        rule.waitForIdle()
         device.takeScreenshot(File(evidence, "$name-${if (dark) "dark" else "light"}.png"))
     }
 
@@ -160,6 +161,16 @@ class AttachSheetDeviceTest {
         all(AttachTags.CELL)[1].performClick()
         waitFor(PictureViewerTags.VIEWER)
         capture("03-preview")
+        // The preview's check, top right (close moves to the top left), picks the picture in view as its cell's does.
+        val check = node(AttachTags.PREVIEW_CHECK).fetchSemanticsNode().boundsInRoot
+        val close = node(PictureViewerTags.CLOSE).fetchSemanticsNode().boundsInRoot
+        assertTrue("the check at the top right, close at the left: $check $close", check.left > close.right && check.top == close.top)
+        node(AttachTags.PREVIEW_CHECK).performClick()
+        rule.waitUntil(5_000) { all(AttachTags.CAPTION_BAR).fetchSemanticsNodes().isNotEmpty() }
+        SystemClock.sleep(400)
+        capture("03b-preview-picked")
+        node(AttachTags.PREVIEW_CHECK).performClick()
+        waitGone(AttachTags.CAPTION_BAR)
         device.pressBack()
         waitGone(PictureViewerTags.VIEWER)
         val checks = all(AttachTags.CHECK)

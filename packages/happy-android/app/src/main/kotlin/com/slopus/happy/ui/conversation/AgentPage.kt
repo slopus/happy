@@ -737,7 +737,7 @@ private fun SharedViewer(visual: List<SharedMedia>, index: Int, store: Conversat
         }
     }
     val source = remember(entries, store) { ConversationViewerSource(entries, store) }
-    PictureViewer(remember(entries) { entries.map { it.item } }, index, source, onClose)
+    PictureViewer(remember(entries) { entries.map { it.item } }, index, source, onClose = onClose)
 }
 
 /** "Show more", a settings row in the link colour. */

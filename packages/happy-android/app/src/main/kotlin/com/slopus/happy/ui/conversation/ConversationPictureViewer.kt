@@ -186,11 +186,20 @@ interface ViewerSource {
  * in its page while it is the one in view ([VideoPage]). It comes and goes
  * in 220 ms on one ease-out curve, flung away too; Back, a tap on a picture or the close button (44, 8
  * in from the safe area's top right) leaves. A source that shares adds a
- * Share button at the top left. The position ("2 of 5") is the page's
- * state for TalkBack, as iOS gives it to VoiceOver.
+ * Share button at the top left. A [corner] (the attach sheet's check, as
+ * iOS's `AttachPreviewViewController` has it) takes the top right for the
+ * picture in view, and the close button moves to the top left. The
+ * position ("2 of 5") is the page's state for TalkBack, as iOS gives it to
+ * VoiceOver.
  */
 @Composable
-fun PictureViewer(items: List<ViewerItem>, index: Int, source: ViewerSource, onClose: () -> Unit) {
+fun PictureViewer(
+    items: List<ViewerItem>,
+    index: Int,
+    source: ViewerSource,
+    corner: (@Composable (item: ViewerItem, modifier: Modifier) -> Unit)? = null,
+    onClose: () -> Unit,
+) {
     if (items.isEmpty()) return
     val scope = rememberCoroutineScope()
     val shown = remember { Animatable(0f) }
@@ -351,19 +360,22 @@ fun PictureViewer(items: List<ViewerItem>, index: Int, source: ViewerSource, onC
                 }
             }
             val controls = Modifier.graphicsLayer { alpha = min(shown.value, motion.dismissal().groundAlpha) }
+            val safe = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+            fun Modifier.corner(alignment: Alignment) = align(alignment)
+                .windowInsetsPadding(safe)
+                .padding(PictureViewing.CLOSE_INSET.dp)
+                .size(PictureViewing.CLOSE_SIZE.dp)
             if (source.shares) ShareButton(source, items[pager.currentPage], controls.align(Alignment.TopStart))
             IconButton(
                 onClick = close,
                 colors = IconButtonDefaults.iconButtonColors(contentColor = Color.White),
                 modifier = controls
-                    .align(Alignment.TopEnd)
-                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-                    .padding(PictureViewing.CLOSE_INSET.dp)
-                    .size(PictureViewing.CLOSE_SIZE.dp)
+                    .corner(if (corner != null) Alignment.TopStart else Alignment.TopEnd)
                     .testTag(PictureViewerTags.CLOSE),
             ) {
                 Icon(MaterialSymbols.Close, stringResource(R.string.conversation_picture_close))
             }
+            corner?.invoke(items[pager.currentPage], controls.corner(Alignment.TopEnd))
         }
     }
 }
@@ -383,7 +395,7 @@ fun PictureViewer(bytes: ByteArray, cacheKey: String, name: String?, onClose: ()
             override suspend fun bytes(key: String) = bytes
         }
     }
-    PictureViewer(listOf(ViewerItem(cacheKey, name)), 0, source, onClose)
+    PictureViewer(listOf(ViewerItem(cacheKey, name)), 0, source, onClose = onClose)
 }
 
 /**
@@ -712,5 +724,5 @@ class PictureViewerState {
 internal fun PictureViewerHost(state: PictureViewerState, store: ConversationMediaStore) {
     val showing = state.showing ?: return
     val source = remember(showing, store) { ConversationViewerSource(showing.entries, store) }
-    PictureViewer(remember(showing) { showing.entries.map { it.item } }, showing.index, source, state::close)
+    PictureViewer(remember(showing) { showing.entries.map { it.item } }, showing.index, source, onClose = state::close)
 }

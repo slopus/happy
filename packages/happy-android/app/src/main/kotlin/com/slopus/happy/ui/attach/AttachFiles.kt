@@ -208,7 +208,7 @@ private fun RowText(title: String, detail: String) {
     }
 }
 
-/** "Recent files", Telegram's blue section header. */
+/** "Recent files", a section header in the accent where Telegram has its blue. */
 @Composable
 private fun RecentHeader(colors: AttachColors) {
     Text(

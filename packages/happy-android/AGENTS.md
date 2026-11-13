@@ -1625,8 +1625,11 @@ gained lines is all additions too, and git calls it modified.
   offers Manage), numbered multi-select, a caption that is the draft, and a
   File tab (Browse through the system picker, the system photo picker as
   files, Paste, and the files sent from here before, `RecentFiles`). A
-  cell's picture opens the preview; its check picks, through the cell's
-  48 dp top-right corner (Telegram's `checkFrame` is the 42 corner). The
+  cell's picture opens the preview, whose top-right check picks the one in
+  view; its check picks, through the cell's 48 dp top-right corner
+  (Telegram's `checkFrame` is the 42 corner). No Telegram blue: the checks,
+  the confirm pill and the selected tab take the composer's send colours
+  (`AttachColors`: text filled, the surface on it). The
   caption bar's Send sends the picks with the caption at once (gallery
   photos as their thumbnails, read after). The header's far end holds the
   confirm pill (a check and the count): it sends nothing. The picks are

@@ -131,9 +131,11 @@ The same numbers, in Compose:
   sheet goes at 0.8 cm (computed from the display's xdpi as Telegram does) or comes back in
   `250 × pulled / 0.8 cm` ms. Predictive back pulls the sheet down by the gesture's
   progress and closes it on commit.
-- **Theme.** Telegram's blue is our accent only where Telegram uses its brand colour (the
-  check, the send pill, the counter, the selected tab), as `AttachColors` in light and dark
-  (Telegram's night values: the same blue, white unselected glyphs). The sheet is
+- **Theme.** Where Telegram uses its brand blue (the check, the confirm pill, the counter,
+  the selected tab, the preview's check) we use the chat composer's send button instead:
+  `colors.text` filled with `colors.surface` on it, so black and white in light, white and
+  black in dark (`AttachColors`). The preview is black in both, so its check is the dark
+  one. iOS follows its own composer's send (grey with ink). The sheet is
   `colors.surface`; the glass is our `Glass` (`GlassSpec`) over the grid.
 - **Foldables.** The sheet takes `ContentTokens.sheetMaxWidth` and centres, so on the 750 dp
   inner screen it is a 640 column, 55 in, the scrim either side. From 600 dp of sheet it

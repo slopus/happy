@@ -3,6 +3,8 @@ package com.slopus.happy.ui.attach
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.slopus.happy.ui.assertDp
+import com.slopus.happy.ui.theme.DarkColors
+import com.slopus.happy.ui.theme.LightColors
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -128,5 +130,15 @@ class AttachSpecTest {
         assertEquals(FileTint.entries['k'.code % 4], fileTint("app.kt"))
         assertEquals("pdf", fileExtension("a.b.PDF"))
         assertEquals("", fileExtension("README"))
+    }
+
+    @Test fun `the accent is the composer's send button, not Telegram's blue`() {
+        for (theme in listOf(LightColors, DarkColors)) {
+            val colors = AttachColors.of(theme.dark)
+            assertEquals(theme.text, colors.accent)
+            assertEquals(theme.surface, colors.onAccent)
+            assertEquals(theme.text, colors.tabSelected)
+            assertEquals(theme.text, colors.tabSelectedText)
+        }
     }
 }

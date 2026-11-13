@@ -68,7 +68,7 @@ fun VaultMediaViewer(session: AgentSession, items: List<VaultItem>, index: Int, 
             }
         }
     }
-    PictureViewer(pages, index.coerceIn(0, (pages.size - 1).coerceAtLeast(0)), source, onClose)
+    PictureViewer(pages, index.coerceIn(0, (pages.size - 1).coerceAtLeast(0)), source, onClose = onClose)
 }
 
 /** A version of an entry is the same picture wherever it shows, so it is cached by that. */

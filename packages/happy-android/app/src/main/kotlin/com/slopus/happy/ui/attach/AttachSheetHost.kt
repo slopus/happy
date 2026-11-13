@@ -3,6 +3,10 @@ package com.slopus.happy.ui.attach
 import androidx.compose.runtime.DisposableEffect
 import com.slopus.happy.ui.components.WindowDialog
 import android.content.res.Configuration
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalConfiguration
 import android.app.Activity
 import android.content.ClipboardManager
@@ -37,6 +41,13 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalView
 import com.slopus.happy.ui.components.PageDialog as Dialog
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import com.slopus.happy.R
@@ -70,6 +81,7 @@ import com.slopus.happy.ui.conversation.ViewerSource
 import com.slopus.happy.ui.files.WorkspaceFilePicker
 import com.slopus.happy.ui.files.WorkspaceSource
 import com.slopus.happy.ui.files.withWorkspacePath
+import com.slopus.happy.ui.theme.DarkColors
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -389,7 +401,30 @@ fun AttachSheet(
         viewing?.let { index ->
             val shown = remember(items) { items.map { ViewerItem(it.uri, it.name, it.isVideo, it.width.toFloat().takeIf { w -> w > 0 }, it.height.toFloat().takeIf { h -> h > 0 }) } }
             val loader = rememberImageLoader()
-            PictureViewer(shown, index, remember(context, loader) { GallerySource(context, loader) }, onClose = { viewing = null })
+            // The viewer is black in either theme, so its check takes the dark theme's colours.
+            val colors = remember { AttachColors.of(dark = true) }
+            PictureViewer(
+                shown, index, remember(context, loader) { GallerySource(context, loader) }, onClose = { viewing = null },
+                // The picture in view picks and unpicks as its cell's check does.
+                corner = { shownItem, modifier ->
+                    val item = items.firstOrNull { it.uri == shownItem.key } ?: return@PictureViewer
+                    val number = selection.number(item.uri)
+                    val label = stringResource(if (number > 0) R.string.attach_unpick else R.string.attach_pick)
+                    Box(
+                        modifier
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { toggle(item.picked()) }
+                            .semantics {
+                                contentDescription = label
+                                role = Role.Checkbox
+                                selected = number > 0
+                            }
+                            .testTag(AttachTags.PREVIEW_CHECK),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        AttachCheck(number, DarkColors.surface, colors)
+                    }
+                },
+            )
         }
         if (naming && workspace != null) {
             WorkspaceFilePicker(

@@ -9,6 +9,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.slopus.happy.ui.theme.DarkColors
+import com.slopus.happy.ui.theme.LightColors
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.min
@@ -147,11 +149,16 @@ object AttachSpec {
     val switchShift = 78.dp
 }
 
-/** Telegram's attachment colours: its brand blue where it uses it, our theme elsewhere. */
+/**
+ * The sheet's colours from our theme. Where Telegram puts its blue (the
+ * checks, the confirm pill, the selected tab) we use the chat composer's
+ * send button: the text colour filled, the surface's glyph on it.
+ */
 @Immutable
 data class AttachColors(
-    /** `chat_attachCheckBoxBackground` and the confirm pill. */
+    /** `chat_attachCheckBoxBackground` and the confirm pill: the composer's send fill. */
     val accent: Color,
+    /** The check's number and the pill's glyph: the composer's send glyph. */
     val onAccent: Color,
     /** `glass_tabUnselected`. */
     val tab: Color,
@@ -167,28 +174,16 @@ data class AttachColors(
     val badge: Color,
 ) {
     companion object {
-        private val blue = Color(0xFF229AF0)
-
-        fun of(dark: Boolean) = if (dark) {
-            AttachColors(
-                accent = blue,
-                onAccent = Color.White,
-                tab = Color.White,
-                tabSelected = Color(0xFF1A91E6),
-                tabSelectedText = Color(0xFF3FA6F2),
-                grabber = Color(0x25FFFFFF),
-                cell = Color(0x0CFFFFFF),
-                badge = Color(0x66000000),
-            )
-        } else {
-            AttachColors(
-                accent = blue,
-                onAccent = Color.White,
-                tab = Color(0xFF1A1D21),
-                tabSelected = Color(0xFF1A91E6),
-                tabSelectedText = Color(0xFF0D7FCF),
-                grabber = Color(0xFFE1E4E8),
-                cell = Color(0x0C000000),
+        fun of(dark: Boolean): AttachColors {
+            val theme = if (dark) DarkColors else LightColors
+            return AttachColors(
+                accent = theme.text,
+                onAccent = theme.surface,
+                tab = theme.textSecondary,
+                tabSelected = theme.text,
+                tabSelectedText = theme.text,
+                grabber = if (dark) Color(0x25FFFFFF) else Color(0xFFE1E4E8),
+                cell = if (dark) Color(0x0CFFFFFF) else Color(0x0C000000),
                 badge = Color(0x66000000),
             )
         }
