@@ -13,6 +13,7 @@ import { useSessionListSyncState } from '@/sync/sessionListSyncState';
 interface MainViewProps {
     variant: 'phone' | 'sidebar';
     sessionListLayout?: 'projects' | 'time';
+    desktopSections?: boolean;
     transparentSidebar?: boolean;
 }
 
@@ -83,7 +84,7 @@ const styles = StyleSheet.create((theme) => ({
     },
 }));
 
-export const MainView = React.memo(({ sessionListLayout = 'projects', transparentSidebar = false, variant }: MainViewProps) => {
+export const MainView = React.memo(({ sessionListLayout = 'projects', transparentSidebar = false, desktopSections = false, variant }: MainViewProps) => {
     const { theme } = useUnistyles();
     const sessionListViewData = useVisibleSessionListViewData();
     const realtimeStatus = useRealtimeStatus();
@@ -103,7 +104,7 @@ export const MainView = React.memo(({ sessionListLayout = 'projects', transparen
         }
 
         // Empty state
-        if (sessionListViewData.length === 0) {
+        if (sessionListViewData.length === 0 && !desktopSections) {
             return (
                 <View style={styles.sidebarContentContainer}>
                     <View style={[styles.emptyStateContainer, !transparentSidebar && styles.emptyStateOpaque]}>
@@ -116,7 +117,7 @@ export const MainView = React.memo(({ sessionListLayout = 'projects', transparen
         // Sessions list
         return (
             <View style={styles.sidebarContentContainer}>
-                <SessionsList layoutMode={sessionListLayout} transparentSidebar={transparentSidebar} />
+                <SessionsList desktopSections={desktopSections} layoutMode={sessionListLayout} transparentSidebar={transparentSidebar} />
             </View>
         );
     }

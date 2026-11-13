@@ -31,6 +31,7 @@ import { t } from '@/text';
 import { MainView } from './MainView';
 import { SidebarScrollProvider, useSidebarScrollState } from './SidebarScrollState';
 import { DesktopDialogFrame } from './DesktopDialogFrame';
+import { DesktopShortcutTooltip } from './DesktopShortcutTooltip';
 import {
     DesktopTagActionsPopover,
     DesktopTagDetailDialog,
@@ -100,6 +101,14 @@ function getListColors(colors: any): Record<SidebarListColor, string> {
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: { flex: 1, minHeight: 0 },
+    desktopHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, minHeight: 50, gap: 4, position: 'relative', zIndex: 30 },
+    desktopHeaderTabs: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    desktopBrand: { color: theme.colors.text, fontSize: 17, flex: 1, ...Typography.default('semiBold') },
+    desktopHeaderIcon: { alignItems: 'center', justifyContent: 'center', borderRadius: 7, width: 32, height: 32 },
+    desktopHeaderSelected: { backgroundColor: theme.colors.surfaceSelected },
+    desktopHeaderPressed: { backgroundColor: theme.colors.surfacePressed },
+    desktopNewSession: { flexDirection: 'row', alignItems: 'center', gap: 9, minHeight: 38, borderRadius: 8, marginHorizontal: 10, paddingHorizontal: 10 },
+    desktopNewSessionText: { color: theme.colors.text, fontSize: 13, ...Typography.default('semiBold') },
     tabs: {
         flexDirection: 'row',
         minHeight: 44,
@@ -351,11 +360,69 @@ const stylesheet = StyleSheet.create((theme) => ({
     assignmentLabel: { color: theme.colors.text, flex: 1, fontSize: 13, ...Typography.default() },
 }));
 
-export const DesktopSidebarSessionsNavigation = React.memo(({ transparentSidebar = false }: { transparentSidebar?: boolean }) => {
-    return <SidebarScrollProvider><SidebarSessionsNavigationContent transparentSidebar={transparentSidebar} /></SidebarScrollProvider>;
+type DesktopSidebarHeaderProps = {
+    onNewSession?: () => void;
+    onSearch?: () => void;
+    onSelectView?: () => void;
+    mode?: 'projects' | 'lists' | 'timeline' | 'archive';
+    onModeChange?: (mode: 'projects' | 'lists' | 'timeline') => void;
+};
+
+/** A single set of desktop actions stays available across all sidebar surfaces. */
+export const DesktopSidebarHeader = React.memo(function DesktopSidebarHeader({ onNewSession, onSearch, onSelectView, mode: controlledMode, onModeChange }: DesktopSidebarHeaderProps) {
+    const [storedMode, setMode] = useLocalSettingMutable('desktopSidebarMode');
+    const mode = controlledMode ?? storedMode;
+    const [, setListMode] = useLocalSettingMutable('desktopSidebarListMode');
+    const [tooltip, setTooltip] = React.useState<'lists' | 'timeline' | 'search' | null>(null);
+    const styles = stylesheet;
+
+    const selectView = (value: 'lists' | 'timeline') => {
+        const next = mode === value ? 'projects' : value;
+        if (onModeChange) onModeChange(next);
+        else { setListMode(next); setMode(next); }
+        setTooltip(null);
+        onSelectView?.();
+    };
+
+    return <>
+        <View style={styles.desktopHeader}>
+            <Text style={styles.desktopBrand}>Paws</Text>
+            <View style={styles.desktopHeaderTabs}>
+                {(['lists', 'timeline'] as const).map(value => {
+                    const selected = mode === value;
+                    const label = t(value === 'lists' ? 'sidebar.listsTab' : 'sidebar.timelineTab');
+                    return <View key={value}>
+                        <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={label}
+                            accessibilityState={{ selected }}
+                            aria-pressed={selected}
+                            onHoverIn={() => setTooltip(value)}
+                            onHoverOut={() => setTooltip(null)}
+                            onFocus={() => setTooltip(value)}
+                            onBlur={() => setTooltip(null)}
+                            onPress={() => selectView(value)}
+                            testID={`desktop-sidebar-tab-${value}`}
+                            style={({ pressed }) => [styles.desktopHeaderIcon, selected && styles.desktopHeaderSelected, pressed && styles.desktopHeaderPressed]}
+                        ><Feather name={value === 'lists' ? 'list' : 'bell'} size={17} color={selected ? styles.tabTextSelected.color : styles.tabText.color} /></Pressable>
+                        <DesktopShortcutTooltip align="right" label={label} testID={`desktop-sidebar-header-tooltip-${value}`} visible={tooltip === value} />
+                    </View>;
+                })}
+                <View>
+                    <Pressable accessibilityRole="button" accessibilityLabel={t('sidebar.searchSessions')} onHoverIn={() => setTooltip('search')} onHoverOut={() => setTooltip(null)} onFocus={() => setTooltip('search')} onBlur={() => setTooltip(null)} onPress={() => { setTooltip(null); onSearch?.(); }} testID="desktop-sidebar-header-search" style={({ pressed }) => [styles.desktopHeaderIcon, pressed && styles.desktopHeaderPressed]}><Feather name="search" size={17} color={styles.tabText.color} /></Pressable>
+                    <DesktopShortcutTooltip align="right" label={t('sidebar.searchSessions')} testID="desktop-sidebar-header-tooltip-search" visible={tooltip === 'search'} />
+                </View>
+            </View>
+        </View>
+        <Pressable accessibilityRole="button" accessibilityLabel={t('sidebar.newSession')} onPress={onNewSession} testID="desktop-sidebar-header-new-session" style={({ pressed }) => [styles.desktopNewSession, pressed && styles.desktopHeaderPressed]}><Feather name="edit" size={17} color={styles.tabTextSelected.color} /><Text style={styles.desktopNewSessionText}>{t('sidebar.newSession')}</Text></Pressable>
+    </>;
 });
 
-function SidebarSessionsNavigationContent({ transparentSidebar }: { transparentSidebar: boolean }) {
+export const DesktopSidebarSessionsNavigation = React.memo(({ transparentSidebar = false, desktopHeader = false, onNewSession, onSearch }: { transparentSidebar?: boolean; desktopHeader?: boolean; onNewSession?: () => void; onSearch?: () => void }) => {
+    return <SidebarScrollProvider><SidebarSessionsNavigationContent transparentSidebar={transparentSidebar} desktopHeader={desktopHeader} onNewSession={onNewSession} onSearch={onSearch} /></SidebarScrollProvider>;
+});
+
+function SidebarSessionsNavigationContent({ transparentSidebar, desktopHeader, onNewSession, onSearch }: { transparentSidebar: boolean; desktopHeader: boolean; onNewSession?: () => void; onSearch?: () => void }) {
     const [mode, setMode] = useLocalSettingMutable('desktopSidebarMode');
     const [, setListMode] = useLocalSettingMutable('desktopSidebarListMode');
     const styles = stylesheet;
@@ -367,7 +434,9 @@ function SidebarSessionsNavigationContent({ transparentSidebar }: { transparentS
 
     return (
         <View style={styles.container} testID="desktop-sidebar-session-navigation">
-            {mode !== 'archive' ? (
+            {desktopHeader ? (
+                <DesktopSidebarHeader mode={mode} onModeChange={selectListMode} onNewSession={onNewSession} onSearch={onSearch} />
+            ) : mode !== 'archive' ? (
                 <View accessibilityRole="tablist" style={styles.tabs}>
                     <View pointerEvents="none" style={styles.tabTrack} />
                     {(['projects', 'lists', 'timeline'] as const).map((value) => {
@@ -403,7 +472,7 @@ function SidebarSessionsNavigationContent({ transparentSidebar }: { transparentS
                 ? <SessionHistoryList variant="sidebar" />
                 : mode === 'lists'
                 ? <SidebarListsView />
-                : <MainView sessionListLayout={mode === 'timeline' ? 'time' : 'projects'} variant="sidebar" transparentSidebar={transparentSidebar} />}
+                : <MainView desktopSections={desktopHeader} sessionListLayout={mode === 'timeline' ? 'time' : 'projects'} variant="sidebar" transparentSidebar={transparentSidebar} />}
         </View>
     );
 }

@@ -245,6 +245,42 @@ describe('DesktopSidebarSessionsNavigation', () => {
         act(() => renderer.unmount());
     });
 
+    it('routes desktop header controls to existing views and actions', () => {
+        const onNewSession = vi.fn();
+        const onSearch = vi.fn();
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation desktopHeader onNewSession={onNewSession} onSearch={onSearch} />); });
+        expect(renderer.root.findAllByProps({ testID: 'desktop-sidebar-tab-projects' })).toHaveLength(0);
+        expect(renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).findByType('Feather').props.name).toBe('list');
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+        expect(renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.accessibilityState).toEqual({ selected: true });
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+        expect(renderer.root.findByType('MainView').props.sessionListLayout).toBe('projects');
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-timeline' }).props.onPress());
+        expect(renderer.root.findByType('MainView').props.sessionListLayout).toBe('time');
+        expect(renderer.root.findByProps({ testID: 'desktop-sidebar-tab-timeline' }).props.accessibilityLabel).toBe('sidebar.timelineTab');
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-header-search' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-header-new-session' }).props.onPress());
+        expect(onSearch).toHaveBeenCalledOnce();
+        expect(onNewSession).toHaveBeenCalledOnce();
+        act(() => renderer.unmount());
+    });
+
+    it('keeps new session and search reachable in the archive and can return to lists', () => {
+        mocks.desktopSidebarMode = 'archive';
+        const onNewSession = vi.fn();
+        const onSearch = vi.fn();
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation desktopHeader onNewSession={onNewSession} onSearch={onSearch} />); });
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-header-search' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-header-new-session' }).props.onPress());
+        act(() => renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props.onPress());
+        expect(onSearch).toHaveBeenCalledOnce();
+        expect(onNewSession).toHaveBeenCalledOnce();
+        expect(renderer.root.findByProps({ testID: 'desktop-sidebar-tab-lists' }).props['aria-pressed']).toBe(true);
+        act(() => renderer.unmount());
+    });
+
     it('preserves the DreamSkin sidebar surface when switching from Projects to Timeline', () => {
         let renderer: any;
         act(() => { renderer = TestRenderer.create(<DesktopSidebarSessionsNavigation transparentSidebar />); });

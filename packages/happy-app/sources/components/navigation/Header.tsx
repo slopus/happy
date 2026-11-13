@@ -131,7 +131,7 @@ const NavigationHeaderComponent: React.FC<NativeStackHeaderProps> = React.memo((
     } = useDesktopWorkspaceLayout();
     const inTauri = isTauri();
     const isMacTauri = inTauri && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
-    const persistentHeaderContentInset = isTablet
+    const persistentHeaderContentInset = isTablet && Platform.OS !== 'web'
         ? getPersistentHeaderContentInset({
             windowWidth,
             headerMaxWidth: layout.headerMaxWidth,
@@ -139,7 +139,7 @@ const NavigationHeaderComponent: React.FC<NativeStackHeaderProps> = React.memo((
             sidebarVisible: desktopLeftSidebarVisible,
             sidebarWidth: desktopLeftSidebarWidth,
             controlStartPadding: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 16,
-            buttonCount: Platform.OS === 'web' ? 3 : 2,
+            buttonCount: 2,
             controlsWidth: PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
             targetHitSlop: 8,
         })

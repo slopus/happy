@@ -292,7 +292,7 @@ const CapabilityHubPlaceholder = React.memo(function CapabilityHubPlaceholder() 
             contentContainerStyle={styles.summaryContent}
             showsVerticalScrollIndicator={false}
         >
-            <View style={styles.heading}>
+            <View style={[styles.heading, styles.placeholderHeading]}>
                 <Text numberOfLines={1} style={[styles.headingTitle, { color: theme.colors.text }]}>
                     {t('rightPanelCapabilityHub.title')}
                 </Text>
@@ -365,6 +365,10 @@ const styles = StyleSheet.create(() => ({
         fontSize: 19,
         fontWeight: '700',
         letterSpacing: -0.4,
+    },
+    placeholderHeading: {
+        alignItems: 'stretch',
+        flexDirection: 'column',
     },
     placeholderCopy: {
         fontSize: 13,

@@ -68,7 +68,6 @@ import {
     getPersistentNavigationControlsWidth,
     getResponsiveRightPanelMode,
     shouldUseCompactSessionHeader,
-    PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
     TAURI_HEADER_CONTROL_LEFT,
 } from '@/utils/desktopNavigationLayout';
 import { isTauri } from '@/utils/isTauri';
@@ -1118,18 +1117,22 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
         ? t('common.files')
         : t('rightPanelCapabilityHub.title'));
     const compactPanelLabel = subagentPanelLabel ?? (desktopPanelMode === 'tasks' ? t('goalBoard.title') : t('rightPanelCapabilityHub.title'));
-    const rightPanelToggleLabel = desktopPanelMode === 'tasks' ? t('rightPanelCapabilityHub.title') : desktopRightPanelAvailable ? desktopPanelLabel : compactPanelLabel;
+    const switchTasksToCapabilities = desktopPanelMode === 'tasks' && !subagentSelection;
+    const rightPanelToggleLabel = switchTasksToCapabilities ? t('rightPanelCapabilityHub.title') : desktopRightPanelAvailable ? desktopPanelLabel : compactPanelLabel;
+    // From the task board this control switches to capabilities rather than hiding the panel.
+    const rightPanelToggleExpanded = !switchTasksToCapabilities && (desktopRightPanelAvailable ? showDesktopRightPanel : rightDrawerOpen);
     const rightPanelToggleButton = (
         (desktopRightPanelAvailable && desktopRightPanelPresentation !== 'zen')
         || compactRightDrawerAvailable
     ) ? (
         <DesktopRightPanelToggleButton
-            expanded={desktopRightPanelAvailable ? showDesktopRightPanel : rightDrawerOpen}
-            label={(desktopRightPanelAvailable ? showDesktopRightPanel : rightDrawerOpen)
+            globalPlacement={Platform.OS === 'web' && desktopRightPanelAvailable && isFocused}
+            expanded={rightPanelToggleExpanded}
+            label={rightPanelToggleExpanded
                 ? t('desktopWorkspace.hidePanel', { panel: rightPanelToggleLabel })
                 : t('desktopWorkspace.showPanel', { panel: rightPanelToggleLabel })}
             onPress={() => {
-                if (desktopPanelMode === 'tasks') {
+                if (switchTasksToCapabilities) {
                     setDesktopPanelMode('capabilities');
                     if (desktopRightPanelAvailable) setDesktopRightPanelCollapsed(false); else setRightDrawerOpen(true);
                     return;
@@ -1221,7 +1224,7 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
             {headerRightSlot}
         </View>
     );
-    const persistentHeaderContentInset = isTablet
+    const persistentHeaderContentInset = isTablet && Platform.OS !== 'web'
         ? getPersistentHeaderContentInset({
             windowWidth,
             mainContentWidth: desktopMainWidth || undefined,
@@ -1233,10 +1236,8 @@ const SessionViewContent = React.memo((props: SessionViewProps) => {
             // SidebarNavigator 同时存在 `left: sidebar + 16` 和非 Tauri 环境下的
             // `paddingLeft: 16`，命中区域计算必须包含第二段偏移。
             controlStartPadding: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 16,
-            buttonCount: Platform.OS === 'web' ? 4 : 3,
-            controlsWidth: Platform.OS === 'web'
-                ? PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH
-                : getPersistentNavigationControlsWidth(3),
+            buttonCount: 3,
+            controlsWidth: getPersistentNavigationControlsWidth(3),
             targetHitSlop: 8,
         })
         : 0;

@@ -146,7 +146,7 @@ export const localSettingsDefaults: LocalSettings = {
     verboseLogging: false,
     zenMode: false,
     desktopLeftSidebarCollapsed: false,
-    desktopRightPanelCollapsed: false,
+    desktopRightPanelCollapsed: true,
     desktopLeftSidebarWidth: DESKTOP_LEFT_PANEL_DEFAULT_WIDTH,
     desktopRightPanelWidth: DESKTOP_RIGHT_PANEL_DEFAULT_WIDTH,
     sessionListLayout: 'projects',

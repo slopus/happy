@@ -2,7 +2,7 @@ import * as React from 'react';
 import { View, Text, Pressable, Platform, ScrollView, useWindowDimensions } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useRouter, useNavigation, useLocalSearchParams } from 'expo-router';
-import { DrawerActions } from '@react-navigation/native';
+import { DrawerActions, useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
@@ -19,7 +19,6 @@ import {
     getPersistentHeaderContentInset,
     getDesktopRightPanelPresentation,
     getPersistentNavigationControlsWidth,
-    PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
     TAURI_HEADER_CONTROL_LEFT,
 } from '@/utils/desktopNavigationLayout';
 import { isTauri } from '@/utils/isTauri';
@@ -149,6 +148,8 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     const navigation = useNavigation();
     const insets = useSafeAreaInsets();
     const isTablet = useIsTablet();
+    const isFocused = useIsFocused();
+    const desktopWeb = Platform.OS === 'web' && isTablet;
     const { width: windowWidth, height: windowHeight } = useWindowDimensions();
     const inTauri = isTauri();
     const isMacTauri = inTauri && typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
@@ -787,7 +788,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
         zenMode,
     });
     const showDesktopRightPanel = desktopRightPanelPresentation === 'expanded';
-    const persistentHeaderContentInset = isTablet
+    const persistentHeaderContentInset = isTablet && Platform.OS !== 'web'
         ? getPersistentHeaderContentInset({
             windowWidth,
             headerMaxWidth: layout.headerMaxWidth,
@@ -798,10 +799,8 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
             // SidebarNavigator 同时存在 `left: sidebar + 16` 和非 Tauri 环境下的
             // `paddingLeft: 16`，命中区域计算必须包含第二段偏移。
             controlStartPadding: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 16,
-            buttonCount: Platform.OS === 'web' ? 4 : 3,
-            controlsWidth: Platform.OS === 'web'
-                ? PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH
-                : getPersistentNavigationControlsWidth(3),
+            buttonCount: 3,
+            controlsWidth: getPersistentNavigationControlsWidth(3),
             targetHitSlop: 8,
         })
         : 0;
@@ -841,6 +840,7 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
     const capabilityHubLabel = t('rightPanelCapabilityHub.title');
     const rightPanelToggleButton = desktopRightPanelAvailable && desktopRightPanelPresentation !== 'zen' ? (
         <DesktopRightPanelToggleButton
+            globalPlacement={desktopWeb && isFocused}
             expanded={showDesktopRightPanel}
             label={showDesktopRightPanel
                 ? t('desktopWorkspace.hidePanel', { panel: capabilityHubLabel })
@@ -914,11 +914,12 @@ export const ComposeHome = React.memo(({ variant = 'home' }: ComposeHomeProps) =
                         testID: 'dreamskin-home-scroll',
                     } : {})}
                 >
-                <View style={[styles.greetWrap, dreamskin && windowHeight >= 700 && styles.dreamskinGreetWrap]}>
-                    {!dreamskin && <ComposeHomeParticles mode={theme.dark ? 'dark' : 'light'} />}
-                    <View style={styles.greetingContent}>
+                <View style={[styles.greetWrap, dreamskin && windowHeight >= 700 && styles.dreamskinGreetWrap, desktopWeb && styles.desktopGreetWrap]}>
+                    {!dreamskin && !desktopWeb && <ComposeHomeParticles mode={theme.dark ? 'dark' : 'light'} />}
+                    <View style={[styles.greetingContent, desktopWeb && styles.desktopGreetingContent]}>
+                        {desktopWeb && <Ionicons name="terminal-outline" size={40} color={theme.colors.textSecondary} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />}
                         <Text
-                            style={[styles.greeting, isTablet && styles.greetingDesktop]}
+                            style={[styles.greeting, isTablet && styles.greetingDesktop, desktopWeb && styles.desktopGreetingCentered]}
                             testID="compose-home-greeting"
                         >
                             {displayAgent
@@ -1362,10 +1363,19 @@ const styles = StyleSheet.create((theme) => ({
         paddingTop: 0,
         minHeight: 96,
     },
+    desktopGreetWrap: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingTop: 0,
+    },
     greetingContent: {
         width: '100%',
         maxWidth: layout.maxWidth,
         alignSelf: 'center',
+    },
+    desktopGreetingContent: {
+        alignItems: 'center',
+        gap: 24,
     },
     greeting: {
         ...Typography.display('semiBold'),
@@ -1376,6 +1386,10 @@ const styles = StyleSheet.create((theme) => ({
     },
     greetingDesktop: {
         maxWidth: 520,
+    },
+    desktopGreetingCentered: {
+        maxWidth: 760,
+        textAlign: 'center',
     },
     composer: {
         paddingHorizontal: 14,

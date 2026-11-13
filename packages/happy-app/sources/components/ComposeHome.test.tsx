@@ -99,7 +99,7 @@ vi.mock('expo-router', () => ({
     useNavigation: () => ({ dispatch: vi.fn() }),
     useLocalSearchParams: () => mocks.routeParams,
 }));
-vi.mock('@react-navigation/native', () => ({ DrawerActions: { openDrawer: vi.fn() } }));
+vi.mock('@react-navigation/native', () => ({ DrawerActions: { openDrawer: vi.fn() }, useIsFocused: () => true }));
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 vi.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) }));
 vi.mock('react-native-keyboard-controller', () => ({ KeyboardAvoidingView: 'KeyboardAvoidingView' }));

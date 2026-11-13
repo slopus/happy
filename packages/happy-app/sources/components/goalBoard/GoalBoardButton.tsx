@@ -3,10 +3,12 @@ import { Platform, Pressable, type View } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { GoalBoardCardFocus } from './GoalBoardCard';
 import { ProjectSurfaces } from './ProjectSurfaces';
+import { DesktopShortcutTooltip } from '../DesktopShortcutTooltip';
 
 interface GoalBoardButtonProps {
     children: React.ReactNode;
     label: string;
+    tooltip?: string;
     testID?: string;
     onPress: () => void;
     selected?: boolean;
@@ -19,7 +21,7 @@ interface GoalBoardButtonProps {
 
 /** Shared keyboard, pointer and touch surface; colors always come from the active theme. */
 export const GoalBoardButton = React.memo(React.forwardRef<View, GoalBoardButtonProps>(function GoalBoardButton({
-    children, label, testID, onPress, selected, expanded, disabled, busy, touchTarget = false, variant = 'plain',
+    children, label, tooltip, testID, onPress, selected, expanded, disabled, busy, touchTarget = false, variant = 'plain',
 }, ref) {
     const surfaces = React.useContext(ProjectSurfaces);
     const [hovered, setHovered] = React.useState(false);
@@ -49,7 +51,7 @@ export const GoalBoardButton = React.memo(React.forwardRef<View, GoalBoardButton
             surfaces && variant !== 'card' && { backgroundColor: !disabled && (state.pressed || state.hovered || hovered) ? surfaces.pressed : selected || variant === 'primary' ? surfaces.selected : variant === 'toolbar' ? 'transparent' : surfaces.surface, ...(!focused ? { borderColor: 'transparent' } : {}) },
             disabled ? styles.disabled : undefined,
         ]}
-    >{children}</Pressable>;
+    >{children}{tooltip && Platform.OS === 'web' ? <DesktopShortcutTooltip label={tooltip} testID={`${testID}-tooltip`} visible={hovered || focused} /> : null}</Pressable>;
 }));
 
 const styles = StyleSheet.create((theme) => ({

@@ -198,8 +198,12 @@ export const DesktopWorkspaceLayoutProvider = React.memo(function DesktopWorkspa
     const toggleLeftSidebar = React.useCallback(() => {
         if (!enabled) return;
         if (projectWorkspace) {
-            if (zenMode) setZenMode(false);
-            setProjectSidebarOpen(value => !value);
+            if (zenMode) {
+                setZenMode(false);
+                setProjectSidebarOpen(true);
+            } else {
+                setProjectSidebarOpen(value => !value);
+            }
             return;
         }
         if (zenMode) {

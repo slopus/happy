@@ -73,8 +73,9 @@ vi.mock('@/text', () => ({
 vi.mock('expo-localization', () => ({ getLocales: () => [{ languageTag: 'en-US' }] }));
 vi.mock('@/sync/appConfig', () => ({ loadAppConfig: () => ({}) }));
 vi.mock('@/components/settingsFeatureEntries', () => ({ getSettingsFeatureEntries: () => [] }));
+const settingsNavigation = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock('@/components/DesktopSettingsNavigation', () => ({
-    useSettingsRouter: () => ({ push: vi.fn() }),
+    useSettingsRouter: () => settingsNavigation,
 }));
 
 let SettingsView: React.ComponentType;
@@ -125,6 +126,13 @@ describe('SettingsView scan entry', () => {
 
         expect(scannerItems).toHaveLength(1);
         expect(scannerItems[0].props.onPress).toEqual(expect.any(Function));
+    });
+
+    it('opens archived sessions from settings', () => {
+        const archive = renderer.root.findByProps({ testID: 'settings-archive-entry' });
+        expect(archive.props.title).toBe('sessionHistory.archiveTitle');
+        act(() => archive.props.onPress());
+        expect(settingsNavigation.push).toHaveBeenCalledWith('/settings/archive');
     });
 
     it('shows the installed native version and runtime when Expo config is unavailable', () => {

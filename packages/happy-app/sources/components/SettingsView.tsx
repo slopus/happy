@@ -340,6 +340,12 @@ export const SettingsView = React.memo(function SettingsView() {
             {/* General — 主题/语言入口（照图3，列表行 + 右侧当前值） */}
             <ItemGroup title={t('settings.general')}>
                 <Item
+                    title={t('sessionHistory.archiveTitle')}
+                    icon={<Ionicons name="archive-outline" size={29} color={theme.colors.text} />}
+                    onPress={() => router.push('/settings/archive' as any)}
+                    testID="settings-archive-entry"
+                />
+                <Item
                     title={t('settings.theme')}
                     icon={<Ionicons name="contrast-outline" size={29} color={theme.colors.status.connecting} />}
                     detail={themeDetailText}

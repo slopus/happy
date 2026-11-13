@@ -295,8 +295,8 @@ function ProjectGoalsOwner({ machineId, machines, params, navigation }: {
         <View style={[styles.header, { backgroundColor: surface }, mobile && { display: 'none' }]}>
 
             <View style={styles.line}>
-                <Button variant="toolbar" label={t('common.back')} disabled={!navigation.canBack} onPress={() => { navigationEpoch.current++; navigation.back(); }} testID="project-navigation-back"><Ionicons name="arrow-back" size={18} color={theme.colors.textSecondary} /></Button>
-                <Button variant="toolbar" label={t('desktopWorkspace.forward')} disabled={!navigation.canForward} onPress={() => { navigationEpoch.current++; navigation.forward(); }} testID="project-navigation-forward"><Ionicons name="arrow-forward" size={18} color={theme.colors.textSecondary} /></Button>
+                <Button variant="toolbar" label={`${t('projectGoals.allProjects')} · ${t('common.back')}`} tooltip={`${t('projectGoals.allProjects')} · ${t('common.back')}`} disabled={!navigation.canBack} onPress={() => { navigationEpoch.current++; navigation.back(); }} testID="project-navigation-back"><Ionicons name="arrow-back" size={18} color={theme.colors.textSecondary} /></Button>
+                <Button variant="toolbar" label={`${t('projectGoals.allProjects')} · ${t('desktopWorkspace.forward')}`} tooltip={`${t('projectGoals.allProjects')} · ${t('desktopWorkspace.forward')}`} disabled={!navigation.canForward} onPress={() => { navigationEpoch.current++; navigation.forward(); }} testID="project-navigation-forward"><Ionicons name="arrow-forward" size={18} color={theme.colors.textSecondary} /></Button>
                 <Button variant="toolbar" label={t('projectGoals.backProjects')} onPress={() => go({ project: undefined, feature: undefined, task: undefined })}>
                     <Ionicons name="folder-open-outline" size={17} color={theme.colors.textSecondary} /><Text style={styles.body}>{t('projectGoals.allProjects')}</Text>
                 </Button>

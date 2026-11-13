@@ -1617,6 +1617,7 @@ failedContinueTask: "繼續未完成的工作",
         projectsTab: '專案',
         listsTab: '清單',
         timelineTab: '時間軸',
+        priorityItems: '優先事項',
     },
     sidebarLists: {
         lists: '清單', tags: 'Tag', newList: '新增清單', newTag: '新增 Tag', tagNamePlaceholder: 'Tag 名稱',

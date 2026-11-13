@@ -109,9 +109,9 @@ describe('localSettings hapticFeedbackEnabled', () => {
 });
 
 describe('localSettings desktop workspace panels', () => {
-    it('keeps both desktop panels expanded by default', () => {
+    it('opens the session sidebar and keeps the capability panel collapsed by default', () => {
         expect(localSettingsDefaults.desktopLeftSidebarCollapsed).toBe(false);
-        expect(localSettingsDefaults.desktopRightPanelCollapsed).toBe(false);
+        expect(localSettingsDefaults.desktopRightPanelCollapsed).toBe(true);
         expect(localSettingsDefaults.desktopLeftSidebarWidth).toBe(360);
         expect(localSettingsDefaults.desktopRightPanelWidth).toBe(320);
     });
@@ -121,7 +121,7 @@ describe('localSettings desktop workspace panels', () => {
 
         expect(parsed.zenMode).toBe(true);
         expect(parsed.desktopLeftSidebarCollapsed).toBe(false);
-        expect(parsed.desktopRightPanelCollapsed).toBe(false);
+        expect(parsed.desktopRightPanelCollapsed).toBe(true);
         expect(parsed.desktopLeftSidebarWidth).toBe(360);
         expect(parsed.desktopRightPanelWidth).toBe(320);
     });

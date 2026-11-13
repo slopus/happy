@@ -1745,6 +1745,7 @@ failedContinueTask: "继续未完成的任务",
         projectsTab: '项目',
         listsTab: '清单',
         timelineTab: '时间线',
+        priorityItems: '优先事项',
     },
     sidebarLists: {
         lists: '清单', tags: 'Tag', newList: '新建清单', newTag: '新建 Tag', tagNamePlaceholder: 'Tag 名称',

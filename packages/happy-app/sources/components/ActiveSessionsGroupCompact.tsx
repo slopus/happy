@@ -37,6 +37,7 @@ const STATUS_CONFIG: Record<SessionState, { color: string; dotColor: string; isP
 
 interface ActiveSessionsGroupProps {
     layoutMode?: 'projects' | 'time';
+    desktopSections?: boolean;
     sessions: SessionRowData[];
     selectedSessionId?: string;
     selectionMode?: boolean;
@@ -69,6 +70,7 @@ const MachineSeparator = React.memo(({ machineName, machineId }: { machineName: 
 
 export function useActiveSessionListItems({
     layoutMode = 'projects',
+    desktopSections = false,
     sessions,
     selectedSessionId,
 }: ActiveSessionsGroupProps): CompactSessionListItem[] {
@@ -89,13 +91,25 @@ export function useActiveSessionListItems({
     const machineGroups = React.useMemo(() => buildSessionNavigationGroups({
         machines,
         pinnedOrder: [],
-        sessions: partitionedSessions.regular,
+        sessions: desktopSections ? sessions : partitionedSessions.regular,
         unknownLabel: t('status.unknown'),
-    }), [machines, partitionedSessions.regular]);
+    }), [desktopSections, machines, partitionedSessions.regular, sessions]);
     const hasMultipleMachines = machineGroups.length > 1;
+    const prioritySessions = React.useMemo(
+        () => desktopSections && layoutMode === 'time'
+            ? sessions.filter(session => session.state === 'running' || session.state === 'permission_required')
+            : [],
+        [desktopSections, layoutMode, sessions],
+    );
+    const timelineSessions = React.useMemo(
+        () => desktopSections && layoutMode === 'time'
+            ? sessions.filter(session => session.state !== 'running' && session.state !== 'permission_required')
+            : partitionedSessions.regular,
+        [desktopSections, layoutMode, sessions, partitionedSessions.regular],
+    );
     const timeGroups = React.useMemo(
-        () => buildSessionNavigationTimeGroups(partitionedSessions.regular),
-        [localDayIndex, partitionedSessions.regular],
+        () => buildSessionNavigationTimeGroups(timelineSessions),
+        [localDayIndex, timelineSessions],
     );
     const [sidebarGroupExpansion] = useLocalSettingMutable('sidebarGroupExpansion');
     const updateSidebarGroupExpansion = useLocalSettingUpdater('sidebarGroupExpansion');
@@ -140,19 +154,37 @@ export function useActiveSessionListItems({
     }, []);
 
     const items: CompactSessionListItem[] = [];
-    if (sessions.length === 0) return items;
+    if (sessions.length === 0 && !desktopSections) return items;
     items.push({ type: 'compact-header', key: 'active-start', element: <View style={{ height: 12 }} /> });
-    const appendSessions = (rows: SessionRowData[], showLocation: boolean, bottom: number) => {
+    const appendSessions = (rows: SessionRowData[], showLocation: boolean, bottom: number, prefix = 'session') => {
         rows.forEach((session, index) => items.push({
             type: 'compact-session',
-            key: `session-${session.id}`,
+            key: `${prefix}-${session.id}`,
             session,
             showLocation,
             showBorder: !showLocation && index < rows.length - 1,
             marginBottom: index === rows.length - 1 ? bottom : 0,
         }));
     };
-    if (partitionedSessions.pinned.length > 0) {
+    const sectionExpanded = (id: string) => isSidebarGroupExpanded(sidebarGroupExpansion, 'projects', `section:${id}`, id !== 'projects');
+    const addSection = (id: string, label: string) => {
+        const expanded = sectionExpanded(id);
+        items.push({ type: 'compact-header', key: `section-${id}`, element: (
+            <Pressable accessibilityRole="button" accessibilityState={{ expanded }}
+                onPress={() => updateSidebarGroupExpansion(current => {
+                    const defaultExpanded = id !== 'projects';
+                    return setSidebarGroupExpanded(current, 'projects', `section:${id}`, !isSidebarGroupExpanded(current, 'projects', `section:${id}`, defaultExpanded), defaultExpanded);
+                })}
+                style={styles.navigationSection} testID={`sidebar-section-${id}`}>
+                <Text style={styles.navigationSectionLabel}>{label}</Text>
+                <Feather name={expanded ? 'chevron-down' : 'chevron-right'} size={16} color={theme.colors.textSecondary} />
+            </Pressable>
+        ) });
+        return expanded;
+    };
+    if (desktopSections && layoutMode === 'projects') {
+        if (addSection('pinned', t('sessionSearch.sections.pinned'))) appendSessions(partitionedSessions.pinned, true, 10);
+    } else if (!desktopSections && partitionedSessions.pinned.length > 0) {
         items.push({
             type: 'compact-header', key: 'pinned-header',
             element: <Text style={styles.timeGroupLabel} testID="session-pinned-group">{t('sessionSearch.sections.pinned')}</Text>,
@@ -160,7 +192,8 @@ export function useActiveSessionListItems({
         appendSessions(partitionedSessions.pinned, true, 10);
     }
     if (layoutMode === 'projects') {
-        machineGroups.forEach((machineGroup) => {
+        const showProjects = !desktopSections || addSection('projects', t('sidebar.projectsTab'));
+        if (showProjects) machineGroups.forEach((machineGroup) => {
             if (hasMultipleMachines) {
                 items.push({
                     type: 'compact-header', key: `machine-${machineGroup.machineId}`,
@@ -199,10 +232,17 @@ export function useActiveSessionListItems({
                         testID={`sidebar-project-toggle-${projectGroup.key}`}
                     />,
                 });
-                if (expanded) appendSessions(projectGroup.sessions, false, 4);
+                if (expanded) appendSessions(projectGroup.sessions, false, 4, desktopSections ? 'project-session' : 'session');
             });
         });
+        if (desktopSections && addSection('recent', t('sessionSearch.sections.recent'))) {
+            appendSessions(partitionedSessions.regular, true, 10, 'recent');
+        }
     } else {
+        if (desktopSections && prioritySessions.length > 0) {
+            items.push({ type: 'compact-header', key: 'priority-header', element: <Text style={styles.timeGroupLabel} testID="session-priority-group">{t('sidebar.priorityItems')}</Text> });
+            appendSessions(prioritySessions, true, 10);
+        }
         timeGroups.forEach((group) => {
             items.push({
                 type: 'compact-header', key: `time-${group.key}`,
@@ -227,6 +267,7 @@ export function CompactSessionListRow({ item, ...props }: Omit<ActiveSessionsGro
         <View style={{ marginBottom: item.marginBottom }}>
             <CompactSessionRow
                 session={item.session}
+                testID={item.key.startsWith('recent-') || item.key.startsWith('project-session-') ? `session-row-${item.key}` : undefined}
                 selected={props.selectedSessionId === item.session.id}
                 bulkSelected={props.selectedIds?.has(item.session.id) ?? false}
                 selectionMode={props.selectionMode}
@@ -467,6 +508,8 @@ const stylesheet = StyleSheet.create((theme) => ({
         marginBottom: 10,
         position: 'relative',
     },
+    navigationSection: { flexDirection: 'row', alignItems: 'center', gap: 3, minHeight: 36, paddingHorizontal: 16 },
+    navigationSectionLabel: { color: theme.colors.groupped.sectionTitle, fontSize: 13, ...Typography.default('semiBold') },
     timeGroupLabel: {
         color: theme.colors.groupped.sectionTitle,
         fontSize: 13,

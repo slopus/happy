@@ -10,8 +10,9 @@ import {
     getMouseNavigationDirection,
 } from '@/navigation/browserNavigation';
 import { useBrowserNavigationStore } from '@/navigation/browserNavigationStore';
+import { ensureBrowserRouteObserver } from '@/navigation/browserRouteObserver';
 import { storage } from '@/sync/storage';
-import { useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import * as React from 'react';
 import { Platform } from 'react-native';
 
@@ -21,7 +22,7 @@ function runRouteBack(router: ReturnType<typeof useRouter>): boolean {
         if (!nav.routeHistory || !canRouteBack(nav.routeHistory)) {
             return false;
         }
-        nav.markRouteBack();
+        if (!nav.tryBeginBrowserNavigation('back')) return true;
         window.history.back();
         return true;
     }
@@ -41,7 +42,7 @@ function runRouteForward(): boolean {
     if (typeof window === 'undefined') {
         return false;
     }
-    nav.markRouteForward();
+    if (!nav.tryBeginBrowserNavigation('forward')) return true;
     window.history.forward();
     return true;
 }
@@ -58,20 +59,19 @@ function exitZenMode(): boolean {
 export function useBrowserNavigationShortcuts() {
     const router = useRouter();
     const pathname = usePathname();
-    const searchParams = useGlobalSearchParams();
     const { dismissTopModal } = useModal();
     const syncRoutePathname = useBrowserNavigationStore((state) => state.syncRoutePathname);
+    const syncBrowserHistory = useBrowserNavigationStore((state) => state.syncBrowserHistory);
     const mouseNavigationHandledRef = React.useRef(false);
-    const routeKey = React.useMemo(() => {
-        if (Platform.OS === 'web' && typeof window !== 'undefined') {
-            return `${window.location.pathname}${window.location.search}`;
-        }
-        return pathname;
-    }, [pathname, searchParams]);
+    React.useEffect(() => {
+        if (Platform.OS !== 'web') syncRoutePathname(pathname);
+    }, [pathname, syncRoutePathname]);
 
     React.useEffect(() => {
-        syncRoutePathname(routeKey);
-    }, [routeKey, syncRoutePathname]);
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+            ensureBrowserRouteObserver(window, syncBrowserHistory);
+        }
+    }, [syncBrowserHistory]);
 
     const runBack = React.useCallback((options: { exitZen: boolean }) => {
         if (dismissTopModal()) return true;

@@ -8,7 +8,7 @@ import { useWindowDimensions, View, Pressable, Platform, BackHandler, Text } fro
 import { useLocalSetting, useLocalSettingMutable } from '@/sync/storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePathname, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { isTauri } from '@/utils/isTauri';
@@ -218,33 +218,34 @@ const SidebarNavigatorContent = React.memo(() => {
     return (
         <View style={{ flex: 1, backgroundColor: theme.colors.groupped.background }}>
             {dreamskin && isDesktopLayout && <DesktopSkinCanvas skin={desktopSkinId} />}
-            <Drawer
-                screenOptions={drawerNavigationOptions}
-                drawerContent={(isDesktopLayout || auth.isAuthenticated) ? drawerContent : undefined}
-            />
-            {/* Persistent header overlay — always visible on desktop, same position regardless of zen mode */}
-            {isDesktopLayout && !projectWorkspace && (
-                <PersistentHeader />
-            )}
-            {isDesktopLayout && showSidebar && (
-                <DesktopPanelResizeHandle
-                    accessibilityLabel={t('desktopWorkspace.resizePanel', {
-                        panel: t('desktopWorkspace.sessions'),
-                    })}
-                    offset={leftExpandedWidth + (Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH + DESKTOP_WORKSPACE_OUTER_GAP / 2 : 0) - 5}
-                    side="left"
+            {isDesktopLayout && Platform.OS === 'web' && <View pointerEvents="box-none" style={styles.globalNavigationBar} testID="desktop-global-navigation-bar"><PersistentHeader globalBar /><View nativeID="desktop-global-navigation-right-slot" pointerEvents="box-none" style={styles.globalRightSlot} /></View>}
+            <View style={{ flex: 1 }}>
+                <Drawer
+                    screenOptions={drawerNavigationOptions}
+                    drawerContent={(isDesktopLayout || auth.isAuthenticated) ? drawerContent : undefined}
                 />
-            )}
+                {isDesktopLayout && Platform.OS !== 'web' && !projectWorkspace && <PersistentHeader />}
+                {isDesktopLayout && showSidebar && (
+                    <DesktopPanelResizeHandle
+                        accessibilityLabel={t('desktopWorkspace.resizePanel', {
+                            panel: t('desktopWorkspace.sessions'),
+                        })}
+                        offset={leftExpandedWidth + (Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH + DESKTOP_WORKSPACE_OUTER_GAP / 2 : 0) - 5}
+                        side="left"
+                    />
+                )}
+            </View>
         </View>
     );
 });
 
 // Header block that stays in the same position whether zen mode is on or off
-const PersistentHeader = React.memo(() => {
+const PersistentHeader = React.memo(({ globalBar = false }: { globalBar?: boolean }) => {
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
     const headerHeight = useHeaderHeight();
     const router = useRouter();
+    const projectWorkspace = usePathname() === '/projects';
     const [zenMode, setZenMode] = useLocalSettingMutable('zenMode');
     const {
         leftPinned: sidebarPinned,
@@ -280,7 +281,7 @@ const PersistentHeader = React.memo(() => {
         const nav = useBrowserNavigationStore.getState();
         if (Platform.OS === 'web' && typeof window !== 'undefined') {
             if (!nav.routeHistory || !canRouteBack(nav.routeHistory)) return;
-            nav.markRouteBack();
+            if (!nav.tryBeginBrowserNavigation('back')) return;
             window.history.back();
             return;
         }
@@ -294,18 +295,139 @@ const PersistentHeader = React.memo(() => {
         if (Platform.OS === 'web' && typeof window !== 'undefined') {
             const nav = useBrowserNavigationStore.getState();
             if (!nav.routeHistory || !canRouteForward(nav.routeHistory)) return;
-            nav.markRouteForward();
+            if (!nav.tryBeginBrowserNavigation('forward')) return;
             window.history.forward();
         }
     }, []);
 
     const canGoBackEffective = canGoBack || overlayCanBack;
     const canGoForwardEffective = canGoForward || overlayCanForward;
-    const sidebarToggleLabel = Platform.OS === 'web'
+    const sidebarToggleLabel = Platform.OS === 'web' && !projectWorkspace
         ? (sidebarPinned ? t('desktopWorkspace.unpinSessions') : t('desktopWorkspace.pinSessions'))
         : (sidebarVisible ? t('desktopWorkspace.hideSessions') : t('desktopWorkspace.showSessions'));
-    const sidebarSelected = Platform.OS === 'web' ? sidebarPinned : sidebarVisible;
-    const coveredBySidebar = Platform.OS === 'web' && sidebarVisible && !sidebarPinned;
+    const sidebarSelected = Platform.OS === 'web' && !projectWorkspace ? sidebarPinned : sidebarVisible;
+    const coveredBySidebar = !globalBar && Platform.OS === 'web' && sidebarVisible && !sidebarPinned;
+
+    const sidebarControl = (
+        <View style={styles.sidebarToggleWrapper}>
+            <Pressable
+                onBlur={() => setSidebarTooltipVisible(false)}
+                onFocus={() => setSidebarTooltipVisible(true)}
+                onHoverIn={() => setSidebarTooltipVisible(true)}
+                onHoverOut={() => setSidebarTooltipVisible(false)}
+                onPress={() => { setSidebarTooltipVisible(false); toggleLeftSidebar(); }}
+                hitSlop={8}
+                style={({ pressed }) => [
+                    styles.sidebarToggle,
+                    sidebarSelected && styles.toggleSelected,
+                    pressed && styles.togglePressed,
+                ]}
+                aria-expanded={sidebarVisible}
+                aria-pressed={sidebarSelected}
+                accessibilityHint={`${sidebarToggleLabel} (${shortcuts.leftLabel})`}
+                accessibilityLabel={sidebarToggleLabel}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: sidebarVisible, selected: sidebarSelected }}
+                {...({
+                    'aria-keyshortcuts': shortcuts.leftAria,
+                } as any)}
+                testID="desktop-navigation-sidebar-button"
+            >
+                {globalBar
+                    ? <Feather name="sidebar" size={18} color={theme.colors.header.tint} />
+                    : <Ionicons name={sidebarSelected ? 'folder-open-outline' : 'folder-outline'} size={19} color={theme.colors.header.tint} />}
+            </Pressable>
+            <DesktopShortcutTooltip
+                label={sidebarToggleLabel}
+                shortcut={shortcuts.leftLabel}
+                testID="desktop-navigation-sidebar-tooltip"
+                visible={sidebarTooltipVisible && !coveredBySidebar}
+            />
+        </View>
+    );
+    const zenControl = (
+        <View style={styles.headerIconWrapper}>
+            <Pressable
+                onBlur={() => setZenTooltipVisible(false)}
+                onFocus={() => setZenTooltipVisible(true)}
+                onHoverIn={() => setZenTooltipVisible(true)}
+                onHoverOut={() => setZenTooltipVisible(false)}
+                onPress={handleZenToggle}
+                hitSlop={8}
+                style={({ pressed }) => [
+                    styles.zenToggle,
+                    zenMode && styles.zenToggleSelected,
+                    pressed && styles.togglePressed,
+                ]}
+                aria-selected={zenMode}
+                accessibilityLabel={t('zen.toggle')}
+                accessibilityRole="button"
+                accessibilityState={{ selected: zenMode }}
+                testID="desktop-navigation-zen-button"
+            >
+                <Ionicons
+                    name="leaf-outline"
+                    size={19}
+                    color={theme.colors.status.connected}
+                    dataSet={{ iconName: 'leaf-outline' }}
+                    testID="desktop-navigation-zen-icon"
+                />
+            </Pressable>
+            <DesktopShortcutTooltip
+                label={t('zen.toggle')}
+                testID="desktop-navigation-zen-tooltip"
+                visible={zenTooltipVisible}
+            />
+        </View>
+    );
+    const backControl = (
+        <View style={styles.headerIconWrapper}>
+            <Pressable
+                accessibilityLabel={t('common.back')}
+                accessibilityRole="button"
+                onBlur={() => setBackTooltipVisible(false)}
+                onFocus={() => setBackTooltipVisible(true)}
+                onHoverIn={() => setBackTooltipVisible(true)}
+                onHoverOut={() => setBackTooltipVisible(false)}
+                onPress={handleBack}
+                disabled={!canGoBackEffective}
+                hitSlop={10}
+                style={[styles.historyButton, !canGoBackEffective && styles.historyButtonDisabled]}
+                testID="desktop-navigation-back-button"
+            >
+                {globalBar ? <Feather name="arrow-left" size={18} color={theme.colors.header.tint} /> : <Ionicons name="chevron-back" size={20} color={theme.colors.header.tint} />}
+            </Pressable>
+            <DesktopShortcutTooltip
+                label={t('common.back')}
+                testID="desktop-navigation-back-tooltip"
+                visible={backTooltipVisible}
+            />
+        </View>
+    );
+    const forwardControl = Platform.OS === 'web' ? (
+        <View style={styles.headerIconWrapper}>
+            <Pressable
+                accessibilityLabel={t('desktopWorkspace.forward')}
+                accessibilityRole="button"
+                onBlur={() => setForwardTooltipVisible(false)}
+                onFocus={() => setForwardTooltipVisible(true)}
+                onHoverIn={() => setForwardTooltipVisible(true)}
+                onHoverOut={() => setForwardTooltipVisible(false)}
+                onPress={handleForward}
+                disabled={!canGoForwardEffective}
+                hitSlop={10}
+                style={[styles.historyButton, !canGoForwardEffective && styles.historyButtonDisabled]}
+                testID="desktop-navigation-forward-button"
+            >
+                {globalBar ? <Feather name="arrow-right" size={18} color={theme.colors.header.tint} /> : <Ionicons name="chevron-forward" size={20} color={theme.colors.header.tint} />}
+            </Pressable>
+            <DesktopShortcutTooltip
+                label={t('desktopWorkspace.forward')}
+                testID="desktop-navigation-forward-tooltip"
+                visible={forwardTooltipVisible}
+            />
+        </View>
+    ) : null;
 
     return (
         <View
@@ -316,13 +438,13 @@ const PersistentHeader = React.memo(() => {
                 // sidebar covers these controls instead of pushing them over its title.
                 ...(Platform.OS === 'web' ? { visibility: coveredBySidebar ? 'hidden' : 'visible' } as any : {}),
                 position: 'absolute',
-                top: Platform.OS === 'web' ? DESKTOP_WORKSPACE_OUTER_GAP : 0,
-                left: (sidebarVisible ? sidebarWidth : 0) + (Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH + DESKTOP_WORKSPACE_OUTER_GAP : 0) + 16,
+                top: globalBar ? 0 : Platform.OS === 'web' ? DESKTOP_WORKSPACE_OUTER_GAP : 0,
+                left: globalBar ? 0 : (sidebarVisible ? sidebarWidth : 0) + (Platform.OS === 'web' ? DESKTOP_PRIMARY_NAVIGATION_WIDTH + DESKTOP_WORKSPACE_OUTER_GAP : 0) + 16,
                 right: 0,
                 paddingTop: safeArea.top,
-                paddingLeft: isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 16,
+                paddingLeft: globalBar ? 8 : isMacTauri ? TAURI_HEADER_CONTROL_LEFT : 16,
                 paddingRight: 16,
-                height: safeArea.top + headerHeight,
+                height: globalBar ? 48 : safeArea.top + headerHeight,
                 flexDirection: 'row',
                 alignItems: 'center',
                 zIndex: 1100,
@@ -342,129 +464,15 @@ const PersistentHeader = React.memo(() => {
                 testID="desktop-navigation-controls"
                 {...(inTauri ? { dataSet: { tauriDragRegion: 'false' } } : {})}
             >
-                <View style={styles.sidebarToggleWrapper}>
-                    <Pressable
-                        onBlur={() => setSidebarTooltipVisible(false)}
-                        onFocus={() => setSidebarTooltipVisible(true)}
-                        onHoverIn={() => setSidebarTooltipVisible(true)}
-                        onHoverOut={() => setSidebarTooltipVisible(false)}
-                        onPress={() => { setSidebarTooltipVisible(false); toggleLeftSidebar(); }}
-                        hitSlop={8}
-                        style={({ pressed }) => [
-                            styles.sidebarToggle,
-                            sidebarSelected && styles.toggleSelected,
-                            pressed && styles.togglePressed,
-                        ]}
-                        aria-expanded={sidebarVisible}
-                        aria-pressed={sidebarSelected}
-                        accessibilityHint={`${sidebarToggleLabel} (${shortcuts.leftLabel})`}
-                        accessibilityLabel={sidebarToggleLabel}
-                        accessibilityRole="button"
-                        accessibilityState={{ expanded: sidebarVisible, selected: sidebarSelected }}
-                        {...({
-                            'aria-keyshortcuts': shortcuts.leftAria,
-                        } as any)}
-                        testID="desktop-navigation-sidebar-button"
-                    >
-                        <Ionicons
-                            name={sidebarSelected ? 'folder-open-outline' : 'folder-outline'}
-                            size={19}
-                            color={theme.colors.header.tint}
-                        />
-                    </Pressable>
-                    <DesktopShortcutTooltip
-                        label={sidebarToggleLabel}
-                        shortcut={shortcuts.leftLabel}
-                        testID="desktop-navigation-sidebar-tooltip"
-                        visible={sidebarTooltipVisible && !coveredBySidebar}
-                    />
-                </View>
-                <View style={styles.headerIconWrapper}>
-                    <Pressable
-                        onBlur={() => setZenTooltipVisible(false)}
-                        onFocus={() => setZenTooltipVisible(true)}
-                        onHoverIn={() => setZenTooltipVisible(true)}
-                        onHoverOut={() => setZenTooltipVisible(false)}
-                        onPress={handleZenToggle}
-                        hitSlop={8}
-                        style={({ pressed }) => [
-                            styles.zenToggle,
-                            zenMode && styles.zenToggleSelected,
-                            pressed && styles.togglePressed,
-                        ]}
-                        aria-selected={zenMode}
-                        accessibilityLabel={t('zen.toggle')}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: zenMode }}
-                        testID="desktop-navigation-zen-button"
-                    >
-                        <Ionicons
-                            name="leaf-outline"
-                            size={19}
-                            color={theme.colors.status.connected}
-                            dataSet={{ iconName: 'leaf-outline' }}
-                            testID="desktop-navigation-zen-icon"
-                        />
-                    </Pressable>
-                    <DesktopShortcutTooltip
-                        label={t('zen.toggle')}
-                        testID="desktop-navigation-zen-tooltip"
-                        visible={zenTooltipVisible}
-                    />
-                </View>
-                <View style={styles.headerIconWrapper}>
-                    <Pressable
-                        accessibilityLabel={t('common.back')}
-                        accessibilityRole="button"
-                        onBlur={() => setBackTooltipVisible(false)}
-                        onFocus={() => setBackTooltipVisible(true)}
-                        onHoverIn={() => setBackTooltipVisible(true)}
-                        onHoverOut={() => setBackTooltipVisible(false)}
-                        onPress={handleBack}
-                        disabled={!canGoBackEffective}
-                        hitSlop={10}
-                        style={[styles.historyButton, !canGoBackEffective && styles.historyButtonDisabled]}
-                        testID="desktop-navigation-back-button"
-                    >
-                        <Ionicons name="chevron-back" size={20} color={theme.colors.header.tint} />
-                    </Pressable>
-                    <DesktopShortcutTooltip
-                        label={t('common.back')}
-                        testID="desktop-navigation-back-tooltip"
-                        visible={backTooltipVisible}
-                    />
-                </View>
-                {Platform.OS === 'web' && (
-                    <View style={styles.headerIconWrapper}>
-                        <Pressable
-                            accessibilityLabel={t('desktopWorkspace.forward')}
-                            accessibilityRole="button"
-                            onBlur={() => setForwardTooltipVisible(false)}
-                            onFocus={() => setForwardTooltipVisible(true)}
-                            onHoverIn={() => setForwardTooltipVisible(true)}
-                            onHoverOut={() => setForwardTooltipVisible(false)}
-                            onPress={handleForward}
-                            disabled={!canGoForwardEffective}
-                            hitSlop={10}
-                            style={[styles.historyButton, !canGoForwardEffective && styles.historyButtonDisabled]}
-                            testID="desktop-navigation-forward-button"
-                        >
-                            <Ionicons name="chevron-forward" size={20} color={theme.colors.header.tint} />
-                        </Pressable>
-                        <DesktopShortcutTooltip
-                            align="right"
-                            label={t('desktopWorkspace.forward')}
-                            testID="desktop-navigation-forward-tooltip"
-                            visible={forwardTooltipVisible}
-                        />
-                    </View>
-                )}
+                {globalBar ? <>{backControl}{forwardControl}{sidebarControl}{zenControl}</> : <>{sidebarControl}{zenControl}{backControl}{forwardControl}</>}
             </View>
         </View>
     );
 });
 
 const styles = StyleSheet.create((theme) => ({
+    globalNavigationBar: { position: 'relative', zIndex: 2000, overflow: 'visible', height: 48, backgroundColor: theme.colors.groupped.background, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.divider },
+    globalRightSlot: { position: 'absolute', top: 4, right: 8, width: 40, height: 40, zIndex: 1200 },
     drawerContent: {
         backgroundColor: theme.colors.surface,
         flex: 1,

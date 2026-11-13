@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 import { isApplicationSession } from '@slopus/happy-wire';
 import { Text, View, Pressable, ScrollView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,7 +20,7 @@ import { SidebarHelpMenu } from './SidebarHelpMenu';
 import { useCommandPaletteLauncher } from './CommandPalette/CommandPaletteProvider';
 import { useDesktopSettingsModal } from './DesktopSettingsModal';
 import { AppConversationsSidebar } from './AppConversationsSidebar';
-import { DesktopSidebarSessionsNavigation } from './DesktopSidebarSessionsNavigation';
+import { DesktopSidebarHeader, DesktopSidebarSessionsNavigation } from './DesktopSidebarSessionsNavigation';
 import { PluginMarketplaceModal } from './plugins/PluginMarketplaceModal';
 import { PluginLeftSidebarSlot } from './plugins/PluginLeftSidebarSlot';
 import { usePluginSurfaceViews } from './plugins/usePluginSurfaceViews';
@@ -59,6 +60,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingBottom: 4,
     },
     mobileRailScroll: { flex: 1, minHeight: 0 },
+    desktopRailScroll: { flex: 1, minHeight: 0 },
     mobileRailButton: { width: 48, minHeight: 56, height: undefined, gap: 4, paddingVertical: 6 },
     mobileRailLabel: {
         color: theme.colors.textSecondary,
@@ -309,7 +311,32 @@ function DesktopRailItem({
 }) {
     const styles = stylesheet;
     const [active, setActive] = React.useState(false);
+    const [tooltipAnchor, setTooltipAnchor] = React.useState<{ left: number; top: number } | null>(null);
+    React.useEffect(() => {
+        if (!active || Platform.OS !== 'web' || typeof window === 'undefined') return;
+        const dismiss = () => setActive(false);
+        window.addEventListener('scroll', dismiss, true);
+        window.addEventListener('resize', dismiss);
+        return () => {
+            window.removeEventListener('scroll', dismiss, true);
+            window.removeEventListener('resize', dismiss);
+        };
+    }, [active]);
     const itemKey = testID.replace('sidebar-', '').replace('-button', '');
+    const showTooltip = (event?: any) => {
+        const rect = event?.currentTarget?.getBoundingClientRect?.();
+        if (rect) setTooltipAnchor({ left: rect.right + 8, top: rect.top + 7 });
+        setActive(true);
+    };
+    const tooltip = active && !showLabel ? (
+        <View
+            pointerEvents="none"
+            style={[styles.desktopRailTooltip, tooltipAnchor && Platform.OS === 'web' && { position: 'fixed', ...tooltipAnchor } as any]}
+            testID={`desktop-navigation-rail-tooltip-${itemKey}`}
+        >
+            <Text numberOfLines={1} style={styles.desktopRailTooltipText}>{label}</Text>
+        </View>
+    ) : null;
 
     return (
         <View style={styles.desktopRailItem}>
@@ -318,8 +345,8 @@ function DesktopRailItem({
                 accessibilityRole="button"
                 accessibilityState={{ selected }}
                 onBlur={() => setActive(false)}
-                onFocus={() => setActive(true)}
-                onHoverIn={() => setActive(true)}
+                onFocus={showTooltip}
+                onHoverIn={showTooltip}
                 onHoverOut={() => setActive(false)}
                 onPress={onPress}
                 style={({ pressed }) => [
@@ -341,15 +368,7 @@ function DesktopRailItem({
                 )}
                 {showLabel ? <Text numberOfLines={2} style={styles.mobileRailLabel}>{label}</Text> : null}
             </Pressable>
-            {active && !showLabel ? (
-                <View
-                    pointerEvents="none"
-                    style={styles.desktopRailTooltip}
-                    testID={`desktop-navigation-rail-tooltip-${itemKey}`}
-                >
-                    <Text numberOfLines={1} style={styles.desktopRailTooltipText}>{label}</Text>
-                </View>
-            ) : null}
+            {tooltip && tooltipAnchor && Platform.OS === 'web' && typeof document !== 'undefined' ? createPortal(tooltip, document.body) : tooltip}
         </View>
     );
 }
@@ -386,7 +405,7 @@ export const SidebarView = React.memo(({
     const router = useRouter();
     const pathname = usePathname();
     const mobileNavigation = !desktopDensity;
-    const { leftVisible, toggleLeftSidebar } = useDesktopWorkspaceLayout();
+    const { leftVisible, leftPinned, toggleLeftSidebar } = useDesktopWorkspaceLayout();
     const railNavigation = desktopPrimaryNavigation || mobileNavigation;
     const routeSessionId = pathname.match(/^\/session\/([^/]+)/)?.[1];
     const routeSession = useSession(routeSessionId ? decodeURIComponent(routeSessionId) : '');
@@ -402,10 +421,13 @@ export const SidebarView = React.memo(({
     const realtimeStatus = useRealtimeStatus();
     const profile = useProfile();
     const [desktopSidebarMode, setDesktopSidebarMode] = useLocalSettingMutable('desktopSidebarMode');
+    React.useEffect(() => {
+        if (desktopPrimaryNavigation && desktopSidebarMode === 'archive') setDesktopSidebarMode('projects');
+    }, [desktopPrimaryNavigation, desktopSidebarMode, setDesktopSidebarMode]);
     const desktopSkinId = useLocalSetting('desktopSkinId');
     const dreamskin = Platform.OS === 'web' && desktopDensity && desktopSkinId !== 'default';
     const reducedTransparency = useReducedTransparency();
-    const [desktopSidebarListMode] = useLocalSettingMutable('desktopSidebarListMode');
+    const [desktopSidebarListMode, setDesktopSidebarListMode] = useLocalSettingMutable('desktopSidebarListMode');
     const [pluginMarketplaceOpen, setPluginMarketplaceOpen] = React.useState(false);
     const [initialPluginId, setInitialPluginId] = React.useState<string | null>(null);
     const [footerMenu, setFooterMenu] = React.useState<FooterMenu>(null);
@@ -438,24 +460,23 @@ export const SidebarView = React.memo(({
 
     const openDesktopSessionLists = () => {
         setAppConversationsActive(false);
-        setDesktopSidebarMode(desktopSidebarListMode);
+        const targetMode = desktopPrimaryNavigation ? 'projects' : desktopSidebarListMode;
+        setDesktopSidebarMode(targetMode);
+        if (desktopPrimaryNavigation) setDesktopSidebarListMode('projects');
         if (desktopPrimaryNavigation && pathname === '/projects') {
-            if (!leftVisible || desktopSidebarMode === desktopSidebarListMode) toggleLeftSidebar();
+            if (!leftVisible || desktopSidebarMode === targetMode) toggleLeftSidebar();
             return;
         }
+        if (desktopPrimaryNavigation && !leftPinned) toggleLeftSidebar();
         if (mobileNavigation) setMobilePanel('sessions');
         else if (pathname === '/projects' || advisorSidebarActive || pathname.startsWith('/apps/conversations')) go('/');
     };
 
-    const openArchive = () => {
+
+    const openMobileArchive = () => {
         setAppConversationsActive(false);
         setDesktopSidebarMode('archive');
-        if (desktopPrimaryNavigation && pathname === '/projects') {
-            if (!leftVisible || desktopSidebarMode === 'archive') toggleLeftSidebar();
-            return;
-        }
-        if (mobileNavigation) setMobilePanel('sessions');
-        else if (pathname === '/projects' || pathname.startsWith('/apps/conversations')) go('/');
+        setMobilePanel('sessions');
     };
 
     const openSettingsFromSidebar = React.useCallback(() => {
@@ -561,49 +582,44 @@ export const SidebarView = React.memo(({
 
     const archiveNavigation = (
         <View style={styles.secondaryNavigation} testID="sidebar-secondary-navigation">
-                <View
-                    style={styles.secondaryNavigationDivider}
-                    testID="sidebar-secondary-navigation-divider"
-                />
-                <Pressable
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: desktopPrimaryNavigation && desktopSidebarMode === 'archive' }}
-                    onPress={() => desktopPrimaryNavigation ? setDesktopSidebarMode('archive') : go('/session/recent')}
-                    style={({ pressed }) => [
-                        styles.newSessionButton,
-                        desktopDensity && styles.newSessionButtonDesktop,
-                        desktopPrimaryNavigation && desktopSidebarMode === 'archive' && styles.navigationRowSelected,
-                        pressed && styles.newSessionButtonPressed,
-                    ]}
-                    testID="sidebar-archive-button"
-                >
-                    <Ionicons name="archive-outline" size={16} color={stylesheet.newSessionText.color} />
-                    <Text style={styles.newSessionText}>{t('sessionHistory.archiveTitle')}</Text>
-                </Pressable>
+            <View style={styles.secondaryNavigationDivider} testID="sidebar-secondary-navigation-divider" />
+            <Pressable accessibilityRole="button" onPress={() => go('/session/recent')}
+                style={({ pressed }) => [styles.newSessionButton, desktopDensity && styles.newSessionButtonDesktop, pressed && styles.newSessionButtonPressed]}
+                testID="sidebar-archive-button">
+                <Ionicons name="archive-outline" size={16} color={stylesheet.newSessionText.color} />
+                <Text style={styles.newSessionText}>{t('sessionHistory.archiveTitle')}</Text>
+            </Pressable>
         </View>
     );
 
     const desktopNavigationRail = (
         <View style={styles.desktopRail} testID="desktop-navigation-rail">
-            <DesktopRailItem
+            {desktopPrimaryNavigation && <DesktopRailItem
+                icon="home-outline"
+                label={t('common.home')}
+                onPress={openDesktopSessionLists}
+                selected={pathname !== '/projects' && !appConversationsActive && !advisorSidebarActive && desktopSidebarMode !== 'archive'}
+                testID="sidebar-session-list-button"
+            />}
+            {!desktopPrimaryNavigation && <DesktopRailItem
                 icon="add"
                 iconColor={stylesheet.newSessionIcon.color}
                 label={t('sidebar.newSession')}
                 onPress={() => go('/new')}
                 testID="sidebar-new-session-button"
-            />
+            />}
             <DesktopRailItem
                 icon="chatbubble-ellipses-outline"
                 label={t('tabs.inbox')}
                 onPress={() => { closeDrawer(); openActivity(); }}
                 testID="sidebar-inbox-button"
             />
-            <DesktopRailItem
+            {!desktopPrimaryNavigation && <DesktopRailItem
                 icon="search-outline"
                 label={t('sidebar.searchSessions')}
                 onPress={openSessionSearch}
                 testID="sidebar-command-palette-button"
-            />
+            />}
             <View style={styles.desktopRailDivider} />
             {railNavigation && <DesktopRailItem
                 icon="folder-open-outline"
@@ -626,20 +642,20 @@ export const SidebarView = React.memo(({
                 }
                 go(path);
             }} />
-            <DesktopRailItem
+            {!desktopPrimaryNavigation && <DesktopRailItem
                 icon="albums-outline"
                 label={t('sidebar.listsTab')}
                 onPress={openDesktopSessionLists}
                 selected={(pathname !== '/projects' || leftVisible) && !appConversationsActive && !advisorSidebarActive && desktopSidebarMode !== 'archive'}
                 testID="sidebar-session-list-button"
-            />
-            <DesktopRailItem
+            />}
+            {mobileNavigation && <DesktopRailItem
                 icon="file-tray-stacked-outline"
                 label={t('sessionHistory.archiveTitle')}
-                onPress={openArchive}
+                onPress={openMobileArchive}
                 selected={!appConversationsActive && !advisorSidebarActive && desktopSidebarMode === 'archive'}
                 testID="sidebar-archive-button"
-            />
+            />}
             <DesktopRailItem
                 icon="browsers-outline"
                 label={t('appConversations.title')}
@@ -754,7 +770,7 @@ export const SidebarView = React.memo(({
                             <ScrollView style={styles.mobileRailScroll} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8 }}>
                                 {desktopNavigationRail}
                             </ScrollView>
-                        ) : <>{desktopNavigationRail}<View style={styles.desktopPrimarySpacer} /></>}
+                        ) : <ScrollView style={styles.desktopRailScroll} showsVerticalScrollIndicator={false}>{desktopNavigationRail}</ScrollView>}
                         {footerNavigation}
                     </View>
                     <View
@@ -771,8 +787,8 @@ export const SidebarView = React.memo(({
                         {...(desktopPrimaryNavigation && !desktopSecondaryVisible ? { inert: true } as any : {})}
                         testID="desktop-secondary-navigation-column"
                     >
-                        {desktopPrimaryNavigation && pathname === '/projects' && desktopSecondaryVisible && <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 46, paddingLeft: 16, paddingRight: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider }} testID="project-global-sidebar-header">
-                            <Text style={{ flex: 1, color: theme.colors.text, fontSize: 13, ...Typography.default('semiBold') }}>{t(desktopSidebarMode === 'archive' ? 'sessionHistory.archiveTitle' : 'sidebar.listsTab')}</Text>
+                        {desktopPrimaryNavigation && pathname === '/projects' && desktopSecondaryVisible && desktopSidebarMode === 'archive' && <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 46, paddingLeft: 16, paddingRight: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.divider }} testID="project-global-sidebar-header">
+                            <Text style={{ flex: 1, color: theme.colors.text, fontSize: 13, ...Typography.default('semiBold') }}>{t('sessionHistory.archiveTitle')}</Text>
                             <Pressable accessibilityRole="button" accessibilityLabel={t('sidebarLists.close')} onPress={toggleLeftSidebar} style={({ pressed }) => ({ padding: 9, borderRadius: 8, backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent' })} testID="project-global-sidebar-close"><Ionicons name="close-outline" size={18} color={theme.colors.textSecondary} /></Pressable>
                         </View>}
                         {mobileNavigation ? (
@@ -799,12 +815,15 @@ export const SidebarView = React.memo(({
                                 </View>
                                 {appConversationsActive ? <AppConversationsSidebar showTitle={false} onNavigate={go} /> : advisorSidebarActive ? <PluginLeftSidebarSlot desktopDensity fillAvailableSpace onNavigate={go} /> : null}
                             </>
-                        ) : appConversationsActive ? (
-                            <AppConversationsSidebar visible={desktopSecondaryVisible} onNavigate={go} />
-                        ) : advisorSidebarActive ? (
-                            <PluginLeftSidebarSlot desktopDensity={desktopDensity} fillAvailableSpace onNavigate={go} />
+                        ) : appConversationsActive || advisorSidebarActive ? (
+                            <>
+                                {desktopPrimaryNavigation && <DesktopSidebarHeader mode="archive" onModeChange={value => { setDesktopSidebarListMode(value); setDesktopSidebarMode(value); }} onNewSession={() => go('/new')} onSearch={openSessionSearch} onSelectView={() => { setAppConversationsActive(false); go('/'); }} />}
+                                {appConversationsActive
+                                    ? <AppConversationsSidebar visible={desktopSecondaryVisible} onNavigate={go} />
+                                    : <PluginLeftSidebarSlot desktopDensity={desktopDensity} fillAvailableSpace onNavigate={go} />}
+                            </>
                         ) : (
-                            <DesktopSidebarSessionsNavigation transparentSidebar={dreamskin} />
+                            <DesktopSidebarSessionsNavigation transparentSidebar={dreamskin} desktopHeader={desktopPrimaryNavigation} onNewSession={() => go('/new')} onSearch={openSessionSearch} />
                         )}
                     </View>
                 </>

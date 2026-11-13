@@ -13,7 +13,7 @@ vi.mock('react-native', () => ({
     Text: 'Text',
     View: 'View',
 }));
-vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
+vi.mock('@expo/vector-icons', () => ({ Feather: 'Feather', Ionicons: 'Ionicons' }));
 vi.mock('react-native-unistyles', () => ({
     StyleSheet: {
         hairlineWidth: 1,

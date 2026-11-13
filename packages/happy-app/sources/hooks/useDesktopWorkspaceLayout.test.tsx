@@ -6,7 +6,7 @@ import TestRenderer from 'react-test-renderer';
 import { useDesktopFileWorkspaceAvailable } from './useDesktopFileWorkspaceAvailable';
 import { DesktopWorkspaceLayoutProvider, useDesktopWorkspaceLayout } from './useDesktopWorkspaceLayout';
 
-const storage = vi.hoisted(() => ({ values: {} as Record<string, boolean | number>, writes: vi.fn(), pathname: '/', width: 1100 }));
+const storage = vi.hoisted(() => ({ values: {} as Record<string, boolean | number>, setters: {} as Record<string, (value: boolean | number) => void>, writes: vi.fn(), pathname: '/', width: 1100 }));
 vi.mock('react-native', () => ({ Platform: { OS: 'web' }, useWindowDimensions: () => ({ width: storage.width, height: 900 }) }));
 vi.mock('expo-router', () => ({ usePathname: () => storage.pathname, useRootNavigationState: () => undefined }));
 vi.mock('@/navigation/desktopModalRouter', () => ({ getDesktopModalBackgroundPath: () => undefined }));
@@ -21,6 +21,7 @@ vi.mock('@/sync/storage', async () => {
             storage.writes(key, next);
             setValue(next);
         }, [key]);
+        storage.setters[key] = write;
         return [value, write];
     } };
 });
@@ -137,5 +138,17 @@ describe('desktop workspace sidebar integration', () => {
         expect(storage.values.desktopLeftSidebarCollapsed).toBe(true);
         act(() => layout.toggleLeftSidebar());
         expect(layout.leftVisible).toBe(false);
+    });
+
+    it('opens the project sidebar when leaving Zen even if it was open before Zen', () => {
+        act(() => renderer.unmount()); storage.pathname = '/projects'; mount();
+        act(() => layout.toggleLeftSidebar());
+        expect(layout.leftVisible).toBe(true);
+        act(() => storage.setters.zenMode(true));
+        expect(layout.leftVisible).toBe(false);
+        act(() => layout.toggleLeftSidebar());
+        expect(storage.values.zenMode).toBe(false);
+        expect(layout.leftVisible).toBe(true);
+        expect(storage.values.desktopLeftSidebarCollapsed).toBe(true);
     });
 });

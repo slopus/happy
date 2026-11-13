@@ -1,6 +1,7 @@
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 import { Platform, Pressable, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { PanelTabs, type PanelTab } from './PanelTabs';
 import { Typography } from '@/constants/Typography';
@@ -94,16 +95,24 @@ export const DesktopRightPanelToggleButton = React.memo(function DesktopRightPan
     expanded,
     label,
     onPress,
+    globalPlacement = false,
 }: {
     expanded: boolean;
     label: string;
     onPress: () => void;
+    globalPlacement?: boolean;
 }) {
     const { theme } = useUnistyles();
     const [tooltipVisible, setTooltipVisible] = React.useState(false);
+    const [portalTarget, setPortalTarget] = React.useState<HTMLElement | null>(null);
     const shortcuts = getDesktopPanelShortcutPresentation();
+    React.useEffect(() => {
+        if (globalPlacement && Platform.OS === 'web' && typeof document !== 'undefined') {
+            setPortalTarget(document.getElementById('desktop-global-navigation-right-slot'));
+        }
+    }, [globalPlacement]);
 
-    return (
+    const toggle = (
         <View style={styles.toggleButtonWrapper}>
             <Pressable
                 accessibilityHint={`${label} (${shortcuts.rightLabel})`}
@@ -127,7 +136,9 @@ export const DesktopRightPanelToggleButton = React.memo(function DesktopRightPan
                 ]}
                 testID="desktop-right-panel-toggle-button"
             >
-                <Ionicons name="reader-outline" size={19} color={theme.colors.header.tint} />
+                {globalPlacement
+                    ? <Feather name="sidebar" size={18} color={theme.colors.header.tint} style={{ transform: [{ scaleX: -1 }] }} />
+                    : <Ionicons name="reader-outline" size={19} color={theme.colors.header.tint} />}
             </Pressable>
             <DesktopShortcutTooltip
                 align="right"
@@ -138,6 +149,10 @@ export const DesktopRightPanelToggleButton = React.memo(function DesktopRightPan
             />
         </View>
     );
+    if (globalPlacement && Platform.OS === 'web' && typeof document !== 'undefined') {
+        return portalTarget ? createPortal(toggle, portalTarget) : null;
+    }
+    return toggle;
 });
 
 const styles = StyleSheet.create((theme) => ({

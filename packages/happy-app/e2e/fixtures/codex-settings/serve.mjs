@@ -81,6 +81,8 @@ async function main() {
     const manager = new RpcHandlerManager({ scopePrefix: machineId, encryptionKey: key, encryptionVariant: 'legacy' });
     manager.registerHandler('browseDirectory', async () => ({ success: true, path: project, entries: [], parentPath: directory }));
     manager.registerHandler('get-path-suggestions', async () => ({ suggestions: [project] }));
+    // Navigation checks use an empty synthetic project catalog; no real files are read.
+    manager.registerHandler('goalProjects', async () => ({ success: true, projects: [] }));
     manager.registerHandler('spawn-happy-session', async input => {
         assert.equal(input.agent, 'codex');
         const sessionId = await createSession('新建会话 · 设置传输验收');

@@ -190,6 +190,56 @@ describe('ActiveSessionsGroupCompact project expansion persistence', () => {
         act(() => renderer.unmount());
     });
 
+    it('shows all three desktop sections even with no sessions and remembers collapse', () => {
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SessionsList desktopSections />); });
+        const list = () => renderer.root.findByType('FlatList');
+        expect(list().props.data.filter((item: any) => item.key?.startsWith('section-')).map((item: any) => item.key)).toEqual(['section-pinned', 'section-projects', 'section-recent']);
+        const recent = list().props.data.find((item: any) => item.key === 'section-recent');
+        expect(recent.element.props.accessibilityState.expanded).toBe(true);
+        act(() => recent.element.props.onPress());
+        expect(list().props.data.find((item: any) => item.key === 'section-recent').element.props.accessibilityState.expanded).toBe(false);
+        act(() => renderer.unmount());
+    });
+
+    it('retains a pinned-only project and keeps its rows distinct from the pinned section', () => {
+        mocks.sessions = [{ ...session, id: 'pinned' }];
+        mocks.pinnedOrder = ['pinned'];
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SessionsList desktopSections />); });
+        const list = () => renderer.root.findByType('FlatList');
+        const projects = list().props.data.find((item: any) => item.key === 'section-projects');
+        expect(projects.element.props.accessibilityState.expanded).toBe(false);
+        act(() => projects.element.props.onPress());
+        expect(list().props.data.some((item: any) => item.key.startsWith('project-mac--'))).toBe(true);
+        expect(list().props.data.filter((item: any) => item.type === 'compact-session').map((item: any) => item.key)).toEqual(['session-pinned', 'project-session-pinned']);
+        act(() => renderer.unmount());
+    });
+
+    it('places running and permission sessions only in priority and moves completed sessions to the timeline even if pinned', () => {
+        const today = Date.now();
+        mocks.sessions = [
+            { ...session, id: 'running', state: 'running', createdAt: today },
+            { ...session, id: 'waiting', state: 'permission_required', createdAt: today },
+            { ...session, id: 'done', state: 'completed', createdAt: today },
+        ];
+        mocks.pinnedOrder = ['running', 'done'];
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SessionsList desktopSections layoutMode="time" />); });
+        const items = () => renderer.root.findByType('FlatList').props.data;
+        expect(items().map((item: any) => item.key)).toEqual([
+            'active-start', 'priority-header', 'session-running', 'session-waiting',
+            expect.stringMatching(/^time-/), 'session-done', 'active-end',
+        ]);
+        mocks.sessions = mocks.sessions.map(row => row.id === 'running' ? { ...row, state: 'completed' } : row);
+        act(() => { renderer.update(<SessionsList desktopSections layoutMode="time" />); });
+        const updated = items();
+        const dayIndex = updated.findIndex((item: any) => item.key.startsWith('time-'));
+        expect(updated.findIndex((item: any) => item.key === 'session-running')).toBeGreaterThan(dayIndex);
+        expect(updated.filter((item: any) => item.key === 'session-running')).toHaveLength(1);
+        act(() => renderer.unmount());
+    });
+
     it('keeps projects expanded by default and restores a collapsed project after remount', () => {
         let renderer: any;
         act(() => { renderer = TestRenderer.create(<ActiveSessionsGroupCompact sessions={[session]} />); });

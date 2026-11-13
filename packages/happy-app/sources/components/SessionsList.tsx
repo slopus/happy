@@ -138,7 +138,7 @@ const stylesheet = StyleSheet.create((theme) => ({
 
 type SidebarListItem = Exclude<SessionListViewItem, { type: 'active-sessions' }> | CompactSessionListItem;
 
-export function SessionsList({ layoutMode = 'projects', transparentSidebar = false }: { layoutMode?: 'projects' | 'time'; transparentSidebar?: boolean }) {
+export function SessionsList({ layoutMode = 'projects', transparentSidebar = false, desktopSections = false }: { layoutMode?: 'projects' | 'time'; transparentSidebar?: boolean; desktopSections?: boolean }) {
     const scrollState = useSidebarScrollState<SidebarListItem>(layoutMode);
     const compactToolbar = useWindowDimensions().width < 600;
     const styles = stylesheet;
@@ -164,10 +164,10 @@ export function SessionsList({ layoutMode = 'projects', transparentSidebar = fal
     }, [pathname]);
 
     const activeSessions = React.useMemo(() => data?.flatMap(item => item.type === 'active-sessions' ? item.sessions : []) ?? [], [data]);
-    const activeItems = useActiveSessionListItems({ sessions: activeSessions, layoutMode, selectedSessionId });
-    const listData = React.useMemo(() => data?.flatMap<SidebarListItem>(item => (
+    const activeItems = useActiveSessionListItems({ sessions: activeSessions, layoutMode, selectedSessionId, desktopSections });
+    const listData = React.useMemo(() => desktopSections && data ? activeItems : data?.flatMap<SidebarListItem>(item => (
         item.type === 'active-sessions' ? activeItems : [item]
-    )), [data, activeItems]);
+    )), [data, activeItems, desktopSections]);
 
     const selectedCount = selectedIds.size;
 

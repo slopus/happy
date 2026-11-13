@@ -93,6 +93,7 @@ vi.mock('@/navigation/browserNavigationStore', () => {
         markRouteForward: vi.fn(),
         routeHistory: { entries: ['/'], index: 0 },
         syncRoutePathname: mocks.syncRoutePathname,
+        syncBrowserHistory: vi.fn(),
     };
     const useBrowserNavigationStore = Object.assign(
         (selector: (value: typeof state) => unknown) => selector(state),
