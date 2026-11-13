@@ -52,6 +52,14 @@ it('opens actions on the clicked tab without switching the active document', () 
     expect(controller.getSnapshot().tabs).toEqual(['/work/b.md', '/work/c.md']);
     act(() => renderer.unmount());
 });
+it.each([false, true])('only opts live file previews into local navigation (archive: %s)', (readOnly) => {
+    let renderer: any;
+    act(() => { renderer = TestRenderer.create(<Harness readOnly={readOnly} />); });
+    const preview = renderer.root.findByType('MarkdownView');
+    expect(preview.props.readOnly).toBe(true);
+    expect(preview.props.fileLinks).toBe(!readOnly);
+    act(() => renderer.unmount());
+});
 it('keeps the entire group on cancel and saves before closing when requested', async () => {
     controller.edit('/work/b.md', '# Draft');
     let renderer: any;

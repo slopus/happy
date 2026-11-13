@@ -65,6 +65,9 @@ vi.mock('./CodeBlockCopyButton', () => ({ CodeBlockCopyButton: 'CodeBlockCopyBut
 
 import { WEB_DEFAULT_FONT_FAMILY } from '@/constants/Typography';
 import { MarkdownView } from './MarkdownView';
+import { FileWorkspaceContext } from '@/components/fileWorkspace/context';
+import { FileWorkspaceController } from '@/components/fileWorkspace/controller';
+import { openExternalUrl } from '@/utils/openExternalUrl';
 
 const MARKDOWN = [
     '# Heading',
@@ -224,6 +227,49 @@ describe('MarkdownView typography scope', () => {
         act(() => { renderer = TestRenderer.create(<MarkdownView markdown={QUESTION_MARKDOWN} readOnly onOptionPress={vi.fn()} />); });
         expect(textNode(renderer, '由谁决定？')).toBeDefined();
         expect(renderer.root.findAllByType('Pressable')).toHaveLength(0);
+    });
+
+    it('opens an opted-in read-only document link in the existing workspace and reuses its tab', async () => {
+        const controller = new FileWorkspaceController({
+            root: '/work',
+            read: async path => ({ content: path.endsWith('字幕.md') ? '# 字幕正文' : '# 素材清单', hash: path }),
+            write: vi.fn(),
+        });
+        await controller.open('/work/清单.md');
+        const openReference = vi.fn((path: string) => controller.open(path));
+        const workspace = { enabled: true, root: '/work', openReference } as any;
+        vi.mocked(openExternalUrl).mockClear();
+        act(() => {
+            renderer = TestRenderer.create(<FileWorkspaceContext.Provider value={workspace}>
+                <MarkdownView markdown={'| 书目 | 字幕 |\n| --- | --- |\n| 逆转 | [时间轴字幕](/work/字幕.md) |'} readOnly fileLinks sessionId="s" />
+            </FileWorkspaceContext.Provider>);
+        });
+        const link = textNode(renderer, '时间轴字幕');
+        expect(link.props.accessibilityRole).toBe('link');
+        await act(async () => { link.props.onClick(); });
+        await act(async () => { link.props.onClick(); });
+        expect(controller.getSnapshot().active).toBe('/work/字幕.md');
+        expect(controller.getSnapshot().documents['/work/字幕.md'].content).toBe('# 字幕正文');
+        expect(controller.getSnapshot().tabs).toEqual(['/work/清单.md', '/work/字幕.md']);
+        expect(openExternalUrl).not.toHaveBeenCalled();
+    });
+
+    it('keeps restricted previews and paths outside the workspace inert while preserving external links', () => {
+        const openReference = vi.fn();
+        const workspace = { enabled: true, root: '/work', openReference } as any;
+        const markdown = '[本地](/work/字幕.md) [越界](/outside/secret.md) [网站](https://example.com)';
+        const render = (fileLinks?: boolean) => <FileWorkspaceContext.Provider value={workspace}>
+            <MarkdownView markdown={markdown} readOnly fileLinks={fileLinks} sessionId="s" />
+        </FileWorkspaceContext.Provider>;
+        act(() => { renderer = TestRenderer.create(render()); });
+        expect(textNode(renderer, '本地').props.onClick).toBeUndefined();
+        act(() => { renderer.update(render(false)); });
+        expect(textNode(renderer, '本地').props.onClick).toBeUndefined();
+        act(() => { renderer.update(render(true)); });
+        expect(textNode(renderer, '越界').props.onClick).toBeUndefined();
+        act(() => { textNode(renderer, '网站').props.onClick(); });
+        expect(openExternalUrl).toHaveBeenCalledWith('https://example.com');
+        expect(openReference).not.toHaveBeenCalled();
     });
 });
 

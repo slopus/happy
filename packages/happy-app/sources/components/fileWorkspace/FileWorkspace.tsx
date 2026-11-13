@@ -144,7 +144,7 @@ export function FileWorkspace({ sessionId, fileTreeExpanded, onToggleFileTree, f
                         const selected = globalThis.window?.getSelection();
                         if (selected?.anchorNode && contentRef.current?.contains?.(selected.anchorNode)) setQuote(selected.toString().slice(0, 4000));
                     } } as any)}>
-                        {preview ? <AnnotatableFile sessionId={sessionId} file={annotationFile}><MarkdownView markdown={document.draft} typography="document" readOnly sessionId={sessionId} annotationTargets={!!sessionId} /></AnnotatableFile> : <CodeEditor readOnly={workspace.readOnly} value={document.draft} onChange={value => controller.edit(path, value)} language={language(path)} darkMode={theme.dark} />}
+                        {preview ? <AnnotatableFile sessionId={sessionId} file={annotationFile}><MarkdownView markdown={document.draft} typography="document" readOnly fileLinks={!workspace.readOnly} sessionId={sessionId} annotationTargets={!!sessionId} /></AnnotatableFile> : <CodeEditor readOnly={workspace.readOnly} value={document.draft} onChange={value => controller.edit(path, value)} language={language(path)} darkMode={theme.dark} />}
                     </View>
                 </ScrollView>}
             </View>

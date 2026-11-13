@@ -64,6 +64,8 @@ export const MarkdownView = React.memo((props: {
     typography?: MarkdownTypographyMode;
     variant?: MarkdownViewVariant;
     readOnly?: boolean;
+    /** Allow workspace navigation independently of read-only document parsing. */
+    fileLinks?: boolean;
     imageUrls?: Record<string, string | null>;
     annotationTargets?: boolean;
 }) => {
@@ -79,13 +81,14 @@ export const MarkdownView = React.memo((props: {
     const selectable = Platform.OS === 'web' || !markdownCopyV2;
     const router = useRouter();
     const workspace = useFileWorkspace();
+    const fileLinksEnabled = !!workspace?.enabled && !!props.sessionId && (props.fileLinks ?? !props.readOnly);
 
     const handleLinkPress = React.useCallback((url: string) => {
-        if (workspace?.enabled && !props.readOnly && parseSessionFileLink(url, { sessionRoot: workspace.root })?.withinSessionRoot) { void workspace.openReference(url); return; }
+        if (fileLinksEnabled && workspace && parseSessionFileLink(url, { sessionRoot: workspace.root })?.withinSessionRoot) { void workspace.openReference(url); return; }
         if (!isHttpMarkdownLink(url)) { return; }
 
         void openExternalUrl(url);
-    }, [workspace, props.readOnly]);
+    }, [workspace, fileLinksEnabled]);
 
     const handleLongPress = React.useCallback(() => {
         try {
@@ -98,7 +101,7 @@ export const MarkdownView = React.memo((props: {
     }, [props.markdown, router]);
     const renderContent = () => {
         return (
-            <MarkdownImagesContext.Provider value={props.imageUrls}><MarkdownFileLinksContext.Provider value={!!workspace?.enabled && !!props.sessionId && !props.readOnly}><MarkdownTypographyContext.Provider value={props.typography ?? 'default'}>
+            <MarkdownImagesContext.Provider value={props.imageUrls}><MarkdownFileLinksContext.Provider value={fileLinksEnabled}><MarkdownTypographyContext.Provider value={props.typography ?? 'default'}>
                 <View style={{ width: '100%' }}>
                     {blocks.map((block, index) => {
                     const nextBlock = blocks[index + 1];
