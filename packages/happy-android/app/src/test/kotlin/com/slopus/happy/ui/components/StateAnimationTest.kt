@@ -114,6 +114,22 @@ class StateAnimationTest {
         assertTrue("the wand is drawn: $drawn", drawn > 100)
     }
 
+    /**
+     * A picture not read yet is read without a Lottie task: one still in
+     * flight when its screen goes holds every screen that waited on it, and
+     * with them their activities, for as long as the process lives.
+     */
+    @Test
+    fun aPictureNotReadYetLeavesNoLottieTaskBehind() {
+        StateCompositions.forget()
+        LottieCompositionFactory.clearCache(RuntimeEnvironment.getApplication())
+        val tasks = LottieCompositionFactory::class.java.getDeclaredField("taskCache").apply { isAccessible = true }.get(null) as Map<*, *>
+        rule.setHappyContent { StateAnimation(StateArt.Make, size = 96.dp) }
+        assertTrue("no task while it is read: ${tasks.keys}", tasks.isEmpty())
+        rule.waitUntil(5_000) { StateCompositions.peek(StateArt.Make.raw) != null }
+        assertTrue("nor after: ${tasks.keys}", tasks.isEmpty())
+    }
+
     @Test
     fun theBoxIsFixedWhileItLoadsAndPlays() {
         rule.setHappyContent { StateAnimation(StateArt.Make, size = 96.dp) }

@@ -16,6 +16,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -37,9 +40,7 @@ import androidx.lifecycle.compose.currentStateAsState
 import com.airbnb.lottie.LottieComposition
 import com.airbnb.lottie.LottieCompositionFactory
 import com.airbnb.lottie.compose.LottieAnimation
-import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.rememberLottieAnimatable
-import com.airbnb.lottie.compose.rememberLottieComposition
 import com.slopus.happy.R
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
@@ -157,9 +158,11 @@ fun SceneAnimation(
     val reduceMotion = rememberReduceMotion()
     val context = LocalContext.current
     val ready = remember(raw) { if (immediate) StateCompositions.get(context, raw) else StateCompositions.peek(raw) }
-    // Lottie's cache holds what was read here too, so this reads nothing twice.
-    val loading by rememberLottieComposition(LottieCompositionSpec.RawRes(raw))
-    val composition = ready ?: loading
+    // Read off the main thread through [StateCompositions] (Lottie's cache holds it too), not rememberLottieComposition:
+    // a read of Lottie's own still in flight keeps every screen that waited on it, the whole activity, until it lands.
+    val composition by produceState(ready, raw) {
+        if (value == null) value = withContext(Dispatchers.IO) { StateCompositions.get(context.applicationContext, raw) }
+    }
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     val active = lifecycle.isAtLeast(Lifecycle.State.RESUMED)
     val animatable = rememberLottieAnimatable()

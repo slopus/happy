@@ -38,7 +38,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.util.WeakHashMap
 import java.util.concurrent.TimeUnit
 
 private val PREVIEW_MIME_TYPES = setOf("image/webp", "image/png", "image/jpeg")
@@ -194,8 +193,6 @@ class SessionAvatarServices private constructor(graph: AppGraph) {
     }
 
     companion object {
-        private val instances = WeakHashMap<AppGraph, SessionAvatarServices>()
-
-        fun of(graph: AppGraph): SessionAvatarServices = synchronized(instances) { instances.getOrPut(graph) { SessionAvatarServices(graph) } }
+        fun of(graph: AppGraph): SessionAvatarServices = graph.service(SessionAvatarServices::class) { SessionAvatarServices(graph) }
     }
 }

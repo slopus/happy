@@ -38,7 +38,6 @@ import com.slopus.happy.ui.components.confirm
 import com.slopus.happy.ui.session.LiveSessionContinuations
 import com.slopus.happy.ui.session.SessionContinuations
 import com.slopus.happy.ui.session.SessionInfoControls
-import java.util.WeakHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -322,10 +321,7 @@ class HomeServices private constructor(private val graph: AppGraph) {
     }
 
     companion object {
-        private val instances = WeakHashMap<AppGraph, HomeServices>()
-
-        @Synchronized
-        fun of(graph: AppGraph): HomeServices = instances.getOrPut(graph) { HomeServices(graph) }
+        fun of(graph: AppGraph): HomeServices = graph.service(HomeServices::class) { HomeServices(graph) }
     }
 }
 

@@ -2,7 +2,6 @@ package com.slopus.happy.autocomplete
 
 import com.slopus.happy.AppGraph
 import com.slopus.happy.sync.RipgrepResult
-import java.util.WeakHashMap
 
 /**
  * The graph's file listings for `@` mentions: one cache for the app, as in
@@ -15,10 +14,6 @@ class AutocompleteServices private constructor(graph: AppGraph) {
     })
 
     companion object {
-        private val instances = WeakHashMap<AppGraph, AutocompleteServices>()
-
-        fun of(graph: AppGraph): AutocompleteServices = synchronized(instances) {
-            instances.getOrPut(graph) { AutocompleteServices(graph) }
-        }
+        fun of(graph: AppGraph): AutocompleteServices = graph.service(AutocompleteServices::class) { AutocompleteServices(graph) }
     }
 }

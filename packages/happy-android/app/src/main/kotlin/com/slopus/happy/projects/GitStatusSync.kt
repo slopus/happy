@@ -30,7 +30,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.util.WeakHashMap
 
 /** Where a session's checkout is: its `machineId:path` key and the directory the commands run in. */
 data class GitCheckout(val key: String, val path: String)
@@ -175,8 +174,6 @@ class GitStatusServices private constructor(graph: AppGraph) {
     }
 
     companion object {
-        private val instances = WeakHashMap<AppGraph, GitStatusServices>()
-
-        fun of(graph: AppGraph): GitStatusServices = synchronized(instances) { instances.getOrPut(graph) { GitStatusServices(graph) } }
+        fun of(graph: AppGraph): GitStatusServices = graph.service(GitStatusServices::class) { GitStatusServices(graph) }
     }
 }

@@ -4,7 +4,6 @@ import com.slopus.happy.AppGraph
 import com.slopus.happy.auth.AuthState
 import com.slopus.happy.media.MediaLibrary
 import okhttp3.OkHttpClient
-import java.util.WeakHashMap
 import java.util.concurrent.TimeUnit
 
 /**
@@ -41,10 +40,6 @@ class AttachmentServices private constructor(private val graph: AppGraph) {
         }
 
     companion object {
-        private val instances = WeakHashMap<AppGraph, AttachmentServices>()
-
-        fun of(graph: AppGraph): AttachmentServices = synchronized(instances) {
-            instances.getOrPut(graph) { AttachmentServices(graph) }
-        }
+        fun of(graph: AppGraph): AttachmentServices = graph.service(AttachmentServices::class) { AttachmentServices(graph) }
     }
 }

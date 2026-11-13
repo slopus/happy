@@ -24,7 +24,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
-import java.util.WeakHashMap
 import java.util.concurrent.TimeUnit
 
 /**
@@ -73,8 +72,6 @@ class ProjectServices private constructor(graph: AppGraph) {
     private fun linkedProjectIds(store: HappyStore): Set<String> = store.sessionProjectIds()
 
     companion object {
-        private val instances = WeakHashMap<AppGraph, ProjectServices>()
-
-        fun of(graph: AppGraph): ProjectServices = synchronized(instances) { instances.getOrPut(graph) { ProjectServices(graph) } }
+        fun of(graph: AppGraph): ProjectServices = graph.service(ProjectServices::class) { ProjectServices(graph) }
     }
 }

@@ -89,6 +89,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -124,6 +125,16 @@ class AppGraph(
     databaseName: String? = HappyDatabase.NAME,
 ) {
     private val appContext: Context = context.applicationContext ?: context
+
+    private val services = HashMap<Any, Any>()
+
+    /**
+     * The one [make] of this graph under [key], living as long as the graph
+     * does. Services kept per graph live here, not in a static map keyed by
+     * the graph: a value there holds its graph, so the graph was never let go.
+     */
+    @Suppress("UNCHECKED_CAST")
+    fun <T : Any> service(key: Any, make: () -> T): T = synchronized(services) { services[key] as T? ?: make().also { services[key] = it } }
 
     init {
         // Before accounts had databases of their own. Local data resets rather than migrates.
@@ -251,6 +262,18 @@ class AppGraph(
     val store = HappyStore(database(openAccountId()))
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /**
+     * Stops everything the graph runs. It ends with its application, which
+     * only a test process ends (Robolectric, after each test); a graph left
+     * running there lived to the end of the suite in its pending delays (a
+     * socket's timeout, a retry), with its whole app.
+     */
+    fun close() = scope.cancel()
+
+    init {
+        (appContext as? HappyApplication)?.whenTerminated(::close)
+    }
 
     /** The account's synced settings; a change is uploaded by the next sync. */
     val settings = SettingsRepository(store, scope, onChanged = ::requestSync)

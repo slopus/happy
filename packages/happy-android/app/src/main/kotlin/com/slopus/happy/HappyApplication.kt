@@ -50,4 +50,14 @@ class HappyApplication : Application() {
         super.onCreate()
         if (BuildConfig.DEBUG) DiskThread.watch()
     }
+
+    private val terminated = mutableListOf<() -> Unit>()
+
+    /** [action] when the application ends: never on a phone, after each test under Robolectric. */
+    fun whenTerminated(action: () -> Unit) = synchronized(terminated) { terminated += action }
+
+    override fun onTerminate() {
+        synchronized(terminated) { terminated.toList().also { terminated.clear() } }.forEach { it() }
+        super.onTerminate()
+    }
 }

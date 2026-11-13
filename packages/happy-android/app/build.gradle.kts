@@ -259,6 +259,10 @@ android {
                     "--add-exports=java.base/jdk.internal.access=ALL-UNNAMED",
                     "--add-opens=java.base/java.io=ALL-UNNAMED",
                 )
+                // One worker runs the whole suite. Robolectric's own share (its sandboxes, each with the
+                // framework's resources, and native text layouts it never frees) is ~400 MB of
+                // the default 512 MB by the end, which left no room for a test's own.
+                it.maxHeapSize = "1g"
             }
         }
     }
