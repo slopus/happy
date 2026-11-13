@@ -207,6 +207,15 @@ public actor Store {
         for listener in typeListeners.values { listener.continuation.yield(.resync(from: cursor)) }
     }
 
+    /// What the server's health says it serves, read with the account's
+    /// bootstrap: what Gen UI's actions may run (`References.genUIServed`).
+    public func externalCapabilities(_ capabilities: AgentWire.Health.Capabilities?) {
+        let capabilities = capabilities ?? AgentWire.Health.Capabilities()
+        guard capabilities != self.capabilities else { return }
+        self.capabilities = capabilities
+        publish()
+    }
+
     /// The bots, tasks and Surfaces from the account's bootstrap, kept
     /// current by its stream, for references to name and open.
     public func externalDirectory(owners: [JSONValue], surfaces: [AgentWire.Surface]) {
@@ -595,8 +604,12 @@ public actor Store {
     }
 
     /// A `gen_ui` version's render document (`GenUIRenderDocument.path`),
-    /// read and parsed here, off the main thread; nil when it can't be had.
+    /// read and parsed here, off the main thread, with the agent that made
+    /// the version; nil when the document can't be had. A version that
+    /// can't be read names no agent, and its actions that need one are
+    /// drawn disabled.
     private static func genUI(_ client: AgentClient, artifactId: String, version: Int) async -> References.GenUI? {
+        async let read = try? client.artifactVersion(artifactId, version: version)
         var data = Data()
         do {
             try await AgentClient.read({ range in
@@ -605,7 +618,8 @@ public actor Store {
         } catch {
             return nil
         }
-        return GenUIRenderDocument.parse(data).map { References.GenUI(version: version, document: $0) }
+        guard let document = GenUIRenderDocument.parse(data) else { return nil }
+        return References.GenUI(version: version, document: document, origin: await read?.origin)
     }
 
     private func artifactRead(_ id: String, _ read: References.Artifact?, page: References.Page?, app: Int?, genUI: References.GenUI?) {
@@ -887,6 +901,7 @@ public actor Store {
         references.pages = artifactPages
         references.apps = artifactApps
         references.genUI = artifactGenUI
+        references.genUIServed = GenUIServed(capabilities)
         references.users = userNames
         references.me = me
         references.missingUsers = usersMissing

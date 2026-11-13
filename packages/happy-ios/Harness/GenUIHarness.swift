@@ -57,7 +57,7 @@ final class GenUIHarness {
                 scroll.contentSize.height += offset
             }
         }
-        block.load(document, width: width, traits: GenUITraits(text: nil, displayScale: window.screen.scale), files: GenUIFolderFiles(folder: folder))
+        block.load(document, width: width, traits: GenUITraits(text: nil, displayScale: window.screen.scale), files: GenUIFolderFiles(folder: folder), runs: .reporting)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [block] in
             let frame = block.convert(block.bounds, to: nil)
             let json = #"{"x":\#(frame.minX),"y":\#(frame.minY),"width":\#(frame.width),"height":\#(frame.height),"scale":\#(window.screen.scale)}"#

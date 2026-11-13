@@ -19,6 +19,7 @@ private struct GenUIChatSockets: WebSocketConnector {
 private struct GenUIChatComputer: AgentTransport {
     let count: Int
     let folder: URL
+    let examples: [String]
 
     static let examples = [
         "01-stats", "02-chart-line", "03-chart-bar", "04-chart-donut", "05-gallery-grid", "06-gallery-carousel",
@@ -31,12 +32,12 @@ private struct GenUIChatComputer: AgentTransport {
 
     private func example(_ id: String) -> String? {
         guard id.hasPrefix("genui-"), let index = Int(id.dropFirst(6)) else { return nil }
-        return Self.examples[index % Self.examples.count]
+        return examples[index % examples.count]
     }
 
     private var runs: [JSONValue] {
         (0..<count).map { index in
-            let name = Self.examples[index % Self.examples.count]
+            let name = examples[index % examples.count]
             let call: JSONValue = .object([
                 "type": .string("tool_call"), "id": .string("t\(index)"), "name": .string("create_artifact"), "status": .string("completed"),
                 "presentation": .object([
@@ -59,7 +60,17 @@ private struct GenUIChatComputer: AgentTransport {
         return .object(["path": .string(path), "mimeType": .string(mimeType), "size": .number(Double(size)), "sha256": .string("0")])
     }
 
+    /// A compiled example, or `actions`: the action conformance document.
+    private func document(_ name: String) -> Data? {
+        guard name == "actions" else { return try? Data(contentsOf: folder.appendingPathComponent("\(name).render.json")) }
+        let file = (try? Data(contentsOf: folder.appendingPathComponent("conformance/actions.json"))).flatMap { try? JSONDecoder().decode(JSONValue.self, from: $0) }
+        return file?["document"].flatMap { try? JSONEncoder().encode($0) }
+    }
+
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
+        if path == "/v0/health" {
+            return try Self.json(.object(["ready": .bool(true), "capabilities": .object(["plugins": .bool(true), "artifactSecretActions": .bool(true)])]))
+        }
         if path.contains("/agents/harness/messages?") {
             return try Self.json(.object(["hasMore": .bool(false), "runs": .array(runs)]))
         }
@@ -79,13 +90,14 @@ private struct GenUIChatComputer: AgentTransport {
             let assets = ((try? FileManager.default.contentsOfDirectory(atPath: folder.appendingPathComponent("assets").path)) ?? []).sorted()
             return try Self.json(.object(["version": .object([
                 "artifactId": .string(id), "number": .number(1), "title": .string(name), "entry": file("index.genui.json", "application/json"),
+                "createdBy": .object(["kind": .string("agent"), "agentId": .string("harness"), "botId": .null]),
                 "files": .array([file(GenUIRenderDocument.path, "application/json")] + assets.map { file("assets/\($0)", "image/jpeg") }),
             ])]))
         }
         if parts.count > 6, parts[3] == "versions", parts[5] == "files" {
             let wanted = parts[6...].joined(separator: "/").removingPercentEncoding ?? ""
-            let url = wanted == GenUIRenderDocument.path ? folder.appendingPathComponent("\(name).render.json") : folder.appendingPathComponent(wanted)
-            guard let data = try? Data(contentsOf: url) else { return HTTP1Response(status: 404, body: Data(#"{"error":"not found"}"#.utf8)) }
+            let data = wanted == GenUIRenderDocument.path ? document(name) : try? Data(contentsOf: folder.appendingPathComponent(wanted))
+            guard let data else { return HTTP1Response(status: 404, body: Data(#"{"error":"not found"}"#.utf8)) }
             return Self.serve(data, range: headers["Range"])
         }
         throw URLError(.cannotConnectToHost)
@@ -116,7 +128,8 @@ private struct GenUIChatComputer: AgentTransport {
 }
 
 /// A conversation of Gen UI (`-screen genuiChat`, `-genuiCount N`, 50 by
-/// default): every turn a call that shows a `gen_ui` artifact, drawn under
+/// default, `-genuiExamples a,b` to show only those, `actions` among them
+/// the action conformance document): every turn a call that shows a `gen_ui` artifact, drawn under
 /// its card. With `HAPPY_GYM_METER=1` it runs the gym's scroll script
 /// (`HAPPY_GYM_SCRIPT`) once the rows are in and prints the meter's reading
 /// as `GENUI_GYM key=value…`, also written to `Documents/genui-gym.txt`.
@@ -131,10 +144,12 @@ final class GenUIChatHarness {
     private func open(window: HarnessWindow, arguments: [String]) async {
         let count = arguments.firstIndex(of: "-genuiCount").flatMap { arguments.indices.contains($0 + 1) ? Int(arguments[$0 + 1]) : nil } ?? 50
         let folder = Bundle.main.resourceURL!.appendingPathComponent("GenUI")
+        let examples = arguments.firstIndex(of: "-genuiExamples").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1].split(separator: ",").map(String.init) : nil }
+            ?? GenUIChatComputer.examples
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/genui-chat",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
-            agentConnectionCredentialStore: InMemoryAgentConnectionCredentialStore(), agentTransport: { _ in GenUIChatComputer(count: count, folder: folder) },
+            agentConnectionCredentialStore: InMemoryAgentConnectionCredentialStore(), agentTransport: { _ in GenUIChatComputer(count: count, folder: folder, examples: examples) },
             rnServerImport: { .confirmed(ServerConfig.defaultServerURL) }, transport: GenUIChatHTTP(), connector: GenUIChatSockets()
         )
         self.account = account
@@ -143,6 +158,9 @@ final class GenUIChatHarness {
             let connection = try await account.agentConnections.add(.init(address: "genui-chat", port: 1, deviceID: UUID().uuidString, deviceToken: "fixture"), name: "Studio Mac")
             let context = AppContext(account: account, variant: .development, version: "genui-chat")
             guard let session = Session.session(for: connection.id, context: context) else { return }
+            // Its stream never opens, so no read of home tells the store what
+            // health says (`SyncEngine.reconcile`): told here, the same way.
+            if let health = try? await session.client.health() { await session.store.externalCapabilities(health.capabilities) }
             let home = AgentHomeViewController(context: context, id: connection.id)
             let navigation = UINavigationController(rootViewController: home)
             AppCoordinator.applyAppearance(to: navigation.navigationBar)

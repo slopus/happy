@@ -16,7 +16,7 @@ final class GenUIRenderTests: XCTestCase {
         let data = try Data(contentsOf: folder.appendingPathComponent("\(name).render.json"))
         let document = try XCTUnwrap(GenUIRenderDocument.parse(data), name)
         let plan = GenUIPlanner(document: document, traits: GenUITraits(text: nil, displayScale: 3)).plan(width: 358)
-        return GenUINodeBuilder.build(plan, interaction: interaction, dark: false)
+        return GenUINodeBuilder.build(plan, interaction: interaction, dark: false, runs: .reporting)
     }
 
     private func count(_ node: UltraNode) -> Int { 1 + node.children.map(count).reduce(0, +) }
@@ -60,7 +60,7 @@ final class GenUIRenderTests: XCTestCase {
         let json = #"{"genuiRender":1,"compiler":"test","fallback":"x","root":"root","elements":{"root":{"type":"code","props":{"text":"\#(text)"}}}}"#
         let document = try XCTUnwrap(GenUIRenderDocument.parse(Data(json.utf8)))
         let plan = GenUIPlanner(document: document, traits: GenUITraits(text: nil, displayScale: 3)).plan(width: 358)
-        let built = GenUINodeBuilder.build(plan, interaction: GenUIInteraction(), dark: false)
+        let built = GenUINodeBuilder.build(plan, interaction: GenUIInteraction(), dark: false, runs: .reporting)
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 800))
         let block = GenUIBlockView(frame: CGRect(x: 16, y: 0, width: 358, height: plan.size.height))
         window.addSubview(block)

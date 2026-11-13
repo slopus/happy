@@ -39,14 +39,17 @@ public struct References: Equatable, Sendable {
     }
 
     /// A `gen_ui` artifact a conversation draws inline: its latest
-    /// version and the render document its daemon compiled.
+    /// version, the render document its daemon compiled, and the agent
+    /// that made the version (`ArtifactVersion.origin`), if read.
     public struct GenUI: Equatable, Sendable {
         public var version: Int
         public var document: GenUIRenderDocument
+        public var origin: String?
 
-        public init(version: Int, document: GenUIRenderDocument) {
+        public init(version: Int, document: GenUIRenderDocument, origin: String? = nil) {
             self.version = version
             self.document = document
+            self.origin = origin
         }
     }
 
@@ -77,6 +80,8 @@ public struct References: Equatable, Sendable {
     public var apps: [String: Int] = [:]
     /// The `gen_ui` artifacts read so far that a conversation draws, by ID.
     public var genUI: [String: GenUI] = [:]
+    /// What the server runs of their actions.
+    public var genUIServed = GenUIServed()
     /// The conversation's own subagents, by ID, as titled ("" untitled):
     /// a hidden one reads as its title, and opens nothing.
     public var subagents: [String: String] = [:]

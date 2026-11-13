@@ -14,11 +14,13 @@ struct GenUIEmbed: Equatable, Sendable {
     var document: GenUIRenderDocument
     var planner: GenUIPlanner
     var width: CGFloat
+    /// What its elements may run in this conversation.
+    var runs: GenUIRuns
 
     var height: CGFloat { planner.height(width: width) }
 
     static func == (a: GenUIEmbed, b: GenUIEmbed) -> Bool {
-        a.artifactId == b.artifactId && a.version == b.version && a.title == b.title && a.planner === b.planner && a.width == b.width
+        a.artifactId == b.artifactId && a.version == b.version && a.title == b.title && a.planner === b.planner && a.width == b.width && a.runs == b.runs
     }
 }
 
@@ -50,12 +52,16 @@ enum GenUIPlanners {
 
     /// The embed a message draws for `artifact` at the column `width`, or
     /// nil when the conversation doesn't draw it: one read that follows
-    /// the latest version, or names it.
-    static func embed(_ artifact: Artifact, references: References, width: CGFloat, environment: TextEnvironment?) -> GenUIEmbed? {
+    /// the latest version, or names it. `server` is the conversation's
+    /// (nil for a paired computer) and `agentId` its agent: a `message`
+    /// goes only into the origin agent's own conversation.
+    static func embed(_ artifact: Artifact, references: References, width: CGFloat, environment: TextEnvironment?, server: String?, agentId: String?) -> GenUIEmbed? {
         guard let read = references.genUI[artifact.id], artifact.opensLatest || artifact.version == read.version, width > 0 else { return nil }
         let traits = GenUITraits(text: environment, displayScale: environment?.displayScale ?? 2)
         let planner = planner(artifact.id, version: read.version, document: read.document, traits: traits)
-        return GenUIEmbed(artifactId: artifact.id, version: read.version, title: artifact.title, document: read.document, planner: planner, width: width)
+        let host = GenUIHost(server: HappyCloud.isCloud(server) ? .cluster : .happyAgent, origin: read.origin != nil, served: references.genUIServed)
+        let runs = GenUIRuns(host: host, sends: read.origin != nil && read.origin == agentId)
+        return GenUIEmbed(artifactId: artifact.id, version: read.version, title: artifact.title, document: read.document, planner: planner, width: width, runs: runs)
     }
 }
 
@@ -66,6 +72,10 @@ extension GenUIBlockView {
     func apply(_ embed: GenUIEmbed) {
         accessibilityIdentifier = "chat-gen-ui"
         let files = GenUIChatFiles(view: self, artifactId: embed.artifactId, version: embed.version)
+        interaction.onAction = { [weak self] key, action in
+            guard let self, let host = GenUIChatFiles.host(self) as? GenUIActing else { return }
+            host.genUI(run: action, key: key, artifactId: embed.artifactId, version: embed.version)
+        }
         interaction.onViewer = { [weak self] _, group, index in
             Task { @MainActor in
                 guard let self, let resolved = await files.resolved() else { return }
@@ -74,7 +84,7 @@ extension GenUIBlockView {
                 controller.present(PictureViewController(source: resolved.media, pictures: pictures, index: start), animated: true)
             }
         }
-        show(embed.planner, width: embed.width, identity: "\(embed.artifactId)/\(embed.version)", files: files)
+        show(embed.planner, width: embed.width, identity: "\(embed.artifactId)/\(embed.version)", files: files, runs: embed.runs)
     }
 
     fileprivate var closestController: UIViewController? {
@@ -133,7 +143,7 @@ final class GenUIChatFiles: GenUIFiles {
         return files
     }
 
-    private static func host(_ view: UIView) -> PageHosting? {
+    static func host(_ view: UIView) -> PageHosting? {
         var responder: UIResponder? = view
         while let current = responder {
             if let host = current as? PageHosting { return host }

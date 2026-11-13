@@ -136,6 +136,9 @@ private actor SyncFixture: AgentTransport {
         emit(.object(["type": .string("user_settings.updated"), "payload": .object(["setting": setting])]))
     }
     var requested: [String] = []
+    /// What health reports; nil answers it as an older daemon's missing route.
+    var capabilities: JSONValue?
+    func report(_ capabilities: JSONValue) { self.capabilities = capabilities }
     func requestedPaths() -> [String] { requested }
     /// The retired Stem Cells experiment turned on from the computer.
     func turnOnStemCells() {
@@ -166,6 +169,9 @@ private actor SyncFixture: AgentTransport {
                 try await Task.sleep(for: .milliseconds(50))
             }
             return .init(status: 200, body: read)
+        }
+        if path == "/v0/health", let capabilities {
+            return .init(status: 200, body: try JSONEncoder().encode(JSONValue.object(["ready": .bool(true), "capabilities": capabilities])))
         }
         if method == "PUT", path.hasPrefix("/v0/user-settings/") {
             let request = try JSONDecoder().decode(JSONValue.self, from: body!)
@@ -422,6 +428,27 @@ final class SyncEngineTests: XCTestCase {
         await transport.renameProjectAfterOneFailedRead()
         let changed = try await wait(engine) { $0.rows.contains { $0.label == "Renamed remotely" } }
         XCTAssertTrue(changed.live)
+        await engine.stop()
+    }
+
+    /// What a computer's health says it serves reaches the conversations
+    /// with each read of home: Gen UI's secret and plugin actions.
+    func testHealthSaysWhichGenUIActionsTheComputerRuns() async throws {
+        let transport = SyncFixture()
+        await transport.report(.object(["artifactSecretActions": .bool(true), "plugins": .bool(false)]))
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
+        let updates = engine.spaces.updates
+        await engine.start()
+        let served = try await withThrowingTaskGroup(of: GenUIServed.self) { group in
+            group.addTask {
+                for await snapshot in updates where snapshot.references.genUIServed != GenUIServed() { return snapshot.references.genUIServed }
+                throw Timeout()
+            }
+            group.addTask { try await Task.sleep(for: .seconds(4)); throw Timeout() }
+            defer { group.cancelAll() }
+            return try await group.next()!
+        }
+        XCTAssertEqual(served, GenUIServed(secretActions: true, plugins: false))
         await engine.stop()
     }
 

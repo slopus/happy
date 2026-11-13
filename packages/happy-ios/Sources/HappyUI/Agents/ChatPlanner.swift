@@ -29,6 +29,9 @@ actor ChatPlanner {
         /// The server the conversation is on, which says where a settings
         /// link opens (`SettingsLinkPlace`).
         var server: String?
+        /// The conversation's agent: a Gen UI's `message` is sent only
+        /// into its origin agent's own.
+        var agentId: String?
     }
 
     /// A row as it was planned, and what from.
@@ -364,7 +367,7 @@ actor ChatPlanner {
                 let inner = MessageLayout.agentInner(width: key.width, maxContentWidth: key.maxContentWidth)
                 // A Gen UI under its card, as tall as its document plans at
                 // the column's width, so the row is right on its first layout.
-                if !app, let embed = GenUIPlanners.embed(artifact, references: key.references, width: inner, environment: environment) {
+                if !app, let embed = GenUIPlanners.embed(artifact, references: key.references, width: inner, environment: environment, server: key.server, agentId: key.agentId) {
                     drafts.append(.genUI(embed))
                     parts.append(.page(height: embed.height))
                 } else if !app, artifact.followsLatest, let page = key.references.pages[artifact.id] {

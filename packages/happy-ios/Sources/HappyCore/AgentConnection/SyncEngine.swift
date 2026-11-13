@@ -744,11 +744,16 @@ public actor SyncEngine {
         let database = try database()
         let settingRevision = await database.confirmedSettingsRevision()
         // What the server serves beside it; a failed read keeps what was known.
-        let client = client
-        let health: Task<AgentWire.Health?, Never>? = cloud ? Task { try? await client.health() } : nil
+        // The store hears it as soon as it is read: what Gen UI's actions may run.
+        let (client, spaces) = (client, spaces)
+        let health = Task {
+            let served = try? await client.health()
+            if let served { await spaces.externalCapabilities(served.capabilities) }
+            return served
+        }
         let value = try await client.decode(JSONValue.self, "GET", "/v0/bootstrap/desktop")
         let desktop = try JSONDecoder().decode(DesktopSnapshot.self, from: JSONEncoder().encode(value))
-        if let served = await health?.value {
+        if cloud, let served = await health.value {
             let plugins = served.capabilities?.plugins == true
             if plugins != self.plugins {
                 self.plugins = plugins

@@ -52,7 +52,7 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
     private var gallery: ArtifactGalleryView?
     /// A `gen_ui` version's document, and the width and text it was last
     /// planned at.
-    private var genUI: (block: GenUIBlockView, document: GenUIRenderDocument, files: GenUIArtifactFiles)?
+    private var genUI: (block: GenUIBlockView, document: GenUIRenderDocument, files: GenUIArtifactFiles, runs: GenUIRuns)?
     private var genUIPlanned: (width: CGFloat, text: TextEnvironment?)?
     private var documentTap: UITapGestureRecognizer?
     private var browser: BrowserViewController?
@@ -398,8 +398,15 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
         block.accessibilityIdentifier = "artifact-gen-ui"
         block.onHeight = { [weak self] _ in self?.view.setNeedsLayout() }
         block.interaction.onViewer = { [weak self] _, group, index in self?.openGenUIViewer(group, index: index) }
+        block.interaction.onAction = { [weak self] _, action in
+            guard let self else { return }
+            GenUIActionRunner.run(action, session: self.session, from: self)
+        }
         scrollView.addSubview(block)
-        genUI = (block, document, GenUIArtifactFiles(media: media, files: version.files))
+        // No conversation to send a `message` into here; a vault's version
+        // names no agent.
+        let host = GenUIHost(server: session.isCloud ? .cluster : .happyAgent, origin: version.origin != nil, served: session.snapshot.references.genUIServed)
+        genUI = (block, document, GenUIArtifactFiles(media: media, files: version.files), GenUIRuns(host: host, sends: false))
         view.setNeedsLayout()
     }
 
@@ -417,7 +424,7 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
         let text = traitCollection.textEnvironment
         if column > 0, genUIPlanned?.width != column || genUIPlanned?.text != text {
             genUIPlanned = (column, text)
-            genUI.block.load(genUI.document, width: column, traits: GenUITraits(text: text, displayScale: traitCollection.displayScale), files: genUI.files)
+            genUI.block.load(genUI.document, width: column, traits: GenUITraits(text: text, displayScale: traitCollection.displayScale), files: genUI.files, runs: genUI.runs)
         }
         let height = genUI.block.sizeThatFits(CGSize(width: column, height: .greatestFiniteMagnitude)).height
         let layout = GenUIPageLayout(width: width, maxWidth: ContentWidth.maxWidth, margin: margin, height: height)

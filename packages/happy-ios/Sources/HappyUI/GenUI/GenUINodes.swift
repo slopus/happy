@@ -74,24 +74,56 @@ extension Color {
     }
 }
 
+/// What a shown document's elements may run where it is shown: the host's
+/// rule (`GenUIHost.enables`) and the means the screen has for it. What it
+/// can't run is drawn disabled, never dropped (SPEC.md rule 7).
+struct GenUIRuns: Equatable, Sendable {
+    var host: GenUIHost
+    /// A conversation to send `message` into: the origin agent's own.
+    var sends: Bool
+    /// A form to open the secret actions in.
+    var forms: Bool
+
+    init(host: GenUIHost, sends: Bool, forms: Bool = false) {
+        self.host = host
+        self.sends = sends
+        self.forms = forms
+    }
+
+    /// Everything a host may enable, for a gallery that only reports taps.
+    static let reporting = GenUIRuns(host: GenUIHost(server: .happyAgent, origin: true, secretActions: true, plugins: true), sends: true, forms: true)
+
+    func callAsFunction(_ action: GenUIAction) -> Bool {
+        guard host.enables(action) else { return false }
+        switch action {
+        case .message: return sends
+        case .secret, .clusterSecret: return forms
+        default: return true
+        }
+    }
+}
+
 /// Builds a plan's nodes. Used on one thread at a time.
 final class GenUINodeBuilder {
     private let interaction: GenUIInteraction
     private let dark: Bool
+    private let runs: GenUIRuns
     private var drawn: [(node: UltraNode, make: @Sendable (Bool) -> any Drawing)] = []
     private var choices: [String: GenUIChoiceNodes] = [:]
     private var snaps: [(node: UltraScrollNode, stops: [CGFloat])] = []
     private var images: [(node: UltraNode, file: String, side: CGFloat)] = []
 
-    private init(interaction: GenUIInteraction, dark: Bool) {
+    private init(interaction: GenUIInteraction, dark: Bool, runs: GenUIRuns) {
         self.interaction = interaction
         self.dark = dark
+        self.runs = runs
     }
 
     /// `interaction` hears the nodes' taps; `dark` is the appearance they
-    /// are first drawn in.
-    static func build(_ plan: GenUIPlan, interaction: GenUIInteraction, dark: Bool) -> GenUIBuilt {
-        let builder = GenUINodeBuilder(interaction: interaction, dark: dark)
+    /// are first drawn in; `runs` says which actions are enabled. Neither
+    /// moves anything: the plan is the same for every host.
+    static func build(_ plan: GenUIPlan, interaction: GenUIInteraction, dark: Bool, runs: GenUIRuns) -> GenUIBuilt {
+        let builder = GenUINodeBuilder(interaction: interaction, dark: dark, runs: runs)
         let root = builder.node(plan.root, absolute: false)
         return GenUIBuilt(plan: plan, root: root, dark: dark, drawn: builder.drawn, choices: builder.choices, snaps: builder.snaps, images: builder.images)
     }
@@ -183,7 +215,7 @@ final class GenUINodeBuilder {
             layout.draw(at: CGPoint(x: 0, y: max(0, (bounds.height - layout.size.height) / 2)))
         }
         node.accessibility = Accessibility(label: text.plain, role: .text)
-        if let link = text.links.first?.url {
+        if let link = text.links.first?.url, runs(.open(link)) {
             node.onPress = { [weak interaction = self.interaction] in interaction?.activate(key, .open(link), group: nil) }
             node.accessibility.role = .link
         }
@@ -275,8 +307,9 @@ final class GenUINodeBuilder {
             content.accessibility.hidden = true
             node.addChild(content)
         }
-        node.accessibility = Accessibility(label: press.label, role: press.action == nil ? .none : .button, isElement: true)
-        guard let action = press.action else { return node }
+        let action = press.action.flatMap { runs($0) ? $0 : nil }
+        node.accessibility = Accessibility(label: press.label, role: action == nil ? .none : .button, isElement: true)
+        guard let action else { return node }
         let key = placed.key
         let group = press.group
         node.onPress = { [weak interaction = self.interaction] in interaction?.activate(key, action, group: group) }
@@ -298,6 +331,8 @@ final class GenUINodeBuilder {
             style.borderWidth = button.surface.borderWidth
         }
         style.borderRadius = button.surface.radius
+        let enabled = runs(button.action)
+        if !enabled { style.opacity = 0.4 }
         let node = UltraNode(style: style)
         // The label and icon are planned from the button's outer edge;
         // its border's room is taken back.
@@ -310,6 +345,10 @@ final class GenUINodeBuilder {
             node.addChild(content)
         }
         node.accessibility = Accessibility(label: button.label, role: .button)
+        guard enabled else {
+            node.accessibility.hint = "Unavailable here"
+            return node
+        }
         let key = placed.key
         let action = button.action
         let group = button.group

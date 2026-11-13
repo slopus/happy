@@ -8,7 +8,8 @@ import XCTest
 final class GenUIRenderDocumentTests: XCTestCase {
     static let examples = [
         "01-stats", "02-chart-line", "03-chart-bar", "04-chart-donut", "05-gallery-grid", "06-gallery-carousel",
-        "07-list", "08-table", "09-steps", "10-choices", "11-release", "12-labels", "gen-7-02", "gen-7-05", "icons-and-colours",
+        "07-list", "08-table", "09-steps", "10-choices", "11-release", "12-labels", "13-secret", "14-cluster-secret",
+        "gen-7-02", "gen-7-05", "icons-and-colours",
     ]
 
     private func example(_ name: String) throws -> GenUIRenderDocument {
@@ -134,7 +135,10 @@ final class GenUIRenderDocumentTests: XCTestCase {
             "ok": element("pill", ["text": .string("ok")]),
         ])
         guard case .box(_, let children) = doc.tree()?.kind else { return XCTFail("a box") }
-        XCTAssertEqual(children.map(\.key), ["ok"])
+        // A button keeps its label without an action it can run.
+        XCTAssertEqual(children.map(\.key), ["noAction", "badAction", "ok"])
+        guard case .button(let button) = children[0].kind else { return XCTFail("a button") }
+        XCTAssertEqual(button.action, .unsupported)
     }
 
     func testAPressWithoutAValidActionKeepsItsContentUntappable() {
@@ -143,7 +147,7 @@ final class GenUIRenderDocumentTests: XCTestCase {
             "t": text("still here"),
         ])
         guard case .press(let press, let children) = doc.tree()?.kind else { return XCTFail("a press") }
-        XCTAssertNil(press.action)
+        XCTAssertEqual(press.action, .unsupported)
         XCTAssertEqual(press.role, .item)
         XCTAssertEqual(children.map(\.key), ["t"])
     }

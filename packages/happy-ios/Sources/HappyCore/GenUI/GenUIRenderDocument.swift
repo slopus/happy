@@ -91,7 +91,7 @@ public struct GenUIRenderDocument: Equatable, Sendable {
                 let regular = slot(element, "regular", depth)
                 kind = compact == nil && regular == nil ? nil : .switcher(compact: compact, regular: regular)
             case "press":
-                // Without a valid action its content is drawn, untappable.
+                // Without an action it can run, its content is drawn, untappable.
                 kind = .press(GenUIPress(action: GenUIAction(props["action"]), role: GenUIPress.Role(props["role"]) ?? .plain, group: props["group"]?.stringValue), children(element, depth))
             case "text": kind = GenUIText(props).map(GenUINode.Kind.text)
             case "icon": kind = GenUIIcon(props).map(GenUINode.Kind.icon)
@@ -206,29 +206,6 @@ public enum GenUIShape: String, Equatable, Sendable {
 
     init(_ json: JSONValue?) {
         self = json?.stringValue.flatMap(Self.init(rawValue:)) ?? .landscape
-    }
-}
-
-// MARK: - Actions
-
-/// What activating an element asks the host to do. The renderer reports it
-/// with the element's key; the host decides.
-public enum GenUIAction: Equatable, Sendable {
-    /// Send `text` as the person's next message.
-    case message(String)
-    case open(String)
-    case copy(String)
-    case tool(name: String, input: JSONValue)
-
-    init?(_ json: JSONValue?) {
-        guard let json, let type = json["type"]?.stringValue else { return nil }
-        switch type {
-        case "message": guard let text = json["text"]?.stringValue else { return nil }; self = .message(text)
-        case "open": guard let url = json["url"]?.stringValue else { return nil }; self = .open(url)
-        case "copy": guard let text = json["text"]?.stringValue else { return nil }; self = .copy(text)
-        case "tool": guard let name = json["name"]?.stringValue else { return nil }; self = .tool(name: name, input: json["input"] ?? .object([:]))
-        default: return nil
-        }
     }
 }
 
@@ -495,9 +472,10 @@ public struct GenUIButton: Equatable, Sendable {
     }
 
     init?(_ props: JSONValue) {
-        guard let label = props["label"]?.stringValue, let action = GenUIAction(props["action"]) else { return nil }
+        // Without an action it can run it is drawn disabled, never dropped.
+        guard let label = props["label"]?.stringValue else { return nil }
         self.init(
-            label, action: action, icon: props["icon"]?.stringValue, variant: Variant(props["variant"]) ?? .secondary,
+            label, action: GenUIAction(props["action"]) ?? .unsupported, icon: props["icon"]?.stringValue, variant: Variant(props["variant"]) ?? .secondary,
             tone: GenUITone(props["tone"]) ?? .neutral, group: props["group"]?.stringValue
         )
     }

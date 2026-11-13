@@ -1134,6 +1134,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     private var planKey: ChatPlanner.Key {
         var key = ChatPlanner.Key(width: transcriptWidth, maxContentWidth: ContentWidth.maxWidth, environment: traitCollection.textEnvironment, references: subagentReferences, subagentTitles: chat.subagentTitles, pageHeights: pageHeights)
         key.server = session.server
+        key.agentId = media.agentId
         // Only a failure card reads the composer's model; without one the
         // key stays the warm chat's, so its rows planned ahead are taken.
         if chat.items.contains(where: { if case .failure = $0.role { true } else { false } }) {
@@ -2281,6 +2282,19 @@ extension ChatViewController: PageHosting {
     }
 }
 
+extension ChatViewController: GenUIActing {
+    /// A `message` goes as the person's next message here, the origin
+    /// agent's own conversation (the only place it is enabled).
+    func genUI(run action: GenUIAction, key: String, artifactId: String, version: Int) {
+        if GenUIActionRunner.run(action, session: session, from: self, agentId: media.agentId) { return }
+        guard case .message(let text) = action, !previewing else { return }
+        Haptics.play(.send)
+        followsNewest = true
+        ultra.revealNextSend(animated: true)
+        let conversation = conversation
+        Task { await conversation.send(text: text) }
+    }
+}
 
 private extension ChatDrawItem {
     /// Where a message's words are drawn: its bubble, text and blocks, not

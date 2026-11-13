@@ -73,7 +73,7 @@ final class GenUIFixtureViewController: UIViewController {
         if width != self.width {
             self.width = width
             let traits = GenUITraits(text: nil, displayScale: traitCollection.displayScale)
-            block.load(document, width: width, traits: traits, files: GenUIFixturesViewController.folder.map(GenUIFolderFiles.init))
+            block.load(document, width: width, traits: traits, files: GenUIFixturesViewController.folder.map(GenUIFolderFiles.init), runs: .reporting)
         }
         let height = block.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
         block.frame = CGRect(x: scroll.safeAreaInsets.left + margin, y: margin, width: width, height: height)

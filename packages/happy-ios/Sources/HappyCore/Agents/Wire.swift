@@ -126,6 +126,9 @@ extension AgentWire {
             public var userEnvironment: Bool?
             /// The plugin routes (`/v0/plugins`); missing is none.
             public var plugins: Bool?
+            /// Saves Gen UI secret actions' forms
+            /// (`POST /v0/artifacts/:id/versions/:n/actions`); missing is none.
+            public var artifactSecretActions: Bool?
         }
         public var ready: Bool
         public var capabilities: Capabilities?
@@ -803,20 +806,40 @@ extension AgentWire {
             public var url: String
         }
 
+        /// Who made a version (API.md, "Authors"). `kind` is absent from
+        /// daemons before authors had kinds, which name no agent.
+        public struct Author: Equatable, Sendable, Codable {
+            public var kind: String?
+            public var agentId: String?
+
+            public init(kind: String?, agentId: String? = nil) {
+                self.kind = kind
+                self.agentId = agentId
+            }
+        }
+
         public var artifactId: String
         public var number: Int
         public var title: String
         public var entry: File?
         public var files: [File]
         public var live: Live?
+        public var createdBy: Author?
 
-        public init(artifactId: String, number: Int, title: String, entry: File?, files: [File], live: Live? = nil) {
+        public init(artifactId: String, number: Int, title: String, entry: File?, files: [File], live: Live? = nil, createdBy: Author? = nil) {
             self.artifactId = artifactId
             self.number = number
             self.title = title
             self.entry = entry
             self.files = files
             self.live = live
+            self.createdBy = createdBy
+        }
+
+        /// The agent that made it, which a Gen UI version's `message` and
+        /// secret actions go to; nil when a person made it.
+        public var origin: String? {
+            createdBy?.kind == "agent" ? createdBy?.agentId : nil
         }
     }
 

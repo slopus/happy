@@ -46,9 +46,9 @@ final class ChatPlanView: UIView {
     var onChunksPlaced: (() -> Void)?
     /// A chunk of a tall plan: touches go through it to the row's other chunks.
     private var passesTouches = false
-    /// The pictures, recordings and pages the plan shows now.
+    /// The pictures, recordings, pages and Gen UI the plan shows now.
     var mediaViews: [UIView] {
-        (media as [UIView] + pages as [UIView]).filter { !$0.isHidden }
+        (media as [UIView] + pages as [UIView] + genUIs as [UIView]).filter { !$0.isHidden }
             + chunkViews.keys.sorted().flatMap { chunkViews[$0]?.mediaViews ?? [] }
     }
     private var boxes: [UIView] = []

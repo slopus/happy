@@ -65,7 +65,9 @@ final class GenUIChatEmbedTests: XCTestCase {
 
     func testTheRowDrawsTheDocumentFromThePlanItWasSizedBy() async throws {
         var key = ChatPlanner.Key(width: 393, maxContentWidth: 10_000, environment: nil)
-        key.references.genUI["choices1"] = .init(version: 2, document: try document("10-choices"))
+        // Its choices send messages: the version's agent's own conversation.
+        key.agentId = "agent-a"
+        key.references.genUI["choices1"] = .init(version: 2, document: try document("10-choices"), origin: "agent-a")
         let planned = plan(Artifact(id: "choices1", version: 2, type: "gen_ui", title: "Pick one", followsLatest: true), key)
         let (embed, frame) = try XCTUnwrap(embeds(planned).first)
 
@@ -85,9 +87,32 @@ final class GenUIChatEmbedTests: XCTestCase {
         view.apply(planned)
         XCTAssertTrue(block.built.map { $0.root === built.root } ?? false, "nothing rebuilt")
         XCTAssertEqual(block.interaction.chosen, ["choices": "choices.1"])
-        key.references.genUI["choices2"] = .init(version: 1, document: try document("10-choices"))
+        key.references.genUI["choices2"] = .init(version: 1, document: try document("10-choices"), origin: "agent-a")
         view.apply(plan(Artifact(id: "choices2", version: 1, type: "gen_ui", title: "Pick again", followsLatest: true), key))
         XCTAssertEqual(block.interaction.chosen, [:])
+    }
+
+    func testAConversationRunsWhatItsServerAndTheVersionsAgentAllow() throws {
+        var key = ChatPlanner.Key(width: 393, maxContentWidth: 10_000, environment: nil)
+        key.agentId = "agent-a"
+        key.references.genUI["acts1"] = .init(version: 1, document: try document("13-secret"), origin: "agent-a")
+        key.references.genUI["acts2"] = .init(version: 1, document: try document("13-secret"), origin: "agent-b")
+        key.references.genUI["acts3"] = .init(version: 1, document: try document("13-secret"))
+        func runs(_ id: String) throws -> GenUIRuns {
+            try XCTUnwrap(embeds(plan(Artifact(id: id, version: 1, type: "gen_ui", title: "Keys", followsLatest: true), key)).first?.0.runs)
+        }
+        // A computer that says nothing of them runs neither secrets nor plugins.
+        XCTAssertEqual(try runs("acts1"), GenUIRuns(host: GenUIHost(server: .happyAgent, origin: true, secretActions: false, plugins: false), sends: true))
+        key.references.genUIServed = GenUIServed(secretActions: true, plugins: true)
+        XCTAssertEqual(try runs("acts1").host, GenUIHost(server: .happyAgent, origin: true, secretActions: true, plugins: true))
+        // Another agent's version sends nothing here; a person's names no agent.
+        XCTAssertEqual(try runs("acts2").sends, false)
+        XCTAssertEqual(try runs("acts2").host.origin, true)
+        XCTAssertEqual(try runs("acts3").host.origin, false)
+        key.server = HappyCloud.server(named: "acme")
+        XCTAssertEqual(try runs("acts1").host.server, .cluster)
+        // The secret form isn't here yet: its button stays disabled.
+        XCTAssertFalse(try runs("acts1")(.secret(GenUISecretPrefill(variables: [.init(name: "KEY")]))))
     }
 }
 #endif
