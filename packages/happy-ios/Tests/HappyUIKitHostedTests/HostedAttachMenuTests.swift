@@ -303,8 +303,8 @@ final class HostedAttachMenuTests: XCTestCase {
         }
     }
 
-    /// A long caption grows to its tallest, a third of the room over the
-    /// keyboard, and then scrolls inside its glass; the text never leaves
+    /// A long caption grows to its tallest, the chat composer's cap, and
+    /// then scrolls inside its card; the text never leaves
     /// the glass, and the grid keeps room to scroll every picture clear of it.
     func testALongCaptionStopsGrowingAndScrollsInside() async throws {
         try await open(FixtureAttachLibrary(access: .authorized, count: 30))
@@ -323,7 +323,9 @@ final class HostedAttachMenuTests: XCTestCase {
         let sheetLayout = try XCTUnwrap(sheet.sheet)
         let glass = sheet.panel.glassFrame
         let room = sheet.view.bounds.height - sheet.keyboard - sheetLayout.expandedTop
-        XCTAssertLessThanOrEqual(glass.height, max(40, floor(room / 3)) + 0.5, "the caption grew past its tallest")
+        // The chat composer's card caps its own text (120) and scrolls it.
+        XCTAssertLessThanOrEqual(glass.height, sheet.panel.card.height(fitting: glass.width) + 0.5)
+        XCTAssertLessThan(glass.height, room / 2, "the caption grew past its tallest")
         XCTAssertGreaterThanOrEqual(glass.minY, sheetLayout.expandedTop, "the caption rose over the header")
         XCTAssertLessThanOrEqual(glass.maxY, sheet.view.bounds.height - sheet.keyboard + 0.5, "the caption went under the keyboard")
         let text = caption.convert(caption.bounds, to: sheet.panel)

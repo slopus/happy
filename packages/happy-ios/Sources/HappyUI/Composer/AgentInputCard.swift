@@ -406,6 +406,8 @@ public final class AgentInputCardView: UIView {
     private let addButton = ComposerIconButton(icon: .ionicons("add"), size: MobileComposerMetrics.mobile.addIconSize)
     /// The "+", for what it opens to sit over (the iPad's attachment card).
     var addControl: UIView { addButton }
+    /// The round send button, for an owner that names it (the "+" menu's caption).
+    var primaryControl: UIControl { primaryButton }
     private let middle = UIView()
     private let permissionChip = ComposerChipButton(chip: .permission)
     private let modelChip = ComposerChipButton(chip: .model)
