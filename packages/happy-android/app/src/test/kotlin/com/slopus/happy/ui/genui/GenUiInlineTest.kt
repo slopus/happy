@@ -38,7 +38,7 @@ class GenUiInlineTest {
     @get:Rule val rule = createComposeRule()
     private val asked: MutableList<String> = Collections.synchronizedList(ArrayList())
 
-    private fun computer(origin: String?, render: String = "01-stats") = AgentClient(
+    private fun computer(origin: String?, render: String = "01-stats", listed: Boolean = true) = AgentClient(
         object : Transport {
             override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
                 asked += path
@@ -50,7 +50,7 @@ class GenUiInlineTest {
                 return TransportResponse(
                     200,
                     mapOf("content-type" to "application/json"),
-                    """{"version":{"artifactId":"g1","number":2,"title":"Q3","entry":{"path":"index.genui.json"},"files":[{"path":".genui/render.json","mimeType":"application/json","size":10}],"createdBy":$by}}""".toByteArray(),
+                    """{"version":{"artifactId":"g1","number":2,"title":"Q3","entry":{"path":"index.genui.json"},"files":[${if (listed) """{"path":".genui/render.json","mimeType":"application/json","size":10}""" else ""}],"createdBy":$by}}""".toByteArray(),
                 )
             }
 
@@ -98,6 +98,15 @@ class GenUiInlineTest {
         rule.node(GenUiInlineTags.WAITING).assertDoesNotExist()
         assertEquals(height, rule.node(GenUiInlineTags.BLOCK).fetchSemanticsNode().size.height)
         assertEquals("nothing read again", reads, asked.size)
+    }
+
+    /** A Happy Cloud server leaves `.genui/render.json` out of the manifest and serves it all the same. */
+    @Test fun aRenderDocumentTheManifestDoesntListIsReadByItsPath() {
+        val inline = GenUiInline(computer("a1", listed = false), null, "a1", onMessage = {}, onOpenWeb = {})
+        rule.setHappyContent { GenUiInlineBlock("g1", 2, inline, label = { it }) }
+        rule.waitUntil(5_000) { inline.block("g1", 2) != null }
+        rule.node(GenUiInlineTags.BLOCK).assertExists()
+        assertTrue(asked.any { it.endsWith("/files/.genui/render.json") })
     }
 
     @Test fun aBlockThatCantBeReadLeavesOnlyItsCard() {

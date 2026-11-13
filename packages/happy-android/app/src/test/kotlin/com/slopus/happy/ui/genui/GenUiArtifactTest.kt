@@ -121,7 +121,15 @@ class GenUiArtifactTest {
         assertTrue(loader.state.value is ArtifactUi.Page)
     }
 
-    @Test fun aGenUiVersionWithoutItsRenderDocumentIsUnavailable() {
+    /** A Happy Cloud server leaves `.genui/render.json` out of the manifest and serves it all the same. */
+    @Test fun aRenderDocumentTheManifestDoesntListIsReadByItsPath() {
+        val loader = load(version("index.genui.json" to "application/json"), mapOf(".genui/render.json" to fixture("14-cluster-secret")))
+        val ui = loader.state.value as ArtifactUi.GenUi
+        assertTrue(ui.document.drawable)
+        assertTrue(asked.any { it.endsWith("/files/.genui/render.json") })
+    }
+
+    @Test fun aGenUiVersionWhoseRenderDocumentCantBeReadIsUnavailable() {
         val loader = load(version("index.genui.json" to "application/json"), emptyMap())
         assertEquals(ArtifactUi.Message(deleted = false), loader.state.value)
     }

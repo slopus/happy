@@ -154,6 +154,14 @@ data class ArtifactVersion(
 ) {
     fun file(path: String): ArtifactFile? = files.firstOrNull { it.path == path } ?: entry?.takeIf { it.path == path }
 
+    /**
+     * A `gen_ui` version's render document, read by its path whether or not
+     * the manifest lists it: a Happy Agent lists `.genui/render.json`, a
+     * Happy Cloud server leaves it out of `files` and serves it all the same.
+     * A version without one fails when the read does, not before.
+     */
+    val genUiRender: ArtifactFile get() = file(GEN_UI_RENDER_PATH) ?: ArtifactFile(GEN_UI_RENDER_PATH, "application/json", 0)
+
     companion object {
         private fun label(version: JsonObject): String {
             val major = version["major"].num?.toInt()
@@ -206,7 +214,7 @@ sealed interface ArtifactShow {
         /** [path] is the file a link opened; null for the entry. [type] is the artifact's. */
         fun of(version: ArtifactVersion, path: String? = null, type: String = ""): ArtifactShow {
             if (path == null) version.liveUrl?.let { return Live(it) }
-            if (path == null && type == "gen_ui") return version.file(GEN_UI_RENDER_PATH)?.let(::GenUi) ?: Unavailable
+            if (path == null && type == "gen_ui") return GenUi(version.genUiRender)
             val entry = version.entry ?: return Unavailable
             val wanted = path ?: entry.path
             val file = version.files.firstOrNull { it.path == wanted } ?: entry.takeIf { wanted == it.path } ?: return Unavailable

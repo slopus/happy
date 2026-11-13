@@ -28,7 +28,6 @@ import com.slopus.happy.artifacts.Extent
 import com.slopus.happy.browser.BrowserFetcher
 import com.slopus.happy.browser.browserNetwork
 import com.slopus.happy.genui.Element
-import com.slopus.happy.genui.GEN_UI_RENDER_PATH
 import com.slopus.happy.genui.GenUi
 import com.slopus.happy.media.MediaLibrary
 import com.slopus.happy.ui.artifacts.ArtifactUi
@@ -117,7 +116,7 @@ class GenUiInline(
         failed -= key
         try {
             val manifest = files.version(artifactId, version)
-            val render = manifest.file(GEN_UI_RENDER_PATH) ?: throw IllegalStateException("no render document")
+            val render = manifest.genUiRender
             val media = ArtifactMedia(files, artifactId, version, library) { BrowserFetcher(client, { client.browserNetwork(artifactId = artifactId) }) }
             val block = Block(readGenUi(files, manifest, render, media, label), media)
             blocks[key] = block
