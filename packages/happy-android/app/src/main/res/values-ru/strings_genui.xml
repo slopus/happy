@@ -84,4 +84,7 @@
     <string name="genui_cluster_saved">%1$s сохранён</string>
     <string name="genui_cluster_told">Агент, который его запросил, может им пользоваться и знает его имя и поля. Значений он не видит никогда.</string>
     <string name="genui_cluster_methods">Только запросы %1$s</string>
+    <string name="genui_cluster_passphrase_placeholder">Парольная фраза</string>
+    <string name="genui_cluster_ports">Порты: %1$s</string>
+    <string name="genui_cluster_username_optional">Имя пользователя, если серверу оно нужно</string>
 </resources>

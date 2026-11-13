@@ -317,12 +317,14 @@ private fun KeyFields(draft: ClusterSecretDraft, problems: Set<ClusterProblem>, 
     if (hosts && !draft.changing) {
         Label(R.string.genui_cluster_hosts)
         Field(draft.hosts, { draft.hosts = it }, "github.com, *.example.com", GenUiClusterTags.HOSTS, enabled, mono = true)
+        draft.ports.takeIf { it.isNotEmpty() }?.let { Note(stringResource(R.string.genui_cluster_ports, it.joinToString(", "))) }
         if (ClusterProblem.Hosts in problems) Problem(stringResource(R.string.genui_cluster_hosts_problem))
     }
     Label(R.string.genui_cluster_private_key)
     MaskedField(draft.privateKey, { draft.privateKey = it }, if (draft.changing) stringResource(R.string.genui_secret_value_keep) else "-----BEGIN OPENSSH PRIVATE KEY-----", label = stringResource(R.string.genui_cluster_private_key), enabled = enabled, multiline = true)
     if (ClusterProblem.Key in problems) Problem(stringResource(R.string.genui_cluster_key_problem))
-    MaskedField(draft.passphrase, { draft.passphrase = it }, stringResource(R.string.genui_cluster_passphrase), label = stringResource(R.string.genui_cluster_passphrase), enabled = enabled, last = true)
+    Label(R.string.genui_cluster_passphrase)
+    MaskedField(draft.passphrase, { draft.passphrase = it }, stringResource(R.string.genui_cluster_passphrase_placeholder), label = stringResource(R.string.genui_cluster_passphrase), enabled = enabled, last = true)
 }
 
 /** A git credential: the server, how it signs in and what it may do when new, then its value. */
@@ -331,6 +333,7 @@ private fun GitFields(draft: ClusterSecretDraft, problems: Set<ClusterProblem>, 
     if (!draft.changing) {
         Label(R.string.genui_cluster_server)
         Field(draft.server, { draft.server = it.trim() }, "github.com", GenUiClusterTags.SERVER, enabled, mono = true)
+        draft.ports.takeIf { it.isNotEmpty() }?.let { Note(stringResource(R.string.genui_cluster_ports, it.joinToString(", "))) }
         if (ClusterProblem.Server in problems) Problem(stringResource(R.string.genui_cluster_server_problem))
 
         Label(R.string.genui_cluster_method)
@@ -340,7 +343,7 @@ private fun GitFields(draft: ClusterSecretDraft, problems: Set<ClusterProblem>, 
             { if (enabled) draft.method = GitMethod.entries[it] },
         )
         if (draft.method != GitMethod.SshKey) {
-            Label(R.string.genui_cluster_username)
+            Label(if (draft.method == GitMethod.Password) R.string.genui_cluster_username else R.string.genui_cluster_username_optional)
             Field(draft.username, { draft.username = it.trim() }, "git", GenUiClusterTags.USERNAME, enabled, mono = true)
             if (ClusterProblem.Username in problems) Problem(stringResource(R.string.genui_cluster_username_problem))
         }

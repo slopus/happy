@@ -36,7 +36,9 @@ import kotlinx.serialization.json.jsonPrimitive
  * With `genui.cloud` it is a Happy Cloud server instead (cluster API.md "Gen
  * UI actions"): `GET /v0/permissions` grants both owners, and the actions
  * route logs the element and field names. `genui.change` gives the fixture's
- * `cluster_secret` action a stored secret's ID, to open the form on it.
+ * `cluster_secret` action a stored secret's ID, to open the form on it;
+ * any stored ID reads as an endpoint secret. `cluster-secrets` (iOS's
+ * harness document) has a button for each type and one that changes.
  * ```
  * adb shell am start -n com.slopus.happy.dev/com.slopus.happy.ui.genui.GenUiArtifactGymActivity \
  *     -e genui.fixture 05-gallery-grid [-e genui.theme dark] [-e genui.stored stripe] \
@@ -70,7 +72,10 @@ class GenUiArtifactGymActivity : ComponentActivity() {
                 val json = mapOf("content-type" to "application/json")
                 if (cloud) {
                     if (path == "/v0/permissions") return TransportResponse(200, json, """{"granted":["secrets.own","secrets.manage"]}""".toByteArray())
-                    if (path == "/v0/cluster/secrets/$clusterId") return TransportResponse(200, json, """{"secret":$clusterSecret}""".toByteArray())
+                    if (path.startsWith("/v0/cluster/secrets/")) {
+                        val id = path.removePrefix("/v0/cluster/secrets/")
+                        return TransportResponse(200, json, """{"secret":${clusterSecret.replace(clusterId, id)}}""".toByteArray())
+                    }
                     if (path.endsWith("/actions")) {
                         val form = Json.parseToJsonElement(String(body ?: ByteArray(0))).jsonObject
                         val secret = form.getValue("secret").jsonObject

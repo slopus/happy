@@ -84,4 +84,7 @@
     <string name="genui_cluster_saved">已保存 %1$s</string>
     <string name="genui_cluster_told">提出请求的智能体现在可以使用它，并已被告知其名称和字段。它永远看不到值。</string>
     <string name="genui_cluster_methods">仅限 %1$s 请求</string>
+    <string name="genui_cluster_passphrase_placeholder">密码短语</string>
+    <string name="genui_cluster_ports">端口：%1$s</string>
+    <string name="genui_cluster_username_optional">用户名（服务器需要时填写）</string>
 </resources>

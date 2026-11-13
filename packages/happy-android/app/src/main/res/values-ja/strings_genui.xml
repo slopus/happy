@@ -84,4 +84,7 @@
     <string name="genui_cluster_saved">%1$s を保存しました</string>
     <string name="genui_cluster_told">依頼したエージェントはこれを使用でき、名前とフィールドを知らされました。値は決して見えません。</string>
     <string name="genui_cluster_methods">%1$s リクエストのみ</string>
+    <string name="genui_cluster_passphrase_placeholder">パスフレーズ</string>
+    <string name="genui_cluster_ports">ポート: %1$s</string>
+    <string name="genui_cluster_username_optional">ユーザー名（サーバーが必要とする場合）</string>
 </resources>

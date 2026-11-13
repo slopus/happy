@@ -137,8 +137,12 @@ class ClusterSecretDraft(val kind: ClusterSecretKind, prefill: JsonObject) {
     var existing by mutableStateOf<ClusterStored?>(null)
         private set
 
-    /** The prefill's public metadata this form doesn't show (an SSH key's ports, a git server's port), sent as it came. */
+    /** The prefill's public metadata this form doesn't edit (an SSH key's ports, a git server's port), sent as it came. */
     private val rest: JsonObject
+
+    /** The ports [rest] limits an SSH key or git server to, shown with it. */
+    val ports: List<String>
+        get() = ((rest["ports"] as? JsonArray).orEmpty() + listOfNotNull(rest["port"])).mapNotNull { (it as? JsonPrimitive)?.content }
 
     init {
         val public = prefill.obj("public") ?: JsonObject(emptyMap())

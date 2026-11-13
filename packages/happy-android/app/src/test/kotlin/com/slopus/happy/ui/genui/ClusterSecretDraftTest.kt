@@ -106,7 +106,7 @@ class ClusterSecretDraftTest {
 
     @Test
     fun anSshKeyNeedsHostsAndAKey() {
-        val draft = ClusterSecretDraft(ClusterSecretKind.SshKey, prefill("""{"type":"ssh_key","name":"Deploy key","public":{"hosts":["github.com"]}}"""))
+        val draft = ClusterSecretDraft(ClusterSecretKind.SshKey, prefill("""{"type":"ssh_key","name":"Deploy key","public":{"hosts":["github.com"],"ports":[2222],"fingerprint":"SHA256:theirs"}}"""))
         draft.allow(listOf(ClusterOwner.Me))
         assertEquals(setOf(ClusterProblem.Key), draft.problems)
         draft.privateKey = "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----\n"
@@ -114,7 +114,9 @@ class ClusterSecretDraftTest {
         assertEquals(setOf(ClusterProblem.Hosts), draft.problems)
         draft.hosts = "github.com, gitlab.com"
         val form = draft.form()
-        assertEquals("""{"hosts":["github.com","gitlab.com"]}""", form["public"].toString())
+        // Ports it doesn't edit go as they came; a fingerprint is the store's to derive.
+        assertEquals(listOf("2222"), draft.ports)
+        assertEquals("""{"ports":[2222],"hosts":["github.com","gitlab.com"]}""", form["public"].toString())
         assertEquals("""["ssh"]""", form["uses"].toString())
         assertEquals("""{"privateKey":"${draft.privateKey.replace("\n", "\\n")}"}""", form["material"].toString())
     }

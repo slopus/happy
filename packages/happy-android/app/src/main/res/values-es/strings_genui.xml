@@ -84,4 +84,7 @@
     <string name="genui_cluster_saved">Se guardó %1$s</string>
     <string name="genui_cluster_told">El agente que lo pidió puede usarlo y se le dijo su nombre y sus campos. Nunca ve los valores.</string>
     <string name="genui_cluster_methods">Solo solicitudes %1$s</string>
+    <string name="genui_cluster_passphrase_placeholder">Frase de contraseña</string>
+    <string name="genui_cluster_ports">Puertos: %1$s</string>
+    <string name="genui_cluster_username_optional">Nombre de usuario, si el servidor lo pide</string>
 </resources>
