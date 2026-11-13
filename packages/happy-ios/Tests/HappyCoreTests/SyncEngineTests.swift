@@ -820,4 +820,49 @@ final class SyncEngineTests: XCTestCase {
         XCTAssertFalse(requested.contains("/v0/spaces/sidebar?widgets=true"))
         await engine.stop()
     }
+
+    /// A fresh stream (away past `resumeWindow`) paused before its read
+    /// lands, then woken within the window: the wake asks for what came
+    /// after the last event (`Last-Event-ID`) only when the stream came from
+    /// the process an earlier read verified. Another process, or one that
+    /// names none, opens from now and reads.
+    private func wakeAfterAnUnreadStream(daemon first: String?, then second: String?) async throws -> String? {
+        let transport = SyncFixture()
+        await transport.setDaemon(first)
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, resumeWindow: .milliseconds(400), rereadInterval: .zero)
+        await engine.start()
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        await engine.pause()
+        try await Task.sleep(for: .milliseconds(500))
+        await transport.setDaemon(second)
+        await transport.holdNextBootstrap()
+        await engine.start()
+        _ = try await wait(engine) { $0.live }
+        try await eventually { await transport.isHolding() }
+        // The read lands only after the pause has let go of it.
+        let release = Task { try await Task.sleep(for: .milliseconds(100)); await transport.release() }
+        await engine.pause()
+        try await release.value
+        let opened = await transport.streamsOpened()
+        await engine.start()
+        try await eventually { await transport.streamsOpened() > opened }
+        let cursor = await transport.lastStreamCursor()
+        await engine.stop()
+        return cursor
+    }
+
+    func testAWakeAfterAnUnreadStreamFromTheSameProcessPicksUp() async throws {
+        let cursor = try await wakeAfterAnUnreadStream(daemon: "d1", then: "d1")
+        XCTAssertEqual(cursor, "cursor-1")
+    }
+
+    func testAWakeAfterAnUnreadStreamFromAnotherProcessOpensFromNow() async throws {
+        let cursor = try await wakeAfterAnUnreadStream(daemon: "d1", then: "d2")
+        XCTAssertNil(cursor)
+    }
+
+    func testAProcessThatNamesNoneNeverPicksUp() async throws {
+        let cursor = try await wakeAfterAnUnreadStream(daemon: nil, then: nil)
+        XCTAssertNil(cursor)
+    }
 }

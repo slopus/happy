@@ -502,7 +502,12 @@ public actor SyncEngine {
                         snapshot.live = true; snapshot.error = nil; snapshot.reconnecting = false; attempt = 0
                         snapshot.syncing = !verified
                         streamDaemon = daemon
-                        verifiedDaemon = verified || continued ? daemon : nil
+                        // The process a read verified answering again is the
+                        // same owner: a pause before this stream's read lands
+                        // still lets the next wake pick up where it left off,
+                        // and what home lacks stays stale (`signalled`).
+                        let same = daemon != nil && daemon == verifiedDaemon
+                        verifiedDaemon = verified || continued || same ? daemon : nil
                         if fresh { streamCursor = hello["cursor"]?.stringValue ?? streamCursor }
                         if continued {
                             verified = true
