@@ -152,12 +152,6 @@ The same numbers, in Compose:
   (`PictureViewer`: zoom for photos, playback for videos, open and close in
   220 ms ease-out, the grid's thumbnail drawn until the photo is read); the
   check picks, through a 48 corner (Telegram's 42).
-- **The bar morphs.** Telegram swaps the tab bar for the caption bar (the
-  tabs down 36 and out as the caption fades in, 180 ms). Ours, as iOS's attach
-  menu does, makes one glass of them: the tab bar's pill reshapes into the
-  caption's (frame and corners) in **400 ms** on `(0.38, 0.7, 0.125, 1)` and
-  back on the same curve. The tabs are gone by 0.4 of it, the caption's words
-  and send (0.2 → 1) come in after, each clipped to the shape (`BarMorph`).
 - **Confirm as well as send.** Telegram's send pill stays in the caption bar
   and sends at once. The header's far end adds a check and the count (iOS's
   `SelectedButtonNode` shape): the picks go into the composer with the
