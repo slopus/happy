@@ -136,6 +136,11 @@ public actor Store {
     /// computer), and what came meanwhile that their read could not follow.
     private var placesRead: ContinuousClock.Instant?
     private var placesHeld: [JSONValue]?
+    /// Tasks `task.created` told of that aren't the person's yet: one
+    /// takes its place in their list when they join it (`task.joined`).
+    private var announcedTasks: [String: JSONValue] = [:]
+    /// Whether the bots and tasks were read yet: before then they aren't held.
+    private var placesLoaded = false
     /// How soon after a read news may read the bots and tasks again.
     private let placesRereadInterval: Duration
     /// An `agent.updated` the sidebar follows, drawn with the others that
@@ -507,9 +512,34 @@ public actor Store {
 
     private func adoptPlaces(bots: [JSONValue], tasks: [JSONValue]) {
         self.bots = bots; self.tasks = tasks
+        placesLoaded = true
         for owner in bots + tasks { if let agent = owner["agent"] { agents.absorb(agent) } }
         rebuildPlaces()
         publish()
+    }
+
+    /// A new task from its own events, as home takes it (`HomeEvent`):
+    /// `task.created` carries the whole task, kept until `task.joined`
+    /// puts it at its order key in the person's list. False for what needs
+    /// the lists read: a join of a task no event told of, or one already
+    /// held, which moves it.
+    private func joinWithoutRead(_ type: String, _ payload: JSONValue) -> Bool {
+        if type == "task.created" {
+            guard let task = payload["task"], let id = task["id"]?.stringValue,
+                  !tasks.contains(where: { $0["id"]?.stringValue == id }) else { return false }
+            announcedTasks[id] = task
+            return true
+        }
+        guard let membership = payload["membership"], let id = membership["taskId"]?.stringValue, let key = membership["orderKey"]?.stringValue,
+              !tasks.contains(where: { $0["id"]?.stringValue == id }),
+              var task = announcedTasks.removeValue(forKey: id)?.objectValue else { return false }
+        task["membership"] = membership
+        let index = tasks.firstIndex { ($0["membership"]?["orderKey"]?.stringValue ?? "") > key } ?? tasks.endIndex
+        tasks.insert(.object(task), at: index)
+        if let agent = task["agent"] { agents.absorb(agent) }
+        rebuildPlaces()
+        publish()
+        return true
     }
 
     /// The bots and tasks, each with its conversation composed from the newest copies.
@@ -684,6 +714,7 @@ public actor Store {
         case "agent.created":
             if let agent = payload["agent"] { agents.created(agent); rebuildPlaces() }
         case "bot.created", "bot.updated", "task.created", "task.updated", "task.joined", "task.left":
+            if type == "task.created" || type == "task.joined", placesLoaded, placesHeld == nil, joinWithoutRead(type, payload) { return }
             if let membership = payload["membership"] { adoptMembership(membership) }
             if placesHeld != nil { placesHeld?.append(event); return }
             schedulePlacesReload()

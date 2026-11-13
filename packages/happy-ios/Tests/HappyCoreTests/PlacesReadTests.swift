@@ -103,4 +103,36 @@ final class PlacesReadTests: XCTestCase {
         XCTAssertLessThanOrEqual(reads, 2)
         await store.stop()
     }
+
+    /// A task made after the lists were read is taken from its own events,
+    /// at its place in the person's list: the lists aren't read again for it.
+    func testANewTaskIsTakenFromItsEventsWithoutReadingTheLists() async throws {
+        let computer = PlacesComputer()
+        let store = Store(client: AgentClient(transport: computer, token: "t"), placesRereadInterval: .zero)
+        let seen = Task { () -> Bool in
+            var read = false
+            for await snapshot in store.updates {
+                if snapshot.references.agents["a1"] != nil { read = true }
+                if read, snapshot.references.agents["a2"]?.label == "New" { return true }
+            }
+            return false
+        }
+        await store.externalEvent(Self.created)
+        try await eventually("the read") { await computer.tasksReads == 1 }
+        try await Task.sleep(for: .milliseconds(200))
+        await store.externalEvent(.object(["type": .string("task.created"), "payload": .object(["task": .object([
+            "id": .string("t2"), "name": .string("New"), "agent": .object(["id": .string("a2"), "workspaceId": .string("w2")]),
+        ])])]))
+        await store.externalEvent(.object(["type": .string("task.joined"), "payload": .object(["membership": .object([
+            "taskId": .string("t2"), "orderKey": .string("0"),
+        ])])]))
+        let timeout = Task { try await Task.sleep(for: .seconds(4)); seen.cancel() }
+        let shown = await seen.value
+        timeout.cancel()
+        XCTAssertTrue(shown)
+        try await Task.sleep(for: .milliseconds(200))
+        let reads = await computer.tasksReads
+        XCTAssertEqual(reads, 1)
+        await store.stop()
+    }
 }
