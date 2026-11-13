@@ -11,7 +11,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.PI
 import kotlin.math.cos
-import kotlin.math.max
 import kotlin.math.min
 
 /**
@@ -113,26 +112,11 @@ object AttachSpec {
     /** With a few tabs Telegram narrows the bar to 80 a tab and 36 more, centred (its poll rule). */
     fun tabBarWidth(tabs: Int, available: Dp): Dp = min(available.value, (tabs * 80 + 36).toFloat()).dp
 
-    // The caption bar
+    // The caption bar: drawn as the chat's composer (ConversationComposerSpec)
     val captionShift = 36.dp
-    val captionField = 44.dp
-    val captionCorner = 22.dp
-    val captionInset = 7.dp
-    val captionPadding = 5.dp
-    val captionBar = captionField + captionPadding * 2
-    val sendWidth = 52.dp
-    val sendHeight = 38.dp
-    val sendEnd = 11.dp
+    /** The caption grows to this many lines, then scrolls inside the field. */
+    const val CAPTION_LINES = 5
     const val SEND_FROM = 0.2f
-
-    /** The counter on the send pill: at least 18, 9 more than its text; a 2 ring of the sheet round it. */
-    val counterMin = 18.dp
-    val counterRing = 2.dp
-    val counterText = 12.sp
-    /** The counter's centre, this far left of the pill's right edge. */
-    val counterCentre = 50.dp
-
-    fun counterWidth(text: Dp): Dp = max(counterMin.value, 9 + text.value).dp
 
     /**
      * The confirm pill at the header's far end (iOS `SelectedButtonNode`'s shape): 38 tall,
@@ -166,7 +150,7 @@ object AttachSpec {
 /** Telegram's attachment colours: its brand blue where it uses it, our theme elsewhere. */
 @Immutable
 data class AttachColors(
-    /** `chat_attachCheckBoxBackground`, the send and confirm pills and the counter. */
+    /** `chat_attachCheckBoxBackground` and the confirm pill. */
     val accent: Color,
     val onAccent: Color,
     /** `glass_tabUnselected`. */

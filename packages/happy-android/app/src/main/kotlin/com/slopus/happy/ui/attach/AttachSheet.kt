@@ -655,7 +655,6 @@ internal fun AttachSheetLayout(
                         sending = sending,
                         shown = { captionProgress.value },
                         backdrop = source,
-                        sheet = sheetColor,
                         colors = colors,
                         modifier = Modifier.align(Alignment.BottomCenter),
                     )

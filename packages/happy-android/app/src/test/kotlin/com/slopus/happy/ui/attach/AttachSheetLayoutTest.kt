@@ -216,12 +216,16 @@ class AttachSheetLayoutTest {
         rule.onNodeWithText("2 selected").assertIsDisplayed()
         // The sheet grew 26 at its top for the header; the grabber went with it.
         assertDp("header", restingGrabber - 26.dp, rule.node(AttachTags.GRABBER).bounds.top)
-        // The send pill, its count on its top left corner.
+        // The caption bar is the chat composer's pill: 12 in, 48 tall on one line, send's 36 circle 6 from its end.
+        val bar = rule.node(AttachTags.CAPTION_BAR).bounds
         val send = rule.node(AttachTags.SEND).bounds
-        assertDp("send", 52, send.width)
-        assertDp("send", 38, send.height)
+        assertDp("bar in", 12, bar.left)
+        assertDp("bar end", 411 - 12, bar.right)
+        assertDp("one line", 48, bar.height)
+        assertDp("send", 36, send.width)
+        assertDp("send end", bar.right - 6.dp, send.right)
+        assertDp("send foot", bar.bottom - 6.dp, send.bottom)
         val counter = rule.node(AttachTags.COUNTER).bounds
-        assertDp("counter centre 50 left of the pill's right", send.right - 50.dp, (counter.left + counter.right) / 2)
         // The confirm pill at the header's far end, its middle on the "N selected" line.
         val confirm = rule.node(AttachTags.CONFIRM).bounds
         val header = rule.node(AttachTags.HEADER).bounds
@@ -230,6 +234,7 @@ class AttachSheetLayoutTest {
         assertDp("12 from the sheet's end", 411 - 12, confirm.right)
         assertTrue("on the header's line: $confirm / $header", confirm.top < header.bottom && confirm.bottom > header.top)
         assertTrue("above the first row", confirm.bottom <= cells()[0].bounds.top)
+        assertTrue("its count inside it", counter.left >= confirm.left && counter.right <= confirm.right)
         // Unpicking the first renumbers the second.
         checks()[2].performClick()
         rule.waitForIdle()

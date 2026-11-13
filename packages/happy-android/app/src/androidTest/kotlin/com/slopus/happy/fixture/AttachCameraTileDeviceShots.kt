@@ -26,6 +26,7 @@ import com.slopus.happy.attachments.GalleryAccess
 import com.slopus.happy.R
 import com.slopus.happy.ui.conversation.ConversationComposerTags
 import com.slopus.happy.ui.theme.HappyTheme
+import com.slopus.happy.ui.theme.ThemePreference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -47,6 +48,7 @@ class AttachCameraTileDeviceShots {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val device = UiDevice.getInstance(instrumentation)
     private val app = instrumentation.targetContext
+    private val dark = InstrumentationRegistry.getArguments().getString("dark") == "true"
     private val evidence = File(app.filesDir, "device-evidence/attach-camera").apply { mkdirs() }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val seeded = ArrayList<Uri>()
@@ -81,7 +83,7 @@ class AttachCameraTileDeviceShots {
                 activity.enableEdgeToEdge()
                 activity.window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
                 activity.setContent {
-                    HappyTheme {
+                    HappyTheme(preference = if (dark) ThemePreference.Dark else ThemePreference.Light) {
                         Box(Modifier.semantics { testTagsAsResourceId = true }) {
                             FixtureScreens(transport, scope) { it.start() }
                         }
@@ -96,15 +98,20 @@ class AttachCameraTileDeviceShots {
             SystemClock.sleep(2_000)
             device.findObjects(By.desc(pick)).take(2).map { it.visibleCenter }.forEach { device.click(it.x, it.y); SystemClock.sleep(400) }
             SystemClock.sleep(800)
-            device.takeScreenshot(File(evidence, "01-picked-live.png"))
-            device.wait(Until.findObject(By.text(app.getString(R.string.attach_caption_hint))), 5_000)!!.click()
+            device.takeScreenshot(File(evidence, "01-picked-live-${if (dark) "dark" else "light"}.png"))
+            // The caption bar wears the composer's placeholder; the composer under the sheet does too, but the sheet takes the tap.
+            device.wait(Until.findObject(By.text(app.getString(R.string.session_input_placeholder))), 5_000)
+            device.findObjects(By.text(app.getString(R.string.session_input_placeholder))).maxBy { it.visibleBounds.bottom }.visibleCenter.let { device.click(it.x, it.y) }
             SystemClock.sleep(1_200)
             listOf("A_long_caption", "line_two", "line_three", "line_four", "line_five", "line_six", "line_seven").forEachIndexed { index, line ->
                 if (index > 0) device.pressEnter()
                 device.executeShellCommand("input text $line")
             }
             SystemClock.sleep(1_500)
-            device.takeScreenshot(File(evidence, "02-long-caption-live.png"))
+            device.takeScreenshot(File(evidence, "02-long-caption-live-${if (dark) "dark" else "light"}.png"))
+            device.pressBack()
+            SystemClock.sleep(1_200)
+            device.takeScreenshot(File(evidence, "03-long-caption-keyboard-down-live-${if (dark) "dark" else "light"}.png"))
         }
     }
 }

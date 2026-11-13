@@ -1633,8 +1633,9 @@ gained lines is all additions too, and git calls it modified.
   copied into the cache (`AttachmentStaging`: photos normalized as below,
   the rest as they are, three at a time), put in the composer with the
   draft, and the sheet goes and the composer takes the keyboard (iOS does
-  the same). The caption grows to five lines, then
-  scrolls; the in-sheet camera's tile stops at the foot bar's top, so it
+  the same). The caption bar is drawn as the chat's composer (its glass
+  pill, corners, type, placeholder and send circle, without + and the
+  model chips); it grows to five lines, then scrolls; the in-sheet camera's tile stops at the foot bar's top, so it
   never covers the caption over the keyboard. The camera keeps one zoom
   request in flight (`PhotoZoomRequests`, a pinch's latest queued) and
   never ramps the ratio per frame, and Samsung captures without zero
