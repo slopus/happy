@@ -923,7 +923,8 @@ final class LibrarySelectedButton: UIControl {
 }
 
 /// Telegram's number circle over a picture: a white ring with a soft
-/// shadow, filled blue with the pick's number once picked.
+/// shadow, filled in the + sheet's accent with the pick's number once
+/// picked.
 final class LibraryCheckView: UIView {
     private(set) var number: Int?
 

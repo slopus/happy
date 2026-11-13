@@ -6,7 +6,8 @@ import Foundation
 // menu reads them (`AttachmentController`'s dim, `AttachmentPanel`'s tab
 // bar from `rootController.tabBar`, `MediaPickerScreen`'s grid from
 // `list`, `CheckNode`'s overlay style from `list.itemCheckColors`,
-// `MediaPickerTitleView` from `rootController.navigationBar`).
+// `MediaPickerTitleView` from `rootController.navigationBar`), but with
+// the chat composer's send in place of Telegram's blue accent.
 
 extension Palette {
     /// Over the chat while the menu is up.
@@ -16,18 +17,21 @@ extension Palette {
     /// A cell before its picture: `list.mediaPlaceholderColor` (night:
     /// white mixed 90% into #1C1C1D).
     public static let attachMenuCellPlaceholder = ColorToken("#EFEFF4", "#333334")
-    /// The accent: a picked circle's fill, the chosen tab, send.
-    public static let attachMenuAccent = ColorToken("#0088FF", "#3E88F7")
-    /// On the accent: `itemCheckColors.foregroundColor`.
-    public static let attachMenuOnAccent = ColorToken("#FFFFFF")
+    /// The accent: a picked circle's fill, ✓N, a button's fill. The chat
+    /// composer's send (AgentInputPrimaryButton, `.send`).
+    public static let attachMenuAccent = surfaceHighest
+    /// On the accent: the number, ✓N's glyph and count, a button's title;
+    /// send's arrow.
+    public static let attachMenuOnAccent = text
     /// The circle over a picture (`CheckNode`, overlay): a white ring with
     /// a black shadow at 22%.
     public static let attachMenuCheckRing = ColorToken("#FFFFFF")
     public static let attachMenuCheckShadow = ColorToken(light: RGBA(red: 0, green: 0, blue: 0, alpha: 0.22), dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.22))
     /// A tab's glyph and name (`tabBar.textColor`): black at 80% by day,
-    /// white at night; the chosen one takes the accent.
+    /// white at night; the chosen one is full black or white, the lens
+    /// behind it marking it.
     public static let attachMenuTab = ColorToken(light: RGBA(red: 0, green: 0, blue: 0, alpha: 0.8), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 1))
-    public static let attachMenuTabSelected = ColorToken("#0088FF", "#3E88F7")
+    public static let attachMenuTabSelected = text
     /// The lens behind the chosen tab (`LiquidLensView`'s selection).
     public static let attachMenuLens = ColorToken(light: RGBA(red: 0, green: 0, blue: 0, alpha: 0.075), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.1))
     /// The header's title (`navigationBar.primaryTextColor`); its album

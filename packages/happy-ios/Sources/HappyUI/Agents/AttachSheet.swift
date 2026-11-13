@@ -1368,9 +1368,9 @@ final class AttachMenuPlaceholderView: UIScrollView {
         text.numberOfLines = 0
 
         primary.configuration?.cornerStyle = .capsule
-        primary.tintColor = UIColor(Palette.libraryCheckFill)
+        primary.tintColor = UIColor(Palette.attachMenuAccent)
         primary.configuration?.title = Strings.AttachMenu.choosePhotos
-        primary.configuration?.baseForegroundColor = UIColor(Palette.libraryCheckText)
+        primary.configuration?.baseForegroundColor = UIColor(Palette.attachMenuOnAccent)
         primary.configuration?.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
             var attributes = attributes
             attributes.font = Self.buttonFont
@@ -1386,7 +1386,7 @@ final class AttachMenuPlaceholderView: UIScrollView {
             button.titleLabel?.adjustsFontForContentSizeCategory = true
             button.titleLabel?.numberOfLines = 0
             button.titleLabel?.textAlignment = .center
-            button.tintColor = UIColor(Palette.libraryCheckFill)
+            button.tintColor = UIColor(Palette.attachMenuControl)
             button.accessibilityIdentifier = id
         }
         settings.addAction(UIAction { [weak self] _ in self?.onSettings?() }, for: .touchUpInside)
@@ -1477,13 +1477,13 @@ final class AttachMenuRow: UIControl {
     private let separator = UIView()
 
     init(icon: Icon, title text: String, id: String) {
-        self.icon = IconView(icon, size: AttachMenuFilesLayout.Metrics.icon, tint: Palette.libraryCheckFill)
+        self.icon = IconView(icon, size: AttachMenuFilesLayout.Metrics.icon, tint: Palette.attachMenuControl)
         super.init(frame: .zero)
         self.icon.isUserInteractionEnabled = false
         title.text = text
         title.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .systemFont(ofSize: 17))
         title.adjustsFontForContentSizeCategory = true
-        title.textColor = UIColor(Palette.libraryCheckFill)
+        title.textColor = UIColor(Palette.attachMenuControl)
         title.numberOfLines = 0
         separator.backgroundColor = UIColor(Palette.divider)
         for view in [self.icon, title, separator] as [UIView] { addSubview(view) }

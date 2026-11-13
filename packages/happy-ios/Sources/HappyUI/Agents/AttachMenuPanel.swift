@@ -11,7 +11,7 @@ import UIKit
 ///
 /// The lens is Telegram's own for systems without the private liquid lens
 /// (`LiquidLensView`'s legacy selection): a tinted capsule 3 in, the chosen
-/// tab's glyph and name in the accent inside it, 2 bigger while a finger
+/// tab's glyph and name in full ink inside it, 2 bigger while a finger
 /// holds it.
 @MainActor
 final class AttachMenuPanel: UIView, UIGestureRecognizerDelegate {
@@ -45,7 +45,7 @@ final class AttachMenuPanel: UIView, UIGestureRecognizerDelegate {
 
     /// The caption: the chat composer's card without "+" or the chips.
     let card = AgentInputCardView(configuration: AgentInputCardConfiguration(
-        placeholder: Strings.AttachMenu.addCaption,
+        placeholder: Strings.Composer.inputPlaceholder,
         primaryAction: .send,
         primaryAccessibilityLabel: Strings.AttachMenu.send
     ))
