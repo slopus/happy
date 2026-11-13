@@ -328,7 +328,8 @@ describe('SidebarView Agent space exit', () => {
         act(() => renderer.root.findByProps({ testID: 'sidebar-session-list-button' }).props.onPress());
         expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith('/');
         expect(mocks.toggleLeftSidebar).not.toHaveBeenCalled();
-        expect(mocks.setDesktopSidebarMode).toHaveBeenCalledWith('projects');
+        expect(mocks.setDesktopSidebarMode).toHaveBeenCalledWith('timeline');
+        expect(mocks.setDesktopSidebarListMode).not.toHaveBeenCalled();
         act(() => renderer.unmount());
     });
 
@@ -679,7 +680,7 @@ describe('SidebarView Agent space exit', () => {
         act(() => header.props.onSearch());
         expect(mocks.navigate).toHaveBeenCalledWith('/session/search');
         act(() => renderer.root.findByProps({ testID: 'sidebar-session-list-button' }).props.onPress());
-        expect(mocks.setDesktopSidebarMode).toHaveBeenCalledWith('projects');
+        expect(mocks.setDesktopSidebarMode).toHaveBeenLastCalledWith('timeline');
         expect(mocks.navigate).toHaveBeenCalledWith('/');
 
         mocks.pathname = '/session/ordinary-session';
@@ -744,7 +745,7 @@ describe('SidebarView Agent space exit', () => {
         act(() => renderer.unmount());
     });
 
-    it('opens a collapsed session sidebar from the desktop home button', () => {
+    it('opens a collapsed session sidebar from the desktop home button without resetting its view', () => {
         mocks.pathname = '/session/example';
         mocks.leftVisible = true; // Hover-revealed but not pinned.
         mocks.leftPinned = false;
@@ -752,9 +753,36 @@ describe('SidebarView Agent space exit', () => {
         act(() => { renderer = TestRenderer.create(<SidebarView desktopDensity desktopPrimaryNavigation />); });
         act(() => renderer.root.findByProps({ testID: 'sidebar-session-list-button' }).props.onPress());
         expect(mocks.toggleLeftSidebar).toHaveBeenCalledOnce();
-        expect(mocks.setDesktopSidebarMode).toHaveBeenCalledWith('projects');
-        expect(mocks.setDesktopSidebarListMode).toHaveBeenCalledWith('projects');
+        expect(mocks.setDesktopSidebarMode).toHaveBeenCalledWith('timeline');
+        expect(mocks.setDesktopSidebarListMode).not.toHaveBeenCalled();
         act(() => renderer.unmount());
+    });
+
+    it.each(['projects', 'lists', 'timeline'])('restores the saved %s view across desktop destinations and sidebar remounts', mode => {
+        mocks.spaceAgent = null;
+        mocks.desktopSidebarListMode = mode;
+
+        for (const pathname of ['/projects', '/relationship-advisor', '/session/example', '/']) {
+            for (const pinned of [false, true]) {
+                vi.clearAllMocks();
+                mocks.pathname = pathname;
+                mocks.leftPinned = pinned;
+                let renderer: any;
+                act(() => { renderer = TestRenderer.create(<SidebarView desktopDensity desktopPrimaryNavigation />); });
+                act(() => renderer.root.findByProps({ testID: 'sidebar-session-list-button' }).props.onPress());
+
+                expect(mocks.setDesktopSidebarMode).toHaveBeenCalledExactlyOnceWith(mode);
+                expect(mocks.setDesktopSidebarListMode).not.toHaveBeenCalled();
+                expect(mocks.desktopSidebarListMode).toBe(mode);
+                if (pathname === '/projects' || pathname === '/relationship-advisor') {
+                    expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith('/');
+                } else {
+                    expect(mocks.navigate).not.toHaveBeenCalled();
+                }
+                expect(mocks.toggleLeftSidebar).toHaveBeenCalledTimes(pathname !== '/projects' && !pinned ? 1 : 0);
+                act(() => renderer.unmount());
+            }
+        }
     });
 
 

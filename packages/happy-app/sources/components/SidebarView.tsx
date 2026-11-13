@@ -455,9 +455,7 @@ export const SidebarView = React.memo(({
     }, [closeDrawer, router]);
 
     const openDesktopSessionLists = () => {
-        const targetMode = desktopPrimaryNavigation ? 'projects' : desktopSidebarListMode;
-        setDesktopSidebarMode(targetMode);
-        if (desktopPrimaryNavigation) setDesktopSidebarListMode('projects');
+        setDesktopSidebarMode(desktopSidebarListMode);
         if (desktopPrimaryNavigation && pathname === '/projects') {
             go('/');
             return;
