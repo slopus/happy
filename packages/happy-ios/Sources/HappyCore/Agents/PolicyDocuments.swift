@@ -17,13 +17,12 @@ public enum PolicyDocument: String, CaseIterable, Sendable {
     /// The longest the server keeps, in UTF-8 bytes.
     public var limit: Int { self == .instructions ? 256 * 1024 : 32 * 1024 }
 
-    // MARK: Legacy: delete once happy-cluster serves the documents everywhere
-
-    /// Whether a server serves the documents from its settings: one that
-    /// still flags a Policy vault keeps them there instead (as deployed
-    /// before), and shows no settings for them. Nil until its vaults are read.
-    public static func served(vaults: [AgentWire.Surface]?) -> Bool? {
-        vaults.map { !$0.contains { $0.type == "vault" && $0.policyVault == true } }
+    /// Whether a server serves the documents from its settings: one whose
+    /// permission catalog has `policy.edit`, granted to the person or not,
+    /// as desktop tells. One that doesn't (deployed before) shows no
+    /// settings for them. Nil until its permissions are read.
+    public static func served(_ permissions: Permissions?) -> Bool? {
+        permissions.map { $0.knows(.policyEdit) }
     }
 }
 

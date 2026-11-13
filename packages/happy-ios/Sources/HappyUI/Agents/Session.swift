@@ -36,8 +36,8 @@ final class Session {
     /// What each vault lets the person do, by Surface ID (cloud only).
     private(set) var vaultAccesses: [String: VaultAccess] = [:]
     /// The server serves its instructions and security policy from its
-    /// settings (`PolicyDocument.served`); nil until its vaults are read.
-    private(set) var policyDocuments: Bool?
+    /// settings (`PolicyDocument.served`); nil until its permissions are read.
+    var policyDocuments: Bool? { PolicyDocument.served(permissions) }
     private var accessWatchers: [UUID: () -> Void] = [:]
     /// What the controls a role decides follow: a computer gates nothing.
     var gate: RoleGate { isCloud ? .cloud(permissions) : .open }
@@ -349,10 +349,8 @@ final class Session {
 
     private func adopt(vaults surfaces: [AgentWire.Surface]) {
         let next = Dictionary(surfaces.filter { $0.type == "vault" }.map { ($0.id, $0.vaultAccess) }, uniquingKeysWith: { first, _ in first })
-        let served = PolicyDocument.served(vaults: surfaces)
-        guard next != vaultAccesses || served != policyDocuments else { return }
+        guard next != vaultAccesses else { return }
         vaultAccesses = next
-        policyDocuments = served
         for watcher in accessWatchers.values { watcher() }
     }
 

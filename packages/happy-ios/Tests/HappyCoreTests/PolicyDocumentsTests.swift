@@ -32,15 +32,19 @@ final class PolicyDocumentsTests: XCTestCase {
         XCTAssertFalse(RoleGate.cloud(nil).allows(.policyEdit), "unread permissions edit nothing")
     }
 
-    /// Legacy: a server that still flags a Policy vault keeps the documents
-    /// there, and its settings show none; a new one (a Files vault only)
-    /// serves them. Delete with `PolicyDocument.served`.
-    func testOnlyAServerWithoutAPolicyVaultServesThemFromItsSettings() {
-        let files = AgentWire.Surface(id: "files", type: "vault", name: "Files", access: "write")
-        let policy = AgentWire.Surface(id: "policy", type: "vault", name: "Policy", access: "read", policyVault: true)
-        XCTAssertEqual(PolicyDocument.served(vaults: [files]), true)
-        XCTAssertEqual(PolicyDocument.served(vaults: []), true)
-        XCTAssertEqual(PolicyDocument.served(vaults: [files, policy]), false)
-        XCTAssertNil(PolicyDocument.served(vaults: nil), "not read yet")
+    /// A server serves them from its settings when its permission catalog
+    /// has `policy.edit`, granted or not, whether or not it still keeps a
+    /// Policy vault beside them; one whose catalog doesn't (deployed
+    /// before) shows none.
+    func testAServerWhoseCatalogHasPolicyEditServesThem() throws {
+        func read(_ json: String) throws -> Permissions { try JSONDecoder().decode(Permissions.self, from: Data(json.utf8)) }
+        let member = try read(#"{"role":"member","granted":["content.write"],"permissions":[{"id":"content.write","description":"x"},{"id":"policy.edit","description":"y"},{"bad":1}]}"#)
+        XCTAssertEqual(member.known, ["content.write", "policy.edit"])
+        XCTAssertEqual(PolicyDocument.served(member), true, "shown read-only to a member")
+        XCTAssertFalse(RoleGate.cloud(member).allows(.policyEdit))
+        let deployed = try read(#"{"role":"owner","granted":["content.write","config.manage"],"permissions":[{"id":"content.write","description":"x"}]}"#)
+        XCTAssertEqual(PolicyDocument.served(deployed), false)
+        XCTAssertEqual(PolicyDocument.served(try read(#"{"granted":["content.write"]}"#)), false, "no catalog, nothing served")
+        XCTAssertNil(PolicyDocument.served(nil), "not read yet")
     }
 }
