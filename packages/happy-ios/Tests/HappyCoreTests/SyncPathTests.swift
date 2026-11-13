@@ -22,6 +22,9 @@ private actor PathServer: AgentTransport {
     var sends = 0
     /// The conversation's runs, oldest first: each with its messages' ids.
     var runs: [(id: String, messages: [String], ended: Bool)] = [("r1", ["u1", "a1"], true), ("r2", ["u2", "a2"], true)]
+    /// Messages changed in place since they were written.
+    var edits: [String: String] = [:]
+    var dropHeld = false
 
     func setOwner(_ id: String) { owner = .string(id) }
     func holdDesktopReads(_ hold: Bool) {
@@ -35,6 +38,7 @@ private actor PathServer: AgentTransport {
     func failNextMessageReads(_ count: Int) { failMessages = count }
     func holdMessageReads(_ hold: Bool) {
         holdMessages = hold
+        if hold { dropHeld = false }
         if !hold { messageWaiters.forEach { $0.resume() }; messageWaiters.removeAll() }
     }
     /// A new run the phone hasn't seen, finished, and its event.
@@ -42,6 +46,10 @@ private actor PathServer: AgentTransport {
         runs.append((id, ["u-\(id)", "a-\(id)"], true))
         journal += 1
     }
+    /// A finished message changed in place, as a resolved failure's card is.
+    func edit(_ id: String, _ text: String) { edits[id] = text }
+    /// The runs the computer holds now, replacing what it held.
+    func setRuns(_ runs: [(id: String, messages: [String], ended: Bool)]) { self.runs = runs }
     func lastStreamHeaders() -> [String: String]? { streams.last?.headers }
     func streamCount() -> Int { streams.count }
     func liveStreams() -> Int { openStreams }
@@ -69,7 +77,7 @@ private actor PathServer: AgentTransport {
 
     private func message(_ id: String) -> JSONValue {
         .object(["id": .string(id), "role": .string(id.hasPrefix("u") ? "user" : "agent"), "createdAt": .number(1), "metadata": .object([:]),
-                 "content": .array([.object(["type": .string("text"), "text": .string("text of \(id)")])])])
+                 "content": .array([.object(["type": .string("text"), "text": .string(edits[id] ?? "text of \(id)")])])])
     }
 
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
@@ -85,7 +93,10 @@ private actor PathServer: AgentTransport {
         } else if path.hasPrefix("/v0/agents/s/messages?") {
             messageQueries.append(path)
             if failMessages > 0 { failMessages -= 1; throw URLError(.timedOut) }
-            if holdMessages { await withCheckedContinuation { messageWaiters.append($0) } }
+            if holdMessages {
+                await withCheckedContinuation { messageWaiters.append($0) }
+                if dropHeld { throw URLError(.networkConnectionLost) }
+            }
             var selected = runs
             if let after = URLComponents(string: path)?.queryItems?.first(where: { $0.name == "after" })?.value {
                 guard let index = runs.firstIndex(where: { $0.messages.contains(after) }) else { return .init(status: 404, body: Data("{}".utf8)) }
@@ -116,6 +127,11 @@ private actor PathServer: AgentTransport {
         return .init(status: 200, body: body)
     }
     private func closed() { openStreams -= 1 }
+    /// The shared client let go: the reads held on it die with it.
+    func reset(_ category: RequestCategory) {
+        dropHeld = true
+        holdMessageReads(false)
+    }
     func close() { dropStreams() }
 }
 
@@ -141,8 +157,11 @@ final class SyncPathTests: XCTestCase {
     private final class Shown: @unchecked Sendable {
         private let lock = NSLock()
         private var value = ChatSnapshot()
+        private var failed = false
         var snapshot: ChatSnapshot { lock.withLock { value } }
-        func set(_ snapshot: ChatSnapshot) { lock.withLock { value = snapshot } }
+        /// Whether any snapshot said a read failed.
+        var saidFailure: Bool { lock.withLock { failed } }
+        func set(_ snapshot: ChatSnapshot) { lock.withLock { value = snapshot; failed = failed || snapshot.error != nil } }
         var texts: [String] { snapshot.items.map(\.text) }
     }
 
@@ -221,9 +240,10 @@ final class SyncPathTests: XCTestCase {
         await engine.stop()
     }
 
-    /// Away briefly, the stream picks up where it left off and nothing is
-    /// read again; away longer, it opens from now, home is read, and the
-    /// chat reads only the runs after the newest it holds.
+    /// Away briefly, the stream picks up where it left off, home isn't read
+    /// again, and the chat reads only the runs after the newest it holds;
+    /// away longer, it opens from now, home is read, and the chat reads its
+    /// newest runs whole.
     func testShortAwayPicksUpAndLongAwayReadsOnlyWhatIsNew() async throws {
         for long in [false, true] {
             let server = PathServer()
@@ -248,7 +268,7 @@ final class SyncPathTests: XCTestCase {
                 try await eventually("the new run") { shown.texts.contains("text of a-r3") }
                 let asked = await server.queries().dropFirst(queries)
                 XCTAssertEqual(asked.count, 1, "\(asked)")
-                XCTAssertTrue(asked.first?.contains("after=a2") == true, "\(asked)")
+                XCTAssertTrue(asked.first?.contains("after=") == false, "\(asked)")
                 XCTAssertTrue(shown.texts.contains("text of a1"), "the runs held were let go")
             } else {
                 XCTAssertNotNil(from)
@@ -264,6 +284,68 @@ final class SyncPathTests: XCTestCase {
             await conversation.stop()
             await engine.stop()
         }
+    }
+
+    /// A finished run changed while away longer than the window (a failure
+    /// resolved on the desktop): with no replay to bring its
+    /// `message.updated`, the chat still shows it changed.
+    func testAFinishedRunChangedDuringALongAbsenceShowsChanged() async throws {
+        let server = PathServer()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder(), resumeWindow: .zero)
+        await engine.start()
+        let (conversation, shown) = await open(engine, client)
+        try await eventually("settled") { let home = await Self.home(engine); return home.live && shown.snapshot.synced && shown.texts.contains("text of a2") }
+        await engine.pause()
+        await server.edit("a2", "resolved")
+        await engine.start()
+        try await eventually("the change") { shown.texts.contains("resolved") && !shown.texts.contains("text of a2") }
+        await conversation.stop()
+        await engine.stop()
+    }
+
+    /// A short absence whose newest finished message the computer no longer
+    /// holds: the newest runs are read at once, and no failure is said.
+    func testAnAnchorTheComputerNoLongerHoldsReadsTheNewestRunsAtOnce() async throws {
+        let server = PathServer()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder())
+        await engine.start()
+        let (conversation, shown) = await open(engine, client)
+        try await eventually("settled") { let home = await Self.home(engine); return home.live && !home.syncing && shown.snapshot.synced }
+        let queries = await server.queries().count
+        await engine.pause()
+        await server.setRuns([("r1", ["u1", "a1"], true), ("r9", ["u9", "a9"], true)])
+        let back = ContinuousClock.now
+        await engine.start()
+        try await eventually("the newest runs") { shown.texts.contains("text of a9") && shown.snapshot.synced }
+        XCTAssertLessThan(ContinuousClock.now - back, .milliseconds(900), "waited out a backoff")
+        let asked = await server.queries().dropFirst(queries)
+        XCTAssertEqual(asked.count, 2, "\(asked)")
+        XCTAssertTrue(asked.first?.contains("after=a2") == true, "\(asked)")
+        XCTAssertTrue(asked.last?.contains("after=") == false, "\(asked)")
+        XCTAssertFalse(shown.saidFailure)
+        await conversation.stop()
+        await engine.stop()
+    }
+
+    /// The phone's way out moves while the open chat's read is on its way:
+    /// the read dies with the client let go, is asked again on a new one,
+    /// and no failure is said.
+    func testAReadLetGoWithItsClientOnAMoveSaysNoFailure() async throws {
+        let server = PathServer()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder())
+        await engine.start()
+        try await eventually("live") { let home = await Self.home(engine); return home.live && !home.syncing }
+        await server.holdMessageReads(true)
+        let (conversation, shown) = await open(engine, client)
+        try await eventually("the chat's read") { await server.queries().count == 1 }
+        await engine.moved()
+        try await eventually("read again") { shown.snapshot.synced && shown.texts.contains("text of a2") }
+        XCTAssertFalse(shown.saidFailure)
+        await conversation.stop()
+        await engine.stop()
     }
 
     /// A stream picked up where it left off verifies its process too: the
@@ -382,6 +464,23 @@ final class SyncPathTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(400))
         let after = await server.reads()
         XCTAssertEqual(after, reads + 1, "news the read had read home again")
+        await engine.stop()
+    }
+
+    /// An agent removed reads home again, once.
+    func testAnAgentRemovedReadsHomeOnce() async throws {
+        let server = PathServer()
+        let client = AgentClient(transport: server, token: "t")
+        let engine = SyncEngine(client: client, directory: folder(), rereadInterval: .zero)
+        await engine.start()
+        try await eventually("live") { let home = await Self.home(engine); return home.live && !home.syncing }
+        try await Task.sleep(for: .milliseconds(100))
+        let reads = await server.reads()
+        await server.emit(.object(["type": .string("agent.removed"), "payload": .object(["agentId": .string("s"), "previousVersion": .string("v0001")])]))
+        try await eventually("home read") { await server.reads() == reads + 1 }
+        try await Task.sleep(for: .milliseconds(400))
+        let after = await server.reads()
+        XCTAssertEqual(after, reads + 1)
         await engine.stop()
     }
 

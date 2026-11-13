@@ -369,13 +369,20 @@ public actor SyncEngine {
     /// paused meanwhile.
     public func moved() async {
         guard !stopped, runner != nil else { return }
-        await client.transport.reset(.realtime)
+        await resetCarrier()
         guard !stopped, runner != nil else { return }
         snapshot.error = nil
         snapshot.reconnecting = true
         let client = client
         Task { await client.resumed() }
         if await pause(), !backgrounded { start() }
+    }
+
+    /// Lets go of the client the stream and queries share; the chats' reads
+    /// on their way across it die with it (`Store.carrierResets`).
+    private func resetCarrier() async {
+        await spaces.carrierReset()
+        await client.transport.reset(.realtime)
     }
 
     public func stop() async {
@@ -583,7 +590,7 @@ public actor SyncEngine {
                             }
                         }
                     } else if let type = event["type"]?.stringValue,
-                              type == "agent.created" || ["project.", "workspace.", "bot.", "task.", "surface."].contains(where: type.hasPrefix) {
+                              ["agent.created", "agent.removed"].contains(type) || ["project.", "workspace.", "bot.", "task.", "surface."].contains(where: type.hasPrefix) {
                         // Agents' context, commands and drafts aren't home's;
                         // settings were taken in above.
                         scheduleReconcile(generation, news: frame.id)
@@ -623,7 +630,7 @@ public actor SyncEngine {
                 }
                 return
             }
-            if resetStream { await client.transport.reset(.realtime) }
+            if resetStream { await resetCarrier() }
             await documents.closed()
             guard current(generation) else { return }
             snapshot.live = false

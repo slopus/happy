@@ -421,6 +421,13 @@ public actor Conversation {
     /// read again, once.
     private var readCursor: String?
     private var streamFrom: String?
+    /// The account's stream picks up where it left off (`.resync(replays:)`):
+    /// its replay brings what changed in runs that had finished, so the read
+    /// beside it need only bring the runs after the newest finished one held.
+    /// Any other read takes the newest runs whole: a finished run is changed
+    /// in place (a failure resolved, a permission answered), and that is in
+    /// no run after it.
+    private var anchoring = false
     /// Subagents made or retitled while history was being read, applied over
     /// the bootstrap's list.
     private var heldChildren: [JSONValue] = []
@@ -700,6 +707,7 @@ public actor Conversation {
             if Task.isCancelled { return }
             switch event {
             case .resync(let from, let stale, let replays):
+                anchoring = replays
                 // The stream opening: read now, a read on its way asked
                 // again only if a pause came since it began (perhaps on a
                 // tunnel the suspension left dead); one on a live tunnel,
@@ -731,20 +739,24 @@ public actor Conversation {
     }
 
     /// What is pending, and the runs after the newest finished one held
-    /// here, whole (the newest runs when none is held, or too many came
-    /// since); events that arrive meanwhile are applied after. Asked again
+    /// here, whole, while the stream replays what it missed (`anchoring`);
+    /// the newest runs otherwise, when none is held, or too many came
+    /// since. Events that arrive meanwhile are applied after. Asked again
     /// with backoff until a read lands, saying meanwhile why it didn't.
     private func reload() {
         reading?.cancel()
         if heldEvents == nil { heldEvents = [] }
         let client = client
         let agentId = agentId
+        let anchors = anchoring
+        anchoring = false
         reading = Task {
             var failures = 0
-            var anchored = true
+            var anchored = anchors
             while true {
                 if heldEvents == nil { heldEvents = [] }
                 let after = anchored ? anchor() : nil
+                let resets = await store.carrierResets
                 do {
                     async let bootstrap = client.bootstrap(agentId)
                     async let page = client.messages(agentId, after: after?.message)
@@ -756,17 +768,20 @@ public actor Conversation {
                     return
                 } catch {
                     if Task.isCancelled { return }
-                    // A message the computer no longer holds: the newest runs instead.
-                    if case AgentClientError.status = error { anchored = false }
-                    reads += 1
-                    snapshot.synced = false
-                    snapshot.error = Store.describe(error)
-                    Happenings.errorShown(.conversationLoad, error)
-                    snapshot.loaded = true
-                    let held = heldEvents ?? []
-                    heldEvents = nil
-                    for event in held { receive(event, publishes: false) }
-                    publish()
+                    // A message the computer no longer holds: the newest runs instead, at once.
+                    if after != nil, case AgentClientError.status = error { anchored = false; continue }
+                    // Let go with its client (a network change): asked again, unsaid.
+                    if await store.carrierResets == resets {
+                        reads += 1
+                        snapshot.synced = false
+                        snapshot.error = Store.describe(error)
+                        Happenings.errorShown(.conversationLoad, error)
+                        snapshot.loaded = true
+                        let held = heldEvents ?? []
+                        heldEvents = nil
+                        for event in held { receive(event, publishes: false) }
+                        publish()
+                    }
                 }
                 do { try await Task.sleep(for: .seconds(min(30, 1 << min(failures, 5)))) } catch { return }
                 failures += 1

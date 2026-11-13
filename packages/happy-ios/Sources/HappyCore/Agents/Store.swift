@@ -127,6 +127,10 @@ public actor Store {
     private var placesReload: Task<Void, Never>?
     /// Paused since the stream last opened (`externalOpening`).
     private var pausedSinceOpening = false
+    /// How many times the client the stream and queries share was let go
+    /// (`SyncEngine.resetCarrier`): a read on its way dies with it, and is
+    /// asked again without saying it failed.
+    public private(set) var carrierResets = 0
     private var placesDirty = false
     /// When the bots and tasks were last read (~0.8 MB on a busy
     /// computer), and what came meanwhile that their read could not follow.
@@ -180,6 +184,8 @@ public actor Store {
         pausedSinceOpening = false
         for listener in listeners.values { listener.continuation.yield(.resync(from: nil, stale: stale, replays: replays)) }
     }
+
+    public func carrierReset() { carrierResets += 1 }
 
     /// The account's stream is open. It carries everything after
     /// `missedBefore`; what came before it, those following read again.
