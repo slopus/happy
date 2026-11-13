@@ -126,6 +126,8 @@ class ArtifactActions(
     val onDelete: (suspend () -> Unit)? = null,
     /** Where a Gen UI version's secret form saves; null where there is no computer to save to. */
     val genUiSecrets: GenUiSecretApi? = null,
+    /** Opens a plugin's page for a Gen UI `plugin` button; null where the computer doesn't report `capabilities.plugins`. */
+    val onOpenPlugin: ((String) -> Unit)? = null,
 )
 
 /**
@@ -222,7 +224,7 @@ fun ArtifactScreen(
                     is ArtifactUi.GenUi -> if (media != null) {
                         val state = remember(ui) { GenUiState() }
                         val secrets = rememberGenUiSecretForm(actions.genUiSecrets, media.artifactId, ui.version, state)
-                        val host = rememberGenUiArtifactHost(ui, media, actions.onOpenWeb, onView = { items, index -> viewing = items to index }, secrets = secrets)
+                        val host = rememberGenUiArtifactHost(ui, media, actions.onOpenWeb, onView = { items, index -> viewing = items to index }, secrets = secrets, onPlugin = actions.onOpenPlugin)
                         GenUiArtifactView(ui, host, state)
                         secrets?.Sheet()
                     }

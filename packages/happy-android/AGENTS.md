@@ -2035,8 +2035,9 @@ validated closed (a value anywhere makes it no action). Its form is
 stored name opens change mode, blank keeps, removed is `null`, `ifMatch` the
 version) and saves only through `POST
 /v0/artifacts/:id/versions/:n/actions` with a retry id; values stay in the
-sheet's memory. `cluster_secret` (Happy Cloud connections) and `plugin` stay
-disabled until their forms/pages exist.
+sheet's memory. `plugin` opens `NavHostController.openPlugin` where the
+session's `pluginsAvailable` is true. `cluster_secret` (Happy Cloud
+connections) stays disabled until its form exists.
 
 ### Mermaid
 

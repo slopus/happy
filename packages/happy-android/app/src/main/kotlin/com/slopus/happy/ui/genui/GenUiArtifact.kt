@@ -44,8 +44,8 @@ object GenUiArtifactTags {
  * secret and message actions need the version's origin agent, `secret`
  * needs a Happy Agent computer that reports `artifactSecretActions` (a
  * Happy Cloud one serves `cluster_secret` instead, whose form this build
- * doesn't have yet), and `tool` and anything unknown are drawn disabled. So is
- * `plugin`, reported as unsupported until this build has a plugin page to open. Pictures are the
+ * doesn't have yet), `plugin` opens [onPlugin] where the computer reports
+ * `plugins`, and `tool` and anything unknown are drawn disabled. Pictures are the
  * version's own files, read through [media]; a tap on one opens the viewer
  * on its group.
  */
@@ -57,13 +57,17 @@ fun rememberGenUiArtifactHost(
     onView: (items: List<ArtifactMediaItem>, index: Int) -> Unit,
     onMessage: ((String) -> Unit)? = null,
     secrets: GenUiSecretForm? = null,
+    /** Opens a plugin's page; null where the computer doesn't report `capabilities.plugins`. */
+    onPlugin: ((String) -> Unit)? = null,
 ): GenUiHost {
     val context = LocalContext.current
     val open by rememberUpdatedState(onOpenWeb)
     val view by rememberUpdatedState(onView)
     val message by rememberUpdatedState(onMessage)
+    val plugin by rememberUpdatedState(onPlugin)
     val sends = onMessage != null
-    return remember(ui, media, sends, secrets) {
+    val plugins = onPlugin != null
+    return remember(ui, media, sends, secrets, plugins) {
         GenUiHost(
             onAction = { key, action ->
                 when (action) {
@@ -71,7 +75,8 @@ fun rememberGenUiArtifactHost(
                     is Action.Copy -> copyToClipboard(context, action.text)
                     is Action.Message -> message?.invoke(action.text)
                     is Action.Secret -> secrets?.open(key, action)
-                    is Action.ClusterSecret, is Action.Plugin, is Action.Tool, is Action.Unsupported -> Unit
+                    is Action.Plugin -> plugin?.invoke(action.id)
+                    is Action.ClusterSecret, is Action.Tool, is Action.Unsupported -> Unit
                 }
             },
             onView = { _, viewer ->
@@ -82,7 +87,7 @@ fun rememberGenUiArtifactHost(
             },
             supports = { action ->
                 // Read in composition, so the button enables once the computer's health has said.
-                val capabilities = GenUiCapabilities(secretActions = secrets?.served == true)
+                val capabilities = GenUiCapabilities(secretActions = secrets?.served == true, plugins = plugins)
                 GenUiActions.enabled(action, secrets?.host ?: GenUiHostKind.HappyAgent, origin = ui.origin != null, capabilities) && when (action) {
                     is Action.Open -> isHttps(action.url)
                     is Action.Message -> sends

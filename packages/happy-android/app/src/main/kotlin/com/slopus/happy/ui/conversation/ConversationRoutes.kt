@@ -14,6 +14,7 @@ import com.slopus.happy.connection.networkPath
 import com.slopus.happy.ui.files.workspaceSource
 import com.slopus.happy.ui.chat.rememberShownLinkState
 import com.slopus.happy.ui.page
+import com.slopus.happy.ui.plugins.openPlugin
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -518,6 +519,8 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                         session.client, session.media, conversation.agentId,
                         onMessage = { words -> conversation.send(words) },
                         onOpenWeb = { url -> nav.navigate(BrowserRoute(route.connectionId, url, conversation.agentId)) },
+                        plugins = session.pluginsAvailable,
+                        onOpenPlugin = { id -> nav.openPlugin(route.connectionId, id) },
                     ),
                     onRetryLoad = conversation::retryLoad,
                     loadMedia = conversation::media,

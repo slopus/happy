@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -34,6 +35,8 @@ import com.slopus.happy.ui.artifacts.ArtifactUi
 import com.slopus.happy.ui.artifacts.ArtifactViewer
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 
 /** API.md: a render document is at most 4 MiB. */
@@ -82,6 +85,10 @@ class GenUiInline(
     val onMessage: (String) -> Unit,
     /** An https address a block opened. */
     val onOpenWeb: (String) -> Unit,
+    /** Whether the computer reports `capabilities.plugins`, so a `plugin` button runs. */
+    val plugins: StateFlow<Boolean> = MutableStateFlow(false),
+    /** Opens a plugin's page. */
+    val onOpenPlugin: (String) -> Unit = {},
 ) {
     /** One version as read, with what was done to it. */
     class Block(val ui: ArtifactUi.GenUi, val media: ArtifactMedia, val state: GenUiState = GenUiState())
@@ -152,7 +159,8 @@ object GenUiInlineTags {
  * holds the height it last drew at (or [GenUiInline.DEFAULT_HEIGHT]) until
  * read. A failed read leaves only the card. A picture opens the viewer on
  * its group; `message` goes to this conversation when its agent made the
- * version; `secret` opens the secret form, saved for whichever agent made it.
+ * version; `secret` opens the secret form, saved for whichever agent made it;
+ * `plugin` opens its page where the computer has plugins.
  */
 @Composable
 fun GenUiInlineBlock(artifactId: String, version: Int, inline: GenUiInline, label: (String) -> String, modifier: Modifier = Modifier) {
@@ -173,11 +181,13 @@ fun GenUiInlineBlock(artifactId: String, version: Int, inline: GenUiInline, labe
     var viewing by remember { mutableStateOf<Pair<List<ArtifactMediaItem>, Int>?>(null) }
     val sends = block.ui.origin != null && block.ui.origin == inline.agentId
     val secrets = rememberGenUiSecretForm(inline.secrets, artifactId, version, block.state)
+    val plugins by inline.plugins.collectAsState()
     val host = rememberGenUiArtifactHost(
         block.ui, block.media, inline.onOpenWeb,
         onView = { items, index -> viewing = items to index },
         onMessage = if (sends) inline.onMessage else null,
         secrets = secrets,
+        onPlugin = if (plugins) inline.onOpenPlugin else null,
     )
     val density = LocalDensity.current
     GenUiView(

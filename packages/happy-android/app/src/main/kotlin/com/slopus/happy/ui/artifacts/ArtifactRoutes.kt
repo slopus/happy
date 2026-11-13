@@ -38,6 +38,7 @@ import com.slopus.happy.ui.browser.BrowserPage
 import com.slopus.happy.ui.browser.BrowserScreen
 import com.slopus.happy.ui.browser.openOutside
 import com.slopus.happy.ui.genui.GenUiSecretApi
+import com.slopus.happy.ui.plugins.openPlugin
 import com.slopus.happy.ui.connection.LocalHappyLinks
 import kotlinx.serialization.Serializable
 
@@ -155,12 +156,13 @@ private fun ArtifactEntry(graph: AppGraph, nav: NavHostController, route: Artifa
     }
     val ui by loader.state.collectAsStateWithLifecycle()
     val title by loader.title.collectAsStateWithLifecycle()
+    val plugins = session?.pluginsAvailable?.collectAsStateWithLifecycle()?.value == true
     ArtifactScreen(
         title = title,
         ui = ui,
         media = loader.media,
         computer = computer,
-        actions = remember(loader, nav) {
+        actions = remember(loader, nav, plugins) {
             ArtifactActions(
                 onBack = { nav.popBackStack() },
                 link = loader::link,
@@ -185,6 +187,7 @@ private fun ArtifactEntry(graph: AppGraph, nav: NavHostController, route: Artifa
                 // The artifact itself, not one file of it a link opened.
                 onDelete = if (route.path == null) ({ ArtifactClient(session!!.client).delete(route.artifactId) }) else null,
                 genUiSecrets = session?.client?.let { GenUiSecretApi(it) },
+                onOpenPlugin = if (plugins) ({ id -> nav.openPlugin(route.connectionId, id) }) else null,
             )
         },
         history = rememberArtifactHistory(loader, session, nav, route, title),
