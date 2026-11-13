@@ -120,6 +120,21 @@ class ReferenceReaderTest {
         assertEquals(null, page(""","entry":null"""))
     }
 
+    /** Desktop's artifactStartsExpanded: a Gen UI view is drawn inline unless its version asks to stay a title. */
+    @Test
+    fun aGenUiArtifactIsInlineUnlessItAsksNotToBe() {
+        fun page(changes: String = "") = References.page(
+            Json.parseToJsonElement(
+                """{"id":"g1","type":"gen_ui","status":"active","latestVersion":4,"entry":{"path":"index.genui.json"},"display":null,"live":null$changes}""",
+            ) as JsonObject,
+        )
+        assertEquals(References.Page(4, "index.genui.json", genUi = true), page())
+        assertEquals(References.Page(4, "index.genui.json", genUi = true), page(""","display":"inline_expanded""""))
+        for (display in listOf("\"side\"", "\"inline_compact\"")) assertEquals(display, null, page(""","display":$display"""))
+        assertEquals(null, page(""","status":"deleted""""))
+        assertEquals(null, page(""","latestVersion":null"""))
+    }
+
     @Test
     fun aPageFollowsItsArtifactsNewVersionsAndGoesWithIt() = runTest {
         val fake = Fake().apply {

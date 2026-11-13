@@ -73,6 +73,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.slopus.happy.browser.BrowserPolicy
 import com.slopus.happy.ui.artifacts.BrowserRoute
 import com.slopus.happy.ui.artifacts.InlinePages
+import com.slopus.happy.ui.genui.GenUiInline
 import com.slopus.happy.ui.artifacts.computerName
 import com.slopus.happy.ui.browser.LinkOpener
 import com.slopus.happy.ui.browser.ProvideLinks
@@ -513,6 +514,11 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                             nav.navigate(BrowserRoute(route.connectionId, url, conversation.agentId))
                         }
                     },
+                    genUi = GenUiInline(
+                        session.client, session.media, conversation.agentId,
+                        onMessage = { words -> conversation.send(words) },
+                        onOpenWeb = { url -> nav.navigate(BrowserRoute(route.connectionId, url, conversation.agentId)) },
+                    ),
                     onRetryLoad = conversation::retryLoad,
                     loadMedia = conversation::media,
                     // A recording streams a range at a time, as iOS's MediaStream asks.

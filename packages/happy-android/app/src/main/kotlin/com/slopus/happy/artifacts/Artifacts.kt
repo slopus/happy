@@ -149,6 +149,8 @@ data class ArtifactVersion(
     val createdAt: Long = 0,
     /** Made by an agent rather than a person. */
     val byAgent: Boolean = false,
+    /** The agent that made it (`createdBy` `{ kind: "agent" }`): a Gen UI version's origin. */
+    val origin: String? = null,
 ) {
     fun file(path: String): ArtifactFile? = files.firstOrNull { it.path == path } ?: entry?.takeIf { it.path == path }
 
@@ -177,6 +179,7 @@ data class ArtifactVersion(
                 label = label(version),
                 createdAt = version["createdAt"].num?.toLong() ?: 0,
                 byAgent = version["createdBy"].obj?.get("kind").str == "agent",
+                origin = version["createdBy"].obj?.takeIf { it["kind"].str == "agent" }?.get("agentId").str,
             )
         }
     }

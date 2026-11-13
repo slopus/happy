@@ -167,7 +167,7 @@ class ReferenceReader(
         }
         if (deleted) {
             pages.update { it - id }
-        } else if ((artifacts.value[id] as? References.Artifact.Active)?.type == "html") {
+        } else if ((artifacts.value[id] as? References.Artifact.Active)?.type.let { it == "html" || it == "gen_ui" }) {
             readArtifacts(listOf(id))
         }
     }

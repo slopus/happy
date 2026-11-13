@@ -366,9 +366,9 @@ class ConversationRowBuilder(
             return rows
         }
 
-        /** The artifact [presentation] shows, when it may be a page shown inline: HTML, following its latest version. */
+        /** The artifact [presentation] shows, when it may be shown inline: HTML or Gen UI, following its latest version. */
         private fun inlineCandidate(presentation: Presentation): String? =
-            (presentation as? Presentation.Artifact)?.takeIf { it.artifactType == "html" && it.shows == "latest" }?.artifactId
+            (presentation as? Presentation.Artifact)?.takeIf { (it.artifactType == "html" || it.artifactType == "gen_ui") && it.shows == "latest" }?.artifactId
 
         private fun toolRows(key: String, call: Block.ToolCall, references: References?): List<ConversationRow> {
             if (call.name == Question.TOOL_NAME && call.id != null) {

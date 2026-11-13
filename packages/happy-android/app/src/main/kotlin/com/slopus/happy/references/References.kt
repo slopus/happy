@@ -47,11 +47,12 @@ data class References(
     }
 
     /**
-     * An HTML artifact whose latest version asks to be shown inline at its
-     * full height (`display` `inline_expanded`): the version and entry the
-     * conversation's page loads, and the colour behind it, if any.
+     * An artifact the conversation shows inline under its card, at its latest
+     * version: an HTML page that asks for it (`display` `inline_expanded`),
+     * with the entry the page loads and the colour behind it, if any; or a
+     * Gen UI view ([genUi]), drawn natively.
      */
-    data class Page(val version: Int, val entry: String, val background: String? = null)
+    data class Page(val version: Int, val entry: String, val background: String? = null, val genUi: Boolean = false)
 
     sealed interface View {
         val label: String
@@ -174,10 +175,18 @@ data class References(
         /**
          * An artifact object as a page the conversation shows inline: an
          * active HTML artifact of files (not a live URL) whose latest version
-         * asks for `inline_expanded`. Null for anything else, which stays a card.
+         * asks for `inline_expanded`, or an active Gen UI artifact unless its
+         * latest version asks to stay at its title (`inline_compact`, `side`),
+         * as desktop does. Null for anything else, which stays a card.
          */
         fun page(artifact: JsonObject): Page? {
-            if (artifact["status"].str == "deleted" || artifact["type"].str != "html" || artifact["display"].str != "inline_expanded") return null
+            if (artifact["status"].str == "deleted") return null
+            if (artifact["type"].str == "gen_ui") {
+                if (artifact["display"].str == "inline_compact" || artifact["display"].str == "side") return null
+                val version = artifact["latestVersion"].num?.toInt() ?: return null
+                return Page(version, artifact["entry"].obj?.get("path").str.orEmpty(), genUi = true)
+            }
+            if (artifact["type"].str != "html" || artifact["display"].str != "inline_expanded") return null
             if (artifact["live"].let { it != null && it !is JsonNull }) return null
             val entry = artifact["entry"].obj?.get("path").str ?: return null
             val version = artifact["latestVersion"].num?.toInt() ?: return null

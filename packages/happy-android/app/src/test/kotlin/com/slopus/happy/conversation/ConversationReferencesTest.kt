@@ -69,22 +69,27 @@ class ConversationReferencesTest {
 
     @Test fun `an HTML artifact a call shows at its latest version is read, and drawn inline once it asks to be`() {
         fun call(id: String, shows: String?, type: String = "html") = Block.ToolCall("c-$id", "create_artifact", "completed", Presentation.Artifact(id, type, "Waveform", 2, shows))
-        val message = Message("m", "agent", 1, listOf(call("p1", "latest"), call("p2", null), call("p3", "latest", "markdown")))
+        val message = Message("m", "agent", 1, listOf(call("p1", "latest"), call("p2", null), call("p3", "latest", "markdown"), call("g1", "latest", "gen_ui")))
         val asked = ArrayList<List<String>>()
         val builder = ConversationRowBuilder().apply {
             references = References()
             pages = { asked += it }
         }
         val before = builder.rows(message, "a1", null, false).map { (it as ConversationRow.Artifact).page }
-        assertEquals("only an HTML artifact that follows its latest version is asked about", listOf(listOf("p1")), asked)
-        assertEquals(listOf(null, null, null), before)
+        assertEquals("only an HTML or Gen UI artifact that follows its latest version is asked about", listOf(listOf("p1", "g1")), asked)
+        assertEquals(listOf(null, null, null, null), before)
         val page = References.Page(2, "index.html")
+        val view = References.Page(2, "index.genui.json", genUi = true)
         builder.references = References(
-            artifacts = mapOf("p1" to References.Artifact.Active("Waveform", "html", 2), "p2" to References.Artifact.Active("Waveform", "html", 2)),
-            pages = mapOf("p1" to page, "p2" to page),
+            artifacts = mapOf(
+                "p1" to References.Artifact.Active("Waveform", "html", 2),
+                "p2" to References.Artifact.Active("Waveform", "html", 2),
+                "g1" to References.Artifact.Active("Waveform", "gen_ui", 2),
+            ),
+            pages = mapOf("p1" to page, "p2" to page, "g1" to view),
         )
         val after = builder.rows(message, "a1", null, false).map { (it as ConversationRow.Artifact).page }
-        assertEquals("a call pinned to its version stays a card", listOf(page, null, null), after)
+        assertEquals("a call pinned to its version stays a card", listOf(page, null, null, view), after)
         assertEquals("read, it isn't asked about again", 1, asked.size)
     }
 }

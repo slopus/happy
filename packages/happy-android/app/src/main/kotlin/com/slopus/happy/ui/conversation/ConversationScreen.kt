@@ -196,6 +196,8 @@ class ConversationScreenActions(
     val onOpenArtifact: ((com.slopus.happy.conversation.ConversationRow.Artifact) -> Unit)? = null,
     /** HTML artifacts shown inline under their cards; null where none are. */
     val pages: com.slopus.happy.ui.artifacts.InlinePages? = null,
+    /** Gen UI artifacts drawn under their cards; null where none are. */
+    val genUi: com.slopus.happy.ui.genui.GenUiInline? = null,
     /** The newest message is on screen while the app is up: unread clears. */
     val onVisible: (Boolean) -> Unit = {},
     /** How a secret request is made and answered; null where this build cannot. */
@@ -323,6 +325,7 @@ fun ConversationScreen(
             kept = store.kept,
             videos = videos,
             pages = actions.pages,
+            genUi = actions.genUi,
         )
     }
     val atNewest by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }

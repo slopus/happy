@@ -6,6 +6,8 @@ import com.slopus.happy.analytics.FailureAction
 import com.slopus.happy.analytics.FailureKind
 import com.slopus.happy.ui.artifacts.ArtifactInlinePage
 import com.slopus.happy.ui.artifacts.InlinePages
+import com.slopus.happy.ui.genui.GenUiInline
+import com.slopus.happy.ui.genui.GenUiInlineBlock
 import com.slopus.happy.ui.artifacts.artifactCardDetail
 import com.slopus.happy.ui.artifacts.artifactCardGlyph
 import com.slopus.happy.conversation.InlinePicture
@@ -147,6 +149,8 @@ class ConversationRowActions(
     val videos: VideoOpening? = null,
     /** HTML artifacts shown inline under their cards; null where none are. */
     val pages: InlinePages? = null,
+    /** Gen UI artifacts drawn under their cards; null where none are. */
+    val genUi: GenUiInline? = null,
 )
 
 /** Plays the recording [ref] whose tile is [key]: in the viewer, once it can ([VideoOpening]). */
@@ -224,7 +228,7 @@ fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: Co
                     val page = row.page
                     val pages = actions.pages
                     // A page that runs as an app is never run in the chat: its card says App and opens it full screen.
-                    val app = page != null && pages != null && pages.isApp(row.artifactId, page)
+                    val app = page != null && !page.genUi && pages != null && pages.isApp(row.artifactId, page)
                     InfoCard(
                         icon = if (app) Ionicon.AppsOutline else artifactCardGlyph(row.type.orEmpty()),
                         title = row.title.ifEmpty { stringResource(R.string.artifact_untitled) },
@@ -233,8 +237,17 @@ fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: Co
                         modifier = Modifier.testTag(ConversationRowTags.ARTIFACT),
                         action = if (app) stringResource(R.string.artifact_list_open) else null,
                     )
+                    val genUi = actions.genUi
+                    if (page != null && page.genUi && genUi != null) {
+                        val picture = stringResource(R.string.artifact_picture)
+                        val named = stringResource(R.string.artifact_media_label)
+                        GenUiInlineBlock(
+                            row.artifactId, page.version, genUi, label = { path -> named.format(picture, path.substringAfterLast('/')) },
+                            Modifier.padding(top = 2.dp, bottom = ConversationRowSpec.marginVertical),
+                        )
+                    }
                     // Desktop's inline page, under its card, at the column's width.
-                    if (page != null && pages != null && !app) {
+                    if (page != null && !page.genUi && pages != null && !app) {
                         ArtifactInlinePage(
                             row.artifactId, row.title, page, pages,
                             Modifier.padding(start = ConversationRowSpec.marginHorizontal, end = ConversationRowSpec.marginHorizontal, top = 2.dp, bottom = ConversationRowSpec.marginVertical),

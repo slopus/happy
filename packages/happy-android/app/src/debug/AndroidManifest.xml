@@ -44,5 +44,9 @@
         <activity
             android:name=".ui.genui.GenUiArtifactGymActivity"
             android:exported="true" />
+        <!-- 100 Gen UI artifacts under their cards in the chat's own rows, for scrolling and frame timing (ui/genui/GenUiChatGymActivity). -->
+        <activity
+            android:name=".ui.genui.GenUiChatGymActivity"
+            android:exported="true" />
     </application>
 </manifest>
