@@ -1,6 +1,6 @@
 import { createRouteHistory, applyRouteHistoryPathname, type RouteHistoryState } from '@/navigation/browserNavigation';
 
-const keys = ['machine', 'project', 'feature', 'task', 'conversation', 'author'] as const;
+const keys = ['machine', 'project', 'feature', 'task', 'conversation', 'author', 'view', 'file'] as const;
 export type ProjectLocation = Partial<Record<typeof keys[number], string>>;
 
 export function projectLocationKey(location: ProjectLocation) {

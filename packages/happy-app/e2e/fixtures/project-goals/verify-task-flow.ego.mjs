@@ -124,6 +124,22 @@ await page.waitForSelector('text="Could not update. Showing previously loaded fi
 await page.waitForSelector(reportFile, { state: 'visible', timeout: 10000 });
 await record('TF7-cached-directory', { cachedFilesSurvivedRefreshFailure: true });
 
+const beforeGlobal = await metrics();
+await page.click(`${card(runtime.taskA.id)} button[aria-label="${runtime.taskA.title}"]`);
+await page.waitForFunction(() => !new URL(location.href).searchParams.has('task') && !!document.querySelector('[data-testid="project-scope-chat"] textarea[data-testid="session-message-input"]'), undefined, { timeout: 30000 });
+const globalConversation = new URL(await page.url()).searchParams.get('conversation');
+assert(globalConversation);
+await page.waitForSelector('[data-testid="project-scope-panel"] [data-testid="workspace-directory-tree"]', { state: 'visible', timeout: 30000 });
+const afterGlobal = await metrics();
+assert(afterGlobal.spawned.some(session => session.sessionId === globalConversation && session.directory === runtime.featurePath));
+assert(afterGlobal.spawned.length <= beforeGlobal.spawned.length + 1);
+await page.click('button[aria-label="Back"]');
+await page.waitForFunction(id => new URL(location.href).searchParams.get('task') === id, runtime.taskA.id, { timeout: 15000 });
+await page.click('button[aria-label="Forward"]');
+await page.waitForFunction(id => !new URL(location.href).searchParams.has('task') && new URL(location.href).searchParams.get('conversation') === id, globalConversation, { timeout: 15000 });
+assert.equal((await metrics()).spawned.length, afterGlobal.spawned.length);
+await record('TF8-deselect-global', { globalFiles: true, globalRoot: runtime.featurePath, backReturnsTask: true, forwardReusesGlobal: true, submitted: 0 });
+
 await page.click('[data-testid="sidebar-session-list-button"]');
 await page.waitForURL(runtime.webUrl + '/', { timeout: 15000 });
 await page.waitForSelector('[data-testid="desktop-sidebar-session-navigation"]', { state: 'visible', timeout: 15000 });

@@ -33,8 +33,8 @@ import { machineStartGoalAuthor } from '@/sync/ops';
 let renderer: any;
 const select = vi.fn();
 const session = { sessionId: 'existing', title: 'Real discussion', directory: '/scope', updatedAt: 1, executed: false };
-function setup(conversationId?: string) {
-    act(() => { renderer = TestRenderer.create(<React.StrictMode><ProjectOverviewWorkspace machineId="machine" scopePath="/scope" title="Scope" agent="codex" offline={false} surface="transparent" selectConversation={select} conversationId={conversationId}><div>Catalog</div></ProjectOverviewWorkspace></React.StrictMode>); });
+function setup(conversationId?: string, initialTab?: 'files' | 'details') {
+    act(() => { renderer = TestRenderer.create(<React.StrictMode><ProjectOverviewWorkspace machineId="machine" scopePath="/scope" title="Scope" agent="codex" offline={false} surface="transparent" selectConversation={select} conversationId={conversationId} initialTab={initialTab}><div>Catalog</div></ProjectOverviewWorkspace></React.StrictMode>); });
     return () => renderer.root.findAllByType('Button').find((node: any) => node.props.testID === 'project-scope-open-chat').props.onPress();
 }
 beforeEach(() => { (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; vi.clearAllMocks(); mock.history = []; mock.sessions = {}; mock.fileOpen = false; mock.maximized = false; vi.mocked(loadProjectScopeHistory).mockResolvedValue([]); vi.mocked(machineStartGoalAuthor).mockResolvedValue({ type: 'success', sessionId: 'new-empty' }); });
@@ -143,4 +143,21 @@ it.each([
 ])('omits the center switcher when only one view is available: %o', ({ fileOpen, maximized, conversationId }) => {
     mock.history = [session]; mock.fileOpen = fileOpen; mock.maximized = maximized; setup(conversationId);
     expect(renderer.root.findAllByProps({ testID: 'project-scope-center-file-tab' })).toHaveLength(0);
+});
+
+it('deselection opens the project tree beside the already resolved global conversation', () => {
+    mock.history = [session]; setup('existing', 'files');
+    const tree = renderer.root.findByType('Tree');
+    expect(tree.props.scopePath).toBe('/scope');
+    expect(tree.props.rootPath).toBe('/scope');
+    expect(tree.props.taskId).toBeUndefined();
+    expect(renderer.root.findByType('Session').props.id).toBe('existing');
+    expect(machineStartGoalAuthor).not.toHaveBeenCalled();
+});
+it('closing a global conversation opened by deselection does not create or reopen one', async () => {
+    mock.history = [session]; setup('existing', 'files');
+    act(() => renderer.root.findByType('ConversationHeader').props.onClose());
+    expect(select).toHaveBeenCalledExactlyOnceWith(undefined);
+    await act(async () => {});
+    expect(machineStartGoalAuthor).not.toHaveBeenCalled();
 });

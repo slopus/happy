@@ -10,7 +10,7 @@ describe('project location navigation', () => {
         const task = history;
         history = pushProjectLocation(history, { conversation: 'recent' });
         history = moveProjectHistory(history, -1);
-        expect(projectHistoryLocation(history)).toEqual({ machine: 'm', project: 'p', feature: 'f', task: 't', conversation: undefined, author: undefined });
+        expect(projectHistoryLocation(history)).toEqual({ machine: 'm', project: 'p', feature: 'f', task: 't', conversation: undefined, author: undefined, view: undefined, file: undefined });
         expect(history.cursor).toBe(task.cursor);
         expect(canRouteForward(history)).toBe(true);
         expect(projectHistoryLocation(moveProjectHistory(history, 1)).conversation).toBe('recent');
@@ -23,7 +23,7 @@ describe('project location navigation', () => {
         expect(canRouteForward(history)).toBe(false);
         expect(projectHistoryLocation(history).conversation).toBeUndefined();
         history = pushProjectLocation(history, { project: undefined, feature: undefined, task: undefined, conversation: undefined });
-        expect(projectHistoryLocation(history)).toEqual({ machine: 'm', project: undefined, feature: undefined, task: undefined, conversation: undefined, author: undefined });
+        expect(projectHistoryLocation(history)).toEqual({ machine: 'm', project: undefined, feature: undefined, task: undefined, conversation: undefined, author: undefined, view: undefined, file: undefined });
     });
     it('does not add duplicate entries for refreshes or cross either end of the trail', () => {
         const history = createProjectHistory({ machine: 'm', project: 'p' });
@@ -32,5 +32,13 @@ describe('project location navigation', () => {
         expect(moveProjectHistory(history, 1)).toBe(history);
         expect(canRouteBack(history)).toBe(false);
         expect(canRouteForward(history)).toBe(false);
+    });
+    it('deselects into global files without retaining a Task conversation or file, including Back/Forward', () => {
+        const selected = createProjectHistory({ machine: 'm', project: 'p', feature: 'f', task: 't', conversation: 'task-chat', view: 'reader', file: '/task/index.md' });
+        const global = pushProjectLocation(selected, { task: undefined, conversation: undefined, author: undefined, file: undefined, view: 'files' });
+        expect(projectHistoryLocation(global)).toEqual({ machine: 'm', project: 'p', feature: 'f', task: undefined, conversation: undefined, author: undefined, file: undefined, view: 'files' });
+        const back = moveProjectHistory(global, -1);
+        expect(projectHistoryLocation(back)).toMatchObject({ task: 't', conversation: 'task-chat', view: 'reader', file: '/task/index.md' });
+        expect(projectHistoryLocation(moveProjectHistory(back, 1))).toEqual(projectHistoryLocation(global));
     });
 });

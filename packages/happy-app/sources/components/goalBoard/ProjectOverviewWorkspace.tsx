@@ -26,7 +26,7 @@ import { GoalBoardButton as Button } from './GoalBoardButton';
 import { projectPanelGap, getProjectCatalogWidth } from './projectWorkspaceLayout';
 
 export type ProjectOverviewProps = {
-    machineId: string; scopePath: string; title: string; conversationId?: string;
+    machineId: string; scopePath: string; title: string; conversationId?: string; initialTab?: 'files' | 'details';
     agent: 'codex' | 'claude'; offline: boolean; connecting?: boolean; revision?: string; surface: string;
     selectConversation: (id?: string) => void; children: React.ReactNode;
 };
@@ -55,7 +55,7 @@ function OverviewContent(props: ProjectOverviewProps) {
     const showChat = !!props.conversationId;
     const [busy, setBusy] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
-    const [tab, setTab] = React.useState('details');
+    const [tab, setTab] = React.useState<string>(props.initialTab ?? 'details');
     const [center, setCenter] = React.useState('tasks');
     const { width } = useWindowDimensions();
     const [rowWidth, setRowWidth] = React.useState(0);
