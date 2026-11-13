@@ -61,7 +61,9 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
     /// (Telegram's glass style); without it the sheet slides.
     var button: (() -> UIView?)?
 
+    /// The library as the menu shows it: edited pictures, its camera's shots.
     let library: AttachLibrary
+    let edits: AttachEditingLibrary
     private let limit: Int
     private let hasCamera: Bool
     private(set) var page: Tab = .gallery
@@ -134,10 +136,13 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
     private let pan = UIPanGestureRecognizer()
     let picking = AttachSelectionRecognizer()
     private weak var preview: AttachPreviewViewController?
+    private weak var camera: CameraViewController?
 
     init(limit: Int, caption: String = "", library: AttachLibrary = AttachMenuEnvironment.library(), camera: Bool = AttachMenuEnvironment.camera()) {
         self.limit = limit
-        self.library = library
+        let editing = AttachEditingLibrary(library)
+        self.edits = editing
+        self.library = editing
         hasCamera = camera
         access = library.access
         super.init(nibName: nil, bundle: nil)
@@ -277,6 +282,7 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         panel.onCaption = { [weak self] text in self?.onCaption?(text) }
         panel.onFocus = { [weak self] focused in self?.captionFocused(focused) }
         panel.onResize = { [weak self] in self?.view.setNeedsLayout() }
+        edits.onEdited = { [weak self] id in self?.edited(id) }
         host.addSubview(panel)
 
         pan.addTarget(self, action: #selector(panned(_:)))
@@ -692,8 +698,9 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
     }
 
     /// The full camera over the menu, grown out of the tile and taking its
-    /// running camera; closed, it goes back into the tile. A photo leaves
-    /// with the menu, as Telegram's camera sends from itself.
+    /// running camera; closed, it goes back into the tile. Each shot lands
+    /// at the grid's start, picked; the first opens in the preview with
+    /// the caption and send, and back from there the camera shoots on.
     private func openCamera() {
         guard limit > 0 else { return finish(.camera) }
         guard presentedViewController == nil, !closing else { return }
@@ -703,20 +710,87 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
             guard let self, fromTile, cameraTile.window != nil else { return nil }
             return cameraTile.convert(cameraTile.bounds, to: nil)
         }
-        camera.onWillUse = { [weak self] in self?.view.alpha = 0 }
-        camera.onFinish = { [weak self, weak camera] photo in
+        camera.onShot = { [weak self] photo in self?.shot(photo) }
+        camera.onOpenShot = { [weak self] index in self?.openShots(at: index) }
+        camera.onFinish = { [weak self, weak camera] _ in
             guard let self else { return }
-            guard let photo else {
-                cameraTile.takeBack()
-                camera?.dismiss(animated: false)
-                return
-            }
-            closing = true
-            hiddenButton?.alpha = 1
-            let onAction = onAction
-            (presentingViewController ?? self).dismiss(animated: false) { onAction?(.photo(photo)) }
+            cameraTile.takeBack()
+            camera?.dismiss(animated: false)
         }
+        self.camera = camera
         present(camera, animated: false)
+    }
+
+    /// A shot in: picked, and the first one opened.
+    private func shot(_ photo: CameraPhoto) {
+        edits.add(shot: photo) { [weak self] id in
+            guard let self, let id else { return }
+            setPicked(id, true)
+            showShots()
+            if edits.shotsTaken.count == 1 { openShots(at: 0) }
+        }
+    }
+
+    private func showShots() {
+        camera?.showShots(edits.shotsTaken.compactMap { edits.shotPicture($0) })
+    }
+
+    /// The camera's shots in the preview, over the camera (Telegram's
+    /// result gallery): back goes back to shooting.
+    private func openShots(at start: Int) {
+        guard let camera, camera.presentedViewController == nil, !closing else { return }
+        let ids = edits.shotsTaken
+        guard ids.indices.contains(start) else { return }
+        let preview = AttachPreviewViewController(
+            count: ids.count, start: start,
+            item: { ids.indices.contains($0) ? AttachLibraryItem(id: ids[$0], duration: nil) : nil },
+            image: { [weak self] index, _, deliver in
+                if ids.indices.contains(index), let picture = self?.edits.shotPicture(ids[index]) { deliver(picture) }
+                return nil
+            },
+            cancel: { _ in },
+            selectionNumber: { [weak self] id in self?.number(id) },
+            toggle: { [weak self] id in self?.toggle(id) ?? false },
+            sourceView: { [weak camera] index in camera?.shotView(index) },
+            composer: previewComposer()
+        )
+        self.preview = preview
+        camera.present(preview, animated: true)
+    }
+
+    /// The preview's foot speaking for the menu: its caption, its send,
+    /// its picks.
+    private func previewComposer() -> AttachPreviewComposer {
+        AttachPreviewComposer(
+            library: edits,
+            caption: { [weak self] in self?.panel.caption ?? "" },
+            setCaption: { [weak self] text in
+                self?.panel.caption = text
+                self?.onCaption?(text)
+            },
+            send: { [weak self] id in self?.sendFromPreview(id) },
+            edited: { [weak self] id in self?.setPicked(id, true) }
+        )
+    }
+
+    /// Send in the preview: the picks, or the picture in view with none;
+    /// what is over the menu goes at once, then the menu as it does.
+    private func sendFromPreview(_ id: String) {
+        guard !closing else { return }
+        if picked.isEmpty, !setPicked(id, true) { return }
+        let fromCamera = camera != nil
+        dismiss(animated: false) { [weak self] in
+            guard let self else { return }
+            if fromCamera { cameraTile.takeBack() }
+            sendPicked()
+        }
+    }
+
+    /// An edit came or went: the picture shows anew wherever it is.
+    private func edited(_ id: String) {
+        feed.redraw(id)
+        preview?.reload(id)
+        if id.hasPrefix("shot:") { showShots() }
     }
 
     /// Telegram's out: back into the "+" on glass, else down past the
@@ -1139,13 +1213,14 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
 
     /// Telegram's preview over the grid, from the tapped picture.
     private func open(_ index: Int) {
-        guard preview == nil, !closing, presentedViewController == nil else { return }
+        guard preview?.presentingViewController == nil, !closing, presentedViewController == nil else { return }
         view.endEditing(true)
         let preview = AttachPreviewViewController(
             library: library, start: index,
             selectionNumber: { [weak self] id in self?.number(id) },
             toggle: { [weak self] id in self?.toggle(id) ?? false },
-            sourceView: { [weak self] index in self?.cell(index) }
+            sourceView: { [weak self] index in self?.cell(index) },
+            composer: previewComposer()
         )
         preview.onHide = { [weak self] id in self?.feed.hidden = id }
         preview.onFocus = { [weak self] index in self?.reveal(index) }

@@ -196,6 +196,15 @@ final class AttachGridFeed: NSObject, UICollectionViewDataSource, UICollectionVi
 
     /// The numbers on the cells showing, after a pick: the one picked or
     /// unpicked animates, the rest close up.
+    /// Picture `id` shows anew where its cell is: its edit came or went.
+    func redraw(_ id: String) {
+        guard let grid else { return }
+        for case let cell as AttachGridCell in grid.visibleCells where cell.itemID == id {
+            guard let path = grid.indexPath(for: cell), let item = library.item(at: path.item) else { continue }
+            cell.show(item, index: path.item, library: library, pixels: pixels, again: true)
+        }
+    }
+
     func refreshNumbers(animating id: String?) {
         guard let grid else { return }
         for case let cell as AttachGridCell in grid.visibleCells {
@@ -357,10 +366,12 @@ final class AttachGridCell: UICollectionViewCell, UIGestureRecognizerDelegate, A
         return true
     }
 
-    func show(_ item: AttachLibraryItem, index: Int, library: AttachLibrary, pixels: CGSize) {
+    /// `again`: the same picture changed (edited), drawn anew in place.
+    func show(_ item: AttachLibraryItem, index: Int, library: AttachLibrary, pixels: CGSize, again: Bool = false) {
         self.index = index
         accessibilityIdentifier = "attach-photo:\(index)"
-        guard item.id != itemID || picture.image == nil else { return }
+        guard item.id != itemID || picture.image == nil || again else { return }
+        let keep = again && item.id == itemID
         if let request { self.library?.cancelThumbnail(request) }
         request = nil
         self.library = library
@@ -374,7 +385,7 @@ final class AttachGridCell: UICollectionViewCell, UIGestureRecognizerDelegate, A
         typeIcon.isHidden = !video
         leftShadow.isHidden = !video
         rightShadow.isHidden = !video
-        picture.image = nil
+        if !keep { picture.image = nil }
         let id = item.id
         request = library.thumbnail(at: index, pixels: pixels) { [weak self] image in
             guard let self, itemID == id else { return }

@@ -12,6 +12,20 @@ protocol AttachPreviewSource: UIView {
     var previewImage: UIImage? { get }
 }
 
+/// What the preview's foot does for the menu over it (Telegram's caption
+/// panel and editing toolbar): the caption, shared with the menu's;
+/// send; the editor's edits, kept in the menu's library.
+@MainActor
+struct AttachPreviewComposer {
+    let library: AttachEditingLibrary
+    var caption: () -> String
+    var setCaption: (String) -> Void
+    /// Sends the picks; the picture in view when none is picked.
+    var send: (String) -> Void
+    /// An edit was applied to picture `id`: it is picked, as Telegram's are.
+    var edited: (String) -> Void
+}
+
 /// Telegram's media picker gallery for the "+" menu
 /// (`MediaPickerScreen.openMedia`, `presentLegacyMediaPickerGallery`,
 /// `TGMediaPickerGallery*`): a tapped picture zooms out of its cell to the
@@ -48,6 +62,20 @@ final class AttachPreviewViewController: UIViewController, UIScrollViewDelegate,
     private let checkButton = UIControl()
     private let check = LibraryCheckView()
     private let drag = UIPanGestureRecognizer()
+    private let composer: AttachPreviewComposer?
+    /// The caption: the menu's own card, its send beside the text.
+    private let card = AgentInputCardView(configuration: AgentInputCardConfiguration(
+        placeholder: Strings.Composer.inputPlaceholder,
+        primaryAction: .send,
+        primaryAccessibilityLabel: Strings.AttachMenu.send,
+        compact: true,
+        compactLines: 5
+    ))
+    private let cropButton = PhotoEditorButton.plain("crop.rotate", identifier: "attach-preview-crop", label: Strings.PhotoEditor.crop)
+    private let drawButton = PhotoEditorButton.plain("pencil.tip.crop.circle", identifier: "attach-preview-draw", label: Strings.PhotoEditor.draw)
+    private lazy var tools = PhotoEditorGroup([cropButton, drawButton])
+    /// The keyboard over the view, while the caption has it.
+    private var keyboard: CGFloat = 0
     /// Set while the pager is placed for a new size, so its offset moving
     /// doesn't turn the page.
     private var placing = false
@@ -65,7 +93,9 @@ final class AttachPreviewViewController: UIViewController, UIScrollViewDelegate,
          video: (@MainActor (String) async -> URL?)? = nil,
          selectionNumber: @escaping @MainActor (String) -> Int?,
          toggle: @escaping @MainActor (String) -> Bool,
-         sourceView: @escaping @MainActor (Int) -> UIView?) {
+         sourceView: @escaping @MainActor (Int) -> UIView?,
+         composer: AttachPreviewComposer? = nil) {
+        self.composer = composer
         self.count = max(0, count)
         self.item = item
         self.image = image
@@ -83,7 +113,7 @@ final class AttachPreviewViewController: UIViewController, UIScrollViewDelegate,
 
     /// Over the library itself: its pictures, and a video read whole to play
     /// (the copy is removed when the preview goes).
-    convenience init(library: AttachLibrary, start: Int, selectionNumber: @escaping @MainActor (String) -> Int?, toggle: @escaping @MainActor (String) -> Bool, sourceView: @escaping @MainActor (Int) -> UIView?) {
+    convenience init(library: AttachLibrary, start: Int, selectionNumber: @escaping @MainActor (String) -> Int?, toggle: @escaping @MainActor (String) -> Bool, sourceView: @escaping @MainActor (Int) -> UIView?, composer: AttachPreviewComposer? = nil) {
         let copies = AttachPreviewCopies()
         self.init(count: library.count, start: start,
             item: { [weak library] in library?.item(at: $0) },
@@ -94,7 +124,7 @@ final class AttachPreviewViewController: UIViewController, UIScrollViewDelegate,
                 copies.urls.append(url)
                 return url
             },
-            selectionNumber: selectionNumber, toggle: toggle, sourceView: sourceView)
+            selectionNumber: selectionNumber, toggle: toggle, sourceView: sourceView, composer: composer)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -142,6 +172,18 @@ final class AttachPreviewViewController: UIViewController, UIScrollViewDelegate,
         view.addGestureRecognizer(drag)
         // A swipe to the side turns the page only once it's no drag to close.
         pager.panGestureRecognizer.require(toFail: drag)
+        if let composer {
+            card.overrideUserInterfaceStyle = .dark
+            card.delegate = self
+            card.textView.accessibilityIdentifier = "attach-preview-caption"
+            card.primaryControl.accessibilityIdentifier = "attach-preview-send"
+            card.setText(composer.caption(), selection: NSRange(location: (composer.caption() as NSString).length, length: 0), animatesHeight: false)
+            chrome.addSubview(card)
+            cropButton.addTarget(self, action: #selector(cropTapped), for: .touchUpInside)
+            drawButton.addTarget(self, action: #selector(drawTapped), for: .touchUpInside)
+            chrome.addSubview(tools)
+            NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+        }
         showSelection(animated: false)
     }
 
@@ -154,6 +196,7 @@ final class AttachPreviewViewController: UIViewController, UIScrollViewDelegate,
         backIcon.frame = back.bounds
         check.setLayoutFrame(layout.check)
         checkButton.setLayoutFrame(layout.checkButton)
+        placeFoot()
         guard pager.bounds.size != layout.pager.pager.size || pager.contentSize != layout.pager.contentSize else { return }
         placing = true
         pager.frame = layout.pager.pager
@@ -228,6 +271,36 @@ final class AttachPreviewViewController: UIViewController, UIScrollViewDelegate,
         if !animated { scrollViewDidEndDecelerating(pager) }
     }
 
+    /// Telegram's foot: the editing tools on one capsule in a 49 bar over
+    /// the safe area, the caption 10 over it, or 8 over the keyboard.
+    private func placeFoot() {
+        guard composer != nil else { return }
+        let bounds = view.bounds, safe = view.safeAreaInsets
+        let bar = PhotoCropScreenLayout.Metrics.toolbar
+        let width: CGFloat = 44 * 2 + 10
+        tools.frame = CGRect(x: (bounds.width - width) / 2, y: bounds.height - safe.bottom - bar / 2 - 22, width: width, height: 44)
+        tools.place([CGRect(x: 0, y: 0, width: 44, height: 44), CGRect(x: 54, y: 0, width: 44, height: 44)])
+        let inset = MobileComposerMetrics.mobile.shellInset
+        let cardWidth = max(0, bounds.width - safe.left - safe.right - 2 * inset)
+        let height = min(card.height(fitting: cardWidth), max(44, (bounds.height - keyboard) / 3))
+        let bottom = keyboard > 0 ? bounds.height - keyboard - 8 : bounds.height - safe.bottom - bar - 10
+        card.frame = CGRect(x: safe.left + inset, y: bottom - height, width: cardWidth, height: height)
+        tools.alpha = keyboard > 0 ? 0 : 1
+    }
+
+    @objc private func keyboardChanged(_ note: Notification) {
+        guard let frame = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue else { return }
+        let local = view.convert(frame, from: nil)
+        let overlap = card.textView.isFirstResponder ? max(0, view.bounds.maxY - local.minY) : 0
+        guard overlap != keyboard else { return }
+        keyboard = overlap
+        let duration = note.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
+        UIView.animate(withDuration: duration, delay: 0, options: [.beginFromCurrentState]) {
+            self.placeFoot()
+            self.card.layoutIfNeeded()
+        }
+    }
+
     var currentPage: AttachPreviewPage? { pages[index] }
     var groundAlpha: CGFloat { ground.alpha }
     var picturesOffset: CGFloat { pager.transform.ty }
@@ -242,6 +315,18 @@ final class AttachPreviewViewController: UIViewController, UIScrollViewDelegate,
         check.set(number, animated: animated)
         checkButton.accessibilityLabel = shown.duration.map { Strings.Library.video(LibraryPickerLayout.duration(seconds: $0), index: number) } ?? Strings.Library.photo(number)
         checkButton.accessibilityTraits = number == nil ? .button : [.button, .selected]
+        showTools()
+    }
+
+    /// Crop and Draw for a photo, yellow where its edit is applied.
+    private func showTools() {
+        guard let composer, let shown = item(index) else { return }
+        let photo = shown.duration == nil
+        tools.alpha = keyboard > 0 ? 0 : photo ? 1 : 0.2
+        tools.isUserInteractionEnabled = photo
+        let edit = composer.library.edit(shown.id)
+        cropButton.applied = edit.map { !$0.crop.isWhole($0.canvas) } ?? false
+        drawButton.applied = !(edit?.strokes.isEmpty ?? true)
     }
 
     var shownNumber: Int? { check.number }
@@ -290,6 +375,10 @@ final class AttachPreviewViewController: UIViewController, UIScrollViewDelegate,
 
     func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
         guard recognizer === drag else { return true }
+        if composer != nil, !chromeHidden {
+            let point = recognizer.location(in: view)
+            if card.frame.contains(point) || tools.frame.contains(point) { return false }
+        }
         guard let page = currentPage, !page.isZoomed, !pager.isDragging, !pager.isDecelerating else { return false }
         let velocity = drag.velocity(in: view)
         return abs(velocity.y) > abs(velocity.x)
@@ -334,6 +423,83 @@ final class AttachPreviewViewController: UIViewController, UIScrollViewDelegate,
     @objc func close() {
         guard presentingViewController != nil, !isBeingDismissed else { return }
         dismiss(animated: true)
+    }
+
+    // MARK: Editing
+
+    private enum Editor { case crop, draw }
+
+    @objc private func cropTapped() { openEditor(.crop) }
+    @objc private func drawTapped() { openEditor(.draw) }
+
+    /// The picture with no edit at the screen's size, then the editor
+    /// over the preview with it.
+    private func openEditor(_ editor: Editor) {
+        guard let composer, let shown = item(index), shown.duration == nil, presentedViewController == nil else { return }
+        card.textView.resignFirstResponder()
+        let id = shown.id
+        let scale = view.window?.screen.scale ?? traitCollection.displayScale
+        let pixels = CGSize(width: view.bounds.width * scale, height: view.bounds.height * scale)
+        var opened = false
+        var token: Int?
+        token = composer.library.original(id, index: index, pixels: pixels) { [weak self] image in
+            guard let self, !opened else { return }
+            // PhotoKit may hand a rough one first; the editor wants the sharp one.
+            let longer = max(image.size.width * image.scale, image.size.height * image.scale)
+            guard longer >= min(max(pixels.width, pixels.height), 1200) * 0.6 else { return }
+            opened = true
+            if let token { composer.library.cancelThumbnail(token) }
+            present(editor, id: id, picture: image)
+        }
+    }
+
+    private func present(_ editor: Editor, id: String, picture: UIImage) {
+        guard let composer, item(index)?.id == id, presentedViewController == nil, shown else { return }
+        let edit = composer.library.edit(id) ?? PhotoEdit(canvas: PhotoEdit.canvas(for: picture))
+        let controller: UIViewController
+        switch editor {
+        case .crop:
+            let crop = PhotoCropViewController(picture: picture, edit: edit)
+            crop.onDone = { [weak self, weak crop] next in
+                var changed = edit
+                changed.crop = next
+                self?.apply(changed, to: id, was: edit)
+                crop?.dismiss(animated: true)
+            }
+            crop.onCancel = { [weak crop] in crop?.dismiss(animated: true) }
+            controller = crop
+        case .draw:
+            let draw = PhotoDrawViewController(picture: picture, edit: edit)
+            draw.onDone = { [weak self, weak draw] strokes in
+                var changed = edit
+                changed.strokes = strokes
+                self?.apply(changed, to: id, was: edit)
+                draw?.dismiss(animated: true)
+            }
+            draw.onCancel = { [weak draw] in draw?.dismiss(animated: true) }
+            controller = draw
+        }
+        present(controller, animated: true)
+    }
+
+    /// Kept for picture `id`; changed, the picture is picked (Telegram's
+    /// gallery selects an item its editor applied adjustments to).
+    private func apply(_ edit: PhotoEdit, to id: String, was before: PhotoEdit) {
+        guard let composer else { return }
+        composer.library.setEdit(id, edit)
+        if edit != before, !edit.isEmpty { composer.edited(id) }
+        showTools()
+    }
+
+    /// Picture `id` was edited: its page shows it anew.
+    func reload(_ id: String) {
+        let scale = view.window?.screen.scale ?? traitCollection.displayScale
+        let pixels = CGSize(width: view.bounds.width * scale, height: view.bounds.height * scale)
+        for (number, page) in pages where page.item.id == id {
+            if let request = page.request { cancel(request) }
+            page.request = image(number, pixels) { [weak page] picture in page?.show(picture) }
+        }
+        showTools()
     }
 
     // MARK: Transitions
@@ -479,6 +645,29 @@ final class AttachPreviewViewController: UIViewController, UIScrollViewDelegate,
         guard let a else { return b }
         guard let b else { return a }
         return a.size.width * a.scale >= b.size.width * b.scale ? a : b
+    }
+}
+
+extension AttachPreviewViewController: AgentInputCardDelegate {
+    func agentInputCardDidChangeText(_ card: AgentInputCardView) {
+        composer?.setCaption(card.text)
+    }
+
+    func agentInputCardDidChangeFocus(_ card: AgentInputCardView) {
+        view.setNeedsLayout()
+    }
+
+    func agentInputCardDidInvalidateHeight(_ card: AgentInputCardView) {
+        UIView.animate(withDuration: 0.2) {
+            self.placeFoot()
+            self.card.layoutIfNeeded()
+        }
+    }
+
+    func agentInputCardDidPressPrimary(_ card: AgentInputCardView) {
+        guard let composer, let shown = item(index) else { return }
+        card.textView.resignFirstResponder()
+        composer.send(shown.id)
     }
 }
 

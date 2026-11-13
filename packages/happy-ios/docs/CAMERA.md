@@ -168,7 +168,8 @@ Telegram's camera does:
   counts stops it), shape (4:3, 16:9, 1:1), grid (thirds). Flash, shape and
   grid are kept while the app runs.
 - **Review**: the photo whole with Retake and Use Photo, as the system
-  picker had. The camera stops while it shows.
+  picker had. The camera stops while it shows. The attach menu's camera
+  has no review; see below.
 - **Phone and iPad**: the phone's screen stays upright and its buttons turn
   to read upright; an iPad turns with its window and keeps the controls in
   a column at the trailing edge.
@@ -184,8 +185,14 @@ sent. Nothing is written to a temporary file on the way.
 front and it is scrolled into view, and stops it when any of that ends. A
 tap opens the full camera over the menu on the same engine
 (`AttachSheetViewController.openCamera`): the session keeps running,
-nothing is reconfigured. A photo leaves with the menu
-(`Action.photo`); closing the camera gives the tile its picture back.
+nothing is reconfigured. As in Telegram the camera then keeps shooting:
+each photo lands at the head of the menu's grid already picked and
+numbered (`AttachEditingLibrary.add(shot:)`), the first one opens in the
+viewer over the camera with the caption, the editor and send, and back
+returns to the camera. The shots gather in a strip over the shutter (the
+counter beside it opens and closes it; a thumbnail opens the viewer there).
+Closing the camera gives the tile its picture back and leaves the menu with
+the shots picked.
 
 ### Interruptions, warmth, failures
 

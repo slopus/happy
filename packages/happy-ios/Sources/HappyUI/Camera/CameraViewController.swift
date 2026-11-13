@@ -26,12 +26,19 @@ import UIKit
 /// - On a phone the screen stays upright and its buttons turn to read
 ///   upright; photos are upright as the device is held.
 ///
-/// After the shot, the system camera's review: Retake or Use Photo.
+/// After the shot, the system camera's review: Retake or Use Photo. In
+/// the attach menu (`onShot`) it keeps shooting instead, as Telegram's
+/// does: each shot goes to the menu, a counter at the bottom left shows
+/// how many and opens their strip.
 @MainActor
 final class CameraViewController: UIViewController, UIGestureRecognizerDelegate {
     /// Called once the camera's own views have gone, still presented: the
     /// photo to use, or nil when closed. The owner dismisses it.
     var onFinish: ((CameraPhoto?) -> Void)?
+    /// Each photo as it is taken, the camera running on; no review.
+    var onShot: ((CameraPhoto) -> Void)?
+    /// A shot in the strip tapped, by its place (oldest first).
+    var onOpenShot: ((Int) -> Void)?
     /// Just before the camera leaves with a photo, so what is under it
     /// (the attach menu) can go first.
     var onWillUse: (() -> Void)?
@@ -106,6 +113,12 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
     let retakeButton = UIButton(type: .system)
     let useButton = UIButton(type: .system)
     private var events: AVCaptureEventInteraction?
+    /// The shots taken, their counter and strip (`TGMediaPickerPhotoCounterButton`,
+    /// `TGMediaPickerPhotoStripView`).
+    let shotsButton = CameraShotsButton()
+    private let strip = UIScrollView()
+    private var stripViews: [UIImageView] = []
+    private var stripOpen = false
 
     init(camera: CameraEngine) {
         self.camera = camera
@@ -214,6 +227,14 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         for view in [closeButton, timerButton, aspectButton, gridButton, flashButton, zoomBar, shutter, flipButton] as [UIView] {
             controls.addSubview(view)
         }
+        shotsButton.isHidden = true
+        shotsButton.addAction(UIAction { [weak self] _ in self?.toggleStrip() }, for: .touchUpInside)
+        controls.addSubview(shotsButton)
+        strip.showsHorizontalScrollIndicator = false
+        strip.alpha = 0
+        strip.isHidden = true
+        strip.accessibilityIdentifier = "camera-shots"
+        controls.addSubview(strip)
 
         review.isHidden = true
         review.backgroundColor = UIColor(Palette.cameraGround)
@@ -311,6 +332,10 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         shutter.frame = layout.shutter
         flipButton.frame = layout.flip
         flipButton.layer.cornerRadius = layout.flip.width / 2
+        // The counter mirrors the flip across the shutter, where the
+        // system camera keeps its last photo.
+        shotsButton.frame = CGRect(x: view.bounds.width - layout.flip.midX - 32, y: layout.flip.midY - 19, width: 64, height: 38)
+        placeStrip(layout)
         zoomBar.frame = layout.zoomBar
         zoomBar.isHidden = labels.count < 2
         zoomBar.update(labels: labels.count > 1 ? labels : [], selected: state.lenses.stop(for: state.zoom), frames: layout.zoomItems, animated: false)
@@ -742,11 +767,97 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
                 previewClip.alpha = 0
                 UIView.animate(withDuration: 0.25) { self.previewClip.alpha = 1 }
             case .finished(let photo):
-                showReview(photo)
+                if let onShot {
+                    phase = .live
+                    onShot(photo)
+                } else {
+                    showReview(photo)
+                }
             case .failed:
                 phase = .live
             }
         }
+    }
+
+    // MARK: Shots
+
+    /// The shots so far, oldest first, as the menu has them (edited).
+    func showShots(_ pictures: [UIImage]) {
+        let added = pictures.count > stripViews.count
+        shotsButton.count = pictures.count
+        shotsButton.picture = pictures.last
+        if shotsButton.isHidden, !pictures.isEmpty {
+            shotsButton.isHidden = false
+            shotsButton.transform = CGAffineTransform(scaleX: 0.1, y: 0.1)
+            UIView.animate(withDuration: 0.4, delay: 0, usingSpringWithDamping: 0.6, initialSpringVelocity: 0) { self.shotsButton.transform = .identity }
+        }
+        shotsButton.isHidden = pictures.isEmpty
+        for view in stripViews { view.removeFromSuperview() }
+        stripViews = pictures.enumerated().map { index, picture in
+            let view = UIImageView(image: picture)
+            view.contentMode = .scaleAspectFill
+            view.clipsToBounds = true
+            view.layer.cornerRadius = 6
+            view.isUserInteractionEnabled = true
+            view.isAccessibilityElement = true
+            view.accessibilityTraits = .button
+            view.accessibilityLabel = Strings.Camera.photo
+            view.accessibilityIdentifier = "camera-shot:\(index)"
+            view.tag = index
+            view.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(shotTapped(_:))))
+            strip.addSubview(view)
+            return view
+        }
+        if let layout { placeStrip(layout) }
+        if added, let picture = pictures.last { fly(picture) }
+    }
+
+    /// The shot just taken, out of the picture into its counter.
+    private func fly(_ picture: UIImage) {
+        guard let layout else { return }
+        let flier = UIImageView(image: picture)
+        flier.contentMode = .scaleAspectFill
+        flier.clipsToBounds = true
+        flier.layer.cornerRadius = 6
+        flier.frame = layout.crop
+        view.addSubview(flier)
+        UIView.animate(withDuration: 0.35, delay: 0, options: [.curveEaseInOut]) {
+            flier.frame = self.shotsButton.frame.insetBy(dx: 13, dy: 0)
+            flier.alpha = 0.4
+        } completion: { _ in flier.removeFromSuperview() }
+    }
+
+    /// The shot's thumbnail in the strip while it is open: the preview
+    /// zooms out of it and back.
+    func shotView(_ index: Int) -> UIView? {
+        guard stripOpen, stripViews.indices.contains(index) else { return nil }
+        return stripViews[index]
+    }
+
+    private func placeStrip(_ layout: CameraScreenLayout) {
+        let side: CGFloat = 56, gap: CGFloat = 6
+        let width = CGFloat(stripViews.count) * (side + gap) - gap
+        let available = view.bounds.width - 32
+        strip.frame = CGRect(x: 16 + max(0, (available - width) / 2), y: layout.shutter.minY - side - 8, width: min(available, max(0, width)), height: side)
+        strip.contentSize = CGSize(width: max(0, width), height: side)
+        for (index, thumbnail) in stripViews.enumerated() {
+            thumbnail.frame = CGRect(x: CGFloat(index) * (side + gap), y: 0, width: side, height: side)
+        }
+    }
+
+    private func toggleStrip() {
+        stripOpen.toggle()
+        shotsButton.open = stripOpen
+        strip.isHidden = false
+        UIView.animate(withDuration: 0.2) { self.strip.alpha = self.stripOpen ? 1 : 0 } completion: { _ in
+            if !self.stripOpen { self.strip.isHidden = true }
+        }
+        if stripOpen { strip.scrollRectToVisible(CGRect(x: strip.contentSize.width - 1, y: 0, width: 1, height: 1), animated: false) }
+    }
+
+    @objc private func shotTapped(_ recognizer: UITapGestureRecognizer) {
+        guard let index = recognizer.view?.tag else { return }
+        onOpenShot?(index)
     }
 
     // MARK: Review
@@ -794,6 +905,56 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
         phase = .live
         events?.isEnabled = true
         camera.run(CameraConfiguration(mode: .photo, position: settings.front ? .front : .back), asking: true)
+    }
+}
+
+/// Telegram's photo counter: how many shots, the last one beside the
+/// count; it opens and closes their strip.
+final class CameraShotsButton: UIControl {
+    var count = 0 {
+        didSet {
+            label.text = "\(count)"
+            accessibilityLabel = Strings.PhotoEditor.shots(count)
+            setNeedsLayout()
+        }
+    }
+    var picture: UIImage? { didSet { thumbnail.image = picture } }
+    var open = false { didSet { chevron.transform = open ? CGAffineTransform(rotationAngle: .pi) : .identity } }
+    private let glass = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterialDark))
+    private let thumbnail = UIImageView()
+    private let label = UILabel()
+    private let chevron = UIImageView(image: UIImage(systemName: "chevron.up", withConfiguration: UIImage.SymbolConfiguration(pointSize: 10, weight: .bold)))
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        accessibilityIdentifier = "camera-shots-count"
+        isAccessibilityElement = true
+        accessibilityTraits = .button
+        glass.isUserInteractionEnabled = false
+        glass.clipsToBounds = true
+        addSubview(glass)
+        thumbnail.contentMode = .scaleAspectFill
+        thumbnail.clipsToBounds = true
+        thumbnail.layer.cornerRadius = 5
+        label.font = .monospacedDigitSystemFont(ofSize: 15, weight: .semibold)
+        label.textColor = .white
+        chevron.tintColor = .white
+        for view in [thumbnail, label, chevron] { glass.contentView.addSubview(view) }
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override var isHighlighted: Bool { didSet { alpha = isHighlighted ? 0.6 : 1 } }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        glass.frame = bounds
+        glass.layer.cornerRadius = bounds.height / 2
+        thumbnail.frame = CGRect(x: 5, y: 5, width: bounds.height - 10, height: bounds.height - 10)
+        label.sizeToFit()
+        label.frame.origin = CGPoint(x: thumbnail.frame.maxX + 6, y: (bounds.height - label.bounds.height) / 2)
+        chevron.sizeToFit()
+        chevron.center = CGPoint(x: max(label.frame.maxX + 8, bounds.width - 12), y: bounds.midY)
     }
 }
 

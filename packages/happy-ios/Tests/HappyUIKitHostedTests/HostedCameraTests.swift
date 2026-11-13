@@ -207,9 +207,12 @@ final class HostedCameraTests: XCTestCase {
         XCTAssertEqual(alone.calls.last, .stop)
     }
 
-    /// The menu's tile opens the camera on its own engine, over the menu;
-    /// the photo leaves with the menu as its action.
-    func testTheMenuCameraHandsBackItsPhoto() async throws {
+    /// The menu's tile opens the camera on its own engine, over the menu,
+    /// as Telegram's: each shot lands at the grid's start picked, the
+    /// first opens in the preview with the caption and send, back from it
+    /// the camera shoots on and its counter opens the strip; closed, the
+    /// grid has them picked. Send in the preview sends the picks.
+    func testTheMenuCameraPutsItsShotsInTheGridPicked() async throws {
         let engine = FixtureCamera()
         AttachMenuEnvironment.cameraEngine = { engine }
         defer { AttachMenuEnvironment.cameraEngine = { CameraEnvironment.engine() } }
@@ -227,11 +230,44 @@ final class HostedCameraTests: XCTestCase {
         try await wait { screen.phase == .live }
         reset(screen)
         screen.shutter.sendActions(for: .touchUpInside)
-        try await wait { !screen.review.isHidden }
-        screen.useButton.sendActions(for: .touchUpInside)
+        try await wait { screen.presentedViewController is AttachPreviewViewController }
+        XCTAssertTrue(screen.review.isHidden, "no Retake or Use Photo")
+        let first = try XCTUnwrap(sheet.edits.shotsTaken.first)
+        XCTAssertEqual(sheet.picked, [first])
+        let preview = try XCTUnwrap(screen.presentedViewController as? AttachPreviewViewController)
+        try await wait { preview.shown }
+        XCTAssertEqual(preview.shownNumber, 1)
+        preview.close()
+        try await wait { screen.presentedViewController == nil }
+
+        try await wait { screen.phase == .live }
+        screen.shutter.sendActions(for: .touchUpInside)
+        try await wait { sheet.edits.shotsTaken.count == 2 && sheet.picked.count == 2 }
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertNil(screen.presentedViewController, "only the first shot opens")
+        XCTAssertFalse(screen.shotsButton.isHidden)
+        screen.shotsButton.sendActions(for: .touchUpInside)
+        XCTAssertNotNil(screen.shotView(1))
+
+        screen.closeButton.sendActions(for: .touchUpInside)
+        try await wait { sheet.presentedViewController == nil }
+        XCTAssertFalse(sheet.cameraTile.lent)
+        XCTAssertTrue(actions.isEmpty, "the menu stays")
+        try await wait { sheet.feed.count == 8 }
+        XCTAssertEqual(sheet.library.item(at: 0)?.id, sheet.edits.shotsTaken.last)
+        XCTAssertEqual(sheet.library.item(at: 1)?.id, first)
+
+        // Sent from the preview: both shots, the menu gone with them.
+        let picks = sheet.picked
+        sheet.feed.onOpen?(1)
+        let again = try XCTUnwrap(sheet.presentedViewController as? AttachPreviewViewController)
+        try await wait { again.shown }
+        let send = try XCTUnwrap(views(again.view).compactMap { $0 as? UIControl }.first { $0.accessibilityIdentifier == "attach-preview-send" })
+        send.sendActions(for: .touchUpInside)
         try await wait { !actions.isEmpty }
-        XCTAssertEqual(actions, [.photo(CameraPhoto(data: FixtureCamera.jpeg, ratio: 4.0 / 3.0))])
-        XCTAssertNil(root.presentedViewController)
+        XCTAssertEqual(actions, [.send(picks, caption: "")])
+        let read = await sheet.library.read(picks)
+        XCTAssertEqual(read.count, 2)
     }
 
     /// The composer cuts a camera photo to its shape before it shrinks it:

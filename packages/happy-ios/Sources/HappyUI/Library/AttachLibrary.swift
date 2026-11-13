@@ -97,7 +97,13 @@ enum AttachMenuEnvironment {
         #endif
         return PhotoKitAttachLibrary()
     }
-    static var camera: () -> Bool = { UIImagePickerController.isSourceTypeAvailable(.camera) }
+    static var camera: () -> Bool = {
+        #if DEBUG || HAPPY_FIXTURES
+        // The simulator's stand-in camera for screenshots: `-attachCamera fake`.
+        if ProcessInfo.processInfo.arguments.contains("-attachCamera") { return true }
+        #endif
+        return UIImagePickerController.isSourceTypeAvailable(.camera)
+    }
     /// Reduce Motion: the menu slides instead of growing out of the "+".
     static var reduceMotion: () -> Bool = { UIAccessibility.isReduceMotionEnabled }
 }
