@@ -454,6 +454,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                             title={t('sessionInfo.aiProvider')}
                             subtitle={(() => {
                                 const flavor = session.metadata.flavor || 'claude';
+                                if (flavor === 'personal') return t('agentInput.agent.personal');
                                 if (flavor === 'claude') return 'Claude';
                                 if (flavor === 'gpt' || flavor === 'openai') return 'Codex';
                                 if (flavor === 'gemini') return 'Gemini';

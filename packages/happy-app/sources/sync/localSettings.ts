@@ -65,6 +65,7 @@ export const webSoundSettingsDefaults: z.infer<typeof WebSoundSettingsSchema> = 
 };
 
 export const LocalSettingsSchema = z.object({
+    personalAgentConversationId: z.string().min(1).nullable().default(null),
     // Developer settings (device-specific)
     debugMode: z.boolean().describe('Enable debug logging'),
     devModeEnabled: z.boolean().describe('Enable developer menu in settings'),
@@ -133,6 +134,7 @@ export type LocalSettings = z.infer<typeof LocalSettingsSchema>;
 //
 
 export const localSettingsDefaults: LocalSettings = {
+    personalAgentConversationId: null,
     debugMode: false,
     devModeEnabled: false,
     voiceUpsellOverride: null,

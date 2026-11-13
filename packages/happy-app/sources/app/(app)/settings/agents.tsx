@@ -38,6 +38,7 @@ type FieldConfig = {
 };
 
 const agentLabels: Record<AgentKey, string> = {
+    personal: t('agentInput.agent.personal'),
     ask: 'Ask',
     claude: 'Claude Code',
     codex: 'Codex',

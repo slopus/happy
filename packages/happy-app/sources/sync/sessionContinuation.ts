@@ -41,7 +41,7 @@ export function continuationSpawnOptions(source: Session): SpawnSessionOptions {
     const metadata = source.metadata;
     const flavor = metadata?.flavor ?? 'claude';
     if (!metadata?.machineId || !metadata.path) throw new Error('continuation-missing-machine');
-    if (!['claude', 'codex', 'ask', 'gemini', 'opencode', 'openclaw'].includes(flavor)) throw new Error('continuation-unsupported-agent');
+    if (!['claude', 'codex', 'ask', 'gemini', 'opencode', 'openclaw', 'personal'].includes(flavor)) throw new Error('continuation-unsupported-agent');
     return { machineId: metadata.machineId, directory: metadata.path,
         agent: flavor as SpawnSessionOptions['agent'], approvedNewDirectoryCreation: false };
 }

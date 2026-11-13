@@ -40,7 +40,7 @@ export function getSessionConfigExperience(agentType: NewSessionAgentType): Sess
         showPath: !isAskMode,
         showModeDetails: true,
         showPermission: !isAskMode,
-        showWorktree: !isAskMode,
+        showWorktree: !isAskMode && agentType !== 'personal',
     };
 }
 
@@ -90,7 +90,7 @@ export function getTopLevelModeForAgent(agentType: NewSessionAgentType): NewSess
 }
 
 export function getCodingAgentPickerItems<T extends AgentPickerItem>(agents: T[]): Array<Exclude<T, { key: 'ask' }>> {
-    return agents.filter((agent) => agent.key !== 'ask') as Array<Exclude<T, { key: 'ask' }>>;
+    return agents.filter((agent) => agent.key !== 'ask' && agent.key !== 'personal') as Array<Exclude<T, { key: 'ask' }>>;
 }
 
 export function selectAgentForTopLevelMode(args: {

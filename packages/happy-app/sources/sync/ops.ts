@@ -236,7 +236,7 @@ export interface SpawnSessionOptions {
     traceId?: string;
     approvedNewDirectoryCreation?: boolean;
     token?: string;
-    agent?: 'ask' | 'codex' | 'claude' | 'gemini' | 'opencode' | 'openclaw';
+    agent?: 'ask' | 'codex' | 'claude' | 'gemini' | 'opencode' | 'openclaw' | 'personal';
     environmentVariables?: Record<string, string>;
     /**
      * If set, the daemon spawns the agent with `--resume <id>` so the new

@@ -1,3 +1,4 @@
+import { isPersonalAgentConversation } from '@/sync/personalAgent';
 import type { Router } from "expo-router"
 import { useRouter } from "expo-router"
 import { useCallback } from 'react';
@@ -11,6 +12,12 @@ export function navigateToSession(router: Router, sessionId: string) {
     if (session) {
         trackSessionSwitched(session);
     }
+    if (session && isPersonalAgentConversation(session)) {
+        storage.getState().applyLocalSettings({ personalAgentConversationId: sessionId });
+        router.navigate('/personal');
+        return;
+    }
+
 
     // 统一会话返回逻辑：无论从首页、侧栏切换、最近列表、机器详情还是通知进入，
     // 都先把导航栈弹回首页（新建会话页 '/'），再进入目标会话，使栈恒为

@@ -17,7 +17,7 @@ import {
     formatSessionTable,
 } from './cli/output';
 
-const SUPPORTED_AGENTS: SupportedAgent[] = ['ask', 'claude', 'codex', 'gemini', 'opencode', 'openclaw'];
+const SUPPORTED_AGENTS: SupportedAgent[] = ['ask', 'claude', 'codex', 'gemini', 'opencode', 'openclaw', 'personal'];
 
 export type CliDependencies = {
     client: PawsAgentClient;

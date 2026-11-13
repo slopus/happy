@@ -96,6 +96,7 @@ export default function RootLayout() {
                     headerBackTitle: t('settings.title'),
                 }}
             />
+            <Stack.Screen name="personal" options={{ headerShown: false }} />
             <Stack.Screen
                 name="session/[id]"
                 options={{

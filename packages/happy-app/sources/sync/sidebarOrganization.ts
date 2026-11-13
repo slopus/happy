@@ -56,7 +56,7 @@ const SidebarWorkspaceListSchema = z.object({
     color: SidebarListColorSchema,
     machineId: z.string().max(200).nullable(),
     path: z.string().max(SIDEBAR_LIST_PATH_MAX_LENGTH).nullable(),
-    defaultAgent: z.enum(['ask', 'claude', 'codex', 'gemini', 'opencode', 'openclaw']).nullable(),
+    defaultAgent: z.enum(['ask', 'claude', 'codex', 'gemini', 'opencode', 'openclaw', 'personal']).nullable(),
     createdAt: z.number().finite(),
 }).passthrough();
 const SidebarLegacyAgentListSchema = z.object({

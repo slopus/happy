@@ -57,6 +57,7 @@ import { isRunningOnMac } from '@/utils/platform';
 
 // Agent icon assets
 const agentIcons = {
+    personal: require('@/assets/images/paws-mascot.png'),
     ask: require('@/assets/images/icon-claude.png'),
     claude: require('@/assets/images/icon-claude.png'),
     codex: require('@/assets/images/icon-gpt.png'),
@@ -67,6 +68,7 @@ const agentIcons = {
 
 type AgentKey = NewSessionAgentType;
 const ALL_AGENTS: { key: AgentKey; label: string }[] = [
+    { key: 'personal', label: t('agentInput.agent.personal') },
     { key: 'ask', label: 'ask' },
     { key: 'opencode', label: 'opencode' },
     { key: 'claude', label: 'claude code' },

@@ -28,6 +28,8 @@ export function resolveSessionInfoAgentLabel(
     translate: (key: any) => string,
 ): string {
     switch (flavor) {
+        case 'personal':
+            return translate('agentInput.agent.personal');
         case 'ask':
             return 'ask';
         case 'codex':

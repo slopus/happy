@@ -1,3 +1,4 @@
+import { PersonalAgentEntry } from './personal/PersonalAgentEntry';
 import { useDesktopWorkspacePathname } from '@/hooks/useDesktopWorkspacePathname';
 import * as React from 'react';
 import { createPortal } from 'react-dom';
@@ -529,6 +530,7 @@ export const SidebarView = React.memo(({
                     <NewSessionGlyph />
                     <Text style={styles.newSessionText}>{t('sidebar.newSession')}</Text>
                 </Pressable>
+                <PersonalAgentEntry onNavigate={closeDrawer} />
 
                 <Pressable accessibilityRole="button" onPress={() => go('/agent-profiles')} testID="sidebar-party-agents-button" style={({ pressed }) => [styles.messagesRow, desktopDensity && styles.messagesRowDesktop, pressed && styles.navigationCardPressed]}>
                     <Ionicons name="person-add-outline" size={17} color={stylesheet.messagesText.color}/><Text style={styles.messagesText}>群聊 Agent 管理</Text>
@@ -781,7 +783,14 @@ export const SidebarView = React.memo(({
                                         <Ionicons name="close" size={20} color={styles.mobileHeaderTitle.color} />
                                     </Pressable>
                                 </View>
+                                {!advisorSidebarActive && <>
+                                    <Pressable accessibilityRole="button" accessibilityLabel={t('sidebar.newSession')} onPress={() => go('/new')} style={styles.newSessionButton} testID="mobile-sidebar-new-session">
+                                        <NewSessionGlyph /><Text style={styles.newSessionText}>{t('sidebar.newSession')}</Text>
+                                    </Pressable>
+                                    <PersonalAgentEntry onNavigate={closeDrawer} />
+                                </>}
                                 <View style={[styles.mobileContent, advisorSidebarActive && styles.hiddenContent]} accessibilityElementsHidden={advisorSidebarActive} importantForAccessibility={advisorSidebarActive ? 'no-hide-descendants' : 'auto'}>
+
                                     <DesktopSidebarSessionsNavigation />
                                 </View>
                                 {advisorSidebarActive ? <PluginLeftSidebarSlot desktopDensity fillAvailableSpace onNavigate={go} /> : null}

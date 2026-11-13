@@ -25,6 +25,14 @@ describe('parseResumeCommandArgs', () => {
 });
 
 describe('buildResumeLaunch', () => {
+    it('keeps the native Personal engine and Paws session ID when resuming', () => {
+        expect(buildResumeLaunch({ id: 'personal-session', active: false, metadata: {
+            path: '/tmp/personal', flavor: 'personal', host: 'local', homeDir: '/tmp',
+            happyHomeDir: '/tmp/.happy', happyLibDir: '/tmp/happy', happyToolsDir: '/tmp/happy/tools',
+        } }, { startedBy: 'daemon' })).toEqual({
+            cwd: '/tmp/personal', args: ['personal', '--resume', 'personal-session', '--started-by', 'daemon'],
+        });
+    });
     it('builds a Codex resume command', () => {
         expect(buildResumeLaunch({
             id: 'session-1',

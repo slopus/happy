@@ -1,3 +1,4 @@
+vi.mock('./personal/PersonalAgentEntry', () => ({ PersonalAgentEntry: 'PersonalAgentEntry' }));
 import * as React from 'react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

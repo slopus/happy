@@ -27,6 +27,31 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
  * Must match the exact structure of the English translations
  */
 export const ru: TranslationStructure = {
+    personalAgent: {
+        defaultName: "Paws",
+        editProfile: "Изменить помощника",
+        name: "Имя",
+        namePlaceholder: "Дайте помощнику имя",
+        changeAvatar: "Изменить аватар",
+        resetAvatar: "Использовать аватар Paws",
+        messagePlaceholder: ({ name }: { name: string }) => `Написать ${name}`,
+        emptyTitle: ({ name }: { name: string }) => `Поговорите с ${name}`,
+        emptyDescription: "Ваш личный помощник. Переписка сохраняется здесь, отдельно от других сессий.",
+        chooseMachine: "Выбрать устройство",
+        noMachine: "Подключите устройство с установленным Paws Personal, чтобы начать разговор.",
+        startConversation: "Начать разговор",
+        connecting: "Подключение…",
+        reconnect: "Подключитесь снова, чтобы продолжить",
+        sendFailed: "Не удалось отправить сообщение. Попробуйте ещё раз.",
+        loadFailed: "Не удалось загрузить этот разговор.",
+        profileSaveFailed: "Не удалось сохранить данные помощника. Попробуйте ещё раз.",
+        conversation: "Личный разговор",
+        openMenu: "Открыть боковую панель",
+        loadMore: "Предыдущие сообщения",
+        thinking: "Думаю…",
+        stop: "Остановить",
+        send: "Отправить сообщение",
+    },
     projectGoals: {
         ...projectGoalsBase.projectGoals,
         favoriteItem: ({ title }: { title: string }) => `Добавить «${title}» в избранное`,
@@ -1450,6 +1475,7 @@ failedContinueTask: "Продолжить незавершённую задач�
             gemini: 'Gemini',
             opencode: 'OpenCode',
             openclaw: 'OpenClaw',
+            personal: 'Paws Personal',
         },
         model: {
             title: 'МОДЕЛЬ',

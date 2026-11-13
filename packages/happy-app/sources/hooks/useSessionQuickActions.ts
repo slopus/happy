@@ -62,7 +62,7 @@ function getResumeAvailability(session: Session, machine: Machine | null | undef
     const availability = resolveSessionResumeAvailability({
         isConnected,
         hasMachineId: Boolean(session.metadata?.machineId),
-        hasBackendResumeId: Boolean(session.metadata?.claudeSessionId || session.metadata?.codexThreadId),
+        hasBackendResumeId: Boolean(session.metadata?.flavor === 'personal' || session.metadata?.claudeSessionId || session.metadata?.codexThreadId),
         hasMachine: Boolean(machine),
         machineOnline: Boolean(machine && isMachineOnline(machine)),
         rpcAvailable: machine?.metadata?.resumeSupport?.rpcAvailable,

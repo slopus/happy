@@ -1,6 +1,6 @@
 import * as z from 'zod';
 
-export const agentKeys = ['ask', 'claude', 'codex', 'gemini', 'opencode', 'openclaw'] as const;
+export const agentKeys = ['ask', 'claude', 'codex', 'gemini', 'opencode', 'openclaw', 'personal'] as const;
 export type AgentKey = typeof agentKeys[number];
 
 export const AgentDefaultOverrideSchema = z.object({
@@ -10,6 +10,7 @@ export const AgentDefaultOverrideSchema = z.object({
 }).passthrough();
 
 export const AgentDefaultOverridesSchema = z.object({
+    personal: AgentDefaultOverrideSchema.optional(),
     ask: AgentDefaultOverrideSchema.optional(),
     claude: AgentDefaultOverrideSchema.optional(),
     codex: AgentDefaultOverrideSchema.optional(),
@@ -29,6 +30,7 @@ export type AgentDefaultConfig = {
 };
 
 const codeAgentDefaults: Record<AgentKey, AgentDefaultConfig> = {
+    personal: { permissionMode: 'default', modelMode: 'default', effortLevel: null },
     // The Claude UI key for YOLO is `bypassPermissions`; the CLI also accepts
     // `yolo` and maps it to the Claude SDK's bypass mode.
     ask: { permissionMode: 'default', modelMode: 'deepseek/deepseek-v4-flash', effortLevel: null },
@@ -40,7 +42,7 @@ const codeAgentDefaults: Record<AgentKey, AgentDefaultConfig> = {
 };
 
 export function normalizeAgentKey(flavor: string | null | undefined): AgentKey {
-    if (flavor === 'ask' || flavor === 'codex' || flavor === 'gemini' || flavor === 'opencode' || flavor === 'openclaw') {
+    if (flavor === 'personal' || flavor === 'ask' || flavor === 'codex' || flavor === 'gemini' || flavor === 'opencode' || flavor === 'openclaw') {
         return flavor;
     }
     return 'claude';

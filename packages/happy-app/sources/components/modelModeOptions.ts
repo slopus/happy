@@ -137,6 +137,13 @@ export function getOpenCodePermissionModes(translate: Translate): PermissionMode
 }
 
 export function getHardcodedPermissionModes(flavor: AgentFlavor, translate: Translate): PermissionMode[] {
+    if (flavor === 'personal') {
+        return [
+            { key: 'default', name: translate('agentInput.taskPermission.confirm'), description: null },
+            { key: 'read-only', name: translate('agentInput.codexPermissionMode.readOnly'), description: null },
+            { key: 'yolo', name: translate('agentInput.taskPermission.fullAccess'), description: null },
+        ];
+    }
     if (flavor === 'ask') {
         return getAskPermissionModes(translate);
     }
@@ -173,6 +180,7 @@ export function getOpenCodeModelModes(): ModelMode[] {
 }
 
 export function getHardcodedModelModes(flavor: AgentFlavor, _translate: Translate): ModelMode[] {
+    if (flavor === 'personal') return [{ key: 'default', name: DEFAULT_MODEL_LABEL, description: null }];
     if (flavor === 'ask') {
         return getAskModelModes();
     }
@@ -359,6 +367,6 @@ export function getDefaultEffortKeyForModel(flavor: AgentFlavor, modelKey: strin
 }
 
 export function getSupportsWorktree(flavor: AgentFlavor): boolean {
-    if (flavor === 'ask' || flavor === 'openclaw') return false;
+    if (flavor === 'ask' || flavor === 'openclaw' || flavor === 'personal') return false;
     return true;
 }

@@ -514,7 +514,7 @@ export async function startDaemon(): Promise<void> {
           // Construct command for the CLI
           const agent = options.agent ?? 'opencode';
           const cliPath = resolveHappyCLIEntrypoint(startupIntegration.workerEntrypoint(agent));
-          if (!['ask', 'claude', 'codex', 'gemini', 'opencode', 'openclaw'].includes(agent)) {
+          if (!['ask', 'claude', 'codex', 'gemini', 'opencode', 'openclaw', 'personal'].includes(agent)) {
             return {
               type: 'error',
               errorMessage: `Unsupported agent type: '${options.agent}'. Please update your CLI to the latest version.`
@@ -619,6 +619,10 @@ export async function startDaemon(): Promise<void> {
           let agentCommand: string;
           let args: string[];
           switch (options.agent) {
+            case 'personal':
+              agentCommand = 'personal';
+              args = [agentCommand];
+              break;
             case 'ask':
               agentCommand = 'ask';
               args = [agentCommand];
@@ -974,7 +978,7 @@ export async function startDaemon(): Promise<void> {
 
         await fs.access(launch.cwd);
 
-        const agent = metadata?.flavor === 'codex' || metadata?.codexThreadId ? 'codex' : 'claude';
+        const agent = metadata?.flavor === 'personal' ? 'personal' : metadata?.flavor === 'codex' || metadata?.codexThreadId ? 'codex' : 'claude';
         let recoverySuperseded = false;
         const resumed = await withCodexAccountLaunch({ agent, codexSessionGrant: options?.codexSessionGrant }, api, machineId, async (codexLaunch) => {
         if (options?.expectedFailedTurn || options?.expectedWorkerPid) {

@@ -58,6 +58,25 @@ import { normalizeRawMessage } from './typesRaw';
 import * as persistence from './persistence';
 
 describe('storage session lifecycle', () => {
+    it('isolates Personal from active, archived and legacy lists without losing its messages or draft', () => {
+        const row = (id: string, flavor: string, archived = false) => ({ id, seq: 1, createdAt: 1, updatedAt: 2,
+            active: !archived, activeAt: 2, metadata: { path: '/personal', host: 'test', flavor, ...(archived ? { lifecycleState: 'archived' } : {}) }, metadataVersion: 1,
+            agentState: null, agentStateVersion: 0, thinking: false, thinkingAt: 0 });
+        storage.getState().applySessions([row('ordinary', 'codex'), row('personal-live', 'personal'), row('personal-old', 'personal', true)]);
+        storage.getState().updateSessionDraft('personal-live', 'keep my draft');
+        const ids = () => storage.getState().sessionListViewData!.flatMap(item => item.type === 'active-sessions' ? item.sessions.map(row => row.id) : item.type === 'session' ? [item.session.id] : []);
+        expect(ids()).toEqual(['ordinary']);
+        expect(storage.getState().sessionsData!.filter(item => typeof item !== 'string').map(item => item.id)).toEqual(['ordinary']);
+        expect(storage.getState().sessions['personal-live'].draft).toBe('keep my draft');
+        const message = normalizeRawMessage('personal-text', null, 30, { role: 'user', content: { type: 'text', text: 'hello' } });
+        if (!message) throw new Error('missing fixture');
+        storage.getState().applyMessages('personal-live', [message]);
+        storage.getState().applySessions([{ ...row('personal-live', 'personal'), seq: 2, updatedAt: 100 }]);
+        expect(storage.getState().sessionMessages['personal-live'].messages).toHaveLength(1);
+        expect(ids()).toEqual(['ordinary']);
+        expect(storage.getState().sessions['personal-live'].draft).toBe('keep my draft');
+    });
+
     it('keeps the parent running when live child completion is projected', () => {
         storage.getState().applySessions([{ id: 'parent', seq: 1, createdAt: 1, updatedAt: 1,
             active: true, activeAt: Date.now(), metadata: null, metadataVersion: 0,

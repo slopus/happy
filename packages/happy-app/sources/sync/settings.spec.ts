@@ -330,6 +330,8 @@ describe('settings', () => {
         it('should have correct default values', () => {
             expect(settingsDefaults).toEqual({
                 schemaVersion: 2,
+                personalAgentName: 'Paws',
+                personalAgentAvatar: null,
                 customInstructions: '',
                 viewInline: false,
                 expandTodos: true,

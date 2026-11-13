@@ -194,7 +194,7 @@ beforeAll(async () => {
     const NodeModule = (await import('node:module')).default as any;
     const originalLoad = NodeModule._load;
     NodeModule._load = function load(request: string, ...args: unknown[]) {
-        if (request.startsWith('@/assets/images/icon-')) return {};
+        if (request.startsWith('@/assets/images/icon-') || request === '@/assets/images/paws-mascot.png') return {};
         return originalLoad.call(this, request, ...args);
     };
     restoreModuleLoad = () => { NodeModule._load = originalLoad; };

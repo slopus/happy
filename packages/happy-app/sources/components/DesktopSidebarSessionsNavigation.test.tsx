@@ -47,6 +47,8 @@ const mocks = vi.hoisted(() => {
     });
 });
 
+vi.mock('./personal/PersonalAgentEntry', () => ({ PersonalAgentEntry: 'PersonalAgentEntry' }));
+
 vi.mock('@/sync/sync', () => ({ sync: { bootstrapSessions: mocks.bootstrap, loadNextSessionHistoryPage: mocks.history } }));
 
 vi.mock('react-native', async () => {

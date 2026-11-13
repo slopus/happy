@@ -112,6 +112,7 @@ import { markSessionCriticalPathAppStage } from '@/sync/sessionCriticalPathProbe
 // Agent display labels for the header chip. Mirrors ComposeHome's map, but keyed
 // off the running session's `flavor` (an active session reports its agent there).
 const AGENT_LABELS: Record<string, string> = {
+    personal: t('agentInput.agent.personal'),
     ask: 'ask',
     claude: 'claude code',
     codex: 'codex',

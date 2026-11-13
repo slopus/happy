@@ -23,7 +23,7 @@ const PENDING_SESSION_PINNED_ORDER_BASE_KEY = 'pending-session-pinned-order-base
 const PENDING_SESSION_PINNED_STATE_KEY = 'pending-session-pinned-state-v1';
 const STAGING_DREAMSKIN_SEEDED_KEY = 'staging-dreamskin-seeded-v1';
 
-export type NewSessionAgentType = 'ask' | 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw';
+export type NewSessionAgentType = 'ask' | 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw' | 'personal';
 export type NewSessionSessionType = 'simple' | 'worktree';
 
 export interface NewSessionDraft {
@@ -313,7 +313,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
         const input = typeof parsed.input === 'string' ? parsed.input : '';
         const selectedMachineId = typeof parsed.selectedMachineId === 'string' ? parsed.selectedMachineId : null;
         const selectedPath = typeof parsed.selectedPath === 'string' ? parsed.selectedPath : null;
-        const agentType: NewSessionAgentType = parsed.agentType === 'ask' || parsed.agentType === 'codex' || parsed.agentType === 'gemini' || parsed.agentType === 'opencode' || parsed.agentType === 'openclaw'
+        const agentType: NewSessionAgentType = parsed.agentType === 'personal' || parsed.agentType === 'ask' || parsed.agentType === 'codex' || parsed.agentType === 'gemini' || parsed.agentType === 'opencode' || parsed.agentType === 'openclaw'
             ? parsed.agentType
             : 'opencode';
         const permissionMode: PermissionModeKey = typeof parsed.permissionMode === 'string'

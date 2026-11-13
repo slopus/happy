@@ -150,6 +150,15 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'personal') {
+    try {
+      const { handlePersonalCommand } = await import('@/personal/command');
+      await handlePersonalCommand(args.slice(1));
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Personal agent failed');
+      process.exitCode = 1;
+    }
+    return;
   } else if (subcommand === 'ask') {
     try {
       const { runAsk } = await import('@/ask/runAsk');

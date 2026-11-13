@@ -19,7 +19,7 @@ import packageJson from '../../package.json';
 /**
  * Backend flavor identifier for session metadata.
  */
-export type BackendFlavor = 'ask' | 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw' | 'acp';
+export type BackendFlavor = 'ask' | 'claude' | 'codex' | 'gemini' | 'opencode' | 'openclaw' | 'personal' | 'acp';
 
 const CODEX_NATIVE_SLASH_COMMANDS = [
     'clear',

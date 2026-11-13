@@ -1,4 +1,5 @@
 import * as z from 'zod';
+import { isPersonalAgentAvatar, PERSONAL_AGENT_NAME_MAX_LENGTH } from './personalAgent';
 import { AgentDefaultOverridesSchema } from './agentDefaults';
 import {
     emptySidebarOrganization,
@@ -82,7 +83,7 @@ export const AgentLauncherListSchema = z.array(z.object({
         prompt: z.string(),
     })).default([]),
     // 空间预设的默认引擎 / 模型 / 思考强度（进入该 Agent 新建会话时套用）。
-    agentType: z.enum(['ask', 'claude', 'codex', 'gemini', 'opencode', 'openclaw']).optional(),
+    agentType: z.enum(['ask', 'claude', 'codex', 'gemini', 'opencode', 'openclaw', 'personal']).optional(),
     runtime: z.enum(['relationship-advisor']).optional(),
     permissionMode: z.string().optional(),
     modelMode: z.string().optional(),
@@ -93,6 +94,8 @@ export const SettingsSchema = z.object({
     // Schema version for compatibility detection
     schemaVersion: z.number().default(SUPPORTED_SCHEMA_VERSION).describe('Settings schema version for compatibility checks'),
 
+    personalAgentName: z.string().trim().min(1).max(PERSONAL_AGENT_NAME_MAX_LENGTH).catch('Paws').default('Paws'),
+    personalAgentAvatar: z.string().refine(isPersonalAgentAvatar).nullable().catch(null).default(null),
     customInstructions: z.string().describe('User-defined instructions appended to the system prompt of every message'),
     viewInline: z.boolean().describe('Whether to view inline tool calls'),
     inferenceOpenAIKey: z.string().nullish().describe('OpenAI API key for inference'),
@@ -176,6 +179,8 @@ export type QuickPrompt = z.infer<typeof QuickPromptSchema>;
 
 export const settingsDefaults: Settings = {
     schemaVersion: SUPPORTED_SCHEMA_VERSION,
+    personalAgentName: 'Paws',
+    personalAgentAvatar: null,
     customInstructions: '',
     viewInline: false,
     inferenceOpenAIKey: null,
