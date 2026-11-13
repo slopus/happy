@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_genui.xml in pt: Android-only strings.
+  AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="genui_secret_new">Novo segredo</string>
+    <string name="genui_secret_change">Alterar segredo</string>
+    <string name="genui_secret_checking">Procurando um segredo com este nome…</string>
+    <string name="genui_secret_about">Os valores vão apenas para este computador. O agente que pediu recebe acesso ao segredo e fica sabendo o nome e os nomes das variáveis, nunca os valores.</string>
+    <string name="genui_secret_name">Nome</string>
+    <string name="genui_secret_name_problem">De 2 a 32 caracteres: letras minúsculas, dígitos, _ e -, começando por uma letra.</string>
+    <string name="genui_secret_description">Descrição</string>
+    <string name="genui_secret_description_placeholder">Para que serve o segredo</string>
+    <string name="genui_secret_description_problem">Diga para que serve o segredo.</string>
+    <string name="genui_secret_variables">Variáveis</string>
+    <string name="genui_secret_variable_placeholder">VARIABLE_NAME</string>
+    <string name="genui_secret_value_placeholder">Valor</string>
+    <string name="genui_secret_value_keep">Deixe vazio para manter o valor salvo</string>
+    <string name="genui_secret_no_variables">Adicione pelo menos uma variável.</string>
+    <string name="genui_secret_variable_name_problem">Nomes de variáveis usam letras, dígitos e _, e não começam com dígito.</string>
+    <string name="genui_secret_variable_twice">Cada variável precisa de um nome próprio.</string>
+    <string name="genui_secret_value_problem">Digite um valor para cada variável nova.</string>
+    <string name="genui_secret_add_variable">Adicionar variável</string>
+    <string name="genui_secret_remove_variable">Remover %1$s</string>
+    <string name="genui_secret_managed">Este segredo é gerenciado em outro lugar e não pode ser alterado aqui. Escolha outro nome.</string>
+    <string name="genui_secret_stale">Este segredo mudou desde que o formulário foi aberto. Confira e salve de novo.</string>
+    <string name="genui_secret_exists">Já existe um segredo com este nome. Salvar agora o altera.</string>
+    <string name="genui_secret_refused">O computador recusou este formulário. Confira os nomes e os valores.</string>
+    <string name="genui_secret_unavailable">Este computador não pode salvar segredos daqui. Atualize o Happy Agent nele.</string>
+    <string name="genui_secret_conflict">Não foi possível salvar: o agente que pediu está arquivado ou este segredo não pode ser alterado aqui.</string>
+    <string name="genui_secret_failed">Não foi possível salvar o segredo. Tente de novo.</string>
+    <string name="genui_secret_added">%1$s adicionado</string>
+    <string name="genui_secret_updated">%1$s alterado</string>
+    <string name="genui_secret_told">O agente que pediu já pode usar %1$s e foi avisado. Ele nunca vê os valores.</string>
+    <string name="genui_secret_done">Concluído</string>
+</resources>

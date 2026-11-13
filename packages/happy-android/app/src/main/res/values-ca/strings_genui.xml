@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_genui.xml in ca: Android-only strings.
+  AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="genui_secret_new">Secret nou</string>
+    <string name="genui_secret_change">Canvia el secret</string>
+    <string name="genui_secret_checking">S’està cercant un secret amb aquest nom…</string>
+    <string name="genui_secret_about">Els valors només van a aquest ordinador. L’agent que ho ha demanat obté accés al secret i se li diu el nom i els noms de les variables, mai els valors.</string>
+    <string name="genui_secret_name">Nom</string>
+    <string name="genui_secret_name_problem">De 2 a 32 caràcters: lletres minúscules, xifres, _ i -, començant per una lletra.</string>
+    <string name="genui_secret_description">Descripció</string>
+    <string name="genui_secret_description_placeholder">Per a què serveix el secret</string>
+    <string name="genui_secret_description_problem">Digues per a què serveix el secret.</string>
+    <string name="genui_secret_variables">Variables</string>
+    <string name="genui_secret_variable_placeholder">VARIABLE_NAME</string>
+    <string name="genui_secret_value_placeholder">Valor</string>
+    <string name="genui_secret_value_keep">Deixa-ho buit per conservar el valor desat</string>
+    <string name="genui_secret_no_variables">Afegeix almenys una variable.</string>
+    <string name="genui_secret_variable_name_problem">Els noms de variable fan servir lletres, xifres i _, i no comencen per una xifra.</string>
+    <string name="genui_secret_variable_twice">Cada variable necessita un nom propi.</string>
+    <string name="genui_secret_value_problem">Escriu un valor per a cada variable nova.</string>
+    <string name="genui_secret_add_variable">Afegeix una variable</string>
+    <string name="genui_secret_remove_variable">Elimina %1$s</string>
+    <string name="genui_secret_managed">Aquest secret es gestiona en un altre lloc i no es pot canviar aquí. Tria un altre nom.</string>
+    <string name="genui_secret_stale">Aquest secret ha canviat des que s’ha obert el formulari. Revisa’l i torna’l a desar.</string>
+    <string name="genui_secret_exists">Ja existeix un secret amb aquest nom. Si deses ara, el canviaràs.</string>
+    <string name="genui_secret_refused">L’ordinador ha rebutjat aquest formulari. Revisa els noms i els valors.</string>
+    <string name="genui_secret_unavailable">Aquest ordinador no pot desar secrets des d’aquí. Actualitza-hi Happy Agent.</string>
+    <string name="genui_secret_conflict">No s’ha pogut desar: l’agent que ho ha demanat està arxivat o aquest secret no es pot canviar aquí.</string>
+    <string name="genui_secret_failed">No s’ha pogut desar el secret. Torna-ho a provar.</string>
+    <string name="genui_secret_added">S’ha afegit %1$s</string>
+    <string name="genui_secret_updated">S’ha canviat %1$s</string>
+    <string name="genui_secret_told">L’agent que ho ha demanat ja pot fer servir %1$s i n’ha estat avisat. Mai no en veu els valors.</string>
+    <string name="genui_secret_done">Fet</string>
+</resources>

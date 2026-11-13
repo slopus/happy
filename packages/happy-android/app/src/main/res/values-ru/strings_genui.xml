@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_genui.xml in ru: Android-only strings.
+  AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="genui_secret_new">Новый секрет</string>
+    <string name="genui_secret_change">Изменить секрет</string>
+    <string name="genui_secret_checking">Ищем секрет с этим именем…</string>
+    <string name="genui_secret_about">Значения уходят только на этот компьютер. Агент, который их попросил, получает доступ к секрету и узнаёт его имя и имена переменных, но не значения.</string>
+    <string name="genui_secret_name">Имя</string>
+    <string name="genui_secret_name_problem">2–32 символа: строчные буквы, цифры, _ и -, первой должна быть буква.</string>
+    <string name="genui_secret_description">Описание</string>
+    <string name="genui_secret_description_placeholder">Для чего этот секрет</string>
+    <string name="genui_secret_description_problem">Укажите, для чего этот секрет.</string>
+    <string name="genui_secret_variables">Переменные</string>
+    <string name="genui_secret_variable_placeholder">VARIABLE_NAME</string>
+    <string name="genui_secret_value_placeholder">Значение</string>
+    <string name="genui_secret_value_keep">Оставьте пустым, чтобы сохранить текущее значение</string>
+    <string name="genui_secret_no_variables">Добавьте хотя бы одну переменную.</string>
+    <string name="genui_secret_variable_name_problem">Имена переменных состоят из букв, цифр и _ и не начинаются с цифры.</string>
+    <string name="genui_secret_variable_twice">У каждой переменной должно быть своё имя.</string>
+    <string name="genui_secret_value_problem">Введите значение для каждой новой переменной.</string>
+    <string name="genui_secret_add_variable">Добавить переменную</string>
+    <string name="genui_secret_remove_variable">Удалить %1$s</string>
+    <string name="genui_secret_managed">Этим секретом управляют в другом месте, здесь его изменить нельзя. Выберите другое имя.</string>
+    <string name="genui_secret_stale">Секрет изменился, пока была открыта форма. Проверьте его и сохраните ещё раз.</string>
+    <string name="genui_secret_exists">Секрет с таким именем уже есть. Сохранение изменит его.</string>
+    <string name="genui_secret_refused">Компьютер отклонил форму. Проверьте имена и значения.</string>
+    <string name="genui_secret_unavailable">Этот компьютер не может сохранять секреты отсюда. Обновите на нём Happy Agent.</string>
+    <string name="genui_secret_conflict">Не удалось сохранить: агент, который просил, в архиве, или этот секрет здесь изменить нельзя.</string>
+    <string name="genui_secret_failed">Не удалось сохранить секрет. Попробуйте ещё раз.</string>
+    <string name="genui_secret_added">Секрет %1$s добавлен</string>
+    <string name="genui_secret_updated">Секрет %1$s изменён</string>
+    <string name="genui_secret_told">Агент, который просил, теперь может использовать %1$s и уже получил уведомление. Значений он не видит.</string>
+    <string name="genui_secret_done">Готово</string>
+</resources>

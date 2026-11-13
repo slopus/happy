@@ -87,6 +87,9 @@ class GenUiInline(
     class Block(val ui: ArtifactUi.GenUi, val media: ArtifactMedia, val state: GenUiState = GenUiState())
 
     private val files = ArtifactClient(client)
+
+    /** Where a block's secret form saves. */
+    val secrets = GenUiSecretApi(client)
     private val blocks = mutableStateMapOf<String, Block>()
     private val failed = mutableStateMapOf<String, Boolean>()
 
@@ -149,7 +152,7 @@ object GenUiInlineTags {
  * holds the height it last drew at (or [GenUiInline.DEFAULT_HEIGHT]) until
  * read. A failed read leaves only the card. A picture opens the viewer on
  * its group; `message` goes to this conversation when its agent made the
- * version.
+ * version; `secret` opens the secret form, saved for whichever agent made it.
  */
 @Composable
 fun GenUiInlineBlock(artifactId: String, version: Int, inline: GenUiInline, label: (String) -> String, modifier: Modifier = Modifier) {
@@ -169,10 +172,12 @@ fun GenUiInlineBlock(artifactId: String, version: Int, inline: GenUiInline, labe
     }
     var viewing by remember { mutableStateOf<Pair<List<ArtifactMediaItem>, Int>?>(null) }
     val sends = block.ui.origin != null && block.ui.origin == inline.agentId
+    val secrets = rememberGenUiSecretForm(inline.secrets, artifactId, version, block.state)
     val host = rememberGenUiArtifactHost(
         block.ui, block.media, inline.onOpenWeb,
         onView = { items, index -> viewing = items to index },
         onMessage = if (sends) inline.onMessage else null,
+        secrets = secrets,
     )
     val density = LocalDensity.current
     GenUiView(
@@ -186,4 +191,5 @@ fun GenUiInlineBlock(artifactId: String, version: Int, inline: GenUiInline, labe
         block.state,
     )
     viewing?.let { (items, index) -> ArtifactViewer(items, index, block.media) { viewing = null } }
+    secrets?.Sheet()
 }

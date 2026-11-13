@@ -79,6 +79,15 @@ sealed interface Action {
     data class Copy(val text: String) : Action
     data class Tool(val name: String, val input: JsonObject) : Action
 
+    /** Opens the Happy Agent secret form on [secret]; the person types the values. */
+    data class Secret(val secret: SecretPrefill) : Action
+
+    /** Opens Happy Cloud's form for a [kind] secret on [secret], its prefill as written. */
+    data class ClusterSecret(val kind: ClusterSecretKind, val secret: JsonObject) : Action
+
+    /** Opens the page of plugin [id], where the person may install it. */
+    data class Plugin(val id: String) : Action
+
     /** An action this build can't run, or one written wrong: its button is drawn, disabled. */
     data class Unsupported(val type: String?) : Action
 }
@@ -385,6 +394,9 @@ object GenUi {
             "open" -> a.string("url")?.let { Action.Open(it) }
             "copy" -> a.string("text")?.let { Action.Copy(it) }
             "tool" -> a.string("name")?.let { Action.Tool(it, a.obj("input") ?: JsonObject(emptyMap())) }
+            "secret" -> GenUiActions.secret(a.obj("secret"))
+            "cluster_secret" -> GenUiActions.clusterSecret(a.obj("secret"))
+            "plugin" -> GenUiActions.plugin(a.obj("plugin"))
             else -> null
         } ?: Action.Unsupported(type)
     }

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_genui.xml in zh-Hant: Android-only strings.
+  AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="genui_secret_new">新增密鑰</string>
+    <string name="genui_secret_change">修改密鑰</string>
+    <string name="genui_secret_checking">正在尋找同名密鑰…</string>
+    <string name="genui_secret_about">值只會傳送到這台電腦。提出請求的智慧體將取得該密鑰的存取權，並會得知其名稱和變數名稱，但絕不會看到值。</string>
+    <string name="genui_secret_name">名稱</string>
+    <string name="genui_secret_name_problem">2–32 個字元：小寫字母、數字、_ 和 -，以字母開頭。</string>
+    <string name="genui_secret_description">描述</string>
+    <string name="genui_secret_description_placeholder">此密鑰的用途</string>
+    <string name="genui_secret_description_problem">請說明此密鑰的用途。</string>
+    <string name="genui_secret_variables">變數</string>
+    <string name="genui_secret_variable_placeholder">VARIABLE_NAME</string>
+    <string name="genui_secret_value_placeholder">值</string>
+    <string name="genui_secret_value_keep">留空則保留已儲存的值</string>
+    <string name="genui_secret_no_variables">請至少新增一個變數。</string>
+    <string name="genui_secret_variable_name_problem">變數名稱只能包含字母、數字和 _，且不能以數字開頭。</string>
+    <string name="genui_secret_variable_twice">每個變數都需要不同的名稱。</string>
+    <string name="genui_secret_value_problem">請為每個新變數輸入值。</string>
+    <string name="genui_secret_add_variable">新增變數</string>
+    <string name="genui_secret_remove_variable">移除 %1$s</string>
+    <string name="genui_secret_managed">此密鑰由其他地方管理，無法在此修改。請換一個名稱。</string>
+    <string name="genui_secret_stale">表單開啟後此密鑰已被變更。請檢查後再次儲存。</string>
+    <string name="genui_secret_exists">已有同名密鑰。現在儲存將修改它。</string>
+    <string name="genui_secret_refused">電腦拒絕了此表單。請檢查名稱和值。</string>
+    <string name="genui_secret_unavailable">這台電腦無法從此處儲存密鑰。請更新其上的 Happy Agent。</string>
+    <string name="genui_secret_conflict">無法儲存：提出請求的智慧體已封存，或此密鑰無法在此修改。</string>
+    <string name="genui_secret_failed">無法儲存密鑰。請再試一次。</string>
+    <string name="genui_secret_added">已新增 %1$s</string>
+    <string name="genui_secret_updated">已修改 %1$s</string>
+    <string name="genui_secret_told">提出請求的智慧體現在可以使用 %1$s，並已收到通知。它永遠看不到這些值。</string>
+    <string name="genui_secret_done">完成</string>
+</resources>

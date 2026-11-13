@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_genui.xml in ja: Android-only strings.
+  AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="genui_secret_new">新しいシークレット</string>
+    <string name="genui_secret_change">シークレットを変更</string>
+    <string name="genui_secret_checking">この名前のシークレットを確認しています…</string>
+    <string name="genui_secret_about">値はこのコンピューターにだけ送られます。依頼したエージェントはこのシークレットを使えるようになり、名前と変数名だけが伝えられます。値は伝えられません。</string>
+    <string name="genui_secret_name">名前</string>
+    <string name="genui_secret_name_problem">2～32 文字：小文字、数字、_、- を使い、先頭は英字にしてください。</string>
+    <string name="genui_secret_description">説明</string>
+    <string name="genui_secret_description_placeholder">このシークレットの用途</string>
+    <string name="genui_secret_description_problem">このシークレットの用途を入力してください。</string>
+    <string name="genui_secret_variables">変数</string>
+    <string name="genui_secret_variable_placeholder">VARIABLE_NAME</string>
+    <string name="genui_secret_value_placeholder">値</string>
+    <string name="genui_secret_value_keep">空欄のままにすると保存済みの値を保持します</string>
+    <string name="genui_secret_no_variables">変数を 1 つ以上追加してください。</string>
+    <string name="genui_secret_variable_name_problem">変数名には英字、数字、_ を使い、数字で始めないでください。</string>
+    <string name="genui_secret_variable_twice">変数ごとに別の名前を付けてください。</string>
+    <string name="genui_secret_value_problem">新しい変数それぞれに値を入力してください。</string>
+    <string name="genui_secret_add_variable">変数を追加</string>
+    <string name="genui_secret_remove_variable">%1$s を削除</string>
+    <string name="genui_secret_managed">このシークレットは別の場所で管理されているため、ここでは変更できません。別の名前を選んでください。</string>
+    <string name="genui_secret_stale">フォームを開いた後にこのシークレットが変更されました。確認してもう一度保存してください。</string>
+    <string name="genui_secret_exists">この名前のシークレットはすでにあります。今保存するとそれを変更します。</string>
+    <string name="genui_secret_refused">コンピューターがこのフォームを受け付けませんでした。名前と値を確認してください。</string>
+    <string name="genui_secret_unavailable">このコンピューターではここからシークレットを保存できません。Happy Agent を更新してください。</string>
+    <string name="genui_secret_conflict">保存できませんでした。依頼したエージェントがアーカイブされているか、このシークレットはここでは変更できません。</string>
+    <string name="genui_secret_failed">シークレットを保存できませんでした。もう一度お試しください。</string>
+    <string name="genui_secret_added">%1$s を追加しました</string>
+    <string name="genui_secret_updated">%1$s を変更しました</string>
+    <string name="genui_secret_told">依頼したエージェントは %1$s を使えるようになり、通知を受け取りました。値が見られることはありません。</string>
+    <string name="genui_secret_done">完了</string>
+</resources>

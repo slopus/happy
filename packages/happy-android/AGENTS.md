@@ -2026,6 +2026,18 @@ that scrolling 100 blocks measures each once. Debug builds have "Gen UI
 fixtures", `GenUiGymActivity` (shots, `tools/genui/shoot.sh`) and
 `GenUiArtifactGymActivity` (a fixture through the real artifact screen).
 
+Actions (SPEC.md rule 7): `genui/GenUiActions.enabled` is the pure rule per
+host (origin agent, `/v0/health` `capabilities.artifactSecretActions` and
+`plugins`, missing = false), checked by `GenUiActionsTest` against
+`actions.json`; never probe a route to find out. A `secret` prefill is
+validated closed (a value anywhere makes it no action). Its form is
+`ui/genui/GenUiSecretSheet` over `SecretDraft` (every field editable; a
+stored name opens change mode, blank keeps, removed is `null`, `ifMatch` the
+version) and saves only through `POST
+/v0/artifacts/:id/versions/:n/actions` with a retry id; values stay in the
+sheet's memory. `cluster_secret` (Happy Cloud connections) and `plugin` stay
+disabled until their forms/pages exist.
+
 ### Mermaid
 
 `ui/components/MermaidView.kt` renders ```` ```mermaid ```` blocks the way

@@ -63,6 +63,9 @@ import com.slopus.happy.ui.browser.BrowserView
 import com.slopus.happy.ui.browser.rememberBrowserState
 import com.slopus.happy.ui.chat.MarkdownView
 import com.slopus.happy.ui.genui.GenUiArtifactView
+import com.slopus.happy.ui.genui.GenUiSecretApi
+import com.slopus.happy.ui.genui.GenUiState
+import com.slopus.happy.ui.genui.rememberGenUiSecretForm
 import com.slopus.happy.ui.genui.rememberGenUiArtifactHost
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.connection.BarIconButton
@@ -121,6 +124,8 @@ class ArtifactActions(
     val shareLink: (() -> String?)? = null,
     /** Deletes the artifact for everyone (desktop's Delete); null where it can't be, such as one file of it a link opened. */
     val onDelete: (suspend () -> Unit)? = null,
+    /** Where a Gen UI version's secret form saves; null where there is no computer to save to. */
+    val genUiSecrets: GenUiSecretApi? = null,
 )
 
 /**
@@ -215,8 +220,11 @@ fun ArtifactScreen(
                     }
                     is ArtifactUi.Openable -> ArtifactOpenable(ui.file, actions)
                     is ArtifactUi.GenUi -> if (media != null) {
-                        val host = rememberGenUiArtifactHost(ui, media, actions.onOpenWeb, onView = { items, index -> viewing = items to index })
-                        GenUiArtifactView(ui, host)
+                        val state = remember(ui) { GenUiState() }
+                        val secrets = rememberGenUiSecretForm(actions.genUiSecrets, media.artifactId, ui.version, state)
+                        val host = rememberGenUiArtifactHost(ui, media, actions.onOpenWeb, onView = { items, index -> viewing = items to index }, secrets = secrets)
+                        GenUiArtifactView(ui, host, state)
+                        secrets?.Sheet()
                     }
                 }
             }

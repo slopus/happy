@@ -37,6 +37,7 @@ import com.slopus.happy.browser.browserNetwork
 import com.slopus.happy.ui.browser.BrowserPage
 import com.slopus.happy.ui.browser.BrowserScreen
 import com.slopus.happy.ui.browser.openOutside
+import com.slopus.happy.ui.genui.GenUiSecretApi
 import com.slopus.happy.ui.connection.LocalHappyLinks
 import kotlinx.serialization.Serializable
 
@@ -183,6 +184,7 @@ private fun ArtifactEntry(graph: AppGraph, nav: NavHostController, route: Artifa
                 artifactKey = "artifact-${route.artifactId}",
                 // The artifact itself, not one file of it a link opened.
                 onDelete = if (route.path == null) ({ ArtifactClient(session!!.client).delete(route.artifactId) }) else null,
+                genUiSecrets = session?.client?.let { GenUiSecretApi(it) },
             )
         },
         history = rememberArtifactHistory(loader, session, nav, route, title),

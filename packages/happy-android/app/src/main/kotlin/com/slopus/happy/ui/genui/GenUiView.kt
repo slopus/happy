@@ -217,7 +217,7 @@ class GenUiHost(
 
 /**
  * What a person did to one drawn document: which element each single-choice
- * group settled on. A host that draws the document in a list keeps it with
+ * group settled on, and which secret each secret element saved. A host that draws the document in a list keeps it with
  * the version, so a row scrolled away and back keeps its choices.
  */
 @Stable
@@ -227,6 +227,16 @@ class GenUiState {
     /** Settles [group] on [key], as a tap would; the first choice stands. */
     fun choose(group: String, key: String) {
         if (group !in chosen) chosen[group] = key
+    }
+
+    /** Secrets saved from a button or press, by its key: the name its form opens on when tapped again. */
+    internal val saved: SnapshotStateMap<String, String> = mutableStateMapOf()
+
+    fun saved(key: String): String? = saved[key]
+
+    /** [key]'s form saved the secret [id]: it is marked done, and opens on that secret next time. */
+    fun save(key: String, id: String) {
+        saved[key] = id
     }
 }
 
@@ -706,8 +716,10 @@ private fun ButtonView(key: String, e: Element.Button, modifier: Modifier) {
     val onFill = if (colors.dark) Color.Black else Color.White
     val fg = if (primary) onFill else toneColor
     val word = if (primary) onFill else wordColor
-    // The check stands in for a glyph and is never added beside the word, so choosing doesn't change a button's width (M2).
-    val icon = if (state.chosen && e.icon != null) IconName.Check else e.icon
+    // Chosen, or its secret saved. The check stands in for a glyph and is never added beside the word,
+    // so neither changes a button's width (M2).
+    val marked = state.chosen || key in scope.state.saved
+    val icon = if (marked && e.icon != null) IconName.Check else e.icon
     val content: @Composable RowScope.() -> Unit = {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             icon?.let { GenUiIcon(it, 16.dp, fg) }
@@ -715,7 +727,7 @@ private fun ButtonView(key: String, e: Element.Button, modifier: Modifier) {
         }
     }
     val faded = if (!state.enabled && !state.chosen) modifier.alpha(0.4f) else modifier
-    val outline = BorderStroke(if (state.chosen) 1.5.dp else 1.dp, if (state.chosen) colors.text else colors.text.copy(alpha = if (colors.dark) 0.2f else 0.14f))
+    val outline = BorderStroke(if (marked) 1.5.dp else 1.dp, if (marked) colors.text else colors.text.copy(alpha = if (colors.dark) 0.2f else 0.14f))
     val padding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
     val disabledColors = ButtonDefaults.outlinedButtonColors(disabledContentColor = toneColor)
     when (e.variant) {
@@ -752,7 +764,7 @@ private fun PressView(key: String, e: Element.Press, modifier: Modifier) {
         PressRole.Tile -> 6.dp to 16.dp
     }
     var m = modifier
-    if (state.chosen) {
+    if (state.chosen || key in scope.state.saved) {
         val tint = LocalGenUiColors.current.fill(Tone.Accent)
         m = m.drawBehind {
             val r = reach.toPx()

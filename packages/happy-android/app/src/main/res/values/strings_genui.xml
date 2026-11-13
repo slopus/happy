@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Gen UI actions (ui/genui): the secret form a Gen UI button opens.
+  Android-only. Translated in values-*/ (AndroidStringsTranslatedTest).
+-->
+<resources>
+    <string name="genui_secret_new">New secret</string>
+    <string name="genui_secret_change">Change secret</string>
+    <string name="genui_secret_checking">Looking for a secret with this name…</string>
+    <string name="genui_secret_about">Values go only to this computer. The agent that asked gets access to the secret and is told its name and variable names, never the values.</string>
+    <string name="genui_secret_name">Name</string>
+    <string name="genui_secret_name_problem">2–32 characters: lowercase letters, digits, _ and -, starting with a letter.</string>
+    <string name="genui_secret_description">Description</string>
+    <string name="genui_secret_description_placeholder">What the secret is for</string>
+    <string name="genui_secret_description_problem">Say what the secret is for.</string>
+    <string name="genui_secret_variables">Variables</string>
+    <string name="genui_secret_variable_placeholder">VARIABLE_NAME</string>
+    <string name="genui_secret_value_placeholder">Value</string>
+    <string name="genui_secret_value_keep">Leave empty to keep the stored value</string>
+    <string name="genui_secret_no_variables">Add at least one variable.</string>
+    <string name="genui_secret_variable_name_problem">Variable names use letters, digits and _, and don’t start with a digit.</string>
+    <string name="genui_secret_variable_twice">Each variable needs its own name.</string>
+    <string name="genui_secret_value_problem">Type a value for each new variable.</string>
+    <string name="genui_secret_add_variable">Add a variable</string>
+    <string name="genui_secret_remove_variable">Remove %1$s</string>
+    <string name="genui_secret_managed">This secret is managed elsewhere and can’t be changed here. Choose another name.</string>
+    <string name="genui_secret_stale">This secret changed since the form opened. Check it and save again.</string>
+    <string name="genui_secret_exists">A secret with this name already exists. Saving now changes it.</string>
+    <string name="genui_secret_refused">The computer refused this form. Check the names and values.</string>
+    <string name="genui_secret_unavailable">This computer can’t save secrets from here. Update Happy Agent on it.</string>
+    <string name="genui_secret_conflict">Couldn’t save: the agent that asked is archived, or this secret can’t be changed here.</string>
+    <string name="genui_secret_failed">Couldn’t save the secret. Try again.</string>
+    <string name="genui_secret_added">Added %1$s</string>
+    <string name="genui_secret_updated">Changed %1$s</string>
+    <string name="genui_secret_told">The agent that asked can use %1$s and has been told. It never sees the values.</string>
+    <string name="genui_secret_done">Done</string>
+</resources>
