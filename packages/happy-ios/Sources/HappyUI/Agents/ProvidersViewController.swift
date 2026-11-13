@@ -73,7 +73,7 @@ final class ProvidersViewController: SettingsPageViewController {
     override func makeRows() -> [[SettingsRow]] {
         typealias Text = Strings.Providers
         var cards: [[SettingsRow]] = []
-        if !CloudProvider.destinations(session.gate).isEmpty, Self.offers(offer) {
+        if !CloudProvider.destinations(session.gate).isEmpty, Self.offers(offer) || CloudProvider.destinations(session.gate).contains(.team) {
             cards.append([SettingsRow(id: "providers-add", title: Text.add, icon: ("add", .action), action: { [weak self] in self?.choose() }, footer: Text.footer)])
         }
         guard let providers else {
@@ -116,6 +116,7 @@ final class ProvidersViewController: SettingsPageViewController {
         case "claude-code": "Claude"
         case "grok": "Grok"
         case "bedrock": "Bedrock"
+        case "openai_compatible": "Custom"
         default: vendor
         }
     }
@@ -145,12 +146,20 @@ final class ProvidersViewController: SettingsPageViewController {
                 self?.open(.providersAddAPIKey, vendor: "grok", destination: destination)
             })
         }
+        if CloudProvider.destinations(session.gate).contains(.team) {
+            sheet.addAction(UIAlertAction(title: Text.custom, style: .default) { [weak self] _ in self?.addCustom() })
+        }
         sheet.addAction(UIAlertAction(title: Strings.Common.cancel, style: .cancel))
         if let popover = sheet.popoverPresentationController {
             popover.sourceView = view
             popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1)
         }
         return sheet
+    }
+
+    /// The team's own provider: owners with `providers.manage` only.
+    func addCustom() {
+        ProviderFlows(client: session.client, destination: .team, host: self) { [weak self] in self?.load() }.addCustom()
     }
 
     /// One way of adding, after asking where it goes when the role leaves

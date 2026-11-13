@@ -29,6 +29,24 @@ struct ProviderFlows {
         }
     }
 
+    /// The team's own provider: an endpoint speaking OpenAI's Responses
+    /// API, its model and the key, on a form pushed over `host`.
+    func addCustom() {
+        typealias Text = Strings.Providers
+        let client = client
+        let added = added
+        let form = FieldsFormViewController(title: Text.custom, fields: [
+            .init(key: "name", label: Text.customName, placeholder: Text.customNamePlaceholder),
+            .init(key: "baseUrl", label: Text.customBaseUrl, help: Text.customBaseUrlHelp, keyboard: .URL, placeholder: "https://api.example.com/v1"),
+            .init(key: "model", label: Text.customModel, placeholder: Text.customModelPlaceholder),
+            .init(key: "apiKey", label: Text.apiKey, secret: true),
+        ], footer: Text.customFooter, action: Text.addAction, failure: Text.customFailed, words: Self.words) { values in
+            try await client.putCustomProvider(CustomProvider(name: values["name"] ?? "", baseUrl: values["baseUrl"] ?? "", model: values["model"] ?? "", apiKey: values["apiKey"] ?? ""))
+            added()
+        }
+        host?.navigationController?.pushViewController(form, animated: true)
+    }
+
     /// Claude's setup token, from `claude setup-token`.
     func addSetupToken(then finished: @escaping () -> Void = {}) {
         ask(title: Strings.Providers.setupToken, message: Strings.Providers.setupTokenHint, placeholder: Strings.Providers.setupToken) { secret in

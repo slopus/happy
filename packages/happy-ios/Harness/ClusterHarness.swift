@@ -74,6 +74,8 @@ actor ClusterServer: AgentTransport {
         .init(id: "i2", plugin: "github", ordinal: 2, label: "Acme", status: "not_configured", authMethod: nil),
     ]
     private var next = 3
+    /// The team's own provider, once one is put.
+    private var custom: String?
 
     init(manager: Bool = true, installed: Bool = true) {
         self.manager = manager
@@ -90,6 +92,13 @@ actor ClusterServer: AgentTransport {
         case ("GET", "/v0/health"): return ok(#"{"ok":true}"#)
         case ("GET", "/v0/permissions"):
             return ok(manager ? #"{"granted":["content.write","bots.manage","mcp.manage","config.manage","providers.manage","providers.own"]}"# : #"{"granted":["content.write","providers.own"]}"#)
+        case ("GET", "/v0/cloud/providers"):
+            let own = custom.map { #",{"id":"\#($0)","name":"\#($0)","scope":"team","source":"tenant","vendors":["openai_compatible"],"models":[],"credentialCount":1}"# } ?? ""
+            return ok(#"{"providers":[{"id":"operator:openai","name":"Happy (free)","scope":"team","source":"operator","vendors":["openai"],"models":[],"credentialCount":0}\#(own)],"capabilities":{"apiKeys":true,"claudeSetupToken":true,"codexSignIn":true,"claudeSignIn":false}}"#)
+        case ("PUT", let path) where path.hasPrefix("/v0/providers/"):
+            guard sent?["baseUrl"]?.stringValue?.hasPrefix("https://") == true else { return refuse(400, "invalid", "`baseUrl` must be an https URL.") }
+            custom = String(path.dropFirst("/v0/providers/".count))
+            return ok(#"{"providerId":"\#(custom ?? "")","credentials":"available"}"#)
         case ("GET", "/v0/plugins"): return ok(Self.catalog)
         case ("GET", "/v0/plugins/installations"):
             guard manager else { return refuse(403, "forbidden", "This needs the mcp.manage permission.") }
@@ -198,6 +207,16 @@ final class ClusterHarness {
             switch open {
             case "plugins":
                 navigation.pushViewController(PluginsViewController(session: session), animated: false)
+            case "providers":
+                let providers = ProvidersViewController(session: session)
+                navigation.pushViewController(providers, animated: false)
+                try? await Task.sleep(for: .seconds(1))
+                if arguments.contains("-choose") { providers.choose() }
+                if arguments.contains("-custom") {
+                    providers.addCustom()
+                    try? await Task.sleep(for: .seconds(1))
+                    if let form = navigation.topViewController as? FieldsFormViewController { fill(form, arguments: arguments) }
+                }
             case let open? where open.hasPrefix("plugin:"):
                 navigation.pushViewController(PluginsViewController(session: session), animated: false)
                 PluginScreens.open(pluginId: String(open.dropFirst("plugin:".count)), session: session, from: navigation)
@@ -225,7 +244,7 @@ final class ClusterHarness {
               let method = catalog.plugin(installation.pluginId)?.authMethods.first(where: { $0.id == setup[1] }) else { return }
         page.setUp(installation, method: method)
         try? await Task.sleep(for: .seconds(1))
-        guard let form = navigation.topViewController as? PluginSetupViewController else { return }
+        guard let form = navigation.topViewController as? FieldsFormViewController else { return }
         if let text = value("-type"), let field = form.view.firstField() {
             field.text = text
             field.sendActions(for: .editingChanged)
@@ -234,7 +253,26 @@ final class ClusterHarness {
     }
 }
 
+/// `-fill key=value,key=value` types into a form's fields; `-submit` sends it.
+@MainActor
+private func fill(_ form: FieldsFormViewController, arguments: [String]) {
+    let pairs = arguments.firstIndex(of: "-fill").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }?.split(separator: ",") ?? []
+    for pair in pairs {
+        let parts = pair.split(separator: "=", maxSplits: 1).map(String.init)
+        guard parts.count == 2, let field = form.view.field(identifier: "form-field-\(parts[0])") else { continue }
+        field.text = parts[1]
+        field.sendActions(for: .editingChanged)
+    }
+    if arguments.contains("-submit") { form.connect() }
+}
+
 private extension UIView {
+    func field(identifier: String) -> UITextField? {
+        if let field = self as? UITextField, field.accessibilityIdentifier == identifier { return field }
+        for child in subviews { if let found = child.field(identifier: identifier) { return found } }
+        return nil
+    }
+
     func firstField() -> UITextField? {
         if let field = self as? UITextField { return field }
         for child in subviews { if let found = child.firstField() { return found } }
