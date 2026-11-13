@@ -229,7 +229,11 @@ actor ClusterServer: AgentTransport {
         case ("PUT", let path) where path.hasPrefix("/v0/providers/"):
             guard sent?["baseUrl"]?.stringValue?.hasPrefix("https://") == true else { return refuse(400, "invalid", "`baseUrl` must be an https URL.") }
             custom = String(path.dropFirst("/v0/providers/".count))
+            mark("inference")
             return ok(#"{"providerId":"\#(custom ?? "")","credentials":"available"}"#)
+        case ("POST", let path) where path.hasPrefix("/v0/cloud/providers/") && path.hasSuffix("/credentials"):
+            mark("inference")
+            return ok(#"{"credential":{"id":"k1"}}"#, status: 201)
         case ("GET", "/v0/plugins"): return ok(Self.catalog)
         case ("GET", "/v0/plugins/installations"):
             // Every member reads them; as deployed before, only managers.
@@ -345,7 +349,7 @@ final class ClusterHarness {
             window.layoutIfNeeded()
             let open = arguments.firstIndex(of: "-open").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
             try? await Task.sleep(for: .seconds(1))
-            if let steps = value("-steps", in: arguments) { await walk(steps, home: home) }
+            if let steps = value("-steps", in: arguments) { await walk(steps, home: home, arguments: arguments) }
             switch open {
             case "plugins":
                 navigation.pushViewController(PluginsViewController(session: session), animated: false)
@@ -389,9 +393,10 @@ final class ClusterHarness {
 
     /// Walks the onboarding flow over `home`, a step every two seconds:
     /// `name:<name>` saves the profile, `bot:<name>` names the admin bot,
+    /// `custom` opens the custom provider's form and `fill` fills it (`-fill`),
     /// `photo` picks a picture, `skip` and
     /// `primary` tap the screen's actions.
-    private func walk(_ steps: String, home: UIViewController) async {
+    private func walk(_ steps: String, home: UIViewController, arguments: [String]) async {
         for step in steps.split(separator: ",") {
             try? await Task.sleep(for: .seconds(2))
             let top = (home.presentedViewController as? UINavigationController)?.topViewController
@@ -403,6 +408,10 @@ final class ClusterHarness {
                 bot.nameField.text.text = String(step.dropFirst("bot:".count))
                 bot.edited()
                 await bot.submit()
+            } else if step == "custom", let inference = top as? OnboardingInferenceViewController {
+                inference.chooser.addCustom()
+            } else if step == "fill", let form = top as? FieldsFormViewController {
+                fill(form, arguments: arguments)
             } else if step == "photo", let photo = top as? OnboardingPhotoViewController {
                 photo.choose(CloudProfileViewController.previewPhoto())
             } else if let notice = top as? CloudStageViewController {

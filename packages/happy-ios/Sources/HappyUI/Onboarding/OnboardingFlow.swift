@@ -144,6 +144,12 @@ final class OnboardingFlow {
             return photoScreen(gate)
         case .adminBot(let bot):
             return adminBotScreen(gate, bot: bot)
+        case .inference(let inference):
+            let session = session
+            let screen = OnboardingInferenceViewController(context: context, session: session, inference: inference,
+                                                           optional: gate.requirement == .optional) { _ = try? await session.readOnboarding() }
+            skips(gate, on: screen)
+            return screen
         default:
             // Done on desktop or the web for now; a gate's own screen
             // takes this one's place as it comes.
@@ -317,7 +323,8 @@ final class OnboardingNavigationController: UINavigationController, UINavigation
     }
 
     func navigationController(_ navigationController: UINavigationController, willShow viewController: UIViewController, animated: Bool) {
-        guard let scroll = (viewController as? CloudStageViewController)?.scroll else { scrolled = nil; return progress.setCovered(false) }
+        // A page pushed on a step (a provider's sign-in) has its own title there.
+        guard let scroll = (viewController as? CloudStageViewController)?.scroll else { scrolled = nil; return progress.setCovered(true) }
         scrolled = scroll.observe(\.contentOffset, options: [.initial, .new]) { [weak self] scroll, _ in
             MainActor.assumeIsolated { self?.progress.setCovered(scroll.contentOffset.y > 1) }
         }

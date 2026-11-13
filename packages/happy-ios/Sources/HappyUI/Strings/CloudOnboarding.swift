@@ -20,6 +20,12 @@ extension Strings {
         static let botNamePlaceholder = "Its name"
         static let botNameFailed = "Couldn’t save the name. Try again."
 
+        static let inferenceTitle = "Connect a model"
+        static let inferenceBody = "Your agents think with a model you connect: ChatGPT, Claude, Grok, or your own endpoint."
+        static let inferenceFree = "Until then, they use Happy’s free model."
+        static let connectProvider = "Connect a Provider"
+        static let inferenceNotAllowed = "Your role can’t connect providers. Ask your admin."
+
         static let updateTitle = "Update Happy to continue"
         static let updateBody = "This server asks for a step this version of Happy doesn’t know yet."
         static let updateAction = "Open the App Store"
