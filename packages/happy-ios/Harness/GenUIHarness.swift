@@ -6,7 +6,7 @@ import UIKit
 
 /// One Gen UI render document (`-genui 01-stats`) as a block of an agent's
 /// message: on the agents' chat ground, inside the chat's margins, nothing
-/// else on screen, motion frozen, for screenshots. The documents and their
+/// else on screen, for screenshots. The documents and their
 /// images are `Tests/HappyCoreTests/Fixtures/GenUI`, bundled as a folder.
 /// Once the images are in it writes the block's frame in window points to
 /// `tmp/genui-frame.json` in the app's container and prints it as
@@ -19,7 +19,7 @@ import UIKit
 /// `GENUI_ACTION <key> <action>` and are never run.
 @MainActor
 final class GenUIHarness {
-    private let block: GenUIView
+    private let block = GenUIBlockView()
 
     init(window: UIWindow, fixture: String? = nil, file: String? = nil) {
         let folder = Bundle.main.resourceURL!.appendingPathComponent("GenUI")
@@ -31,9 +31,8 @@ final class GenUIHarness {
         }
         let document = (try? Data(contentsOf: url)).flatMap(GenUIRenderDocument.parse)
             ?? GenUIRenderDocument(fallback: "Can't read a Gen UI render document at \(url.path)", root: nil, elements: [:])
-        block = GenUIView(document: document, baseURL: folder, freezesMotion: true)
-        block.onAction = { print("GENUI_ACTION \($0) \($1)") }
-        block.onViewer = { print("GENUI_VIEWER \($0) \($1) \($2)") }
+        block.interaction.onAction = { print("GENUI_ACTION \($0) \($1)") }
+        block.interaction.onViewer = { print("GENUI_VIEWER \($0) \($1) \($2)") }
         let controller = UIViewController()
         controller.view.backgroundColor = UIColor(Palette.surface)
         let scroll = UIScrollView()
@@ -45,18 +44,20 @@ final class GenUIHarness {
         scroll.frame = controller.view.bounds
         let margin = MessageLayout.Metrics.marginH
         let width = scroll.bounds.width - 2 * margin
-        let height = block.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
-        // A message's own margin above it, as the first block of a row.
-        block.frame = CGRect(x: margin, y: margin, width: width, height: height)
-        scroll.contentSize = CGSize(width: scroll.bounds.width, height: height + 2 * margin)
-        // `-genuiOffset <points>` scrolls a block taller than the screen
-        // that far, for a second screenshot of its foot.
-        let arguments = ProcessInfo.processInfo.arguments
-        if let index = arguments.firstIndex(of: "-genuiOffset"), arguments.indices.contains(index + 1), let offset = Double(arguments[index + 1]) {
-            scroll.layoutIfNeeded()
-            scroll.contentOffset.y = -scroll.adjustedContentInset.top + offset
-            scroll.contentSize.height += offset
+        block.onHeight = { [block] height in
+            // A message's own margin above it, as the first block of a row.
+            block.frame = CGRect(x: margin, y: margin, width: width, height: height)
+            scroll.contentSize = CGSize(width: scroll.bounds.width, height: height + 2 * margin)
+            // `-genuiOffset <points>` scrolls a block taller than the screen
+            // that far, for a second screenshot of its foot.
+            let arguments = ProcessInfo.processInfo.arguments
+            if let index = arguments.firstIndex(of: "-genuiOffset"), arguments.indices.contains(index + 1), let offset = Double(arguments[index + 1]) {
+                scroll.layoutIfNeeded()
+                scroll.contentOffset.y = -scroll.adjustedContentInset.top + offset
+                scroll.contentSize.height += offset
+            }
         }
+        block.load(document, width: width, traits: GenUITraits(text: nil, displayScale: window.screen.scale), files: GenUIFolderFiles(folder: folder))
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [block] in
             let frame = block.convert(block.bounds, to: nil)
             let json = #"{"x":\#(frame.minX),"y":\#(frame.minY),"width":\#(frame.width),"height":\#(frame.height),"scale":\#(window.screen.scale)}"#

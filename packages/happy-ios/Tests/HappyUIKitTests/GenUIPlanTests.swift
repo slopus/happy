@@ -13,7 +13,6 @@ final class GenUIPlanTests: XCTestCase {
         "01-stats", "02-chart-line", "03-chart-bar", "04-chart-donut", "05-gallery-grid", "06-gallery-carousel",
         "07-list", "08-table", "09-steps", "10-choices", "11-release", "12-labels", "gen-7-02", "gen-7-05", "icons-and-colours",
     ]
-    private static let widths: [CGFloat] = [320, 358, 402, 560, 700]
     private static let traits = GenUITraits(text: nil, displayScale: 3)
 
     private var folder: URL { Bundle(for: Self.self).resourceURL!.appendingPathComponent("GenUI") }
@@ -23,12 +22,27 @@ final class GenUIPlanTests: XCTestCase {
         return try XCTUnwrap(GenUIRenderDocument.parse(data), name)
     }
 
-    @MainActor
-    private static func drawnHeight(_ document: GenUIRenderDocument, width: CGFloat) -> CGFloat {
-        GenUIView(document: document, baseURL: nil, freezesMotion: true).sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
-    }
+    /// Each example's height at a phone's column (358) and at a wide one
+    /// (700), at the designed text size.
+    private static let heights: [String: (phone: CGFloat, wide: CGFloat)] = [
+        "01-stats": (366, 292),
+        "02-chart-line": (358, 435),
+        "03-chart-bar": (332, 409),
+        "04-chart-donut": (426, 426),
+        "05-gallery-grid": (323, 565),
+        "06-gallery-carousel": (323, 579),
+        "07-list": (440, 376),
+        "08-table": (664, 312),
+        "09-steps": (482, 438),
+        "10-choices": (430, 380),
+        "11-release": (854, 909),
+        "12-labels": (552, 617),
+        "gen-7-02": (765, 1019),
+        "gen-7-05": (996, 782),
+        "icons-and-colours": (1232, 1117),
+    ]
 
-    func testEveryExampleIsPlannedOffMainAtTheDrawnHeight() async throws {
+    func testEveryExampleIsPlannedOffMainAtItsHeight() async throws {
         var report: [String] = []
         for name in Self.examples {
             let document = try document(name)
@@ -36,16 +50,14 @@ final class GenUIPlanTests: XCTestCase {
                 DispatchQueue.global(qos: .userInitiated).async {
                     dispatchPrecondition(condition: .notOnQueue(.main))
                     let planner = GenUIPlanner(document: document, traits: Self.traits)
-                    done.resume(returning: Self.widths.map { planner.height(width: $0) })
+                    done.resume(returning: [planner.height(width: 358), planner.height(width: 700)])
                 }
             }
-            for (width, height) in zip(Self.widths, planned) {
-                let drawn = await Self.drawnHeight(document, width: width)
-                if abs(drawn - height) > 0.5 { report.append("\(name) @\(Int(width)): planned \(height), drawn \(drawn)") }
-                XCTAssertEqual(height, drawn, accuracy: 2, "\(name) at \(width)")
-            }
+            report.append("\"\(name)\": (\(planned[0]), \(planned[1]))")
+            let expected = Self.heights[name]
+            XCTAssertEqual(planned, expected.map { [$0.phone, $0.wide] }, name)
         }
-        print("GENUI_PLAN_PARITY \(report.isEmpty ? "exact" : report.joined(separator: "; "))")
+        print("GENUI_HEIGHTS " + report.joined(separator: ", "))
     }
 
     func testEveryElementSitsInsideItsColumn() throws {

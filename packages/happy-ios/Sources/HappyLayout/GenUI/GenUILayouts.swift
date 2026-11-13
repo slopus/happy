@@ -573,6 +573,11 @@ public struct GenUICarouselLayout: Equatable, Sendable {
     /// (points per millisecond, positive leftward), settles on: the next
     /// card in the swipe's direction, at most one away from `current`.
     public func stop(proposed: CGFloat, velocity: CGFloat, current: CGFloat) -> CGFloat {
+        Self.stop(in: stops, proposed: proposed, velocity: velocity, current: current)
+    }
+
+    /// `stop(proposed:velocity:current:)` over a carousel's `stops`.
+    public static func stop(in stops: [CGFloat], proposed: CGFloat, velocity: CGFloat, current: CGFloat) -> CGFloat {
         guard !stops.isEmpty else { return 0 }
         let start = stops.enumerated().min { abs($0.element - current) < abs($1.element - current) }?.offset ?? 0
         var index: Int

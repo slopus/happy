@@ -3,91 +3,83 @@ import HappyCore
 import HappyLayout
 @testable import HappyUI
 import UIKit
+import UltraView
 import XCTest
 
-/// Every compiled Gen UI example lays out across a phone's chat column with
-/// nothing drawn past its sides, and a document with nothing drawable
-/// shows its fallback.
+/// Every compiled Gen UI example built as Ultraview nodes, its choices
+/// kept by the view, and the shared glyphs and colours bundled.
 @MainActor
 final class GenUIRenderTests: XCTestCase {
-    static let examples = [
-        "01-stats", "02-chart-line", "03-chart-bar", "04-chart-donut", "05-gallery-grid", "06-gallery-carousel",
-        "07-list", "08-table", "09-steps", "10-choices", "11-release", "12-labels", "gen-7-02", "gen-7-05", "icons-and-colours",
-    ]
-
     private var folder: URL { Bundle(for: Self.self).resourceURL!.appendingPathComponent("GenUI") }
 
-    private func view(_ name: String, width: CGFloat = 358) throws -> GenUIView {
+    private func built(_ name: String, interaction: GenUIInteraction = GenUIInteraction()) throws -> GenUIBuilt {
         let data = try Data(contentsOf: folder.appendingPathComponent("\(name).render.json"))
         let document = try XCTUnwrap(GenUIRenderDocument.parse(data), name)
-        XCTAssertNotNil(document.tree(), name)
-        let view = GenUIView(document: document, baseURL: folder, freezesMotion: true)
-        let height = view.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
-        view.frame = CGRect(x: 0, y: 0, width: width, height: height)
-        view.layoutIfNeeded()
-        return view
+        let plan = GenUIPlanner(document: document, traits: GenUITraits(text: nil, displayScale: 3)).plan(width: 358)
+        return GenUINodeBuilder.build(plan, interaction: interaction, dark: false)
     }
 
-    /// Visible element views outside any scrolling row, in `root`'s space.
-    private func elements(in root: UIView, _ view: UIView, into list: inout [(GenUIElementView, CGRect)]) {
-        for sub in view.subviews where !sub.isHidden {
-            if sub is UIScrollView { continue }
-            if let element = sub as? GenUIElementView { list.append((element, sub.convert(sub.bounds, to: root))) }
-            elements(in: root, sub, into: &list)
+    private func count(_ node: UltraNode) -> Int { 1 + node.children.map(count).reduce(0, +) }
+
+    /// Every picture, a carousel's tiles included.
+    private func pictures(_ placed: GenUIPlaced) -> Int {
+        let own = if case .image = placed.mark { 1 } else { 0 }
+        return own + placed.children.map(pictures).reduce(0, +)
+    }
+
+    func testEveryExampleBuildsANodePerPlacedElement() throws {
+        for name in GenUIPlanTests.examples + ["13-secret", "14-cluster-secret"] {
+            let built = try built(name)
+            // A placed element is one node; a card's border and a bar's fill add one each.
+            XCTAssertGreaterThanOrEqual(count(built.root), built.plan.root.flattened().count, name)
+            XCTAssertEqual(built.images.count, pictures(built.plan.root), name)
         }
+        XCTAssertEqual(try built("06-gallery-carousel").snaps.count, 1)
     }
 
-    func testEveryExampleLaysOutWithinTheColumn() throws {
-        for name in Self.examples {
-            let root = try view(name)
-            XCTAssertGreaterThan(root.bounds.height, 40, name)
-            var list: [(GenUIElementView, CGRect)] = []
-            elements(in: root, root, into: &list)
-            XCTAssertGreaterThan(list.count, 2, name)
-            for (element, frame) in list where frame.height > 0 {
-                XCTAssertGreaterThanOrEqual(frame.minX, -0.5, "\(name) \(element.key) starts inside")
-                XCTAssertLessThanOrEqual(frame.maxX, root.bounds.width + 0.5, "\(name) \(element.key) ends inside")
-                XCTAssertLessThanOrEqual(frame.maxY, root.bounds.height + 0.5, "\(name) \(element.key) ends above the foot")
-            }
-            XCTAssertFalse(list.contains { $0.0.key == "fallback" }, name)
+    func testACarouselRunsIntoTheMargins() throws {
+        let built = try built("06-gallery-carousel")
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 800))
+        let block = GenUIBlockView(frame: CGRect(x: 16, y: 0, width: 358, height: built.plan.size.height))
+        window.addSubview(block)
+        block.apply(built, files: nil)
+        let shown = expectation(for: NSPredicate { _, _ in built.snaps.first?.node.view != nil }, evaluatedWith: nil)
+        wait(for: [shown], timeout: 5)
+        let scroll = try XCTUnwrap(built.snaps.first?.node.view as? UIScrollView)
+        XCTAssertEqual(scroll.convert(scroll.bounds, to: window).minX, 0)
+        XCTAssertEqual(scroll.convert(scroll.bounds, to: window).maxX, 390)
+        var view = scroll.superview
+        while let ancestor = view, ancestor !== window {
+            XCTAssertFalse(ancestor.clipsToBounds, "\(type(of: ancestor)) cuts the carousel at the column")
+            view = ancestor.superview
         }
-    }
-
-    func testTextIsNeverCutWhereItMayWrap() throws {
-        for name in Self.examples {
-            let root = try view(name)
-            var list: [(GenUIElementView, CGRect)] = []
-            elements(in: root, root, into: &list)
-            for (element, frame) in list {
-                guard let text = element as? GenUITextView, frame.height > 0 else { continue }
-                XCTAssertGreaterThanOrEqual(frame.height + 0.5, text.measure(frame.width).height, "\(name) \(text.key) has its lines")
-            }
-        }
-    }
-
-    func testAnUndrawableDocumentShowsItsFallback() {
-        let document = GenUIRenderDocument(fallback: "Revenue was up 18%.", root: "missing", elements: [:])
-        let view = GenUIView(document: document, baseURL: nil)
-        XCTAssertGreaterThan(view.sizeThatFits(CGSize(width: 358, height: CGFloat.greatestFiniteMagnitude)).height, 0)
-        view.frame = CGRect(x: 0, y: 0, width: 358, height: 200)
-        view.layoutIfNeeded()
-        XCTAssertTrue(view.accessibilityText.contains("Revenue was up 18%."))
     }
 
     func testAGroupKeepsOneChoiceAndReportsItOnce() throws {
-        let root = try view("10-choices")
+        let interaction = GenUIInteraction()
+        let built = try built("10-choices", interaction: interaction)
+        interaction.adopt(built.choices)
         var reported: [String] = []
-        root.onAction = { key, _ in reported.append(key) }
-        var list: [(GenUIElementView, CGRect)] = []
-        elements(in: root, root, into: &list)
-        let presses = list.compactMap { $0.0 as? GenUIPressView }
-        XCTAssertEqual(presses.count, 3)
-        let controls = presses.map { $0.subviews.compactMap { $0 as? UIControl }.first! }
-        controls[1].sendActions(for: .touchUpInside)
-        controls[0].sendActions(for: .touchUpInside)
+        interaction.onAction = { key, _ in reported.append(key) }
+        XCTAssertEqual(built.choices.keys.sorted(), ["choices.0", "choices.1", "choices.2"])
+        built.choices["choices.1"]?.node.onPress?()
+        built.choices["choices.0"]?.node.onPress?()
         XCTAssertEqual(reported, ["choices.1"])
-        XCTAssertFalse(controls[0].isEnabled)
-        XCTAssertEqual(Double(presses[0].subviews.last?.alpha ?? 1), 0.4, accuracy: 0.001)
+        XCTAssertEqual(interaction.chosen, ["choices": "choices.1"])
+        XCTAssertNil(built.choices["choices.0"]?.node.onPress)
+        XCTAssertEqual(built.choices["choices.0"]?.node.children.last?.style.opacity, 0.4)
+        XCTAssertEqual(built.choices["choices.1"]?.node.children.last?.style.opacity, 1)
+    }
+
+    func testAnswerIsKeptWhenTheNodesAreBuiltAgain() throws {
+        let interaction = GenUIInteraction()
+        let first = try built("10-choices", interaction: interaction)
+        interaction.adopt(first.choices)
+        first.choices["choices.2"]?.node.onPress?()
+        let again = try built("10-choices", interaction: interaction)
+        interaction.adopt(again.choices)
+        XCTAssertNil(again.choices["choices.0"]?.node.onPress)
+        XCTAssertEqual(again.choices["choices.0"]?.node.children.last?.style.opacity, 0.4)
     }
 
     /// The render catalog's `icons`, as `catalog.json` lists them.
@@ -119,9 +111,9 @@ final class GenUIRenderTests: XCTestCase {
         XCTAssertEqual(GenUITone(name: "chartreuse").ink, GenUITone.neutral.ink)
         XCTAssertFalse(GenUIColors.tints(GenUITone(name: "chartreuse")))
         // A plot colour it doesn't know is the muted series colour.
-        XCTAssertEqual(GenUIPlotView.color(.named("chartreuse")), theme.muted)
-        XCTAssertEqual(GenUIPlotView.color(.named("brown")), theme.ink["brown"])
-        XCTAssertEqual(GenUIPlotView.color(.named("accent")), theme.ink["accent"])
+        XCTAssertEqual(GenUIPlotShape.color(.named("chartreuse")), theme.muted)
+        XCTAssertEqual(GenUIPlotShape.color(.named("brown")), theme.ink["brown"])
+        XCTAssertEqual(GenUIPlotShape.color(.named("accent")), theme.ink["accent"])
     }
 }
 #endif

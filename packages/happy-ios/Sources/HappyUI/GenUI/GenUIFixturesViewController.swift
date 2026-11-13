@@ -38,20 +38,21 @@ final class GenUIFixturesViewController: SettingsPageViewController {
 /// taller than the screen. Light and dark follow the system.
 final class GenUIFixtureViewController: UIViewController {
     private let name: String
+    private let document: GenUIRenderDocument
     private let scroll = UIScrollView()
-    private let block: GenUIView
+    private let block = GenUIBlockView()
+    private var width: CGFloat?
 
     init(name: String) {
         self.name = name
-        let folder = GenUIFixturesViewController.folder
-        let url = folder?.appendingPathComponent("\(name).render.json")
-        let document = url.flatMap { try? Data(contentsOf: $0) }.flatMap(GenUIRenderDocument.parse)
+        let url = GenUIFixturesViewController.folder?.appendingPathComponent("\(name).render.json")
+        document = url.flatMap { try? Data(contentsOf: $0) }.flatMap(GenUIRenderDocument.parse)
             ?? GenUIRenderDocument(fallback: "Can't read the Gen UI fixture \(name).", root: nil, elements: [:])
-        block = GenUIView(document: document, baseURL: folder)
         super.init(nibName: nil, bundle: nil)
         title = name
-        block.onAction = { [weak self] key, action in self?.report("Action", "\(key)\n\(action)") }
-        block.onViewer = { [weak self] key, group, index in self?.report("Image viewer", "\(key)\n\(group) #\(index)") }
+        block.interaction.onAction = { [weak self] key, action in self?.report("Action", "\(key)\n\(action)") }
+        block.interaction.onViewer = { [weak self] key, group, index in self?.report("Image viewer", "\(key)\n\(group) #\(index)") }
+        block.onHeight = { [weak self] _ in self?.view.setNeedsLayout() }
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -69,6 +70,11 @@ final class GenUIFixtureViewController: UIViewController {
         scroll.frame = view.bounds
         let margin = MessageLayout.Metrics.marginH
         let width = max(0, scroll.bounds.width - scroll.safeAreaInsets.left - scroll.safeAreaInsets.right - 2 * margin)
+        if width != self.width {
+            self.width = width
+            let traits = GenUITraits(text: nil, displayScale: traitCollection.displayScale)
+            block.load(document, width: width, traits: traits, files: GenUIFixturesViewController.folder.map(GenUIFolderFiles.init))
+        }
         let height = block.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
         block.frame = CGRect(x: scroll.safeAreaInsets.left + margin, y: margin, width: width, height: height)
         scroll.contentSize = CGSize(width: scroll.bounds.width, height: height + 2 * margin)
