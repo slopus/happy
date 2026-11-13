@@ -38,6 +38,17 @@ final class CloudProvidersTests: XCTestCase {
         XCTAssertEqual(CloudAddOffer(), CloudAddOffer(apiKeys: true, setupToken: false, signIns: []), "without word: keys, and no setup token")
     }
 
+    func testTheChooserReadsAsFamiliesWithTheWaysTheServerRuns() {
+        let everything = ProviderFamily.offered(CloudAddOffer(apiKeys: true, setupToken: true, signIns: [.codex, .claude]), custom: true)
+        XCTAssertEqual(everything.map(\.kind), [.chatGPT, .claude, .grok, .custom])
+        XCTAssertEqual(everything[0].methods, [.signIn, .apiKey(vendor: "openai")])
+        XCTAssertEqual(everything[1].methods, [.setupToken, .apiKey(vendor: "anthropic")], "Claude's sign-in has no way on the phone")
+        XCTAssertEqual(everything[2].methods, [.apiKey(vendor: "grok")])
+        let signInsOnly = ProviderFamily.offered(CloudAddOffer(apiKeys: false, setupToken: false, signIns: [.codex]), custom: false)
+        XCTAssertEqual(signInsOnly, [ProviderFamily(kind: .chatGPT, methods: [.signIn])])
+        XCTAssertEqual(ProviderFamily.offered(CloudAddOffer(apiKeys: false), custom: false), [])
+    }
+
     func testThePickersOfferConnectionsAndSendTheirExactIDs() {
         let terra = ModelCatalog.Model(id: "openai/gpt-6.1-terra", name: "GPT-6.1 Terra", efforts: ["low", "medium"], defaultEffort: "medium", serviceTiers: [])
         let base = ModelCatalog(defaultProviderId: "openai", defaultModelId: terra.id, models: [terra],

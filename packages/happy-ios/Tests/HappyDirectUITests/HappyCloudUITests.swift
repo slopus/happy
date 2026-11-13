@@ -256,11 +256,14 @@ final class HappyCloudUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 1)
         capture("41-providers")
         app.descendants(matching: .any).matching(NSPredicate(format: "label == 'Add a provider'")).firstMatch.tap()
-        let key = app.buttons["Add API key · OpenAI"]
-        require(key.waitForExistence(timeout: 10), "no chooser")
-        XCTAssertTrue(app.buttons["Add API key · Grok"].exists, "no Grok key form in the chooser")
+        let chatGPT = app.buttons["settings:provider-family-chatgpt"]
+        require(chatGPT.waitForExistence(timeout: 10), "no chooser")
+        XCTAssertTrue(app.buttons["settings:provider-family-grok"].exists, "no Grok in the chooser")
         Thread.sleep(forTimeInterval: 1)
         capture("42-chooser")
+        chatGPT.tap()
+        let key = app.buttons["settings:provider-method-api-key-openai"]
+        require(key.waitForExistence(timeout: 10), "no OpenAI key in ChatGPT's ways")
         key.tap()
         let mine = app.buttons["My account"]
         if mine.waitForExistence(timeout: 5) {
@@ -284,9 +287,11 @@ final class HappyCloudUITests: XCTestCase {
         let add = app.descendants(matching: .any).matching(NSPredicate(format: "label == 'Add a provider'")).firstMatch
         require(add.waitForExistence(timeout: 10), "no Add after the refusal")
         add.tap()
-        let chatGPT = app.buttons["Sign in with ChatGPT"]
-        require(chatGPT.waitForExistence(timeout: 10), "the server's ChatGPT sign-in isn't offered")
+        require(chatGPT.waitForExistence(timeout: 10), "no chooser after the refusal")
         chatGPT.tap()
+        let signIn = app.buttons["settings:provider-method-sign-in"]
+        require(signIn.waitForExistence(timeout: 10), "the server's ChatGPT sign-in isn't offered")
+        signIn.tap()
         if mine.waitForExistence(timeout: 5) { mine.tap() }
         let code = app.staticTexts["provider-device-code"]
         require(code.waitForExistence(timeout: 20), "no device screen")
@@ -299,9 +304,12 @@ final class HappyCloudUITests: XCTestCase {
 
         // Claude's: a setup token only, with no page to open and no code to paste.
         add.tap()
-        let claude = app.buttons["Use a Claude setup token"]
-        require(claude.waitForExistence(timeout: 10), "the server's Claude setup token isn't offered")
+        let claude = app.buttons["settings:provider-family-claude"]
+        require(claude.waitForExistence(timeout: 10), "no Claude in the chooser")
         claude.tap()
+        let setupToken = app.buttons["settings:provider-method-setup-token"]
+        require(setupToken.waitForExistence(timeout: 10), "the server's Claude setup token isn't offered")
+        setupToken.tap()
         if mine.waitForExistence(timeout: 5) { mine.tap() }
         let token = app.buttons["provider-claude-token"]
         require(token.waitForExistence(timeout: 20), "no Claude screen")

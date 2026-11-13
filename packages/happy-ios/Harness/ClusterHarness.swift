@@ -441,6 +441,7 @@ final class ClusterHarness {
     /// Walks the onboarding flow over `home`, a step every two seconds:
     /// `name:<name>` saves the profile, `bot:<name>` names the admin bot,
     /// `custom` opens the custom provider's form and `fill` fills it (`-fill`),
+    /// `family:<kind>` picks a family in the open provider chooser,
     /// `photo` picks a picture, `plugin:<id>` opens a plugin from the
     /// plugins step, `install` and `setup:<method>` act on its page and
     /// `submit` sends a form, `email:<address>` invites (typed only with a
@@ -460,6 +461,8 @@ final class ClusterHarness {
                 await bot.submit()
             } else if step == "custom", let inference = top as? OnboardingInferenceViewController {
                 inference.chooser.addCustom()
+            } else if step.hasPrefix("family:"), let chooser = (top?.presentedViewController as? UINavigationController)?.topViewController as? SettingsPageViewController {
+                chooser.tapRow("provider-family-\(step.dropFirst("family:".count))")
             } else if step.hasPrefix("plugin:"), let plugins = top as? OnboardingPluginsViewController {
                 plugins.view.findButton(identifier: "onboarding-plugin-\(step.dropFirst("plugin:".count))")?.tapped()
             } else if step == "install", let page = top as? PluginViewController, let plugin = page.session.plugins.state.catalog?.plugin(page.pluginId) {

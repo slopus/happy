@@ -104,9 +104,21 @@ final class HostedProvidersTests: XCTestCase {
         await withCheckedContinuation { done in list.dismiss(animated: false) { done.resume() } }
 
         list.choose()
-        let chooser = try XCTUnwrap(list.presentedViewController as? UIAlertController)
-        _ = try await until { chooser.transitionCoordinator == nil ? true : nil }
-        XCTAssertTrue(chooser.actions.contains { $0.title == "Add API key · Grok" })
+        let sheet = try XCTUnwrap(list.presentedViewController as? UINavigationController)
+        _ = try await until { sheet.transitionCoordinator == nil ? true : nil }
+        let chooser = try XCTUnwrap(sheet.topViewController as? SettingsPageViewController)
+        XCTAssertEqual(chooser.shownRowIDs, [["provider-family-chatgpt", "provider-family-claude", "provider-family-grok", "provider-family-custom"]])
+        XCTAssertEqual(chooser.shownRow("provider-family-chatgpt")?.subtitle, "Sign in or API key")
+        XCTAssertEqual(chooser.shownRow("provider-family-grok")?.subtitle, "xAI API key")
+        capture(window, "providers-chooser")
+        chooser.tapRow("provider-family-chatgpt")
+        let ways = try await until { sheet.topViewController !== chooser ? sheet.topViewController as? SettingsPageViewController : nil }
+        _ = try await until { sheet.transitionCoordinator == nil ? true : nil }
+        XCTAssertEqual(ways.shownRowIDs, [["provider-method-sign-in", "provider-method-api-key-openai"]])
+        capture(window, "providers-chooser-chatgpt")
+        // The sheet goes before the way opens: both places are allowed, so it asks where.
+        ways.tapRow("provider-method-api-key-openai")
+        _ = try await until { (list.presentedViewController as? UIAlertController)?.title == "Save to" ? true : nil }
         await withCheckedContinuation { done in list.dismiss(animated: false) { done.resume() } }
         for (destination, container) in [(CloudProvider.Destination.mine, "private"), (.team, "grok")] {
             if destination == .mine {
@@ -208,14 +220,14 @@ final class HostedProvidersTests: XCTestCase {
 
     private func unavailable(_ status: Int) async throws {
         let (list, navigation, _, _) = try await host(CloudProvidersServer(startFailure: status))
-        XCTAssertTrue(list.adding.chooser().actions.contains { $0.title == "Sign in with ChatGPT" })
+        XCTAssertTrue(list.adding.families.contains { $0.methods.contains(.signIn) })
         list.open(.providersAddOpenAI, destination: .mine)
         let device = try await until { navigation.topViewController as? DeviceSignInViewController }
         _ = try await until { (device.presentedViewController as? UIAlertController)?.title == "Sign-in failed" ? true : nil }
-        XCTAssertFalse(list.adding.chooser().actions.contains { $0.title == "Sign in with ChatGPT" })
-        XCTAssertTrue(list.adding.chooser().actions.contains { $0.title == "Use a Claude setup token" })
+        XCTAssertFalse(list.adding.families.contains { $0.methods.contains(.signIn) })
+        XCTAssertTrue(list.adding.families.contains { $0.methods.contains(.setupToken) })
         list.load()
-        _ = try await until { list.adding.chooser().actions.contains { $0.title == "Sign in with ChatGPT" } ? true : nil }
+        _ = try await until { list.adding.families.contains { $0.methods.contains(.signIn) } ? true : nil }
     }
 
     private func openLink(_ url: String, session: Session, from list: ProvidersViewController) throws {

@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import HappyCore
+import HappyLayout
 import HappyWire
 import UIKit
 
@@ -25,39 +26,107 @@ final class ProviderChooser {
         self.changed = changed
     }
 
-    func choose(destination: CloudProvider.Destination? = nil) {
-        host?.present(chooser(destination: destination), animated: true)
+    /// The families the chooser lists: what the server runs, and Custom
+    /// where the role may add for the team.
+    var families: [ProviderFamily] {
+        ProviderFamily.offered(offer, custom: CloudProvider.destinations(session.gate).contains(.team))
     }
 
-    func chooser(destination: CloudProvider.Destination? = nil) -> UIAlertController {
+    func choose(destination: CloudProvider.Destination? = nil) {
+        let navigation = UINavigationController(rootViewController: chooser(destination: destination))
+        if let sheet = navigation.sheetPresentationController {
+            sheet.detents = [.medium(), .large()]
+            sheet.prefersGrabberVisible = true
+        }
+        host?.present(navigation, animated: true)
+    }
+
+    /// The families, each with a line for its ways; one with two ways
+    /// asks which next, in the same sheet.
+    func chooser(destination: CloudProvider.Destination? = nil) -> SettingsPageViewController {
         typealias Text = Strings.Providers
-        let sheet = UIAlertController(title: Text.add, message: nil, preferredStyle: .actionSheet)
-        if offer.signIns.contains(.codex) {
-            sheet.addAction(UIAlertAction(title: Text.signInChatGPT, style: .default) { [weak self] _ in self?.open(.providersAddOpenAI, destination: destination) })
+        let families = families
+        let page = SettingsPageViewController(title: Text.add) { [weak self] in
+            [families.map { family in
+                var row = SettingsRow(id: "provider-family-\(family.kind.rawValue)", title: Text.family(family.kind))
+                row.subtitle = Text.ways(family)
+                Self.mark(family.kind, on: &row)
+                row.accessory = family.methods.count > 1 ? .chevron : .none
+                row.action = { self?.pick(family, destination: destination) }
+                return row
+            }]
         }
-        if offer.setupToken {
-            sheet.addAction(UIAlertAction(title: Text.claudeSetupToken, style: .default) { [weak self] _ in self?.open(.providersAddAnthropic, destination: destination) })
+        page.navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .cancel, primaryAction: UIAction { [weak page] _ in
+            page?.dismiss(animated: true)
+        })
+        return page
+    }
+
+    private func pick(_ family: ProviderFamily, destination: CloudProvider.Destination?) {
+        if family.methods.count == 1, let method = family.methods.first { return add(method, destination: destination) }
+        typealias Text = Strings.Providers
+        let ways = SettingsPageViewController(title: Text.family(family.kind)) { [weak self] in
+            [family.methods.map { method in
+                var row = SettingsRow(id: "provider-method-\(Self.id(method))", title: Text.method(method).title, accessory: .none)
+                row.subtitle = Text.method(method).detail
+                row.subtitleLines = 2
+                row.action = { self?.add(method, destination: destination) }
+                return row
+            }]
         }
-        if offer.apiKeys {
-            sheet.addAction(UIAlertAction(title: "\(Text.addAPIKey) · \(Text.openAI)", style: .default) { [weak self] _ in
-                self?.open(.providersAddAPIKey, vendor: "openai", destination: destination)
-            })
-            sheet.addAction(UIAlertAction(title: "\(Text.addAPIKey) · \(Text.anthropic)", style: .default) { [weak self] _ in
-                self?.open(.providersAddAPIKey, vendor: "anthropic", destination: destination)
-            })
-            sheet.addAction(UIAlertAction(title: "\(Text.addAPIKey) · \(Text.grok)", style: .default) { [weak self] _ in
-                self?.open(.providersAddAPIKey, vendor: "grok", destination: destination)
-            })
+        (host?.presentedViewController as? UINavigationController)?.pushViewController(ways, animated: true)
+    }
+
+    /// The sheet goes first: each way opens over the screen it came from.
+    private func add(_ method: ProviderFamily.Method, destination: CloudProvider.Destination?) {
+        let go = { [weak self] in
+            guard let self else { return }
+            switch method {
+            case .signIn: open(.providersAddOpenAI, destination: destination)
+            case .setupToken: open(.providersAddAnthropic, destination: destination)
+            case .apiKey(let vendor): open(.providersAddAPIKey, vendor: vendor, destination: destination)
+            case .custom: addCustom()
+            }
         }
-        if CloudProvider.destinations(session.gate).contains(.team) {
-            sheet.addAction(UIAlertAction(title: Text.custom, style: .default) { [weak self] _ in self?.addCustom() })
+        guard let sheet = host?.presentedViewController else { return go() }
+        sheet.dismiss(animated: true, completion: go)
+    }
+
+    private static func id(_ method: ProviderFamily.Method) -> String {
+        switch method {
+        case .signIn: "sign-in"
+        case .setupToken: "setup-token"
+        case .apiKey(let vendor): "api-key-\(vendor)"
+        case .custom: "custom"
         }
-        sheet.addAction(UIAlertAction(title: Strings.Common.cancel, style: .cancel))
-        if let popover = sheet.popoverPresentationController, let view = host?.view {
-            popover.sourceView = view
-            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1)
+    }
+
+    /// ChatGPT's and Claude's own marks on a tile; Grok and Custom a glyph.
+    private static func mark(_ kind: ProviderFamily.Kind, on row: inout SettingsRow) {
+        switch kind {
+        case .chatGPT: row.icon = ("sparkles-outline", .green); row.image = chatGPTTile
+        case .claude: row.icon = ("sparkles-outline", .orange); row.image = claudeTile
+        case .grok: row.icon = ("flash-outline", .gray)
+        case .custom: row.icon = ("code-slash-outline", .blue)
         }
-        return sheet
+        row.squareImage = row.image != nil
+    }
+
+    // Drawn once: a new picture on every reload would dissolve in again.
+    private static let chatGPTTile = tile("icon-gpt", Palette.settingsTileGreen)
+    private static let claudeTile = tile("icon-claude", Palette.settingsTileOrange)
+
+    private static func tile(_ name: String, _ fill: ColorToken) -> UIImage? {
+        guard let mark = UIImage.happy(name) else { return nil }
+        let side = SettingsLayout.Metrics.tile, size = SettingsLayout.Metrics.glyph * 0.9
+        return UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { _ in
+            UIColor(fill).setFill()
+            UIBezierPath(roundedRect: CGRect(x: 0, y: 0, width: side, height: side), cornerRadius: SettingsLayout.Metrics.tileRadius).fill()
+            let fit = min(size / mark.size.width, size / mark.size.height)
+            let drawn = CGSize(width: mark.size.width * fit, height: mark.size.height * fit)
+            mark.withTintColor(.white, renderingMode: .alwaysOriginal)
+                .draw(in: CGRect(x: (side - drawn.width) / 2, y: (side - drawn.height) / 2, width: drawn.width, height: drawn.height))
+        }
     }
 
     /// The team's own provider: owners with `providers.manage` only.

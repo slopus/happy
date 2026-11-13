@@ -241,6 +241,27 @@ public struct CloudAddOffer: Equatable, Sendable {
     }
 }
 
+/// The chooser's rows: one per vendor family, in this order, each with
+/// the ways this server offers to add it. A family it offers no way for
+/// isn't shown; Custom only where the role may add for the team.
+public struct ProviderFamily: Equatable, Sendable {
+    public enum Kind: String, Sendable { case chatGPT = "chatgpt", claude, grok, custom }
+    public enum Method: Equatable, Sendable { case signIn, setupToken, apiKey(vendor: String), custom }
+    public var kind: Kind
+    public var methods: [Method]
+
+    public static func offered(_ offer: CloudAddOffer, custom: Bool) -> [ProviderFamily] {
+        let keys = offer.apiKeys
+        let all = [
+            ProviderFamily(kind: .chatGPT, methods: [offer.signIns.contains(.codex) ? .signIn : nil, keys ? .apiKey(vendor: "openai") : nil].compactMap { $0 }),
+            ProviderFamily(kind: .claude, methods: [offer.setupToken ? .setupToken : nil, keys ? .apiKey(vendor: "anthropic") : nil].compactMap { $0 }),
+            ProviderFamily(kind: .grok, methods: keys ? [.apiKey(vendor: "grok")] : []),
+            ProviderFamily(kind: .custom, methods: custom ? [.custom] : []),
+        ]
+        return all.filter { !$0.methods.isEmpty }
+    }
+}
+
 /// A credential the server refused to store, with its words for why.
 public struct CloudCredentialRefusal: Error, Equatable, Sendable {
     public var kind: String
