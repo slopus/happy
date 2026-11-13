@@ -34,7 +34,7 @@ public struct OnboardingPlan: Equatable, Sendable {
         count = shown.count
         remaining = actionable.count
         legacy = onboarding.legacy
-        guard !onboarding.completed else { step = nil; return }
+        guard !onboarding.finished else { step = nil; return }
         if let next = actionable.first { step = .gate(next); return }
         let held = onboarding.gates.filter(\.blocking)
         if held.contains(where: { $0.kind == .unknown && $0.canComplete && $0.status != .unavailable }) { step = .update; return }

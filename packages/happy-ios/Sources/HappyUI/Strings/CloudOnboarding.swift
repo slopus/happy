@@ -76,9 +76,9 @@ extension Strings {
         static let notReadyTitle = "Almost ready"
         static let notReadyBody = "This server isn’t ready for you yet. Check again in a little while."
 
-        static let elsewhereTitle = "Finish on the web"
+        static let elsewhereTitle = "Finish on your computer"
         static func elsewhereBody(_ step: String) -> String {
-            "\(step) is done in Happy on your computer or on the web. Come back here when it’s done."
+            "\(step) is done in Happy on your computer. Come back here when it’s done."
         }
         static let openWeb = "Open on the Web"
 

@@ -168,12 +168,12 @@ final class OnboardingFlow {
             skips(gate, on: screen)
             return screen
         default:
-            // A payment method and paying, done on desktop or the web.
+            // A payment method and paying, done in Happy on a computer:
+            // the app links to no payment, and Check Again reads the gate.
             let step = Strings.CloudOnboarding.step(gate)
             let notice = notice(.init(scene: .tv, title: Strings.CloudOnboarding.elsewhereTitle, body: Strings.CloudOnboarding.elsewhereBody(step),
-                                      primary: Strings.CloudOnboarding.openWeb, secondary: gate.requirement == .optional ? Strings.CloudOnboarding.skip : nil)) { [weak self] _ in
-                guard let url = self?.web else { return }
-                UIApplication.shared.open(url)
+                                      primary: Strings.CloudOnboarding.checkAgain, secondary: gate.requirement == .optional ? Strings.CloudOnboarding.skip : nil)) { [weak self] notice in
+                await self?.checkAgain(notice)
             }
             skips(gate, on: notice)
             return notice

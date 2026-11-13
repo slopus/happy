@@ -173,7 +173,7 @@ actor ClusterServer: AgentTransport {
         func data(_ gate: Gate) -> String {
             switch gate.id {
             case "adminBot":
-                return #"{"botId":"cos","agentId":"cos-agent","name":"\#(botName)","version":"v\#(botVersion)","avatar":null,"title":"Name your admin bot","description":"This is your server’s admin bot. It can change the server’s settings, connect tools and create other bots, so it can adapt Happy and build a system around how your team works. Only owners can talk to it."}"#
+                return #"{"botId":"cos","agentId":"cos-agent","name":"\#(botName)","version":"v\#(botVersion)","avatar":null,"title":"Name your admin bot","description":"This is your server’s admin bot. It can change the server’s settings, connect tools and create other bots, so it can adapt Happy and build a system around how your team works.","points":["Changes the server’s settings","Connects tools and plugins","Creates bots for your team"],"note":"Only owners can talk to it."}"#
             case "inference": return #"{"connected":[],"freeModel":true}"#
             case "plugins": return #"{"required":["github"],"plugins":[{"id":"github","name":"GitHub","required":true,"active":\#(githubActive)}]}"#
             case "teammates": return #"{"invited":false,"members":1}"#
@@ -185,7 +185,7 @@ actor ClusterServer: AgentTransport {
             #"{"id":"\#(gate.id)","scope":"\#(gate.scope)","requirement":"\#(gate.required ? "required" : "optional")","status":"\#(gate.status)","blocking":\#(gate.blocking),"canComplete":\#(gate.canComplete),"data":\#(data(gate))}"#
         }
         let blocking = gates.filter(\.blocking).map { "\"\($0.id)\"" }
-        return #"{"completed":\#(!gates.contains(where: \.pending)),"blocking":[\#(blocking.joined(separator: ","))],"gates":[\#(views.joined(separator: ","))]}"#
+        return #"{"finished":\#(!gates.contains(where: \.pending)),"completed":true,"blocking":[\#(blocking.joined(separator: ","))],"gates":[\#(views.joined(separator: ","))]}"#
     }
 
     private var profile: String {

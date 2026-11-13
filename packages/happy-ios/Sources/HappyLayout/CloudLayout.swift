@@ -121,6 +121,8 @@ public struct CloudStageLayout: Equatable, Sendable {
         public static let sidePadding: CGFloat = StartLayout.Metrics.sidePadding
         public static let columnMaxWidth: CGFloat = StartLayout.Metrics.columnMaxWidth
         public static let top: CGFloat = 24
+        /// A step's list of short lines (the admin bot's points), in from the column's sides.
+        public static let pointsInset: CGFloat = 12
         public static let artGap: CGFloat = 24
         /// Between the art and a caption under it (Create your profile's
         /// Add photo).

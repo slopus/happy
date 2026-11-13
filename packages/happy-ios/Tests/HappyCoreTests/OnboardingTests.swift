@@ -33,7 +33,7 @@ final class OnboardingTests: XCTestCase {
 
     func testEveryGateReadsWithItsData() throws {
         let onboarding = try Self.read(Self.sample)
-        XCTAssertFalse(onboarding.completed)
+        XCTAssertFalse(onboarding.finished)
         XCTAssertEqual(onboarding.blocking, ["adminBot"])
         XCTAssertEqual(onboarding.gates.map(\.id), ["profile", "avatar", "adminBot", "inference", "plugins", "teammates", "mobileApp", "paymentMethod"])
         let profile = try XCTUnwrap(onboarding.gate("profile"))
@@ -116,7 +116,7 @@ final class OnboardingTests: XCTestCase {
     }
 
     func testOptionalGatesThePersonCannotActOnAreNeverShown() {
-        let onboarding = Onboarding(completed: false, gates: [
+        let onboarding = Onboarding(finished: false, gates: [
             Self.gate("profile", .required, .done),
             Self.gate("teammates", canComplete: false, kind: .teammates(.init())),
             Self.gate("inference", .optional, .unavailable, kind: .inference(.init())),
@@ -139,29 +139,29 @@ final class OnboardingTests: XCTestCase {
         let unavailable = OnboardingGate(id: "payment", requirement: .required, status: .unavailable, canComplete: true, kind: .payment)
         let profile = Self.gate("profile", .required)
 
-        XCTAssertEqual(OnboardingPlan(Onboarding(completed: false, gates: [unknownMine, profile])).step.flatMap(Self.id), "profile",
+        XCTAssertEqual(OnboardingPlan(Onboarding(finished: false, gates: [unknownMine, profile])).step.flatMap(Self.id), "profile",
                        "the person's own gates come first")
-        XCTAssertEqual(OnboardingPlan(Onboarding(completed: false, gates: [adminBot, unknownMine])).step, .update)
-        XCTAssertEqual(OnboardingPlan(Onboarding(completed: false, gates: [unknownTheirs, adminBot])).step, .waiting([unknownTheirs, adminBot]))
-        XCTAssertEqual(OnboardingPlan(Onboarding(completed: false, gates: [unavailable])).step, .waiting([unavailable]))
-        XCTAssertEqual(OnboardingPlan(Onboarding(completed: false, gates: [Self.gate("profile", .required, .done)])).step, .finish)
+        XCTAssertEqual(OnboardingPlan(Onboarding(finished: false, gates: [adminBot, unknownMine])).step, .update)
+        XCTAssertEqual(OnboardingPlan(Onboarding(finished: false, gates: [unknownTheirs, adminBot])).step, .waiting([unknownTheirs, adminBot]))
+        XCTAssertEqual(OnboardingPlan(Onboarding(finished: false, gates: [unavailable])).step, .waiting([unavailable]))
+        XCTAssertEqual(OnboardingPlan(Onboarding(finished: false, gates: [Self.gate("profile", .required, .done)])).step, .finish)
         let unknownOptional = OnboardingGate(id: "survey", requirement: .optional, canComplete: true, kind: .unknown)
-        XCTAssertEqual(OnboardingPlan(Onboarding(completed: false, gates: [unknownOptional])).step, .finish,
+        XCTAssertEqual(OnboardingPlan(Onboarding(finished: false, gates: [unknownOptional])).step, .finish,
                        "an optional gate this app can't show is passed on screen; finishing skips it")
-        XCTAssertNil(OnboardingPlan(Onboarding(completed: true, gates: [profile])).step, "the server's completed decides")
+        XCTAssertNil(OnboardingPlan(Onboarding(finished: true, gates: [profile])).step, "the server's finished decides")
     }
 
     /// The last step done or skipped, the server says complete: a flow on
     /// screen still ends on the finish, which completes onboarding; one
     /// not showing stays away, and so does a server without gates.
     func testAFlowOnScreenEndsOnItsFinish() throws {
-        let done = OnboardingPlan(Onboarding(completed: true, gates: [Self.gate("avatar", .optional, .skipped)]))
+        let done = OnboardingPlan(Onboarding(finished: true, gates: [Self.gate("avatar", .optional, .skipped)]))
         XCTAssertEqual(done.step(showing: true), .finish)
         XCTAssertNil(done.step(showing: false))
-        var legacy = Onboarding(completed: true)
+        var legacy = Onboarding(finished: true)
         legacy.legacy = true
         XCTAssertNil(OnboardingPlan(legacy).step(showing: true))
-        let open = OnboardingPlan(Onboarding(completed: false, gates: [Self.gate("avatar")]))
+        let open = OnboardingPlan(Onboarding(finished: false, gates: [Self.gate("avatar")]))
         XCTAssertEqual(open.step(showing: true).flatMap(Self.id), "avatar")
         XCTAssertEqual(open.step(showing: false).flatMap(Self.id), "avatar")
     }
@@ -170,7 +170,7 @@ final class OnboardingTests: XCTestCase {
     /// desktop or the web); optional, it can be skipped like any other.
     func testAPaymentGateThePersonCanCompleteIsTheirs() {
         let gate = OnboardingGate(id: "paymentMethod", scope: .server, requirement: .optional, canComplete: true, kind: .paymentMethod)
-        XCTAssertEqual(OnboardingPlan(Onboarding(completed: false, gates: [gate])).step, .gate(gate))
+        XCTAssertEqual(OnboardingPlan(Onboarding(finished: false, gates: [gate])).step, .gate(gate))
     }
 
     func testSkippingAndFinishingUseTheirRoutes() async throws {
@@ -179,7 +179,7 @@ final class OnboardingTests: XCTestCase {
         await server.answer("POST /v0/onboarding/complete", 409, #"{"code":"onboarding_incomplete","error":"x","blocking":["adminBot"]}"#)
         let client = AgentClient(transport: server, token: "t")
         let skipped = try await client.skipOnboardingGate("teammates")
-        XCTAssertTrue(skipped.completed)
+        XCTAssertTrue(skipped.finished)
         do {
             try await client.completeOnboarding()
             XCTFail("a blocking gate refuses the finish")
@@ -201,18 +201,34 @@ final class OnboardingTests: XCTestCase {
          "member":{"completed":false,"steps":{"profile":{"done":false},"providers":{"done":false}}}}
         """#)
         XCTAssertTrue(nameless.legacy)
-        XCTAssertFalse(nameless.completed)
+        XCTAssertFalse(nameless.finished)
         XCTAssertEqual(nameless.gates.map(\.id), ["profile"], "the member's step over the installation's; the Chief of Staff isn't asked")
         XCTAssertEqual(nameless.gate("profile")?.isPending, true)
         XCTAssertEqual(OnboardingPlan(nameless).step.flatMap(Self.id), "profile")
 
         let named = try Self.read(#"{"completed":false,"steps":{"profile":{"done":true}},"member":{"completed":true,"steps":{"profile":{"done":true}}}}"#)
         XCTAssertTrue(named.legacy)
-        XCTAssertTrue(named.completed, "the Chief of Staff's naming never held anyone on a server without gates")
+        XCTAssertTrue(named.finished, "the Chief of Staff's naming never held anyone on a server without gates")
         XCTAssertNil(OnboardingPlan(named).step)
         XCTAssertEqual(try Self.read(#"{"completed":false,"steps":{"profile":{"done":false}}}"#).gates.map(\.id), ["profile"])
-        XCTAssertTrue(try Self.read(#"{"completed":false,"steps":{}}"#).completed, "nothing said, nothing asked")
+        XCTAssertTrue(try Self.read(#"{"completed":false,"steps":{}}"#).finished, "nothing said, nothing asked")
         XCTAssertFalse(try Self.read(Self.sample).legacy)
+    }
+
+    func testFinishedDecidesWhereTheServerSendsIt() throws {
+        // v6: `completed` stays true for shipped clients while an optional gate is open.
+        let v6 = try Self.read(#"""
+        {"finished":false,"completed":true,"blocking":[],"owners":[{"userId":"u1","name":"Olga"}],"gates":[
+          {"id":"adminBot","scope":"server","requirement":"optional","status":"open","blocking":false,"canComplete":true,
+           "data":{"botId":"b1","name":"Chief of Staff","version":"v1","title":"Name your admin bot","description":"It runs the server.",
+                   "points":["Changes settings","Connects tools"],"note":"Only owners talk to it."}}]}
+        """#)
+        XCTAssertFalse(v6.finished)
+        XCTAssertEqual(OnboardingPlan(v6).step.flatMap(Self.id), "adminBot", "an optional gate still open is shown")
+        guard case .adminBot(let bot)? = v6.gate("adminBot")?.kind else { return XCTFail("adminBot unread") }
+        XCTAssertEqual(bot.points, ["Changes settings", "Connects tools"])
+        XCTAssertEqual(bot.note, "Only owners talk to it.")
+        XCTAssertTrue(try Self.read(#"{"completed":true,"blocking":[],"gates":[]}"#).finished, "before v6, completed meant finished")
     }
 
     func testThePluginsStepListsWhatIsNeededFirstThenEverythingOffered() async throws {

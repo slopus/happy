@@ -4,30 +4,33 @@ import HappyWire
 /// `GET /v0/onboarding` on a Happy Cloud server: the gates it holds the
 /// person to, in the order the flow shows them. Gates are read live and
 /// nothing latches: a gate made required later blocks again, and
-/// `completed` turns false. `completed` is the server's: no gate blocks the
-/// person, and no optional one is still open for them to take.
+/// `finished` turns false.
 public struct Onboarding: Decodable, Equatable, Sendable {
-    public var completed: Bool
+    /// The server's `finished`: no gate blocks the person, and no optional
+    /// one is still open for them to take. A server from before it sends
+    /// `completed` alone, which meant the same then; since, `completed`
+    /// stays true with optional gates open, for shipped clients.
+    public var finished: Bool
     /// The IDs of the gates that block the person.
     public var blocking: [String]
     public var gates: [OnboardingGate]
 
-    public init(completed: Bool, blocking: [String] = [], gates: [OnboardingGate] = []) {
-        self.completed = completed; self.blocking = blocking; self.gates = gates
+    public init(finished: Bool, blocking: [String] = [], gates: [OnboardingGate] = []) {
+        self.finished = finished; self.blocking = blocking; self.gates = gates
     }
 
     /// Read from a server without gates (`Legacy`): the flow only asks the
     /// name, and never finishes onboarding (`completeOnboarding`).
     public var legacy = false
 
-    enum CodingKeys: String, CodingKey { case completed, blocking, gates }
+    enum CodingKeys: String, CodingKey { case finished, completed, blocking, gates }
 
     /// A gate that can't be read is kept as `.unknown`, so a blocking one
     /// still holds the person (Update Happy) rather than vanishing.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         guard c.contains(.gates) else { self = try Legacy(from: decoder).onboarding; return }
-        completed = (try? c.decodeIfPresent(Bool.self, forKey: .completed)) ?? false
+        finished = (try? c.decodeIfPresent(Bool.self, forKey: .finished)) ?? (try? c.decodeIfPresent(Bool.self, forKey: .completed)) ?? false
         blocking = (try? c.decodeIfPresent([String].self, forKey: .blocking)) ?? []
         gates = ((try? c.decodeIfPresent([Lossy<OnboardingGate>].self, forKey: .gates)) ?? []).compactMap(\.value)
     }
@@ -48,8 +51,8 @@ public struct Onboarding: Decodable, Equatable, Sendable {
         var onboarding: Onboarding {
             let needsName = (member?.steps?.profile ?? steps?.profile).map { !$0.done } ?? false
             var onboarding = needsName
-                ? Onboarding(completed: false, blocking: ["profile"], gates: [OnboardingGate(id: "profile", requirement: .required, kind: .profile)])
-                : Onboarding(completed: true)
+                ? Onboarding(finished: false, blocking: ["profile"], gates: [OnboardingGate(id: "profile", requirement: .required, kind: .profile)])
+                : Onboarding(finished: true)
             onboarding.legacy = true
             return onboarding
         }
@@ -103,6 +106,9 @@ public struct OnboardingGate: Decodable, Equatable, Sendable {
         public var avatar: Avatar?
         public var title: String?
         public var description: String?
+        /// Short lines on what it can do, and a closing note.
+        public var points: [String]?
+        public var note: String?
 
         public struct Avatar: Decodable, Equatable, Sendable {
             public var digest: String
