@@ -40,5 +40,9 @@
         <activity
             android:name=".ui.genui.GenUiGymActivity"
             android:exported="true" />
+        <!-- A render fixture opened as a gen_ui artifact on the real artifact screen (ui/genui/GenUiArtifactGymActivity). -->
+        <activity
+            android:name=".ui.genui.GenUiArtifactGymActivity"
+            android:exported="true" />
     </application>
 </manifest>

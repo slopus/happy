@@ -69,7 +69,7 @@ class GenUiGymActivity : ComponentActivity() {
         val host = GenUiHost(
             onAction = { key, action -> Log.i("GenUiGym", "action $key $action") },
             onView = { key, viewer -> Log.i("GenUiGym", "view $key ${viewer.group}[${viewer.index}]") },
-            file = { file -> "file:///android_asset/genui/$file" },
+            cached = { file -> "file:///android_asset/genui/$file" },
         )
         setContent {
             HappyTheme(if (dark) ThemePreference.Dark else ThemePreference.Light) {

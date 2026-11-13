@@ -947,6 +947,7 @@ internal fun feedTile(kind: FeedSubjectKind, artifactType: String?): Pair<Ionico
         "image" -> Ionicon.ImageOutline to RowTile.Orange
         "image_series" -> Ionicon.AlbumsOutline to RowTile.Orange
         "video" -> Ionicon.FilmOutline to RowTile.Red
+        "gen_ui" -> Ionicon.CodeWorkingOutline to RowTile.Teal
         else -> Ionicon.DocumentOutline to RowTile.Indigo
     }
 }

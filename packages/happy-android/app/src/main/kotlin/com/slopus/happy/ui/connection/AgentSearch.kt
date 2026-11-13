@@ -894,6 +894,7 @@ private fun artifactGlyph(type: String): Ionicon = when (type) {
     "image", "image_series" -> Ionicon.ImageOutline
     "video" -> Ionicon.PlayCircleOutline
     "document" -> Ionicon.DocumentOutline
+    "gen_ui" -> Ionicon.CodeWorkingOutline
     else -> Ionicon.CubeOutline
 }
 

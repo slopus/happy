@@ -195,6 +195,7 @@ fun rememberArtifactListWords(): ArtifactListWords {
         "image_series" to stringResource(R.string.artifact_kind_image_series),
         "video" to stringResource(R.string.artifact_kind_video),
         "document" to stringResource(R.string.artifact_kind_document),
+        "gen_ui" to stringResource(R.string.artifact_kind_gen_ui),
     )
     val live = stringResource(R.string.artifact_kind_live)
     val unknown = stringResource(R.string.artifact_kind_unknown)
@@ -268,6 +269,7 @@ internal fun artifactTile(artifact: ArtifactSummary): Pair<Ionicon, RowTile> = w
     artifact.type == "image" -> Ionicon.ImageOutline to RowTile.Orange
     artifact.type == "image_series" -> Ionicon.AlbumsOutline to RowTile.Orange
     artifact.type == "video" -> Ionicon.FilmOutline to RowTile.Red
+    artifact.type == "gen_ui" -> Ionicon.CodeWorkingOutline to RowTile.Teal
     else -> Ionicon.DocumentOutline to RowTile.Indigo
 }
 

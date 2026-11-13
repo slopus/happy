@@ -199,13 +199,20 @@ internal val LocalGenUiColors = staticCompositionLocalOf { GenUiColors.Light }
 /**
  * What the host gets from a Gen UI block. Nothing is executed here: an
  * activated element reports its key and action, a tapped image its viewer
- * group and index. [file] turns an image's stored path into Coil's model.
+ * group and index. A button whose action the host doesn't run ([supports])
+ * is drawn disabled. An image's stored path becomes Coil's model at once
+ * when the host has it ([cached]), otherwise once read ([load], null when
+ * there is none); its box is sized from the document either way.
  */
 @Immutable
 class GenUiHost(
     val onAction: (key: String, action: Action) -> Unit = { _, _ -> },
     val onView: (key: String, viewer: ViewerRef) -> Unit = { _, _ -> },
-    val file: (String) -> Any? = { it },
+    val supports: (Action) -> Boolean = { it !is Action.Unsupported },
+    val cached: (path: String) -> Any? = { it },
+    val load: suspend (path: String) -> Any? = { it },
+    /** The memory cache's name for [path]'s picture, when the model alone doesn't name it (bytes). */
+    val key: (path: String) -> String? = { null },
 )
 
 /** One document being drawn: its elements, the host, and which element each single-choice group settled on. */
@@ -650,7 +657,8 @@ private fun GenUiScope.activate(key: String, group: String?, action: Action) {
 private fun ButtonView(key: String, e: Element.Button, modifier: Modifier) {
     val colors = HappyTheme.colors
     val scope = LocalGenUi.current ?: return
-    val state = choiceState(key, e.group)
+    val runs = scope.host.supports(e.action)
+    val state = choiceState(key, e.group).let { if (runs) it else it.copy(enabled = false) }
     // A neutral button is the app's own text colour; a toned one takes the tone's ink for its fill
     // and glyph, and the tone's text colour for its word.
     val shared = LocalGenUiColors.current
@@ -699,7 +707,7 @@ private fun PressView(key: String, e: Element.Press, modifier: Modifier) {
     val colors = HappyTheme.colors
     val scope = LocalGenUi.current ?: return
     val state = choiceState(key, e.group)
-    val action = e.action
+    val action = e.action?.takeIf(scope.host.supports)
     val (reach, radius) = when (e.role) {
         PressRole.Plain -> 0.dp to 8.dp
         PressRole.Item -> 8.dp to 10.dp

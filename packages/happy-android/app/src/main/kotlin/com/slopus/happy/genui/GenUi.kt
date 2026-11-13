@@ -78,6 +78,9 @@ sealed interface Action {
     data class Open(val url: String) : Action
     data class Copy(val text: String) : Action
     data class Tool(val name: String, val input: JsonObject) : Action
+
+    /** An action this build can't run, or one written wrong: its button is drawn, disabled. */
+    data class Unsupported(val type: String?) : Action
 }
 
 @Immutable
@@ -190,6 +193,12 @@ data class RenderDocument(
     val drawable: Boolean get() = root != null && root in elements
 }
 
+/** The `genuiRender` format this build draws (API.md: a client that doesn't draw a version shows the summary). */
+const val GEN_UI_RENDER_VERSION = 1
+
+/** Where a `gen_ui` artifact version or vault app keeps the render document the computer compiled. */
+const val GEN_UI_RENDER_PATH = ".genui/render.json"
+
 object GenUi {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
@@ -199,7 +208,9 @@ object GenUi {
         return document(obj)
     }
 
+    /** A document of a `genuiRender` other than [GEN_UI_RENDER_VERSION] keeps only its fallback. */
     fun document(obj: JsonObject): RenderDocument {
+        if (obj.number("genuiRender") != GEN_UI_RENDER_VERSION.toDouble()) return RenderDocument(obj.string("fallback"), null, emptyMap(), emptyMap())
         val raw = obj.obj("elements") ?: JsonObject(emptyMap())
         val parsed = raw.mapNotNull { (key, value) -> element(value)?.let { key to it } }.toMap()
         val viewers = obj.obj("viewers")?.mapNotNull { (group, items) ->
@@ -251,16 +262,12 @@ object GenUi {
             )
         }
         "pill" -> p.string("text")?.let { Element.Pill(it, p.enum("tone", Tone.Neutral), IconName.of(p.string("icon"))) }
-        "button" -> {
-            val label = p.string("label")
-            val action = p.action()
-            val variant = p.enum("variant", ButtonVariant.Secondary)
-            if (label == null || action == null) null
-            else Element.Button(
-                label, action, IconName.of(p.string("icon")), variant, p.enum("tone", Tone.Neutral), p.string("group"),
+        "button" -> p.string("label")?.let { label ->
+            Element.Button(
+                label, p.action(), IconName.of(p.string("icon")), p.enum("variant", ButtonVariant.Secondary), p.enum("tone", Tone.Neutral), p.string("group"),
             )
         }
-        "press" -> Element.Press(p.action(), p.enum("role", PressRole.Plain), p.string("group"), children)
+        "press" -> Element.Press(p.action().takeIf { it !is Action.Unsupported }, p.enum("role", PressRole.Plain), p.string("group"), children)
         "bar" -> p.number("value")?.let { Element.Bar(it.coerceIn(0.0, 1.0), p.enum("tone", Tone.Neutral)) }
         "marker" -> Element.Marker(p.enum("status", StepStatus.Pending), p.bool("rail"))
         "spark" -> {
@@ -369,15 +376,17 @@ object GenUi {
         else -> emptyList()
     }
 
-    private fun JsonObject.action(): Action? {
-        val a = obj("action") ?: return null
-        return when (a.string("type")) {
+    /** The element's action; a missing, unknown or malformed one is [Action.Unsupported], never dropped. */
+    private fun JsonObject.action(): Action {
+        val a = obj("action") ?: return Action.Unsupported(null)
+        val type = a.string("type")
+        return when (type) {
             "message" -> a.string("text")?.let { Action.Message(it) }
             "open" -> a.string("url")?.let { Action.Open(it) }
             "copy" -> a.string("text")?.let { Action.Copy(it) }
             "tool" -> a.string("name")?.let { Action.Tool(it, a.obj("input") ?: JsonObject(emptyMap())) }
             else -> null
-        }
+        } ?: Action.Unsupported(type)
     }
 
     private fun JsonObject.keys(key: String): List<String> = array(key).mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }

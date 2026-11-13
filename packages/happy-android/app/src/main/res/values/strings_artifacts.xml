@@ -62,6 +62,8 @@
     <string name="artifact_kind_video">Video</string>
     <string name="artifact_kind_document">File</string>
     <string name="artifact_kind_unknown">Artifact</string>
+    <!-- Desktop's happyAgentArtifactTypeLabel: a product name, the same in every language. -->
+    <string name="artifact_kind_gen_ui" translatable="false">Gen UI</string>
     <!-- An HTML artifact that asks to run as an app (happy-page-mode: app): its card's kind. -->
     <string name="artifact_kind_app">App</string>
 

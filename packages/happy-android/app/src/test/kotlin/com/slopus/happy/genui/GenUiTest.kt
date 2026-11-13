@@ -134,9 +134,9 @@ class GenUiTest {
     @Test
     fun missingRequiredPropDropsTheElement() {
         val d = doc(
-            """"root":{"type":"box","children":["noSpans","noAction","noFile","unknownIcon","oneSpark","noValue","ok"]},
+            """"root":{"type":"box","children":["noSpans","noLabel","noFile","unknownIcon","oneSpark","noValue","ok"]},
                "noSpans":{"type":"text","props":{"role":"title"}},
-               "noAction":{"type":"button","props":{"label":"Go","variant":"primary"}},
+               "noLabel":{"type":"button","props":{"action":{"type":"message","text":"go"}}},
                "noFile":{"type":"image","props":{"width":10,"height":10,"thumbhash":"x","alt":"a","shape":"square"}},
                "unknownIcon":{"type":"icon","props":{"name":"unicorn"}},
                "oneSpark":{"type":"spark","props":{"values":[1]}},
@@ -181,6 +181,33 @@ class GenUiTest {
         assertEquals(Action.Tool("search", kotlinx.serialization.json.JsonObject(emptyMap())), q.action)
         assertEquals(PressRole.Item, q.role)
         assertEquals(PressRole.Plain, (d.elements.getValue("r") as Element.Press).role)
+    }
+
+    @Test
+    fun aButtonWhoseActionCantRunStaysDisabledNotDropped() {
+        val d = doc(
+            """"root":{"type":"box","children":["future","broken","none","ok"]},
+               "future":{"type":"button","props":{"label":"Add key","action":{"type":"teleport","to":"mars"}}},
+               "broken":{"type":"button","props":{"label":"Say","action":{"type":"message"}}},
+               "none":{"type":"button","props":{"label":"Nothing"}},
+               "ok":{"type":"button","props":{"label":"Go","action":{"type":"open","url":"https://example.com"}}}""",
+        )
+        assertEquals(listOf("future", "broken", "none", "ok"), d.elements.getValue("root").children)
+        assertEquals(Action.Unsupported("teleport"), (d.elements.getValue("future") as Element.Button).action)
+        assertEquals(Action.Unsupported("message"), (d.elements.getValue("broken") as Element.Button).action)
+        assertEquals(Action.Unsupported(null), (d.elements.getValue("none") as Element.Button).action)
+        assertEquals(Action.Open("https://example.com"), (d.elements.getValue("ok") as Element.Button).action)
+    }
+
+    @Test
+    fun anotherRenderFormatKeepsOnlyItsFallback() {
+        for (version in listOf("2", "0", "\"1\"", null)) {
+            val field = version?.let { "\"genuiRender\":$it," } ?: ""
+            val d = GenUi.parse("""{$field"root":"t","fallback":"Revenue up 18%.","elements":{"t":$text}}""")
+            assertFalse("genuiRender $version", d.drawable)
+            assertEquals("Revenue up 18%.", d.fallback)
+        }
+        assertTrue(doc(""""root":$text""").drawable)
     }
 
     @Test

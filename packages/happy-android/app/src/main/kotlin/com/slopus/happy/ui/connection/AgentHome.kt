@@ -691,6 +691,7 @@ private fun artifactTypeName(type: String): Int = when (type) {
     "image_series" -> R.string.agent_search_kind_image_series
     "video" -> R.string.agent_search_kind_video
     "document" -> R.string.agent_search_kind_document
+    "gen_ui" -> R.string.artifact_kind_gen_ui
     else -> R.string.agent_search_kind_artifact
 }
 

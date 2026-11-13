@@ -14,6 +14,10 @@ import com.slopus.happy.artifacts.ArtifactRef
 import com.slopus.happy.artifacts.ArtifactReference
 import com.slopus.happy.artifacts.ArtifactShow
 import com.slopus.happy.artifacts.ArtifactVersion
+import com.slopus.happy.artifacts.Extent
+import com.slopus.happy.genui.Element
+import com.slopus.happy.genui.GenUi
+import com.slopus.happy.genui.RenderDocument
 import com.slopus.happy.browser.BrowserException
 import com.slopus.happy.browser.BrowserFetcher
 import com.slopus.happy.browser.BrowserPolicy
@@ -73,6 +77,9 @@ sealed interface ArtifactUi {
 
     /** A file Android's WebView doesn't draw (a PDF, an office file), opened in an app that reads it. */
     data class Openable(val file: ArtifactFile) : ArtifactUi
+
+    /** A `gen_ui` version's render document, and the version's pictures it names, by path. */
+    data class GenUi(val document: RenderDocument, val pictures: Map<String, ArtifactMediaItem>) : ArtifactUi
 }
 
 /** Where a tapped link in a document leads (iOS's `ArtifactViewController.open(link:)`). */
@@ -153,7 +160,7 @@ class ArtifactLoader(
                 }
             }
         }
-        show(version, ArtifactShow.of(version, opened?.second))
+        show(version, ArtifactShow.of(version, opened?.second, ref.type))
     } catch (e: CancellationException) {
         throw e
     } catch (_: ArtifactGoneException) {
@@ -178,7 +185,28 @@ class ArtifactLoader(
                 )
             }
             is ArtifactShow.Openable -> ArtifactUi.Openable(show.file)
+            is ArtifactShow.GenUi -> genUi(version, show.render)
         }
+    }
+
+    /**
+     * The render document, and every picture it names that the version
+     * holds, sized from the document so the viewer opens at its shape. A
+     * picture the version lacks keeps its placeholder.
+     */
+    private suspend fun genUi(version: ArtifactVersion, render: ArtifactFile): ArtifactUi {
+        val body = files.bytes(ref.id, version.number, render.path, limit = GEN_UI_RENDER_LIMIT)
+        val document = withContext(Dispatchers.Default) { GenUi.parse(String(body, Charsets.UTF_8)) }
+        val media = media(version)
+        val named = document.elements.values.filterIsInstance<Element.Image>().map { Triple(it.file, it.alt, Extent(it.width.toDouble(), it.height.toDouble())) } +
+            document.viewers.values.flatten().map { Triple(it.file, it.caption ?: it.alt, Extent(it.width.toDouble(), it.height.toDouble())) }
+        val pictures = named.mapNotNull { (path, label, size) ->
+            val file = version.file(path)?.takeIf { it.isVisual && !it.isVideo } ?: return@mapNotNull null
+            val item = media.media(file, label.ifEmpty { labels(false, path.substringAfterLast('/')) })
+            if (size.width > 0 && size.height > 0 && item.key !in media.sizes) media.sizes[item.key] = size
+            path to item
+        }.toMap()
+        return ArtifactUi.GenUi(document, pictures)
     }
 
     /**
@@ -294,5 +322,8 @@ class ArtifactLoader(
 
         /** The most of the version before that is read to diff against. */
         const val MAX_DIFF_BYTES = 2L * 1024 * 1024
+
+        /** API.md: a render document is at most 4 MiB. */
+        const val GEN_UI_RENDER_LIMIT = 4L * 1024 * 1024
     }
 }

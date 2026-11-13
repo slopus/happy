@@ -5,6 +5,7 @@ import com.slopus.happy.chat.arr
 import com.slopus.happy.chat.num
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
+import com.slopus.happy.genui.GEN_UI_RENDER_PATH
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -194,12 +195,15 @@ sealed interface ArtifactShow {
     data class Gallery(val files: List<ArtifactFile>) : ArtifactShow
     data class Page(val file: ArtifactFile) : ArtifactShow
     data class Openable(val file: ArtifactFile) : ArtifactShow
+    /** A `gen_ui` version, drawn natively from the render document the computer compiled, never from its entry. */
+    data class GenUi(val render: ArtifactFile) : ArtifactShow
     data object Unavailable : ArtifactShow
 
     companion object {
-        /** [path] is the file a link opened; null for the entry. */
-        fun of(version: ArtifactVersion, path: String? = null): ArtifactShow {
+        /** [path] is the file a link opened; null for the entry. [type] is the artifact's. */
+        fun of(version: ArtifactVersion, path: String? = null, type: String = ""): ArtifactShow {
             if (path == null) version.liveUrl?.let { return Live(it) }
+            if (path == null && type == "gen_ui") return version.file(GEN_UI_RENDER_PATH)?.let(::GenUi) ?: Unavailable
             val entry = version.entry ?: return Unavailable
             val wanted = path ?: entry.path
             val file = version.files.firstOrNull { it.path == wanted } ?: entry.takeIf { wanted == it.path } ?: return Unavailable

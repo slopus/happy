@@ -13,6 +13,7 @@ fun artifactCardGlyph(type: String): Ionicon = when (type) {
     "image_series" -> Ionicon.Images
     "video" -> Ionicon.Videocam
     "document" -> Ionicon.DocumentOutline
+    "gen_ui" -> Ionicon.CodeWorkingOutline
     else -> Ionicon.CubeOutline
 }
 
@@ -39,5 +40,6 @@ private fun artifactCardKind(type: String): String =
         "image_series" -> stringResource(R.string.artifact_card_kind_image_series)
         "video" -> stringResource(R.string.artifact_kind_video)
         "document" -> stringResource(R.string.artifact_card_kind_document)
+        "gen_ui" -> stringResource(R.string.artifact_kind_gen_ui)
         else -> stringResource(R.string.artifact_kind_unknown)
     }

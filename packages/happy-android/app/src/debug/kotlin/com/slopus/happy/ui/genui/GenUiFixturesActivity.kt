@@ -43,7 +43,7 @@ class GenUiFixturesActivity : ComponentActivity() {
         val host = GenUiHost(
             onAction = { key, action -> Log.i("GenUiFixtures", "action $key $action") },
             onView = { key, viewer -> Log.i("GenUiFixtures", "view $key ${viewer.group}[${viewer.index}]") },
-            file = { file -> "file:///android_asset/genui/$file" },
+            cached = { file -> "file:///android_asset/genui/$file" },
         )
         setContent {
             HappyTheme {

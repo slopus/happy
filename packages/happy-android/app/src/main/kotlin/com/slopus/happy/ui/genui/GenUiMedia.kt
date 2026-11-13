@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -55,6 +56,9 @@ internal fun Shape.ratio(): Float = when (this) {
 /** Set by a mosaic: its tiles take the cell they are given instead of their shape. */
 private val LocalSized = staticCompositionLocalOf { false }
 
+/** What the host read for a picture the version doesn't hold. */
+private object NoPicture
+
 /**
  * A stored image in a box of its shape, cropped and centred, its ThumbHash
  * drawn until the file has loaded, so the final size is held from the start.
@@ -76,14 +80,17 @@ internal fun ImageView(key: String, e: Element.Image, modifier: Modifier) {
     }
     e.viewer?.let { viewer -> m = m.clickable(role = Role.Image) { scope.host.onView(key, viewer) } }
     var failed by remember(e.file) { mutableStateOf(false) }
+    val model by produceState(scope.host.cached(e.file), e.file, scope.host) { if (value == null) value = scope.host.load(e.file) ?: NoPicture }
     Box(m, contentAlignment = Alignment.Center) {
         RemoteImage(
-            model = scope.host.file(e.file),
+            model = model?.takeIf { it != NoPicture },
+            cacheKey = scope.host.key(e.file),
             contentDescription = e.alt,
             modifier = Modifier.matchParentSize(),
             background = colors.surfaceHighest,
             placeholder = rememberThumbHash(e.thumbhash),
-            onState = { failed = it == RemoteImageState.Error },
+            // Until the host has read it there is nothing to fail.
+            onState = { if (model != null) failed = it == RemoteImageState.Error },
         )
         if (failed) GenUiIcon(IconName.Image, 24.dp, LocalGenUiColors.current.ink(Tone.Muted))
         e.overlay?.let { overlay ->

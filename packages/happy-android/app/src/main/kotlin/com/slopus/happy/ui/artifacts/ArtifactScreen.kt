@@ -62,6 +62,8 @@ import com.slopus.happy.ui.browser.BrowserControls
 import com.slopus.happy.ui.browser.BrowserView
 import com.slopus.happy.ui.browser.rememberBrowserState
 import com.slopus.happy.ui.chat.MarkdownView
+import com.slopus.happy.ui.genui.GenUiArtifactView
+import com.slopus.happy.ui.genui.rememberGenUiArtifactHost
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.connection.BarIconButton
 import com.slopus.happy.ui.components.AlertButton
@@ -212,6 +214,10 @@ fun ArtifactScreen(
                         BrowserView(browser, prepare = ui.prepare, computer = computer, onOpenElsewhere = actions.onOpenWeb, artifactLink = actions.artifactLink)
                     }
                     is ArtifactUi.Openable -> ArtifactOpenable(ui.file, actions)
+                    is ArtifactUi.GenUi -> if (media != null) {
+                        val host = rememberGenUiArtifactHost(ui, media, actions.onOpenWeb, onView = { items, index -> viewing = items to index })
+                        GenUiArtifactView(ui, host)
+                    }
                 }
             }
         }
