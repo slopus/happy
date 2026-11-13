@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_families_title">Добавить провайдера</string>
+    <string name="cloud_families_chatgpt">ChatGPT</string>
+    <string name="cloud_families_claude">Claude</string>
+    <string name="cloud_families_grok">Grok</string>
+    <string name="cloud_families_custom">Свой</string>
+    <string name="cloud_families_either">%1$s или %2$s</string>
+    <string name="cloud_families_sign_in">Вход</string>
+    <string name="cloud_families_setup_token">Токен настройки</string>
+    <string name="cloud_families_api_key">API-ключ</string>
+    <string name="cloud_families_custom_ways">Любой эндпоинт с API OpenAI</string>
+    <string name="cloud_families_chatgpt_plan">Использует ваш тариф ChatGPT</string>
+    <string name="cloud_families_use_setup_token">Использовать токен настройки</string>
+    <string name="cloud_families_claude_plan">Использует ваш тариф Claude, из claude setup-token</string>
+    <string name="cloud_families_openai_key">API-ключ OpenAI</string>
+    <string name="cloud_families_anthropic_key">API-ключ Anthropic</string>
+    <string name="cloud_families_xai_key">API-ключ xAI</string>
+    <string name="cloud_families_openai_billed">Оплата с вашего аккаунта OpenAI</string>
+    <string name="cloud_families_anthropic_billed">Оплата с вашего аккаунта Anthropic</string>
+    <string name="cloud_families_xai_billed">Оплата с вашего аккаунта xAI</string>
+</resources>

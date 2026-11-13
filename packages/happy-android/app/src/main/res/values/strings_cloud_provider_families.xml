@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The add chooser's families (ui/connection/CloudProviders.kt, CloudAddChooser): ChatGPT, Claude, Grok
+  and Custom, each with a line for its ways, and the ways where a family has two. Words from iOS's
+  Strings.Providers (b4b385ccb).
+  Translated in values-*/ (AndroidStringsTranslatedTest).
+-->
+<resources>
+    <string name="cloud_families_title">Add a provider</string>
+    <string name="cloud_families_chatgpt">ChatGPT</string>
+    <string name="cloud_families_claude">Claude</string>
+    <string name="cloud_families_grok">Grok</string>
+    <string name="cloud_families_custom">Custom</string>
+    <string name="cloud_families_either">%1$s or %2$s</string>
+    <string name="cloud_families_sign_in">Sign in</string>
+    <string name="cloud_families_setup_token">Setup token</string>
+    <string name="cloud_families_api_key">API key</string>
+    <string name="cloud_families_custom_ways">Any endpoint that speaks OpenAI’s API</string>
+    <string name="cloud_families_chatgpt_plan">Uses your ChatGPT plan</string>
+    <string name="cloud_families_use_setup_token">Use a setup token</string>
+    <string name="cloud_families_claude_plan">Uses your Claude plan, from claude setup-token</string>
+    <string name="cloud_families_openai_key">OpenAI API key</string>
+    <string name="cloud_families_anthropic_key">Anthropic API key</string>
+    <string name="cloud_families_xai_key">xAI API key</string>
+    <string name="cloud_families_openai_billed">Billed to your OpenAI account</string>
+    <string name="cloud_families_anthropic_billed">Billed to your Anthropic account</string>
+    <string name="cloud_families_xai_billed">Billed to your xAI account</string>
+</resources>

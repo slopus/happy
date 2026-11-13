@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_families_title">新增供應商</string>
+    <string name="cloud_families_chatgpt">ChatGPT</string>
+    <string name="cloud_families_claude">Claude</string>
+    <string name="cloud_families_grok">Grok</string>
+    <string name="cloud_families_custom">自訂</string>
+    <string name="cloud_families_either">%1$s或%2$s</string>
+    <string name="cloud_families_sign_in">登入</string>
+    <string name="cloud_families_setup_token">設定權杖</string>
+    <string name="cloud_families_api_key">API 金鑰</string>
+    <string name="cloud_families_custom_ways">任何支援 OpenAI API 的端點</string>
+    <string name="cloud_families_chatgpt_plan">使用你的 ChatGPT 方案</string>
+    <string name="cloud_families_use_setup_token">使用設定權杖</string>
+    <string name="cloud_families_claude_plan">使用你的 Claude 方案，來自 claude setup-token</string>
+    <string name="cloud_families_openai_key">OpenAI API 金鑰</string>
+    <string name="cloud_families_anthropic_key">Anthropic API 金鑰</string>
+    <string name="cloud_families_xai_key">xAI API 金鑰</string>
+    <string name="cloud_families_openai_billed">費用計入你的 OpenAI 帳戶</string>
+    <string name="cloud_families_anthropic_billed">費用計入你的 Anthropic 帳戶</string>
+    <string name="cloud_families_xai_billed">費用計入你的 xAI 帳戶</string>
+</resources>

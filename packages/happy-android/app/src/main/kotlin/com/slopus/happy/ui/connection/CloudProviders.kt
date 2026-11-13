@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -61,6 +64,9 @@ import com.slopus.happy.ui.components.Screen
 import com.slopus.happy.ui.components.Segment
 import com.slopus.happy.ui.components.SegmentedTabs
 import com.slopus.happy.ui.components.StackHeader
+import com.slopus.happy.ui.settings.SettingsPageSpec
+import com.slopus.happy.ui.settings.SettingsTile
+import com.slopus.happy.ui.settings.SettingsTiles
 import com.slopus.happy.ui.page
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
@@ -106,7 +112,10 @@ object CloudProvidersTags {
     const val DONE = "cloudProviders.done"
     const val FAILED = "cloudProviders.failed"
     const val CUSTOM = "cloudProviders.custom"
+    const val FAMILY_BACK = "cloudProviders.family.back"
     fun connection(id: String) = "cloudProviders.connection.$id"
+    internal fun family(kind: ProviderFamily.Kind) = if (kind == ProviderFamily.Kind.Custom) CUSTOM else "cloudProviders.family.${kind.name}"
+    fun way(flow: CloudProviderFlow) = "cloudProviders.way." + if (flow is CloudProviderFlow.ApiKey) "key.${flow.vendor}" else flow.toString()
     fun customField(field: com.slopus.happy.agent.CustomProvider.Problem) = "cloudProviders.custom.${field.name}"
     fun customError(field: com.slopus.happy.agent.CustomProvider.Problem) = "cloudProviders.custom.${field.name}.error"
 }
@@ -305,11 +314,33 @@ internal fun vendorName(vendor: String): String = when (vendor) {
 }
 
 /**
- * Add's choices, as a sheet from the bottom (iOS's action sheet): a
- * ChatGPT and a Claude sign-in, a Claude setup token where Claude's sign-in
- * isn't offered, an API key, and the team's own endpoint for those who may
- * define one ([custom]); each where the server offers it ([capabilities],
- * null until known: nothing yet).
+ * The chooser's rows, as iOS lists them (ProviderFamily): one per vendor
+ * family, in this order, each with the ways the server offers to add it
+ * ([capabilities], null until known: nothing yet). A family with no way
+ * isn't shown; Custom only for those who may define the team's own
+ * endpoint ([custom]).
+ */
+internal data class ProviderFamily(val kind: Kind, val ways: List<CloudProviderFlow>) {
+    enum class Kind { ChatGpt, Claude, Grok, Custom }
+
+    companion object {
+        fun offered(capabilities: CloudCapabilities?, custom: Boolean): List<ProviderFamily> {
+            capabilities ?: return emptyList()
+            val keys = capabilities.apiKeys
+            return listOf(
+                ProviderFamily(Kind.ChatGpt, listOfNotNull(CloudProviderFlow.ChatGpt.takeIf { capabilities.codexSignIn }, CloudProviderFlow.ApiKey(CloudProviders.OPENAI).takeIf { keys })),
+                ProviderFamily(Kind.Claude, listOfNotNull(CloudProviderFlow.Claude.takeIf { capabilities.claudeSetupToken }, CloudProviderFlow.ApiKey(CloudProviders.ANTHROPIC).takeIf { keys })),
+                ProviderFamily(Kind.Grok, listOfNotNull(CloudProviderFlow.ApiKey(CloudProviders.GROK).takeIf { keys })),
+                ProviderFamily(Kind.Custom, listOfNotNull(CloudProviderFlow.Custom.takeIf { custom })),
+            ).filter { it.ways.isNotEmpty() }
+        }
+    }
+}
+
+/**
+ * Add's choices, as a sheet from the bottom: the [ProviderFamily] rows,
+ * each with a line for its ways. One with two ways asks which next, in
+ * the same sheet.
  */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -323,44 +354,120 @@ internal fun CloudAddChooser(capabilities: CloudCapabilities?, onPick: (CloudPro
             onPick(flow)
         }
     }
+    val families = ProviderFamily.offered(capabilities, custom)
+    var opened by rememberSaveable { mutableStateOf<ProviderFamily.Kind?>(null) }
+    val family = families.firstOrNull { it.kind == opened }
     androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = colors.surface) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 8.dp)) {
-            if (capabilities?.codexSignIn == true) {
-                Item(
-                    title = stringResource(R.string.cloud_providers_add_chatgpt),
-                    icon = { ProviderIcon(ProviderIconKind.Codex, size = 24.dp) },
-                    showChevron = false,
-                    onClick = { pick(CloudProviderFlow.ChatGpt) },
-                )
-            }
-            if (capabilities?.claudeSetupToken == true) {
-                Item(
-                    title = stringResource(R.string.cloud_providers_add_setup_token),
-                    icon = { ProviderIcon(ProviderIconKind.Claude, size = 24.dp) },
-                    showChevron = false,
-                    onClick = { pick(CloudProviderFlow.Claude) },
-                )
-            }
-            if (capabilities?.apiKeys == true) {
-                Item(
-                    title = stringResource(R.string.cloud_providers_add_key),
-                    icon = { com.slopus.happy.ui.components.Icon(com.slopus.happy.ui.components.Ionicon.KeyOutline, 24.dp, colors.textSecondary) },
-                    showChevron = false,
-                    onClick = { pick(CloudProviderFlow.ApiKey()) },
-                )
-            }
-            // The endpoint's key is stored in the same vault as a team key.
-            if (custom && capabilities?.apiKeys == true) {
-                Item(
-                    title = stringResource(R.string.cloud_custom_add),
-                    icon = { com.slopus.happy.ui.components.Icon(com.slopus.happy.ui.components.Ionicon.ServerOutline, 24.dp, colors.textSecondary) },
-                    showChevron = false,
-                    onClick = { pick(CloudProviderFlow.Custom) },
-                    modifier = Modifier.testTag(CloudProvidersTags.CUSTOM),
-                )
+            if (family == null) {
+                ChooserTitle(stringResource(R.string.cloud_families_title), onBack = null)
+                for (each in families) {
+                    val two = each.ways.size > 1
+                    Item(
+                        title = familyName(each.kind),
+                        subtitle = familyWays(each),
+                        icon = { FamilyMark(each.kind) },
+                        showChevron = two,
+                        onClick = { if (two) opened = each.kind else pick(each.ways.single()) },
+                        modifier = Modifier.testTag(CloudProvidersTags.family(each.kind)),
+                    )
+                }
+            } else {
+                androidx.activity.compose.BackHandler { opened = null }
+                ChooserTitle(familyName(family.kind), onBack = { opened = null })
+                for (way in family.ways) {
+                    val (title, detail) = wayWords(way)
+                    Item(
+                        title = title,
+                        subtitle = detail,
+                        showChevron = false,
+                        onClick = { pick(way) },
+                        modifier = Modifier.testTag(CloudProvidersTags.way(way)),
+                    )
+                }
             }
         }
     }
+}
+
+@Composable
+private fun ChooserTitle(title: String, onBack: (() -> Unit)?) {
+    val colors = HappyTheme.colors
+    androidx.compose.foundation.layout.Row(
+        Modifier.fillMaxWidth().padding(start = if (onBack == null) 24.dp else 8.dp, end = 24.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (onBack != null) {
+            androidx.compose.material3.IconButton(onClick = onBack, modifier = Modifier.testTag(CloudProvidersTags.FAMILY_BACK)) {
+                com.slopus.happy.ui.components.Icon(com.slopus.happy.ui.components.Ionicon.ChevronBack, 22.dp, colors.textLink)
+            }
+        }
+        Text(title, style = happyTextStyle(fontSize = 17, lineHeight = 22, weight = FontWeight.SemiBold), color = colors.text)
+    }
+}
+
+/** ChatGPT's and Claude's own marks on a tile; Grok and Custom a glyph (iOS's ProviderChooser.mark). */
+@Composable
+private fun FamilyMark(kind: ProviderFamily.Kind) {
+    when (kind) {
+        ProviderFamily.Kind.ChatGpt -> MarkTile(R.drawable.icon_gpt, SettingsTiles.green)
+        ProviderFamily.Kind.Claude -> MarkTile(R.drawable.icon_claude, SettingsTiles.orange)
+        ProviderFamily.Kind.Grok -> SettingsTile(com.slopus.happy.ui.components.Ionicon.FlashOutline, SettingsTiles.gray)
+        ProviderFamily.Kind.Custom -> SettingsTile(com.slopus.happy.ui.components.Ionicon.CodeSlashOutline, SettingsTiles.blue)
+    }
+}
+
+@Composable
+private fun MarkTile(mark: Int, color: androidx.compose.ui.graphics.Color) {
+    androidx.compose.foundation.layout.Box(
+        Modifier.size(SettingsPageSpec.tile).clip(androidx.compose.foundation.shape.RoundedCornerShape(SettingsPageSpec.tileRadius)).background(color),
+        contentAlignment = Alignment.Center,
+    ) {
+        androidx.compose.foundation.Image(
+            painter = androidx.compose.ui.res.painterResource(mark),
+            contentDescription = null,
+            contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+            colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(androidx.compose.ui.graphics.Color.White),
+            modifier = Modifier.size(SettingsPageSpec.glyph * 0.9f),
+        )
+    }
+}
+
+@Composable
+private fun familyName(kind: ProviderFamily.Kind): String = stringResource(
+    when (kind) {
+        ProviderFamily.Kind.ChatGpt -> R.string.cloud_families_chatgpt
+        ProviderFamily.Kind.Claude -> R.string.cloud_families_claude
+        ProviderFamily.Kind.Grok -> R.string.cloud_families_grok
+        ProviderFamily.Kind.Custom -> R.string.cloud_families_custom
+    },
+)
+
+/** The family's line: its ways, "Sign in or API key"; Grok's one key is xAI's, Custom any OpenAI-speaking endpoint. */
+@Composable
+private fun familyWays(family: ProviderFamily): String {
+    if (family.kind == ProviderFamily.Kind.Custom) return stringResource(R.string.cloud_families_custom_ways)
+    val ways = family.ways.map { way ->
+        when (way) {
+            CloudProviderFlow.ChatGpt -> stringResource(R.string.cloud_families_sign_in)
+            CloudProviderFlow.Claude -> stringResource(R.string.cloud_families_setup_token)
+            else -> stringResource(if (family.kind == ProviderFamily.Kind.Grok) R.string.cloud_families_xai_key else R.string.cloud_families_api_key)
+        }
+    }
+    return if (ways.size == 2) stringResource(R.string.cloud_families_either, ways[0], ways[1]) else ways.joinToString()
+}
+
+/** A way's title and what it uses or bills. */
+@Composable
+private fun wayWords(way: CloudProviderFlow): Pair<String, String?> = when (way) {
+    CloudProviderFlow.ChatGpt -> stringResource(R.string.cloud_providers_add_chatgpt) to stringResource(R.string.cloud_families_chatgpt_plan)
+    CloudProviderFlow.Claude -> stringResource(R.string.cloud_families_use_setup_token) to stringResource(R.string.cloud_families_claude_plan)
+    is CloudProviderFlow.ApiKey -> when (way.vendor) {
+        CloudProviders.ANTHROPIC -> stringResource(R.string.cloud_families_anthropic_key) to stringResource(R.string.cloud_families_anthropic_billed)
+        CloudProviders.GROK -> stringResource(R.string.cloud_families_xai_key) to stringResource(R.string.cloud_families_xai_billed)
+        else -> stringResource(R.string.cloud_families_openai_key) to stringResource(R.string.cloud_families_openai_billed)
+    }
+    else -> stringResource(R.string.cloud_custom_add) to null
 }
 
 /** "Save to": My account or Team, only where the person may pick. */

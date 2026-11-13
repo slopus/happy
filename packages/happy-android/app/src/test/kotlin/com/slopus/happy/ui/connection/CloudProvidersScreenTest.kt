@@ -66,21 +66,58 @@ class CloudProvidersScreenTest {
     }
 
     @Test
-    fun theChooserOffersOnlyWhatTheServerDoes() {
-        // Before `capabilities`: the listed sign-ins and keys, never a setup token.
-        rule.setHappyContent { CloudAddChooser(CloudCapabilities.listed(setOf("codex")), onPick = {}, onDismiss = {}) }
-        rule.onNodeWithText("Sign in with ChatGPT").assertIsDisplayed()
-        assertEquals(0, rule.onAllNodesWithText("Use a Claude setup token").fetchSemanticsNodes().size)
-        rule.onNodeWithText("Add API key").assertIsDisplayed()
+    fun theChooserListsTheFamiliesInIosOrderEachWithItsWays() {
+        rule.setHappyContent { CloudAddChooser(CloudCapabilities(apiKeys = true, claudeSetupToken = true, codexSignIn = true), onPick = {}, onDismiss = {}, custom = true) }
+        rule.onNodeWithText("Add a provider").assertIsDisplayed()
+        val rows = listOf(
+            ProviderFamily.Kind.ChatGpt to "Sign in or API key",
+            ProviderFamily.Kind.Claude to "Setup token or API key",
+            ProviderFamily.Kind.Grok to "xAI API key",
+            ProviderFamily.Kind.Custom to "Any endpoint that speaks OpenAI’s API",
+        )
+        for ((kind, ways) in rows) rule.onNodeWithText(ways).assertIsDisplayed()
+        val tops = rows.map { (kind, _) -> rule.onNodeWithTag(CloudProvidersTags.family(kind)).fetchSemanticsNode().boundsInRoot.top }
+        assertEquals(tops.sorted(), tops)
     }
 
     @Test
-    fun claudeIsOfferedOnlyAsASetupToken() {
-        rule.setHappyContent { CloudAddChooser(CloudCapabilities(apiKeys = false, claudeSetupToken = true, codexSignIn = false), onPick = {}, onDismiss = {}) }
-        rule.onNodeWithText("Use a Claude setup token").assertIsDisplayed()
-        assertEquals(0, rule.onAllNodesWithText("Sign in with Claude").fetchSemanticsNodes().size)
-        assertEquals(0, rule.onAllNodesWithText("Sign in with ChatGPT").fetchSemanticsNodes().size)
-        assertEquals(0, rule.onAllNodesWithText("Add API key").fetchSemanticsNodes().size)
+    fun theChooserOffersOnlyWhatTheServerDoes() {
+        // Before `capabilities`: the listed sign-ins and keys, never a setup token; Custom only for those who may define it.
+        rule.setHappyContent { CloudAddChooser(CloudCapabilities.listed(setOf("codex")), onPick = {}, onDismiss = {}) }
+        rule.onNodeWithText("Sign in or API key").assertIsDisplayed()
+        rule.onNodeWithText("API key").assertIsDisplayed()
+        rule.onNodeWithText("xAI API key").assertIsDisplayed()
+        assertEquals(0, rule.onAllNodesWithTag(CloudProvidersTags.CUSTOM).fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun aFamilyWithTwoWaysAsksWhichInTheSheet() {
+        var picked: CloudProviderFlow? = null
+        rule.setHappyContent { CloudAddChooser(CloudCapabilities(apiKeys = true, claudeSetupToken = true, codexSignIn = true), onPick = { picked = it }, onDismiss = {}) }
+        rule.onNodeWithTag(CloudProvidersTags.family(ProviderFamily.Kind.ChatGpt)).performClick()
+        rule.onNodeWithText("Sign in with ChatGPT").assertIsDisplayed()
+        rule.onNodeWithText("Uses your ChatGPT plan").assertIsDisplayed()
+        rule.onNodeWithText("Billed to your OpenAI account").assertIsDisplayed()
+        assertEquals(null, picked)
+        rule.onNodeWithTag(CloudProvidersTags.FAMILY_BACK).performClick()
+        rule.onNodeWithTag(CloudProvidersTags.family(ProviderFamily.Kind.Claude)).performClick()
+        rule.onNodeWithText("Use a setup token").assertIsDisplayed()
+        rule.onNodeWithText("Uses your Claude plan, from claude setup-token").assertIsDisplayed()
+        rule.onNodeWithText("Anthropic API key").performClick()
+        rule.waitForIdle()
+        assertEquals(CloudProviderFlow.ApiKey(CloudProviders.ANTHROPIC), picked)
+    }
+
+    @Test
+    fun aFamilyWithOneWayOpensIt() {
+        var picked: CloudProviderFlow? = null
+        rule.setHappyContent { CloudAddChooser(CloudCapabilities(apiKeys = false, claudeSetupToken = true, codexSignIn = false), onPick = { picked = it }, onDismiss = {}) }
+        rule.onNodeWithText("Setup token").assertIsDisplayed()
+        assertEquals(0, rule.onAllNodesWithTag(CloudProvidersTags.family(ProviderFamily.Kind.ChatGpt)).fetchSemanticsNodes().size)
+        assertEquals(0, rule.onAllNodesWithTag(CloudProvidersTags.family(ProviderFamily.Kind.Grok)).fetchSemanticsNodes().size)
+        rule.onNodeWithTag(CloudProvidersTags.family(ProviderFamily.Kind.Claude)).performClick()
+        rule.waitForIdle()
+        assertEquals(CloudProviderFlow.Claude, picked)
     }
 
     @Test
@@ -168,7 +205,7 @@ class CloudProvidersScreenTest {
         rule.setHappyContent { CloudAddChooser(CloudCapabilities(apiKeys = true, claudeSetupToken = false, codexSignIn = false), onPick = { picked = it }, onDismiss = {}, custom = custom) }
         assertEquals(0, rule.onAllNodesWithTag(CloudProvidersTags.CUSTOM).fetchSemanticsNodes().size)
         custom = true
-        rule.onNodeWithText("Add your own endpoint").performClick()
+        rule.onNodeWithText("Any endpoint that speaks OpenAI\u2019s API").performClick()
         rule.waitForIdle()
         assertEquals(CloudProviderFlow.Custom, picked)
     }

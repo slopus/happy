@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_families_title">Añadir un proveedor</string>
+    <string name="cloud_families_chatgpt">ChatGPT</string>
+    <string name="cloud_families_claude">Claude</string>
+    <string name="cloud_families_grok">Grok</string>
+    <string name="cloud_families_custom">Personalizado</string>
+    <string name="cloud_families_either">%1$s o %2$s</string>
+    <string name="cloud_families_sign_in">Iniciar sesión</string>
+    <string name="cloud_families_setup_token">Token de configuración</string>
+    <string name="cloud_families_api_key">Clave de API</string>
+    <string name="cloud_families_custom_ways">Cualquier endpoint que hable la API de OpenAI</string>
+    <string name="cloud_families_chatgpt_plan">Usa tu plan de ChatGPT</string>
+    <string name="cloud_families_use_setup_token">Usar un token de configuración</string>
+    <string name="cloud_families_claude_plan">Usa tu plan de Claude, desde claude setup-token</string>
+    <string name="cloud_families_openai_key">Clave de API de OpenAI</string>
+    <string name="cloud_families_anthropic_key">Clave de API de Anthropic</string>
+    <string name="cloud_families_xai_key">Clave de API de xAI</string>
+    <string name="cloud_families_openai_billed">Se factura a tu cuenta de OpenAI</string>
+    <string name="cloud_families_anthropic_billed">Se factura a tu cuenta de Anthropic</string>
+    <string name="cloud_families_xai_billed">Se factura a tu cuenta de xAI</string>
+</resources>
