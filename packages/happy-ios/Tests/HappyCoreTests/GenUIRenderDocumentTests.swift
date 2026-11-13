@@ -44,6 +44,18 @@ final class GenUIRenderDocumentTests: XCTestCase {
         element("text", ["spans": .array([.object(["text": .string(value)])])])
     }
 
+    func testAConversationDrawsAGenUIUnlessItsDisplayKeepsItToItsTitle() {
+        func object(_ fields: [String: JSONValue]) -> JSONValue {
+            .object(["type": .string("gen_ui"), "latestVersion": .number(3)].merging(fields) { _, new in new })
+        }
+        XCTAssertEqual(References.genUIVersion(object([:])), 3)
+        XCTAssertEqual(References.genUIVersion(object(["display": .string("inline_expanded")])), 3)
+        XCTAssertNil(References.genUIVersion(object(["display": .string("inline_compact")])))
+        XCTAssertNil(References.genUIVersion(object(["display": .string("side")])))
+        XCTAssertNil(References.genUIVersion(object(["status": .string("deleted")])))
+        XCTAssertNil(References.genUIVersion(object(["type": .string("html")])))
+    }
+
     func testAGenUIArtifactIsNamedAsDesktopNamesIt() {
         XCTAssertEqual(GenUIRenderDocument.path, ".genui/render.json")
         XCTAssertEqual(Search.artifactTypeLabel("gen_ui"), "Gen UI")

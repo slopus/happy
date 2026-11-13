@@ -327,6 +327,7 @@ actor ChatPlanner {
             case tree(ChatMediaPlan.Tree)
             case card(ChatMediaPlan.Card)
             case page(InlinePage)
+            case genUI(GenUIEmbed)
             case proposal(String)
             /// Words the planner writes, read but not selectable.
             case line(MarkdownPiece)
@@ -360,8 +361,14 @@ actor ChatPlanner {
                 let app = key.references.isApp(artifact.id, version: artifact.version, opensLatest: artifact.opensLatest)
                 drafts.append(.card(app ? ChatMediaPlan.card(app: artifact) : ChatMediaPlan.card(artifact: artifact)))
                 parts.append(.card)
-                // Desktop's inline page, under its card: only where the call follows the latest version.
-                if !app, artifact.followsLatest, let page = key.references.pages[artifact.id] {
+                let inner = MessageLayout.agentInner(width: key.width, maxContentWidth: key.maxContentWidth)
+                // A Gen UI under its card, as tall as its document plans at
+                // the column's width, so the row is right on its first layout.
+                if !app, let embed = GenUIPlanners.embed(artifact, references: key.references, width: inner, environment: environment) {
+                    drafts.append(.genUI(embed))
+                    parts.append(.page(height: embed.height))
+                } else if !app, artifact.followsLatest, let page = key.references.pages[artifact.id] {
+                    // Desktop's inline page, under its card: only where the call follows the latest version.
                     drafts.append(.page(InlinePage(artifactId: artifact.id, title: artifact.title, page: page)))
                     parts.append(.page(height: key.pageHeights[artifact.id] ?? Self.pageHeight))
                 }
@@ -427,6 +434,8 @@ actor ChatPlanner {
                 card(drafted, frame)
             case (.page(let frame), .page(let page)):
                 items.append(.embed(.page(page), frame: frame))
+            case (.page(let frame), .genUI(let embed)):
+                items.append(.embed(.genUI(embed), frame: frame))
             case (.markdown(let placed, let origin), .line(let markdown)):
                 items += markdown.draw(placed, origin: origin).items
             case (.proposal(let layout, let frame), .proposal(let artifactId)):

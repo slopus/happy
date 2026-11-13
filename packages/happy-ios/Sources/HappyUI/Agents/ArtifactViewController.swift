@@ -405,16 +405,8 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
 
     /// A document's viewer group, the pictures the version holds, at `index`.
     private func openGenUIViewer(_ group: String, index: Int) {
-        guard let genUI, let media else { return }
-        let items = genUI.document.viewers[group] ?? []
-        var pictures: [Picture] = []
-        var start = 0
-        for (position, item) in items.enumerated() {
-            guard let shown = genUI.files.picture(item.file) else { continue }
-            if position == index { start = pictures.count }
-            let size = item.width > 0 && item.height > 0 ? CGSize(width: item.width, height: item.height) : media.knownSize(shown.key)
-            pictures.append(Picture(key: shown.key, thumbhash: item.thumbhash.isEmpty ? nil : item.thumbhash, label: item.alt.isEmpty ? shown.label : item.alt, size: size))
-        }
+        guard let genUI else { return }
+        let (pictures, start) = genUI.files.viewer(genUI.document.viewers[group] ?? [], at: index)
         openViewer(pictures, index: start)
     }
 

@@ -21,6 +21,19 @@ final class GenUIArtifactFiles: GenUIFiles {
         return media.media(file)
     }
 
+    /// A viewer group's pictures the version holds, and where `index` is among them.
+    func viewer(_ items: [GenUIViewerItem], at index: Int) -> (pictures: [Picture], start: Int) {
+        var pictures: [Picture] = []
+        var start = 0
+        for (position, item) in items.enumerated() {
+            guard let shown = picture(item.file) else { continue }
+            if position == index { start = pictures.count }
+            let size = item.width > 0 && item.height > 0 ? CGSize(width: item.width, height: item.height) : media.knownSize(shown.key)
+            pictures.append(Picture(key: shown.key, thumbhash: item.thumbhash.isEmpty ? nil : item.thumbhash, label: item.alt.isEmpty ? shown.label : item.alt, size: size))
+        }
+        return (pictures, start)
+    }
+
     func image(_ path: String, pixels: Int) async -> UIImage? {
         guard let picture = picture(path) else { return nil }
         return await media.image(picture.key, pixels: pixels)

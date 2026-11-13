@@ -117,6 +117,7 @@ public actor Store {
     private var artifactTitles: [String: References.Artifact] = [:]
     private var artifactPages: [String: References.Page] = [:]
     private var artifactApps: [String: Int] = [:]
+    private var artifactGenUI: [String: References.GenUI] = [:]
     private var artifactReads: Set<String> = []
     /// People messages mention, as named, and those being read; the person reading.
     private var userNames: [String: String] = [:]
@@ -449,6 +450,7 @@ public actor Store {
             artifactTitles = [:]
             artifactPages = [:]
             artifactApps = [:]
+            artifactGenUI = [:]
             for event in pending { receive(event) }
             publish()
             keeping?.cancel()
@@ -568,6 +570,7 @@ public actor Store {
                 let read: References.Artifact?
                 var page: References.Page?
                 var app: Int?
+                var genUI: References.GenUI?
                 do {
                     let object = try await client.artifact(id)
                     read = References.artifact(object)
@@ -578,22 +581,40 @@ public actor Store {
                        (try? await client.artifactPage(id, version: entry.version, path: entry.path))?.mode == .app {
                         app = entry.version
                     }
+                    if let version = References.genUIVersion(object) {
+                        genUI = await Self.genUI(client, artifactId: id, version: version)
+                    }
                 } catch AgentClientError.status(404, _, _) {
                     read = .missing
                 } catch {
                     read = nil
                 }
-                await artifactRead(id, read, page: page, app: app)
+                await artifactRead(id, read, page: page, app: app, genUI: genUI)
             }
         }
     }
 
-    private func artifactRead(_ id: String, _ read: References.Artifact?, page: References.Page?, app: Int?) {
+    /// A `gen_ui` version's render document (`GenUIRenderDocument.path`),
+    /// read and parsed here, off the main thread; nil when it can't be had.
+    private static func genUI(_ client: AgentClient, artifactId: String, version: Int) async -> References.GenUI? {
+        var data = Data()
+        do {
+            try await AgentClient.read({ range in
+                try await client.artifactFile(artifactId, version: version, path: GenUIRenderDocument.path, range: range.map { "bytes=\($0.lowerBound)-\($0.upperBound)" })
+            }, each: { piece, _, _ in data.append(piece) })
+        } catch {
+            return nil
+        }
+        return GenUIRenderDocument.parse(data).map { References.GenUI(version: version, document: $0) }
+    }
+
+    private func artifactRead(_ id: String, _ read: References.Artifact?, page: References.Page?, app: Int?, genUI: References.GenUI?) {
         artifactReads.remove(id)
         guard let read else { return }
         artifactTitles[id] = read
         artifactPages[id] = page
         artifactApps[id] = app
+        artifactGenUI[id] = genUI
         publish()
     }
 
@@ -763,8 +784,9 @@ public actor Store {
             if type == "artifact.deleted" || changes["status"]?.stringValue == "deleted" {
                 artifactPages[id] = nil
                 artifactApps[id] = nil
-            } else if case .active(_, "html", _) = held {
-                // A page shown inline follows its latest version, entry and display.
+                artifactGenUI[id] = nil
+            } else if case .active(_, let kind, _) = held, kind == "html" || kind == "gen_ui" {
+                // A page or Gen UI shown inline follows its latest version and display.
                 read(artifacts: [id])
             }
 
@@ -864,6 +886,7 @@ public actor Store {
         references.artifacts = artifactTitles
         references.pages = artifactPages
         references.apps = artifactApps
+        references.genUI = artifactGenUI
         references.users = userNames
         references.me = me
         references.missingUsers = usersMissing

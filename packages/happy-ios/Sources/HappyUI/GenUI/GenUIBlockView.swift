@@ -45,6 +45,12 @@ final class GenUIInteraction {
 
     nonisolated init() {}
 
+    /// Another document: no answers yet.
+    func reset() {
+        chosen = [:]
+        choices = [:]
+    }
+
     /// The shown nodes' choices; a group already answered shows its answer.
     func adopt(_ choices: [String: GenUIChoiceNodes]) {
         self.choices = choices
@@ -105,6 +111,8 @@ final class GenUIBlockView: UIView {
     private var snapping: [GenUICarouselSnap] = []
     private var loading: Task<Void, Never>?
     private var pictures: [Task<Void, Never>] = []
+    /// The planner and width shown, or on their way, and whose document it is.
+    private var shown: (planner: GenUIPlanner, width: CGFloat, identity: String?)?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -123,12 +131,23 @@ final class GenUIBlockView: UIView {
     /// Plans `document` at `width` and builds its nodes off the main thread,
     /// then shows them. A later call replaces an earlier one still on its way.
     func load(_ document: GenUIRenderDocument, width: CGFloat, traits: GenUITraits, files: (any GenUIFiles)?) {
+        show(GenUIPlanner(document: document, traits: traits), width: width, identity: shown?.identity, files: files)
+    }
+
+    /// Builds the nodes of `planner`'s plan at `width` off the main thread
+    /// (a plan already made, as a conversation's row was sized by, is
+    /// reused), then shows them; nothing when that is already shown. Another
+    /// `identity`, another document, starts with no answers.
+    func show(_ planner: GenUIPlanner, width: CGFloat, identity: String?, files: (any GenUIFiles)?) {
+        if let shown, shown.planner === planner, shown.width == width, shown.identity == identity { return }
+        if shown?.identity != identity { interaction.reset() }
+        shown = (planner, width, identity)
         loading?.cancel()
         let interaction = interaction
         let dark = dark
         loading = Task { [weak self] in
             let built = await Task.detached(priority: .userInitiated) {
-                GenUINodeBuilder.build(GenUIPlanner(document: document, traits: traits).plan(width: width), interaction: interaction, dark: dark)
+                GenUINodeBuilder.build(planner.plan(width: width), interaction: interaction, dark: dark)
             }.value
             guard !Task.isCancelled else { return }
             self?.apply(built, files: files)

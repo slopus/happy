@@ -38,6 +38,18 @@ public struct References: Equatable, Sendable {
         }
     }
 
+    /// A `gen_ui` artifact a conversation draws inline: its latest
+    /// version and the render document its daemon compiled.
+    public struct GenUI: Equatable, Sendable {
+        public var version: Int
+        public var document: GenUIRenderDocument
+
+        public init(version: Int, document: GenUIRenderDocument) {
+            self.version = version
+            self.document = document
+        }
+    }
+
     public enum View: Equatable, Sendable {
         /// Opens: a name to tap. `reading` while an artifact's title is on its way.
         case link(String, reading: Bool = false)
@@ -63,6 +75,8 @@ public struct References: Equatable, Sendable {
     /// (`ArtifactPageMode`), by ID: that version. An app is never run in
     /// the conversation; its card opens it full screen.
     public var apps: [String: Int] = [:]
+    /// The `gen_ui` artifacts read so far that a conversation draws, by ID.
+    public var genUI: [String: GenUI] = [:]
     /// The conversation's own subagents, by ID, as titled ("" untitled):
     /// a hidden one reads as its title, and opens nothing.
     public var subagents: [String: String] = [:]
@@ -146,6 +160,16 @@ public struct References: Equatable, Sendable {
               object["live"] == nil || object["live"] == .null,
               let path = object["entry"]?["path"]?.stringValue, let version = object["latestVersion"]?.numberValue else { return nil }
         return (Int(version), path)
+    }
+
+    /// The latest version of an active `gen_ui` artifact a conversation
+    /// draws: any whose `display` is not `inline_compact` or `side`, as
+    /// desktop starts it. Nil for anything else, which stays a card.
+    public static func genUIVersion(_ object: JSONValue) -> Int? {
+        guard object["status"]?.stringValue != "deleted", object["type"]?.stringValue == "gen_ui",
+              !["inline_compact", "side"].contains(object["display"]?.stringValue ?? ""),
+              let version = object["latestVersion"]?.numberValue else { return nil }
+        return Int(version)
     }
 
     /// Whether `artifact`, as a message shows it, opens as an app.

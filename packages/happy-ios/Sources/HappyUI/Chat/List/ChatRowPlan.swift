@@ -193,6 +193,8 @@ enum ChatDrawItem {
 enum ChatEmbed: Equatable, Sendable {
     /// An HTML artifact's page (`InlinePageView`).
     case page(InlinePage)
+    /// A `gen_ui` artifact's document (`GenUIBlockView`).
+    case genUI(GenUIEmbed)
 }
 
 /// An artifact's page shown inline in a V2 conversation: the

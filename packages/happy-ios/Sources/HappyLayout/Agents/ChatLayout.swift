@@ -332,12 +332,17 @@ public struct MessageLayout: Equatable, Sendable {
         agent(width: width, maxContentWidth: maxContentWidth, parts: [.markdown(blocks)])
     }
 
+    /// How wide an agent message's runs are in a row `width` wide.
+    public static func agentInner(width: CGFloat, maxContentWidth: CGFloat = .greatestFiniteMagnitude) -> CGFloat {
+        max(0, ChatColumn(rowWidth: width, maxContentWidth: maxContentWidth).width - 2 * Metrics.marginH)
+    }
+
     /// The runs one under another, 8 apart, in the reading column, from
     /// `top` down, `bottom` left under the last.
     public static func agent(width: CGFloat, maxContentWidth: CGFloat = .greatestFiniteMagnitude, parts: [Part], top: CGFloat = Metrics.marginV, bottom: CGFloat = Metrics.marginV) -> MessageLayout {
         typealias M = Metrics
         let column = ChatColumn(rowWidth: width, maxContentWidth: maxContentWidth)
-        let inner = max(0, column.width - 2 * M.marginH)
+        let inner = agentInner(width: width, maxContentWidth: maxContentWidth)
         let left = column.x + M.marginH
         var y = top
         var placed: [Placed] = []

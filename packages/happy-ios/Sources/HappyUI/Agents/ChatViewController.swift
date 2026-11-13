@@ -1282,9 +1282,10 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             Task { await store.readArtifacts(unread) }
         }
         // An HTML artifact a call shows is read for whether it wants to be
-        // inline, or is an app, whose card opens it full screen.
+        // inline, or is an app, whose card opens it full screen; a Gen UI
+        // for its document, drawn under its card.
         for piece in changed.lazy.flatMap(\.pieces) {
-            if case .artifact(let artifact) = piece, artifact.type == "html" { scanned.pages.insert(artifact.id) }
+            if case .artifact(let artifact) = piece, artifact.type == "html" || artifact.type == "gen_ui" { scanned.pages.insert(artifact.id) }
         }
         let pages = scanned.pages.filter { references.artifacts[$0] == nil }
         if !pages.isEmpty {
