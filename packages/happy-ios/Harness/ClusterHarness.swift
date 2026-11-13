@@ -396,7 +396,7 @@ final class ClusterHarness {
             window.layoutIfNeeded()
             let open = arguments.firstIndex(of: "-open").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
             try? await Task.sleep(for: .seconds(1))
-            if let steps = value("-steps", in: arguments) { await walk(steps, home: home, arguments: arguments) }
+            if let steps = value("-steps", in: arguments) { await walk(steps, home: home, window: window, arguments: arguments) }
             switch open {
             case "plugins":
                 navigation.pushViewController(PluginsViewController(session: session), animated: false)
@@ -442,12 +442,13 @@ final class ClusterHarness {
     /// `name:<name>` saves the profile, `bot:<name>` names the admin bot,
     /// `custom` opens the custom provider's form and `fill` fills it (`-fill`),
     /// `family:<kind>` picks a family in the open provider chooser,
+    /// `shot:<name>` keeps the window as `Documents/<name>.png` (a device),
     /// `photo` picks a picture, `plugin:<id>` opens a plugin from the
     /// plugins step, `install` and `setup:<method>` act on its page and
     /// `submit` sends a form, `email:<address>` invites (typed only with a
     /// trailing `+`), `back` goes back, `skip` and `primary` tap the
     /// screen's actions.
-    private func walk(_ steps: String, home: UIViewController, arguments: [String]) async {
+    private func walk(_ steps: String, home: UIViewController, window: UIWindow, arguments: [String]) async {
         for step in steps.split(separator: ",") {
             try? await Task.sleep(for: .seconds(2))
             let top = (home.presentedViewController as? UINavigationController)?.topViewController
@@ -480,6 +481,8 @@ final class ClusterHarness {
                 teammates.emailField.text.text = String(address.hasSuffix("+") ? address.dropLast() : address)
                 teammates.edited()
                 if !address.hasSuffix("+") { teammates.primary.tapped() }
+            } else if step.hasPrefix("shot:") {
+                Self.keep(window, as: String(step.dropFirst("shot:".count)))
             } else if step == "back" {
                 (home.presentedViewController as? UINavigationController)?.popViewController(animated: true)
             } else if step == "photo", let photo = top as? OnboardingPhotoViewController {
@@ -488,6 +491,12 @@ final class ClusterHarness {
                 if step == "skip" { notice.secondary?.tapped() } else if step == "primary" { notice.primary.tapped() }
             }
         }
+    }
+
+    private static func keep(_ window: UIWindow, as name: String) {
+        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        try? image.pngData()?.write(to: documents.appendingPathComponent("\(name).png"))
     }
 
     /// On a plugin's page: `-setup <installation>:<method>` opens that
