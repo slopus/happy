@@ -1,5 +1,6 @@
 package com.slopus.happy.onboarding
 
+import com.slopus.happy.agent.AgentClient
 import com.slopus.happy.chat.arr
 import com.slopus.happy.chat.bool
 import com.slopus.happy.chat.num
@@ -83,6 +84,9 @@ data class OnboardingGate(
             val points: List<String>,
             val note: String?,
             val description: String?,
+            /** Its picture as the server serves it (`/v0/bots/:id/avatar`) and its ThumbHash; null where it has none. */
+            val picture: String? = null,
+            val thumbhash: String? = null,
         ) : Kind
         /** [connected]: the team's or the person's own providers; [freeModel]: the operator's free model runs meanwhile. */
         data class Inference(val connected: List<String>, val freeModel: Boolean) : Kind
@@ -145,6 +149,8 @@ data class OnboardingGate(
                     points = data["points"].strings.orEmpty(),
                     note = data["note"].str,
                     description = data["description"].str,
+                    picture = data["avatar"].obj?.let { "/v0/bots/${AgentClient.escape(botId)}/avatar" },
+                    thumbhash = data["avatar"].obj?.get("thumbhash").str,
                 )
             } ?: Kind.Unknown
             "inference" -> Kind.Inference(data["connected"].strings.orEmpty(), data["freeModel"].bool ?: false)

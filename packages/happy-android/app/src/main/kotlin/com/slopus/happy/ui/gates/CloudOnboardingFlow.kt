@@ -181,6 +181,7 @@ private fun CloudOnboardingPage(graph: AppGraph, nav: NavHostController, connect
                 }
             },
             web = HappyCloud.webApp(session.server),
+            pictures = session.pictures,
             onNotNow = notNow.takeUnless { blocks },
             renameBot = { bot, name -> OnboardingApi.renameAdminBot(client, bot.botId, name, bot.version); source.check() },
             inference = (step as? OnboardingPlan.Step.Gate)?.takeIf { it.gate.kind is OnboardingGate.Kind.Inference }?.let {
@@ -257,6 +258,8 @@ class OnboardingActions(
     val teammates: TeammatesHost? = null,
     /** The mobileApp gate's push; null while it isn't shown. */
     val notifications: NotificationsHost? = null,
+    /** The server's pictures: the admin bot's. */
+    val pictures: com.slopus.happy.agent.AgentPictures? = null,
 )
 
 /** How long Turn on notifications waits for the server to take this phone's registration. */
@@ -380,6 +383,7 @@ internal fun Notice(
         }
     }
     CloudFrame(
+        pinActions = true,
         title = title,
         onBack = onNotNow,
         body = body,
@@ -452,6 +456,7 @@ private fun ProfileStep(handle: String, seed: String, name: String?, actions: On
             }
         },
         onBack = actions.onNotNow,
+        pinActions = true,
     )
 }
 
@@ -487,6 +492,7 @@ private fun PhotoStep(gate: OnboardingGate, seed: String, photo: ImageBitmap?, a
     val shown = rememberPhoto(picked) ?: photo
     val skip = skipFor(gate, actions)
     CloudFrame(
+        pinActions = true,
         title = stringResource(R.string.cloud_onboarding_photo_title),
         onBack = actions.onNotNow,
         body = stringResource(R.string.cloud_onboarding_photo_body),

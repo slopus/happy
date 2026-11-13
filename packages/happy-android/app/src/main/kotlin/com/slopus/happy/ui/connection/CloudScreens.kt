@@ -67,6 +67,7 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -225,94 +226,122 @@ internal fun CloudFrame(
      * swap in place.
      */
     steadyButtons: Boolean = false,
+    /** The actions held at the bottom, the words scrolling above them: a step whose words may outgrow the screen (large text). */
+    pinActions: Boolean = false,
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
     val dark = HappyTheme.colors.dark
     val text = if (dark) StartSpec.darkText else StartSpec.lightText
     Box(Modifier.fillMaxSize()) {
         GrainGradient(palette = if (dark) StartSpec.darkPalette else StartSpec.lightPalette, modifier = Modifier.fillMaxSize())
+        val actions: @Composable ColumnScope.() -> Unit = {
+            val buttonWidth = if (steadyButtons) {
+                Modifier.padding(horizontal = CloudSpec.sidePadding).widthIn(max = columnMaxWidth).fillMaxWidth()
+            } else {
+                Modifier.widthIn(min = StartSpec.connectMinWidth).width(IntrinsicSize.Max)
+            }
+            if (primary != null) {
+                RoundButton(
+                    title = primary.title,
+                    onClick = primary.onClick,
+                    enabled = primary.enabled,
+                    loading = primary.loading,
+                    modifier = buttonWidth.testTag(CloudTags.PRIMARY),
+                )
+            }
+            if (secondary != null || steadyButtons) {
+                Spacer(Modifier.height(8.dp))
+                RoundButton(
+                    title = secondary?.title ?: "",
+                    onClick = secondary?.onClick ?: {},
+                    enabled = secondary?.enabled ?: false,
+                    display = RoundButtonDisplay.Inverted,
+                    // A pill of its own, as the cards are: never a bare line of text.
+                    modifier = (if (secondary != null) buttonWidth.testTag(CloudTags.SECONDARY) else buttonWidth.alpha(0f).clearAndSetSemantics {})
+                        .then(if (steadyButtons) Modifier.clip(RoundedCornerShape(percent = 50)).background(HappyTheme.colors.surface.copy(alpha = CloudSpec.SURFACE_ALPHA)) else Modifier),
+                )
+            }
+        }
+        val words: @Composable ColumnScope.() -> Unit = {
+            // Pinned, the bar's room is kept outside the scroll ([pinActions]).
+            Spacer(Modifier.height(if (pinActions) StartGallerySpec.margin else StartSpec.controlsPadding + StartSpec.control + StartGallerySpec.margin))
+            Spacer(Modifier.weight(1f))
+            Column(
+                Modifier.padding(horizontal = CloudSpec.sidePadding).widthIn(max = columnMaxWidth).fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(CloudSpec.gap),
+            ) {
+                // The keyboard up: the scene gives its room to the field and the action, which must stay in view.
+                if (art != null && !WindowInsets.isImeVisible) {
+                    var plays by rememberSaveable { mutableIntStateOf(1) }
+                    SceneAnimation(
+                        art,
+                        plays,
+                        { plays = it + 1 },
+                        // Watched before the replay's own click sees it, and never consumed: the scene still replays, and nothing new is announced.
+                        modifier = if (onArtPress == null) Modifier else Modifier.pointerInput(onArtPress) {
+                            awaitEachGesture { onArtPress(awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial).uptimeMillis) }
+                        },
+                        size = CloudSpec.art,
+                    )
+                    Spacer(Modifier.height(CloudSpec.artGap - CloudSpec.gap))
+                }
+                if (top != null) {
+                    top()
+                    Spacer(Modifier.height(CloudSpec.artGap - CloudSpec.gap))
+                }
+                Text(
+                    title,
+                    style = cappedScale(StartGallerySpec.title.copy(lineBreak = LineBreak.Heading), OnboardingContentSpec.TITLE_MAX_SCALE),
+                    color = text,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().semantics { heading() }.testTag(CloudTags.TITLE),
+                )
+                if (body != null) {
+                    Text(
+                        body,
+                        style = StartGallerySpec.body.copy(lineBreak = LineBreak.Paragraph),
+                        color = text.copy(alpha = StartSpec.SECONDARY_ALPHA),
+                        textAlign = TextAlign.Center,
+                        minLines = bodyMinLines,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                content()
+            }
+            Spacer(Modifier.weight(1f))
+        }
         BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout).union(WindowInsets.ime))) {
             val viewport = maxHeight
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .heightIn(min = viewport)
-                    .padding(bottom = StartSpec.bottomPadding),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Spacer(Modifier.height(StartSpec.controlsPadding + StartSpec.control + StartGallerySpec.margin))
-                Spacer(Modifier.weight(1f))
+            if (pinActions) {
+                // The actions stay at the bottom; the words scroll between them and the bar, never under it.
                 Column(
-                    Modifier.padding(horizontal = CloudSpec.sidePadding).widthIn(max = columnMaxWidth).fillMaxWidth(),
+                    Modifier.fillMaxSize().padding(top = StartSpec.controlsPadding + StartSpec.control, bottom = StartSpec.bottomPadding),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(CloudSpec.gap),
                 ) {
-                    // The keyboard up: the scene gives its room to the field and the action, which must stay in view.
-                    if (art != null && !WindowInsets.isImeVisible) {
-                        var plays by rememberSaveable { mutableIntStateOf(1) }
-                        SceneAnimation(
-                            art,
-                            plays,
-                            { plays = it + 1 },
-                            // Watched before the replay's own click sees it, and never consumed: the scene still replays, and nothing new is announced.
-                            modifier = if (onArtPress == null) Modifier else Modifier.pointerInput(onArtPress) {
-                                awaitEachGesture { onArtPress(awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial).uptimeMillis) }
-                            },
-                            size = CloudSpec.art,
-                        )
-                        Spacer(Modifier.height(CloudSpec.artGap - CloudSpec.gap))
-                    }
-                    if (top != null) {
-                        top()
-                        Spacer(Modifier.height(CloudSpec.artGap - CloudSpec.gap))
-                    }
-                    Text(
-                        title,
-                        style = cappedScale(StartGallerySpec.title.copy(lineBreak = LineBreak.Heading), OnboardingContentSpec.TITLE_MAX_SCALE),
-                        color = text,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth().semantics { heading() }.testTag(CloudTags.TITLE),
-                    )
-                    if (body != null) {
-                        Text(
-                            body,
-                            style = StartGallerySpec.body.copy(lineBreak = LineBreak.Paragraph),
-                            color = text.copy(alpha = StartSpec.SECONDARY_ALPHA),
-                            textAlign = TextAlign.Center,
-                            minLines = bodyMinLines,
-                            modifier = Modifier.fillMaxWidth(),
+                    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
+                        val room = maxHeight
+                        Column(
+                            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = room),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            content = words,
                         )
                     }
-                    content()
+                    Spacer(Modifier.height(StartGallerySpec.margin))
+                    actions()
                 }
-                Spacer(Modifier.weight(1f))
-                Spacer(Modifier.height(StartGallerySpec.margin))
-                val buttonWidth = if (steadyButtons) {
-                    Modifier.padding(horizontal = CloudSpec.sidePadding).widthIn(max = columnMaxWidth).fillMaxWidth()
-                } else {
-                    Modifier.widthIn(min = StartSpec.connectMinWidth).width(IntrinsicSize.Max)
-                }
-                if (primary != null) {
-                    RoundButton(
-                        title = primary.title,
-                        onClick = primary.onClick,
-                        enabled = primary.enabled,
-                        loading = primary.loading,
-                        modifier = buttonWidth.testTag(CloudTags.PRIMARY),
-                    )
-                }
-                if (secondary != null || steadyButtons) {
-                    Spacer(Modifier.height(8.dp))
-                    RoundButton(
-                        title = secondary?.title ?: "",
-                        onClick = secondary?.onClick ?: {},
-                        enabled = secondary?.enabled ?: false,
-                        display = RoundButtonDisplay.Inverted,
-                        // A pill of its own, as the cards are: never a bare line of text.
-                        modifier = (if (secondary != null) buttonWidth.testTag(CloudTags.SECONDARY) else buttonWidth.alpha(0f).clearAndSetSemantics {})
-                            .then(if (steadyButtons) Modifier.clip(RoundedCornerShape(percent = 50)).background(HappyTheme.colors.surface.copy(alpha = CloudSpec.SURFACE_ALPHA)) else Modifier),
-                    )
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .heightIn(min = viewport)
+                        .padding(bottom = StartSpec.bottomPadding),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    words()
+                    Spacer(Modifier.height(StartGallerySpec.margin))
+                    actions()
                 }
             }
         }
@@ -1151,6 +1180,8 @@ fun CloudProfileScreen(
     onChoosePhoto: () -> Unit,
     onSubmit: (String) -> Unit,
     onBack: (() -> Unit)?,
+    /** Continue held at the bottom, as onboarding's steps are ([CloudFrame]'s pinActions). */
+    pinActions: Boolean = false,
 ) {
     // The cursor after a suggested name, as iOS: ready to add to it or take it.
     var field by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(suggested.orEmpty().let { TextFieldValue(it, TextRange(it.length)) }) }
@@ -1164,6 +1195,7 @@ fun CloudProfileScreen(
         onBack = onBack,
         columnMaxWidth = CloudProfileSpec.columnMaxWidth,
         top = { ProfilePicturePicker(photo, seed, enabled = !saving, onChoosePhoto) },
+        pinActions = pinActions,
     ) {
         CloudNameField(
             field,

@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -50,7 +52,10 @@ import com.slopus.happy.plugins.PluginsState
 import com.slopus.happy.ui.components.Avatar
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.connection.AgentPicture
 import com.slopus.happy.ui.connection.CloudAction
+import com.slopus.happy.ui.connection.CloudProfileSpec
+import com.slopus.happy.ui.connection.LocalAgentPictures
 import com.slopus.happy.ui.connection.CloudAddChooser
 import com.slopus.happy.ui.connection.CloudField
 import com.slopus.happy.ui.connection.CloudProviderFlow
@@ -66,6 +71,7 @@ import kotlinx.coroutines.launch
 
 object OnboardingStepTags {
     const val BOT_NAME = "cloudOnboarding.botName"
+    const val BOT_POINTS = "cloudOnboarding.botPoints"
     const val INVITE_EMAIL = "cloudOnboarding.inviteEmail"
     fun plugin(id: String) = "cloudOnboarding.plugin.$id"
     fun sent(index: Int) = "cloudOnboarding.sent.$index"
@@ -123,10 +129,11 @@ private fun Problem(text: String?) {
 }
 
 /**
- * The adminBot gate: the server's own words for its admin bot (an admin
- * bot with expanded capabilities) and its name in a field, the current one
- * offered. Continue keeps the name, changed or not; Skip for now while
- * optional.
+ * The adminBot gate: its picture over the server's own words for it (an
+ * admin bot with expanded capabilities), what it can do (`points`), its
+ * name in a field, the current one offered, and the server's closing
+ * `note` under it. Continue keeps the name, changed or not; Skip for now
+ * while optional.
  */
 @Composable
 internal fun AdminBotStep(gate: OnboardingGate, bot: OnboardingGate.Kind.AdminBot, actions: OnboardingActions) {
@@ -136,15 +143,38 @@ internal fun AdminBotStep(gate: OnboardingGate, bot: OnboardingGate.Kind.AdminBo
     val skipFailed = stringResource(R.string.cloud_onboarding_couldnt_skip)
     val submit = { if (name.isNotBlank()) runner.run(0, failed) { actions.renameBot(bot, name.trim()) } }
     CloudFrame(
+        pinActions = true,
         title = bot.title?.takeIf { it.isNotBlank() } ?: stringResource(R.string.cloud_onboarding_bot_title),
         onBack = actions.onNotNow,
         body = bot.description?.takeIf { it.isNotBlank() } ?: stringResource(R.string.cloud_onboarding_bot_body),
-        art = R.raw.state_robot,
+        art = R.raw.state_robot.takeIf { bot.picture == null },
+        top = bot.picture?.let { path ->
+            {
+                CompositionLocalProvider(LocalAgentPictures provides actions.pictures) {
+                    AgentPicture(path, bot.thumbhash, CloudProfileSpec.picture, radius = CloudProfileSpec.picture / 2)
+                }
+            }
+        },
         primary = CloudAction(stringResource(R.string.common_continue), submit, enabled = name.isNotBlank() && runner.running == null, loading = runner.running == 0),
         secondary = if (gate.requirement == OnboardingGate.Requirement.Optional) {
             CloudAction(stringResource(R.string.cloud_onboarding_skip), { runner.run(1, skipFailed) { actions.skip(gate.id) } }, enabled = runner.running == null)
         } else null,
     ) {
+        val points = bot.points.filter { it.isNotBlank() }
+        if (points.isNotEmpty()) {
+            val color = if (HappyTheme.colors.dark) StartSpec.darkText else StartSpec.lightText
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp).testTag(OnboardingStepTags.BOT_POINTS),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                for (point in points) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("•", style = happyTextStyle(fontSize = 16, lineHeight = 22), color = color)
+                        Text(point, style = happyTextStyle(fontSize = 16, lineHeight = 22), color = color)
+                    }
+                }
+            }
+        }
         CloudField(
             value = name,
             onChange = { name = it.take(80) },
@@ -156,6 +186,16 @@ internal fun AdminBotStep(gate: OnboardingGate, bot: OnboardingGate.Kind.AdminBo
             capitalization = KeyboardCapitalization.Words,
             onIme = submit,
         )
+        bot.note?.takeIf { it.isNotBlank() }?.let { note ->
+            val color = if (HappyTheme.colors.dark) StartSpec.darkText else StartSpec.lightText
+            Text(
+                note,
+                style = happyTextStyle(fontSize = 15, lineHeight = 20),
+                color = color.copy(alpha = StartSpec.SECONDARY_ALPHA),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         Problem(runner.problem)
     }
 }
@@ -179,6 +219,7 @@ internal fun InferenceStep(gate: OnboardingGate, inference: OnboardingGate.Kind.
     val body = stringResource(R.string.cloud_onboarding_inference_body) +
         if (inference.freeModel && optional) " " + stringResource(R.string.cloud_onboarding_inference_free) else ""
     CloudFrame(
+        pinActions = true,
         title = stringResource(R.string.cloud_onboarding_inference_title),
         onBack = actions.onNotNow,
         body = body,
@@ -248,6 +289,7 @@ internal fun PluginsStep(gate: OnboardingGate, plugins: OnboardingGate.Kind.Plug
     val rows = pluginRows(plugins, state)
     val waiting = rows.filter { it.required && !it.active }.map { it.name }
     CloudFrame(
+        pinActions = true,
         title = stringResource(R.string.cloud_onboarding_plugins_title),
         onBack = actions.onNotNow,
         body = if (waiting.isEmpty()) stringResource(R.string.cloud_onboarding_plugins_body) else stringResource(R.string.cloud_onboarding_plugins_needed, waiting.joinToString(", ")),
@@ -378,6 +420,7 @@ internal fun TeammatesStep(gate: OnboardingGate, handle: String, actions: Onboar
         )
     }
     CloudFrame(
+        pinActions = true,
         title = stringResource(R.string.cloud_onboarding_teammates_title),
         onBack = actions.onNotNow,
         body = stringResource(R.string.cloud_onboarding_teammates_body, handle),
@@ -527,6 +570,7 @@ internal fun NotificationsStep(gate: OnboardingGate, actions: OnboardingActions)
         PushOutcome.Unsupported -> CloudAction(stringResource(R.string.cloud_onboarding_update_action), { host?.store?.invoke() })
     }
     CloudFrame(
+        pinActions = true,
         title = stringResource(R.string.cloud_onboarding_notifications_title),
         onBack = actions.onNotNow,
         body = stringResource(R.string.cloud_onboarding_notifications_body),

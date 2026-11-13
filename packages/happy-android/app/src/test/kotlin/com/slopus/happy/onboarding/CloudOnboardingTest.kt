@@ -30,7 +30,7 @@ class CloudOnboardingTest {
         {"id":"profile","scope":"member","requirement":"required","status":"done","blocking":false,"canComplete":true,"data":{}},
         {"id":"avatar","scope":"member","requirement":"optional","status":"open","blocking":false,"canComplete":true,"data":{}},
         {"id":"adminBot","scope":"server","requirement":"optional","status":"open","blocking":false,"canComplete":true,
-         "data":{"botId":"b1","agentId":"a1","name":"Chief of Staff","version":"v1","title":"Name your admin bot",
+         "data":{"botId":"b1","agentId":"a1","name":"Chief of Staff","version":"v1","title":"Name your admin bot","avatar":{"kind":"image","thumbhash":"3OcRJYB4d3h/iIeHeEh3eIhw+j3A","source":"system"},
                  "points":["Changes settings","Connects tools","Builds a system"],"note":"Only owners can talk to it."}},
         {"id":"inference","scope":"server","requirement":"optional","status":"open","blocking":false,"canComplete":true,"data":{"connected":[],"freeModel":true}},
         {"id":"plugins","scope":"server","requirement":"optional","status":"open","blocking":false,"canComplete":true,
@@ -52,6 +52,10 @@ class CloudOnboardingTest {
         val bot = onboarding.gate("adminBot")!!.kind as Kind.AdminBot
         assertEquals("v1", bot.version)
         assertEquals(3, bot.points.size)
+        assertEquals("Only owners can talk to it.", bot.note)
+        // As cluster 696666f9 serves it (views::avatar_json), at the bot's own avatar route.
+        assertEquals("/v0/bots/b1/avatar", bot.picture)
+        assertEquals("3OcRJYB4d3h/iIeHeEh3eIhw+j3A", bot.thumbhash)
         assertEquals(Kind.Inference(emptyList(), freeModel = true), onboarding.gate("inference")!!.kind)
         assertEquals(listOf("github"), (onboarding.gate("plugins")!!.kind as Kind.Plugins).required)
         assertEquals("https://play.google.com/x", (onboarding.gate("mobileApp")!!.kind as Kind.MobileApp).playStoreUrl)

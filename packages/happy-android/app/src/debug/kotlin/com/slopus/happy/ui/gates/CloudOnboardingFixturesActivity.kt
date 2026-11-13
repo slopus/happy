@@ -26,6 +26,7 @@ import kotlinx.coroutines.delay
  * this app doesn't know), `finish`, `bot` (the admin bot, inference,
  * plugins), `team` (teammates, notifications, a payment method; with
  * `--es invites ok|nomail|none` and `--es push ok|denied|unsupported`).
+ * `--es require <gate id>` makes that gate required and blocking.
  * Start it with
  * `adb shell am start -n com.slopus.happy.dev/com.slopus.happy.ui.gates.CloudOnboardingFixturesActivity`.
  */
@@ -36,9 +37,14 @@ class CloudOnboardingFixturesActivity : ComponentActivity() {
         val set = intent.getStringExtra("gates") ?: "walk"
         val invites = intent.getStringExtra("invites") ?: "ok"
         val push = intent.getStringExtra("push") ?: "ok"
+        val require = intent.getStringExtra("require")
         setContent {
             HappyTheme {
-                var onboarding by remember { mutableStateOf(start(set)) }
+                var onboarding by remember {
+                    mutableStateOf(start(set).let { o ->
+                        o.copy(gates = o.gates.map { if (it.id == require) it.copy(requirement = Requirement.Required, blocking = true) else it })
+                    })
+                }
                 var held by remember { mutableStateOf<OnboardingGate?>(null) }
                 fun change(id: String, status: Status) {
                     val gates = onboarding.gates.map { if (it.id == id) it.copy(status = status, blocking = false) else it }
@@ -62,6 +68,7 @@ class CloudOnboardingFixturesActivity : ComponentActivity() {
                         savePhoto = { delay(900); change("avatar", Status.Done) },
                         finish = { delay(700); finish() },
                         web = "https://acme.happy.engineering/",
+                        pictures = com.slopus.happy.agent.AgentPictures("fixtures") { botPicture() },
                         onNotNow = if (onboarding.gates.any { it.blocking }) null else ({ finish() }),
                         renameBot = { _, _ -> delay(600); change("adminBot", Status.Done) },
                         inference = InferenceHost(
@@ -102,6 +109,19 @@ class CloudOnboardingFixturesActivity : ComponentActivity() {
         }
     }
 
+    /** A stand-in for the admin bot's picture: a gradient with a robot on it. */
+    private fun botPicture(): ByteArray {
+        val side = 360
+        val bitmap = android.graphics.Bitmap.createBitmap(side, side, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+        canvas.drawPaint(android.graphics.Paint().apply {
+            shader = android.graphics.LinearGradient(0f, 0f, side.toFloat(), side.toFloat(), 0xFF7C5CFF.toInt(), 0xFF3EC6FF.toInt(), android.graphics.Shader.TileMode.CLAMP)
+        })
+        val text = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { textSize = 200f; textAlign = android.graphics.Paint.Align.CENTER }
+        canvas.drawText("\uD83E\uDD16", side / 2f, side / 2f + 70f, text)
+        return java.io.ByteArrayOutputStream().also { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+    }
+
     private val plugins = kotlinx.coroutines.flow.MutableStateFlow<com.slopus.happy.plugins.PluginsState>(com.slopus.happy.plugins.PluginsState.Loaded(snapshot(emptySet())))
 
     private fun snapshot(active: Set<String>) = com.slopus.happy.plugins.PluginsSnapshot(
@@ -134,7 +154,10 @@ class CloudOnboardingFixturesActivity : ComponentActivity() {
             "bot" -> CloudOnboarding(false, gates = listOf(
                 OnboardingGate("profile", Scope.Member, Requirement.Required, Status.Done, kind = Kind.Profile),
                 OnboardingGate("adminBot", Scope.Server, Requirement.Optional, Status.Open, kind = bot.copy(
-                    description = "This is your server's admin bot. It has expanded capabilities: it can change the server's settings, connect tools and create other bots, so it can adapt Happy and build a system around how your team works. Only owners can talk to it.",
+                    description = "This is your server's admin bot, with expanded capabilities: it can adapt Happy and build a system around how your team works.",
+                    points = listOf("Changes the server's settings", "Connects tools and plugins", "Creates other bots"),
+                    note = "Only owners can talk to it.",
+                    picture = "/v0/bots/b1/avatar",
                 )),
                 OnboardingGate("inference", Scope.Server, Requirement.Optional, Status.Open, kind = Kind.Inference(emptyList(), freeModel = true)),
                 OnboardingGate("plugins", Scope.Server, Requirement.Required, Status.Open, kind = Kind.Plugins(listOf("github"), listOf(Kind.Plugins.Plugin("github", "GitHub", required = true, active = false)))),

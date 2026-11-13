@@ -2,6 +2,7 @@ package com.slopus.happy.ui.gates
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -126,7 +127,7 @@ class CloudOnboardingFlowTest {
     @Test
     fun theAdminBotKeepsItsNameOrTheOneTyped() {
         val renamed = mutableListOf<String>()
-        val bot = Kind.AdminBot("b1", "a1", "Chief of Staff", "v1", null, emptyList(), null, "It has expanded capabilities.")
+        val bot = Kind.AdminBot("b1", "a1", "Chief of Staff", "v1", null, listOf("Changes the server's settings", ""), "Only owners can talk to it.", "It has expanded capabilities.")
         val actions = OnboardingActions(
             skip = {}, check = {}, saveName = {}, savePhoto = {}, finish = {}, web = null, onNotNow = null,
             renameBot = { b, name -> renamed += "${b.botId} $name" },
@@ -134,6 +135,10 @@ class CloudOnboardingFlowTest {
         show(CloudOnboarding(false, gates = listOf(OnboardingGate("adminBot", Scope.Server, Requirement.Optional, Status.Open, kind = bot))), actions)
         rule.onNodeWithText("Name your admin bot").assertIsDisplayed()
         rule.onNodeWithText("It has expanded capabilities.").assertIsDisplayed()
+        // Its points, a blank one dropped, and the server's closing note.
+        rule.onNodeWithText("Changes the server's settings").performScrollTo().assertIsDisplayed()
+        assertEquals(1, rule.onAllNodesWithText("•").fetchSemanticsNodes().size)
+        rule.onNodeWithText("Only owners can talk to it.").performScrollTo().assertIsDisplayed()
         rule.onNodeWithTag(CloudTags.PRIMARY).performClick()
         rule.waitForIdle()
         assertEquals(listOf("b1 Chief of Staff"), renamed)
@@ -259,5 +264,21 @@ class CloudOnboardingFlowTest {
         rule.waitForIdle()
         rule.onNodeWithText("Open Google Play").performClick()
         assertEquals(listOf("store"), opened)
+    }
+
+    @Test
+    @Config(qualifiers = PHONE, fontScale = 2f)
+    fun atTheLargestTextTheActionsStayInViewAndTheWordsScroll() {
+        val bot = Kind.AdminBot(
+            "b1", "a1", "Chief of Staff", "v1", null,
+            listOf("Changes the server's settings", "Connects tools and plugins", "Creates other bots", "Builds a system around how your team works"),
+            "Only owners can talk to it.",
+            "This is your server's admin bot. It has expanded capabilities, so it can adapt Happy and build a system around how your team works.",
+        )
+        show(CloudOnboarding(false, gates = listOf(OnboardingGate("adminBot", Scope.Server, Requirement.Optional, Status.Open, kind = bot))))
+        rule.onNodeWithTag(CloudTags.PRIMARY).assertIsDisplayed()
+        rule.onNodeWithTag(CloudTags.SECONDARY).assertIsDisplayed()
+        rule.onNodeWithText("Only owners can talk to it.").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithTag(CloudTags.PRIMARY).assertIsDisplayed()
     }
 }
