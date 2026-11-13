@@ -14,6 +14,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
 import androidx.compose.ui.geometry.Offset
@@ -239,6 +240,29 @@ class AttachSheetLayoutTest {
         checks()[2].performClick()
         rule.waitForIdle()
         assertEquals(1, selection.number(fakeGallery()[0].uri))
+    }
+
+    @Test fun `send keeps the caption's bottom right corner as the words grow, five lines at most`() {
+        lateinit var selection: AttachSelection
+        rule.setHappyContent {
+            selection = remember { AttachSelection(20) }
+            SheetUnderTest(selection = selection)
+        }
+        rule.waitForIdle()
+        checks()[0].performClick()
+        rule.mainClock.advanceTimeBy(1_000)
+        val heights = listOf(1, 3, 5, 12).map { lines ->
+            rule.node(AttachTags.CAPTION).performTextReplacement((1..lines).joinToString("\n") { "Line $it" })
+            rule.mainClock.advanceTimeBy(1_000)
+            val bar = rule.node(AttachTags.CAPTION_BAR).bounds
+            val send = rule.node(AttachTags.SEND).bounds
+            assertDp("send end at $lines lines", bar.right - 6.dp, send.right)
+            assertDp("send foot at $lines lines", bar.bottom - 6.dp, send.bottom)
+            bar.height
+        }
+        assertTrue("it grows to three lines: $heights", heights[1] > heights[0])
+        assertTrue("and five: $heights", heights[2] > heights[1])
+        assertDp("then scrolls", heights[2], heights[3])
     }
 
     @Test fun `the check's corner picks, the rest of the picture opens it`() {

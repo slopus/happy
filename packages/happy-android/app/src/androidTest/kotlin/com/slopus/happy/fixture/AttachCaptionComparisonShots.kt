@@ -34,7 +34,7 @@ import java.io.File
 
 /**
  * The attach sheet's caption bar and the chat's composer in the same states, to set side by side:
- * empty, one line and long (past its lines, scrolled), the keyboard up and down. The `dark`
+ * empty, one line, three lines and long (past its lines, scrolled), the keyboard up and down. The `dark`
  * argument draws it dark. Shots go to `device-evidence/caption-compare/` as `chat-*` and `sheet-*`.
  */
 @RunWith(AndroidJUnit4::class)
@@ -47,7 +47,8 @@ class AttachCaptionComparisonShots {
     private val evidence = File(app.filesDir, "device-evidence/caption-compare").apply { mkdirs() }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val seeded = ArrayList<Uri>()
-    private val long = (1..12).joinToString("\n") { "Line $it of a long caption" }
+    private val middle = "A second line\nAnd a third"
+    private val long = (4..12).joinToString("\n") { "Line $it of a long caption" }
 
     private fun node(tag: String) = rule.onNodeWithTag(tag, useUnmergedTree = true)
     private fun waitFor(tag: String, count: Int = 1) = rule.waitUntil(60_000) { rule.onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes().size >= count }
@@ -69,6 +70,8 @@ class AttachCaptionComparisonShots {
 
     /** Typed through the keyboard, as a person types: the field's own window takes it. */
     private fun type(words: String) {
+        // After what is there, wherever the tap put the caret: Ctrl+End.
+        device.executeShellCommand("input keycombination 113 123")
         words.split("\n").forEachIndexed { index, line ->
             if (index > 0) device.pressEnter()
             if (line.isNotEmpty()) device.executeShellCommand("input text ${line.replace(" ", "%s")}")
@@ -91,6 +94,11 @@ class AttachCaptionComparisonShots {
         rule.onAllNodesWithTag(AttachTags.CHECK, useUnmergedTree = true)[1].performClick()
         rule.onAllNodesWithTag(AttachTags.CHECK, useUnmergedTree = true)[2].performClick()
         waitFor(AttachTags.CAPTION)
+    }
+
+    private fun closeSheet() {
+        device.pressBack()
+        rule.waitUntil(10_000) { rule.onAllNodesWithTag(AttachTags.SHEET, useUnmergedTree = true).fetchSemanticsNodes().isEmpty() }
     }
 
     private fun keyboardDown() {
@@ -130,8 +138,7 @@ class AttachCaptionComparisonShots {
         tap(AttachTags.CAPTION)
         shot("sheet-2-empty-keyboard-up")
         keyboardDown()
-        device.pressBack()
-        rule.waitUntil(10_000) { rule.onAllNodesWithTag(AttachTags.SHEET, useUnmergedTree = true).fetchSemanticsNodes().isEmpty() }
+        closeSheet()
 
         // One line.
         tap(ConversationComposerTags.INPUT)
@@ -144,18 +151,30 @@ class AttachCaptionComparisonShots {
         shot("sheet-3-line-keyboard-up")
         keyboardDown()
         shot("sheet-4-line-keyboard-down")
+        closeSheet()
+
+        // Three lines: growing, not yet at its most.
+        tap(ConversationComposerTags.INPUT)
+        type("\n" + middle)
+        shot("chat-5-lines-keyboard-up")
+        keyboardDown()
+        shot("chat-6-lines-keyboard-down")
+        openSheet()
+        tap(AttachTags.CAPTION)
+        shot("sheet-5-lines-keyboard-up")
+        keyboardDown()
+        shot("sheet-6-lines-keyboard-down")
 
         // Long: past the lines each shows, scrolled to the caret.
         tap(AttachTags.CAPTION)
         type("\n" + long)
-        shot("sheet-5-long-keyboard-up")
+        shot("sheet-7-long-keyboard-up")
         keyboardDown()
-        shot("sheet-6-long-keyboard-down")
-        device.pressBack()
-        rule.waitUntil(10_000) { rule.onAllNodesWithTag(AttachTags.SHEET, useUnmergedTree = true).fetchSemanticsNodes().isEmpty() }
+        shot("sheet-8-long-keyboard-down")
+        closeSheet()
         tap(ConversationComposerTags.INPUT)
-        shot("chat-5-long-keyboard-up")
+        shot("chat-7-long-keyboard-up")
         keyboardDown()
-        shot("chat-6-long-keyboard-down")
+        shot("chat-8-long-keyboard-down")
     }
 }
