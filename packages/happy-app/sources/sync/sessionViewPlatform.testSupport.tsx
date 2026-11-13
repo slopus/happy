@@ -32,6 +32,10 @@ vi.mock('react-native-unistyles', () => {
     const theme = {
         dark: true,
         colors: {
+            imageOverlay: {
+                surface: '#222', surfacePressed: '#333', surfaceSelected: '#444',
+                text: '#fff', destructive: '#ffb4ab',
+            },
             accent: '#777', divider: '#444', groupped: { background: '#111' }, fab: { background: '#fff' },
             header: { tint: '#fff' }, primary: '#777', shadow: { color: '#000', opacity: 0.2 },
             surface: '#171717', surfaceHigh: '#222', surfacePressed: '#333', text: '#fff',
