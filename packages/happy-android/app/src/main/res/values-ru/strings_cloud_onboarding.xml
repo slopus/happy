@@ -35,4 +35,21 @@
     <string name="cloud_onboarding_step_payment_method">Добавление способа оплаты</string>
     <string name="cloud_onboarding_step_payment">Оплата сервера</string>
     <string name="cloud_onboarding_step_unknown">Новый шаг</string>
+    <string name="cloud_onboarding_bot_title">Назовите админ-бота</string>
+    <string name="cloud_onboarding_bot_body">Это админ-бот вашего сервера. Он может менять настройки сервера, подключать инструменты и создавать других ботов, чтобы подстроить Happy и выстроить систему под то, как работает ваша команда.</string>
+    <string name="cloud_onboarding_bot_name">Его имя</string>
+    <string name="cloud_onboarding_bot_name_failed">Не удалось сохранить имя. Попробуйте ещё раз.</string>
+    <string name="cloud_onboarding_inference_title">Подключите модель</string>
+    <string name="cloud_onboarding_inference_body">Ваши агенты думают с помощью модели, которую вы подключите: ChatGPT, Claude, Grok или ваш собственный эндпоинт.</string>
+    <string name="cloud_onboarding_inference_free">А пока они используют бесплатную модель Happy.</string>
+    <string name="cloud_onboarding_connect_provider">Подключить провайдера</string>
+    <string name="cloud_onboarding_inference_not_allowed">Ваша роль не позволяет подключать провайдеров. Обратитесь к администратору.</string>
+    <string name="cloud_onboarding_plugins_title">Подключите инструменты</string>
+    <string name="cloud_onboarding_plugins_body">Плагины позволяют агентам работать в сервисах вашей команды. Настройте один сейчас или позже в разделе «Плагины».</string>
+    <string name="cloud_onboarding_plugins_needed">Плагины позволяют агентам работать в сервисах вашей команды. Сначала подключите: %1$s.</string>
+    <string name="cloud_onboarding_set_up">Настроить</string>
+    <string name="cloud_onboarding_connected">Подключено</string>
+    <string name="cloud_onboarding_required">Обязательно</string>
+    <string name="cloud_onboarding_plugins_failed">Не удалось загрузить плагины.</string>
+    <string name="cloud_onboarding_try_again">Повторить</string>
 </resources>

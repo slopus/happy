@@ -35,4 +35,21 @@
     <string name="cloud_onboarding_step_payment_method">新增付款方式</string>
     <string name="cloud_onboarding_step_payment">為此伺服器付款</string>
     <string name="cloud_onboarding_step_unknown">新步驟</string>
+    <string name="cloud_onboarding_bot_title">為你的管理機器人命名</string>
+    <string name="cloud_onboarding_bot_body">這是你伺服器的管理機器人。它可以變更伺服器設定、連接工具並建立其他機器人，從而調整 Happy，並圍繞你團隊的工作方式建立一套體系。</string>
+    <string name="cloud_onboarding_bot_name">它的名字</string>
+    <string name="cloud_onboarding_bot_name_failed">無法儲存名字，請重試。</string>
+    <string name="cloud_onboarding_inference_title">連接模型</string>
+    <string name="cloud_onboarding_inference_body">你的代理程式使用你連接的模型思考：ChatGPT、Claude、Grok 或你自己的端點。</string>
+    <string name="cloud_onboarding_inference_free">在此之前，它們使用 Happy 的免費模型。</string>
+    <string name="cloud_onboarding_connect_provider">連接供應商</string>
+    <string name="cloud_onboarding_inference_not_allowed">你的角色無法連接供應商，請聯絡管理員。</string>
+    <string name="cloud_onboarding_plugins_title">連接你的工具</string>
+    <string name="cloud_onboarding_plugins_body">外掛程式讓你的代理程式能在團隊使用的服務中工作。現在設定一個，或稍後在「外掛程式」中設定。</string>
+    <string name="cloud_onboarding_plugins_needed">外掛程式讓你的代理程式能在團隊使用的服務中工作。請先連接：%1$s。</string>
+    <string name="cloud_onboarding_set_up">設定</string>
+    <string name="cloud_onboarding_connected">已連接</string>
+    <string name="cloud_onboarding_required">必要</string>
+    <string name="cloud_onboarding_plugins_failed">無法讀取外掛程式。</string>
+    <string name="cloud_onboarding_try_again">重試</string>
 </resources>

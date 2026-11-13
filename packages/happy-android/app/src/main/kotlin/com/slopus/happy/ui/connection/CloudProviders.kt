@@ -146,6 +146,18 @@ fun NavHostController.openCloudProviders(connectionId: String, add: CloudProvide
     }
 }
 
+/** Opens [flow]'s page alone (no list under it), keeping what it adds in [destination] where allowed: onboarding's inference gate. */
+fun NavHostController.openProviderFlow(connectionId: String, flow: CloudProviderFlow, destination: CloudDestination) {
+    val to = destination.id
+    when (flow) {
+        CloudProviderFlow.ChatGpt -> navigate(CloudChatGptRoute(connectionId, to))
+        CloudProviderFlow.Claude -> navigate(CloudClaudeRoute(connectionId, to))
+        is CloudProviderFlow.ApiKey -> navigate(CloudApiKeyRoute(connectionId, flow.vendor, to))
+        CloudProviderFlow.Custom -> navigate(CloudCustomRoute(connectionId))
+        CloudProviderFlow.Choose -> navigate(CloudProvidersRoute(connectionId, choose = true, to = to))
+    }
+}
+
 /** Where the person may keep what they add: My account with providers.own, Team with providers.manage; My account first. */
 internal fun destinations(session: AgentSession): List<CloudDestination> {
     val permissions = session.permissions.value

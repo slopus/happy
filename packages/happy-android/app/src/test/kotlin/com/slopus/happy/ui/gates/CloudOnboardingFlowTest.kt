@@ -116,4 +116,49 @@ class CloudOnboardingFlowTest {
         rule.waitForIdle()
         assertEquals(listOf("skip avatar"), asked)
     }
+
+    @Test
+    fun theAdminBotKeepsItsNameOrTheOneTyped() {
+        val renamed = mutableListOf<String>()
+        val bot = Kind.AdminBot("b1", "a1", "Chief of Staff", "v1", null, emptyList(), null, "It has expanded capabilities.")
+        val actions = OnboardingActions(
+            skip = {}, check = {}, saveName = {}, savePhoto = {}, finish = {}, web = null, onNotNow = null,
+            renameBot = { b, name -> renamed += "${b.botId} $name" },
+        )
+        show(CloudOnboarding(false, gates = listOf(OnboardingGate("adminBot", Scope.Server, Requirement.Optional, Status.Open, kind = bot))), actions)
+        rule.onNodeWithText("Name your admin bot").assertIsDisplayed()
+        rule.onNodeWithText("It has expanded capabilities.").assertIsDisplayed()
+        rule.onNodeWithTag(CloudTags.PRIMARY).performClick()
+        rule.waitForIdle()
+        assertEquals(listOf("b1 Chief of Staff"), renamed)
+    }
+
+    @Test
+    fun aRoleThatCantAddProvidersIsToldSo() {
+        val actions = OnboardingActions(
+            skip = {}, check = {}, saveName = {}, savePhoto = {}, finish = {}, web = null, onNotNow = null,
+            inference = InferenceHost(offer = { error("not asked") }, custom = false, allowed = false, open = {}),
+        )
+        show(CloudOnboarding(false, gates = listOf(OnboardingGate("inference", Scope.Server, Requirement.Required, Status.Open, kind = Kind.Inference(emptyList(), freeModel = true)))), actions)
+        // Required: the free model isn't offered as a way around it.
+        rule.onNodeWithText("Your agents think with a model you connect: ChatGPT, Claude, Grok, or your own endpoint.").assertIsDisplayed()
+        rule.onNodeWithText("Connect a provider").performClick()
+        rule.onNodeWithText("Your role can't connect providers. Ask your admin.").assertIsDisplayed()
+    }
+
+    @Test
+    fun theNeededPluginsComeFirstThenTheCatalogsOthers() {
+        val gate = Kind.Plugins(listOf("github"), listOf(Kind.Plugins.Plugin("github", "GitHub", required = true, active = false)))
+        fun plugin(id: String) = com.slopus.happy.plugins.Plugin(id, id, id.replaceFirstChar { it.uppercase() }, "", "1", null, emptyList(), true, emptyList(), com.slopus.happy.plugins.Installability.Installable, false)
+        val snapshot = com.slopus.happy.plugins.PluginsSnapshot(
+            listOf(plugin("linear"), plugin("github")),
+            listOf(com.slopus.happy.plugins.PluginInstallation("i1", "github", "GitHub", 1, null, com.slopus.happy.plugins.InstallationStatus.Active, null, null, true)),
+            canManage = true,
+        )
+        val rows = pluginRows(gate, com.slopus.happy.plugins.PluginsState.Loaded(snapshot))
+        assertEquals(listOf("github" to true, "linear" to false), rows.map { it.id to it.active })
+        assertEquals(listOf(true, false), rows.map { it.required })
+        // Before the catalog answers: the gate's own word.
+        assertEquals(listOf(PluginRow("github", "github", "GitHub", required = true, active = false)), pluginRows(gate, com.slopus.happy.plugins.PluginsState.Loading))
+    }
 }

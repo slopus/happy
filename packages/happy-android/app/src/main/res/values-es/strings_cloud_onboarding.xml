@@ -35,4 +35,21 @@
     <string name="cloud_onboarding_step_payment_method">Añadir un método de pago</string>
     <string name="cloud_onboarding_step_payment">Pagar este servidor</string>
     <string name="cloud_onboarding_step_unknown">Un paso nuevo</string>
+    <string name="cloud_onboarding_bot_title">Ponle nombre a tu bot administrador</string>
+    <string name="cloud_onboarding_bot_body">Es el bot administrador de tu servidor. Puede cambiar la configuración del servidor, conectar herramientas y crear otros bots, para adaptar Happy y crear un sistema en torno a cómo trabaja tu equipo.</string>
+    <string name="cloud_onboarding_bot_name">Su nombre</string>
+    <string name="cloud_onboarding_bot_name_failed">No se pudo guardar el nombre. Inténtalo de nuevo.</string>
+    <string name="cloud_onboarding_inference_title">Conecta un modelo</string>
+    <string name="cloud_onboarding_inference_body">Tus agentes piensan con el modelo que conectes: ChatGPT, Claude, Grok o tu propio endpoint.</string>
+    <string name="cloud_onboarding_inference_free">Mientras tanto, usan el modelo gratuito de Happy.</string>
+    <string name="cloud_onboarding_connect_provider">Conectar un proveedor</string>
+    <string name="cloud_onboarding_inference_not_allowed">Tu rol no puede conectar proveedores. Pídeselo a tu administrador.</string>
+    <string name="cloud_onboarding_plugins_title">Conecta tus herramientas</string>
+    <string name="cloud_onboarding_plugins_body">Los plugins permiten a tus agentes trabajar en los servicios que usa tu equipo. Configura uno ahora o más tarde desde Plugins.</string>
+    <string name="cloud_onboarding_plugins_needed">Los plugins permiten a tus agentes trabajar en los servicios que usa tu equipo. Conecta primero: %1$s.</string>
+    <string name="cloud_onboarding_set_up">Configurar</string>
+    <string name="cloud_onboarding_connected">Conectado</string>
+    <string name="cloud_onboarding_required">Obligatorio</string>
+    <string name="cloud_onboarding_plugins_failed">No se pudieron leer los plugins.</string>
+    <string name="cloud_onboarding_try_again">Reintentar</string>
 </resources>

@@ -35,4 +35,21 @@
     <string name="cloud_onboarding_step_payment_method">Aggiungere un metodo di pagamento</string>
     <string name="cloud_onboarding_step_payment">Pagare questo server</string>
     <string name="cloud_onboarding_step_unknown">Un nuovo passaggio</string>
+    <string name="cloud_onboarding_bot_title">Dai un nome al tuo bot admin</string>
+    <string name="cloud_onboarding_bot_body">È il bot admin del tuo server. Può cambiare le impostazioni del server, collegare strumenti e creare altri bot, per adattare Happy e costruire un sistema attorno al modo in cui lavora il tuo team.</string>
+    <string name="cloud_onboarding_bot_name">Il suo nome</string>
+    <string name="cloud_onboarding_bot_name_failed">Impossibile salvare il nome. Riprova.</string>
+    <string name="cloud_onboarding_inference_title">Collega un modello</string>
+    <string name="cloud_onboarding_inference_body">I tuoi agenti ragionano con il modello che colleghi: ChatGPT, Claude, Grok o un tuo endpoint.</string>
+    <string name="cloud_onboarding_inference_free">Nel frattempo usano il modello gratuito di Happy.</string>
+    <string name="cloud_onboarding_connect_provider">Collega un provider</string>
+    <string name="cloud_onboarding_inference_not_allowed">Il tuo ruolo non può collegare provider. Chiedi al tuo admin.</string>
+    <string name="cloud_onboarding_plugins_title">Collega i tuoi strumenti</string>
+    <string name="cloud_onboarding_plugins_body">I plugin permettono ai tuoi agenti di lavorare nei servizi che usa il tuo team. Configurane uno ora o più tardi da Plugin.</string>
+    <string name="cloud_onboarding_plugins_needed">I plugin permettono ai tuoi agenti di lavorare nei servizi che usa il tuo team. Collega prima: %1$s.</string>
+    <string name="cloud_onboarding_set_up">Configura</string>
+    <string name="cloud_onboarding_connected">Collegato</string>
+    <string name="cloud_onboarding_required">Obbligatorio</string>
+    <string name="cloud_onboarding_plugins_failed">Impossibile leggere i plugin.</string>
+    <string name="cloud_onboarding_try_again">Riprova</string>
 </resources>

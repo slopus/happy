@@ -35,4 +35,21 @@
     <string name="cloud_onboarding_step_payment_method">Afegir un mètode de pagament</string>
     <string name="cloud_onboarding_step_payment">Pagar aquest servidor</string>
     <string name="cloud_onboarding_step_unknown">Un pas nou</string>
+    <string name="cloud_onboarding_bot_title">Posa nom al teu bot administrador</string>
+    <string name="cloud_onboarding_bot_body">És el bot administrador del teu servidor. Pot canviar la configuració del servidor, connectar eines i crear altres bots, per adaptar Happy i construir un sistema al voltant de com treballa el teu equip.</string>
+    <string name="cloud_onboarding_bot_name">El seu nom</string>
+    <string name="cloud_onboarding_bot_name_failed">No s’ha pogut desar el nom. Torna-ho a provar.</string>
+    <string name="cloud_onboarding_inference_title">Connecta un model</string>
+    <string name="cloud_onboarding_inference_body">Els teus agents pensen amb el model que connectis: ChatGPT, Claude, Grok o el teu propi endpoint.</string>
+    <string name="cloud_onboarding_inference_free">Mentrestant, fan servir el model gratuït de Happy.</string>
+    <string name="cloud_onboarding_connect_provider">Connecta un proveïdor</string>
+    <string name="cloud_onboarding_inference_not_allowed">El teu rol no pot connectar proveïdors. Demana-ho al teu administrador.</string>
+    <string name="cloud_onboarding_plugins_title">Connecta les teves eines</string>
+    <string name="cloud_onboarding_plugins_body">Els connectors permeten als teus agents treballar als serveis que fa servir el teu equip. Configura’n un ara o més tard des de Connectors.</string>
+    <string name="cloud_onboarding_plugins_needed">Els connectors permeten als teus agents treballar als serveis que fa servir el teu equip. Connecta primer: %1$s.</string>
+    <string name="cloud_onboarding_set_up">Configura</string>
+    <string name="cloud_onboarding_connected">Connectat</string>
+    <string name="cloud_onboarding_required">Obligatori</string>
+    <string name="cloud_onboarding_plugins_failed">No s’han pogut llegir els connectors.</string>
+    <string name="cloud_onboarding_try_again">Torna-ho a provar</string>
 </resources>

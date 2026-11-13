@@ -63,6 +63,13 @@ import com.slopus.happy.ui.connection.rememberPersonSeed
 import com.slopus.happy.ui.connection.rememberPhoto
 import com.slopus.happy.ui.connection.rememberProfilePhotoPicker
 import com.slopus.happy.ui.conversation.openChiefOfStaff
+import com.slopus.happy.agent.CloudDestination
+import com.slopus.happy.agent.CloudProviders
+import com.slopus.happy.plugins.ClusterPlugins
+import com.slopus.happy.plugins.PluginsSource
+import com.slopus.happy.ui.connection.destinations
+import com.slopus.happy.ui.connection.openProviderFlow
+import com.slopus.happy.ui.plugins.PluginRoute
 import com.slopus.happy.ui.page
 import com.slopus.happy.ui.start.StartSpec
 import com.slopus.happy.ui.theme.HappyTheme
@@ -155,6 +162,24 @@ private fun CloudOnboardingPage(graph: AppGraph, nav: NavHostController, connect
             },
             web = HappyCloud.webApp(session.server),
             onNotNow = notNow.takeUnless { blocks },
+            renameBot = { bot, name -> OnboardingApi.renameAdminBot(client, bot.botId, name, bot.version); source.check() },
+            inference = (step as? OnboardingPlan.Step.Gate)?.takeIf { it.gate.kind is OnboardingGate.Kind.Inference }?.let {
+                val allowed = destinations(session)
+                InferenceHost(
+                    offer = { CloudProviders.capabilities(client) },
+                    custom = CloudDestination.Team in allowed,
+                    allowed = allowed.isNotEmpty(),
+                    // The gate is the server's: the team's connection where the role lets it.
+                    open = { flow -> nav.openProviderFlow(connectionId, flow, CloudDestination.Team) },
+                )
+            },
+            plugins = (step as? OnboardingPlan.Step.Gate)?.takeIf { it.gate.kind is OnboardingGate.Kind.Plugins }?.let {
+                val scope = rememberCoroutineScope()
+                val plugins = remember(session) {
+                    PluginsSource(ClusterPlugins(client) { session.permissions.value.allows(Permission.MCP_MANAGE) }, session.events, scope)
+                }
+                PluginsHost(plugins.state, open = { key -> nav.navigate(PluginRoute(connectionId, key)) }, refresh = plugins::refresh)
+            },
         ),
     )
 }
@@ -171,6 +196,12 @@ class OnboardingActions(
     val web: String?,
     /** Not Now; null while a gate blocks. */
     val onNotNow: (() -> Unit)?,
+    /** Names the admin bot. */
+    val renameBot: suspend (OnboardingGate.Kind.AdminBot, String) -> Unit = { _, _ -> },
+    /** The inference gate's chooser; null while it isn't shown. */
+    val inference: InferenceHost? = null,
+    /** The plugins gate's catalog; null while it isn't shown. */
+    val plugins: PluginsHost? = null,
 )
 
 /** Google Play's page for Happy, where the server names none. */
@@ -312,6 +343,9 @@ private fun GateScreen(gate: OnboardingGate, handle: String, seed: String, name:
     when (gate.kind) {
         OnboardingGate.Kind.Profile -> ProfileStep(handle, seed, name, actions)
         OnboardingGate.Kind.Avatar -> PhotoStep(gate, seed, photo, actions)
+        is OnboardingGate.Kind.AdminBot -> AdminBotStep(gate, gate.kind, actions)
+        is OnboardingGate.Kind.Inference -> InferenceStep(gate, gate.kind, actions)
+        is OnboardingGate.Kind.Plugins -> PluginsStep(gate, gate.kind, actions)
         // Done on desktop or the web: payments always, the others until their screens come.
         else -> {
             val context = LocalContext.current

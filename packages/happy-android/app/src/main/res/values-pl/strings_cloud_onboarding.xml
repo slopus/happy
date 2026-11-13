@@ -35,4 +35,21 @@
     <string name="cloud_onboarding_step_payment_method">Dodanie metody płatności</string>
     <string name="cloud_onboarding_step_payment">Opłacenie serwera</string>
     <string name="cloud_onboarding_step_unknown">Nowy krok</string>
+    <string name="cloud_onboarding_bot_title">Nazwij bota administratora</string>
+    <string name="cloud_onboarding_bot_body">To bot administratora Twojego serwera. Może zmieniać ustawienia serwera, łączyć narzędzia i tworzyć inne boty, aby dopasować Happy i zbudować system wokół sposobu pracy Twojego zespołu.</string>
+    <string name="cloud_onboarding_bot_name">Jego nazwa</string>
+    <string name="cloud_onboarding_bot_name_failed">Nie udało się zapisać nazwy. Spróbuj ponownie.</string>
+    <string name="cloud_onboarding_inference_title">Połącz model</string>
+    <string name="cloud_onboarding_inference_body">Twoi agenci myślą za pomocą modelu, który połączysz: ChatGPT, Claude, Grok lub własny endpoint.</string>
+    <string name="cloud_onboarding_inference_free">Do tego czasu korzystają z darmowego modelu Happy.</string>
+    <string name="cloud_onboarding_connect_provider">Połącz dostawcę</string>
+    <string name="cloud_onboarding_inference_not_allowed">Twoja rola nie pozwala łączyć dostawców. Poproś administratora.</string>
+    <string name="cloud_onboarding_plugins_title">Połącz swoje narzędzia</string>
+    <string name="cloud_onboarding_plugins_body">Wtyczki pozwalają agentom pracować w usługach, z których korzysta Twój zespół. Skonfiguruj jedną teraz lub później w sekcji Wtyczki.</string>
+    <string name="cloud_onboarding_plugins_needed">Wtyczki pozwalają agentom pracować w usługach, z których korzysta Twój zespół. Najpierw połącz: %1$s.</string>
+    <string name="cloud_onboarding_set_up">Skonfiguruj</string>
+    <string name="cloud_onboarding_connected">Połączono</string>
+    <string name="cloud_onboarding_required">Wymagane</string>
+    <string name="cloud_onboarding_plugins_failed">Nie udało się wczytać wtyczek.</string>
+    <string name="cloud_onboarding_try_again">Spróbuj ponownie</string>
 </resources>

@@ -35,4 +35,21 @@
     <string name="cloud_onboarding_step_payment_method">添加付款方式</string>
     <string name="cloud_onboarding_step_payment">为此服务器付款</string>
     <string name="cloud_onboarding_step_unknown">新步骤</string>
+    <string name="cloud_onboarding_bot_title">为你的管理机器人命名</string>
+    <string name="cloud_onboarding_bot_body">这是你服务器的管理机器人。它可以更改服务器设置、连接工具并创建其他机器人，从而调整 Happy，并围绕你团队的工作方式搭建一套体系。</string>
+    <string name="cloud_onboarding_bot_name">它的名字</string>
+    <string name="cloud_onboarding_bot_name_failed">无法保存名字，请重试。</string>
+    <string name="cloud_onboarding_inference_title">连接模型</string>
+    <string name="cloud_onboarding_inference_body">你的智能体使用你连接的模型思考：ChatGPT、Claude、Grok 或你自己的端点。</string>
+    <string name="cloud_onboarding_inference_free">在此之前，它们使用 Happy 的免费模型。</string>
+    <string name="cloud_onboarding_connect_provider">连接提供方</string>
+    <string name="cloud_onboarding_inference_not_allowed">你的角色无法连接提供方，请联系管理员。</string>
+    <string name="cloud_onboarding_plugins_title">连接你的工具</string>
+    <string name="cloud_onboarding_plugins_body">插件让你的智能体能在团队使用的服务中工作。现在设置一个，或稍后在“插件”中设置。</string>
+    <string name="cloud_onboarding_plugins_needed">插件让你的智能体能在团队使用的服务中工作。请先连接：%1$s。</string>
+    <string name="cloud_onboarding_set_up">设置</string>
+    <string name="cloud_onboarding_connected">已连接</string>
+    <string name="cloud_onboarding_required">必需</string>
+    <string name="cloud_onboarding_plugins_failed">无法读取插件。</string>
+    <string name="cloud_onboarding_try_again">重试</string>
 </resources>

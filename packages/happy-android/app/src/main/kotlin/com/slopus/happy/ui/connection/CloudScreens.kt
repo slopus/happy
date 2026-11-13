@@ -1234,7 +1234,7 @@ internal fun ProfilePicturePicker(photo: ImageBitmap?, seed: String, enabled: Bo
 
 /** A large field on the gradient: the theme's surface, a little see-through, 18 type. */
 @Composable
-private fun CloudField(
+internal fun CloudField(
     value: String,
     onChange: (String) -> Unit,
     placeholder: String,
@@ -1246,6 +1246,8 @@ private fun CloudField(
     capitalization: KeyboardCapitalization = KeyboardCapitalization.None,
     /** What autofill may offer here: an email address, a one-time code. */
     autofill: ContentType? = null,
+    /** The keyboard's action key. */
+    onIme: (() -> Unit)? = null,
 ) {
     Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(CloudSpec.fieldRadius)).background(HappyTheme.colors.surface.copy(alpha = CloudSpec.SURFACE_ALPHA))) {
         HappyTextField(
@@ -1260,6 +1262,7 @@ private fun CloudField(
             enabled = enabled,
             keyboardOptions = KeyboardOptions(capitalization = capitalization, autoCorrectEnabled = false, keyboardType = keyboard, imeAction = ime),
             visualTransformation = transformation,
+            keyboardActions = KeyboardActions(onAny = { onIme?.invoke() }),
             modifier = Modifier.testTag(tag).then(if (autofill == null) Modifier else Modifier.semantics { contentType = autofill }),
         )
     }

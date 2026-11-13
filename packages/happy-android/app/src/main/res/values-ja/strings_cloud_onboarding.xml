@@ -35,4 +35,21 @@
     <string name="cloud_onboarding_step_payment_method">支払い方法の追加</string>
     <string name="cloud_onboarding_step_payment">このサーバーの支払い</string>
     <string name="cloud_onboarding_step_unknown">新しいステップ</string>
+    <string name="cloud_onboarding_bot_title">管理ボットに名前を付ける</string>
+    <string name="cloud_onboarding_bot_body">これはサーバーの管理ボットです。サーバーの設定を変更し、ツールを接続し、他のボットを作成できるので、Happy をチームの働き方に合わせて仕組みを作れます。</string>
+    <string name="cloud_onboarding_bot_name">ボットの名前</string>
+    <string name="cloud_onboarding_bot_name_failed">名前を保存できませんでした。もう一度お試しください。</string>
+    <string name="cloud_onboarding_inference_title">モデルを接続</string>
+    <string name="cloud_onboarding_inference_body">エージェントは接続したモデルで考えます: ChatGPT、Claude、Grok、または独自のエンドポイント。</string>
+    <string name="cloud_onboarding_inference_free">それまでは Happy の無料モデルを使います。</string>
+    <string name="cloud_onboarding_connect_provider">プロバイダーを接続</string>
+    <string name="cloud_onboarding_inference_not_allowed">あなたのロールではプロバイダーを接続できません。管理者に依頼してください。</string>
+    <string name="cloud_onboarding_plugins_title">ツールを接続</string>
+    <string name="cloud_onboarding_plugins_body">プラグインを使うと、エージェントがチームの使うサービスで作業できます。今すぐ設定するか、後でプラグインから設定してください。</string>
+    <string name="cloud_onboarding_plugins_needed">プラグインを使うと、エージェントがチームの使うサービスで作業できます。まず次を接続してください: %1$s。</string>
+    <string name="cloud_onboarding_set_up">設定</string>
+    <string name="cloud_onboarding_connected">接続済み</string>
+    <string name="cloud_onboarding_required">必須</string>
+    <string name="cloud_onboarding_plugins_failed">プラグインを読み込めませんでした。</string>
+    <string name="cloud_onboarding_try_again">再試行</string>
 </resources>

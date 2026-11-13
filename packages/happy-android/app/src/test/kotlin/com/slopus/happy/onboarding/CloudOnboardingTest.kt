@@ -170,4 +170,25 @@ class CloudOnboardingTest {
         }
         assertEquals(listOf("POST /v0/onboarding/gates/avatar/skip", "POST /v0/onboarding/complete"), server.asked)
     }
+
+    @Test
+    fun theAdminBotIsRenamedWithItsVersionAndOnceMoreWhenItMoved() = runBlocking {
+        val bodies = mutableListOf<Pair<String, String?>>()
+        var patches = 0
+        val server = object : Transport {
+            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
+                bodies += "$method $path" to headers["If-Match"]
+                val (status, text) = when ("$method $path") {
+                    "PATCH /v0/bots/b1" -> if (patches++ == 0) 409 to """{"error":"Changed","code":"version_conflict"}""" else 200 to """{"bot":{"id":"b1"}}"""
+                    "GET /v0/bots/b1" -> 200 to """{"bot":{"id":"b1","version":"v2"}}"""
+                    else -> 404 to "{}"
+                }
+                return TransportResponse(status, mapOf("content-type" to "application/json"), text.toByteArray())
+            }
+
+            override suspend fun close() {}
+        }
+        OnboardingApi.renameAdminBot(AgentClient(server, "t"), "b1", "Jarvis", "v1")
+        assertEquals(listOf("PATCH /v0/bots/b1" to "v1", "GET /v0/bots/b1" to null, "PATCH /v0/bots/b1" to "v2"), bodies)
+    }
 }

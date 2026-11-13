@@ -57,10 +57,34 @@ class CloudOnboardingFixturesActivity : ComponentActivity() {
                         finish = { delay(700); finish() },
                         web = "https://acme.happy.engineering/",
                         onNotNow = if (onboarding.gates.any { it.blocking }) null else ({ finish() }),
+                        renameBot = { _, _ -> delay(600); change("adminBot", Status.Done) },
+                        inference = InferenceHost(
+                            offer = { delay(400); com.slopus.happy.agent.CloudCapabilities(apiKeys = true, claudeSetupToken = true, codexSignIn = true) },
+                            custom = true,
+                            allowed = true,
+                            open = { change("inference", Status.Done) },
+                        ),
+                        plugins = PluginsHost(plugins, open = { key -> connect(key) }, refresh = {}),
                     ),
                 )
             }
         }
+    }
+
+    private val plugins = kotlinx.coroutines.flow.MutableStateFlow<com.slopus.happy.plugins.PluginsState>(com.slopus.happy.plugins.PluginsState.Loaded(snapshot(emptySet())))
+
+    private fun snapshot(active: Set<String>) = com.slopus.happy.plugins.PluginsSnapshot(
+        listOf("github" to "GitHub", "linear" to "Linear", "weather" to "Weather").map { (id, name) ->
+            com.slopus.happy.plugins.Plugin(id, id, name, "", "1.0", null, emptyList(), authRequired = id != "weather", authMethods = emptyList(),
+                installability = com.slopus.happy.plugins.Installability.Installable, multiInstance = false)
+        },
+        active.map { com.slopus.happy.plugins.PluginInstallation("i-$it", it, it, 1, null, com.slopus.happy.plugins.InstallationStatus.Active, null, null, true) },
+        canManage = true,
+    )
+
+    private fun connect(key: String) {
+        val now = (plugins.value as? com.slopus.happy.plugins.PluginsState.Loaded)?.snapshot?.installations?.map { it.pluginKey }?.toSet().orEmpty()
+        plugins.value = com.slopus.happy.plugins.PluginsState.Loaded(snapshot(now + key))
     }
 
     private fun start(set: String): CloudOnboarding {
@@ -75,6 +99,14 @@ class CloudOnboardingFixturesActivity : ComponentActivity() {
             ))
             "update" -> CloudOnboarding(false, gates = listOf(
                 OnboardingGate("sso", Scope.Member, Requirement.Required, Status.Open, canComplete = true, kind = Kind.Unknown),
+            ))
+            "bot" -> CloudOnboarding(false, gates = listOf(
+                OnboardingGate("profile", Scope.Member, Requirement.Required, Status.Done, kind = Kind.Profile),
+                OnboardingGate("adminBot", Scope.Server, Requirement.Optional, Status.Open, kind = bot.copy(
+                    description = "This is your server's admin bot. It has expanded capabilities: it can change the server's settings, connect tools and create other bots, so it can adapt Happy and build a system around how your team works. Only owners can talk to it.",
+                )),
+                OnboardingGate("inference", Scope.Server, Requirement.Optional, Status.Open, kind = Kind.Inference(emptyList(), freeModel = true)),
+                OnboardingGate("plugins", Scope.Server, Requirement.Required, Status.Open, kind = Kind.Plugins(listOf("github"), listOf(Kind.Plugins.Plugin("github", "GitHub", required = true, active = false)))),
             ))
             "finish" -> CloudOnboarding(true, gates = listOf(OnboardingGate("adminBot", Scope.Server, Requirement.Optional, Status.Done, kind = bot)))
             else -> CloudOnboarding(false, gates = listOf(
