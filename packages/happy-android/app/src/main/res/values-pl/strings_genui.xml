@@ -87,4 +87,5 @@
     <string name="genui_cluster_passphrase_placeholder">Hasło klucza</string>
     <string name="genui_cluster_ports">Porty: %1$s</string>
     <string name="genui_cluster_username_optional">Nazwa użytkownika, jeśli serwer jej wymaga</string>
+    <string name="genui_saved">Zapisano</string>
 </resources>

@@ -87,4 +87,5 @@
     <string name="genui_cluster_passphrase_placeholder">パスフレーズ</string>
     <string name="genui_cluster_ports">ポート: %1$s</string>
     <string name="genui_cluster_username_optional">ユーザー名（サーバーが必要とする場合）</string>
+    <string name="genui_saved">保存済み</string>
 </resources>

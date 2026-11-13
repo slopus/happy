@@ -87,4 +87,5 @@
     <string name="genui_cluster_passphrase_placeholder">密碼短語</string>
     <string name="genui_cluster_ports">連接埠：%1$s</string>
     <string name="genui_cluster_username_optional">使用者名稱（伺服器需要時填寫）</string>
+    <string name="genui_saved">已儲存</string>
 </resources>

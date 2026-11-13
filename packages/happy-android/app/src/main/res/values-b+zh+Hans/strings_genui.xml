@@ -87,4 +87,5 @@
     <string name="genui_cluster_passphrase_placeholder">密码短语</string>
     <string name="genui_cluster_ports">端口：%1$s</string>
     <string name="genui_cluster_username_optional">用户名（服务器需要时填写）</string>
+    <string name="genui_saved">已保存</string>
 </resources>

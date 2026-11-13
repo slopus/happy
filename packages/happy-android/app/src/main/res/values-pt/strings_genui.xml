@@ -87,4 +87,5 @@
     <string name="genui_cluster_passphrase_placeholder">Frase-senha</string>
     <string name="genui_cluster_ports">Portas: %1$s</string>
     <string name="genui_cluster_username_optional">Nome de usuário, se o servidor pedir</string>
+    <string name="genui_saved">Salvo</string>
 </resources>

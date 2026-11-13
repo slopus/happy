@@ -65,7 +65,10 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -267,6 +270,8 @@ class GenUiState {
 object GenUiTags {
     const val VIEW = "genui"
     const val SCROLL = "genui.scroll"
+    /** A button's leading glyph, by its [IconName]: `genui.glyph.Lock`, `genui.glyph.Check`. */
+    const val GLYPH = "genui.glyph."
 }
 
 /** One document being drawn: its elements, the host, and what was done to it. */
@@ -750,7 +755,10 @@ private fun GenUiScope.activate(key: String, group: String?, action: Action) {
  * light), secondary a hairline outline, plain the word alone, a chip an
  * outlined capsule. A tone colours the fill or the word. In a single-choice
  * group the chosen one takes a darker outline (and a check for its glyph,
- * if it has one) and the rest fade and stop responding.
+ * if it has one) and the rest fade and stop responding. A secret button
+ * always leads with a glyph, a lock where it names none; once its form
+ * saved that glyph is a check, and nothing else changes: label, colours,
+ * border and size stay, and TalkBack hears "Saved" (iOS 4f36d0b23).
  */
 @Composable
 private fun ButtonView(key: String, e: Element.Button, modifier: Modifier) {
@@ -768,17 +776,22 @@ private fun ButtonView(key: String, e: Element.Button, modifier: Modifier) {
     val onFill = if (colors.dark) Color.Black else Color.White
     val fg = if (primary) onFill else toneColor
     val word = if (primary) onFill else wordColor
-    // Chosen, or its secret saved. The check stands in for a glyph and is never added beside the word,
-    // so neither changes a button's width (M2).
-    val marked = state.chosen || key in scope.state.saved
-    val icon = if (marked && e.icon != null) IconName.Check else e.icon
+    // A secret button's lock holds the place its check takes once saved. The check stands in for a glyph
+    // and is never added beside the word, so neither choosing nor saving changes a button's width (M2).
+    val secret = e.action is Action.Secret || e.action is Action.ClusterSecret
+    val glyph = e.icon ?: if (secret) IconName.Lock else null
+    val saved = secret && key in scope.state.saved
+    val marked = state.chosen
+    val icon = if ((marked || saved) && glyph != null) IconName.Check else glyph
+    val said = stringResource(R.string.genui_saved)
     val content: @Composable RowScope.() -> Unit = {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            icon?.let { GenUiIcon(it, 16.dp, fg) }
+            icon?.let { GenUiIcon(it, 16.dp, fg, Modifier.testTag(GenUiTags.GLYPH + it.name)) }
             Text(e.label, style = GenUiSpec.button, color = word, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
-    val faded = if (!state.enabled && !state.chosen) modifier.alpha(0.4f) else modifier
+    val faded = (if (!state.enabled && !state.chosen) modifier.alpha(0.4f) else modifier)
+        .then(if (saved) Modifier.semantics { stateDescription = said } else Modifier)
     val outline = BorderStroke(if (marked) 1.5.dp else 1.dp, if (marked) colors.text else colors.text.copy(alpha = if (colors.dark) 0.2f else 0.14f))
     val padding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
     val disabledColors = ButtonDefaults.outlinedButtonColors(disabledContentColor = toneColor)
@@ -816,6 +829,9 @@ private fun PressView(key: String, e: Element.Press, modifier: Modifier) {
         PressRole.Tile -> 6.dp to 16.dp
     }
     var m = modifier
+    val said = stringResource(R.string.genui_saved)
+    // A row whose secret form saved takes the accent's soft ground, and TalkBack hears "Saved".
+    if (key in scope.state.saved) m = m.semantics { stateDescription = said }
     if (state.chosen || key in scope.state.saved) {
         val tint = LocalGenUiColors.current.fill(Tone.Accent)
         m = m.drawBehind {
