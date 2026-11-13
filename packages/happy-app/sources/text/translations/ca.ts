@@ -43,6 +43,8 @@ export const ca: TranslationStructure = {
     },
     projectGoals: {
         ...projectGoalsBase.projectGoals,
+        openWorkspace: "Obre l’espai de treball",
+        openOrdinaryChat: "Obre al xat normal",
         favoriteItem: ({ title }: { title: string }) => `Afegeix «${title}» als preferits`,
         unfavoriteItem: ({ title }: { title: string }) => `Treu «${title}» dels preferits`,
         deleteItem: ({ title }: { title: string }) => `Suprimeix «${title}»`,

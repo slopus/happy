@@ -58,6 +58,8 @@ export const en: TranslationStructure = {
     },
     projectGoals: {
         ...projectGoalsBase.projectGoals,
+        openWorkspace: "Open workspace",
+        openOrdinaryChat: "Open in regular chat",
         favoriteItem: ({ title }: { title: string }) => `Favorite ${title}`,
         unfavoriteItem: ({ title }: { title: string }) => `Unfavorite ${title}`,
         deleteItem: ({ title }: { title: string }) => `Delete ${title}`,

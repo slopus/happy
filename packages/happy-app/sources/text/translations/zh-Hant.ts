@@ -45,6 +45,8 @@ export const zhHant: TranslationStructure = {
     },
     projectGoals: {
         ...projectGoalsBase.projectGoals,
+        openWorkspace: "開啟所屬工作區",
+        openOrdinaryChat: "在一般對話中開啟",
         favoriteItem: ({ title }: { title: string }) => `收藏${title}`,
         unfavoriteItem: ({ title }: { title: string }) => `取消收藏${title}`,
         deleteItem: ({ title }: { title: string }) => `刪除${title}`,

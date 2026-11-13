@@ -143,4 +143,48 @@ describe('useDraft lifecycle', () => {
         act(() => vi.advanceTimersByTime(2000));
         expect(state.writes).toEqual([['a', 'pending a']]);
     });
+
+    it.each(['new text from the workspace', null])('restores the current shared draft when a retained page regains focus: %s', latest => {
+        render('start');
+        state.focused = false; render('start');
+        state.sessions.a.draft = latest;
+        onChange.mockClear();
+        state.focused = true; render('start');
+        expect(onChange).toHaveBeenCalledExactlyOnceWith(latest ?? '');
+        render(latest ?? '');
+        act(() => vi.advanceTimersByTime(2000));
+        expect(state.sessions.a.draft).toBe(latest);
+        expect(state.writes).toEqual([]);
+    });
+
+    it('does not overwrite newer pending input with shared storage on focus restoration', () => {
+        render('start');
+        const notify = controls.updateDraft;
+        state.focused = false; render('start');
+        notify('local input before focus restoration');
+        state.sessions.a.draft = 'other display';
+        state.focused = true; render('start');
+        expect(onChange).not.toHaveBeenCalled();
+        act(() => vi.advanceTimersByTime(2000));
+        expect(state.sessions.a.draft).toBe('local input before focus restoration');
+    });
+
+    it('flushes the live textarea and cancels its old debounce before another display edits the draft', () => {
+        render('start');
+        controls.updateDraft('partial mirror');
+        controls.flushDraft('latest textarea text');
+        expect(state.sessions.a.draft).toBe('latest textarea text');
+        state.sessions.a.draft = 'edited in workspace';
+        act(() => vi.advanceTimersByTime(2000));
+        expect(state.sessions.a.draft).toBe('edited in workspace');
+    });
+
+    it('restores a new shared draft after this retained composer previously sent and cleared its own text', () => {
+        render('start');
+        controls.clearDraft(); render('');
+        state.focused = false; render('');
+        state.sessions.a.draft = 'new workspace draft';
+        state.focused = true; render('');
+        expect(onChange).toHaveBeenLastCalledWith('new workspace draft');
+    });
 });

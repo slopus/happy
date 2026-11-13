@@ -25,6 +25,7 @@ export function useDraft(
             saved: value,
             usesInputNotifications: false,
             clearedValue: null as string | null,
+            focused: isFocused,
             timer: null as ReturnType<typeof setTimeout> | null,
             cancel() {
                 if (state.timer !== null) clearTimeout(state.timer);
@@ -59,11 +60,16 @@ export function useDraft(
     }, [draft, value]);
 
     useEffect(() => {
-        if (!sessionId || !isFocused || draft.clearedValue !== null) return;
-        const saved = storage.getState().sessions[sessionId]?.draft;
-        if (saved && !draft.value) {
+        const regainedFocus = isFocused && !draft.focused;
+        draft.focused = isFocused;
+        if (!sessionId || !isFocused || (draft.clearedValue !== null && !regainedFocus)) return;
+        const saved = storage.getState().sessions[sessionId]?.draft ?? '';
+        if (saved !== draft.value && ((regainedFocus && draft.value === draft.saved) || (!draft.value && !draft.usesInputNotifications && saved))) {
+            draft.cancel();
             draft.value = saved;
             draft.saved = saved;
+            draft.usesInputNotifications = true;
+            draft.clearedValue = null;
             onChangeRef.current(saved);
         }
     }, [draft, sessionId, isFocused]);
@@ -103,5 +109,13 @@ export function useDraft(
         if (sessionId) storage.getState().updateSessionDraft(sessionId, null);
     }, [draft, sessionId]);
 
-    return { clearDraft, updateDraft };
+    const flushDraft = useCallback((text?: string) => {
+        if (text !== undefined) {
+            draft.value = text;
+            draft.usesInputNotifications = true;
+        }
+        draft.flush();
+    }, [draft]);
+
+    return { clearDraft, updateDraft, flushDraft };
 }

@@ -44,6 +44,8 @@ export const zhHans: TranslationStructure = {
         send: "发送消息",
     },
     projectGoals: {
+        openWorkspace: "打开所属工作区",
+        openOrdinaryChat: "在普通会话中打开",
         favoriteItem: ({ title }: { title: string }) => `收藏${title}`,
         unfavoriteItem: ({ title }: { title: string }) => `取消收藏${title}`,
         deleteItem: ({ title }: { title: string }) => `删除${title}`,

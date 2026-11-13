@@ -19,6 +19,8 @@ import { MessageStagingQueueView } from '@/components/MessageStagingQueueView';
 import TestRenderer from 'react-test-renderer';
 
 vi.mock('@/components/ReadingWidthRail', () => ({ ReadingWidthRail: 'ReadingWidthRail' }));
+// Workspace identity/RPC fencing is exercised by SessionWorkspaceLink's own tests.
+vi.mock('@/components/goalBoard/SessionWorkspaceLink', () => ({ SessionWorkspaceLink: 'SessionWorkspaceLink' }));
 
 const mocks = vi.hoisted(() => ({
     closePanel: vi.fn(),
@@ -36,6 +38,7 @@ const mocks = vi.hoisted(() => ({
     desktopReadingWidth: 960,
     setDesktopReadingWidth: vi.fn(),
     previewLocalSettings: vi.fn(),
+    flushDraft: vi.fn(),
     isTablet: false,
     isLandscape: false,
     focusContext: null as unknown as React.Context<boolean>,
@@ -312,7 +315,7 @@ vi.mock('@/components/FileViewPanel', async () => {
     };
 });
 vi.mock('@/components/diff/PierreDiffView', () => ({ prefetchPierreDiff: vi.fn() }));
-vi.mock('@/hooks/useDraft', () => ({ useDraft: () => ({ clearDraft: vi.fn(), updateDraft: vi.fn() }) }));
+vi.mock('@/hooks/useDraft', () => ({ useDraft: () => ({ clearDraft: vi.fn(), updateDraft: vi.fn(), flushDraft: mocks.flushDraft }) }));
 vi.mock('@/hooks/useComposerPrediction', () => ({ useComposerPrediction: () => ({ text: null, invalidate: vi.fn(), onTextChange: vi.fn(), onInputActivity: vi.fn() }) }));
 vi.mock('@/hooks/useSessionManagementPreferences', () => ({
     useSessionManagementPreferences: () => ({ isPinned: () => false, togglePinned: vi.fn() }),
@@ -1482,6 +1485,32 @@ describe('SessionView Agent-space boundary', () => {
         expect(renderer.root.findAllByType('FilesSidebar')).toHaveLength(1);
 
         act(() => renderer.unmount());
+    });
+
+    it.each([
+        { embedded: false, platform: 'web', width: 1600, landscape: false },
+        { embedded: true, platform: 'web', width: 1600, landscape: false },
+        { embedded: true, platform: 'web', width: 390, landscape: false },
+        { embedded: true, platform: 'android', width: 844, landscape: true },
+    ])('wires the exact session and synchronous draft flush into its workspace link ($embedded/$platform/$width)', async ({ embedded, platform, width, landscape }) => {
+        mocks.isDataReady = true; mocks.platformOS = platform; mocks.windowWidth = width;
+        mocks.isTablet = width >= 1100; mocks.isLandscape = landscape;
+        const liveText = 'Draft typed immediately before switching';
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<SessionView id="session-1" embedded={embedded} />, {
+                createNodeMock: (element: any) => element.type === 'MessageComposer' ? { getText: () => liveText } : null,
+            });
+        });
+        const link = renderer.root.findByType('SessionWorkspaceLink');
+        expect(link.props.id).toBe('session-1');
+        expect(link.props.embedded).toBe(embedded);
+        expect(link.props.metadata).toBe(mocks.session.metadata);
+        expect(link.props.floating).toBe(landscape);
+        act(() => link.props.beforeNavigate());
+        expect(mocks.flushDraft).toHaveBeenLastCalledWith(liveText);
+        expect(mocks.sendMessage).not.toHaveBeenCalled();
+        await act(async () => renderer.unmount());
     });
 
     it.each([

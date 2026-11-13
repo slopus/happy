@@ -54,6 +54,8 @@ export const ru: TranslationStructure = {
     },
     projectGoals: {
         ...projectGoalsBase.projectGoals,
+        openWorkspace: "Открыть рабочее пространство",
+        openOrdinaryChat: "Открыть в обычном чате",
         favoriteItem: ({ title }: { title: string }) => `Добавить «${title}» в избранное`,
         unfavoriteItem: ({ title }: { title: string }) => `Убрать «${title}» из избранного`,
         deleteItem: ({ title }: { title: string }) => `Удалить «${title}»`,

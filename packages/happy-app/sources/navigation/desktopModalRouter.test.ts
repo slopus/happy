@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { StackActions, StackRouter } from '@react-navigation/routers';
 vi.mock('@react-navigation/native', () => ({ StackRouter }));
 import { projectLocationHref, restoreProjectLocation } from '@/utils/projectReturnLocation';
+import { sessionWorkspaceRoute } from '@/utils/sessionWorkspaceRoute';
 import { createDesktopModalRouter, getDesktopModalStart, getDesktopModalBackgroundPath } from './desktopModalRouter';
 
 const options = { routeNames: ['index', 'projects', 'settings/index', 'settings/appearance', 'settings/device-environment', 'settings/profile', 'session/[id]', 'session/[id]/file', 'session/[id]/files', 'machine/[id]', 'dev/index', 'dev/logs', 'relationship-advisor'], routeParamList: {}, routeGetIdList: {} };
@@ -14,6 +15,24 @@ function setup() {
 }
 
 describe('desktop modal navigation boundary', () => {
+    it.each([true, false])('round-trips the exact same task/global conversation after stack compaction (task=%s)', async task => {
+        const app = setup();
+        const projects = [{ projectPath: '/p', title: 'Project', features: [{ featurePath: '/p/f', title: 'Goal' }] }];
+        const metadata = { machineId: 'm', path: task ? '/p/f/tasks/t' : '/p/f',
+            ...(task ? { goalBoard: { featurePath: '/p/f', taskId: 't' } } : {}) };
+        const readBoard = vi.fn().mockResolvedValue({ snapshot: { featurePath: '/p/f', tasks: [{ id: 't', indexPath: '/p/f/tasks/t/index.md' }] } });
+        const target = await sessionWorkspaceRoute('selected-old', metadata, projects, readBoard);
+        app.send(StackActions.push('projects', { machine: 'other', project: '/other', task: 'different', conversation: 'newest' }));
+        app.send({ type: 'NAVIGATE', payload: { name: 'session/[id]', params: { id: 'selected-old' } } });
+        expect(app.state.routes.map(route => route.name)).toEqual(['index', 'session/[id]']);
+        app.send({ type: 'NAVIGATE', payload: { name: 'projects', params: target!.params } });
+        const current = app.state.routes[app.state.index];
+        expect(current.name).toBe('projects');
+        expect(current.params).toEqual(target!.params);
+        expect(current.params).toMatchObject(task ? { task: 't', conversation: 'selected-old', author: undefined }
+            : { task: undefined, conversation: undefined, author: 'selected-old' });
+    });
+
     it('restores the project route after conversation navigation removes it from the stack', () => {
         const app = setup();
         const location = { machine: 'mac', project: '/goals/creative-web', feature: '/goals/creative-web/features/design-ops', task: 'four', conversation: 'task-chat' };

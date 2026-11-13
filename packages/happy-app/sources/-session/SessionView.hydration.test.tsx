@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // @ts-expect-error react-test-renderer does not publish declarations.
 import TestRenderer from 'react-test-renderer';
 import { SessionView } from './SessionView';
+vi.mock('@/components/goalBoard/SessionWorkspaceLink', () => ({ SessionWorkspaceLink: 'SessionWorkspaceLink' }));
 import { SessionRouteAbandonedError, SessionRouteCoordinationError, SessionRouteOwnership } from '@/sync/sessionRouteOwnership';
 
 const mocks = vi.hoisted(() => ({

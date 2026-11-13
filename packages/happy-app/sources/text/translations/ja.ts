@@ -46,6 +46,8 @@ export const ja: TranslationStructure = {
     },
     projectGoals: {
         ...projectGoalsBase.projectGoals,
+        openWorkspace: "ワークスペースを開く",
+        openOrdinaryChat: "通常のチャットで開く",
         favoriteItem: ({ title }: { title: string }) => `「${title}」をお気に入りに追加`,
         unfavoriteItem: ({ title }: { title: string }) => `「${title}」をお気に入りから削除`,
         deleteItem: ({ title }: { title: string }) => `「${title}」を削除`,
