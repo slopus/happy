@@ -145,6 +145,21 @@ public struct OnboardingGate: Decodable, Equatable, Sendable {
             required = (try? c.decodeIfPresent([String].self, forKey: .required)) ?? []
             plugins = ((try? c.decodeIfPresent([Lossy<Plugin>].self, forKey: .plugins)) ?? []).compactMap(\.value)
         }
+
+        /// The gate's screen: the required plugins first, in the server's
+        /// order, then every other plugin `catalog` offers; each active
+        /// as the catalog's installations say, else as the gate did.
+        public func rows(_ catalog: PluginCatalog?) -> [Plugin] {
+            let needed = plugins.filter(\.required)
+            let rest = catalog.map { catalog in catalog.plugins.map { Plugin(id: $0.id, name: $0.name, required: false, active: false) } } ?? plugins
+            return (needed + rest.filter { plugin in !needed.contains { $0.id == plugin.id } }).map { plugin in
+                var plugin = plugin
+                if let installations = catalog?.installations {
+                    plugin.active = installations.contains { $0.pluginId == plugin.id && $0.status == .active }
+                }
+                return plugin
+            }
+        }
     }
 
     public struct Teammates: Decodable, Equatable, Sendable {

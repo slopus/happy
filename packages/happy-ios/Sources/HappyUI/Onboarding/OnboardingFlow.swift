@@ -150,6 +150,10 @@ final class OnboardingFlow {
                                                            optional: gate.requirement == .optional) { _ = try? await session.readOnboarding() }
             skips(gate, on: screen)
             return screen
+        case .plugins(let plugins):
+            let screen = OnboardingPluginsViewController(context: context, session: session, plugins: plugins, optional: gate.requirement == .optional)
+            skips(gate, on: screen)
+            return screen
         default:
             // Done on desktop or the web for now; a gate's own screen
             // takes this one's place as it comes.

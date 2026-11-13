@@ -26,6 +26,19 @@ extension Strings {
         static let connectProvider = "Connect a Provider"
         static let inferenceNotAllowed = "Your role can’t connect providers. Ask your admin."
 
+        static let pluginsTitle = "Connect your tools"
+        static func pluginsBody(needed: [String]) -> String {
+            let lead = "Plugins let your agents work in the services your team uses."
+            return needed.isEmpty
+                ? "\(lead) Set one up now, or later from Plugins."
+                : "\(lead) \(ListFormatter.localizedString(byJoining: needed)) \(needed.count == 1 ? "has" : "have") to be connected first."
+        }
+        static let setUp = "Set Up"
+        static let connected = "Connected"
+        static let neededPlugin = "Required"
+        static let pluginsFailed = "Couldn’t read the plugins."
+        static let tryAgain = "Try Again"
+
         static let updateTitle = "Update Happy to continue"
         static let updateBody = "This server asks for a step this version of Happy doesn’t know yet."
         static let updateAction = "Open the App Store"

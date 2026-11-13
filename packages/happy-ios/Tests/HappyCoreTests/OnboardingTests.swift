@@ -215,6 +215,24 @@ final class OnboardingTests: XCTestCase {
         XCTAssertFalse(try Self.read(Self.sample).legacy)
     }
 
+    func testThePluginsStepListsWhatIsNeededFirstThenEverythingOffered() async throws {
+        let gate = OnboardingGate.Plugins(required: ["linear"], plugins: [.init(id: "linear", name: "Linear", required: true, active: true)])
+        XCTAssertEqual(gate.rows(nil).map(\.id), ["linear"], "before the catalog is read, the gate's own plugins")
+        XCTAssertEqual(gate.rows(nil).map(\.active), [true])
+
+        let server = ProvidersServer()
+        await server.answer("GET /v0/plugins", 200, PluginsTests.catalog)
+        await server.answer("GET /v0/plugins/installations", 200, PluginsTests.installations)
+        let rows = gate.rows(try await AgentClient(transport: server, token: "t").pluginCatalog())
+        XCTAssertEqual(rows.map(\.id), ["linear", "github"], "required first, then the rest as offered, each once")
+        XCTAssertEqual(rows.map(\.required), [true, false])
+        XCTAssertEqual(rows.map(\.active), [false, true], "the installations, read after the gate, say what is active")
+
+        await server.answer("GET /v0/plugins/installations", 403, #"{"error":"forbidden","code":"forbidden"}"#)
+        let unread = gate.rows(try await AgentClient(transport: server, token: "t").pluginCatalog())
+        XCTAssertEqual(unread.map(\.active), [true, false], "without installations, the gate's word stands")
+    }
+
     func testOnboardingIsReadAgainOnTheEventsThatMoveItsGates() {
         XCTAssertEqual(Set(Onboarding.refreshEvents), [
             "onboarding.updated", "profile.updated", "bot.updated", "config.updated", "plugins.changed",

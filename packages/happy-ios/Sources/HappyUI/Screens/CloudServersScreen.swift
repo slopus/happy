@@ -1593,7 +1593,8 @@ enum CloudBrowser {
 
 /// A server in Join a server's list, on glass over the gradient: its
 /// picture, its name over `@name`, and Join, Joining, or Joined with a
-/// check (`CloudServerRowLayout`).
+/// check (`CloudServerRowLayout`). Onboarding's plugins step words its
+/// own (Set Up, Connected).
 final class CloudServerRow: UIView {
     enum State { case join, joining, joined }
 
@@ -1601,7 +1602,7 @@ final class CloudServerRow: UIView {
     let picture = UIImageView()
     let title = StyledLabel(style: TextStyle(.semiBold, size: 17, lineHeight: 22), color: Palette.startText, lines: 1)
     let subtitle = StyledLabel(style: TextStyle(.regular, size: 15, lineHeight: 20), color: Palette.startTextSecondary, lines: 1)
-    let join = RoundButton(title: Strings.CloudConnect.join, size: .small)
+    let join: RoundButton
     private let joined = UIButton(type: .system)
 
     var state: State = .join {
@@ -1613,8 +1614,9 @@ final class CloudServerRow: UIView {
         didSet { apply() }
     }
 
-    override init(frame: CGRect) {
-        super.init(frame: frame)
+    init(action: String = Strings.CloudConnect.join, done: String = Strings.CloudConnect.joined) {
+        join = RoundButton(title: action, size: .small)
+        super.init(frame: .zero)
         glass.clipsToBounds = true
         glass.layer.cornerRadius = 22
         glass.layer.cornerCurve = .continuous
@@ -1626,13 +1628,13 @@ final class CloudServerRow: UIView {
         look.image = UIImage(systemName: "checkmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
         look.imagePadding = 4
         look.contentInsets = .zero
-        look.attributedTitle = AttributedString(Strings.CloudConnect.joined, attributes: AttributeContainer([
+        look.attributedTitle = AttributedString(done, attributes: AttributeContainer([
             .font: UIFont(name: FontFace.regular.rawValue, size: 15) ?? .systemFont(ofSize: 15),
         ]))
         joined.configuration = look
         joined.tintColor = UIColor(Palette.startTextSecondary)
         joined.isUserInteractionEnabled = false
-        joined.accessibilityLabel = Strings.CloudConnect.joined
+        joined.accessibilityLabel = done
         for view in [glass, picture, title, subtitle, join, joined] as [UIView] { addSubview(view) }
         apply()
     }

@@ -142,14 +142,18 @@ actor ClusterServer: AgentTransport {
         gates?[index].done = true
     }
 
+    /// The plugins gate's one needed plugin, as the server reads it.
+    private var githubActive: Bool { installations.contains { $0.plugin == "github" && $0.status == "active" } }
+
     private var onboarding: String {
+        if githubActive { mark("plugins") }
         let gates = gates ?? []
         func data(_ gate: Gate) -> String {
             switch gate.id {
             case "adminBot":
                 return #"{"botId":"cos","agentId":"cos-agent","name":"\#(botName)","version":"v\#(botVersion)","avatar":null,"title":"Name your admin bot","description":"This is your server’s admin bot. It can change the server’s settings, connect tools and create other bots, so it can adapt Happy and build a system around how your team works. Only owners can talk to it."}"#
             case "inference": return #"{"connected":[],"freeModel":true}"#
-            case "plugins": return #"{"required":["github"],"plugins":[{"id":"github","name":"GitHub","required":true,"active":false}]}"#
+            case "plugins": return #"{"required":["github"],"plugins":[{"id":"github","name":"GitHub","required":true,"active":\#(githubActive)}]}"#
             case "teammates": return #"{"invited":false,"members":1}"#
             case "mobileApp": return #"{"registered":false,"appStoreUrl":"https://apps.apple.com/us/app/happy-claude-code-client/id6748571505","playStoreUrl":"https://play.google.com/store/apps/details?id=com.ex3ndr.happy"}"#
             default: return "{}"
@@ -394,8 +398,10 @@ final class ClusterHarness {
     /// Walks the onboarding flow over `home`, a step every two seconds:
     /// `name:<name>` saves the profile, `bot:<name>` names the admin bot,
     /// `custom` opens the custom provider's form and `fill` fills it (`-fill`),
-    /// `photo` picks a picture, `skip` and
-    /// `primary` tap the screen's actions.
+    /// `photo` picks a picture, `plugin:<id>` opens a plugin from the
+    /// plugins step, `install` and `setup:<method>` act on its page and
+    /// `submit` sends a form, `back` goes back, `skip` and `primary` tap the
+    /// screen's actions.
     private func walk(_ steps: String, home: UIViewController, arguments: [String]) async {
         for step in steps.split(separator: ",") {
             try? await Task.sleep(for: .seconds(2))
@@ -410,8 +416,20 @@ final class ClusterHarness {
                 await bot.submit()
             } else if step == "custom", let inference = top as? OnboardingInferenceViewController {
                 inference.chooser.addCustom()
+            } else if step.hasPrefix("plugin:"), let plugins = top as? OnboardingPluginsViewController {
+                plugins.view.findButton(identifier: "onboarding-plugin-\(step.dropFirst("plugin:".count))")?.tapped()
+            } else if step == "install", let page = top as? PluginViewController, let plugin = page.session.plugins.state.catalog?.plugin(page.pluginId) {
+                page.install(plugin)
+            } else if step.hasPrefix("setup:"), let page = top as? PluginViewController, let catalog = page.session.plugins.state.catalog,
+                      let installation = catalog.installations(of: page.pluginId).last,
+                      let method = catalog.plugin(page.pluginId)?.authMethods.first(where: { $0.id == step.dropFirst("setup:".count) }) {
+                page.setUp(installation, method: method)
             } else if step == "fill", let form = top as? FieldsFormViewController {
                 fill(form, arguments: arguments)
+            } else if step == "submit", let form = top as? FieldsFormViewController {
+                form.connect()
+            } else if step == "back" {
+                (home.presentedViewController as? UINavigationController)?.popViewController(animated: true)
             } else if step == "photo", let photo = top as? OnboardingPhotoViewController {
                 photo.choose(CloudProfileViewController.previewPhoto())
             } else if let notice = top as? CloudStageViewController {
@@ -465,6 +483,12 @@ private extension UIView {
     func field(identifier: String) -> UITextField? {
         if let field = self as? UITextField, field.accessibilityIdentifier == identifier { return field }
         for child in subviews { if let found = child.field(identifier: identifier) { return found } }
+        return nil
+    }
+
+    func findButton(identifier: String) -> RoundButton? {
+        if let button = self as? RoundButton, button.accessibilityIdentifier == identifier { return button }
+        for child in subviews { if let found = child.findButton(identifier: identifier) { return found } }
         return nil
     }
 
