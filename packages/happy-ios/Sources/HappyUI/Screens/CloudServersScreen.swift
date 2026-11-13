@@ -311,6 +311,10 @@ final class CloudWelcomeViewController: UIViewController, CloudFlowScreen, ASWeb
         note.string = expired ? Strings.CloudConnect.expired : ""
         note.accessibilityIdentifier = "cloud-welcome-note"
         followsTextSize()
+        // Apple's button draws its words at one size whatever the person's
+        // text size, and Google's matches it: GitHub's and email's stay at
+        // theirs too, so the four read as one set and none is cut short.
+        for button in [github, email] { button.traitOverrides.followsTextSize = false }
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }

@@ -287,6 +287,28 @@ final class CloudScreensTests: XCTestCase {
         XCTAssertNil(Self.find("cloud-connect", in: welcome.view), "no Other Ways to Sign In")
     }
 
+    /// At the largest text size the slides' words grow, but the four
+    /// sign-in buttons keep one height and their words their designed
+    /// size, as Apple's own button does: none is cut short.
+    func testTheSignInButtonsKeepTheirSizeAtTheLargestText() {
+        let welcome = CloudWelcomeViewController(context: context())
+        let navigation = UINavigationController(rootViewController: welcome)
+        navigation.traitOverrides.preferredContentSizeCategory = .accessibilityExtraExtraExtraLarge
+        show(navigation)
+        welcome.view.layoutIfNeeded()
+        let designed = TextStyles.roundButton(.large, display: .filled)
+        for button in [welcome.github, welcome.email] {
+            XCTAssertEqual(button.label.renderedStyle.size, designed.size, button.title)
+            XCTAssertEqual(button.frame.height, welcome.appleButton?.frame.height, button.title)
+            let words = button.label.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)).width
+            XCTAssertLessThanOrEqual(words, button.label.frame.width + 0.5, "\(button.title) is cut short")
+        }
+        XCTAssertEqual(welcome.google.frame.height, welcome.appleButton?.frame.height)
+        func labels(_ view: UIView) -> [StyledLabel] { [view as? StyledLabel].compactMap { $0 } + view.subviews.flatMap(labels) }
+        let slide = labels(welcome.gallery).first { $0.string == CloudWelcomeViewController.slides.first?.body }
+        XCTAssertGreaterThan(slide?.renderedStyle.size ?? 0, TextStyles.startSlideBody.size, "the slides' words still grow")
+    }
+
     /// The pass ended: the welcome says so over the buttons.
     func testAnEndedPassSaysSoOverTheButtons() {
         let welcome = CloudWelcomeViewController(context: context(), expired: true)
