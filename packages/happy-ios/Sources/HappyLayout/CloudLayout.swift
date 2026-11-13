@@ -111,6 +111,11 @@ public struct CloudWelcomeLayout: Equatable, Sendable {
 /// the title. The actions ride the keyboard and
 /// the rest stays centred in the room left over them, never above its top
 /// margin; past that the screen scrolls.
+///
+/// A step whose content is a list (Join a server, `pinsActions`) instead
+/// starts at its top margin, and its actions stay where they rest while
+/// the rest scrolls under them: however long the list, the actions are in
+/// sight, and scrolled to its end the list stops 24 over them.
 public struct CloudStageLayout: Equatable, Sendable {
     public enum Metrics {
         public static let sidePadding: CGFloat = StartLayout.Metrics.sidePadding
@@ -150,7 +155,12 @@ public struct CloudStageLayout: Equatable, Sendable {
     public var title: CGRect
     public var body: CGRect
     public var content: CGRect
+    /// With `pinsActions`, in the view rather than the scrolled content.
     public var actions: [CGRect]
+    /// With `pinsActions`, how far up from the screen's bottom edge the
+    /// pinned actions (and the gap over them) cover the scrolled content
+    /// while the keyboard is down; zero without.
+    public var pinnedInset: CGFloat
     /// The scrolled content's height.
     public var contentHeight: CGFloat
     /// How far the keyboard covers the scroll view, for its bottom inset.
@@ -169,10 +179,11 @@ public struct CloudStageLayout: Equatable, Sendable {
     /// the view, the safe area's bottom while it is down. `art` is the
     /// scene's side, zero without one, and `caption` the size of a line
     /// under it, zero without one; an empty `body` or `content` measures
-    /// zero tall and takes no gap.
+    /// zero tall and takes no gap. `pinsActions` starts the step at its top
+    /// margin and keeps the actions in place while the rest scrolls.
     public init(size: CGSize, safeArea: LayoutInsets, keyboardTop: CGFloat? = nil, art side: CGFloat = 0, caption captionSize: CGSize = .zero,
                 title: Measurable, body: Measurable, content: Measurable, steadyBody: Measurable? = nil, steadyContent: Measurable? = nil,
-                actions: [Action]) {
+                pinsActions: Bool = false, actions: [Action]) {
         typealias M = Metrics
         let width = max(0, size.width - safeArea.horizontal)
         let column = Self.column(size: size, safeArea: safeArea)
@@ -198,7 +209,7 @@ public struct CloudStageLayout: Equatable, Sendable {
         let minTop = safeArea.top + M.top
         // Centred over the actions, wherever the keyboard has put them.
         let free = bottom - actionsHeight - M.actionsGap - minTop - block
-        var y = minTop + max(0, free / 2)
+        var y = pinsActions ? minTop : minTop + max(0, free / 2)
 
         art = side > 0 ? CGRect(x: safeArea.left + (width - side) / 2, y: y, width: side, height: side) : .zero
         if side > 0 { y += side }
@@ -215,7 +226,7 @@ public struct CloudStageLayout: Equatable, Sendable {
         self.content = CGRect(x: x, y: y, width: column, height: contentHeight)
         y += contentHeight
 
-        var top = max(y + M.actionsGap, bottom - actionsHeight)
+        var top = pinsActions ? bottom - actionsHeight : max(y + M.actionsGap, bottom - actionsHeight)
         if actions.isEmpty { top = y }
         var frames: [CGRect] = []
         for (index, action) in actions.enumerated() {
@@ -224,9 +235,10 @@ public struct CloudStageLayout: Equatable, Sendable {
             top += action.height
         }
         self.actions = frames
-        self.contentHeight = max(size.height, top + edge + M.bottomPadding)
+        pinnedInset = pinsActions ? edge + M.bottomPadding + actionsHeight + (actions.isEmpty ? 0 : M.actionsGap) : 0
+        self.contentHeight = pinsActions ? max(size.height, y + pinnedInset) : max(size.height, top + edge + M.bottomPadding)
         keyboardInset = keyboardTop.map { max(0, size.height - $0 - edge) } ?? 0
-        keyboardOffset = keyboardTop == nil ? 0 : max(0, (frames.last?.maxY ?? y) - bottom)
+        keyboardOffset = keyboardTop == nil || pinsActions ? 0 : max(0, (frames.last?.maxY ?? y) - bottom)
     }
 }
 

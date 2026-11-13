@@ -505,7 +505,9 @@ final class CloudWelcomeViewController: UIViewController, CloudFlowScreen, ASWeb
 ///   `steadyBody`), so a status line, a hint or a list arriving grows down
 ///   from where it is; a status line keeps two lines' room
 ///   (`statusRoom`). The actions keep their places, the primary's even
-///   while it is hidden (`keepsActionRoom`);
+///   while it is hidden (`keepsActionRoom`). A list (`pinsActions`)
+///   instead starts at the top and scrolls with the title while the
+///   actions stay put, so a long one never pushes them out of sight;
 /// - the keyboard is followed as the chat's composer follows it: from its
 ///   will-change notification, on its own duration and curve, in one
 ///   animation (`keyboardWillChange`); while a finger drags it down
@@ -515,7 +517,7 @@ final class CloudWelcomeViewController: UIViewController, CloudFlowScreen, ASWeb
 class CloudStageViewController: UIViewController, CloudFlowScreen, CloudTyping, KeyboardPushed, UIScrollViewDelegate {
     let context: AppContext
     private let gradient = GrainGradientView(palette: StartViewController.Colors.grain)
-    let scroll = UIScrollView()
+    let scroll: UIScrollView = CloudStageScroll()
     let art: StateSceneView?
     let titleLabel: StyledLabel
     let bodyLabel: StyledLabel
@@ -527,7 +529,7 @@ class CloudStageViewController: UIViewController, CloudFlowScreen, CloudTyping, 
         didSet {
             oldValue?.removeFromSuperview()
             primary.isHidden = primaryReplacement != nil
-            if let primaryReplacement { scroll.addSubview(primaryReplacement) }
+            if let primaryReplacement { (pinsActions ? view : scroll).addSubview(primaryReplacement) }
             relayout()
         }
     }
@@ -561,6 +563,10 @@ class CloudStageViewController: UIViewController, CloudFlowScreen, CloudTyping, 
     /// server is joined, Try Again until a connection fails), so showing one
     /// moves nothing. Off for a step whose only action is in its content.
     var keepsActionRoom = true
+    /// The step starts at the top and scrolls while its actions stay in
+    /// place over it (`CloudStageLayout`): a list that can be long. Set
+    /// before the view loads.
+    var pinsActions = false
     /// The body the block is centred by when the body changes (Connecting's
     /// failure); nil: the body as it is.
     var steadyBody: String? {
@@ -606,7 +612,10 @@ class CloudStageViewController: UIViewController, CloudFlowScreen, CloudTyping, 
         scroll.keyboardDismissMode = .interactive
         scroll.delegate = self
         view.addSubview(scroll)
-        for subview in [art, titleLabel, bodyLabel, content, primary, secondary].compactMap({ $0 }) { scroll.addSubview(subview) }
+        for subview in [art, titleLabel, bodyLabel, content].compactMap({ $0 }) { scroll.addSubview(subview) }
+        for subview in [primary, secondary].compactMap({ $0 }) { (pinsActions ? view : scroll).addSubview(subview) }
+        // A drag begun on a row's button scrolls the list, as a table's does.
+        (scroll as? CloudStageScroll)?.scrollsFromControls = pinsActions
         // The guide, read only while a finger drags the keyboard; a
         // floating or split iPad keyboard covers nothing.
         view.keyboardLayoutGuide.followsUndockedKeyboard = false
@@ -770,12 +779,13 @@ class CloudStageViewController: UIViewController, CloudFlowScreen, CloudTyping, 
             content: Measurable { [unowned self] width in CGSize(width: width, height: contentHeight(width: width)) },
             steadyBody: steadyBodyLabel?.measurable,
             steadyContent: Measurable { [unowned self] width in CGSize(width: width, height: steadyContentHeight(width: width)) },
+            pinsActions: pinsActions,
             actions: actions
         )
         scroll.frame = view.bounds
         scroll.contentSize = CGSize(width: size.width, height: layout.contentHeight)
         scroll.contentInset.bottom = layout.keyboardInset
-        scroll.verticalScrollIndicatorInsets.bottom = layout.keyboardInset
+        scroll.verticalScrollIndicatorInsets.bottom = layout.keyboardInset + layout.pinnedInset
         // Once each time the keyboard settles somewhere new: the action
         // stays in sight, and a finger's scroll after that is left alone.
         if !followsGuide, scrolledForKeyboard != .some(keyboard) {
@@ -795,6 +805,14 @@ class CloudStageViewController: UIViewController, CloudFlowScreen, CloudTyping, 
         }
         if let secondary, let frame = frames.popFirst() { secondary.setLayoutFrame(frame) }
     }
+}
+
+/// A step's scroll; `scrollsFromControls`: a drag begun on a button
+/// scrolls rather than taps it.
+private final class CloudStageScroll: UIScrollView {
+    var scrollsFromControls = false
+
+    override func touchesShouldCancel(in view: UIView) -> Bool { scrollsFromControls || super.touchesShouldCancel(in: view) }
 }
 
 /// Taps on the welcome's logo: ten within four seconds open the test
@@ -1112,7 +1130,7 @@ final class CloudServersViewController: CloudStageViewController {
     /// Servers being joined, and those joined from here (server id to
     /// connection id), the last one last.
     private var joining: Set<String> = []
-    private(set) var joined: [(server: String, connection: String)] = []
+    fileprivate(set) var joined: [(server: String, connection: String)] = []
     /// Joins run one after another.
     private var queue: Task<Void, Never>?
     private var failedToLoad = false
@@ -1126,6 +1144,7 @@ final class CloudServersViewController: CloudStageViewController {
         super.init(context: context, scene: nil, title: Strings.CloudConnect.serversTitle, body: Strings.CloudConnect.serversMessage,
                    primary: Strings.CloudConnect.continueAction)
         signsOutOnBack = true
+        pinsActions = true
     }
 
     override func viewDidLoad() {
@@ -1284,12 +1303,18 @@ final class CloudServersViewController: CloudStageViewController {
         status.string = text ?? ""
         status.textColor = UIColor(problem ? Palette.textDestructive : Palette.startTextSecondary)
         relayout()
+        // Under a long list, scrolled to where it can be read over Continue.
+        guard text != nil, isViewLoaded else { return }
+        view.layoutIfNeeded()
+        var shown = status.convert(status.bounds, to: scroll)
+        shown.size.height += scroll.verticalScrollIndicatorInsets.bottom
+        scroll.scrollRectToVisible(shown, animated: true)
     }
 
     /// The rows, or the spinner while they load; Bootstrap a new one; and
     /// the status line last, in room kept for it, so a join's failure
-    /// moves nothing. The block is centred as it is while loading
-    /// (`steadyContentHeight`), so the list arriving grows down from it.
+    /// moves nothing. They start under the title and scroll with it while
+    /// Continue stays put (`pinsActions`).
     private func items(width: CGFloat, steady: Bool = false) -> [CloudColumnLayout.Item] {
         let rowItems = steady ? [] : order.map { _ in CloudColumnLayout.Item(height: CloudServerRowLayout.Metrics.height, gap: 12) }
         return rowItems + [
@@ -1678,7 +1703,8 @@ final class CloudField: UIView {
 #if DEBUG
 /// Each Happy Cloud screen under an account token, for the harness's
 /// device screenshots (`-screen cloud -cloudScreen …`): `welcome`,
-/// `expired`, `test`, `servers` (two of the preview's own),
+/// `expired`, `test`, `servers` (two of the preview's own), `serversMany`
+/// (five, two of them joined: taller than a phone's room),
 /// `empty` (none: Bootstrap), `live` (the account's, under the token),
 /// `create`, `connecting`, `email` and `code` (email's two steps,
 /// the address in `name`). `http` is where the welcome's sign-ins go. On
@@ -1699,6 +1725,11 @@ public enum CloudScreensPreview {
         switch screen {
         case "test": navigation.pushViewController(CloudTestSignInViewController(context: context), animated: false)
         case "servers": navigation.pushViewController(CloudServersViewController(context: context, account: account, load: { list }), animated: false)
+        case "serversMany":
+            let many = ["core", "test", "hello", "hello2", "globex-labs"].map { CloudServer(id: "preview-\($0)", name: $0, url: "", role: .member) }
+            let servers = CloudServersViewController(context: context, account: account, load: { many })
+            servers.joined = [("preview-core", "preview-core"), ("preview-test", "preview-test")]
+            navigation.pushViewController(servers, animated: false)
         case "empty": navigation.pushViewController(CloudServersViewController(context: context, account: account, load: { [] }), animated: false)
         case "live": navigation.pushViewController(CloudServersViewController(context: context, account: account), animated: false)
         case "create":

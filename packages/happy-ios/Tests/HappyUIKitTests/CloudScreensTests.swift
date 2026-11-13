@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import AuthenticationServices
 import HappyCore
+import HappyLayout
 @testable import HappyUI
 import UIKit
 import XCTest
@@ -443,6 +444,29 @@ final class CloudScreensTests: XCTestCase {
         XCTAssertEqual(screen.bootstrap.display, .filled, "a button, not a line of text")
         XCTAssertEqual(screen.bootstrap.glass, .regular)
         XCTAssertEqual(screen.bootstrap.frame.width, screen.content.bounds.width)
+    }
+
+    /// More servers than the phone has room for: the step scrolls whole,
+    /// title and all, while Continue stays inside the safe area; scrolled
+    /// to its end, the list stops over Continue.
+    func testALongListScrollsUnderContinue() async throws {
+        let account = CloudAccount.preview(token: "account", http: CloudHTTP())
+        let servers = (1...7).map { CloudServer(id: "s\($0)", name: "server-\($0)", url: "", role: .member) }
+        let screen = CloudServersViewController(context: context(), account: account, load: { servers })
+        let navigation = UINavigationController(rootViewController: CloudWelcomeViewController(context: context()))
+        navigation.pushViewController(screen, animated: false)
+        show(navigation)
+        await settle { Self.find("cloud-server-server-7", in: screen.view) != nil }
+        screen.view.layoutIfNeeded()
+        let view = try XCTUnwrap(screen.view)
+        XCTAssertTrue(screen.primary.superview === view, "Continue stays put while the rest scrolls")
+        XCTAssertTrue(screen.titleLabel.superview === screen.scroll, "the title scrolls with the list")
+        XCTAssertEqual(screen.titleLabel.frame.minY, view.safeAreaInsets.top + CloudStageLayout.Metrics.top)
+        XCTAssertEqual(screen.primary.frame.maxY, view.bounds.height - max(view.safeAreaInsets.bottom, 16) - 16, "where every step's rests")
+        XCTAssertGreaterThan(screen.scroll.contentSize.height, view.bounds.height, "it scrolls")
+        screen.scroll.contentOffset.y = screen.scroll.contentSize.height - view.bounds.height
+        let bootstrap = screen.bootstrap.convert(screen.bootstrap.bounds, to: view)
+        XCTAssertLessThanOrEqual(bootstrap.maxY, screen.primary.frame.minY - CloudStageLayout.Metrics.actionsGap, "scrolled to its end, the list is clear of Continue")
     }
 
     /// Back in the app after accepting an invite link in the browser: the

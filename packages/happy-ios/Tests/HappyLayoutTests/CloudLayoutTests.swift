@@ -172,6 +172,39 @@ final class CloudLayoutTests: XCTestCase {
         XCTAssertEqual(layout.contentHeight, 1366)
     }
 
+    /// Join a server with five servers: it starts at its top margin and
+    /// scrolls whole, title and all, while Continue stays where every
+    /// step's action rests; scrolled to its end, the list stops 24 over it.
+    func testALongListScrollsUnderItsPinnedAction() {
+        func servers(_ content: CGFloat, keyboardTop: CGFloat? = nil) -> CloudStageLayout {
+            CloudStageLayout(size: phone, safeArea: barred, keyboardTop: keyboardTop, title: .fixed(width: 300, height: 34), body: .fixed(width: 300, height: 48),
+                             content: .fixed(width: 345, height: content), steadyContent: .fixed(width: 345, height: 174),
+                             pinsActions: true, actions: [.init(height: 50)])
+        }
+        let long = servers(616)
+        XCTAssertEqual(long.title, CGRect(x: 24, y: 103 + 24, width: 345, height: 34))
+        XCTAssertEqual(long.body, CGRect(x: 24, y: 173, width: 345, height: 48))
+        XCTAssertEqual(long.content, CGRect(x: 24, y: 253, width: 345, height: 616))
+        XCTAssertEqual(long.actions, [CGRect(x: 24, y: 752, width: 345, height: 50)])
+        XCTAssertEqual(long.actions[0].maxY, 852 - 34 - 16, "inside the safe area, where every step's rests")
+        XCTAssertEqual(long.pinnedInset, 34 + 16 + 50 + 24)
+        XCTAssertEqual(long.contentHeight, 253 + 616 + 124)
+        XCTAssertEqual(long.content.maxY - (long.contentHeight - 852) + 24, long.actions[0].minY, "scrolled to its end, 24 over Continue")
+        XCTAssertEqual(long.keyboardOffset, 0)
+        // However long the list, nothing else moves.
+        for list in [servers(174), servers(300), servers(1200)] {
+            XCTAssertEqual(list.title, long.title)
+            XCTAssertEqual(list.actions, long.actions)
+            XCTAssertEqual(list.content.minY, long.content.minY)
+        }
+        XCTAssertEqual(servers(300).contentHeight, 852, "a short one doesn't scroll")
+        // Over a keyboard the action rides it and the keyboard's inset adds the rest.
+        let typing = servers(616, keyboardTop: 516)
+        XCTAssertEqual(typing.actions, [CGRect(x: 24, y: 450, width: 345, height: 50)])
+        let end = typing.contentHeight + typing.keyboardInset - 852
+        XCTAssertEqual(typing.content.maxY - end + 24, typing.actions[0].minY, "scrolled to its end, 24 over Continue")
+    }
+
     /// A phone on its side: the column stays inside the safe area.
     func testTheColumnKeepsInsideTheSafeArea() {
         let layout = CloudStageLayout(size: CGSize(width: 852, height: 393), safeArea: LayoutInsets(top: 32, left: 59, bottom: 21, right: 59),
