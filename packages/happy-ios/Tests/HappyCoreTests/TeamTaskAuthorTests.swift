@@ -6,7 +6,7 @@ import HappyWire
 /// A computer in a team: Alex signed in, with a picture; tasks Alex made,
 /// that Ada (with a picture), Bo (without one) and Cy (whom the computer
 /// doesn't name) made, one nobody owns, one archived and one not joined.
-private actor TeamFixture: AgentTransport {
+actor TeamFixture: AgentTransport {
     static let alexHash = "1QcSHQRnh493V4dIh4eXh1h4kJUI"
     static let adaHash = "HBkSHYSIeHiPiHh8eJd4eTN0EEQG"
     static let fixture = #"""
@@ -33,6 +33,8 @@ private actor TeamFixture: AgentTransport {
     ]
     let bootstrap: String
     var online = true
+    /// `GET /v0/health`'s answer; nil: 404.
+    var health: String?
     var requested: [String] = []
     var continuations: [AsyncThrowingStream<Data, Error>.Continuation] = []
 
@@ -43,6 +45,7 @@ private actor TeamFixture: AgentTransport {
 
     func requestedPaths() -> [String] { requested }
     func configure(online: Bool) { self.online = online }
+    func setHealth(_ health: String?) { self.health = health }
     func setUser(_ id: String, _ value: JSONValue) { users[id] = value }
     func emit(_ event: JSONValue) {
         let json = String(data: try! JSONEncoder().encode(event), encoding: .utf8)!
@@ -53,6 +56,7 @@ private actor TeamFixture: AgentTransport {
         guard online else { throw URLError(.notConnectedToInternet) }
         requested.append(path)
         if path == "/v0/bootstrap/desktop" { return .init(status: 200, body: Data(bootstrap.utf8)) }
+        if path == "/v0/health", let health { return .init(status: 200, body: Data(health.utf8)) }
         if path.hasPrefix("/v0/users?ids=") {
             let ids = path.dropFirst("/v0/users?ids=".count).split(separator: ",").map(String.init)
             let found = ids.compactMap { users[$0] }

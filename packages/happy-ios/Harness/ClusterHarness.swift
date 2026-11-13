@@ -80,6 +80,8 @@ actor ClusterServer: AgentTransport {
     /// Onboarding as the deployed server sends it, without gates, for a
     /// member yet to give their name (`-nameless`).
     let nameless: Bool
+    /// Health says it serves plugins; off (`-noplugins`), as deployed before them.
+    let servesPlugins: Bool
 
     /// Onboarding's gates (`-gates`), in order; nil: the route answers
     /// completed with none.
@@ -110,8 +112,9 @@ actor ClusterServer: AgentTransport {
         var scope: String { ["profile", "avatar", "mobileApp"].contains(id) ? "member" : "server" }
     }
 
-    init(manager: Bool = true, installed: Bool = true, nameless: Bool = false, gates: String? = nil) {
+    init(manager: Bool = true, installed: Bool = true, nameless: Bool = false, gates: String? = nil, servesPlugins: Bool = true) {
         self.manager = manager
+        self.servesPlugins = servesPlugins
         self.nameless = nameless
         if !installed { installations = [] }
         self.gates = gates?.split(separator: ",").map(Gate.init)
@@ -154,7 +157,7 @@ actor ClusterServer: AgentTransport {
         let installation = path.hasPrefix("/v0/plugins/installations/") ? path.dropFirst("/v0/plugins/installations/".count).split(separator: "/").map(String.init) : []
         switch (method, path) {
         case ("GET", "/v0/bootstrap/desktop"): return ok(Self.bootstrap)
-        case ("GET", "/v0/health"): return ok(#"{"ok":true}"#)
+        case ("GET", "/v0/health"): return ok(servesPlugins ? #"{"ready":true,"capabilities":{"vaults":true,"plugins":true}}"# : #"{"ready":true,"capabilities":{"vaults":true}}"#)
         case ("GET", "/v0/onboarding") where nameless:
             return ok(#"{"completed":false,"steps":{"profile":{"done":true},"chiefOfStaff":{"done":false}},"member":{"completed":false,"steps":{"profile":{"done":\#(profileName != nil)}}}}"#)
         case ("GET", "/v0/onboarding"): return ok(onboarding)
@@ -261,7 +264,8 @@ actor ClusterServer: AgentTransport {
 /// plugin (`-open plugin:github`), as a member who can't manage them
 /// (`-member`) or with nothing installed (`-fresh`), in dark (`-dark`);
 /// a member yet to give their name on a server without gates (`-nameless`);
-/// onboarding's gates as `-gates profile:required,avatar,…` (`ClusterServer.Gate`).
+/// onboarding's gates as `-gates profile:required,avatar,…` (`ClusterServer.Gate`);
+/// a server that doesn't serve plugins (`-noplugins`).
 @MainActor
 final class ClusterHarness {
     private var account: AccountController?
@@ -272,7 +276,8 @@ final class ClusterHarness {
 
     private func open(window: HarnessWindow, arguments: [String]) async {
         let server = ClusterServer(manager: !arguments.contains("-member"), installed: !arguments.contains("-fresh"), nameless: arguments.contains("-nameless"),
-                                   gates: arguments.firstIndex(of: "-gates").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil })
+                                   gates: arguments.firstIndex(of: "-gates").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil },
+                                   servesPlugins: !arguments.contains("-noplugins"))
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/cluster",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,

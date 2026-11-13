@@ -124,6 +124,8 @@ extension AgentWire {
             public var sidebarAttachments: Bool?
             /// `PUT /v0/environment` and `deviceId` on sends (API.md, "User environment").
             public var userEnvironment: Bool?
+            /// The plugin routes (`/v0/plugins`); missing is none.
+            public var plugins: Bool?
         }
         public var ready: Bool
         public var capabilities: Capabilities?

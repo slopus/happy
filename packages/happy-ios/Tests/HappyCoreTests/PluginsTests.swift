@@ -44,6 +44,56 @@ final class PluginsTests: XCTestCase {
         XCTAssertFalse(SidebarRows.make(desktop, settings: [:]).contains { $0.targetKind == "plugins" }, "a computer listed plugins")
     }
 
+    /// The row follows the cloud server's `capabilities.plugins`: shown
+    /// once health says so, kept for a relaunch away from the server, and
+    /// gone once the server stops saying so. A server that doesn't say, as
+    /// deployed before plugins, never shows it; nor does a computer.
+    func testThePluginsRowFollowsTheServersCapability() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("plugins-row-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        @Sendable func lists(_ snapshot: HomeSnapshot) -> Bool { snapshot.allRows.contains { $0.targetKind == "plugins" } }
+        let transport = TeamFixture()
+        await transport.setHealth(#"{"ready":true,"capabilities":{"vaults":true,"plugins":true}}"#)
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "t"), directory: directory, cloud: true)
+        await engine.start()
+        _ = try await wait(engine) { $0.live && lists($0) }
+        await engine.stop()
+
+        await transport.configure(online: false)
+        let relaunched = SyncEngine(client: AgentClient(transport: transport, token: "t"), directory: directory, cloud: true)
+        await relaunched.start()
+        let kept = try await wait(relaunched) { $0.loaded }
+        XCTAssertTrue(lists(kept), "the row waited for the server")
+        await relaunched.stop()
+
+        await transport.configure(online: true)
+        await transport.setHealth(#"{"ready":true,"capabilities":{"vaults":true}}"#)
+        let withdrawn = SyncEngine(client: AgentClient(transport: transport, token: "t"), directory: directory, cloud: true)
+        await withdrawn.start()
+        _ = try await wait(withdrawn) { $0.live && !lists($0) }
+        await withdrawn.stop()
+
+        let computer = SyncEngine(client: AgentClient(transport: transport, token: "t"), directory: nil)
+        await transport.setHealth(#"{"ready":true,"capabilities":{"plugins":true}}"#)
+        await computer.start()
+        let live = try await wait(computer) { $0.live }
+        XCTAssertFalse(lists(live), "a computer's plugins aren't these")
+        await computer.stop()
+    }
+
+    private struct Timeout: Error {}
+    private func wait(_ engine: SyncEngine, _ predicate: @escaping @Sendable (HomeSnapshot) -> Bool) async throws -> HomeSnapshot {
+        try await withThrowingTaskGroup(of: HomeSnapshot.self) { group in
+            group.addTask {
+                for await snapshot in await engine.snapshots() where predicate(snapshot) { return snapshot }
+                throw Timeout()
+            }
+            group.addTask { try await Task.sleep(for: .seconds(4)); throw Timeout() }
+            defer { group.cancelAll() }
+            return try await group.next()!
+        }
+    }
+
     func testTheCatalogIsByNameAndKeepsWhatItCanRead() async throws {
         let server = ProvidersServer()
         await server.answer("GET /v0/plugins", 200, Self.catalog)

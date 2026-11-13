@@ -59,6 +59,10 @@ public actor SyncEngine {
     /// The Feed's row as home lists it: nil while there is no feed.
     private var feedRow: SidebarRows.FeedRow?
     private let cloud: Bool
+    /// The server serves plugins (`capabilities.plugins`, cloud only): home
+    /// lists them under Artifacts. Kept with the bootstrap, so the row is
+    /// there, or not, from the first frame.
+    private var plugins = false
     private var feedFollowing: Task<Void, Never>?
     /// Everything a Feed row can name (`FeedDirectory`), as last made, and
     /// what it is made from beside the bootstrap.
@@ -178,7 +182,8 @@ public actor SyncEngine {
     private var gitInterest: Set<String> = []
     private var gitSnapshots: [String: WorkspaceLineChanges] = [:]
 
-    /// `cloud`: a Happy Cloud server, which lists its plugins under Artifacts.
+    /// `cloud`: a Happy Cloud server, which lists its plugins under
+    /// Artifacts once its health says it serves them.
     public init(client: AgentClient, directory: URL?, cloud: Bool = false, streamHold: @escaping StreamHold = { _ in nil }, streamHoldDuration: Duration = .seconds(25),
                 resumeWindow: Duration = .seconds(30), rereadInterval: Duration = .seconds(10)) {
         self.client = client
@@ -435,6 +440,7 @@ public actor SyncEngine {
                 agentIndex = nil
                 cursor = cached.cursor
             }
+            if let kept = try await database.checkpoint("capabilities") { plugins = kept.value["plugins"]?.boolValue == true }
             if users.isEmpty, let kept = try await database.checkpoint("users"),
                let list = try? JSONDecoder().decode([Lossy<TeamUser>].self, from: JSONEncoder().encode(kept.value)) {
                 users = Dictionary(list.compactMap(\.value).map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
@@ -737,8 +743,18 @@ public actor SyncEngine {
         let read = reads
         let database = try database()
         let settingRevision = await database.confirmedSettingsRevision()
+        // What the server serves beside it; a failed read keeps what was known.
+        let client = client
+        let health: Task<AgentWire.Health?, Never>? = cloud ? Task { try? await client.health() } : nil
         let value = try await client.decode(JSONValue.self, "GET", "/v0/bootstrap/desktop")
         let desktop = try JSONDecoder().decode(DesktopSnapshot.self, from: JSONEncoder().encode(value))
+        if let served = await health?.value {
+            let plugins = served.capabilities?.plugins == true
+            if plugins != self.plugins {
+                self.plugins = plugins
+                try? await database.commit(.init(value: .object(["plugins": .bool(plugins)]), cursor: nil), named: "capabilities")
+            }
+        }
         guard current(generation) else { throw CancellationError() }
         // A device token is paired to one owner. A replacement daemon must
         // never receive the previous owner's pending writes or cached state.
@@ -964,7 +980,7 @@ public actor SyncEngine {
     private func derive(publishing: Bool = true) {
         snapshot.loaded = desktop != nil
         if let desktop {
-            snapshot.allRows = overlay.apply(SidebarRows.make(desktop, settings: snapshot.settings, users: users, feed: feedRow, plugins: cloud))
+            snapshot.allRows = overlay.apply(SidebarRows.make(desktop, settings: snapshot.settings, users: users, feed: feedRow, plugins: plugins))
             agentRows = [:]
             for index in snapshot.allRows.indices {
                 snapshot.allRows[index].lineChanges = snapshot.allRows[index].workspaceId.flatMap { gitSnapshots[$0]?.visible }
