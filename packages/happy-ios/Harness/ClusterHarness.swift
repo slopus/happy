@@ -81,10 +81,70 @@ actor ClusterServer: AgentTransport {
     /// member yet to give their name (`-nameless`).
     let nameless: Bool
 
-    init(manager: Bool = true, installed: Bool = true, nameless: Bool = false) {
+    /// Onboarding's gates (`-gates`), in order; nil: the route answers
+    /// completed with none.
+    private var gates: [Gate]?
+    private var profileName: String?
+    private var botName = "Chief of Staff"
+
+    /// One gate: `id[:required|optional][:open|done|unavailable|theirs]`,
+    /// `theirs` being one the person's role can't complete.
+    struct Gate {
+        var id: String
+        var required: Bool
+        var done: Bool?
+        var skipped = false
+        var canComplete: Bool
+
+        init(_ spec: Substring) {
+            let parts = spec.split(separator: ":").map(String.init)
+            id = parts[0]
+            required = parts.contains("required")
+            done = parts.contains("done") ? true : parts.contains("unavailable") ? nil : false
+            canComplete = !parts.contains("theirs")
+        }
+
+        var status: String { done == true ? "done" : skipped && !required ? "skipped" : done == nil ? "unavailable" : "open" }
+        var blocking: Bool { required && (status == "open" || status == "unavailable") }
+        var pending: Bool { blocking || (!required && status == "open" && canComplete) }
+        var scope: String { ["profile", "avatar", "mobileApp"].contains(id) ? "member" : "server" }
+    }
+
+    init(manager: Bool = true, installed: Bool = true, nameless: Bool = false, gates: String? = nil) {
         self.manager = manager
         self.nameless = nameless
         if !installed { installations = [] }
+        self.gates = gates?.split(separator: ",").map(Gate.init)
+        if !nameless, self.gates?.contains(where: { $0.id == "profile" && $0.done == true }) != false { profileName = "Steve" }
+    }
+
+    private func mark(_ id: String) {
+        guard let index = gates?.firstIndex(where: { $0.id == id }) else { return }
+        gates?[index].done = true
+    }
+
+    private var onboarding: String {
+        let gates = gates ?? []
+        func data(_ gate: Gate) -> String {
+            switch gate.id {
+            case "adminBot":
+                return #"{"botId":"cos","agentId":"cos-agent","name":"\#(botName)","version":"v1","avatar":null,"title":"Name your admin bot","description":"This is your server’s admin bot. It can change the server’s settings, connect tools and create other bots, so it can adapt Happy and build a system around how your team works. Only owners can talk to it."}"#
+            case "inference": return #"{"connected":[],"freeModel":true}"#
+            case "plugins": return #"{"required":["github"],"plugins":[{"id":"github","name":"GitHub","required":true,"active":false}]}"#
+            case "teammates": return #"{"invited":false,"members":1}"#
+            case "mobileApp": return #"{"registered":false,"appStoreUrl":"https://apps.apple.com/us/app/happy-claude-code-client/id6748571505","playStoreUrl":"https://play.google.com/store/apps/details?id=com.ex3ndr.happy"}"#
+            default: return "{}"
+            }
+        }
+        let views = gates.map { gate in
+            #"{"id":"\#(gate.id)","scope":"\#(gate.scope)","requirement":"\#(gate.required ? "required" : "optional")","status":"\#(gate.status)","blocking":\#(gate.blocking),"canComplete":\#(gate.canComplete),"data":\#(data(gate))}"#
+        }
+        let blocking = gates.filter(\.blocking).map { "\"\($0.id)\"" }
+        return #"{"completed":\#(!gates.contains(where: \.pending)),"blocking":[\#(blocking.joined(separator: ","))],"gates":[\#(views.joined(separator: ","))]}"#
+    }
+
+    private var profile: String {
+        #"{"profile":{"email":null,"name":\#(profileName.map { "\"\($0)\"" } ?? "null"),"photo":null,"userId":"steve","updatedAt":0,"version":"v1"}}"#
     }
 
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
@@ -96,7 +156,28 @@ actor ClusterServer: AgentTransport {
         case ("GET", "/v0/bootstrap/desktop"): return ok(Self.bootstrap)
         case ("GET", "/v0/health"): return ok(#"{"ok":true}"#)
         case ("GET", "/v0/onboarding") where nameless:
-            return ok(#"{"completed":false,"steps":{"profile":{"done":true},"chiefOfStaff":{"done":false}},"member":{"completed":false,"steps":{"profile":{"done":false}}}}"#)
+            return ok(#"{"completed":false,"steps":{"profile":{"done":true},"chiefOfStaff":{"done":false}},"member":{"completed":false,"steps":{"profile":{"done":\#(profileName != nil)}}}}"#)
+        case ("GET", "/v0/onboarding"): return ok(onboarding)
+        case ("POST", "/v0/onboarding/complete"):
+            if let blocking = gates?.filter(\.blocking).map(\.id), !blocking.isEmpty {
+                return ok(#"{"code":"onboarding_incomplete","error":"Finish onboarding first.","blocking":["\#(blocking.joined(separator: "\",\""))"]}"#, status: 409)
+            }
+            for index in gates?.indices ?? 0..<0 where gates?[index].pending == true { gates?[index].skipped = true }
+            return ok(#"{"completed":true}"#)
+        case ("POST", let path) where path.hasPrefix("/v0/onboarding/gates/") && path.hasSuffix("/skip"):
+            let id = path.dropFirst("/v0/onboarding/gates/".count).dropLast("/skip".count)
+            guard let index = gates?.firstIndex(where: { $0.id == id }) else { return refuse(404, "not_found", "No such gate.") }
+            guard gates?[index].required == false else { return refuse(409, "gate_required", "This step is required.") }
+            gates?[index].skipped = true
+            return ok(onboarding)
+        case ("GET", "/v0/profile"): return ok(profile)
+        case ("PATCH", "/v0/profile"):
+            profileName = sent?["name"]?.stringValue
+            mark("profile")
+            return ok(profile)
+        case ("PUT", "/v0/profile/photo"):
+            mark("avatar")
+            return ok(profile)
         case ("GET", "/v0/permissions"):
             return ok(manager ? #"{"granted":["content.write","bots.manage","mcp.manage","config.manage","providers.manage","providers.own"]}"# : #"{"granted":["content.write","providers.own"]}"#)
         case ("GET", "/v0/cloud/providers"):
@@ -179,7 +260,8 @@ actor ClusterServer: AgentTransport {
 /// (`-screen cluster`), opened on its plugins (`-open plugins`) or one
 /// plugin (`-open plugin:github`), as a member who can't manage them
 /// (`-member`) or with nothing installed (`-fresh`), in dark (`-dark`);
-/// a member yet to give their name on a server without gates (`-nameless`).
+/// a member yet to give their name on a server without gates (`-nameless`);
+/// onboarding's gates as `-gates profile:required,avatar,…` (`ClusterServer.Gate`).
 @MainActor
 final class ClusterHarness {
     private var account: AccountController?
@@ -189,7 +271,8 @@ final class ClusterHarness {
     }
 
     private func open(window: HarnessWindow, arguments: [String]) async {
-        let server = ClusterServer(manager: !arguments.contains("-member"), installed: !arguments.contains("-fresh"), nameless: arguments.contains("-nameless"))
+        let server = ClusterServer(manager: !arguments.contains("-member"), installed: !arguments.contains("-fresh"), nameless: arguments.contains("-nameless"),
+                                   gates: arguments.firstIndex(of: "-gates").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil })
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/cluster",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
@@ -212,6 +295,7 @@ final class ClusterHarness {
             window.layoutIfNeeded()
             let open = arguments.firstIndex(of: "-open").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
             try? await Task.sleep(for: .seconds(1))
+            if let steps = value("-steps", in: arguments) { await walk(steps, home: home) }
             switch open {
             case "plugins":
                 navigation.pushViewController(PluginsViewController(session: session), animated: false)
@@ -234,6 +318,23 @@ final class ClusterHarness {
             }
         } catch {
             print("CLUSTER_HARNESS error: \(error)")
+        }
+    }
+
+    /// Walks the onboarding flow over `home`, a step every two seconds:
+    /// `name:<name>` saves the profile, `skip` and `primary` tap the
+    /// screen's actions.
+    private func walk(_ steps: String, home: UIViewController) async {
+        for step in steps.split(separator: ",") {
+            try? await Task.sleep(for: .seconds(2))
+            let top = (home.presentedViewController as? UINavigationController)?.topViewController
+            if step.hasPrefix("name:"), let profile = top as? CloudProfileViewController {
+                profile.nameField.text.text = String(step.dropFirst("name:".count))
+                profile.edited()
+                await profile.submit()
+            } else if let notice = top as? CloudStageViewController {
+                if step == "skip" { notice.secondary?.tapped() } else if step == "primary" { notice.primary.tapped() }
+            }
         }
     }
 
@@ -262,6 +363,10 @@ final class ClusterHarness {
 }
 
 /// `-fill key=value,key=value` types into a form's fields; `-submit` sends it.
+private func value(_ flag: String, in arguments: [String]) -> String? {
+    arguments.firstIndex(of: flag).flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
+}
+
 @MainActor
 private func fill(_ form: FieldsFormViewController, arguments: [String]) {
     let pairs = arguments.firstIndex(of: "-fill").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }?.split(separator: ",") ?? []

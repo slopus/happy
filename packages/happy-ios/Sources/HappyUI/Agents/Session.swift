@@ -325,6 +325,20 @@ final class Session {
         for watcher in onboardingWatchers.values { watcher(onboarding) }
     }
 
+    /// Reads onboarding now, as a step does once it is seen to; a failed
+    /// read keeps what was read and throws.
+    @discardableResult
+    func readOnboarding() async throws -> Onboarding {
+        let read = try await client.onboarding()
+        took(read)
+        return read
+    }
+
+    /// Onboarding as a route answered it (a skip).
+    func took(_ onboarding: Onboarding) {
+        if onboarding != self.onboarding { adopt(onboarding) }
+    }
+
     private func adopt(_ permissions: Permissions) {
         self.permissions = permissions
         for watcher in accessWatchers.values { watcher() }

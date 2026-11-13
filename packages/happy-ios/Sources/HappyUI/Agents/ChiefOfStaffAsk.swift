@@ -13,11 +13,13 @@ import UIKit
 enum ChiefOfStaffAsk {
     /// The conversation to push, or nil where this account has no Chief of
     /// Staff to be found: the active `chief_of_staff` bot's, else the
-    /// sidebar's Happy row's.
-    static func chat(session: Session, snapshot: Snapshot, ask: ChatPrefill) -> UIViewController? {
+    /// sidebar's or home's Happy row's. Without `ask`, nothing is typed in.
+    static func chat(session: Session, snapshot: Snapshot, ask: ChatPrefill? = nil) -> UIViewController? {
+        let home = session.home.allRows
         let happy = snapshot.rows.first { $0.isHappy && $0.agentId != nil } ?? snapshot.allRows.first { $0.isHappy && $0.agentId != nil }
+            ?? home.first { $0.isHappy && $0.agentId != nil }
         guard let agentId = snapshot.happyAgentId ?? happy?.agentId else { return nil }
-        let row = snapshot.rows.first { $0.agentId == agentId } ?? snapshot.allRows.first { $0.agentId == agentId }
+        let row = snapshot.rows.first { $0.agentId == agentId } ?? snapshot.allRows.first { $0.agentId == agentId } ?? home.first { $0.agentId == agentId }
         session.warm.tap(agentId)
         return ChatViewController(
             session: session,

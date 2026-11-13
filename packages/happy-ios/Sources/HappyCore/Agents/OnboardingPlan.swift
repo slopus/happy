@@ -19,6 +19,8 @@ public struct OnboardingPlan: Equatable, Sendable {
 
     /// Nil once onboarding is complete.
     public var step: Step?
+    /// Read from a server without gates (`Onboarding.legacy`).
+    public var legacy: Bool
     /// How many gates the flow walks through, done ones included.
     public var count: Int
     /// How many of them are still the person's to see to.
@@ -31,6 +33,7 @@ public struct OnboardingPlan: Equatable, Sendable {
         let actionable = shown.filter { $0.isPending && Self.canAct(on: $0) }
         count = shown.count
         remaining = actionable.count
+        legacy = onboarding.legacy
         guard !onboarding.completed else { step = nil; return }
         if let next = actionable.first { step = .gate(next); return }
         let held = onboarding.gates.filter(\.blocking)
@@ -43,6 +46,14 @@ public struct OnboardingPlan: Equatable, Sendable {
     /// on screen, never skipped: finishing skips it.
     static func canAct(on gate: OnboardingGate) -> Bool {
         gate.kind != .unknown && gate.canComplete && gate.status != .unavailable
+    }
+
+    /// The screen for a flow already `showing` or about to show: one on
+    /// screen whose last step was just done or skipped (the server says
+    /// complete) still ends on the finish, which completes onboarding; on a
+    /// server without gates it simply goes.
+    public func step(showing: Bool) -> Step? {
+        step ?? (showing && !legacy ? .finish : nil)
     }
 
     /// How far along the flow is, from 0 to 1.

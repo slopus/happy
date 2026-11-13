@@ -151,6 +151,21 @@ final class OnboardingTests: XCTestCase {
         XCTAssertNil(OnboardingPlan(Onboarding(completed: true, gates: [profile])).step, "the server's completed decides")
     }
 
+    /// The last step done or skipped, the server says complete: a flow on
+    /// screen still ends on the finish, which completes onboarding; one
+    /// not showing stays away, and so does a server without gates.
+    func testAFlowOnScreenEndsOnItsFinish() throws {
+        let done = OnboardingPlan(Onboarding(completed: true, gates: [Self.gate("avatar", .optional, .skipped)]))
+        XCTAssertEqual(done.step(showing: true), .finish)
+        XCTAssertNil(done.step(showing: false))
+        var legacy = Onboarding(completed: true)
+        legacy.legacy = true
+        XCTAssertNil(OnboardingPlan(legacy).step(showing: true))
+        let open = OnboardingPlan(Onboarding(completed: false, gates: [Self.gate("avatar")]))
+        XCTAssertEqual(open.step(showing: true).flatMap(Self.id), "avatar")
+        XCTAssertEqual(open.step(showing: false).flatMap(Self.id), "avatar")
+    }
+
     /// A payment gate the person can complete is theirs to see to (on
     /// desktop or the web); optional, it can be skipped like any other.
     func testAPaymentGateThePersonCanCompleteIsTheirs() {

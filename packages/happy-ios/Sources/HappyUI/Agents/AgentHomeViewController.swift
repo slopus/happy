@@ -93,15 +93,13 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
     private var switcher: AccountSwitcher?
     private var headerWatch: Watch?
     private var accessWatch: Watch?
-    private var onboardingWatch: Watch?
+    /// A cloud server's onboarding, over home while it isn't complete.
+    private var onboardingFlow: OnboardingFlow?
     private var accountsWatch: AccountsObservation?
     /// The server's session ended: only the way to sign in again shows
     /// (`ServerSignedOutView`).
     private var signedOutView: ServerSignedOutView?
     var showsSignedOut: Bool { signedOutView != nil }
-    /// "What's your name?" was offered on this screen: once a launch, so
-    /// "Not Now" holds until the next.
-    private var askedName = false
     /// The person's role may start work here (`RoleGate`): else no compose,
     /// microphone or call. A computer always may.
     private var mayWrite: Bool { Session.session(for: id, context: context)?.gate.allows(.contentWrite) ?? true }
@@ -165,7 +163,9 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
             guard let self, shownMayWrite != mayWrite else { return }
             applyChrome()
         }
-        onboardingWatch = Session.session(for: id, context: context)?.watchOnboarding { [weak self] _ in self?.askNameIfNeeded() }
+        if let session = Session.session(for: id, context: context), session.isCloud {
+            onboardingFlow = OnboardingFlow(session: session, context: context, id: id, home: self)
+        }
         updateTitle()
         applyChrome()
         accountsWatch = context.account.observeAccounts { [weak self] _ in self?.followSignIn() }
@@ -179,7 +179,7 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         guard out != showsSignedOut else { return }
         guard out else { return restart() }
         Session.forget(id)
-        headerWatch = nil; accessWatch = nil; onboardingWatch = nil
+        headerWatch = nil; accessWatch = nil; onboardingFlow = nil
         search.end()
         sidebarSearch.end()
         presentedViewController?.dismiss(animated: false)
@@ -211,49 +211,6 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         var stack = navigation.viewControllers
         stack[index] = AgentHomeViewController(context: context, id: id)
         navigation.setViewControllers(stack, animated: false)
-    }
-
-    /// A Happy Cloud member whose `profile` onboarding gate is pending gets
-    /// Create your profile over home, the name Apple gave this sign-in offered, else the server's suggestion; saved
-    /// as the profile's name (`PATCH /v0/profile`, with the suggested
-    /// email), then any picture. Not Now leaves it unsaved, and this home
-    /// doesn't ask again.
-    private func askNameIfNeeded() {
-        guard !askedName, let session = Session.session(for: id, context: context), session.isCloud,
-              let onboarding = session.onboarding, view.window != nil, presentedViewController == nil else { return }
-        guard onboarding.gate("profile")?.isPending == true else { return }
-        askedName = true
-        let client = session.client
-        Task { [weak self] in
-            // Apple's name from this sign-in, else the server's suggestion.
-            let suggested = (try? await client.profile())?.name
-            guard let self else { return }
-            guard view.window != nil, presentedViewController == nil else { askedName = false; return }
-            let screen = CloudProfileViewController(
-                context: context, handle: HappyCloud.handle(server: session.server) ?? session.computerName,
-                prefill: CloudScreens.appleName ?? suggested, seed: context.account.agentConnections.placeholderSeed(for: id) ?? id
-            ) { name, photo in
-                let profile = try await client.profile()
-                _ = try await client.renameProfile(name, email: profile.email, version: profile.version)
-                CloudScreens.appleName = nil
-                guard let photo else { return true }
-                return (try? await client.setProfilePhoto(photo, contentType: "image/jpeg")) != nil
-            }
-            screen.navigationItem.leftBarButtonItem = UIBarButtonItem(title: Strings.ServerSignIn.nameLater, primaryAction: UIAction { [weak screen] _ in
-                screen?.dismiss(animated: true)
-            })
-            let navigation = UINavigationController(rootViewController: screen)
-            navigation.modalPresentationStyle = .fullScreen
-            AppCoordinator.applyAppearance(to: navigation.navigationBar)
-            screen.finished = { [weak self, weak navigation] photoSaved in
-                guard let photoSaved else { return }
-                navigation?.dismiss(animated: true) {
-                    guard let self, !photoSaved else { return }
-                    Alerts.show(Strings.CloudConnect.photoFailed, on: self)
-                }
-            }
-            present(navigation, animated: true)
-        }
     }
 
     private func searched(_ query: String) {
@@ -413,7 +370,7 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         standing = true
         // A picture Create your profile couldn't upload, said once landed.
         if presentedViewController == nil, let note = CloudScreens.takePhotoNote() { Alerts.show(note, on: self) }
-        askNameIfNeeded()
+        onboardingFlow?.homeAppeared()
         // The bar and the toolbar are where home rests: the list's room is
         // read from them again (`HomeListRoom`).
         view.setNeedsLayout()
