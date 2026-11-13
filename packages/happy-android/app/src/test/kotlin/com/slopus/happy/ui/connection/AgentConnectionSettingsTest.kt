@@ -455,4 +455,23 @@ class AgentConnectionSettingsTest {
         }
         rule.onNode(hasTestTag(PolicyDocumentTags.row(com.slopus.happy.agent.PolicyDocument.Instructions)), useUnmergedTree = true).assertDoesNotExist()
     }
+
+    /** The settings' own search finds the policy rows by their titles, and a found one opens its document. */
+    @Test
+    fun searchFindsTheSecurityPolicy() {
+        var opened: com.slopus.happy.agent.PolicyDocument? = null
+        rule.setHappyContent {
+            AgentConnectionSettingsScreen(
+                profile = SettingsProfile("agent-connection-1", "Studio", "Connected"),
+                accounts = accounts,
+                actions = AgentSettingsActions(onAgents = {}, onProviders = {}, onPolicy = { opened = it }),
+                about = AboutInfo("1.8.0 (412)"),
+            )
+        }
+        rule.node(com.slopus.happy.ui.settings.SettingsSearchTags.OPEN).performClick()
+        rule.node(AgentSearchTags.FIELD).performTextInput("Security")
+        rule.waitForIdle()
+        rule.onNodeWithText("Security policy").performClick()
+        assertEquals(com.slopus.happy.agent.PolicyDocument.Security, opened)
+    }
 }

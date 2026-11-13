@@ -215,4 +215,10 @@ class CloudProvidersScreenTest {
         rule.onNodeWithText("Try again").performClick()
         assertEquals(1, retries)
     }
+
+    @Test
+    fun aTeamsOwnEndpointIsNamedByItsProtocolNotItsId() {
+        org.junit.Assert.assertEquals("OpenAI-compatible", vendorName("openai_compatible"))
+        org.junit.Assert.assertEquals("Grok", vendorName(com.slopus.happy.agent.CloudProviders.GROK))
+    }
 }

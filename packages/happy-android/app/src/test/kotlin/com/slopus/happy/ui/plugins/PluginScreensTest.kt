@@ -167,6 +167,8 @@ class PluginScreensTest {
             )
         }
         rule.onNodeWithText("SIGNED IN").assertIsDisplayed()
+        // The row under the bar says what it is, not the bar's title again: the version and the account.
+        rule.onNodeWithText("Version 1.2.0 · octocat", useUnmergedTree = true).assertIsDisplayed()
         rule.node(PluginActionTags.connection("s1")).performClick()
         rule.onNodeWithText("Disconnect octocat?").assertIsDisplayed()
         rule.onAllNodesWithText("Disconnect").fetchSemanticsNodes().size.let { assertEquals("the row and the alert's button", 2, it) }

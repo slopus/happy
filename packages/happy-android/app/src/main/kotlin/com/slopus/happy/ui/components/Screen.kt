@@ -163,7 +163,8 @@ fun HappyTextField(
         visualTransformation = visualTransformation,
         decorationBox = { inner ->
             Box(modifier = Modifier.padding(contentPadding)) {
-                if (value.isEmpty()) Text(text = placeholder, style = style.copy(color = colors.input.placeholder))
+                // A one-line field's placeholder stays on its line at any text size, cut short rather than wrapped.
+                if (value.isEmpty()) Text(text = placeholder, style = style.copy(color = colors.input.placeholder), maxLines = if (singleLine) 1 else Int.MAX_VALUE, overflow = TextOverflow.Ellipsis)
                 inner()
             }
         },
@@ -206,7 +207,7 @@ fun HappyTextField(
         visualTransformation = visualTransformation,
         decorationBox = { inner ->
             Box(modifier = Modifier.padding(contentPadding)) {
-                if (value.text.isEmpty()) Text(text = placeholder, style = style.copy(color = colors.input.placeholder))
+                if (value.text.isEmpty()) Text(text = placeholder, style = style.copy(color = colors.input.placeholder), maxLines = if (singleLine) 1 else Int.MAX_VALUE, overflow = TextOverflow.Ellipsis)
                 inner()
             }
         },

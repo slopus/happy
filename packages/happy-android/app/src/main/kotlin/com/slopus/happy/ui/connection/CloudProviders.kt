@@ -299,6 +299,8 @@ internal fun vendorName(vendor: String): String = when (vendor) {
     CloudProviders.CLAUDE_CODE -> "Claude"
     CloudProviders.GROK -> "Grok"
     "bedrock" -> "Bedrock"
+    // A team's own endpoint (Add your own endpoint), by the protocol it speaks.
+    "openai_compatible" -> "OpenAI-compatible"
     else -> vendor
 }
 

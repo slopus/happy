@@ -38,6 +38,7 @@ import com.slopus.happy.ui.theme.HappyTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.put
 
 /**
  * Debug builds only: the real plugin pages over an in-memory Happy Cloud
@@ -46,6 +47,8 @@ import kotlinx.serialization.Serializable
  * anything else), disconnect and remove all work against it. Start it with
  * `adb shell am start -n com.slopus.happy.dev/com.slopus.happy.ui.plugins.PluginsFixturesActivity`
  * (`--ez plugins.member true` for a member who may not manage plugins).
+ * GitHub and Weather carry pictures by digest, as a server's catalog does,
+ * drawn here where a server would send them.
  */
 class PluginsFixturesActivity : ComponentActivity() {
     @Serializable private data object FixtureHomeRoute
@@ -59,6 +62,7 @@ class PluginsFixturesActivity : ComponentActivity() {
                 val nav = rememberNavController()
                 val scope = rememberCoroutineScope()
                 val source = remember { PluginsSource(FakePlugins(canManage = !member), MutableSharedFlow<AgentEvent>(), scope) }
+                val pictures = remember { com.slopus.happy.agent.AgentPictures("fixture") { path -> picture(path) } }
                 RetainedNavHost(nav, FixtureHomeRoute, rememberNavMotion(), modifier = Modifier.backdrop(nav)) {
                     page<FixtureHomeRoute> {
                         Screen(header = { StackHeader("Acme", onBack = ::finish) }) {
@@ -76,17 +80,40 @@ class PluginsFixturesActivity : ComponentActivity() {
                             )
                         }
                     }
-                    pluginRoutes(nav) { PagePlugins(source, null) }
+                    pluginRoutes(nav) { PagePlugins(source, pictures) }
                 }
             }
         }
     }
+
+    /** A plugin's picture as its digest's route would send it: a gradient tile with the plugin's mark. */
+    private suspend fun picture(path: String): ByteArray {
+        delay(300)
+        val (from, to, mark) = when (path.substringAfterLast('/')) {
+            GITHUB_DIGEST -> Triple(0xFF24292F.toInt(), 0xFF57606A.toInt(), "\uD83D\uDC19")
+            WEATHER_DIGEST -> Triple(0xFF2F80ED.toInt(), 0xFF56CCF2.toInt(), "\u2600\uFE0F")
+            else -> throw PluginsException(PluginRefusal.NotFound)
+        }
+        val side = 256
+        val bitmap = android.graphics.Bitmap.createBitmap(side, side, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+        canvas.drawPaint(android.graphics.Paint().apply {
+            shader = android.graphics.LinearGradient(0f, 0f, side.toFloat(), side.toFloat(), from, to, android.graphics.Shader.TileMode.CLAMP)
+        })
+        val text = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { textSize = 150f; textAlign = android.graphics.Paint.Align.CENTER }
+        canvas.drawText(mark, side / 2f, side / 2f + 52f, text)
+        return java.io.ByteArrayOutputStream().also { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+    }
 }
+
+private const val GITHUB_DIGEST = "sha256-7f3a9c2e41b8d05f6e1c3a8b9d2e4f70"
+private const val WEATHER_DIGEST = "sha256-1c9e4b7a2d3f5e6081a9b4c7d2e3f5a6"
 
 /** A Happy Cloud server's plugins in memory, answering after a short wait as a real one would. */
 private class FakePlugins(private val canManage: Boolean) : PluginsBackend {
     private val github = Plugin(
-        key = "github", id = "github", name = "GitHub", description = "Repositories, issues and pull requests for your agents.", version = "2.1.0", image = null,
+        key = "github", id = "github", name = "GitHub", description = "Repositories, issues and pull requests for your agents.", version = "2.1.0",
+        image = com.slopus.happy.plugins.ClusterPlugins.image(kotlinx.serialization.json.buildJsonObject { put("digest", GITHUB_DIGEST) }),
         tools = listOf(PluginTool("list_repos", "Lists the repositories the installation can reach."), PluginTool("open_pull_request", "Opens a pull request from a branch.")),
         authRequired = true,
         authMethods = listOf(
@@ -100,7 +127,9 @@ private class FakePlugins(private val canManage: Boolean) : PluginsBackend {
         authMethods = listOf(PluginAuthMethod.Fields("key", "API key", listOf(PluginField("api_key", "API key", "Linear › Settings › API.", required = true, secret = true, multiline = false)))),
         installability = Installability.Installable, multiInstance = false,
     )
-    private val weather = Plugin("weather", "weather", "Weather", "Forecasts for any city, no sign-in needed.", "0.4.0", null, emptyList(), authRequired = false, authMethods = emptyList(), installability = Installability.Installable, multiInstance = false)
+    private val weather = Plugin(
+        "weather", "weather", "Weather", "Forecasts for any city, no sign-in needed.", "0.4.0",
+        com.slopus.happy.plugins.ClusterPlugins.image(kotlinx.serialization.json.buildJsonObject { put("digest", WEATHER_DIGEST) }), emptyList(), authRequired = false, authMethods = emptyList(), installability = Installability.Installable, multiInstance = false)
     private val catalog = listOf(github, linear, weather)
     private val installations = mutableListOf(
         PluginInstallation("i1", "github", "GitHub", 1, null, InstallationStatus.Active, "token", null, true),

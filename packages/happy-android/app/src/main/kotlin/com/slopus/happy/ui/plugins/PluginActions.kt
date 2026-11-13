@@ -51,6 +51,7 @@ import kotlinx.coroutines.CancellationException
 
 object PluginActionTags {
     const val INSTALL = "plugins.install"
+    const val HEADER = "plugins.installationHeader"
     const val REMOVE = "plugins.remove"
     const val DISCONNECT = "plugins.disconnect"
     const val SAVE = "plugins.save"
@@ -178,12 +179,18 @@ fun PluginInstallationScreen(
                 return@ItemList
             }
             ItemGroup(footer = (installation.status as? InstallationStatus.Failed)?.error ?: if (!installation.available) stringResource(R.string.plugins_no_longer_offered) else null) {
+                // The bar names the installation; this row says what it is: the plugin, its version and the account it signed in as.
                 Item(
-                    title = installationTitle(installation),
-                    subtitle = statusWords(installation),
-                    subtitleColor = statusColor(installation),
+                    title = plugin?.name ?: installation.name,
+                    subtitle = listOfNotNull(
+                        plugin?.version?.takeIf { it.isNotBlank() }?.let { stringResource(R.string.plugins_version, it) },
+                        connections.singleOrNull()?.name?.takeIf { it.isNotBlank() },
+                    ).joinToString(" · ").ifEmpty { null },
+                    detail = statusWords(installation),
+                    detailColor = statusColor(installation),
                     icon = { PluginMark(installation.image ?: plugin?.image, PluginsSpec.rowMark) },
                     showChevron = false,
+                    modifier = Modifier.testTag(PluginActionTags.HEADER),
                 )
             }
             val manage = snapshot.canManage && installation.available
