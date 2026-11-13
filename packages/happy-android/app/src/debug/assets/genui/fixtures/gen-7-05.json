@@ -1,0 +1,1553 @@
+{
+  "genuiRender": 1,
+  "compiler": "1.0.0",
+  "fallback": "Weekend in Lisbon: list, text, row, table, choices.",
+  "root": "card",
+  "elements": {
+    "card": {
+      "type": "box",
+      "props": {
+        "role": "card",
+        "gap": "blocks"
+      },
+      "children": [
+        "card.header",
+        "list",
+        "text",
+        "row",
+        "table",
+        "choices"
+      ]
+    },
+    "card.header": {
+      "type": "box",
+      "props": {
+        "role": "header",
+        "direction": "row",
+        "gap": "inline",
+        "align": "start",
+        "justify": "between"
+      },
+      "children": [
+        "card.icon",
+        "card.heading"
+      ]
+    },
+    "card.icon": {
+      "type": "icon",
+      "props": {
+        "name": "map-pin",
+        "role": "leading"
+      }
+    },
+    "card.heading": {
+      "type": "box",
+      "props": {
+        "gap": "tight",
+        "grow": true
+      },
+      "children": [
+        "card.title",
+        "card.subtitle"
+      ]
+    },
+    "card.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Weekend in Lisbon"
+          }
+        ],
+        "role": "title"
+      }
+    },
+    "card.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Oct 17 – 19 · 2 travelers"
+          }
+        ],
+        "role": "subtitle"
+      }
+    },
+    "list": {
+      "type": "box",
+      "props": {
+        "gap": "items",
+        "divide": "inset",
+        "leading": "number"
+      },
+      "children": [
+        "list.0.row",
+        "list.1.row",
+        "list.2.switch",
+        "list.3",
+        "list.4"
+      ]
+    },
+    "list.0.row": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "number"
+      },
+      "children": [
+        "list.0.row.number",
+        "list.0.row.texts"
+      ]
+    },
+    "list.0.row.number": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "1."
+          }
+        ],
+        "role": "ordinal"
+      }
+    },
+    "list.0.row.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "list.0.row.title",
+        "list.0.row.subtitle"
+      ]
+    },
+    "list.0.row.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Dinner at Taberna da Rua"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "list.0.row.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Bairro Alto · booked for 20:00"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "list.1.row": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "number"
+      },
+      "children": [
+        "list.1.row.number",
+        "list.1.row.texts"
+      ]
+    },
+    "list.1.row.number": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "2."
+          }
+        ],
+        "role": "ordinal"
+      }
+    },
+    "list.1.row.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "list.1.row.title",
+        "list.1.row.subtitle"
+      ]
+    },
+    "list.1.row.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Tram 28 to Estrela"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "list.1.row.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "40 min · buy tickets on board"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "list.2.switch": {
+      "type": "switch",
+      "props": {},
+      "slots": {
+        "compact": [
+          "list.2.compact"
+        ],
+        "regular": [
+          "list.2.regular"
+        ]
+      }
+    },
+    "list.2.compact": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "number"
+      },
+      "children": [
+        "list.2.compact.number",
+        "list.2.compact.texts"
+      ]
+    },
+    "list.2.compact.number": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "3."
+          }
+        ],
+        "role": "ordinal"
+      }
+    },
+    "list.2.compact.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "list.2.compact.line",
+        "list.2.compact.subline"
+      ]
+    },
+    "list.2.compact.line": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "justify": "between"
+      },
+      "children": [
+        "list.2.compact.title"
+      ]
+    },
+    "list.2.compact.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Sunset at Miradouro da Graça"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "list.2.compact.subline": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "justify": "between"
+      },
+      "children": [
+        "list.2.compact.subtitle",
+        "list.2.compact.badge"
+      ]
+    },
+    "list.2.compact.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Free · best around 18:40"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "list.2.compact.badge": {
+      "type": "pill",
+      "props": {
+        "text": "Done"
+      }
+    },
+    "list.2.regular": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "number"
+      },
+      "children": [
+        "list.2.regular.number",
+        "list.2.regular.texts",
+        "list.2.regular.badge"
+      ]
+    },
+    "list.2.regular.number": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "3."
+          }
+        ],
+        "role": "ordinal"
+      }
+    },
+    "list.2.regular.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "list.2.regular.title",
+        "list.2.regular.subtitle"
+      ]
+    },
+    "list.2.regular.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Sunset at Miradouro da Graça"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "list.2.regular.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Free · best around 18:40"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "list.2.regular.badge": {
+      "type": "pill",
+      "props": {
+        "text": "Done"
+      }
+    },
+    "list.3": {
+      "type": "press",
+      "props": {
+        "action": {
+          "type": "message",
+          "text": "Tell me more about: Day trip to Sintra"
+        },
+        "role": "item"
+      },
+      "children": [
+        "list.3.switch"
+      ]
+    },
+    "list.3.switch": {
+      "type": "switch",
+      "props": {},
+      "slots": {
+        "compact": [
+          "list.3.compact"
+        ],
+        "regular": [
+          "list.3.regular"
+        ]
+      }
+    },
+    "list.3.compact": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "number"
+      },
+      "children": [
+        "list.3.compact.number",
+        "list.3.compact.texts",
+        "list.3.compact.chevron"
+      ]
+    },
+    "list.3.compact.number": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "4."
+          }
+        ],
+        "role": "ordinal"
+      }
+    },
+    "list.3.compact.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "list.3.compact.line",
+        "list.3.compact.subline"
+      ]
+    },
+    "list.3.compact.line": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "justify": "between"
+      },
+      "children": [
+        "list.3.compact.title",
+        "list.3.compact.trailing"
+      ]
+    },
+    "list.3.compact.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Day trip to Sintra"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "list.3.compact.trailing": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "2h"
+          }
+        ],
+        "role": "trailing",
+        "fixed": true
+      }
+    },
+    "list.3.compact.subline": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "justify": "between"
+      },
+      "children": [
+        "list.3.compact.subtitle",
+        "list.3.compact.badge"
+      ]
+    },
+    "list.3.compact.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Train from Rossio · 45 min"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "list.3.compact.badge": {
+      "type": "pill",
+      "props": {
+        "text": "On track",
+        "tone": "warning"
+      }
+    },
+    "list.3.compact.chevron": {
+      "type": "icon",
+      "props": {
+        "name": "chevron-right",
+        "tone": "muted",
+        "role": "inline"
+      }
+    },
+    "list.3.regular": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "number"
+      },
+      "children": [
+        "list.3.regular.number",
+        "list.3.regular.texts",
+        "list.3.regular.badge",
+        "list.3.regular.trailing",
+        "list.3.regular.chevron"
+      ]
+    },
+    "list.3.regular.number": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "4."
+          }
+        ],
+        "role": "ordinal"
+      }
+    },
+    "list.3.regular.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "list.3.regular.title",
+        "list.3.regular.subtitle"
+      ]
+    },
+    "list.3.regular.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Day trip to Sintra"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "list.3.regular.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Train from Rossio · 45 min"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "list.3.regular.badge": {
+      "type": "pill",
+      "props": {
+        "text": "On track",
+        "tone": "warning"
+      }
+    },
+    "list.3.regular.trailing": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "2h"
+          }
+        ],
+        "role": "trailing",
+        "fixed": true
+      }
+    },
+    "list.3.regular.chevron": {
+      "type": "icon",
+      "props": {
+        "name": "chevron-right",
+        "tone": "muted",
+        "role": "inline"
+      }
+    },
+    "list.4": {
+      "type": "press",
+      "props": {
+        "action": {
+          "type": "message",
+          "text": "Tell me more about: Alfama walking tour"
+        },
+        "role": "item"
+      },
+      "children": [
+        "list.4.row"
+      ]
+    },
+    "list.4.row": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "number"
+      },
+      "children": [
+        "list.4.row.number",
+        "list.4.row.texts",
+        "list.4.row.chevron"
+      ]
+    },
+    "list.4.row.number": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "5."
+          }
+        ],
+        "role": "ordinal"
+      }
+    },
+    "list.4.row.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "list.4.row.title",
+        "list.4.row.subtitle"
+      ]
+    },
+    "list.4.row.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Alfama walking tour"
+          }
+        ],
+        "role": "item",
+        "overflow": "clamp"
+      }
+    },
+    "list.4.row.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "2 h · starts at Sé Cathedral"
+          }
+        ],
+        "role": "detail",
+        "overflow": "truncate"
+      }
+    },
+    "list.4.row.chevron": {
+      "type": "icon",
+      "props": {
+        "name": "chevron-right",
+        "tone": "muted",
+        "role": "inline"
+      }
+    },
+    "text": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Here is where things stand "
+          },
+          {
+            "text": "right now",
+            "strong": true
+          },
+          {
+            "text": "."
+          }
+        ],
+        "role": "body"
+      }
+    },
+    "row": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "blocks",
+        "align": "start",
+        "equal": true,
+        "wrap": false
+      },
+      "children": [
+        "stat",
+        "stat-2"
+      ]
+    },
+    "stat": {
+      "type": "box",
+      "props": {
+        "gap": "related"
+      },
+      "children": [
+        "stat.label",
+        "stat.line"
+      ]
+    },
+    "stat.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Rain chance"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "stat.line": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "wrap": true
+      },
+      "children": [
+        "stat.value",
+        "stat.change"
+      ]
+    },
+    "stat.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "27%"
+          }
+        ],
+        "role": "value",
+        "fixed": true
+      }
+    },
+    "stat.change": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "wrap": false
+      },
+      "children": [
+        "stat.trend",
+        "stat.delta"
+      ]
+    },
+    "stat.trend": {
+      "type": "icon",
+      "props": {
+        "name": "arrow-up",
+        "tone": "success",
+        "role": "inline"
+      }
+    },
+    "stat.delta": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "+3%"
+          }
+        ],
+        "role": "delta",
+        "tone": "success",
+        "fixed": true
+      }
+    },
+    "stat-2": {
+      "type": "box",
+      "props": {
+        "gap": "related"
+      },
+      "children": [
+        "stat-2.label",
+        "stat-2.line",
+        "stat-2.spark"
+      ]
+    },
+    "stat-2.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Walking"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "stat-2.line": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "wrap": true
+      },
+      "children": [
+        "stat-2.value",
+        "stat-2.change"
+      ]
+    },
+    "stat-2.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "23 km"
+          }
+        ],
+        "role": "value",
+        "fixed": true
+      }
+    },
+    "stat-2.change": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "wrap": false
+      },
+      "children": [
+        "stat-2.trend",
+        "stat-2.delta"
+      ]
+    },
+    "stat-2.trend": {
+      "type": "icon",
+      "props": {
+        "name": "arrow-right",
+        "tone": "accent",
+        "role": "inline"
+      }
+    },
+    "stat-2.delta": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "0%"
+          }
+        ],
+        "role": "delta",
+        "tone": "accent",
+        "fixed": true
+      }
+    },
+    "stat-2.spark": {
+      "type": "spark",
+      "props": {
+        "values": [
+          63,
+          76,
+          83,
+          98,
+          100,
+          92,
+          96,
+          100,
+          100
+        ],
+        "tone": "accent"
+      }
+    },
+    "table": {
+      "type": "switch",
+      "props": {},
+      "slots": {
+        "compact": [
+          "table.compact"
+        ],
+        "regular": [
+          "table.regular"
+        ]
+      }
+    },
+    "table.compact": {
+      "type": "box",
+      "props": {
+        "gap": "items",
+        "divide": "full"
+      },
+      "children": [
+        "table.compact.0",
+        "table.compact.1",
+        "table.compact.2"
+      ]
+    },
+    "table.compact.0": {
+      "type": "box",
+      "props": {
+        "role": "record",
+        "gap": "related"
+      },
+      "children": [
+        "table.compact.0.line",
+        "table.compact.0.fields"
+      ]
+    },
+    "table.compact.0.line": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "justify": "between"
+      },
+      "children": [
+        "table.compact.0.title",
+        "table.compact.0.badge"
+      ]
+    },
+    "table.compact.0.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Fri"
+          }
+        ],
+        "role": "rowhead"
+      }
+    },
+    "table.compact.0.badge": {
+      "type": "pill",
+      "props": {
+        "text": "Watch",
+        "tone": "success"
+      }
+    },
+    "table.compact.0.fields": {
+      "type": "grid",
+      "props": {
+        "columns": [
+          {
+            "width": "auto"
+          },
+          {
+            "width": "fill",
+            "align": "end"
+          }
+        ],
+        "density": "pairs"
+      },
+      "children": [
+        "table.compact.0.1.label",
+        "table.compact.0.1.value",
+        "table.compact.0.2.label",
+        "table.compact.0.2.value"
+      ]
+    },
+    "table.compact.0.1.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Budget"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "table.compact.0.1.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "$1,805"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.compact.0.2.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Walking"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "table.compact.0.2.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "25 km"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.compact.1": {
+      "type": "box",
+      "props": {
+        "role": "record",
+        "gap": "related"
+      },
+      "children": [
+        "table.compact.1.line",
+        "table.compact.1.fields"
+      ]
+    },
+    "table.compact.1.line": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "justify": "between"
+      },
+      "children": [
+        "table.compact.1.title",
+        "table.compact.1.badge"
+      ]
+    },
+    "table.compact.1.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Sat"
+          }
+        ],
+        "role": "rowhead"
+      }
+    },
+    "table.compact.1.badge": {
+      "type": "pill",
+      "props": {
+        "text": "Under",
+        "tone": "accent"
+      }
+    },
+    "table.compact.1.fields": {
+      "type": "grid",
+      "props": {
+        "columns": [
+          {
+            "width": "auto"
+          },
+          {
+            "width": "fill",
+            "align": "end"
+          }
+        ],
+        "density": "pairs"
+      },
+      "children": [
+        "table.compact.1.1.label",
+        "table.compact.1.1.value",
+        "table.compact.1.2.label",
+        "table.compact.1.2.value"
+      ]
+    },
+    "table.compact.1.1.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Budget"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "table.compact.1.1.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "$857"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.compact.1.2.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Walking"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "table.compact.1.2.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "27 km"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.compact.2": {
+      "type": "box",
+      "props": {
+        "role": "record",
+        "gap": "related"
+      },
+      "children": [
+        "table.compact.2.line",
+        "table.compact.2.fields"
+      ]
+    },
+    "table.compact.2.line": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "justify": "between"
+      },
+      "children": [
+        "table.compact.2.title",
+        "table.compact.2.badge"
+      ]
+    },
+    "table.compact.2.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Sun"
+          }
+        ],
+        "role": "rowhead"
+      }
+    },
+    "table.compact.2.badge": {
+      "type": "pill",
+      "props": {
+        "text": "Under",
+        "tone": "accent"
+      }
+    },
+    "table.compact.2.fields": {
+      "type": "grid",
+      "props": {
+        "columns": [
+          {
+            "width": "auto"
+          },
+          {
+            "width": "fill",
+            "align": "end"
+          }
+        ],
+        "density": "pairs"
+      },
+      "children": [
+        "table.compact.2.1.label",
+        "table.compact.2.1.value",
+        "table.compact.2.2.label",
+        "table.compact.2.2.value"
+      ]
+    },
+    "table.compact.2.1.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Budget"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "table.compact.2.1.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "$1,944"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.compact.2.2.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Walking"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "table.compact.2.2.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "10 km"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.regular": {
+      "type": "grid",
+      "props": {
+        "columns": [
+          {
+            "width": "fill"
+          },
+          {
+            "width": "auto",
+            "align": "end"
+          },
+          {
+            "width": "auto",
+            "align": "end"
+          },
+          {
+            "width": "auto"
+          }
+        ],
+        "density": "table",
+        "divide": true,
+        "header": true
+      },
+      "children": [
+        "table.regular.head.0",
+        "table.regular.head.1",
+        "table.regular.head.2",
+        "table.regular.head.3",
+        "table.regular.0.0",
+        "table.regular.0.1",
+        "table.regular.0.2",
+        "table.regular.0.3",
+        "table.regular.1.0",
+        "table.regular.1.1",
+        "table.regular.1.2",
+        "table.regular.1.3",
+        "table.regular.2.0",
+        "table.regular.2.1",
+        "table.regular.2.2",
+        "table.regular.2.3"
+      ]
+    },
+    "table.regular.head.0": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Name"
+          }
+        ],
+        "role": "column"
+      }
+    },
+    "table.regular.head.1": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Budget"
+          }
+        ],
+        "role": "column"
+      }
+    },
+    "table.regular.head.2": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Walking"
+          }
+        ],
+        "role": "column"
+      }
+    },
+    "table.regular.head.3": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Status"
+          }
+        ],
+        "role": "column"
+      }
+    },
+    "table.regular.0.0": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Fri"
+          }
+        ],
+        "role": "rowhead"
+      }
+    },
+    "table.regular.0.1": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "$1,805"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.regular.0.2": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "25 km"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.regular.0.3": {
+      "type": "pill",
+      "props": {
+        "text": "Watch",
+        "tone": "success"
+      }
+    },
+    "table.regular.1.0": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Sat"
+          }
+        ],
+        "role": "rowhead"
+      }
+    },
+    "table.regular.1.1": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "$857"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.regular.1.2": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "27 km"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.regular.1.3": {
+      "type": "pill",
+      "props": {
+        "text": "Under",
+        "tone": "accent"
+      }
+    },
+    "table.regular.2.0": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Sun"
+          }
+        ],
+        "role": "rowhead"
+      }
+    },
+    "table.regular.2.1": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "$1,944"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.regular.2.2": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "10 km"
+          }
+        ],
+        "role": "number",
+        "fixed": true
+      }
+    },
+    "table.regular.2.3": {
+      "type": "pill",
+      "props": {
+        "text": "Under",
+        "tone": "accent"
+      }
+    },
+    "choices": {
+      "type": "box",
+      "props": {
+        "gap": "heading"
+      },
+      "children": [
+        "choices.prompt",
+        "choices.options"
+      ]
+    },
+    "choices.prompt": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Which stay do you prefer?"
+          }
+        ],
+        "role": "prompt"
+      }
+    },
+    "choices.options": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "wrap": true
+      },
+      "children": [
+        "choices.0",
+        "choices.1",
+        "choices.2",
+        "choices.3"
+      ]
+    },
+    "choices.0": {
+      "type": "button",
+      "props": {
+        "label": "Show more",
+        "action": {
+          "type": "message",
+          "text": "Show more"
+        },
+        "icon": "search",
+        "variant": "chip",
+        "group": "choices"
+      }
+    },
+    "choices.1": {
+      "type": "button",
+      "props": {
+        "label": "Chiado hotel",
+        "action": {
+          "type": "message",
+          "text": "Chiado hotel"
+        },
+        "icon": "map-pin",
+        "variant": "chip",
+        "group": "choices"
+      }
+    },
+    "choices.2": {
+      "type": "button",
+      "props": {
+        "label": "Belém guesthouse",
+        "action": {
+          "type": "message",
+          "text": "Belém guesthouse"
+        },
+        "icon": "globe",
+        "variant": "chip",
+        "group": "choices"
+      }
+    },
+    "choices.3": {
+      "type": "button",
+      "props": {
+        "label": "Alfama loft",
+        "action": {
+          "type": "message",
+          "text": "Alfama loft"
+        },
+        "icon": "star",
+        "variant": "chip",
+        "group": "choices"
+      }
+    }
+  }
+}

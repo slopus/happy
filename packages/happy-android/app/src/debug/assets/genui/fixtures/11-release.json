@@ -1,0 +1,732 @@
+{
+  "genuiRender": 1,
+  "compiler": "1.0.0",
+  "fallback": "Release 2.41 is ready: 1,284 tests pass, p95 latency 182 ms (-12%), 3 of 4 checks done. Ship it, canary first, or hold?",
+  "root": "card",
+  "elements": {
+    "card": {
+      "type": "box",
+      "props": {
+        "role": "card",
+        "gap": "blocks"
+      },
+      "children": [
+        "card.header",
+        "row",
+        "section",
+        "section-2",
+        "callout",
+        "choices"
+      ]
+    },
+    "card.header": {
+      "type": "box",
+      "props": {
+        "role": "header",
+        "direction": "row",
+        "gap": "inline",
+        "align": "start",
+        "justify": "between"
+      },
+      "children": [
+        "card.icon",
+        "card.heading",
+        "card.badge"
+      ]
+    },
+    "card.icon": {
+      "type": "icon",
+      "props": {
+        "name": "bolt",
+        "role": "leading"
+      }
+    },
+    "card.heading": {
+      "type": "box",
+      "props": {
+        "gap": "tight",
+        "grow": true
+      },
+      "children": [
+        "card.title",
+        "card.subtitle"
+      ]
+    },
+    "card.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Release 2.41"
+          }
+        ],
+        "role": "title"
+      }
+    },
+    "card.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "happy-server · ready to ship"
+          }
+        ],
+        "role": "subtitle"
+      }
+    },
+    "card.badge": {
+      "type": "pill",
+      "props": {
+        "text": "Ready",
+        "tone": "success",
+        "icon": "check"
+      }
+    },
+    "row": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "blocks",
+        "align": "start",
+        "equal": true,
+        "wrap": false
+      },
+      "children": [
+        "stat",
+        "stat-2"
+      ]
+    },
+    "stat": {
+      "type": "box",
+      "props": {
+        "gap": "related"
+      },
+      "children": [
+        "stat.label",
+        "stat.line"
+      ]
+    },
+    "stat.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Tests"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "stat.line": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "wrap": true
+      },
+      "children": [
+        "stat.value",
+        "stat.change"
+      ]
+    },
+    "stat.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "1,284"
+          }
+        ],
+        "role": "value",
+        "fixed": true
+      }
+    },
+    "stat.change": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "wrap": false
+      },
+      "children": [
+        "stat.trend",
+        "stat.delta"
+      ]
+    },
+    "stat.trend": {
+      "type": "icon",
+      "props": {
+        "name": "arrow-up",
+        "tone": "success",
+        "role": "inline"
+      }
+    },
+    "stat.delta": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "+36"
+          }
+        ],
+        "role": "delta",
+        "tone": "success",
+        "fixed": true
+      }
+    },
+    "stat-2": {
+      "type": "box",
+      "props": {
+        "gap": "related"
+      },
+      "children": [
+        "stat-2.label",
+        "stat-2.line",
+        "stat-2.spark"
+      ]
+    },
+    "stat-2.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "p95 latency"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "stat-2.line": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "wrap": true
+      },
+      "children": [
+        "stat-2.value",
+        "stat-2.change"
+      ]
+    },
+    "stat-2.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "182 ms"
+          }
+        ],
+        "role": "value",
+        "fixed": true
+      }
+    },
+    "stat-2.change": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "wrap": false
+      },
+      "children": [
+        "stat-2.trend",
+        "stat-2.delta"
+      ]
+    },
+    "stat-2.trend": {
+      "type": "icon",
+      "props": {
+        "name": "arrow-down",
+        "tone": "success",
+        "role": "inline"
+      }
+    },
+    "stat-2.delta": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "-12%"
+          }
+        ],
+        "role": "delta",
+        "tone": "success",
+        "fixed": true
+      }
+    },
+    "stat-2.spark": {
+      "type": "spark",
+      "props": {
+        "values": [
+          220,
+          214,
+          209,
+          211,
+          198,
+          190,
+          186,
+          182
+        ],
+        "tone": "success"
+      }
+    },
+    "section": {
+      "type": "box",
+      "props": {
+        "role": "section",
+        "gap": "heading"
+      },
+      "children": [
+        "section.title",
+        "chart"
+      ]
+    },
+    "section.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Latency by day"
+          }
+        ],
+        "role": "heading"
+      }
+    },
+    "chart": {
+      "type": "plot",
+      "props": {
+        "kind": "area",
+        "x": [
+          "Mon",
+          "Tue",
+          "Wed",
+          "Thu",
+          "Fri"
+        ],
+        "y": {
+          "min": 0,
+          "max": 300,
+          "ticks": [
+            {
+              "value": 0,
+              "label": "0 ms"
+            },
+            {
+              "value": 100,
+              "label": "100 ms"
+            },
+            {
+              "value": 200,
+              "label": "200 ms"
+            },
+            {
+              "value": 300,
+              "label": "300 ms"
+            }
+          ]
+        },
+        "series": [
+          {
+            "name": "p95",
+            "values": [
+              220,
+              209,
+              198,
+              186,
+              182
+            ],
+            "labels": [
+              "220 ms",
+              "209 ms",
+              "198 ms",
+              "186 ms",
+              "182 ms"
+            ],
+            "color": 1
+          },
+          {
+            "name": "p50",
+            "values": [
+              84,
+              82,
+              79,
+              77,
+              76
+            ],
+            "labels": [
+              "84 ms",
+              "82 ms",
+              "79 ms",
+              "77 ms",
+              "76 ms"
+            ],
+            "color": 2
+          }
+        ],
+        "legend": [
+          {
+            "label": "p95",
+            "color": 1
+          },
+          {
+            "label": "p50",
+            "color": 2
+          }
+        ],
+        "summary": "Area chart, Mon to Fri. p95: Mon 220 ms, Tue 209 ms, Wed 198 ms, Thu 186 ms, Fri 182 ms. p50: Mon 84 ms, Tue 82 ms, Wed 79 ms, Thu 77 ms, Fri 76 ms."
+      }
+    },
+    "section-2": {
+      "type": "box",
+      "props": {
+        "role": "section",
+        "gap": "heading"
+      },
+      "children": [
+        "section-2.title",
+        "steps"
+      ]
+    },
+    "section-2.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Checks"
+          }
+        ],
+        "role": "heading"
+      }
+    },
+    "steps": {
+      "type": "box",
+      "props": {
+        "gap": "items"
+      },
+      "children": [
+        "steps.0",
+        "steps.1",
+        "steps.2",
+        "steps.3"
+      ]
+    },
+    "steps.0": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "start"
+      },
+      "children": [
+        "steps.0.marker",
+        "steps.0.texts",
+        "steps.0.time"
+      ]
+    },
+    "steps.0.marker": {
+      "type": "marker",
+      "props": {
+        "status": "done",
+        "rail": true
+      }
+    },
+    "steps.0.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "steps.0.title"
+      ]
+    },
+    "steps.0.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Build"
+          }
+        ],
+        "role": "item"
+      }
+    },
+    "steps.0.time": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "1m 08s"
+          }
+        ],
+        "role": "trailing",
+        "fixed": true
+      }
+    },
+    "steps.1": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "start"
+      },
+      "children": [
+        "steps.1.marker",
+        "steps.1.texts",
+        "steps.1.time"
+      ]
+    },
+    "steps.1.marker": {
+      "type": "marker",
+      "props": {
+        "status": "done",
+        "rail": true
+      }
+    },
+    "steps.1.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "steps.1.title",
+        "steps.1.detail"
+      ]
+    },
+    "steps.1.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Tests"
+          }
+        ],
+        "role": "item"
+      }
+    },
+    "steps.1.detail": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "1,284 passed"
+          }
+        ],
+        "role": "detail"
+      }
+    },
+    "steps.1.time": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "3m 41s"
+          }
+        ],
+        "role": "trailing",
+        "fixed": true
+      }
+    },
+    "steps.2": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "start"
+      },
+      "children": [
+        "steps.2.marker",
+        "steps.2.texts",
+        "steps.2.time"
+      ]
+    },
+    "steps.2.marker": {
+      "type": "marker",
+      "props": {
+        "status": "done",
+        "rail": true
+      }
+    },
+    "steps.2.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "steps.2.title"
+      ]
+    },
+    "steps.2.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Security scan"
+          }
+        ],
+        "role": "item"
+      }
+    },
+    "steps.2.time": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "0m 52s"
+          }
+        ],
+        "role": "trailing",
+        "fixed": true
+      }
+    },
+    "steps.3": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "start"
+      },
+      "children": [
+        "steps.3.marker",
+        "steps.3.texts"
+      ]
+    },
+    "steps.3.marker": {
+      "type": "marker",
+      "props": {
+        "status": "pending"
+      }
+    },
+    "steps.3.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "steps.3.title",
+        "steps.3.detail"
+      ]
+    },
+    "steps.3.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Canary"
+          }
+        ],
+        "role": "item",
+        "tone": "muted"
+      }
+    },
+    "steps.3.detail": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Waiting for approval"
+          }
+        ],
+        "role": "detail"
+      }
+    },
+    "callout": {
+      "type": "box",
+      "props": {
+        "role": "notice",
+        "tone": "accent",
+        "direction": "row",
+        "gap": "inline",
+        "align": "start"
+      },
+      "children": [
+        "callout.icon",
+        "callout.text"
+      ]
+    },
+    "callout.icon": {
+      "type": "icon",
+      "props": {
+        "name": "info",
+        "tone": "accent",
+        "role": "leading"
+      }
+    },
+    "callout.text": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "2 migrations run on deploy; both are backwards compatible."
+          }
+        ],
+        "role": "body"
+      }
+    },
+    "choices": {
+      "type": "box",
+      "props": {},
+      "children": [
+        "choices.options"
+      ]
+    },
+    "choices.options": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "wrap": true
+      },
+      "children": [
+        "choices.0",
+        "choices.1",
+        "choices.2"
+      ]
+    },
+    "choices.0": {
+      "type": "button",
+      "props": {
+        "label": "Ship it",
+        "action": {
+          "type": "message",
+          "text": "Ship 2.41 to production"
+        },
+        "icon": "bolt",
+        "variant": "chip",
+        "group": "choices"
+      }
+    },
+    "choices.1": {
+      "type": "button",
+      "props": {
+        "label": "Canary first",
+        "action": {
+          "type": "message",
+          "text": "Roll 2.41 out to a 10% canary"
+        },
+        "icon": "clock",
+        "variant": "chip",
+        "group": "choices"
+      }
+    },
+    "choices.2": {
+      "type": "button",
+      "props": {
+        "label": "Hold",
+        "action": {
+          "type": "message",
+          "text": "Hold the 2.41 release"
+        },
+        "icon": "pause",
+        "variant": "chip",
+        "group": "choices"
+      }
+    }
+  }
+}

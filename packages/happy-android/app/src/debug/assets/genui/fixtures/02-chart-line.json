@@ -1,0 +1,175 @@
+{
+  "genuiRender": 1,
+  "compiler": "1.0.0",
+  "fallback": "Revenue grew from $310k to $452k between April and September; enterprise overtook self-serve in July.",
+  "root": "card",
+  "elements": {
+    "card": {
+      "type": "box",
+      "props": {
+        "role": "card",
+        "gap": "blocks"
+      },
+      "children": [
+        "card.header",
+        "chart"
+      ]
+    },
+    "card.header": {
+      "type": "box",
+      "props": {
+        "role": "header",
+        "direction": "row",
+        "gap": "inline",
+        "align": "start",
+        "justify": "between"
+      },
+      "children": [
+        "card.heading"
+      ]
+    },
+    "card.heading": {
+      "type": "box",
+      "props": {
+        "gap": "tight",
+        "grow": true
+      },
+      "children": [
+        "card.title",
+        "card.subtitle"
+      ]
+    },
+    "card.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Monthly revenue"
+          }
+        ],
+        "role": "title"
+      }
+    },
+    "card.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "By segment"
+          }
+        ],
+        "role": "subtitle"
+      }
+    },
+    "chart": {
+      "type": "box",
+      "props": {
+        "gap": "labeled"
+      },
+      "children": [
+        "chart.plot",
+        "chart.caption"
+      ]
+    },
+    "chart.plot": {
+      "type": "plot",
+      "props": {
+        "kind": "line",
+        "x": [
+          "Apr",
+          "May",
+          "Jun",
+          "Jul",
+          "Aug",
+          "Sep"
+        ],
+        "y": {
+          "min": 0,
+          "max": 300000,
+          "ticks": [
+            {
+              "value": 0,
+              "label": "$0"
+            },
+            {
+              "value": 100000,
+              "label": "$100k"
+            },
+            {
+              "value": 200000,
+              "label": "$200k"
+            },
+            {
+              "value": 300000,
+              "label": "$300k"
+            }
+          ]
+        },
+        "series": [
+          {
+            "name": "Enterprise",
+            "values": [
+              120000,
+              138000,
+              156000,
+              198000,
+              231000,
+              262000
+            ],
+            "labels": [
+              "$120k",
+              "$138k",
+              "$156k",
+              "$198k",
+              "$231k",
+              "$262k"
+            ],
+            "color": 1
+          },
+          {
+            "name": "Self-serve",
+            "values": [
+              190000,
+              186000,
+              192000,
+              188000,
+              191000,
+              190000
+            ],
+            "labels": [
+              "$190k",
+              "$186k",
+              "$192k",
+              "$188k",
+              "$191k",
+              "$190k"
+            ],
+            "color": 2
+          }
+        ],
+        "legend": [
+          {
+            "label": "Enterprise",
+            "color": 1
+          },
+          {
+            "label": "Self-serve",
+            "color": 2
+          }
+        ],
+        "summary": "Line chart, Apr to Sep. Enterprise: Apr $120k, May $138k, Jun $156k, Jul $198k, Aug $231k, Sep $262k. Self-serve: Apr $190k, May $186k, Jun $192k, Jul $188k, Aug $191k, Sep $190k."
+      }
+    },
+    "chart.caption": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Enterprise overtook self-serve in July."
+          }
+        ],
+        "role": "note"
+      }
+    }
+  }
+}

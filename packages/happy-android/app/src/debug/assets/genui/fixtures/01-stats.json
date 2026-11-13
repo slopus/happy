@@ -1,0 +1,480 @@
+{
+  "genuiRender": 1,
+  "compiler": "1.0.0",
+  "fallback": "Q3: revenue $1.24M (+18%), 8,412 active users (+6%), churn 2.1% (-0.4pt).",
+  "root": "card",
+  "elements": {
+    "card": {
+      "type": "box",
+      "props": {
+        "role": "card",
+        "gap": "blocks"
+      },
+      "children": [
+        "card.header",
+        "row",
+        "progress",
+        "card.actions"
+      ]
+    },
+    "card.header": {
+      "type": "box",
+      "props": {
+        "role": "header",
+        "direction": "row",
+        "gap": "inline",
+        "align": "start",
+        "justify": "between"
+      },
+      "children": [
+        "card.icon",
+        "card.heading",
+        "card.badge"
+      ]
+    },
+    "card.icon": {
+      "type": "icon",
+      "props": {
+        "name": "chart",
+        "role": "leading"
+      }
+    },
+    "card.heading": {
+      "type": "box",
+      "props": {
+        "gap": "tight",
+        "grow": true
+      },
+      "children": [
+        "card.title",
+        "card.subtitle"
+      ]
+    },
+    "card.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Q3 at a glance"
+          }
+        ],
+        "role": "title"
+      }
+    },
+    "card.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Jul 1 – Sep 30"
+          }
+        ],
+        "role": "subtitle"
+      }
+    },
+    "card.badge": {
+      "type": "pill",
+      "props": {
+        "text": "On track",
+        "tone": "success",
+        "icon": "check"
+      }
+    },
+    "row": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "blocks",
+        "align": "start",
+        "equal": true,
+        "wrap": false
+      },
+      "children": [
+        "stat",
+        "stat-2",
+        "stat-3"
+      ]
+    },
+    "stat": {
+      "type": "box",
+      "props": {
+        "gap": "related"
+      },
+      "children": [
+        "stat.label",
+        "stat.line",
+        "stat.spark"
+      ]
+    },
+    "stat.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Revenue"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "stat.line": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "wrap": true
+      },
+      "children": [
+        "stat.value",
+        "stat.change"
+      ]
+    },
+    "stat.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "$1.24M"
+          }
+        ],
+        "role": "value",
+        "fixed": true
+      }
+    },
+    "stat.change": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "wrap": false
+      },
+      "children": [
+        "stat.trend",
+        "stat.delta"
+      ]
+    },
+    "stat.trend": {
+      "type": "icon",
+      "props": {
+        "name": "arrow-up",
+        "tone": "success",
+        "role": "inline"
+      }
+    },
+    "stat.delta": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "+18%"
+          }
+        ],
+        "role": "delta",
+        "tone": "success",
+        "fixed": true
+      }
+    },
+    "stat.spark": {
+      "type": "spark",
+      "props": {
+        "values": [
+          62,
+          64,
+          70,
+          68,
+          75,
+          81,
+          88,
+          96,
+          104
+        ],
+        "tone": "success"
+      }
+    },
+    "stat-2": {
+      "type": "box",
+      "props": {
+        "gap": "related"
+      },
+      "children": [
+        "stat-2.label",
+        "stat-2.line",
+        "stat-2.spark"
+      ]
+    },
+    "stat-2.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Active users"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "stat-2.line": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "wrap": true
+      },
+      "children": [
+        "stat-2.value",
+        "stat-2.change"
+      ]
+    },
+    "stat-2.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "8,412"
+          }
+        ],
+        "role": "value",
+        "fixed": true
+      }
+    },
+    "stat-2.change": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "wrap": false
+      },
+      "children": [
+        "stat-2.trend",
+        "stat-2.delta"
+      ]
+    },
+    "stat-2.trend": {
+      "type": "icon",
+      "props": {
+        "name": "arrow-up",
+        "tone": "success",
+        "role": "inline"
+      }
+    },
+    "stat-2.delta": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "+6%"
+          }
+        ],
+        "role": "delta",
+        "tone": "success",
+        "fixed": true
+      }
+    },
+    "stat-2.spark": {
+      "type": "spark",
+      "props": {
+        "values": [
+          78,
+          79,
+          80,
+          80,
+          82,
+          81,
+          83,
+          84,
+          84
+        ],
+        "tone": "success"
+      }
+    },
+    "stat-3": {
+      "type": "box",
+      "props": {
+        "gap": "related"
+      },
+      "children": [
+        "stat-3.label",
+        "stat-3.line",
+        "stat-3.spark"
+      ]
+    },
+    "stat-3.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Churn"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "stat-3.line": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "wrap": true
+      },
+      "children": [
+        "stat-3.value",
+        "stat-3.change"
+      ]
+    },
+    "stat-3.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "2.1%"
+          }
+        ],
+        "role": "value",
+        "fixed": true
+      }
+    },
+    "stat-3.change": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "wrap": false
+      },
+      "children": [
+        "stat-3.trend",
+        "stat-3.delta"
+      ]
+    },
+    "stat-3.trend": {
+      "type": "icon",
+      "props": {
+        "name": "arrow-down",
+        "tone": "success",
+        "role": "inline"
+      }
+    },
+    "stat-3.delta": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "-0.4pt"
+          }
+        ],
+        "role": "delta",
+        "tone": "success",
+        "fixed": true
+      }
+    },
+    "stat-3.spark": {
+      "type": "spark",
+      "props": {
+        "values": [
+          30,
+          29,
+          27,
+          28,
+          25,
+          24,
+          23,
+          22,
+          21
+        ],
+        "tone": "success"
+      }
+    },
+    "progress": {
+      "type": "box",
+      "props": {
+        "gap": "labeled"
+      },
+      "children": [
+        "progress.line",
+        "progress.bar"
+      ]
+    },
+    "progress.line": {
+      "type": "box",
+      "props": {
+        "direction": "row",
+        "gap": "inline",
+        "align": "baseline",
+        "justify": "between"
+      },
+      "children": [
+        "progress.label",
+        "progress.detail"
+      ]
+    },
+    "progress.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Annual target"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "progress.detail": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "$3.6M of $5M"
+          }
+        ],
+        "role": "detail",
+        "align": "end"
+      }
+    },
+    "progress.bar": {
+      "type": "bar",
+      "props": {
+        "value": 0.72
+      }
+    },
+    "card.actions": {
+      "type": "box",
+      "props": {
+        "role": "actions",
+        "direction": "row",
+        "gap": "inline",
+        "wrap": true
+      },
+      "children": [
+        "button",
+        "button-2"
+      ]
+    },
+    "button": {
+      "type": "button",
+      "props": {
+        "label": "Break down by plan",
+        "action": {
+          "type": "message",
+          "text": "Break down by plan"
+        },
+        "variant": "primary"
+      }
+    },
+    "button-2": {
+      "type": "button",
+      "props": {
+        "label": "Compare to Q2",
+        "action": {
+          "type": "message",
+          "text": "Compare to Q2"
+        },
+        "variant": "secondary"
+      }
+    }
+  }
+}

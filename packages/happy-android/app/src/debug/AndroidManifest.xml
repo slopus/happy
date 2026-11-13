@@ -25,5 +25,20 @@
                 <data android:scheme="https" android:host="${happyCloudWebHost}" android:path="/join" />
             </intent-filter>
         </activity>
+        <!-- The bundled Gen UI render documents, listed and drawn (ui/genui/GenUiFixturesActivity); its own launcher icon. -->
+        <activity
+            android:name=".ui.genui.GenUiFixturesActivity"
+            android:exported="true"
+            android:label="Gen UI fixtures"
+            android:taskAffinity="com.slopus.happy.genui.fixtures">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <!-- One Gen UI render document alone on the chat's ground, for screenshots (ui/genui/GenUiGymActivity). -->
+        <activity
+            android:name=".ui.genui.GenUiGymActivity"
+            android:exported="true" />
     </application>
 </manifest>

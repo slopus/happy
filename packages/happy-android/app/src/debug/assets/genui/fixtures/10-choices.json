@@ -1,0 +1,627 @@
+{
+  "genuiRender": 1,
+  "compiler": "1.0.0",
+  "fallback": "How should I fix the flaky test? Options: retry, fix the race, or quarantine.",
+  "root": "card",
+  "elements": {
+    "card": {
+      "type": "box",
+      "props": {
+        "role": "card",
+        "gap": "blocks"
+      },
+      "children": [
+        "card.header",
+        "keyvalue",
+        "choices"
+      ]
+    },
+    "card.header": {
+      "type": "box",
+      "props": {
+        "role": "header",
+        "direction": "row",
+        "gap": "inline",
+        "align": "start",
+        "justify": "between"
+      },
+      "children": [
+        "card.icon",
+        "card.heading"
+      ]
+    },
+    "card.icon": {
+      "type": "icon",
+      "props": {
+        "name": "bug",
+        "role": "leading"
+      }
+    },
+    "card.heading": {
+      "type": "box",
+      "props": {
+        "gap": "tight",
+        "grow": true
+      },
+      "children": [
+        "card.title"
+      ]
+    },
+    "card.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Flaky test: sync.reconnect"
+          }
+        ],
+        "role": "title"
+      }
+    },
+    "keyvalue": {
+      "type": "switch",
+      "props": {},
+      "slots": {
+        "compact": [
+          "keyvalue.compact"
+        ],
+        "regular": [
+          "keyvalue.regular"
+        ]
+      }
+    },
+    "keyvalue.compact": {
+      "type": "box",
+      "props": {
+        "gap": "items",
+        "divide": "full",
+        "leading": "icon"
+      },
+      "children": [
+        "keyvalue.compact.0",
+        "keyvalue.compact.1",
+        "keyvalue.compact.2"
+      ]
+    },
+    "keyvalue.compact.0": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "icon"
+      },
+      "children": [
+        "keyvalue.compact.0.texts",
+        "keyvalue.compact.0.value"
+      ]
+    },
+    "keyvalue.compact.0.texts": {
+      "type": "box",
+      "props": {
+        "grow": true
+      },
+      "children": [
+        "keyvalue.compact.0.label"
+      ]
+    },
+    "keyvalue.compact.0.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Failure rate"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "keyvalue.compact.0.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "7 of 50 runs"
+          }
+        ],
+        "role": "body",
+        "tone": "danger",
+        "align": "end",
+        "fixed": true
+      }
+    },
+    "keyvalue.compact.1": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "icon"
+      },
+      "children": [
+        "keyvalue.compact.1.icon",
+        "keyvalue.compact.1.texts",
+        "keyvalue.compact.1.value"
+      ]
+    },
+    "keyvalue.compact.1.icon": {
+      "type": "icon",
+      "props": {
+        "name": "calendar",
+        "role": "leading"
+      }
+    },
+    "keyvalue.compact.1.texts": {
+      "type": "box",
+      "props": {
+        "grow": true
+      },
+      "children": [
+        "keyvalue.compact.1.label"
+      ]
+    },
+    "keyvalue.compact.1.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "First seen"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "keyvalue.compact.1.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Nov 9"
+          }
+        ],
+        "role": "body",
+        "align": "end",
+        "fixed": true
+      }
+    },
+    "keyvalue.compact.2": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "icon"
+      },
+      "children": [
+        "keyvalue.compact.2.icon",
+        "keyvalue.compact.2.texts",
+        "keyvalue.compact.2.value"
+      ]
+    },
+    "keyvalue.compact.2.icon": {
+      "type": "icon",
+      "props": {
+        "name": "git-commit",
+        "role": "leading"
+      }
+    },
+    "keyvalue.compact.2.texts": {
+      "type": "box",
+      "props": {
+        "grow": true
+      },
+      "children": [
+        "keyvalue.compact.2.label"
+      ]
+    },
+    "keyvalue.compact.2.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Suspect"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "keyvalue.compact.2.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "a41c9d0 by steve"
+          }
+        ],
+        "role": "body",
+        "align": "end",
+        "fixed": true
+      }
+    },
+    "keyvalue.regular": {
+      "type": "grid",
+      "props": {
+        "columns": [
+          {
+            "width": "auto"
+          },
+          {
+            "width": "auto"
+          },
+          {
+            "width": "fill"
+          }
+        ],
+        "density": "pairs"
+      },
+      "children": [
+        "keyvalue.regular.0.icon",
+        "keyvalue.regular.0.label",
+        "keyvalue.regular.0.value",
+        "keyvalue.regular.1.icon",
+        "keyvalue.regular.1.label",
+        "keyvalue.regular.1.value",
+        "keyvalue.regular.2.icon",
+        "keyvalue.regular.2.label",
+        "keyvalue.regular.2.value"
+      ]
+    },
+    "keyvalue.regular.0.icon": {
+      "type": "box",
+      "props": {},
+      "children": []
+    },
+    "keyvalue.regular.0.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Failure rate"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "keyvalue.regular.0.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "7 of 50 runs"
+          }
+        ],
+        "role": "body",
+        "tone": "danger",
+        "fixed": true
+      }
+    },
+    "keyvalue.regular.1.icon": {
+      "type": "icon",
+      "props": {
+        "name": "calendar",
+        "role": "leading"
+      }
+    },
+    "keyvalue.regular.1.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "First seen"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "keyvalue.regular.1.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Nov 9"
+          }
+        ],
+        "role": "body",
+        "fixed": true
+      }
+    },
+    "keyvalue.regular.2.icon": {
+      "type": "icon",
+      "props": {
+        "name": "git-commit",
+        "role": "leading"
+      }
+    },
+    "keyvalue.regular.2.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Suspect"
+          }
+        ],
+        "role": "label"
+      }
+    },
+    "keyvalue.regular.2.value": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "a41c9d0 by steve"
+          }
+        ],
+        "role": "body",
+        "fixed": true
+      }
+    },
+    "choices": {
+      "type": "box",
+      "props": {
+        "gap": "heading"
+      },
+      "children": [
+        "choices.prompt",
+        "choices.options"
+      ]
+    },
+    "choices.prompt": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "How do you want to handle it?"
+          }
+        ],
+        "role": "prompt"
+      }
+    },
+    "choices.options": {
+      "type": "box",
+      "props": {
+        "gap": "items",
+        "divide": "full",
+        "leading": "icon"
+      },
+      "children": [
+        "choices.0",
+        "choices.1",
+        "choices.2"
+      ]
+    },
+    "choices.0": {
+      "type": "press",
+      "props": {
+        "action": {
+          "type": "message",
+          "text": "Fix the race"
+        },
+        "role": "item",
+        "group": "choices"
+      },
+      "children": [
+        "choices.0.row"
+      ]
+    },
+    "choices.0.row": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "icon"
+      },
+      "children": [
+        "choices.0.icon",
+        "choices.0.texts",
+        "choices.0.chevron"
+      ]
+    },
+    "choices.0.icon": {
+      "type": "icon",
+      "props": {
+        "name": "code",
+        "role": "leading"
+      }
+    },
+    "choices.0.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "choices.0.label",
+        "choices.0.description"
+      ]
+    },
+    "choices.0.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Fix the race"
+          }
+        ],
+        "role": "item"
+      }
+    },
+    "choices.0.description": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Await the socket close before reconnecting. About 30 lines."
+          }
+        ],
+        "role": "detail"
+      }
+    },
+    "choices.0.chevron": {
+      "type": "icon",
+      "props": {
+        "name": "chevron-right",
+        "tone": "muted",
+        "role": "inline"
+      }
+    },
+    "choices.1": {
+      "type": "press",
+      "props": {
+        "action": {
+          "type": "message",
+          "text": "Add a retry"
+        },
+        "role": "item",
+        "group": "choices"
+      },
+      "children": [
+        "choices.1.row"
+      ]
+    },
+    "choices.1.row": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "icon"
+      },
+      "children": [
+        "choices.1.icon",
+        "choices.1.texts",
+        "choices.1.chevron"
+      ]
+    },
+    "choices.1.icon": {
+      "type": "icon",
+      "props": {
+        "name": "clock",
+        "role": "leading"
+      }
+    },
+    "choices.1.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "choices.1.label",
+        "choices.1.description"
+      ]
+    },
+    "choices.1.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Add a retry"
+          }
+        ],
+        "role": "item"
+      }
+    },
+    "choices.1.description": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Retry up to 3 times. Hides the bug but unblocks CI."
+          }
+        ],
+        "role": "detail"
+      }
+    },
+    "choices.1.chevron": {
+      "type": "icon",
+      "props": {
+        "name": "chevron-right",
+        "tone": "muted",
+        "role": "inline"
+      }
+    },
+    "choices.2": {
+      "type": "press",
+      "props": {
+        "action": {
+          "type": "message",
+          "text": "Quarantine it"
+        },
+        "role": "item",
+        "group": "choices"
+      },
+      "children": [
+        "choices.2.row"
+      ]
+    },
+    "choices.2.row": {
+      "type": "box",
+      "props": {
+        "role": "item",
+        "direction": "row",
+        "gap": "inline",
+        "align": "center",
+        "leading": "icon"
+      },
+      "children": [
+        "choices.2.icon",
+        "choices.2.texts",
+        "choices.2.chevron"
+      ]
+    },
+    "choices.2.icon": {
+      "type": "icon",
+      "props": {
+        "name": "lock",
+        "role": "leading"
+      }
+    },
+    "choices.2.texts": {
+      "type": "box",
+      "props": {
+        "gap": "related",
+        "grow": true
+      },
+      "children": [
+        "choices.2.label",
+        "choices.2.description"
+      ]
+    },
+    "choices.2.label": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Quarantine it"
+          }
+        ],
+        "role": "item"
+      }
+    },
+    "choices.2.description": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Skip in CI and open an issue to track it."
+          }
+        ],
+        "role": "detail"
+      }
+    },
+    "choices.2.chevron": {
+      "type": "icon",
+      "props": {
+        "name": "chevron-right",
+        "tone": "muted",
+        "role": "inline"
+      }
+    }
+  }
+}

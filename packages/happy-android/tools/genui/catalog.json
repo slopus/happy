@@ -1,0 +1,1235 @@
+{
+  "genuiRender": 1,
+  "limits": {
+    "maxElements": 4000,
+    "maxDocumentBytes": 4194304
+  },
+  "tones": [
+    "neutral",
+    "accent",
+    "success",
+    "warning",
+    "danger",
+    "muted"
+  ],
+  "colors": [
+    "red",
+    "orange",
+    "yellow",
+    "green",
+    "teal",
+    "cyan",
+    "blue",
+    "indigo",
+    "purple",
+    "pink",
+    "brown",
+    "gray"
+  ],
+  "textRoles": [
+    "title",
+    "subtitle",
+    "heading",
+    "prompt",
+    "body",
+    "note",
+    "label",
+    "value",
+    "delta",
+    "item",
+    "detail",
+    "trailing",
+    "column",
+    "rowhead",
+    "cell",
+    "number",
+    "ordinal"
+  ],
+  "shapes": [
+    "landscape",
+    "square",
+    "portrait"
+  ],
+  "gaps": [
+    "none",
+    "inline",
+    "tight",
+    "related",
+    "labeled",
+    "heading",
+    "items",
+    "blocks"
+  ],
+  "roles": [
+    "plain",
+    "card",
+    "header",
+    "actions",
+    "notice",
+    "section",
+    "item",
+    "record",
+    "tile",
+    "mosaic"
+  ],
+  "icons": [
+    "check",
+    "x",
+    "alert",
+    "info",
+    "clock",
+    "calendar",
+    "user",
+    "users",
+    "file",
+    "folder",
+    "code",
+    "terminal",
+    "git-branch",
+    "git-commit",
+    "git-pull-request",
+    "link",
+    "search",
+    "star",
+    "heart",
+    "download",
+    "upload",
+    "play",
+    "pause",
+    "image",
+    "chart",
+    "globe",
+    "bolt",
+    "bug",
+    "lock",
+    "sparkles",
+    "arrow-right",
+    "arrow-up-right",
+    "arrow-up",
+    "arrow-down",
+    "arrow-down-right",
+    "chevron-right",
+    "copy",
+    "dollar",
+    "map-pin"
+  ],
+  "viewerItem": {
+    "object": {
+      "file": {
+        "type": "string",
+        "description": "",
+        "required": true
+      },
+      "width": {
+        "type": "number",
+        "description": "",
+        "required": true
+      },
+      "height": {
+        "type": "number",
+        "description": "",
+        "required": true
+      },
+      "thumbhash": {
+        "type": "string",
+        "description": "",
+        "required": true
+      },
+      "alt": {
+        "type": "string",
+        "description": "",
+        "required": true
+      },
+      "caption": {
+        "type": "string",
+        "description": ""
+      }
+    }
+  },
+  "definitions": {
+    "action": {
+      "oneOf": [
+        {
+          "object": {
+            "type": {
+              "type": {
+                "const": "message"
+              },
+              "description": "",
+              "required": true
+            },
+            "text": {
+              "type": "string",
+              "description": "Sent as the user's next message in the conversation.",
+              "required": true
+            }
+          }
+        },
+        {
+          "object": {
+            "type": {
+              "type": {
+                "const": "open"
+              },
+              "description": "",
+              "required": true
+            },
+            "url": {
+              "type": "string",
+              "description": "https URL, or a path the host knows how to open.",
+              "required": true
+            }
+          }
+        },
+        {
+          "object": {
+            "type": {
+              "type": {
+                "const": "copy"
+              },
+              "description": "",
+              "required": true
+            },
+            "text": {
+              "type": "string",
+              "description": "Copied to the clipboard.",
+              "required": true
+            }
+          }
+        },
+        {
+          "object": {
+            "type": {
+              "type": {
+                "const": "tool"
+              },
+              "description": "",
+              "required": true
+            },
+            "name": {
+              "type": "string",
+              "description": "Tool the host is asked to run.",
+              "required": true
+            },
+            "input": {
+              "type": {
+                "map": "any"
+              },
+              "description": "Tool input."
+            }
+          }
+        }
+      ],
+      "description": "What happens when the user activates an interactive element. The renderer reports it; the host decides whether and how to run it, and may ask for confirmation or refuse."
+    },
+    "icon": {
+      "enum": [
+        "check",
+        "x",
+        "alert",
+        "info",
+        "clock",
+        "calendar",
+        "user",
+        "users",
+        "file",
+        "folder",
+        "code",
+        "terminal",
+        "git-branch",
+        "git-commit",
+        "git-pull-request",
+        "link",
+        "search",
+        "star",
+        "heart",
+        "download",
+        "upload",
+        "play",
+        "pause",
+        "image",
+        "chart",
+        "globe",
+        "bolt",
+        "bug",
+        "lock",
+        "sparkles",
+        "arrow-right",
+        "arrow-up-right",
+        "arrow-up",
+        "arrow-down",
+        "arrow-down-right",
+        "chevron-right",
+        "copy",
+        "dollar",
+        "map-pin"
+      ],
+      "description": "Icon name. Each renderer maps every name to one glyph of its own icon set. An unknown name draws no icon."
+    }
+  },
+  "primitives": {
+    "box": {
+      "summary": "Lays out children in one direction.",
+      "children": true,
+      "slots": {},
+      "props": {
+        "direction": {
+          "type": {
+            "enum": [
+              "column",
+              "row"
+            ]
+          },
+          "description": "",
+          "default": "column"
+        },
+        "role": {
+          "type": {
+            "enum": [
+              "plain",
+              "card",
+              "header",
+              "actions",
+              "notice",
+              "section",
+              "item",
+              "record",
+              "tile",
+              "mosaic"
+            ]
+          },
+          "description": "What this box is. The platform decides its padding, surface, border and corner radius from the role.",
+          "default": "plain"
+        },
+        "gap": {
+          "type": {
+            "enum": [
+              "none",
+              "inline",
+              "tight",
+              "related",
+              "labeled",
+              "heading",
+              "items",
+              "blocks"
+            ]
+          },
+          "description": "Relationship between children; the platform decides the distance.",
+          "default": "none"
+        },
+        "tone": {
+          "type": {
+            "enum": [
+              "neutral",
+              "accent",
+              "success",
+              "warning",
+              "danger",
+              "muted",
+              "red",
+              "orange",
+              "yellow",
+              "green",
+              "teal",
+              "cyan",
+              "blue",
+              "indigo",
+              "purple",
+              "pink",
+              "brown",
+              "gray"
+            ]
+          },
+          "description": "Colour of a `notice`."
+        },
+        "align": {
+          "type": {
+            "enum": [
+              "start",
+              "center",
+              "end",
+              "baseline",
+              "stretch"
+            ]
+          },
+          "description": "Cross-axis alignment.",
+          "default": "stretch"
+        },
+        "justify": {
+          "type": {
+            "enum": [
+              "start",
+              "between",
+              "end"
+            ]
+          },
+          "description": "Main-axis distribution.",
+          "default": "start"
+        },
+        "equal": {
+          "type": "boolean",
+          "description": "Row only: children share the width equally."
+        },
+        "wrap": {
+          "type": "boolean",
+          "description": "Row only: children may move to more lines. When false the children must fit on one line and shrink to do so."
+        },
+        "divide": {
+          "type": {
+            "enum": [
+              "none",
+              "full",
+              "inset"
+            ]
+          },
+          "description": "Hairline between children; `inset` starts at the second column of the children.",
+          "default": "none"
+        },
+        "leading": {
+          "type": {
+            "enum": [
+              "none",
+              "icon",
+              "thumb",
+              "number"
+            ]
+          },
+          "description": "On a list box and on each of its `item` rows: the widest leading element in the list. The platform reserves that column on every row so titles share an edge."
+        },
+        "grow": {
+          "type": "boolean",
+          "description": "Take the remaining space in a parent row."
+        }
+      }
+    },
+    "grid": {
+      "summary": "A table: cells in row-major order, columns sized together.",
+      "children": true,
+      "slots": {},
+      "props": {
+        "columns": {
+          "type": {
+            "array": {
+              "object": {
+                "width": {
+                  "type": {
+                    "enum": [
+                      "auto",
+                      "fill"
+                    ]
+                  },
+                  "description": "",
+                  "required": true
+                },
+                "align": {
+                  "type": {
+                    "enum": [
+                      "start",
+                      "end"
+                    ]
+                  },
+                  "description": ""
+                }
+              }
+            },
+            "min": 1,
+            "max": 6
+          },
+          "description": "",
+          "required": true
+        },
+        "density": {
+          "type": {
+            "enum": [
+              "table",
+              "pairs"
+            ]
+          },
+          "description": "`table`: a data table. `pairs`: a label/value list. The platform decides column and row spacing.",
+          "default": "table"
+        },
+        "divide": {
+          "type": "boolean",
+          "description": "Hairline between rows."
+        },
+        "header": {
+          "type": "boolean",
+          "description": "First row is a header row."
+        }
+      }
+    },
+    "scroll": {
+      "summary": "A horizontally scrolling, snapping row of children.",
+      "children": true,
+      "slots": {},
+      "props": {
+        "shape": {
+          "type": {
+            "enum": [
+              "landscape",
+              "square",
+              "portrait"
+            ]
+          },
+          "description": "Shape of the cards' images. The platform decides card width, how many are visible, peeking and edge bleed from it.",
+          "default": "landscape"
+        }
+      }
+    },
+    "switch": {
+      "summary": "Chooses one subtree by available width.",
+      "children": false,
+      "slots": {
+        "compact": 1,
+        "regular": 1
+      },
+      "props": {}
+    },
+    "text": {
+      "summary": "Styled text from pre-parsed spans. Clients need no Markdown parser.",
+      "children": false,
+      "slots": {},
+      "props": {
+        "spans": {
+          "type": {
+            "array": {
+              "object": {
+                "text": {
+                  "type": "string",
+                  "description": "",
+                  "required": true
+                },
+                "strong": {
+                  "type": "boolean",
+                  "description": "Strong importance."
+                },
+                "emphasis": {
+                  "type": "boolean",
+                  "description": "Stress emphasis."
+                },
+                "code": {
+                  "type": "boolean",
+                  "description": "A code fragment."
+                },
+                "link": {
+                  "type": "string",
+                  "description": "URL; tapping reports an `open` action."
+                }
+              }
+            },
+            "min": 1
+          },
+          "description": "",
+          "required": true
+        },
+        "role": {
+          "type": {
+            "enum": [
+              "title",
+              "subtitle",
+              "heading",
+              "prompt",
+              "body",
+              "note",
+              "label",
+              "value",
+              "delta",
+              "item",
+              "detail",
+              "trailing",
+              "column",
+              "rowhead",
+              "cell",
+              "number",
+              "ordinal"
+            ]
+          },
+          "description": "What the text is. The platform decides font, size, weight, line height, figure style and default colour.",
+          "default": "body"
+        },
+        "tone": {
+          "type": {
+            "enum": [
+              "neutral",
+              "accent",
+              "success",
+              "warning",
+              "danger",
+              "muted",
+              "red",
+              "orange",
+              "yellow",
+              "green",
+              "teal",
+              "cyan",
+              "blue",
+              "indigo",
+              "purple",
+              "pink",
+              "brown",
+              "gray"
+            ]
+          },
+          "description": "Overrides the role's default colour with a semantic one."
+        },
+        "overflow": {
+          "type": {
+            "enum": [
+              "wrap",
+              "clamp",
+              "truncate"
+            ]
+          },
+          "description": "`wrap`: never cut. `clamp`: a few lines, platform decides how many. `truncate`: one line.",
+          "default": "wrap"
+        },
+        "fixed": {
+          "type": "boolean",
+          "description": "In a row: keeps its natural width and is never wrapped or truncated; its siblings give way."
+        },
+        "align": {
+          "type": {
+            "enum": [
+              "start",
+              "end"
+            ]
+          },
+          "description": "Only for text that is not a grid cell; grid cells take their column's alignment.",
+          "default": "start"
+        }
+      }
+    },
+    "icon": {
+      "summary": "One glyph from the icon set.",
+      "children": false,
+      "slots": {},
+      "props": {
+        "name": {
+          "type": "icon",
+          "description": "",
+          "required": true
+        },
+        "tone": {
+          "type": {
+            "enum": [
+              "neutral",
+              "accent",
+              "success",
+              "warning",
+              "danger",
+              "muted",
+              "red",
+              "orange",
+              "yellow",
+              "green",
+              "teal",
+              "cyan",
+              "blue",
+              "indigo",
+              "purple",
+              "pink",
+              "brown",
+              "gray"
+            ]
+          },
+          "description": "",
+          "default": "neutral"
+        },
+        "role": {
+          "type": {
+            "enum": [
+              "leading",
+              "inline"
+            ]
+          },
+          "description": "`leading`: starts a header or row. `inline`: sits in a line of text.",
+          "default": "leading"
+        }
+      }
+    },
+    "image": {
+      "summary": "A stored image. Always a file of the artifact, never a remote URL.",
+      "children": false,
+      "slots": {},
+      "props": {
+        "file": {
+          "type": "string",
+          "description": "Path of the image inside the artifact.",
+          "required": true
+        },
+        "width": {
+          "type": "number",
+          "description": "Pixel width of the stored file.",
+          "required": true
+        },
+        "height": {
+          "type": "number",
+          "description": "Pixel height.",
+          "required": true
+        },
+        "thumbhash": {
+          "type": "string",
+          "description": "Base64 ThumbHash, drawn until the file has loaded.",
+          "required": true
+        },
+        "alt": {
+          "type": "string",
+          "description": "",
+          "required": true
+        },
+        "shape": {
+          "type": {
+            "enum": [
+              "landscape",
+              "square",
+              "portrait"
+            ]
+          },
+          "description": "Shape of the box the image fills, cropped and centred. The platform owns the exact ratio.",
+          "default": "landscape"
+        },
+        "role": {
+          "type": {
+            "enum": [
+              "figure",
+              "tile",
+              "thumb",
+              "cover"
+            ]
+          },
+          "description": "`figure`: a standalone image, height-capped by the platform. `tile`: a mosaic tile, square corners. `thumb`: a small leading thumbnail. `cover`: the top of a carousel card.",
+          "default": "figure"
+        },
+        "overlay": {
+          "type": "string",
+          "description": "Text centred over a dimmed image (`+2`)."
+        },
+        "viewer": {
+          "type": {
+            "object": {
+              "group": {
+                "type": "string",
+                "description": "Key in the document's `viewers`.",
+                "required": true
+              },
+              "index": {
+                "type": "number",
+                "description": "",
+                "required": true
+              }
+            }
+          },
+          "description": "Tapping opens the host image viewer at this index of the group."
+        }
+      }
+    },
+    "pill": {
+      "summary": "A status label.",
+      "children": false,
+      "slots": {},
+      "props": {
+        "text": {
+          "type": "string",
+          "description": "",
+          "required": true
+        },
+        "tone": {
+          "type": {
+            "enum": [
+              "neutral",
+              "accent",
+              "success",
+              "warning",
+              "danger",
+              "muted",
+              "red",
+              "orange",
+              "yellow",
+              "green",
+              "teal",
+              "cyan",
+              "blue",
+              "indigo",
+              "purple",
+              "pink",
+              "brown",
+              "gray"
+            ]
+          },
+          "description": "",
+          "default": "neutral"
+        },
+        "icon": {
+          "type": "icon",
+          "description": ""
+        }
+      }
+    },
+    "button": {
+      "summary": "A button.",
+      "children": false,
+      "slots": {},
+      "props": {
+        "label": {
+          "type": "string",
+          "description": "",
+          "required": true
+        },
+        "action": {
+          "type": "action",
+          "description": "",
+          "required": true
+        },
+        "icon": {
+          "type": "icon",
+          "description": ""
+        },
+        "variant": {
+          "type": {
+            "enum": [
+              "primary",
+              "secondary",
+              "plain",
+              "chip"
+            ]
+          },
+          "description": "",
+          "default": "secondary"
+        },
+        "tone": {
+          "type": {
+            "enum": [
+              "neutral",
+              "accent",
+              "success",
+              "warning",
+              "danger",
+              "muted",
+              "red",
+              "orange",
+              "yellow",
+              "green",
+              "teal",
+              "cyan",
+              "blue",
+              "indigo",
+              "purple",
+              "pink",
+              "brown",
+              "gray"
+            ]
+          },
+          "description": "",
+          "default": "neutral"
+        },
+        "group": {
+          "type": "string",
+          "description": "Buttons and presses sharing a group are single-choice: after one is activated it stays marked and the others are disabled."
+        }
+      }
+    },
+    "press": {
+      "summary": "Makes its child tappable. With a missing or invalid action the child is drawn and is not tappable.",
+      "children": true,
+      "slots": {},
+      "props": {
+        "action": {
+          "type": "action",
+          "description": ""
+        },
+        "role": {
+          "type": {
+            "enum": [
+              "plain",
+              "item",
+              "tile"
+            ]
+          },
+          "description": "What is being pressed, so the platform can give a list row or a card its full-area highlight.",
+          "default": "plain"
+        },
+        "group": {
+          "type": "string",
+          "description": "Single-choice group, as for `button`."
+        }
+      }
+    },
+    "bar": {
+      "summary": "A progress bar.",
+      "children": false,
+      "slots": {},
+      "props": {
+        "value": {
+          "type": "number",
+          "description": "0–1.",
+          "required": true
+        },
+        "tone": {
+          "type": {
+            "enum": [
+              "neutral",
+              "accent",
+              "success",
+              "warning",
+              "danger",
+              "muted",
+              "red",
+              "orange",
+              "yellow",
+              "green",
+              "teal",
+              "cyan",
+              "blue",
+              "indigo",
+              "purple",
+              "pink",
+              "brown",
+              "gray"
+            ]
+          },
+          "description": "",
+          "default": "neutral"
+        }
+      }
+    },
+    "marker": {
+      "summary": "A step marker with the rail to the next step.",
+      "children": false,
+      "slots": {},
+      "props": {
+        "status": {
+          "type": {
+            "enum": [
+              "done",
+              "active",
+              "pending",
+              "failed"
+            ]
+          },
+          "description": "",
+          "default": "pending"
+        },
+        "rail": {
+          "type": "boolean",
+          "description": "Draw the rail down to the next marker."
+        }
+      }
+    },
+    "spark": {
+      "summary": "A sparkline.",
+      "children": false,
+      "slots": {},
+      "props": {
+        "values": {
+          "type": {
+            "array": "number",
+            "min": 2,
+            "max": 60
+          },
+          "description": "",
+          "required": true
+        },
+        "tone": {
+          "type": {
+            "enum": [
+              "neutral",
+              "accent",
+              "success",
+              "warning",
+              "danger",
+              "muted",
+              "red",
+              "orange",
+              "yellow",
+              "green",
+              "teal",
+              "cyan",
+              "blue",
+              "indigo",
+              "purple",
+              "pink",
+              "brown",
+              "gray"
+            ]
+          },
+          "description": "",
+          "default": "neutral"
+        }
+      }
+    },
+    "plot": {
+      "summary": "A chart whose scale, ticks, labels and colours are already computed.",
+      "children": false,
+      "slots": {},
+      "props": {
+        "kind": {
+          "type": {
+            "enum": [
+              "line",
+              "area",
+              "bar",
+              "donut"
+            ]
+          },
+          "description": "",
+          "default": "line"
+        },
+        "x": {
+          "type": {
+            "array": "string"
+          },
+          "description": "Category labels.",
+          "required": true
+        },
+        "y": {
+          "type": {
+            "object": {
+              "min": {
+                "type": "number",
+                "description": "",
+                "required": true
+              },
+              "max": {
+                "type": "number",
+                "description": "",
+                "required": true
+              },
+              "ticks": {
+                "type": {
+                  "array": {
+                    "object": {
+                      "value": {
+                        "type": "number",
+                        "description": "",
+                        "required": true
+                      },
+                      "label": {
+                        "type": "string",
+                        "description": "",
+                        "required": true
+                      }
+                    }
+                  }
+                },
+                "description": "",
+                "required": true
+              }
+            }
+          },
+          "description": "Absent for a donut."
+        },
+        "series": {
+          "type": {
+            "array": {
+              "object": {
+                "name": {
+                  "type": "string",
+                  "description": "",
+                  "required": true
+                },
+                "values": {
+                  "type": {
+                    "array": {
+                      "oneOf": [
+                        "number",
+                        {
+                          "const": null
+                        }
+                      ]
+                    }
+                  },
+                  "description": "`null` is a gap.",
+                  "required": true
+                },
+                "labels": {
+                  "type": {
+                    "array": {
+                      "oneOf": [
+                        "string",
+                        {
+                          "const": null
+                        }
+                      ]
+                    }
+                  },
+                  "description": "Formatted text of each value, for tooltips and accessibility."
+                },
+                "color": {
+                  "type": {
+                    "oneOf": [
+                      "number",
+                      {
+                        "const": "muted"
+                      },
+                      {
+                        "enum": [
+                          "red",
+                          "orange",
+                          "yellow",
+                          "green",
+                          "teal",
+                          "cyan",
+                          "blue",
+                          "indigo",
+                          "purple",
+                          "pink",
+                          "brown",
+                          "gray"
+                        ]
+                      }
+                    ]
+                  },
+                  "description": "1-based index into the shared chart palette in `theme.json`: `palette[(N - 1) % palette.length]`. `muted` is `chart.muted`. A colour name is `colors[name].ink`.",
+                  "required": true
+                }
+              }
+            },
+            "min": 1
+          },
+          "description": "For a donut: one series, one colour per slice in `slices`.",
+          "required": true
+        },
+        "stacked": {
+          "type": "boolean",
+          "description": ""
+        },
+        "slices": {
+          "type": {
+            "array": {
+              "object": {
+                "label": {
+                  "type": "string",
+                  "description": "",
+                  "required": true
+                },
+                "value": {
+                  "type": "number",
+                  "description": "",
+                  "required": true
+                },
+                "color": {
+                  "type": {
+                    "oneOf": [
+                      "number",
+                      {
+                        "enum": [
+                          "red",
+                          "orange",
+                          "yellow",
+                          "green",
+                          "teal",
+                          "cyan",
+                          "blue",
+                          "indigo",
+                          "purple",
+                          "pink",
+                          "brown",
+                          "gray"
+                        ]
+                      }
+                    ]
+                  },
+                  "description": "",
+                  "required": true
+                }
+              }
+            }
+          },
+          "description": "Donut only."
+        },
+        "legend": {
+          "type": {
+            "array": {
+              "object": {
+                "label": {
+                  "type": "string",
+                  "description": "",
+                  "required": true
+                },
+                "color": {
+                  "type": {
+                    "oneOf": [
+                      "number",
+                      {
+                        "const": "muted"
+                      },
+                      {
+                        "enum": [
+                          "red",
+                          "orange",
+                          "yellow",
+                          "green",
+                          "teal",
+                          "cyan",
+                          "blue",
+                          "indigo",
+                          "purple",
+                          "pink",
+                          "brown",
+                          "gray"
+                        ]
+                      }
+                    ]
+                  },
+                  "description": "",
+                  "required": true
+                },
+                "value": {
+                  "type": "string",
+                  "description": "Formatted value (donut)."
+                },
+                "share": {
+                  "type": "string",
+                  "description": "Formatted percentage (donut)."
+                }
+              }
+            }
+          },
+          "description": "Legend rows, ready to draw. Absent when no legend is shown."
+        },
+        "center": {
+          "type": {
+            "object": {
+              "value": {
+                "type": "string",
+                "description": "",
+                "required": true
+              },
+              "label": {
+                "type": "string",
+                "description": "",
+                "required": true
+              }
+            }
+          },
+          "description": "Donut only."
+        },
+        "summary": {
+          "type": "string",
+          "description": "Text alternative for screen readers.",
+          "required": true
+        }
+      }
+    },
+    "code": {
+      "summary": "A code block with a copy control.",
+      "children": false,
+      "slots": {},
+      "props": {
+        "text": {
+          "type": "string",
+          "description": "",
+          "required": true
+        },
+        "language": {
+          "type": "string",
+          "description": ""
+        },
+        "title": {
+          "type": "string",
+          "description": ""
+        }
+      }
+    }
+  }
+}

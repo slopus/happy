@@ -1,0 +1,153 @@
+{
+  "genuiRender": 1,
+  "compiler": "1.0.0",
+  "fallback": "Test runtime per package, before and after the cache change.",
+  "root": "card",
+  "elements": {
+    "card": {
+      "type": "box",
+      "props": {
+        "role": "card",
+        "gap": "blocks"
+      },
+      "children": [
+        "card.header",
+        "chart"
+      ]
+    },
+    "card.header": {
+      "type": "box",
+      "props": {
+        "role": "header",
+        "direction": "row",
+        "gap": "inline",
+        "align": "start",
+        "justify": "between"
+      },
+      "children": [
+        "card.heading"
+      ]
+    },
+    "card.heading": {
+      "type": "box",
+      "props": {
+        "gap": "tight",
+        "grow": true
+      },
+      "children": [
+        "card.title",
+        "card.subtitle"
+      ]
+    },
+    "card.title": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Test runtime by package"
+          }
+        ],
+        "role": "title"
+      }
+    },
+    "card.subtitle": {
+      "type": "text",
+      "props": {
+        "spans": [
+          {
+            "text": "Seconds, lower is better"
+          }
+        ],
+        "role": "subtitle"
+      }
+    },
+    "chart": {
+      "type": "plot",
+      "props": {
+        "kind": "bar",
+        "x": [
+          "agent",
+          "desktop",
+          "server",
+          "wire",
+          "cli"
+        ],
+        "y": {
+          "min": 0,
+          "max": 200,
+          "ticks": [
+            {
+              "value": 0,
+              "label": "0 s"
+            },
+            {
+              "value": 50,
+              "label": "50 s"
+            },
+            {
+              "value": 100,
+              "label": "100 s"
+            },
+            {
+              "value": 150,
+              "label": "150 s"
+            },
+            {
+              "value": 200,
+              "label": "200 s"
+            }
+          ]
+        },
+        "series": [
+          {
+            "name": "Before",
+            "values": [
+              184,
+              142,
+              96,
+              38,
+              51
+            ],
+            "labels": [
+              "184 s",
+              "142 s",
+              "96 s",
+              "38 s",
+              "51 s"
+            ],
+            "color": "muted"
+          },
+          {
+            "name": "After",
+            "values": [
+              92,
+              71,
+              88,
+              21,
+              27
+            ],
+            "labels": [
+              "92 s",
+              "71 s",
+              "88 s",
+              "21 s",
+              "27 s"
+            ],
+            "color": 2
+          }
+        ],
+        "legend": [
+          {
+            "label": "Before",
+            "color": "muted"
+          },
+          {
+            "label": "After",
+            "color": 2
+          }
+        ],
+        "summary": "Bar chart, agent to cli. Before: agent 184 s, desktop 142 s, server 96 s, wire 38 s, cli 51 s. After: agent 92 s, desktop 71 s, server 88 s, wire 21 s, cli 27 s."
+      }
+    }
+  }
+}
