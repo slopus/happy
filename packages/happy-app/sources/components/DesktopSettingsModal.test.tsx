@@ -70,7 +70,7 @@ describe('DesktopSettingsModalProvider', () => {
         renderer = undefined;
     });
 
-    it('opens settings and activity with a desktop modal boundary', () => {
+    it('opens settings with a desktop modal boundary', () => {
         act(() => {
             renderer = TestRenderer.create(
                 <DesktopSettingsModalProvider><ControllerProbe /></DesktopSettingsModalProvider>,
@@ -78,8 +78,6 @@ describe('DesktopSettingsModalProvider', () => {
         });
         act(() => controller?.openSettings());
         expect(mocks.routerPush).toHaveBeenCalledWith({ pathname: '/settings', params: { desktopModal: '1' } });
-        act(() => controller?.openActivity());
-        expect(mocks.routerPush).toHaveBeenCalledWith({ pathname: '/inbox', params: { desktopModal: '1' } });
     });
 
     it('opens an arbitrary destination inside the desktop modal and preserves route params', () => {

@@ -428,7 +428,7 @@ export const SidebarView = React.memo(({
     const [initialPluginId, setInitialPluginId] = React.useState<string | null>(null);
     const [footerMenu, setFooterMenu] = React.useState<FooterMenu>(null);
     const commandPaletteLauncher = useCommandPaletteLauncher();
-    const { isDesktop, openSettings, openActivity, openRoute } = useDesktopSettingsModal();
+    const { isDesktop, openSettings, openRoute } = useDesktopSettingsModal();
     const displayName = getDisplayName(profile) ?? t('settings.title');
 
     React.useEffect(() => {
@@ -530,15 +530,6 @@ export const SidebarView = React.memo(({
                     <Text style={styles.newSessionText}>{t('sidebar.newSession')}</Text>
                 </Pressable>
 
-                <Pressable
-                    onPress={() => { closeDrawer(); openActivity(); }}
-                    testID="sidebar-inbox-button"
-                    style={[styles.messagesRow, desktopDensity && styles.messagesRowDesktop]}
-                >
-                    <Ionicons name="chatbubble-ellipses-outline" size={17} color={stylesheet.messagesText.color} />
-                    <Text style={styles.messagesText}>{t('tabs.inbox')}</Text>
-                </Pressable>
-
                 <Pressable accessibilityRole="button" onPress={() => go('/agent-profiles')} testID="sidebar-party-agents-button" style={({ pressed }) => [styles.messagesRow, desktopDensity && styles.messagesRowDesktop, pressed && styles.navigationCardPressed]}>
                     <Ionicons name="person-add-outline" size={17} color={stylesheet.messagesText.color}/><Text style={styles.messagesText}>群聊 Agent 管理</Text>
                 </Pressable>
@@ -601,12 +592,6 @@ export const SidebarView = React.memo(({
                 onPress={() => go('/new')}
                 testID="sidebar-new-session-button"
             />}
-            <DesktopRailItem
-                icon="chatbubble-ellipses-outline"
-                label={t('tabs.inbox')}
-                onPress={() => { closeDrawer(); openActivity(); }}
-                testID="sidebar-inbox-button"
-            />
             {!desktopPrimaryNavigation && <DesktopRailItem
                 icon="search-outline"
                 label={t('sidebar.searchSessions')}

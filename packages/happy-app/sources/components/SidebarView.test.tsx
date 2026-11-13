@@ -25,7 +25,6 @@ const mocks = vi.hoisted(() => ({
     session: null as any,
     openCommandPalette: vi.fn(),
     openSettings: vi.fn(),
-    openActivity: vi.fn(),
     setDesktopSidebarListMode: vi.fn(),
     setDesktopSidebarMode: vi.fn(),
     commandPaletteAvailable: false,
@@ -122,7 +121,6 @@ vi.mock('./DesktopSettingsModal', () => ({
     useDesktopSettingsModal: () => ({
         isDesktop: mocks.settingsModalIsDesktop,
         openSettings: mocks.openSettings,
-        openActivity: mocks.openActivity,
     }),
 }));
 vi.mock('./VoiceAssistantStatusBar', () => ({ VoiceAssistantStatusBar: 'VoiceAssistantStatusBar' }));
@@ -265,11 +263,11 @@ describe('SidebarView Agent space exit', () => {
         act(() => renderer.unmount());
     });
 
-    it('preserves the opaque project sidebar and project selection under Activity Center', () => {
+    it('preserves the opaque project sidebar and project selection under Settings', () => {
         mocks.spaceAgent = null;
-        mocks.pathname = '/inbox';
+        mocks.pathname = '/settings';
         mocks.rootState = { index: 1, desktopModalBaseKey: 'project', routes: [
-            { key: 'project', name: 'projects' }, { key: 'activity', name: 'inbox/index' },
+            { key: 'project', name: 'projects' }, { key: 'settings', name: 'settings/index' },
         ] };
         mocks.desktopSkin = 'dreamskin';
         mocks.theme = appThemes.ginghamDark;
@@ -415,7 +413,7 @@ describe('SidebarView Agent space exit', () => {
         expect(renderer.root.findAllByType('ScrollView')).toHaveLength(1);
         expect(renderer.root.findByType('SidebarAccountMenu').props.mobileRail).toBe(true);
         expect(renderer.root.findAllByType('PluginLeftSidebarSlot')).toHaveLength(0);
-        for (const entry of ['new-session', 'inbox', 'command-palette', 'plugins', 'session-list', 'archive', 'plugin-relationship-advisor']) {
+        for (const entry of ['new-session', 'command-palette', 'plugins', 'session-list', 'archive', 'plugin-relationship-advisor']) {
             const button = renderer.root.findAllByType('Pressable').find((node: any) => node.props.testID === `sidebar-${entry}-button`);
             expect(button.findAllByType('Text')).toHaveLength(0);
             expect(button.props.style({ pressed: false })).toContainEqual(expect.objectContaining({ height: 44, width: 44 }));
@@ -704,7 +702,6 @@ describe('SidebarView Agent space exit', () => {
         const primaryColumnStyle = Object.assign({}, ...[primaryColumn.props.style].flat(Infinity));
         expect(primaryColumnStyle).toEqual(expect.objectContaining({ width: 60, zIndex: 100 }));
         expect(primaryColumn.findAllByType('Pressable').map((node: any) => node.props.testID)).toEqual(expect.arrayContaining([
-            'sidebar-inbox-button',
             'sidebar-plugins-button',
             'sidebar-plugin-relationship-advisor-button',
             'sidebar-session-list-button',

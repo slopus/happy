@@ -39,8 +39,7 @@ export function DesktopStackNavigator({ children, initialRouteName, screenOption
     const modalDescriptors = React.useMemo(() => Object.fromEntries(Object.entries(descriptors).map(([key, descriptor]) => [key, {
         ...descriptor, options: { ...descriptor.options, headerShown: false },
     }])), [descriptors]);
-    const rootName = visible ? state.routes[start].name : '';
-    const fallbackTitle = rootName === 'inbox/index' ? t('tabs.inbox') : t('settings.title');
+    const fallbackTitle = t('settings.title');
     const title = current.options.headerTitle || current.options.title || fallbackTitle;
 
     React.useEffect(() => {

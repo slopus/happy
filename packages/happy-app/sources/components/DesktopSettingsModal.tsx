@@ -6,7 +6,6 @@ import { useIsTablet } from '@/utils/responsive';
 type DesktopSettingsModalController = {
     isDesktop: boolean;
     openSettings: () => void;
-    openActivity: () => void;
     openRoute: (pathname: string, params?: Record<string, string>) => void;
 };
 
@@ -34,7 +33,6 @@ export function DesktopSettingsModalProvider({ children }: { children: React.Rea
     const controller = React.useMemo(() => ({
         isDesktop,
         openSettings: () => openRoute('/settings'),
-        openActivity: () => openRoute('/inbox'),
         openRoute,
     }), [isDesktop, openRoute]);
     return <DesktopSettingsModalContext.Provider value={controller}>{children}</DesktopSettingsModalContext.Provider>;

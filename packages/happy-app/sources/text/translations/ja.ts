@@ -654,16 +654,10 @@ export const ja: TranslationStructure = {
     },
     tabs: {
         // Tab navigation labels
-        inbox: 'アクティビティセンター',
         sessions: 'ターミナル',
         settings: '設定',
     },
 
-    inbox: {
-        // Inbox screen
-        emptyTitle: 'まだアクティビティはありません',
-        updates: '更新',
-    },
 
     common: {
         // Simple string constants

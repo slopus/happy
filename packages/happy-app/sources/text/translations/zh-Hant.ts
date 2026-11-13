@@ -713,16 +713,10 @@ export const zhHant: TranslationStructure = {
     },
     tabs: {
         // Tab navigation labels
-        inbox: '動態中心',
         sessions: '終端',
         settings: '設定',
     },
 
-    inbox: {
-        // Inbox screen
-        emptyTitle: '暫無動態',
-        updates: '更新',
-    },
 
     common: {
         // Simple string constants

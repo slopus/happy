@@ -631,16 +631,10 @@ export const en: TranslationStructure = {
     },
     tabs: {
         // Tab navigation labels
-        inbox: 'Activity Center',
         sessions: 'Terminals',
         settings: 'Settings',
     },
 
-    inbox: {
-        // Inbox screen
-        emptyTitle: 'No activity yet',
-        updates: 'Updates',
-    },
 
     common: {
         // Simple string constants

@@ -64,12 +64,12 @@ describe('desktop app stack presentation', () => {
     it('renders only background outside and only descendants inside, including during close animation', () => {
         (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
         const background = { key: 'background', name: 'session/[id]', params: { id: 'original' } };
-        mocks.state = { key: 'app', index: 2, routes: [background, { key: 'inbox', name: 'inbox/index' }, { key: 'profile', name: 'settings/profile' }], preloadedRoutes: [{ key: 'preload', name: 'dev/index' }], desktopModalBaseKey: 'background' };
+        mocks.state = { key: 'app', index: 2, routes: [background, { key: 'settings', name: 'settings/index' }, { key: 'profile', name: 'settings/profile' }], preloadedRoutes: [{ key: 'preload', name: 'dev/index' }], desktopModalBaseKey: 'background' };
         act(() => { renderer = TestRenderer.create(<DesktopStackNavigator children={null} />); });
         const stacks = renderer.root.findAllByType('NativeStackView');
         expect(stacks).toHaveLength(2);
         expect(stacks[0].props.state.routes).toEqual([background]);
-        expect(stacks[1].props.state.routes.map((r: any) => r.key)).toEqual(['inbox', 'profile']);
+        expect(stacks[1].props.state.routes.map((r: any) => r.key)).toEqual(['settings', 'profile']);
         expect(stacks[0].props.state.preloadedRoutes).toEqual([]);
         expect(stacks[1].props.state.preloadedRoutes).toEqual([]);
         expect(renderer.root.findByProps({ testID: 'desktop-modal-back' })).toBeDefined();

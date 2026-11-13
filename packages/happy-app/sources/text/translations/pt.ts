@@ -651,16 +651,10 @@ export const pt: TranslationStructure = {
     },
     tabs: {
         // Tab navigation labels
-        inbox: 'Central de atividades',
         sessions: 'Terminais',
         settings: 'Configurações',
     },
 
-    inbox: {
-        // Inbox screen
-        emptyTitle: 'Ainda não há atividades',
-        updates: 'Atualizações',
-    },
 
     common: {
         // Simple string constants

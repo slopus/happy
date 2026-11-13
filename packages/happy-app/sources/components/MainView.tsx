@@ -124,7 +124,7 @@ export const MainView = React.memo(({ sessionListLayout = 'projects', transparen
 
     // 首页主区域在所有宽度下都保持 compose-first；宽屏差异只由外层侧栏承担。
     // The session list now lives in the swipe drawer (SidebarView); settings sits in
-    // the top-left of ComposeHome. The old bottom TabBar + per-tab content is gone.
+    // the top-left of ComposeHome.
     return (
         <View style={styles.phoneContainer}>
             {realtimeStatus !== 'disconnected' && (

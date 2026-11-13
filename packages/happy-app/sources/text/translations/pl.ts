@@ -662,16 +662,10 @@ export const pl: TranslationStructure = {
     },
     tabs: {
         // Tab navigation labels
-        inbox: 'Centrum aktywności',
         sessions: 'Terminale',
         settings: 'Ustawienia',
     },
 
-    inbox: {
-        // Inbox screen
-        emptyTitle: 'Brak aktywności',
-        updates: 'Aktualizacje',
-    },
 
     common: {
         // Simple string constants

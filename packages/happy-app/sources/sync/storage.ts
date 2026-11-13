@@ -1807,12 +1807,6 @@ export function useAcceptedFriends() {
     }));
 }
 
-export function useFeedItems() {
-    return storage(useShallow((state) => state.feedItems));
-}
-export function useFeedLoaded() {
-    return storage((state) => state.feedLoaded);
-}
 export function useFriendsLoaded() {
     return storage((state) => state.friendsLoaded);
 }

@@ -816,16 +816,10 @@ export const zhHans: TranslationStructure = {
     },
     tabs: {
         // Tab navigation labels
-        inbox: '动态中心',
         sessions: '终端',
         settings: '设置',
     },
 
-    inbox: {
-        // Inbox screen
-        emptyTitle: '暂无动态',
-        updates: '更新',
-    },
 
     common: {
         // Simple string constants

@@ -4,7 +4,7 @@ vi.mock('@react-navigation/native', () => ({ StackRouter }));
 import { projectLocationHref, restoreProjectLocation } from '@/utils/projectReturnLocation';
 import { createDesktopModalRouter, getDesktopModalStart, getDesktopModalBackgroundPath } from './desktopModalRouter';
 
-const options = { routeNames: ['index', 'projects', 'inbox/index', 'settings/index', 'settings/appearance', 'settings/device-environment', 'settings/profile', 'session/[id]', 'session/[id]/file', 'session/[id]/files', 'machine/[id]', 'dev/index', 'dev/logs', 'relationship-advisor'], routeParamList: {}, routeGetIdList: {} };
+const options = { routeNames: ['index', 'projects', 'settings/index', 'settings/appearance', 'settings/device-environment', 'settings/profile', 'session/[id]', 'session/[id]/file', 'session/[id]/files', 'machine/[id]', 'dev/index', 'dev/logs', 'relationship-advisor'], routeParamList: {}, routeGetIdList: {} };
 function setup() {
     const original = StackRouter({ initialRouteName: 'index' });
     const router = createDesktopModalRouter({ initialRouteName: 'index' });
@@ -46,7 +46,7 @@ describe('desktop modal navigation boundary', () => {
         const app = setup();
         app.send(StackActions.push('session/[id]', { id: 'background' }));
         const background = app.state.routes;
-        app.send(StackActions.push('inbox/index', { desktopModal: '1' }));
+        app.send(StackActions.push('settings/appearance', { desktopModal: '1' }));
         expect(getDesktopModalStart(app.state)).toBe(2);
         expect(app.state.routes.at(-1)?.params).not.toHaveProperty('desktopModal');
         app.send(StackActions.push('session/[id]', { id: 'attached' }));
@@ -92,8 +92,8 @@ describe('desktop modal navigation boundary', () => {
         app.send({ type: 'GO_BACK' });
         expect(app.state.routes.at(-1)?.name).toBe('dev/index');
         app.send({ type: 'CLOSE_DESKTOP_MODAL' });
-        app.send(StackActions.push('inbox/index', { desktopModal: '1' }));
-        expect(app.state.routes.map(r => r.name)).toEqual(['index', 'inbox/index']);
+        app.send(StackActions.push('settings/appearance', { desktopModal: '1' }));
+        expect(app.state.routes.map(r => r.name)).toEqual(['index', 'settings/appearance']);
     });
 
     it('keeps Device Environment inside Settings until back and close restore the workspace', () => {
@@ -123,7 +123,7 @@ describe('modal boundary edge actions', () => {
         const app = setup();
         app.send(StackActions.push('session/[id]', { id: 'background' }));
         const before = app.state;
-        app.send(StackActions.push('inbox/index', { desktopModal: '1' }));
+        app.send(StackActions.push('settings/appearance', { desktopModal: '1' }));
         const active = app.state;
         app.send(StackActions.pop(99));
         expect(app.state.routes).toEqual(before.routes);
