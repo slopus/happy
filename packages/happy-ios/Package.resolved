@@ -132,7 +132,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/slopus/tailcat-swift.git",
       "state" : {
-        "revision" : "14cf4270fd7cb7b87cbf7185d80f05252042d5cf"
+        "revision" : "7cad7755fe73dfb1dddf8cc82768617353fb9ec8"
       }
     },
     {
