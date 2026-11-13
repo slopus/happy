@@ -1058,6 +1058,15 @@ final class HappyCloudUITests: XCTestCase {
             app.buttons["Send"].tap()
             Thread.sleep(forTimeInterval: 5)
             capture("21b-after-send")
+            // Seen on the simulator: the first tap after typing can leave
+            // the text in the composer.
+            let left = (composer.value as? String).map { !$0.isEmpty && $0 != composer.placeholderValue } ?? false
+            print("LIVE_SEND text left after the first tap: \(left)")
+            if left {
+                app.buttons["Send"].tap()
+                Thread.sleep(forTimeInterval: 5)
+                capture("21c-after-second-send")
+            }
             var waited = 0
             while !card.exists, waited < 240 {
                 Thread.sleep(forTimeInterval: 10)
@@ -1155,12 +1164,27 @@ final class HappyCloudUITests: XCTestCase {
         require(row.waitForExistence(timeout: 20), "no artifact row in the chat")
         for _ in 0..<6 where !row.isHittable { app.swipeDown() }
         row.tap()
+        // The page's own button: the saved secret, opened again.
+        func pressSecret(on from: String) {
+            let button = element("artifact-gen-ui").buttons.matching(NSPredicate(format: "label CONTAINS 'secret'")).firstMatch
+            require(button.waitForExistence(timeout: 10), "no secret button on the page from the \(from)")
+            print("LIVE_ARTIFACT \(from) button: \(button.label)")
+            button.tap()
+            let form = first([app.navigationBars["Change Secret"], app.navigationBars["New Secret"]], timeout: 15)
+            require(form != nil, "the page's button opened no form from the \(from)")
+            print("LIVE_ARTIFACT \(from) form: \(form?.identifier ?? "-")")
+            Thread.sleep(forTimeInterval: 1)
+            capture("3x-\(from)-form")
+            element("genui-secret-cancel").tap()
+            Thread.sleep(forTimeInterval: 2)
+        }
         let page = element("artifact")
         require(page.waitForExistence(timeout: 15), "the row opened no artifact page")
         Thread.sleep(forTimeInterval: 6)
         capture("30-from-chat")
         tree("30-from-chat", app)
         print("LIVE_ARTIFACT from chat: genui=\(element("artifact-gen-ui").exists) message=\(element("artifact-message").exists ? element("artifact-message").label : "-")")
+        pressSecret(on: "chat")
         app.navigationBars.buttons.element(boundBy: 0).tap()
         Thread.sleep(forTimeInterval: 2)
         app.navigationBars.buttons.element(boundBy: 0).tap()
@@ -1181,6 +1205,7 @@ final class HappyCloudUITests: XCTestCase {
         capture("32-from-list")
         tree("32-from-list", app)
         print("LIVE_ARTIFACT from list: genui=\(element("artifact-gen-ui").exists) message=\(element("artifact-message").exists ? element("artifact-message").label : "-")")
+        pressSecret(on: "list")
     }
 
     /// The whole flow with a test account, no person needed: ten taps on
