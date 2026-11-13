@@ -57,11 +57,16 @@ private class FakeAgent {
     var halfway: CompletableDeferred<Unit>? = null
     /** Happy Cloud attachments uploaded (`PUT /v0/agents/:id/attachments?name=`): name, type and bytes; null answers 404, a server without the route. */
     var attachments: ArrayList<Triple<String, String, ByteArray>>? = ArrayList()
-    /** Sends to [attachments]' route. */
-    val fileRequest: AgentFileRequest = { method, path, body, contentType ->
+    /** A computer's attachments routes (`…/attachments/:sha256`); null answers them 404, as an older computer does. */
+    var daemon: FakeAttachments? = null
+    /** Sends to [attachments]' route, and to [daemon]'s. */
+    val fileRequest: AgentFileRequest = { method, path, body, headers ->
         requests += Triple(method, path, null)
         val uploads = attachments
+        val contentType = headers["Content-Type"].orEmpty()
+        val chunked = daemon
         when {
+            chunked != null && "/attachments/" in path -> chunked.request(method, path, body, headers)
             method != "PUT" || !path.substringBefore('?').endsWith("/attachments") -> TransportResponse(404, body = "{}".toByteArray())
             uploads == null -> TransportResponse(404, body = """{"error":"Not found.","code":"not_found"}""".toByteArray())
             else -> {
@@ -172,6 +177,9 @@ class ConversationTest {
         preferences: kotlinx.coroutines.flow.StateFlow<ModelPreferences>? = null,
         started: (Mode) -> Unit = {},
         cloudFiles: Boolean = false,
+        // An older computer unless a test says otherwise: pictures inline, files in the workspace.
+        route: AttachmentRoute = AttachmentRoute().apply { missing = true },
+        kept: MutableMap<String, java.io.File> = HashMap(),
         created: (JsonObject) -> Unit = {},
     ) = Conversation(
         api = ConversationApi(null, agent.request, fileRequest = agent.fileRequest),
@@ -194,6 +202,8 @@ class ConversationTest {
         record = { recorded += it },
         errorShown = { area, code -> recorded += AnalyticsEvent.ErrorShown(area, code) },
         cloudFiles = cloudFiles,
+        attachmentRoute = route,
+        keepAttachment = { id, file -> kept[id] = file },
     ).also { it.start() }
 
     private fun event(type: String, payload: String) = ConversationSignal.Event(type, Json.parseToJsonElement(payload).jsonObject)
@@ -1248,12 +1258,112 @@ class ConversationTest {
         assertEquals(1, agent.requests.count { it.second.endsWith("/send") })
     }
 
-    @Test fun `a sent Happy Cloud file reads under its message`() {
-        val message = Message.parse(Json.parseToJsonElement("""{"id":"m1","role":"user","status":"completed","createdAt":1,"content":[{"type":"text","text":"Look"},{"type":"file","attachment":"abc","name":"notes.pdf","mimeType":"application/pdf","size":2}]}"""))!!
+    @Test fun `a sent message's attachments read as media under its words`() {
+        val message = Message.parse(Json.parseToJsonElement("""{"id":"m1","role":"user","status":"completed","createdAt":1,"content":[{"type":"text","text":"Look"},{"type":"file","attachment":"abc","name":"notes.pdf","mimeType":"application/pdf","size":2},{"type":"file","attachment":"def","name":"IMG.jpg","mimeType":"image/jpeg","size":2000000,"kind":"image","width":4032,"height":3024,"thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI"},{"type":"file","attachment":"fed","name":"a.bin","mimeType":"application/octet-stream","size":1,"kind":"hologram"}]}"""))!!
         assertEquals(Block.File("abc", "notes.pdf", "application/pdf", 2), message.content[1])
+        assertEquals(Block.File("def", "IMG.jpg", "image/jpeg", 2000000, "image", 4032.0, 3024.0, "1QcSHQRnh493V4dIh4eXh1h4kJUI"), message.content[2])
         val row = ConversationRowBuilder().rows(message, "a1", null, false).single() as ConversationRow.User
-        assertEquals("Look\n\nAttached file:\n- notes.pdf", row.text)
+        assertEquals("Look", row.text)
+        assertEquals(listOf("abc", "def", "fed"), row.files.map { it.attachment })
+        assertEquals(listOf("m1/1", "m1/2", "m1/3"), row.files.map { it.key })
+        // Happy Cloud's older files have no kind: a file. An unknown kind is a file too.
+        assertEquals(listOf("file", "image", "file"), row.files.map { it.item.kind })
+        assertEquals(MediaItem("image", "IMG.jpg", "image/jpeg", 4032.0, 3024.0, null, "1QcSHQRnh493V4dIh4eXh1h4kJUI", 2000000.0), row.files[1].item)
+        assertEquals("/v0/agents/a1/attachments/def", ConversationApi.mediaPath("a1", row.files[1]))
+        // The viewer pages through its picture, not its files.
+        assertEquals(listOf(row.files[1]), ConversationViewing.entries(listOf(row), "Picture", "Video").map { it.presented })
         assertEquals(message, Message.parse(KeptConversation.messageJson(message)))
+    }
+
+    @Test fun `to a computer that takes attachments pictures and files go as file blocks, the pictures kept here`() = runTest {
+        val agent = FakeAgent().apply { daemon = FakeAttachments() }
+        val kept = HashMap<String, java.io.File>()
+        val route = AttachmentRoute()
+        val chat = conversation(agent, route = route, kept = kept)
+        advanceUntilIdle()
+        val dir = kotlin.io.path.createTempDirectory("uploads").toFile()
+        val photo = java.io.File(dir, "IMG_0042.jpg").apply { writeBytes(ByteArray(3000) { it.toByte() }) }
+        val doc = java.io.File(dir, "notes.pdf").apply { writeBytes(byteArrayOf(4, 5)) }
+        val attachments = listOf(
+            preview(photo.toURI().toString(), "image/jpeg", 3000, name = "IMG_0042.jpg"),
+            preview(doc.toURI().toString(), "application/pdf", 2, name = "notes.pdf"),
+        )
+        assertTrue(chat.send("", attachments) { list -> list.map { Block.Image("image/jpeg", it.name) } })
+        advanceUntilIdle()
+        val photoId = FakeAttachments.hex(photo.readBytes())
+        val docId = FakeAttachments.hex(doc.readBytes())
+        assertEquals(setOf(photoId, docId), agent.daemon!!.stored.keys)
+        assertTrue("no workspace writes", agent.written.isEmpty())
+        val send = agent.requests.single { it.second.endsWith("/send") }.third!!
+        assertEquals(
+            """[{"type":"file","attachment":"$photoId","name":"IMG_0042.jpg"},{"type":"file","attachment":"$docId","name":"notes.pdf"}]""",
+            send["content"].toString(),
+        )
+        assertEquals("\"Attached files.\"", send["text"].toString())
+        // The sender's own bytes are where its tiles read them.
+        assertEquals(mapOf(photoId to photo, docId to doc), kept)
+        val id = send["id"]!!.jsonPrimitive.content
+        assertEquals(UploadPhase.Done, chat.uploads.phase(UploadBoard.pictureKey(id, 0)))
+        assertFalse(route.missing)
+    }
+
+    @Test fun `pictures alone go as attachments captioned as images`() = runTest {
+        val agent = FakeAgent().apply { daemon = FakeAttachments() }
+        val chat = conversation(agent, route = AttachmentRoute())
+        advanceUntilIdle()
+        val dir = kotlin.io.path.createTempDirectory("uploads").toFile()
+        val photo = java.io.File(dir, "a.jpg").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        assertTrue(chat.send("", listOf(preview(photo.toURI().toString(), "image/jpeg", 3))) { list -> list.map { Block.Image("image/jpeg", it.name) } })
+        advanceUntilIdle()
+        val send = agent.requests.single { it.second.endsWith("/send") }.third!!
+        assertEquals("\"Attached image.\"", send["text"].toString())
+        assertTrue(sentImages(agent).single().isEmpty())
+    }
+
+    @Test fun `a computer without attachments is found out once and gets pictures inline and files in the workspace`() = runTest {
+        val agent = FakeAgent().apply { daemon = FakeAttachments().apply { missing = true } }
+        val route = AttachmentRoute()
+        val chat = conversation(agent, route = route)
+        advanceUntilIdle()
+        val dir = kotlin.io.path.createTempDirectory("uploads").toFile()
+        val photo = java.io.File(dir, "a.jpg").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        val doc = java.io.File(dir, "notes.pdf").apply { writeBytes(byteArrayOf(4, 5)) }
+        val attachments = listOf(preview(photo.toURI().toString(), "image/jpeg", 3), preview(doc.toURI().toString(), "application/pdf", 2, name = "notes.pdf"))
+        assertTrue(chat.send("Look", attachments) { list -> list.map { Block.Image("image/jpeg", it.name) } })
+        advanceUntilIdle()
+        assertTrue(route.missing)
+        assertEquals(1, agent.daemon!!.requests.size)
+        val send = agent.requests.single { it.second.endsWith("/send") }.third!!
+        val id = send["id"]!!.jsonPrimitive.content
+        assertEquals("""[{"type":"image","mimeType":"image/jpeg","data":"a.jpg"}]""", send["content"].toString())
+        assertEquals("Look\n\nAttached file:\n- ./.happy-uploads/$id/1-notes.pdf", send["text"]!!.jsonPrimitive.content)
+        assertEquals(listOf("w1:.happy-uploads/$id/1-notes.pdf"), agent.written.keys.toList())
+        // Remembered: the next send doesn't ask again.
+        assertTrue(chat.send("Again", listOf(preview(photo.toURI().toString(), "image/jpeg", 3))) { list -> list.map { Block.Image("image/jpeg", it.name) } })
+        advanceUntilIdle()
+        assertEquals(1, agent.daemon!!.requests.size)
+        assertEquals(2, sentImages(agent).count { it.isNotEmpty() })
+    }
+
+    @Test fun `bytes that don't match their name fail the send, and Retry sends it again`() = runTest {
+        val daemon = FakeAttachments().apply { corrupt = true }
+        val agent = FakeAgent().apply { this.daemon = daemon }
+        val chat = conversation(agent, route = AttachmentRoute())
+        advanceUntilIdle()
+        val dir = kotlin.io.path.createTempDirectory("uploads").toFile()
+        val doc = java.io.File(dir, "notes.pdf").apply { writeBytes(byteArrayOf(4, 5)) }
+        val other = java.io.File(dir, "plan.pdf").apply { writeBytes(byteArrayOf(6)) }
+        val attachments = listOf(preview(other.toURI().toString(), "application/pdf", 1, name = "plan.pdf"), preview(doc.toURI().toString(), "application/pdf", 2, name = "notes.pdf"))
+        assertTrue(chat.send("Look", attachments) { emptyList() })
+        advanceUntilIdle()
+        val row = chat.state.value.rows.filterIsInstance<ConversationRow.User>().single()
+        assertTrue(row.delivery is Delivery.Failed)
+        assertTrue(agent.requests.none { it.second.endsWith("/send") })
+        daemon.corrupt = false
+        chat.retrySend(row.messageId)
+        advanceUntilIdle()
+        assertEquals(1, agent.requests.count { it.second.endsWith("/send") })
+        assertEquals(Delivery.Pending, chat.state.value.rows.filterIsInstance<ConversationRow.User>().single().delivery)
     }
 
     @Test fun `retrying a Happy Cloud send keeps the uploaded attachment and message id`() = runTest {

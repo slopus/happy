@@ -308,8 +308,43 @@ sealed interface Block {
         val running: Boolean get() = status == "running"
         val failed: Boolean get() = status == "failed"
     }
-    /** A Happy Cloud attachment a message carries (`file`): its id, name, and what the server adds. */
-    data class File(val attachment: String, val name: String, val mimeType: String? = null, val size: Long? = null) : Block
+    /**
+     * An attachment a person's message carries (`file`): its id, name, and
+     * what the computer adds; Happy Cloud's older ones have no [kind] or
+     * picture fields.
+     */
+    data class File(
+        val attachment: String,
+        val name: String,
+        val mimeType: String? = null,
+        val size: Long? = null,
+        val kind: String? = null,
+        val width: Double? = null,
+        val height: Double? = null,
+        val thumbhash: String? = null,
+        val scale: Double? = null,
+    ) : Block {
+        /** As the media a tool presents: block [index] of message [messageId]. An unknown kind is a file. */
+        fun ref(messageId: String, index: Int): MediaRef = MediaRef(
+            messageId,
+            index,
+            MediaItem(
+                kind = kind?.takeIf { it in KINDS } ?: "file",
+                name = name,
+                mimeType = mimeType.orEmpty(),
+                width = width,
+                height = height,
+                scale = scale,
+                thumbhash = thumbhash,
+                size = size?.toDouble(),
+            ),
+            attachment,
+        )
+
+        private companion object {
+            val KINDS = setOf("image", "video", "document", "file")
+        }
+    }
     /** One context compaction, inside a service message: `running`, then `completed` or `failed`. */
     data class Compaction(val status: String) : Block
     data class Unknown(val type: String) : Block
@@ -345,7 +380,11 @@ sealed interface Block {
                 "file" -> {
                     val attachment = o["attachment"].str
                     val name = o["name"].str
-                    if (attachment != null && name != null) File(attachment, name, o["mimeType"].str, o["size"].num?.toLong()) else Unknown(type)
+                    if (attachment != null && name != null) {
+                        File(attachment, name, o["mimeType"].str, o["size"].num?.toLong(), o["kind"].str, o["width"].num, o["height"].num, o["thumbhash"].str, o["scale"].num)
+                    } else {
+                        Unknown(type)
+                    }
                 }
                 "compaction" -> Compaction(o["status"].str ?: "running")
                 else -> Unknown(type)

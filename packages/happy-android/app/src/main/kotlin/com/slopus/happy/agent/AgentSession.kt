@@ -364,6 +364,9 @@ class AgentSession internal constructor(
         )
     }
 
+    /** Whether the computer takes message attachments, as this connection's first upload found. */
+    val attachmentRoute = com.slopus.happy.conversation.AttachmentRoute()
+
     /** Bots' pictures, as home's rows draw them. */
     /** Chat media kept on this phone for good, beside the catalog (iOS `MediaLibrary.agent`); null where nothing is kept. */
     val media: com.slopus.happy.media.MediaLibrary? = cacheFile?.let { com.slopus.happy.media.MediaLibrary(File(it.parentFile, it.nameWithoutExtension + ".media")) }

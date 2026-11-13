@@ -20,9 +20,14 @@ sealed interface Delivery {
     data class Failed(val reason: Problem) : Delivery
 }
 
-/** One item of a tool's `media` presentation, addressed for `…/tool-calls/:id/media/:index`. */
+/**
+ * One item of a tool's `media` presentation, addressed for
+ * `…/tool-calls/:id/media/:index`; or, with [attachment], the file block
+ * [index] of the person's message [toolCallId], read from
+ * `…/attachments/:attachment`.
+ */
 @Immutable
-data class MediaRef(val toolCallId: String, val index: Int, val item: MediaItem) {
+data class MediaRef(val toolCallId: String, val index: Int, val item: MediaItem, val attachment: String? = null) {
     val key: String get() = "$toolCallId/$index"
 }
 
@@ -74,6 +79,8 @@ sealed interface ConversationRow {
         val opened: Boolean = false,
         /** On a team's computer, the member who wrote it, by user ID; null for one still on its way and outside a team. */
         val author: String? = null,
+        /** The files it carries as attachments, read as a tool's media is: pictures and recordings under the words, other files as cards. */
+        val files: List<MediaRef> = emptyList(),
     ) : ConversationRow
 
     /**
@@ -337,12 +344,11 @@ class ConversationRowBuilder(
                 val text = message.content.filterIsInstance<Block.Text>().joinToString("\n") { it.text }
                     .let { if (fromManager && sender != null) inboundText(it, sender) else it }.trim()
                     .let { plain(it, references) }
-                    // Its Happy Cloud files read as a computer's uploads do: listed under its words.
-                    .let { WorkspaceUploads.listed(it, message.content.filterIsInstance<Block.File>().map(Block.File::name)) }
                 val pictures = message.content.filterIsInstance<Block.Image>()
-                if (text.isEmpty() && pictures.isEmpty()) return emptyList()
+                val files = message.content.mapIndexedNotNull { index, block -> (block as? Block.File)?.ref(id, index) }
+                if (text.isEmpty() && pictures.isEmpty() && files.isEmpty()) return emptyList()
                 val delivery = if (message.status == "pending") Delivery.Pending else Delivery.Sent
-                return listOf(ConversationRow.User("$id:user", id, text, parseMarkdown(text, hasPage), pictures, delivery, message.createdAt, author = message.userId))
+                return listOf(ConversationRow.User("$id:user", id, text, parseMarkdown(text, hasPage), pictures, delivery, message.createdAt, author = message.userId, files = files))
             }
             val rows = ArrayList<ConversationRow>()
             message.content.forEachIndexed { index, block ->

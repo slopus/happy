@@ -16,12 +16,14 @@ import java.util.Base64
  */
 class OutgoingFile(val file: File, val name: String, val mimeType: String, val size: Long, val path: String) {
     @Volatile var uploaded: Boolean = false
-    /** Its Happy Cloud attachment once uploaded ([ConversationApi.uploadAttachment]). */
+    /** Its attachment once uploaded ([ConversationApi.uploadAttachment], [AttachmentUploads]). */
     @Volatile var attachmentId: String? = null
+    /** Its SHA-256, once hashed: what its attachment upload is named by. */
+    @Volatile var digest: String? = null
 }
 
-/** A file a message carries on Happy Cloud: an uploaded attachment's id, and the name it goes by. */
-data class SentAttachment(val id: String, val name: String)
+/** A file a message carries as an attachment: its id, the name it goes by, and whether it is one of the message's pictures. */
+data class SentAttachment(val id: String, val name: String, val picture: Boolean = false)
 
 /**
  * What a message with attachments sends (iOS's AttachmentRules and

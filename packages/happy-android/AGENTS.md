@@ -1649,15 +1649,35 @@ gained lines is all additions too, and git calls it modified.
   never ramps the ratio per frame, and Samsung captures without zero
   shutter lag (`photoCaptureMode`): there a ZSL session's preview froze
   once a zoom crossed onto another lens (an S22 at 2x). What a chat offers is `AttachAccepts`:
-  a Happy Agent conversation takes photos, videos and files (pictures
-  inline, the rest written into the agent's workspace first,
-  `conversation/WorkspaceUploads`, as iOS does); a relay session takes
+  a Happy Agent conversation takes photos, videos and files (as the
+  agent's attachments, below; to a computer before happy-agent
+  v2026.11.6-preview.4, pictures inline and the rest written into the
+  agent's workspace first, `conversation/WorkspaceUploads`, as iOS does); a relay session takes
   pictures only, since happy-cli reads only images from `file` events,
   unless a rig v1 policy lists more. No thumbhash on Android, as on
   happy-app native.
 - **Showing**: `file` tool rows render `FileMessageView`, which downloads
   and decrypts on demand through `AttachmentTransfers` (50-entry LRU of
   decrypted blobs, one download per ref).
+- **Happy Agent attachments** (happy-agent API.md "Attachments", the same
+  on Happy Cloud; iOS sends them alike): a message's pictures and files go
+  as `file` blocks naming uploads, never their bytes.
+  `conversation/AttachmentUploads` hashes each file first; up to 8 MiB it
+  goes in one `PUT …/attachments/:sha256`, a larger one asks where its
+  upload stands (`Content-Range: bytes */size`) and sends the first missing
+  range 8 MiB at a time. A broken connection or a `5xx` waits, asks again and
+  goes on from `received`; five failures in a row without a range taken fail
+  the send, whose Retry resumes it (the digest and attachment ID stay on the
+  `OutgoingFile`). Past the request limit (`400`) the upload is deleted and
+  sent again once; `409 hash_mismatch` fails. A `404` on a send's first
+  upload is a computer without the route (`AttachmentRoute`, kept per
+  connection): its sends go the old way. The sender's bytes are kept in the
+  connection's `MediaLibrary` under `attachment/<agentId>/<sha256>`, so it
+  never downloads its own. A message's `file` blocks are `MediaRef`s with
+  `attachment` set (`Block.File.ref`): pictures and recordings flow under its
+  words as tool media do (thumbhash first, read a range at a time from
+  `…/attachments/:sha256`, in the viewer and the agent page), other files are
+  cards. A `404` there is a file no longer available: the tile's failed glyph.
 
 ### Conversation media and the viewer
 
@@ -1815,8 +1835,9 @@ and a white arc for the share written; the arc turns while it fills. Its cross
 takes that picture out (`Conversation.removePicture`, iOS `removeAttachment`):
 the write in flight stops and the rest goes again under the same id, and a
 message left empty is taken back. The share comes from the request body as the
-transport writes it. `BodyProgress` in the coroutine context gets each chunk,
-and `UploadRanges` finds where each picture's base64 sits in the body, so
+transport writes it. `BodyProgress` in the coroutine context gets each chunk:
+an attachment's own upload reports its bytes, and an inline send's
+`UploadRanges` finds where each picture's base64 sits in the body, so
 `UploadBoard` can hold a share per picture. Before any bytes go, the arc is
 short and turning. Once the computer takes the message, every ring fills and
 then shrinks away. The photos are movable content: a message of pictures alone

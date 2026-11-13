@@ -67,6 +67,16 @@ class MediaStore(val directory: File) {
         if (!staging.renameTo(target)) staging.delete()
     }
 
+    /** [keep] of a file this phone has, copied in. */
+    fun keep(id: String, file: File) {
+        val target = completeFile(id)
+        if (target.isFile) return
+        directory.mkdirs()
+        val staging = File(directory, "${UUID.randomUUID()}.in")
+        file.copyTo(staging)
+        if (!staging.renameTo(target)) staging.delete()
+    }
+
     /** The bytes of [span]: from the complete file, else from what the partial one holds; null while any is missing. */
     fun read(id: String, span: ByteSpan): ByteArray? {
         val complete = completeFile(id)

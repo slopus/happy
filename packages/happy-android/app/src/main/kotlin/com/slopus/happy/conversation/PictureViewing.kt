@@ -159,7 +159,8 @@ object PictureViewing {
 /**
  * Everything a conversation shows that the viewer pages through, in the
  * conversation's order (iOS's `Picture.all(in:)`): a person's photos (all
- * of them, also the ones past the four their row shows), an agent's inline
+ * of them, also the ones past the four their row shows, and those it
+ * carries as attachments), an agent's inline
  * pictures, and the pictures and recordings tools presented. Files are
  * not among them; they open elsewhere.
  */
@@ -178,8 +179,11 @@ object ConversationViewing {
         val entries = ArrayList<Entry>()
         for (row in rows.asReversed()) {
             when (row) {
-                is ConversationRow.User -> row.pictures.forEachIndexed { index, picture ->
-                    entries += Entry(ViewerItem(pictureKey(row.key, index), pictureLabel), inline = picture)
+                is ConversationRow.User -> {
+                    row.pictures.forEachIndexed { index, picture ->
+                        entries += Entry(ViewerItem(pictureKey(row.key, index), pictureLabel), inline = picture)
+                    }
+                    entries += presented(row.files, pictureLabel, videoLabel)
                 }
                 is ConversationRow.Picture -> entries += Entry(ViewerItem(pictureKey(row.key, 0), pictureLabel), inline = row.image)
                 is ConversationRow.Media -> entries += presented(row.items, pictureLabel, videoLabel)

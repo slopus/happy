@@ -203,11 +203,11 @@ internal fun AgentPageEntry(graph: AppGraph, nav: NavHostController, route: Conv
             onWant = model::want,
             onOpenChanges = { workspaceId -> nav.navigate(WorkspaceChangesRoute(route.connectionId, workspaceId)) },
             onOpenFiles = { workspaceId -> nav.navigate(com.slopus.happy.ui.files.WorkspaceFilesRoute(route.connectionId, workspaceId)) },
-            loadMedia = { ref -> ConversationApi(session.conversationRequest()).media(route.agentId, ref.toolCallId, ref.index) },
+            loadMedia = { ref -> ConversationApi(session.conversationRequest()).media(route.agentId, ref) },
             loadMediaRange = { ref, range ->
                 session.client.send(
                     "GET",
-                    ConversationApi.mediaPath(route.agentId, ref.toolCallId, ref.index),
+                    ConversationApi.mediaPath(route.agentId, ref),
                     headers = mapOf("Range" to "bytes=${range.first}-${range.last}"),
                     category = RequestCategory.File,
                 )

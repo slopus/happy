@@ -329,13 +329,17 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
     val photos = remember {
         movableContentOf { row: ConversationRow.User, actions: ConversationRowActions ->
             val sending = row.delivery == Delivery.Sending
-            InlinePictures(
-                row.key, row.pictures, actions, MediaFlow.message, alignEnd = true, measure = MediaFlow::messageMeasure, limit = true,
-                upload = { index -> if (sending) actions.uploads?.phase(UploadBoard.pictureKey(row.messageId, index)) ?: UploadPhase.Preparing else null },
-                onCancel = { index -> actions.onRemovePicture(row.messageId, index) },
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(MediaFlow.GAP.dp)) {
+                if (row.pictures.isNotEmpty()) InlinePictures(
+                    row.key, row.pictures, actions, MediaFlow.message, alignEnd = true, measure = MediaFlow::messageMeasure, limit = true,
+                    upload = { index -> if (sending) actions.uploads?.phase(UploadBoard.pictureKey(row.messageId, index)) ?: UploadPhase.Preparing else null },
+                    onCancel = { index -> actions.onRemovePicture(row.messageId, index) },
+                )
+                if (row.files.isNotEmpty()) AttachedFiles(row.files, actions)
+            }
         }
     }
+    val media = row.pictures.isNotEmpty() || row.files.isNotEmpty()
     // Past its first lines it is cut, and a tap on the bubble opens it or cuts it back ([UserFold]).
     val prose = if (row.text.isNotEmpty()) rememberProse(ProseSource(row.key, ProseKind.User, row.text, row.blocks)) else null
     val cut = remember(prose) { prose?.cut(UserFold.FOLD_LINES) }
@@ -350,7 +354,7 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
                 statusLine = false,
                 onRetry = if (failed) ({ actions.legacy.onRetry(row.messageId) }) else null,
                 onDiscard = if (failed) ({ actions.legacy.onDiscard(row.messageId) }) else null,
-                attachments = if (row.pictures.isEmpty()) null else {
+                attachments = if (!media) null else {
                     { Box(Modifier.padding(top = ConversationRowSpec.photosGap)) { photos(row, actions) } }
                 },
                 onTap = if (cut != null) ({ actions.onToggleMessage(row.key) }) else null,
@@ -358,7 +362,7 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
                 body = if (prose != null) { _ -> UserProse(row, prose, cut, actions.legacy) } else null,
             )
         }
-    } else if (row.pictures.isNotEmpty()) {
+    } else if (media) {
         Box(
             modifier
                 .fillMaxWidth()
@@ -449,31 +453,67 @@ private fun MediaRow(row: ConversationRow.Media, actions: ConversationRowActions
                 modifier = Modifier.padding(horizontal = ConversationRowSpec.marginHorizontal),
             ) { index -> PresentedTile(visual[index], loads[index], posters[index], actions) }
         }
-        other.forEach { ref ->
-            val opening = actions.mediaOpening(ref)
-            val open = actions.onOpenMedia
-            // Kept, its chip follows the download and the detail says how far it is (Telegram's file bubble).
-            val kept = actions.kept
-            if (kept != null) LaunchedEffect(ref.key) { kept.shown(ref) }
-            val phase = kept?.phase(ref)
-            InfoCard(
-                icon = Ionicon.DocumentTextOutline,
-                title = ref.item.name,
-                detail = when {
-                    opening is MediaOpening.Failed -> opening.reason
-                    phase != null && !phase.isComplete -> MediaSizeText.text(phase)
-                    opening is MediaOpening.Reading -> stringResource(R.string.conversation_media_reading)
-                    open == null -> stringResource(R.string.conversation_file_unavailable)
-                    // Here, its size, as Telegram's file bubble says.
-                    else -> phase?.let(MediaSizeText::text)
-                },
-                onClick = open?.let { { it(ref) } },
-                modifier = Modifier.testTag(ConversationRowTags.MEDIA_FILE),
-                vertical = 0.dp,
-                chip = kept?.let { { FileStatusChip(ref.key, phase, Ionicon.DocumentTextOutline, onTap = { it.toggle(ref) }) } },
-            )
-        }
+        other.forEach { ref -> PresentedFile(ref, actions) }
     }
+}
+
+/**
+ * The files a person's message carries as attachments, under its words
+ * against the right edge: pictures and recordings flow as a message's
+ * photos do, its first four shown, each read as a tool's media is (its
+ * thumbhash first, the bytes kept once read); other files are cards.
+ */
+@Composable
+private fun AttachedFiles(files: List<MediaRef>, actions: ConversationRowActions) {
+    val visual = files.filter { it.item.isVisual }
+    val other = files.filter { !it.item.isVisual }
+    Column(verticalArrangement = Arrangement.spacedBy(MediaFlow.GAP.dp)) {
+        if (visual.isNotEmpty()) {
+            val shown = visual.take(MediaFlow.messageShown(visual.size))
+            val more = MediaFlow.messageMore(visual.size)
+            val loads = shown.map { ref ->
+                key(ref.key) {
+                    if (ref.item.kind == "video") null else rememberMediaBytes(ref, actions.loadMedia, here = actions.kept?.phase(ref)?.isComplete == true)
+                }
+            }
+            val posters = shown.map { ref -> key(ref.key) { if (ref.item.kind == "video") rememberVideoPoster(ref, actions.loadVideo) else null } }
+            MediaFlowLayout(
+                items = shown.map { MediaFlow.Item(it.item.kind == "video", it.item.flowImage()) },
+                limits = MediaFlow.message,
+                alignEnd = true,
+                measure = MediaFlow::messageMeasure,
+                modifier = Modifier.testTag(ConversationRowTags.PICTURE),
+            ) { index -> PresentedTile(shown[index], loads[index], posters[index], actions, more = if (index == shown.lastIndex) more else 0) }
+        }
+        other.forEach { ref -> PresentedFile(ref, actions) }
+    }
+}
+
+/** A file a tool presented or a message carries, as a card: its chip follows its download where it is kept. */
+@Composable
+private fun PresentedFile(ref: MediaRef, actions: ConversationRowActions) {
+    val opening = actions.mediaOpening(ref)
+    val open = actions.onOpenMedia
+    // Kept, its chip follows the download and the detail says how far it is (Telegram's file bubble).
+    val kept = actions.kept
+    if (kept != null) LaunchedEffect(ref.key) { kept.shown(ref) }
+    val phase = kept?.phase(ref)
+    InfoCard(
+        icon = Ionicon.DocumentTextOutline,
+        title = ref.item.name,
+        detail = when {
+            opening is MediaOpening.Failed -> opening.reason
+            phase != null && !phase.isComplete -> MediaSizeText.text(phase)
+            opening is MediaOpening.Reading -> stringResource(R.string.conversation_media_reading)
+            open == null -> stringResource(R.string.conversation_file_unavailable)
+            // Here, its size, as Telegram's file bubble says.
+            else -> phase?.let(MediaSizeText::text)
+        },
+        onClick = open?.let { { it(ref) } },
+        modifier = Modifier.testTag(ConversationRowTags.MEDIA_FILE),
+        vertical = 0.dp,
+        chip = kept?.let { { FileStatusChip(ref.key, phase, Ionicon.DocumentTextOutline, onTap = { it.toggle(ref) }) } },
+    )
 }
 
 /**
@@ -490,6 +530,8 @@ internal fun PresentedTile(
     actions: ConversationRowActions,
     crop: Boolean = false,
     label: String? = null,
+    /** Pictures past this one that its row doesn't show ("+N"). */
+    more: Int = 0,
 ) {
     val key = ConversationViewing.presentedKey(ref)
     val thumbhash = rememberThumbHash(ref.item.thumbhash)
@@ -511,6 +553,7 @@ internal fun PresentedTile(
                 duration = if (kept == null) duration else null,
                 playButton = kept == null,
                 crop = crop,
+                more = more,
                 modifier = Modifier.fillMaxSize(),
             )
             if (kept != null) DownloadStatus(ref, kept, video = true, duration = duration, starting = actions.videos?.isStarting(key) == true, onPlay = { actions.play(key, ref) })
@@ -528,6 +571,7 @@ internal fun PresentedTile(
                 onClick = bytes?.let { { actions.onOpenPicture(key) } },
                 placeholder = thumbhash,
                 crop = crop,
+                more = more,
                 modifier = Modifier.fillMaxSize(),
             )
             if (kept != null) DownloadStatus(ref, kept, video = false)

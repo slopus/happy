@@ -185,6 +185,10 @@ class Conversation(
      * yet.
      */
     private val cloudFiles: Boolean = false,
+    /** Whether the computer takes attachments, as its connection found: shared by its conversations. */
+    private val attachmentRoute: AttachmentRoute = AttachmentRoute(),
+    /** Keeps an uploaded attachment's bytes where its tile reads them, so the sender never downloads its own; called on [io]. */
+    private val keepAttachment: (id: String, file: File) -> Unit = { _, _ -> },
     /** The person's model preferences: a new chat opens on their start ([ModelPreferences.startMode]); null, on the catalog's default. */
     private val preferences: StateFlow<ModelPreferences>? = null,
     /** A new chat's first message went with this mode: it is the session's start. */
@@ -196,10 +200,12 @@ class Conversation(
     private val errorShown: (ErrorArea, ErrorCode) -> Unit = Analytics::errorShown,
 ) {
     /**
-     * A send on its way: the person's [text], its pictures inline and its
-     * [files] for the workspace; [wire] is the text that goes, naming the
-     * files ([WorkspaceUploads.text]), and the one drawn, so the message
-     * reads the same before and after the computer has it.
+     * A send on its way: the person's [text], its pictures and its [files].
+     * To a computer that takes attachments every one goes as one
+     * ([attachments]); to an older one the pictures go inline and the files
+     * into the workspace, and [wire] is the text that goes, naming the files
+     * ([WorkspaceUploads.text]), and the one drawn, so the message reads the
+     * same before and after the computer has it.
      */
     private class Outgoing(
         val id: String,
@@ -207,6 +213,8 @@ class Conversation(
         /** Fewer once a picture is taken out on its way ([removePicture]). */
         var images: List<Block.Image>,
         var files: List<OutgoingFile> = emptyList(),
+        /** [images]' own files, one each in their order, where they came from the composer. */
+        var pictureFiles: List<OutgoingFile> = emptyList(),
         /** A tool the agent runs before it reads this (a skill's `read_skill`). */
         var toolRequest: ToolRequest? = null,
         /** New work's first words as one of the computer's skills: it asks for that skill once the agent made offers it ([skillRequested]). */
@@ -908,7 +916,7 @@ class Conversation(
                 return@launch
             }
             if (!created) locked = true
-            queue(Outgoing(id, trimmed, images, files, sentAt = now(), waiting = pending.takeIf { it.isNotEmpty() }))
+            queue(Outgoing(id, trimmed, images, files, pictureFiles(inline), sentAt = now(), waiting = pending.takeIf { it.isNotEmpty() }))
             setDraftNow("")
             publish()
             if (pending.isEmpty()) pump() else read(id, attachments.size, pending, readPictures)
@@ -962,6 +970,7 @@ class Conversation(
         try {
             val (inline, files) = WorkspaceUploads.split(id, kept, first)
             if (inline.isNotEmpty()) send.images = send.images + readPictures(inline.map { WorkspaceUploads.localFile(it.uri) })
+            send.pictureFiles = send.pictureFiles + pictureFiles(inline)
             send.files = send.files + files
         } catch (e: Exception) {
             send.failure = Problem.PicturesUnreadable
@@ -1098,8 +1107,10 @@ class Conversation(
                     ensureCreated()
                     made = true
                     val mode = sendingMode() ?: throw IllegalStateException("No model is set up on this computer.")
-                    val attachments = upload(next.files)
-                    val images = next.images
+                    // Pictures inline and files in the workspace only where the computer takes no attachments.
+                    val attached = attachments(next)
+                    val attachments = attached ?: upload(next.files)
+                    val images = if (attached == null) next.images else emptyList()
                     skillRequested(next)
                     val message = withRetries {
                         // The bytes of each picture's base64 written say how far it is.
@@ -1168,6 +1179,7 @@ class Conversation(
             }
             if (send.accepted) return@launch pump()
             send.images = send.images.filterIndexed { i, _ -> i != index }
+            send.pictureFiles = send.pictureFiles.filterIndexed { i, _ -> i != index }
             // What is left starts again under its new keys.
             uploads.clear(id)
             if (send.text.isEmpty() && send.images.isEmpty() && send.files.isEmpty() && send.toolRequest == null) outgoing.remove(send)
@@ -1214,12 +1226,56 @@ class Conversation(
         return files.map { SentAttachment(it.attachmentId!!, it.name) }
     }
 
-    /** What [send] says: on Happy Cloud its words, its files going beside them; else with the paths it wrote them to. */
-    private fun wire(send: Outgoing): String = if (cloudFiles) send.text else WorkspaceUploads.text(send.text, send.files)
+    /**
+     * A send's pictures and files as the agent's attachments
+     * ([AttachmentUploads]), each uploaded once: a retry goes on from what
+     * the computer holds. Each picture's ring follows its bytes, and its
+     * bytes are kept for its tile. Null for a send with neither, and where
+     * the computer has no attachments route, which is remembered for its
+     * connection.
+     */
+    private suspend fun attachments(send: Outgoing): List<SentAttachment>? {
+        if (attachmentRoute.missing) return null
+        val pictures = send.pictureFiles
+        val all = pictures + send.files
+        // Pictures without files of their own can only go inline.
+        if (all.isEmpty() || pictures.size != send.images.size) return null
+        val sizes = withContext(io) { all.map { it.file.length() } }
+        all.zip(sizes).firstOrNull { (_, size) -> size > AttachmentUploads.MAX_SIZE }?.let { (file, _) -> throw FileTooLarge(file.name) }
+        all.forEachIndexed { index, file ->
+            if (file.attachmentId != null) return@forEachIndexed
+            val key = UploadBoard.pictureKey(send.id, index).takeIf { index < pictures.size }
+            val size = sizes[index].coerceAtLeast(1)
+            file.attachmentId = try {
+                api.attach(agentId, file, io, retryDelayMillis) { sent -> key?.let { uploads.set(it, UploadPhase.Uploading(sent.toFloat() / size)) } }
+            } catch (e: AttachmentRouteMissing) {
+                // Only a send's first request tells: once any is in, the computer has the route.
+                if (all.any { it.attachmentId != null }) throw e
+                attachmentRoute.missing = true
+                return null
+            } catch (e: ConversationApiException) {
+                if (e.status == 413) throw FileTooLarge(file.name)
+                throw e
+            }
+            key?.let { uploads.set(it, UploadPhase.Done) }
+            withContext(io) { runCatching { keepAttachment(file.attachmentId!!, file.file) } }
+        }
+        return all.mapIndexed { index, file -> SentAttachment(file.attachmentId!!, file.name, picture = index < pictures.size) }
+    }
 
-    /** [send] as its bubble reads until the agent has it: its files listed by name on Happy Cloud, else by path. */
+    /** The composer's [inline] pictures as files of their own, for a computer that takes them as attachments. */
+    private fun pictureFiles(inline: List<AttachmentPreview>): List<OutgoingFile> =
+        inline.map { OutgoingFile(WorkspaceUploads.localFile(it.uri), it.name, it.mimeType, it.size, path = "") }
+
+    /** Files go as attachments: on Happy Cloud, and to a computer with the route. */
+    private val attaches: Boolean get() = cloudFiles || !attachmentRoute.missing
+
+    /** What [send] says: its words where its files go as attachments beside them; else with the paths it wrote them to. */
+    private fun wire(send: Outgoing): String = if (attaches) send.text else WorkspaceUploads.text(send.text, send.files)
+
+    /** [send] as its bubble reads until the agent has it: its files listed by name where they go as attachments, else by path. */
     private fun shown(send: Outgoing): String =
-        if (cloudFiles) WorkspaceUploads.listed(send.text, send.files.map { it.name }) else wire(send)
+        if (attaches) WorkspaceUploads.listed(send.text, send.files.map { it.name }) else wire(send)
 
     /**
      * New work's first `/skill args` ([Outgoing.skill]) asks for the skill
@@ -1496,7 +1552,7 @@ class Conversation(
     }
 
     /** A tool's presented item, read whole. */
-    suspend fun media(ref: MediaRef): ByteArray = api.media(agentId, ref.toolCallId, ref.index)
+    suspend fun media(ref: MediaRef): ByteArray = api.media(agentId, ref)
 
     /** The tool call [callId] as this conversation holds it now, and where it is in history; null where it holds none. */
     suspend fun toolCall(callId: String): LocatedCall? = withContext(lane) {

@@ -41,8 +41,8 @@ class KeptMedia(
     private val handed = ConcurrentHashMap.newKeySet<String>()
     @Volatile private var handedUnder: MediaAutoDownload? = null
 
-    /** The file's ID in the library: a tool call's media is never another's. */
-    fun id(ref: MediaRef): String = "tool/$agentId/${ref.toolCallId}/${ref.index}"
+    /** The file's ID in the library: a tool call's media is never another's; an attachment is its bytes'. */
+    fun id(ref: MediaRef): String = ref.attachment?.let { attachmentId(agentId, it) } ?: "tool/$agentId/${ref.toolCallId}/${ref.index}"
 
     /** Where its bytes come from: the computer's media route, a range at a time. */
     fun source(ref: MediaRef): MediaSource = MediaSource(ref.item.size?.toLong()) { span ->
@@ -101,6 +101,11 @@ class KeptMedia(
 
     /** A recording for the player and the frame reader: what is here at once, the rest a range at a time as they ask. */
     fun video(ref: MediaRef): MediaDataSource = MediaStream(library.downloads, id(ref), source(ref))
+
+    companion object {
+        /** An attachment of [agentId]'s conversation in the library: the sender keeps its own bytes there as they go. */
+        fun attachmentId(agentId: String, attachment: String): String = "attachment/$agentId/$attachment"
+    }
 
     private fun kind(item: MediaItem): MediaAutoDownload.Kind = when {
         item.kind == "video" -> MediaAutoDownload.Kind.Videos

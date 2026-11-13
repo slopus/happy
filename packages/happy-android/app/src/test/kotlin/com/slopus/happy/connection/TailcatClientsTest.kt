@@ -243,7 +243,7 @@ class TailcatClientsTest {
         ArtifactClient(client).file("r1", 2, "report.md")
         val api = ConversationApi { method, path, body: JsonElement?, category -> client.send(method, path, body, category = category) }
         api.uploadFile("w1", "a.png", byteArrayOf(1))
-        api.media("a1", "t1", 0)
+        api.media("a1", com.slopus.happy.conversation.MediaRef("t1", 0, com.slopus.happy.conversation.MediaItem("image", "", "")))
         api.send("a1", "m1", "hi", emptyList(), Mode("anthropic", "opus", "high", null, "default"))
         api.send("a1", "m2", "", listOf(Block.Image("image/png", "AQ==")), Mode("anthropic", "opus", "high", null, "default"))
         AgentIdentity.refresh(agent, "token", "Studio")

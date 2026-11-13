@@ -274,7 +274,7 @@ class SendFlight {
 
     /** Whether [row] is the sent message in flight, claiming it if it is the one just sent. */
     internal fun claim(row: ConversationRow): Boolean =
-        claim(row.key, (row as? ConversationRow.User)?.takeIf { it.pictures.isEmpty() }?.text)
+        claim(row.key, (row as? ConversationRow.User)?.takeIf { it.pictures.isEmpty() && it.files.isEmpty() }?.text)
 
     /** Whether row [key] is the sent message in flight, claiming it if its [text] (null: not a plain message) is what was sent. */
     fun claim(key: String, text: String?): Boolean {

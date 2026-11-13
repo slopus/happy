@@ -104,6 +104,11 @@ data class KeptConversation(
                 put("name", block.name)
                 block.mimeType?.let { put("mimeType", it) }
                 block.size?.let { put("size", it) }
+                block.kind?.let { put("kind", it) }
+                block.width?.let { put("width", it) }
+                block.height?.let { put("height", it) }
+                block.thumbhash?.let { put("thumbhash", it) }
+                block.scale?.let { put("scale", it) }
             }
             is Block.ToolCall -> buildJsonObject {
                 put("type", "tool_call")
