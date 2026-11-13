@@ -14,7 +14,7 @@ private actor SyncFixture: AgentTransport {
      "tasks":[{"id":"unjoined","name":"Not joined","agent":{"id":"unjoined-agent","workspaceId":"x","status":"idle"}},
        {"id":"first","name":"First created","agent":{"id":"first-agent","workspaceId":"one","status":"idle"}},
        {"id":"last","name":"Last created","agent":{"id":"last-agent","workspaceId":"two","status":"idle"}}],
-     "taskMemberships":[{"taskId":"last"},{"taskId":"first"}],
+     "taskMemberships":[{"taskId":"last","orderKey":"a"},{"taskId":"first","orderKey":"b"}],
      "surfaces":[{"id":"other","name":"Other person's document","type":"document","members":[{"userId":"other-user","orderKey":"a"}]},
        {"id":"todo","name":"Groceries","type":"todo","members":[{"userId":null,"orderKey":"b"}]},
        {"id":"doc","name":"Notes","type":"document","members":[{"userId":null,"orderKey":"a"}]}]}
@@ -864,5 +864,107 @@ final class SyncEngineTests: XCTestCase {
     func testAProcessThatNamesNoneNeverPicksUp() async throws {
         let cursor = try await wakeAfterAnUnreadStream(daemon: nil, then: nil)
         XCTAssertNil(cursor)
+    }
+
+    // MARK: Task events laid over home
+
+    private static let newTask: JSONValue = .object(["type": .string("task.created"), "payload": .object(["task": .object([
+        "id": .string("new"), "name": .string("Fresh task"), "status": .string("active"), "ownerUserId": .null,
+        "agent": .object(["id": .string("new-agent"), "workspaceId": .string("new-work"), "status": .string("idle")]),
+    ])])])
+    private static let joinedNew: JSONValue = .object(["type": .string("task.joined"), "payload": .object(["membership": .object([
+        "taskId": .string("new"), "orderKey": .string("0"), "userId": .null,
+    ])])])
+    private func taskLabels(_ snapshot: HomeSnapshot) -> [String] { snapshot.rows.filter { $0.targetKind == "task" }.map(\.label) }
+
+    /// A task made on the computer is on home from its own events, first in
+    /// the person's list, with no bootstrap read: reading the whole of it
+    /// again took ten seconds on a poor network.
+    func testANewTaskIsOnHomeFromItsEventsWithoutARead() async throws {
+        let transport = SyncFixture()
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
+        await engine.start()
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        let reads = await transport.bootstrapReads()
+        await transport.emit(id: "e2", Self.newTask)
+        await transport.emit(id: "e3", Self.joinedNew)
+        let shown = try await wait(engine) { $0.rows.contains { $0.label == "Fresh task" } }
+        XCTAssertEqual(taskLabels(shown), ["Fresh task", "Last created", "First created"])
+        XCTAssertEqual(shown.rows.first { $0.label == "Fresh task" }?.canArchive, true, "a standalone computer's person may archive it")
+        try await Task.sleep(for: .milliseconds(100))
+        let after = await transport.bootstrapReads()
+        XCTAssertEqual(after, reads)
+        await engine.stop()
+    }
+
+    /// The membership coming before the task it names: the row comes with the task.
+    func testAJoinBeforeItsTaskStillShowsTheTask() async throws {
+        let transport = SyncFixture()
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
+        await engine.start()
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        let reads = await transport.bootstrapReads()
+        await transport.emit(id: "e2", Self.joinedNew)
+        await transport.emit(id: "e3", Self.newTask)
+        let shown = try await wait(engine) { $0.rows.contains { $0.label == "Fresh task" } }
+        XCTAssertEqual(taskLabels(shown), ["Fresh task", "Last created", "First created"])
+        let after = await transport.bootstrapReads()
+        XCTAssertEqual(after, reads)
+        await engine.stop()
+    }
+
+    /// A read on its way when the task's events come began before them and
+    /// has none of it: the task stays on home when it lands.
+    func testAReadBegunBeforeANewTaskKeepsItWhenItLands() async throws {
+        let transport = SyncFixture()
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
+        await engine.start()
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        await transport.holdNextBootstrap()
+        await transport.renameProject(withNewsDuringReads: 0)
+        try await eventually { await transport.isHolding() }
+        await transport.emit(id: "e2", Self.newTask)
+        await transport.emit(id: "e3", Self.joinedNew)
+        _ = try await wait(engine) { $0.rows.contains { $0.label == "Fresh task" } }
+        await transport.release()
+        let landed = try await wait(engine) { $0.rows.contains { $0.label == "Renamed while busy" } }
+        XCTAssertEqual(taskLabels(landed), ["Fresh task", "Last created", "First created"])
+        await engine.stop()
+    }
+
+    /// Leaving a task takes its row away at once, and reads nothing.
+    func testLeavingATaskTakesItsRowAway() async throws {
+        let transport = SyncFixture()
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
+        await engine.start()
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        let reads = await transport.bootstrapReads()
+        await transport.emit(id: "e2", .object(["type": .string("task.left"), "payload": .object(["membership": .object(["taskId": .string("first"), "orderKey": .string("b")])])]))
+        let left = try await wait(engine) { !$0.rows.contains { $0.label == "First created" } }
+        XCTAssertEqual(taskLabels(left), ["Last created"])
+        let after = await transport.bootstrapReads()
+        XCTAssertEqual(after, reads)
+        await engine.stop()
+    }
+
+    /// What can't be laid over home is read: a task change beyond its own
+    /// fields, and an agent made in a project, whose place the event doesn't
+    /// carry. A task's own agent, which comes whole with its task, reads nothing.
+    func testWhatCantBeLaidOverHomeIsRead() async throws {
+        let transport = SyncFixture()
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil, rereadInterval: .zero)
+        await engine.start()
+        _ = try await wait(engine) { $0.live && !$0.syncing }
+        let reads = await transport.bootstrapReads()
+        await transport.emit(id: "e2", .object(["type": .string("agent.created"), "payload": .object(["agent": .object(["id": .string("first-agent"), "workspaceId": .string("one")])])]))
+        try await Task.sleep(for: .milliseconds(100))
+        let owned = await transport.bootstrapReads()
+        XCTAssertEqual(owned, reads)
+        await transport.emit(id: "e3", .object(["type": .string("task.updated"), "payload": .object(["taskId": .string("first"), "changes": .object(["compute": .object([:])])])]))
+        try await eventually { await transport.bootstrapReads() > owned }
+        let changed = await transport.bootstrapReads()
+        await transport.emit(id: "e4", .object(["type": .string("agent.created"), "payload": .object(["agent": .object(["id": .string("session"), "workspaceId": .string("p")])])]))
+        try await eventually { await transport.bootstrapReads() > changed }
+        await engine.stop()
     }
 }

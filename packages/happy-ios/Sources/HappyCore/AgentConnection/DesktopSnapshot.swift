@@ -77,6 +77,8 @@ public struct DesktopSnapshot: Codable, Equatable, Sendable {
     }
     public struct Membership: Codable, Equatable, Sendable {
         public var taskId: String
+        /// Where it stands in the person's own list (`HomeEvent`).
+        public var orderKey: String?
     }
     /// The person signed in: their team user (nil outside a team) and
     /// their picture's ThumbHash.

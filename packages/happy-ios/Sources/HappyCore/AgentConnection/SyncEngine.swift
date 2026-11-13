@@ -116,6 +116,9 @@ public actor SyncEngine {
     private let url: URL?
     private var storage: SyncStorage?
     private var desktop: DesktopSnapshot?
+    /// Task events laid over `desktop` (`HomeEvent`), by event: laid again
+    /// over a read that began before them, which has none of them.
+    private var appliedNews: [(id: String, event: JSONValue)] = []
     /// What `spaces` was last given of the bootstrap's bots, tasks and
     /// Surfaces, in order.
     private var shared: (owners: [DesktopSnapshot.Owner], surfaces: [DesktopSnapshot.Surface])?
@@ -589,6 +592,18 @@ public actor SyncEngine {
                             case .reread: scheduleReconcile(generation, news: frame.id)
                             }
                         }
+                    } else if let type = event["type"]?.stringValue, HomeEvent.types.contains(type), desktop != nil {
+                        // A read home holds that began after it has it.
+                        if let id = frame.id, let cursor, id <= cursor {} else {
+                            switch HomeEvent.apply(event, to: &desktop!) {
+                            case .applied:
+                                if let id = frame.id { appliedNews.append((id, event)) }
+                                agentIndex = nil
+                                deriveSoon()
+                            case .unchanged: break
+                            case .reread: scheduleReconcile(generation, news: frame.id)
+                            }
+                        }
                     } else if let type = event["type"]?.stringValue,
                               ["agent.created", "agent.removed"].contains(type) || ["project.", "workspace.", "bot.", "task.", "surface."].contains(where: type.hasPrefix) {
                         // Agents' context, commands and drafts aren't home's;
@@ -751,6 +766,8 @@ public actor SyncEngine {
         adopted = read
         covered = max(covered, asOf)
         self.desktop = self.desktop.map { AgentUpdate.keepingNewer(desktop, than: $0) } ?? desktop
+        appliedNews.removeAll { $0.id <= desktop.cursor }
+        for news in appliedNews { _ = HomeEvent.apply(news.event, to: &self.desktop!) }
         agentIndex = nil
         cursor = desktop.cursor
         if !verified {
