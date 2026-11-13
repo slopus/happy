@@ -12,7 +12,7 @@ import UIKit
 final class OnboardingNotificationsViewController: CloudStageViewController, OnboardingStepScreen {
     private let session: Session
     private let appStore: URL
-    let status = StartGalleryView.bodyLabel("")
+    let status = CloudStageViewController.bodyLabel("")
     private enum Action { case register, settings, appStore }
     private var action = Action.register
 

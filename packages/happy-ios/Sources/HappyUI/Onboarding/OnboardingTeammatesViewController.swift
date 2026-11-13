@@ -16,7 +16,7 @@ final class OnboardingTeammatesViewController: CloudStageViewController, UITextF
     private let session: Session
     private let web: URL?
     let emailField = CloudField(prefix: nil, placeholder: Strings.CloudOnboarding.emailPlaceholder)
-    let status = StartGalleryView.bodyLabel("")
+    let status = CloudStageViewController.bodyLabel("")
     /// Lets the flow go on to the next step (Continue).
     var released: (() -> Void)?
     private var letGo = false

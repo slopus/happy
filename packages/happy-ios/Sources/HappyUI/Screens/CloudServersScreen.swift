@@ -570,7 +570,7 @@ class CloudStageViewController: UIViewController, CloudFlowScreen, CloudTyping, 
     /// The body the block is centred by when the body changes (Connecting's
     /// failure); nil: the body as it is.
     var steadyBody: String? {
-        didSet { steadyBodyLabel = steadyBody.map { StartGalleryView.bodyLabel($0) } }
+        didSet { steadyBodyLabel = steadyBody.map { CloudStageViewController.bodyLabel($0) } }
     }
     /// `steadyBody`, measured as the body is.
     private var steadyBodyLabel: StyledLabel?
@@ -584,7 +584,7 @@ class CloudStageViewController: UIViewController, CloudFlowScreen, CloudTyping, 
         self.context = context
         art = scene.map { StateSceneView(scene: $0, size: StartLayout.Metrics.art, replayLabel: title) }
         titleLabel = StartGalleryView.titleLabel(title)
-        bodyLabel = StartGalleryView.bodyLabel(body)
+        bodyLabel = CloudStageViewController.bodyLabel(body)
         self.primary = RoundButton(title: primary)
         self.secondary = secondary.map { RoundButton(title: $0, size: secondaryDisplay == .filled ? .large : .normal, display: secondaryDisplay) }
         super.init(nibName: nil, bundle: nil)
@@ -596,6 +596,11 @@ class CloudStageViewController: UIViewController, CloudFlowScreen, CloudTyping, 
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// A step's line: a slide's, grown no further than its title.
+    static func bodyLabel(_ string: String) -> StyledLabel {
+        StartGalleryView.bodyLabel(string, style: TextStyles.cloudStageBody)
+    }
 
     /// A text action in the gradient's secondary colour.
     static func quiet(_ button: RoundButton) {
@@ -901,7 +906,7 @@ final class CloudTestSignIn: UIView {
 /// GitHub: its login and password, opened by ten taps on the welcome's
 /// Happy mark in development and preview builds.
 final class CloudTestSignInViewController: CloudStageViewController, CloudSignInStep, UITextFieldDelegate {
-    let problem = StartGalleryView.bodyLabel("")
+    let problem = CloudStageViewController.bodyLabel("")
     private(set) var testSignIn: CloudTestSignIn?
     /// Where the test account's sign-in goes; the tests' fake accounts.
     var http: any HTTPTransport = NoRedirectURLSessionTransport()
@@ -1154,7 +1159,7 @@ final class CloudServersViewController: CloudStageViewController {
     private var rows: [String: CloudServerRow] = [:]
     private var order: [String] = []
     private let spinner = UIActivityIndicatorView(style: .medium)
-    let status = StartGalleryView.bodyLabel("")
+    let status = CloudStageViewController.bodyLabel("")
     let bootstrap = RoundButton(title: Strings.CloudConnect.bootstrapNew, size: .normal)
     private var pictures: [String: UIImage] = [:]
     private var loadingPictures: Set<String> = []
@@ -1399,7 +1404,7 @@ final class CloudServersViewController: CloudStageViewController {
 final class CloudCreateViewController: CloudStageViewController, UITextFieldDelegate {
     private let account: CloudAccount
     let field = CloudField(prefix: "@", placeholder: Strings.CloudConnect.namePlaceholder)
-    let status = StartGalleryView.bodyLabel("")
+    let status = CloudStageViewController.bodyLabel("")
     private let first: Bool
     private var checking: Task<Void, Never>?
 

@@ -17,7 +17,7 @@ final class OnboardingPhotoViewController: CloudStageViewController, OnboardingS
     private let placeholder = AvatarPlaceholderSlot()
     private let badge = UIView()
     private let badgeGlyph = UIImageView()
-    let status = StartGalleryView.bodyLabel("")
+    let status = CloudStageViewController.bodyLabel("")
     private lazy var picker = ProfilePhotoPicker { [weak self] in self?.choose($0) }
     private(set) var photo: UIImage?
 

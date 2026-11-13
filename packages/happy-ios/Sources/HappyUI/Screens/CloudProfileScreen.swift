@@ -32,7 +32,7 @@ final class CloudProfileViewController: CloudStageViewController, UITextFieldDel
     private let badgeGlyph = UIImageView()
     let photoButton = UIButton(type: .system)
     let nameField = CloudField(prefix: nil, placeholder: Strings.CloudConnect.profileNamePlaceholder)
-    let status = StartGalleryView.bodyLabel("")
+    let status = CloudStageViewController.bodyLabel("")
     private lazy var picker = ProfilePhotoPicker { [weak self] in self?.choose($0) }
     /// The picture picked here, kept on the phone until Continue.
     private(set) var photo: UIImage?

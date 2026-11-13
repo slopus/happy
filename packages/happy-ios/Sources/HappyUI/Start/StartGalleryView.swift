@@ -151,8 +151,8 @@ final class StartGalleryView: UIView, UIScrollViewDelegate {
     }
 
     /// A slide's line as a page draws it: a centred line never ends on one word alone.
-    static func bodyLabel(_ string: String) -> StyledLabel {
-        let label = StyledLabel(style: TextStyles.startSlideBody, color: Palette.startTextSecondary, alignment: .center)
+    static func bodyLabel(_ string: String, style: TextStyle = TextStyles.startSlideBody) -> StyledLabel {
+        let label = StyledLabel(style: style, color: Palette.startTextSecondary, alignment: .center)
         label.string = string
         label.decoration = noOrphan
         return label

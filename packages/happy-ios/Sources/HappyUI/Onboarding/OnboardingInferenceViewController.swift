@@ -13,7 +13,7 @@ import UIKit
 final class OnboardingInferenceViewController: CloudStageViewController, OnboardingStepScreen {
     private let session: Session
     private let refresh: @MainActor () async -> Void
-    let status = StartGalleryView.bodyLabel("")
+    let status = CloudStageViewController.bodyLabel("")
     private(set) lazy var chooser = ProviderChooser(session: session, host: self, added: { [weak self] in
         guard let self else { return }
         Task { @MainActor in await self.refresh() }

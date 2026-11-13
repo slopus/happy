@@ -19,4 +19,7 @@ extension TextStyles {
     public static let startSlideTitle = TextStyles.onboardingTitle
     /// A slide's line.
     public static let startSlideBody = TextStyle(.regular, size: 17, lineHeight: 24)
+    /// A Happy Cloud step's lines: a slide's line, grown no further than
+    /// keeps its title the larger and what the step asks for in sight.
+    public static let cloudStageBody = TextStyle(.regular, size: 17, lineHeight: 24, maxScale: CloudStageLayout.Metrics.bodyMaxScale)
 }

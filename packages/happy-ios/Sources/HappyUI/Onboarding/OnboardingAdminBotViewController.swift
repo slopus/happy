@@ -19,10 +19,10 @@ final class OnboardingAdminBotViewController: CloudStageViewController, UITextFi
     /// Its picture, where it has one; else the robot scene stands in.
     let picture: UIImageView?
     let nameField = CloudField(prefix: nil, placeholder: Strings.CloudOnboarding.botNamePlaceholder)
-    let status = StartGalleryView.bodyLabel("")
+    let status = CloudStageViewController.bodyLabel("")
     /// What it can do, a line each.
-    private let points = StyledLabel(style: TextStyles.startSlideBody, color: Palette.startText)
-    private let note = StartGalleryView.bodyLabel("")
+    private let points = StyledLabel(style: TextStyles.cloudStageBody, color: Palette.startText)
+    private let note = CloudStageViewController.bodyLabel("")
 
     init(context: AppContext, bot: OnboardingGate.AdminBot, optional: Bool, picture load: ((UIImageView) -> Void)?, save: @escaping Save) {
         self.save = save

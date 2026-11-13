@@ -10,7 +10,7 @@ import UIKit
 /// answers `429 rate_limited`. docs/SERVER-SIGN-IN.md, "Happy Cloud".
 class CloudEmailStepViewController: CloudStageViewController, CloudSignInStep, UITextFieldDelegate {
     let field: CloudField
-    let status = StartGalleryView.bodyLabel("")
+    let status = CloudStageViewController.bodyLabel("")
     /// Where the codes are asked for and checked; the tests' fake accounts.
     let http: any HTTPTransport
     /// The clock the waits count down by; the tests' own.

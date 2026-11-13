@@ -444,7 +444,7 @@ final class OnboardingNoticeViewController: CloudStageViewController, Onboarding
     }
 
     var onPrimary: (() async -> Void)?
-    private let status = StartGalleryView.bodyLabel("")
+    private let status = CloudStageViewController.bodyLabel("")
 
     init(context: AppContext, notice: Notice) {
         super.init(context: context, scene: notice.scene, title: notice.title, body: notice.body, primary: notice.primary, secondary: notice.secondary)

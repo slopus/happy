@@ -127,6 +127,11 @@ public struct CloudStageLayout: Equatable, Sendable {
         /// fixed height (the actions, a row's button): past it they would
         /// be cut short.
         public static let pillTextMaxScale: CGFloat = 1.4
+        /// The most it grows the step's lines (`TextStyles.cloudStageBody`):
+        /// under the title's 1.2 of 28, and the field or list still on the
+        /// first screen of a phone. Their 24 grows to a whole 30, so a
+        /// frame snapped to the screen's pixels never cuts off a last line.
+        public static let bodyMaxScale: CGFloat = 1.25
         public static let artGap: CGFloat = 24
         /// Between the art and a caption under it (Create your profile's
         /// Add photo).

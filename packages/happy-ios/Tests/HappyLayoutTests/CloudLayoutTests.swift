@@ -262,6 +262,19 @@ final class CloudLayoutTests: XCTestCase {
         XCTAssertEqual(row.subtitle, CGRect(x: 74, y: 39, width: 175, height: 40))
     }
 
+    /// At every text size a step's title is at least as large as its
+    /// lines, which grow no further than 1.25, to whole 30 pt lines.
+    func testAStepsTitleIsNeverSmallerThanItsLines() {
+        for category in TextSizeCategory.allCases {
+            let scale = TextScale(category)
+            XCTAssertGreaterThanOrEqual(TextStyles.startSlideTitle.scaled(scale).size, TextStyles.cloudStageBody.scaled(scale).size, "\(category)")
+        }
+        XCTAssertEqual(TextStyles.cloudStageBody.scaled(.standard), TextStyles.cloudStageBody, "as designed at the default size")
+        let largest = TextStyles.cloudStageBody.scaled(TextScale(.accessibilityExtraExtraExtraLarge))
+        XCTAssertEqual(largest.size, 17 * 1.25, accuracy: 0.001)
+        XCTAssertEqual(largest.lineHeight, 30)
+    }
+
     /// Bigger text grows the row by what its lines grow; the padding and
     /// the picture stay, and the words stay centred down it.
     func testARowGrowsWithTheTextSize() {

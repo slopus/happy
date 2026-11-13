@@ -36,10 +36,10 @@ final class CloudInviteViewController: CloudStageViewController {
     let handle = StyledLabel(style: TextStyle(.regular, size: 15, lineHeight: 20), color: Palette.startTextSecondary, lines: 1, alignment: .center)
     let inviterPicture = UIImageView()
     let inviter = StyledLabel(style: TextStyle(.regular, size: 15, lineHeight: 20), color: Palette.startTextSecondary, lines: 1)
-    let status = StartGalleryView.bodyLabel("")
+    let status = CloudStageViewController.bodyLabel("")
     private let spinner = UIActivityIndicatorView(style: .medium)
     /// Measures each line the status could say, for the room it keeps.
-    private let measure = StartGalleryView.bodyLabel("")
+    private let measure = CloudStageViewController.bodyLabel("")
     private var statusRoom: (width: CGFloat, text: String, height: CGFloat)?
     /// The Connecting step after Join; a test's stand-in.
     var connecting: (CloudServer) -> UIViewController

@@ -19,7 +19,7 @@ final class OnboardingPluginsViewController: CloudStageViewController, Onboardin
     private var rows: [String: CloudServerRow] = [:]
     private var order: [String] = []
     private let spinner = UIActivityIndicatorView(style: .medium)
-    let status = StartGalleryView.bodyLabel("")
+    let status = CloudStageViewController.bodyLabel("")
     private var pictures: [String: UIImage] = [:]
     private var asked: Set<String> = []
     /// What was connected when onboarding was last read for it.
