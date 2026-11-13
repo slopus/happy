@@ -195,4 +195,18 @@ class CloudOnboardingTest {
         OnboardingApi.renameAdminBot(AgentClient(server, "t"), "b1", "Jarvis", "v1")
         assertEquals(listOf("PATCH /v0/bots/b1" to "v1", "GET /v0/bots/b1" to null, "PATCH /v0/bots/b1" to "v2"), bodies)
     }
+
+    @Test
+    fun theFinishOpensTheAdminBotAsTheServerSaysForThisPersonElseByRole() {
+        fun bot(canTalk: String) = parse(
+            """{"finished":true,"gates":[{"id":"adminBot","scope":"server","requirement":"optional","status":"done","blocking":false,"canComplete":true,
+               "data":{"botId":"b1","name":"Chief of Staff"$canTalk}}]}""",
+        )
+        assertFalse(bot(""","canTalk":false""").opensAdminBot(byRole = true))
+        assertTrue(bot(""","canTalk":true""").opensAdminBot(byRole = false))
+        // FALLBACK: a server before v7 says nothing; the role decides, as before.
+        assertTrue(bot("").opensAdminBot(byRole = true))
+        assertFalse(bot("").opensAdminBot(byRole = false))
+        assertFalse(CloudOnboarding(true).opensAdminBot(byRole = false))
+    }
 }

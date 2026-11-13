@@ -151,7 +151,7 @@ private fun CloudOnboardingPage(graph: AppGraph, nav: NavHostController, connect
     if (shownGate?.kind is OnboardingGate.Kind.MobileApp) {
         LaunchedEffect(connectionId) { graph.cloudPush.registered.filter { it == connectionId }.collect { runCatching { source.check() } } }
     }
-    val meets = permissions.allows(Permission.CONTENT_WRITE) && permissions.allows(Permission.BOTS_MANAGE)
+    val meets = onboarding.opensAdminBot(byRole = permissions.allows(Permission.CONTENT_WRITE) && permissions.allows(Permission.BOTS_MANAGE))
     CloudOnboardingFlow(
         onboarding = onboarding,
         step = step,
@@ -496,7 +496,7 @@ private fun PhotoStep(gate: OnboardingGate, seed: String, photo: ImageBitmap?, a
         title = stringResource(R.string.cloud_onboarding_photo_title),
         onBack = actions.onNotNow,
         body = stringResource(R.string.cloud_onboarding_photo_body),
-        top = { ProfilePicturePicker(shown, seed, enabled = !uploading, onChoose = choose) },
+        top = { ProfilePicturePicker(shown, seed, enabled = !uploading, onChoose = choose, caption = false) },
         primary = CloudAction(stringResource(R.string.cloud_onboarding_choose_photo), choose, enabled = !uploading, loading = uploading),
         secondary = skip?.let { (label, act) ->
             CloudAction(label, {

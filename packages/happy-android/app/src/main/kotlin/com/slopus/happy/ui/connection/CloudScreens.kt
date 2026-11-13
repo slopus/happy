@@ -76,8 +76,22 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.semantics.contentType
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.focus.onFocusChanged
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.ScrollState
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -170,6 +184,8 @@ object CloudSpec {
     val rowRadius = 20.dp
     val rowPadding = 16.dp
     val rowGap = 10.dp
+    /** How far a pinned screen's words fade at an edge they scroll past. */
+    val edgeFade = 32.dp
     /** A row's Join, desktop's 104. */
     val joinWidth = 104.dp
     val fieldRadius = 16.dp
@@ -286,7 +302,8 @@ internal fun CloudFrame(
                     )
                     Spacer(Modifier.height(CloudSpec.artGap - CloudSpec.gap))
                 }
-                if (top != null) {
+                // Large text with the keyboard up, pinned: the picture gives its room to the field, as the scene does.
+                if (top != null && !(pinActions && WindowInsets.isImeVisible && LocalDensity.current.fontScale > LARGE_TEXT)) {
                     top()
                     Spacer(Modifier.height(CloudSpec.artGap - CloudSpec.gap))
                 }
@@ -319,10 +336,11 @@ internal fun CloudFrame(
                     Modifier.fillMaxSize().padding(top = StartSpec.controlsPadding + StartSpec.control, bottom = StartSpec.bottomPadding),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
+                    val scroll = rememberScrollState()
+                    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().clipToBounds().fadedEdges(scroll)) {
                         val room = maxHeight
                         Column(
-                            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = room),
+                            Modifier.fillMaxWidth().verticalScroll(scroll).heightIn(min = room),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             content = words,
                         )
@@ -372,6 +390,51 @@ internal fun CloudFrame(
         }
     }
 }
+
+/** The text scale from which a pinned screen with the keyboard up drops its picture. */
+private const val LARGE_TEXT = 1.3f
+
+/** Where the words go on past an edge of their scroll, they fade out there rather than being cut. */
+private fun Modifier.fadedEdges(scroll: ScrollState): Modifier =
+    graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen).drawWithContent {
+        drawContent()
+        val fade = CloudSpec.edgeFade.toPx().coerceAtMost(size.height / 3)
+        if (scroll.canScrollBackward) {
+            drawRect(Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black, startY = 0f, endY = fade), size = Size(size.width, fade), blendMode = BlendMode.DstIn)
+        }
+        if (scroll.canScrollForward) {
+            drawRect(
+                Brush.verticalGradient(0f to Color.Black, 1f to Color.Transparent, startY = size.height - fade, endY = size.height),
+                topLeft = Offset(0f, size.height - fade),
+                size = Size(size.width, fade),
+                blendMode = BlendMode.DstIn,
+            )
+        }
+    }
+
+/**
+ * A field focused with the keyboard up is scrolled clear of a pinned
+ * screen's faded edges ([fadedEdges]), not only just into view, once the
+ * keyboard has settled.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun Modifier.clearOfFades(): Modifier {
+    val requester = remember { BringIntoViewRequester() }
+    var focused by remember { mutableStateOf(false) }
+    var height by remember { mutableIntStateOf(0) }
+    val ime = WindowInsets.isImeVisible
+    val margin = with(LocalDensity.current) { CloudSpec.edgeFade.toPx() }
+    LaunchedEffect(focused, ime) {
+        if (!focused || !ime) return@LaunchedEffect
+        delay(IME_SETTLE)
+        requester.bringIntoView(Rect(0f, -margin, 1f, height + margin))
+    }
+    return bringIntoViewRequester(requester).onSizeChanged { height = it.height }.onFocusChanged { focused = it.hasFocus }
+}
+
+/** About how long the keyboard takes to come up. */
+private const val IME_SETTLE = 350L
 
 /** One of a screen's actions: the primary at the bottom, or the quiet one under it. */
 internal class CloudAction(val title: String, val onClick: () -> Unit, val enabled: Boolean = true, val loading: Boolean = false)
@@ -1225,7 +1288,14 @@ object CloudProfileSpec {
 
 /** The picture, round, with its camera badge bottom-right, and the text button under it: both open the picker. */
 @Composable
-internal fun ProfilePicturePicker(photo: ImageBitmap?, seed: String, enabled: Boolean, onChoose: () -> Unit) {
+internal fun ProfilePicturePicker(
+    photo: ImageBitmap?,
+    seed: String,
+    enabled: Boolean,
+    onChoose: () -> Unit,
+    /** Add photo or Change photo under it; off where the screen's own words say it (onboarding's Add a photo). */
+    caption: Boolean = true,
+) {
     val colors = HappyTheme.colors
     val text = if (colors.dark) StartSpec.darkText else StartSpec.lightText
     val label = stringResource(if (photo == null) R.string.cloud_profile_add_photo else R.string.cloud_profile_change_photo)
@@ -1249,7 +1319,7 @@ internal fun ProfilePicturePicker(photo: ImageBitmap?, seed: String, enabled: Bo
                 androidx.compose.material3.Icon(MaterialSymbols.PhotoCamera, contentDescription = null, tint = colors.text, modifier = Modifier.size(CloudProfileSpec.badgeIcon))
             }
         }
-        Box(
+        if (caption) Box(
             Modifier
                 .padding(top = CloudProfileSpec.buttonGap)
                 .heightIn(min = CloudProfileSpec.buttonHeight)
@@ -1281,7 +1351,7 @@ internal fun CloudField(
     /** The keyboard's action key. */
     onIme: (() -> Unit)? = null,
 ) {
-    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(CloudSpec.fieldRadius)).background(HappyTheme.colors.surface.copy(alpha = CloudSpec.SURFACE_ALPHA))) {
+    Box(Modifier.fillMaxWidth().clearOfFades().clip(RoundedCornerShape(CloudSpec.fieldRadius)).background(HappyTheme.colors.surface.copy(alpha = CloudSpec.SURFACE_ALPHA))) {
         HappyTextField(
             value = value,
             onValueChange = onChange,
@@ -1303,7 +1373,7 @@ internal fun CloudField(
 /** [CloudField] for a name: its own cursor (a prefilled one at the end, as iOS), words capitalized, Done sending it. */
 @Composable
 private fun CloudNameField(value: TextFieldValue, onChange: (TextFieldValue) -> Unit, enabled: Boolean, onDone: () -> Unit, modifier: Modifier) {
-    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(CloudSpec.fieldRadius)).background(HappyTheme.colors.surface.copy(alpha = CloudSpec.SURFACE_ALPHA))) {
+    Box(Modifier.fillMaxWidth().clearOfFades().clip(RoundedCornerShape(CloudSpec.fieldRadius)).background(HappyTheme.colors.surface.copy(alpha = CloudSpec.SURFACE_ALPHA))) {
         HappyTextField(
             value = value,
             onValueChange = onChange,

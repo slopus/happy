@@ -28,6 +28,14 @@ data class CloudOnboarding(
 ) {
     fun gate(id: String): OnboardingGate? = gates.firstOrNull { it.id == id }
 
+    /**
+     * Whether the finish opens the admin bot's conversation: the server's
+     * word for this person (v7 `canTalk`); FALLBACK (servers before v7, no
+     * `canTalk`): [byRole], what the role's grants say.
+     */
+    fun opensAdminBot(byRole: Boolean): Boolean =
+        gates.firstNotNullOfOrNull { it.kind as? OnboardingGate.Kind.AdminBot }?.canTalk ?: byRole
+
     companion object {
         /**
          * The events after which it is read again; the app coming back to
@@ -87,6 +95,8 @@ data class OnboardingGate(
             /** Its picture as the server serves it (`/v0/bots/:id/avatar`) and its ThumbHash; null where it has none. */
             val picture: String? = null,
             val thumbhash: String? = null,
+            /** Whether this person may talk to it (v7); null from a server that doesn't say ([CloudOnboarding.opensAdminBot]). */
+            val canTalk: Boolean? = null,
         ) : Kind
         /** [connected]: the team's or the person's own providers; [freeModel]: the operator's free model runs meanwhile. */
         data class Inference(val connected: List<String>, val freeModel: Boolean) : Kind
@@ -151,6 +161,7 @@ data class OnboardingGate(
                     description = data["description"].str,
                     picture = data["avatar"].obj?.let { "/v0/bots/${AgentClient.escape(botId)}/avatar" },
                     thumbhash = data["avatar"].obj?.get("thumbhash").str,
+                    canTalk = data["canTalk"].bool,
                 )
             } ?: Kind.Unknown
             "inference" -> Kind.Inference(data["connected"].strings.orEmpty(), data["freeModel"].bool ?: false)

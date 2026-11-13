@@ -118,6 +118,8 @@ class CloudOnboardingFlowTest {
             ),
         )
         rule.onNodeWithText("Add a photo").assertIsDisplayed()
+        // The title says it: no caption under the picture repeating it.
+        assertEquals(0, rule.onAllNodesWithText("Add photo").fetchSemanticsNodes().size)
         rule.onNodeWithTag(CloudOnboardingTags.PROGRESS).assertIsDisplayed()
         rule.onNodeWithText("Skip for now").performClick()
         rule.waitForIdle()
