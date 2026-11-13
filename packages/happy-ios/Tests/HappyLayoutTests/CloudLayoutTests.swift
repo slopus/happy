@@ -251,6 +251,17 @@ final class CloudLayoutTests: XCTestCase {
         XCTAssertEqual(wide.button.width, 120)
     }
 
+    /// Onboarding's lists: a two-line subtitle grows the row by a line,
+    /// everything still centred, and the button keeps its own width.
+    func testARowWithTwoSubtitleLinesAndItsOwnButton() {
+        XCTAssertEqual(CloudServerRowLayout.height(subtitleLines: 2), 96)
+        let row = CloudServerRowLayout(width: 345, button: CGSize(width: 70, height: 32), minButton: 0, subtitleLines: 2)
+        XCTAssertEqual(row.picture, CGRect(x: 14, y: 24, width: 48, height: 48))
+        XCTAssertEqual(row.button, CGRect(x: 261, y: 32, width: 70, height: 32))
+        XCTAssertEqual(row.title, CGRect(x: 74, y: 17, width: 175, height: 22))
+        XCTAssertEqual(row.subtitle, CGRect(x: 74, y: 39, width: 175, height: 40))
+    }
+
     // MARK: Create your profile
 
     /// The picture's caption: "Add photo" as measured, with room for a thumb.

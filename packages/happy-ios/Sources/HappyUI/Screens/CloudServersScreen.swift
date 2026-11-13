@@ -1613,6 +1613,14 @@ final class CloudServerRow: UIView {
     var joinLabel: String? {
         didSet { apply() }
     }
+    /// Room for this many subtitle lines (`CloudServerRowLayout.height`).
+    var subtitleLines = 1 {
+        didSet { subtitle.numberOfLines = subtitleLines; setNeedsLayout() }
+    }
+    /// The button at its own width rather than Join's 104.
+    var compactButton = false {
+        didSet { setNeedsLayout() }
+    }
 
     init(action: String = Strings.CloudConnect.join, done: String = Strings.CloudConnect.joined) {
         join = RoundButton(title: action, size: .small)
@@ -1651,8 +1659,17 @@ final class CloudServerRow: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let buttonSize = state == .joined ? joined.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: 32)) : join.layout(width: 0).size
-        let layout = CloudServerRowLayout(width: bounds.width, button: CGSize(width: buttonSize.width, height: max(32, buttonSize.height)))
+        // Compact, the pill as wide as its words.
+        let natural = ceil(join.label.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: 40)).width) + 2 * RoundButtonMetrics.of(.small).paddingHorizontal
+        let buttonSize = state == .joined ? joined.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: 32)) : join.layout(width: compactButton ? natural : 0).size
+        let button = CGSize(width: buttonSize.width, height: max(32, buttonSize.height))
+        let minButton = compactButton ? 0 : CloudServerRowLayout.Metrics.buttonWidth
+        var layout = CloudServerRowLayout(width: bounds.width, button: button, minButton: minButton, subtitleLines: subtitleLines)
+        // A shorter subtitle than its room: the name and it stay together, centred.
+        if subtitleLines > 1 {
+            let used = Int(ceil(subtitle.sizeThatFits(CGSize(width: layout.subtitle.width, height: .greatestFiniteMagnitude)).height / CloudServerRowLayout.Metrics.subtitleHeight - 0.25))
+            layout = CloudServerRowLayout(width: bounds.width, button: button, minButton: minButton, subtitleLines: subtitleLines, usedLines: max(1, used))
+        }
         glass.setLayoutFrame(bounds)
         picture.setLayoutFrame(layout.picture)
         title.setLayoutFrame(layout.title)

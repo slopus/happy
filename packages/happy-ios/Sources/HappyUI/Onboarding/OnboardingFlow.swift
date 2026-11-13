@@ -155,6 +155,7 @@ final class OnboardingFlow {
             return screen
         case .plugins(let plugins):
             let screen = OnboardingPluginsViewController(context: context, session: session, plugins: plugins, optional: gate.requirement == .optional)
+            screen.released = { [weak self] in self?.homeAppeared() }
             skips(gate, on: screen)
             return screen
         case .mobileApp:

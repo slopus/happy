@@ -306,18 +306,27 @@ public struct CloudServerRowLayout: Equatable, Sendable {
     public var subtitle: CGRect
     public var button: CGRect
 
-    /// `button` is Join's (or Joined's) own size.
-    public init(width: CGFloat, button buttonSize: CGSize) {
+    /// The row's height with a subtitle of `lines` lines.
+    public static func height(subtitleLines lines: Int = 1) -> CGFloat {
+        Metrics.height + CGFloat(max(1, lines) - 1) * Metrics.subtitleHeight
+    }
+
+    /// `button` is Join's (or Joined's) own size; `minButton` the least
+    /// width it takes (Join's 104; a row of a list of its own, its own
+    /// width). The row has room for `subtitleLines` subtitle lines; the
+    /// name and the `usedLines` its subtitle fills are centred down it.
+    public init(width: CGFloat, button buttonSize: CGSize, minButton: CGFloat = Metrics.buttonWidth, subtitleLines: Int = 1, usedLines: Int? = nil) {
         typealias M = Metrics
-        let height = M.height
+        let lines = CGFloat(min(max(1, usedLines ?? subtitleLines), max(1, subtitleLines)))
+        let height = Self.height(subtitleLines: subtitleLines)
         picture = CGRect(x: M.padding, y: (height - M.picture) / 2, width: M.picture, height: M.picture)
-        let buttonWidth = max(M.buttonWidth, buttonSize.width)
+        let buttonWidth = max(minButton, buttonSize.width)
         button = CGRect(x: width - M.padding - buttonWidth, y: (height - buttonSize.height) / 2, width: buttonWidth, height: buttonSize.height)
         let textX = picture.maxX + M.gap
         let textWidth = max(0, button.minX - M.gap - textX)
-        let textTop = (height - M.titleHeight - M.subtitleHeight) / 2
+        let textTop = (height - M.titleHeight - lines * M.subtitleHeight) / 2
         title = CGRect(x: textX, y: textTop, width: textWidth, height: M.titleHeight)
-        subtitle = CGRect(x: textX, y: title.maxY, width: textWidth, height: M.subtitleHeight)
+        subtitle = CGRect(x: textX, y: title.maxY, width: textWidth, height: lines * M.subtitleHeight)
     }
 }
 

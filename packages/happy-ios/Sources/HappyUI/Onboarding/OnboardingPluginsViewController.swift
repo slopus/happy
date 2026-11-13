@@ -9,7 +9,9 @@ import UIKit
 /// on the flow (`PluginScreens.open`), where it is installed and signed
 /// in as from Plugins. A change to what is connected reads onboarding
 /// again, and once the server says the gate is done the flow moves on.
-/// Skip for Now while optional.
+/// Skip for Now while optional. Once something is connected here and
+/// nothing needed is left, the step stays for more (`holds`), with
+/// Continue in Skip's place.
 final class OnboardingPluginsViewController: CloudStageViewController, OnboardingStepScreen {
     private let session: Session
     private let gate: OnboardingGate.Plugins
@@ -22,6 +24,12 @@ final class OnboardingPluginsViewController: CloudStageViewController, Onboardin
     private var asked: Set<String> = []
     /// What was connected when onboarding was last read for it.
     private var connected: Set<String>?
+    /// Plugins connected while the step was on screen: it stays for more
+    /// (`holds`) until Continue.
+    private var connectedHere = false
+    private var letGo = false
+    /// Lets the flow go on to the next step (Continue).
+    var released: (() -> Void)?
 
     init(context: AppContext, session: Session, plugins: OnboardingGate.Plugins, optional: Bool) {
         self.session = session
@@ -33,13 +41,18 @@ final class OnboardingPluginsViewController: CloudStageViewController, Onboardin
         keepsActionRoom = false
     }
 
+    var holds: Bool { connectedHere && !letGo }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         view.accessibilityIdentifier = "onboarding-plugins"
         primary.accessibilityIdentifier = "onboarding-primary"
         secondary?.accessibilityIdentifier = "onboarding-secondary"
         primary.isHidden = true
-        primary.action = { [weak self] in self?.session.plugins.load() }
+        primary.action = { [weak self] in
+            guard let self else { return }
+            if action(for: session.plugins.state) == .more { letGo = true; released?() } else { session.plugins.load() }
+        }
         spinner.color = StartViewController.Colors.text
         status.textColor = UIColor(Palette.textDestructive)
         for subview in [spinner, status] as [UIView] { content.addSubview(subview) }
@@ -56,16 +69,36 @@ final class OnboardingPluginsViewController: CloudStageViewController, Onboardin
     private func changed() {
         let state = session.plugins.state
         if state == .loading, rows.isEmpty { spinner.startAnimating() } else { spinner.stopAnimating() }
-        primary.isHidden = state != .failed
-        say(state == .failed ? Strings.CloudOnboarding.pluginsFailed : nil)
         rebuild(state.catalog)
-        // Connected or signed out here or anywhere (or before the gate was
-        // read): the server says what the gate makes of it.
-        guard let catalog = state.catalog else { return }
-        let now = Set(gate.rows(catalog).filter(\.active).map(\.id))
-        guard now != connected else { return }
-        connected = now
-        Task { [session] in _ = try? await session.readOnboarding() }
+        // Connected here or anywhere (or before the gate was read): the
+        // server says what the gate makes of it.
+        if let catalog = state.catalog {
+            let now = Set(gate.rows(catalog).filter(\.active).map(\.id))
+            if let before = connected, !now.subtracting(before).isEmpty { connectedHere = true }
+            if now != connected {
+                connected = now
+                Task { [session] in _ = try? await session.readOnboarding() }
+            }
+        }
+        update()
+    }
+
+    private enum Action { case none, retry, more }
+
+    /// Try Again after a failed read; Continue once what is needed is
+    /// connected here, with more to connect, in Skip's place.
+    private func action(for state: PluginsModel.State) -> Action {
+        if state == .failed { return .retry }
+        guard connectedHere, let catalog = state.catalog else { return .none }
+        return gate.rows(catalog).allSatisfy { !$0.required || $0.active } ? .more : .none
+    }
+
+    private func update() {
+        let offered = action(for: session.plugins.state)
+        primary.isHidden = offered == .none
+        primary.title = offered == .more ? Strings.CloudConnect.continueAction : Strings.CloudOnboarding.tryAgain
+        secondary?.isHidden = offered == .more
+        say(offered == .retry ? Strings.CloudOnboarding.pluginsFailed : nil)
     }
 
     private func rebuild(_ catalog: PluginCatalog?) {
@@ -76,6 +109,8 @@ final class OnboardingPluginsViewController: CloudStageViewController, Onboardin
             order = plugins.map(\.id)
             for id in order {
                 let row = CloudServerRow(action: Strings.CloudOnboarding.setUp, done: Strings.CloudOnboarding.connected)
+                row.subtitleLines = 2
+                row.compactButton = true
                 row.picture.layer.cornerRadius = 12
                 row.picture.layer.cornerCurve = .continuous
                 row.join.accessibilityIdentifier = "onboarding-plugin-\(id)"
@@ -138,7 +173,7 @@ final class OnboardingPluginsViewController: CloudStageViewController, Onboardin
     /// line in room kept for it; they scroll under the title while Skip
     /// stays put (`pinsActions`).
     private func items(width: CGFloat, steady: Bool = false) -> [CloudColumnLayout.Item] {
-        let rowItems = order.map { _ in CloudColumnLayout.Item(height: CloudServerRowLayout.Metrics.height, gap: 12) }
+        let rowItems = order.map { _ in CloudColumnLayout.Item(height: CloudServerRowLayout.height(subtitleLines: 2), gap: 12) }
         return rowItems + [
             .init(size: CGSize(width: 44, height: spinner.isAnimating ? 44 : 0), gap: 12, centred: true),
             .init(height: steady ? Self.statusRoom : Self.statusHeight(status, width: width), gap: 16),
