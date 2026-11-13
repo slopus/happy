@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { StackActions, StackRouter } from '@react-navigation/routers';
 vi.mock('@react-navigation/native', () => ({ StackRouter }));
+import { projectLocationHref, restoreProjectLocation } from '@/utils/projectReturnLocation';
 import { createDesktopModalRouter, getDesktopModalStart, getDesktopModalBackgroundPath } from './desktopModalRouter';
 
-const options = { routeNames: ['index', 'inbox/index', 'settings/index', 'settings/appearance', 'settings/device-environment', 'settings/profile', 'session/[id]', 'session/[id]/file', 'session/[id]/files', 'machine/[id]', 'dev/index', 'dev/logs', 'relationship-advisor'], routeParamList: {}, routeGetIdList: {} };
+const options = { routeNames: ['index', 'projects', 'inbox/index', 'settings/index', 'settings/appearance', 'settings/device-environment', 'settings/profile', 'session/[id]', 'session/[id]/file', 'session/[id]/files', 'machine/[id]', 'dev/index', 'dev/logs', 'relationship-advisor'], routeParamList: {}, routeGetIdList: {} };
 function setup() {
     const original = StackRouter({ initialRouteName: 'index' });
     const router = createDesktopModalRouter({ initialRouteName: 'index' });
@@ -13,6 +14,19 @@ function setup() {
 }
 
 describe('desktop modal navigation boundary', () => {
+    it('restores the project route after conversation navigation removes it from the stack', () => {
+        const app = setup();
+        const location = { machine: 'mac', project: '/goals/creative-web', feature: '/goals/creative-web/features/design-ops', task: 'four', conversation: 'task-chat' };
+        app.send(StackActions.push('projects', location));
+        const saved = projectLocationHref(app.state.routes[app.state.index].params as Record<string, unknown>);
+        app.send({ type: 'NAVIGATE', payload: { name: 'session/[id]', params: { id: 'another' } } });
+        expect(app.state.routes.map(route => route.name)).toEqual(['index', 'session/[id]']);
+        const destination = new URL(restoreProjectLocation(saved), 'https://paws.invalid');
+        app.send({ type: 'NAVIGATE', payload: { name: 'projects', params: Object.fromEntries(destination.searchParams) } });
+        expect(app.state.routes[app.state.index].name).toBe('projects');
+        expect(app.state.routes[app.state.index].params).toEqual(location);
+    });
+
     it('switches conversations in one action while keeping only the original home anchor', () => {
         const app = setup();
         const home = app.state.routes[0];

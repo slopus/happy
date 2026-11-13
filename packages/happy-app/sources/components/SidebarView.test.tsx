@@ -11,6 +11,7 @@ import TestRenderer from 'react-test-renderer';
 const mocks = vi.hoisted(() => ({
     theme: { colors: { groupped: { background: '#fff' }, divider: '#ddd', desktopSkin: {} } } as any,
     desktopSkin: 'default',
+    desktopProjectLocation: null as string | null,
     accountFirstActionFocus: vi.fn(),
     accountTriggerFocus: vi.fn(),
     dispatch: vi.fn(),
@@ -103,7 +104,7 @@ vi.mock('@/sync/storage', () => ({
     useSession: () => mocks.session,
     useRealtimeStatus: () => 'connected',
     useProfile: () => null,
-    useLocalSetting: (name: string) => name === 'desktopSkinId' ? mocks.desktopSkin : [],
+    useLocalSetting: (name: string) => name === 'desktopSkinId' ? mocks.desktopSkin : name === 'desktopProjectLocation' ? mocks.desktopProjectLocation : [],
     useLocalSettingMutable: (name: string) => name === 'desktopSidebarMode'
         ? [mocks.desktopSidebarMode, mocks.setDesktopSidebarMode]
         : name === 'desktopSidebarListMode'
@@ -211,6 +212,7 @@ describe('SidebarView Agent space exit', () => {
         mocks.leftPinned = false;
         mocks.theme = appThemes.ginghamLight;
         mocks.desktopSkin = 'default';
+        mocks.desktopProjectLocation = null;
         mocks.focusHistory.length = 0;
         mocks.spaceAgent = {
             id: 'health',
@@ -252,6 +254,45 @@ describe('SidebarView Agent space exit', () => {
         mocks.desktopSkin = 'dreamskin';
         act(() => { renderer.update(<SidebarView desktopDensity desktopPrimaryNavigation desktopSecondaryVisible />); });
         expect(style('desktop-primary-navigation-column').backgroundColor).toBe(appThemes.ginghamDark.colors.desktopSkin.rail);
+        act(() => renderer.unmount());
+    });
+
+    it('returns from another page to the remembered project and task path', () => {
+        mocks.spaceAgent = null; mocks.pathname = '/session/another';
+        mocks.desktopProjectLocation = '/projects?machine=mac&project=%2Fgoals%2Fcreative-web&feature=%2Fgoals%2Fcreative-web%2Ffeatures%2Fdesign-ops&task=task-4&conversation=chat-4';
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SidebarView desktopDensity desktopPrimaryNavigation />); });
+        act(() => renderer.root.findByProps({ testID: 'sidebar-project-goals-button' }).props.onPress());
+        expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith(mocks.desktopProjectLocation);
+        act(() => renderer.unmount());
+    });
+
+    it('does not reset the current project when its rail entry is clicked again', () => {
+        mocks.spaceAgent = null; mocks.pathname = '/projects';
+        mocks.desktopProjectLocation = '/projects?machine=mac&feature=%2Fdesign-ops';
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SidebarView desktopDensity desktopPrimaryNavigation />); });
+        act(() => renderer.root.findByProps({ testID: 'sidebar-project-goals-button' }).props.onPress());
+        expect(mocks.navigate).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it('opens all projects when there is no remembered project location', () => {
+        mocks.spaceAgent = null; mocks.pathname = '/new';
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SidebarView desktopDensity desktopPrimaryNavigation />); });
+        act(() => renderer.root.findByProps({ testID: 'sidebar-project-goals-button' }).props.onPress());
+        expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith('/projects');
+        act(() => renderer.unmount());
+    });
+
+    it('keeps phone project entry independent of the remembered desktop path', () => {
+        mocks.spaceAgent = null; mocks.pathname = '/session/phone';
+        mocks.desktopProjectLocation = '/projects?machine=mac&feature=%2Fdesktop';
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SidebarView />); });
+        act(() => renderer.root.findByProps({ testID: 'sidebar-project-goals-button' }).props.onPress());
+        expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith('/projects');
         act(() => renderer.unmount());
     });
 

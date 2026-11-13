@@ -60,3 +60,11 @@ describe('PC photo skin preference', () => {
         expect(loadLocalSettings()).toMatchObject({ themePack: 'gingham', themePreference: 'light' });
     });
 });
+
+it('persists the project return destination through the existing account-local settings store', () => {
+    const href = '/projects?machine=mac&feature=%2Fdesign-ops&task=four&conversation=chat';
+    saveLocalSettings({ ...loadLocalSettings(), desktopProjectLocation: href });
+    expect(loadLocalSettings().desktopProjectLocation).toBe(href);
+    saveLocalSettings({ ...loadLocalSettings(), desktopProjectLocation: '/projects?machine=mac' });
+    expect(loadLocalSettings().desktopProjectLocation).toBe('/projects?machine=mac');
+});

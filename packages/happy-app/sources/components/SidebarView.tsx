@@ -26,6 +26,7 @@ import { PluginLeftSidebarSlot } from './plugins/PluginLeftSidebarSlot';
 import { usePluginSurfaceViews } from './plugins/usePluginSurfaceViews';
 import { resolvePluginText } from './plugins/pluginText';
 import { DESKTOP_PRIMARY_NAVIGATION_WIDTH } from '@/utils/desktopNavigationLayout';
+import { restoreProjectLocation } from '@/utils/projectReturnLocation';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -428,6 +429,7 @@ export const SidebarView = React.memo(({
     const dreamskin = Platform.OS === 'web' && desktopDensity && desktopSkinId !== 'default';
     const reducedTransparency = useReducedTransparency();
     const [desktopSidebarListMode, setDesktopSidebarListMode] = useLocalSettingMutable('desktopSidebarListMode');
+    const desktopProjectLocation = useLocalSetting('desktopProjectLocation');
     const [pluginMarketplaceOpen, setPluginMarketplaceOpen] = React.useState(false);
     const [initialPluginId, setInitialPluginId] = React.useState<string | null>(null);
     const [footerMenu, setFooterMenu] = React.useState<FooterMenu>(null);
@@ -624,7 +626,10 @@ export const SidebarView = React.memo(({
             {railNavigation && <DesktopRailItem
                 icon="folder-open-outline"
                 label={t('projectGoals.allProjects')}
-                onPress={() => go('/projects')}
+                onPress={() => {
+                    if (desktopPrimaryNavigation && pathname === '/projects') return;
+                    go(desktopPrimaryNavigation ? restoreProjectLocation(desktopProjectLocation) : '/projects');
+                }}
                 selected={pathname === '/projects'}
                 testID="sidebar-project-goals-button"
             />}

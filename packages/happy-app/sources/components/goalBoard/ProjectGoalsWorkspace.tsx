@@ -51,6 +51,7 @@ import { canCreateProjectConversation, canConfirmProjectDeliverable, openProject
 import { getProjectPreviewMachineId } from '@/sync/projectGoals';
 import { selectProjectMachine } from './projectMachine';
 import { useProjectNavigation } from './useProjectNavigation';
+import { useRememberProjectLocation } from '@/hooks/useRememberProjectLocation';
 import { useProjectData } from './useProjectData';
 import { getDirectoryCache } from '@/components/fileWorkspace/directoryCache';
 import { ProjectDeliveryEditor } from './ProjectDeliveryEditor';
@@ -143,6 +144,7 @@ export function ProjectGoalsWorkspace() {
     // Preserve an explicit owner while machine metadata reconnects, so its cached
     // archive remains readable offline and cannot fall back to another machine.
     const machineId = selectedMachine?.id ?? getProjectPreviewMachineId() ?? params.machine ?? draftMachine ?? '';
+    useRememberProjectLocation({ ...params, machine: machineId || params.machine }, Platform.OS === 'web');
     // Account/machine switches remount the archive owner, so stale async work cannot navigate the new account.
     return <ProjectGoalsOwner key={JSON.stringify([accountKey(), machineId])} machineId={machineId} machines={machines} params={params}
         navigation={navigation} />;

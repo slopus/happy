@@ -345,3 +345,9 @@ describe('localSettings relationship advisor history', () => {
         }]);
     });
 });
+
+
+it('adds project location memory to existing settings and rejects malformed saved values', () => {
+    expect(localSettingsParse({}).desktopProjectLocation).toBeNull();
+    expect(localSettingsParse({ desktopProjectLocation: ['wrong'], themePack: 'gingham' })).toMatchObject({ desktopProjectLocation: null, themePack: 'gingham' });
+});
