@@ -122,8 +122,11 @@ public struct OnboardingGate: Decodable, Equatable, Sendable {
         /// own reading of the person's role decides.
         public var canTalk: Bool?
 
+        /// The bot's picture; happy-cluster sends `kind`, `source` and
+        /// `thumbhash` and no digest, the picture itself being the bot's
+        /// `/v0/bots/:id/avatar`.
         public struct Avatar: Decodable, Equatable, Sendable {
-            public var digest: String
+            public var digest: String?
             public var mime: String?
             public var thumbhash: String?
         }

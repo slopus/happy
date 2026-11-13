@@ -57,6 +57,29 @@ final class OnboardingTests: XCTestCase {
         XCTAssertFalse(payment.canComplete)
     }
 
+    /// `GET /v0/onboarding` as production happy-cluster (f592164a) sent it
+    /// for a new team's owner: every gate it sends reads as its own kind,
+    /// none as one this app can't show (an optional one would be passed
+    /// over without a word). The admin bot's avatar has no digest.
+    func testProductionsGatesAllRead() throws {
+        let url = try XCTUnwrap(Bundle.module.url(forResource: "onboarding-production", withExtension: "json", subdirectory: "Fixtures"))
+        let onboarding = try JSONDecoder().decode(Onboarding.self, from: Data(contentsOf: url))
+        XCTAssertEqual(onboarding.gates.map(\.id), ["profile", "avatar", "adminBot", "inference", "plugins", "teammates", "mobileApp"])
+        XCTAssertEqual(onboarding.gates.filter { $0.kind == .unknown }.map(\.id), [])
+        guard case .adminBot(let bot) = onboarding.gate("adminBot")?.kind else { return XCTFail("adminBot") }
+        XCTAssertEqual(bot.name, "Chief of Staff")
+        XCTAssertEqual(bot.canTalk, true)
+        XCTAssertEqual(bot.points?.count, 3)
+        XCTAssertNil(bot.avatar?.digest)
+        XCTAssertEqual(bot.avatar?.thumbhash, "HvgFZxBVaueQSKZGmNmKJml2hjAoCYQC")
+        XCTAssertEqual(onboarding.gate("inference")?.kind, .inference(.init(connected: [], freeModel: true)))
+        XCTAssertEqual(onboarding.gate("plugins")?.kind, .plugins(.init(required: [], plugins: [.init(id: "github", name: "GitHub", required: false, active: false)])))
+        XCTAssertEqual(onboarding.gate("teammates")?.kind, .teammates(.init(invited: false, members: 1)))
+        guard case .mobileApp(let app) = onboarding.gate("mobileApp")?.kind else { return XCTFail("mobileApp") }
+        XCTAssertTrue(app.registered)
+        XCTAssertEqual(onboarding.owners.map(\.name), ["QA ios"])
+    }
+
     /// A gate this app can't read is kept, as one it can't show, so a
     /// blocking one still holds the person.
     func testAGateThisAppCannotReadIsKeptAsUnknown() throws {

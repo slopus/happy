@@ -1,0 +1,167 @@
+{
+  "blocking": [],
+  "completed": true,
+  "finished": true,
+  "gates": [
+    {
+      "blocking": false,
+      "canComplete": true,
+      "data": {},
+      "id": "profile",
+      "requirement": "required",
+      "scope": "member",
+      "status": "done"
+    },
+    {
+      "blocking": false,
+      "canComplete": true,
+      "data": {},
+      "id": "avatar",
+      "requirement": "optional",
+      "scope": "member",
+      "status": "skipped"
+    },
+    {
+      "blocking": false,
+      "canComplete": true,
+      "data": {
+        "agentId": "sl63zf7u98999exdb73jz2t3",
+        "avatar": {
+          "kind": "image",
+          "source": "generated",
+          "thumbhash": "HvgFZxBVaueQSKZGmNmKJml2hjAoCYQC"
+        },
+        "botId": "yu48oi737vz1y7iqw8hof5nc",
+        "canTalk": true,
+        "description": "This is your server's admin bot. It has expanded capabilities: it can change the server's settings, connect tools and create other bots, so it can adapt Happy and build a system around how your team works. Only people who manage bots can talk to it.",
+        "name": "Chief of Staff",
+        "note": "Only people who manage bots can talk to it.",
+        "points": [
+          "Changes this server's settings when you ask",
+          "Connects your tools and creates the bots you need",
+          "Builds a system around how your team works"
+        ],
+        "title": "Name your admin bot",
+        "version": "01a1d627-bd1f-71dd-9e39-b735559ba998"
+      },
+      "id": "adminBot",
+      "requirement": "optional",
+      "scope": "server",
+      "status": "skipped"
+    },
+    {
+      "blocking": false,
+      "canComplete": true,
+      "data": {
+        "connected": [],
+        "freeModel": true
+      },
+      "id": "inference",
+      "requirement": "optional",
+      "scope": "server",
+      "status": "skipped"
+    },
+    {
+      "blocking": false,
+      "canComplete": true,
+      "data": {
+        "plugins": [
+          {
+            "active": false,
+            "id": "github",
+            "name": "GitHub",
+            "required": false
+          }
+        ],
+        "required": []
+      },
+      "id": "plugins",
+      "requirement": "optional",
+      "scope": "server",
+      "status": "skipped"
+    },
+    {
+      "blocking": false,
+      "canComplete": true,
+      "data": {
+        "invited": false,
+        "members": 1
+      },
+      "id": "teammates",
+      "requirement": "optional",
+      "scope": "server",
+      "status": "skipped"
+    },
+    {
+      "blocking": false,
+      "canComplete": true,
+      "data": {
+        "appStoreUrl": "https://apps.apple.com/us/app/happy-claude-code-client/id6748571505",
+        "playStoreUrl": "https://play.google.com/store/apps/details?id=com.ex3ndr.happy",
+        "registered": true
+      },
+      "id": "mobileApp",
+      "requirement": "optional",
+      "scope": "member",
+      "status": "done"
+    }
+  ],
+  "member": {
+    "completed": true,
+    "steps": {
+      "profile": {
+        "done": true
+      },
+      "providers": {
+        "done": true,
+        "readyNow": true,
+        "signedIn": [
+          "openai"
+        ]
+      }
+    }
+  },
+  "owners": [
+    {
+      "name": "QA ios",
+      "userId": "ijfhbi5wll25cx1jxvwvpadi"
+    }
+  ],
+  "server": {
+    "completed": false,
+    "steps": {
+      "chiefOfStaff": {
+        "botId": "yu48oi737vz1y7iqw8hof5nc",
+        "done": false,
+        "name": "Chief of Staff"
+      },
+      "providers": {
+        "done": true,
+        "readyNow": true,
+        "signedIn": [
+          "openai"
+        ]
+      }
+    }
+  },
+  "steps": {
+    "chiefOfStaff": {
+      "botId": "yu48oi737vz1y7iqw8hof5nc",
+      "done": false,
+      "name": "Chief of Staff"
+    },
+    "profile": {
+      "done": true
+    },
+    "project": {
+      "done": false
+    },
+    "providers": {
+      "done": true,
+      "signedIn": [
+        "openai"
+      ],
+      "teamCredentials": 0
+    }
+  }
+}
