@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="plugins_title">Wtyczki</string>
+    <string name="plugins_installed">Zainstalowane</string>
+    <string name="plugins_available">Dostępne</string>
+    <string name="plugins_loading">Wczytywanie wtyczek…</string>
+    <string name="plugins_empty">Ten serwer nie oferuje jeszcze wtyczek.</string>
+    <string name="plugins_failed">Nie udało się wczytać wtyczek</string>
+    <string name="plugins_tap_to_retry">Dotknij, aby spróbować ponownie.</string>
+    <string name="plugins_manage_note">Instalować i konfigurować wtyczki mogą tylko osoby, których rola pozwala nimi zarządzać.</string>
+    <string name="plugins_status_ready">Gotowa</string>
+    <string name="plugins_status_needs_setup">Wymaga konfiguracji</string>
+    <string name="plugins_status_setup_again">Wymaga ponownej konfiguracji</string>
+    <string name="plugins_status_installing">Instalowanie…</string>
+    <string name="plugins_status_failed">Nie udało się zainstalować</string>
+    <string name="plugins_status_unavailable">Niedostępna</string>
+    <string name="plugins_version">Wersja %1$s</string>
+    <string name="plugins_install">Zainstaluj</string>
+    <string name="plugins_install_again">Zainstaluj ponownie</string>
+    <string name="plugins_tools">Narzędzia</string>
+    <string name="plugins_set_up">Konfiguracja</string>
+    <string name="plugins_continue_with">Kontynuuj: %1$s</string>
+    <string name="plugins_save">Zapisz</string>
+    <string name="plugins_connected">Zalogowano</string>
+    <string name="plugins_disconnect">Rozłącz</string>
+    <string name="plugins_disconnect_title">Rozłączyć %1$s?</string>
+    <string name="plugins_disconnect_body">Zapisane logowanie zostanie usunięte, a narzędzia przestaną działać do ponownej konfiguracji.</string>
+    <string name="plugins_remove">Usuń</string>
+    <string name="plugins_remove_title">Usunąć %1$s?</string>
+    <string name="plugins_remove_body">Agenci stracą jej narzędzia, a zapisane logowania zostaną usunięte.</string>
+    <string name="plugins_not_offered">Ten serwer nie oferuje tej wtyczki.</string>
+    <string name="plugins_no_longer_offered">Ten serwer nie oferuje już tej wtyczki.</string>
+    <string name="plugins_refused_unsupported">Ten serwer nie obsługuje jeszcze tego logowania.</string>
+    <string name="plugins_refused_gone">Tego już nie ma.</string>
+    <string name="plugins_refused_failed">Nie udało się. Spróbuj ponownie.</string>
+    <string name="plugins_field_required">Wymagane</string>
+    <string name="plugins_not_installable">Happy Agent nie może jeszcze zainstalować tej wtyczki.</string>
+    <string name="plugins_signed_in_browser">Dokończ logowanie w przeglądarce i wróć tutaj.</string>
+</resources>

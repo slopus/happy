@@ -168,6 +168,45 @@ class PluginsTest {
     }
 
     @Test
+    fun availabilityStartsFromWhatWasKeptThenFollowsHealth() = runTest {
+        val answers = ArrayDeque(listOf<Boolean?>(false, null))
+        val kept = mutableListOf<Boolean>()
+        val availability = PluginsAvailability({ answers.removeFirst() }, { true }, { kept += it }, backgroundScope)
+        runCurrent()
+        assertEquals("the last start's answer, before health is read", true, availability.available.value)
+        // Not advertised: the fallback asks the server, which has none.
+        availability.noteHealth(false)
+        runCurrent()
+        assertEquals(false, availability.available.value)
+        // A probe that couldn't tell changes nothing.
+        availability.noteHealth(false)
+        runCurrent()
+        assertEquals(false, availability.available.value)
+        availability.noteHealth(true)
+        runCurrent()
+        assertEquals(true, availability.available.value)
+        assertEquals(listOf(false, true), kept)
+        assertEquals("the flag needs no probe", 0, answers.size)
+    }
+
+    @Test
+    fun withoutTheFallbackOnlyTheFlagCounts() = runTest {
+        val availability = PluginsAvailability(null, { null }, {}, backgroundScope)
+        availability.noteHealth(false)
+        runCurrent()
+        assertEquals(false, availability.available.value)
+        availability.noteHealth(true)
+        assertEquals(true, availability.available.value)
+    }
+
+    @Test
+    fun theProbeReadsAMissingRouteAsNone() = runBlocking {
+        assertEquals(true, PluginsAvailability.probe(AgentClient(Server(mapOf("GET /v0/plugins" to listOf(200 to catalog))), "t")))
+        assertEquals(false, PluginsAvailability.probe(AgentClient(Server(emptyMap()), "t")))
+        assertEquals(null, PluginsAvailability.probe(AgentClient(Server(mapOf("GET /v0/plugins" to listOf(503 to """{"error":"Busy","code":"unavailable"}"""))), "t")))
+    }
+
+    @Test
     fun theSourceReadsAgainOnChangesAndAfterWrites() = runTest {
         val server = Server(
             mapOf(

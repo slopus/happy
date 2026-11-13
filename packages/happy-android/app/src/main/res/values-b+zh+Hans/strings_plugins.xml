@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="plugins_title">插件</string>
+    <string name="plugins_installed">已安装</string>
+    <string name="plugins_available">可用</string>
+    <string name="plugins_loading">正在加载插件…</string>
+    <string name="plugins_empty">此服务器暂未提供插件。</string>
+    <string name="plugins_failed">无法加载插件</string>
+    <string name="plugins_tap_to_retry">轻点以重试。</string>
+    <string name="plugins_manage_note">只有角色可以管理插件的人才能安装和设置插件。</string>
+    <string name="plugins_status_ready">就绪</string>
+    <string name="plugins_status_needs_setup">需要设置</string>
+    <string name="plugins_status_setup_again">需要重新设置</string>
+    <string name="plugins_status_installing">正在安装…</string>
+    <string name="plugins_status_failed">无法安装</string>
+    <string name="plugins_status_unavailable">不可用</string>
+    <string name="plugins_version">版本 %1$s</string>
+    <string name="plugins_install">安装</string>
+    <string name="plugins_install_again">再次安装</string>
+    <string name="plugins_tools">工具</string>
+    <string name="plugins_set_up">设置</string>
+    <string name="plugins_continue_with">使用%1$s继续</string>
+    <string name="plugins_save">保存</string>
+    <string name="plugins_connected">已登录</string>
+    <string name="plugins_disconnect">断开连接</string>
+    <string name="plugins_disconnect_title">要断开%1$s吗？</string>
+    <string name="plugins_disconnect_body">已保存的登录将被删除，在重新设置之前其工具将无法使用。</string>
+    <string name="plugins_remove">移除</string>
+    <string name="plugins_remove_title">要移除%1$s吗？</string>
+    <string name="plugins_remove_body">代理将失去其工具，已保存的登录也会被删除。</string>
+    <string name="plugins_not_offered">此服务器不提供此插件。</string>
+    <string name="plugins_no_longer_offered">此服务器不再提供此插件。</string>
+    <string name="plugins_refused_unsupported">此服务器暂不支持这种登录。</string>
+    <string name="plugins_refused_gone">它已不存在。</string>
+    <string name="plugins_refused_failed">操作未成功，请重试。</string>
+    <string name="plugins_field_required">必填</string>
+    <string name="plugins_not_installable">Happy Agent 暂时无法安装此插件。</string>
+    <string name="plugins_signed_in_browser">请在浏览器中完成登录，然后回到这里。</string>
+</resources>

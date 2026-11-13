@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="plugins_title">Connectors</string>
+    <string name="plugins_installed">Instal·lats</string>
+    <string name="plugins_available">Disponibles</string>
+    <string name="plugins_loading">S’estan carregant els connectors…</string>
+    <string name="plugins_empty">Aquest servidor encara no ofereix connectors.</string>
+    <string name="plugins_failed">No s’han pogut carregar els connectors</string>
+    <string name="plugins_tap_to_retry">Toca per tornar-ho a provar.</string>
+    <string name="plugins_manage_note">Només les persones amb un rol que pot gestionar connectors els poden instal·lar i configurar.</string>
+    <string name="plugins_status_ready">A punt</string>
+    <string name="plugins_status_needs_setup">Cal configurar-lo</string>
+    <string name="plugins_status_setup_again">Cal tornar-lo a configurar</string>
+    <string name="plugins_status_installing">S’està instal·lant…</string>
+    <string name="plugins_status_failed">No s’ha pogut instal·lar</string>
+    <string name="plugins_status_unavailable">No disponible</string>
+    <string name="plugins_version">Versió %1$s</string>
+    <string name="plugins_install">Instal·la</string>
+    <string name="plugins_install_again">Torna a instal·lar</string>
+    <string name="plugins_tools">Eines</string>
+    <string name="plugins_set_up">Configuració</string>
+    <string name="plugins_continue_with">Continua amb %1$s</string>
+    <string name="plugins_save">Desa</string>
+    <string name="plugins_connected">Sessió iniciada</string>
+    <string name="plugins_disconnect">Desconnecta</string>
+    <string name="plugins_disconnect_title">Vols desconnectar %1$s?</string>
+    <string name="plugins_disconnect_body">S’esborrarà l’inici de sessió desat i les eines deixaran de funcionar fins que es torni a configurar.</string>
+    <string name="plugins_remove">Elimina</string>
+    <string name="plugins_remove_title">Vols eliminar %1$s?</string>
+    <string name="plugins_remove_body">Els agents en perden les eines i se n’esborren els inicis de sessió desats.</string>
+    <string name="plugins_not_offered">Aquest servidor no ofereix aquest connector.</string>
+    <string name="plugins_no_longer_offered">Aquest servidor ja no ofereix aquest connector.</string>
+    <string name="plugins_refused_unsupported">Aquest servidor encara no pot fer aquest inici de sessió.</string>
+    <string name="plugins_refused_gone">Això ja no hi és.</string>
+    <string name="plugins_refused_failed">No ha funcionat. Torna-ho a provar.</string>
+    <string name="plugins_field_required">Obligatori</string>
+    <string name="plugins_not_installable">Happy Agent encara no pot instal·lar aquest connector.</string>
+    <string name="plugins_signed_in_browser">Acaba d’iniciar la sessió al navegador i torna aquí.</string>
+</resources>

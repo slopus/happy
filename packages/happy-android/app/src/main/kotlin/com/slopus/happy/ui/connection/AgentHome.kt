@@ -174,6 +174,7 @@ class AgentHomeActions(
     /** Opens new work with "+"'s sheet up, for its first message's picture. */
     val onComposeWithPicture: () -> Unit = onCompose,
     val onOpenTodos: () -> Unit = {},
+    val onOpenPlugins: () -> Unit = {},
     /** Starts a voice call on this connection ([com.slopus.happy.call.CallController]); null shows no voice button. */
     val onVoice: (() -> Unit)? = null,
     /** Opens a vault's folder ([folder]) or file that search found. */
@@ -323,6 +324,7 @@ fun AgentHomeScreen(
     val artifacts = stringResource(R.string.artifacts_title)
     val feedTitle = stringResource(R.string.feed_title)
     val todos = stringResource(R.string.agent_search_todos)
+    val plugins = stringResource(R.string.plugins_title)
     val words = rememberAgentSearchWords()
     // What the phone hasn't kept, read once as search opens; then the sources, again as home changes under it.
     val read by produceState(emptyMap<String, JsonObject>(), searching) {
@@ -355,6 +357,7 @@ fun AgentHomeScreen(
                 is AgentFeedRow.Folder -> row.name
                 is AgentFeedRow.Surface -> row.name
                 AgentFeedRow.Artifacts -> artifacts
+                AgentFeedRow.Plugins -> plugins
                 is AgentFeedRow.Feed -> feedTitle
                 AgentFeedRow.Todos -> todos
                 is AgentFeedRow.Section -> null
@@ -378,7 +381,7 @@ fun AgentHomeScreen(
         !feed.loaded && !status.needsAction -> HomePhase.Loading
         !feed.loaded -> HomePhase.Unavailable
         // Fixed places alone are no home yet: the first chat is.
-        feed.rows.all { it is AgentFeedRow.Section || it == AgentFeedRow.Artifacts || it is AgentFeedRow.Feed || it == AgentFeedRow.Todos } -> HomePhase.Empty
+        feed.rows.all { it is AgentFeedRow.Section || it == AgentFeedRow.Artifacts || it == AgentFeedRow.Plugins || it is AgentFeedRow.Feed || it == AgentFeedRow.Todos } -> HomePhase.Empty
         else -> HomePhase.List
     }
     val chatPreview = remember { ChatPreview() }
@@ -457,6 +460,7 @@ fun AgentHomeScreen(
                             onOpenArtifacts = actions.onOpenArtifacts,
                             onOpenFeed = actions.onOpenFeed,
                             onOpenTodos = actions.onOpenTodos,
+                            onOpenPlugins = actions.onOpenPlugins,
                             onOpenSurface = actions.onOpenSurface,
                             onLeaveSurface = actions.onLeaveSurface?.let { { surface: AgentFeedRow.Surface -> confirmingLeave = surface } },
                             onHold = preview?.let { { row, source -> chatPreview.open(row, source) } },
@@ -535,6 +539,10 @@ fun AgentHomeScreen(
                         onOpenTodos = {
                             focus.clearFocus()
                             actions.onOpenTodos()
+                        },
+                        onOpenPlugins = {
+                            focus.clearFocus()
+                            actions.onOpenPlugins()
                         },
                         onOpenSurface = { surface ->
                             focus.clearFocus()
@@ -836,6 +844,7 @@ fun AgentHome(
     /** Signs the team server at [server] in again ([AgentConnection.server]). */
     onSignIn: (server: String) -> Unit = {},
     onOpenTodos: () -> Unit = {},
+    onOpenPlugins: () -> Unit = {},
     onOpenVaultItem: (surfaceId: String, itemId: String, folder: Boolean, name: String) -> Unit = { _, _, _, _ -> },
     /** Opens a team member's profile, which only a Happy Cloud server has. */
     onOpenPerson: (userId: String) -> Unit = {},
@@ -854,7 +863,7 @@ fun AgentHome(
         )
         return
     }
-    SignedInAgentHome(graph, id, agents, onOpenConversation, onCompose, onSettings, onSettingsRow, onComposeWithPicture, onOpenArtifacts, onOpenSurface, onOpenArtifact, onOpenFeed, onSignIn, onOpenTodos, onOpenVaultItem, onOpenPerson)
+    SignedInAgentHome(graph, id, agents, onOpenConversation, onCompose, onSettings, onSettingsRow, onComposeWithPicture, onOpenArtifacts, onOpenSurface, onOpenArtifact, onOpenFeed, onSignIn, onOpenTodos, onOpenPlugins, onOpenVaultItem, onOpenPerson)
 }
 
 /**
@@ -931,6 +940,7 @@ private fun SignedInAgentHome(
     onOpenFeed: () -> Unit,
     onSignIn: (server: String) -> Unit,
     onOpenTodos: () -> Unit,
+    onOpenPlugins: () -> Unit,
     onOpenVaultItem: (surfaceId: String, itemId: String, folder: Boolean, name: String) -> Unit,
     onOpenPerson: (userId: String) -> Unit,
 ) {
@@ -952,7 +962,7 @@ private fun SignedInAgentHome(
     val permissions by session.permissions.collectAsStateWithLifecycle()
     val canCompose = permissions.canWrite
     val canAskChief = permissions.allows(com.slopus.happy.agent.Permission.BOTS_MANAGE)
-    val actions = remember(graph, session, onOpenConversation, onCompose, onComposeWithPicture, onSettings, onSettingsRow, onOpenArtifacts, onOpenSurface, onOpenArtifact, onOpenFeed, add, switchAccount, onSignIn, onOpenTodos, voice, onOpenVaultItem, onOpenPerson, canCompose, canAskChief) {
+    val actions = remember(graph, session, onOpenConversation, onCompose, onComposeWithPicture, onSettings, onSettingsRow, onOpenArtifacts, onOpenSurface, onOpenArtifact, onOpenFeed, add, switchAccount, onSignIn, onOpenTodos, onOpenPlugins, voice, onOpenVaultItem, onOpenPerson, canCompose, canAskChief) {
         AgentHomeActions(
             onOpenConversation = onOpenConversation,
             onCompose = onCompose,
@@ -963,6 +973,7 @@ private fun SignedInAgentHome(
             onAdd = { add?.scan() },
             onOpenArtifacts = onOpenArtifacts,
             onOpenTodos = onOpenTodos,
+            onOpenPlugins = onOpenPlugins,
             onOpenSurface = onOpenSurface,
             onOpenArtifact = onOpenArtifact,
             onOpenFeed = onOpenFeed,

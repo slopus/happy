@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="plugins_title">外掛程式</string>
+    <string name="plugins_installed">已安裝</string>
+    <string name="plugins_available">可用</string>
+    <string name="plugins_loading">正在載入外掛程式…</string>
+    <string name="plugins_empty">此伺服器尚未提供外掛程式。</string>
+    <string name="plugins_failed">無法載入外掛程式</string>
+    <string name="plugins_tap_to_retry">輕觸以重試。</string>
+    <string name="plugins_manage_note">只有角色可以管理外掛程式的人才能安裝和設定外掛程式。</string>
+    <string name="plugins_status_ready">就緒</string>
+    <string name="plugins_status_needs_setup">需要設定</string>
+    <string name="plugins_status_setup_again">需要重新設定</string>
+    <string name="plugins_status_installing">正在安裝…</string>
+    <string name="plugins_status_failed">無法安裝</string>
+    <string name="plugins_status_unavailable">無法使用</string>
+    <string name="plugins_version">版本 %1$s</string>
+    <string name="plugins_install">安裝</string>
+    <string name="plugins_install_again">再次安裝</string>
+    <string name="plugins_tools">工具</string>
+    <string name="plugins_set_up">設定</string>
+    <string name="plugins_continue_with">使用%1$s繼續</string>
+    <string name="plugins_save">儲存</string>
+    <string name="plugins_connected">已登入</string>
+    <string name="plugins_disconnect">中斷連線</string>
+    <string name="plugins_disconnect_title">要中斷%1$s的連線嗎？</string>
+    <string name="plugins_disconnect_body">已儲存的登入將被刪除，在重新設定之前其工具將無法使用。</string>
+    <string name="plugins_remove">移除</string>
+    <string name="plugins_remove_title">要移除%1$s嗎？</string>
+    <string name="plugins_remove_body">代理將失去其工具，已儲存的登入也會被刪除。</string>
+    <string name="plugins_not_offered">此伺服器不提供此外掛程式。</string>
+    <string name="plugins_no_longer_offered">此伺服器不再提供此外掛程式。</string>
+    <string name="plugins_refused_unsupported">此伺服器尚不支援這種登入。</string>
+    <string name="plugins_refused_gone">它已不存在。</string>
+    <string name="plugins_refused_failed">操作未成功，請重試。</string>
+    <string name="plugins_field_required">必填</string>
+    <string name="plugins_not_installable">Happy Agent 暫時無法安裝此外掛程式。</string>
+    <string name="plugins_signed_in_browser">請在瀏覽器中完成登入，然後回到這裡。</string>
+</resources>

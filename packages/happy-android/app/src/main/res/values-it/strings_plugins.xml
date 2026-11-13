@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="plugins_title">Plugin</string>
+    <string name="plugins_installed">Installati</string>
+    <string name="plugins_available">Disponibili</string>
+    <string name="plugins_loading">Caricamento plugin…</string>
+    <string name="plugins_empty">Questo server non offre ancora plugin.</string>
+    <string name="plugins_failed">Impossibile caricare i plugin</string>
+    <string name="plugins_tap_to_retry">Tocca per riprovare.</string>
+    <string name="plugins_manage_note">Solo chi ha un ruolo che può gestire i plugin può installarli e configurarli.</string>
+    <string name="plugins_status_ready">Pronto</string>
+    <string name="plugins_status_needs_setup">Da configurare</string>
+    <string name="plugins_status_setup_again">Da configurare di nuovo</string>
+    <string name="plugins_status_installing">Installazione…</string>
+    <string name="plugins_status_failed">Installazione non riuscita</string>
+    <string name="plugins_status_unavailable">Non disponibile</string>
+    <string name="plugins_version">Versione %1$s</string>
+    <string name="plugins_install">Installa</string>
+    <string name="plugins_install_again">Installa di nuovo</string>
+    <string name="plugins_tools">Strumenti</string>
+    <string name="plugins_set_up">Configurazione</string>
+    <string name="plugins_continue_with">Continua con %1$s</string>
+    <string name="plugins_save">Salva</string>
+    <string name="plugins_connected">Accesso eseguito</string>
+    <string name="plugins_disconnect">Disconnetti</string>
+    <string name="plugins_disconnect_title">Disconnettere %1$s?</string>
+    <string name="plugins_disconnect_body">L’accesso salvato viene eliminato e i suoi strumenti smettono di funzionare finché non viene configurato di nuovo.</string>
+    <string name="plugins_remove">Rimuovi</string>
+    <string name="plugins_remove_title">Rimuovere %1$s?</string>
+    <string name="plugins_remove_body">Gli agenti perdono i suoi strumenti e gli accessi salvati vengono eliminati.</string>
+    <string name="plugins_not_offered">Questo server non offre questo plugin.</string>
+    <string name="plugins_no_longer_offered">Questo server non offre più questo plugin.</string>
+    <string name="plugins_refused_unsupported">Questo server non supporta ancora questo accesso.</string>
+    <string name="plugins_refused_gone">Non c’è più.</string>
+    <string name="plugins_refused_failed">Non ha funzionato. Riprova.</string>
+    <string name="plugins_field_required">Obbligatorio</string>
+    <string name="plugins_not_installable">Happy Agent non può ancora installare questo plugin.</string>
+    <string name="plugins_signed_in_browser">Completa l’accesso nel browser, poi torna qui.</string>
+</resources>

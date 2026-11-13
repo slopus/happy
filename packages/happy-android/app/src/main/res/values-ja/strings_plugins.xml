@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="plugins_title">プラグイン</string>
+    <string name="plugins_installed">インストール済み</string>
+    <string name="plugins_available">利用可能</string>
+    <string name="plugins_loading">プラグインを読み込み中…</string>
+    <string name="plugins_empty">このサーバーにはまだプラグインがありません。</string>
+    <string name="plugins_failed">プラグインを読み込めませんでした</string>
+    <string name="plugins_tap_to_retry">タップして再試行します。</string>
+    <string name="plugins_manage_note">プラグインのインストールと設定は、プラグインを管理できるロールの人だけが行えます。</string>
+    <string name="plugins_status_ready">準備完了</string>
+    <string name="plugins_status_needs_setup">設定が必要</string>
+    <string name="plugins_status_setup_again">再設定が必要</string>
+    <string name="plugins_status_installing">インストール中…</string>
+    <string name="plugins_status_failed">インストールできませんでした</string>
+    <string name="plugins_status_unavailable">利用不可</string>
+    <string name="plugins_version">バージョン %1$s</string>
+    <string name="plugins_install">インストール</string>
+    <string name="plugins_install_again">もう一度インストール</string>
+    <string name="plugins_tools">ツール</string>
+    <string name="plugins_set_up">設定</string>
+    <string name="plugins_continue_with">%1$sで続ける</string>
+    <string name="plugins_save">保存</string>
+    <string name="plugins_connected">サインイン済み</string>
+    <string name="plugins_disconnect">接続を解除</string>
+    <string name="plugins_disconnect_title">%1$sの接続を解除しますか？</string>
+    <string name="plugins_disconnect_body">保存されたサインインが削除され、再設定するまでツールは使えなくなります。</string>
+    <string name="plugins_remove">削除</string>
+    <string name="plugins_remove_title">%1$sを削除しますか？</string>
+    <string name="plugins_remove_body">エージェントはそのツールを使えなくなり、保存されたサインインは削除されます。</string>
+    <string name="plugins_not_offered">このサーバーではこのプラグインを利用できません。</string>
+    <string name="plugins_no_longer_offered">このサーバーではこのプラグインを利用できなくなりました。</string>
+    <string name="plugins_refused_unsupported">このサーバーはまだそのサインインに対応していません。</string>
+    <string name="plugins_refused_gone">それはもうありません。</string>
+    <string name="plugins_refused_failed">うまくいきませんでした。もう一度お試しください。</string>
+    <string name="plugins_field_required">必須</string>
+    <string name="plugins_not_installable">Happy Agent はまだこのプラグインをインストールできません。</string>
+    <string name="plugins_signed_in_browser">ブラウザーでサインインを完了してから、ここに戻ってください。</string>
+</resources>

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Plugins (ui/plugins/): home's Plugins row, the list of installed and available plugins, and one
+  plugin's page with install, set up, sign in, disconnect and remove. Words follow desktop's plugin pages.
+  Translated in values-*/ (AndroidStringsTranslatedTest).
+-->
+<resources>
+    <string name="plugins_title">Plugins</string>
+    <string name="plugins_installed">Installed</string>
+    <string name="plugins_available">Available</string>
+    <string name="plugins_loading">Loading plugins…</string>
+    <string name="plugins_empty">This server offers no plugins yet.</string>
+    <string name="plugins_failed">Plugins couldn\'t be loaded</string>
+    <string name="plugins_tap_to_retry">Tap to try again.</string>
+    <string name="plugins_manage_note">Only people whose role can manage plugins can install and set them up.</string>
+    <string name="plugins_status_ready">Ready</string>
+    <string name="plugins_status_needs_setup">Needs setup</string>
+    <string name="plugins_status_setup_again">Needs setup again</string>
+    <string name="plugins_status_installing">Installing…</string>
+    <string name="plugins_status_failed">Couldn\'t install</string>
+    <string name="plugins_status_unavailable">Unavailable</string>
+    <string name="plugins_version">Version %1$s</string>
+    <string name="plugins_install">Install</string>
+    <string name="plugins_install_again">Install again</string>
+    <string name="plugins_tools">Tools</string>
+    <string name="plugins_set_up">Set up</string>
+    <string name="plugins_continue_with">Continue with %1$s</string>
+    <string name="plugins_save">Save</string>
+    <string name="plugins_connected">Signed in</string>
+    <string name="plugins_disconnect">Disconnect</string>
+    <string name="plugins_disconnect_title">Disconnect %1$s?</string>
+    <string name="plugins_disconnect_body">Its saved sign-in is deleted, and its tools stop working until it is set up again.</string>
+    <string name="plugins_remove">Remove</string>
+    <string name="plugins_remove_title">Remove %1$s?</string>
+    <string name="plugins_remove_body">Agents lose its tools, and its saved sign-ins are deleted.</string>
+    <string name="plugins_not_offered">This server doesn\'t offer this plugin.</string>
+    <string name="plugins_no_longer_offered">This server no longer offers this plugin.</string>
+    <string name="plugins_refused_unsupported">This server can\'t run that sign-in yet.</string>
+    <string name="plugins_refused_gone">That\'s no longer there.</string>
+    <string name="plugins_refused_failed">That didn\'t work. Try again.</string>
+    <string name="plugins_field_required">Required</string>
+    <string name="plugins_not_installable">Happy Agent can\'t install this plugin yet.</string>
+    <string name="plugins_signed_in_browser">Finish signing in in your browser, then come back here.</string>
+</resources>

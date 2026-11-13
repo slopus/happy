@@ -91,6 +91,8 @@ fun Item(
     detailColor: Color = Color.Unspecified,
     /** `subtitleStyle`, e.g. the monospaced ids on the machine screen. */
     subtitleStyle: TextStyle? = null,
+    /** Unspecified keeps the secondary text colour. */
+    subtitleColor: Color = Color.Unspecified,
     /** Zero lets a long preference title wrap in full, including at large font sizes. */
     titleLines: Int = if (subtitle != null) 1 else 2,
 ) {
@@ -145,7 +147,7 @@ fun Item(
                 Text(
                     text = subtitle,
                     style = subtitleStyle ?: ItemSpec.subtitle,
-                    color = colors.textSecondary,
+                    color = subtitleColor.takeOrElse { colors.textSecondary },
                     maxLines = if (subtitleLines <= 0) Int.MAX_VALUE else subtitleLines,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.testTag(ItemTags.SUBTITLE),

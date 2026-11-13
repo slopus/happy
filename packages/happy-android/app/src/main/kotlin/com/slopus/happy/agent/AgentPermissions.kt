@@ -28,6 +28,8 @@ object Permission {
     const val COMPUTE_USE = "compute.use"
     /** Adding machines in any mode, editing any, and freeing a held one. */
     const val POOLS_MANAGE = "pools.manage"
+    /** Installing, setting up and removing plugins, as MCP servers take it. */
+    const val MCP_MANAGE = "mcp.manage"
 
     /**
      * A team server's refusal for want of a permission (`403 { "error":

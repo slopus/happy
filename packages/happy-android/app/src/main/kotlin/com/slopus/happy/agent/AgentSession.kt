@@ -192,6 +192,15 @@ class AgentSession internal constructor(
         keep = { value -> withContext(Dispatchers.IO) { keepResource(FeedLibrary.RESOURCE, value) } },
     )
 
+    /** Whether home lists Plugins: health's `capabilities.plugins`, with a probe for Happy Cloud servers deployed before it. */
+    private val pluginsAvailability = com.slopus.happy.plugins.PluginsAvailability(
+        probe = if (client.cloud) ({ com.slopus.happy.plugins.PluginsAvailability.probe(client) }) else null,
+        kept = { withContext(Dispatchers.IO) { (cachedResource(com.slopus.happy.plugins.PluginsAvailability.RESOURCE)?.get("available") as? kotlinx.serialization.json.JsonPrimitive)?.content?.toBooleanStrictOrNull() } },
+        keep = { value -> withContext(Dispatchers.IO) { keepResource(com.slopus.happy.plugins.PluginsAvailability.RESOURCE, JsonObject(mapOf("available" to kotlinx.serialization.json.JsonPrimitive(value)))) } },
+        scope = scope,
+    )
+    val pluginsAvailable: StateFlow<Boolean> get() = pluginsAvailability.available
+
     /** What Feed entries name that the catalog doesn't hold: artifacts, and the todos they made. */
     val feedLookups: FeedLookups by lazy {
         FeedLookups.of(scope, client) { ArtifactClient(client).artifact(it) }.also { lookups ->
@@ -223,9 +232,9 @@ class AgentSession internal constructor(
     val feed: StateFlow<AgentFeed> = combine(
         catalogState, intents.pending, gitSnapshots,
         feedLibrary.state.map { if (it.available == true) it.unread else null }.distinctUntilChanged(),
-        team.users,
-    ) { catalog, pending, git, feedUnread, users ->
-        AgentFeed.derive(catalog.withSurfaceIntents(pending), git = git, intents = IntentOverlay.of(pending), feedUnread = feedUnread, users = users)
+        combine(team.users, pluginsAvailable, ::Pair),
+    ) { catalog, pending, git, feedUnread, (users, plugins) ->
+        AgentFeed.derive(catalog.withSurfaceIntents(pending), git = git, intents = IntentOverlay.of(pending), feedUnread = feedUnread, users = users, plugins = plugins)
     }
         .distinctUntilChanged()
         .scan(null as AgentFeed?) { previous, next -> AgentFeed.reuse(previous, next) }
@@ -796,6 +805,7 @@ class AgentSession internal constructor(
         val known = connections.accounts.value.firstOrNull { it.id == connectionId }
         val info = AgentIdentity.refresh(client.requester, known?.name.orEmpty(), known?.avatarFile?.let { known.avatarETag }, oauth = client.isOAuth())
         client.noteHealth(info)
+        pluginsAvailability.noteHealth(info.plugins)
         if (known != null) {
             connections.update(connectionId, info.avatar) { it.copy(name = info.name, thumbhash = info.thumbhash ?: it.thumbhash, revoked = false, instanceId = info.instanceId, daemonVersion = info.daemonVersion, protocol = info.protocol) }
         }

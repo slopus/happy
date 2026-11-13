@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="plugins_title">Plugins</string>
+    <string name="plugins_installed">Instalados</string>
+    <string name="plugins_available">Disponíveis</string>
+    <string name="plugins_loading">Carregando plugins…</string>
+    <string name="plugins_empty">Este servidor ainda não oferece plugins.</string>
+    <string name="plugins_failed">Não foi possível carregar os plugins</string>
+    <string name="plugins_tap_to_retry">Toque para tentar de novo.</string>
+    <string name="plugins_manage_note">Somente pessoas cuja função pode gerenciar plugins podem instalá-los e configurá-los.</string>
+    <string name="plugins_status_ready">Pronto</string>
+    <string name="plugins_status_needs_setup">Precisa de configuração</string>
+    <string name="plugins_status_setup_again">Precisa ser configurado de novo</string>
+    <string name="plugins_status_installing">Instalando…</string>
+    <string name="plugins_status_failed">Não foi possível instalar</string>
+    <string name="plugins_status_unavailable">Indisponível</string>
+    <string name="plugins_version">Versão %1$s</string>
+    <string name="plugins_install">Instalar</string>
+    <string name="plugins_install_again">Instalar de novo</string>
+    <string name="plugins_tools">Ferramentas</string>
+    <string name="plugins_set_up">Configuração</string>
+    <string name="plugins_continue_with">Continuar com %1$s</string>
+    <string name="plugins_save">Salvar</string>
+    <string name="plugins_connected">Conectado</string>
+    <string name="plugins_disconnect">Desconectar</string>
+    <string name="plugins_disconnect_title">Desconectar %1$s?</string>
+    <string name="plugins_disconnect_body">O login salvo será apagado, e as ferramentas param de funcionar até que seja configurado de novo.</string>
+    <string name="plugins_remove">Remover</string>
+    <string name="plugins_remove_title">Remover %1$s?</string>
+    <string name="plugins_remove_body">Os agentes perdem as ferramentas, e os logins salvos são apagados.</string>
+    <string name="plugins_not_offered">Este servidor não oferece este plugin.</string>
+    <string name="plugins_no_longer_offered">Este servidor não oferece mais este plugin.</string>
+    <string name="plugins_refused_unsupported">Este servidor ainda não consegue fazer esse login.</string>
+    <string name="plugins_refused_gone">Isso não existe mais.</string>
+    <string name="plugins_refused_failed">Não deu certo. Tente de novo.</string>
+    <string name="plugins_field_required">Obrigatório</string>
+    <string name="plugins_not_installable">O Happy Agent ainda não consegue instalar este plugin.</string>
+    <string name="plugins_signed_in_browser">Termine o login no navegador e volte aqui.</string>
+</resources>

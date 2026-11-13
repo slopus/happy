@@ -2280,6 +2280,34 @@ every locale, not happy-i18n.
 - Tests: `vaults/*Test` (listing, events, uploads against a fake daemon,
   routes, presets) and `ui/vaults/VaultLayoutTest`.
 
+### Plugins
+
+A Happy Cloud server's plugins (happy-cluster API.md, "Plugins"; desktop's
+plugin pages). `plugins/` is the wire and state, `ui/plugins/` the pages;
+words are `strings_plugins.xml` in every locale.
+
+- **Where:** home's Plugins row under Artifacts (`AgentFeedRow.Plugins`,
+  `MainPanelKey.PLUGINS` on the tablet), shown while
+  `AgentSession.pluginsAvailable`: health's `capabilities.plugins`, kept per
+  connection so the row doesn't come and go, and for servers deployed before
+  the flag a marked fallback probe of `GET /v0/plugins` (404/501: none).
+  Happy Agent hosts don't advertise it and show no row.
+- **Wire:** `PluginsBackend` (`ClusterPlugins`) reads the catalog and the
+  installations (`canManage` from that answer, else `mcp.manage`);
+  `PluginsSource` reads again on `plugins.changed`, role changes, each
+  reconnect, after every write and when a page resumes (back from a sign-in
+  in the browser). Refusals are a typed `PluginRefusal`; refused setup fields
+  show under their field in the server's words.
+- **Pages:** the list (Installed, then Available), a plugin (Install, Install
+  again where it may be installed more than once, its installations and
+  tools), an installation (Set up by OAuth in a Custom Tab or by fields,
+  Signed in with per-account Disconnect, Remove; each confirmed). Someone
+  whose role can't manage plugins reads them. `NavHostController.openPlugin`
+  opens one plugin from anywhere (Gen UI's `plugin` action).
+- **Fixture:** debug builds have `ui.plugins.PluginsFixturesActivity`: the
+  real pages over an in-memory server (`--ez plugins.member true` for a
+  member).
+
 ## Autocomplete
 
 `@` file mentions and `/` commands in the chat composer. Logic is in

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="plugins_title">Plugins</string>
+    <string name="plugins_installed">Instalados</string>
+    <string name="plugins_available">Disponibles</string>
+    <string name="plugins_loading">Cargando plugins…</string>
+    <string name="plugins_empty">Este servidor aún no ofrece plugins.</string>
+    <string name="plugins_failed">No se pudieron cargar los plugins</string>
+    <string name="plugins_tap_to_retry">Toca para volver a intentarlo.</string>
+    <string name="plugins_manage_note">Solo las personas cuyo rol puede gestionar plugins pueden instalarlos y configurarlos.</string>
+    <string name="plugins_status_ready">Listo</string>
+    <string name="plugins_status_needs_setup">Requiere configuración</string>
+    <string name="plugins_status_setup_again">Requiere configurarse de nuevo</string>
+    <string name="plugins_status_installing">Instalando…</string>
+    <string name="plugins_status_failed">No se pudo instalar</string>
+    <string name="plugins_status_unavailable">No disponible</string>
+    <string name="plugins_version">Versión %1$s</string>
+    <string name="plugins_install">Instalar</string>
+    <string name="plugins_install_again">Instalar otra vez</string>
+    <string name="plugins_tools">Herramientas</string>
+    <string name="plugins_set_up">Configuración</string>
+    <string name="plugins_continue_with">Continuar con %1$s</string>
+    <string name="plugins_save">Guardar</string>
+    <string name="plugins_connected">Sesión iniciada</string>
+    <string name="plugins_disconnect">Desconectar</string>
+    <string name="plugins_disconnect_title">¿Desconectar %1$s?</string>
+    <string name="plugins_disconnect_body">Se borrará su inicio de sesión guardado y sus herramientas dejarán de funcionar hasta que se configure de nuevo.</string>
+    <string name="plugins_remove">Quitar</string>
+    <string name="plugins_remove_title">¿Quitar %1$s?</string>
+    <string name="plugins_remove_body">Los agentes pierden sus herramientas y se borran sus inicios de sesión guardados.</string>
+    <string name="plugins_not_offered">Este servidor no ofrece este plugin.</string>
+    <string name="plugins_no_longer_offered">Este servidor ya no ofrece este plugin.</string>
+    <string name="plugins_refused_unsupported">Este servidor aún no puede hacer ese inicio de sesión.</string>
+    <string name="plugins_refused_gone">Eso ya no está.</string>
+    <string name="plugins_refused_failed">No funcionó. Inténtalo de nuevo.</string>
+    <string name="plugins_field_required">Obligatorio</string>
+    <string name="plugins_not_installable">Happy Agent aún no puede instalar este plugin.</string>
+    <string name="plugins_signed_in_browser">Termina de iniciar sesión en el navegador y vuelve aquí.</string>
+</resources>

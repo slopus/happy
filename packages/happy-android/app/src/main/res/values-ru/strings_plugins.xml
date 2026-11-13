@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="plugins_title">Плагины</string>
+    <string name="plugins_installed">Установлены</string>
+    <string name="plugins_available">Доступны</string>
+    <string name="plugins_loading">Загружаем плагины…</string>
+    <string name="plugins_empty">Этот сервер пока не предлагает плагинов.</string>
+    <string name="plugins_failed">Не удалось загрузить плагины</string>
+    <string name="plugins_tap_to_retry">Нажмите, чтобы повторить.</string>
+    <string name="plugins_manage_note">Устанавливать и настраивать плагины могут только люди, чья роль позволяет управлять ими.</string>
+    <string name="plugins_status_ready">Готов</string>
+    <string name="plugins_status_needs_setup">Нужна настройка</string>
+    <string name="plugins_status_setup_again">Нужно настроить заново</string>
+    <string name="plugins_status_installing">Устанавливается…</string>
+    <string name="plugins_status_failed">Не удалось установить</string>
+    <string name="plugins_status_unavailable">Недоступен</string>
+    <string name="plugins_version">Версия %1$s</string>
+    <string name="plugins_install">Установить</string>
+    <string name="plugins_install_again">Установить ещё раз</string>
+    <string name="plugins_tools">Инструменты</string>
+    <string name="plugins_set_up">Настройка</string>
+    <string name="plugins_continue_with">Продолжить: %1$s</string>
+    <string name="plugins_save">Сохранить</string>
+    <string name="plugins_connected">Вход выполнен</string>
+    <string name="plugins_disconnect">Отключить</string>
+    <string name="plugins_disconnect_title">Отключить %1$s?</string>
+    <string name="plugins_disconnect_body">Сохранённый вход удалится, а инструменты перестанут работать, пока плагин не настроят заново.</string>
+    <string name="plugins_remove">Удалить</string>
+    <string name="plugins_remove_title">Удалить %1$s?</string>
+    <string name="plugins_remove_body">Агенты потеряют его инструменты, а сохранённые входы удалятся.</string>
+    <string name="plugins_not_offered">Этот сервер не предлагает этот плагин.</string>
+    <string name="plugins_no_longer_offered">Этот сервер больше не предлагает этот плагин.</string>
+    <string name="plugins_refused_unsupported">Этот сервер пока не умеет такой вход.</string>
+    <string name="plugins_refused_gone">Этого больше нет.</string>
+    <string name="plugins_refused_failed">Не получилось. Попробуйте ещё раз.</string>
+    <string name="plugins_field_required">Обязательно</string>
+    <string name="plugins_not_installable">Happy Agent пока не может установить этот плагин.</string>
+    <string name="plugins_signed_in_browser">Завершите вход в браузере и вернитесь сюда.</string>
+</resources>

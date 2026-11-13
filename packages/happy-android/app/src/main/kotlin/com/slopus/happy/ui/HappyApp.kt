@@ -184,6 +184,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                                 onOpenArtifacts = { go.open(MainPanelKey.ARTIFACTS) { nav.navigate(AgentArtifactsRoute(account.id)) } },
                                 onOpenSurface = { go.open(MainPanelKey.surface(it.id)) { nav.openSurface(graph, account.id, it.id) } },
                                 onOpenTodos = { go.open(MainPanelKey.TODOS) { nav.navigate(com.slopus.happy.ui.todos.TodoListsRoute(account.id)) } },
+                                onOpenPlugins = { go.open(MainPanelKey.PLUGINS) { nav.navigate(com.slopus.happy.ui.plugins.PluginsRoute(account.id)) } },
                                 onOpenArtifact = { go.open(null) { nav.openArtifact(account.id, it) } },
                                 onOpenFeed = { go.open(MainPanelKey.FEED) { nav.navigate(AgentFeedRoute(account.id)) } },
                                 onOpenVaultItem = { surfaceId, itemId, folder, name ->
