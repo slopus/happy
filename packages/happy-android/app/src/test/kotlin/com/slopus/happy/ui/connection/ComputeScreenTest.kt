@@ -30,7 +30,6 @@ import com.slopus.happy.agent.ComputeSnapshot
 import com.slopus.happy.agent.ComputeSource
 import com.slopus.happy.agent.ComputeStatus
 import com.slopus.happy.agent.ComputerAdd
-import com.slopus.happy.agent.ComputerEdit
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
@@ -59,12 +58,11 @@ class ComputeScreenTest {
 
     @Test
     fun aManagerSeesEveryModeWithItsHolderOwnerAndActions() {
-        val edits = mutableListOf<String>()
         val releases = mutableListOf<String>()
         rule.setHappyContent {
             ComputeScreen(
                 loaded(sandbox, shared, exclusive, mine, theirs), ComputeAccess.Manage, ComputePending(), null,
-                ComputeActions(onEdit = { edits += it.id }, onRelease = { releases += it.id }), {},
+                ComputeActions(onRelease = { releases += it.id }), {},
             )
         }
         for (label in listOf("Sandbox", "Shared", "Exclusive")) rule.onNodeWithText(label).assertExists()
@@ -81,20 +79,17 @@ class ComputeScreenTest {
         val row = rule.node(ComputeTags.computer("n1"))
         // 16dp margins and the settings card's one-physical-pixel border on each side.
         assertDp("computer row width", (379 - 2f / rule.density.density).dp, row.bounds.width)
-        for (id in listOf("n1", "n2", "n3", "n4", "n5")) rule.onNodeWithTag(ComputeTags.edit(id)).assertExists()
+        rule.onAllNodesWithText("Edit").assertCountEquals(0)
         rule.onAllNodesWithTag(ComputeTags.release("n1")).assertCountEquals(0)
         assertTrue(rule.node(ComputeTags.release("n3")).bounds.height.value >= 48)
         rule.onNodeWithTag(ComputeTags.release("n3")).performScrollTo().performClick()
-        rule.onNodeWithTag(ComputeTags.edit("n5")).performScrollTo().performClick()
         assertEquals(listOf("n3"), releases)
-        assertEquals(listOf("n5"), edits)
     }
 
     @Test
-    fun aMemberEditsOnlyTheirOwnComputerAndReleasesNothing() {
+    fun aMemberReleasesNothing() {
         rule.setHappyContent { ComputeScreen(loaded(sandbox, exclusive, mine), ComputeAccess.Use, ComputePending(), null, ComputeActions(), {}) }
-        rule.onNodeWithTag(ComputeTags.edit("n4")).assertExists()
-        for (id in listOf("n1", "n3")) rule.onAllNodesWithTag(ComputeTags.edit(id)).assertCountEquals(0)
+        rule.onAllNodesWithText("Edit").assertCountEquals(0)
         rule.onAllNodesWithTag(ComputeTags.release("n3")).assertCountEquals(0)
         rule.onNodeWithText("Agents choose a computer and join it. You can add a private computer of your own.").assertExists()
         rule.onNodeWithTag(ComputeTags.ADD).performScrollTo().assertIsDisplayed()
@@ -184,11 +179,11 @@ class ComputeScreenTest {
     @Test
     fun aRefusedCreateKeepsTheFormWithTheReason() {
         rule.setHappyContent {
-            ComputerAddScreen(ComputerAdd.Failed(ComputeDraft(ComputeModeKind.Private, "Laptop"), "Compute nodes are not configured on this deployment."), ComputeAccess.Use, {}, {}, {})
+            ComputerAddScreen(ComputerAdd.Failed(ComputeDraft(ComputeModeKind.Private), "Compute nodes are not configured on this deployment."), ComputeAccess.Use, {}, {}, {})
         }
         rule.onNodeWithText("No install command").assertExists()
         rule.onNodeWithText("Compute nodes are not configured on this deployment.").assertExists()
-        rule.onNodeWithTag(ComputeTags.NAME).assertTextEquals("Laptop")
+        rule.onNodeWithTag(ComputeTags.mode(ComputeModeKind.Private)).assertExists()
     }
 
     private fun install(mode: ComputeModeKind, commands: ComputeCommands? = ComputeCommands("curl -fsSL https://get.example/install.sh | HAPPY_COMPUTE_MODE='${mode.wire}' sh", "irm https://get.example/install.ps1 | iex"), expiresAt: Long = System.currentTimeMillis() + 3_600_000) =
@@ -239,17 +234,5 @@ class ComputeScreenTest {
         rule.setHappyContent { ComputerAddScreen(install(ComputeModeKind.Private, expiresAt = 1), ComputeAccess.Use, {}, {}, {}) }
         rule.onAllNodesWithTag(ComputeTags.command("unix")).assertCountEquals(0)
         rule.onAllNodesWithText("Copy").assertCountEquals(0)
-    }
-
-    @Test
-    fun editingNeedsANameAndShowsARefusal() {
-        rule.setHappyContent {
-            ComputerEditScreen(ComputerEdit("n4", "  ", "My own", ComputerEdit.Phase.Failed("description is 1 to 2048 characters.")), {}, {}, {})
-        }
-        rule.onNodeWithText("Edit computer").assertExists()
-        rule.onNodeWithText("Not saved").assertExists()
-        rule.onNodeWithText("description is 1 to 2048 characters.").assertExists()
-        rule.onNodeWithTag(ComputeTags.DESCRIPTION).assertTextEquals("My own")
-        rule.onNodeWithTag(ComputeTags.SAVE).assertIsNotEnabled()
     }
 }

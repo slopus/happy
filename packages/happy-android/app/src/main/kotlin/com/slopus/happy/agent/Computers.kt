@@ -15,7 +15,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -103,9 +102,6 @@ data class Computer(
     /** Online and held by an agent, so every other join is refused. */
     val busy: Boolean get() = status == ComputeStatus.Online && holder != null
 
-    fun editable(access: ComputeAccess): Boolean =
-        access == ComputeAccess.Manage || (mode as? ComputeMode.Private)?.owner == ComputeOwner.Reader
-
     fun releasable(access: ComputeAccess): Boolean = access == ComputeAccess.Manage && holder != null
 }
 
@@ -140,8 +136,8 @@ class ComputeInstall(
     val expiresAt: Long,
 )
 
-/** What a new computer will be: its mode, and the name and description it joins with. */
-data class ComputeDraft(val mode: ComputeModeKind, val name: String = "", val description: String = "")
+/** What a new computer will be: its mode. It joins named by its hostname. */
+data class ComputeDraft(val mode: ComputeModeKind)
 
 /**
  * Adding a computer, while its page is up: the form, its request, a refusal
@@ -195,37 +191,6 @@ sealed interface ComputerAdd {
     }
 }
 
-/** Renaming or describing a computer, while its page is up. */
-data class ComputerEdit(val computerId: String, val name: String, val description: String, val phase: Phase = Phase.Editing) {
-    sealed interface Phase {
-        data object Editing : Phase
-        data object Saving : Phase
-        /** [reason] is the server's own words; null when it gave none. */
-        data class Failed(val reason: String?) : Phase
-    }
-
-    val savable: Boolean get() = phase != Phase.Saving && name.isNotBlank()
-
-    /**
-     * `PATCH /v0/computers/:id`'s body: what differs from [computer], an
-     * emptied description as `null`, which clears it. Null when nothing
-     * changed or the name is empty.
-     */
-    fun patch(computer: Computer): JsonObject? {
-        val name = name.trim().ifEmpty { return null }
-        val description = description.trim().ifEmpty { null }
-        val body = buildMap<String, JsonElement> {
-            if (name != computer.name) put("name", JsonPrimitive(name))
-            if (description != computer.description) put("description", description?.let(::JsonPrimitive) ?: JsonNull)
-        }
-        return body.takeIf { it.isNotEmpty() }?.let(::JsonObject)
-    }
-
-    companion object {
-        fun open(computer: Computer) = ComputerEdit(computer.id, computer.name, computer.description.orEmpty())
-    }
-}
-
 /** Happy Cloud's computers in modes (happy-cluster deploy/README.md, "Compute nodes"). Every route needs `compute.use`. */
 object Computers {
     private const val ROOT = "/v0/computers"
@@ -244,17 +209,8 @@ object Computers {
     /** Mints the computer's single-use join token and its install commands. */
     suspend fun create(client: AgentClient, draft: ComputeDraft): ComputeInstall? {
         require(client.cloud)
-        val body = buildMap<String, JsonElement> {
-            put("mode", JsonPrimitive(draft.mode.wire))
-            draft.name.trim().takeIf { it.isNotEmpty() }?.let { put("name", JsonPrimitive(it)) }
-            draft.description.trim().takeIf { it.isNotEmpty() }?.let { put("description", JsonPrimitive(it)) }
-        }
-        return install(client.decode<JsonObject>("POST", "$ROOT/join-tokens", JsonObject(body)))
-    }
-
-    suspend fun edit(client: AgentClient, computerId: String, patch: JsonObject) {
-        require(client.cloud)
-        client.send("PATCH", "$ROOT/${AgentClient.escape(computerId)}", patch)
+        val body = JsonObject(mapOf("mode" to JsonPrimitive(draft.mode.wire)))
+        return install(client.decode<JsonObject>("POST", "$ROOT/join-tokens", body))
     }
 
     /** Frees an exclusive computer from the agent holding it (`pools.manage`). */
@@ -374,11 +330,6 @@ class ComputeSource(
 
     /** Throws what the server said; the install is never kept here. */
     suspend fun create(draft: ComputeDraft): ComputeInstall? = Computers.create(client, draft).also { refresh() }
-
-    suspend fun edit(computerId: String, patch: JsonObject) {
-        Computers.edit(client, computerId, patch)
-        refresh()
-    }
 
     suspend fun releaseLock(computer: Computer) {
         Computers.releaseLock(client, computer.id)

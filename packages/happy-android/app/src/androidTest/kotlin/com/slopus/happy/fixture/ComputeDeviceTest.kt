@@ -25,13 +25,11 @@ import com.slopus.happy.agent.ComputeSnapshot
 import com.slopus.happy.agent.ComputeSource
 import com.slopus.happy.agent.ComputeStatus
 import com.slopus.happy.agent.ComputerAdd
-import com.slopus.happy.agent.ComputerEdit
 import com.slopus.happy.ui.connection.ComputeActions
 import com.slopus.happy.ui.connection.ComputePending
 import com.slopus.happy.ui.connection.ComputeScreen
 import com.slopus.happy.ui.connection.ComputeTags
 import com.slopus.happy.ui.connection.ComputerAddScreen
-import com.slopus.happy.ui.connection.ComputerEditScreen
 import com.slopus.happy.ui.theme.HappyTheme
 import org.junit.Rule
 import org.junit.Test
@@ -83,7 +81,7 @@ class ComputeDeviceTest {
 
     @Test
     fun membersAddFlow() = shot("compute-add-member") {
-        ComputerAddScreen(ComputerAdd.Choosing(ComputeDraft(ComputeModeKind.Private, "Steve's laptop", "My own computer, for my agents.")), ComputeAccess.Use, {}, {}, {})
+        ComputerAddScreen(ComputerAdd.Choosing(ComputeDraft(ComputeModeKind.Private)), ComputeAccess.Use, {}, {}, {})
     }.also {
         rule.onNodeWithTag(ComputeTags.mode(ComputeModeKind.Sandbox)).assertIsNotEnabled()
     }
@@ -104,12 +102,5 @@ class ComputeDeviceTest {
         )
     }.also {
         rule.onNodeWithTag(ComputeTags.command("unix")).assertIsDisplayed()
-    }
-
-    @Test
-    fun edit() = shot("compute-edit") {
-        ComputerEditScreen(ComputerEdit("n1", "build-01", "GPU box, CUDA 12.4. Use for training; checkouts under /data."), {}, {}, {})
-    }.also {
-        rule.onNodeWithTag(ComputeTags.SAVE).assertIsDisplayed()
     }
 }

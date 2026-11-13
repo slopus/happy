@@ -18,8 +18,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,7 +32,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
@@ -43,8 +40,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
@@ -71,7 +66,6 @@ import com.slopus.happy.agent.ComputeSource
 import com.slopus.happy.agent.ComputeStatus
 import com.slopus.happy.agent.ComputeSystem
 import com.slopus.happy.agent.ComputerAdd
-import com.slopus.happy.agent.ComputerEdit
 import com.slopus.happy.agent.ServerPermissions
 import com.slopus.happy.ui.chat.formatLastSeen
 import com.slopus.happy.ui.components.Alert
@@ -105,12 +99,8 @@ object ComputeTags {
     const val LIST = "compute.list"
     const val ADD = "compute.add"
     const val CREATE = "compute.create"
-    const val NAME = "compute.name"
-    const val DESCRIPTION = "compute.description"
-    const val SAVE = "compute.save"
     const val FAILURE = "compute.failure"
     fun computer(id: String) = "compute.computer.$id"
-    fun edit(id: String) = "compute.edit.$id"
     fun release(id: String) = "compute.release.$id"
     fun request(key: String) = "compute.request.$key"
     fun approve(key: String) = "compute.approve.$key"
@@ -134,7 +124,6 @@ data class ComputeFailure(val reason: String?)
 class ComputeActions(
     val onRetry: () -> Unit = {},
     val onAdd: () -> Unit = {},
-    val onEdit: (Computer) -> Unit = {},
     val onRelease: (Computer) -> Unit = {},
     val onAnswer: (ComputeApproval, Boolean) -> Unit = { _, _ -> },
 )
@@ -159,18 +148,15 @@ private fun CloudComputePage(graph: AppGraph, connectionId: String, onBack: () -
     }
     val scope = rememberCoroutineScope()
     var add by remember(source) { mutableStateOf<ComputerAdd?>(null) }
-    var edit by remember(source) { mutableStateOf<ComputerEdit?>(null) }
     var pending by remember(source) { mutableStateOf(ComputePending()) }
     var failure by remember(source) { mutableStateOf<ComputeFailure?>(null) }
     var releasing by remember(source) { mutableStateOf<Computer?>(null) }
-    val computers = (state as? ComputeSource.State.Loaded)?.snapshot?.computers.orEmpty()
     val noCommand = stringResource(R.string.compute_no_command)
     ComputeScreen(
         state, access, pending, failure,
         ComputeActions(
             onRetry = { scope.launch { source.refresh() } },
             onAdd = { add = ComputerAdd.open(access) },
-            onEdit = { edit = ComputerEdit.open(it) },
             onRelease = { releasing = it },
             onAnswer = { approval, approve ->
                 if (approval.key !in pending.answers) {
@@ -249,39 +235,6 @@ private fun CloudComputePage(graph: AppGraph, connectionId: String, onBack: () -
             )
         }
     }
-    edit?.let { current ->
-        PageDialog(
-            onDismissRequest = { if (current.phase != ComputerEdit.Phase.Saving) edit = null },
-            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-        ) {
-            ComputerEditScreen(
-                edit = current,
-                onChange = { change -> edit = edit?.let { if (it.phase == ComputerEdit.Phase.Saving) it else change(it).copy(phase = ComputerEdit.Phase.Editing) } },
-                onSave = save@{
-                    val draft = edit ?: return@save
-                    val computer = computers.firstOrNull { it.id == draft.computerId } ?: return@save
-                    if (!draft.savable) return@save
-                    val patch = draft.patch(computer)
-                    if (patch == null) {
-                        edit = null
-                        return@save
-                    }
-                    edit = draft.copy(phase = ComputerEdit.Phase.Saving)
-                    scope.launch {
-                        edit = try {
-                            source.edit(draft.computerId, patch)
-                            null
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            draft.copy(phase = ComputerEdit.Phase.Failed(said(e)))
-                        }
-                    }
-                },
-                onClose = { if (edit?.phase != ComputerEdit.Phase.Saving) edit = null },
-            )
-        }
-    }
 }
 
 /**
@@ -289,7 +242,7 @@ private fun CloudComputePage(graph: AppGraph, connectionId: String, onBack: () -
  * HappyAgentComputeSettings): the requests to join the reader's private
  * computers, then every computer agents can join, one flat list, online first.
  * A row is the name and its status, the mode and whose it is, where it runs,
- * what agents read about it, who holds it, then Edit and Release where the
+ * what agents read about it, who holds it, then Release where the
  * reader may. A manager adds a computer in any mode; a member a private one.
  */
 @Composable
@@ -388,13 +341,10 @@ private fun ComputerRow(computer: Computer, access: ComputeAccess, releasing: Bo
             )
         }
         computer.sandboxError?.let { Text(stringResource(R.string.compute_sandbox_failed, it), style = subtitle, color = colors.textDestructive, modifier = Modifier.padding(top = 4.dp)) }
-        val editable = computer.editable(access)
-        val releasable = computer.releasable(access)
-        if (editable || releasable) {
+        if (computer.releasable(access)) {
             // Pulled out by the buttons' own inset, so their words start on the text's keyline.
             Row(Modifier.padding(top = 4.dp).offset(x = (-8).dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (editable) RowAction(stringResource(R.string.compute_edit), colors.textLink, Modifier.testTag(ComputeTags.edit(computer.id))) { actions.onEdit(computer) }
-                if (releasable) RowAction(stringResource(R.string.compute_release), colors.textDestructive, Modifier.testTag(ComputeTags.release(computer.id)), loading = releasing) { actions.onRelease(computer) }
+                RowAction(stringResource(R.string.compute_release), colors.textDestructive, Modifier.testTag(ComputeTags.release(computer.id)), loading = releasing) { actions.onRelease(computer) }
             }
         }
     }
@@ -489,40 +439,10 @@ private fun ApprovalRow(approval: ComputeApproval, answering: Boolean?, onAnswer
     }
 }
 
-/** A settings row that is a text field, as Profile's name is; [placeholder] while empty. */
-@Composable
-private fun ComputeField(value: String, onChange: (String) -> Unit, placeholder: String, enabled: Boolean, tag: String, lines: Int = 1) {
-    val colors = HappyTheme.colors
-    BasicTextField(
-        value = value,
-        onValueChange = onChange,
-        enabled = enabled,
-        singleLine = lines == 1,
-        minLines = lines,
-        textStyle = ItemSpec.title.copy(color = colors.text),
-        cursorBrush = SolidColor(colors.textLink),
-        keyboardOptions = KeyboardOptions(
-            capitalization = KeyboardCapitalization.Sentences,
-            imeAction = if (lines == 1) ImeAction.Next else ImeAction.Default,
-        ),
-        modifier = Modifier
-            .fillMaxWidth()
-            .defaultMinSize(minHeight = ItemSpec.minHeight)
-            .testTag(tag)
-            .padding(horizontal = ItemSpec.paddingHorizontal, vertical = ItemSpec.paddingVertical),
-        decorationBox = { field ->
-            Box {
-                if (value.isEmpty()) Text(placeholder, style = ItemSpec.title, color = colors.textSecondary)
-                field()
-            }
-        },
-    )
-}
-
 /**
  * Adding a computer (desktop's HappyAgentComputeMachineAddDialog): the four
- * modes, each in a sentence, a member's three other modes dimmed; the
- * optional name and description; then the one-time install, its commands
+ * modes, each in a sentence, a member's three other modes dimmed; then the
+ * one-time install, its commands
  * for the systems that mode runs on, each with Copy.
  */
 @Composable
@@ -561,12 +481,6 @@ internal fun ComputerAddScreen(
                                 modifier = Modifier.testTag(ComputeTags.mode(mode)),
                             )
                         }
-                    }
-                    ItemGroup(title = stringResource(R.string.compute_name), footer = stringResource(R.string.compute_name_hint)) {
-                        ComputeField(draft.name, { name -> onChange { it.copy(name = name) } }, stringResource(R.string.compute_name_placeholder), !busy, ComputeTags.NAME)
-                    }
-                    ItemGroup(title = stringResource(R.string.compute_description), footer = stringResource(R.string.compute_description_hint)) {
-                        ComputeField(draft.description, { text -> onChange { it.copy(description = text) } }, stringResource(R.string.compute_description_placeholder), !busy, ComputeTags.DESCRIPTION, lines = 3)
                     }
                     Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                         RoundButton(stringResource(R.string.compute_create), onClick = onCreate, loading = busy, modifier = Modifier.testTag(ComputeTags.CREATE))
@@ -647,34 +561,5 @@ private fun CommandGroup(label: String, system: String, text: String) {
                 }
             },
         )
-    }
-}
-
-/** Renaming a computer and changing what agents read about it (desktop's HappyAgentComputeMachineEditDialog). */
-@Composable
-internal fun ComputerEditScreen(
-    edit: ComputerEdit,
-    onChange: ((ComputerEdit) -> ComputerEdit) -> Unit,
-    onSave: () -> Unit,
-    onClose: () -> Unit,
-) {
-    val saving = edit.phase == ComputerEdit.Phase.Saving
-    Screen(header = { StackHeader(stringResource(R.string.compute_edit_title), onClose) }) {
-        ItemList {
-            (edit.phase as? ComputerEdit.Phase.Failed)?.let { failed ->
-                ItemGroup(footer = failed.reason ?: stringResource(R.string.cloud_failed), modifier = Modifier.testTag(ComputeTags.FAILURE)) {
-                    Item(stringResource(R.string.compute_not_saved), titleColor = HappyTheme.colors.textDestructive, showChevron = false)
-                }
-            }
-            ItemGroup(title = stringResource(R.string.compute_name)) {
-                ComputeField(edit.name, { name -> onChange { it.copy(name = name) } }, stringResource(R.string.compute_name_placeholder), !saving, ComputeTags.NAME)
-            }
-            ItemGroup(title = stringResource(R.string.compute_description), footer = stringResource(R.string.compute_edit_description_hint)) {
-                ComputeField(edit.description, { text -> onChange { it.copy(description = text) } }, stringResource(R.string.compute_description_placeholder), !saving, ComputeTags.DESCRIPTION, lines = 4)
-            }
-            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                RoundButton(stringResource(R.string.common_save), onClick = onSave, enabled = edit.savable, loading = saving, modifier = Modifier.testTag(ComputeTags.SAVE))
-            }
-        }
     }
 }

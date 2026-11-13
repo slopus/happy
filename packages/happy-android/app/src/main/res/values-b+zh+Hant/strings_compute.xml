@@ -39,19 +39,12 @@
     <string name="compute_held_by">由 %1$s 佔用</string>
     <string name="compute_held_by_agent">由一個代理佔用</string>
     <string name="compute_sandbox_failed">沙盒檢查失敗：%1$s</string>
-    <string name="compute_edit">編輯</string>
     <string name="compute_release">釋放</string>
     <string name="compute_release_confirm">要釋放 %1$s 嗎？</string>
     <string name="compute_release_message">佔用它的代理將停止在那裡工作，直到重新加入。</string>
     <string name="compute_add_title">新增電腦</string>
     <string name="compute_create_failed">沒有安裝命令</string>
     <string name="compute_no_command">Happy Cloud 沒有傳送安裝命令。</string>
-    <string name="compute_name">名稱</string>
-    <string name="compute_name_placeholder">它的主機名稱</string>
-    <string name="compute_name_hint">選填。代理會看到這個名稱，預設是電腦的主機名稱。</string>
-    <string name="compute_description">描述</string>
-    <string name="compute_description_placeholder">代理應該知道的這台電腦資訊</string>
-    <string name="compute_description_hint">選填。代理選擇電腦時會讀取它。</string>
     <string name="compute_create">建立安裝命令</string>
     <string name="compute_install_sandbox">請在 Linux 電腦上執行。沙盒模式僅限 Linux。它會以 root 身分安裝 Happy supervisor，讓電腦加入，並為每個代理提供獨立的沙盒。</string>
     <string name="compute_install_shared">請在 Linux 電腦上執行。共用模式僅限 Linux。它會透過 sudo 安裝 Happy supervisor，並以共用模式讓電腦加入。</string>
@@ -64,7 +57,4 @@
     <string name="compute_server">伺服器</string>
     <string name="compute_join_token">加入權杖</string>
     <string name="compute_done">完成</string>
-    <string name="compute_edit_title">編輯電腦</string>
-    <string name="compute_not_saved">未儲存</string>
-    <string name="compute_edit_description_hint">代理選擇電腦時會讀取它。</string>
 </resources>

@@ -94,10 +94,8 @@ class ComputersTest {
     }
 
     @Test
-    fun aManagerEditsAndReleasesEverythingAMemberOnlyEditsTheirOwn() = runTest {
+    fun onlyAManagerReleasesAHeldComputer() = runTest {
         val computers = Computers.read(client(Server(::answer)), readerId = "user-me").computers.associateBy { it.id }
-        assertEquals(computers.keys, computers.values.filter { it.editable(ComputeAccess.Manage) }.map { it.id }.toSet())
-        assertEquals(listOf("n-mine"), computers.values.filter { it.editable(ComputeAccess.Use) }.map { it.id })
         assertEquals(setOf("n-exclusive", "n-hidden-holder"), computers.values.filter { it.releasable(ComputeAccess.Manage) }.map { it.id }.toSet())
         assertEquals(emptyList<String>(), computers.values.filter { it.releasable(ComputeAccess.Use) }.map { it.id })
     }
@@ -142,41 +140,24 @@ class ComputersTest {
     }
 
     @Test
-    fun aMemberMintsAPrivateTokenWithTrimmedFieldsAndBlankOnesLeftOut() = runTest {
+    fun aJoinTokenIsMintedWithOnlyTheMode() = runTest {
         val server = Server { 201 to """{"mode":"private","token":"jt","expiresAt":1730003600000,"clusterUrl":"https://c","commands":null}""" }
-        Computers.create(client(server), ComputeDraft(ComputeModeKind.Private, "  Laptop ", " Use for iOS builds\n"))
-        Computers.create(client(server), ComputeDraft(ComputeModeKind.Exclusive, "   ", ""))
+        Computers.create(client(server), ComputeDraft(ComputeModeKind.Private))
+        Computers.create(client(server), ComputeDraft(ComputeModeKind.Exclusive))
         assertEquals(listOf("POST /v0/computers/join-tokens", "POST /v0/computers/join-tokens"), server.asked.map { it.first })
-        assertEquals(json("""{"mode":"private","name":"Laptop","description":"Use for iOS builds"}"""), json(server.asked[0].second!!))
+        assertEquals(json("""{"mode":"private"}"""), json(server.asked[0].second!!))
         assertEquals(json("""{"mode":"exclusive"}"""), json(server.asked[1].second!!))
-    }
-
-    @Test
-    fun anEditSendsOnlyWhatChangedAndAnEmptiedDescriptionClearsIt() {
-        val computer = Computer("n1", "Laptop", ComputeStatus.Online, "laptop", "linux", "x86_64", ComputeMode.Shared, "Old words", null, null)
-        val edit = ComputerEdit.open(computer)
-        assertEquals(ComputerEdit("n1", "Laptop", "Old words"), edit)
-        assertNull(edit.patch(computer))
-        assertNull(edit.copy(name = " Laptop ", description = "Old words  ").patch(computer))
-        assertEquals(json("""{"name":"Builder"}"""), edit.copy(name = "Builder").patch(computer))
-        assertEquals(json("""{"description":null}"""), edit.copy(description = "  ").patch(computer))
-        assertEquals(json("""{"name":"Builder","description":"New words"}"""), edit.copy(name = "Builder ", description = " New words").patch(computer))
-        assertNull(edit.copy(name = "  ").patch(computer))
-        assertFalse(edit.copy(name = "  ").savable)
-        assertFalse(edit.copy(phase = ComputerEdit.Phase.Saving).savable)
     }
 
     @Test
     fun mutationsUseTheComputerRoutesWithEscapedIds() = runTest {
         val server = Server { 200 to "{}" }
         val client = client(server)
-        Computers.edit(client, "n 1", json("""{"name":"B"}"""))
         Computers.releaseLock(client, "n-exclusive")
         Computers.answer(client, ComputeApproval("n-mine", null, "agent/2", null, 0), approve = true)
         Computers.answer(client, ComputeApproval("n-mine", null, "agent-1", null, 0), approve = false)
         assertEquals(
             listOf(
-                "PATCH /v0/computers/n%201" to """{"name":"B"}""",
                 "POST /v0/computers/n-exclusive/release-lock" to "{}",
                 "POST /v0/computers/approvals/n-mine/agent%2F2" to """{"approve":true}""",
                 "POST /v0/computers/approvals/n-mine/agent-1" to """{"approve":false}""",
@@ -191,7 +172,6 @@ class ComputersTest {
         val member = ComputerAdd.open(ComputeAccess.Use)!!
         assertEquals(ComputerAdd.Choosing(ComputeDraft(ComputeModeKind.Private)), member)
         assertSame(member, member.edit(ComputeAccess.Use) { it.copy(mode = ComputeModeKind.Sandbox) })
-        assertEquals(ComputerAdd.Choosing(ComputeDraft(ComputeModeKind.Private, name = "Laptop")), member.edit(ComputeAccess.Use) { it.copy(name = "Laptop") })
 
         val manager = ComputerAdd.open(ComputeAccess.Manage)!!
         assertEquals(ComputerAdd.Choosing(ComputeDraft(ComputeModeKind.Sandbox)), manager)
@@ -200,17 +180,17 @@ class ComputersTest {
 
     @Test
     fun aRequestUnderWayHoldsTheFormAndARefusalGoesBackToIt() {
-        val draft = ComputeDraft(ComputeModeKind.Shared, "Team box")
+        val draft = ComputeDraft(ComputeModeKind.Shared)
         val creating = ComputerAdd.Choosing(draft).create()!!
         assertEquals(ComputerAdd.Creating(draft), creating)
         assertFalse(creating.closable)
         assertNull(creating.create())
-        assertSame(creating, creating.edit(ComputeAccess.Manage) { it.copy(name = "Other") })
+        assertSame(creating, creating.edit(ComputeAccess.Manage) { it.copy(mode = ComputeModeKind.Exclusive) })
 
         val failed = ComputerAdd.Failed(draft, "Compute nodes are not configured on this deployment.")
         assertTrue(failed.closable)
         assertEquals(ComputerAdd.Creating(draft), failed.create())
-        assertEquals(ComputerAdd.Choosing(draft.copy(name = "Team")), failed.edit(ComputeAccess.Manage) { it.copy(name = "Team") })
+        assertEquals(ComputerAdd.Choosing(ComputeDraft(ComputeModeKind.Exclusive)), failed.edit(ComputeAccess.Manage) { it.copy(mode = ComputeModeKind.Exclusive) })
         assertEquals(draft, failed.form)
     }
 

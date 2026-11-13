@@ -39,19 +39,12 @@
     <string name="compute_held_by">%1$s が使用中</string>
     <string name="compute_held_by_agent">エージェントが使用中</string>
     <string name="compute_sandbox_failed">サンドボックスの確認に失敗: %1$s</string>
-    <string name="compute_edit">編集</string>
     <string name="compute_release">解放</string>
     <string name="compute_release_confirm">%1$s を解放しますか？</string>
     <string name="compute_release_message">使用中のエージェントは、再び参加するまでそこで作業できなくなります。</string>
     <string name="compute_add_title">コンピューターを追加</string>
     <string name="compute_create_failed">インストールコマンドがありません</string>
     <string name="compute_no_command">Happy Cloud からインストールコマンドが届きませんでした。</string>
-    <string name="compute_name">名前</string>
-    <string name="compute_name_placeholder">ホスト名</string>
-    <string name="compute_name_hint">任意。エージェントに表示される名前で、最初はコンピューターのホスト名です。</string>
-    <string name="compute_description">説明</string>
-    <string name="compute_description_placeholder">このコンピューターについてエージェントが知っておくべきこと</string>
-    <string name="compute_description_hint">任意。エージェントがコンピューターを選ぶときに読みます。</string>
     <string name="compute_create">インストールコマンドを作成</string>
     <string name="compute_install_sandbox">Linux コンピューターで実行してください。サンドボックスモードは Linux 専用です。Happy supervisor を root でインストールしてコンピューターを参加させ、エージェントごとにサンドボックスを用意します。</string>
     <string name="compute_install_shared">Linux コンピューターで実行してください。共有モードは Linux 専用です。Happy supervisor を sudo でインストールし、共有モードでコンピューターを参加させます。</string>
@@ -64,7 +57,4 @@
     <string name="compute_server">サーバー</string>
     <string name="compute_join_token">参加トークン</string>
     <string name="compute_done">完了</string>
-    <string name="compute_edit_title">コンピューターを編集</string>
-    <string name="compute_not_saved">保存されていません</string>
-    <string name="compute_edit_description_hint">エージェントがコンピューターを選ぶときに読みます。</string>
 </resources>
