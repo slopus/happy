@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_custom_add">Добавить свой эндпоинт</string>
+    <string name="cloud_custom_name">Название</string>
+    <string name="cloud_custom_id">ID</string>
+    <string name="cloud_custom_id_help">Используется в названиях моделей. Изменить его потом нельзя.</string>
+    <string name="cloud_custom_base_url">Базовый URL</string>
+    <string name="cloud_custom_models">Модели</string>
+    <string name="cloud_custom_models_help">ID моделей, под которыми их знает эндпоинт, через запятую.</string>
+    <string name="cloud_custom_footer">Эндпоинт должен поддерживать OpenAI Responses API. Ключ хранится на сервере и больше не показывается.</string>
+    <string name="cloud_custom_name_error">Укажите название длиной до 80 символов.</string>
+    <string name="cloud_custom_id_error">Используйте от 2 до 32 символов a–z, 0–9 и -, начиная с буквы.</string>
+    <string name="cloud_custom_base_url_error">Введите адрес, начинающийся с https://.</string>
+    <string name="cloud_custom_models_error">Добавьте хотя бы одну модель.</string>
+    <string name="cloud_custom_key_error">Введите API-ключ эндпоинта.</string>
+    <string name="cloud_custom_done">Эндпоинт добавлен</string>
+    <string name="cloud_custom_failed">Не удалось добавить эндпоинт</string>
+    <string name="cloud_custom_exists">Провайдер с таким ID уже есть. Выберите другой ID.</string>
+</resources>

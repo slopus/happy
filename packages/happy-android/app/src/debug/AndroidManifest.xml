@@ -41,6 +41,11 @@
             android:name=".ui.plugins.PluginsFixturesActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize" />
+        <!-- The AI providers list, add chooser, API key and own-endpoint pages over an in-memory server (ui/connection/CloudProvidersFixturesActivity). -->
+        <activity
+            android:name=".ui.connection.CloudProvidersFixturesActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize" />
         <!-- One Gen UI render document alone on the chat's ground, for screenshots (ui/genui/GenUiGymActivity). -->
         <activity
             android:name=".ui.genui.GenUiGymActivity"

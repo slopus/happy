@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_custom_add">新增自己的端點</string>
+    <string name="cloud_custom_name">名稱</string>
+    <string name="cloud_custom_id">ID</string>
+    <string name="cloud_custom_id_help">用於模型名稱，之後無法變更。</string>
+    <string name="cloud_custom_base_url">基礎 URL</string>
+    <string name="cloud_custom_models">模型</string>
+    <string name="cloud_custom_models_help">端點識別其模型所用的 ID，以逗號分隔。</string>
+    <string name="cloud_custom_footer">端點必須支援 OpenAI Responses API。金鑰保存在伺服器上，不會再次顯示。</string>
+    <string name="cloud_custom_name_error">請輸入不超過 80 個字元的名稱。</string>
+    <string name="cloud_custom_id_error">使用 2 到 32 個 a–z、0–9 和 - 字元，並以字母開頭。</string>
+    <string name="cloud_custom_base_url_error">請輸入以 https:// 開頭的位址。</string>
+    <string name="cloud_custom_models_error">請至少新增一個模型 ID。</string>
+    <string name="cloud_custom_key_error">請輸入端點的 API 金鑰。</string>
+    <string name="cloud_custom_done">已新增端點</string>
+    <string name="cloud_custom_failed">無法新增端點</string>
+    <string name="cloud_custom_exists">已有使用此 ID 的供應商。請換一個 ID。</string>
+</resources>

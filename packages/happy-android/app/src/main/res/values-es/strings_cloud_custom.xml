@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_custom_add">Añadir tu propio endpoint</string>
+    <string name="cloud_custom_name">Nombre</string>
+    <string name="cloud_custom_id">ID</string>
+    <string name="cloud_custom_id_help">Se usa en los nombres de los modelos. No se puede cambiar después.</string>
+    <string name="cloud_custom_base_url">URL base</string>
+    <string name="cloud_custom_models">Modelos</string>
+    <string name="cloud_custom_models_help">Los ID con los que el endpoint conoce sus modelos, separados por comas.</string>
+    <string name="cloud_custom_footer">El endpoint debe hablar la API OpenAI Responses. Su clave se guarda en el servidor y no se vuelve a mostrar.</string>
+    <string name="cloud_custom_name_error">Ponle un nombre de hasta 80 caracteres.</string>
+    <string name="cloud_custom_id_error">Usa de 2 a 32 caracteres a–z, 0–9 y -, empezando por una letra.</string>
+    <string name="cloud_custom_base_url_error">Escribe una dirección que empiece por https://.</string>
+    <string name="cloud_custom_models_error">Añade al menos un ID de modelo.</string>
+    <string name="cloud_custom_key_error">Escribe la clave de API del endpoint.</string>
+    <string name="cloud_custom_done">Endpoint añadido</string>
+    <string name="cloud_custom_failed">No se pudo añadir el endpoint</string>
+    <string name="cloud_custom_exists">Ya existe un proveedor con este ID. Elige otro.</string>
+</resources>

@@ -178,6 +178,50 @@ enum class CloudDestination(val id: String) {
 }
 
 /**
+ * A team's own endpoint as the add form holds it (desktop's custom provider
+ * dialog, cut to one form): its [name], the [id] its models are named by,
+ * an OpenAI Responses [baseUrl], the [models] it serves (IDs, comma
+ * separated) and its key. [problem] is what the server would refuse.
+ */
+data class CustomProvider(
+    val name: String = "",
+    val id: String = "",
+    val baseUrl: String = "",
+    val models: String = "",
+    val apiKey: String = "",
+) {
+    enum class Problem { Name, Id, BaseUrl, Models, ApiKey }
+
+    val modelIds: List<String> get() = models.split(',', ' ', '\n').map(String::trim).filter(String::isNotEmpty).distinct()
+
+    /** The first field the server would refuse, by its own rules; null when it may go. */
+    fun problem(): Problem? = when {
+        name.trim().let { it.isEmpty() || it.length > 80 || it.any(Char::isISOControl) } -> Problem.Name
+        !ID.matches(id.trim()) -> Problem.Id
+        !URL.matches(baseUrl.trim()) -> Problem.BaseUrl
+        modelIds.isEmpty() -> Problem.Models
+        apiKey.isBlank() -> Problem.ApiKey
+        else -> null
+    }
+
+    companion object {
+        /** The one protocol Happy Cloud serves; the others are stored but offer nothing. */
+        const val PROTOCOL = "openai_responses"
+        /** An ID already taken: PUT would replace that provider. */
+        const val EXISTS = "provider_exists"
+        private val ID = Regex("^[a-z][a-z0-9-]{1,31}$")
+        private val URL = Regex("^https://\\S+$")
+
+        /** The ID [name] suggests: lower case, a-z, 0-9 and -, starting with a letter, at most 32. */
+        fun idFor(name: String): String = name.lowercase()
+            .replace(Regex("[^a-z0-9]+"), "-")
+            .trimStart { it == '-' || it.isDigit() }
+            .take(32)
+            .trimEnd('-')
+    }
+}
+
+/**
  * Adding AI providers to a Happy Cloud server (onboarding contract): the
  * connections, an API key or Claude setup token checked and stored in one,
  * and the subscription sign-ins. Every secret goes to the server once and
@@ -188,6 +232,7 @@ object CloudProviders {
     const val ANTHROPIC = "anthropic"
     /** A Claude subscription's credentials, setup tokens among them. */
     const val CLAUDE_CODE = "claude-code"
+    const val GROK = "grok"
     const val CODEX = "codex"
     const val CLAUDE = "claude"
 
@@ -285,6 +330,39 @@ object CloudProviders {
 
     /** Events after which the connections may have changed: a credential stored or removed, a sign-in done, and every reconnect. */
     fun changes(event: AgentEvent): Boolean = event.type == AgentEvent.HELLO || event.type == "config.updated" || event.type == "provider_cli.updated"
+
+    /**
+     * Defines the team's own endpoint [draft] with its key (`PUT
+     * /v0/providers/:id`, providers.manage), as desktop's custom provider
+     * dialog does. PUT replaces, so an ID already taken is refused here
+     * first as [CustomProvider.EXISTS] rather than overwritten.
+     */
+    suspend fun defineCustom(client: AgentClient, draft: CustomProvider) {
+        val path = "/v0/providers/${AgentClient.escape(draft.id.trim())}"
+        refusals {
+            val taken = try {
+                client.send("GET", path)
+                true
+            } catch (e: AgentApiException) {
+                if (e.status == 404) false else throw e
+            }
+            if (taken) throw CloudProviderException(CustomProvider.EXISTS, "")
+            client.send(
+                "PUT",
+                path,
+                buildJsonObject {
+                    put("name", draft.name.trim())
+                    put("baseUrl", draft.baseUrl.trim())
+                    put("protocol", CustomProvider.PROTOCOL)
+                    put("models", kotlinx.serialization.json.buildJsonArray {
+                        for (model in draft.modelIds) add(buildJsonObject { put("id", model) })
+                    })
+                    put("apiKey", draft.apiKey.trim())
+                    put("mutationId", AgentClient.newId())
+                },
+            )
+        }
+    }
 
     /** A refusal that names its kind, as a [CloudProviderException]; the rest as they are. */
     private inline fun <T> refusals(block: () -> T): T = try {

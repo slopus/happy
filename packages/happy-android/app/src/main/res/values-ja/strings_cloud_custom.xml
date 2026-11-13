@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cloud_custom_add">独自のエンドポイントを追加</string>
+    <string name="cloud_custom_name">名前</string>
+    <string name="cloud_custom_id">ID</string>
+    <string name="cloud_custom_id_help">モデル名に使われます。後から変更できません。</string>
+    <string name="cloud_custom_base_url">ベース URL</string>
+    <string name="cloud_custom_models">モデル</string>
+    <string name="cloud_custom_models_help">エンドポイントが認識するモデル ID をカンマ区切りで入力します。</string>
+    <string name="cloud_custom_footer">エンドポイントは OpenAI Responses API に対応している必要があります。キーはサーバーに保存され、再表示されません。</string>
+    <string name="cloud_custom_name_error">80 文字以内で名前を付けてください。</string>
+    <string name="cloud_custom_id_error">a–z、0–9、- を 2〜32 文字で、先頭は英字にしてください。</string>
+    <string name="cloud_custom_base_url_error">https:// で始まるアドレスを入力してください。</string>
+    <string name="cloud_custom_models_error">モデル ID を 1 つ以上追加してください。</string>
+    <string name="cloud_custom_key_error">エンドポイントの API キーを入力してください。</string>
+    <string name="cloud_custom_done">エンドポイントを追加しました</string>
+    <string name="cloud_custom_failed">エンドポイントを追加できませんでした</string>
+    <string name="cloud_custom_exists">この ID のプロバイダーはすでにあります。別の ID を選んでください。</string>
+</resources>

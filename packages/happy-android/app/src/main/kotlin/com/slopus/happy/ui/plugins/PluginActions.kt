@@ -168,7 +168,7 @@ fun PluginInstallationScreen(
     val installation = snapshot?.installations?.firstOrNull { it.id == installationId }
     val plugin = installation?.let { snapshot.plugin(it.pluginKey) }
     var confirming by remember { mutableStateOf<Confirm?>(null) }
-    Screen(header = { StackHeader(installation?.let(::installationTitle) ?: stringResource(R.string.plugins_title), onBack) }) {
+    Screen(header = { StackHeader(installation?.let(::installationTitle) ?: stringResource(R.string.plugins_title), onBack) }, avoidKeyboard = true) {
         ItemList(modifier = Modifier.testTag(PluginsTags.PAGE)) {
             if (installation == null) {
                 ItemGroup {

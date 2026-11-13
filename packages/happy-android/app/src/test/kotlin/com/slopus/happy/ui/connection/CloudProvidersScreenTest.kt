@@ -10,6 +10,9 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.agent.CloudConnection
 import com.slopus.happy.agent.CloudCredential
@@ -156,5 +159,60 @@ class CloudProvidersScreenTest {
         }
         rule.onNodeWithText("Couldn't add the key").assertIsDisplayed()
         rule.onNodeWithText("The vendor rejected the credential.").assertIsDisplayed()
+    }
+
+    @Test
+    fun theOwnEndpointIsOfferedOnlyToThoseWhoMayDefineIt() {
+        var picked: CloudProviderFlow? = null
+        var custom by androidx.compose.runtime.mutableStateOf(false)
+        rule.setHappyContent { CloudAddChooser(CloudCapabilities(apiKeys = true, claudeSetupToken = false, codexSignIn = false), onPick = { picked = it }, onDismiss = {}, custom = custom) }
+        assertEquals(0, rule.onAllNodesWithTag(CloudProvidersTags.CUSTOM).fetchSemanticsNodes().size)
+        custom = true
+        rule.onNodeWithText("Add your own endpoint").performClick()
+        rule.waitForIdle()
+        assertEquals(CloudProviderFlow.Custom, picked)
+    }
+
+    @Test
+    fun aKeyMayBeGroks() {
+        rule.setHappyContent {
+            CloudSecretScreen(
+                title = "Add API key", field = "API key", hint = null, done = "API key added",
+                allowed = listOf(CloudDestination.Private), destination = CloudDestination.Private, onDestination = {},
+                vendors = listOf(CloudProviders.OPENAI, CloudProviders.ANTHROPIC, CloudProviders.GROK), vendor = CloudProviders.GROK, onVendor = {},
+                phase = SecretPhase.Editing, onSubmit = {}, onRetry = {}, onBack = {},
+            )
+        }
+        rule.onNodeWithText("Grok").assertIsDisplayed()
+    }
+
+    @Test
+    fun anEndpointGetsItsIdFromItsNameAndIsCheckedBeforeItGoes() {
+        val sent = mutableListOf<com.slopus.happy.agent.CustomProvider>()
+        rule.setHappyContent { CloudCustomScreen(SecretPhase.Editing, onSubmit = { sent += it }, onRetry = {}, onBack = {}) }
+        fun field(problem: com.slopus.happy.agent.CustomProvider.Problem) = rule.onNodeWithTag(CloudProvidersTags.customField(problem))
+        rule.onNodeWithTag(CloudProvidersTags.SUBMIT).assertIsNotEnabled()
+        field(com.slopus.happy.agent.CustomProvider.Problem.Name).performTextInput("Acme vLLM")
+        field(com.slopus.happy.agent.CustomProvider.Problem.Id).assertTextEquals("acme-vllm")
+        field(com.slopus.happy.agent.CustomProvider.Problem.BaseUrl).performTextInput("http://llm.example.com/v1")
+        field(com.slopus.happy.agent.CustomProvider.Problem.Models).performTextInput("llama-4-70b")
+        field(com.slopus.happy.agent.CustomProvider.Problem.ApiKey).performTextInput("sk-own")
+        rule.onNodeWithTag(CloudProvidersTags.SUBMIT).performClick()
+        rule.onNodeWithTag(CloudProvidersTags.customError(com.slopus.happy.agent.CustomProvider.Problem.BaseUrl)).assertIsDisplayed()
+        rule.onNodeWithText("Enter an address that starts with https://.").assertIsDisplayed()
+        assertEquals(emptyList<Any>(), sent)
+        field(com.slopus.happy.agent.CustomProvider.Problem.BaseUrl).performTextReplacement("https://llm.example.com/v1")
+        rule.onNodeWithTag(CloudProvidersTags.SUBMIT).performClick()
+        assertEquals(listOf(com.slopus.happy.agent.CustomProvider("Acme vLLM", "acme-vllm", "https://llm.example.com/v1", "llama-4-70b", "sk-own")), sent)
+    }
+
+    @Test
+    fun aRefusedEndpointSaysWhyAndComesBackForAnotherTry() {
+        var retries = 0
+        rule.setHappyContent { CloudCustomScreen(SecretPhase.Failed("A provider with this ID already exists. Choose another ID."), onSubmit = {}, onRetry = { retries++ }, onBack = {}) }
+        rule.onNodeWithText("Couldn't add the endpoint").assertIsDisplayed()
+        rule.onNodeWithText("A provider with this ID already exists. Choose another ID.").assertIsDisplayed()
+        rule.onNodeWithText("Try again").performClick()
+        assertEquals(1, retries)
     }
 }

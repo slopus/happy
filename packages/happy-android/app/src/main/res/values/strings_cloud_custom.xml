@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A team's own AI endpoint (ui/connection/CloudProviders.kt, CloudCustomScreen): the add chooser's row
+  and the form that defines it with its models and key. Words follow desktop's custom provider dialog.
+  Translated in values-*/ (AndroidStringsTranslatedTest).
+-->
+<resources>
+    <string name="cloud_custom_add">Add your own endpoint</string>
+    <string name="cloud_custom_name">Name</string>
+    <string name="cloud_custom_id">ID</string>
+    <string name="cloud_custom_id_help">Used in model names. It can\'t change later.</string>
+    <string name="cloud_custom_base_url">Base URL</string>
+    <string name="cloud_custom_models">Models</string>
+    <string name="cloud_custom_models_help">The IDs the endpoint knows its models by, separated by commas.</string>
+    <string name="cloud_custom_footer">The endpoint must speak the OpenAI Responses API. Its key is kept on the server and never shown again.</string>
+    <string name="cloud_custom_name_error">Give it a name of up to 80 characters.</string>
+    <string name="cloud_custom_id_error">Use 2 to 32 of a–z, 0–9 and -, starting with a letter.</string>
+    <string name="cloud_custom_base_url_error">Enter an address that starts with https://.</string>
+    <string name="cloud_custom_models_error">Add at least one model ID.</string>
+    <string name="cloud_custom_key_error">Enter the endpoint\'s API key.</string>
+    <string name="cloud_custom_done">Endpoint added</string>
+    <string name="cloud_custom_failed">Couldn\'t add the endpoint</string>
+    <string name="cloud_custom_exists">A provider with this ID already exists. Choose another ID.</string>
+</resources>

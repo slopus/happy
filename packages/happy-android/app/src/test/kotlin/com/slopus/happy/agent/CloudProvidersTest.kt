@@ -199,4 +199,56 @@ class CloudProvidersTest {
         assertEquals("private", picked.providerId)
         assertEquals("medium", picked.effort)
     }
+
+    @Test
+    fun aGrokKeyGoesToGroksTeamContainer() = runBlocking {
+        val server = Server(mapOf("POST /v0/cloud/providers/grok/credentials" to listOf(201 to """{"providerId":"grok","credentialId":"k4"}""")))
+        CloudProviders.addCredential(AgentClient(server, "t"), CloudProviders.container(CloudDestination.Team, CloudProviders.GROK), CloudProviders.GROK, "api_key", "xai-x")
+        assertEquals("POST /v0/cloud/providers/grok/credentials" to """{"vendor":"grok","kind":"api_key","secret":"xai-x"}""", server.asked.single().let { it.first to it.second.toString() })
+    }
+
+    @Test
+    fun anEndpointIsSuggestedAnIdAndCheckedAsTheServerWould() {
+        assertEquals("acme-vllm", CustomProvider.idFor("Acme vLLM"))
+        assertEquals("llm-box", CustomProvider.idFor("  42 LLM box!! "))
+        assertEquals("", CustomProvider.idFor("123"))
+        assertEquals(32, CustomProvider.idFor("a".repeat(40)).length)
+        val good = CustomProvider("Acme vLLM", "acme", "https://llm.example.com/v1", "llama-4-70b, qwen-3 llama-4-70b", "sk-x")
+        assertEquals(null, good.problem())
+        assertEquals(listOf("llama-4-70b", "qwen-3"), good.modelIds)
+        assertEquals(CustomProvider.Problem.Name, good.copy(name = " ").problem())
+        assertEquals(CustomProvider.Problem.Id, good.copy(id = "Acme").problem())
+        assertEquals(CustomProvider.Problem.Id, good.copy(id = "a").problem())
+        assertEquals(CustomProvider.Problem.BaseUrl, good.copy(baseUrl = "http://llm.example.com/v1").problem())
+        assertEquals(CustomProvider.Problem.Models, good.copy(models = " , ").problem())
+        assertEquals(CustomProvider.Problem.ApiKey, good.copy(apiKey = " ").problem())
+    }
+
+    @Test
+    fun anEndpointIsDefinedWithItsKeyButNeverOverATakenId() = runBlocking {
+        val draft = CustomProvider("Acme vLLM", "acme", " https://llm.example.com/v1 ", "llama-4-70b, qwen-3", "sk-own")
+        val server = Server(mapOf("PUT /v0/providers/acme" to listOf(200 to """{"providerId":"acme","type":"openai_compatible"}""")))
+        CloudProviders.defineCustom(AgentClient(server, "t"), draft)
+        assertEquals(listOf("GET /v0/providers/acme", "PUT /v0/providers/acme"), server.asked.map { it.first })
+        val body = server.asked.last().second!!
+        assertEquals(
+            """{"name":"Acme vLLM","baseUrl":"https://llm.example.com/v1","protocol":"openai_responses","models":[{"id":"llama-4-70b"},{"id":"qwen-3"}],"apiKey":"sk-own"}""",
+            JsonObject(body - "mutationId").toString(),
+        )
+        val taken = Server(mapOf("GET /v0/providers/acme" to listOf(200 to """{"providerId":"acme"}""")))
+        try {
+            CloudProviders.defineCustom(AgentClient(taken, "t"), draft)
+            fail()
+        } catch (e: CloudProviderException) {
+            assertEquals(CustomProvider.EXISTS, e.kind)
+        }
+        assertEquals(listOf("GET /v0/providers/acme"), taken.asked.map { it.first })
+        val refused = Server(mapOf("PUT /v0/providers/acme" to listOf(400 to """{"error":{"code":"invalid","message":"`baseUrl` must not be a private address."}}""")))
+        try {
+            CloudProviders.defineCustom(AgentClient(refused, "t"), draft)
+            fail()
+        } catch (e: CloudProviderException) {
+            assertEquals("`baseUrl` must not be a private address.", e.message)
+        }
+    }
 }

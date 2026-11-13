@@ -47,6 +47,7 @@ import com.slopus.happy.agent.CloudProviderException
 import com.slopus.happy.agent.CloudProviders
 import com.slopus.happy.agent.CloudProvidersSource
 import com.slopus.happy.agent.CloudSignInRun
+import com.slopus.happy.agent.CustomProvider
 import com.slopus.happy.agent.Permission
 import com.slopus.happy.ui.components.ProviderIcon
 import com.slopus.happy.model.ProviderIconKind
@@ -77,8 +78,11 @@ import kotlinx.serialization.Serializable
 /** Claude's setup token, kept in [to] when it says. */
 @Serializable data class CloudClaudeRoute(val connectionId: String, val to: String? = null)
 
-/** An OpenAI or Anthropic API key; [vendor] picks the vendor first. */
+/** An OpenAI, Anthropic or Grok API key; [vendor] picks the vendor first. */
 @Serializable data class CloudApiKeyRoute(val connectionId: String, val vendor: String? = null, val to: String? = null)
+
+/** The team's own endpoint, with its models and key. */
+@Serializable data class CloudCustomRoute(val connectionId: String)
 
 /** What a providers link opens over the list (w8548's shared targets). */
 sealed interface CloudProviderFlow {
@@ -86,6 +90,7 @@ sealed interface CloudProviderFlow {
     data object ChatGpt : CloudProviderFlow
     data object Claude : CloudProviderFlow
     data class ApiKey(val vendor: String? = null) : CloudProviderFlow
+    data object Custom : CloudProviderFlow
 }
 
 object CloudProvidersTags {
@@ -100,7 +105,10 @@ object CloudProvidersTags {
     const val SAVE_TO = "cloudProviders.saveTo"
     const val DONE = "cloudProviders.done"
     const val FAILED = "cloudProviders.failed"
+    const val CUSTOM = "cloudProviders.custom"
     fun connection(id: String) = "cloudProviders.connection.$id"
+    fun customField(field: com.slopus.happy.agent.CustomProvider.Problem) = "cloudProviders.custom.${field.name}"
+    fun customError(field: com.slopus.happy.agent.CustomProvider.Problem) = "cloudProviders.custom.${field.name}.error"
 }
 
 fun NavGraphBuilder.cloudProviderRoutes(graph: AppGraph, nav: NavHostController) {
@@ -120,6 +128,9 @@ fun NavGraphBuilder.cloudProviderRoutes(graph: AppGraph, nav: NavHostController)
         val route = entry.toRoute<CloudApiKeyRoute>()
         CloudApiKeyPage(graph, nav, route.connectionId, route.vendor, CloudDestination.of(route.to))
     }
+    page<CloudCustomRoute> { entry ->
+        CloudCustomPage(graph, nav, entry.toRoute<CloudCustomRoute>().connectionId)
+    }
 }
 
 /** Opens the providers of [connectionId], with [add]'s flow over them, into [destination] where it says. */
@@ -130,6 +141,7 @@ fun NavHostController.openCloudProviders(connectionId: String, add: CloudProvide
         CloudProviderFlow.ChatGpt -> navigate(CloudChatGptRoute(connectionId, to))
         CloudProviderFlow.Claude -> navigate(CloudClaudeRoute(connectionId, to))
         is CloudProviderFlow.ApiKey -> navigate(CloudApiKeyRoute(connectionId, add.vendor, to))
+        CloudProviderFlow.Custom -> navigate(CloudCustomRoute(connectionId))
         CloudProviderFlow.Choose, null -> Unit
     }
 }
@@ -162,12 +174,14 @@ private fun CloudProvidersPage(graph: AppGraph, nav: NavHostController, connecti
     if (choosing) {
         CloudAddChooser(
             capabilities = capabilities,
+            custom = CloudDestination.Team in destinations(session),
             onPick = { flow ->
                 choosing = false
                 when (flow) {
                     CloudProviderFlow.ChatGpt -> nav.navigate(CloudChatGptRoute(connectionId, to))
                     CloudProviderFlow.Claude -> nav.navigate(CloudClaudeRoute(connectionId, to))
                     is CloudProviderFlow.ApiKey -> nav.navigate(CloudApiKeyRoute(connectionId, flow.vendor, to))
+                    CloudProviderFlow.Custom -> nav.navigate(CloudCustomRoute(connectionId))
                     CloudProviderFlow.Choose -> Unit
                 }
             },
@@ -271,7 +285,7 @@ internal fun vendorName(vendor: String): String = when (vendor) {
     CloudProviders.ANTHROPIC -> "Anthropic"
     CloudProviders.CODEX -> "ChatGPT"
     CloudProviders.CLAUDE_CODE -> "Claude"
-    "grok" -> "Grok"
+    CloudProviders.GROK -> "Grok"
     "bedrock" -> "Bedrock"
     else -> vendor
 }
@@ -279,12 +293,13 @@ internal fun vendorName(vendor: String): String = when (vendor) {
 /**
  * Add's choices, as a sheet from the bottom (iOS's action sheet): a
  * ChatGPT and a Claude sign-in, a Claude setup token where Claude's sign-in
- * isn't offered, and an API key; each where the server offers it
- * ([capabilities], null until known: nothing yet).
+ * isn't offered, an API key, and the team's own endpoint for those who may
+ * define one ([custom]); each where the server offers it ([capabilities],
+ * null until known: nothing yet).
  */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-internal fun CloudAddChooser(capabilities: CloudCapabilities?, onPick: (CloudProviderFlow) -> Unit, onDismiss: () -> Unit) {
+internal fun CloudAddChooser(capabilities: CloudCapabilities?, onPick: (CloudProviderFlow) -> Unit, onDismiss: () -> Unit, custom: Boolean = false) {
     val colors = HappyTheme.colors
     val sheet = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
@@ -318,6 +333,16 @@ internal fun CloudAddChooser(capabilities: CloudCapabilities?, onPick: (CloudPro
                     icon = { com.slopus.happy.ui.components.Icon(com.slopus.happy.ui.components.Ionicon.KeyOutline, 24.dp, colors.textSecondary) },
                     showChevron = false,
                     onClick = { pick(CloudProviderFlow.ApiKey()) },
+                )
+            }
+            // The endpoint's key is stored in the same vault as a team key.
+            if (custom && capabilities?.apiKeys == true) {
+                Item(
+                    title = stringResource(R.string.cloud_custom_add),
+                    icon = { com.slopus.happy.ui.components.Icon(com.slopus.happy.ui.components.Ionicon.ServerOutline, 24.dp, colors.textSecondary) },
+                    showChevron = false,
+                    onClick = { pick(CloudProviderFlow.Custom) },
+                    modifier = Modifier.testTag(CloudProvidersTags.CUSTOM),
                 )
             }
         }
@@ -503,14 +528,14 @@ private fun CloudApiKeyPage(graph: AppGraph, nav: NavHostController, connectionI
         allowed = allowed,
         destination = destination,
         onDestination = { destination = it },
-        vendors = listOf(CloudProviders.OPENAI, CloudProviders.ANTHROPIC),
+        vendors = listOf(CloudProviders.OPENAI, CloudProviders.ANTHROPIC, CloudProviders.GROK),
         initialVendor = vendor,
         add = { picked, secret, to -> CloudProviders.addCredential(session.client, CloudProviders.container(to, picked), picked, "api_key", secret) },
         nav = nav,
     )
 }
 
-/** One secret checked and kept by the server: an API key (OpenAI or Anthropic), or a Claude setup token. */
+/** One secret checked and kept by the server: an API key (OpenAI, Anthropic or Grok), or a Claude setup token. */
 @Composable
 private fun CloudSecretFlow(
     title: String,
@@ -616,5 +641,153 @@ internal fun CloudSecretScreen(
                 }
             }
         }
+    }
+}
+
+// ---- The team's own endpoint ----------------------------------------------------------------
+
+@Composable
+private fun CloudCustomPage(graph: AppGraph, nav: NavHostController, connectionId: String) {
+    val session = remember(connectionId) { graph.agentSessions.session(connectionId) } ?: return
+    val scope = rememberCoroutineScope()
+    val taken = stringResource(R.string.cloud_custom_exists)
+    var phase by remember { mutableStateOf<SecretPhase>(SecretPhase.Editing) }
+    LeaveWhenDone(phase == SecretPhase.Done, nav)
+    CloudCustomScreen(
+        phase = phase,
+        onSubmit = { draft ->
+            phase = SecretPhase.Checking
+            scope.launch {
+                phase = try {
+                    CloudProviders.defineCustom(session.client, draft)
+                    SecretPhase.Done
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: CloudProviderException) {
+                    SecretPhase.Failed(if (e.kind == CustomProvider.EXISTS) taken else e.message)
+                } catch (_: Exception) {
+                    SecretPhase.Failed(null)
+                }
+            }
+        },
+        onRetry = { phase = SecretPhase.Editing },
+        onBack = { nav.popBackStack() },
+    )
+}
+
+/**
+ * The team's own endpoint in one form: its name, the ID its models are
+ * named by (suggested from the name until edited), an https base URL, its
+ * model IDs and its key. What the server would refuse is said under its
+ * field before anything is sent; the server's own refusal ends the form
+ * with Try again, which brings it back as it was but for the key.
+ */
+@Composable
+internal fun CloudCustomScreen(
+    phase: SecretPhase,
+    onSubmit: (CustomProvider) -> Unit,
+    onRetry: () -> Unit,
+    onBack: () -> Unit,
+) {
+    var name by rememberSaveable { mutableStateOf("") }
+    var id by rememberSaveable { mutableStateOf("") }
+    var idEdited by rememberSaveable { mutableStateOf(false) }
+    var baseUrl by rememberSaveable { mutableStateOf("") }
+    var models by rememberSaveable { mutableStateOf("") }
+    // Held only while the page is up; never saved with its state.
+    var apiKey by remember { mutableStateOf("") }
+    var shown by remember { mutableStateOf<CustomProvider.Problem?>(null) }
+    val draft = CustomProvider(name, if (idEdited) id else CustomProvider.idFor(name), baseUrl, models, apiKey)
+    val busy = phase == SecretPhase.Checking || phase == SecretPhase.Done
+    fun submit() {
+        shown = draft.problem()
+        if (shown == null && !busy) onSubmit(draft)
+    }
+    Screen(header = { StackHeader(stringResource(R.string.cloud_custom_add), onBack) }, avoidKeyboard = true) {
+        ItemList {
+            when (phase) {
+                SecretPhase.Done -> Outcome(stringResource(R.string.cloud_custom_done), null, null)
+                is SecretPhase.Failed -> Outcome(stringResource(R.string.cloud_custom_failed), phase.message ?: stringResource(R.string.cloud_failed), onRetry)
+                else -> ItemGroup(footer = stringResource(R.string.cloud_custom_footer)) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        CustomField(
+                            CustomProvider.Problem.Name, stringResource(R.string.cloud_custom_name), name, { name = it }, "Acme vLLM",
+                            error = R.string.cloud_custom_name_error, shown = shown, enabled = !busy,
+                            keyboard = KeyboardOptions(capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Words, imeAction = ImeAction.Next),
+                        )
+                        CustomField(
+                            CustomProvider.Problem.Id, stringResource(R.string.cloud_custom_id), draft.id, { id = it.lowercase(); idEdited = true }, "acme",
+                            error = R.string.cloud_custom_id_error, shown = shown, enabled = !busy, help = stringResource(R.string.cloud_custom_id_help),
+                            keyboard = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Next, autoCorrectEnabled = false),
+                        )
+                        CustomField(
+                            CustomProvider.Problem.BaseUrl, stringResource(R.string.cloud_custom_base_url), baseUrl, { baseUrl = it }, "https://llm.example.com/v1",
+                            error = R.string.cloud_custom_base_url_error, shown = shown, enabled = !busy,
+                            keyboard = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next, autoCorrectEnabled = false),
+                        )
+                        CustomField(
+                            CustomProvider.Problem.Models, stringResource(R.string.cloud_custom_models), models, { models = it }, "llama-4-70b, qwen-3",
+                            error = R.string.cloud_custom_models_error, shown = shown, enabled = !busy, help = stringResource(R.string.cloud_custom_models_help),
+                            keyboard = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Next, autoCorrectEnabled = false),
+                        )
+                        CustomField(
+                            CustomProvider.Problem.ApiKey, stringResource(R.string.cloud_providers_key), apiKey, { apiKey = it }, stringResource(R.string.cloud_providers_key),
+                            error = R.string.cloud_custom_key_error, shown = shown, enabled = !busy, hidden = true,
+                            keyboard = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done, autoCorrectEnabled = false),
+                            onDone = ::submit,
+                        )
+                        RoundButton(
+                            title = stringResource(R.string.cloud_providers_add),
+                            onClick = ::submit,
+                            enabled = name.isNotBlank() && baseUrl.isNotBlank() && models.isNotBlank() && apiKey.isNotBlank(),
+                            loading = phase == SecretPhase.Checking,
+                            loadingTitle = stringResource(R.string.cloud_providers_checking),
+                            modifier = Modifier.fillMaxWidth().testTag(CloudProvidersTags.SUBMIT),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** One labelled field of [CloudCustomScreen], with [error] under it while it is the [shown] problem. */
+@Composable
+private fun CustomField(
+    field: CustomProvider.Problem,
+    label: String,
+    value: String,
+    onChange: (String) -> Unit,
+    placeholder: String,
+    error: Int,
+    shown: CustomProvider.Problem?,
+    enabled: Boolean,
+    keyboard: KeyboardOptions,
+    help: String? = null,
+    hidden: Boolean = false,
+    onDone: (() -> Unit)? = null,
+) {
+    val colors = HappyTheme.colors
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(label, style = happyTextStyle(fontSize = 13, lineHeight = 18), color = colors.textSecondary)
+        HappyTextField(
+            value = value,
+            onValueChange = onChange,
+            placeholder = placeholder,
+            textStyle = happyTextStyle(fontSize = 15, lineHeight = 20),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+            minHeight = 44.dp,
+            cornerRadius = 8.dp,
+            singleLine = true,
+            enabled = enabled,
+            visualTransformation = if (hidden) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+            keyboardOptions = keyboard,
+            keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { onDone?.invoke() }),
+            modifier = Modifier.testTag(CloudProvidersTags.customField(field)),
+        )
+        if (shown == field) {
+            Text(stringResource(error), style = happyTextStyle(fontSize = 13, lineHeight = 18), color = colors.textDestructive, modifier = Modifier.testTag(CloudProvidersTags.customError(field)))
+        }
+        if (help != null) Text(help, style = happyTextStyle(fontSize = 13, lineHeight = 18), color = colors.textSecondary)
     }
 }
