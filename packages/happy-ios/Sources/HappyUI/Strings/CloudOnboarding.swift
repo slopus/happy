@@ -10,6 +10,11 @@ extension Strings {
         static let couldntSkip = "Couldn’t skip this step. Try again."
         static let couldntCheck = "Couldn’t reach the server. Try again."
 
+        static let photoTitle = "Add a photo"
+        static let photoBody = "Your team and agents see it next to your name."
+        static let choosePhoto = "Choose Photo"
+        static let photoFailed = "Your photo didn’t upload. Try again."
+
         static let updateTitle = "Update Happy to continue"
         static let updateBody = "This server asks for a step this version of Happy doesn’t know yet."
         static let updateAction = "Open the App Store"

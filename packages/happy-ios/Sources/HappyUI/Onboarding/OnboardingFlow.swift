@@ -140,6 +140,8 @@ final class OnboardingFlow {
         switch gate.kind {
         case .profile:
             return profileScreen()
+        case .avatar:
+            return photoScreen(gate)
         default:
             // Done on desktop or the web for now; a gate's own screen
             // takes this one's place as it comes.
@@ -149,10 +151,7 @@ final class OnboardingFlow {
                 guard let url = self?.web else { return }
                 UIApplication.shared.open(url)
             }
-            notice.onSecondary = { [weak self, weak notice] in
-                guard let self, let notice else { return }
-                await skip(gate, on: notice)
-            }
+            skips(gate, on: notice)
             return notice
         }
     }
@@ -166,10 +165,26 @@ final class OnboardingFlow {
         return screen
     }
 
-    /// Skips an optional gate; the server's answer moves the flow on.
-    func skip(_ gate: OnboardingGate, on notice: OnboardingNoticeViewController) async {
-        do { session.took(try await session.client.skipOnboardingGate(gate.id)) }
-        catch { notice.say(Strings.CloudOnboarding.couldntSkip) }
+    /// The screen's quieter action skips an optional gate; the server's
+    /// answer moves the flow on.
+    private func skips(_ gate: OnboardingGate, on screen: some OnboardingStepScreen) {
+        screen.secondary?.action = { [weak self, weak screen] in
+            guard let self, let screen else { return }
+            do { session.took(try await session.client.skipOnboardingGate(gate.id)) }
+            catch { screen.say(Strings.CloudOnboarding.couldntSkip) }
+        }
+    }
+
+    /// The avatar gate: a picture, saved as the profile's.
+    private func photoScreen(_ gate: OnboardingGate) -> UIViewController {
+        let session = session
+        let screen = OnboardingPhotoViewController(context: context, seed: context.account.agentConnections.placeholderSeed(for: id) ?? id,
+                                                   optional: gate.requirement == .optional) { jpeg in
+            _ = try await session.client.setProfilePhoto(jpeg, contentType: "image/jpeg")
+            _ = try? await session.readOnboarding()
+        }
+        skips(gate, on: screen)
+        return screen
     }
 
     private func checkAgain(_ notice: OnboardingNoticeViewController) async {
@@ -355,10 +370,16 @@ final class OnboardingProgressView: UIView {
     }
 }
 
+/// An onboarding screen that can say what went wrong under its words.
+@MainActor
+protocol OnboardingStepScreen: CloudStageViewController {
+    func say(_ problem: String?)
+}
+
 /// One onboarding screen that asks nothing typed: its scene, what it says,
 /// its action, and an optional quieter one (Skip for Now); what went wrong
 /// shows under the words, in room kept for it.
-final class OnboardingNoticeViewController: CloudStageViewController {
+final class OnboardingNoticeViewController: CloudStageViewController, OnboardingStepScreen {
     struct Notice: Equatable {
         var scene: StateScene
         var title: String
@@ -368,7 +389,6 @@ final class OnboardingNoticeViewController: CloudStageViewController {
     }
 
     var onPrimary: (() async -> Void)?
-    var onSecondary: (() async -> Void)?
     private let status = StartGalleryView.bodyLabel("")
 
     init(context: AppContext, notice: Notice) {
@@ -381,7 +401,6 @@ final class OnboardingNoticeViewController: CloudStageViewController {
         primary.accessibilityIdentifier = "onboarding-primary"
         secondary?.accessibilityIdentifier = "onboarding-secondary"
         primary.action = { [weak self] in await self?.onPrimary?() }
-        secondary?.action = { [weak self] in await self?.onSecondary?() }
         status.textColor = UIColor(Palette.textDestructive)
         content.addSubview(status)
     }

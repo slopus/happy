@@ -379,8 +379,8 @@ final class ClusterHarness {
     }
 
     /// Walks the onboarding flow over `home`, a step every two seconds:
-    /// `name:<name>` saves the profile, `skip` and `primary` tap the
-    /// screen's actions.
+    /// `name:<name>` saves the profile, `photo` picks a picture, `skip` and
+    /// `primary` tap the screen's actions.
     private func walk(_ steps: String, home: UIViewController) async {
         for step in steps.split(separator: ",") {
             try? await Task.sleep(for: .seconds(2))
@@ -389,6 +389,8 @@ final class ClusterHarness {
                 profile.nameField.text.text = String(step.dropFirst("name:".count))
                 profile.edited()
                 await profile.submit()
+            } else if step == "photo", let photo = top as? OnboardingPhotoViewController {
+                photo.choose(CloudProfileViewController.previewPhoto())
             } else if let notice = top as? CloudStageViewController {
                 if step == "skip" { notice.secondary?.tapped() } else if step == "primary" { notice.primary.tapped() }
             }
