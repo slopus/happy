@@ -60,7 +60,7 @@ final class OnboardingFlow {
                 replace(with: dressed(screen(for: step, onboarding: onboarding), blocks: blocks), shown: Self.shown(step))
             }
         } else {
-            if case .waiting(let gates) = step, let notice = navigation?.topViewController as? OnboardingNoticeViewController { notice.show(Self.waiting(gates)) }
+            if case .waiting(let gates) = step, let notice = navigation?.topViewController as? OnboardingNoticeViewController { notice.show(Self.waiting(gates, owners: onboarding.owners)) }
             if let top = navigation?.topViewController { dressed(top, blocks: blocks) }
         }
         navigation?.progress.set(plan.count > 1 ? plan.progress : nil, animated: true)
@@ -134,7 +134,7 @@ final class OnboardingFlow {
         switch step {
         case .gate(let gate): screen(for: gate, onboarding: onboarding)
         case .update: notice(Self.update) { _ in UIApplication.shared.open(Self.appStore(onboarding)) }
-        case .waiting(let gates): notice(Self.waiting(gates)) { [weak self] notice in await self?.checkAgain(notice) }
+        case .waiting(let gates): notice(Self.waiting(gates, owners: onboarding.owners)) { [weak self] notice in await self?.checkAgain(notice) }
         case .finish: finishScreen(onboarding)
         }
     }
@@ -308,11 +308,11 @@ final class OnboardingFlow {
         scene: .magicWand, title: Strings.CloudOnboarding.updateTitle, body: Strings.CloudOnboarding.updateBody, primary: Strings.CloudOnboarding.updateAction
     )
 
-    static func waiting(_ gates: [OnboardingGate]) -> OnboardingNoticeViewController.Notice {
+    static func waiting(_ gates: [OnboardingGate], owners: [Onboarding.Owner] = []) -> OnboardingNoticeViewController.Notice {
         let theirs = gates.filter { !$0.canComplete && $0.status != .unavailable }
         return theirs.isEmpty
             ? .init(scene: .snail, title: Strings.CloudOnboarding.notReadyTitle, body: Strings.CloudOnboarding.notReadyBody, primary: Strings.CloudOnboarding.checkAgain)
-            : .init(scene: .owl, title: Strings.CloudOnboarding.waitingTitle, body: Strings.CloudOnboarding.waitingBody(theirs.map(Strings.CloudOnboarding.step)),
+            : .init(scene: .owl, title: Strings.CloudOnboarding.waitingTitle, body: Strings.CloudOnboarding.waitingBody(theirs.map(Strings.CloudOnboarding.step), owners: owners.compactMap(\.name).filter { !$0.isEmpty }),
                     primary: Strings.CloudOnboarding.checkAgain)
     }
 

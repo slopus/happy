@@ -185,7 +185,7 @@ actor ClusterServer: AgentTransport {
             #"{"id":"\#(gate.id)","scope":"\#(gate.scope)","requirement":"\#(gate.required ? "required" : "optional")","status":"\#(gate.status)","blocking":\#(gate.blocking),"canComplete":\#(gate.canComplete),"data":\#(data(gate))}"#
         }
         let blocking = gates.filter(\.blocking).map { "\"\($0.id)\"" }
-        return #"{"finished":\#(!gates.contains(where: \.pending)),"completed":true,"blocking":[\#(blocking.joined(separator: ","))],"gates":[\#(views.joined(separator: ","))]}"#
+        return #"{"finished":\#(!gates.contains(where: \.pending)),"completed":true,"owners":[{"userId":"olga","name":"Olga"}],"blocking":[\#(blocking.joined(separator: ","))],"gates":[\#(views.joined(separator: ","))]}"#
     }
 
     private var profile: String {

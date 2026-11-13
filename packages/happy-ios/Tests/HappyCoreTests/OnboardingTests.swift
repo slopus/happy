@@ -224,6 +224,7 @@ final class OnboardingTests: XCTestCase {
                    "points":["Changes settings","Connects tools"],"note":"Only owners talk to it."}}]}
         """#)
         XCTAssertFalse(v6.finished)
+        XCTAssertEqual(v6.owners, [Onboarding.Owner(userId: "u1", name: "Olga")], "whom a waiting member asks")
         XCTAssertEqual(OnboardingPlan(v6).step.flatMap(Self.id), "adminBot", "an optional gate still open is shown")
         guard case .adminBot(let bot)? = v6.gate("adminBot")?.kind else { return XCTFail("adminBot unread") }
         XCTAssertEqual(bot.points, ["Changes settings", "Connects tools"])

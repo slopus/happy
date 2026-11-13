@@ -151,6 +151,14 @@ final class OnboardingTeammatesViewController: CloudStageViewController, UITextF
         let row = CloudServerRow(action: Text.shareLink, done: Text.sent)
         let side = CloudServerRowLayout.Metrics.picture
         if let email = sent.email {
+            // A long address keeps its start and its domain.
+            row.title.decoration = { text in
+                text.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: text.length)) { value, range, _ in
+                    let style = (value as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
+                    style.lineBreakMode = .byTruncatingMiddle
+                    text.addAttribute(.paragraphStyle, value: style, range: range)
+                }
+            }
             row.title.string = email
             row.subtitle.string = sent.invite.emailFailed ? Text.emailFailed : Text.inviteSent
             row.state = sent.invite.emailFailed && sent.invite.link != nil ? .join : .joined

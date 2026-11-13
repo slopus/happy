@@ -70,8 +70,16 @@ extension Strings {
         static let updateAction = "Open the App Store"
 
         static let waitingTitle = "Waiting for your admin"
-        static func waitingBody(_ steps: [String]) -> String {
-            "Someone who manages this server has to finish setting it up first: \(ListFormatter.localizedString(byJoining: steps.map(\.lowercasedFirst)))."
+        /// `owners`' names where the server sends them: one or two by name,
+        /// more as the owners.
+        static func waitingBody(_ steps: [String], owners: [String] = []) -> String {
+            let who = switch owners.count {
+            case 1: owners[0]
+            case 2: "\(owners[0]) or \(owners[1])"
+            case 0: "Someone who manages this server"
+            default: "One of this server’s owners"
+            }
+            return "\(who) has to finish setting it up first: \(ListFormatter.localizedString(byJoining: steps.map(\.lowercasedFirst)))."
         }
         static let notReadyTitle = "Almost ready"
         static let notReadyBody = "This server isn’t ready for you yet. Check again in a little while."

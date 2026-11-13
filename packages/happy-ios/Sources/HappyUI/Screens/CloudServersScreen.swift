@@ -574,6 +574,11 @@ class CloudStageViewController: UIViewController, CloudFlowScreen, CloudTyping, 
     }
     /// `steadyBody`, measured as the body is.
     private var steadyBodyLabel: StyledLabel?
+    /// With `pinsActions`, what scrolls fades out over the actions, so a
+    /// row never runs into them.
+    private let fade = CAGradientLayer()
+    /// Where the pinned actions start in the view; nil without any shown.
+    private var actionsTop: CGFloat?
 
     init(context: AppContext, scene: StateScene?, title: String, body: String, primary: String, secondary: String? = nil, secondaryDisplay: RoundButtonDisplay = .inverted) {
         self.context = context
@@ -804,6 +809,29 @@ class CloudStageViewController: UIViewController, CloudFlowScreen, CloudTyping, 
             primaryReplacement?.setLayoutFrame(frame)
         }
         if let secondary, let frame = frames.popFirst() { secondary.setLayoutFrame(frame) }
+        actionsTop = pinsActions ? [primaryShown ? primary.frame : nil, secondary.flatMap { $0.isHidden ? nil : $0.frame }].compactMap { $0?.minY }.min() : nil
+        placeFade()
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) { placeFade() }
+
+    /// Opaque down to 44 over the actions, clear from 12 over them; the
+    /// mask rides the scroll's bounds, so it stays put on screen.
+    private func placeFade() {
+        guard let actionsTop, scroll.bounds.height > 0 else {
+            if scroll.layer.mask != nil { scroll.layer.mask = nil }
+            return
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        if scroll.layer.mask == nil {
+            fade.colors = [UIColor.black.cgColor, UIColor.black.cgColor, UIColor.clear.cgColor, UIColor.clear.cgColor]
+            scroll.layer.mask = fade
+        }
+        let height = scroll.bounds.height
+        fade.frame = CGRect(origin: CGPoint(x: 0, y: scroll.contentOffset.y), size: scroll.bounds.size)
+        fade.locations = [0, max(0, actionsTop - 44) / height, max(0, actionsTop - 12) / height, 1].map { NSNumber(value: Double(min(1, $0))) }
+        CATransaction.commit()
     }
 }
 

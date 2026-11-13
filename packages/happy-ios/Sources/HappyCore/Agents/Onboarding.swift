@@ -14,6 +14,13 @@ public struct Onboarding: Decodable, Equatable, Sendable {
     /// The IDs of the gates that block the person.
     public var blocking: [String]
     public var gates: [OnboardingGate]
+    /// The team's owners, whom a person waiting on a server gate asks.
+    public var owners: [Owner] = []
+
+    public struct Owner: Decodable, Equatable, Sendable {
+        public var userId: String
+        public var name: String?
+    }
 
     public init(finished: Bool, blocking: [String] = [], gates: [OnboardingGate] = []) {
         self.finished = finished; self.blocking = blocking; self.gates = gates
@@ -23,7 +30,7 @@ public struct Onboarding: Decodable, Equatable, Sendable {
     /// name, and never finishes onboarding (`completeOnboarding`).
     public var legacy = false
 
-    enum CodingKeys: String, CodingKey { case finished, completed, blocking, gates }
+    enum CodingKeys: String, CodingKey { case finished, completed, blocking, gates, owners }
 
     /// A gate that can't be read is kept as `.unknown`, so a blocking one
     /// still holds the person (Update Happy) rather than vanishing.
@@ -33,6 +40,7 @@ public struct Onboarding: Decodable, Equatable, Sendable {
         finished = (try? c.decodeIfPresent(Bool.self, forKey: .finished)) ?? (try? c.decodeIfPresent(Bool.self, forKey: .completed)) ?? false
         blocking = (try? c.decodeIfPresent([String].self, forKey: .blocking)) ?? []
         gates = ((try? c.decodeIfPresent([Lossy<OnboardingGate>].self, forKey: .gates)) ?? []).compactMap(\.value)
+        owners = ((try? c.decodeIfPresent([Lossy<Owner>].self, forKey: .owners)) ?? []).compactMap(\.value)
     }
 
     // MARK: Legacy: delete once happy-cluster serves gates everywhere
