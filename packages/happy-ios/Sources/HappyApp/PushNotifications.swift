@@ -80,6 +80,9 @@ final class PushNotifications: NSObject {
     func attach(context: AppContext, coordinator: AppCoordinator) {
         self.context = context
         self.coordinator = coordinator
+        // Signed out of a cloud server: its notifications stop now.
+        let cloudPush = self.cloudPush
+        context.account.agentConnections.cloudFarewell = { id, client in try? await cloudPush.unregister(connection: id, client: client) }
         accountsObservation = context.account.observeAccounts { [weak self] _ in
             self?.accountsChanged()
         }

@@ -88,6 +88,14 @@ public extension AgentClient {
             throw CloudPushError(status: status)
         }
     }
+
+    /// Takes this install's registration off the server; one already gone
+    /// counts as taken off.
+    func unregisterCloudPush(_ id: String, version: String) async throws {
+        do { _ = try await send("DELETE", "/v0/cloud/push/registrations/\(id)", headers: ["If-Match": version]) }
+        catch AgentClientError.status(404, _, _) {}
+        catch AgentClientError.status(let status, _, _) { throw CloudPushError(status: status) }
+    }
 }
 
 /// This install's ids for cloud push, each a random lowercase UUID made
@@ -103,6 +111,17 @@ public struct CloudPushIDs: Sendable {
 
     public func registration(for connection: String) -> String { id("cloudPush.registration.\(connection)") }
 
+    /// The version the server gave the registration, for taking it off.
+    public func version(for connection: String) -> String? { store.string(forKey: "cloudPush.version.\(connection)") }
+
+    public func registered(_ connection: String, version: String) { store.set(version, forKey: "cloudPush.version.\(connection)") }
+
+    /// Taken off: the next registration on this server is a new one.
+    public func forget(_ connection: String) {
+        store.set(nil, forKey: "cloudPush.version.\(connection)")
+        store.set(nil, forKey: "cloudPush.registration.\(connection)")
+    }
+
     private func id(_ key: String) -> String {
         if let id = store.string(forKey: key), UUID(uuidString: id)?.uuidString.lowercased() == id { return id }
         let id = UUID().uuidString.lowercased()
@@ -116,7 +135,8 @@ public struct CloudPushIDs: Sendable {
 /// `HappyPushToken` for it (asked again only when the APNs token
 /// changes), then the server's registration. Onboarding's `mobileApp`
 /// gate asks for the permission; coming back to a server renews quietly
-/// where it was given, at most every few hours.
+/// where it was given, at most every few hours; signing out of it takes
+/// the registration off (`unregister`).
 public actor CloudPush {
     public struct Source: Sendable {
         public var device: CloudPushDevice
@@ -173,8 +193,19 @@ public actor CloudPush {
             happy = try await HappyPushRelay.exchange(apns: apns, deviceId: source.ids.device, device: source.device, transport: source.transport)
             token = (apns, happy)
         }
-        _ = try await client.registerCloudPush(source.ids.registration(for: connection), token: happy, device: source.device)
+        let registration = try await client.registerCloudPush(source.ids.registration(for: connection), token: happy, device: source.device)
+        source.ids.registered(connection, version: registration.version)
         renewed[connection] = now
         return .registered
+    }
+
+    /// Signing out of a server or leaving it: its registration goes, so
+    /// the phone stops getting the team's notifications now, not at the
+    /// registration's expiry. Called before the session is revoked.
+    public func unregister(connection: String, client: AgentClient) async throws {
+        renewed[connection] = nil
+        guard let version = source.ids.version(for: connection) else { return }
+        try await client.unregisterCloudPush(source.ids.registration(for: connection), version: version)
+        source.ids.forget(connection)
     }
 }

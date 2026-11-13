@@ -8,6 +8,12 @@ public final class AgentConnections {
     public private(set) var accounts: [AgentConnection] = []
     public private(set) var activeID: String?
     public var onChange: (() -> Void)?
+    /// Said to a Happy Cloud server as the phone signs out of it, while
+    /// its session still works: the app takes this phone's push
+    /// registration off (`CloudPush.unregister`). The session's revocation
+    /// and the connection's teardown wait for it, `farewellLimit` at most.
+    public var cloudFarewell: (@Sendable (_ id: String, _ client: AgentClient) async -> Void)?
+    static let farewellLimit: Duration = .seconds(5)
     private let storage: AgentConnectionStorage
     private var credentials: [String: AgentConnectionCredentials] = [:]
     private var endpoints: [String: AgentEndpoint] = [:]
@@ -303,6 +309,7 @@ public final class AgentConnections {
     }
 
     public func remove(_ id: String) async throws {
+        await farewell(id)?.value
         // Await teardown before deleting credentials. The loop can no longer
         // publish or save an old identity after removal completes.
         await stop(id)
@@ -322,10 +329,20 @@ public final class AgentConnections {
     }
 
     /// A removed cloud server's session is revoked at the accounts service,
-    /// not just forgotten here.
-    private func revokeIfCloud(_ removed: AgentConnectionCredentials?) {
+    /// not just forgotten here, once its farewell is said.
+    private func revokeIfCloud(_ removed: AgentConnectionCredentials?, after farewell: Task<Void, Never>? = nil) {
         guard let removed, HappyCloud.isCloud(removed.publicUrl), let grant = removed.signIn?.grant else { return }
-        Task.detached { await CloudAccount.revoke(grant) }
+        Task.detached {
+            await farewell?.value
+            await CloudAccount.revoke(grant)
+        }
+    }
+
+    /// `cloudFarewell` to a cloud server about to be removed, on a client
+    /// of its own while everything it needs is still in place.
+    private func farewell(_ id: String) -> Task<Void, Never>? {
+        guard let say = cloudFarewell, HappyCloud.isCloud(server(for: id)), !signedOut(id), let client = agentClient(for: id) else { return nil }
+        return Task { await waitAtMost(Self.farewellLimit) { await say(id, client) } }
     }
 
     /// What `forget` took away, for its owner to stop off screen.
@@ -340,12 +357,13 @@ public final class AgentConnections {
     /// awaited; `finishRemoval` stops what it ran and forgets what it kept.
     public func forget(_ id: String) -> Teardown? {
         guard accounts.contains(where: { $0.id == id }) else { return nil }
+        let farewell = farewell(id)
         let job = jobs.removeValue(forKey: id)
         job?.cancel()
         let engine = engines.removeValue(forKey: id)
-        revokeIfCloud(credentials.removeValue(forKey: id))
-        if let endpoint = endpoints.removeValue(forKey: id) { Task { await endpoint.retire() } }
-        if let authorization = authorizations.removeValue(forKey: id) { Task { await authorization.signInRequired() } }
+        revokeIfCloud(credentials.removeValue(forKey: id), after: farewell)
+        if let endpoint = endpoints.removeValue(forKey: id) { Task { await farewell?.value; await endpoint.retire() } }
+        if let authorization = authorizations.removeValue(forKey: id) { Task { await farewell?.value; await authorization.signInRequired() } }
         meters.removeValue(forKey: id)
         accounts.removeAll { $0.id == id }
         if activeID == id { activeID = nil }

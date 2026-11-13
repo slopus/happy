@@ -66,6 +66,25 @@ final class CloudPushTests: XCTestCase {
         XCTAssertEqual(off, .denied, "turned off in Settings, a tap can't ask again")
     }
 
+    func testSigningOutTakesTheRegistrationOffAndTheNextOneIsNew() async throws {
+        let ids = CloudPushIDs(store: InMemoryKeyValueStore())
+        var source = Self.source(relay: Relay(Self.token), permission: Permission(.authorized))
+        source.ids = ids
+        let push = CloudPush(source: source)
+        let server = ProvidersServer()
+        let first = ids.registration(for: "c1")
+        await server.answer("PUT /v0/cloud/push/registrations/\(first)", 200, Self.registration)
+        await server.answer("DELETE /v0/cloud/push/registrations/\(first)", 204, "")
+        let client = AgentClient(transport: server, token: "t")
+        _ = try await push.register(connection: "c1", client: client, ask: true)
+        XCTAssertEqual(ids.version(for: "c1"), "7c1d8a5e-2f43-4c1b-9d0e-1f2a3b4c5d6e")
+        try await push.unregister(connection: "c1", client: client)
+        XCTAssertNil(ids.version(for: "c1"))
+        XCTAssertNotEqual(ids.registration(for: "c1"), first, "a registration taken off is never renewed")
+        // Never registered here: nothing to take off, nothing sent.
+        try await push.unregister(connection: "c2", client: AgentClient(transport: ProvidersServer(), token: "t"))
+    }
+
     func testABuildTheRelayRefusesNeverRegisters() async throws {
         var source = Self.source(relay: Relay(Self.token), permission: Permission(.authorized))
         source.device.appId = "com.slopus.happy.chat-harness"

@@ -268,6 +268,35 @@ final class AgentConnectionsTests: XCTestCase {
         XCTAssertEqual(manager.placeholderSeed(for: other.id), "agent:https://happy.acme.example")
     }
 
+    /// Signing out of a Happy Cloud server says its farewell (the app takes
+    /// its push registration off) while its session still works; a server
+    /// of the team's own says none.
+    func testSigningOutOfACloudServerSaysFarewellFirst() async throws {
+        actor Farewells {
+            var ids: [String] = []
+            func add(_ id: String) { ids.append(id) }
+        }
+        let manager = AgentConnections(credentials: InMemoryAgentConnectionCredentialStore(), directory: nil, makeTransport: { _ in IdentityTransport() })
+        await manager.setForeground(false)
+        let method = OAuthMethod(id: "jwt", name: "Happy Cloud", authorizationUrl: "https://auth.example/authorize", tokenUrl: "https://auth.example/token", clientId: "happy")
+        // No refresh token: nothing is revoked over the network here.
+        let record = ServerSignInRecord(method: method, grant: OAuthGrant(clientId: "happy"), userId: "u1")
+        let access = OAuthAccess(token: "a", expiresAt: nil)
+        let farewells = Farewells()
+        manager.cloudFarewell = { id, _ in await farewells.add(id) }
+        let acme = try await manager.addServer(try AgentOrigin(HappyCloud.server(named: "acme")), signIn: record, access: access, name: "Acme")
+        let globex = try await manager.addServer(try AgentOrigin(HappyCloud.server(named: "globex")), signIn: record, access: access, name: "Globex")
+        let own = try await manager.addServer(try AgentOrigin("https://happy.acme.example"), signIn: record, access: access, name: "Own")
+        try await manager.remove(acme.id)
+        let said = await farewells.ids
+        XCTAssertEqual(said, [acme.id], "remove waits for the farewell")
+        try await manager.remove(own.id)
+        _ = manager.forget(globex.id)
+        for _ in 0..<50 where await farewells.ids.count < 2 { try await Task.sleep(for: .milliseconds(20)) }
+        let all = await farewells.ids
+        XCTAssertEqual(all, [acme.id, globex.id])
+    }
+
     /// Happy Cloud's list joins several servers before one is opened: one
     /// added without selecting it leaves the open one open, here and on disk.
     func testAServerCanBeAddedWithoutOpeningIt() async throws {
