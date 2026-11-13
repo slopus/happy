@@ -189,9 +189,10 @@ public struct GenUIBoxLayout: Equatable, Sendable {
     public var baseline: CGFloat
 
     /// `gaps[i]` is the distance after child `i`; `lineGap` the distance
-    /// between the lines of a row that wraps.
+    /// between the lines of a row that wraps, `stackGap` between the
+    /// children of a row too narrow for them (`line`).
     public init(
-        width: CGFloat, padding: LayoutInsets = .zero, row: Bool, gaps: [CGFloat], lineGap: CGFloat = 0,
+        width: CGFloat, padding: LayoutInsets = .zero, row: Bool, gaps: [CGFloat], lineGap: CGFloat = 0, stackGap: CGFloat = 2,
         align: Align = .stretch, justify: Justify = .start, equal: Bool = false, wrap: Bool = false, children: [Child]
     ) {
         let inner = max(0, width - padding.horizontal)
@@ -205,8 +206,11 @@ public struct GenUIBoxLayout: Equatable, Sendable {
             (frames, height, baseline) = Self.equalRow(inner, gap, lineGap, align, wrap, children)
         } else if wrap {
             (frames, height, baseline) = Self.flow(inner, gap, lineGap, align, children)
+        } else if let line = Self.line(inner, gap, align, justify, children) {
+            (frames, height, baseline) = line
         } else {
-            (frames, height, baseline) = Self.line(inner, gap, align, justify, children)
+            // Too narrow for the row: each child on its own line, at its start.
+            (frames, height, baseline) = Self.column(inner, { _ in stackGap }, .start, children)
         }
         self.frames = frames.map { $0.offsetBy(dx: padding.left, dy: padding.top) }
         size = CGSize(width: width, height: height + padding.vertical)
@@ -248,8 +252,9 @@ public struct GenUIBoxLayout: Equatable, Sendable {
     /// Side by side in one line. Natural widths when they fit, what is
     /// left going to the children that grow, or spread by `justify`; when
     /// they don't, the `fixed` keep theirs and of the rest the widest give
-    /// way first.
-    private static func line(_ width: CGFloat, _ gap: (Int) -> CGFloat, _ align: Align, _ justify: Justify, _ children: [Child]) -> ([CGRect], CGFloat, CGFloat) {
+    /// way first. Nil when a `fixed` child would leave another narrower
+    /// than its `minWidth` (a label beside a long value): the row stacks.
+    private static func line(_ width: CGFloat, _ gap: (Int) -> CGFloat, _ align: Align, _ justify: Justify, _ children: [Child]) -> ([CGRect], CGFloat, CGFloat)? {
         let count = children.count
         guard count > 0 else { return ([], 0, 0) }
         let gaps = (0..<count - 1).map(gap)
@@ -274,6 +279,7 @@ public struct GenUIBoxLayout: Equatable, Sendable {
             let held = fixed.map { natural[$0] }.reduce(0, +)
             let others = children.indices.filter { !children[$0].fixed }
             for (index, share) in zip(others, fairShares(others.map { natural[$0] }, max(0, room - held))) { widths[index] = share }
+            if !fixed.isEmpty, others.contains(where: { widths[$0] < min(children[$0].minWidth, natural[$0]) - 0.5 }) { return nil }
         }
         let sizes = children.indices.map { children[$0].measure(widths[$0]) }
         let (ys, height, baseline) = cross(sizes.map(\.height), children.indices.map { children[$0].baseline(widths[$0]) }, align)

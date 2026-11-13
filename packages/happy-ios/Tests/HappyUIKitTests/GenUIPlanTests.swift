@@ -110,6 +110,21 @@ final class GenUIPlanTests: XCTestCase {
         XCTAssertFalse(try text(700).0.layout.string.string.contains("\u{200B}"))
     }
 
+    /// 13-secret on a phone: the key whose widest piece fits beside its
+    /// fixed value stays beside it; the one that doesn't goes above it.
+    func testAKeyTooNarrowBesideItsFixedValueGoesAboveIt() throws {
+        let plan = GenUIPlanner(document: try document("13-secret"), traits: Self.traits).plan(width: 358)
+        let frames = Dictionary(plan.root.flattened().map { ($0.placed.key, $0.frame) }) { first, _ in first }
+        let (key0, value0) = (try XCTUnwrap(frames["keyvalue.compact.0.label"]), try XCTUnwrap(frames["keyvalue.compact.0.value"]))
+        XCTAssertGreaterThan(value0.minX, key0.maxX, "STRIPE_SECRET_KEY stays beside its value")
+        let (key1, value1) = (try XCTUnwrap(frames["keyvalue.compact.1.label"]), try XCTUnwrap(frames["keyvalue.compact.1.value"]))
+        XCTAssertGreaterThanOrEqual(value1.minY, key1.maxY, "STRIPE_WEBHOOK_SECRET goes above its value")
+        XCTAssertEqual(value1.minX, key1.minX, accuracy: 0.5)
+        // Wide, both rows side by side.
+        let wide = GenUIPlanner(document: try document("13-secret"), traits: Self.traits).plan(width: 700)
+        XCTAssertNil(wide.root.flattened().first { $0.placed.key == "keyvalue.compact.1.label" }, "a wide column shows the grid")
+    }
+
     private func code(lines: Int) throws -> GenUIPlanner {
         let text = (1...lines).map { "let line\($0) = \($0) // a line long enough to run past a phone's column" }.joined(separator: "\\n")
         return try inline("code", #"{"text":"\#(text)\n","language":"swift"}"#)

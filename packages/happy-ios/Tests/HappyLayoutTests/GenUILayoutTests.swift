@@ -80,6 +80,27 @@ final class GenUILayoutTests: XCTestCase {
         XCTAssertEqual(row.frames.map(\.width), [62, 62, 60])
     }
 
+    /// A key and its fixed value: side by side while the key keeps its
+    /// widest piece, else the key over the value, both at the start.
+    func testAKeyTooNarrowBesideItsFixedValueGoesAboveIt() {
+        var value = words(220)
+        value.fixed = true
+        var key = words(120, grow: true)
+        key.minWidth = 70
+        // 300 leaves the key 72: still a row, the key wrapping.
+        let fits = GenUIBoxLayout(width: 300, row: true, gaps: [8], align: .baseline, children: [key, value])
+        XCTAssertEqual(fits.frames.map(\.minX), [0, 80])
+        XCTAssertEqual(fits.frames.map(\.width), [72, 220])
+        // 280 would leave it 52: stacked, 2 apart.
+        let stacked = GenUIBoxLayout(width: 280, row: true, gaps: [8], align: .baseline, children: [key, value])
+        XCTAssertEqual(stacked.frames, [CGRect(x: 0, y: 0, width: 120, height: 20), CGRect(x: 0, y: 22, width: 220, height: 20)])
+        XCTAssertEqual(stacked.size.height, 42)
+        XCTAssertEqual(stacked.baseline, 15)
+        // Without a fixed child the row only squeezes, as before.
+        let squeezed = GenUIBoxLayout(width: 280, row: true, gaps: [8], align: .baseline, children: [key, words(220)])
+        XCTAssertEqual(squeezed.frames.map(\.minY), [0, 0])
+    }
+
     func testAnEqualRowThatMayNotWrapStaysOnOneLine() {
         let stat = Child(measure: { CGSize(width: $0, height: 50) }, minWidth: 120)
         let row = GenUIBoxLayout(width: 326, row: true, gaps: [16, 16], equal: true, wrap: false, children: [stat, stat, stat])
