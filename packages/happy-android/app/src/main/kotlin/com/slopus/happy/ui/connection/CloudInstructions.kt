@@ -8,6 +8,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
+import com.slopus.happy.agent.PolicyDocument
 import com.slopus.happy.agent.Surface
 import com.slopus.happy.agent.SurfaceCatalog
 import com.slopus.happy.agent.SurfaceType
@@ -17,7 +18,7 @@ import com.slopus.happy.ui.surfaces.SurfaceRoute
 import com.slopus.happy.ui.surfaces.SurfaceScreens
 import kotlinx.serialization.Serializable
 
-/** A Cloud instructions link opens the Policy vault's documents, never a configuration editor. */
+/** A Cloud instructions link opens the server's Instructions in its settings, or where it has none yet, its Policy vault ([instructionsPlace]). */
 @Serializable data class CloudInstructionsRoute(val connectionId: String)
 
 /** The authoritative marker, never the name or the reader's access level. */
@@ -37,10 +38,10 @@ internal fun CloudInstructions(graph: AppGraph, nav: NavHostController, connecti
         return
     }
     val catalog by session.surfaces.collectAsStateWithLifecycle()
-    val vault = policyVault(catalog)
-    if (vault == null) {
-        SurfaceMissing(title, loading = !catalog.loaded, back)
-    } else {
-        SurfaceScreens(graph, SurfaceRoute(connectionId, vault.id, vault.name), back) { nav.navigate(it) }
+    val permissions by session.permissions.collectAsStateWithLifecycle()
+    when (val place = instructionsPlace(permissions, catalog)) {
+        InstructionsPlace.Document -> PolicyDocumentPage(graph, nav, connectionId, PolicyDocument.Instructions)
+        is InstructionsPlace.Vault -> SurfaceScreens(graph, SurfaceRoute(connectionId, place.surface.id, place.surface.name), back) { nav.navigate(it) }
+        is InstructionsPlace.Missing -> SurfaceMissing(title, loading = place.loading, back)
     }
 }

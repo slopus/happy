@@ -30,6 +30,8 @@ object Permission {
     const val POOLS_MANAGE = "pools.manage"
     /** Installing, setting up and removing plugins, as MCP servers take it. */
     const val MCP_MANAGE = "mcp.manage"
+    /** Changing the server's instructions and security policy ([PolicyDocument]); owners. */
+    const val POLICY_EDIT = "policy.edit"
 
     /**
      * A team server's refusal for want of a permission (`403 { "error":
@@ -46,8 +48,16 @@ object Permission {
  * or when reading them failed, nothing is granted, so no control shows
  * only to be refused. Any other server decides for itself: nothing gated.
  */
-data class ServerPermissions(val gated: Boolean, val granted: Set<String> = emptySet()) {
+data class ServerPermissions(
+    val gated: Boolean,
+    val granted: Set<String> = emptySet(),
+    /** Every permission the server has (`permissions[].id`, its catalog), granted or not: what it serves. Empty where it doesn't say. */
+    val known: Set<String> = emptySet(),
+) {
     fun allows(permission: String): Boolean = !gated || permission in granted
+
+    /** Whether the server has [permission] at all, for anyone. */
+    fun knows(permission: String): Boolean = permission in known
 
     val canWrite: Boolean get() = allows(Permission.CONTENT_WRITE)
 
@@ -55,10 +65,14 @@ data class ServerPermissions(val gated: Boolean, val granted: Set<String> = empt
         val Ungated = ServerPermissions(gated = false)
         val Unknown = ServerPermissions(gated = true)
 
-        /** `{ "granted": [id] }`; null for anything else. */
+        /** `{ "granted": [id], "permissions": [{ "id" }]? }`; null for anything else. */
         fun parse(body: JsonObject): ServerPermissions? {
             val granted = body["granted"] as? JsonArray ?: return null
-            return ServerPermissions(gated = true, granted = granted.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.contentOrNull }.toSet())
+            return ServerPermissions(
+                gated = true,
+                granted = granted.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.contentOrNull }.toSet(),
+                known = (body["permissions"] as? JsonArray).orEmpty().mapNotNull { ((it as? JsonObject)?.get("id") as? JsonPrimitive)?.takeIf { p -> p.isString }?.contentOrNull }.toSet(),
+            )
         }
     }
 }

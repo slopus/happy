@@ -421,4 +421,38 @@ class AgentConnectionSettingsTest {
         }
         rule.onAllNodesWithTag(AgentPagesTags.REMOVE_PHOTO, useUnmergedTree = true).assertCountEquals(0)
     }
+
+    @Test
+    fun instructionsAndSecurityPolicyFollowInferenceWhereTheServerServesThem() {
+        var opened: com.slopus.happy.agent.PolicyDocument? = null
+        rule.setHappyContent {
+            AgentConnectionSettingsScreen(
+                profile = SettingsProfile("agent-connection-1", "Studio", "Connected"),
+                accounts = accounts,
+                actions = AgentSettingsActions(onAgents = {}, onProviders = {}, onPolicy = { opened = it }, onCompute = {}, onUsage = {}),
+                about = AboutInfo("1.8.0 (412)"),
+            )
+        }
+        rule.onNode(hasTestTag(PolicyDocumentTags.row(com.slopus.happy.agent.PolicyDocument.Instructions)), useUnmergedTree = true).assertExists()
+        val security = rule.onNode(hasTestTag(PolicyDocumentTags.row(com.slopus.happy.agent.PolicyDocument.Security)) and hasAnyDescendant(hasText("Security policy")), useUnmergedTree = true)
+        security.assertExists()
+        fun y(tag: String) = rule.onNode(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNode().positionInRoot.y
+        assertTrue(y(PolicyDocumentTags.row(com.slopus.happy.agent.PolicyDocument.Instructions)) > y(CloudProvidersTags.ROW))
+        assertTrue(y(ComputeTags.ROW) > y(PolicyDocumentTags.row(com.slopus.happy.agent.PolicyDocument.Security)))
+        rule.onNodeWithText("Instructions").performScrollTo().performClick()
+        assertEquals(com.slopus.happy.agent.PolicyDocument.Instructions, opened)
+    }
+
+    @Test
+    fun noPolicyRowsWhereTheServerDoesntServeThem() {
+        rule.setHappyContent {
+            AgentConnectionSettingsScreen(
+                profile = SettingsProfile("agent-connection-1", "Studio", "Connected"),
+                accounts = accounts,
+                actions = AgentSettingsActions(onAgents = {}, onProviders = {}),
+                about = AboutInfo("1.8.0 (412)"),
+            )
+        }
+        rule.onNode(hasTestTag(PolicyDocumentTags.row(com.slopus.happy.agent.PolicyDocument.Instructions)), useUnmergedTree = true).assertDoesNotExist()
+    }
 }

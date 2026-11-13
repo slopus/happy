@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="policy_instructions">說明</string>
+    <string name="policy_security">安全性政策</string>
+    <string name="policy_about_instructions">此伺服器上的每個代理程式都遵循這些說明 (AGENTS.md)。</string>
+    <string name="policy_about_security">此伺服器上的每個代理程式都必須遵守此安全性政策 (SECURITY.md)。</string>
+    <string name="policy_owners_only">只有擁有者可以變更此內容，代理程式不能。</string>
+    <string name="policy_empty">這裡還沒有內容。</string>
+    <string name="policy_load_failed">無法載入。</string>
+    <string name="policy_try_again">重試</string>
+    <string name="policy_save_failed">無法儲存，請重試。</string>
+    <string name="policy_not_allowed">只有擁有者可以變更此內容。</string>
+    <string name="policy_too_long">太長：伺服器最多保存 %1$d KB。</string>
+    <string name="policy_discard_title">要捨棄變更嗎？</string>
+    <string name="policy_discard">捨棄</string>
+    <string name="policy_keep_editing">繼續編輯</string>
+</resources>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="policy_instructions">Instrukcje</string>
+    <string name="policy_security">Zasady bezpieczeństwa</string>
+    <string name="policy_about_instructions">Każdy agent na tym serwerze stosuje się do tych instrukcji (AGENTS.md).</string>
+    <string name="policy_about_security">Każdy agent na tym serwerze musi przestrzegać tych zasad bezpieczeństwa (SECURITY.md).</string>
+    <string name="policy_owners_only">Tylko właściciele mogą to zmienić. Agenci nie mogą.</string>
+    <string name="policy_empty">Na razie nic tu nie ma.</string>
+    <string name="policy_load_failed">Nie udało się wczytać.</string>
+    <string name="policy_try_again">Spróbuj ponownie</string>
+    <string name="policy_save_failed">Nie udało się zapisać. Spróbuj ponownie.</string>
+    <string name="policy_not_allowed">Tylko właściciele mogą to zmienić.</string>
+    <string name="policy_too_long">Za długie: serwer przechowuje do %1$d KB.</string>
+    <string name="policy_discard_title">Odrzucić zmiany?</string>
+    <string name="policy_discard">Odrzuć</string>
+    <string name="policy_keep_editing">Edytuj dalej</string>
+</resources>

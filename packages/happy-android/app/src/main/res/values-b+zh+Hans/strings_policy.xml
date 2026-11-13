@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="policy_instructions">说明</string>
+    <string name="policy_security">安全策略</string>
+    <string name="policy_about_instructions">此服务器上的每个智能体都遵循这些说明 (AGENTS.md)。</string>
+    <string name="policy_about_security">此服务器上的每个智能体都必须遵守此安全策略 (SECURITY.md)。</string>
+    <string name="policy_owners_only">只有所有者可以更改此内容，智能体不能。</string>
+    <string name="policy_empty">这里还没有内容。</string>
+    <string name="policy_load_failed">无法加载。</string>
+    <string name="policy_try_again">重试</string>
+    <string name="policy_save_failed">无法保存，请重试。</string>
+    <string name="policy_not_allowed">只有所有者可以更改此内容。</string>
+    <string name="policy_too_long">太长：服务器最多保存 %1$d KB。</string>
+    <string name="policy_discard_title">要放弃更改吗？</string>
+    <string name="policy_discard">放弃</string>
+    <string name="policy_keep_editing">继续编辑</string>
+</resources>

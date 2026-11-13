@@ -31,6 +31,7 @@ import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
+import com.slopus.happy.agent.PolicyDocument
 import com.slopus.happy.connection.CloudAccount
 import com.slopus.happy.connection.CloudAccountState
 import com.slopus.happy.connection.CloudException
@@ -108,6 +109,10 @@ fun NavGraphBuilder.cloudRoutes(graph: AppGraph, nav: NavHostController) {
     page<CloudMembersRoute> { entry -> CloudMembers(graph, nav, entry.toRoute<CloudMembersRoute>().connectionId) }
     page<MemberProfileRoute> { entry -> MemberProfileEntry(graph, nav, entry.toRoute<MemberProfileRoute>()) }
     page<CloudInstructionsRoute> { entry -> CloudInstructions(graph, nav, entry.toRoute<CloudInstructionsRoute>().connectionId) }
+    page<PolicyDocumentRoute> { entry ->
+        val route = entry.toRoute<PolicyDocumentRoute>()
+        PolicyDocument.of(route.document)?.let { PolicyDocumentPage(graph, nav, route.connectionId, it) }
+    }
     cloudProviderRoutes(graph, nav)
     cloudComputeRoutes(graph, nav)
     cloudPushSettingsRoutes(graph, nav)

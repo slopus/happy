@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A Happy Cloud server's instructions and security policy in its settings (ui/connection/PolicyDocuments.kt):
+  the two rows after Inference and each document's page. Words follow iOS's PolicyDocuments strings.
+  Translated in values-*/ (AndroidStringsTranslatedTest).
+-->
+<resources>
+    <string name="policy_instructions">Instructions</string>
+    <string name="policy_security">Security policy</string>
+    <string name="policy_about_instructions">Every agent on this server follows these instructions (AGENTS.md).</string>
+    <string name="policy_about_security">Every agent on this server must follow this security policy (SECURITY.md).</string>
+    <string name="policy_owners_only">Only owners can change this. Agents can\'t.</string>
+    <string name="policy_empty">Nothing here yet.</string>
+    <string name="policy_load_failed">Couldn\'t load this.</string>
+    <string name="policy_try_again">Try again</string>
+    <string name="policy_save_failed">Couldn\'t save. Try again.</string>
+    <string name="policy_not_allowed">Only owners can change this.</string>
+    <string name="policy_too_long">Too long: the server keeps up to %1$d KB.</string>
+    <string name="policy_discard_title">Discard your changes?</string>
+    <string name="policy_discard">Discard</string>
+    <string name="policy_keep_editing">Keep editing</string>
+</resources>

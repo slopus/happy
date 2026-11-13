@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="policy_instructions">Инструкции</string>
+    <string name="policy_security">Политика безопасности</string>
+    <string name="policy_about_instructions">Все агенты на этом сервере следуют этим инструкциям (AGENTS.md).</string>
+    <string name="policy_about_security">Все агенты на этом сервере обязаны соблюдать эту политику безопасности (SECURITY.md).</string>
+    <string name="policy_owners_only">Изменить это могут только владельцы. Агенты не могут.</string>
+    <string name="policy_empty">Пока пусто.</string>
+    <string name="policy_load_failed">Не удалось загрузить.</string>
+    <string name="policy_try_again">Повторить</string>
+    <string name="policy_save_failed">Не удалось сохранить. Попробуйте ещё раз.</string>
+    <string name="policy_not_allowed">Изменить это могут только владельцы.</string>
+    <string name="policy_too_long">Слишком длинно: сервер хранит до %1$d КБ.</string>
+    <string name="policy_discard_title">Отменить изменения?</string>
+    <string name="policy_discard">Отменить</string>
+    <string name="policy_keep_editing">Продолжить</string>
+</resources>

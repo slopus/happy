@@ -192,6 +192,8 @@ class AgentSettingsActions(
     val onMembers: (() -> Unit)? = null,
     /** AI providers: the Happy Cloud server's connections, and adding ChatGPT, Claude and API keys; null for any other connection. */
     val onProviders: (() -> Unit)? = null,
+    /** A Happy Cloud server's instructions and security policy, where its settings serve them ([PolicyDocument.served]). */
+    val onPolicy: ((com.slopus.happy.agent.PolicyDocument) -> Unit)? = null,
     /** Happy Cloud's machines and join requests; absent without compute.use. */
     val onCompute: (() -> Unit)? = null,
     /** Usage: what the provider accounts spent and what is left of their plans; null where it isn't offered. */
@@ -320,6 +322,17 @@ fun AgentConnectionSettingsScreen(
                         onClick = open,
                     )
                 },
+                // Instructions and Security policy follow Inference, as iOS lists them.
+                *com.slopus.happy.agent.PolicyDocument.entries.mapNotNull { document ->
+                    actions.onPolicy?.let { open ->
+                        SettingsEntry(
+                            id = PolicyDocumentTags.row(document),
+                            title = stringResource(if (document == com.slopus.happy.agent.PolicyDocument.Instructions) R.string.policy_instructions else R.string.policy_security),
+                            icon = { SettingsTile(if (document == com.slopus.happy.agent.PolicyDocument.Instructions) Ionicon.DocumentTextOutline else Ionicon.ShieldCheckmarkOutline, if (document == com.slopus.happy.agent.PolicyDocument.Instructions) SettingsTiles.blue else SettingsTiles.green) },
+                            onClick = { open(document) },
+                        )
+                    }
+                }.toTypedArray(),
                 // Compute follows Inference, as desktop's Agents group has it.
                 actions.onCompute?.let { open ->
                     SettingsEntry(
@@ -529,7 +542,8 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
     val permissions = session?.permissions?.collectAsStateWithLifecycle()?.value
     val askChief = permissions?.allows(Permission.BOTS_MANAGE) ?: true
     val compute = ComputeAccess.of(cloud, permissions ?: com.slopus.happy.agent.ServerPermissions.Unknown) != ComputeAccess.None
-    val actions = remember(graph, nav, connectionId, switcher, cloud, askChief, compute) {
+    val policy = cloud && permissions?.let(com.slopus.happy.agent.PolicyDocument::served) == true
+    val actions = remember(graph, nav, connectionId, switcher, cloud, askChief, compute, policy) {
         AgentSettingsActions(
             onBack = { nav.popBackStack() },
             onProfile = { nav.navigate(AgentProfileRoute(connectionId)) },
@@ -540,6 +554,7 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
             onAgents = { nav.navigate(AgentAgentsRoute(connectionId)) },
             onMembers = if (cloud) ({ nav.navigate(CloudMembersRoute(connectionId)) }) else null,
             onProviders = if (cloud) ({ nav.openCloudProviders(connectionId) }) else null,
+            onPolicy = if (policy) ({ document -> nav.navigate(PolicyDocumentRoute(connectionId, document.id)) }) else null,
             onCompute = if (compute) ({ nav.navigate(CloudComputeRoute(connectionId)) }) else null,
             onUsage = { nav.navigate(AgentUsageRoute(connectionId)) },
             onNotifications = if (cloud) ({ nav.navigate(CloudPushSettingsRoute(connectionId)) }) else null,

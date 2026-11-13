@@ -46,6 +46,11 @@
             android:name=".ui.connection.CloudProvidersFixturesActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize" />
+        <!-- A policy document's page over an in-memory server (ui/connection/PolicyDocumentFixturesActivity). -->
+        <activity
+            android:name=".ui.connection.PolicyDocumentFixturesActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize" />
         <!-- One Gen UI render document alone on the chat's ground, for screenshots (ui/genui/GenUiGymActivity). -->
         <activity
             android:name=".ui.genui.GenUiGymActivity"

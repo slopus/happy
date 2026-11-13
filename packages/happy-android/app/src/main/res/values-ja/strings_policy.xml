@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="policy_instructions">指示</string>
+    <string name="policy_security">セキュリティポリシー</string>
+    <string name="policy_about_instructions">このサーバーのすべてのエージェントはこの指示に従います (AGENTS.md)。</string>
+    <string name="policy_about_security">このサーバーのすべてのエージェントはこのセキュリティポリシーに従う必要があります (SECURITY.md)。</string>
+    <string name="policy_owners_only">変更できるのはオーナーだけです。エージェントは変更できません。</string>
+    <string name="policy_empty">まだ何もありません。</string>
+    <string name="policy_load_failed">読み込めませんでした。</string>
+    <string name="policy_try_again">再試行</string>
+    <string name="policy_save_failed">保存できませんでした。もう一度お試しください。</string>
+    <string name="policy_not_allowed">変更できるのはオーナーだけです。</string>
+    <string name="policy_too_long">長すぎます。サーバーに保存できるのは %1$d KB までです。</string>
+    <string name="policy_discard_title">変更を破棄しますか？</string>
+    <string name="policy_discard">破棄</string>
+    <string name="policy_keep_editing">編集を続ける</string>
+</resources>
