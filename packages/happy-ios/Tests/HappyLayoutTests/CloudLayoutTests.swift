@@ -262,12 +262,14 @@ final class CloudLayoutTests: XCTestCase {
         XCTAssertEqual(row.subtitle, CGRect(x: 74, y: 39, width: 175, height: 40))
     }
 
-    /// At every text size a step's title is at least as large as its
-    /// lines, which grow no further than 1.25, to whole 30 pt lines.
+    /// At every text size a step's or a Start slide's title is at least
+    /// as large as its lines, which grow no further than 1.25, to whole 30 pt lines.
     func testAStepsTitleIsNeverSmallerThanItsLines() {
         for category in TextSizeCategory.allCases {
             let scale = TextScale(category)
-            XCTAssertGreaterThanOrEqual(TextStyles.startSlideTitle.scaled(scale).size, TextStyles.cloudStageBody.scaled(scale).size, "\(category)")
+            for body in [TextStyles.cloudStageBody, TextStyles.startSlideBody] {
+                XCTAssertGreaterThanOrEqual(TextStyles.startSlideTitle.scaled(scale).size, body.scaled(scale).size, "\(category)")
+            }
         }
         XCTAssertEqual(TextStyles.cloudStageBody.scaled(.standard), TextStyles.cloudStageBody, "as designed at the default size")
         let largest = TextStyles.cloudStageBody.scaled(TextScale(.accessibilityExtraExtraExtraLarge))
