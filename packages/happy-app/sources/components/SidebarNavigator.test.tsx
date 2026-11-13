@@ -86,7 +86,7 @@ vi.mock('react-native-unistyles', () => ({
                 surfacePressed: '#222',
                 surfaceSelected: '#444',
                 divider: '#333',
-                header: { tint: '#fff' },
+                header: { background: '#182030', tint: '#fff' },
                 textLink: '#88f',
                 status: { connected: '#34a853' },
                 text: '#fff',
@@ -102,7 +102,7 @@ vi.mock('react-native-unistyles', () => ({
                 surfacePressed: '#222',
                 surfaceSelected: '#444',
                 divider: '#333',
-                header: { tint: '#fff' },
+                header: { background: '#182030', tint: '#fff' },
                 textLink: '#88f',
                 status: { connected: '#34a853' },
             },
@@ -288,6 +288,7 @@ describe('SidebarNavigator drawer behavior', () => {
         let renderer: any;
         act(() => { renderer = TestRenderer.create(<SidebarNavigator />); });
         const bar = renderer.root.findByProps({ testID: 'desktop-global-navigation-bar' });
+        expect(bar.props.style.backgroundColor).toBe('#182030');
         expect(bar.findAllByType('Pressable').map((node: any) => node.props.testID)).toEqual([
             'desktop-navigation-back-button', 'desktop-navigation-forward-button',
             'desktop-navigation-sidebar-button', 'desktop-navigation-zen-button',

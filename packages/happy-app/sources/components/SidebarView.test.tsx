@@ -89,6 +89,7 @@ vi.mock('react-native-unistyles', () => ({
             ? (factory as (theme: any) => object)({
                 colors: {
                     groupped: { background: '#fff' },
+                    header: { background: '#fff' },
                     surface: '#fff',
                     surfacePressed: '#eee',
                     divider: '#ddd',
@@ -246,16 +247,21 @@ describe('SidebarView Agent space exit', () => {
         let renderer: any;
         act(() => { renderer = TestRenderer.create(<SidebarView desktopDensity desktopPrimaryNavigation />); });
         const style = (id: string) => Object.assign({}, ...renderer.root.findByProps({ testID: id }).props.style.flat().filter(Boolean));
-        expect(style('desktop-primary-navigation-column').backgroundColor).toBe(appThemes.ginghamLight.colors.groupped.background);
+        expect(style('desktop-primary-navigation-column').backgroundColor).toBe(appThemes.ginghamLight.colors.header.background);
         mocks.theme = appThemes.ginghamDark;
         act(() => { renderer.update(<SidebarView desktopDensity desktopPrimaryNavigation desktopSecondaryVisible={false} />); });
-        expect(style('desktop-primary-navigation-column').backgroundColor).toBe(appThemes.ginghamDark.colors.groupped.background);
+        expect(style('desktop-primary-navigation-column').backgroundColor).toBe(appThemes.ginghamDark.colors.header.background);
         expect(style('desktop-primary-navigation-column').borderRightColor).toBe(appThemes.ginghamDark.colors.divider);
         expect(style('sidebar-desktop-density').backgroundColor).toBe(appThemes.ginghamDark.colors.groupped.background);
         expect(style('desktop-secondary-navigation-column').backgroundColor).toBe(appThemes.ginghamDark.colors.groupped.background);
         mocks.desktopSkin = 'dreamskin';
+        mocks.theme = appThemes.dreamskinDark;
         act(() => { renderer.update(<SidebarView desktopDensity desktopPrimaryNavigation desktopSecondaryVisible />); });
-        expect(style('desktop-primary-navigation-column').backgroundColor).toBe(appThemes.ginghamDark.colors.desktopSkin.rail);
+        expect(style('desktop-primary-navigation-column').backgroundColor).toBe(appThemes.dreamskinDark.colors.header.background);
+        mocks.desktopSkin = 'firefly';
+        mocks.theme = appThemes.fireflyLight;
+        act(() => { renderer.update(<SidebarView desktopDensity desktopPrimaryNavigation desktopSecondaryVisible={false} />); });
+        expect(style('desktop-primary-navigation-column').backgroundColor).toBe(appThemes.fireflyLight.colors.header.background);
         act(() => renderer.unmount());
     });
 

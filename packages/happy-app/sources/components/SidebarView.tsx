@@ -40,7 +40,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexDirection: 'row',
     },
     desktopPrimaryColumn: {
-        backgroundColor: theme.colors.groupped.background,
+        backgroundColor: theme.colors.header.background,
         borderRightColor: theme.colors.divider,
         borderRightWidth: StyleSheet.hairlineWidth,
         overflow: 'visible',
@@ -750,9 +750,7 @@ export const SidebarView = React.memo(({
                         mobileNavigation && styles.mobilePrimaryColumn,
                         // The permanent drawer stays mounted across appearance changes.
                         // Bind its surfaces to the live theme just like the adjacent workspace.
-                        { backgroundColor: dreamskin
-                            ? reducedTransparency ? theme.colors.desktopSkin.reducedRail : theme.colors.desktopSkin.rail
-                            : theme.colors.groupped.background, borderRightColor: theme.colors.divider },
+                        { backgroundColor: mobileNavigation ? theme.colors.groupped.background : theme.colors.header.background, borderRightColor: theme.colors.divider },
                     ]} testID={mobileNavigation ? 'mobile-primary-navigation-column' : 'desktop-primary-navigation-column'}>
                         {mobileNavigation ? (
                             <ScrollView style={styles.mobileRailScroll} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8 }}>

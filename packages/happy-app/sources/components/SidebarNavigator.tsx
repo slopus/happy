@@ -472,7 +472,7 @@ const PersistentHeader = React.memo(({ globalBar = false }: { globalBar?: boolea
 });
 
 const styles = StyleSheet.create((theme) => ({
-    globalNavigationBar: { position: 'relative', zIndex: 2000, overflow: 'visible', height: 48, backgroundColor: theme.colors.groupped.background, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.divider },
+    globalNavigationBar: { position: 'relative', zIndex: 2000, overflow: 'visible', height: 48, backgroundColor: theme.colors.header.background, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.divider },
     globalRightSlot: { position: 'absolute', top: 4, right: 8, width: 40, height: 40, zIndex: 1200 },
     drawerContent: {
         backgroundColor: theme.colors.surface,
