@@ -186,6 +186,12 @@ private val AttachTabKind.selectedIcon
         AttachTabKind.Files -> MaterialSymbols.InsertDriveFile
     }
 
+/** A caption bar's test tags: the sheet's, or the preview's. */
+internal enum class CaptionTags(val bar: String, val field: String, val send: String) {
+    Sheet(AttachTags.CAPTION_BAR, AttachTags.CAPTION, AttachTags.SEND),
+    Preview(AttachTags.PREVIEW_CAPTION_BAR, AttachTags.PREVIEW_CAPTION, AttachTags.PREVIEW_SEND),
+}
+
 /**
  * The caption bar that takes the tab bar's place once something is picked,
  * drawn as the chat's composer is ([ConversationComposer]) without its [+]
@@ -194,7 +200,7 @@ private val AttachTabKind.selectedIcon
  * below, "Type a message ...", and send's 36 circle in the text colour, 6 in
  * from the end at the foot. The words grow to five lines, then scroll.
  * [shown] is the 180 ms decelerated progress the bar comes in on: the pill
- * fades, send grows from 0.2.
+ * fades, send grows from 0.2. The preview's foot has one too, [tags] apart.
  */
 @Composable
 internal fun AttachCaptionBar(
@@ -207,6 +213,7 @@ internal fun AttachCaptionBar(
     backdrop: GlassSource?,
     colors: AttachColors,
     modifier: Modifier = Modifier,
+    tags: CaptionTags = CaptionTags.Sheet,
 ) {
     val theme = HappyTheme.colors
     val blurs = rememberGlassBlur()
@@ -232,7 +239,7 @@ internal fun AttachCaptionBar(
             .glass(backdrop, shape, GlassColors.of(theme.dark), blurs)
             .clip(shape)
             .heightIn(min = ConversationComposerSpec.rest)
-            .testTag(AttachTags.CAPTION_BAR),
+            .testTag(tags.bar),
         verticalAlignment = Alignment.Bottom,
     ) {
         BasicTextField(
@@ -256,7 +263,7 @@ internal fun AttachCaptionBar(
                 .weight(1f)
                 .padding(start = ConversationComposerSpec.fieldPadding, end = 8.dp)
                 .onFocusChanged { focused = it.isFocused }
-                .testTag(AttachTags.CAPTION),
+                .testTag(tags.field),
         )
         Box(
             Modifier
@@ -274,7 +281,7 @@ internal fun AttachCaptionBar(
                     contentDescription = sendLabel
                     role = Role.Button
                 }
-                .testTag(AttachTags.SEND),
+                .testTag(tags.send),
             contentAlignment = Alignment.Center,
         ) {
             if (sending) CircularProgressIndicator(Modifier.size(16.dp), color = theme.surface, strokeWidth = 2.dp)

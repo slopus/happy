@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_photo_edit.xml in ca. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="photo_edit_crop">Retalla</string>
+    <string name="photo_edit_draw">Dibuixa</string>
+    <string name="photo_edit_cancel">Cancel·la</string>
+    <string name="photo_edit_done">Fet</string>
+    <string name="photo_edit_reset">Restableix</string>
+    <string name="photo_edit_rotate">Gira</string>
+    <string name="photo_edit_straighten">Redreça</string>
+    <string name="photo_edit_mirror">Reflecteix</string>
+    <string name="photo_edit_aspect">Relació d\'aspecte</string>
+    <string name="photo_edit_original">Original</string>
+    <string name="photo_edit_square">Quadrat</string>
+    <string name="photo_edit_undo">Desfés</string>
+    <string name="photo_edit_clear">Esborra-ho tot</string>
+    <string name="photo_edit_clear_title">Vols esborrar el dibuix?</string>
+    <string name="photo_edit_clear_confirm">Esborra</string>
+    <string name="photo_edit_size">Mida</string>
+    <string name="photo_edit_color">Color</string>
+    <string name="photo_edit_colors">Colors</string>
+    <string name="photo_edit_grid">Graella</string>
+    <string name="photo_edit_spectrum">Espectre</string>
+    <string name="photo_edit_opacity">Opacitat</string>
+    <string name="photo_edit_eyedropper">Agafa un color de la foto</string>
+    <string name="photo_edit_pen">Bolígraf</string>
+    <string name="photo_edit_arrow">Fletxa</string>
+    <string name="photo_edit_marker">Retolador</string>
+    <string name="photo_edit_neon">Neó</string>
+    <string name="photo_edit_blur">Desenfocament</string>
+    <string name="photo_edit_eraser">Goma</string>
+    <string name="photo_edit_edited">Editada</string>
+    <plurals name="camera_shots">
+        <item quantity="one">%1$d foto</item>
+        <item quantity="many">%1$d fotos</item>
+        <item quantity="other">%1$d fotos</item>
+    </plurals>
+</resources>

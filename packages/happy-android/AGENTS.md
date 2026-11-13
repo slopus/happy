@@ -1626,7 +1626,9 @@ gained lines is all additions too, and git calls it modified.
   File tab (Browse through the system picker, the system photo picker as
   files, Paste, and the files sent from here before, `RecentFiles`). A
   cell's picture opens the preview, whose top-right check picks the one in
-  view; its check picks, through the cell's 48 dp top-right corner
+  view and whose foot holds the caption, Send and the photo's Crop and Draw
+  (`ui/photoedit/`, Telegram's crop and brushes, `AttachEdits`: the edited
+  JPEG is what the grid shows and what goes); its check picks, through the cell's 48 dp top-right corner
   (Telegram's `checkFrame` is the 42 corner). No Telegram blue: the checks,
   the confirm pill and the selected tab take the composer's send colours
   (`AttachColors`: text filled, the surface on it). The
@@ -1639,7 +1641,10 @@ gained lines is all additions too, and git calls it modified.
   the same). The caption bar is drawn as the chat's composer (its glass
   pill, corners, type, placeholder and send circle, without + and the
   model chips); it grows to five lines, then scrolls; the in-sheet camera's tile stops at the foot bar's top, so it
-  never covers the caption over the keyboard. The camera keeps one zoom
+  never covers the caption over the keyboard. A photo the camera takes lands
+  at the grid's head picked, the first opens the preview, and Back returns
+  to the camera with its shots in a strip and their count by the shutter,
+  as Telegram-Android's camera does; there is no Use Photo. The camera keeps one zoom
   request in flight (`PhotoZoomRequests`, a pinch's latest queued) and
   never ramps the ratio per frame, and Samsung captures without zero
   shutter lag (`photoCaptureMode`): there a ZSL session's preview froze

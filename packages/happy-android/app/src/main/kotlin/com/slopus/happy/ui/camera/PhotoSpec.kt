@@ -2,7 +2,6 @@ package com.slopus.happy.ui.camera
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseIn
-import androidx.compose.animation.core.EaseInOut
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
@@ -26,15 +25,14 @@ internal object PhotoTags {
     const val SHUTTER = "camera.shutter"
     const val RING = "camera.shutter.ring"
     const val DISC = "camera.shutter.disc"
-    const val REVIEW = "camera.review"
-    const val REVIEW_BAR = "camera.review.bar"
-    const val RETAKE = "camera.retake"
-    const val USE = "camera.use"
+    const val SHOTS = "camera.shots"
+    const val SHOT = "camera.shot"
+    const val COUNTER = "camera.counter"
     const val MESSAGE = "camera.message"
 }
 
-/** CameraScreenLayout.swift: the photo frame, 96 shutter target, 120 tablet column and 96 review bar. */
-internal data class PhotoFrames(val preview: Rect, val shutter: Rect, val mode: Rect, val review: Rect) {
+/** CameraScreenLayout.swift: the photo frame, 96 shutter target and 120 tablet column. */
+internal data class PhotoFrames(val preview: Rect, val shutter: Rect, val mode: Rect) {
     companion object {
         fun of(size: Size, top: Float, bottom: Float, tablet: Boolean, unit: Float, ratio: Float = 4f / 3): PhotoFrames {
             val column = if (tablet) 120 * unit else 0f
@@ -51,7 +49,7 @@ internal data class PhotoFrames(val preview: Rect, val shutter: Rect, val mode: 
             val mode = if (tablet) {
                 Rect(size.width - column, shutter.top - 24 * unit - 28 * unit, size.width, shutter.top - 24 * unit)
             } else Rect(0f, shutter.top - 4 * unit - 28 * unit, size.width, shutter.top - 4 * unit)
-            return PhotoFrames(preview, shutter, mode, Rect(0f, size.height - bottom - 96 * unit, size.width, size.height))
+            return PhotoFrames(preview, shutter, mode)
         }
     }
 }
@@ -75,8 +73,8 @@ internal fun previewTransform(full: Rect, tile: Rect, progress: Float): PreviewT
 
 /**
  * CameraViewController.swift:371–420: open 0.4s, damping0.86 from a tile (1 without),
- * controls after the first quarter; return0.35s/damping1, controls0.15s; no-tile/review
- * close slides down0.3s easeIn, Use Photo fades0.25s. Telegram's retained-view technique
+ * controls after the first quarter; return0.35s/damping1, controls0.15s; no-tile
+ * close slides down0.3s easeIn. Telegram's retained-view technique
  * is ChatAttachAlertPhotoLayout.java:2447–2521; iOS's durations take precedence.
  */
 @Stable
@@ -97,9 +95,9 @@ internal class PhotoMotion(settled: Boolean = false) {
         launch { controls.animateTo(1f, if (reduce) snap() else tween(300, 100, LinearEasing)) }
     }
 
-    suspend fun close(tile: Boolean, review: Boolean, reduce: Boolean) = coroutineScope {
+    suspend fun close(tile: Boolean, reduce: Boolean) = coroutineScope {
         closing = true
-        morphs = tile && !review
+        morphs = tile
         launch {
             progress.animateTo(0f, when {
                 reduce -> snap()
@@ -110,12 +108,7 @@ internal class PhotoMotion(settled: Boolean = false) {
         launch { controls.animateTo(0f, if (reduce) snap() else tween(150, easing = LinearEasing)) }
     }
 
-    suspend fun use(reduce: Boolean) {
-        closing = true
-        fade.animateTo(0f, if (reduce) snap() else tween(250, easing = EaseInOut))
-    }
-
-    /** Review leaves downward; once it has gone the retained tile resumes in its own frame. */
+    /** Slid away downward; once it has gone the retained tile resumes in its own frame. */
     fun collapsed() { morphs = true }
 
     private fun stiffness(damping: Float, seconds: Float): Float {

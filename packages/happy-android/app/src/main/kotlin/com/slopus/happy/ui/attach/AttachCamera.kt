@@ -74,7 +74,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.slopus.happy.attachments.AttachmentPreview
 import com.slopus.happy.camera.CameraBinding
 import com.slopus.happy.camera.CameraFailure
-import com.slopus.happy.camera.CapturedPhoto
 import com.slopus.happy.camera.PhotoExecutor
 import com.slopus.happy.camera.PhotoFiles
 import com.slopus.happy.camera.PhotoControl
@@ -85,6 +84,7 @@ import com.slopus.happy.camera.PhotoScreenFlash
 import com.slopus.happy.camera.capturePhoto
 import com.slopus.happy.camera.photoCaptureMode
 import com.slopus.happy.camera.cameraPresent
+import com.slopus.happy.ui.camera.CameraShot
 import com.slopus.happy.ui.camera.PhotoCameraLayout
 import com.slopus.happy.ui.camera.PhotoMotion
 import com.slopus.happy.ui.camera.PhotoProblem
@@ -127,7 +127,13 @@ internal class AttachCameraState {
     }
 }
 
-/** One CameraX session from the two-row tile through full camera, with private capture ownership. */
+/**
+ * One CameraX session from the two-row tile through full camera, with private capture ownership.
+ * Each photo taken goes to the sheet ([onShot]) and the camera stays, as Telegram-Android's does
+ * (`ChatAttachAlertPhotoLayout.openPhotoViewer`): the [shots] so far in its strip, opened by
+ * [onShots]. Their files are the camera's until the sheet goes. [paused] (the viewer over it)
+ * lets the camera go meanwhile.
+ */
 @Composable
 @androidx.annotation.OptIn(ExperimentalZeroShutterLag::class)
 internal fun AttachCamera(
@@ -135,8 +141,11 @@ internal fun AttachCamera(
     visible: Boolean,
     maxBytes: Long,
     hasRoom: () -> Boolean,
-    onPhoto: (AttachmentPreview) -> Unit,
-    onFinished: () -> Unit,
+    onShot: (AttachmentPreview) -> Unit,
+    shots: List<CameraShot> = emptyList(),
+    picked: Int = 0,
+    onShots: (Int) -> Unit = {},
+    paused: Boolean = false,
 ) {
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
@@ -147,8 +156,7 @@ internal fun AttachCamera(
     val window = (LocalView.current.parent as? DialogWindowProvider)?.window
     val density = LocalDensity.current
     val bottom = WindowInsets.navigationBars.getBottom(density) + with(density) { AttachSpec.tabBar.toPx() }
-    val photo by rememberUpdatedState(onPhoto)
-    val finished by rememberUpdatedState(onFinished)
+    val shot by rememberUpdatedState(onShot)
     val room by rememberUpdatedState(hasRoom)
     val motion = remember { PhotoMotion() }
     val firstFrame = remember { Animatable(0f) }
@@ -172,7 +180,6 @@ internal fun AttachCamera(
     var camera by remember { mutableStateOf<Camera?>(null) }
     var cameraState by remember { mutableStateOf<CameraState?>(null) }
     var problem by remember { mutableStateOf<PhotoProblem?>(null) }
-    var review by remember { mutableStateOf<CapturedPhoto?>(null) }
     var busy by remember { mutableStateOf(false) }
     var retry by remember { mutableStateOf(0) }
     var transition by remember { mutableStateOf<Job?>(null) }
@@ -277,9 +284,7 @@ internal fun AttachCamera(
         state.frozen = visibleTile()
         state.frozenClip = state.frozen?.let(::clip)
         transition = scope.launch {
-            motion.close(visibleTile() != null, review != null, reduce)
-            review?.let { captured -> PhotoExecutor.execute { files.discard(captured.directory) } }
-            review = null
+            motion.close(visibleTile() != null, reduce)
             state.full = false
             state.frozen = null
             state.frozenClip = null
@@ -303,7 +308,7 @@ internal fun AttachCamera(
     SideEffect { state.open = ::open; state.back = ::close }
     TrackOverlay(state.full) { close() }
     BackHandler(state.full) { close() }
-    val active = checked && resumed && allowed && present != false && review == null && (state.full || visibleTile() != null)
+    val active = checked && resumed && allowed && present != false && !paused && (state.full || visibleTile() != null)
     if (active) {
         DisposableEffect(capture) {
             val orientation = object : OrientationEventListener(context) {
@@ -355,15 +360,16 @@ internal fun AttachCamera(
                 control.countdown = null
                 busy = true
                 screenFlash.prepare()
-                review = capturePhoto(capture, files, control.actualFront, maxBytes, PhotoPreferences.shape.ratio) {
+                val captured = capturePhoto(capture, files, control.actualFront, maxBytes, PhotoPreferences.shape.ratio) {
                     scope.launch { blink.snapTo(1f); blink.animateTo(0f, tween(250)) }
                 }
+                if (files.holds(captured.directory)) shot(captured.attachment)
             } catch (e: CancellationException) { screenFlash.reset(); throw e }
             catch (_: Exception) { screenFlash.reset(); problem = PhotoProblem.CaptureFailed }
             finally { control.countdown = null; busy = false }
         }
     }
-    PhotoVolumeKeys(window, state.full && review == null) { take() }
+    PhotoVolumeKeys(window, state.full && !paused) { take() }
     val gestures = photoGestures(onFocus = { point, lock ->
         surface?.let { control.focusAt(point, coordinates.transformMatrix.map(point), it.resolution, lock) }
     }, onTransform = { pan, zoom ->
@@ -374,18 +380,9 @@ internal fun AttachCamera(
         PhotoCameraLayout(
             state.full, motion, tile = { if (state.full) state.frozen else visibleTile() },
             ready = ready,
-            busy = busy, problem = issue, review = review?.attachment, firstFrame = { firstFrame.value }, blink = { blink.value },
+            busy = busy, problem = issue, firstFrame = { firstFrame.value }, blink = { blink.value },
             onOpen = { open() }, onBack = { close() },
             onTake = { take() },
-            onRetake = { review?.let { captured -> PhotoExecutor.execute { files.discard(captured.directory) } }; review = null },
-            onUse = {
-                val captured = review
-                if (captured != null && !motion.closing && room() && files.transfer(captured.directory)) {
-                    photo(captured.attachment)
-                    transition?.cancel()
-                    transition = scope.launch { motion.use(reduce); finished() }
-                }
-            },
             onSettings = { settings.launch(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))) },
             onRetry = { problem = null; retry++ },
             preview = { surface?.let { CameraXViewfinder(it, implementationMode = ImplementationMode.EMBEDDED, coordinateTransformer = coordinates, modifier = Modifier.fillMaxSize()) } },
@@ -405,6 +402,7 @@ internal fun AttachCamera(
                 if (state.full) state.frozenClip
                 else visibleTile()?.let(::clip)
             },
+            shots = shots, picked = picked, onShots = onShots,
         )
     }
 }

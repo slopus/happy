@@ -15,8 +15,6 @@
     <string name="camera_ae_lock">AEロック</string>
     <string name="camera_zoom">ズーム %1$s</string>
     <string name="camera_take_photo">写真を撮る</string>
-    <string name="camera_retake">撮り直す</string>
-    <string name="camera_use_photo">写真を使用</string>
     <string name="camera_permission">写真を撮るには、設定でHappyによるカメラの使用を許可してください。</string>
     <string name="camera_no_camera">このデバイスにはカメラがありません。</string>
     <string name="camera_unavailable">カメラを起動できませんでした。もう一度お試しください。</string>

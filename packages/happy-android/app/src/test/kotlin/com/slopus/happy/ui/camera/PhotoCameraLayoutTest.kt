@@ -14,13 +14,13 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.width
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.slopus.happy.attachments.AttachmentPreview
 import com.slopus.happy.camera.PhotoControl
 import com.slopus.happy.camera.PhotoPreferences
 import com.slopus.happy.camera.PhotoShape
@@ -56,20 +56,22 @@ class PhotoCameraLayoutTest {
     private fun Camera(
         motion: PhotoMotion = PhotoMotion(settled = true),
         problem: PhotoProblem? = null,
-        review: AttachmentPreview? = null,
         tile: () -> Rect? = { null },
         take: () -> Unit = {},
         settings: () -> Unit = {},
-        use: () -> Unit = {},
+        shots: List<CameraShot> = emptyList(),
+        picked: Int = 0,
+        onShots: (Int) -> Unit = {},
         preview: @Composable () -> Unit = { Box(Modifier.fillMaxSize().background(Color.DarkGray)) },
         control: PhotoControl? = null,
         flip: () -> Unit = {},
     ) {
         PhotoCameraLayout(
             full = true, motion = motion, tile = tile, ready = problem == null, busy = false,
-            problem = problem, review = review, firstFrame = { 1f }, blink = { 0f },
-            onOpen = {}, onBack = {}, onTake = take, onRetake = {}, onUse = use,
+            problem = problem, firstFrame = { 1f }, blink = { 0f },
+            onOpen = {}, onBack = {}, onTake = take,
             onSettings = settings, onRetry = {}, preview = preview, control = control, onFlip = flip,
+            shots = shots, picked = picked, onShots = onShots,
         )
     }
 
@@ -134,19 +136,23 @@ class PhotoCameraLayoutTest {
     }
 
     @Test
-    fun reviewFitsTheWholePhotoAndOffersUsePhotoInTheNinetySixBar() {
-        var used = 0
-        val photo = AttachmentPreview("photo", "file:///camera-review.jpg", 3072, 2304, "image/jpeg", 1000, "photo.jpg")
-        rule.setHappyContent { ProvideWindowLayout { Camera(review = photo, use = { used++ }) } }
-        val image = rule.node(PhotoTags.REVIEW).bounds
-        val bar = rule.node(PhotoTags.REVIEW_BAR).bounds
-        assertDp("review bar", 96, bar.height)
-        assertDp("whole image", image.width * 3 / 4, image.height)
-        assertTrue("image above the controls", image.bottom <= bar.top)
-        rule.node(PhotoTags.SHUTTER).assertDoesNotExist()
-        rule.node(PhotoTags.RETAKE).assertIsDisplayed()
-        rule.node(PhotoTags.USE).performClick()
-        assertEquals(1, used)
+    fun shotsWaitInAStripOverThePhotosFootWithTheirCountBesideTheShutter() {
+        var opened = -1
+        val shots = listOf(CameraShot("camera:b", "file:///b.jpg", 2), CameraShot("camera:a", "file:///a.jpg", 1))
+        rule.setHappyContent { ProvideWindowLayout { Camera(shots = shots, picked = 2, onShots = { opened = it }) } }
+        val photo = rule.node(PhotoTags.PREVIEW).bounds
+        val strip = rule.node(PhotoTags.SHOTS).bounds
+        val shutter = rule.node(PhotoTags.SHUTTER).bounds
+        val counter = rule.node(PhotoTags.COUNTER).bounds
+        assertDp("strip", 80, strip.height)
+        assertTrue("strip over the photo's foot", strip.bottom <= photo.bottom && strip.top > photo.top)
+        assertDp("counter", 38, counter.height)
+        assertTrue("counter beside the shutter", counter.right <= shutter.left)
+        rule.onNodeWithText("2 PHOTOS").assertIsDisplayed()
+        rule.onAllNodesWithTag(PhotoTags.SHOT, useUnmergedTree = true)[1].performClick()
+        assertEquals(1, opened)
+        rule.node(PhotoTags.COUNTER).performClick()
+        assertEquals(0, opened)
     }
 
     @Test

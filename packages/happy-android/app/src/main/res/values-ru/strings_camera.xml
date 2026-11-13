@@ -15,8 +15,6 @@
     <string name="camera_ae_lock">ФИКСАЦИЯ АЭ</string>
     <string name="camera_zoom">Масштаб %1$s</string>
     <string name="camera_take_photo">Сделать фото</string>
-    <string name="camera_retake">Переснять</string>
-    <string name="camera_use_photo">Использовать фото</string>
     <string name="camera_permission">Разрешите Happy использовать камеру в настройках, чтобы делать фотографии.</string>
     <string name="camera_no_camera">На этом устройстве нет камеры.</string>
     <string name="camera_unavailable">Не удалось запустить камеру. Попробуйте снова.</string>

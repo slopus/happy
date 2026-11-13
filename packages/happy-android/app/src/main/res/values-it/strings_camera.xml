@@ -15,8 +15,6 @@
     <string name="camera_ae_lock">BLOCCO AE</string>
     <string name="camera_zoom">Zoom %1$s</string>
     <string name="camera_take_photo">Scatta foto</string>
-    <string name="camera_retake">Ripeti</string>
-    <string name="camera_use_photo">Usa foto</string>
     <string name="camera_permission">Consenti a Happy di usare la fotocamera nelle Impostazioni per scattare foto.</string>
     <string name="camera_no_camera">Questo dispositivo non ha una fotocamera.</string>
     <string name="camera_unavailable">Impossibile avviare la fotocamera. Riprova.</string>

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The photo editor (ui/photoedit/) and the camera's shots. Translated in values-*/ (AndroidStringsTranslatedTest).
+-->
+<resources>
+    <string name="photo_edit_crop">Crop</string>
+    <string name="photo_edit_draw">Draw</string>
+    <string name="photo_edit_cancel">Cancel</string>
+    <string name="photo_edit_done">Done</string>
+    <string name="photo_edit_reset">Reset</string>
+    <string name="photo_edit_rotate">Rotate</string>
+    <string name="photo_edit_straighten">Straighten</string>
+    <string name="photo_edit_mirror">Mirror</string>
+    <string name="photo_edit_aspect">Aspect ratio</string>
+    <string name="photo_edit_original">Original</string>
+    <string name="photo_edit_square">Square</string>
+    <string name="photo_edit_undo">Undo</string>
+    <string name="photo_edit_clear">Clear All</string>
+    <string name="photo_edit_clear_title">Clear the drawing?</string>
+    <string name="photo_edit_clear_confirm">Clear</string>
+    <string name="photo_edit_size">Size</string>
+    <string name="photo_edit_color">Color</string>
+    <string name="photo_edit_colors">Colors</string>
+    <string name="photo_edit_grid">Grid</string>
+    <string name="photo_edit_spectrum">Spectrum</string>
+    <string name="photo_edit_opacity">Opacity</string>
+    <string name="photo_edit_eyedropper">Pick a color from the photo</string>
+    <string name="photo_edit_pen">Pen</string>
+    <string name="photo_edit_arrow">Arrow</string>
+    <string name="photo_edit_marker">Marker</string>
+    <string name="photo_edit_neon">Neon</string>
+    <string name="photo_edit_blur">Blur</string>
+    <string name="photo_edit_eraser">Eraser</string>
+    <string name="photo_edit_edited">Edited</string>
+    <plurals name="camera_shots">
+        <item quantity="one">%1$d photo</item>
+        <item quantity="other">%1$d photos</item>
+    </plurals>
+</resources>

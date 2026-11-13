@@ -31,6 +31,10 @@ import com.slopus.happy.attachments.PickedKind
 import com.slopus.happy.attachments.PickedMedia
 import com.slopus.happy.attachments.RecentFiles
 import com.slopus.happy.ui.attach.AttachTags
+import com.slopus.happy.ui.photoedit.PhotoEditTags
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.swipe
 import com.slopus.happy.ui.conversation.ConversationComposerTags
 import com.slopus.happy.ui.conversation.ConversationRowTags
 import com.slopus.happy.ui.conversation.PictureViewerTags
@@ -216,6 +220,43 @@ class AttachSheetDeviceTest {
         )
         assertEquals(2, (send["content"] as JsonArray).size)
         assertTrue("file before send", transport.requests.indexOfFirst { it.endsWith("/file") } < transport.requests.indexOfFirst { it.endsWith("/send") })
+    }
+
+    @Test fun a_photo_turned_and_drawn_on_in_the_preview_is_picked_and_sent_as_edited() {
+        show()
+        open()
+        all(AttachTags.CELL)[1].performClick()
+        waitFor(AttachTags.PREVIEW_FOOT)
+        node(AttachTags.PREVIEW_CAPTION_BAR).assertExists()
+        node(AttachTags.PREVIEW_CROP).performClick()
+        waitFor(PhotoEditTags.CROP)
+        node(PhotoEditTags.CROP_ROTATE).performClick()
+        capture("13-crop-turned")
+        node(PhotoEditTags.DONE).performClick()
+        waitGone(PhotoEditTags.EDITOR)
+        // Done with a change picks the photo, as Telegram does.
+        rule.waitUntil(5_000) { node(AttachTags.PREVIEW_CHECK).fetchSemanticsNode().config.getOrElse(SemanticsProperties.Selected) { false } }
+        node(AttachTags.PREVIEW_DRAW).performClick()
+        waitFor(PhotoEditTags.DRAW_AREA)
+        node(PhotoEditTags.DRAW_AREA).performTouchInput { swipe(center - Offset(150f, 150f), center + Offset(150f, 100f), 400) }
+        rule.waitUntil(5_000) { SemanticsProperties.Disabled !in node(PhotoEditTags.UNDO).fetchSemanticsNode().config }
+        capture("14-drawn")
+        node(PhotoEditTags.DONE).performClick()
+        waitGone(PhotoEditTags.EDITOR)
+        SystemClock.sleep(1_000)
+        capture("15-preview-edited")
+        node(AttachTags.PREVIEW_CAPTION).performTextInput("Turned")
+        node(AttachTags.PREVIEW_SEND).performClick()
+        rule.waitUntil(30_000) { transport.bodies.any { it.first.endsWith("/send") } }
+        waitGone(AttachTags.SHEET)
+        val send = transport.bodies.single { it.first.endsWith("/send") }.second as JsonObject
+        assertEquals("Turned", (send["text"] as JsonPrimitive).content)
+        // The 900 × 1200 picture went turned a quarter: landscape.
+        val image = (send["content"] as JsonArray).map { it as JsonObject }.single { (it["type"] as JsonPrimitive).content == "image" }
+        val bytes = android.util.Base64.decode((image["data"] as JsonPrimitive).content, android.util.Base64.DEFAULT)
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        assertTrue("landscape: ${bounds.outWidth} × ${bounds.outHeight}", bounds.outWidth > bounds.outHeight)
     }
 
     @Test fun the_header_check_puts_the_picks_in_the_composer_unsent() {

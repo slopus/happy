@@ -481,7 +481,7 @@ internal fun ConversationComposer(
             room = AttachAccepts.Agent.maxItems - attached.size,
             button = plus,
             workspace = workspace,
-            onPhoto = pictures?.let { picker -> { photo -> if (picker.state.checkRoom()) picker.state.images.add(photo) } },
+            takesPhotos = pictures != null,
         )
         ModelPicker(
             open = picker,

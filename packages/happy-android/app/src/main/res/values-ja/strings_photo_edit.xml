@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_photo_edit.xml in ja. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="photo_edit_crop">切り抜き</string>
+    <string name="photo_edit_draw">描画</string>
+    <string name="photo_edit_cancel">キャンセル</string>
+    <string name="photo_edit_done">完了</string>
+    <string name="photo_edit_reset">リセット</string>
+    <string name="photo_edit_rotate">回転</string>
+    <string name="photo_edit_straighten">傾き補正</string>
+    <string name="photo_edit_mirror">反転</string>
+    <string name="photo_edit_aspect">アスペクト比</string>
+    <string name="photo_edit_original">オリジナル</string>
+    <string name="photo_edit_square">正方形</string>
+    <string name="photo_edit_undo">取り消す</string>
+    <string name="photo_edit_clear">すべて消去</string>
+    <string name="photo_edit_clear_title">描画を消去しますか？</string>
+    <string name="photo_edit_clear_confirm">消去</string>
+    <string name="photo_edit_size">サイズ</string>
+    <string name="photo_edit_color">色</string>
+    <string name="photo_edit_colors">カラー</string>
+    <string name="photo_edit_grid">グリッド</string>
+    <string name="photo_edit_spectrum">スペクトル</string>
+    <string name="photo_edit_opacity">不透明度</string>
+    <string name="photo_edit_eyedropper">写真から色を取得</string>
+    <string name="photo_edit_pen">ペン</string>
+    <string name="photo_edit_arrow">矢印</string>
+    <string name="photo_edit_marker">マーカー</string>
+    <string name="photo_edit_neon">ネオン</string>
+    <string name="photo_edit_blur">ぼかし</string>
+    <string name="photo_edit_eraser">消しゴム</string>
+    <string name="photo_edit_edited">編集済み</string>
+    <plurals name="camera_shots">
+        <item quantity="other">%1$d 枚の写真</item>
+    </plurals>
+</resources>

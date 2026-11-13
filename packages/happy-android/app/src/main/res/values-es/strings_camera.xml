@@ -15,8 +15,6 @@
     <string name="camera_ae_lock">BLOQUEO AE</string>
     <string name="camera_zoom">Zoom %1$s</string>
     <string name="camera_take_photo">Hacer foto</string>
-    <string name="camera_retake">Repetir</string>
-    <string name="camera_use_photo">Usar foto</string>
     <string name="camera_permission">Permite que Happy use la cámara en Ajustes para hacer fotos.</string>
     <string name="camera_no_camera">Este dispositivo no tiene cámara.</string>
     <string name="camera_unavailable">No se pudo iniciar la cámara. Inténtalo de nuevo.</string>

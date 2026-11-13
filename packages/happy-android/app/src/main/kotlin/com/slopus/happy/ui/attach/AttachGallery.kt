@@ -57,6 +57,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import java.io.File
 import com.slopus.happy.R
 import com.slopus.happy.artifacts.formatDuration
 import com.slopus.happy.attachments.GalleryAccess
@@ -77,6 +78,8 @@ data class GalleryContent(
     val loaded: Boolean = false,
     /** Asked and refused for good: only Settings can give access now. */
     val blocked: Boolean = false,
+    /** What its photos were edited into: a cell shows its photo as edited. */
+    val edits: AttachEdits? = null,
 )
 
 /**
@@ -124,11 +127,11 @@ internal fun AttachGalleryPage(
                 val first = if (camera == null) 0 else 2 * (columns - 1)
                 if (camera != null) {
                     item(key = "camera", span = { GridItemSpan(maxLineSpan) }) {
-                        CameraRows(camera, columns, content.items.take(first), selection, sheet, colors, onToggle, onOpen)
+                        CameraRows(camera, columns, content.items.take(first), selection, content.edits, sheet, colors, onToggle, onOpen)
                     }
                 }
                 items(content.items.drop(first), key = { it.uri }, contentType = { "cell" }) { item ->
-                    GalleryCell(item, selection.number(item.uri), sheet, colors, onToggle = { onToggle(item) }, onOpen = { onOpen(item) })
+                    GalleryCell(item, selection.number(item.uri), sheet, colors, onToggle = { onToggle(item) }, onOpen = { onOpen(item) }, edited = content.edits?.get(item.uri)?.file)
                 }
             }
         }
@@ -138,10 +141,12 @@ internal fun AttachGalleryPage(
 /**
  * One cell (`PhotoAttachPhotoCell`): the thumbnail filling it, a video's
  * length bottom left, the check top right. Picked, the picture shrinks to
- * 0.787 in 200 ms so a ring of the sheet shows round it.
+ * 0.787 in 200 ms so a ring of the sheet shows round it. An [edited] photo
+ * shows as edited; the camera's shots (files of the sheet's own) are read
+ * whole, having no system thumbnail.
  */
 @Composable
-internal fun GalleryCell(item: GalleryItem, number: Int, sheet: Color, colors: AttachColors, onToggle: () -> Unit, onOpen: () -> Unit) {
+internal fun GalleryCell(item: GalleryItem, number: Int, sheet: Color, colors: AttachColors, onToggle: () -> Unit, onOpen: () -> Unit, edited: File? = null) {
     val reduceMotion = rememberReduceMotion()
     val scale by animateFloatAsState(
         if (number > 0) AttachSpec.PICKED_SCALE else 1f,
@@ -176,7 +181,7 @@ internal fun GalleryCell(item: GalleryItem, number: Int, sheet: Color, colors: A
                 },
         ) {
             AsyncImage(
-                model = GalleryThumb(item.uri, item.isVideo),
+                model = edited ?: if (item.uri.startsWith("file:")) item.uri else GalleryThumb(item.uri, item.isVideo),
                 imageLoader = rememberImageLoader(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
@@ -275,6 +280,7 @@ private fun CameraRows(
     columns: Int,
     items: List<GalleryItem>,
     selection: AttachSelection,
+    edits: AttachEdits?,
     sheet: Color,
     colors: AttachColors,
     onToggle: (GalleryItem) -> Unit,
@@ -292,7 +298,7 @@ private fun CameraRows(
                     camera.tilePosition = Rect(it.positionInWindow(), Size(it.size.width.toFloat(), it.size.height.toFloat()))
                 }.testTag(PhotoTags.TILE))
             items.forEach { item ->
-                GalleryCell(item, selection.number(item.uri), sheet, colors, { onToggle(item) }, { onOpen(item) })
+                GalleryCell(item, selection.number(item.uri), sheet, colors, { onToggle(item) }, { onOpen(item) }, edits?.get(item.uri)?.file)
             }
         },
         modifier = Modifier.fillMaxWidth(),

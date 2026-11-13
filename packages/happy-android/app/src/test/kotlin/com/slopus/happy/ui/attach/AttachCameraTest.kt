@@ -52,7 +52,7 @@ class AttachCameraTest {
                 val state = remember { AttachCameraState() }
                 Box {
                     TextButton(onClick = { state.open() }) { Text("Open test camera") }
-                    AttachCamera(state, visible = false, maxBytes = 10_000_000, hasRoom = { true }, onPhoto = {}, onFinished = {})
+                    AttachCamera(state, visible = false, maxBytes = 10_000_000, hasRoom = { true }, onShot = {})
                 }
             }
         }

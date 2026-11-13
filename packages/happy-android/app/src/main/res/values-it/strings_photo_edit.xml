@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_photo_edit.xml in it. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="photo_edit_crop">Ritaglia</string>
+    <string name="photo_edit_draw">Disegna</string>
+    <string name="photo_edit_cancel">Annulla</string>
+    <string name="photo_edit_done">Fine</string>
+    <string name="photo_edit_reset">Ripristina</string>
+    <string name="photo_edit_rotate">Ruota</string>
+    <string name="photo_edit_straighten">Raddrizza</string>
+    <string name="photo_edit_mirror">Specchia</string>
+    <string name="photo_edit_aspect">Proporzioni</string>
+    <string name="photo_edit_original">Originale</string>
+    <string name="photo_edit_square">Quadrato</string>
+    <string name="photo_edit_undo">Annulla tratto</string>
+    <string name="photo_edit_clear">Cancella tutto</string>
+    <string name="photo_edit_clear_title">Cancellare il disegno?</string>
+    <string name="photo_edit_clear_confirm">Cancella</string>
+    <string name="photo_edit_size">Dimensione</string>
+    <string name="photo_edit_color">Colore</string>
+    <string name="photo_edit_colors">Colori</string>
+    <string name="photo_edit_grid">Griglia</string>
+    <string name="photo_edit_spectrum">Spettro</string>
+    <string name="photo_edit_opacity">Opacità</string>
+    <string name="photo_edit_eyedropper">Prendi un colore dalla foto</string>
+    <string name="photo_edit_pen">Penna</string>
+    <string name="photo_edit_arrow">Freccia</string>
+    <string name="photo_edit_marker">Evidenziatore</string>
+    <string name="photo_edit_neon">Neon</string>
+    <string name="photo_edit_blur">Sfocatura</string>
+    <string name="photo_edit_eraser">Gomma</string>
+    <string name="photo_edit_edited">Modificata</string>
+    <plurals name="camera_shots">
+        <item quantity="one">%1$d foto</item>
+        <item quantity="many">%1$d foto</item>
+        <item quantity="other">%1$d foto</item>
+    </plurals>
+</resources>

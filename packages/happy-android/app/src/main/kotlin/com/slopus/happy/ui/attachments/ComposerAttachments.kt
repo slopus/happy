@@ -128,7 +128,7 @@ fun ComposerAddImageButton(accepts: AttachAccepts, caption: String, onCaptionCha
         },
         room = picker.state.remaining,
         button = plus,
-        onPhoto = { photo -> if (picker.state.checkRoom()) picker.state.images.add(photo) },
+        takesPhotos = true,
     )
 }
 

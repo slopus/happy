@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_photo_edit.xml in pl. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="photo_edit_crop">Przytnij</string>
+    <string name="photo_edit_draw">Rysuj</string>
+    <string name="photo_edit_cancel">Anuluj</string>
+    <string name="photo_edit_done">Gotowe</string>
+    <string name="photo_edit_reset">Resetuj</string>
+    <string name="photo_edit_rotate">Obróć</string>
+    <string name="photo_edit_straighten">Wyprostuj</string>
+    <string name="photo_edit_mirror">Odbij</string>
+    <string name="photo_edit_aspect">Proporcje</string>
+    <string name="photo_edit_original">Oryginalne</string>
+    <string name="photo_edit_square">Kwadrat</string>
+    <string name="photo_edit_undo">Cofnij</string>
+    <string name="photo_edit_clear">Wyczyść wszystko</string>
+    <string name="photo_edit_clear_title">Wyczyścić rysunek?</string>
+    <string name="photo_edit_clear_confirm">Wyczyść</string>
+    <string name="photo_edit_size">Rozmiar</string>
+    <string name="photo_edit_color">Kolor</string>
+    <string name="photo_edit_colors">Kolory</string>
+    <string name="photo_edit_grid">Siatka</string>
+    <string name="photo_edit_spectrum">Spektrum</string>
+    <string name="photo_edit_opacity">Krycie</string>
+    <string name="photo_edit_eyedropper">Pobierz kolor ze zdjęcia</string>
+    <string name="photo_edit_pen">Pióro</string>
+    <string name="photo_edit_arrow">Strzałka</string>
+    <string name="photo_edit_marker">Zakreślacz</string>
+    <string name="photo_edit_neon">Neon</string>
+    <string name="photo_edit_blur">Rozmycie</string>
+    <string name="photo_edit_eraser">Gumka</string>
+    <string name="photo_edit_edited">Edytowane</string>
+    <plurals name="camera_shots">
+        <item quantity="one">%1$d zdjęcie</item>
+        <item quantity="few">%1$d zdjęcia</item>
+        <item quantity="many">%1$d zdjęć</item>
+        <item quantity="other">%1$d zdjęcia</item>
+    </plurals>
+</resources>

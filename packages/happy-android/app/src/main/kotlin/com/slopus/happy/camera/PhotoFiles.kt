@@ -6,7 +6,7 @@ import java.io.IOException
 import java.util.UUID
 
 /**
- * A sheet's captured files, until Use Photo transfers a directory to the draft.
+ * A sheet's captured files, held until it goes (what is sent is staged, a copy, first) unless transferred.
  * Allocation and deletion run on IO. Transfer only updates ownership in memory.
  * Discarded directories stay known: a CameraX callback finishing after disposal
  * can delete its late output again without touching a photo already handed over.

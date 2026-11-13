@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_photo_edit.xml in ru. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="photo_edit_crop">Обрезать</string>
+    <string name="photo_edit_draw">Рисовать</string>
+    <string name="photo_edit_cancel">Отмена</string>
+    <string name="photo_edit_done">Готово</string>
+    <string name="photo_edit_reset">Сбросить</string>
+    <string name="photo_edit_rotate">Повернуть</string>
+    <string name="photo_edit_straighten">Выровнять</string>
+    <string name="photo_edit_mirror">Отразить</string>
+    <string name="photo_edit_aspect">Соотношение сторон</string>
+    <string name="photo_edit_original">Исходное</string>
+    <string name="photo_edit_square">Квадрат</string>
+    <string name="photo_edit_undo">Отменить</string>
+    <string name="photo_edit_clear">Очистить</string>
+    <string name="photo_edit_clear_title">Стереть весь рисунок?</string>
+    <string name="photo_edit_clear_confirm">Очистить</string>
+    <string name="photo_edit_size">Размер</string>
+    <string name="photo_edit_color">Цвет</string>
+    <string name="photo_edit_colors">Цвета</string>
+    <string name="photo_edit_grid">Сетка</string>
+    <string name="photo_edit_spectrum">Спектр</string>
+    <string name="photo_edit_opacity">Непрозрачность</string>
+    <string name="photo_edit_eyedropper">Взять цвет с фото</string>
+    <string name="photo_edit_pen">Ручка</string>
+    <string name="photo_edit_arrow">Стрелка</string>
+    <string name="photo_edit_marker">Маркер</string>
+    <string name="photo_edit_neon">Неон</string>
+    <string name="photo_edit_blur">Размытие</string>
+    <string name="photo_edit_eraser">Ластик</string>
+    <string name="photo_edit_edited">Изменено</string>
+    <plurals name="camera_shots">
+        <item quantity="one">%1$d фото</item>
+        <item quantity="few">%1$d фото</item>
+        <item quantity="many">%1$d фото</item>
+        <item quantity="other">%1$d фото</item>
+    </plurals>
+</resources>

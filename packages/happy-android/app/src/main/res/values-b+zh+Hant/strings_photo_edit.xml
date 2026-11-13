@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_photo_edit.xml in b+zh+Hant. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="photo_edit_crop">裁剪</string>
+    <string name="photo_edit_draw">塗鴉</string>
+    <string name="photo_edit_cancel">取消</string>
+    <string name="photo_edit_done">完成</string>
+    <string name="photo_edit_reset">還原</string>
+    <string name="photo_edit_rotate">旋轉</string>
+    <string name="photo_edit_straighten">拉直</string>
+    <string name="photo_edit_mirror">鏡像</string>
+    <string name="photo_edit_aspect">長寬比</string>
+    <string name="photo_edit_original">原始</string>
+    <string name="photo_edit_square">正方形</string>
+    <string name="photo_edit_undo">復原</string>
+    <string name="photo_edit_clear">全部清除</string>
+    <string name="photo_edit_clear_title">清除塗鴉？</string>
+    <string name="photo_edit_clear_confirm">清除</string>
+    <string name="photo_edit_size">大小</string>
+    <string name="photo_edit_color">顏色</string>
+    <string name="photo_edit_colors">顏色</string>
+    <string name="photo_edit_grid">網格</string>
+    <string name="photo_edit_spectrum">光譜</string>
+    <string name="photo_edit_opacity">不透明度</string>
+    <string name="photo_edit_eyedropper">從相片取色</string>
+    <string name="photo_edit_pen">鋼筆</string>
+    <string name="photo_edit_arrow">箭頭</string>
+    <string name="photo_edit_marker">螢光筆</string>
+    <string name="photo_edit_neon">霓虹</string>
+    <string name="photo_edit_blur">模糊</string>
+    <string name="photo_edit_eraser">橡皮擦</string>
+    <string name="photo_edit_edited">已編輯</string>
+    <plurals name="camera_shots">
+        <item quantity="other">%1$d 張相片</item>
+    </plurals>
+</resources>

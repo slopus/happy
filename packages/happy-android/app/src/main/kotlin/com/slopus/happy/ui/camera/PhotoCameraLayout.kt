@@ -11,13 +11,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -44,7 +42,6 @@ import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
@@ -58,15 +55,12 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
 import com.slopus.happy.R
-import com.slopus.happy.attachments.AttachmentPreview
 import com.slopus.happy.camera.PhotoControl
 import com.slopus.happy.camera.PhotoPreferences
 import com.slopus.happy.camera.PhotoShape
 import com.slopus.happy.ui.components.Header
 import com.slopus.happy.ui.components.MaterialSymbols
-import com.slopus.happy.ui.components.rememberImageLoader
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.ThemePreference
@@ -83,9 +77,14 @@ private class PreviewClip(private val rect: Rect) : Shape {
 /**
  * One measured preview at its full size, transformed and clipped into the two-cell tile.
  * iOS CameraScreenLayout: 4:3 photo, 96 shutter target, 68 ring/3 stroke/60 disc,
- * tablet controls in a 120 trailing column; review has a 96 bar and text 16 in.
+ * tablet controls in a 120 trailing column.
  * Android's standard 64 Header replaces iOS's 44 camera bar (AGENTS rule5).
  * [preview] stays at the same composition location across opening and closing.
+ * Once something is taken, Telegram-Android's camera keeps the [shots]: a strip
+ * of them over the foot of the photo, 80 tall (`cameraPhotoRecyclerView`), the
+ * zoom bar lifted over it, and the count of everything [picked] beside the
+ * shutter in a 38 pill (`counterTextView`); a shot or the count opens them
+ * ([onShots]).
  */
 @Composable
 internal fun PhotoCameraLayout(
@@ -95,14 +94,11 @@ internal fun PhotoCameraLayout(
     ready: Boolean,
     busy: Boolean,
     problem: PhotoProblem?,
-    review: AttachmentPreview?,
     firstFrame: () -> Float,
     blink: () -> Float,
     onOpen: () -> Unit,
     onBack: () -> Unit,
     onTake: () -> Unit,
-    onRetake: () -> Unit,
-    onUse: () -> Unit,
     onSettings: () -> Unit,
     onRetry: () -> Unit,
     preview: @Composable () -> Unit,
@@ -114,6 +110,9 @@ internal fun PhotoCameraLayout(
     flip: () -> Float = { 0f },
     obscured: () -> Float = { 0f },
     screenFlash: () -> Float = { 0f },
+    shots: List<CameraShot> = emptyList(),
+    picked: Int = 0,
+    onShots: (Int) -> Unit = {},
 ) {
     val density = LocalDensity.current
     val tablet = LocalWindowLayout.current.isTablet
@@ -137,7 +136,7 @@ internal fun PhotoCameraLayout(
             if (full) {
                 Box(Modifier.fillMaxSize().drawBehind { drawRect(Color.Black, alpha = motion.progress.value.coerceIn(0f, 1f)) }.clickable(onClick = {}).clearAndSetSemantics {})
             }
-            if (review == null && (full || tile() != null)) {
+            if (full || tile() != null) {
                 Box(
                     Modifier.fillMaxSize()
                         .graphicsLayer { clip = true; this.shape = PreviewClip(transform().clip) }
@@ -181,55 +180,56 @@ internal fun PhotoCameraLayout(
                 }
             }
             if (full) {
-                if (review != null) {
-                    val area = Rect(0f, top, size.width, frames.review.top.coerceAtLeast(top))
-                    val photo = fitPhoto(Size(review.width.toFloat(), review.height.toFloat()), area)
-                    AsyncImage(
-                        review.uri, stringResource(R.string.attach_photo_label), imageLoader = rememberImageLoader(), contentScale = ContentScale.Fit,
-                        modifier = Modifier.frame(photo, density).graphicsLayer { translationY = slide() }.testTag(PhotoTags.REVIEW),
-                    )
-                    Box(Modifier.frame(frames.review, density).graphicsLayer { translationY = slide() }.testTag(PhotoTags.REVIEW_BAR)) {
-                        Row(Modifier.fillMaxWidth().height(96.dp), verticalAlignment = Alignment.CenterVertically) {
-                            ReviewButton(stringResource(R.string.camera_retake), !motion.closing, onRetake, Modifier.testTag(PhotoTags.RETAKE))
-                            Spacer(Modifier.weight(1f))
-                            ReviewButton(stringResource(R.string.camera_use_photo), !motion.closing, onUse, Modifier.testTag(PhotoTags.USE))
-                        }
+                Shutter(
+                    enabled = ready && !busy && !motion.closing,
+                    onTake = onTake,
+                    modifier = Modifier.frame(frames.shutter, density).graphicsLayer { alpha = motion.controls.value; translationY = slide() },
+                )
+                val crop = fitPhoto(Size(shape.ratio.toFloat(), 1f), frames.preview, portrait = frames.preview.height >= frames.preview.width)
+                val foot = if (tablet) crop.bottom else minOf(crop.bottom, frames.mode.top)
+                // The strip takes the photo's foot; the zoom bar sits over it.
+                val strip = if (shots.isEmpty()) null else Rect(0f, foot - (PhotoShotsSpec.STRIP + 8) * density.density, size.width, foot - 8 * density.density)
+                if (control != null) {
+                    val count = control.zoomBounds.stops.size
+                    val width = (count * 48 + 6) * density.density
+                    val above = strip?.top ?: foot
+                    val bar = Rect(frames.preview.center.x - width / 2, above - 60 * density.density, frames.preview.center.x + width / 2, above - 12 * density.density)
+                    PhotoZoomBar(control, rotation, ready && !busy, Modifier.frame(bar, density).graphicsLayer { alpha = motion.controls.value; translationY = slide() })
+                    if (control.canFlip) {
+                        val side = 48 * density.density
+                        val x = if (tablet) size.width - 60 * density.density else (frames.shutter.right + size.width) / 2
+                        val y = if (tablet) frames.shutter.bottom + 24 * density.density + side / 2 else frames.shutter.center.y
+                        PhotoFlip(ready && !busy && control.countdown == null, rotation, onFlip,
+                            Modifier.frame(Rect(x - side / 2, y - side / 2, x + side / 2, y + side / 2), density).graphicsLayer { alpha = motion.controls.value; translationY = slide() })
                     }
-                } else {
-                    Shutter(
-                        enabled = ready && !busy && !motion.closing,
-                        onTake = onTake,
-                        modifier = Modifier.frame(frames.shutter, density).graphicsLayer { alpha = motion.controls.value; translationY = slide() },
-                    )
-                    if (control != null) {
-                        val crop = fitPhoto(Size(shape.ratio.toFloat(), 1f), frames.preview, portrait = frames.preview.height >= frames.preview.width)
-                        val count = control.zoomBounds.stops.size
-                        val width = (count * 48 + 6) * density.density
-                        val foot = if (tablet) crop.bottom else minOf(crop.bottom, frames.mode.top)
-                        val bar = Rect(frames.preview.center.x - width / 2, foot - 60 * density.density, frames.preview.center.x + width / 2, foot - 12 * density.density)
-                        PhotoZoomBar(control, rotation, ready && !busy, Modifier.frame(bar, density).graphicsLayer { alpha = motion.controls.value; translationY = slide() })
-                        if (control.canFlip) {
-                            val side = 48 * density.density
-                            val x = if (tablet) size.width - 60 * density.density else (frames.shutter.right + size.width) / 2
-                            val y = if (tablet) frames.shutter.bottom + 24 * density.density + side / 2 else frames.shutter.center.y
-                            PhotoFlip(ready && !busy && control.countdown == null, rotation, onFlip,
-                                Modifier.frame(Rect(x - side / 2, y - side / 2, x + side / 2, y + side / 2), density).graphicsLayer { alpha = motion.controls.value; translationY = slide() })
-                        }
+                }
+                if (strip != null) {
+                    PhotoShotStrip(shots, onShots, Modifier.frame(strip, density).graphicsLayer { alpha = motion.controls.value; translationY = slide() })
+                    // Beside the shutter on a phone, as the flip is on its other side; over the strip's start on a tablet.
+                    val pill = (PhotoShotsSpec.COUNTER * density.density)
+                    val middle = if (tablet) Offset(80 * density.density, strip.top - pill) else Offset(frames.shutter.left / 2, frames.shutter.center.y)
+                    Box(
+                        Modifier.offset { IntOffset(0, (middle.y - pill / 2).roundToInt()) }.fillMaxWidth(if (tablet) 1f else frames.shutter.left / size.width)
+                            .height(PhotoShotsSpec.COUNTER.dp)
+                            .graphicsLayer { alpha = motion.controls.value; translationY = slide() },
+                        contentAlignment = if (tablet) Alignment.CenterStart else Alignment.Center,
+                    ) {
+                        PhotoShotCounter(picked, onClick = { onShots(0) }, modifier = if (tablet) Modifier.padding(start = 16.dp) else Modifier)
                     }
-                    if (problem != null) {
-                        Box(Modifier.frame(frames.preview, density).graphicsLayer { translationY = slide() }, contentAlignment = Alignment.Center) {
-                            CameraMessage(problem, onSettings, onRetry)
-                        }
+                }
+                if (problem != null) {
+                    Box(Modifier.frame(frames.preview, density).graphicsLayer { translationY = slide() }, contentAlignment = Alignment.Center) {
+                        CameraMessage(problem, onSettings, onRetry)
                     }
                 }
                 Header(
                     title = stringResource(R.string.attach_photo_label),
                     background = Color.Black,
                     left = { IconButton(onClick = onBack) { Icon(MaterialSymbols.ArrowBack, stringResource(R.string.common_back), tint = Color.White) } },
-                    right = if (!tablet && control != null && review == null) ({ PhotoTools(control, false, ready && !busy && control.countdown == null, rotation) }) else null,
+                    right = if (!tablet && control != null) ({ PhotoTools(control, false, ready && !busy && control.countdown == null, rotation) }) else null,
                     modifier = Modifier.align(Alignment.TopCenter).graphicsLayer { alpha = motion.controls.value; translationY = slide() },
                 )
-                if (tablet && control != null && review == null) {
+                if (tablet && control != null) {
                     Box(Modifier.offset { IntOffset((size.width - 84 * density.density).roundToInt(), (top - 56 * density.density).roundToInt()) }
                         .graphicsLayer { alpha = motion.controls.value; translationY = slide() }) {
                         PhotoTools(control, true, ready && !busy && control.countdown == null, rotation)
@@ -261,13 +261,6 @@ private fun Shutter(enabled: Boolean, onTake: () -> Unit, modifier: Modifier) {
             drawCircle(Color.White, (size.minDimension - stroke) / 2, style = Stroke(stroke))
         }.testTag(PhotoTags.RING))
         Box(Modifier.size(60.dp).graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (enabled) 1f else 0.45f }.background(Color.White, CircleShape).testTag(PhotoTags.DISC))
-    }
-}
-
-@Composable
-private fun ReviewButton(text: String, enabled: Boolean, onClick: () -> Unit, modifier: Modifier) {
-    Box(modifier.heightIn(min = 48.dp).clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
-        Text(text, color = Color.White, style = happyTextStyle(17))
     }
 }
 

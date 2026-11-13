@@ -15,8 +15,6 @@
     <string name="camera_ae_lock">自动曝光锁定</string>
     <string name="camera_zoom">缩放 %1$s</string>
     <string name="camera_take_photo">拍照</string>
-    <string name="camera_retake">重拍</string>
-    <string name="camera_use_photo">使用照片</string>
     <string name="camera_permission">要拍照，请在设置中允许 Happy 使用相机。</string>
     <string name="camera_no_camera">此设备没有相机。</string>
     <string name="camera_unavailable">无法启动相机。请重试。</string>

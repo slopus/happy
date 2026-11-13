@@ -15,8 +15,6 @@
     <string name="camera_ae_lock">AE LOCK</string>
     <string name="camera_zoom">Zoom %1$s</string>
     <string name="camera_take_photo">Take Photo</string>
-    <string name="camera_retake">Retake</string>
-    <string name="camera_use_photo">Use Photo</string>
     <string name="camera_permission">Allow Happy to use the camera in Settings to take photos.</string>
     <string name="camera_no_camera">This device has no camera.</string>
     <string name="camera_unavailable">The camera could not start. Try again.</string>

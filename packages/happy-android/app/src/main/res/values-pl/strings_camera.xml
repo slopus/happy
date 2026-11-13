@@ -15,8 +15,6 @@
     <string name="camera_ae_lock">BLOKADA AE</string>
     <string name="camera_zoom">Powiększenie %1$s</string>
     <string name="camera_take_photo">Zrób zdjęcie</string>
-    <string name="camera_retake">Zrób ponownie</string>
-    <string name="camera_use_photo">Użyj zdjęcia</string>
     <string name="camera_permission">Zezwól Happy na używanie aparatu w Ustawieniach, aby robić zdjęcia.</string>
     <string name="camera_no_camera">To urządzenie nie ma aparatu.</string>
     <string name="camera_unavailable">Nie udało się uruchomić aparatu. Spróbuj ponownie.</string>

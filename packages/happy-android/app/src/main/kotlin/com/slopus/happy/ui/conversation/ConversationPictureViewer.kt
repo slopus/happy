@@ -21,6 +21,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
+import android.view.WindowManager
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
@@ -159,6 +160,9 @@ interface ViewerSource {
     /** A small picture already decoded (a gallery's thumbnail), drawn while the bytes are read. */
     fun thumbnail(key: String): ImageBitmap? = null
 
+    /** Which making of the picture this is: read as state, a new one (an edit) is read and drawn again. */
+    fun revision(key: String): Int = 0
+
     /** A picture's bytes; null when they can't be had. */
     suspend fun bytes(key: String): ByteArray?
 
@@ -188,7 +192,10 @@ interface ViewerSource {
  * in from the safe area's top right) leaves. A source that shares adds a
  * Share button at the top left. A [corner] (the attach sheet's check, as
  * iOS's `AttachPreviewViewController` has it) takes the top right for the
- * picture in view, and the close button moves to the top left. The
+ * picture in view, and the close button moves to the top left. A
+ * [bottom] (the attach sheet's caption and edits, Telegram's
+ * `PhotoViewer` picking) sits at the foot for the item in view, its
+ * window resized for the keyboard so it can ride it. The
  * position ("2 of 5") is the page's state for TalkBack, as iOS gives it to
  * VoiceOver.
  */
@@ -198,6 +205,7 @@ fun PictureViewer(
     index: Int,
     source: ViewerSource,
     corner: (@Composable (item: ViewerItem, modifier: Modifier) -> Unit)? = null,
+    bottom: (@Composable (item: ViewerItem, modifier: Modifier) -> Unit)? = null,
     onClose: () -> Unit,
 ) {
     if (items.isEmpty()) return
@@ -286,6 +294,8 @@ fun PictureViewer(
             // It comes and goes by its own motion, not the system's dialog fade over it.
             window?.setWindowAnimations(0)
             window?.let { WindowCompat.getInsetsController(it, it.decorView).isAppearanceLightStatusBars = false }
+            @Suppress("DEPRECATION")
+            if (bottom != null) window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         }
         // Its window has focus once the system shows it, a while after it is laid out on a slow phone; not before is the flight begun.
         val view = LocalView.current
@@ -376,6 +386,7 @@ fun PictureViewer(
                 Icon(MaterialSymbols.Close, stringResource(R.string.conversation_picture_close))
             }
             corner?.invoke(items[pager.currentPage], controls.corner(Alignment.TopEnd))
+            bottom?.invoke(items[pager.currentPage], controls.align(Alignment.BottomCenter))
         }
     }
 }
@@ -586,11 +597,13 @@ private fun PicturePage(
     progress: () -> Float,
     onTap: () -> Unit,
 ) {
-    // Decoded once per page, not on every recomposition.
-    val initial = remember(item.key) { source.cached(item.key) }
-    val bytes by produceState(initial, item.key) {
-        if (value == null) {
-            value = try {
+    // Decoded once per page and making of it, not on every recomposition.
+    val revision = source.revision(item.key)
+    val initial = remember(item.key, revision) { source.cached(item.key) }
+    // The bytes with the making they are of, so a new one is never cached under the old one's key.
+    val loaded by produceState<Pair<Int, ByteArray?>?>(initial?.let { revision to it }, item.key, revision) {
+        if (value?.first != revision || value?.second == null) {
+            value = revision to try {
                 source.bytes(item.key)
             } catch (e: CancellationException) {
                 throw e
@@ -599,8 +612,10 @@ private fun PicturePage(
             }
         }
     }
+    val bytes = loaded?.second
+    val made = loaded?.first ?: 0
     // The thumbnail it flies out of, as the chat drew it, until its own bytes are read; else its thumbhash.
-    val placeholder = rememberMemoryImage(item.key) ?: remember(item.key) { source.thumbnail(item.key) } ?: rememberThumbHash(item.thumbhash)
+    val placeholder = (if (revision == 0) rememberMemoryImage(item.key) else null) ?: remember(item.key, revision) { source.thumbnail(item.key) } ?: rememberThumbHash(item.thumbhash)
     val read = remember(bytes) { bytes?.let(::pictureSize)?.let { image -> image.width?.let { w -> image.height?.let { h -> w to h } } } }
     val density = LocalDensity.current
     val direction = LocalLayoutDirection.current
@@ -650,7 +665,7 @@ private fun PicturePage(
             when {
                 shown != null -> RemoteImage(
                     model = shown,
-                    cacheKey = item.key,
+                    cacheKey = if (made == 0) item.key else "${item.key}#$made",
                     contentDescription = item.label,
                     contentScale = ContentScale.Fit,
                     placeholder = placeholder,

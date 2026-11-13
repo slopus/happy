@@ -113,6 +113,12 @@ object AttachTags {
     const val CHECK = "attach.gallery.check"
     /** The check on the full-screen preview, for the picture in view. */
     const val PREVIEW_CHECK = "attach.preview.check"
+    const val PREVIEW_FOOT = "attach.preview.foot"
+    const val PREVIEW_CAPTION_BAR = "attach.preview.captionBar"
+    const val PREVIEW_CAPTION = "attach.preview.caption"
+    const val PREVIEW_SEND = "attach.preview.send"
+    const val PREVIEW_CROP = "attach.preview.crop"
+    const val PREVIEW_DRAW = "attach.preview.draw"
     const val VIDEO_BADGE = "attach.gallery.video"
     const val ASK = "attach.gallery.ask"
     const val ALLOW = "attach.gallery.allow"

@@ -15,8 +15,6 @@
     <string name="camera_ae_lock">BLOQUEIG AE</string>
     <string name="camera_zoom">Zoom %1$s</string>
     <string name="camera_take_photo">Fes una foto</string>
-    <string name="camera_retake">Repeteix</string>
-    <string name="camera_use_photo">Utilitza la foto</string>
     <string name="camera_permission">Permet que Happy utilitzi la càmera a Configuració per fer fotos.</string>
     <string name="camera_no_camera">Aquest dispositiu no té càmera.</string>
     <string name="camera_unavailable">La càmera no s’ha pogut iniciar. Torna-ho a provar.</string>
