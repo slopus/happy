@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.genui
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -34,9 +35,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.autofill.ContentDataType
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -60,8 +67,9 @@ import com.slopus.happy.genui.SecretPrefill
 import com.slopus.happy.ui.components.HappyTextField
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
-import com.slopus.happy.ui.components.ShimmerSpec
-import com.slopus.happy.ui.components.ShimmerText
+import com.slopus.happy.ui.components.RoundButton
+import com.slopus.happy.ui.components.RoundButtonDisplay
+import com.slopus.happy.ui.components.RoundButtonSize
 import com.slopus.happy.ui.components.TrackOverlay
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
@@ -98,6 +106,8 @@ internal object SecretSheetSpec {
     val mono = happyTextStyle(fontSize = 15, lineHeight = 20).copy(fontFamily = FontFamily.Monospace)
     val padding = 20.dp
     val field = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+    /** How far the fields fade where they scroll past the sheet's handle or its buttons (as onboarding's CloudSpec.edgeFade). */
+    val edgeFade = 24.dp
 }
 
 /** What the person is told after a failed save; never the daemon's own words, which could echo a value. */
@@ -124,7 +134,7 @@ fun GenUiSecretSheet(ask: SecretAsk, api: GenUiSecretApi, onSaved: (SecretSaved)
     val draft = remember(ask) { SecretDraft(ask.prefill, ask.name ?: ask.prefill.id) }
     var checking by remember(ask) { mutableStateOf(false) }
     var saving by remember(ask) { mutableStateOf(false) }
-    var tried by remember(ask) { mutableStateOf(false) }
+    var touched by remember(ask) { mutableStateOf(false) }
     var trouble by remember(ask) { mutableStateOf<SaveTrouble?>(null) }
     var saved by remember(ask) { mutableStateOf<SecretSaved?>(null) }
     var retry by remember(ask) { mutableStateOf<String?>(null) }
@@ -153,9 +163,12 @@ fun GenUiSecretSheet(ask: SecretAsk, api: GenUiSecretApi, onSaved: (SecretSaved)
             checking = false
         }
     }
-    // A form changed after a failed save is another save.
+    // A form changed after a failed save is another save; and once the person has typed, an empty value is a problem to show.
     LaunchedEffect(draft) {
-        snapshotFlow { draft.form().let { it.secret.hashCode() to it.ifMatch } }.drop(1).collect { retry = null }
+        snapshotFlow { draft.form().let { it.secret.hashCode() to it.ifMatch } }.drop(1).collect {
+            retry = null
+            touched = true
+        }
     }
 
     fun close() {
@@ -164,7 +177,6 @@ fun GenUiSecretSheet(ask: SecretAsk, api: GenUiSecretApi, onSaved: (SecretSaved)
     }
 
     fun save() {
-        tried = true
         if (draft.problems.isNotEmpty() || checking || saving) return
         saving = true
         trouble = null
@@ -212,10 +224,12 @@ fun GenUiSecretSheet(ask: SecretAsk, api: GenUiSecretApi, onSaved: (SecretSaved)
             Completion(done) { scope.launch { sheet.hide() }.invokeOnCompletion { onDismiss() } }
             return@ModalBottomSheet
         }
-        val problems = if (tried) draft.problems else emptySet()
+        // What the agent prefilled shows its problems at once; a value not typed yet, once the person has started.
+        val problems = draft.problems.let { if (touched) it else it - SecretProblem.Value }
+        val scroll = rememberScrollState()
         Column(Modifier.fillMaxWidth().imePadding().navigationBarsPadding()) {
             Column(
-                Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = SecretSheetSpec.padding),
+                Modifier.weight(1f, fill = false).fillMaxWidth().fadedEdges(scroll).verticalScroll(scroll).padding(horizontal = SecretSheetSpec.padding),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
@@ -286,23 +300,13 @@ fun GenUiSecretSheet(ask: SecretAsk, api: GenUiSecretApi, onSaved: (SecretSaved)
                     SecretProblem.Value in problems -> Problem(stringResource(R.string.genui_secret_value_problem))
                 }
             }
-            Column(
-                Modifier.fillMaxWidth().padding(horizontal = SecretSheetSpec.padding, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                trouble?.let { Problem(stringResource(it.words)) }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-                    SheetButton(stringResource(R.string.common_cancel), GenUiSecretTags.CANCEL, enabled = !saving, background = colors.surfaceHigh, onClick = ::close)
-                    SheetButton(
-                        stringResource(R.string.common_save),
-                        GenUiSecretTags.SAVE,
-                        enabled = !saving && !checking && api.served && draft.existing?.changeable != false,
-                        background = colors.surfaceHighest,
-                        busy = saving,
-                        onClick = ::save,
-                    )
-                }
-            }
+            SheetActions(
+                trouble?.let { stringResource(it.words) },
+                canSave = !checking && api.served && draft.problems.isEmpty(),
+                saving = saving,
+                onCancel = ::close,
+                onSave = ::save,
+            )
         }
     }
 }
@@ -439,9 +443,7 @@ internal fun Saved(title: String, body: String, onDone: () -> Unit) {
             Text(title, style = SecretSheetSpec.title, color = colors.text)
         }
         Text(body, style = SecretSheetSpec.body, color = colors.textSecondary)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            SheetButton(stringResource(R.string.genui_secret_done), GenUiSecretTags.DONE + ".close", enabled = true, background = colors.surfaceHighest, onClick = onDone)
-        }
+        RoundButton(stringResource(R.string.genui_secret_done), onDone, Modifier.padding(top = 4.dp).testTag(GenUiSecretTags.DONE + ".close"), size = RoundButtonSize.Normal)
     }
 }
 
@@ -454,25 +456,53 @@ internal fun Note(words: String) = Text(words, style = SecretSheetSpec.small, co
 @Composable
 internal fun Problem(words: String) = Text(words, style = SecretSheetSpec.small, color = HappyTheme.colors.textDestructive, modifier = Modifier.testTag(GenUiSecretTags.PROBLEM))
 
+/**
+ * A form sheet's foot, under its scrolling fields: what went wrong saving
+ * ([trouble]), then Cancel as the quiet action and Save as the one filled
+ * one, enabled only once the form [canSave].
+ */
 @Composable
-internal fun SheetButton(label: String, tag: String, enabled: Boolean, background: Color, busy: Boolean = false, onClick: () -> Unit) {
-    val colors = HappyTheme.colors
-    Box(
-        modifier = Modifier
-            .testTag(tag)
-            .alpha(if (enabled || busy) 1f else 0.5f)
-            .clip(RoundedCornerShape(8.dp))
-            .background(background)
-            .clickable(enabled = enabled && !busy, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+internal fun SheetActions(trouble: String?, canSave: Boolean, saving: Boolean, onCancel: () -> Unit, onSave: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = SecretSheetSpec.padding, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        ShimmerText(
-            label,
-            style = SecretSheetSpec.label,
-            baseColor = ShimmerSpec.rest(colors.text, background),
-            highlightColor = colors.text,
-            shimmering = busy,
-            stillColor = colors.text,
-        )
+        trouble?.let { Problem(it) }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            RoundButton(
+                stringResource(R.string.common_cancel),
+                onCancel,
+                Modifier.weight(1f).testTag(GenUiSecretTags.CANCEL),
+                size = RoundButtonSize.Normal,
+                display = RoundButtonDisplay.Inverted,
+                enabled = !saving,
+            )
+            RoundButton(
+                stringResource(R.string.common_save),
+                onSave,
+                Modifier.weight(1f).testTag(GenUiSecretTags.SAVE),
+                size = RoundButtonSize.Normal,
+                enabled = canSave && !saving,
+                loading = saving,
+            )
+        }
     }
 }
+
+/** Where a sheet's fields go on past an edge of their [scroll] (under the handle, above the buttons), they fade out rather than being cut. */
+internal fun Modifier.fadedEdges(scroll: ScrollState): Modifier =
+    graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen).drawWithContent {
+        drawContent()
+        val fade = SecretSheetSpec.edgeFade.toPx().coerceAtMost(size.height / 3)
+        if (scroll.canScrollBackward) {
+            drawRect(Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black, startY = 0f, endY = fade), size = Size(size.width, fade), blendMode = BlendMode.DstIn)
+        }
+        if (scroll.canScrollForward) {
+            drawRect(
+                Brush.verticalGradient(0f to Color.Black, 1f to Color.Transparent, startY = size.height - fade, endY = size.height),
+                topLeft = Offset(0f, size.height - fade),
+                size = Size(size.width, fade),
+                blendMode = BlendMode.DstIn,
+            )
+        }
+    }

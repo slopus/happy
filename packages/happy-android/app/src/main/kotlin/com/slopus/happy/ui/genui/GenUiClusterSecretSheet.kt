@@ -112,7 +112,7 @@ fun GenUiClusterSecretSheet(ask: ClusterAsk, api: GenUiSecretApi, onSaved: (Clus
     var loading by remember(ask) { mutableStateOf(true) }
     var unopened by remember(ask) { mutableStateOf<Int?>(null) }
     var saving by remember(ask) { mutableStateOf(false) }
-    var tried by remember(ask) { mutableStateOf(false) }
+    var touched by remember(ask) { mutableStateOf(false) }
     var trouble by remember(ask) { mutableStateOf<ClusterTrouble?>(null) }
     var saved by remember(ask) { mutableStateOf<ClusterSaved?>(null) }
     var retry by remember(ask) { mutableStateOf<String?>(null) }
@@ -133,9 +133,12 @@ fun GenUiClusterSecretSheet(ask: ClusterAsk, api: GenUiSecretApi, onSaved: (Clus
         }
         loading = false
     }
-    // A form changed after a failed save is another save.
+    // A form changed after a failed save is another save; and once the person has typed, a missing value is a problem to show.
     LaunchedEffect(draft) {
-        snapshotFlow { draft.form().hashCode() }.drop(1).collect { retry = null }
+        snapshotFlow { draft.form().hashCode() }.drop(1).collect {
+            retry = null
+            touched = true
+        }
     }
 
     fun close() {
@@ -144,7 +147,6 @@ fun GenUiClusterSecretSheet(ask: ClusterAsk, api: GenUiSecretApi, onSaved: (Clus
     }
 
     fun save() {
-        tried = true
         if (draft.problems.isNotEmpty() || loading || unopened != null || saving) return
         saving = true
         trouble = null
@@ -199,11 +201,13 @@ fun GenUiClusterSecretSheet(ask: ClusterAsk, api: GenUiSecretApi, onSaved: (Clus
             ) { scope.launch { sheet.hide() }.invokeOnCompletion { onDismiss() } }
             return@ModalBottomSheet
         }
-        val problems = if (tried) draft.problems else emptySet()
+        // What the agent prefilled shows its problems at once; a value or key not typed yet, once the person has started.
+        val problems = draft.problems.let { if (touched) it else it - setOf(ClusterProblem.Value, ClusterProblem.Key) }
         val enabled = !saving && !loading && unopened == null
+        val scroll = rememberScrollState()
         Column(Modifier.fillMaxWidth().imePadding().navigationBarsPadding()) {
             Column(
-                Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = SecretSheetSpec.padding),
+                Modifier.weight(1f, fill = false).fillMaxWidth().fadedEdges(scroll).verticalScroll(scroll).padding(horizontal = SecretSheetSpec.padding),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
@@ -244,23 +248,13 @@ fun GenUiClusterSecretSheet(ask: ClusterAsk, api: GenUiSecretApi, onSaved: (Clus
                     ClusterSecretKind.Environment -> EnvironmentFields(draft, problems, enabled)
                 }
             }
-            Column(
-                Modifier.fillMaxWidth().padding(horizontal = SecretSheetSpec.padding, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                trouble?.let { Problem(it.words()) }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-                    SheetButton(stringResource(R.string.common_cancel), GenUiSecretTags.CANCEL, enabled = !saving, background = colors.surfaceHigh, onClick = ::close)
-                    SheetButton(
-                        stringResource(R.string.common_save),
-                        GenUiSecretTags.SAVE,
-                        enabled = enabled && api.served && ClusterProblem.Unchangeable !in draft.problems,
-                        background = colors.surfaceHighest,
-                        busy = saving,
-                        onClick = ::save,
-                    )
-                }
-            }
+            SheetActions(
+                trouble?.words(),
+                canSave = !loading && unopened == null && api.served && draft.problems.isEmpty(),
+                saving = saving,
+                onCancel = ::close,
+                onSave = ::save,
+            )
         }
     }
 }

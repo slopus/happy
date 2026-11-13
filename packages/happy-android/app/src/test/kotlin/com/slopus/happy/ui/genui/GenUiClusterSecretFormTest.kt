@@ -111,12 +111,13 @@ class GenUiClusterSecretFormTest {
         rule.node(GenUiSecretTags.MODE).assertTextContains("New endpoint secret")
         rule.node(GenUiSecretTags.NAME).assertTextContains("Stripe API")
         rule.onNodeWithText("Only GET, POST requests").assertExists()
-        // Nothing goes out without a value.
-        rule.node(GenUiSecretTags.SAVE).performClick()
-        rule.waitForIdle()
+        // Nothing goes out without a value; a short one is said to be.
+        rule.node(GenUiSecretTags.SAVE).assertIsNotEnabled()
+        assertTrue(rule.onAllNodesWithTag(GenUiSecretTags.PROBLEM).fetchSemanticsNodes().isEmpty())
+        rule.node(GenUiSecretTags.VALUE).performTextInput("sk_live_")
         rule.node(GenUiSecretTags.PROBLEM).assertExists()
-        assertTrue(saves().isEmpty())
-        rule.node(GenUiSecretTags.VALUE).performTextInput("sk_live_0123456789abcdef")
+        rule.node(GenUiSecretTags.SAVE).assertIsNotEnabled()
+        rule.node(GenUiSecretTags.VALUE).performTextInput("0123456789abcdef")
         rule.node(GenUiSecretTags.SAVE).performClick()
         shown("Saved Stripe API")
         val (_, path, body) = saves().single()

@@ -119,12 +119,12 @@ class GenUiSecretFormTest {
         // Prefilled, editable.
         rule.node(GenUiSecretTags.NAME).assertTextContains("stripe")
         assertEquals(2, rule.onAllNodesWithTag(GenUiSecretTags.VARIABLE).fetchSemanticsNodes().size)
-        // Nothing goes out with a value missing.
-        rule.node(GenUiSecretTags.SAVE).performClick()
-        rule.waitForIdle()
-        rule.node(GenUiSecretTags.PROBLEM).assertExists()
-        assertTrue(saves().isEmpty())
+        // Nothing goes out with a value missing, and that is said once the person starts typing.
+        rule.node(GenUiSecretTags.SAVE).assertIsNotEnabled()
+        assertTrue(rule.onAllNodesWithTag(GenUiSecretTags.PROBLEM).fetchSemanticsNodes().isEmpty())
         values()[0].performTextInput("sk_test_1")
+        rule.node(GenUiSecretTags.PROBLEM).assertExists()
+        rule.node(GenUiSecretTags.SAVE).assertIsNotEnabled()
         values()[1].performTextInput("whsec_1")
         rule.node(GenUiSecretTags.SAVE).performClick()
         rule.waitUntil(5_000) { saves().isNotEmpty() }
